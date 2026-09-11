@@ -159,6 +159,13 @@
       // cross-checked against its internal 48-word key schedule.
       this.tests = [
         {
+          text: "NIST AES round-1 LOKI97 KAT ecb_single.txt, 256-bit key (key words reordered into the little-endian, reversed 64-bit-word order this build expects)",
+          uri: "https://web.archive.org/web/20070109105533if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/loki97-vals.zip",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("1b1a19181f1e1d1c13121110171615140b0a09080f0e0d0c0302010007060504"),
+          expected: OpCodes.Hex8ToBytes("75080e359f10fe640144b35c57128dad")
+        },
+        {
           text: "DarkCrypt Lokilib — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

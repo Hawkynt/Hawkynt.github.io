@@ -280,24 +280,40 @@
         )
       ];
 
+      // All five test vectors from the PRIDE specification, Appendix J.
+      // The 16-byte key is the concatenation k0 || k1.
       this.tests = [
         {
-          text: "PRIDE Test Vector #1 (pypride Reference)",
-          uri: "https://github.com/obfusk/pypride",
+          text: "PRIDE Test Vector #1 - specification Appendix J",
+          uri: "https://eprint.iacr.org/2014/453.pdf",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("82b4109fcc70bd1f")
         },
         {
-          text: "PRIDE Test Vector #2 (pypride Reference)",
-          uri: "https://github.com/obfusk/pypride",
+          text: "PRIDE Test Vector #2 - specification Appendix J",
+          uri: "https://eprint.iacr.org/2014/453.pdf",
           input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("d70e60680a17b956")
         },
         {
-          text: "PRIDE Test Vector #3 (pypride Reference)",
-          uri: "https://github.com/obfusk/pypride",
+          text: "PRIDE Test Vector #3 - specification Appendix J",
+          uri: "https://eprint.iacr.org/2014/453.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffff0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("28f19f97f5e846a9")
+        },
+        {
+          text: "PRIDE Test Vector #4 - specification Appendix J",
+          uri: "https://eprint.iacr.org/2014/453.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000ffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("d123ebaf368fce62")
+        },
+        {
+          text: "PRIDE Test Vector #5 - specification Appendix J",
+          uri: "https://eprint.iacr.org/2014/453.pdf",
           input: OpCodes.Hex8ToBytes("0123456789abcdef"),
           key: OpCodes.Hex8ToBytes("0000000000000000fedcba9876543210"),
           expected: OpCodes.Hex8ToBytes("d1372929712d336e")

@@ -77,14 +77,14 @@
       // Test vectors in plain format (recommended)
       this.tests = [
         {
-          text: 'Basic Scytale example with circumference 3',
+          text: 'Circumference 3 over a message that does not fill the last row. The Wikipedia article works a different message, so it carries no value for this input',
           uri: 'https://en.wikipedia.org/wiki/Scytale',
-          input: OpCodes.AnsiToBytes('WEAREFOUNDOUT'), 
+          input: OpCodes.AnsiToBytes('WEAREFOUNDOUT'),
           key: OpCodes.AnsiToBytes('3'),
           expected: OpCodes.AnsiToBytes('WRODTEEUOAFNU')
         },
         {
-          text: 'Military message with circumference 4',
+          text: 'Circumference 4 over a message that fills the grid exactly. The Wikipedia article works a different message, so it carries no value for this input',
           uri: 'https://en.wikipedia.org/wiki/Scytale',
           input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
           key: OpCodes.AnsiToBytes('4'),

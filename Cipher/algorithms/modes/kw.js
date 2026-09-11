@@ -83,19 +83,55 @@
         new Vulnerability("Key Size Restrictions", "Input key must be multiple of 64 bits (8 bytes). Minimum key size is 128 bits (16 bytes).")
       ];
 
-      // Round-trip test vectors based on RFC 3394
+      // RFC 3394 section 4 test vectors
       this.tests = [
         {
-          text: "KW round-trip test - 128-bit key wrap",
-          uri: "https://tools.ietf.org/rfc/rfc3394.txt",
+          text: "RFC 3394 4.1 - wrap 128 bits of key data with a 128-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5")
         },
         {
-          text: "KW round-trip test - 192-bit key wrap",
-          uri: "https://tools.ietf.org/rfc/rfc3394.txt",
+          text: "RFC 3394 4.2 - wrap 128 bits of key data with a 192-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
+          expected: OpCodes.Hex8ToBytes("96778b25ae6ca435f92b5b97c050aed2468ab8a17ad84e5d")
+        },
+        {
+          text: "RFC 3394 4.3 - wrap 128 bits of key data with a 256-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("64e8c3f9ce0f5ba263e9777905818a2a93c8191e7d6e8ae7")
+        },
+        {
+          text: "RFC 3394 4.4 - wrap 192 bits of key data with a 192-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff0001020304050607"),
-          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617")
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
+          expected: OpCodes.Hex8ToBytes("031d33264e15d33268f24ec260743edce1c6c7ddee725a936ba814915c6762d2")
+        },
+        {
+          text: "RFC 3394 4.5 - wrap 192 bits of key data with a 256-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff0001020304050607"),
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("a8f9bc1612c68b3ff6e6f4fbe30e71e4769c8b80a32cb8958cd5d17d6b254da1")
+        },
+        {
+          text: "RFC 3394 4.6 - wrap 256 bits of key data with a 256-bit KEK",
+          uri: "https://www.rfc-editor.org/rfc/rfc3394.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff000102030405060708090a0b0c0d0e0f"),
+          kek: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326cbc7f0e71a99f43bfb988b9b7a02dd21")
         }
       ];
     }
@@ -255,7 +291,7 @@
       // Construct wrapped key: A || R[1] || R[2] || ... || R[n]
       const wrapped = [...A];
       for (let i = 1; i <= n; i++) {
-        wrapped.push(...R[i]);
+        for (let j = 0; j < R[i].length; j++) wrapped.push(R[i][j]);
       }
 
       // Clear sensitive data
@@ -325,7 +361,7 @@
       // Construct unwrapped key: R[1] || R[2] || ... || R[n]
       const unwrapped = [];
       for (let i = 1; i <= n; i++) {
-        unwrapped.push(...R[i]);
+        for (let j = 0; j < R[i].length; j++) unwrapped.push(R[i][j]);
       }
 
       // Clear sensitive data
