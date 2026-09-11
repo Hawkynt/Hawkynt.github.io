@@ -19,7 +19,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **BLAKE2s** (`blake2.js`) - BLAKE2s is a high-speed cryptographic hash function optimized for 8-32 bit platforms
 - **BLAKE2xs** (`blake2.js`) - BLAKE2xs is an eXtendable Output Function (XOF) based on BLAKE2s
 - **BLAKE3** (`blake3.js`) - Modern cryptographic hash function based on BLAKE2
-- **BLAKE3-Enhanced** (`blake3-enhanced.js`) - Enhanced educational implementation of BLAKE3 cryptographic hash function
+- **BLAKE3-Enhanced** (`blake3-enhanced.js`) - Enhanced educational implementation of the BLAKE3 cryptographic hash function
 - **CHC** (`chc.js`) - Cipher Hash Construction builds a cryptographic hash from a block cipher using Matyas-Meyer-Oseas construction
 - **CityHash** (`cityhash.js`) - Fast non-cryptographic hash function developed by Google
 - **COMB4P(MD4,MD5)** (`comb4p.js`) - COMB4P hash combiner using MD4 and MD5
@@ -51,7 +51,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **Haraka-256** (`haraka.js`) - High-performance hash function optimized for short inputs using AES round function
 - **Haraka-512** (`haraka.js`) - High-performance hash function for 512-bit inputs producing 256-bit output using AES round function
 - **HAVAL** (`haval.js`) - HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable passes (3, 4, 5)
-- **HighwayHash** (`highway-hash.js`) - Educational implementation of HighwayHash-style keyed hash function
+- **HighwayHash** (`highway-hash.js`) - Google's keyed hash function designed as a faster, stronger successor to SipHash
 - **ISAP Hash** (`isap-hash.js`) - Ascon-based hash function used in the ISAP authenticated encryption scheme
 - **JH** (`jh.js`) - JH is a cryptographic hash function with bitslice design submitted to the NIST SHA-3 competition
 - **KangarooTwelve** (`kangaroo.js`) - Fast hashing based on Keccak-p[1600,12] with tree structure for parallel processing
