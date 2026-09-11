@@ -99,11 +99,11 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **SHA-512** (`sha512.js`) - SHA-512 (Secure Hash Algorithm 512-bit) is a cryptographic hash function from the SHA-2 family designed by NIST
 - **SHA-512/224** (`sha512.js`) - SHA-512/224 is a truncated variant of SHA-512 with a modified initialization vector, producing 224-bit hash values
 - **SHA-512/256** (`sha512.js`) - SHA-512/256 is a truncated variant of SHA-512 with a modified initialization vector, producing 256-bit hash values
-- **Shabal-192** (`shabal.js`) - Shabal-192 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-224** (`shabal.js`) - Shabal-224 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-256** (`shabal.js`) - Shabal-256 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-384** (`shabal.js`) - Shabal-384 is a cryptographic hash function submitted to NIST SHA-3 competition
-- **Shabal-512** (`shabal.js`) - Shabal-512 is a cryptographic hash function submitted to NIST SHA-3 competition
+- **Shabal-192** (`shabal.js`) - Shabal-192 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-224** (`shabal.js`) - Shabal-224 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-256** (`shabal.js`) - Shabal-256 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-384** (`shabal.js`) - Shabal-384 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
+- **Shabal-512** (`shabal.js`) - Shabal-512 is a cryptographic hash function submitted to the NIST SHA-3 competition by the Saphir project
 - **SHAKE128** (`shake.js`) - SHAKE128 is an extendable-output function (XOF) from NIST FIPS 202 with 128-bit security
 - **SHAKE256** (`shake.js`) - SHAKE256 is an extendable-output function (XOF) from NIST FIPS 202 with 256-bit security
 - **SipHash-2-4** (`siphash.js`) - Fast cryptographically secure pseudorandom function designed for hash tables and data structures requiring collision resistance
