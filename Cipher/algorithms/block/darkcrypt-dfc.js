@@ -163,6 +163,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NIST AES round-1 DFC KAT ecb_vk.txt, KEYSIZE=256, I=1",
+          uri: "https://web.archive.org/web/20070109105903if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/dfc-vals.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b098bb87597a3fb0dca816d24021e65e")
+        },
+        {
           text: "DarkCrypt Dfc — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

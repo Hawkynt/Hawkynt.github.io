@@ -92,18 +92,32 @@
         }
       ];
 
-      // Test vectors using byte arrays - bit-perfect results from implementation
+      // Test vectors using byte arrays
       this.tests = [
         {
-          text: "Lester S. Hill's original 2x2 example (1929)",
-          uri: "https://www.jstor.org/stable/2269264",
+          text: "Wikipedia worked 2x2 example - HELP under [[3,3],[2,5]]",
+          uri: "https://en.wikipedia.org/wiki/Hill_cipher",
           input: OpCodes.AnsiToBytes("HELP"),
-          key: OpCodes.AnsiToBytes("3,2,5,7"),
-          expected: OpCodes.AnsiToBytes("DLLE")
+          key: OpCodes.AnsiToBytes("3,3,2,5"),
+          expected: OpCodes.AnsiToBytes("HIAT")
         },
         {
-          text: "Educational 2x2 matrix test",
-          uri: "https://www.dcode.fr/hill-cipher",
+          text: "Wikipedia worked 3x3 example - ACT under [[6,24,1],[13,16,10],[20,17,15]]",
+          uri: "https://en.wikipedia.org/wiki/Hill_cipher",
+          input: OpCodes.AnsiToBytes("ACT"),
+          key: OpCodes.AnsiToBytes("6,24,1,13,16,10,20,17,15"),
+          expected: OpCodes.AnsiToBytes("POH")
+        },
+        {
+          text: "Wikipedia worked 3x3 example - CAT under the same matrix",
+          uri: "https://en.wikipedia.org/wiki/Hill_cipher",
+          input: OpCodes.AnsiToBytes("CAT"),
+          key: OpCodes.AnsiToBytes("6,24,1,13,16,10,20,17,15"),
+          expected: OpCodes.AnsiToBytes("FIN")
+        },
+        {
+          text: "Padding case - odd-length text filled out to the block size with X. No published source carries this value; it is here to keep the padding path covered",
+          uri: "https://en.wikipedia.org/wiki/Hill_cipher",
           input: OpCodes.AnsiToBytes("HELLO"),
           key: OpCodes.AnsiToBytes("3,2,5,7"),
           expected: OpCodes.AnsiToBytes("DLDCKX")
@@ -279,16 +293,42 @@
       return inverse;
     }
 
-    // Calculate 3x3 matrix determinant mod 26 (simplified - not implemented for now)
+    // Calculate 3x3 matrix determinant mod 26.
+    // parseKey has always accepted nine numbers and reported size 3, but this
+    // and inverse3x3 threw "not yet implemented" from the key setter, so every
+    // 3x3 key - including Hill's own published one - was rejected outright.
     determinant3x3(matrix) {
-      // For educational simplicity, we'll support only 2x2 matrices initially
-      throw new Error("3x3 matrices not yet implemented in this educational version");
+      const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
+      const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+      return ((det % this.MOD) + this.MOD) % this.MOD;
     }
 
-    // Calculate 3x3 matrix inverse mod 26 (simplified - not implemented for now)
+    // Calculate 3x3 matrix inverse mod 26 as det^-1 times the adjugate
     inverse3x3(matrix) {
-      // For educational simplicity, we'll support only 2x2 matrices initially
-      throw new Error("3x3 matrices not yet implemented in this educational version");
+      const det = this.determinant3x3(matrix);
+      const detInv = this.modInverse(det, this.MOD);
+
+      if (detInv === null) {
+        return null; // Matrix is not invertible
+      }
+
+      const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
+
+      // Cofactor matrix, transposed in place to give the adjugate
+      const adjugate = [
+        [e * i - f * h, c * h - b * i, b * f - c * e],
+        [f * g - d * i, a * i - c * g, c * d - a * f],
+        [d * h - e * g, b * g - a * h, a * e - b * d]
+      ];
+
+      const inverse = [];
+      for (let row = 0; row < 3; row++) {
+        inverse[row] = [];
+        for (let col = 0; col < 3; col++)
+          inverse[row][col] = (((adjugate[row][col] * detInv) % this.MOD) + this.MOD) % this.MOD;
+      }
+
+      return inverse;
     }
 
     // Matrix-vector multiplication mod 26

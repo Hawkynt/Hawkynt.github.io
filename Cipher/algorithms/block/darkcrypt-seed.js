@@ -242,6 +242,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "RFC 4269 Appendix B.1 SEED test vector (each 32-bit word byte-swapped into the little-endian order this build uses)",
+          uri: "https://www.rfc-editor.org/rfc/rfc4269.txt",
+          input: OpCodes.Hex8ToBytes("03020100070605040b0a09080f0e0d0c"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("e0c6ba5e68164e05ccf1af19db6c346d")
+        },
+        {
           text: "DarkCrypt Seed — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

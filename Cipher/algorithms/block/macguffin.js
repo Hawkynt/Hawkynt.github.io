@@ -56,6 +56,71 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // The eight MacGuffin S-boxes: the DES S-boxes reduced to their two outer
+  // output bits, pre-shifted so box j lands in output bits 2j and 2j+1.
+  const SBOXES = Object.freeze([
+    Object.freeze([ // S1
+      0x0002, 0x0000, 0x0000, 0x0003, 0x0003, 0x0001, 0x0001, 0x0000, 0x0000, 0x0002, 0x0003, 0x0000, 0x0003, 0x0003, 0x0002, 0x0001,
+      0x0001, 0x0002, 0x0002, 0x0000, 0x0000, 0x0002, 0x0002, 0x0003, 0x0001, 0x0003, 0x0003, 0x0001, 0x0000, 0x0001, 0x0001, 0x0002,
+      0x0000, 0x0003, 0x0001, 0x0002, 0x0002, 0x0002, 0x0002, 0x0000, 0x0003, 0x0000, 0x0000, 0x0003, 0x0000, 0x0001, 0x0003, 0x0001,
+      0x0003, 0x0001, 0x0002, 0x0003, 0x0003, 0x0001, 0x0001, 0x0002, 0x0001, 0x0002, 0x0002, 0x0000, 0x0001, 0x0000, 0x0000, 0x0003
+    ]),
+    Object.freeze([ // S2
+      0x000c, 0x0004, 0x0004, 0x000c, 0x0008, 0x0000, 0x0008, 0x0004, 0x0000, 0x000c, 0x000c, 0x0000, 0x0004, 0x0008, 0x0000, 0x0008,
+      0x000c, 0x0008, 0x0004, 0x0000, 0x0000, 0x0004, 0x000c, 0x0008, 0x0008, 0x0000, 0x0000, 0x000c, 0x0004, 0x000c, 0x0008, 0x0004,
+      0x0000, 0x000c, 0x0008, 0x0008, 0x0004, 0x0008, 0x000c, 0x0004, 0x0008, 0x0004, 0x0000, 0x000c, 0x000c, 0x0000, 0x0004, 0x0000,
+      0x0004, 0x000c, 0x0008, 0x0000, 0x0008, 0x0004, 0x0000, 0x0008, 0x000c, 0x0000, 0x0004, 0x0004, 0x0000, 0x0008, 0x000c, 0x000c
+    ]),
+    Object.freeze([ // S3
+      0x0020, 0x0030, 0x0000, 0x0010, 0x0030, 0x0000, 0x0020, 0x0030, 0x0000, 0x0010, 0x0010, 0x0000, 0x0030, 0x0000, 0x0010, 0x0020,
+      0x0010, 0x0000, 0x0030, 0x0020, 0x0020, 0x0010, 0x0010, 0x0020, 0x0030, 0x0020, 0x0000, 0x0030, 0x0000, 0x0030, 0x0020, 0x0010,
+      0x0030, 0x0010, 0x0000, 0x0020, 0x0000, 0x0030, 0x0030, 0x0000, 0x0020, 0x0000, 0x0030, 0x0030, 0x0010, 0x0020, 0x0000, 0x0010,
+      0x0030, 0x0000, 0x0010, 0x0030, 0x0000, 0x0020, 0x0020, 0x0010, 0x0010, 0x0030, 0x0020, 0x0010, 0x0020, 0x0000, 0x0010, 0x0020
+    ]),
+    Object.freeze([ // S4
+      0x0040, 0x00c0, 0x00c0, 0x0080, 0x0080, 0x00c0, 0x0040, 0x0040, 0x0000, 0x0000, 0x0000, 0x00c0, 0x00c0, 0x0000, 0x0080, 0x0040,
+      0x0040, 0x0000, 0x0000, 0x0040, 0x0080, 0x0000, 0x0040, 0x0080, 0x00c0, 0x0040, 0x0080, 0x0080, 0x0000, 0x0080, 0x00c0, 0x00c0,
+      0x0080, 0x0040, 0x0000, 0x00c0, 0x00c0, 0x0000, 0x0000, 0x0000, 0x0080, 0x0080, 0x00c0, 0x0040, 0x0040, 0x00c0, 0x00c0, 0x0080,
+      0x00c0, 0x00c0, 0x0040, 0x0000, 0x0040, 0x0040, 0x0080, 0x00c0, 0x0040, 0x0080, 0x0000, 0x0040, 0x0080, 0x0000, 0x0000, 0x0080
+    ]),
+    Object.freeze([ // S5
+      0x0000, 0x0200, 0x0200, 0x0300, 0x0000, 0x0000, 0x0100, 0x0200, 0x0100, 0x0000, 0x0200, 0x0100, 0x0300, 0x0300, 0x0000, 0x0100,
+      0x0200, 0x0100, 0x0100, 0x0000, 0x0100, 0x0300, 0x0300, 0x0200, 0x0300, 0x0100, 0x0000, 0x0300, 0x0200, 0x0200, 0x0300, 0x0000,
+      0x0000, 0x0300, 0x0000, 0x0200, 0x0100, 0x0200, 0x0300, 0x0100, 0x0200, 0x0100, 0x0300, 0x0200, 0x0100, 0x0000, 0x0200, 0x0300,
+      0x0300, 0x0000, 0x0300, 0x0300, 0x0200, 0x0000, 0x0100, 0x0300, 0x0000, 0x0200, 0x0100, 0x0000, 0x0000, 0x0100, 0x0200, 0x0100
+    ]),
+    Object.freeze([ // S6
+      0x0800, 0x0800, 0x0400, 0x0c00, 0x0800, 0x0000, 0x0c00, 0x0000, 0x0c00, 0x0400, 0x0000, 0x0800, 0x0000, 0x0c00, 0x0800, 0x0400,
+      0x0000, 0x0000, 0x0c00, 0x0400, 0x0400, 0x0c00, 0x0000, 0x0800, 0x0800, 0x0000, 0x0400, 0x0c00, 0x0400, 0x0400, 0x0c00, 0x0800,
+      0x0c00, 0x0000, 0x0800, 0x0400, 0x0c00, 0x0000, 0x0400, 0x0800, 0x0000, 0x0c00, 0x0800, 0x0400, 0x0800, 0x0c00, 0x0400, 0x0800,
+      0x0400, 0x0c00, 0x0000, 0x0800, 0x0000, 0x0400, 0x0800, 0x0400, 0x0400, 0x0000, 0x0c00, 0x0000, 0x0c00, 0x0800, 0x0000, 0x0c00
+    ]),
+    Object.freeze([ // S7
+      0x0000, 0x3000, 0x3000, 0x0000, 0x0000, 0x3000, 0x2000, 0x1000, 0x3000, 0x0000, 0x0000, 0x3000, 0x2000, 0x1000, 0x3000, 0x2000,
+      0x1000, 0x2000, 0x2000, 0x1000, 0x3000, 0x1000, 0x1000, 0x2000, 0x1000, 0x0000, 0x2000, 0x3000, 0x0000, 0x2000, 0x1000, 0x0000,
+      0x1000, 0x0000, 0x0000, 0x3000, 0x3000, 0x3000, 0x3000, 0x2000, 0x2000, 0x1000, 0x1000, 0x0000, 0x1000, 0x2000, 0x2000, 0x1000,
+      0x2000, 0x3000, 0x3000, 0x1000, 0x0000, 0x0000, 0x2000, 0x3000, 0x0000, 0x2000, 0x1000, 0x0000, 0x3000, 0x1000, 0x0000, 0x2000
+    ]),
+    Object.freeze([ // S8
+      0xc000, 0x4000, 0x0000, 0xc000, 0x8000, 0xc000, 0x0000, 0x8000, 0x0000, 0x8000, 0xc000, 0x4000, 0xc000, 0x4000, 0x4000, 0x0000,
+      0x8000, 0x8000, 0xc000, 0x4000, 0x4000, 0x0000, 0x8000, 0xc000, 0x4000, 0x0000, 0x0000, 0x8000, 0x8000, 0xc000, 0x4000, 0x0000,
+      0x4000, 0x0000, 0xc000, 0x4000, 0x0000, 0x8000, 0x4000, 0x4000, 0xc000, 0x0000, 0x8000, 0x8000, 0x8000, 0x8000, 0x0000, 0xc000,
+      0x0000, 0xc000, 0x0000, 0x8000, 0x8000, 0xc000, 0xc000, 0x0000, 0xc000, 0x4000, 0x4000, 0x4000, 0x4000, 0x0000, 0x8000, 0xc000
+    ])
+  ]);
+
+  // Input bit positions for each S-box: two bits from each of the three
+  // right-hand registers, in the order a, a, b, b, c, c.
+  const SBOX_INPUT_BITS = Object.freeze([
+    Object.freeze([2, 5, 6, 9, 11, 13]), Object.freeze([1, 4, 7, 10, 8, 14]),
+    Object.freeze([3, 6, 8, 13, 0, 15]), Object.freeze([12, 14, 1, 2, 4, 10]),
+    Object.freeze([0, 10, 3, 14, 6, 12]), Object.freeze([7, 8, 12, 15, 1, 5]),
+    Object.freeze([9, 15, 5, 11, 2, 7]), Object.freeze([11, 13, 0, 4, 3, 9])
+  ]);
+
+  const ROUNDS = 32;
+
+
   /**
  * MacGuffinAlgorithm - Block cipher implementation
  * @class
@@ -110,34 +175,44 @@
       // NOTE: No official test vectors found in public sources
       // The original FSE '94 paper does not include test vectors
       // Implementation-derived test vectors verified with round-trip encryption/decryption
+      // The FSE '94 paper publishes the full reference implementation but no
+      // known-answer tests. These values are reproducible with the appendix
+      // code ("Optimized C Language Implementation") of that paper.
       this.tests = [
         {
-          text: "MacGuffin Test #1 - All Zeros",
-          uri: "Implementation-derived (verified round-trip)",
-          input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-          key: OpCodes.AnsiToBytes("0123456789ABCDEF"),
-          expected: [0xD4, 0xAE, 0xA2, 0x7F, 0x0A, 0xCB, 0xEA, 0xCC]
+          text: "FSE '94 reference implementation - all-zero key and plaintext",
+          uri: "https://www.schneier.com/wp-content/uploads/2016/02/paper-macguffin.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("a560ae037fdc2db4")
         },
         {
-          text: "MacGuffin Test #2 - Sequential",
-          uri: "Implementation-derived (verified round-trip)",
-          input: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
-          key: OpCodes.AnsiToBytes("TestKey123456789"),
-          expected: [0x50, 0xCA, 0xEA, 0x93, 0xFD, 0x08, 0xE3, 0xE7]
+          text: "FSE '94 reference implementation - sequential key, zero plaintext",
+          uri: "https://www.schneier.com/wp-content/uploads/2016/02/paper-macguffin.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("c276abc201a557d2")
         },
         {
-          text: "MacGuffin Test #3 - All Ones",
-          uri: "Implementation-derived (verified round-trip)",
-          input: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
-          key: OpCodes.AnsiToBytes("SecretKey!@#$%^&"),
-          expected: [0xC6, 0xB1, 0x24, 0xF5, 0x60, 0xD9, 0x04, 0x1A]
+          text: "FSE '94 reference implementation - sequential key and plaintext",
+          uri: "https://www.schneier.com/wp-content/uploads/2016/02/paper-macguffin.pdf",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("ddd524724dab18e8")
         },
         {
-          text: "MacGuffin Test #4 - Pattern",
-          uri: "Implementation-derived (verified round-trip)",
-          input: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22],
-          key: OpCodes.AnsiToBytes("MacGuffin1234567"),
-          expected: [0xC9, 0x0C, 0x49, 0xE6, 0x33, 0x88, 0x2D, 0x0C]
+          text: "FSE '94 reference implementation - all-ones plaintext",
+          uri: "https://www.schneier.com/wp-content/uploads/2016/02/paper-macguffin.pdf",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+          expected: OpCodes.Hex8ToBytes("3bdfbd66105c3664")
+        },
+        {
+          text: "FSE '94 reference implementation - two blocks",
+          uri: "https://www.schneier.com/wp-content/uploads/2016/02/paper-macguffin.pdf",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("ddd524724dab18e8d1279a0e3d850d10")
         }
       ];
     }
@@ -174,9 +249,6 @@
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
-
-      // Initialize constants and tables
-      this._initTables();
     }
 
     /**
@@ -230,219 +302,128 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
-
-    _initTables() {
-      // MacGuffin uses DES S-boxes but extracts only the outer 2 bits (bits 0 and 3)
-      // from each 4-bit S-box output, giving 2 bits per S-box x 8 S-boxes = 16 bits total
-
-      // DES S-boxes (same as in DES implementation)
-      // Each S-box: 6 input bits -> 4 output bits (we use outer 2 bits)
-      const SBOX_DATA = Object.freeze([
-        [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7, 0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8, 4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0, 15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
-        [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10, 3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5, 0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15, 13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
-        [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8, 13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1, 13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7, 1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
-        [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15, 13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9, 10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4, 3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14],
-        [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9, 14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6, 4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14, 11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3],
-        [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11, 10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8, 9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6, 4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
-        [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1, 13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6, 1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2, 6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
-        [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7, 1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2, 7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8, 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
-      ]);
-
-      this.SBOX = [];
-      for (let i = 0; i < SBOX_DATA.length; i++) {
-        const flatSbox = SBOX_DATA[i];
-        const sbox = [];
-        for (let row = 0; row < 4; row++) {
-          sbox[row] = [];
-          for (let col = 0; col < 16; col++) {
-            sbox[row][col] = flatSbox[row * 16 + col];
-          }
-        }
-        this.SBOX.push(sbox);
+    /**
+     * The MacGuffin round function.
+     *
+     * Each S-box draws two input bits from each of the three right-hand
+     * registers and contributes two output bits, so the eight boxes together
+     * turn 48 bits of input into the 16-bit value that is XORed into the
+     * target register.
+     *
+     * @param {uint16} a - first right-hand register, already keyed
+     * @param {uint16} b - second right-hand register, already keyed
+     * @param {uint16} c - third right-hand register, already keyed
+     * @returns {uint16} 16-bit round function output
+     */
+    static _roundFunction(a, b, c) {
+      let out = 0;
+      for (let j = 0; j < 8; j++) {
+        const bits = SBOX_INPUT_BITS[j];
+        const index = (OpCodes.Shr32(a, bits[0])&1)
+          | OpCodes.Shl32(OpCodes.Shr32(a, bits[1])&1, 1)
+          | OpCodes.Shl32(OpCodes.Shr32(b, bits[2])&1, 2)
+          | OpCodes.Shl32(OpCodes.Shr32(b, bits[3])&1, 3)
+          | OpCodes.Shl32(OpCodes.Shr32(c, bits[4])&1, 4)
+          | OpCodes.Shl32(OpCodes.Shr32(c, bits[5])&1, 5);
+        out |= SBOXES[j][index];
       }
-
-      // MacGuffin uses a modified key schedule based on the encryption algorithm itself
-      // For simplicity, we use a DES-like key schedule with 32 rounds
-      this.ROUNDS = 32;
+      return out&0xFFFF;
     }
 
+    /**
+     * Run the 32-round unbalanced Feistel network forwards.
+     * @param {uint16[]} words - four 16-bit registers
+     * @param {uint16[]} ek - 96 expanded key words
+     * @returns {uint16[]} four transformed registers
+     */
+    static _forward(words, ek) {
+      let r0 = words[0], r1 = words[1], r2 = words[2], r3 = words[3];
+      let p = 0;
+      for (let i = 0; i < ROUNDS / 4; i++) {
+        let a = (r1^ek[p++])&0xFFFF, b = (r2^ek[p++])&0xFFFF, c = (r3^ek[p++])&0xFFFF;
+        r0 = (r0^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        a = (r2^ek[p++])&0xFFFF; b = (r3^ek[p++])&0xFFFF; c = (r0^ek[p++])&0xFFFF;
+        r1 = (r1^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        a = (r3^ek[p++])&0xFFFF; b = (r0^ek[p++])&0xFFFF; c = (r1^ek[p++])&0xFFFF;
+        r2 = (r2^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        a = (r0^ek[p++])&0xFFFF; b = (r1^ek[p++])&0xFFFF; c = (r2^ek[p++])&0xFFFF;
+        r3 = (r3^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+      }
+      return [r0, r1, r2, r3];
+    }
+
+    /**
+     * Run the 32-round unbalanced Feistel network backwards.
+     * @param {uint16[]} words - four 16-bit registers
+     * @param {uint16[]} ek - 96 expanded key words
+     * @returns {uint16[]} four transformed registers
+     */
+    static _backward(words, ek) {
+      let r0 = words[0], r1 = words[1], r2 = words[2], r3 = words[3];
+      let p = ek.length;
+      for (let i = 0; i < ROUNDS / 4; i++) {
+        let c = (r2^ek[--p])&0xFFFF, b = (r1^ek[--p])&0xFFFF, a = (r0^ek[--p])&0xFFFF;
+        r3 = (r3^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        c = (r1^ek[--p])&0xFFFF; b = (r0^ek[--p])&0xFFFF; a = (r3^ek[--p])&0xFFFF;
+        r2 = (r2^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        c = (r0^ek[--p])&0xFFFF; b = (r3^ek[--p])&0xFFFF; a = (r2^ek[--p])&0xFFFF;
+        r1 = (r1^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+        c = (r3^ek[--p])&0xFFFF; b = (r2^ek[--p])&0xFFFF; a = (r1^ek[--p])&0xFFFF;
+        r0 = (r0^MacGuffinInstance._roundFunction(a, b, c))&0xFFFF;
+      }
+      return [r0, r1, r2, r3];
+    }
+
+    static _toWords(b) {
+      return [
+        b[0]|OpCodes.Shl32(b[1], 8),
+        b[2]|OpCodes.Shl32(b[3], 8),
+        b[4]|OpCodes.Shl32(b[5], 8),
+        b[6]|OpCodes.Shl32(b[7], 8)
+      ];
+    }
+
+    static _toBytes(w) {
+      const out = new Array(8);
+      for (let i = 0; i < 4; i++) {
+        out[2 * i] = w[i]&0xFF;
+        out[2 * i + 1] = OpCodes.Shr32(w[i], 8)&0xFF;
+      }
+      return out;
+    }
+
+    /**
+     * MacGuffin expands its key by encrypting the two halves of the key with
+     * the partially built schedule, folding each result back into the schedule.
+     */
     _generateSubkeys(key) {
-      // MacGuffin key schedule: uses the cipher itself to generate round keys
-      // This is a simplified version based on the paper's description
-      // The actual key schedule is complex and uses MacGuffin encryption itself
+      const ek = new Array(ROUNDS * 3).fill(0);
+      const halves = [key.slice(0, 8), key.slice(8, 16)];
 
-      const subkeys = [];
-
-      // Generate 32 subkeys of 48 bits each
-      // We use a simplified derivation: hash the key with round number
-      for (let round = 0; round < this.ROUNDS; round++) {
-        const roundKey = new Array(6); // 48 bits = 6 bytes
-
-        // Simple key derivation: XOR key bytes with round-dependent values
-        for (let i = 0; i < 6; i++) {
-          const keyByte1 = key[(round + i) % key.length];
-          const keyByte2 = key[(round + i + 8) % key.length];
-          roundKey[i] = OpCodes.XorN(keyByte1, OpCodes.XorN(OpCodes.XorN(keyByte2, round), i));
+      for (let i = 0; i < 2; i++) {
+        let words = MacGuffinInstance._toWords(halves[i]);
+        for (let j = 0; j < 32; j++) {
+          words = MacGuffinInstance._forward(words, ek);
+          const bytes = MacGuffinInstance._toBytes(words);
+          ek[j * 3]     ^= bytes[0]|OpCodes.Shl32(bytes[1], 8);
+          ek[j * 3 + 1] ^= bytes[2]|OpCodes.Shl32(bytes[3], 8);
+          ek[j * 3 + 2] ^= bytes[4]|OpCodes.Shl32(bytes[5], 8);
         }
-
-        // Convert to bit array (48 bits)
-        const roundKeyBits = [];
-        for (let i = 0; i < roundKey.length; i++) {
-          for (let j = 7; j >= 0; j--) {
-            roundKeyBits.push(OpCodes.GetBit(roundKey[i], j));
-          }
-        }
-
-        subkeys.push(roundKeyBits);
       }
 
-      return subkeys;
+      return ek;
     }
 
     EncryptBlock(input) {
-      return this._crypt(input, false);
+      return MacGuffinInstance._toBytes(
+        MacGuffinInstance._forward(MacGuffinInstance._toWords(input), this.subkeys));
     }
 
     DecryptBlock(input) {
-      return this._crypt(input, true);
-    }
-
-    _crypt(input, isDecrypt) {
-      // MacGuffin uses an unbalanced Feistel network
-      // 64-bit block split into: 16 bits (A) and 48 bits (B, C, D - each 16 bits)
-      // Each round: modify A based on function of B, C, D
-
-      // Convert input to bits
-      let bits = this._bytesToBits(input);
-
-      // Split into four 16-bit words: A (leftmost) and B, C, D (rightmost 48 bits)
-      let words = [];
-      for (let i = 0; i < 4; i++) {
-        words.push(bits.slice(i * 16, (i + 1) * 16));
-      }
-
-      if (isDecrypt) {
-        // Decryption: reverse the unbalanced Feistel network
-        // Encryption does: newA = A XOR F(B,C,D), then [A,B,C,D] -> [B,C,D,newA]
-        // Decryption must: compute A = newA XOR F(B,C,D), then [B,C,D,newA] -> [A,B,C,D]
-
-        for (let round = this.ROUNDS - 1; round >= 0; round--) {
-          const subkey = this.subkeys[round];
-
-          // Current state: [B, C, D, newA]
-          // We need to recover: [A, B, C, D]
-          // We know: newA = A XOR F(B,C,D)
-          // Therefore: A = newA XOR F(B,C,D)
-
-          // Extract B, C, D (positions 0, 1, 2)
-          const tempWords = [words[3], words[0], words[1], words[2]]; // Put newA in position 0 to use _fFunction
-
-          // Compute F(B,C,D) - but _roundFunction does A XOR F(B,C,D)
-          // So we need to compute F separately
-          const fOutput = this._fFunction(words[0], words[1], words[2], subkey);
-
-          // Recover A = newA XOR F(B,C,D)
-          const originalA = OpCodes.XorArrays(words[3], fOutput);
-
-          // Unrotate: [B,C,D,newA] -> [A,B,C,D]
-          words = [originalA, words[0], words[1], words[2]];
-        }
-      } else {
-        // Encryption: 32 rounds of unbalanced Feistel
-        for (let round = 0; round < this.ROUNDS; round++) {
-          const subkey = this.subkeys[round];
-
-          // Compute F(B,C,D)
-          const fOutput = this._fFunction(words[1], words[2], words[3], subkey);
-
-          // newA = A XOR F(B,C,D)
-          const newA = OpCodes.XorArrays(words[0], fOutput);
-
-          // Rotate words: [A,B,C,D] -> [B,C,D,newA]
-          words = [words[1], words[2], words[3], newA];
-        }
-      }
-
-      // Combine words back to bits
-      const outputBits = [];
-      for (let i = 0; i < 4; i++) {
-        outputBits.push(...words[i]);
-      }
-
-      // Convert back to bytes
-      return this._bitsToBytes(outputBits);
-    }
-
-    _fFunction(B, C, D, subkey) {
-      // MacGuffin F function (without the final XOR with A):
-      // 1. Take 48 bits (B, C, D - three 16-bit words)
-      // 2. XOR with 48-bit subkey
-      // 3. Pass through 8 S-boxes (6 bits -> 2 bits each)
-      // 4. Return 16 bits output
-
-      // Combine B, C, D into 48 bits
-      const bcd = [...B, ...C, ...D];
-
-      // XOR with subkey
-      const xored = OpCodes.XorArrays(bcd, subkey);
-
-      // S-box substitution: 48 bits -> 16 bits
-      // Process through 8 S-boxes, extracting outer 2 bits from each
-      const sboxOutput = [];
-
-      for (let i = 0; i < 8; i++) {
-        // Extract 6-bit block for this S-box
-        const block = xored.slice(i * 6, (i + 1) * 6);
-
-        // Calculate row (outer bits: bit 0 and bit 5)
-        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0]), 0, block[5]);
-
-        // Calculate column (middle 4 bits: bits 1-4)
-        const col = OpCodes.SetBit(
-          OpCodes.SetBit(
-            OpCodes.SetBit(
-              OpCodes.SetBit(0, 3, block[1]),
-              2, block[2]
-            ),
-            1, block[3]
-          ),
-          0, block[4]
-        );
-
-        // Get 4-bit value from S-box
-        const val = this.SBOX[i][row][col];
-
-        // Extract outer 2 bits: bit 3 (most significant) and bit 0 (least significant)
-        sboxOutput.push(OpCodes.GetBit(val, 3));
-        sboxOutput.push(OpCodes.GetBit(val, 0));
-      }
-
-      return sboxOutput;
-    }
-
-    _bytesToBits(bytes) {
-      const bits = new Array(bytes.length * 8);
-      for (let i = 0; i < bytes.length; i++) {
-        for (let j = 0; j < 8; j++) {
-          bits[i * 8 + j] = OpCodes.GetBit(bytes[i], 7 - j);
-        }
-      }
-      return bits;
-    }
-
-    _bitsToBytes(bits) {
-      const bytes = new Array(bits.length / 8);
-      for (let i = 0; i < bytes.length; i++) {
-        let val = 0;
-        for (let j = 0; j < 8; j++) {
-          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j]);
-        }
-        bytes[i] = val;
-      }
-      return bytes;
+      return MacGuffinInstance._toBytes(
+        MacGuffinInstance._backward(MacGuffinInstance._toWords(input), this.subkeys));
     }
   }
-
   // ===== REGISTRATION =====
 
   const algorithmInstance = new MacGuffinAlgorithm();

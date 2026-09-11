@@ -113,14 +113,30 @@
         new LinkItem("Cryptologia Paper", "https://www.tandfonline.com/toc/ucry20/9/1")
       ];
 
-      // Test vectors
+      // No official NewDES known-answer tests were ever published. These values
+      // are reproducible with Mark Riordan's reference implementation shipped in
+      // the Applied Cryptography source code (NEWDES.ZIP, newdes2.c).
       this.tests = [
         {
-          text: "NewDES test vector - all zeros plaintext",
+          text: "Riordan reference implementation - all-zero plaintext",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcd").slice(0, 15),
-          expected: OpCodes.Hex8ToBytes("dacbd6baa814b800"),
-          uri: [new LinkItem("NewDES Educational Implementation", "https://en.wikipedia.org/wiki/NewDES")]
+          key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcd"),
+          expected: OpCodes.Hex8ToBytes("7f603881d097f619"),
+          uri: "https://www.schneier.com/wp-content/uploads/2015/03/NEWDES-2.zip"
+        },
+        {
+          text: "Riordan reference implementation - all-zero key",
+          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("f1e7afca1dee9aed"),
+          uri: "https://www.schneier.com/wp-content/uploads/2015/03/NEWDES-2.zip"
+        },
+        {
+          text: "Riordan reference implementation - two blocks",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e"),
+          expected: OpCodes.Hex8ToBytes("255cc7953fee5aebe798c886a6eb4ab0"),
+          uri: "https://www.schneier.com/wp-content/uploads/2015/03/NEWDES-2.zip"
         }
       ];
     }
@@ -277,22 +293,10 @@
      * @returns {Array} 119-byte unravelled key for encryption (17 rounds * 7 bytes)
      */
     _setupEncryptionKey(key) {
-      const unravelledKey = new Array(119); // 17 rounds * 7 bytes per round = 119 bytes
-      let keyIndex = 0;
-
-      // NewDES key schedule: each set of 2 rounds uses 7 bytes from key, then rotate key
-      for (let round = 0; round < 17; round++) {
-        for (let i = 0; i < 7; i++) {
-          unravelledKey[round * 7 + i] = key[keyIndex];
-          keyIndex = (keyIndex + 1) % 15;
-        }
-
-        // After every 2 rounds, rotate the key by 7 positions
-        if (round % 2 === 1) {
-          keyIndex = (keyIndex + 7) % 15;
-        }
-      }
-
+      // The 15-byte user key is simply repeated four times to fill the
+      // 60-byte unravelled key consumed by one block transformation.
+      const unravelledKey = new Array(60);
+      for (let i = 0; i < 60; i++) unravelledKey[i] = key[i % 15];
       return unravelledKey;
     }
 
@@ -302,9 +306,22 @@
      * @returns {Array} 119-byte unravelled key for decryption (same as encryption)
      */
     _setupDecryptionKey(key) {
-      // For NewDES decryption, we use the same key schedule as encryption
-      // The reverse operation is handled in the algorithm itself
-      return this._setupEncryptionKey(key);
+      // Decryption reuses the same block transformation, driven by the user key
+      // walked in the order that undoes the encryption schedule.
+      const unravelledKey = [];
+      let idx = 11;
+      for (;;) {
+        unravelledKey.push(key[idx]); idx = (idx + 1) % 15;
+        unravelledKey.push(key[idx]); idx = (idx + 1) % 15;
+        unravelledKey.push(key[idx]); idx = (idx + 1) % 15;
+        unravelledKey.push(key[idx]); idx = (idx + 9) % 15;
+        if (idx === 12) break;
+        unravelledKey.push(key[idx]); idx++;
+        unravelledKey.push(key[idx]); idx++;
+        unravelledKey.push(key[idx]);
+        idx = (idx + 9) % 15;
+      }
+      return unravelledKey;
     }
 
     /**
@@ -315,25 +332,24 @@
     _newdesBlock(block, unravelledKey) {
       let keyPtr = 0;
 
-      // 17 main rounds
-      for (let round = 0; round < 17; round++) {
-        // NewDES round: 8 XOR operations per round
-        // Each round uses 7 bytes of key material
+      // Eight full rounds followed by a final half round; the same routine
+      // performs decryption when driven by the decryption key schedule.
+      for (let round = 0; round < 8; round++) {
+        block[4] = block[4]^this.rotor[block[0]^unravelledKey[keyPtr++]];
+        block[5] = block[5]^this.rotor[block[1]^unravelledKey[keyPtr++]];
+        block[6] = block[6]^this.rotor[block[2]^unravelledKey[keyPtr++]];
+        block[7] = block[7]^this.rotor[block[3]^unravelledKey[keyPtr++]];
 
-        // XOR left half with rotor[right half XOR key]
-        block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr++]]);
-        block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr++]]);
-        block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr++]]);
-        block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr++]]);
-
-        // XOR right half with rotor[left half XOR key]
-        block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr++]]);
-        block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr++]]);
-        block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr++]]);
-
-        // Note: block[7] doesn't get additional XOR in this step
-        // This creates the asymmetric structure that NewDES requires
+        block[1] = block[1]^this.rotor[block[4]^unravelledKey[keyPtr++]];
+        block[2] = block[2]^this.rotor[block[4]^block[5]];
+        block[3] = block[3]^this.rotor[block[6]^unravelledKey[keyPtr++]];
+        block[0] = block[0]^this.rotor[block[7]^unravelledKey[keyPtr++]];
       }
+
+      block[4] = block[4]^this.rotor[block[0]^unravelledKey[keyPtr++]];
+      block[5] = block[5]^this.rotor[block[1]^unravelledKey[keyPtr++]];
+      block[6] = block[6]^this.rotor[block[2]^unravelledKey[keyPtr++]];
+      block[7] = block[7]^this.rotor[block[3]^unravelledKey[keyPtr++]];
     }
 
     /**
@@ -342,34 +358,9 @@
      * @param {Array} unravelledKey - 119-byte key schedule (17 rounds * 7 bytes per round)
      */
     _newdesBlockDecrypt(block, unravelledKey) {
-      // For decryption, apply the same operations in reverse round order
-      // Since XOR is its own inverse, we apply the same XORs but with reversed key schedule
-
-      let keyPtr = 119 - 7; // Start from the last round's key
-
-      // 17 main rounds in reverse order
-      for (let round = 16; round >= 0; round--) {
-        // Reverse the operations from encryption
-        // Apply the same XOR pattern but in reverse order
-
-        // Reverse: block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr++]]);
-        block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr + 6]]);
-        // Reverse: block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr++]]);
-        block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr + 5]]);
-        // Reverse: block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr++]]);
-        block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr + 4]]);
-
-        // Reverse: block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr++]]);
-        block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr + 3]]);
-        // Reverse: block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr++]]);
-        block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr + 2]]);
-        // Reverse: block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr++]]);
-        block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr + 1]]);
-        // Reverse: block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr++]]);
-        block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr]]);
-
-        keyPtr -= 7; // Move to previous round's key
-      }
+      // Decryption is the identical transformation driven by the decryption
+      // key schedule, so no separate round structure is needed.
+      this._newdesBlock(block, unravelledKey);
     }
 
     /**

@@ -138,11 +138,25 @@
           expected: OpCodes.Hex8ToBytes("B54586F4AB9AE546")
         },
         {
-          text: "Crypto3 Vector: Realistic key/plaintext",
-          uri: "https://github.com/nilfoundation/crypto3/blob/master/libs/block/test/kasumi.cpp",
+          text: "Botan kasumi.vec vector 1",
+          uri: "https://github.com/randombit/botan/blob/2.19.3/src/tests/data/block/kasumi.vec",
           input: OpCodes.Hex8ToBytes("EA024714AD5C4D84"),
           key: OpCodes.Hex8ToBytes("2BD6459F82C5B300952C49104881FF48"),
           expected: OpCodes.Hex8ToBytes("DF1F9B251C0BF45F")
+        },
+        {
+          text: "Botan kasumi.vec vector 2",
+          uri: "https://github.com/randombit/botan/blob/2.19.3/src/tests/data/block/kasumi.vec",
+          input: OpCodes.Hex8ToBytes("D3C5D592327FB11C"),
+          key: OpCodes.Hex8ToBytes("8CE33E2CC3C0B5FC1F3DE8A6DC66B1F3"),
+          expected: OpCodes.Hex8ToBytes("DE551988CEB2F9B7")
+        },
+        {
+          text: "Botan kasumi.vec vector 3",
+          uri: "https://github.com/randombit/botan/blob/2.19.3/src/tests/data/block/kasumi.vec",
+          input: OpCodes.Hex8ToBytes("62A540981BA6F9B7"),
+          key: OpCodes.Hex8ToBytes("4035C6680AF8C6D1A8FF8667B1714013"),
+          expected: OpCodes.Hex8ToBytes("4592B0E78690F71B")
         }
       ];
     }
