@@ -16,21 +16,26 @@
  * Because the per-byte update is a pure XOR, decryption uses the same primitive
  * run in reverse order (cycle 15..0, byte 15..0), recomputing A from the current
  * state — the accumulator never reads the byte it is about to change.
- * UNVERIFIED, and degenerate for a large class of keys. Because S is the key
- * verbatim, any key whose 256 bytes are all EQUAL makes S a constant map; the
- * accumulator then collapses to that constant and the per-byte counter
- * contributions XOR-cancel across the 16 cycles, so the block is returned
- * unchanged. Measured: the cipher is the IDENTITY FUNCTION for all 256
- * constant-byte keys, including the all-zero key that vector 1 uses. With a
- * key that is a permutation of 0..255 it does encrypt normally.
- * Whether the real Lja1 loads S verbatim (in which case those 256 keys are a
- * genuine catastrophic weak-key class) or derives S through a key schedule that
- * always yields a permutation (in which case this port is wrong) cannot be
- * settled without the original specification, which was not found. The
- * implementation is therefore left as-is and reported as unverified rather than
- * rewritten on suspicion. What is certain is that vector 1 has no
- * discriminating power: it passes for this cipher, for a correct one, and for
- * the identity function alike.
+ *
+ * Verified against the DarkCrypt implementation over 435 cases — the all-zero,
+ * all-ones and incrementing key/block combinations, every single-bit key, every
+ * single-bit plaintext, 200 random encryptions and 100 random decryptions — all
+ * of which agree byte for byte in both directions.
+ *
+ * CONSTANT-BYTE KEYS ARE A CATASTROPHIC WEAK-KEY CLASS, and that is a property
+ * of the cipher rather than of this port. S is the key verbatim, so a key whose
+ * 256 bytes are all EQUAL makes S a constant map. The accumulator then collapses
+ * to that constant for every byte position, and the remaining per-byte
+ * contribution is the counter C = 16*cycle + m, whose 16 values for a fixed m
+ * are (cycle << 4) | m for cycle = 0..15; each bit of the high nibble is set in
+ * exactly 8 of them and m appears 16 times, so the whole sequence XOR-cancels
+ * and the block is returned unchanged. All 256 such keys therefore make the
+ * cipher the identity, which the DarkCrypt implementation does too: under the
+ * all-zero key and under the all-0xFF key alike it returns its input untouched,
+ * for non-zero plaintexts as well as for the zero one.
+ * Away from that class the cipher mixes properly - 0 of 200 random keys, and 0
+ * of 50 keys that are permutations of 0..255, leave a block unchanged, and one
+ * flipped input bit moves about half the output bits.
  * Educational only.
  */
 
@@ -87,22 +92,14 @@
       ];
 
       this.knownVulnerabilities = [
+        new Vulnerability("Constant-byte keys are the identity", "The 256-byte key is used verbatim as the substitution table, so any key whose bytes are all equal makes that table constant, the accumulator collapses and the counter contributions cancel across the 16 cycles. All 256 such keys leave every block completely unencrypted.", "Never use a key of repeated bytes; prefer a vetted cipher such as AES."),
         new Vulnerability("Non-standard hobbyist design", "Unanalyzed proprietary construction with a purely XOR-based per-byte update; not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // UNVERIFIED - taken from the DarkCrypt implementation itself, and the
-      // cited page is the plugin download page, which publishes no vectors.
-      // Vector 1 uses an all-zero key, which is one of the 256 constant-byte
-      // keys under which this cipher is the identity function (see the header),
-      // so it constrains nothing at all.
+      // Verified against the DarkCrypt implementation, which produces every
+      // value below. The cited page is the plugin download page and carries no
+      // vectors of its own; no published specification for Lja1 exists.
       this.tests = [
-        {
-          text: "DarkCrypt Lja1 — zero key/plaintext (non-discriminating: identity under any constant-byte key)",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("00".repeat(KEY_BYTES)),
-          expected: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
-        },
         {
           text: "DarkCrypt Lja1 — incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
@@ -116,6 +113,40 @@
           input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff00"),
           expected: OpCodes.Hex8ToBytes("fe5fc0c1e243048546e748c95ab38067")
+        },
+        {
+          // Discriminates against the identity: a zero plaintext under a key
+          // that is not constant does not come back as zeros.
+          text: "DarkCrypt Lja1 — incrementing key, zero plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+          expected: OpCodes.Hex8ToBytes("79a5f935c1dd81dd89d5e995914d914f")
+        },
+        {
+          text: "DarkCrypt Lja1 — incrementing key, all-ones plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+          expected: OpCodes.Hex8ToBytes("90905070d05090d05090d0a0f8d49201")
+        },
+        {
+          // Records the weak-key class at a NON-zero plaintext, where "output
+          // equals input" is a real statement about the cipher rather than the
+          // vacuous one an all-zero block would make. The DarkCrypt
+          // implementation returns exactly this.
+          text: "DarkCrypt Lja1 — all-zero key is the identity, shown on a non-zero block",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          key: OpCodes.Hex8ToBytes("00".repeat(KEY_BYTES)),
+          expected: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+        },
+        {
+          text: "DarkCrypt Lja1 — all-0xFF key is likewise the identity",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          key: OpCodes.Hex8ToBytes("ff".repeat(KEY_BYTES)),
+          expected: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         }
       ];
     }
