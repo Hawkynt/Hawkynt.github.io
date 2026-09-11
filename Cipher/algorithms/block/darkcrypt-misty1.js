@@ -260,6 +260,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "Official MISTY1 test data (CRYPTREC specification, 8 rounds; each 32-bit word byte-swapped into this build order, key zero-extended to the 32 bytes this build accepts)",
+          uri: "https://www.cryptrec.go.jp/en/cryptrec_03_spec_cypherlist_files/PDF/05_02espec.pdf",
+          input: OpCodes.Hex8ToBytes("67452301efcdab89"),
+          key: OpCodes.Hex8ToBytes("3322110077665544bbaa9988ffeeddcc00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("f5a51d8b7cd0b36a")
+        },
+        {
           text: "DarkCrypt Misty — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000"),

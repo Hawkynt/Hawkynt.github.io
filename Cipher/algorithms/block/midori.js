@@ -93,8 +93,11 @@
     const aVal = OpCodes.Shl8(a0, 3) | OpCodes.Shl8(a1, 2) | OpCodes.Shl8(a2, 1) | a3;
     const bVal = OpCodes.Shl8(b0, 3) | OpCodes.Shl8(b1, 2) | OpCodes.Shl8(b2, 1) | b3;
 
-    const n0 = SB1[bVal];
-    const n1 = SB1[aVal];
+    // n0 is the Sb1 image of the upper permuted nibble, n1 that of the lower one.
+    // The output bit permutation below is the inverse of the input permutation
+    // and is written in terms of that pairing.
+    const n0 = SB1[aVal];
+    const n1 = SB1[bVal];
 
     // Extract output bits from Sb1 results
     const n0_0 = OpCodes.And8(OpCodes.Shr8(n0, 3), 1);
@@ -339,16 +342,21 @@
         new LinkItem("tomirio619 Midori Reference Implementation (Python/VHDL)", "https://github.com/tomirio619/Midori")
       ];
 
-      // Test vectors - NOTE: Official test vectors from ePrint 2015/1142 require exact
-      // bit-level state representation matching hardware implementation. This implementation
-      // uses verified round-trip consistency with column-major state ordering.
+      // Official test vectors from ePrint 2015/1142, Appendix A section B
       this.tests = [
         {
-          text: "Midori64 Implementation Test Vector (Round-trip verified)",
-          uri: "https://eprint.iacr.org/2015/1142",
-          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
-          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          expected: OpCodes.Hex8ToBytes("de1d8a5cef90bdb3")
+          text: "Midori64 Test Vector #1 (all zeros) - specification Appendix A",
+          uri: "https://eprint.iacr.org/2015/1142.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("3c9cceda2bbd449a")
+        },
+        {
+          text: "Midori64 Test Vector #2 - specification Appendix A",
+          uri: "https://eprint.iacr.org/2015/1142.pdf",
+          input: OpCodes.Hex8ToBytes("42c20fd3b586879e"),
+          key: OpCodes.Hex8ToBytes("687ded3b3c85b3f35b1009863e2a8cbf"),
+          expected: OpCodes.Hex8ToBytes("66bcdc6270d901cd")
         }
       ];
     }
@@ -403,7 +411,7 @@
       }
 
       this._key = [...keyBytes];
-      this._roundKeys = generateRoundKeys64(new Uint8Array(this._key), 16);
+      this._roundKeys = generateRoundKeys64(new Uint8Array(this._key), 15);
     }
 
     /**
@@ -473,8 +481,10 @@
           state[i] = INV_SB0[state[i]];
         }
 
-        // 16 inverse rounds (r = 15 down to 0)
-        for (let r = 15; r >= 0; --r) {
+        // 15 inverse rounds (r = 14 down to 0). Midori64 has R = 16 rounds in
+        // total and the last one is SubCell plus whitening only, so the round
+        // function proper runs R - 1 times.
+        for (let r = 14; r >= 0; --r) {
           for (let i = 0; i < 16; ++i) {
             state[i] ^= this._roundKeys[r + 1][i];
           }
@@ -485,9 +495,9 @@
           }
         }
       } else {
-        // Encryption: 16 forward rounds
+        // Encryption: 15 forward rounds (R - 1 for R = 16)
         // Round structure: SubCell → ShuffleCell → MixColumn → KeyAdd
-        for (let r = 0; r < 16; ++r) {
+        for (let r = 0; r < 15; ++r) {
           // 1. SubCell
           for (let i = 0; i < 16; ++i) {
             state[i] = SB0[state[i]];
@@ -557,23 +567,21 @@
         new LinkItem("tomirio619 Midori Reference Implementation (Python/VHDL)", "https://github.com/tomirio619/Midori")
       ];
 
-      // Test vectors - NOTE: Official test vectors from ePrint 2015/1142 require exact
-      // bit-level state representation matching hardware implementation. This implementation
-      // uses verified round-trip consistency with column-major state ordering.
+      // Official test vectors from ePrint 2015/1142, Appendix A section A
       this.tests = [
         {
-          text: "Midori128 Implementation Test Vector #1 (Round-trip verified)",
-          uri: "https://eprint.iacr.org/2015/1142",
-          input: OpCodes.Hex8ToBytes("51084ce6e73a5ca2ec87d7babc297543"),
-          key: OpCodes.Hex8ToBytes("687ded3b3c85b3f35b1009863e2a8cbf"),
-          expected: OpCodes.Hex8ToBytes("748cf26ef475ccab041b86649fd3bc9d")
+          text: "Midori128 Test Vector #1 (all zeros) - specification Appendix A",
+          uri: "https://eprint.iacr.org/2015/1142.pdf",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c055cbb95996d14902b60574d5e728d6")
         },
         {
-          text: "Midori128 Implementation Test Vector #2 (Round-trip verified)",
-          uri: "https://eprint.iacr.org/2015/1142",
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100"),
-          expected: OpCodes.Hex8ToBytes("0e16ba20d9cfb6ab0ba679ab8ff3b193")
+          text: "Midori128 Test Vector #2 - specification Appendix A",
+          uri: "https://eprint.iacr.org/2015/1142.pdf",
+          input: OpCodes.Hex8ToBytes("51084ce6e73a5ca2ec87d7babc297543"),
+          key: OpCodes.Hex8ToBytes("687ded3b3c85b3f35b1009863e2a8cbf"),
+          expected: OpCodes.Hex8ToBytes("1e0ac4fddff71b4c1801b73ee4afc83d")
         }
       ];
     }

@@ -175,6 +175,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NESSIE submission test vectors for NOEKEON in indirect-key mode, set 1 vector 0",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/noekeon.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("98fe359a01cd3f66f8d662b746f825d7")
+        },
+        {
           text: "DarkCrypt Noekeon-indirect — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

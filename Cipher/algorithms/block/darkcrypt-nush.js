@@ -208,6 +208,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NESSIE submission test vectors for NUSH, 128-bit block with 256-bit key, set 1 vector 0 (each 32-bit word byte-swapped into the little-endian order this build uses)",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/nush.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000008000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("31217b784f1b2fe51590db2a1cd8cf5e")
+        },
+        {
           text: "DarkCrypt Nush — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

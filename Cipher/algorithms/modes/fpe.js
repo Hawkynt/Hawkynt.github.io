@@ -87,31 +87,59 @@
         new Vulnerability("Implementation Complexity", "Proper FPE requires careful implementation of cycle-walking, radix conversion, and PRF construction to avoid bias and maintain security.")
       ];
 
-      // Round-trip test vectors based on NIST SP 800-38G
+      // NIST FF1 sample values (FF1samples.pdf, published alongside SP 800-38G
+      // on the NIST "Example Values" page). The radix-36 samples use the
+      // canonical base-36 alphabet, digits then lowercase letters.
       this.tests = [
         {
-          text: "FPE round-trip test #1 - Decimal",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
+          text: "NIST FF1 sample 1 - AES-128, radix 10, empty tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
           input: OpCodes.AnsiToBytes("0123456789"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          tweak: OpCodes.Hex8ToBytes(""),
-          alphabet: "0123456789"
+          tweak: [],
+          alphabet: "0123456789",
+          expected: OpCodes.AnsiToBytes("2433477484")
         },
         {
-          text: "FPE round-trip test #2 - Credit Card",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
-          input: OpCodes.AnsiToBytes("4000001234567899"),
+          text: "NIST FF1 sample 2 - AES-128, radix 10, 10-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          tweak: OpCodes.Hex8ToBytes("3031323334353637"),
-          alphabet: "0123456789"
+          tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
+          alphabet: "0123456789",
+          expected: OpCodes.AnsiToBytes("6124200773")
         },
         {
-          text: "FPE round-trip test #3 - Alphanumeric",
-          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
-          input: OpCodes.AnsiToBytes("ABC123def456"),
+          text: "NIST FF1 sample 3 - AES-128, radix 36, 11-byte tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789abcdefghi"),
           key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          tweak: OpCodes.Hex8ToBytes("303132333435363738393a3b3c3d3e3f"),
-          alphabet: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+          tweak: OpCodes.Hex8ToBytes("3737373770717273373737"),
+          alphabet: "0123456789abcdefghijklmnopqrstuvwxyz",
+          expected: OpCodes.AnsiToBytes("a9tv40mll9kdu509eum")
+        },
+        {
+          text: "NIST FF1 sample 4 - AES-192, radix 10, empty tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3cef4359d8d580aa4f"),
+          tweak: [],
+          alphabet: "0123456789",
+          expected: OpCodes.AnsiToBytes("2830668132")
+        },
+        {
+          text: "NIST FF1 sample 7 - AES-256, radix 10, empty tweak",
+          uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/example-values",
+          cipher: "AES",
+          input: OpCodes.AnsiToBytes("0123456789"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3cef4359d8d580aa4f7f036d6f04fc6a94"),
+          tweak: [],
+          alphabet: "0123456789",
+          expected: OpCodes.AnsiToBytes("6657667009")
         }
       ];
     }
@@ -301,80 +329,163 @@
      * @returns {Array} Transformed characters
      */
     _applyFPE(chars) {
-      // Convert characters to numbers based on alphabet
-      const numbers = chars.map(char => this.alphabet.indexOf(char));
-      const radix = this.alphabet.length;
-      const n = numbers.length;
+      // Convert characters to numerals: the position in the alphabet is the
+      // numeral value, so the alphabet length is the radix.
+      const numerals = chars.map(char => this.alphabet.indexOf(char));
 
-      if (n < 2) {
-        return chars; // Can't apply Feistel to single character
+      if (numerals.length < 2) {
+        return chars; // Can't apply a Feistel network to a single character
       }
 
-      // Simple Feistel-based FPE (properly invertible)
-      let left = numbers.slice(0, Math.floor(n / 2));
-      let right = numbers.slice(Math.floor(n / 2));
-      const rounds = 4; // Fixed number of rounds for consistency
-
-      if (this.isInverse) {
-        // FPE Decryption: reverse Feistel rounds
-        for (let round = rounds - 1; round >= 0; round--) {
-          const f = this._feistelFunction(left, round, radix, right.length);
-          const newRight = this._modSubtract(right, f, radix);
-          right = left;
-          left = newRight;
-        }
-      } else {
-        // FPE Encryption: forward Feistel rounds
-        for (let round = 0; round < rounds; round++) {
-          const f = this._feistelFunction(right, round, radix, left.length);
-          const newRight = this._modAdd(left, f, radix);
-          left = right;
-          right = newRight;
-        }
-      }
-
-      // Combine halves and convert back to characters
-      const result = left.concat(right);
-      return result.map(num => this.alphabet[num % radix]);
+      const result = this._ff1(numerals, this.alphabet.length);
+      return result.map(num => this.alphabet[num]);
     }
 
     /**
-     * Apply PRF-based transformation (simplified FPE round function)
-     * @param {Array} input - Input numbers
-     * @param {number} round - Round number for domain separation
-     * @returns {Array} Transformed numbers
+     * Numeral string to integer, most significant numeral first
+     * @private
      */
-    _applyPRF(input, round) {
-      // Construct PRF input: tweak || round || input
-      const prfInput = [];
-      prfInput.push(...this.tweak);
-      prfInput.push(OpCodes.AndN(round, 0xFF));
-      prfInput.push(...input.map(n => OpCodes.AndN(n, 0xFF)));
+    _numRadix(numerals, radix) {
+      const base = BigInt(radix);
+      let value = 0n;
+      for (let i = 0; i < numerals.length; i++) value = value * base + BigInt(numerals[i]);
+      return value;
+    }
 
-      // Pad to block size
-      const blockSize = this.blockCipher.BlockSize;
-      while (prfInput.length % blockSize !== 0) {
-        prfInput.push(0);
+    /**
+     * Integer to a numeral string of the given length
+     * @private
+     */
+    _strRadix(value, length, radix) {
+      const base = BigInt(radix);
+      const numerals = new Array(length).fill(0);
+      let remaining = value;
+      for (let i = length - 1; i >= 0; i--) {
+        numerals[i] = Number(remaining % base);
+        remaining = remaining / base;
       }
+      return numerals;
+    }
 
-      // Apply block cipher as PRF
+    /**
+     * Big-endian byte string to integer
+     * @private
+     */
+    _bytesToInt(bytes) {
+      let value = 0n;
+      for (let i = 0; i < bytes.length; i++) value = value * 256n + BigInt(bytes[i]);
+      return value;
+    }
+
+    /**
+     * Integer to a big-endian byte string of the given length
+     * @private
+     */
+    _intToBytes(value, length) {
+      const bytes = new Array(length).fill(0);
+      let remaining = value;
+      for (let i = length - 1; i >= 0; i--) {
+        bytes[i] = Number(remaining % 256n);
+        remaining = remaining / 256n;
+      }
+      return bytes;
+    }
+
+    /**
+     * Apply the underlying block cipher to one block
+     * @private
+     */
+    _ciph(block) {
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
-      cipher.Feed(prfInput);
-      const prf = cipher.Result();
+      cipher.Feed(block);
+      return cipher.Result();
+    }
 
-      // Transform input using PRF output
-      const result = new Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const prfByte = prf[i % prf.length];
+    /**
+     * PRF from SP 800-38G: CBC-MAC over a block-aligned string with a zero IV
+     * @private
+     */
+    _prf(data) {
+      let y = new Array(16).fill(0);
+      for (let i = 0; i < data.length; i += 16) {
+        y = this._ciph(OpCodes.XorArrays(y, data.slice(i, i + 16)));
+      }
+      return y;
+    }
+
+    /**
+     * FF1 encryption and decryption (NIST SP 800-38G algorithms 7 and 8)
+     * @private
+     */
+    _ff1(symbols, radix) {
+      const n = symbols.length;
+      const t = this.tweak.length;
+      const u = Math.floor(n / 2);
+      const v = n - u;
+
+      const b = Math.ceil(Math.ceil(v * Math.log2(radix)) / 8);
+      const d = 4 * Math.ceil(b / 4) + 4;
+
+      const nBytes = OpCodes.Unpack32BE(n);
+      const tBytes = OpCodes.Unpack32BE(t);
+      const p = [
+        1, 2, 1,
+        OpCodes.AndN(OpCodes.Shr32(radix, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(radix, 8), 0xFF),
+        OpCodes.AndN(radix, 0xFF),
+        10,
+        u % 256,
+        nBytes[0], nBytes[1], nBytes[2], nBytes[3],
+        tBytes[0], tBytes[1], tBytes[2], tBytes[3]
+      ];
+
+      const padLength = ((-t - b - 1) % 16 + 16) % 16;
+
+      let a = symbols.slice(0, u);
+      let bHalf = symbols.slice(u);
+
+      const rounds = this.isInverse ? [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+      for (const round of rounds) {
+        const source = this.isInverse ? a : bHalf;
+        const q = [];
+        for (let i = 0; i < this.tweak.length; i++) q.push(this.tweak[i]);
+        for (let i = 0; i < padLength; i++) q.push(0);
+        q.push(round);
+        const sourceBytes = this._intToBytes(this._numRadix(source, radix), b);
+        for (let i = 0; i < sourceBytes.length; i++) q.push(sourceBytes[i]);
+
+        const prfInput = [];
+        for (let i = 0; i < p.length; i++) prfInput.push(p[i]);
+        for (let i = 0; i < q.length; i++) prfInput.push(q[i]);
+        const r = this._prf(prfInput);
+
+        const s = [];
+        for (let i = 0; i < r.length; i++) s.push(r[i]);
+        for (let j = 1; s.length < d; j++) {
+          const counter = this._intToBytes(BigInt(j), 16);
+          const block = this._ciph(OpCodes.XorArrays(r, counter));
+          for (let i = 0; i < block.length; i++) s.push(block[i]);
+        }
+        const y = this._bytesToInt(s.slice(0, d));
+
+        const m = (round % 2 === 0) ? u : v;
+        const modulus = BigInt(radix) ** BigInt(m);
+
         if (this.isInverse) {
-          result[i] = (input[i] - prfByte + 256) % 256;
+          let c = (this._numRadix(bHalf, radix) - y) % modulus;
+          if (c < 0n) c += modulus;
+          bHalf = a;
+          a = this._strRadix(c, m, radix);
         } else {
-          result[i] = (input[i] + prfByte) % 256;
+          const c = (this._numRadix(a, radix) + y) % modulus;
+          a = bHalf;
+          bHalf = this._strRadix(c, m, radix);
         }
       }
 
-      return result;
+      return a.concat(bHalf);
     }
 
     /**
@@ -400,81 +511,6 @@
       return result.join('');
     }
 
-    /**
-     * Feistel function for FPE rounds
-     * @param {Array} input - Input half
-     * @param {number} round - Round number
-     * @param {number} radix - Number base
-     * @param {number} targetSize - Target output size
-     * @returns {Array} Function output
-     */
-    _feistelFunction(input, round, radix, targetSize) {
-      // Construct PRF input: tweak || round || input
-      const prfInput = [];
-      prfInput.push(...this.tweak);
-      prfInput.push(OpCodes.AndN(round, 0xFF));
-      prfInput.push(...input.map(n => OpCodes.AndN(n, 0xFF)));
-
-      // Pad to block size
-      const blockSize = this.blockCipher.BlockSize;
-      while (prfInput.length % blockSize !== 0) {
-        prfInput.push(0);
-      }
-
-      // Apply block cipher as PRF
-      const cipher = this.blockCipher.algorithm.CreateInstance(false);
-      cipher.key = this.key;
-      cipher.Feed(prfInput);
-      const prf = cipher.Result();
-
-      // Convert PRF output to target size with correct radix
-      const output = new Array(targetSize);
-      for (let i = 0; i < targetSize; i++) {
-        output[i] = prf[i % prf.length] % radix;
-      }
-
-      return output;
-    }
-
-    /**
-     * Modular addition for arrays
-     * @param {Array} a - First operand
-     * @param {Array} b - Second operand
-     * @param {number} radix - Modulus
-     * @returns {Array} Result array
-     */
-    _modAdd(a, b, radix) {
-      const maxLength = Math.max(a.length, b.length);
-      const result = new Array(maxLength);
-
-      for (let i = 0; i < maxLength; i++) {
-        const aVal = i < a.length ? a[i] : 0;
-        const bVal = i < b.length ? b[i] : 0;
-        result[i] = (aVal + bVal) % radix;
-      }
-
-      return result;
-    }
-
-    /**
-     * Modular subtraction for arrays
-     * @param {Array} a - First operand
-     * @param {Array} b - Second operand
-     * @param {number} radix - Modulus
-     * @returns {Array} Result array
-     */
-    _modSubtract(a, b, radix) {
-      const maxLength = Math.max(a.length, b.length);
-      const result = new Array(maxLength);
-
-      for (let i = 0; i < maxLength; i++) {
-        const aVal = i < a.length ? a[i] : 0;
-        const bVal = i < b.length ? b[i] : 0;
-        result[i] = (aVal - bVal + radix) % radix;
-      }
-
-      return result;
-    }
   }
 
   // ===== REGISTRATION =====

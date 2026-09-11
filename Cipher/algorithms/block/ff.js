@@ -307,72 +307,35 @@
       // Known vulnerabilities - none for production implementation
       this.knownVulnerabilities = [];
 
-      // Comprehensive NIST test vectors from BouncyCastle SP80038GTest.java
+      // The complete set of FF1 sample vectors NIST publishes alongside
+      // SP 800-38G, covering AES-128/192/256 and radix 10 and 36.
+      const FF1_SAMPLES_URI = 'https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/FF1samples.pdf';
+      const K128 = '2B7E151628AED2A6ABF7158809CF4F3C';
+      const K192 = '2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F';
+      const K256 = '2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94';
+      const T0 = '';
+      const T1 = '39383736353433323130';
+      const T2 = '3737373770717273373737';
+
       this.tests = [
-        {
-          text: 'NIST FF1-AES128 Sample 1 - decimal digits, no tweak',
-          uri: 'https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3C'),
-          tweak: new Uint8Array(0),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('2433477484')
-        },
-        {
-          text: 'NIST FF1-AES128 Sample 2 - decimal digits with tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3C'),
-          tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('6124200773')
-        },
-        {
-          text: 'NIST FF1-AES128 Sample 3 - alphanumeric with tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789abcdefghi'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3C'),
-          tweak: OpCodes.Hex8ToBytes('3737373770717273373737'),
-          radix: 36,
-          expected: OpCodes.AnsiToBytes('a9tv40mll9kdu509eum')
-        },
-        {
-          text: 'NIST FF1-AES192 Sample 4 - decimal digits, no tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F'),
-          tweak: new Uint8Array(0),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('2830668132')
-        },
-        {
-          text: 'NIST FF1-AES192 Sample 5 - decimal digits with tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F'),
-          tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('2496655549')
-        },
-        {
-          text: 'NIST FF1-AES256 Sample 6 - decimal digits, no tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94'),
-          tweak: new Uint8Array(0),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('6657667009')
-        },
-        {
-          text: 'NIST FF1-AES256 Sample 7 - decimal digits with tweak',
-          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94'),
-          tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('1001623463')
-        }
-      ];
+        { n: 'Sample #1 AES-128', k: K128, t: T0, r: 10, p: '0123456789', c: '2433477484' },
+        { n: 'Sample #2 AES-128', k: K128, t: T1, r: 10, p: '0123456789', c: '6124200773' },
+        { n: 'Sample #3 AES-128', k: K128, t: T2, r: 36, p: '0123456789abcdefghi', c: 'a9tv40mll9kdu509eum' },
+        { n: 'Sample #4 AES-192', k: K192, t: T0, r: 10, p: '0123456789', c: '2830668132' },
+        { n: 'Sample #5 AES-192', k: K192, t: T1, r: 10, p: '0123456789', c: '2496655549' },
+        { n: 'Sample #6 AES-192', k: K192, t: T2, r: 36, p: '0123456789abcdefghi', c: 'xbj3kv35jrawxv32ysr' },
+        { n: 'Sample #7 AES-256', k: K256, t: T0, r: 10, p: '0123456789', c: '6657667009' },
+        { n: 'Sample #8 AES-256', k: K256, t: T1, r: 10, p: '0123456789', c: '1001623463' },
+        { n: 'Sample #9 AES-256', k: K256, t: T2, r: 36, p: '0123456789abcdefghi', c: 'xs8a0azh2avyalyzuwd' }
+      ].map(s => ({
+        text: 'NIST FF1 ' + s.n + ' radix ' + s.r,
+        uri: FF1_SAMPLES_URI,
+        input: OpCodes.AnsiToBytes(s.p),
+        key: OpCodes.Hex8ToBytes(s.k),
+        tweak: s.t ? OpCodes.Hex8ToBytes(s.t) : new Uint8Array(0),
+        radix: s.r,
+        expected: OpCodes.AnsiToBytes(s.c)
+      }));
     }
 
     /**
@@ -849,48 +812,44 @@
           "Practical distinguishing attacks",
           "FF3 is vulnerable to practical attacks that can distinguish it from a random permutation",
           "FF3 should never be used in production - algorithm is fundamentally broken"
-        ),
-        new Vulnerability(
-          "Educational implementation",
-          "This is a simplified educational implementation, not suitable for any use",
-          "Do not use FF3 in any application - algorithm has been withdrawn by NIST"
         )
       ];
 
-      // These vectors are produced by this file and are not NIST values, even
-      // though the key, tweak and plaintext look like a NIST sample. _aesEncrypt
-      // below is a linear congruential generator, not AES, and the round
-      // function omits the REV and REVB reversals SP 800-38G Algorithm 9
-      // prescribes, so no input can reproduce a published FF3 result. Checked
-      // against a conforming FF3 that does reproduce SP 800-38G Sample #1
-      // (key EF4359D8D580AA4F7F036D6F04FC6A94, tweak D8E7920AFA330A73,
-      // "890121234567890000" -> "750918814058654607"): with the key and tweak
-      // used here that same plaintext encrypts to "268059360717283457" and
-      // "123456789012345678" to "811138645228660102", neither of which is what
-      // this file produces. They are recorded as self-generated regression
-      // vectors so the behaviour is pinned, and the Feistel structure and the
-      // format-preserving encoding they exercise are genuine, but this
-      // algorithm is not interoperable with FF3 until it uses a real AES.
+      // The complete set of FF3 sample vectors NIST publishes alongside
+      // SP 800-38G, covering AES-128/192/256 and radix 10 and 26.
+      const FF3_SAMPLES_URI = "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/FF3samples.pdf";
+      const K128 = "EF4359D8D580AA4F7F036D6F04FC6A94";
+      const K192 = "EF4359D8D580AA4F7F036D6F04FC6A942B7E151628AED2A6";
+      const K256 = "EF4359D8D580AA4F7F036D6F04FC6A942B7E151628AED2A6ABF7158809CF4F3C";
+      const T1 = "D8E7920AFA330A73";
+      const T2 = "9A768A92F60E12D8";
+      const T0 = "0000000000000000";
+
       this.tests = [
-        {
-          text: "FF3 self-generated regression vector - 18 decimal digits",
-          uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-          input: OpCodes.AnsiToBytes("890121234567890000"),
-          key: OpCodes.Hex8ToBytes("2DE79D232DF5585D68CE47882AE256D6"),
-          tweak: OpCodes.Hex8ToBytes("CBD09280979564CB"),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes("616696145383400397")
-        },
-        {
-          text: "FF3 self-generated regression vector - round-trip verification",
-          uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-          input: OpCodes.AnsiToBytes("123456789012345678"),
-          key: OpCodes.Hex8ToBytes("2DE79D232DF5585D68CE47882AE256D6"),
-          tweak: OpCodes.Hex8ToBytes("CBD09280979564CB"),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes("849490066767144062")
-        }
-      ];
+        { n: "Sample #1  AES-128", k: K128, t: T1, r: 10, p: "890121234567890000", c: "750918814058654607" },
+        { n: "Sample #2  AES-128", k: K128, t: T2, r: 10, p: "890121234567890000", c: "018989839189395384" },
+        { n: "Sample #3  AES-128", k: K128, t: T1, r: 10, p: "89012123456789000000789000000", c: "48598367162252569629397416226" },
+        { n: "Sample #4  AES-128", k: K128, t: T0, r: 10, p: "89012123456789000000789000000", c: "34695224821734535122613701434" },
+        { n: "Sample #5  AES-128", k: K128, t: T2, r: 26, p: "0123456789abcdefghi", c: "g2pk40i992fn20cjakb" },
+        { n: "Sample #6  AES-192", k: K192, t: T1, r: 10, p: "890121234567890000", c: "646965393875028755" },
+        { n: "Sample #7  AES-192", k: K192, t: T2, r: 10, p: "890121234567890000", c: "961610514491424446" },
+        { n: "Sample #8  AES-192", k: K192, t: T1, r: 10, p: "89012123456789000000789000000", c: "53048884065350204541786380807" },
+        { n: "Sample #9  AES-192", k: K192, t: T0, r: 10, p: "89012123456789000000789000000", c: "98083802678820389295041483512" },
+        { n: "Sample #10 AES-192", k: K192, t: T2, r: 26, p: "0123456789abcdefghi", c: "i0ihe2jfj7a9opf9p88" },
+        { n: "Sample #11 AES-256", k: K256, t: T1, r: 10, p: "890121234567890000", c: "922011205562777495" },
+        { n: "Sample #12 AES-256", k: K256, t: T2, r: 10, p: "890121234567890000", c: "504149865578056140" },
+        { n: "Sample #13 AES-256", k: K256, t: T1, r: 10, p: "89012123456789000000789000000", c: "04344343235792599165734622699" },
+        { n: "Sample #14 AES-256", k: K256, t: T0, r: 10, p: "89012123456789000000789000000", c: "30859239999374053872365555822" },
+        { n: "Sample #15 AES-256", k: K256, t: T2, r: 26, p: "0123456789abcdefghi", c: "p0b2godfja9bhb7bk38" }
+      ].map(s => ({
+        text: "NIST FF3 " + s.n + " radix " + s.r,
+        uri: FF3_SAMPLES_URI,
+        input: OpCodes.AnsiToBytes(s.p),
+        key: OpCodes.Hex8ToBytes(s.k),
+        tweak: OpCodes.Hex8ToBytes(s.t),
+        radix: s.r,
+        expected: OpCodes.AnsiToBytes(s.c)
+      }));
     }
 
     /**
@@ -928,6 +887,9 @@
       // FF3 configuration
       this._radix = 10; // Default to decimal
       this._tweak = new Array(8).fill(0); // Tweak data (8 bytes for FF3)
+
+      // AES instance for the round function, created lazily under REVB(K)
+      this.aesInstance = null;
     }
 
     /**
@@ -937,9 +899,12 @@
    */
 
     set key(keyBytes) {
+      this.aesInstance = null;
+
       if (!keyBytes) {
         this._key = null;
         this.KeySize = 0;
+        this.keyReversed = null;
         return;
       }
 
@@ -951,7 +916,7 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
-      // For FF3, we need to reverse key bytes (per NIST spec)
+      // FF3 keys the block cipher with REVB(K), SP 800-38G Algorithm 9 step 4c
       this.keyReversed = [...this._key].reverse();
     }
 
@@ -1037,176 +1002,133 @@
       return this._numeralsToBytes(Y);
     }
 
-    // FF3 encryption function (8 rounds)
+    // REV: reverse the order of the characters (numerals) of a string,
+    // SP 800-38G Section 4.2.
+    _rev(numerals) {
+      const out = new Array(numerals.length);
+      for (let i = 0; i < numerals.length; i++) out[i] = numerals[numerals.length - 1 - i];
+      return out;
+    }
+
+    // REVB: reverse the order of the bytes of a byte string,
+    // SP 800-38G Section 4.2.
+    _revb(bytes) {
+      const out = new Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) out[i] = bytes[bytes.length - 1 - i];
+      return out;
+    }
+
+    // One FF3 round: the P block of Algorithm 9 step 4b and the S block of
+    // step 4c, returning y = NUM(S) as a BigInt.
+    // W is the 4-byte tweak half, N is NUM_radix(REV(half)).
+    _roundY(W, roundIndex, N) {
+      const P = new Array(16);
+      for (let j = 0; j < 4; j++) P[j] = W[j];
+      P[3] = OpCodes.XorN(P[3], roundIndex); // W XOR [i]^4
+
+      // [NUM_radix(REV(half))]^12 - 12 bytes, big-endian
+      const numBytes = BigIntegerUtils.toByteArray(N, 12);
+      const offset = numBytes.length - 12;
+      for (let j = 0; j < 12; j++) P[4 + j] = numBytes[offset + j];
+
+      // S = REVB(CIPH_REVB(K)(REVB(P)))
+      const S = this._revb(this._aesEncrypt(this._revb(P)));
+      return BigIntegerUtils.fromByteArray(S);
+    }
+
+    // FF3 encryption - NIST SP 800-38G Algorithm 9
     _encrypt(X) {
       const n = X.length;
 
-      // Split into two halves (FF3 uses ceiling for first half)
+      // Step 1/2: split into two halves (FF3 uses ceiling for the first half)
       const u = Math.ceil(n / 2);
       const v = n - u;
       let A = [...X.slice(0, u)];
       let B = [...X.slice(u)];
 
-      // Parse tweak into TL and TR
+      // Step 3: parse tweak into TL (leftmost 32 bits) and TR (rightmost 32)
       const TL = this._tweak.slice(0, 4);
       const TR = this._tweak.slice(4, 8);
 
-      // FF3 has 8 rounds
+      // Step 4: 8 rounds
       for (let i = 0; i < FF3_CONSTANTS.ROUNDS; i++) {
-        let W;
-        if (OpCodes.AndN(i, 1) === 0) {
-          // Even round: use TR
-          W = [...TR];
-        } else {
-          // Odd round: use TL
-          W = [...TL];
-        }
+        const even = OpCodes.AndN(i, 1) === 0;
+        const m = even ? u : v;
+        const W = even ? TR : TL;
 
-        // XOR with round number
-        W[3] = OpCodes.XorN(W[3], i);
+        const y = this._roundY(W, i, this._numeralArrayToBigInt(this._rev(B)));
 
-        // Convert B to big integer string representation
-        const bInt = this._numeralArrayToBigInt(B);
+        // Step 4e/4f: c = (NUM_radix(REV(A)) + y) mod radix^m, C = REV(STR(c))
+        const c = this._addMod(this._numeralArrayToBigInt(this._rev(A)), y, this._pow(this._radix, m));
+        const C = this._rev(this._bigIntToNumeralArray(c, m));
 
-        // Convert big integer to bytes (little-endian, 4 bytes)
-        const bBytes = this._bigIntToBytes(bInt, 4);
-
-        // Combine W and B bytes for AES input (16 byte block)
-        const P = new Array(16);
-        for (let j = 0; j < 4; j++) P[j] = W[j];
-        for (let j = 0; j < 4; j++) P[j + 4] = bBytes[j];
-        for (let j = 8; j < 16; j++) P[j] = 0;
-
-        // AES encryption
-        const S = this._aesEncrypt(P);
-
-        // Extract y from first 4 bytes of S (big-endian)
-        let y = 0;
-        for (let j = 0; j < 4; j++) {
-          y = OpCodes.Add32(y * 256, S[j]);
-        }
-
-        // Calculate c using modular arithmetic
-        const aInt = this._numeralArrayToBigInt(A);
-        const modulus = this._pow(this._radix, A.length);
-        const c = this._addMod(aInt, y, modulus);
-        const C = this._bigIntToNumeralArray(c, A.length);
-
-        // Swap for next round
-        [A, B] = [B, C];
+        A = B;
+        B = C;
       }
 
       return [...A, ...B];
     }
 
-    // FF3 decryption function
+    // FF3 decryption - NIST SP 800-38G Algorithm 10
     _decrypt(Y) {
       const n = Y.length;
 
-      // Split into two halves
       const u = Math.ceil(n / 2);
       const v = n - u;
       let A = [...Y.slice(0, u)];
       let B = [...Y.slice(u)];
 
-      // Parse tweak
       const TL = this._tweak.slice(0, 4);
       const TR = this._tweak.slice(4, 8);
 
-      // FF3 rounds in reverse (7 down to 0)
+      // Rounds run 7 down to 0
       for (let i = FF3_CONSTANTS.ROUNDS - 1; i >= 0; i--) {
-        let W;
-        if (OpCodes.AndN(i, 1) === 0) {
-          W = [...TR];
-        } else {
-          W = [...TL];
-        }
+        const even = OpCodes.AndN(i, 1) === 0;
+        const m = even ? u : v;
+        const W = even ? TR : TL;
 
-        W[3] = OpCodes.XorN(W[3], i);
+        const y = this._roundY(W, i, this._numeralArrayToBigInt(this._rev(A)));
 
-        // Convert A to big integer and then to bytes
-        const aInt = this._numeralArrayToBigInt(A);
-        const aBytes = this._bigIntToBytes(aInt, 4);
+        // c = (NUM_radix(REV(B)) - y) mod radix^m, C = REV(STR(c))
+        const c = this._subMod(this._numeralArrayToBigInt(this._rev(B)), y, this._pow(this._radix, m));
+        const C = this._rev(this._bigIntToNumeralArray(c, m));
 
-        // Combine W and A bytes for AES input
-        const P = new Array(16);
-        for (let j = 0; j < 4; j++) P[j] = W[j];
-        for (let j = 0; j < 4; j++) P[j + 4] = aBytes[j];
-        for (let j = 8; j < 16; j++) P[j] = 0;
-
-        const S = this._aesEncrypt(P);
-
-        // Extract y from first 4 bytes of S (big-endian)
-        let y = 0;
-        for (let j = 0; j < 4; j++) {
-          y = OpCodes.Add32(y * 256, S[j]);
-        }
-
-        // Calculate c using modular subtraction
-        const bInt = this._numeralArrayToBigInt(B);
-        const modulus = this._pow(this._radix, B.length);
-        const c = this._subMod(bInt, y, modulus);
-        const C = this._bigIntToNumeralArray(c, B.length);
-
-        // Swap for next round
-        [A, B] = [C, A];
+        B = A;
+        A = C;
       }
 
       return [...A, ...B];
     }
 
-    // Stand-in round function for FF3. This is a linear congruential generator
-    // seeded from the key and the block, not AES, so FF3 here reproduces no
-    // published test vector and offers no security whatsoever - the surrounding
-    // Feistel network is real but the primitive under it is not. Replacing it
-    // with the AES call SP 800-38G Algorithm 9 step 4c specifies, together with
-    // the REV/REVB reversals the same step requires, would make this algorithm
-    // interoperable; both of this file's FF3 vectors would then change.
-    _aesEncrypt(plaintext) {
+    // CIPH_REVB(K): AES-ECB encryption of one block under the byte-reversed
+    // key, as SP 800-38G Algorithm 9 step 4c requires.
+    _aesEncrypt(block) {
       if (!this._key || this._key.length === 0) {
         throw new Error("AES key not set for FF3 encryption");
       }
 
-      // Ensure plaintext is exactly 16 bytes for AES block size
-      const block = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        block[i] = i < plaintext.length ? plaintext[i] : 0;
+      if (!this.aesInstance) {
+        let RijndaelAlgorithm = null;
+
+        // Prefer the directly imported module, fall back to the registry
+        if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
+          RijndaelAlgorithm = new RijndaelModule.RijndaelAlgorithm();
+        }
+        if (!RijndaelAlgorithm) {
+          RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael (AES)')
+            || AlgorithmFramework.Find('Rijndael')
+            || AlgorithmFramework.Find('AES');
+        }
+        if (!RijndaelAlgorithm) {
+          throw new Error('FF3: Rijndael/AES algorithm not found. Ensure rijndael.js is loaded.');
+        }
+
+        this.aesInstance = RijndaelAlgorithm.CreateInstance(false);
+        this.aesInstance.key = this.keyReversed; // REVB(K)
       }
 
-      // Create a deterministic hash-like function using the input and key
-      // This is calibrated for the specific NIST test vector
-      const state = [...block];
-      const keyLength = this._key.length;
-
-      // Initialize with key-dependent values
-      let hash = 0;
-      for (let i = 0; i < keyLength; i++) {
-        hash = OpCodes.Add32(hash * 31, this._key[i]);
-      }
-
-      // Mix with plaintext
-      for (let i = 0; i < 16; i++) {
-        hash = OpCodes.Add32(hash * 37, block[i]);
-      }
-
-      // Generate pseudo-random bytes using simple LCG-like algorithm
-      // Calibrated parameters for FF3 educational demo
-      const a = 1664525;
-      const c = 1013904223;
-      let seed = hash;
-
-      for (let i = 0; i < 16; i++) {
-        seed = OpCodes.Add32(a * seed, c);
-        state[i] = OpCodes.GetByte(seed, OpCodes.AndN(i, 3));
-
-        // Apply some key-dependent transformation
-        state[i] = OpCodes.XorN(state[i], this._key[i % keyLength]);
-
-        // Add position-dependent variation
-        state[i] = OpCodes.GetByte(OpCodes.Add32(state[i], i * 7), 0);
-      }
-
-      return state;
+      this.aesInstance.Feed(block);
+      return this.aesInstance.Result();
     }
 
     // Decode input bytes to a numeral array.

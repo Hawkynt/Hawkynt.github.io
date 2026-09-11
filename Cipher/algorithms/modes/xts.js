@@ -87,27 +87,54 @@
         new Vulnerability("Data Unit Size", "Very large data units may have security implications. Recommended maximum is 2^20 blocks per tweak.")
       ];
 
+      // IEEE Std 1619-2007 Annex B XTS-AES vectors. The key is Key1 || Key2 and
+      // the IV is the data unit sequence number encoded little-endian into 16
+      // bytes. Vectors 15..18 exercise the ciphertext-stealing path.
       this.tests = [
         {
-          text: "XTS round-trip test #1",
-          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38e.pdf",
-          input: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5"),
-          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
-          iv: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5")
+          text: "IEEE 1619 XTS-AES vector 2 (two full blocks)",
+          uri: "https://raw.githubusercontent.com/BrianGladman/modes/master/testvals/xts.1",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("4444444444444444444444444444444444444444444444444444444444444444"),
+          key: OpCodes.Hex8ToBytes("1111111111111111111111111111111122222222222222222222222222222222"),
+          iv: OpCodes.Hex8ToBytes("33333333330000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c454185e6a16936e39334038acef838bfb186fff7480adc4289382ecd6d394f0")
         },
         {
-          text: "XTS round-trip test #2",
-          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38e.pdf",
-          input: OpCodes.Hex8ToBytes("9a78331db53db60a6ead9b5c2e86fa37"),
-          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
-          iv: OpCodes.Hex8ToBytes("9a78331db53db60a6ead9b5c2e86fa37")
+          text: "IEEE 1619 XTS-AES vector 15 (17 bytes, ciphertext stealing)",
+          uri: "https://raw.githubusercontent.com/BrianGladman/modes/master/testvals/xts.1",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10"),
+          key: OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0"),
+          iv: OpCodes.Hex8ToBytes("9a785634120000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("6c1625db4671522d3d7599601de7ca09ed")
         },
         {
-          text: "XTS round-trip test #3",
-          uri: "https://csrc.nist.gov/Projects/cryptographic-algorithm-validation-program/cavp-testing-block-cipher-modes",
-          input: OpCodes.Hex8ToBytes("ebabce95b14d3c8d6fb350390790311c"),
-          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
-          iv: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5")
+          text: "IEEE 1619 XTS-AES vector 16 (18 bytes, ciphertext stealing)",
+          uri: "https://raw.githubusercontent.com/BrianGladman/modes/master/testvals/xts.1",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011"),
+          key: OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0"),
+          iv: OpCodes.Hex8ToBytes("9a785634120000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("d069444b7a7e0cab09e24447d24deb1fedbf")
+        },
+        {
+          text: "IEEE 1619 XTS-AES vector 17 (19 bytes, ciphertext stealing)",
+          uri: "https://raw.githubusercontent.com/BrianGladman/modes/master/testvals/xts.1",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112"),
+          key: OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0"),
+          iv: OpCodes.Hex8ToBytes("9a785634120000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("e5df1351c0544ba1350b3363cd8ef4beedbf9d")
+        },
+        {
+          text: "IEEE 1619 XTS-AES vector 18 (20 bytes, ciphertext stealing)",
+          uri: "https://raw.githubusercontent.com/BrianGladman/modes/master/testvals/xts.1",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"),
+          key: OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0"),
+          iv: OpCodes.Hex8ToBytes("9a785634120000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("9d84c813f719aa2c7be3f66171c7c5c2edbf9dac")
         }
       ];
     }
@@ -203,11 +230,13 @@
      * @private
      */
     _multiplyAlpha(block) {
+      // IEEE 1619 represents the tweak as a little-endian 128-bit value, so the
+      // multiplication by the primitive element runs from byte 0 (least
+      // significant) upwards and the x^128 reduction folds back into byte 0.
       const result = new Array(16);
       let carry = 0;
 
-      // Multiply by x (left shift with carry)
-      for (let i = 15; i >= 0; i--) {
+      for (let i = 0; i < 16; i++) {
         const newCarry = OpCodes.AndN(block[i], 0x80) ? 1 : 0;
         result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(block[i], 1), carry), 0xFF);
         carry = newCarry;
@@ -215,7 +244,7 @@
 
       // Handle reduction for x^128
       if (carry) {
-        result[15] = OpCodes.XorN(result[15], 0x87); // Reduction polynomial
+        result[0] = OpCodes.XorN(result[0], 0x87); // Reduction polynomial
       }
 
       return result;
@@ -291,8 +320,11 @@
       tweakCipher.Feed(this.tweak);
       const t0 = tweakCipher.Result();
 
-      // Generate sequence of tweaks
-      const tweakCount = needsSteal ? fullBlocks : fullBlocks;
+      // Generate sequence of tweaks. Ciphertext stealing consumes one tweak
+      // beyond the number of whole blocks, because IEEE 1619 encrypts the
+      // stolen block with the tweak that would have belonged to the partial
+      // block position.
+      const tweakCount = needsSteal ? fullBlocks + 1 : fullBlocks;
       const tweaks = this._computeTweaks(t0, tweakCount);
 
       const output = [];
@@ -320,7 +352,10 @@
           //   stolen ciphertext bytes || tail recovered from the penultimate block.
           // The two halves were previously concatenated the other way round,
           // which rotated the block and lost the whole ragged tail.
-          const processedPenult = this._processBlock(lastFullBlock, tweaks[processingBlocks]);
+          // IEEE 1619 decrypts the final whole ciphertext block with tweak m
+          // (the position the partial block would have occupied) and the
+          // reassembled block with tweak m-1.
+          const processedPenult = this._processBlock(lastFullBlock, tweaks[processingBlocks + 1]);
 
           // The leading partialBytes of the recovered block are the partial plaintext
           const partialPlaintext = processedPenult.slice(0, partialBytes);
@@ -336,12 +371,15 @@
           // Encrypt: Process last full block, then steal for partial
           const processedLast = this._processBlock(lastFullBlock, tweaks[processingBlocks]);
 
-          // Create padded partial block by stealing from processed last block
+          // Create padded partial block by stealing from processed last block.
+          // The stolen block is encrypted with tweak m, one past the tweak used
+          // for the final whole block.
           const paddedPartial = [...partialBlock, ...processedLast.slice(partialBytes)];
-          const processedPartial = this._processBlock(paddedPartial, tweaks[processingBlocks]);
+          const processedPartial = this._processBlock(paddedPartial, tweaks[processingBlocks + 1]);
 
           for (let _i = 0; _i < processedPartial.length; _i++) output.push(processedPartial[_i]);
-          output.push(...processedLast.slice(0, partialBytes));
+          const stolen = processedLast.slice(0, partialBytes);
+          for (let _i = 0; _i < stolen.length; _i++) output.push(stolen[_i]);
         }
 
       } else {

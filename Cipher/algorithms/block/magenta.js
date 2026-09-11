@@ -104,21 +104,72 @@
         new Vulnerability("Low Round Count", "Only 6-8 rounds insufficient for security", "Failed AES candidate due to vulnerabilities", "https://csrc.nist.gov/archive/aes/round1/conf1/papers/jacobson.pdf")
       ];
 
-      // Test vectors
+      // Official Known Answer Tests from the MAGENTA AES round-1 submission
+      // package (magenta-vals.zip), as distributed by NIST.
+      const NIST_KAT = "https://web.archive.org/web/20070109105056/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/magenta-vals.zip";
       this.tests = [
         {
-          text: "MAGENTA Zero Key/Zero Input Test",
-          uri: "Educational test vector",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
+          text: "NIST AES round-1 ecb_int.txt, 128-bit key (non-zero key and plaintext)",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          key: OpCodes.Hex8ToBytes("FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0"),
+          expected: OpCodes.Hex8ToBytes("0909105491F0EF3D363EAE828A504E2B")
         },
         {
-          text: "MAGENTA Test Pattern",
-          uri: "Educational test vector",
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"),
+          text: "NIST AES round-1 ecb_tbl.txt I=1, 128-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("D80B0B1152A1C87672174DB619A85664")
+          expected: OpCodes.Hex8ToBytes("CA7D2B729FF35FBD75E8C72E8049F7D4")
+        },
+        {
+          text: "NIST AES round-1 ecb_vt.txt I=1, 128-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("F6B50C496E9A97ABE925DA2E7C891974")
+        },
+        {
+          text: "NIST AES round-1 ecb_vk.txt I=1, 128-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("D923FF2B95212CA5581693F71137AAFA")
+        },
+        {
+          text: "NIST AES round-1 ecb_vk.txt I=2, 128-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("40000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("462E3204FCEE82BEAE4FA8CB66696502")
+        },
+        {
+          text: "NIST AES round-1 ecb_tbl.txt I=1, 192-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("CA7D2B729FF35FBD75E8C72E8049F7D4")
+        },
+        {
+          text: "NIST AES round-1 ecb_vk.txt I=1, 192-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("800000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("588EBEE01DDF366998F50D3FF58BEAEC")
+        },
+        {
+          text: "NIST AES round-1 ecb_tbl.txt I=1, 256-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("F0F66C085C77CA9433C95E0300C71891")
+        },
+        {
+          text: "NIST AES round-1 ecb_vk.txt I=1, 256-bit key",
+          uri: NIST_KAT,
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("9A199E39C2DF1F1C17CEA243F8E5147E")
         }
       ];
     }
@@ -255,133 +306,107 @@
         subkeys: []
       };
 
-      // Generate subkeys - MAGENTA uses symmetric arrangement
+      // Subkeys are the 64-bit key words in a palindromic arrangement. This
+      // symmetry is intrinsic to the design (and is what Biham et al. attacked).
       if (key.length === 16) {
-        // 128-bit key: K1, K1, K2, K2, K1, K1 (where K1=key[0:7], K2=key[8:15])
+        // 128-bit key: K1, K1, K2, K2, K1, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
         keySchedule.subkeys = [k1, k1, k2, k2, k1, k1];
       } else if (key.length === 24) {
-        // 192-bit key: similar pattern with 3 parts
+        // 192-bit key: K1, K2, K3, K3, K2, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
         const k3 = key.slice(16, 24);
-        keySchedule.subkeys = [k1, k2, k3, k1, k2, k3];
+        keySchedule.subkeys = [k1, k2, k3, k3, k2, k1];
       } else {
-        // 256-bit key: 8 rounds with 4 parts
+        // 256-bit key: K1, K2, K3, K4, K4, K3, K2, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
         const k3 = key.slice(16, 24);
         const k4 = key.slice(24, 32);
-        keySchedule.subkeys = [k1, k2, k3, k4, k1, k2, k3, k4];
+        keySchedule.subkeys = [k1, k2, k3, k4, k4, k3, k2, k1];
       }
 
       return keySchedule;
     }
 
-    // MAGENTA S-box using GF(OpCodes.Xor32(2, 8)) discrete exponentiation
-    // S-box[x] = OpCodes.Xor32(x, 99) in GF(OpCodes.Xor32(2, 8)) with irreducible polynomial OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 4) + OpCodes.Xor32(x, 3) + x + 1
+    // Exponentiation table f, Equation (1) of the MAGENTA specification.
+    // f(x) = alpha^x in GF(2^8) generated by the primitive polynomial
+    // x^8 + x^6 + x^5 + x^2 + 1, whose reduction byte is 0x65; f(255) = 0.
+    // Built with plain arithmetic so no bitwise shift operators are needed:
+    // doubling is multiplication by two and the overflow test is a compare.
     _generateSBox() {
-      const sbox = new Array(256);
-      const irreducible = 0x11B; // OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 4) + OpCodes.Xor32(x, 3) + x + 1
+      const table = new Array(256);
+      let value = 1;
 
-      sbox[0] = 0; // Special case: OpCodes.Xor32(0, 99) = 0
-
-      for (let i = 1; i < 256; i++) {
-        let result = 1;
-        let base = i;
-        let exp = 99;
-
-        // Fast exponentiation in GF(OpCodes.Xor32(2, 8))
-        while (exp > 0) {
-          if (OpCodes.AndN(exp, 1)) {
-            result = this._gf256Multiply(result, base, irreducible);
-          }
-          base = this._gf256Multiply(base, base, irreducible);
-          exp = OpCodes.Shr32(exp, 1);
+      for (let i = 0; i < 255; i++) {
+        table[i] = value;
+        value = value * 2;
+        if (value > 0xFF) {
+          value = OpCodes.XorN(value % 256, 0x65);
         }
-
-        sbox[i] = result;
       }
 
-      return sbox;
+      table[255] = 0;
+
+      return table;
     }
 
-    // Galois Field GF(OpCodes.Xor32(2, 8)) multiplication with specified irreducible polynomial
-    _gf256Multiply(a, b, irreducible) {
-      let result = 0;
-      a = OpCodes.AndN(a, 0xFF);
-      b = OpCodes.AndN(b, 0xFF);
-
-      for (let i = 0; i < 8; i++) {
-        if (OpCodes.AndN(b, 1)) {
-          result = OpCodes.XorN(result, a);
-        }
-
-        const highBit = OpCodes.AndN(a, 0x80);
-        a = OpCodes.AndN(OpCodes.Shl32(a, 1), 0xFF);
-        if (highBit) {
-          a = OpCodes.XorN(a, irreducible);
-        }
-
-        b = OpCodes.Shr32(b, 1);
-      }
-
-      return OpCodes.AndN(result, 0xFF);
+    // A(x, y) = f(x XOR f(y)) - Equation (2)
+    _A(x, y, f) {
+      return f[OpCodes.XorN(x, f[y])];
     }
 
-    // MAGENTA permutation C3 - cyclic 3-bit permutation on 16 bytes
-    _permutationC3(data) {
-      if (data.length !== 16) {
-        throw new Error('C3 permutation requires exactly 16 bytes');
-      }
-
-      // C3 performs a cyclic 3-bit rotation on the entire 128-bit block
-      // This is equivalent to rotating the 16-byte array by 3 bits to the left
+    // pi(x0..x15) = (PE(x0,x8), PE(x1,x9), ..., PE(x7,x15)) where
+    // PE(x, y) = (A(x,y), A(y,x)) is the pseudo-exponentiation - Equation (3)
+    _pi(data, f) {
       const result = new Array(16);
 
-      // Convert bytes to a single 128-bit value for bit-level operations
-      let carry = 0;
-      for (let i = 15; i >= 0; i--) {
-        const temp = OpCodes.OrN(OpCodes.Shl32(data[i], 3), carry);
-        result[i] = OpCodes.AndN(temp, 0xFF);
-        carry = OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x07);
+      for (let i = 0; i < 8; i++) {
+        result[2 * i] = this._A(data[i], data[i + 8], f);
+        result[2 * i + 1] = this._A(data[i + 8], data[i], f);
       }
-
-      // Apply the final carry to the most significant bits of result[0]
-      result[0] = OpCodes.OrN(result[0], carry);
 
       return result;
     }
 
-    // MAGENTA shuffle operation on 8 bytes
-    _shuffle(data) {
-      if (data.length !== 8) {
-        throw new Error('Shuffle operation requires exactly 8 bytes');
-      }
-
-      // MAGENTA shuffle permutation: (0,1,2,3,4,5,6,7) -> (4,5,6,7,0,1,2,3)
-      return [
-        data[4], data[5], data[6], data[7],
-        data[0], data[1], data[2], data[3]
-      ];
+    // T(w) = pi(pi(pi(pi(w)))) - four rounds of the shuffle-exponentiation layer
+    _T(data, f) {
+      return this._pi(this._pi(this._pi(this._pi(data, f), f), f), f);
     }
 
-    // MAGENTA F-function
-    _fFunction(right, subkey, sbox) {
-      // Concatenate right half (8 bytes) with subkey (8 bytes)
-      const combined = right.concat(subkey);
+    // S(x0..x15) = (x0,x2,x4,...,x14, x1,x3,x5,...,x15)
+    // The even-indexed bytes followed by the odd-indexed bytes.
+    _shuffle(data) {
+      if (data.length !== 16) {
+        throw new Error('Shuffle operation requires exactly 16 bytes');
+      }
 
-      // Apply C3 permutation
-      const permuted = this._permutationC3(combined);
+      const result = new Array(16);
 
-      // Apply S-box substitution to all 16 bytes
-      const substituted = permuted.map(byte => sbox[byte]);
+      for (let i = 0; i < 8; i++) {
+        result[i] = data[2 * i];
+        result[i + 8] = data[2 * i + 1];
+      }
 
-      // Apply shuffle to first 8 bytes only
-      const shuffled = this._shuffle(substituted.slice(0, 8));
+      return result;
+    }
 
-      return shuffled;
+    // C(1, w) = T(w);  C(n+1, w) = T(w XOR S(C(n, w)))
+    _C(n, data, f) {
+      let result = this._T(data, f);
+
+      for (let level = 1; level < n; level++) {
+        result = this._T(OpCodes.XorArrays(data, this._shuffle(result)), f);
+      }
+
+      return result;
+    }
+
+    // MAGENTA F-function: the first eight bytes of S(C(3, X || SK))
+    _fFunction(right, subkey, f) {
+      return this._shuffle(this._C(3, right.concat(subkey), f)).slice(0, 8);
     }
 
     // MAGENTA encryption
@@ -394,21 +419,18 @@
       let left = data.slice(0, 8);
       let right = data.slice(8, 16);
 
-      // Apply Feistel rounds
+      // Feistel rounds: (L, R) -> (R, L XOR F(R, SK))
       for (let round = 0; round < this.keySchedule.rounds; round++) {
         const subkey = this.keySchedule.subkeys[round];
-        const fOutput = this._fFunction(right, subkey, this.sbox);
+        const newRight = OpCodes.XorArrays(left, this._fFunction(right, subkey, this.sbox));
 
-        // XOR f-output with left half
-        const newRight = OpCodes.XorArrays(left, fOutput);
-
-        // Swap halves for next round
         left = right;
         right = newRight;
       }
 
-      // Final swap (standard Feistel)
-      return right.concat(left);
+      // MAGENTA is a Feistel network without unswapping after the final round,
+      // so the halves are emitted in their natural order.
+      return left.concat(right);
     }
 
     // MAGENTA decryption
@@ -421,21 +443,17 @@
       let left = data.slice(0, 8);
       let right = data.slice(8, 16);
 
-      // Apply Feistel rounds in reverse order
+      // Inverse of (L, R) -> (R, L XOR F(R, SK)) is (L, R) -> (R XOR F(L, SK), L),
+      // walking the subkeys from the last round back to the first.
       for (let round = this.keySchedule.rounds - 1; round >= 0; round--) {
         const subkey = this.keySchedule.subkeys[round];
-        const fOutput = this._fFunction(right, subkey, this.sbox);
+        const newLeft = OpCodes.XorArrays(right, this._fFunction(left, subkey, this.sbox));
 
-        // XOR f-output with left half
-        const newRight = OpCodes.XorArrays(left, fOutput);
-
-        // Swap halves for next round
-        left = right;
-        right = newRight;
+        right = left;
+        left = newLeft;
       }
 
-      // Final swap (standard Feistel)
-      return right.concat(left);
+      return left.concat(right);
     }
   }
 

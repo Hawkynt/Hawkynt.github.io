@@ -54,7 +54,7 @@
       super();
 
       this.name = "CTS";
-      this.description = "Ciphertext Stealing (CTS) mode allows block ciphers to handle arbitrary-length plaintexts without padding by 'stealing' ciphertext bits from the penultimate block to pad the final block. This maintains the original plaintext length while providing the security properties of CBC mode.";
+      this.description = "Ciphertext Stealing (CTS) mode allows block ciphers to handle arbitrary-length plaintexts without padding by 'stealing' ciphertext bits from the penultimate block to pad the final block. This maintains the original plaintext length while providing the security properties of CBC mode. This implementation follows the CBC-CS3 ordering of NIST SP 800-38A Addendum, the variant used by RFC 3962 and Kerberos, in which the last two ciphertext blocks are always exchanged - including when the message length is an exact multiple of the block size.";
       this.inventor = "Meyer, Matyas";
       this.year = 1982;
       this.category = CategoryType.MODE;
@@ -85,30 +85,63 @@
         new Vulnerability("Error Propagation", "Like CBC, single-bit errors in ciphertext affect two plaintext blocks.")
       ];
 
+      // RFC 3962 Appendix B, "Some test vectors for CBC with ciphertext
+      // stealing, using an initial vector of all-zero" (AES-128, key
+      // "chicken teriyaki"). These pin the CS3 block ordering.
       this.tests = [
         {
-          text: "CTS round-trip test #1 - 17 bytes (partial final block)",
-          uri: "https://tools.ietf.org/rfc/rfc3962.txt",
+          text: "RFC 3962 CTS - 17 bytes (one byte past a block boundary)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
           cipher: "AES",
           input: OpCodes.Hex8ToBytes("4920776f756c64206c696b652074686520"),
           key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
-          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c6353568f2bf8cb4d8a580362da7ff7f97")
         },
         {
-          text: "CTS round-trip test #2 - 31 bytes (partial final block)",
-          uri: "https://tools.ietf.org/rfc/rfc3962.txt",
+          text: "RFC 3962 CTS - 31 bytes (partial final block)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
           cipher: "AES",
           input: OpCodes.Hex8ToBytes("4920776f756c64206c696b65207468652047656e6572616c20476175277320"),
           key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
-          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("fc00783e0efdb2c1d445d4c8eff7ed2297687268d6ecccc0c07b25e25ecfe5")
         },
         {
-          text: "CTS round-trip test #3 - 16 bytes (exact block boundary)",
-          uri: "https://tools.ietf.org/rfc/rfc3962.txt",
+          text: "RFC 3962 CTS - 32 bytes (exact multiple, last two blocks swapped)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
           cipher: "AES",
-          input: OpCodes.Hex8ToBytes("4920776f756c64206c696b6520746865"),
+          input: OpCodes.Hex8ToBytes("4920776f756c64206c696b65207468652047656e6572616c2047617527732043"),
           key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
-          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("39312523a78662d5be7fcbcc98ebf5a897687268d6ecccc0c07b25e25ecfe584")
+        },
+        {
+          text: "RFC 3962 CTS - 47 bytes (three blocks, partial final)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("4920776f756c64206c696b65207468652047656e6572616c20476175277320436869636b656e2c20706c656173652c"),
+          key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("97687268d6ecccc0c07b25e25ecfe584b3fffd940c16a18c1b5549d2f838029e39312523a78662d5be7fcbcc98ebf5")
+        },
+        {
+          text: "RFC 3962 CTS - 48 bytes (three exact blocks)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("4920776f756c64206c696b65207468652047656e6572616c20476175277320436869636b656e2c20706c656173652c20"),
+          key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("97687268d6ecccc0c07b25e25ecfe5849dad8bbb96c4cdc03bc103e1a194bbd839312523a78662d5be7fcbcc98ebf5a8")
+        },
+        {
+          text: "RFC 3962 CTS - 64 bytes (four exact blocks)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3962.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("4920776f756c64206c696b65207468652047656e6572616c20476175277320436869636b656e2c20706c656173652c20616e6420776f6e746f6e20736f75702e"),
+          key: OpCodes.Hex8ToBytes("636869636b656e207465726979616b69"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("97687268d6ecccc0c07b25e25ecfe58439312523a78662d5be7fcbcc98ebf5a84807efe836ee89a526730dbc2f7bc8409dad8bbb96c4cdc03bc103e1a194bbd8")
         }
       ];
     }
@@ -212,198 +245,127 @@
       return result;
     }
 
-    _encrypt() {
+    /**
+     * Number of ciphertext/plaintext blocks and the length of the last one.
+     * The last block holds between 1 and blockSize bytes; a length that is an
+     * exact multiple of the block size still counts as a full final block, and
+     * CS3 swaps the last two blocks in that case too.
+     * @private
+     */
+    _layout() {
       const blockSize = this.blockCipher.BlockSize;
       const totalLen = this.inputBuffer.length;
+      const remainder = totalLen % blockSize;
+      const lastLen = remainder === 0 ? blockSize : remainder;
+      const blockCount = (totalLen - lastLen) / blockSize + 1;
+      return { blockSize, totalLen, lastLen, blockCount };
+    }
 
-      // Handle complete blocks first (CBC mode)
-      const fullBlocks = Math.floor(totalLen / blockSize);
-      const remainingBytes = totalLen % blockSize;
+    /** @private */
+    _encipherBlock(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.blockCipher.key;
+      cipher.Feed(block);
+      return cipher.Result();
+    }
 
-      let output = [];
+    /** @private */
+    _decipherBlock(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(true);
+      cipher.key = this.blockCipher.key;
+      cipher.Feed(block);
+      return cipher.Result();
+    }
+
+    _encrypt() {
+      const { blockSize, lastLen, blockCount } = this._layout();
+
+      const output = [];
       let previousBlock = [...this.iv];
 
-      if (remainingBytes === 0) {
-        // Exact multiple of block size - standard CBC
-        for (let i = 0; i < fullBlocks; i++) {
-          const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
-
-          // XOR with previous ciphertext (or IV)
-          const xorBlock = [];
-          for (let j = 0; j < blockSize; j++) {
-            xorBlock[j] = OpCodes.XorN(block[j], previousBlock[j]);
-          }
-
-          // Encrypt
-          const cipher = this.blockCipher.algorithm.CreateInstance(false);
-          cipher.key = this.blockCipher.key;
-          cipher.Feed(xorBlock);
-          const encryptedBlock = cipher.Result();
-
-          for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
-          previousBlock = [...encryptedBlock];
-        }
-      } else {
-        // CTS mode - handle partial final block
-
-        // Process all but last two blocks normally (CBC)
-        for (let i = 0; i < fullBlocks - 1; i++) {
-          const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
-
-          // XOR with previous ciphertext (or IV)
-          const xorBlock = [];
-          for (let j = 0; j < blockSize; j++) {
-            xorBlock[j] = OpCodes.XorN(block[j], previousBlock[j]);
-          }
-
-          // Encrypt
-          const cipher = this.blockCipher.algorithm.CreateInstance(false);
-          cipher.key = this.blockCipher.key;
-          cipher.Feed(xorBlock);
-          const encryptedBlock = cipher.Result();
-
-          for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
-          previousBlock = [...encryptedBlock];
-        }
-
-        // CTS handling for last two blocks
-        const penultimateBlock = this.inputBuffer.slice((fullBlocks - 1) * blockSize, fullBlocks * blockSize);
-        const finalPartialBlock = this.inputBuffer.slice(fullBlocks * blockSize);
-
-        // Step 1: Encrypt penultimate block normally
-        const xorPenultimate = [];
-        for (let j = 0; j < blockSize; j++) {
-          xorPenultimate[j] = OpCodes.XorN(penultimateBlock[j], previousBlock[j]);
-        }
-
-        const cipher1 = this.blockCipher.algorithm.CreateInstance(false);
-        cipher1.key = this.blockCipher.key;
-        cipher1.Feed(xorPenultimate);
-        const encryptedPenultimate = cipher1.Result();
-
-        // Step 2: Create final block by padding with stolen ciphertext
-        const paddedFinal = [...finalPartialBlock];
-        for (let i = remainingBytes; i < blockSize; i++) {
-          paddedFinal[i] = encryptedPenultimate[i];
-        }
-
-        // Step 3: Encrypt the padded final block
-        const xorFinal = [];
-        for (let j = 0; j < blockSize; j++) {
-          xorFinal[j] = OpCodes.XorN(paddedFinal[j], previousBlock[j]);
-        }
-
-        const cipher2 = this.blockCipher.algorithm.CreateInstance(false);
-        cipher2.key = this.blockCipher.key;
-        cipher2.Feed(xorFinal);
-        const encryptedFinal = cipher2.Result();
-
-        // Step 4: Output final block first, then truncated penultimate
-        for (let _i = 0; _i < encryptedFinal.length; _i++) output.push(encryptedFinal[_i]);
-        output.push(...encryptedPenultimate.slice(0, remainingBytes));
+      // Blocks 1 .. n-2 are plain CBC
+      for (let i = 0; i < blockCount - 2; i++) {
+        const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
+        const encryptedBlock = this._encipherBlock(OpCodes.XorArrays(block, previousBlock));
+        for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
+        previousBlock = encryptedBlock;
       }
+
+      if (blockCount === 1) {
+        // A single block cannot steal anything; it is plain CBC.
+        const block = this.inputBuffer.slice(0, blockSize);
+        const encryptedBlock = this._encipherBlock(OpCodes.XorArrays(block, previousBlock));
+        for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
+        return output;
+      }
+
+      // CBC-CS3 (RFC 3962) for the last two blocks:
+      //   C*_{n-1} = E(P_{n-1} XOR C_{n-2})
+      //   C_n      = MSB_d(C*_{n-1})
+      //   C_{n-1}  = E((P_n || 0^{b-d}) XOR C*_{n-1})
+      // and the two are emitted in the order C_{n-1} then C_n.
+      const penultimateStart = (blockCount - 2) * blockSize;
+      const penultimateBlock = this.inputBuffer.slice(penultimateStart, penultimateStart + blockSize);
+      const finalBlock = this.inputBuffer.slice(penultimateStart + blockSize);
+
+      const encryptedPenultimate = this._encipherBlock(OpCodes.XorArrays(penultimateBlock, previousBlock));
+
+      // The final plaintext block is zero-padded, then chained on C*_{n-1}.
+      const paddedFinal = new Array(blockSize).fill(0);
+      for (let i = 0; i < lastLen; i++) paddedFinal[i] = finalBlock[i];
+
+      const encryptedFinal = this._encipherBlock(OpCodes.XorArrays(paddedFinal, encryptedPenultimate));
+
+      for (let _i = 0; _i < encryptedFinal.length; _i++) output.push(encryptedFinal[_i]);
+      for (let _i = 0; _i < lastLen; _i++) output.push(encryptedPenultimate[_i]);
 
       return output;
     }
 
     _decrypt() {
-      const blockSize = this.blockCipher.BlockSize;
-      const totalLen = this.inputBuffer.length;
+      const { blockSize, lastLen, blockCount } = this._layout();
 
-      // Handle complete blocks first
-      const fullBlocks = Math.floor(totalLen / blockSize);
-      const remainingBytes = totalLen % blockSize;
-
-      let output = [];
+      const output = [];
       let previousBlock = [...this.iv];
 
-      if (remainingBytes === 0) {
-        // Exact multiple of block size - standard CBC
-        for (let i = 0; i < fullBlocks; i++) {
-          const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
-
-          // Decrypt
-          const cipher = this.blockCipher.algorithm.CreateInstance(true);
-          cipher.key = this.blockCipher.key;
-          cipher.Feed(block);
-          const decryptedBlock = cipher.Result();
-
-          // XOR with previous ciphertext (or IV)
-          const plainBlock = [];
-          for (let j = 0; j < blockSize; j++) {
-            plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
-          }
-
-          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
-          previousBlock = [...block];
-        }
-      } else {
-        // CTS mode - handle partial final block
-
-        // Process all but last two blocks normally (CBC)
-        for (let i = 0; i < fullBlocks - 1; i++) {
-          const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
-
-          // Decrypt
-          const cipher = this.blockCipher.algorithm.CreateInstance(true);
-          cipher.key = this.blockCipher.key;
-          cipher.Feed(block);
-          const decryptedBlock = cipher.Result();
-
-          // XOR with previous ciphertext (or IV)
-          const plainBlock = [];
-          for (let j = 0; j < blockSize; j++) {
-            plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
-          }
-
-          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
-          previousBlock = [...block];
-        }
-
-        // CTS handling for last two blocks
-        // Note: Encryption outputs [final_block, truncated_penultimate], so we need to reverse this
-        const finalBlock = this.inputBuffer.slice((fullBlocks - 1) * blockSize, fullBlocks * blockSize);
-        const truncatedPenultimate = this.inputBuffer.slice(fullBlocks * blockSize);
-
-        // Step 1: Decrypt the final block
-        const cipher1 = this.blockCipher.algorithm.CreateInstance(true);
-        cipher1.key = this.blockCipher.key;
-        cipher1.Feed(finalBlock);
-        const decryptedFinal = cipher1.Result();
-
-        // Step 2: Reconstruct full penultimate ciphertext by combining truncated part with stolen bits
-        // First reverse the CBC XOR to get the padded final block
-        const paddedFinal = [];
-        for (let i = 0; i < blockSize; i++) {
-          paddedFinal[i] = OpCodes.XorN(decryptedFinal[i], previousBlock[i]);
-        }
-
-        const penultimateCipher = [...truncatedPenultimate];
-        for (let i = remainingBytes; i < blockSize; i++) {
-          penultimateCipher[i] = paddedFinal[i]; // Use the stolen bytes from padded final
-        }
-
-        // Step 3: Decrypt penultimate block
-        const cipher2 = this.blockCipher.algorithm.CreateInstance(true);
-        cipher2.key = this.blockCipher.key;
-        cipher2.Feed(penultimateCipher);
-        const decryptedPenultimate = cipher2.Result();
-
-        // Step 4: XOR to get plaintext blocks
-        const plainPenultimate = [];
-        for (let j = 0; j < blockSize; j++) {
-          plainPenultimate[j] = OpCodes.XorN(decryptedPenultimate[j], previousBlock[j]);
-        }
-
-        const plainFinalPartial = [];
-        for (let j = 0; j < remainingBytes; j++) {
-          plainFinalPartial[j] = paddedFinal[j]; // Extract the original final partial block
-        }
-
-        // Output in correct order (penultimate full block, then final partial block)
-        for (let _i = 0; _i < plainPenultimate.length; _i++) output.push(plainPenultimate[_i]);
-        for (let _i = 0; _i < plainFinalPartial.length; _i++) output.push(plainFinalPartial[_i]);
+      // Blocks 1 .. n-2 are plain CBC
+      for (let i = 0; i < blockCount - 2; i++) {
+        const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
+        const plainBlock = OpCodes.XorArrays(this._decipherBlock(block), previousBlock);
+        for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
+        previousBlock = block;
       }
+
+      if (blockCount === 1) {
+        const block = this.inputBuffer.slice(0, blockSize);
+        const plainBlock = OpCodes.XorArrays(this._decipherBlock(block), previousBlock);
+        for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
+        return output;
+      }
+
+      // Inverse of CS3: the full block on the wire is C_{n-1}, followed by the
+      // d-byte C_n which is the head of C*_{n-1}.
+      const penultimateStart = (blockCount - 2) * blockSize;
+      const wireFullBlock = this.inputBuffer.slice(penultimateStart, penultimateStart + blockSize);
+      const wireTail = this.inputBuffer.slice(penultimateStart + blockSize);
+
+      // Z = D(C_{n-1}) = (P_n || 0^{b-d}) XOR C*_{n-1}
+      const z = this._decipherBlock(wireFullBlock);
+
+      // C*_{n-1} = C_n || LSB_{b-d}(Z)
+      const starBlock = new Array(blockSize);
+      for (let i = 0; i < lastLen; i++) starBlock[i] = wireTail[i];
+      for (let i = lastLen; i < blockSize; i++) starBlock[i] = z[i];
+
+      // P_n = MSB_d(Z XOR C*_{n-1})
+      const plainFinal = [];
+      for (let i = 0; i < lastLen; i++) plainFinal.push(OpCodes.XorN(z[i], starBlock[i]));
+
+      // P_{n-1} = D(C*_{n-1}) XOR C_{n-2}
+      const plainPenultimate = OpCodes.XorArrays(this._decipherBlock(starBlock), previousBlock);
+
+      for (let _i = 0; _i < plainPenultimate.length; _i++) output.push(plainPenultimate[_i]);
+      for (let _i = 0; _i < plainFinal.length; _i++) output.push(plainFinal[_i]);
 
       return output;
     }

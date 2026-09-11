@@ -111,22 +111,26 @@
 
         // Test vectors using byte arrays
         this.tests = [
+          // The Wikipedia article works ZEBRAS over WEAREDISCOVEREDFLEEATONCE
+          // and fills the short last row with nulls of the encipherer's own
+          // choosing, so its ciphertext cannot be reproduced by a fixed padding
+          // letter and none of the values below are taken from it.
           {
-            text: "Basic Test",
+            text: "Three columns with a short last row filled out with X. No published source carries this value",
             uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
             input: global.OpCodes.AnsiToBytes("HELLO"),
             key: global.OpCodes.AnsiToBytes("KEY"),
             expected: global.OpCodes.AnsiToBytes("EOHLLX")
           },
           {
-            text: "Longer Text",
+            text: "Keyword with a repeated letter - SECRET dedupes to five columns. No published source carries this value",
             uri: "https://www.dcode.fr/columnar-transposition-cipher",
             input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
             key: global.OpCodes.AnsiToBytes("SECRET"),
             expected: global.OpCodes.AnsiToBytes("TTXTANADXAKWCAX")
           },
           {
-            text: "Edge Case", 
+            text: "Single column - one column is no transposition at all and needs no padding",
             uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
             input: global.OpCodes.AnsiToBytes("A"),
             key: global.OpCodes.AnsiToBytes("Z"),

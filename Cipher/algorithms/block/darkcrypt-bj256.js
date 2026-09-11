@@ -87,17 +87,33 @@
         new Vulnerability("Unanalyzed proprietary design", "No public specification, cryptanalysis or design rationale exists for BJ-256; the key schedule performs no mixing at all (round keys are the raw key words). Not recommended for any real use.", "Use AES or another vetted cipher.")
       ];
 
-      // Test vectors verified against the DarkCrypt implementation.
+      // UNVERIFIED. These values were taken from the DarkCrypt implementation
+      // itself, so they demonstrate agreement with that implementation and
+      // nothing more; the cited page is the plugin's download page and carries
+      // no test vectors. No published specification or KAT for BJ-256 was
+      // found, so there is no external oracle to check this against.
+      //
+      // Two of the three vectors below have no discriminating power, and the
+      // measured behaviour that makes them worthless is recorded in
+      // knownVulnerabilities above:
+      //   - vector 1 is all-zero in, all-zero out, which any zero-preserving
+      //     map and the identity function both satisfy;
+      //   - vector 2's "ciphertext" is byte-for-byte the second half of its own
+      //     key, because E_K(K[0..31]) = K[32..63] holds for every key tried
+      //     (12 of 12 random keys), so it tests a degenerate identity rather
+      //     than the cipher.
+      // Only vector 3 constrains the implementation at all. Treat this
+      // algorithm as unverified pending a real specification.
       this.tests = [
         {
-          text: "DarkCrypt Bj256 — zero key/plaintext",
+          text: "DarkCrypt Bj256 — zero key/plaintext (non-discriminating: zero in, zero out)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000")
         },
         {
-          text: "DarkCrypt Bj256 — incrementing key/plaintext",
+          text: "DarkCrypt Bj256 — incrementing key/plaintext (non-discriminating: expected is the second half of the key)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),

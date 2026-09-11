@@ -86,6 +86,13 @@
           input: OpCodes.Hex8ToBytes("0ca69b92"),
           key: OpCodes.Hex8ToBytes("5cec6701b79fd949"),
           expected: OpCodes.Hex8ToBytes("a6ac0ea2")
+        },
+        {
+          text: "keeloq-go test vector (independent implementation, same two vectors plus this one)",
+          uri: "https://github.com/dimchansky/keeloq-go/blob/master/keeloq_test.go",
+          input: OpCodes.Hex8ToBytes("2000c022"),
+          key: OpCodes.Hex8ToBytes("beefdeadbeefdead"),
+          expected: OpCodes.Hex8ToBytes("054c90c2")
         }
       ];
     }

@@ -325,6 +325,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NIST AES round-1 Serpent KAT ecb_vk.txt, KEYSIZE=256, I=1 (byte order reversed, the little-endian convention this build uses)",
+          uri: "https://web.archive.org/web/20070109105707if_/http://csrc.nist.gov/CryptoToolkit/aes/round1/testvals/serpent-vals.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000080"),
+          expected: OpCodes.Hex8ToBytes("1908ef821ad2ebc0cb28bf66e796edab")
+        },
+        {
           text: "DarkCrypt Serpent — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),

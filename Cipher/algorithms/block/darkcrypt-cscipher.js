@@ -175,6 +175,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "NESSIE submission test vectors for CS-Cipher, 128-bit key, set 1 vector 0",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/cs-cipher.zip",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b3ceaa7e54954091")
+        },
+        {
           text: "DarkCrypt Cscipher — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000"),

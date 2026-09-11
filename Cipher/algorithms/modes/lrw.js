@@ -84,15 +84,79 @@
         new Vulnerability("Tweak Management", "Improper tweak handling in disk encryption can lead to security vulnerabilities.")
       ];
 
-      // Round-trip test vectors for LRW mode
+      // LRW-32-AES vectors 1..7 from the IEEE P1619 draft, preserved verbatim
+      // in the Linux kernel's aes_lrw_tv_template. LRW was dropped from P1619
+      // in favour of XTS, so these draft values are the only published set.
       this.tests = [
         {
-          text: "LRW round-trip test - single block",
-          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/lrw.pdf",
-          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          tweakKey: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"),
-          tweak: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+          text: "LRW-32-AES-1 (AES-128, index 1)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("4562ac25f828176d4c268414b5680185"),
+          tweakKey: OpCodes.Hex8ToBytes("258e2a05e73e9d03ee5a830ccc094c87"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("f1b273cd65a3df5fe95d489254634eb8")
+        },
+        {
+          text: "LRW-32-AES-2 (AES-128, index 2)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("59704714f557478cd779e80f54887944"),
+          tweakKey: OpCodes.Hex8ToBytes("0d48f0b7b15a53ea1caa6b29c2cafbaf"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000000000002"),
+          expected: OpCodes.Hex8ToBytes("00c82bae95bbcde5274f0769b260e136")
+        },
+        {
+          text: "LRW-32-AES-3 (AES-128, large index)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("d82a9134b26a565030fe69e2377f9847"),
+          tweakKey: OpCodes.Hex8ToBytes("cdf90b160c648fb6b00d0d1bae85871f"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000200000000"),
+          expected: OpCodes.Hex8ToBytes("76322183ed8ff182f9596203690e5e01")
+        },
+        {
+          text: "LRW-32-AES-4 (AES-192, index 1)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("0f6aeff8d3d2bb152583f73c1f012874cac6bc354d4a6554"),
+          tweakKey: OpCodes.Hex8ToBytes("90ae61cf7baebdccade494c54a29ae70"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("9c0f152f55a2d8f0d67b8f9e2822bc41")
+        },
+        {
+          text: "LRW-32-AES-5 (AES-192, large index)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("8ad4ee102fbd81fff886ceac93c5adc6a01907c09df7bbdd"),
+          tweakKey: OpCodes.Hex8ToBytes("5213b2b7f0ff11d8d608d0cd2eb1176f"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000200000000"),
+          expected: OpCodes.Hex8ToBytes("d4276a7f14913d65c860480287e33406")
+        },
+        {
+          text: "LRW-32-AES-6 (AES-256, index 1)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("f8d476ffd646ee6c2384cb1c77d6195dfef1a9f37bbc8d21a79c21f8cb900289"),
+          tweakKey: OpCodes.Hex8ToBytes("a845348ec8c5b5f126f50e76fefd1b1e"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("bd06b8e1db98899ec498e491cf1c702b")
+        },
+        {
+          text: "LRW-32-AES-7 (AES-256, large index)",
+          uri: "https://raw.githubusercontent.com/torvalds/linux/master/crypto/testmgr.h",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("30313233343536373839414243444546"),
+          key: OpCodes.Hex8ToBytes("fb7615b23d80891dd470980bc79584c8b2fb64ce6097878d17fce45a49e830b7"),
+          tweakKey: OpCodes.Hex8ToBytes("6e7817e72d5e12d46064047af12f9e0c"),
+          tweak: OpCodes.Hex8ToBytes("00000000000000000000000200000000"),
+          expected: OpCodes.Hex8ToBytes("5b908ec1abdd675f3d698a9553c89ce5")
         }
       ];
     }
@@ -222,102 +286,90 @@
 
       const output = [];
 
-      // LRW construction: C = E_K(P ⊕ T) ⊕ T
-      // Where T = tweak_key * tweak in GF(2^128)
+      // LRW construction: C = E_K(P XOR T) XOR T with T = K2 (*) I, where I is
+      // the block index. The index advances by one for every 16-byte block of
+      // the data unit, so the offset cannot be computed once up front.
+      let blockIndex = [...this.tweak];
 
-      // Compute the LRW offset T = tweak_key * tweak in GF(2^128)
-      const offset = this._gf128Multiply(this.tweakKey, this.tweak);
+      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+        const inputBlock = this.inputBuffer.slice(i, i + blockSize);
+        const offset = this._gf128Multiply(this.tweakKey, blockIndex);
 
-      if (this.isInverse) {
-        // LRW Decryption: P = D_K(C ⊕ T) ⊕ T
-        for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-          const cipherBlock = this.inputBuffer.slice(i, i + blockSize);
+        const cipher = this.blockCipher.algorithm.CreateInstance(this.isInverse);
+        cipher.key = this.key;
+        cipher.Feed(OpCodes.XorArrays(inputBlock, offset));
+        const processed = cipher.Result();
 
-          // Step 1: XOR ciphertext with offset
-          const xorInput = OpCodes.XorArrays(cipherBlock, offset);
+        const outputBlock = OpCodes.XorArrays(processed, offset);
+        for (let _i = 0; _i < outputBlock.length; _i++) output.push(outputBlock[_i]);
 
-          // Step 2: Decrypt with block cipher
-          const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
-          decryptCipher.key = this.key;
-          decryptCipher.Feed(xorInput);
-          const decrypted = decryptCipher.Result();
-
-          // Step 3: XOR with offset again
-          const plainBlock = OpCodes.XorArrays(decrypted, offset);
-          for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
-        }
-      } else {
-        // LRW Encryption: C = E_K(P ⊕ T) ⊕ T
-        for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-          const plainBlock = this.inputBuffer.slice(i, i + blockSize);
-
-          // Step 1: XOR plaintext with offset
-          const xorInput = OpCodes.XorArrays(plainBlock, offset);
-
-          // Step 2: Encrypt with block cipher
-          const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
-          encryptCipher.key = this.key;
-          encryptCipher.Feed(xorInput);
-          const encrypted = encryptCipher.Result();
-
-          // Step 3: XOR with offset again
-          const cipherBlock = OpCodes.XorArrays(encrypted, offset);
-          for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
-        }
+        blockIndex = this._incrementIndex(blockIndex);
       }
 
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
-      OpCodes.ClearArray(offset);
       this.inputBuffer = [];
 
       return output;
     }
 
     /**
+     * Add one to a big-endian 128-bit block index
+     * @private
+     */
+    _incrementIndex(index) {
+      const result = [...index];
+      for (let i = result.length - 1; i >= 0; i--) {
+        result[i] = (result[i] + 1) % 256;
+        if (result[i] !== 0) break;
+      }
+      return result;
+    }
+
+    /**
+     * Multiply a 128-bit value by x in GF(2^128)
+     * The value is a plain big-endian integer, so bit 0 of the last byte is the
+     * coefficient of x^0 and the reduction folds into that same byte.
+     * @private
+     */
+    _gf128MulX(value) {
+      const result = new Array(16);
+      const overflow = OpCodes.AndN(OpCodes.Shr32(value[0], 7), 1);
+      for (let i = 0; i < 15; i++) {
+        const low = OpCodes.AndN(OpCodes.Shl32(value[i], 1), 0xFF);
+        const high = OpCodes.AndN(OpCodes.Shr32(value[i + 1], 7), 1);
+        result[i] = OpCodes.OrN(low, high);
+      }
+      result[15] = OpCodes.AndN(OpCodes.Shl32(value[15], 1), 0xFF);
+      if (overflow) result[15] = OpCodes.XorN(result[15], 0x87);
+      return result;
+    }
+
+    /**
      * Multiply two 128-bit values in GF(2^128)
-     * Uses the reduction polynomial x^128 + x^7 + x^2 + x + 1
+     * Uses the reduction polynomial x^128 + x^7 + x^2 + x + 1 with the
+     * big-endian byte / big-endian bit convention of the IEEE P1619 LRW
+     * vectors: byte 0 bit 7 is the coefficient of x^127 and byte 15 bit 0 is
+     * the coefficient of x^0.
      * @param {Array} a - First 128-bit operand
      * @param {Array} b - Second 128-bit operand
      * @returns {Array} Product in GF(2^128)
      */
     _gf128Multiply(a, b) {
-      // Convert to polynomial representation (little-endian within bytes)
-      const result = new Array(16).fill(0);
-      const temp_a = [...a];
-      const temp_b = [...b];
+      let result = new Array(16).fill(0);
+      let v = [...a];
 
-      // Simplified GF(2^128) multiplication (educational implementation)
-      // Real implementations would use more efficient algorithms
+      // Walk the exponents of b from x^0 upwards, doubling a each step.
+      for (let exponent = 0; exponent < 128; exponent++) {
+        const byteIndex = 15 - Math.floor(exponent / 8);
+        const bitIndex = exponent % 8;
 
-      for (let i = 0; i < 128; i++) {
-        // If bit i of b is set, add a to result
-        const byteIndex = Math.floor(i / 8);
-        const bitIndex = i % 8;
-
-        if (OpCodes.AndN(OpCodes.Shr32(temp_b[byteIndex], bitIndex), 1)) {
-          for (let j = 0; j < 16; j++) {
-            result[j] = OpCodes.XorN(result[j], temp_a[j]);
-          }
+        if (OpCodes.AndN(OpCodes.Shr32(b[byteIndex], bitIndex), 1)) {
+          result = OpCodes.XorArrays(result, v);
         }
 
-        // Shift a left by 1 bit (multiply by x)
-        let carry = 0;
-        for (let j = 0; j < 16; j++) {
-          const newCarry = OpCodes.AndN(OpCodes.Shr32(temp_a[j], 7), 1);
-          temp_a[j] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(temp_a[j], 1), carry), 0xFF);
-          carry = newCarry;
-        }
-
-        // If overflow, reduce by the polynomial x^128 + x^7 + x^2 + x + 1
-        if (carry) {
-          temp_a[0] = OpCodes.XorN(temp_a[0], 0x87); // The reduction polynomial in bit-reversed form
-        }
+        v = this._gf128MulX(v);
       }
-
-      // Clear temporary arrays
-      OpCodes.ClearArray(temp_a);
-      OpCodes.ClearArray(temp_b);
 
       return result;
     }
