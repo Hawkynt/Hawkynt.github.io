@@ -226,7 +226,7 @@
       this.tests = [
         {
           text: "Ascon-128: Empty message, empty AAD (Count 1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128v12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -234,8 +234,8 @@
           expected: OpCodes.Hex8ToBytes("E355159F292911F794CB1432A0103A8A")
         },
         {
-          text: "Ascon-128: Single byte plaintext (Count 33)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-128: Single byte plaintext (Count 34)",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128v12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -244,7 +244,7 @@
         },
         {
           text: "Ascon-128: 8-byte plaintext (Count 265)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128v12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -252,8 +252,8 @@
           expected: OpCodes.Hex8ToBytes("BC820DBDF7A4631C01A8807A44254B42AC6BB490DA1E000A")
         },
         {
-          text: "Ascon-128: 16-byte plaintext with 8-byte AAD (Count 536)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-128: 16-byte plaintext with 8-byte AAD (Count 537)",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128v12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
@@ -278,7 +278,7 @@
       this.tests = [
         {
           text: "Ascon-128a: Empty message, empty AAD (Count 1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128av12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -287,7 +287,7 @@
         },
         {
           text: "Ascon-128a: 16-byte plaintext (Count 529)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128av12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -295,8 +295,8 @@
           expected: OpCodes.Hex8ToBytes("6E490CFED5B3546767350CD83C4ACFBDB10F611B7D79278BD8067FC1BCDF39BE")
         },
         {
-          text: "Ascon-128a: 16-byte plaintext with 8-byte AAD (Count 536)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-128a: 16-byte plaintext with 8-byte AAD (Count 537)",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon128av12/LWC_AEAD_KAT_128_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
@@ -321,7 +321,7 @@
       this.tests = [
         {
           text: "Ascon-80pq: Empty message, empty AAD (Count 1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon80pqv12/LWC_AEAD_KAT_160_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10111213"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -330,7 +330,7 @@
         },
         {
           text: "Ascon-80pq: 8-byte plaintext (Count 265)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon80pqv12/LWC_AEAD_KAT_160_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10111213"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
@@ -338,8 +338,8 @@
           expected: OpCodes.Hex8ToBytes("2846418067CE93861A484E22565F161146FB6F47913803F9")
         },
         {
-          text: "Ascon-80pq: 16-byte plaintext with 8-byte AAD (Count 536)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-80pq: 16-byte plaintext with 8-byte AAD (Count 537)",
+          uri: "https://github.com/ascon/ascon-c/blob/v1.2.8/crypto_aead/ascon80pqv12/LWC_AEAD_KAT_160_128.txt",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10111213"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
@@ -738,6 +738,36 @@
       }
     }
 
+    /**
+     * The rate as bytes, big-endian, one entry per byte: S[0] for the 8-byte
+     * rate, S[0] followed by S[1] for the 16-byte one.
+     * @returns {uint8[]} this.rate bytes
+     */
+    _readRate() {
+      const bytes = [];
+      const words = this.rate === 8 ? 1 : 2;
+      for (let w = 0; w < words; ++w) {
+        const high = OpCodes.Unpack32BE(this.perm.S[w][1]);
+        const low = OpCodes.Unpack32BE(this.perm.S[w][0]);
+        for (let i = 0; i < 4; ++i) bytes.push(high[i]);
+        for (let i = 0; i < 4; ++i) bytes.push(low[i]);
+      }
+      return bytes;
+    }
+
+    /**
+     * Replace the rate with the given bytes, big-endian.
+     * @param {uint8[]} bytes - exactly this.rate bytes
+     */
+    _writeRate(bytes) {
+      const words = this.rate === 8 ? 1 : 2;
+      for (let w = 0; w < words; ++w) {
+        const base = w * 8;
+        this.perm.S[w][1] = OpCodes.Pack32BE(bytes[base], bytes[base + 1], bytes[base + 2], bytes[base + 3]);
+        this.perm.S[w][0] = OpCodes.Pack32BE(bytes[base + 4], bytes[base + 5], bytes[base + 6], bytes[base + 7]);
+      }
+    }
+
     _processData(data, encrypt) {
       const output = [];
       let offset = 0;
@@ -832,45 +862,20 @@
               output.push(outBlock[i]);
             }
           } else {
-            // Decrypt partial block following BouncyCastle ProcessFinalDecrypt exactly
-            // Step 1: XOR padding into state at position `remaining`
-            if (remaining < 4) {
-              this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], OpCodes.Shr32(0x80000000, OpCodes.Shl32(remaining, 3)));
-            } else {
-              this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], OpCodes.Shr32(0x80000000, OpCodes.Shl32(remaining - 4, 3)));
-            }
-
-            // Step 2: Pack ciphertext bytes
+            // Final block, decryption (ascon-c ref.c): recover the plaintext from
+            // the rate, then leave the CIPHERTEXT in the rate and apply PAD to the
+            // byte just past it. The rate must end up holding what the encryptor's
+            // rate held after it absorbed the padded plaintext, and that is the
+            // ciphertext - the encryptor's rate was plaintext XOR keystream, which
+            // is exactly what it emitted.
+            const rateBytes = this._readRate();
+            const nextRate = rateBytes.slice();
             for (let i = 0; i < remaining; ++i) {
-              padded[i] = data[offset + i];
+              output.push(OpCodes.XorN(data[offset + i], rateBytes[i]));
+              nextRate[i] = OpCodes.AndN(data[offset + i], 0xFF);
             }
-            const cHigh = OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]);
-            const cLow = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
-
-            // Step 3: XOR ciphertext into state
-            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], cLow);
-            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], cHigh);
-
-            // Step 4: Output plaintext (state XOR ciphertext = plaintext)
-            const pHigh = OpCodes.Unpack32BE(this.perm.S[0][1]);
-            const pLow = OpCodes.Unpack32BE(this.perm.S[0][0]);
-            for (let i = 0; i < remaining; ++i) {
-              if (i < 4) {
-                output.push(pHigh[i]);
-              } else {
-                output.push(pLow[i - 4]);
-              }
-            }
-
-            // Step 5: Mask to clear the ciphertext bytes (keep padding and lower state)
-            const maskLow = remaining <= 4 ? 0 : OpCodes.Shr32(0xFFFFFFFF, OpCodes.Shl32(remaining - 4, 3));
-            const maskHigh = remaining < 4 ? OpCodes.Shr32(0xFFFFFFFF, OpCodes.Shl32(remaining, 3)) : 0xFFFFFFFF;
-            this.perm.S[0][0] = OpCodes.AndN(this.perm.S[0][0], maskLow);
-            this.perm.S[0][1] = OpCodes.AndN(this.perm.S[0][1], maskHigh);
-
-            // Step 6: XOR ciphertext back to restore it in the cleared position
-            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], cLow);
-            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], cHigh);
+            nextRate[remaining] = OpCodes.XorN(nextRate[remaining], 0x80);
+            this._writeRate(nextRate);
           }
         } else {
           // 16-byte rate
@@ -894,25 +899,18 @@
               output.push(outBlock[i]);
             }
           } else {
-            const s0High = OpCodes.Unpack32BE(this.perm.S[0][1]);
-            const s0Low = OpCodes.Unpack32BE(this.perm.S[0][0]);
-            const s1High = OpCodes.Unpack32BE(this.perm.S[1][1]);
-            const s1Low = OpCodes.Unpack32BE(this.perm.S[1][0]);
-            const sBlock = [...s0High, ...s0Low, ...s1High, ...s1Low];
-
+            // Same correction as the 8-byte rate: XOR-ing the ciphertext into the
+            // rate left the recovered PLAINTEXT sitting there, so the finalisation
+            // that follows saw a different state than the encryptor's did and the
+            // tag never matched.
+            const rateBytes = this._readRate();
+            const nextRate = rateBytes.slice();
             for (let i = 0; i < remaining; ++i) {
-              output.push(OpCodes.XorN(data[offset + i], sBlock[i]));
-              padded[i] = data[offset + i];
+              output.push(OpCodes.XorN(data[offset + i], rateBytes[i]));
+              nextRate[i] = OpCodes.AndN(data[offset + i], 0xFF);
             }
-
-            const c0High = OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]);
-            const c0Low = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
-            const c1High = OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]);
-            const c1Low = OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
-            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], c0Low);
-            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], c0High);
-            this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], c1Low);
-            this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], c1High);
+            nextRate[remaining] = OpCodes.XorN(nextRate[remaining], 0x80);
+            this._writeRate(nextRate);
           }
         }
       } else {

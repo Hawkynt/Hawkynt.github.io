@@ -303,6 +303,24 @@
           associatedData: OpCodes.Hex8ToBytes("00010203"),
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("4ED50A9171537DAAD559B399342FDCE743")
+        },
+        {
+          text: "NIST KAT Vector #169 - 5-byte PT, 3-byte AD (partial block)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/ORANGE-Zest.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          associatedData: OpCodes.Hex8ToBytes("000102"),
+          input: OpCodes.Hex8ToBytes("0001020304"),
+          expected: OpCodes.Hex8ToBytes("98973390F20AB5083C9DD60B822162A7978BC2E2E5")
+        },
+        {
+          text: "NIST KAT Vector #1089 - 32-byte PT, 32-byte AD (full block boundary)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/ORANGE-Zest.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          expected: OpCodes.Hex8ToBytes("B0991C016366C43F3CF727A44410DF56525F4A7BE395B05DB3DFB3BFCD4AAFB912A8537D95006A47D43DF8EA8A7C10FB")
         }
       ];
     }
@@ -407,6 +425,15 @@
       return this._associatedData.slice();
     }
 
+    // Canonical AEAD interface property (alias for associatedData)
+    set aad(data) {
+      this.associatedData = data;
+    }
+
+    get aad() {
+      return this._associatedData.slice();
+    }
+
     set ciphertext(data) {
       if (!data) {
         this._ciphertext = [];
@@ -508,16 +535,19 @@
       state.set(this._nonce, 0);
       state.set(this._key, 16);
 
-      // Handle associated data and message payload
+      // Handle associated data and message payload - this must mirror _encrypt()
+      // exactly, including which branches run the tag finalisation.
       if (adlen === 0) {
         if (mlen === 0) {
-          // Empty message and AD
+          // Empty message and AD: the permutation output is already the tag,
+          // no half-swap finalisation is applied in this branch.
           state[16] = OpCodes.XorN(state[16], 2);
           photon256Permute(state);
         } else {
           // Message only
           state[16] = OpCodes.XorN(state[16], 1);
           this._orangeDecrypt(state, this._key, output, this._ciphertext, mlen);
+          this._orangeGenerateTag(state);
         }
       } else {
         // Process associated data
@@ -525,10 +555,10 @@
         if (mlen !== 0) {
           this._orangeDecrypt(state, this._key, output, this._ciphertext, mlen);
         }
+        this._orangeGenerateTag(state);
       }
 
       // Verify authentication tag
-      this._orangeGenerateTag(state);
       const computedTag = state.subarray(0, 16);
       const receivedTag = this._ciphertext.slice(mlen, mlen + 16);
 
