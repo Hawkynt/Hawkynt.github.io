@@ -71,37 +71,37 @@
       this.tests = [
         {
           text: "NIST LWC KAT - Empty message",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("4DE2B673C183D1031BBBA5FB63CC15270DAAFBBE1F77FA7FBEAF1D17CF694FEB")
         },
         {
           text: "NIST LWC KAT - Single zero byte",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("91E6735EB598B7FAD5EA99EEA59DC9524C1BDD1FF864108CB5011C28E6572AFB")
         },
         {
           text: "NIST LWC KAT - Two bytes (00 01)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("7E59E39B3ADDCE9632836D7EA47BBDF28B37566FF7307BA5F235737D8D71D908")
         },
         {
           text: "NIST LWC KAT - Three bytes (00 01 02)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("5DC635642F27A2BFC259373E58894FB4220AAB502DC7E5D79B95A657C098F0D4")
         },
         {
           text: "NIST LWC KAT - Four bytes (00 01 02 03)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("B6F84FCC1C4CF0AF391136BAA0B9ECA326840E8602773354F3D4D63ECC711A48")
         },
         {
           text: "NIST LWC KAT - 16 bytes",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/Subterranean-Hash.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("E5DC937F458A9CF4064473E20C3F9AC0970ED71852AF636ADE8B48C5C1AF4717")
         }
