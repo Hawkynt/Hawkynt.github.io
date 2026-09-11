@@ -313,6 +313,41 @@
           key: OpCodes.Hex8ToBytes("42"),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("2E84DBA25F0EE9527950699FF1FDFC9D8983A9B6A4D5FAB5BE351A178A2C7F7D")
+        },
+        // 127, 128 and 129 bytes straddle the 128 byte block. The keyed variant
+        // prepends a key block, so 128 bytes of message ends exactly on a block
+        // boundary and the finalization flag has to land on it.
+        {
+          text: "BLAKE2b-MAC Test Vector - 512-bit output, 127-byte input (one under a block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/blake2bmac.vec",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("76d2d819c92bce55fa8e092ab1bf9b9eab237a25267986cacf2b8ee14d214d730dc9a5aa2d7b596e86a1fd8fa0804c77402d2fcd45083688b218b1cdfa0dcbcb")
+        },
+        {
+          text: "BLAKE2b-MAC Test Vector - 512-bit output, 128-byte input (exactly one block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/blake2bmac.vec",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("72065ee4dd91c2d8509fa1fc28a37c7fc9fa7d5b3f8ad3d0d7a25626b57b1b44788d4caf806290425f9890a3a2a35a905ab4b37acfd0da6e4517b2525c9651e4")
+        },
+        {
+          text: "BLAKE2b-MAC Test Vector - 512-bit output, 129-byte input (one over a block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/blake2bmac.vec",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("64475dfe7600d7171bea0b394e27c9b00d8e74dd1e416a79473682ad3dfdbb706631558055cfc8a40e07bd015a4540dcdea15883cbbf31412df1de1cd4152b91")
+        },
+        {
+          text: "BLAKE2b-MAC Test Vector - 384-bit output, 256-byte input, single-byte key",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/blake2bmac.vec",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBFC0C1C2C3C4C5C6C7C8C9CACBCCCDCECFD0D1D2D3D4D5D6D7D8D9DADBDCDDDEDFE0E1E2E3E4E5E6E7E8E9EAEBECEDEEEFF0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF"),
+          key: OpCodes.Hex8ToBytes("42"),
+          outputSize: 48,
+          expected: OpCodes.Hex8ToBytes("2214F4B04CA8B57DA75C04EBD88D0471C73CC76E8B2036409DD060C6E30B6E50F5AFF5C63BE3846A931B12D61827BA36")
         }
       ];
     }
@@ -528,11 +563,38 @@
         bufferLen = BLAKE2B_BLOCKBYTES; // Key block is always full
       }
 
+      // Convert a filled 128 byte buffer into 16 little-endian 64-bit words
+      const blockWords = buf => {
+        const words = new Array(16);
+        for (let i = 0; i < 16; i++) {
+          const idx = i * 8;
+          words[i] = OpCodes.OrN(BigInt(buf[idx]),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 1]), 8),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 2]), 16),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 3]), 24),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 4]), 32),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 5]), 40),
+                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 6]), 48),
+                                 OpCodes.ShiftLn(BigInt(buf[idx + 7]), 56))))))));
+        }
+        return words;
+      };
+
       // Process input data
       const input = this.inputBuffer;
       let offset = 0;
 
+      // A full block is compressed only once further input proves it is not the
+      // last one. Compressing it the moment it filled handed the finalization
+      // flag to an all-zero trailing block whenever the message length was a
+      // non-zero multiple of 128.
       while (offset < input.length) {
+        if (bufferLen === BLAKE2B_BLOCKBYTES) {
+          totalLen += BigInt(BLAKE2B_BLOCKBYTES);
+          BLAKE2b_compress(h, blockWords(buffer), [totalLen, BigInt(0)], false);
+          bufferLen = 0;
+        }
+
         const bytesToCopy = Math.min(BLAKE2B_BLOCKBYTES - bufferLen, input.length - offset);
 
         for (let i = 0; i < bytesToCopy; i++) {
@@ -541,27 +603,6 @@
 
         bufferLen += bytesToCopy;
         offset += bytesToCopy;
-
-        if (bufferLen === BLAKE2B_BLOCKBYTES) {
-          totalLen += BigInt(BLAKE2B_BLOCKBYTES);
-
-          // Convert buffer to message block (16 x 64-bit words)
-          const m = new Array(16);
-          for (let i = 0; i < 16; i++) {
-            const idx = i * 8;
-            m[i] = OpCodes.OrN(BigInt(buffer[idx]),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 1]), 8),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 2]), 16),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 3]), 24),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 4]), 32),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 5]), 40),
-                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 6]), 48),
-                               OpCodes.ShiftLn(BigInt(buffer[idx + 7]), 56))))))));
-          }
-
-          BLAKE2b_compress(h, m, [totalLen, BigInt(0)], false);
-          bufferLen = 0;
-        }
       }
 
       // Final block
@@ -572,21 +613,7 @@
         buffer[i] = 0;
       }
 
-      // Convert buffer to message block
-      const m = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        const idx = i * 8;
-        m[i] = OpCodes.OrN(BigInt(buffer[idx]),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 1]), 8),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 2]), 16),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 3]), 24),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 4]), 32),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 5]), 40),
-               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 6]), 48),
-                           OpCodes.ShiftLn(BigInt(buffer[idx + 7]), 56))))))));
-      }
-
-      BLAKE2b_compress(h, m, [totalLen, BigInt(0)], true);
+      BLAKE2b_compress(h, blockWords(buffer), [totalLen, BigInt(0)], true);
 
       // Extract output bytes
       const output = [];

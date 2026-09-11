@@ -182,8 +182,11 @@
             expected: OpCodes.Hex8ToBytes("F7FD5312896C6685C828AF7E2ADB97E393E7F8D54E3C2EA4B95E5ACA3796E8FC")
           },
           {
-            text: "ParallelHash128: XOF mode (B=12, S='Parallel Data', 32 bytes) - NIST",
-            uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/ParallelHash_samples.pdf",
+            // ParallelHash_samples.pdf carries the three fixed-length samples
+            // only; it has no XOF section, so this value is cited where it is
+            // actually published.
+            text: "ParallelHash128: XOF mode (B=12, S='Parallel Data', 32 bytes)",
+            uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/ParallelHashTest.java",
             input: OpCodes.Hex8ToBytes(
               "000102030405060708090A0B101112131415161718191A1B202122232425262728292A2B" +
               "303132333435363738393A3B404142434445464748494A4B505152535455565758595A5B"
@@ -240,8 +243,9 @@
             )
           },
           {
-            text: "ParallelHash256: XOF mode (B=12, S='Parallel Data', 64 bytes) - NIST",
-            uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/ParallelHash_samples.pdf",
+            // As above: the NIST sample PDF has no XOF section.
+            text: "ParallelHash256: XOF mode (B=12, S='Parallel Data', 64 bytes)",
+            uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/ParallelHashTest.java",
             input: OpCodes.Hex8ToBytes(
               "000102030405060708090A0B101112131415161718191A1B202122232425262728292A2B" +
               "303132333435363738393A3B404142434445464748494A4B505152535455565758595A5B"

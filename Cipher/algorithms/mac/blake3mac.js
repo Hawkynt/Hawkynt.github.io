@@ -102,6 +102,12 @@
       // Test vectors from official BLAKE3 test suite (keyed mode)
       // Test key: "whats the Elvish word for friend" (33 bytes, first 32 used)
       const testKey = OpCodes.AnsiToBytes("whats the Elvish word for friend").slice(0, 32);
+      // The official vector inputs are the repeating sequence 0,1,...,249,250,0,1,...
+      const blake3TestInput = length => {
+        const bytes = new Array(length);
+        for (let i = 0; i < length; ++i) bytes[i] = i % 251;
+        return bytes;
+      };
 
       this.tests = [
         {
@@ -131,6 +137,45 @@
           input: [0, 1, 2, 3, 4, 5, 6],
           key: testKey,
           expected: OpCodes.Hex8ToBytes("af0a7ec382aedc0cfd626e49e7628bc7a353a4cb108855541a5651bf64fbb28a")
+        },
+        // The official inputs are the repeating sequence 0,1,...,250,0,1,...
+        // These four straddle the 64 byte block and the 1024 byte chunk, which
+        // are where the block-flag and Merkle-tree paths change behaviour.
+        {
+          text: "BLAKE3 Official Keyed Test Vector - 64 bytes, exactly one block",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: blake3TestInput(64),
+          key: testKey,
+          expected: OpCodes.Hex8ToBytes("ba8ced36f327700d213f120b1a207a3b8c04330528586f414d09f2f7d9ccb7e6")
+        },
+        {
+          text: "BLAKE3 Official Keyed Test Vector - 1024 bytes, exactly one chunk",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: blake3TestInput(1024),
+          key: testKey,
+          expected: OpCodes.Hex8ToBytes("75c46f6f3d9eb4f55ecaaee480db732e6c2105546f1e675003687c31719c7ba4")
+        },
+        {
+          text: "BLAKE3 Official Keyed Test Vector - 1025 bytes, first two-chunk tree",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: blake3TestInput(1025),
+          key: testKey,
+          expected: OpCodes.Hex8ToBytes("357dc55de0c7e382c900fd6e320acc04146be01db6a8ce7210b7189bd664ea69")
+        },
+        {
+          text: "BLAKE3 Official Keyed Test Vector - 2049 bytes, unbalanced three-chunk tree",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: blake3TestInput(2049),
+          key: testKey,
+          expected: OpCodes.Hex8ToBytes("9f29700902f7c86e514ddc4df1e3049f258b2472b6dd5267f61bf13983b78dd5")
+        },
+        {
+          text: "BLAKE3 Official Keyed Test Vector - 1025 bytes, 131 byte extended output",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: blake3TestInput(1025),
+          key: testKey,
+          outputSize: 131,
+          expected: OpCodes.Hex8ToBytes("357dc55de0c7e382c900fd6e320acc04146be01db6a8ce7210b7189bd664ea69362396b77fdc0d2634a552970843722066c3c15902ae5097e00ff53f1e116f1cd5352720113a837ab2452cafbde4d54085d9cf5d21ca613071551b25d52e69d6c81123872b6f19cd3bc1333edf0c52b94de23ba772cf82636cff4542540a7738d5b930")
         }
       ];
     }
@@ -226,11 +271,13 @@
       }
     }
 
-    // Finalize - XOR state with IV and chaining value
+    // Finalize: the upper half folds in the input chaining value. The second
+    // operand is the upper state word, not the lower one - getting that wrong
+    // is invisible in a 32 byte tag and corrupts every extended output.
     const output = new Uint32Array(16);
     for (let i = 0; i < 8; i++) {
       output[i] = OpCodes.XorN(state[i], state[i + 8]);
-      output[i + 8] = OpCodes.XorN(state[i], chaining_value[i]);
+      output[i + 8] = OpCodes.XorN(state[i + 8], chaining_value[i]);
     }
 
     return output;
@@ -315,12 +362,12 @@
         throw new Error("Key not set");
       }
 
-      // Initialize chaining value from key (keyed mode)
-      // In keyed mode, the initial chaining value is set from the key
-      this.chaining_value = new Uint32Array(8);
+      // Keyed mode: the key words are the initial chaining value of every chunk
+      // and of every parent node.
+      this.key_words = new Uint32Array(8);
       for (let i = 0; i < 8; i++) {
         const base = i * 4;
-        this.chaining_value[i] = OpCodes.Pack32LE(
+        this.key_words[i] = OpCodes.Pack32LE(
           this._key[base],
           this._key[base + 1],
           this._key[base + 2],
@@ -328,12 +375,67 @@
         );
       }
 
+      this.flags = KEYED_HASH;
+      this.cvStack = [];  // chaining values of completed subtrees awaiting a parent
+      this.total_length = 0;
+      this._startChunk(0);
+    }
+
+    // Begin a fresh 1024 byte chunk with the given chunk counter
+    _startChunk(counter) {
+      this.chaining_value = new Uint32Array(this.key_words);
       this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
       this.block_len = 0;
       this.blocks_compressed = 0;
-      this.chunk_counter = 0;
-      this.flags = KEYED_HASH; // Set keyed hash flag
-      this.total_length = 0;
+      this.chunk_counter = counter;
+    }
+
+    _chunkLength() {
+      return this.blocks_compressed * BLAKE3_BLOCK_LEN + this.block_len;
+    }
+
+    _startFlag() {
+      return this.blocks_compressed === 0 ? CHUNK_START : 0;
+    }
+
+    // Chaining value of the chunk currently in progress, treating it as complete
+    _chunkChainingValue() {
+      const out = compress(
+        this.chaining_value,
+        Array.from(this.block),
+        this.chunk_counter,
+        this.block_len,
+        this.flags|this._startFlag()|CHUNK_END
+      );
+      return out.slice(0, 8);
+    }
+
+    // Chaining value of the parent node joining two subtrees
+    _parentChainingValue(leftCv, rightCv) {
+      const blockData = [];
+      for (let i = 0; i < 8; i++) {
+        const b = OpCodes.Unpack32LE(leftCv[i]);
+        for (let j = 0; j < 4; j++) blockData.push(b[j]);
+      }
+      for (let i = 0; i < 8; i++) {
+        const b = OpCodes.Unpack32LE(rightCv[i]);
+        for (let j = 0; j < 4; j++) blockData.push(b[j]);
+      }
+      const out = compress(this.key_words, blockData, 0, BLAKE3_BLOCK_LEN, this.flags|PARENT);
+      return out.slice(0, 8);
+    }
+
+    // Merge a completed chunk into the subtree stack. A subtree is complete
+    // whenever the number of chunks finished so far is even, so the loop
+    // collapses one level for each trailing zero bit of that count.
+    _addChunkChainingValue(cv, totalChunks) {
+      let remaining = totalChunks;
+      let node = cv;
+      while (remaining % 2 === 0) {
+        node = this._parentChainingValue(this.cvStack.pop(), node);
+        remaining = remaining / 2;
+      }
+      this.cvStack.push(node);
     }
 
     /**
@@ -343,51 +445,41 @@
     Update(data) {
       if (!data || data.length === 0) return;
 
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
-
       this.total_length += data.length;
       let offset = 0;
 
-      // Process data in chunks
       while (offset < data.length) {
-        // Fill current block
-        while (offset < data.length && this.block_len < BLAKE3_BLOCK_LEN) {
-          this.block[this.block_len] = data[offset];
-          this.block_len++;
-          offset++;
+        // A chunk is closed only once further input proves it is not the last
+        // one; the same holds for a block inside a chunk. Compressing eagerly
+        // is what made messages of an exact multiple of the block or chunk
+        // length come out wrong.
+        if (this._chunkLength() === BLAKE3_CHUNK_LEN) {
+          const cv = this._chunkChainingValue();
+          const nextCounter = this.chunk_counter + 1;
+          this._addChunkChainingValue(cv, nextCounter);
+          this._startChunk(nextCounter);
         }
 
-        // If block is full, compress it
         if (this.block_len === BLAKE3_BLOCK_LEN) {
-          this.compressBlock();
+          const out = compress(
+            this.chaining_value,
+            Array.from(this.block),
+            this.chunk_counter,
+            BLAKE3_BLOCK_LEN,
+            this.flags|this._startFlag()
+          );
+          for (let i = 0; i < 8; i++) this.chaining_value[i] = out[i];
+          this.blocks_compressed++;
+          this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+          this.block_len = 0;
+          continue;
         }
+
+        const want = Math.min(BLAKE3_BLOCK_LEN - this.block_len, data.length - offset);
+        for (let i = 0; i < want; i++) this.block[this.block_len + i] = data[offset + i];
+        this.block_len += want;
+        offset += want;
       }
-    }
-
-    /**
-     * Compress current block
-     */
-    compressBlock() {
-      let flags = this.flags;
-      if (this.blocks_compressed === 0) {
-        flags |= CHUNK_START;
-      }
-
-      const output = compress(this.chaining_value, Array.from(this.block), this.chunk_counter, this.block_len, flags);
-
-      // Update chaining value with first 8 words of output
-      for (let i = 0; i < 8; i++) {
-        this.chaining_value[i] = output[i];
-      }
-
-      this.blocks_compressed++;
-
-      // Reset block for next data
-      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
-      this.block_len = 0;
     }
 
     /**
@@ -398,31 +490,43 @@
     Final(outputLength) {
       outputLength = outputLength || this._outputSize;
 
-      // For simple single-chunk case (most common)
-      let flags = this.flags;
-      if (this.blocks_compressed === 0) {
-        flags |= CHUNK_START;
-      }
-      flags |= CHUNK_END|ROOT;
+      // The chunk still in progress is the right-most node of the tree. Fold the
+      // pending subtree chaining values into it from the right, then emit the
+      // root node with the ROOT flag set.
+      let cv = this.chaining_value;
+      let blockData = Array.from(this.block);
+      let blockLen = this.block_len;
+      let counter = this.chunk_counter;
+      let flags = this.flags|this._startFlag()|CHUNK_END;
 
-      // Compress the final block
-      const block_data = Array.from(this.block).concat(new Array(Math.max(0, 64 - this.block_len)).fill(0));
-      const output = compress(this.chaining_value, block_data, 0, this.block_len, flags);
-
-      // Extract output bytes directly from compression result
-      return this.extractOutputBytes(output, outputLength);
-    }
-
-    /**
-     * Extract output bytes from compression output
-     */
-    extractOutputBytes(words, outputLength) {
-      const output = [];
-      for (let i = 0; i < Math.min(16, Math.ceil(outputLength / 4)); i++) {
-        const bytes = OpCodes.Unpack32LE(words[i]);
-        for (let j = 0; j < 4 && output.length < outputLength; j++) {
-          output.push(bytes[j]);
+      for (let i = this.cvStack.length - 1; i >= 0; i--) {
+        const rightCv = compress(cv, blockData, counter, blockLen, flags).slice(0, 8);
+        const leftCv = this.cvStack[i];
+        blockData = [];
+        for (let w = 0; w < 8; w++) {
+          const b = OpCodes.Unpack32LE(leftCv[w]);
+          for (let j = 0; j < 4; j++) blockData.push(b[j]);
         }
+        for (let w = 0; w < 8; w++) {
+          const b = OpCodes.Unpack32LE(rightCv[w]);
+          for (let j = 0; j < 4; j++) blockData.push(b[j]);
+        }
+        cv = this.key_words;
+        counter = 0;
+        blockLen = BLAKE3_BLOCK_LEN;
+        flags = this.flags|PARENT;
+      }
+
+      // Root output is extendable: the output block counter selects the slice.
+      const output = [];
+      let outCounter = 0;
+      while (output.length < outputLength) {
+        const words = compress(cv, blockData, outCounter, blockLen, flags|ROOT);
+        for (let i = 0; i < 16 && output.length < outputLength; i++) {
+          const b = OpCodes.Unpack32LE(words[i]);
+          for (let j = 0; j < 4 && output.length < outputLength; j++) output.push(b[j]);
+        }
+        outCounter++;
       }
       return output;
     }

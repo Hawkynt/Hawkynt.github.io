@@ -684,37 +684,37 @@
       this.tests = [
         {
           text: "KNOT-HASH-256-256: Empty message (NIST KAT Count=1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("CF1AC5B7AA08D36D544E2D2049D0D0A5F1F6FF7B553D18035E69323D8E4118B1")
         },
         {
           text: "KNOT-HASH-256-256: Single zero byte (NIST KAT Count=2)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("1B8F1C5978ADCE6C4BAC3715E304A0F3026F873820CA4A6386CBFD0A3709949C")
         },
         {
           text: "KNOT-HASH-256-256: Two bytes (NIST KAT Count=3)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("3CFF1E8CD8CAC2FEEB696969251F828AA2288D8CCBBECBAF422634577FCED63B")
         },
         {
           text: "KNOT-HASH-256-256: Four bytes (NIST KAT Count=5)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("8410C4BBD8828E9D9A2183F23918B5F45182735560A2E1D142884D10B66327A8")
         },
         {
           text: "KNOT-HASH-256-256: Eight bytes (NIST KAT Count=9)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           expected: OpCodes.Hex8ToBytes("6B8CCC0A32775C876B63E8E146E103172188287CDF7ED236CD5D6276C16C6B76")
         },
         {
           text: "KNOT-HASH-256-256: 16 bytes (NIST KAT Count=17)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("3D1BB21C5B2FDB385DB2231896467CC987E9EB5CCC622F88E9FA45AFEF66B6AB")
         }
@@ -776,61 +776,61 @@
       this.tests = [
         {
           text: "KNOT-HASH-256-384: Empty message (NIST KAT Count=1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("5025252949BF0EBF9D750D2E11AB5C75E4F7B8DCA426B58EA2AE52A857653E04")
         },
         {
           text: "KNOT-HASH-256-384: Single zero byte (NIST KAT Count=2)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("C15C34623E347C0D3F73B84D8F1706F4F95C5640A1AB8DB43FD7B07E07AD0397")
         },
         {
           text: "KNOT-HASH-256-384: Two bytes (NIST KAT Count=3)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("53CA8EC8BFBB0610154C86019BDBB45C70706696120233D61EC1199BCCAD8CD3")
         },
         {
           text: "KNOT-HASH-256-384: Three bytes (NIST KAT Count=4)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("9E6908918B5445FFAC8321B0D8EB83A47D0C2C858CDAD1DBC81DB70F9DF012ED")
         },
         {
           text: "KNOT-HASH-256-384: Four bytes (NIST KAT Count=5)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("21EF8A4C2E600A3D2B40DE5A80E6BA4B664116A1383F26EF95AD1892BE649CD5")
         },
         {
           text: "KNOT-HASH-256-384: Eight bytes (NIST KAT Count=9)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           expected: OpCodes.Hex8ToBytes("DF3DBEFA6AB5194E5692C7FEF78C442F6A6FEAF262ADB5F3630682B58FE3766F")
         },
         {
           text: "KNOT-HASH-256-384: 16 bytes (NIST KAT Count=17)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("B3F056368184838CC83DFB0E7466E439A010743AE7C03E55022D116B5C3733B3")
         },
         {
           text: "KNOT-HASH-256-384: 32 bytes (NIST KAT Count=33)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           expected: OpCodes.Hex8ToBytes("4968D39797D02A81928E67B085E06F5C9DFB44A1FD8D49F3029B9AF126783B54")
         },
         {
           text: "KNOT-HASH-256-384: 48 bytes (NIST KAT Count=49)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F"),
           expected: OpCodes.Hex8ToBytes("8D818B7B903BA04A94CF0992B89A2988BA086C339096D16DFD636B4A3F7BD743")
         },
         {
           text: "KNOT-HASH-256-384: 64 bytes (NIST KAT Count=65)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-256-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F"),
           expected: OpCodes.Hex8ToBytes("C38B93AAC496B1376A1E53E7A82A2836A5141A08BC91F48291D1446921A535B8")
         }
@@ -892,61 +892,61 @@
       this.tests = [
         {
           text: "KNOT-HASH-384-384: Empty message (NIST KAT Count=1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("4F3D463251831D3689692AA1B4E02DDAD79ABFCBE075A2CD2805E95C099DB75BF11C3C5EC917B6C5B3B76F8BB8D6DB2C")
         },
         {
           text: "KNOT-HASH-384-384: Single zero byte (NIST KAT Count=2)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("2FECE6F7FB33CA6F455E3A09C31B58BA9A4EDF0B04F4EAB7F1001A3EA23C6AD727FC1A15928E090EAABD0596C69B07AA")
         },
         {
           text: "KNOT-HASH-384-384: Two bytes (NIST KAT Count=3)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("07EF998B299615EDB5AFAB4D78A15A1C2076089BE8FAEEB427FF85BE69B71A99D591124F7965E5B72B0BC13E1A2A0A7C")
         },
         {
           text: "KNOT-HASH-384-384: Three bytes (NIST KAT Count=4)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("750664415D55A3BA35E4A63CBA99D79FF1EE85C4B6CDD5D6A40952B27DEA031E83DF8D4499035A32F94533044B6C8B2C")
         },
         {
           text: "KNOT-HASH-384-384: Four bytes (NIST KAT Count=5)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("878D0F1348618CCA9DBA50520FFD5E1D540FF485940CFA3CF4A9BBE25AC2055ADAC5B110F208126526C9D16ABE4D27F4")
         },
         {
           text: "KNOT-HASH-384-384: Eight bytes (NIST KAT Count=9)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           expected: OpCodes.Hex8ToBytes("B1E3A6B7E420FB6678B27C79270BAFE86FE6F91D8625ED60D586CBE4903CCA1E2E9585B721731B8EE97B1883325854D7")
         },
         {
           text: "KNOT-HASH-384-384: 16 bytes (NIST KAT Count=17)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("8019206BAC3D6A99998BB49063204805541C4B406C2CE651AEF67B6833A0B43DFCFE110F4EE9604D8A68295DB90067CD")
         },
         {
           text: "KNOT-HASH-384-384: 32 bytes (NIST KAT Count=33)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           expected: OpCodes.Hex8ToBytes("D0DC496AB1D681A63CBCC2156C361BA70F7924DA17D8F606F1AD8214114F09D44D35BA33547D512B198A77AEC5B09ADE")
         },
         {
           text: "KNOT-HASH-384-384: 48 bytes (NIST KAT Count=49)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F"),
           expected: OpCodes.Hex8ToBytes("268397BFF02CC2EE39B32644875B3B227B54B194E86F69DD1C2277299DAEB82655742DE0BBF1121A116D61E563FA10FF")
         },
         {
           text: "KNOT-HASH-384-384: 64 bytes (NIST KAT Count=65)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-384-384.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F"),
           expected: OpCodes.Hex8ToBytes("3AEC65FCA168DF0A8BC4FE1852861097978CCC770CE135C5110681E7AEC8E662AC5AD3D764BC03CDEC2D09AFF2197587")
         }
@@ -1008,61 +1008,61 @@
       this.tests = [
         {
           text: "KNOT-HASH-512-512: Empty message (NIST KAT Count=1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("729F0DC105A78582B78CD25D3B41CDEEF87D99C6C974D5D1DF4E96410ADD3B23CCFF5A3C69EB2061FD1BACFC8AAAC4E425ED2CC1407F2BEE0FB66FEF17FCEC91")
         },
         {
           text: "KNOT-HASH-512-512: Single zero byte (NIST KAT Count=2)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("C52CD4B2C4BA2D8434E92B9B282F01BE053B8DE3CFF0657716DE40442995DA4AF61347C7C431AF2D1B35799E7C19F8113BB5A69102CD0903D43D1C87C4B159BD")
         },
         {
           text: "KNOT-HASH-512-512: Two bytes (NIST KAT Count=3)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("CEE96A707A416CB1D9AA4F42E9E7268641B53E613B77F337B56AF3CB7426F411714A9ABD52FE83DF5509676D2713B250EEAA998CBE26D374A94002C93C54A618")
         },
         {
           text: "KNOT-HASH-512-512: Three bytes (NIST KAT Count=4)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("CD2B323E45F1ED5C96E5A3FA90557580077B297B76EEB2EE9B6A95505DB4798E90C579F69C623B0213CD0AA38638773618887EB11A8B0FE70594DDE14DA99AF2")
         },
         {
           text: "KNOT-HASH-512-512: Four bytes (NIST KAT Count=5)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("9F6EF40003F292DCAFCC6FEA2E4F0C375A527C30190632D2F1FDA172623A11F25BA2C524580A80CEEC9D4C9297D2929FF19ED9767095A9DC4AF5D36B4B99B995")
         },
         {
           text: "KNOT-HASH-512-512: Five bytes (NIST KAT Count=6)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("0001020304"),
           expected: OpCodes.Hex8ToBytes("F0508B66FF661AB94A82C154DB81BB83BE42C238C15B4DE266701D02A5CEDBAFEA5C87BE26EFC9E132FA05FC93E6FA621B18FE457876440B61A81604A2161531")
         },
         {
           text: "KNOT-HASH-512-512: Eight bytes (NIST KAT Count=9)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           expected: OpCodes.Hex8ToBytes("39EAC539C10EC0384E7FB96B0DF99B5A7669C55E5151580C6AE6769F9F031528036E3E65664F67B8312975E19AAA9B1BE4A20E51F2DD82981CF6340EA108A4C8")
         },
         {
           text: "KNOT-HASH-512-512: Nine bytes (NIST KAT Count=10)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708"),
           expected: OpCodes.Hex8ToBytes("E44B1FC05E514245944D1E1DF6A2B6D9B8C9C2D304C1B346FFF24CB0A77E3EEA13A72EE29AB99991C515BA0C4C02FD4047866D42B033B6996CAA88B8FF85A4C2")
         },
         {
           text: "KNOT-HASH-512-512: 16 bytes (NIST KAT Count=17)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("C544924BE5549A4694540271C191BF128B6B636D930A8C9AEF26EA0D0D8F12F801A2CB4BD39042A1B71483954445DFA8D1BC83D94F151A3E9254D599B1A0649D")
         },
         {
           text: "KNOT-HASH-512-512: 24 bytes (NIST KAT Count=25)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/KNOT-HASH-512-512.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           expected: OpCodes.Hex8ToBytes("7A1CBC00F4F13ED3C21BD406992BBE0C71539A88CFD3D870602800842AD3C456C1564BA47252B14EF77F088650E83F2578D6C4B9BC84E6BE9951265E44A94F3A")
         }
