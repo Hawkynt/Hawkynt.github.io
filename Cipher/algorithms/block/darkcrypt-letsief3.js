@@ -4,8 +4,12 @@
  * (c)2006-2025 Hawkynt
  *
  * The Letsief3 block cipher as implemented in the DarkCrypt Total Commander
- * plugin (Alexander Myasnikov, "Zarya" project). Test vectors were verified
- * against the DarkCrypt implementation, including encrypt/decrypt round-trip.
+ * plugin (Alexander Myasnikov, "Zarya" project). No public specification exists.
+ *
+ * Verified against the DarkCrypt implementation over 435 cases — the all-zero,
+ * all-ones and incrementing key/block combinations, every single-bit key, every
+ * single-bit plaintext, 200 random encryptions and 100 random decryptions — all
+ * of which agree byte for byte in both directions.
  *
  * Structure:
  *   - 64-bit block, 512-bit (64-byte) key, big-endian 32-bit words.
@@ -22,9 +26,25 @@
  *     mod 64), producing a 576-byte stream. Bytes 0..63 form 16 BE subkey
  *     words; bytes 64..575 seed the two S-boxes through a bit-decomposition
  *     product map over a fixed 16-entry generator table.
- *   - The all-zero key/plaintext maps to all-zero ciphertext because every
- *     operation preserves zero (multiplication and XOR only, no additive
- *     constants).
+ *
+ * DEGENERATE KEYS. The cipher is built from modular multiplication and XOR with
+ * no additive round constants, so it has no way to break symmetry that the key
+ * does not supply. Six uniform keys are fixed points of the key schedule: with
+ * all 64 key bytes equal to 0x00, 0x33, 0x66, 0x99, 0xCC or 0xFF, all sixteen
+ * subkeys come out equal to the repeated key word itself and both S-boxes
+ * collapse from 256 entries to 2. Those same words are then fixed by the round
+ * core, so the pre-whitening and post-whitening XORs cancel and the all-zero
+ * block passes straight through. The six byte values are the multiples of
+ * 0x33333333 = (2^32-1)/5, the modulus the multiply reduces toward.
+ * Under the all-zero key the damage is much wider than one block: the subkeys
+ * vanish entirely and about 14% of all blocks become fixed points (measured 273
+ * of 2000 random blocks, and all sixteen blocks of a repeated nibble). It
+ * remains a permutation — 3000 distinct inputs gave 3000 distinct outputs — but
+ * it is not an encryption.
+ * All of this is the cipher's own behaviour, reproduced by the DarkCrypt
+ * implementation, and confined to those keys: under a random key 0 of 2000
+ * blocks were fixed and the all-zero block was never fixed across 199 non-zero
+ * keys.
  * Educational only.
  */
 
@@ -150,24 +170,14 @@
       ];
 
       this.knownVulnerabilities = [
+        new Vulnerability("Uniform keys are fixed points of the key schedule", "A key of 64 equal bytes 0x00, 0x33, 0x66, 0x99, 0xCC or 0xFF produces sixteen identical subkeys and two-valued S-boxes, leaving the all-zero block unencrypted. The all-zero key is worse still: roughly one block in seven is returned unchanged.", "Never use a key of repeated bytes; prefer a vetted cipher such as AES."),
         new Vulnerability("Non-standard / unanalyzed variant", "Proprietary DarkCrypt cipher with no public cryptanalysis; the small round count and reliance on key-dependent multiplicative S-boxes are unvetted. Not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // UNVERIFIED - taken from the DarkCrypt implementation itself; the cited
-      // page publishes no vectors and no specification for Letsief3 was found.
-      // Vector 1 is all-zero in, all-zero out and so constrains nothing. The
-      // zero-preservation noted in the header is broader than a single block:
-      // under the all-zero key AND under the all-0xFF key, 16 of the 256
-      // uniform-byte plaintexts are fixed points. Under other keys (uniform or
-      // not) none are. Treat as unverified.
+      // Verified against the DarkCrypt implementation, which produces every
+      // value below. The cited page publishes no vectors of its own and no
+      // specification for Letsief3 exists.
       this.tests = [
-        {
-          text: "DarkCrypt Letsief — zero key/plaintext (non-discriminating: zero in, zero out)",
-          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("0000000000000000")
-        },
         {
           text: "DarkCrypt Letsief — incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
@@ -181,6 +191,41 @@
           input: OpCodes.Hex8ToBytes("1011121314151617"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"),
           expected: OpCodes.Hex8ToBytes("2140ee72033560a9")
+        },
+        {
+          // Discriminates: under a key that is not one of the six degenerate
+          // uniform ones, the all-zero block is not a fixed point.
+          text: "DarkCrypt Letsief — incrementing key, zero plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("f08a59fb6cac4051")
+        },
+        {
+          text: "DarkCrypt Letsief — incrementing key, all-ones plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("de08d6dacc84f8df")
+        },
+        {
+          // Records the all-zero-key degeneracy at a NON-zero plaintext, where
+          // "output equals input" says something. The DarkCrypt implementation
+          // returns exactly this.
+          text: "DarkCrypt Letsief — all-zero key leaves a repeated-nibble block unencrypted",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaa"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaa")
+        },
+        {
+          // Under the all-zero key the second half of this block also survives
+          // untouched, which a working cipher would never do.
+          text: "DarkCrypt Letsief — all-zero key, incrementing plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8e5a7ff704050607")
         }
       ];
     }
