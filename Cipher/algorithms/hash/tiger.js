@@ -388,7 +388,7 @@
       this.subCategory = "Classical Hash";
       this.securityStatus = null;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.MULTI;
+      this.country = CountryCode.INTL;
 
       this.SupportedOutputSizes = [TIGER_DIGESTSIZE];
       this.SupportedHashSizes = [new KeySize(TIGER_DIGESTSIZE, TIGER_DIGESTSIZE, 1)];
