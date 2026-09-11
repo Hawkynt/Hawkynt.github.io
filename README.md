@@ -17,7 +17,36 @@
 
 > The »SynthelicZ« website — a collection of educational software projects, cryptographic tools and historical development archives, live at [hawkynt.github.io](https://hawkynt.github.io), built to run on anything from Lynx and IE5 to current browsers.
 
-## ✨ Featured Projects
+## 🧭 Vision
+
+»SynthelicZ« is a collection of educational software projects — cryptography, algorithms and
+historical software preservation — and this repository is the site that presents them. The pieces run
+in the browser, so a cipher can be tried rather than read about.
+
+The emphasis throughout is educational and cross-platform: working examples over screenshots, source
+that is meant to be read, and implementations of things old enough that most descriptions of them are
+second-hand.
+
+## ✨ Features
+
+- A browser-based cipher collection with interactive, runnable demos
+- Algorithm implementations written to be read as much as executed
+- Historical software preservation alongside the modern reimplementations
+- No build step and no framework — it is a static site
+
+## 📦 Installation
+
+Nothing to install: the site is live at [hawkynt.github.io](https://hawkynt.github.io). To run it
+locally, clone the repository and serve the directory with any static file server.
+
+## 🚀 Quick start
+
+1. **Visit the live site:** [hawkynt.github.io](https://hawkynt.github.io)
+2. **Explore the cipher tools:** navigate to the [Cipher collection](./Cipher/)
+3. **Try the interactive demos:** each project includes working examples
+4. **Review the code:** all source is available for educational purposes
+
+## 🌟 Featured projects
 
 ### 🔐 [Cipher Collection](./Cipher/)
 A modern web-based cryptographic toolkit featuring classical and contemporary encryption algorithms.
@@ -68,7 +97,7 @@ Comprehensive development history from 1995-2006 with screenshots and project do
 - **2002:** ELIZA Chatbot
 - **2003-2006:** Various GUI applications, web projects, and system utilities
 
-## 🛠️ Technologies & Skills Demonstrated
+## 🧰 Technologies & skills demonstrated
 
 ### Programming Languages
 - **JavaScript** - Modern ES6+ and legacy-compatible code
@@ -96,7 +125,7 @@ Comprehensive development history from 1995-2006 with screenshots and project do
 - User interface design
 - Real-time rendering
 
-## 📁 Repository Structure
+## 📁 Repository structure
 
 ```
 Hawkynt.github.io/
@@ -110,7 +139,7 @@ Hawkynt.github.io/
 └── README.md              # 📖 This file
 ```
 
-## 🎯 Project Highlights
+## 🎯 Project highlights
 
 ### Educational Value
 - **Cryptographic Education** - Hands-on learning with real cipher implementations
@@ -124,14 +153,7 @@ Hawkynt.github.io/
 - **Modular Architecture** - Clean, maintainable code structures
 - **Test-Driven Development** - Comprehensive test suites with official vectors
 
-## 🚀 Getting Started
-
-1. **Visit the live site:** [hawkynt.github.io](https://hawkynt.github.io)
-2. **Explore the cipher tools:** Navigate to the [Cipher collection](./Cipher/)
-3. **Try the interactive demos:** Each project includes working examples
-4. **Review the code:** All source code is available for educational purposes
-
-## 📝 Development Philosophy
+## 📝 Development philosophy
 
 This repository demonstrates a commitment to:
 - **Educational Accessibility** - Making complex topics approachable
@@ -139,7 +161,7 @@ This repository demonstrates a commitment to:
 - **Cross-Platform Support** - Ensuring functionality across diverse environments
 - **Open Source Learning** - Sharing knowledge through practical implementations
 
-## 🔍 Notable Features
+## 🔍 Notable features
 
 ### Cipher Collection Highlights
 - **Numerous Encryption Algorithms** implemented from scratch
@@ -154,12 +176,20 @@ This repository demonstrates a commitment to:
 - **Evolution of UI Design** from command-line to modern web interfaces
 - **Technology Timeline** showing adaptation to new platforms and frameworks
 
-## 🏆 Project Goals
+## 🏆 Project goals
 
 1. **Education** - Provide hands-on learning tools for cryptography and programming
 2. **Preservation** - Maintain historical record of software development practices
 3. **Innovation** - Demonstrate creative solutions to technical challenges
 4. **Accessibility** - Ensure tools work across maximum range of devices and browsers
+
+## 🛠️ Building
+
+There is no build step — the site is static HTML, CSS and JavaScript. Serve the repository root:
+
+```bash
+python3 -m http.server
+```
 
 ## ❤️ Support
 
@@ -172,8 +202,4 @@ If this project saves you time or money, consider supporting its development:
 
 Licensed under LGPL-3.0-or-later — see [LICENSE](LICENSE).
 
----
-
-**About »SynthelicZ«**  
-A collection of educational software projects focusing on cryptography, algorithms, and historical software preservation. Developed with emphasis on cross-platform compatibility and educational value.
 
