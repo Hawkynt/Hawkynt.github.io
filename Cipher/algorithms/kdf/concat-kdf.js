@@ -120,6 +120,21 @@
           OpCodes.Hex8ToBytes("1c3bc9e7c4547c5191c0d478cccaed55"),
           "ConcatKDFHash SHA-256 Test Vector",
           "https://github.com/pyca/cryptography/blob/main/tests/hazmat/primitives/test_concatkdf.py"
+        ),
+        // The Concatenation KDF is the NIST SP 800-56A single-step KDF, so Botan's
+        // sp800_56a.vec applies verbatim. These two sit either side of the hash block
+        // boundary: 33 bytes needs a second digest, 48 bytes needs two full ones.
+        new TestCase(
+          OpCodes.Hex8ToBytes("7CE80E8B0480CDE01FEC587FE7045A8E"),
+          OpCodes.Hex8ToBytes("9E04DDBA94C2C36F8E9B1B6F9B0F4D70A20CF1122DD94AB5724D192ED1939D924D"),
+          "NIST SP 800-56A single-step KDF, SHA-256, 33 byte output",
+          "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_56a.vec"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("8D1C9B4D7CC7F6122CB68E43B146BD32DE9F5E09143118B29DB51705F25D6C81890132F81DF3DC53A7950D0803107306289FA88E907C2E53EC13ECA20F972B38B84C5C1847F0BCB2EE4A9B64EB48348B73256E61CE2A2CFCDB71F7DB70BFFCC101F8A7F1FEE5F9D377E81FF9EC79B7FB25C849D7B9DD125107717EC8FD93105762B1AC629FF6DF99"),
+          OpCodes.Hex8ToBytes("95352C138EB9B23735BD68CB242889970846DCCBD9775BCAD068528E8008A3BAF1ED2047525EAA29C99CD6E0E634EB30"),
+          "NIST SP 800-56A single-step KDF, SHA-256, 48 byte output",
+          "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_56a.vec"
         )
       ];
 
@@ -127,6 +142,14 @@
       this.tests[0].otherinfo = OpCodes.Hex8ToBytes("a1b2c3d4e53728157e634612c12d6d5223e204aeea4341565369647bd184bcd246f72971f292badaa2fe4124612cba");
       this.tests[0].outputSize = 16;
       this.tests[0].hashFunction = 'SHA-256';
+
+      this.tests[1].otherinfo = OpCodes.Hex8ToBytes("EA0E5D80A76BB5063148CC997B76DA2D895BC3E4DFF37C48579CC4E580F1FDA3");
+      this.tests[1].outputSize = 33;
+      this.tests[1].hashFunction = 'SHA-256';
+
+      this.tests[2].otherinfo = OpCodes.Hex8ToBytes("2D14C1C1989469A6676196410B62AF1A98D05DE226B22213FA731A814ADE2F5C");
+      this.tests[2].outputSize = 48;
+      this.tests[2].hashFunction = 'SHA-256';
     }
 
     /**
@@ -344,6 +367,20 @@
           OpCodes.Hex8ToBytes("64ce901db10d558661f10b6836a122a7605323ce2f39bf27eaaac8b34cf89f2f"),
           "ConcatKDFHMAC SHA-512 Test Vector",
           "https://github.com/pyca/cryptography/blob/main/tests/hazmat/primitives/test_concatkdf.py"
+        ),
+        // HMAC form of the NIST SP 800-56A single-step KDF; the salt is the HMAC key.
+        // 33 bytes stops one byte into the second block, 50 bytes stops short of it.
+        new TestCase(
+          OpCodes.Hex8ToBytes("E74EA408ACD848AB616E9891F35050533002C16915BCE2E84749E24FFBFB175D0AD4E8D10A093FAAACAF5A37F3985C538B38FD3765CC106D58147FB9F896758D"),
+          OpCodes.Hex8ToBytes("2CAFCCDFE04660B80FDE08CFB5E80A7CEF9E0B4C5D0BC34551CCA98C4E85C9FC60"),
+          "NIST SP 800-56A single-step KDF, HMAC-SHA-512, 33 byte output",
+          "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_56a.vec"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("3F4D4CA74C46AEA4FCBD8B5BB752A86D3651A82EFD76D17078FCEA9FF258264C0B65CB14637317F99B977B6E97F9298C686A7C983020F608D6F0D6D17950B339F522979D4C19547DD62B9BC20DA97A4B0A5D7C4F51EAC08BA978F0243AE92401B6EB4A83519431BDD7E9C3147FF2A76BFCF252BA13465C8467B1DC4F52C253B7AFFAB32D389CE01C801CC1662A9BD59CB710334676475EA2613D95F289F243D0D195A96B49F94E4B5380742B6496D8B7D062D6246BB616BA779F213FC1D87ACEB5B0E385A50565DB"),
+          OpCodes.Hex8ToBytes("D105B8E5D103FA30A5666863FFCF335E1150722AE34FDDCB133395B94E4815F32E1A6B3E8D65166346667FAB04F9F43E92CB"),
+          "NIST SP 800-56A single-step KDF, HMAC-SHA-512, 50 byte output",
+          "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_56a.vec"
         )
       ];
 
@@ -352,6 +389,16 @@
       this.tests[0].otherinfo = OpCodes.Hex8ToBytes("a1b2c3d4e55e600be5f367e0e8a465f4bf2704db00c9325c9fbd216d12b49160b2ae5157650f43415653696421e68e");
       this.tests[0].outputSize = 32;
       this.tests[0].hashFunction = 'SHA-512';
+
+      this.tests[1].salt = OpCodes.Hex8ToBytes("C767F6D57C1F68860197E6634B7D82C4");
+      this.tests[1].otherinfo = OpCodes.Hex8ToBytes("5F5194B32F19C2800FBA4B056F2F55B7EB0687520D38ECB7D42951F8FFD769B7");
+      this.tests[1].outputSize = 33;
+      this.tests[1].hashFunction = 'SHA-512';
+
+      this.tests[2].salt = OpCodes.Hex8ToBytes("C767F6D57C1F68860197E6634B7D82C4");
+      this.tests[2].otherinfo = OpCodes.Hex8ToBytes("E0BC94FAC3F6B34EF8002F0EA7EC0B6AACD17FBDA64C92C34DD1E2703B6B3742");
+      this.tests[2].outputSize = 50;
+      this.tests[2].hashFunction = 'SHA-512';
     }
 
     /**

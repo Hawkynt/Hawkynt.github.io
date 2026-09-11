@@ -411,25 +411,57 @@
         new LinkItem("SHA-3 Zoo", "https://keccak.team/obsolete_SHA3_zoo/Skein.html")
       ];
 
-      // Official test vectors from NIST Skein 1.3 submission
+      // Skein 1.3 KAT values. They come from skein_golden_kat.txt on the Skein
+      // 1.3 NIST CD, reproduced verbatim in the BouncyCastle test below; the
+      // skein1.3.pdf specification itself carries no Skein-512-512 digests, so
+      // citing it for these was a dead reference.
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes(""), // empty string
           OpCodes.Hex8ToBytes("bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a"),
           "Skein-512-512 empty string",
-          "https://www.schneier.com/academic/skein/skein1.3.pdf"
+          "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinDigestTest.java"
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("fb"), // single byte 0xFB
           OpCodes.Hex8ToBytes("c49e03d50b4b2cc46bd3b7ef7014c8a45b016399fd1714467b7596c86de98240e35bf7f9772b7d65465cd4cffab14e6bc154c54fc67b8bc340abf08eff572b9e"),
           "Skein-512-512 single byte 0xFB",
-          "https://www.schneier.com/academic/skein/skein1.3.pdf"
+          "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinDigestTest.java"
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("fbd17c26b61a82e12e125f0d459b96c91ab4837dff22b39b78439430cdfc5dc8"),
           OpCodes.Hex8ToBytes("abefb179d52f68f86941acbbe014cc67ec66ad78b7ba9508eb1400ee2cbdb06f9fe7c2a260a0272d0d80e8ef5e8737c0c6a5f1c02ceb00fb2746f664b85fcef5"),
-          "Skein-512-512 32-byte message (Bouncy Castle test vector)",
-          "https://github.com/bcgit/bc-csharp"
+          "Skein-512-512 32-byte message",
+          "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinDigestTest.java"
+        ),
+        // The committed set stopped short of the 64-byte UBI block boundary, so
+        // nothing here exercised a full block, an exact multiple of the block,
+        // or the switch from one block to two. These three do.
+        new TestCase(
+          OpCodes.Hex8ToBytes("fbd17c26b61a82e12e125f0d459b96c91ab4837dff22b39b78439430cdfc5dc8" +
+                              "78bb393a1a5f79bef30995a85a129233"),
+          OpCodes.Hex8ToBytes("5c5b7956f9d973c0989aa40a71aa9c48a65af2757590e9a758343c7e23ea2df4" +
+                              "057ce0b49f9514987feff97f648e1dd065926e2c371a0211ca977c213f14149f"),
+          "Skein-512-512 48-byte message (block boundary - 16)",
+          "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinDigestTest.java"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fbd17c26b61a82e12e125f0d459b96c91ab4837dff22b39b78439430cdfc5dc8" +
+                              "78bb393a1a5f79bef30995a85a12923339ba8ab7d8fc6dc5fec6f4ed22c122bb"),
+          OpCodes.Hex8ToBytes("02d01535c2df280fde92146df054b0609273c73056c93b94b82f5e7dcc5be697" +
+                              "9978c4be24331caa85d892d2e710c6c9b4904cd056a53547b866bee097c0fb17"),
+          "Skein-512-512 64-byte message (exactly one UBI block)",
+          "https://github.com/aead/skein/blob/master/vector_test.go"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fbd17c26b61a82e12e125f0d459b96c91ab4837dff22b39b78439430cdfc5dc8" +
+                              "78bb393a1a5f79bef30995a85a12923339ba8ab7d8fc6dc5fec6f4ed22c122bb" +
+                              "e7eb61981892966de5cef576f71fc7a80d14dab2d0c03940b95b9fb3a727c66a" +
+                              "6e1ff0dc311b9aa21a3054484802154c1826c2a27a0914152aeb76f1168d4410"),
+          OpCodes.Hex8ToBytes("1a0d5abf4432e7c612d658f8dcfa35b0d1ab68b8d6bd4dd115c23cc57b5c5bcd" +
+                              "de9bff0ece4208596e499f211bc07594d0cb6f3c12b0e110174b2a9b4b2cb6a9"),
+          "Skein-512-512 128-byte message (exactly two UBI blocks)",
+          "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinDigestTest.java"
         )
       ];
     }

@@ -40,7 +40,7 @@
       super();
 
       this.name = "LRC";
-      this.description = "Longitudinal Redundancy Check used in serial communications. XORs all bytes and takes twos-complement. Verification: sum of all data bytes plus LRC equals zero (modulo 256).";
+      this.description = "Longitudinal Redundancy Check used in serial communications, as specified for Modbus ASCII. Sums all bytes modulo 256 and takes the two's complement. Verification: sum of all data bytes plus LRC equals zero (modulo 256).";
       this.inventor = "Unknown (telecommunications standard)";
       this.year = 1960;
       this.category = CategoryType.CHECKSUM;
@@ -61,7 +61,7 @@
       ];
 
       this.notes = [
-        "LRC = ((XOR of all bytes) XOR 0xFF) + 1 = two's complement of XOR",
+        "LRC = ((sum of all bytes) XOR 0xFF) + 1 = two's complement of the 8-bit sum",
         "Verification: (sum of all bytes + LRC) AND 0xFF == 0",
         "Simple error detection for serial protocols",
         "Can detect single-bit errors and some multi-bit errors",
@@ -70,16 +70,16 @@
 
       this.tests = [
         {
-          text: "Simple LRC",
-          uri: "LRC calculation",
-          input: [0x02, 0x03, 0x04],
-          expected: [0xFB] // 0x02 XOR 0x03 XOR 0x04 = 0x05, two's complement = 0xFB
+          text: "Wikipedia LRC worked example - STX 0 0 1 # ETX",
+          uri: "https://en.wikipedia.org/wiki/Longitudinal_redundancy_check",
+          input: OpCodes.Hex8ToBytes("023030312303"),
+          expected: OpCodes.Hex8ToBytes("47") // sum = 0xB9, two's complement = 0x47
         },
         {
-          text: "ASCII LRC",
-          uri: "LRC for text",
-          input: OpCodes.AnsiToBytes("ABC"),
-          expected: [0xC0] // 0x41 XOR 0x42 XOR 0x43 = 0x40, two's complement = 0xC0
+          text: "minimalmodbus known value - 'ABCDE'",
+          uri: "https://github.com/pyhys/minimalmodbus/blob/master/tests/test_minimalmodbus.py",
+          input: OpCodes.Hex8ToBytes("4142434445"),
+          expected: OpCodes.Hex8ToBytes("b1") // sum = 0x14F, low byte 0x4F, two's complement = 0xB1
         }
       ];
     }
@@ -125,7 +125,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.lrc = OpCodes.XorN(this.lrc, data[i]);
+        this.lrc = OpCodes.AndN(this.lrc + data[i], 0xFF);
       }
     }
 

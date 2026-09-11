@@ -445,11 +445,18 @@
           expected: OpCodes.Hex8ToBytes("7690ba61f10e0bba312980b0212e6a9a51b0e9aadfde7ca535754a706e042335b29172aae29d8bad18efaf92d43e6406f3098e253f41f2931eda5911dc740352")
         },
         {
-          text: "Skein-512-MAC Official Test Vector - 80 bytes",
+          text: "Skein-512-MAC Official Test Vector - 96 bytes",
           uri: "https://github.com/bcgit/bc-lts-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinMacTest.java",
           input: OpCodes.Hex8ToBytes("d3090c72167517f7c7ad82a70c2fd3f6443f608301591e598eadb195e8357135ba26fede2ee187417f816048d00fc23512737a2113709a77e4170c49a94b7fdff45ff579a72287743102e7766c35ca5abc5dfe2f63a1e726ce5fbd2926db03a2"),
           key: OpCodes.Hex8ToBytes("cb41f1706cde09651203c2d0efbaddf847a0d315cb2e53ff8bac41da0002672e"),
           expected: OpCodes.Hex8ToBytes("d10e3ba81855ac087fbf5a3bc1f99b27d05f98ba22441138026225d34a418b93fd9e8dfaf5120757451adabe050d0eb59d271b0fe1bbf04badbcf9ba25a8791b")
+        },
+        {
+          text: "Skein-512-MAC Official Test Vector - 128 bytes, exactly two blocks",
+          uri: "https://github.com/bcgit/bc-lts-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/SkeinMacTest.java",
+          input: OpCodes.Hex8ToBytes("d3090c72167517f7c7ad82a70c2fd3f6443f608301591e598eadb195e8357135ba26fede2ee187417f816048d00fc23512737a2113709a77e4170c49a94b7fdff45ff579a72287743102e7766c35ca5abc5dfe2f63a1e726ce5fbd2926db03a2dd18b03fc1508a9aac45eb362440203a323e09edee6324ee2e37b4432c1867ed"),
+          key: OpCodes.Hex8ToBytes("cb41f1706cde09651203c2d0efbaddf847a0d315cb2e53ff8bac41da0002672e920244c66e02d5f0dad3e94c42bb65f0d14157decf4105ef5609d5b0984457c1"),
+          expected: OpCodes.Hex8ToBytes("04d8cddb0ad931d54d195899a094684344e902286037272890bce98a41813edc37a3cee190a693fcca613ee30049ce7ec2bdff9613f56778a13f8c28a21d167a")
         }
       ];
     }
