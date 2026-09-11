@@ -308,6 +308,24 @@
           input: OpCodes.Hex8ToBytes("00"),
           associatedData: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("AE7CEED1D556F2F0607F90C89C1208A6C9")
+        },
+        {
+          text: "NIST LWC KAT Vector #169 - 5-byte plaintext with 3-byte AD (partial rate block)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("0001020304"),
+          associatedData: OpCodes.Hex8ToBytes("000102"),
+          expected: OpCodes.Hex8ToBytes("65F7ACE7F270B64A8608774BEDFA7FCD6E17C04077")
+        },
+        {
+          text: "NIST LWC KAT Vector #1089 - 32-byte plaintext with 32-byte AD (multiple full rate blocks)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-128.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          expected: OpCodes.Hex8ToBytes("49A0541C4E10FB19BB20EC55115FF193F8C1255DDDD173CF79BAB9135718AA59C68BD981024C84E5135F17C10C3E7F56")
         }
       ];
     }
@@ -392,6 +410,15 @@
 
     get associatedData() {
       return this._associatedData ? [...this._associatedData] : null;
+    }
+
+    // Canonical AEAD interface property (alias for associatedData)
+    set aad(adBytes) {
+      this.associatedData = adBytes;
+    }
+
+    get aad() {
+      return this._associatedData ? [...this._associatedData] : [];
     }
 
 
@@ -607,6 +634,24 @@
           input: OpCodes.Hex8ToBytes("00"),
           associatedData: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("D54568591AB6696C94")
+        },
+        {
+          text: "NIST LWC KAT Vector #169 - 5-byte plaintext with 3-byte AD (partial rate block)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-64.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("0001020304"),
+          associatedData: OpCodes.Hex8ToBytes("000102"),
+          expected: OpCodes.Hex8ToBytes("F4B88FA2FE94E80BA2A4A55708")
+        },
+        {
+          text: "NIST LWC KAT Vector #1089 - 32-byte plaintext with 32-byte AD (multiple full rate blocks)",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SpoC-64.txt",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          expected: OpCodes.Hex8ToBytes("5D1F88D2D4CCEB47C921EBCD717B689B1DC86A640C72C1022350E05FB91282FEB4FBDE5F34A15CA0")
         }
       ];
     }
@@ -691,6 +736,15 @@
 
     get associatedData() {
       return this._associatedData ? [...this._associatedData] : null;
+    }
+
+    // Canonical AEAD interface property (alias for associatedData)
+    set aad(adBytes) {
+      this.associatedData = adBytes;
+    }
+
+    get aad() {
+      return this._associatedData ? [...this._associatedData] : [];
     }
 
 
@@ -818,7 +872,9 @@
           if (remaining > 0) {
             sliscpLight192Permute(state);
             state[SPOC_64_MASK_POS[remaining]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[remaining]], 0x80); // Padding
-            for (let i = remaining - 1; i >= 0; --i) {
+            // Rate and mask positions are disjoint, so the block is processed in
+            // increasing byte order to keep the ciphertext in message order.
+            for (let i = 0; i < remaining; ++i) {
               const mbyte = plaintext[mOffset + i];
               state[SPOC_64_MASK_POS[i]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[i]], mbyte);
               ciphertext.push(OpCodes.Xor32(mbyte, state[SPOC_64_RATE_POS[i]]));
@@ -887,7 +943,9 @@
           if (remaining > 0) {
             sliscpLight192Permute(state);
             state[SPOC_64_MASK_POS[remaining]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[remaining]], 0x80); // Padding
-            for (let i = remaining - 1; i >= 0; --i) {
+            // Rate and mask positions are disjoint, so the block is processed in
+            // increasing byte order to keep the plaintext in message order.
+            for (let i = 0; i < remaining; ++i) {
               const mbyte = OpCodes.Xor32(ciphertext[cOffset + i], state[SPOC_64_RATE_POS[i]]);
               state[SPOC_64_MASK_POS[i]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[i]], mbyte);
               plaintext.push(mbyte);
