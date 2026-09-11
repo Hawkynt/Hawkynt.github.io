@@ -106,37 +106,37 @@
       this.tests = [
         {
           text: "ISAP Hash: Empty message (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("7346BC14F036E87AE03D0997913088F5F68411434B3CF8B54FA796A80D251F91")
         },
         {
           text: "ISAP Hash: Single zero byte (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("8DD446ADA58A7740ECF56EB638EF775F7D5C0FD5F0C2BBBDFDEC29609D3C43A2")
         },
         {
           text: "ISAP Hash: Two bytes (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("F77CA13BF89146D3254F1CFB7EDDBA8FA1BF162284BB29E7F645545CF9E08424")
         },
         {
           text: "ISAP Hash: Four bytes (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("8013EAAA1951580A7BEF7D29BAC323377E64F279EA73E6881B8AED69855EF764")
         },
         {
           text: "ISAP Hash: Eight bytes (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           expected: OpCodes.Hex8ToBytes("F4C6A44B29915D3D57CF928A18EC6226BB8DD6C1136ACD24965F7E7780CD69CF")
         },
         {
           text: "ISAP Hash: Sixteen bytes (NIST LWC KAT)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/isap/crypto_aead_hash/isapa128ahv20/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("D4E56C4841E2A0069D4F07E61B2DCA94FD6D3F9C0DF78393E6E8292921BC841D")
         }
