@@ -124,10 +124,33 @@
         }
       ];
 
-      // Test vectors using byte arrays - bit-perfect results from implementation
+      // Test vectors using byte arrays.
+      // Key format is three start positions followed by three rotor numbers,
+      // so "AAA123" is rotors I, II and III left to right standing at AAA.
       this.tests = [
         {
-          text: "Basic Enigma Operation",
+          text: "Wikipedia canonical check - rotors I II III left to right, wide B reflector, ring settings A, start AAA, typing AAAAA gives BDZGO",
+          uri: "https://en.wikipedia.org/wiki/Enigma_rotor_details",
+          input: OpCodes.AnsiToBytes("AAAAA"),
+          key: OpCodes.AnsiToBytes("AAA123"),
+          expected: OpCodes.AnsiToBytes("BDZGO")
+        },
+        {
+          text: "The same check carried on to 25 letters, which crosses the right rotor's turnover at V and so exercises the middle rotor stepping",
+          uri: "https://en.wikipedia.org/wiki/Enigma_rotor_details",
+          input: OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAAAAAAAAAAA"),
+          key: OpCodes.AnsiToBytes("AAA123"),
+          expected: OpCodes.AnsiToBytes("BDZGOWCXLTKSBTMCDLPBMUQOF")
+        },
+        {
+          text: "Reciprocity - the machine is its own inverse, so the 25-letter ciphertext returns 25 A's on the same setting",
+          uri: "https://en.wikipedia.org/wiki/Enigma_rotor_details",
+          input: OpCodes.AnsiToBytes("BDZGOWCXLTKSBTMCDLPBMUQOF"),
+          key: OpCodes.AnsiToBytes("AAA123"),
+          expected: OpCodes.AnsiToBytes("AAAAAAAAAAAAAAAAAAAAAAAAA")
+        },
+        {
+          text: "Start position ABC. No published source carries this value; it is here to cover a non-zero start position",
           uri: "https://en.wikipedia.org/wiki/Enigma_machine",
           input: OpCodes.AnsiToBytes("HELLOWORLD"),
           key: OpCodes.AnsiToBytes("ABC123"),
@@ -260,28 +283,30 @@
       }
     }
 
-    // Step the rotors before encryption
+    // Step the rotors before encryption.
+    //
+    // The pawls read the rotor to their right, not the one they turn:
+    //  - the right rotor advances on every key press;
+    //  - the middle rotor advances when the RIGHT rotor is standing at its
+    //    own notch as the key goes down;
+    //  - the middle rotor also advances when it is itself standing at its
+    //    notch, and drags the left rotor round with it - the double step.
+    //
+    // Reading the middle rotor's notch to decide whether the middle rotor
+    // steps, and the left rotor's notch to decide whether the left rotor
+    // steps, meant neither ever moved: the middle rotor could only reach its
+    // own notch by stepping, and it never stepped. The machine degenerated
+    // into a period-26 substitution and diverged from the real Enigma at the
+    // 22nd letter of a message begun at AAA.
     stepRotors() {
-      // Double stepping mechanism (simplified)
-      let step = [false, false, false];
+      const middleNotch = this.rotorNotches[1].charCodeAt(0) - 65;
+      const rightNotch = this.rotorNotches[2].charCodeAt(0) - 65;
 
-      // Always step the rightmost rotor
-      step[2] = true;
+      const middleAtNotch = this.rotorPositions[1] === middleNotch;
+      const rightAtNotch = this.rotorPositions[2] === rightNotch;
 
-      // Check for notch positions to step middle rotor
-      const middleNotchPosition = this.rotorNotches[1].charCodeAt(0) - 65;
-      if (this.rotorPositions[1] === middleNotchPosition) {
-        step[1] = true;
-        step[0] = true; // Double stepping
-      }
+      const step = [middleAtNotch, middleAtNotch || rightAtNotch, true];
 
-      // Check for notch positions to step left rotor
-      const leftNotchPosition = this.rotorNotches[0].charCodeAt(0) - 65;
-      if (this.rotorPositions[0] === leftNotchPosition) {
-        step[0] = true;
-      }
-
-      // Apply stepping
       for (let i = 0; i < 3; i++) {
         if (step[i]) {
           this.rotorPositions[i] = (this.rotorPositions[i] + 1) % 26;

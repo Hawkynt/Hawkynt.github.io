@@ -132,6 +132,45 @@
           input: OpCodes.Hex8ToBytes("1011121314151617"),
           key: OpCodes.Hex8ToBytes("0102030405060708"),
           expected: OpCodes.Hex8ToBytes("71E5CF7F083A59C5")
+        },
+        {
+          text: "Crypto++ SAFER K-64 test 4 (incrementing key/plaintext)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("18191A1B1C1D1E1F"),
+          key: OpCodes.Hex8ToBytes("0102030405060708"),
+          expected: OpCodes.Hex8ToBytes("356F702CC7FA8161")
+        },
+        {
+          text: "Crypto++ SAFER K-128 test 1 (12 rounds, mirrored key halves)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("5051525354555657"),
+          key: OpCodes.Hex8ToBytes("08070605040302010807060504030201"),
+          rounds: 12,
+          expected: OpCodes.Hex8ToBytes("38E64DBF6E0F896E")
+        },
+        {
+          text: "Crypto++ SAFER K-128 test 2 (12 rounds, mirrored key halves)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("58595A5B5C5D5E5F"),
+          key: OpCodes.Hex8ToBytes("08070605040302010807060504030201"),
+          rounds: 12,
+          expected: OpCodes.Hex8ToBytes("7D8F014A902480FE")
+        },
+        {
+          text: "Crypto++ SAFER K-128 test 3 (12 rounds, distinct key halves)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("6061626364656667"),
+          key: OpCodes.Hex8ToBytes("01020304050607080807060504030201"),
+          rounds: 12,
+          expected: OpCodes.Hex8ToBytes("113511C22E7936DF")
+        },
+        {
+          text: "Crypto++ SAFER K-128 test 4 (12 rounds, distinct key halves)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("68696A6B6C6D6E6F"),
+          key: OpCodes.Hex8ToBytes("01020304050607080807060504030201"),
+          rounds: 12,
+          expected: OpCodes.Hex8ToBytes("9EEB2D17C0581437")
         }
       ];
 
@@ -236,6 +275,24 @@
 
     get key() {
       return this._key ? [...this._key] : null;
+    }
+
+    /**
+   * Round count. Defaults to 6 for K-64 and 10 for K-128; the specification
+   * permits any count up to 13, and published K-128 answers use 12.
+   * @returns {int32} Current round count
+   */
+
+    get rounds() {
+      return this.nofRounds;
+    }
+
+    set rounds(value) {
+      if (!value || value < 1 || value > this.algorithm.MAX_ROUNDS) {
+        throw new Error(`Invalid round count: ${value} (1..${this.algorithm.MAX_ROUNDS})`);
+      }
+      this.nofRounds = value;
+      if (this._key) this.expandedKey = this._expandKey(this._key);
     }
 
     /**

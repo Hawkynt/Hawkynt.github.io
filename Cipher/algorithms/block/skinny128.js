@@ -200,6 +200,14 @@
 
       // Official test vectors from SKINNY specification paper
       this.tests = [
+        // SKINNY-128-128 test vector
+        {
+          text: 'SKINNY-128-128 Official Test Vector',
+          uri: 'https://eprint.iacr.org/2016/660.pdf',
+          input: OpCodes.Hex8ToBytes('f20adb0eb08b648a3b2eeed1f0adda14'),
+          key: OpCodes.Hex8ToBytes('4f55cfb0520cac52fd92c15f37073e93'),
+          expected: OpCodes.Hex8ToBytes('22ff30d498ea62d7e45b476e33675b74')
+        },
         // SKINNY-128-256 test vector
         {
           text: 'SKINNY-128-256 Official Test Vector',
@@ -316,6 +324,20 @@
       schedule.TK1[1] = OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
       schedule.TK1[2] = OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]);
       schedule.TK1[3] = OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
+
+      if (keySize === 16) {
+        // SKINNY-128-128 has no TK2/TK3, but the round constants still have to
+        // be added to the first two rows of every round. Carry them in the same
+        // round-key slots the larger variants use so the round code is shared.
+        let rc = 0;
+        for (let round = 0; round < rounds; ++round) {
+          rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
+          schedule.roundKeys.push({
+            tk0: rc&0x0F,
+            tk1: OpCodes.Shr32(rc, 4)
+          });
+        }
+      }
 
       if (keySize >= 32) {
         // Pre-compute TK2 schedule for SKINNY-128-256 and SKINNY-128-384

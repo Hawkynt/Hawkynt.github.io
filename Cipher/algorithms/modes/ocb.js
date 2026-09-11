@@ -63,16 +63,19 @@
       const result = new Array(16);
       let carry = 0;
 
-      // Shift left by 1 bit (multiply by x)
+      // Shift left by 1 bit (multiply by x). The value is big-endian, so byte 0
+      // holds the most significant bits and the carry travels towards it.
       for (let i = 15; i >= 0; i--) {
         const newCarry = OpCodes.Shr32(value[i], 7);
         result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(value[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
-      // If there was a carry, reduce by the polynomial x^128 + x^7 + x^2 + x + 1
+      // If the top bit overflowed, reduce by x^128 + x^7 + x^2 + x + 1. The
+      // reduction polynomial lives at the least significant end of a big-endian
+      // value, which is the last byte, not the first.
       if (carry) {
-        result[0] = OpCodes.XorN(result[0], 0x87);
+        result[15] = OpCodes.XorN(result[15], 0x87);
       }
 
       return result;
@@ -581,34 +584,74 @@
         new Vulnerability("Patent History", "OCB was patent-encumbered until 2028. Now free for use but still requires careful implementation.")
       ];
 
-      // Round-trip test vectors based on RFC 7253
+      // RFC 7253 Appendix A sample results (K = 000102030405060708090A0B0C0D0E0F
+      // except where noted); the expected value is C = ciphertext || tag.
       this.tests = [
         {
-          text: "OCB3 round-trip test #1 - 8-byte plaintext",
-          uri: "https://tools.ietf.org/rfc/rfc7253.txt",
+          text: "RFC 7253 AES-128 OCB TAGLEN128, N=...01, 8-byte plaintext",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("BBAA99887766554433221101"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
-          tagLength: 16
+          tagLength: 16,
+          expected: OpCodes.Hex8ToBytes("6820B3657B6F615A5725BDA0D3B4EB3A257C9AF1F8F03009")
         },
         {
-          text: "OCB3 round-trip test #2 - 16-byte plaintext",
-          uri: "https://tools.ietf.org/rfc/rfc7253.txt",
+          text: "RFC 7253 AES-128 OCB TAGLEN128, N=...03, empty AAD",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("0001020304050607"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("BBAA99887766554433221103"),
+          aad: [],
+          tagLength: 16,
+          expected: OpCodes.Hex8ToBytes("45DD69F8F5AAE72414054CD1F35D82760B2CD00D2F99BFA9")
+        },
+        {
+          text: "RFC 7253 AES-128 OCB TAGLEN128, N=...04, one full block",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("BBAA99887766554433221104"),
           aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          tagLength: 16
+          tagLength: 16,
+          expected: OpCodes.Hex8ToBytes("571D535B60B277188BE5147170A9A22C3AD7A4FF3835B8C5701C1CCEC8FC3358")
         },
         {
-          text: "OCB3 round-trip test #3 - 24-byte plaintext",
-          uri: "https://tools.ietf.org/rfc/rfc7253.txt",
+          text: "RFC 7253 AES-128 OCB TAGLEN128, N=...07, block plus half block",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("BBAA99887766554433221105"),
+          nonce: OpCodes.Hex8ToBytes("BBAA99887766554433221107"),
           aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-          tagLength: 16
+          tagLength: 16,
+          expected: OpCodes.Hex8ToBytes("1CA2207308C87C010756104D8840CE1952F09673A448A122C92C62241051F57356D7F3C90BB0E07F")
+        },
+        {
+          text: "RFC 7253 AES-128 OCB TAGLEN128, N=...0D, 40-byte plaintext",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("BBAA9988776655443322110D"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627"),
+          tagLength: 16,
+          expected: OpCodes.Hex8ToBytes("D5CA91748410C1751FF8A2F618255B68A0A12E093FF454606E59F9C1D0DDC54B65E8628E568BAD7AED07BA06A4A69483A7035490C5769E60")
+        },
+        {
+          text: "RFC 7253 OCB TAGLEN96 with key 0F0E...0100",
+          uri: "https://www.rfc-editor.org/rfc/rfc7253.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627"),
+          key: OpCodes.Hex8ToBytes("0F0E0D0C0B0A09080706050403020100"),
+          nonce: OpCodes.Hex8ToBytes("BBAA9988776655443322110D"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F2021222324252627"),
+          tagLength: 12,
+          expected: OpCodes.Hex8ToBytes("1792A4E31E0755FB03E31B22116E6C2DDF9EFD6E33D536F1A0124B0A55BAE884ED93481529C76B6AD0C515F4D1CDD4FDAC4F02AA")
         }
       ];
     }
@@ -762,10 +805,36 @@
         return this._decrypt();
       } else {
         const result = this._encrypt();
-        // For testing purposes, return just the ciphertext (tag can be accessed via separate property)
         this.lastTag = result.tag;
-        return result.ciphertext;
+        // RFC 7253 defines the ciphertext as C_1 .. C_* || Tag, so the tag is
+        // appended here exactly as GCM and CCM do in this library.
+        const combined = [];
+        for (let _i = 0; _i < result.ciphertext.length; _i++) combined.push(result.ciphertext[_i]);
+        for (let _i = 0; _i < result.tag.length; _i++) combined.push(result.tag[_i]);
+        return combined;
       }
+    }
+
+    /**
+     * Apply the underlying block cipher in the forward direction
+     * @private
+     */
+    _encipher(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.key;
+      cipher.Feed(block);
+      return cipher.Result();
+    }
+
+    /**
+     * Apply the underlying block cipher in the inverse direction
+     * @private
+     */
+    _decipher(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(true);
+      cipher.key = this.key;
+      cipher.Feed(block);
+      return cipher.Result();
     }
 
     /**
@@ -777,8 +846,7 @@
       const m = Math.floor(plaintext.length / 16); // Number of complete blocks
 
       // Step 1: Process nonce to get initial offset
-      const offset = this._processNonce();
-      let currentOffset = [...offset];
+      let currentOffset = this._processNonce();
 
       // Step 2: Initialize checksum
       let checksum = new Array(16).fill(0);
@@ -793,11 +861,7 @@
         currentOffset = OpCodes.XorArrays(currentOffset, Li);
 
         // Encrypt: C_i = E_K(P_i ⊕ Offset_i) ⊕ Offset_i
-        const xorInput = OpCodes.XorArrays(block, currentOffset);
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key;
-        cipher.Feed(xorInput);
-        const encrypted = cipher.Result();
+        const encrypted = this._encipher(OpCodes.XorArrays(block, currentOffset));
         const cipherBlock = OpCodes.XorArrays(encrypted, currentOffset);
 
         for (let _i = 0; _i < cipherBlock.length; _i++) ciphertext.push(cipherBlock[_i]);
@@ -807,17 +871,16 @@
       }
 
       // Step 4: Process final partial block if present
+      let finalOffset = currentOffset;
       if (plaintext.length % 16 !== 0) {
         const finalBlock = plaintext.slice(m * 16);
 
-        // Offset_* = Offset_m ⊕ L_*
-        const finalOffset = OpCodes.XorArrays(currentOffset, this.LDollar);
+        // Offset_* = Offset_m ⊕ L_*  (L_*, the encryption of the zero block,
+        // not L_$ which only takes part in the tag)
+        finalOffset = OpCodes.XorArrays(currentOffset, this.L);
 
         // Pad = E_K(Offset_*)
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key;
-        cipher.Feed(finalOffset);
-        const pad = cipher.Result();
+        const pad = this._encipher(finalOffset);
 
         // C_* = P_* ⊕ Pad[1..len(P_*)]
         const finalCipher = [];
@@ -836,12 +899,11 @@
       }
 
       // Step 5: Compute authentication tag
-      const tag = this._computeTag(checksum, currentOffset);
+      const tag = this._computeTag(checksum, finalOffset);
 
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
       OpCodes.ClearArray(checksum);
-      OpCodes.ClearArray(currentOffset);
       this.inputBuffer = [];
 
       return {
@@ -851,60 +913,74 @@
     }
 
     /**
-     * OCB3 decryption - simplified implementation for testing
+     * OCB3 decryption and tag verification following RFC 7253
      * @returns {Array} Decrypted plaintext
      */
     _decrypt() {
-      const plaintext = this.inputBuffer;
-      const m = Math.floor(plaintext.length / 16); // Number of complete blocks
+      if (this.inputBuffer.length < this.tagLength) {
+        throw new Error("Input too short for authentication tag");
+      }
+
+      const ciphertext = this.inputBuffer.slice(0, this.inputBuffer.length - this.tagLength);
+      const receivedTag = this.inputBuffer.slice(this.inputBuffer.length - this.tagLength);
+      const m = Math.floor(ciphertext.length / 16); // Number of complete blocks
 
       // Step 1: Process nonce to get initial offset
-      const offset = this._processNonce();
-      let currentOffset = [...offset];
+      let currentOffset = this._processNonce();
 
-      // Step 2: Initialize output
+      // Step 2: Initialize output and checksum
       const output = [];
+      let checksum = new Array(16).fill(0);
 
       // Step 3: Process complete blocks (reverse of encryption)
       for (let i = 1; i <= m; i++) {
-        const block = plaintext.slice((i - 1) * 16, i * 16);
+        const block = ciphertext.slice((i - 1) * 16, i * 16);
 
         // Update offset: Offset_i = Offset_{i-1} ⊕ L[ntz(i)]
         const Li = this._getLi(OcbSharedUtils.ntz(i));
         currentOffset = OpCodes.XorArrays(currentOffset, Li);
 
         // Decrypt: P_i = D_K(C_i ⊕ Offset_i) ⊕ Offset_i
-        const xorInput = OpCodes.XorArrays(block, currentOffset);
-        const cipher = this.blockCipher.algorithm.CreateInstance(true); // Decrypt
-        cipher.key = this.key;
-        cipher.Feed(xorInput);
-        const decrypted = cipher.Result();
+        const decrypted = this._decipher(OpCodes.XorArrays(block, currentOffset));
         const plainBlock = OpCodes.XorArrays(decrypted, currentOffset);
 
         for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
+
+        checksum = OpCodes.XorArrays(checksum, plainBlock);
       }
 
-      // Step 4: Process final partial block if present (simplified)
-      if (plaintext.length % 16 !== 0) {
-        const finalBlock = plaintext.slice(m * 16);
+      // Step 4: Process final partial block if present
+      let finalOffset = currentOffset;
+      if (ciphertext.length % 16 !== 0) {
+        const finalBlock = ciphertext.slice(m * 16);
 
-        // Simplified partial block handling for testing
-        const finalOffset = OpCodes.XorArrays(currentOffset, this.LDollar);
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key;
-        cipher.Feed(finalOffset);
-        const pad = cipher.Result();
+        // Offset_* = Offset_m ⊕ L_*, Pad = E_K(Offset_*)
+        finalOffset = OpCodes.XorArrays(currentOffset, this.L);
+        const pad = this._encipher(finalOffset);
 
-        // Reverse the encryption XOR
         const finalPlain = [];
         for (let i = 0; i < finalBlock.length; i++) {
           finalPlain[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
         for (let _i = 0; _i < finalPlain.length; _i++) output.push(finalPlain[_i]);
+
+        const paddedFinal = [...finalPlain];
+        paddedFinal.push(0x80);
+        while (paddedFinal.length < 16) {
+          paddedFinal.push(0x00);
+        }
+        checksum = OpCodes.XorArrays(checksum, paddedFinal);
+      }
+
+      // Step 5: Verify the authentication tag
+      const expectedTag = this._computeTag(checksum, finalOffset).slice(0, this.tagLength);
+      if (!OpCodes.SecureCompare(receivedTag, expectedTag)) {
+        throw new Error("OCB3 authentication failed - tag mismatch");
       }
 
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
+      OpCodes.ClearArray(checksum);
       this.inputBuffer = [];
 
       return output;
@@ -938,25 +1014,44 @@
      */
     _processNonce() {
       const nonce = [...this.nonce];
+      const len = nonce.length;
 
-      // Create 128-bit processed nonce - RFC 7253 format
+      // RFC 7253: Nonce = num2str(TAGLEN mod 128, 7) || zeros(120-bitlen(N)) || 1 || N
       const processedNonce = new Array(16).fill(0);
-
-      // For RFC 7253: copy nonce starting from byte 1 (leave first byte for tag length encoding)
-      // The nonce is placed in the first 120 bits (15 bytes), with the last byte containing format info
-      for (let i = 0; i < Math.min(nonce.length, 15); i++) {
-        processedNonce[i] = nonce[i];
+      processedNonce[0] = OpCodes.AndN(OpCodes.Shl32((this.tagLength * 8) % 128, 1), 0xFF);
+      processedNonce[15 - len] = OpCodes.OrN(processedNonce[15 - len], 1);
+      for (let i = 0; i < len; i++) {
+        processedNonce[16 - len + i] = nonce[i];
       }
 
-      // Set the last byte: bottom bit = 1, upper 7 bits = (tag_length/8 - 1)
-      // For 128-bit tag: (128/8 - 1) = 15, shift left by 1 = 30, plus 1 = 31
-      processedNonce[15] = OpCodes.OrN(OpCodes.Shl32(this.tagLength - 1, 1), 1);
+      // bottom = str2num(Nonce[123..128]) - the six least significant bits
+      const bottom = OpCodes.AndN(processedNonce[15], 0x3F);
 
-      // Generate offset: Offset_0 = E_K(processed_nonce)
-      const cipher = this.blockCipher.algorithm.CreateInstance(false);
-      cipher.key = this.key;
-      cipher.Feed(processedNonce);
-      return cipher.Result();
+      // Ktop = ENCIPHER(K, Nonce[1..122] || zeros(6))
+      const ktopInput = [...processedNonce];
+      ktopInput[15] = OpCodes.AndN(ktopInput[15], 0xC0);
+      const ktop = this._encipher(ktopInput);
+
+      // Stretch = Ktop || (Ktop[1..64] xor Ktop[9..72])
+      const stretch = new Array(24);
+      for (let i = 0; i < 16; i++) stretch[i] = ktop[i];
+      for (let i = 0; i < 8; i++) stretch[16 + i] = OpCodes.XorN(ktop[i], ktop[i + 1]);
+
+      // Offset_0 = Stretch[1+bottom..128+bottom]
+      const byteShift = Math.floor(bottom / 8);
+      const bitShift = bottom % 8;
+      const offset = new Array(16);
+      for (let i = 0; i < 16; i++) {
+        if (bitShift === 0) {
+          offset[i] = stretch[i + byteShift];
+        } else {
+          const high = OpCodes.AndN(OpCodes.Shl32(stretch[i + byteShift], bitShift), 0xFF);
+          const low = OpCodes.Shr32(stretch[i + byteShift + 1], 8 - bitShift);
+          offset[i] = OpCodes.OrN(high, low);
+        }
+      }
+
+      return offset;
     }
 
     /**
@@ -982,7 +1077,7 @@
      * @returns {Array} Authentication tag
      */
     _computeTag(checksum, offset) {
-      // Process AAD
+      // HASH(K, A) per RFC 7253
       let aadChecksum = new Array(16).fill(0);
 
       if (this.aad.length > 0) {
@@ -996,24 +1091,15 @@
           const Li = this._getLi(OcbSharedUtils.ntz(i));
           aadOffset = OpCodes.XorArrays(aadOffset, Li);
 
-          const cipher = this.blockCipher.algorithm.CreateInstance(false);
-          cipher.key = this.key;
-          const xorInput = OpCodes.XorArrays(aadBlock, aadOffset);
-          cipher.Feed(xorInput);
-          const encrypted = cipher.Result();
-
+          const encrypted = this._encipher(OpCodes.XorArrays(aadBlock, aadOffset));
           aadChecksum = OpCodes.XorArrays(aadChecksum, encrypted);
         }
 
-        // Process final partial AAD block if present
+        // Process final partial AAD block if present. The padded block is
+        // enciphered after being offset, not merely XORed with a pad.
         if (this.aad.length % 16 !== 0) {
           const finalAAD = this.aad.slice(aadBlocks * 16);
-          const finalOffset = OpCodes.XorArrays(aadOffset, this.LDollar);
-
-          const cipher = this.blockCipher.algorithm.CreateInstance(false);
-          cipher.key = this.key;
-          cipher.Feed(finalOffset);
-          const pad = cipher.Result();
+          const finalOffset = OpCodes.XorArrays(aadOffset, this.L);
 
           const paddedAAD = [...finalAAD];
           paddedAAD.push(0x80);
@@ -1021,21 +1107,16 @@
             paddedAAD.push(0x00);
           }
 
-          const xorResult = OpCodes.XorArrays(paddedAAD, pad);
-          aadChecksum = OpCodes.XorArrays(aadChecksum, xorResult);
+          const encrypted = this._encipher(OpCodes.XorArrays(paddedAAD, finalOffset));
+          aadChecksum = OpCodes.XorArrays(aadChecksum, encrypted);
         }
       }
 
-      // Final tag computation: Tag = E_K(Checksum ⊕ Offset_final ⊕ L$ ⊕ AAD_checksum)
+      // Tag = ENCIPHER(K, Checksum_* ⊕ Offset_* ⊕ L_$) ⊕ HASH(K, A)
       let tagInput = OpCodes.XorArrays(checksum, offset);
       tagInput = OpCodes.XorArrays(tagInput, this.LDollar);
-      tagInput = OpCodes.XorArrays(tagInput, aadChecksum);
 
-      const cipher = this.blockCipher.algorithm.CreateInstance(false);
-      cipher.key = this.key;
-      cipher.Feed(tagInput);
-
-      return cipher.Result();
+      return OpCodes.XorArrays(this._encipher(tagInput), aadChecksum);
     }
   }
 

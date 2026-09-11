@@ -200,13 +200,14 @@
         new LinkItem("Skinny-C MANTIS Source (mantis-cipher.c)", "https://github.com/rweather/skinny-c/blob/master/src/mantis-cipher.c")
       ];
 
-      // Test vectors from skinny-c reference implementation
-      // User-provided test vector (b72209464676ba25 for all-zero input) has NOT been verified
-      //  against official sources and is not included until verification is possible.
+      // Test vector from the SKINNY/MANTIS specification, Appendix B.2.
+      // Only the MANTIS-7 instance (7 forward plus 7 backward rounds) is
+      // implemented here; the paper's MANTIS-5, MANTIS-6 and MANTIS-8 vectors
+      // use a different round count and are therefore not applicable.
       this.tests = [
         {
-          text: "MANTIS-7 Official Test Vector (skinny-c)",
-          uri: "https://github.com/rweather/skinny-c",
+          text: "MANTIS-7 Test Vector - specification Appendix B.2",
+          uri: "https://eprint.iacr.org/2016/660.pdf",
           input: OpCodes.Hex8ToBytes("60e43457311936fd"),
           key: OpCodes.Hex8ToBytes("92f09952c625e3e9d7a060f714c0292b"),
           tweak: OpCodes.Hex8ToBytes("ba912e6f1055fed2"),

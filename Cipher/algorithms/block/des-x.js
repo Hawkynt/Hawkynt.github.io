@@ -4,7 +4,8 @@
  * (c)2006-2025 Hawkynt
  * 
  * DES-X by Ron Rivest (1984) - DES with key whitening
- * Block size: 64 bits, Key size: 184 bits (56-bit DES key + 64-bit pre-whitening + 64-bit post-whitening)
+ * Block size: 64 bits. Key string: 24 bytes, K1 (pre-whitening) || DES key || K2 (post-whitening),
+ * the layout RSA BSAFE and Crypto++ DES_XEX3 use. Nominal strength 184 bits.
  * Uses standard DES with additional XOR keys before and after encryption
  * 
  * Educational implementation for learning cryptographic key whitening techniques.
@@ -79,7 +80,7 @@
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new KeySize(23, 23, 0) // Fixed 184-bit keys (23 bytes)
+        new KeySize(24, 24, 0) // 24-byte key string: K1 || DES key || K2
       ];
       this.SupportedBlockSizes = [
         new KeySize(8, 8, 0) // Fixed 64-bit blocks (8 bytes)
@@ -112,21 +113,57 @@
         )
       ];
 
-      // Test vectors for DES-X with key whitening verification
+      // Test vectors.
+      //
+      // The first is the all-zero case: with both whitening keys zero DES-X
+      // degenerates to DES, so the expected block is the published DES
+      // all-zero known answer.
+      //
+      // The remaining four are the four blocks of OpenSSL's DES_xcbc_encrypt
+      // known answer (test/destest.c, arrays cbc_data, cbc_key, cbc2_key,
+      // cbc3_key, cbc_iv and xcbc_ok). DES_xcbc_encrypt is DES-X in CBC mode,
+      // C_i = K2 XOR DES_K(K1 XOR P_i XOR C_{i-1}), so each block of xcbc_ok
+      // is directly a DES-X block encryption of P_i XOR C_{i-1} under
+      // K1 = cbc2_key, K = cbc_key, K2 = cbc3_key. The expected bytes below
+      // are the bytes of xcbc_ok, in order.
+      const XCBC_URI = "https://github.com/openssl/openssl/blob/master/test/destest.c";
+      const XCBC_KEY = "F1E0D3C2B5A497860123456789ABCDEFFEDCBA9876543210";
+
       this.tests = [
         {
-          text: "DES-X All Zeros Test Vector",
-          uri: "https://people.csail.mit.edu/rivest/pubs.html#Rivest84",
+          text: "DES-X all-zero key and block (degenerates to the DES all-zero known answer)",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/DES-ECB.pdf",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("8CA64DE9C1B123A7")
         },
         {
-          text: "DES-X Key Whitening Test Vector",
-          uri: "https://people.csail.mit.edu/rivest/pubs.html#Rivest84",
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-          key: OpCodes.Hex8ToBytes("123456789ABCDEF00123456789ABCDFEDCBA9876543210"),
-          expected: OpCodes.Hex8ToBytes("E90D655C944145EC")
+          text: "OpenSSL DES_xcbc_encrypt known answer, block 1",
+          uri: XCBC_URI,
+          input: OpCodes.Hex8ToBytes("C9EA8FAC45660330"),
+          key: OpCodes.Hex8ToBytes(XCBC_KEY),
+          expected: OpCodes.Hex8ToBytes("846B2914851E9A29")
+        },
+        {
+          text: "OpenSSL DES_xcbc_encrypt known answer, block 2",
+          uri: XCBC_URI,
+          input: OpCodes.Hex8ToBytes("CA045E34EC6DBA5D"),
+          key: OpCodes.Hex8ToBytes(XCBC_KEY),
+          expected: OpCodes.Hex8ToBytes("54732F8AA0A611C1")
+        },
+        {
+          text: "OpenSSL DES_xcbc_encrypt known answer, block 3",
+          uri: XCBC_URI,
+          input: OpCodes.Hex8ToBytes("3C160FFEC9CB74E1"),
+          key: OpCodes.Hex8ToBytes(XCBC_KEY),
+          expected: OpCodes.Hex8ToBytes("15CDC2D7951B1053")
+        },
+        {
+          text: "OpenSSL DES_xcbc_encrypt known answer, block 4",
+          uri: XCBC_URI,
+          input: OpCodes.Hex8ToBytes("73A2B0F7951B1053"),
+          key: OpCodes.Hex8ToBytes(XCBC_KEY),
+          expected: OpCodes.Hex8ToBytes("A63C5E03B21AA3C4")
         }
       ];
     }
@@ -188,25 +225,30 @@
         return;
       }
 
-      // Validate key size (must be 23 bytes for 184-bit key)
-      if (keyBytes.length !== 23) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DES-X requires exactly 23 bytes (184 bits)`);
+      // Validate key size (must be 24 bytes)
+      if (keyBytes.length !== 24) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DES-X requires exactly 24 bytes`);
       }
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
-      // Split 184-bit key into components:
-      // K1: bytes 0-7 (64-bit pre-whitening key)
-      // DES_K: bytes 8-14 (56-bit DES key, 7 bytes)  
-      // K2: bytes 15-22 (64-bit post-whitening key)
+      // Split the 192-bit key string into components, in the order RSA BSAFE
+      // and Crypto++ DES_XEX3 use:
+      // K1:    bytes 0-7   (64-bit pre-whitening key)
+      // DES_K: bytes 8-15  (DES key in the usual 8-byte form; DES itself
+      //                     ignores the low bit of each byte, so 56 bits act)
+      // K2:    bytes 16-23 (64-bit post-whitening key)
+      //
+      // Packing the DES key as a bare 7-byte string instead would push seven of
+      // its bits onto the parity positions PC1 discards and force the eighth
+      // byte to zero, leaving only 49 of the 56 DES key bits reachable.
 
       this.K1 = keyBytes.slice(0, 8);
-      this.desKey = keyBytes.slice(8, 15);
-      this.K2 = keyBytes.slice(15, 23);
+      this.desKey = keyBytes.slice(8, 16);
+      this.K2 = keyBytes.slice(16, 24);
 
-      // Pad DES key to 8 bytes (add parity byte)
-      this.desKeyPadded = [...this.desKey, 0x00];
+      this.desKeyPadded = [...this.desKey];
     }
 
     /**

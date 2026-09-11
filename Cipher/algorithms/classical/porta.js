@@ -90,42 +90,52 @@
         }
       ];
 
-      // Porta tableau - 13 reciprocal substitution alphabets
+      // Porta tableau - the 13 reciprocal substitution alphabets as printed in
+      // the classical table. Each row pairs the first half of the alphabet A-M
+      // with the second half N-Z; going down the table the N-Z half is rotated
+      // one place further left while A-M stays put, which is what makes every
+      // row an involution and the whole cipher self-inverse.
+      //
+      // Rotating all 26 letters instead - a Caesar shift of 13+row - looks
+      // similar and agrees with this table on the first row only. Every other
+      // row then failed to be reciprocal, contradicting the description above,
+      // and the cipher disagreed with the published tableau from the second
+      // key letter onwards.
       this.PORTA_TABLEAU = [
         'NOPQRSTUVWXYZABCDEFGHIJKLM', // A,B
-        'OPQRSTUVWXYZABCDEFGHIJKLMN', // C,D
-        'PQRSTUVWXYZABCDEFGHIJKLMNO', // E,F
-        'QRSTUVWXYZABCDEFGHIJKLMNOP', // G,H
-        'RSTUVWXYZABCDEFGHIJKLMNOPQ', // I,J
-        'STUVWXYZABCDEFGHIJKLMNOPQR', // K,L
-        'TUVWXYZABCDEFGHIJKLMNOPQRS', // M,N
-        'UVWXYZABCDEFGHIJKLMNOPQRST', // O,P
-        'VWXYZABCDEFGHIJKLMNOPQRSTU', // Q,R
-        'WXYZABCDEFGHIJKLMNOPQRSTUV', // S,T
-        'XYZABCDEFGHIJKLMNOPQRSTUVW', // U,V
-        'YZABCDEFGHIJKLMNOPQRSTUVWX', // W,X
-        'ZABCDEFGHIJKLMNOPQRSTUVWXY'  // Y,Z
+        'OPQRSTUVWXYZNMABCDEFGHIJKL', // C,D
+        'PQRSTUVWXYZNOLMABCDEFGHIJK', // E,F
+        'QRSTUVWXYZNOPKLMABCDEFGHIJ', // G,H
+        'RSTUVWXYZNOPQJKLMABCDEFGHI', // I,J
+        'STUVWXYZNOPQRIJKLMABCDEFGH', // K,L
+        'TUVWXYZNOPQRSHIJKLMABCDEFG', // M,N
+        'UVWXYZNOPQRSTGHIJKLMABCDEF', // O,P
+        'VWXYZNOPQRSTUFGHIJKLMABCDE', // Q,R
+        'WXYZNOPQRSTUVEFGHIJKLMABCD', // S,T
+        'XYZNOPQRSTUVWDEFGHIJKLMABC', // U,V
+        'YZNOPQRSTUVWXCDEFGHIJKLMAB', // W,X
+        'ZNOPQRSTUVWXYBCDEFGHIJKLMA'  // Y,Z
       ];
 
       // Test vectors using byte arrays
       this.tests = [
         {
-          text: "Basic Test",
-          uri: "https://en.wikipedia.org/wiki/Porta_cipher",
-          input: global.OpCodes.AnsiToBytes("HELLO"),
-          key: global.OpCodes.AnsiToBytes("KEY"),
-          expected: global.OpCodes.AnsiToBytes("ZTKDD")
+          text: "Practical Cryptography worked example - DEFENDTHEEASTWALLOFTHECASTLE under FORTIFICATION",
+          uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
+          input: global.OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
+          key: global.OpCodes.AnsiToBytes("FORTIFICATION"),
+          expected: global.OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY")
         },
         {
-          text: "Extended Test",
-          uri: "https://cryptii.com/pipes/porta-cipher",
-          input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
-          key: global.OpCodes.AnsiToBytes("CIPHER"),
-          expected: global.OpCodes.AnsiToBytes("OKNQRFOKXQLI")
+          text: "Reciprocity - the same worked example run again on its own ciphertext returns the plaintext",
+          uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
+          input: global.OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY"),
+          key: global.OpCodes.AnsiToBytes("FORTIFICATION"),
+          expected: global.OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE")
         },
         {
-          text: "Full Alphabet Test",
-          uri: "https://www.dcode.fr/porta-cipher",
+          text: "First row of the published tableau read straight off - key letter A pairs A-M with N-Z",
+          uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
           input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
           key: global.OpCodes.AnsiToBytes("A"),
           expected: global.OpCodes.AnsiToBytes("NOPQRSTUVWXYZABCDEFGHIJKLM")
