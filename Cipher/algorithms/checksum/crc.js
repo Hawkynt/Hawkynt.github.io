@@ -69,9 +69,9 @@
       resultReflected: true,
       finalXor: 0x00,
       tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("8a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("a2"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
+        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("3b"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
+        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("a1"), "Catalogue check value for CRC-8/MAXIM-DOW", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow")
       ]
     },
     'CRC-8-AUTOSAR': {
@@ -276,9 +276,9 @@
       finalXorHigh: 0xffffffff,
       finalXorLow: 0xffffffff,
       tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "Computed from algorithm"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("a0d4a674ee2140cc"), "Single byte 'a'", "Computed from algorithm"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("5f9c98fbdd93ba99"), "String '123456789'", "Computed from algorithm")
+        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
+        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("330284772e652b05"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
+        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("995dc9bbdf1939fa"), "Catalogue check value for CRC-64/XZ", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz")
       ]
     },
     'CRC-64-ECMA182': {
@@ -514,12 +514,10 @@
 
     _updateCRC32(byte) {
       const bitWidth = this.config.bitWidth;
-      let inputByte = byte;
-
-      // Reflect input byte ONLY for 8-bit CRCs
-      if (this.config.inputReflected && bitWidth === 8) {
-        inputByte = this._reflect8(inputByte);
-      }
+      // The reflected table is built from the reflected polynomial and consumed
+      // LSB-first, which already accounts for inputReflected. Reflecting the
+      // incoming byte on top of that would apply the reflection twice.
+      const inputByte = byte;
 
       if (this.config.inputReflected) {
         // Reflected algorithm (LSB first)
@@ -603,22 +601,19 @@
       const bitWidth = this.config.bitWidth;
       let finalCrc = this.crc;
 
-      // Apply result reflection based on bit width
-      // CRC-8: always reflect if resultReflected is true
-      // CRC-16, CRC-24, CRC-32: reflect only if inputReflected != resultReflected
-      if (bitWidth === 8) {
-        if (this.config.resultReflected) {
+      // Result reflection. Running the reflected table already leaves the
+      // register in reflected form, so a further reflection is only needed when
+      // inputReflected and resultReflected disagree. This rule is uniform over
+      // every width.
+      if (this.config.inputReflected !== this.config.resultReflected) {
+        if (bitWidth === 8) {
           finalCrc = this._reflect8(finalCrc);
-        }
-      } else if (bitWidth >= 16 && bitWidth <= 32) {
-        if (this.config.inputReflected !== this.config.resultReflected) {
-          if (bitWidth === 16) {
-            finalCrc = this._reflect16(finalCrc);
-          } else if (bitWidth === 24) {
-            finalCrc = this._reflect24(finalCrc);
-          } else if (bitWidth === 32) {
-            finalCrc = this._reflect32(finalCrc);
-          }
+        } else if (bitWidth === 16) {
+          finalCrc = this._reflect16(finalCrc);
+        } else if (bitWidth === 24) {
+          finalCrc = this._reflect24(finalCrc);
+        } else if (bitWidth === 32) {
+          finalCrc = this._reflect32(finalCrc);
         }
       }
 
@@ -645,9 +640,9 @@
       let finalCrcHigh = this.crcHigh;
       let finalCrcLow = this.crcLow;
 
-      // For CRC-64, use CRC-8 logic: always reflect if resultReflected is true
-      // (different from CRC-16/24/32 which only reflect if inputReflected != resultReflected)
-      if (this.config.resultReflected) {
+      // Same rule as the narrower widths: the reflected table leaves the
+      // register reflected already, so reflect again only on disagreement.
+      if (this.config.inputReflected !== this.config.resultReflected) {
         const temp = this._reflect64(finalCrcHigh, finalCrcLow);
         finalCrcHigh = temp.high;
         finalCrcLow = temp.low;

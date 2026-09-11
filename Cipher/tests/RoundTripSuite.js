@@ -293,8 +293,20 @@ function roundTrip(algorithm, data, vector) {
   forward.Feed(data);
   const packed = forward.Result();
   const inverse = makeInstance(algorithm, true, config, data.length);
-  inverse.Feed(packed);
-  return { packed, restored: inverse.Result() };
+  try {
+    inverse.Feed(packed);
+    return { packed, restored: inverse.Result() };
+  } catch (error) {
+    // The forward direction accepted this input and produced output; the inverse
+    // then refused that very output. Refusing input outside the declared domain
+    // is legitimate and is how an algorithm should behave, but nothing it
+    // produced itself is outside its own domain. Marking the two apart is the
+    // whole point: without it an AEAD that cannot decrypt its own ciphertext
+    // scores a refusal and passes, which is how 18 of them did.
+    const refusal = new Error(`inverse refused what the forward direction produced: ${error.message}`);
+    refusal.inverseRefused = true;
+    throw refusal;
+  }
 }
 
 // Categories whose algorithms are reversible in the compress/decompress sense.
@@ -447,7 +459,13 @@ function checkCipher(algorithm, corpus, vector) {
     try {
       ({ packed, restored } = roundTrip(algorithm, testCase.data, vector));
     } catch (error) {
-      refused++;
+      // Declining to encrypt something is a legitimate domain restriction.
+      // Declining to decrypt what this same algorithm just encrypted is not, and
+      // counting it as a refusal let 18 AEAD schemes pass while unable to recover
+      // their own ciphertext - Spook managed one length in eleven.
+      if (error.inverseRefused)
+        problems.push(`${testCase.name}: ${testCase.data.length} bytes encrypted, then ${error.message}`);
+      else refused++;
       continue;
     }
     if (sameBytes(restored, testCase.data)) {

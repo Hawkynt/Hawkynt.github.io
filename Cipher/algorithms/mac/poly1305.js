@@ -224,37 +224,32 @@
       let h = BigInt(0);
       const p = OpCodes.ShiftLn(BigInt(1), BigInt(130)) - BigInt(5); // 2^130 - 5
 
-      // Process message in 16-byte blocks
-      if (message.length === 0) {
-        // Empty message case - just process single padding bit
-        const n = BigInt(1); // Just the padding bit
+      // Process message in 16-byte blocks. RFC 8439 iterates over ceil(len/16)
+      // blocks, so an empty message contributes no block at all and leaves the
+      // accumulator at zero - the tag is then simply s.
+      const msg = [...message];
+
+      while (msg.length > 0) {
+        // Take up to 16 bytes for this block
+        const blockSize = Math.min(16, msg.length);
+        const block = msg.splice(0, blockSize);
+
+        // Pad with zeros to 16 bytes
+        while (block.length < 16) {
+          block.push(0);
+        }
+
+        // Convert block to number and add padding bit
+        let n = this.bytesToNum(block);
+        if (blockSize === 16) {
+          n += OpCodes.ShiftLn(BigInt(1), BigInt(128)); // Add 2^128
+        } else {
+          n += OpCodes.ShiftLn(BigInt(1), BigInt(blockSize * 8)); // Add 2^(8*blockSize)
+        }
+
+        // h = ((h + n) * r) mod p
         h = (h + n) % p;
         h = (h * r) % p;
-      } else {
-        const msg = [...message];
-
-        while (msg.length > 0) {
-          // Take up to 16 bytes for this block
-          const blockSize = Math.min(16, msg.length);
-          const block = msg.splice(0, blockSize);
-
-          // Pad with zeros to 16 bytes
-          while (block.length < 16) {
-            block.push(0);
-          }
-
-          // Convert block to number and add padding bit
-          let n = this.bytesToNum(block);
-          if (blockSize === 16) {
-            n += OpCodes.ShiftLn(BigInt(1), BigInt(128)); // Add 2^128
-          } else {
-            n += OpCodes.ShiftLn(BigInt(1), BigInt(blockSize * 8)); // Add 2^(8*blockSize)
-          }
-
-          // h = ((h + n) * r) mod p
-          h = (h + n) % p;
-          h = (h * r) % p;
-        }
       }
 
       // Final step: add s

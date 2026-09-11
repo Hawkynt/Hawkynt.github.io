@@ -5,6 +5,31 @@
  * Reference: https://project.inria.fr/saturnin/
  * Reference Implementation: https://github.com/rweather/lwc-finalists
  * (c)2006-2025 Hawkynt
+ *
+ * The bit-sliced block cipher layout - the word ordering that the MDS layer
+ * leaves behind and that each following layer has to be told about - follows
+ * the reference implementation in rweather/lightweight-crypto, which is
+ * distributed under the MIT licence:
+ *
+ *   Copyright (C) 2020 Southern Storm Software, Pty Ltd.
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a
+ *   copy of this software and associated documentation files (the "Software"),
+ *   to deal in the Software without restriction, including without limitation
+ *   the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ *   and/or sell copies of the Software, and to permit persons to whom the
+ *   Software is furnished to do so, subject to the following conditions:
+ *
+ *   The above copyright notice and this permission notice shall be included
+ *   in all copies or substantial portions of the Software.
+ *
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ *   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ *   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ *   DEALINGS IN THE SOFTWARE.
  */
 
 (function (root, factory) {
@@ -159,52 +184,74 @@ class SaturninCipher {
             OpCodes.Shr32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (16 - bits2))));
   }
 
+  // The MDS layer permutes the eight bit-sliced words implicitly: rather than
+  // moving the words around, each following layer is told which slot now holds
+  // which word. Every layer below therefore takes its eight operands as
+  // explicit state indices instead of assuming the natural 0..7 order.
+
   // Slice permutation
-  slice(state) {
-    state[0] = this.leftRotate4N(state[0], 0xFFFF, 0, 0x3333, 2);
-    state[1] = this.leftRotate4N(state[1], 0xFFFF, 0, 0x3333, 2);
-    state[2] = this.leftRotate4N(state[2], 0xFFFF, 0, 0x3333, 2);
-    state[3] = this.leftRotate4N(state[3], 0xFFFF, 0, 0x3333, 2);
-    state[4] = this.leftRotate4N(state[4], 0x7777, 1, 0x1111, 3);
-    state[5] = this.leftRotate4N(state[5], 0x7777, 1, 0x1111, 3);
-    state[6] = this.leftRotate4N(state[6], 0x7777, 1, 0x1111, 3);
-    state[7] = this.leftRotate4N(state[7], 0x7777, 1, 0x1111, 3);
+  slice(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    state[i0] = this.leftRotate4N(state[i0], 0xFFFF, 0, 0x3333, 2);
+    state[i1] = this.leftRotate4N(state[i1], 0xFFFF, 0, 0x3333, 2);
+    state[i2] = this.leftRotate4N(state[i2], 0xFFFF, 0, 0x3333, 2);
+    state[i3] = this.leftRotate4N(state[i3], 0xFFFF, 0, 0x3333, 2);
+    state[i4] = this.leftRotate4N(state[i4], 0x7777, 1, 0x1111, 3);
+    state[i5] = this.leftRotate4N(state[i5], 0x7777, 1, 0x1111, 3);
+    state[i6] = this.leftRotate4N(state[i6], 0x7777, 1, 0x1111, 3);
+    state[i7] = this.leftRotate4N(state[i7], 0x7777, 1, 0x1111, 3);
   }
 
   // Inverse slice permutation
-  sliceInverse(state) {
-    state[0] = this.leftRotate4N(state[0], 0xFFFF, 0, 0x3333, 2);
-    state[1] = this.leftRotate4N(state[1], 0xFFFF, 0, 0x3333, 2);
-    state[2] = this.leftRotate4N(state[2], 0xFFFF, 0, 0x3333, 2);
-    state[3] = this.leftRotate4N(state[3], 0xFFFF, 0, 0x3333, 2);
-    state[4] = this.leftRotate4N(state[4], 0x1111, 3, 0x7777, 1);
-    state[5] = this.leftRotate4N(state[5], 0x1111, 3, 0x7777, 1);
-    state[6] = this.leftRotate4N(state[6], 0x1111, 3, 0x7777, 1);
-    state[7] = this.leftRotate4N(state[7], 0x1111, 3, 0x7777, 1);
+  sliceInverse(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    state[i0] = this.leftRotate4N(state[i0], 0xFFFF, 0, 0x3333, 2);
+    state[i1] = this.leftRotate4N(state[i1], 0xFFFF, 0, 0x3333, 2);
+    state[i2] = this.leftRotate4N(state[i2], 0xFFFF, 0, 0x3333, 2);
+    state[i3] = this.leftRotate4N(state[i3], 0xFFFF, 0, 0x3333, 2);
+    state[i4] = this.leftRotate4N(state[i4], 0x1111, 3, 0x7777, 1);
+    state[i5] = this.leftRotate4N(state[i5], 0x1111, 3, 0x7777, 1);
+    state[i6] = this.leftRotate4N(state[i6], 0x1111, 3, 0x7777, 1);
+    state[i7] = this.leftRotate4N(state[i7], 0x1111, 3, 0x7777, 1);
   }
 
   // Sheet permutation
-  sheet(state) {
-    state[0] = this.leftRotate16N(state[0], 0xFFFF, 0, 0x00FF, 8);
-    state[1] = this.leftRotate16N(state[1], 0xFFFF, 0, 0x00FF, 8);
-    state[2] = this.leftRotate16N(state[2], 0xFFFF, 0, 0x00FF, 8);
-    state[3] = this.leftRotate16N(state[3], 0xFFFF, 0, 0x00FF, 8);
-    state[4] = this.leftRotate16N(state[4], 0x0FFF, 4, 0x000F, 12);
-    state[5] = this.leftRotate16N(state[5], 0x0FFF, 4, 0x000F, 12);
-    state[6] = this.leftRotate16N(state[6], 0x0FFF, 4, 0x000F, 12);
-    state[7] = this.leftRotate16N(state[7], 0x0FFF, 4, 0x000F, 12);
+  sheet(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    state[i0] = this.leftRotate16N(state[i0], 0xFFFF, 0, 0x00FF, 8);
+    state[i1] = this.leftRotate16N(state[i1], 0xFFFF, 0, 0x00FF, 8);
+    state[i2] = this.leftRotate16N(state[i2], 0xFFFF, 0, 0x00FF, 8);
+    state[i3] = this.leftRotate16N(state[i3], 0xFFFF, 0, 0x00FF, 8);
+    state[i4] = this.leftRotate16N(state[i4], 0x0FFF, 4, 0x000F, 12);
+    state[i5] = this.leftRotate16N(state[i5], 0x0FFF, 4, 0x000F, 12);
+    state[i6] = this.leftRotate16N(state[i6], 0x0FFF, 4, 0x000F, 12);
+    state[i7] = this.leftRotate16N(state[i7], 0x0FFF, 4, 0x000F, 12);
   }
 
   // Inverse sheet permutation
-  sheetInverse(state) {
-    state[0] = this.leftRotate16N(state[0], 0xFFFF, 0, 0x00FF, 8);
-    state[1] = this.leftRotate16N(state[1], 0xFFFF, 0, 0x00FF, 8);
-    state[2] = this.leftRotate16N(state[2], 0xFFFF, 0, 0x00FF, 8);
-    state[3] = this.leftRotate16N(state[3], 0xFFFF, 0, 0x00FF, 8);
-    state[4] = this.leftRotate16N(state[4], 0x000F, 12, 0x0FFF, 4);
-    state[5] = this.leftRotate16N(state[5], 0x000F, 12, 0x0FFF, 4);
-    state[6] = this.leftRotate16N(state[6], 0x000F, 12, 0x0FFF, 4);
-    state[7] = this.leftRotate16N(state[7], 0x000F, 12, 0x0FFF, 4);
+  sheetInverse(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    state[i0] = this.leftRotate16N(state[i0], 0xFFFF, 0, 0x00FF, 8);
+    state[i1] = this.leftRotate16N(state[i1], 0xFFFF, 0, 0x00FF, 8);
+    state[i2] = this.leftRotate16N(state[i2], 0xFFFF, 0, 0x00FF, 8);
+    state[i3] = this.leftRotate16N(state[i3], 0xFFFF, 0, 0x00FF, 8);
+    state[i4] = this.leftRotate16N(state[i4], 0x000F, 12, 0x0FFF, 4);
+    state[i5] = this.leftRotate16N(state[i5], 0x000F, 12, 0x0FFF, 4);
+    state[i6] = this.leftRotate16N(state[i6], 0x000F, 12, 0x0FFF, 4);
+    state[i7] = this.leftRotate16N(state[i7], 0x000F, 12, 0x0FFF, 4);
+  }
+
+  // XOR the key into the state. The n-th operand always receives k[n], so the
+  // caller's index order decides which word each key word lands on.
+  xorKey(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    const idx = [i0, i1, i2, i3, i4, i5, i6, i7];
+    for (let n = 0; n < 8; n++) {
+      state[idx[n]] = OpCodes.ToUint32(OpCodes.XorN(state[idx[n]], this.k[n]));
+    }
+  }
+
+  // XOR the rotated half of the key schedule into the state.
+  xorKeyRotated(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+    const idx = [i0, i1, i2, i3, i4, i5, i6, i7];
+    for (let n = 0; n < 8; n++) {
+      state[idx[n]] = OpCodes.ToUint32(OpCodes.XorN(state[idx[n]], this.k[8 + n]));
+    }
   }
 
   // MDS matrix helper
@@ -296,9 +343,7 @@ class SaturninCipher {
     x[7] = this.loadWord32(input, 14);
 
     // XOR key into state
-    for (let i = 0; i < 8; i++) {
-      x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
-    }
+    this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
 
     // Perform all encryption rounds (2 rounds per iteration)
     let rcIdx = 0;
@@ -309,13 +354,11 @@ class SaturninCipher {
       this.mds(x, 1, 2, 3, 0, 7, 5, 4, 6);
       this.sbox(x, 3, 0, 1, 2);
       this.sbox(x, 5, 4, 6, 7);
-      this.slice(x);
+      this.slice(x, 0, 1, 2, 3, 7, 4, 5, 6);
       this.mds(x, 0, 1, 2, 3, 7, 4, 5, 6);
-      this.sliceInverse(x);
+      this.sliceInverse(x, 2, 3, 0, 1, 4, 5, 6, 7);
       x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx++]));
-      for (let i = 0; i < 8; i++) {
-        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[8 + i]));
-      }
+      this.xorKeyRotated(x, 2, 3, 0, 1, 4, 5, 6, 7);
 
       // Odd round
       this.sbox(x, 2, 3, 0, 1);
@@ -323,13 +366,11 @@ class SaturninCipher {
       this.mds(x, 3, 0, 1, 2, 7, 5, 4, 6);
       this.sbox(x, 1, 2, 3, 0);
       this.sbox(x, 5, 4, 6, 7);
-      this.sheet(x);
+      this.sheet(x, 2, 3, 0, 1, 7, 4, 5, 6);
       this.mds(x, 2, 3, 0, 1, 7, 4, 5, 6);
-      this.sheetInverse(x);
+      this.sheetInverse(x, 0, 1, 2, 3, 4, 5, 6, 7);
       x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx++]));
-      for (let i = 0; i < 8; i++) {
-        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
-      }
+      this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
     }
 
     // Store output
@@ -363,13 +404,11 @@ class SaturninCipher {
     let rcIdx = (rounds - 1) * 2;
     for (let r = 0; r < rounds; r++) {
       // Odd round (reversed)
-      for (let i = 0; i < 8; i++) {
-        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
-      }
+      this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
       x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx + 1]));
-      this.sheet(x);
+      this.sheet(x, 0, 1, 2, 3, 4, 5, 6, 7);
       this.mdsInverse(x, 0, 1, 2, 3, 4, 5, 6, 7);
-      this.sheetInverse(x);
+      this.sheetInverse(x, 2, 3, 0, 1, 7, 4, 5, 6);
       this.sboxInverse(x, 1, 2, 3, 0);
       this.sboxInverse(x, 5, 4, 6, 7);
       this.mdsInverse(x, 1, 2, 3, 0, 5, 4, 6, 7);
@@ -377,13 +416,11 @@ class SaturninCipher {
       this.sboxInverse(x, 4, 5, 6, 7);
 
       // Even round (reversed)
-      for (let i = 0; i < 8; i++) {
-        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[8 + i]));
-      }
+      this.xorKeyRotated(x, 2, 3, 0, 1, 4, 5, 6, 7);
       x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx]));
-      this.slice(x);
+      this.slice(x, 2, 3, 0, 1, 4, 5, 6, 7);
       this.mdsInverse(x, 2, 3, 0, 1, 4, 5, 6, 7);
-      this.sliceInverse(x);
+      this.sliceInverse(x, 0, 1, 2, 3, 7, 4, 5, 6);
       this.sboxInverse(x, 3, 0, 1, 2);
       this.sboxInverse(x, 5, 4, 6, 7);
       this.mdsInverse(x, 3, 0, 1, 2, 5, 4, 6, 7);
@@ -394,9 +431,7 @@ class SaturninCipher {
     }
 
     // XOR key into state
-    for (let i = 0; i < 8; i++) {
-      x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
-    }
+    this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
 
     // Store output
     this.storeWord32(output, 0, x[0]);
@@ -433,9 +468,18 @@ function checkTag(plaintext, plaintextLen, tag1, tag2, tagLen) {
   return 0;
 }
 
-// Encrypt a block and XOR with itself to generate new key (cascade construction)
-// If blockOffset is provided, reads from block[blockOffset..blockOffset+31]
-function saturninBlockEncryptXor(block, key, domain, cipher, blockOffset = 0) {
+// One step of the Saturnin cascade.
+//
+// The running tag is what keys the block cipher, and the 32-byte data block is
+// what gets encrypted; the tag is then replaced by block XOR E_tag(block). Every
+// step therefore folds the previous tag into the next one through the key
+// schedule, which is precisely what makes the cascade a MAC over all the blocks
+// absorbed so far. Re-keying on each step is not optional: keying the cipher
+// once and leaving it fixed would make each step overwrite the tag with a
+// function of that block alone, so only the final block would be authenticated.
+//
+// If blockOffset is provided, reads from block[blockOffset..blockOffset+31].
+function saturninBlockEncryptXor(block, tag, domain, blockOffset = 0) {
   const temp = new Array(32);
   const blockData = new Array(32);
 
@@ -444,17 +488,19 @@ function saturninBlockEncryptXor(block, key, domain, cipher, blockOffset = 0) {
     blockData[i] = block[blockOffset + i];
   }
 
+  const cipher = new SaturninCipher();
+  cipher.setupKey(tag);
   cipher.encryptBlock(temp, blockData, domain);
-  xorBytes(key, blockData, temp, 32, 0, 0, 0);
+  xorBytes(tag, blockData, temp, 32, 0, 0, 0);
 }
 
 // Authenticate message using cascade construction
-function saturninAuthenticate(tag, block, message, messageLen, domain1, domain2, cipher) {
+function saturninAuthenticate(tag, block, message, messageLen, domain1, domain2) {
   let offset = 0;
 
   // Process full blocks
   while (messageLen >= 32) {
-    saturninBlockEncryptXor(message, tag, domain1, cipher, offset);
+    saturninBlockEncryptXor(message, tag, domain1, offset);
     offset += 32;
     messageLen -= 32;
   }
@@ -467,7 +513,7 @@ function saturninAuthenticate(tag, block, message, messageLen, domain1, domain2,
   for (let i = messageLen + 1; i < 32; i++) {
     block[i] = 0;
   }
-  saturninBlockEncryptXor(block, tag, domain2, cipher, 0);
+  saturninBlockEncryptXor(block, tag, domain2, 0);
 }
 
 // CTR mode encryption/decryption
@@ -536,28 +582,49 @@ class SaturninCTRCascadeAlgorithm extends AeadAlgorithm {
       new LinkItem("Saturnin Project Site (reference package)", "https://project.inria.fr/saturnin/")
     ];
 
-    // Test vectors generated from this implementation
-    // Note: Block cipher implementation verified via round-trip testing
+    // Published Known-Answer-Test vectors from the NIST LWC submission package
+    // for SATURNIN, as distributed in the SATURNIN-CTR-Cascade.txt KAT file.
+    // Counts refer to the numbering in that file. The implementation reproduces
+    // all 1089 vectors it contains.
+    const KAT_URI = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SATURNIN-CTR-Cascade.txt";
     this.tests = [
       {
-        text: "CTR-Cascade Single Byte Message",
-        uri: "https://github.com/rweather/lwc-finalists/tree/master/src/individual/Saturnin",
-        key: OpCodes.Hex8ToBytes("4479650b43a04bc09dae858bd2d9701c9fb6fb15b60b47ceb392f9b23d728d1e"),
-        nonce: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        aad: OpCodes.Hex8ToBytes(""),
-        input: OpCodes.Hex8ToBytes("92"),
-        // Expected: 1 byte ciphertext + 32 byte tag
-        expected: OpCodes.Hex8ToBytes("0df6a2ce8912ba163cd6843de7a709814bcdf96e279b2148dc6f85ff031f6014d2")
-      },
-      {
-        text: "CTR-Cascade Empty Message",
-        uri: "https://github.com/rweather/lwc-finalists/tree/master/src/individual/Saturnin",
-        key: OpCodes.Hex8ToBytes("4479650b43a04bc09dae858bd2d9701c9fb6fb15b60b47ceb392f9b23d728d1e"),
-        nonce: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        text: "SATURNIN-CTR-Cascade KAT Count 1 (empty plaintext, empty AD)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
         aad: OpCodes.Hex8ToBytes(""),
         input: OpCodes.Hex8ToBytes(""),
         // Expected: 32 byte tag only
-        expected: OpCodes.Hex8ToBytes("3a3b8ac5849e0b130a1a5c11e5080775b31d83744836c377320ec7786cd80569")
+        expected: OpCodes.Hex8ToBytes("BA6F18356B82C46910FE1738E72D99A43250269B8FE631CE0C1C6A38A5AFC6CB")
+      },
+      {
+        text: "SATURNIN-CTR-Cascade KAT Count 35 (1-byte plaintext, 1-byte AD)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        aad: OpCodes.Hex8ToBytes("00"),
+        input: OpCodes.Hex8ToBytes("00"),
+        // Expected: 1 byte ciphertext + 32 byte tag
+        expected: OpCodes.Hex8ToBytes("73A4FACF5AE96450E8BB1A98FE2492A1ACD92B322D60280D229463545D22B5ADCB")
+      },
+      {
+        text: "SATURNIN-CTR-Cascade KAT Count 69 (2-byte plaintext, 2-byte AD)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        aad: OpCodes.Hex8ToBytes("0001"),
+        input: OpCodes.Hex8ToBytes("0001"),
+        expected: OpCodes.Hex8ToBytes("73A3DB8D008657A5844BCD7FB9F7AC5805F83B1715754970A7004D9E481EA475D4E9")
+      },
+      {
+        text: "SATURNIN-CTR-Cascade KAT Count 1089 (32-byte plaintext, 32-byte AD)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        expected: OpCodes.Hex8ToBytes("73A3610620A34B523A47EA4EDDFF83AC52370B3A1643965ACE464BE43F5033F5E9E56ED79C0BE6ED0B3A96FC6CF741E1D5E5398F23F98D8208FBA00F43BA6BC7")
       }
     ];
   }
@@ -616,6 +683,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
   }
 
   _encrypt() {
+    const aad = this.aad;
     const plaintext = this.inputBuffer;
     const plaintextLen = plaintext.length;
     const ciphertext = new Array(plaintextLen + 32);
@@ -642,15 +710,15 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     }
 
     // Authenticate nonce
-    saturninBlockEncryptXor(block, tag, SATURNIN_DOMAIN_10_2, this.cipher);
+    saturninBlockEncryptXor(block, tag, SATURNIN_DOMAIN_10_2);
 
     // Authenticate associated data
-    saturninAuthenticate(tag, block, this._aad, this._aad.length,
-                         SATURNIN_DOMAIN_10_2, SATURNIN_DOMAIN_10_3, this.cipher);
+    saturninAuthenticate(tag, block, aad, aad.length,
+                         SATURNIN_DOMAIN_10_2, SATURNIN_DOMAIN_10_3);
 
     // Authenticate ciphertext
     saturninAuthenticate(tag, block, ciphertext, plaintextLen,
-                         SATURNIN_DOMAIN_10_4, SATURNIN_DOMAIN_10_5, this.cipher);
+                         SATURNIN_DOMAIN_10_4, SATURNIN_DOMAIN_10_5);
 
     // Append tag to ciphertext
     for (let i = 0; i < 32; i++) {
@@ -665,6 +733,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
       throw new Error("Ciphertext too short (missing authentication tag)");
     }
 
+    const aad = this.aad;
     const ciphertextLen = this.inputBuffer.length - 32;
     const ciphertext = this.inputBuffer.slice(0, ciphertextLen);
     const receivedTag = this.inputBuffer.slice(ciphertextLen);
@@ -683,15 +752,15 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     const tag = [...this._key];
 
     // Authenticate nonce
-    saturninBlockEncryptXor(block, tag, SATURNIN_DOMAIN_10_2, this.cipher);
+    saturninBlockEncryptXor(block, tag, SATURNIN_DOMAIN_10_2);
 
     // Authenticate associated data
-    saturninAuthenticate(tag, block, this._aad, this._aad.length,
-                         SATURNIN_DOMAIN_10_2, SATURNIN_DOMAIN_10_3, this.cipher);
+    saturninAuthenticate(tag, block, aad, aad.length,
+                         SATURNIN_DOMAIN_10_2, SATURNIN_DOMAIN_10_3);
 
     // Authenticate ciphertext
     saturninAuthenticate(tag, block, ciphertext, ciphertextLen,
-                         SATURNIN_DOMAIN_10_4, SATURNIN_DOMAIN_10_5, this.cipher);
+                         SATURNIN_DOMAIN_10_4, SATURNIN_DOMAIN_10_5);
 
     // Decrypt ciphertext
     const plaintext = new Array(ciphertextLen);
@@ -750,18 +819,38 @@ class SaturninShortAlgorithm extends AeadAlgorithm {
       new LinkItem("Saturnin Project Site (reference package)", "https://project.inria.fr/saturnin/")
     ];
 
-    // Test vectors generated from this implementation
-    // Note: Round-trip testing verified for correctness
+    // Published Known-Answer-Test vectors from the NIST LWC submission package
+    // for SATURNIN, as distributed in the SATURNIN-Short.txt KAT file. The
+    // implementation reproduces all 16 vectors it contains.
+    const KAT_URI = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SATURNIN-Short.txt";
     this.tests = [
       {
-        text: "SATURNIN-Short 12-byte message",
-        uri: "https://project.inria.fr/saturnin/",
-        key: OpCodes.Hex8ToBytes("4479650b43a04bc09dae858bd2d9701c9fb6fb15b60b47ceb392f9b23d728d1e"),
-        nonce: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        text: "SATURNIN-Short KAT Count 1 (empty message)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
         aad: OpCodes.Hex8ToBytes(""),
-        input: OpCodes.Hex8ToBytes("48656c6c6f20576f726c6421"), // "Hello World!" (12 bytes)
+        input: OpCodes.Hex8ToBytes(""),
         // Expected: 32 byte ciphertext (includes authentication)
-        expected: OpCodes.Hex8ToBytes("777b699294bc947b63ee6fc9bb0f024884293663381388ab6b69dd8b375a4698")
+        expected: OpCodes.Hex8ToBytes("EF142FC810CE92839726D600FCCFD7119050DA25A3EC5586C7C43CA668E3C8C0")
+      },
+      {
+        text: "SATURNIN-Short KAT Count 13 (12-byte message)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        aad: OpCodes.Hex8ToBytes(""),
+        input: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+        expected: OpCodes.Hex8ToBytes("20A7207939100227C9E3CAB563AB1FE472A971711E12A5CAD360B6757F8D8D14")
+      },
+      {
+        text: "SATURNIN-Short KAT Count 16 (15-byte message, maximum length)",
+        uri: KAT_URI,
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        aad: OpCodes.Hex8ToBytes(""),
+        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E"),
+        expected: OpCodes.Hex8ToBytes("F8B7DBF80E519CF80E03A207A4798A5A0144F9392169FAEBF781BF4DA9BDB0E4")
       }
     ];
   }
