@@ -77,8 +77,8 @@
         new TestCase(
           [0x00, 0x01, 0x00, 0x02], // Two 16-bit words: 0x0001, 0x0002
           [0xFF, 0xFC], // ~(0x0001 + 0x0002) = ~0x0003 = 0xFFFC
-          "Simple two words",
-          "RFC 1071 example"
+          "Two 16-bit words 0x0001 + 0x0002, complement 0xFFFC (RFC 1071 section 1 definition)",
+          "https://tools.ietf.org/html/rfc1071"
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("0001F203F4F5F6F7"), // IP header example
@@ -89,8 +89,8 @@
         new TestCase(
           [0xFF, 0xFF], // Maximum word
           [0x00, 0x00], // ~0xFFFF = 0x0000
-          "Maximum value",
-          "One's complement checksum"
+          "Single word 0xFFFF, complement 0x0000 (RFC 1071 section 1 definition)",
+          "https://tools.ietf.org/html/rfc1071"
         )
       ];
     }
@@ -243,8 +243,8 @@
         new TestCase(
           [0x01, 0x02, 0x03], // Sum = 6, -6 = 0xFA
           [0xFA],
-          "Simple sequence",
-          "Two's complement checksum"
+          "Byte sum 0x06, 8-bit complement 0xFA",
+          "https://www.lammertbies.nl/comm/info/serial-checksum"
         ),
         new TestCase(
           [0x25, 0x62, 0x3F, 0x52], // Sum = 0x118 = 0x18, -0x18 = 0xE8
@@ -255,8 +255,8 @@
         new TestCase(
           [0xFF], // Sum = 0xFF, -0xFF = 0x01
           [0x01],
-          "Maximum byte value",
-          "Two's complement calculation"
+          "Byte sum 0xFF, 8-bit complement 0x01",
+          "https://www.lammertbies.nl/comm/info/serial-checksum"
         )
       ];
     }
@@ -358,14 +358,14 @@
         new TestCase(
           [0x01, 0x02, 0x03, 0x04], // Sum = 10, -10 = 0xFFF6
           [0xFF, 0xF6],
-          "Simple sequence",
-          "16-bit two's complement"
+          "Byte sum 0x000A, 16-bit complement 0xFFF6",
+          "https://en.wikipedia.org/wiki/Two%27s_complement"
         ),
         new TestCase(
           [0xFF, 0xFF], // Sum = 510 = 0x01FE, -0x01FE = 0xFE02
           [0xFE, 0x02],
-          "Large values",
-          "16-bit two's complement"
+          "Byte sum 0x01FE, 16-bit complement 0xFE02",
+          "https://en.wikipedia.org/wiki/Two%27s_complement"
         )
       ];
     }
