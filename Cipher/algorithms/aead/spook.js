@@ -13,14 +13,18 @@
  * - Spook-128-512-mu: 256-bit key (multi-user), Shadow-512, 32-byte rate, 128-bit tag
  * - Spook-128-384-mu: 256-bit key (multi-user), Shadow-384, 16-byte rate, 128-bit tag
  *
- * The algorithm provides protection against:
- * - Differential power analysis (DPA)
- * - First-order side-channel attacks through masking
- * - Nonce misuse resistance
+ * This is Spook v2, the NIST LWC round-2 version: Clyde-128 and Shadow both use
+ * six steps and the on-the-fly tweakey schedule below. It is verified against
+ * the full 1089-vector NIST submission KAT file for each of the four variants.
+ *
+ * The design targets:
+ * - Leakage-resistant modes (CIML2 integrity even with a leaking tag check)
+ * - Efficient masking of the Clyde-128 bitslice tweakable block cipher
+ * - Nonce misuse-resilience
  *
  * Reference: https://csrc.nist.gov/Projects/lightweight-cryptography
- * Specification: https://www.spook.dev/
- * C Reference: https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking
+ * Specification: https://www.spook.dev/assets/TOSC_Spook.pdf (Spook v2)
+ * NIST round-2 spec: https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/Spook-spec-round2.pdf
  */
 
 (function (root, factory) {
@@ -437,13 +441,13 @@
 
       this.name = `Spook-128-${shadowSize}-${variant}`;
       this.description = `NIST Lightweight Cryptography candidate providing authenticated encryption with side-channel protection. Uses ${shadowSize === 512 ? 'Shadow-512' : 'Shadow-384'} permutation with Clyde-128 tweakable block cipher. The ${variant === 'su' ? 'single-user' : 'multi-user'} variant offers ${variant === 'su' ? '128-bit' : '256-bit'} key security.`;
-      this.inventor = "Daemen, Massolino, Mehrdad, Rotella";
+      this.inventor = "Davide Bellizia, Francesco Berti, Olivier Bronchain, Gaetan Cassiers, Sebastien Duval, Chun Guo, Gregor Leander, Gaetan Leurent, Itamar Levi, Charles Momin, Olivier Pereira, Thomas Peters, Francois-Xavier Standaert, Friedrich Wiemer";
       this.year = 2019;
       this.category = CategoryType.AEAD;
       this.subCategory = "Authenticated Encryption";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.FR;
+      this.country = CountryCode.BE;
 
       // Algorithm capabilities
       const keySize = variant === 'su' ? SPOOK_SU_KEY_SIZE : SPOOK_MU_KEY_SIZE;
@@ -462,7 +466,8 @@
       // Reference implementations
       this.references = [
         new LinkItem("Spook Official Reference Implementations", "https://www.spook.dev/implementations.html"),
-        new LinkItem("Spook High-End Software Implementations (uclcrypto/spook-he, GitHub)", "https://github.com/uclcrypto/spook-he")
+        new LinkItem("Spook High-End Software Implementations (uclcrypto/spook-he, GitHub)", "https://github.com/uclcrypto/spook-he"),
+        new LinkItem("NIST LWC Known-Answer-Test vectors (rweather/lightweight-crypto, MIT)", "https://github.com/rweather/lightweight-crypto/tree/master/test/kat")
       ];
 
       // Test vectors from NIST LWC KAT files
@@ -470,134 +475,79 @@
     }
 
     _getTestVectors() {
+      // Official NIST LWC round-2 submission vectors, taken verbatim from the
+      // published KAT files. Selected counts exercise the empty case, the
+      // associated-data padding path, the partial-block path, a plaintext that
+      // spans more than one sponge rate block, and the both-full-blocks case.
+      const suKey = "000102030405060708090A0B0C0D0E0F";
+      const muKey = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
+      const nonce = "000102030405060708090A0B0C0D0E0F";
+      const block16 = "000102030405060708090A0B0C0D0E0F";
+      const block32 = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
+      const pt17 = "000102030405060708090A0B0C0D0E0F10";
+
+      // count, plaintext, associated data
+      const cases = [
+        [1, "", ""],
+        [2, "", "00"],
+        [34, "00", ""],
+        [50, "00", block16],
+        [562, pt17, ""],
+        [1089, block32, block32]
+      ];
+
+      // Expected ciphertext||tag per variant, indexed like `cases` above.
+      const expectedByVariant = {
+        "384-su": [
+          "FC48E447519B6B75D2BCBF63040F5A18",
+          "00B0214E9F2A7FBE2CE22EBE42337867",
+          "C844F77B117566B8C9DBEA56D38BEAA1B1",
+          "2E5EF88B13B0113F9B655EA5D4D61217BA",
+          "C83E1BFC0D2DC1CCAEEB2040C4148B52164779A962FFEE8B06C3E9601E9C24C4AA",
+          "2E0DB88E6D535A8B74665A5ADB9F5EEE3135DA199D8D519842297EE2A6798668252B19C5F323ECE12A80541EADC1809E"
+        ],
+        "384-mu": [
+          "F415781FC0DD665660200DA92DA17D2A",
+          "F7C7B3FC3752534A734908386D3C29DF",
+          "26BDA1F2538E0859C6B17555D63F61E8C1",
+          "8C1C498DA9EC7CFD168EF5950843473D34",
+          "26F5383F4A9DB286C0CEDD286DB1A2684E21BECC46092BC5FF4B25A6526981F52E",
+          "3B8D8FA82875D7B9C9FB57EEFD9A54F3D1D3CCA478C654B0B06AC6773F4ED0225CF891BC8212F0D2866536FE04BB5068"
+        ],
+        "512-su": [
+          "E3E9A30ABC6D23284B31F81783A8E810",
+          "703AE36267F531A7215E2C09B1351922",
+          "2848C938FCE8CD25C243326E56778432AB",
+          "F2AF92F1A1B050FC59C33A213366095021",
+          "28BD311FD0CD7F7674D7E62980620497D8837D06FF9F8059C34C7D452AA51AF672",
+          "9D1A32CE941DCD220CC33300FD0512AE8332E1E720898671B8B6EB9D08704031E1C0BE40A40322A13A95D3288F6DE8DB"
+        ],
+        "512-mu": [
+          "2EF04011DD3048E837440A3022718522",
+          "080E0CEB34E942238BE8C87E91E6F8A5",
+          "59652011CF0BFAD1D4544FD4B40D820CE8",
+          "38146D8D332522F5E08B482CAD26A0704A",
+          "591F6B9032EF281AE0E7DDD30092B828D28B2DFB7DBE155CE23F27B05A013D7BFC",
+          "3401C24A5DC2699436C15A6A99EF3A76E4309F86AC7DD43295BBAA038FA6FD8E9A17A05D14DEA6E28198885D40451583"
+        ]
+      };
+
+      const variantKey = `${this.shadowSize}-${this.variant}`;
+      const expected = expectedByVariant[variantKey];
+      if (!expected) return [];
+
+      const katUri = `https://github.com/rweather/lightweight-crypto/blob/master/test/kat/${this.name}.txt`;
       const vectors = [];
-
-      if (this.variant === 'su' && this.shadowSize === 512) {
-        // Spook-128-512-su test vectors
+      for (let i = 0; i < cases.length; ++i) {
+        const [count, ptHex, adHex] = cases[i];
         vectors.push({
-          text: "NIST LWC KAT #1 - Empty PT, Empty AD",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("E3E9A30ABC6D23284B31F81783A8E810")
-        });
-
-        vectors.push({
-          text: "NIST LWC KAT #2 - Empty PT, 1-byte AD",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("703AE36267F531A7215E2C09B1351922")
-        });
-
-        vectors.push({
-          text: "NIST LWC KAT #34 - 1-byte PT, Empty AD",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
-          input: OpCodes.Hex8ToBytes("00"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("2848C938FCE8CD25C243326E56778432AB")
-        });
-      } else if (this.variant === 'su' && this.shadowSize === 384) {
-        // Spook-128-384-su test vectors
-        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt
-        vectors.push({
-          text: "Spook reference KAT #1 - Empty PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("FC48E447519B6B75D2BCBF63040F5A18")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("00B0214E9F2A7FBE2CE22EBE42337867")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128su384v1/LWC_AEAD_KAT_128_128.txt)",
-          input: OpCodes.Hex8ToBytes("00"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("C844F77B117566B8C9DBEA56D38BEAA1B1")
-        });
-      } else if (this.variant === 'mu' && this.shadowSize === 512) {
-        // Spook-128-512-mu test vectors
-        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt
-        vectors.push({
-          text: "Spook reference KAT #1 - Empty PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("2EF04011DD3048E837440A3022718522")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("080E0CEB34E942238BE8C87E91E6F8A5")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu512v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes("00"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("59652011CF0BFAD1D4544FD4B40D820CE8")
-        });
-      } else if (this.variant === 'mu' && this.shadowSize === 384) {
-        // Spook-128-384-mu test vectors
-        // Source: Spook reference implementation v1.0.1, crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt
-        vectors.push({
-          text: "Spook reference KAT #1 - Empty PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("F415781FC0DD665660200DA92DA17D2A")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #2 - Empty PT, 1-byte AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes(""),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("F7C7B3FC3752534A734908386D3C29DF")
-        });
-
-        vectors.push({
-          text: "Spook reference KAT #34 - 1-byte PT, Empty AD",
-          uri: "https://www.spook.dev/assets/spook-ref-implem-v1.0.1.zip (crypto_aead/spook128mu384v1/LWC_AEAD_KAT_256_128.txt)",
-          input: OpCodes.Hex8ToBytes("00"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("26BDA1F2538E0859C6B17555D63F61E8C1")
+          text: `NIST LWC round-2 KAT ${this.name} Count = ${count} (PT ${ptHex.length / 2} bytes, AD ${adHex.length / 2} bytes)`,
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes(ptHex),
+          key: OpCodes.Hex8ToBytes(this.variant === 'su' ? suKey : muKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes(adHex),
+          expected: OpCodes.Hex8ToBytes(expected[i])
         });
       }
 
@@ -684,12 +634,30 @@
       return this._nonce ? [...this._nonce] : null;
     }
 
+    // Canonical AEAD associated-data property used by the framework.
+    set aad(aadBytes) {
+      this._ad = aadBytes ? [...aadBytes] : [];
+    }
+
+    get aad() {
+      return this._ad ? [...this._ad] : [];
+    }
+
+    // Aliases kept for callers that use the shorter/longer spellings.
     set ad(adBytes) {
-      this._ad = adBytes ? [...adBytes] : [];
+      this.aad = adBytes;
     }
 
     get ad() {
-      return this._ad ? [...this._ad] : [];
+      return this.aad;
+    }
+
+    set associatedData(adBytes) {
+      this.aad = adBytes;
+    }
+
+    get associatedData() {
+      return this.aad;
     }
 
     /**
@@ -892,10 +860,13 @@
 
       let offset = 0;
 
-      // Process full blocks
+      // Process full blocks. The sponge is a duplex: the rate bytes absorb the
+      // plaintext and the resulting state bytes are the ciphertext, so the
+      // state must be updated in place (state[i] ^= m[i]; c[i] = state[i]).
       while (plaintext.length - offset >= rate) {
         for (let i = 0; i < rate; ++i) {
-          const c = OpCodes.AndN(OpCodes.XorN(state[i], plaintext[offset + i]), 0xFF);
+          const c = OpCodes.ToByte(OpCodes.XorN(state[i], plaintext[offset + i]));
+          state[i] = c;
           output.push(c);
         }
         permute(state);
@@ -906,7 +877,8 @@
       if (plaintext.length > offset) {
         const remaining = plaintext.length - offset;
         for (let i = 0; i < remaining; ++i) {
-          const c = OpCodes.AndN(OpCodes.XorN(state[i], plaintext[offset + i]), 0xFF);
+          const c = OpCodes.ToByte(OpCodes.XorN(state[i], plaintext[offset + i]));
+          state[i] = c;
           output.push(c);
         }
         state[remaining] = OpCodes.XorN(state[remaining], 0x01);

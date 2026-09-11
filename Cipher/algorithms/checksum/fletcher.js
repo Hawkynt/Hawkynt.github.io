@@ -49,7 +49,7 @@
           PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize, BlockAbsorber } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -103,6 +103,7 @@
       const configs = {
         '8': {
           description: 'Fletcher-8 checksum for small data integrity checking in embedded systems',
+          wordBytes: 1,
           sumBits: 4,
           modulo: 15,        // 2^4 - 1
           blockSize: 15,     // Safe block size to prevent overflow
@@ -131,6 +132,7 @@
         },
         '16': {
           description: 'Fletcher-16 checksum used in network protocols and data transmission',
+          wordBytes: 1,
           sumBits: 8,
           modulo: 255,       // 2^8 - 1  
           blockSize: 255,    // Safe block size to prevent overflow
@@ -159,6 +161,7 @@
         },
         '32': {
           description: 'Fletcher-32 checksum providing robust error detection for medium-sized data',
+          wordBytes: 2,
           sumBits: 16,
           modulo: 65535,     // 2^16 - 1
           blockSize: 359,    // Safe block size to prevent overflow  
@@ -179,20 +182,27 @@
             ),
             new TestCase(
               OpCodes.AnsiToBytes("abcde"),
-              OpCodes.Hex8ToBytes("05c301ef"),
-              "String 'abcde'",
+              OpCodes.Hex8ToBytes("f04fc729"),
+              "String 'abcde' - published test vector, odd length so the last word is zero-padded",
               "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
             ),
             new TestCase(
-              OpCodes.AnsiToBytes("123456789"),
-              OpCodes.Hex8ToBytes("091501dd"),
-              "String '123456789'",
+              OpCodes.AnsiToBytes("abcdef"),
+              OpCodes.Hex8ToBytes("56502d2a"),
+              "String 'abcdef' - published test vector, exact multiple of the 16-bit word",
+              "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abcdefgh"),
+              OpCodes.Hex8ToBytes("ebe19591"),
+              "String 'abcdefgh' - published test vector",
               "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
             )
           ]
         },
         '64': {
           description: 'Fletcher-64 checksum for large datasets and high-performance applications',
+          wordBytes: 4,
           sumBits: 32,
           modulo: 4294967295, // 2^32 - 1
           blockSize: 65536,    // Safe block size to prevent overflow
@@ -206,16 +216,22 @@
               "Educational test vector"
             ),
             new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              OpCodes.Hex8ToBytes("0000006100000061"),
-              "Single byte 'a'",
-              "Educational test vector"
+              OpCodes.AnsiToBytes("abcde"),
+              OpCodes.Hex8ToBytes("c8c6c527646362c6"),
+              "String 'abcde' - published test vector, last 32-bit word zero-padded",
+              "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
             ),
             new TestCase(
-              OpCodes.AnsiToBytes("large data integrity test"),
-              OpCodes.Hex8ToBytes("00007acd000009a4"),
-              "Large data sample",
-              "Educational test vector"
+              OpCodes.AnsiToBytes("abcdef"),
+              OpCodes.Hex8ToBytes("c8c72b276463c8c6"),
+              "String 'abcdef' - published test vector",
+              "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abcdefgh"),
+              OpCodes.Hex8ToBytes("312e2b28cccac8c6"),
+              "String 'abcdefgh' - published test vector, exact multiple of the 32-bit word",
+              "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
             )
           ]
         }
@@ -251,7 +267,22 @@
       this.config = config;
       this.sum1 = 0;
       this.sum2 = 0;
-      this.blockIndex = 0;
+      // Fletcher-N consumes N/2-bit words, not bytes: Fletcher-32 reads 16-bit
+      // words and Fletcher-64 reads 32-bit words, both little-endian. The
+      // absorber holds a partial word back so a message whose length is not a
+      // whole number of words still gets exactly one zero-padded tail word.
+      this._absorber = new BlockAbsorber(config.wordBytes, word => this._absorbWord(word));
+    }
+
+    /**
+   * Fold one little-endian word of config.wordBytes bytes into the two sums.
+   * @param {uint8[]} word - exactly config.wordBytes bytes
+   */
+    _absorbWord(word) {
+      let value = 0;
+      for (let i = word.length - 1; i >= 0; i--) value = (value * 256) + word[i];
+      this.sum1 = (this.sum1 + value) % this.config.modulo;
+      this.sum2 = (this.sum2 + this.sum1) % this.config.modulo;
     }
 
     /**
@@ -265,20 +296,7 @@
         throw new Error('FletcherInstance.Feed: Input must be byte array');
       }
 
-      // Process data in blocks to prevent overflow
-      for (let i = 0; i < data.length; i++) {
-        this.sum1 += data[i];
-        this.sum2 += this.sum1;
-
-        this.blockIndex++;
-
-        // Reduce modulo periodically to prevent overflow
-        if (this.blockIndex >= this.config.blockSize) {
-          this.sum1 %= this.config.modulo;
-          this.sum2 %= this.config.modulo;
-          this.blockIndex = 0;
-        }
-      }
+      this._absorber.Absorb(data);
     }
 
     /**
@@ -288,9 +306,13 @@
    */
 
     Result() {
-      // Final modulo reduction
-      this.sum1 %= this.config.modulo;
-      this.sum2 %= this.config.modulo;
+      // The final word, zero-padded when the message does not fill it.
+      this._absorber.Finish((held, pending) => {
+        if (pending === 0) return;
+        const word = held.slice();
+        while (word.length < this.config.wordBytes) word.push(0);
+        this._absorbWord(word);
+      });
 
       let result;
 
@@ -323,7 +345,7 @@
       // Reset for next calculation
       this.sum1 = 0;
       this.sum2 = 0;
-      this.blockIndex = 0;
+      this._absorber.Reset();
 
       return result;
     }
