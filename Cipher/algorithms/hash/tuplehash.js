@@ -180,6 +180,47 @@
             OpCodes.Hex8ToBytes("202122232425262728")
           ],
           expected: OpCodes.Hex8ToBytes("E60F202C89A2631EDA8D4C588CA5FD07F39E5151998DECCF973ADB3804BB6E84")
+        },
+        {
+          text: "TupleHash128: NIST ACVP tg2/tc179 - empty element at position 3 of 7",
+          uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/TupleHash-128-1.0/internalProjection.json",
+          input: null,
+          outputSize: 37,
+          customization: OpCodes.Hex8ToBytes("4A774C6A"),
+          tuples: [
+            OpCodes.Hex8ToBytes("CC25D160F2"),
+            OpCodes.Hex8ToBytes("370C1C66D507D6E314E98526C74D5271A014ECF395"),
+            OpCodes.Hex8ToBytes(""),
+            OpCodes.Hex8ToBytes("37A8DF27CEC8D92A895EB7D2533D47C2C076D842C31FCC"),
+            OpCodes.Hex8ToBytes("ACDCDB"),
+            OpCodes.Hex8ToBytes("C7D228D4C89419B4F91DEA6F9E"),
+            OpCodes.Hex8ToBytes("92FB")
+          ],
+          expected: OpCodes.Hex8ToBytes(
+            "51AB471EE4B86FDA531A588A61AA832A9D0B4E8E7E982852E4DEFC7862AE8AF6" +
+            "FF01FC3A18"
+          )
+        },
+        {
+          text: "TupleHash128: NIST ACVP tg1/tc48 - XOF mode, leading empty element",
+          uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/TupleHash-128-1.0/internalProjection.json",
+          input: null,
+          outputSize: 49,
+          xofMode: true,
+          customization: OpCodes.Hex8ToBytes("636A5E4A5246372A73556C5A662020286B6676274A4B39287B35793B6E5B7744695329256B73702D68647D357D405021434C36"),
+          tuples: [
+            OpCodes.Hex8ToBytes(""),
+            OpCodes.Hex8ToBytes(
+              "EC03DC6F8CD75C68F1D013E48E7F8A84713054009501CCCBC430340C7D3A3B6E" +
+              "30BB3AB1753F3EB5BBAC320644092AAE6B37203B111DA326B451AECA8D181424" +
+              "D758EDB92EF5BB926B651E3828811D73FAC124925E13C71E7468A631D1A91BDA" +
+              "E55A87617C256F90CA7F4ED83B178F5B838073A8F2FA7F5FB96ADE9E868611BA"
+            )
+          ],
+          expected: OpCodes.Hex8ToBytes(
+            "C0B00600A2148E4F8B2ED37A50381DACF7D8317901DC608D431EA3D50CC0D5A4" +
+            "49893F7EFCC9DF9EE8D7FE249E99862CE7"
+          )
         }
       ];
     }
@@ -278,6 +319,44 @@
             OpCodes.Hex8ToBytes("202122232425262728")
           ],
           expected: OpCodes.Hex8ToBytes("45000BE63F9B6BFD89F54717670F69A9BC763591A4F05C50D68891A744BCC6E7D6D5B5E82C018DA999ED35B0BB49C9678E526ABD8E85C13ED254021DB9E790CE")
+        },
+        {
+          text: "TupleHash256: NIST ACVP tg2/tc120 - leading empty element, empty S",
+          uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/TupleHash-256-1.0/internalProjection.json",
+          input: null,
+          outputSize: 38,
+          customization: OpCodes.Hex8ToBytes(""),
+          tuples: [
+            OpCodes.Hex8ToBytes(""),
+            OpCodes.Hex8ToBytes(
+              "AEBA5DA424057417633D62E58CF8194F444B1349F4C1A031067F243B4E5F269A" +
+              "7262635BE94FBE88701A284A693CD99599EA46A591B738111647F3E28EE4318B" +
+              "87CC22658EB3398BF0A5002DD2B679FA61B32080EAAD6695C8F10E22DAAE2D70" +
+              "47FB00E3363B48BA6A3152F84C0003246ACE91BB55798787AF59A0D76DA4BC43"
+            )
+          ],
+          expected: OpCodes.Hex8ToBytes(
+            "6EB8E712B3CDAFDFCE02D786A0EEC4305CAB4F2AA10611743FEF8B5192822FDD" +
+            "4D74468873D4"
+          )
+        },
+        {
+          text: "TupleHash256: NIST ACVP tg1/tc82 - XOF mode, leading empty element",
+          uri: "https://raw.githubusercontent.com/usnistgov/ACVP-Server/master/gen-val/json-files/TupleHash-256-1.0/internalProjection.json",
+          input: null,
+          outputSize: 32,
+          xofMode: true,
+          customization: OpCodes.Hex8ToBytes("2857675F733F30636144776B6B2E6E43735876616269662D5B757D486460322B3257575B2F29794C7529796C5A7C33775577693E705D793E715A237D41677E21326C59345532346A5F49"),
+          tuples: [
+            OpCodes.Hex8ToBytes(""),
+            OpCodes.Hex8ToBytes(
+              "C391C9868B8C6DE496BCDC49EA37BCE42196CBD5211847AC1A7B065EF2FB9332" +
+              "AD3FEAB54789746DBC98859F4A5E43D6817C54288FDC68AE47111000F9297C1C" +
+              "5C27A72E0E3E6176BE5BB18AC68EBE2A7B00886E17EF5A556EF8F3A8FF33C86D" +
+              "224B2D0988BFD70AEB6C17E932D6A73ABA1033C2979F67893030EEE5484CE3D6"
+            )
+          ],
+          expected: OpCodes.Hex8ToBytes("0CDED52B4886A6EEB886E57E1FA4B055060F33BC5A68D3FD45F06692A52073BB")
         }
       ];
     }
@@ -367,7 +446,14 @@
    */
 
     Feed(data) {
-      if (!data || data.length === 0) return;
+      // A zero-length element is still an element. SP 800-185 builds TupleHash
+      // over encode_string(X_i) for every i, and encode_string("") is
+      // left_encode(0) - two bytes, not nothing. Skipping empty elements makes
+      // the tuples ("", "AB") and ("AB") hash alike, which is precisely the
+      // ambiguity TupleHash exists to remove, and it is what the NIST ACVP
+      // vectors carrying an empty element caught here. Only the absence of an
+      // element - null/undefined, how the suite spells "no input" - is a no-op.
+      if (data === null || data === undefined) return;
 
       // Encode the tuple element and feed to CSHAKE
       const encoded = encodeTuple(data);
