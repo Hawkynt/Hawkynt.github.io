@@ -122,43 +122,43 @@
       this.tests = [
         {
           text: "Empty message (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("44A99882FEA033566856A27E7F0C94DC84FAC7E411B08B890A4A574E3DB75D4A")
         },
         {
           text: "Single byte 0x00 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("F165CCD18640B9703E96F1BD9A4A4EE32DD4031E4680A1B9890891DCC63468A7")
         },
         {
           text: "Two bytes 0x0001 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("2EF2D38F71E77928DF37FBA337872B639F7748556C1A081821B9B8460AC68FAC")
         },
         {
           text: "Three bytes 0x000102 (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102"),
           expected: OpCodes.Hex8ToBytes("F9A8C467209E7B5F32DB28BDE50D5210A81A9C6AA9C1686A05C3619CBF44061D")
         },
         {
           text: "16 bytes sequential (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("AB0D1EB0315DF8AF7F7AE0AC42EAF2F52FB0FDF0904E182DCC796B6CB8D7981A")
         },
         {
           text: "17 bytes sequential (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F10"),
           expected: OpCodes.Hex8ToBytes("5A281AD7EB81FB083D05CCD21B78C4BCA938AF26F20869DA29C8F13B7389BC5F")
         },
         {
           text: "24 bytes sequential (NIST LWC)",
-          uri: "https://csrc.nist.gov/Projects/lightweight-cryptography/finalists",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/photon-beetle/crypto_hash/photonbeetlehash256rate32v1/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           expected: OpCodes.Hex8ToBytes("C65D15E64477D0CA123E85D632E8444C343E00EC08934EF3A8B4E22C871BADF8")
         }

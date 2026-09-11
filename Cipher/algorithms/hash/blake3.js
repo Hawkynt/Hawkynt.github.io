@@ -75,6 +75,16 @@
   const BLAKE3_OUT_LEN = 32;
   const BLAKE3_KEY_LEN = 32;
   const BLAKE3_CHUNK_LEN = 1024;
+  const BLAKE3_BLOCKS_PER_CHUNK = BLAKE3_CHUNK_LEN / BLAKE3_BLOCK_LEN; // 16
+
+  // The official test vectors fill the input with the repeating sequence
+  // 0, 1, 2, ..., 249, 250, 0, 1, ... as stated in the `_comment` field of
+  // test_vectors.json. Generating it beats a kilobyte-long hex literal.
+  function officialVectorInput(length) {
+    const data = new Array(length);
+    for (let i = 0; i < length; i++) data[i] = i % 251;
+    return data;
+  }
 
   /**
  * BLAKE3Algorithm - Cryptographic hash function
@@ -88,7 +98,7 @@
 
       // Required metadata
       this.name = "BLAKE3";
-      this.description = "Modern cryptographic hash function based on BLAKE2. Educational implementation covering a single BLAKE3 chunk: it reproduces the official test vectors for inputs up to 1024 bytes, but the chunk tree BLAKE3 uses beyond that is not implemented, so inputs longer than 1024 bytes do not yield BLAKE3 digests.";
+      this.description = "Modern cryptographic hash function based on BLAKE2. Splits the message into 1024-byte chunks, hashes each to a chaining value and combines them with a binary Merkle tree of parent nodes, reproducing the official test vectors at every input length. The digest is extendable to any length.";
       this.inventor = "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn";
       this.year = 2020;
       this.category = CategoryType.HASH;
@@ -174,6 +184,45 @@
             "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
             "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F"),
           expected: OpCodes.Hex8ToBytes("f17e570564b26578c33bb7f44643f539624b05df1a76c81f30acd548c44b45ef")
+        },
+        // 1024 bytes is one whole chunk and still a single tree node; 1025
+        // forces the first parent node to exist; 2049 spans three chunks, so
+        // the subtree stack has to hold one completed pair while a third chunk
+        // is still open. An implementation that ignores the chunk tree passes
+        // everything up to 1024 and fails from 1025 on.
+        {
+          text: "BLAKE3 Official Test Vector - 1024 bytes (exact chunk boundary)",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: officialVectorInput(1024),
+          expected: OpCodes.Hex8ToBytes("42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7")
+        },
+        {
+          text: "BLAKE3 Official Test Vector - 1025 bytes (two chunks, one parent)",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: officialVectorInput(1025),
+          expected: OpCodes.Hex8ToBytes("d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444")
+        },
+        {
+          text: "BLAKE3 Official Test Vector - 2049 bytes (three chunks, unbalanced tree)",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: officialVectorInput(2049),
+          expected: OpCodes.Hex8ToBytes("5f4d72f40d7a5f82b15ca2b2e44b1de3c2ef86c426c95c1af0b6879522563030")
+        },
+        // The official vectors are 131 byte extended outputs whose first 32
+        // bytes are the default digest. Anything past the first 64 bytes needs
+        // the output block counter, and the second half of each compression
+        // output is only exercised beyond byte 32.
+        {
+          text: "BLAKE3 Official Test Vector - 1025 bytes, 131 byte extended output",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: officialVectorInput(1025),
+          outputSize: 131,
+          expected: OpCodes.Hex8ToBytes(
+            "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444" +
+            "f4c4a22b4b399155358a994e52bf255de60035742ec71bd08ac275a1b51cc6bf" +
+            "e332b0ef84b409108cda080e6269ed4b3e2c3f7d722aa4cdc98d16deb554e562" +
+            "7be8f955c98e1d5f9565a9194cad0c4285f93700062d9595adb992ae68ff1280" +
+            "0ab67a")
         }
       ];
     }
@@ -269,11 +318,13 @@
       }
     }
 
-    // Finalize - XOR state with IV and chaining value
+    // Finalize: the upper half folds in the input chaining value. The second
+    // operand is the upper state word, not the lower one - getting that wrong
+    // is invisible in a 32 byte digest and corrupts every extended output.
     const output = new Uint32Array(16);
     for (let i = 0; i < 8; i++) {
       output[i] = OpCodes.XorN(state[i], state[i + 8]);
-      output[i + 8] = OpCodes.XorN(state[i], chaining_value[i]);
+      output[i + 8] = OpCodes.XorN(state[i + 8], chaining_value[i]);
     }
 
     return output;
@@ -295,23 +346,35 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.OutputSize = 32; // 256 bits = 32 bytes
+      this._outputSize = BLAKE3_OUT_LEN; // 256 bits = 32 bytes by default
 
+      // Unkeyed mode: the IV is the initial chaining value of every chunk and
+      // of every parent node.
+      this.initial_cv = new Uint32Array(IV);
       this.chaining_value = null;
+      this.cvStack = [];
       this._absorber = null;
       this.blocks_compressed = 0;
       this.chunk_counter = 0;
       this.flags = 0;
     }
 
+    // The digest is extendable: BLAKE3 emits as many bytes as are asked for.
+    // Both spellings exist because test vectors use either one.
+    set OutputSize(size) { if (size && size > 0) this._outputSize = size; }
+    get OutputSize() { return this._outputSize; }
+    set outputSize(size) { if (size && size > 0) this._outputSize = size; }
+    get outputSize() { return this._outputSize; }
+
     /**
      * Initialize the hash state
      */
     Init() {
-      this.chaining_value = new Uint32Array(IV);
+      this.chaining_value = new Uint32Array(this.initial_cv);
       // The absorber never releases a full block until more input proves it is
       // not the last, which is the whole of the CHUNK_END|ROOT question below.
       this._absorber = new BlockAbsorber(BLAKE3_BLOCK_LEN, block => this.compressBlock(block));
+      this.cvStack = []; // chaining values of completed subtrees awaiting a parent
       this.blocks_compressed = 0;
       this.chunk_counter = 0;
       this.flags = 0;
@@ -335,17 +398,38 @@
       this._absorber.Absorb(data);
     }
 
+    /** @returns {number} CHUNK_START while the chunk has compressed no block yet */
+    _startFlag() {
+      return this.blocks_compressed === 0 ? CHUNK_START : 0;
+    }
+
     /**
-     * Compress one block that is known not to be the last of the chunk.
+     * Compress one block that is known not to be the last block of the message.
+     *
+     * A chunk is BLAKE3_BLOCKS_PER_CHUNK blocks. Its final block carries
+     * CHUNK_END and its compression yields the chunk's chaining value, which
+     * becomes a leaf of the tree; the chunk state then restarts under the next
+     * chunk counter. Never closing a chunk is what limited this to 1024 bytes.
+     *
      * @param {byte[]} block - exactly BLAKE3_BLOCK_LEN bytes
      */
     compressBlock(block) {
-      let flags = this.flags;
-      if (this.blocks_compressed === 0) {
-        flags |= CHUNK_START;
+      const isChunkEnd = this.blocks_compressed === BLAKE3_BLOCKS_PER_CHUNK - 1;
+      let flags = this.flags|this._startFlag();
+      if (isChunkEnd) {
+        flags |= CHUNK_END;
       }
 
       const output = compress(this.chaining_value, Array.from(block), this.chunk_counter, BLAKE3_BLOCK_LEN, flags);
+
+      if (isChunkEnd) {
+        const nextCounter = this.chunk_counter + 1;
+        this._addChunkChainingValue(output.slice(0, 8), nextCounter);
+        this.chunk_counter = nextCounter;
+        this.chaining_value = new Uint32Array(this.initial_cv);
+        this.blocks_compressed = 0;
+        return;
+      }
 
       // Update chaining value with first 8 words of output
       for (let i = 0; i < 8; i++) {
@@ -356,55 +440,51 @@
     }
 
     /**
-     * Get final output state
+     * Chaining value of the parent node joining two subtrees
+     * @param {Uint32Array} leftCv - chaining value of the left child
+     * @param {Uint32Array} rightCv - chaining value of the right child
+     * @returns {Uint32Array} the parent's 8 word chaining value
      */
-    getOutput() {
-      return this._absorber.Finish((held, pending) => {
-        let flags = this.flags;
-        if (this.blocks_compressed === 0) {
-          flags |= CHUNK_START;
-        }
-        flags |= CHUNK_END;
-
-        const block_words = new Array(BLAKE3_BLOCK_LEN).fill(0);
-        for (let i = 0; i < pending; i++) block_words[i] = held[i];
-
-        return {
-          input_chaining_value: Array.from(this.chaining_value),
-          block_words: block_words,
-          block_len: pending,
-          counter: this.chunk_counter,
-          flags: flags
-        };
-      });
+    _parentChainingValue(leftCv, rightCv) {
+      const blockData = this._parentBlock(leftCv, rightCv);
+      const out = compress(this.initial_cv, blockData, 0, BLAKE3_BLOCK_LEN, this.flags|PARENT);
+      return out.slice(0, 8);
     }
 
     /**
-     * Build parent from two children
+     * The 64 byte message block of a parent node: both children little-endian
+     * @param {Uint32Array} leftCv - chaining value of the left child
+     * @param {Uint32Array} rightCv - chaining value of the right child
+     * @returns {byte[]} BLAKE3_BLOCK_LEN bytes
      */
-    parent_output(left_child, right_child) {
-      const block = new Uint8Array(BLAKE3_BLOCK_LEN);
-
-      // Pack left child
+    _parentBlock(leftCv, rightCv) {
+      const blockData = new Array(BLAKE3_BLOCK_LEN);
       for (let i = 0; i < 8; i++) {
-        const bytes = OpCodes.Unpack32LE(left_child[i]);
-        block[i * 4] = bytes[0];
-        block[i * 4 + 1] = bytes[1];
-        block[i * 4 + 2] = bytes[2];
-        block[i * 4 + 3] = bytes[3];
+        const bytes = OpCodes.Unpack32LE(leftCv[i]);
+        for (let j = 0; j < 4; j++) blockData[i * 4 + j] = bytes[j];
       }
-
-      // Pack right child
       for (let i = 0; i < 8; i++) {
-        const bytes = OpCodes.Unpack32LE(right_child[i]);
-        block[32 + i * 4] = bytes[0];
-        block[32 + i * 4 + 1] = bytes[1];
-        block[32 + i * 4 + 2] = bytes[2];
-        block[32 + i * 4 + 3] = bytes[3];
+        const bytes = OpCodes.Unpack32LE(rightCv[i]);
+        for (let j = 0; j < 4; j++) blockData[32 + i * 4 + j] = bytes[j];
       }
+      return blockData;
+    }
 
-      const chaining_value = new Uint32Array(IV);
-      return compress(chaining_value, block, 0, BLAKE3_BLOCK_LEN, PARENT|this.flags);
+    /**
+     * Merge a completed chunk into the subtree stack. A subtree is complete
+     * whenever the number of chunks finished so far is even, so the loop
+     * collapses one level for each trailing zero bit of that count.
+     * @param {Uint32Array} cv - chaining value of the chunk just completed
+     * @param {number} totalChunks - number of chunks completed including this one
+     */
+    _addChunkChainingValue(cv, totalChunks) {
+      let remaining = totalChunks;
+      let node = cv;
+      while (remaining % 2 === 0) {
+        node = this._parentChainingValue(this.cvStack.pop(), node);
+        remaining = remaining / 2;
+      }
+      this.cvStack.push(node);
     }
 
     /**
@@ -413,106 +493,45 @@
      * @returns {Array} Hash digest as byte array
      */
     Final(outputLength) {
-      outputLength = outputLength || BLAKE3_OUT_LEN;
+      outputLength = outputLength || this._outputSize;
 
-      // The last block of a chunk carries CHUNK_END, and for a single-chunk
-      // message the root node carries ROOT as well. Compressing a block the
-      // moment it filled handed those flags to an empty trailing block instead
+      // The last block of a chunk carries CHUNK_END. Compressing a block the
+      // moment it filled handed that flag to an empty trailing block instead
       // whenever the message length was an exact multiple of 64; the absorber
       // holds the block back so the finalizer is the one that sees it.
-      const output = this._absorber.Finish((held, pending) => {
-        let flags = this.flags;
-        if (this.blocks_compressed === 0) {
-          flags |= CHUNK_START;
+      return this._absorber.Finish((held, pending) => {
+        // The chunk still in progress is the right-most node of the tree. Fold
+        // the pending subtree chaining values into it from the right, then emit
+        // the surviving node with the ROOT flag set.
+        let cv = this.chaining_value;
+        let blockData = new Array(BLAKE3_BLOCK_LEN).fill(0);
+        for (let i = 0; i < pending; i++) blockData[i] = held[i];
+        let blockLen = pending;
+        let counter = this.chunk_counter;
+        let flags = this.flags|this._startFlag()|CHUNK_END;
+
+        for (let i = this.cvStack.length - 1; i >= 0; i--) {
+          const rightCv = compress(cv, blockData, counter, blockLen, flags).slice(0, 8);
+          blockData = this._parentBlock(this.cvStack[i], rightCv);
+          cv = this.initial_cv;
+          counter = 0;
+          blockLen = BLAKE3_BLOCK_LEN;
+          flags = this.flags|PARENT;
         }
-        flags |= CHUNK_END|ROOT;
 
-        const block_data = new Array(BLAKE3_BLOCK_LEN).fill(0);
-        for (let i = 0; i < pending; i++) block_data[i] = held[i];
-
-        return compress(this.chaining_value, block_data, 0, pending, flags);
-      });
-
-      // Extract output bytes directly from compression result
-      return this.extractOutputBytes(output, outputLength);
-    }
-
-    /**
-     * Extract root output bytes - BLAKE3 specification Section 2.4
-     */
-    rootOutputBytes(output, length) {
-      const output_bytes = [];
-      let counter = 0;
-
-      while (output_bytes.length < length) {
-        // Use counter mode to generate extended output
-        const words = compress(
-          output.input_chaining_value,
-          output.block_words,
-          counter,
-          output.block_len,
-          output.flags|ROOT
-        );
-
-        // Extract bytes from words (little-endian)
-        for (let i = 0; i < 16 && output_bytes.length < length; i++) {
-          const bytes = OpCodes.Unpack32LE(words[i]);
-          for (let j = 0; j < 4 && output_bytes.length < length; j++) {
-            output_bytes.push(bytes[j]);
+        // Root output is extendable: the output block counter selects the slice.
+        const output = [];
+        let outCounter = 0;
+        while (output.length < outputLength) {
+          const words = compress(cv, blockData, outCounter, blockLen, flags|ROOT);
+          for (let i = 0; i < 16 && output.length < outputLength; i++) {
+            const bytes = OpCodes.Unpack32LE(words[i]);
+            for (let j = 0; j < 4 && output.length < outputLength; j++) output.push(bytes[j]);
           }
+          outCounter++;
         }
-        counter++;
-      }
-
-      return output_bytes.slice(0, length);
-    }
-
-    /**
-     * Extract output bytes from compression output
-     */
-    extractOutputBytes(words, outputLength) {
-      const output = [];
-      for (let i = 0; i < Math.min(16, Math.ceil(outputLength / 4)); i++) {
-        const bytes = OpCodes.Unpack32LE(words[i]);
-        for (let j = 0; j < 4 && output.length < outputLength; j++) {
-          output.push(bytes[j]);
-        }
-      }
-      return output;
-    }
-
-    /**
-     * Extract bytes from root node
-     */
-    extract_bytes(node, output_len) {
-      const output = new Uint8Array(output_len);
-      let output_pos = 0;
-      let counter = 0;
-
-      while (output_pos < output_len) {
-        const block = new Uint8Array(BLAKE3_BLOCK_LEN);
-        const compressed = compress(node, block, counter, 0, ROOT|this.flags);
-
-        // Convert output words to bytes
-        const block_output = new Uint8Array(64);
-        for (let i = 0; i < 16; i++) {
-          const bytes = OpCodes.Unpack32LE(compressed[i]);
-          block_output[i * 4] = bytes[0];
-          block_output[i * 4 + 1] = bytes[1];
-          block_output[i * 4 + 2] = bytes[2];
-          block_output[i * 4 + 3] = bytes[3];
-        }
-
-        const copy_len = Math.min(64, output_len - output_pos);
-        for (let i = 0; i < copy_len; i++) {
-          output[output_pos + i] = block_output[i];
-        }
-
-        output_pos += copy_len;
-        counter++;
-      }
-
-      return Array.from(output);
+        return output;
+      });
     }
 
     /**
@@ -545,11 +564,17 @@
     }
 
     ClearData() {
-      if (this.chunks) {
-        for (let chunk of this.chunks) {
-          if (chunk) OpCodes.ClearArray(chunk);
+      if (this.chaining_value) {
+        OpCodes.ClearArray(this.chaining_value);
+      }
+      if (this.cvStack) {
+        for (const cv of this.cvStack) {
+          if (cv) OpCodes.ClearArray(cv);
         }
-        this.chunks = null;
+        this.cvStack = [];
+      }
+      if (this._absorber) {
+        this._absorber.Reset();
       }
     }
 
@@ -573,7 +598,7 @@
      * @returns {Array} Hash digest as byte array
      */
     Result() {
-      return this.Final();
+      return this.Final(this._outputSize);
     }
   }
 

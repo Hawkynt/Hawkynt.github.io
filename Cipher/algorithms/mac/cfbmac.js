@@ -273,10 +273,20 @@
           iv: OpCodes.Hex8ToBytes("1234567890abcdef"),
           macSize: 4,
           expected: OpCodes.Hex8ToBytes("cd647403")
+        },
+        // BouncyCastle's MacTest labels the next case "word aligned data - zero IV",
+        // but it re-inits the same CFBBlockCipherMac with a bare KeyParameter, which
+        // leaves the previously supplied IV in place. The IV below is the one the
+        // published value was actually produced under.
+        {
+          text: "BouncyCastle MacTest Vector 2 - DES CFB-MAC, block-aligned 8 byte message",
+          uri: "https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/MacTest.java",
+          input: OpCodes.Hex8ToBytes("3736353433323120"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          iv: OpCodes.Hex8ToBytes("1234567890abcdef"),
+          macSize: 4,
+          expected: OpCodes.Hex8ToBytes("3af549c9")
         }
-        // NOTE: BouncyCastle MacTest vector 2 (zero IV, word-aligned) produces inconsistent results
-        // when run in isolation vs. in sequence. The test suite reuses the same MAC instance,
-        // causing IV state to persist. Additional standalone test vectors needed for zero-IV case.
       ];
 
       // Known vulnerabilities

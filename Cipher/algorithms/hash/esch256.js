@@ -262,37 +262,37 @@
       this.tests = [
         {
           text: "Esch256: Empty message (NIST LWC KAT Count=1)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("C0E815D78B875DC768C6C8B3AFA51987CD69E5C087D387368628A511CFAD5730")
         },
         {
           text: "Esch256: Single byte 0x00 (NIST LWC KAT Count=2)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("D515FD9C2852D9D6F00C9CF01D858AF467EEDF21FF68CC14C005B3EFF7A6ECD3")
         },
         {
           text: "Esch256: Two bytes 0x0001 (NIST LWC KAT Count=3)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
           expected: OpCodes.Hex8ToBytes("FBCAD7AB77FD4CC844534D2716D08C092B40B86E00647ECAA429AFDFE3B3FC43")
         },
         {
           text: "Esch256: Four bytes 0x00010203 (NIST LWC KAT Count=5)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
           expected: OpCodes.Hex8ToBytes("649D3E5258E504EF842A7176108D36A823E751D5E0EE31E3FAF111415BB9BBC2")
         },
         {
           text: "Esch256: 16 bytes (full rate) (NIST LWC KAT Count=17)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           expected: OpCodes.Hex8ToBytes("ACFF841E2A526D83D6E94AB5564D6D64C98F5E8016BB1C2950386ED156C6C174")
         },
         {
           text: "Esch256: 32 bytes (NIST LWC KAT Count=33)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          uri: "https://github.com/usnistgov/Lightweight-Cryptography-Benchmarking/blob/main/implementations/sparkle/crypto_hash/esch256v2/LWC_HASH_KAT_256.txt",
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           expected: OpCodes.Hex8ToBytes("78B905B2E2D4110B76EF8AFD2495F58AD6FFD6B9727377F3E5DFCEEBF3031E24")
         }

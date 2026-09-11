@@ -58,10 +58,13 @@
     0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n
   ]);
 
-  // Domain separation bytes and markers
-  const SINGLE = [0x07];                   // Single node marker
-  const INTERMEDIATE = [0x0B];             // Intermediate leaf marker
-  const FINAL = [0xFF, 0xFF, 0x06];        // Final marker (includes domain)
+  // Domain separation bytes and markers. The three domain separators are
+  // applied by the padding, not absorbed as data, so that they merge with the
+  // pad10*1 terminator when only one byte of the block is left.
+  const SINGLE_DOMAIN = 0x07;              // Single node domain separator
+  const LEAF_DOMAIN = 0x0B;                // Intermediate leaf domain separator
+  const FINAL_DOMAIN = 0x06;               // Final node domain separator
+  const FINAL_MARKER = [0xFF, 0xFF];       // Final node marker, ahead of its domain
   const FIRST = [3, 0, 0, 0, 0, 0, 0, 0];  // First node marker
 
   // ===== HELPER FUNCTIONS =====
@@ -203,16 +206,28 @@
       this.keccakPermutation();
     }
 
-    padAndSwitchToSqueezingPhase() {
-      // Keccak padding: 10*1
-      // Fill any remaining space with zeros and XOR 0x80 at the last position
+    /**
+     * Append the TurboSHAKE domain separator and the pad10*1 padding, then
+     * permute. The separator must be applied here rather than absorbed as an
+     * ordinary data byte: when exactly one byte of the block is still free the
+     * separator and the terminating 0x80 land on the SAME byte and have to
+     * merge into 0x87 (0x8B, 0x86). Absorbing the separator first flushes the
+     * block and the padding then spills into a whole extra block, which is a
+     * different - and wrong - message. This is the same collision that was
+     * repaired in sha3.js and shake.js.
+     * @param {number} domainByte - 0x07 single node, 0x0B leaf, 0x06 final node
+     */
+    padAndSwitchToSqueezingPhase(domainByte) {
+      if (typeof domainByte !== 'number') {
+        throw new Error('padAndSwitchToSqueezingPhase requires a domain separator');
+      }
 
-      // Fill remaining queue with zeros
+      // absorb() flushes a full queue, so there is always at least one free byte
       for (let i = this.bytesInQueue; i < this.rateBytes; i++) {
         this.queue[i] = 0;
       }
 
-      // XOR 0x80 at the last position for padding
+      this.queue[this.bytesInQueue] ^= domainByte;
       this.queue[this.rateBytes - 1] ^= 0x80;
 
       this.absorbBlock(this.queue, 0);
@@ -224,8 +239,9 @@
 
     squeeze(output, offset, outputLength) {
       if (!this.squeezing) {
-        // Pad and switch to squeezing if not already done
-        this.padAndSwitchToSqueezingPhase();
+        // The domain separator is not known at this level, so squeezing an
+        // unpadded sponge cannot be repaired here - it is a caller error.
+        throw new Error('Cannot squeeze before padding: no domain separator');
       }
 
       let i = 0;
@@ -489,6 +505,71 @@
           personalization: buildStandardBuffer(41 * 41 * 41),
           outputSize: 32,
           expected: OpCodes.Hex8ToBytes("75D2F86A2E644566726B4FBCFC5657B9DBCF070C7B0DCA06450AB291D7443BCF")
+        },
+        // The RFC vectors step by powers of 17 and step straight over the two
+        // lengths where this implementation was wrong: the 8192-byte chunking
+        // boundary, and the message length at which the TurboSHAKE domain
+        // separator has to merge with the pad10*1 terminator in one byte.
+        {
+          text: "KangarooTwelve: 8192-byte pattern (last single-node length)",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(8192),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("48F256F6772F9EDFB6A8B661EC92DC93")
+        },
+        {
+          text: "KangarooTwelve: 8193-byte pattern (first tree-hashed length)",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(8193),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("BB66FE72EAEA5179418D5295EE134485")
+        },
+        {
+          text: "KangarooTwelve: 16384-byte pattern (two full chunks)",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(16384),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("82778F7F7234C83352E76837B721FBDB")
+        },
+        {
+          text: "KangarooTwelve: 16385-byte pattern",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(16385),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("5F8D2B943922B451842B4E82740D0236")
+        },
+        {
+          text: "KangarooTwelve: 24576-byte pattern (three full chunks)",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(24576),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("F4082A8FE7D1635AA042CD1DA63BF235")
+        },
+        {
+          text: "KangarooTwelve: 24577-byte pattern",
+          uri: "https://github.com/cloudflare/circl/blob/main/xof/k12/k12_test.go",
+          input: buildStandardBuffer(24577),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("38CB940999ACA742D69DD79298C6051C")
+        },
+        {
+          // S = M || length_encode(0) is 167 bytes, one short of the 168-byte
+          // rate, so the `07` domain separator and the `80` pad terminator
+          // occupy the same byte and must merge into `87`. Value follows from
+          // RFC 9861 section 3.2; cross-checked against XKCP's published
+          // self-test checksum, which covers 34 lengths of this shape.
+          text: "KangarooTwelve: 166-byte pattern (domain separator meets pad10*1)",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
+          input: buildStandardBuffer(166),
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes("CBBE9DD1E423F20003FBA7BB219491C8D1F445FA5C4199D6C6C70C9FDC101964")
+        },
+        {
+          text: "KangarooTwelve: 334-byte pattern (domain separator meets pad10*1, second block)",
+          uri: "https://www.rfc-editor.org/rfc/rfc9861",
+          input: buildStandardBuffer(334),
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes("FF92C42FDBDCB983D402FDC05F7D6EDD1AE0A24AADD145CF129C8E7E7C057B3B")
         }
       ];
     }
@@ -636,9 +717,8 @@
         // First node - absorb FIRST marker
         this.treeSponge.absorb(FIRST, 0, FIRST.length);
       } else {
-        // Intermediate node - absorb INTERMEDIATE marker (0x0B), pad, then squeeze
-        this.leafSponge.absorb(INTERMEDIATE, 0, INTERMEDIATE.length);
-        this.leafSponge.padAndSwitchToSqueezingPhase();
+        // Intermediate node - pad with the leaf domain separator, then squeeze
+        this.leafSponge.padAndSwitchToSqueezingPhase(LEAF_DOMAIN);
         const hash = new Array(this.chainLen);
         this.leafSponge.squeeze(hash, 0, this.chainLen);
         this.treeSponge.absorb(hash, 0, this.chainLen);
@@ -656,9 +736,8 @@
       this.processData(this.personalBytes, 0, this.personalBytes.length);
 
       if (this.currNode === 0) {
-        // Single node mode - absorb SINGLE marker (0x07), then pad
-        this.treeSponge.absorb(SINGLE, 0, 1);
-        this.treeSponge.padAndSwitchToSqueezingPhase();
+        // Single node mode - pad with the single-node domain separator
+        this.treeSponge.padAndSwitchToSqueezingPhase(SINGLE_DOMAIN);
       } else {
         // Multi-node mode - complete final leaf, then finalize tree
         this.switchLeaf(false);
@@ -667,9 +746,9 @@
         const lengthEnc = rightEncode(this.currNode);
         this.treeSponge.absorb(lengthEnc, 0, lengthEnc.length);
 
-        // Absorb FINAL marker (0xFF 0xFF 0x06), then pad
-        this.treeSponge.absorb(FINAL, 0, FINAL.length);
-        this.treeSponge.padAndSwitchToSqueezingPhase();
+        // Absorb FINAL marker (0xFF 0xFF), then pad with the final domain byte
+        this.treeSponge.absorb(FINAL_MARKER, 0, FINAL_MARKER.length);
+        this.treeSponge.padAndSwitchToSqueezingPhase(FINAL_DOMAIN);
       }
 
       this.squeezing = true;

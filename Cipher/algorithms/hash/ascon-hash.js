@@ -323,37 +323,49 @@
         new LinkItem("Ascon Python reference implementation", "https://github.com/ascon/ascon-python")
       ];
 
-      // Official NIST LWC test vectors
+      // Official NIST SP 800-232 test vectors (asconhash256 KAT, Count 1/2/3/5/9/17/33)
       this.tests = [
         {
-          text: "Ascon-Hash256: Empty message (NIST LWC)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-Hash256: Empty message (Count=1)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
           input: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("7346BC14F036E87AE03D0997913088F5F68411434B3CF8B54FA796A80D251F91")
+          expected: OpCodes.Hex8ToBytes("0B3BE5850F2F6B98CAF29F8FDEA89B64A1FA70AA249B8F839BD53BAA304D92B2")
         },
         {
-          text: "Ascon-Hash256: Single byte 0x00 (NIST LWC)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-Hash256: Single byte 0x00 (Count=2)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("8DD446ADA58A7740ECF56EB638EF775F7D5C0FD5F0C2BBBDFDEC29609D3C43A2")
+          expected: OpCodes.Hex8ToBytes("0728621035AF3ED2BCA03BF6FDE900F9456F5330E4B5EE23E7F6A1E70291BC80")
         },
         {
-          text: "Ascon-Hash256: Two bytes (NIST LWC)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-Hash256: Two bytes (Count=3)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
           input: OpCodes.Hex8ToBytes("0001"),
-          expected: OpCodes.Hex8ToBytes("F77CA13BF89146D3254F1CFB7EDDBA8FA1BF162284BB29E7F645545CF9E08424")
+          expected: OpCodes.Hex8ToBytes("6115E7C9C4081C2797FC8FE1BC57A836AFA1C5381E556DD583860CA2DFB48DD2")
         },
         {
-          text: "Ascon-Hash256: Four bytes (NIST LWC)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-Hash256: Four bytes (Count=5)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
           input: OpCodes.Hex8ToBytes("00010203"),
-          expected: OpCodes.Hex8ToBytes("8013EAAA1951580A7BEF7D29BAC323377E64F279EA73E6881B8AED69855EF764")
+          expected: OpCodes.Hex8ToBytes("D7E4C7ED9B8A325CD08B9EF259F8877054ECD8304FE1B2D7FD847137DF6727EE")
         },
         {
-          text: "Ascon-Hash256: Eight bytes (NIST LWC)",
-          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          text: "Ascon-Hash256: Eight bytes, exact rate multiple (Count=9)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
-          expected: OpCodes.Hex8ToBytes("F4C6A44B29915D3D57CF928A18EC6226BB8DD6C1136ACD24965F7E7780CD69CF")
+          expected: OpCodes.Hex8ToBytes("B88E497AE8E6FB641B87EF622EB8F2FCA0ED95383F7FFEBE167ACF1099BA764F")
+        },
+        {
+          text: "Ascon-Hash256: Sixteen bytes (Count=17)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("3158C1940A2FBADBD68AB661777859B94A689E4EFC375911467ADDD641835C38")
+        },
+        {
+          text: "Ascon-Hash256: 32 bytes (Count=33)",
+          uri: "https://github.com/ascon/ascon-c/blob/main/crypto_hash/asconhash256/LWC_HASH_KAT_128_256.txt",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          expected: OpCodes.Hex8ToBytes("BD9D3D60A66B53868EAB2A5C74539A518A1F60F01EB176C60E43DEE81680B33E")
         }
       ];
     }
@@ -546,8 +558,18 @@
           [0x8153650c, 0x5aad0a7a], // 0x5aad0a7a8153650c
           [0x539493b6, 0x4f3e0e32]  // 0x4f3e0e32539493b6
         );
+      } else if (this.variant === 'hash256') {
+        // Ascon-Hash256 IV (NIST SP 800-232), state after P12 of 0x0000080100cc0002
+        // Reference: ascon-c constants.h ASCON_HASH_IV0..ASCON_HASH_IV4
+        this.permutation.setInitialState(
+          [0xe934d681, 0x9b1e5494], // 0x9b1e5494e934d681
+          [0x333751d2, 0x4bc3a01e], // 0x4bc3a01e333751d2
+          [0x6b34b81a, 0xae65396c], // 0xae65396c6b34b81a
+          [0xd56a4db3, 0x3c7fd4a4], // 0x3c7fd4a4d56a4db3
+          [0x06c5976d, 0x1a5c4649]  // 0x1a5c464906c5976d
+        );
       } else {
-        // ASCON-HASH / ASCON-HASH256 IV (after P12 transformation)
+        // ASCON-HASH IV (LWC round version, after P12 transformation)
         // Reference: ascon-hash.c lines 81-87
         this.permutation.setInitialState(
           [0xdb67f03d, 0xee9398aa], // 0xee9398aadb67f03d
@@ -607,7 +629,43 @@
       if (this.variant === 'xof') {
         return this._resultXof();
       }
+      if (this.variant === 'hash256') {
+        return this._resultHash256();
+      }
       return this._resultHash();
+    }
+
+    // NIST SP 800-232 finalisation: little-endian rate word, 0x01 padding byte
+    _resultHash256() {
+      const finalBytes = this.bufferPos;
+
+      // Zero-extend the partial block and append the 0x01 padding byte
+      const padded = new Array(ASCON_HASH_RATE).fill(0);
+      for (let i = 0; i < finalBytes; i++) {
+        padded[i] = this.buffer[i];
+      }
+      padded[finalBytes] = 0x01;
+
+      const low = OpCodes.Pack32LE(padded[0], padded[1], padded[2], padded[3]);
+      const high = OpCodes.Pack32LE(padded[4], padded[5], padded[6], padded[7]);
+      this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], low));
+      this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], high));
+
+      // Squeeze 32 bytes as four little-endian rate words
+      const output = [];
+      for (let block = 0; block < 4; block++) {
+        this.permutation.permute();
+
+        const loBytes = OpCodes.Unpack32LE(this.permutation.S[0][0]);
+        const hiBytes = OpCodes.Unpack32LE(this.permutation.S[0][1]);
+        output.push(
+          loBytes[0], loBytes[1], loBytes[2], loBytes[3],
+          hiBytes[0], hiBytes[1], hiBytes[2], hiBytes[3]
+        );
+      }
+
+      this.Reset();
+      return output;
     }
 
     _resultHash() {
@@ -777,6 +835,22 @@
     }
 
     _absorb() {
+      if (this.variant === 'hash256') {
+        // NIST SP 800-232 loads message bytes little-endian into the rate word
+        const loWord = OpCodes.Pack32LE(
+          this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
+        );
+        const hiWord = OpCodes.Pack32LE(
+          this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
+        );
+
+        this.permutation.S[0][0] = OpCodes.XorN(this.permutation.S[0][0], loWord);
+        this.permutation.S[0][1] = OpCodes.XorN(this.permutation.S[0][1], hiWord);
+
+        this.permutation.permute();
+        return;
+      }
+
       // XOR buffer into S[0] and apply permutation
       const high = OpCodes.Pack32BE(
         this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
