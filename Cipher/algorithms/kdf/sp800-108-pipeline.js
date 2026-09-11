@@ -135,6 +135,42 @@
           outputLengthBits: 32,
           hashAlgorithm: "SHA-1",
           expected: OpCodes.Hex8ToBytes("096F")
+        },
+        {
+          text: "SP 800-108 Pipeline Mode - HMAC-SHA1, 20 bytes (exactly one PRF block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_pipe.vec",
+          input: OpCodes.Hex8ToBytes("E46A6B8AA59E92E64F066319962564F87AFF921A"),
+          label: OpCodes.Hex8ToBytes("2894F522FC3244125E79FDA2"),
+          context: OpCodes.Hex8ToBytes("E97FF4ECBE1AF9B60F178B36C82A9DA13ECE72B4EAA7CBE6DAE081B51B6E5A0776DDD88252CD2EE81503A10D2679D97B3A647D885BDF529F22DC8DB7FCFD013F7A11A4FEB91A6F1611262BB4EE0F17C526CD606B2EB6BC2FCEF15E1D585CCBAE5807285A"),
+          outputLength: 20,
+          counterBits: 32,
+          outputLengthBits: 32,
+          hashAlgorithm: "SHA-1",
+          expected: OpCodes.Hex8ToBytes("9334C17D345653ED331E714A17184AC75D9B9908")
+        },
+        {
+          text: "SP 800-108 Pipeline Mode - HMAC-SHA256, 36 bytes (one group past the first block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_pipe.vec",
+          input: OpCodes.Hex8ToBytes("5f55c3256b553dc14191bb6bf7a2683d5fb23175674a989f4039979b88afb41a"),
+          label: OpCodes.Hex8ToBytes("ba99b90163142fa41257855bf43d865d"),
+          context: OpCodes.Hex8ToBytes("06849bae8a99c78d89ca12ec321c74b0f14282ea26f120e837374138aada472cd397f163ec138b36a3a0501ffecccd3a"),
+          outputLength: 36,
+          counterBits: 32,
+          outputLengthBits: 32,
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("c526b989ccc815bfaabe89f9a88b1ff9786b95d09ca03fd9235df54edf89ac7b95d4e0ae")
+        },
+        {
+          text: "SP 800-108 Pipeline Mode - HMAC-SHA256, 48 bytes (two PRF blocks)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_pipe.vec",
+          input: OpCodes.Hex8ToBytes("5b5a55801cbf928335b51b03fa90e663d8f15ec10d1ff37e13d4cae60cc7c4c9"),
+          label: OpCodes.Hex8ToBytes("76088a05cc92d29510c998144c95b9bc"),
+          context: OpCodes.Hex8ToBytes("d8037597ab1b305806983009732e64ac9ed3a3bdbc6208d6439b2b57138585fb408619fd882e1253b81055d4025d7831087f68442d0d88b3b428b5b0b04abb54"),
+          outputLength: 48,
+          counterBits: 32,
+          outputLengthBits: 32,
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("f255ffa7fb16595048ea36da923c358db664f6ff3f36f76203de596f352f1feb87084379051f511dd2a58bfaa5ec7ac8")
         }
       ];
     }

@@ -98,58 +98,87 @@
         )
       ];
 
-      // Official test vectors from NIST SP 800-108 and Botan
-      // Generated using Botan v2.19.1 with HMAC-SHA256
+      // Published test vectors, quoted verbatim from Botan's sp800_108_ctr.vec.
+      // Botan names the SP 800-108 Context field "Salt", so Salt maps to context here.
+      // Output lengths are chosen around the PRF block boundary: shorter than one
+      // HMAC block, exactly one block, and spanning two blocks.
       this.tests = [
         {
-          text: "NIST SP 800-108 Counter Mode - HMAC-SHA256 Test Vector 1 (minimal output)",
-          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800-108.vec",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          label: OpCodes.Hex8ToBytes(""),
-          context: OpCodes.Hex8ToBytes(""),
-          outputLength: 1,
+          text: "SP800-108-Counter(HMAC(SHA-1)) - 20 bytes, exactly one PRF block",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("17182760595F697F27E4E64A8E66102AC83A4B11"),
+          label: OpCodes.Hex8ToBytes("EB5A279F6AC4522804FAF25E"),
+          context: OpCodes.Hex8ToBytes("13E3EA2CF37566A55321C8E6386FAAC93421D614948EBF5BBA07649D77A27E161021346BAC19B3ADE49D4250DDEACAD90E3643389C320305541B5C3CCE41DEA5586CACEB3D43C43B256DA060CB3366108AB7895C7AFDA46C68C09D63D49E74AD74B05D94"),
+          outputLength: 20,
           counterBits: 32,
-          expected: OpCodes.Hex8ToBytes("83")
+          hashAlgorithm: "SHA-1",
+          expected: OpCodes.Hex8ToBytes("AFA3F9DABB5BE44C4D25DD83EB1C0983D89961CA")
         },
         {
-          text: "NIST SP 800-108 Counter Mode - HMAC-SHA256 Test Vector 2 (2 bytes output)",
-          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800-108.vec",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          label: OpCodes.Hex8ToBytes(""),
-          context: OpCodes.Hex8ToBytes(""),
-          outputLength: 2,
+          text: "SP800-108-Counter(HMAC(SHA-256)) - 12 bytes, truncated below one PRF block",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("8a90e91cf6e25ae0f733a0eb186415af49cd7a0d78e1b6d01626b711aab4f12b"),
+          label: OpCodes.Hex8ToBytes("036e2c420a6053e7441595745da71384"),
+          context: OpCodes.Hex8ToBytes("7ca576af452eb08eccd0bf5a9ce6e5bd"),
+          outputLength: 12,
           counterBits: 32,
-          expected: OpCodes.Hex8ToBytes("338D")
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("69283d6572c9eba192b68279")
         },
         {
-          text: "NIST SP 800-108 Counter Mode - HMAC-SHA256 Test Vector 3 (32 bytes full block)",
-          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800-108.vec",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          label: OpCodes.Hex8ToBytes(""),
-          context: OpCodes.Hex8ToBytes(""),
-          outputLength: 32,
+          text: "SP800-108-Counter(HMAC(SHA-256)) - 36 bytes, one byte group past the first block",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("304932533feea6cc93b9a5b01e362b416f6cf1c3eb8019191cd9f607814b6b71"),
+          label: OpCodes.Hex8ToBytes("a16cc203753424e8b08633fe43d9b0c4"),
+          context: OpCodes.Hex8ToBytes("54eeac24933ff6829bc37e7b1ed932b9f050899bb7d0c32615a708ee213d9085585fb010544fe4d29a8021b39fbb267d"),
+          outputLength: 36,
           counterBits: 32,
-          expected: OpCodes.Hex8ToBytes("86656D4577DC34E374D62F82AFB231538CAF44F4C0ABA25B43FB8A2F02360275")
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("719a8ae5eb4b1ac325d6e3598080e05cc15aede16f0547de0646e7639c1bf605ca557969")
         },
         {
-          text: "NIST SP 800-108 Counter Mode - HMAC-SHA256 Test Vector 4 (with context)",
-          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800-108.vec",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          label: OpCodes.Hex8ToBytes(""),
-          context: OpCodes.Hex8ToBytes("41"),
-          outputLength: 1,
+          text: "SP800-108-Counter(HMAC(SHA-256)) - 48 bytes, two PRF blocks",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("4b7ef2ca535af6b75b9cbf60a0d61a92af7edad9d568688fd9cde1c0c95f3e33"),
+          label: OpCodes.Hex8ToBytes("be7baa20a4fd50eb81d30ce04aa8fbfb"),
+          context: OpCodes.Hex8ToBytes("ec72d16625fa2404052a5cd44ea924e376b53ad759442803809bb2b09e1189d16950f654fccf806519aa7113c8a64a4a89f470d92a9b0477fe0b0b5549294060"),
+          outputLength: 48,
           counterBits: 32,
-          expected: OpCodes.Hex8ToBytes("21")
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("caebdad694080005aff424e983bad862f4f7efec50102381cd25509fabc487a36509dabc6760088a7d33e7a37be94791")
         },
         {
-          text: "NIST SP 800-108 Counter Mode - HMAC-SHA256 Test Vector 5 (64 bytes two blocks)",
-          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800-108.vec",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          label: OpCodes.Hex8ToBytes(""),
-          context: OpCodes.Hex8ToBytes(""),
-          outputLength: 64,
+          text: "SP800-108-Counter(HMAC(SHA-512)) - 20 bytes, heavy truncation of a 64 byte block",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("BFFA0F4267D5F24F219151CB38C581C0D1CFF8EFE475D7C38A47726B226DF36E47E1A579993B4BEF9E3197330610ED57350BDE57EC6EDF231BCEFF1532017C0D"),
+          label: OpCodes.Hex8ToBytes("196636113098B35C35406BB4"),
+          context: OpCodes.Hex8ToBytes("17E42893512C6DF7747906508AD41396096A13B7D9AA87C4F7FABCBD9795165823A1B54819EB190691C96BAD55AD233A85F3C554C3E9B2D9B588A9F0DA09DF0D83D6141B83F5A62190FD16AA20B15552C3417C96B931E7EB55E06CD57406D5AB79FE12A7"),
+          outputLength: 20,
           counterBits: 32,
-          expected: OpCodes.Hex8ToBytes("DB14822588D76A8AC03F6891FD8F781A54FA2393ACA16B86781D813E2F6B1478D94EF5A0465B1B7D9C797B12D750A3479A1D116B63868E9B3A3C4A33F3D78456")
+          hashAlgorithm: "SHA-512",
+          expected: OpCodes.Hex8ToBytes("40595AEEF8C541A9C453E27D38F6F04463331A8A")
+        },
+        {
+          text: "SP800-108-Counter(HMAC(SHA-256),8,32) - 8 bit counter, 24 bytes",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("b1fefddae964b5becda2ac39309eed39ba1fff819425ec48e0ce2efa5eee2e13"),
+          label: OpCodes.Hex8ToBytes("d17a21b0e89b371149ee89d4c9239b8a"),
+          context: OpCodes.Hex8ToBytes("6baf3ba16f03e5b10fe439a307b16f208ab54cb1a2a564d40644f27ad298f515"),
+          outputLength: 24,
+          counterBits: 8,
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("ba1dea3338a92eeeb3ae0046ac214ba56beb939b7054efe3")
+        },
+        {
+          text: "SP800-108-Counter(HMAC(SHA-256),16,32) - 16 bit counter, 36 bytes over two blocks",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec",
+          input: OpCodes.Hex8ToBytes("c342730ce2412fcdeb94cdf6b9f23d656f44c9cd0acfa9c6ca6904aaafe19d2a"),
+          label: OpCodes.Hex8ToBytes("2523abf2d9bd9ee7e06faf7c62999705"),
+          context: OpCodes.Hex8ToBytes("6bf53bfb235ae2edce466761860f7470b5fae6d51cd7ce250f984062994dfdf5fead470abb43fe434817564c5dee6f30"),
+          outputLength: 36,
+          counterBits: 16,
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("99cbbccf79545b8a341637395b0349955077ef3b3901e06f6507962b4f08b8d5154b03ad")
         }
       ];
     }
