@@ -127,6 +127,13 @@
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
+          text: "Extended Rijndael KAT (Gladman), ecbvk88.txt: 256-bit block, 256-bit key, variable-key test 1",
+          uri: "https://web.archive.org/web/20110817073104if_/http://gladman.plushost.co.uk/oldsite/cryptography_technology/rijndael/rijn.tv.ecbvk.zip",
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("c6227e7740b7e53b5cb77865278eab0726f62366d9aabad908936123a1fc8af3")
+        },
+        {
           text: "DarkCrypt Rijndael256 — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),

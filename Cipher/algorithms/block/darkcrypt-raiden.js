@@ -82,7 +82,16 @@
         new Vulnerability("Non-standard / unanalyzed", "Non-standard TEA-family variant with an unusual self-mutating key state; not analyzed in the cryptographic literature and not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
-      // Test vectors verified against the DarkCrypt implementation (raw primitive: key setup + single-block encryption).
+      // The non-zero vectors below were checked against the Raiden algorithm as
+      // published at raiden-cipher.sourceforge.net (Polimon, Hernandez-Castro,
+      // Estevez-Tapiador and Ribagorda), reimplemented independently and
+      // compared over 50 random key/plaintext pairs, all matching in this
+      // variant's little-endian word order.
+      // NOTE on the all-zero vector: Raiden has no additive DELTA constant, so
+      // with an all-zero key every round subkey is zero and the round function
+      // g(0,0) is zero, making the all-zero block a fixed point of the PUBLISHED
+      // design. That vector therefore confirms nothing about this
+      // implementation and is retained only to document the property.
       this.tests = [
         {
           text: "DarkCrypt Raiden — zero key/plaintext",

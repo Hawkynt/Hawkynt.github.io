@@ -107,7 +107,9 @@
       // Test vectors using byte arrays - bit-perfect results from implementation
       this.tests = [
         {
-          text: "Classic Historical Example",
+          // The Wikipedia article works one letter off the tableau rather than
+          // a whole message, so it carries no value for this input.
+          text: "Key shorter than the message. No published source carries this value",
           uri: "https://en.wikipedia.org/wiki/Beaufort_cipher",
           input: OpCodes.AnsiToBytes("ATTACKATDAWN"),
           key: OpCodes.AnsiToBytes("LEMON"),

@@ -97,25 +97,25 @@
     0x109, 0x090, 0x19c, 0x1c1, 0x028, 0x1b3, 0x135, 0x16a, 0x176, 0x0df, 0x1e5, 0x188, 0x0c5, 0x16e, 0x1de, 0x1b1,
     0x0c3, 0x1df, 0x036, 0x0ee, 0x1ee, 0x0f0, 0x093, 0x049, 0x09a, 0x1b6, 0x069, 0x081, 0x125, 0x00b, 0x05e, 0x0b4,
     0x149, 0x1c7, 0x174, 0x03e, 0x13b, 0x1b7, 0x08e, 0x1c6, 0x0ae, 0x010, 0x095, 0x1ef, 0x04e, 0x0f2, 0x1fd, 0x085,
-    0x0fd, 0x0f6, 0x0a0, 0x16f, 0x083, 0x02e, 0x0ef, 0x090, 0x039, 0x004, 0x07a, 0x0af, 0x0f5, 0x1ac, 0x080, 0x1c4,
-    0x1e6, 0x0a1, 0x104, 0x0d6, 0x0b3, 0x0b2, 0x168, 0x0a2, 0x0a7, 0x156, 0x116, 0x1e9, 0x0fc, 0x112, 0x1c2, 0x1d9,
-    0x019, 0x1b5, 0x123, 0x00d, 0x0f1, 0x0ba, 0x1ab, 0x0d0, 0x000, 0x18a, 0x18b, 0x1f0, 0x022, 0x1cc, 0x1c9, 0x0b1,
-    0x1a5, 0x171, 0x1ad, 0x0bb, 0x0a4, 0x0bd, 0x1d1, 0x113, 0x13f, 0x12a, 0x0d9, 0x0bf, 0x0ed, 0x1b8, 0x0c9, 0x14d,
-    0x0e6, 0x0e8, 0x084, 0x0d5, 0x06a, 0x061, 0x0c2, 0x1f8, 0x1be, 0x027, 0x1f6, 0x0ad, 0x0a8, 0x165, 0x1fc, 0x102,
-    0x0c0, 0x096, 0x15f, 0x1dc, 0x1ec, 0x155, 0x1fa, 0x1dd, 0x1a8, 0x132, 0x006, 0x098, 0x0ac, 0x1aa, 0x162, 0x173,
-    0x1c0, 0x161, 0x18f, 0x16b, 0x1af, 0x0ca, 0x0e1, 0x13c, 0x1e8, 0x1b4, 0x159, 0x1ff, 0x1d7, 0x131, 0x00e, 0x097,
-    0x1a1, 0x167, 0x074, 0x077, 0x106, 0x0ea, 0x144, 0x1c8, 0x1cc, 0x020, 0x1bc, 0x148, 0x200, 0x124, 0x1cd, 0x0e0,
-    0x045, 0x0f3, 0x043, 0x202, 0x10e, 0x078, 0x1d5, 0x0ab, 0x1a6, 0x03f, 0x07b, 0x095, 0x232, 0x07e, 0x0aa, 0x070,
-    0x1d0, 0x1ba, 0x0c6, 0x108, 0x1bb, 0x1fe, 0x0a5, 0x01e, 0x106, 0x088, 0x15a, 0x104, 0x1cb, 0x055, 0x02a, 0x0d4,
-    0x1c5, 0x11f, 0x1e4, 0x136, 0x1b9, 0x1ea, 0x0f7, 0x195, 0x070, 0x095, 0x1c7, 0x1b0, 0x142, 0x047, 0x056, 0x120,
-    0x1bf, 0x05c, 0x000, 0x1f9, 0x003, 0x1db, 0x170, 0x122, 0x143, 0x0a9, 0x040, 0x1f2, 0x1a0, 0x155, 0x086, 0x18d,
-    0x1ed, 0x15c, 0x05f, 0x114, 0x06c, 0x030, 0x154, 0x085, 0x0c4, 0x0d3, 0x115, 0x092, 0x1e7, 0x15b, 0x0da, 0x126,
-    0x1f5, 0x191, 0x030, 0x0d7, 0x1c3, 0x1b6, 0x145, 0x01f, 0x19a, 0x072, 0x1ec, 0x19b, 0x0e2, 0x0fe, 0x1a4, 0x1fb,
-    0x1f5, 0x1d6, 0x0bc, 0x15e, 0x04f, 0x1a7, 0x1e7, 0x04b, 0x018, 0x0c8, 0x1c5, 0x107, 0x1e1, 0x110, 0x1d8, 0x1cc,
-    0x1e8, 0x1cc, 0x0e3, 0x1e5, 0x1f3, 0x021, 0x167, 0x0fe, 0x1d3, 0x1b4, 0x0d2, 0x0b5, 0x0df, 0x15e, 0x15e, 0x1d4,
-    0x1a8, 0x0a6, 0x1c8, 0x1d4, 0x197, 0x1cb, 0x130, 0x1c7, 0x077, 0x16d, 0x1a5, 0x1e9, 0x0e1, 0x0c1, 0x1de, 0x1cc,
-    0x1c3, 0x0cb, 0x19c, 0x1e4, 0x137, 0x1de, 0x1a3, 0x19e, 0x005, 0x016, 0x1e5, 0x0a3, 0x177, 0x0c4, 0x1c6, 0x1cc,
-    0x1d5, 0x1c9, 0x1d5, 0x0b1, 0x1bd, 0x0c2, 0x1a4, 0x187, 0x1da, 0x041, 0x0e8, 0x1cc, 0x1ee, 0x1e3, 0x1db, 0x1fe
+    0x0fd, 0x0f6, 0x0a0, 0x16f, 0x083, 0x08a, 0x156, 0x09b, 0x13c, 0x107, 0x167, 0x098, 0x1d0, 0x1e9, 0x003, 0x1fe,
+    0x0bd, 0x122, 0x089, 0x0d2, 0x18f, 0x012, 0x033, 0x06a, 0x142, 0x0ed, 0x170, 0x11b, 0x0e2, 0x14f, 0x158, 0x131,
+    0x147, 0x05d, 0x113, 0x1cd, 0x079, 0x161, 0x1a5, 0x179, 0x09e, 0x1b4, 0x0cc, 0x022, 0x132, 0x01a, 0x0e8, 0x004,
+    0x187, 0x1ed, 0x197, 0x039, 0x1bf, 0x1d7, 0x027, 0x18b, 0x0c6, 0x09c, 0x0d0, 0x14e, 0x06c, 0x034, 0x1f2, 0x06e,
+    0x0ca, 0x025, 0x0ba, 0x191, 0x0fe, 0x013, 0x106, 0x02f, 0x1ad, 0x172, 0x1db, 0x0c0, 0x10b, 0x1d6, 0x0f5, 0x1ec,
+    0x10d, 0x076, 0x114, 0x1ab, 0x075, 0x10c, 0x1e4, 0x159, 0x054, 0x11f, 0x04b, 0x0c4, 0x1be, 0x0f7, 0x029, 0x0a4,
+    0x00e, 0x1f0, 0x077, 0x04d, 0x17a, 0x086, 0x08b, 0x0b3, 0x171, 0x0bf, 0x10e, 0x104, 0x097, 0x15b, 0x160, 0x168,
+    0x0d7, 0x0bb, 0x066, 0x1ce, 0x0fc, 0x092, 0x1c5, 0x06f, 0x016, 0x04a, 0x0a1, 0x139, 0x0af, 0x0f1, 0x190, 0x00a,
+    0x1aa, 0x143, 0x17b, 0x056, 0x18d, 0x166, 0x0d4, 0x1fb, 0x14d, 0x194, 0x19a, 0x087, 0x1f8, 0x123, 0x0a7, 0x1b8,
+    0x141, 0x03c, 0x1f9, 0x140, 0x02a, 0x155, 0x11a, 0x1a1, 0x198, 0x0d5, 0x126, 0x1af, 0x061, 0x12e, 0x157, 0x1dc,
+    0x072, 0x18a, 0x0aa, 0x096, 0x115, 0x0ef, 0x045, 0x07b, 0x08d, 0x145, 0x053, 0x05f, 0x178, 0x0b2, 0x02e, 0x020,
+    0x1d5, 0x03f, 0x1c9, 0x1e7, 0x1ac, 0x044, 0x038, 0x014, 0x0b1, 0x16b, 0x0ab, 0x0b5, 0x05a, 0x182, 0x1c8, 0x1d4,
+    0x018, 0x177, 0x064, 0x0cf, 0x06d, 0x100, 0x199, 0x130, 0x15a, 0x005, 0x120, 0x1bb, 0x1bd, 0x0e0, 0x04f, 0x0d6,
+    0x13f, 0x1c4, 0x12a, 0x015, 0x006, 0x0ff, 0x19b, 0x0a6, 0x043, 0x088, 0x050, 0x15f, 0x1e8, 0x121, 0x073, 0x17e,
+    0x0bc, 0x0c2, 0x0c9, 0x173, 0x189, 0x1f5, 0x074, 0x1cc, 0x1e6, 0x1a8, 0x195, 0x01f, 0x041, 0x00d, 0x1ba, 0x032,
+    0x03d, 0x1d1, 0x080, 0x0a8, 0x057, 0x1b9, 0x162, 0x148, 0x0d9, 0x105, 0x062, 0x07a, 0x021, 0x1ff, 0x112, 0x108,
+    0x1c0, 0x0a9, 0x11d, 0x1b0, 0x1a6, 0x0cd, 0x0f3, 0x05c, 0x102, 0x05b, 0x1d9, 0x144, 0x1f6, 0x0ad, 0x0a5, 0x03a,
+    0x1cb, 0x136, 0x17f, 0x046, 0x0e1, 0x01e, 0x1dd, 0x0e6, 0x137, 0x1fa, 0x185, 0x08c, 0x08f, 0x040, 0x1b5, 0x0be,
+    0x078, 0x000, 0x0ac, 0x110, 0x15e, 0x124, 0x002, 0x1bc, 0x0a2, 0x0ea, 0x070, 0x1fc, 0x116, 0x15c, 0x04c, 0x1c2
   ]);
 
   // ===== SHARED S-BOX LOOKUP FUNCTIONS =====
@@ -133,24 +133,19 @@
   // ===== SHARED FI FUNCTION =====
   // FI function - core non-linear transformation (RFC 2994)
   // Used identically by both MISTY1 and MISTY2
-  function FI(fi_in, subkey) {
-    // Split 16-bit input into 9-bit left and 7-bit right parts
+  function FI(fi_in, fi_key) {
+    // RFC 2994 Section 2.3: 3-stage structure over the S9/S7/S9 boxes
     let d9 = OpCodes.Shr32(fi_in, 7)&0x1FF;  // Upper 9 bits
-    let d7 = fi_in&0x7F;           // Lower 7 bits
+    let d7 = fi_in&0x7F;                     // Lower 7 bits
 
-    // Split 16-bit subkey into 7-bit and 9-bit parts
-    const k7 = subkey&0x7F;         // Lower 7 bits of subkey
-    const k9 = OpCodes.Shr32(subkey, 7)&0x1FF; // Upper 9 bits of subkey
+    d9 = OpCodes.Xor32(S9(d9), d7)&0x1FF;
+    d7 = OpCodes.Xor32(S7(d7), d9)&0x7F;
+    d7 = OpCodes.Xor32(d7, OpCodes.Shr32(fi_key, 9))&0x7F;
+    d9 = OpCodes.Xor32(d9, fi_key&0x1FF)&0x1FF;
+    d9 = OpCodes.Xor32(S9(d9), d7)&0x1FF;
 
-    // 2-round Feistel structure as per RFC 2994 Section 2.3
-    // First round
-    d9 = OpCodes.Xor32(d9, S7(OpCodes.Xor32(d7, k7)&0x7F));
-
-    // Second round
-    d7 = OpCodes.Xor32(d7, S9(OpCodes.Xor32(d9, k9)&0x1FF)&0x7F);
-
-    // Combine results: 9-bit d9 in upper bits, 7-bit d7 in lower bits
-    return OpCodes.Shl32(d9&0x1FF, 7)|(d7&0x7F);
+    // Combine results: 7-bit d7 in upper bits, 9-bit d9 in lower bits
+    return OpCodes.Or32(OpCodes.Shl32(d7&0x7F, 9), d9&0x1FF)&0xFFFF;
   }
 
   // ===== MISTY1 IMPLEMENTATION =====
@@ -197,21 +192,56 @@
         new AlgorithmFramework.LinkItem("CRYPTREC Report", "https://www.cryptrec.go.jp/english/method.html")
       ];
 
-      // Educational test vectors (validated round-trip)
+      // Published known-answer tests
       this.tests = [
         {
-          text: "Educational Test Vector #1",
-          uri: "Educational implementation test vector",
+          text: "RFC 2994 Appendix A - first 64-bit block",
+          uri: "https://www.rfc-editor.org/rfc/rfc2994.txt",
           input: OpCodes.Hex8ToBytes("0123456789abcdef"),
           key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          expected: OpCodes.Hex8ToBytes("67745a2cfacb121d")
+          expected: OpCodes.Hex8ToBytes("8b1da5f56ab3d07c")
         },
         {
-          text: "Educational Test Vector #2",
-          uri: "Educational implementation test vector",
+          text: "RFC 2994 Appendix A - second 64-bit block",
+          uri: "https://www.rfc-editor.org/rfc/rfc2994.txt",
           input: OpCodes.Hex8ToBytes("fedcba9876543210"),
-          key: OpCodes.Hex8ToBytes("ffeeddccbbaa99887766554433221100"),
-          expected: OpCodes.Hex8ToBytes("f58929d8b2ad44e7")
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          expected: OpCodes.Hex8ToBytes("04b68240b13be95d")
+        },
+        {
+          text: "RFC 2994 Appendix A - 128-bit plaintext in ECB mode",
+          uri: "https://www.rfc-editor.org/rfc/rfc2994.txt",
+          input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          expected: OpCodes.Hex8ToBytes("8b1da5f56ab3d07c04b68240b13be95d")
+        },
+        {
+          text: "NESSIE submission testvectors.txt - set 1, vector 0",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/misty1.zip",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b5eda7d64fcd2a02")
+        },
+        {
+          text: "NESSIE submission testvectors.txt - single low key bit",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/misty1.zip",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("2049aa1be3546aed")
+        },
+        {
+          text: "NESSIE submission testvectors.txt - repeating 0x6c",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/misty1.zip",
+          input: OpCodes.Hex8ToBytes("6c6c6c6c6c6c6c6c"),
+          key: OpCodes.Hex8ToBytes("6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c"),
+          expected: OpCodes.Hex8ToBytes("a0cc24a85b11e9cd")
+        },
+        {
+          text: "NESSIE submission testvectors.txt - all ones",
+          uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/misty1.zip",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("651f3092afa551d0")
         }
       ];
 
@@ -230,30 +260,26 @@
       return new MISTY1Instance(this, isInverse);
     }
 
-    // FO function - 3-round Feistel with FI function (RFC 2994)
+    // FO function - 3-round Feistel with FI function (RFC 2994 Section 2.3)
     static FO(fo_in, k, EK) {
       let t0 = OpCodes.Shr32(fo_in, 16)&0xFFFF;  // Upper 16 bits
-      let t1 = fo_in&0xFFFF;           // Lower 16 bits
+      let t1 = fo_in&0xFFFF;                     // Lower 16 bits
 
-      // 3-round Feistel structure as per RFC 2994 Section 2.3
-      // FO function uses specific key indexing
+      t0 = OpCodes.Xor32(t0, EK[k])&0xFFFF;
+      t0 = FI(t0, EK[(k + 5) % 8 + 8]);
+      t0 = OpCodes.Xor32(t0, t1)&0xFFFF;
 
-      // Round 1
-      let temp = t0;
-      t0 = t1;
-      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[k]), EK[(k + 5) % 8 + 8]));
+      t1 = OpCodes.Xor32(t1, EK[(k + 2) % 8])&0xFFFF;
+      t1 = FI(t1, EK[(k + 1) % 8 + 8]);
+      t1 = OpCodes.Xor32(t1, t0)&0xFFFF;
 
-      // Round 2
-      temp = t0;
-      t0 = t1;
-      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[(k + 2) % 8]), EK[(k + 1) % 8 + 8]));
+      t0 = OpCodes.Xor32(t0, EK[(k + 7) % 8])&0xFFFF;
+      t0 = FI(t0, EK[(k + 3) % 8 + 8]);
+      t0 = OpCodes.Xor32(t0, t1)&0xFFFF;
 
-      // Round 3
-      temp = t0;
-      t0 = t1;
-      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[(k + 7) % 8]), EK[(k + 3) % 8 + 8]));
+      t1 = OpCodes.Xor32(t1, EK[(k + 4) % 8])&0xFFFF;
 
-      return OpCodes.Shl32(t0&0xFFFF, 16)|(t1&0xFFFF);
+      return OpCodes.Or32(OpCodes.Shl32(t1&0xFFFF, 16), t0&0xFFFF);
     }
 
     // FL function - linear layer for diffusion (RFC 2994 exact implementation)
@@ -264,15 +290,15 @@
       // FL function as per RFC 2994 Section 2.4
       if (k % 2 === 0) {
         // Even k
-        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)]);
-        d0 = OpCodes.Xor32(d0, d1|EK[(Math.floor(k / 2) + 6) % 8 + 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)])&0xFFFF;
+        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8]))&0xFFFF;
       } else {
         // Odd k
-        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8]);
-        d0 = OpCodes.Xor32(d0, d1|EK[((k - 1) / 2 + 4) % 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8])&0xFFFF;
+        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8]))&0xFFFF;
       }
 
-      return OpCodes.Shl32(d0&0xFFFF, 16)|(d1&0xFFFF);
+      return OpCodes.Or32(OpCodes.Shl32(d0&0xFFFF, 16), d1&0xFFFF);
     }
 
     // FL inverse function for decryption (RFC 2994)
@@ -283,15 +309,15 @@
       // Reverse FL function
       if (k % 2 === 0) {
         // Even k - reverse order
-        d0 = OpCodes.Xor32(d0, d1|EK[(Math.floor(k / 2) + 6) % 8 + 8]);
-        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)]);
+        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8]))&0xFFFF;
+        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)])&0xFFFF;
       } else {
         // Odd k - reverse order
-        d0 = OpCodes.Xor32(d0, d1|EK[((k - 1) / 2 + 4) % 8]);
-        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8]);
+        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8]))&0xFFFF;
+        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8])&0xFFFF;
       }
 
-      return OpCodes.Shl32(d0&0xFFFF, 16)|(d1&0xFFFF);
+      return OpCodes.Or32(OpCodes.Shl32(d0&0xFFFF, 16), d1&0xFFFF);
     }
   }
 
@@ -436,61 +462,49 @@
     }
 
     _encryptBlock(input) {
-      // Convert input to 32-bit words using OpCodes (big-endian)
-      let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
-      let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
+      // P is split into the leftmost 32-bit D0 and the rightmost 32-bit D1
+      const EK = this.roundKeys.EK;
+      let d0 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
+      let d1 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
-      // 8 rounds of MISTY1 encryption following RFC 2994 structure
-      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
-        // Even rounds: Apply FL functions before FO
-        if (round % 2 === 0) {
-          left = MISTY1Cipher.FL(left, round, this.roundKeys.EK);
-          right = MISTY1Cipher.FL(right, round + 1, this.roundKeys.EK);
-        }
-
-        // Apply FO function (Feistel round)
-        const temp = right;
-        right = OpCodes.Xor32(left, MISTY1Cipher.FO(right, round, this.roundKeys.EK));
-        left = temp;
+      // 8 rounds; even-numbered rounds additionally call FL (RFC 2994 Section 2.3)
+      for (let round = 0; round < this.algorithm.ROUNDS; round += 2) {
+        d0 = MISTY1Cipher.FL(d0, round, EK);
+        d1 = MISTY1Cipher.FL(d1, round + 1, EK);
+        d1 = OpCodes.Xor32(d1, MISTY1Cipher.FO(d0, round, EK));
+        d0 = OpCodes.Xor32(d0, MISTY1Cipher.FO(d1, round + 1, EK));
       }
 
-      // Final FL applications after all rounds (RFC 2994)
-      left = MISTY1Cipher.FL(left, this.algorithm.ROUNDS, this.roundKeys.EK);
-      right = MISTY1Cipher.FL(right, this.algorithm.ROUNDS + 1, this.roundKeys.EK);
+      // Final FL applications after the last round
+      d0 = MISTY1Cipher.FL(d0, this.algorithm.ROUNDS, EK);
+      d1 = MISTY1Cipher.FL(d1, this.algorithm.ROUNDS + 1, EK);
 
-      // Convert back to bytes using OpCodes
-      const result0 = OpCodes.Unpack32BE(left);
-      const result1 = OpCodes.Unpack32BE(right);
-      return [...result0, ...result1];
+      // Ciphertext is D1 followed by D0
+      const high = OpCodes.Unpack32BE(d1);
+      const low = OpCodes.Unpack32BE(d0);
+      return [...high, ...low];
     }
 
     _decryptBlock(input) {
-      // Convert input to 32-bit words using OpCodes (big-endian)
-      let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
-      let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
+      // D1 is the leftmost 32-bit of C, D0 the rightmost 32-bit
+      const EK = this.roundKeys.EK;
+      let d1 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
+      let d0 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
-      // Reverse final FL applications first
-      left = MISTY1Cipher.FL_inv(left, this.algorithm.ROUNDS, this.roundKeys.EK);
-      right = MISTY1Cipher.FL_inv(right, this.algorithm.ROUNDS + 1, this.roundKeys.EK);
+      d0 = MISTY1Cipher.FL_inv(d0, this.algorithm.ROUNDS, EK);
+      d1 = MISTY1Cipher.FL_inv(d1, this.algorithm.ROUNDS + 1, EK);
 
-      // 8 rounds of MISTY1 decryption (reverse order)
-      for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
-        // Reverse Feistel structure: undo the XOR and swap
-        const temp = left;
-        left = OpCodes.Xor32(right, MISTY1Cipher.FO(left, round, this.roundKeys.EK));
-        right = temp;
-
-        // Even rounds: reverse FL operations after FO
-        if (round % 2 === 0) {
-          left = MISTY1Cipher.FL_inv(left, round, this.roundKeys.EK);
-          right = MISTY1Cipher.FL_inv(right, round + 1, this.roundKeys.EK);
-        }
+      for (let round = this.algorithm.ROUNDS - 2; round >= 0; round -= 2) {
+        d0 = OpCodes.Xor32(d0, MISTY1Cipher.FO(d1, round + 1, EK));
+        d1 = OpCodes.Xor32(d1, MISTY1Cipher.FO(d0, round, EK));
+        d0 = MISTY1Cipher.FL_inv(d0, round, EK);
+        d1 = MISTY1Cipher.FL_inv(d1, round + 1, EK);
       }
 
-      // Convert back to bytes using OpCodes
-      const result0 = OpCodes.Unpack32BE(left);
-      const result1 = OpCodes.Unpack32BE(right);
-      return [...result0, ...result1];
+      // Plaintext is D0 followed by D1
+      const high = OpCodes.Unpack32BE(d0);
+      const low = OpCodes.Unpack32BE(d1);
+      return [...high, ...low];
     }
   }
 
@@ -536,14 +550,15 @@
         new AlgorithmFramework.LinkItem("Feistel Network Theory", "https://en.wikipedia.org/wiki/Feistel_cipher")
       ];
 
-      // Educational test vectors (validated round-trip)
+      // No published known-answer test exists for MISTY2; this vector only
+      // pins the current construction and carries no external authority.
       this.tests = [
         {
-          text: "MISTY2 Educational Test Vector #1",
-          uri: "Educational implementation test vector",
+          text: "MISTY2 regression vector (no published KAT exists for MISTY2)",
+          uri: "https://en.wikipedia.org/wiki/MISTY1",
           input: OpCodes.Hex8ToBytes("0123456789abcdef"),
           key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          expected: OpCodes.Hex8ToBytes("0f9c48e49758f2d3")
+          expected: OpCodes.Hex8ToBytes("1232eb29d12cf745")
         }
       ];
 

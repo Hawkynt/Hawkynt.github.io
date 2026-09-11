@@ -60,10 +60,15 @@ class UnicornA extends BlockCipherAlgorithm {
       new LinkItem("embeddedsw.net libObfuscate CIPHERUNICORN-A Implementation", "https://embeddedsw.net/Cipher_Reference_Home.html")
     ];
 
+    // NOTE: this round function does not reproduce the CRYPTREC specification.
+    // It substitutes the AES S-box for the four S-boxes of CIPHERUNICORN-A and
+    // uses a stand-in key schedule, so it is not interoperable with the real
+    // cipher. NEC published no known-answer tests, so the vector below only
+    // pins the current construction and carries no external authority.
     this.tests = [
       {
-        text: "CIPHERUNICORN-A Test Vector 1",
-        uri: "Educational test vector for CIPHERUNICORN-A cipher",
+        text: "Regression vector (does not match the CRYPTREC specification)",
+        uri: "https://www.cryptrec.go.jp/en/cryptrec_03_spec_cypherlist_files/PDF/07_02espec.pdf",
         input: OpCodes.Hex8ToBytes('00112233445566778899AABBCCDDEEFF'),
         key: OpCodes.Hex8ToBytes('0F0E0D0C0B0A09080706050403020100'),
         expected: OpCodes.Hex8ToBytes('9FC26F56CA7752EE45A3141A869551C4')

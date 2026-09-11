@@ -103,21 +103,31 @@
       // Test vectors using byte arrays
       this.tests = [
         {
-          text: "Basic Test",
+          // Wikipedia's square is given outright rather than derived from a
+          // keyword; feeding all 25 of its letters in as the keyword lays the
+          // same square out.
+          text: "Wikipedia worked example - square BGWKZ/QPNDS/IOAXE/FCLUM/THYVR, FLEEATONCE taken as one block",
+          uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
+          input: global.OpCodes.AnsiToBytes("FLEEATONCE"),
+          key: global.OpCodes.AnsiToBytes("BGWKZQPNDSIOAXEFCLUMTHYVR,10"),
+          expected: global.OpCodes.AnsiToBytes("UAEOLWRINS")
+        },
+        {
+          text: "Plain A-Z square, period 5. The Wikipedia article carries no value for this input; the vector covers the unkeyed square",
           uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
           input: global.OpCodes.AnsiToBytes("HELLO"),
           key: global.OpCodes.AnsiToBytes("5"), // period of 5
           expected: global.OpCodes.AnsiToBytes("FNNVD")
         },
         {
-          text: "Custom Keyword Test",
+          text: "Keyword CIPHER, period 3. dCode carries no value for this input; the vector covers a keyed square and a block shorter than the message",
           uri: "https://www.dcode.fr/bifid-cipher",
           input: global.OpCodes.AnsiToBytes("ATTACK"),
           key: global.OpCodes.AnsiToBytes("CIPHER,3"), // keyword CIPHER, period 3
           expected: global.OpCodes.AnsiToBytes("DQTRKI")
         },
         {
-          text: "Edge Case",
+          text: "Period 1 - a single-letter block is its own coordinate pair, so one letter passes through unchanged",
           uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
           input: global.OpCodes.AnsiToBytes("A"),
           key: global.OpCodes.AnsiToBytes("1"), // period of 1
