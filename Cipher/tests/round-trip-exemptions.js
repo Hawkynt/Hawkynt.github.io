@@ -107,6 +107,11 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'verification consumes a signature, not a ciphertext'],
   ['ML-DSA', 'signature scheme (FIPS 204): signs and verifies, so no plaintext is ever recovered '
     + 'from its output'],
+  ['Dilithium', 'signature scheme (CRYSTALS-Dilithium as standardised in FIPS 204): signs and '
+    + 'verifies, so no plaintext is ever recovered from its output. The property that does apply '
+    + 'is that a signature verifies under the key that made it, and that is gated by the committed '
+    + 'vectors: the NIST ACVP sigVer cases drive verification directly and include the published '
+    + 'negatives for a modified message, a modified z, a modified commitment and a modified hint'],
   ['SQIsign', 'signature scheme (SQIsign, NIST additional signatures): signs and verifies, so no '
     + 'plaintext is ever recovered from its output'],
   ['CROSS', 'signature scheme (CROSS, restricted decoding, NIST additional signatures): signs and '
@@ -120,17 +125,38 @@ const ROUND_TRIP_EXEMPT = new Map([
   ['SPHINCS+', 'signature scheme (SPHINCS+ round-3 submission to the NIST PQC project): the '
     + 'pre-standardisation form of FIPS 205, signs and verifies and recovers no plaintext'],
 
-  // Dilithium, FALCON, Rainbow, MAYO, PERK, LWE-Signature and ESIGN were
-  // listed here. They are gone from the collection rather than from this list
-  // alone: none of them signed anything. Each returned a constant - a template
-  // string carrying its parameter set and the length of the message, its own
-  // parameter-set name, or a fixed byte pattern - so signing two different
-  // messages produced identical output, and the committed vector asserted that
-  // constant. Implementing any of them means lattice trapdoor sampling or a
-  // multivariate quadratic system, each checked against the NIST vectors; none
-  // of that can be approximated. SLH-DSA and SPHINCS+ were on that list too and
-  // have since been implemented for real, against the NIST ACVP FIPS 205
-  // vectors and the round-3 PQCsignKAT files respectively.
+  // Dilithium, FALCON, SLH-DSA, SPHINCS+, Rainbow, MAYO, PERK, LWE-Signature
+  // and ESIGN were listed here. They were gone from the collection rather than
+  // from this list alone: none of them signed anything. Each returned a
+  // constant - a template string carrying its parameter set and the length of
+  // the message, its own parameter-set name, or a fixed byte pattern - so
+  // signing two different messages produced identical output, and the
+  // committed vector asserted that constant. Implementing any of them means
+  // lattice trapdoor sampling, a hypertree of one-time signatures, or a
+  // multivariate quadratic system, each checked against the NIST vectors;
+  // none of that can be approximated.
+  //
+  // ESIGN, LWE-Signature and the four MAYO parameter sets are back, and all six
+  // are deliberately absent from this list. Each implements MAYO.API.sign and
+  // sign_open, which is also what the NIST signature API prescribes generally:
+  // signing yields signature || message, and the inverse direction checks the
+  // signature and returns the message it carries. So each has a round trip that
+  // is a real property rather than a missing one, and all three suites drive it.
+  //
+  // MAYO reproduces all 400 signed messages of the four official PQCsignKAT
+  // files octet for octet and rederives every one of their public keys; ESIGN
+  // reproduces all twenty published NESSIE ESIGN-D signatures byte for byte;
+  // LWE-Signature has nothing published to check against and says so in its own
+  // vector comment.
+  //
+  // SLH-DSA and SPHINCS+ are back too, and are listed above because they are
+  // the other shape of signature API: sign returns the signature alone, so
+  // there is no message to recover from it. SLH-DSA reproduces all 120 NIST
+  // ACVP FIPS 205 keyGen vectors and all 168 sigVer cases including their six
+  // kinds of published negative; SPHINCS+ reproduces the round-3 PQCsignKAT
+  // files, all 100 counts for both 128s parameter sets, which means reproducing
+  // the submission's CTR_DRBG seeding as well. The remaining three - FALCON,
+  // Rainbow and PERK - stay absent from the collection.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
@@ -147,8 +173,14 @@ const ROUND_TRIP_EXEMPT = new Map([
   // --- key encapsulation: the property is shared-secret recovery, not plaintext ---
   // A KEM encapsulates to a ciphertext plus a shared secret and decapsulates the
   // ciphertext back to that secret, so the round trip is over the secret rather
-  // than over a message. Only FrodoKEM performs either operation, and it is not
-  // listed here because it is driven and passes.
+  // than over a message. FrodoKEM is not listed here because it exposes an
+  // encrypt/decrypt interface and is driven and passes.
+  ['NTRU', 'key encapsulation (NTRU-HPS, NIST PQC round 3): encapsulation produces a ciphertext '
+    + 'and a 32-byte shared secret, and decapsulation recovers the secret rather than any '
+    + 'plaintext, so this sweep\'s property does not apply. The property that does is gated by the '
+    + 'committed vectors, which drive encapsulation and decapsulation separately against the '
+    + "submission's own Known Answer Tests and assert that a modified ciphertext and a wrong "
+    + 'secret key both fail to recover the published secret'],
   //
   // NTRU, Classic McEliece, BIKE, HQC and SIKE were listed here as stubs: none
   // of them implemented its scheme. NTRU returned the ASCII text
@@ -168,6 +200,28 @@ const ROUND_TRIP_EXEMPT = new Map([
   // RSA, ElGamal, LUC and Rabin-Williams were listed here while their decryption
   // paths were repaired. All four round-trip now and are driven by the suite, so
   // the entries are gone rather than left behind to excuse a future regression.
+
+  // --- signature schemes: sign and verify, never encrypt and decrypt ---
+  // Restored to the collection and under repair: each of these returned a
+  // constant rather than a signature, so the exemption below states the kind of
+  // construction it is, not that its implementation is finished. The kind is why
+  // this sweep cannot round-trip it; the repair is tracked separately.
+  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with no decryption direction at all'],
+  ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and verification, with no decryption direction at all'],
+  ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; its trapdoor inverts a signature, not a message'],
+  ['MAYO', 'signature scheme (MAYO, NIST additional signatures): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['PERK', 'signature scheme (PERK, MPC-in-the-head, NIST additional signatures): signs and verifies, so no plaintext is recovered'],
+  ['LWE-Signature', 'signature scheme (lattice, learning-with-errors): signs and verifies, so no plaintext is recovered from its output'],
+  ['ESIGN', 'signature scheme (ESIGN, Okamoto): signs and verifies; its trapdoor inverts a signature, not a message'],
+
+  // --- key encapsulation: the recoverable value is a shared secret ---
+  // Restored and under repair. A KEM does round-trip, but of the shared secret
+  // rather than of a plaintext, which is why it is exempt from this sweep.
+  ['Classic McEliece', 'key encapsulation (Classic McEliece, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['HQC', 'key encapsulation (HQC, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['BIKE', 'key encapsulation (BIKE, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['SIKE', 'key encapsulation (SIKE): the recoverable value is the shared secret, not a plaintext. The scheme is cryptographically dead - Castryck and Decru recover the key in minutes (eprint 2022/975) - and is marked BROKEN here'],
 
 ]);
 
