@@ -756,6 +756,22 @@
           expected: [0]
         },
         {
+          // The mirror of tcId 6: there s lost the zero octet it needed, here
+          // r carries two it does not. Both encodings hold the same numbers as
+          // tcId 7 and both must be refused, which takes a minimality check in
+          // each direction rather than only a sign check.
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 84 - invalid, zeros prepended to r",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "3047022200002ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"),
+          expected: [0]
+        },
+        {
           text: "Wycheproof ecdsa_secp256r1_sha256 tcId 23 - invalid, zeros appended to the SEQUENCE",
           uri: WYCHEPROOF,
           curve: 'secp256r1',
