@@ -112,6 +112,43 @@
     'SLH-DSA-SHAKE-256f': { n: 32, h: 68, d: 17, hp: 4, a: 9,  k: 35, lgw: 4, m: 49, family: 'SHAKE' }
   };
 
+  // FIPS 205 is the standardised form of the SPHINCS+ round-3 submission, and
+  // the two differ in four specific places. Rather than copy the tree, WOTS+
+  // and FORS code once per version, the differences are named here and the one
+  // engine below reads them. Each flag is true for FIPS 205; the SPHINCS+ file
+  // in this directory passes the opposite and is verified against the round-3
+  // PQCsignKAT files, so both settings are held to published vectors.
+  const FIPS205_PROFILE = Object.freeze({
+    label: 'FIPS 205',
+    // PRF(PK.seed, SK.seed, ADRS) rather than PRF(SK.seed, ADRS): the public
+    // seed was mixed in so that one secret key cannot be reused across two
+    // public keys. Added after round 3.
+    prfBindsPublicSeed: true,
+    // Secret generation got its own address types, WOTS_PRF and FORS_PRF,
+    // instead of borrowing WOTS_HASH and FORS_TREE.
+    separatePrfAddressTypes: true,
+    // FORS indices are read by base_2b, big-endian. Round 3 gathered them bit
+    // by bit, least significant bit of each byte first.
+    forsIndicesBigEndian: true,
+    // For the SHA-2 sets, MGF1 is seeded with R | PK.seed | inner hash. Round 3
+    // seeded it with the inner hash alone; the prefix is the countermeasure
+    // against the long-message second-preimage attack.
+    messageDigestBindsSeed: true,
+    // At security categories 3 and 5 the SHA-2 sets move H, T_l, H_msg and
+    // PRF_msg up to SHA-512, so that the hash is not the weakest part. Round 3
+    // used SHA-256 at every level.
+    sha2WidensAtHighSecurity: true
+  });
+
+  const SPHINCS_ROUND3_PROFILE = Object.freeze({
+    label: 'SPHINCS+ round 3',
+    prfBindsPublicSeed: false,
+    separatePrfAddressTypes: false,
+    forsIndicesBigEndian: false,
+    messageDigestBindsSeed: false,
+    sha2WidensAtHighSecurity: false
+  });
+
   // FIPS 205 Table 1: the seven address types.
   const ADRS_WOTS_HASH  = 0;
   const ADRS_WOTS_PK    = 1;
@@ -260,7 +297,7 @@
    * so the first block can be precomputed, and switch between SHA-256 and
    * SHA-512 depending on both the security category and which primitive it is.
    */
-  function BuildHashFunctions(p) {
+  function BuildHashFunctions(p, profile) {
     const n = p.n;
 
     if (p.family === 'SHAKE') {
@@ -274,7 +311,9 @@
       return {
         PRFmsg: (skPrf, optRand, message) => shake([skPrf, optRand, message], n),
         Hmsg:   (r, pkSeed, pkRoot, message) => shake([r, pkSeed, pkRoot, message], p.m),
-        PRF:    (pkSeed, skSeed, adrs) => shake([pkSeed, adrs, skSeed], n),
+        PRF:    (pkSeed, skSeed, adrs) => profile.prfBindsPublicSeed
+          ? shake([pkSeed, adrs, skSeed], n)
+          : shake([skSeed, adrs], n),
         F:      (pkSeed, adrs, m1) => shake([pkSeed, adrs, m1], n),
         H:      (pkSeed, adrs, m2) => shake([pkSeed, adrs, m2], n),
         T:      (pkSeed, adrs, ml) => shake([pkSeed, adrs, ml], n)
@@ -294,7 +333,7 @@
 
     // Security category 1 stays on SHA-256 throughout; categories 3 and 5 move
     // H, T_l, H_msg and PRF_msg to SHA-512 but keep F and PRF on SHA-256.
-    const isCategory1 = (n === 16);
+    const isCategory1 = profile.sha2WidensAtHighSecurity ? (n === 16) : true;
     const wide = isCategory1 ? sha256 : sha512;
     const wideLength = isCategory1 ? 32 : 64;
     const wideBlock = isCategory1 ? 64 : 128;
@@ -361,10 +400,12 @@
       },
       Hmsg: (r, pkSeed, pkRoot, message) => {
         const inner = wide([r, pkSeed, pkRoot, message]);
-        return mgf1(wide, wideLength, [r, pkSeed, inner], p.m);
+        const seed = profile.messageDigestBindsSeed ? [r, pkSeed, inner] : [inner];
+        return mgf1(wide, wideLength, seed, p.m);
       },
-      PRF: (pkSeed, skSeed, adrs) =>
-        truncate(sha256([pkSeed, narrowPad, compress(adrs), skSeed])),
+      PRF: (pkSeed, skSeed, adrs) => profile.prfBindsPublicSeed
+        ? truncate(sha256([pkSeed, narrowPad, compress(adrs), skSeed]))
+        : truncate(sha256([skSeed, compress(adrs)])),
       F: (pkSeed, adrs, m1) =>
         truncate(sha256([pkSeed, narrowPad, compress(adrs), m1])),
       H: (pkSeed, adrs, m2) =>
@@ -407,11 +448,52 @@
 
   class SlhDsaEngine {
     /**
-     * @param {string} parameterSetName - a FIPS 205 parameter set name
+     * @param {string|Object} parameterSet - a FIPS 205 parameter set name, or
+     *   an already-derived parameter object for a caller with its own table
+     * @param {Object} [profile] - which of the two constructions to build;
+     *   FIPS 205 by default
      */
-    constructor(parameterSetName) {
-      this.params = DeriveParameters(parameterSetName);
-      this.hash = BuildHashFunctions(this.params);
+    constructor(parameterSet, profile) {
+      this.profile = profile || FIPS205_PROFILE;
+      this.params = typeof parameterSet === 'string'
+        ? DeriveParameters(parameterSet)
+        : parameterSet;
+      this.hash = BuildHashFunctions(this.params, this.profile);
+    }
+
+    /** The address type under which WOTS+ secret keys are derived. */
+    _wotsSecretType() {
+      return this.profile.separatePrfAddressTypes ? ADRS_WOTS_PRF : ADRS_WOTS_HASH;
+    }
+
+    /** The address type under which FORS secret keys are derived. */
+    _forsSecretType() {
+      return this.profile.separatePrfAddressTypes ? ADRS_FORS_PRF : ADRS_FORS_TREE;
+    }
+
+    /**
+     * The k FORS tree indices carved out of the message digest. FIPS 205 reads
+     * them big-endian with base_2b; the round-3 submission walked the digest a
+     * bit at a time, taking the least significant bit of each byte first.
+     */
+    _forsIndices(messageDigest) {
+      const p = this.params;
+      if (this.profile.forsIndicesBigEndian)
+        return BaseTwoB(messageDigest, p.a, p.k);
+
+      const out = new Array(p.k);
+      let offset = 0;
+      for (let i = 0; i < p.k; ++i) {
+        let value = 0;
+        for (let j = 0; j < p.a; ++j) {
+          const byte = messageDigest[Math.floor(offset / 8)];
+          const bit = Math.floor(byte / Math.pow(2, offset % 8)) % 2;
+          value += bit * Math.pow(2, j);
+          ++offset;
+        }
+        out[i] = value;
+      }
+      return out;
     }
 
     //#region --- WOTS+ (FIPS 205 section 5) ---
@@ -457,7 +539,7 @@
 
     _wotsPrfAddress(adrs) {
       const skAdrs = new Uint8Array(adrs);
-      AddressSetTypeAndClear(skAdrs, ADRS_WOTS_PRF);
+      AddressSetTypeAndClear(skAdrs, this._wotsSecretType());
       AddressSetKeyPair(skAdrs, AddressGetKeyPair(adrs));
       return skAdrs;
     }
@@ -663,7 +745,7 @@
     /** Algorithm 14. */
     _forsSecret(skSeed, pkSeed, adrs, index) {
       const skAdrs = new Uint8Array(adrs);
-      AddressSetTypeAndClear(skAdrs, ADRS_FORS_PRF);
+      AddressSetTypeAndClear(skAdrs, this._forsSecretType());
       AddressSetKeyPair(skAdrs, AddressGetKeyPair(adrs));
       AddressSetTreeIndex(skAdrs, index);
       return this.hash.PRF(pkSeed, skSeed, skAdrs);
@@ -710,7 +792,7 @@
     /** Algorithm 16: for each of the k trees, one secret and its path. */
     _forsSign(messageDigest, skSeed, pkSeed, adrs) {
       const p = this.params;
-      const indices = BaseTwoB(messageDigest, p.a, p.k);
+      const indices = this._forsIndices(messageDigest);
       const stride = (p.a + 1) * p.n;
       const out = ByteArray(p.k * stride);
       const treeSize = Math.pow(2, p.a);
@@ -731,7 +813,7 @@
     /** Algorithm 17: rebuild the k roots and hash them into the FORS key. */
     _forsPkFromSig(forsSignature, messageDigest, pkSeed, adrs) {
       const p = this.params;
-      const indices = BaseTwoB(messageDigest, p.a, p.k);
+      const indices = this._forsIndices(messageDigest);
       const stride = (p.a + 1) * p.n;
       const roots = ByteArray(p.k * p.n);
       const treeSize = Math.pow(2, p.a);
@@ -1189,6 +1271,8 @@
     SlhDsaInstance,
     SlhDsaEngine,
     DeriveParameters,
-    PARAMETER_SETS
+    PARAMETER_SETS,
+    FIPS205_PROFILE,
+    SPHINCS_ROUND3_PROFILE
   };
 }));
