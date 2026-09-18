@@ -70,7 +70,8 @@
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
+          AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize,
+          Vulnerability } = AlgorithmFramework;
 
   const { SlhDsaEngine, SPHINCS_ROUND3_PROFILE } = SlhDsaShared;
 
@@ -138,7 +139,10 @@
       this.year = 2020;
       this.category = CategoryType.ASYMMETRIC;
       this.subCategory = "Post-Quantum Signature";
-      this.securityStatus = null;
+      // Not broken, but superseded: FIPS 205 is this scheme with five changes,
+      // one of which is a countermeasure this version predates. New work wants
+      // SLH-DSA; this is here to read and verify the round-3 vectors against.
+      this.securityStatus = SecurityStatus.DEPRECATED;
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.INTERNATIONAL;
 
@@ -157,6 +161,14 @@
       this.references = [
         new LinkItem("Round-3 submission package with the KAT files", "https://sphincs.org/data/sphincs+-round3-submission-nist.zip"),
         new LinkItem("NIST PQC round-3 submissions", "https://csrc.nist.gov/Projects/post-quantum-cryptography/post-quantum-cryptography-standardization/round-3-submissions")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Long-message second preimage",
+          "In this round-3 version the SHA-2 message hash seeds MGF1 with SHA-256(R | PK.seed | PK.root | M) alone. Binding R and PK.seed into the seed as well was added afterwards, and FIPS 205 section 11.2 requires it.",
+          "Use SLH-DSA, which is this scheme with that countermeasure and four other changes.",
+          "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.205.pdf")
       ];
 
       this.tests = SphincsPlusAlgorithm._buildTests();
