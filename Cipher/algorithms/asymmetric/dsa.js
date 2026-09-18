@@ -152,9 +152,19 @@
   // ===== HASHING AND RFC 6979 =====
 
   // DSA signs a digest. A stand-in for the hash produces a signature that no
-  // other implementation verifies, so the approved digests are loaded here and
-  // every path below fails loudly if the requested one is missing.
-  if (typeof require !== 'undefined') {
+  // other implementation verifies, so the approved digests are loaded on first
+  // use and every path below fails loudly if the requested one is missing.
+  //
+  // On first use rather than at load: requiring them here would register four
+  // SHA-2 variants while this file is being loaded, and every tool that
+  // attributes an algorithm to whichever file was loading when it registered
+  // would then file SHA-512 under asymmetric ciphers.
+  var hashesLoaded = false;
+  function loadHashes() {
+    if (hashesLoaded) return;
+    hashesLoaded = true;
+    if (typeof require === 'undefined') return;
+
     for (var _mod of ['../hash/sha1.js', '../hash/sha256.js', '../hash/sha512.js']) {
       try {
         require(_mod);
@@ -180,6 +190,8 @@
    * @returns {uint8[]} Digest octets
    */
   function digest(hashName, bytes) {
+    loadHashes();
+
     var algorithm = AlgorithmFramework.Find(hashName);
     if (!algorithm) {
       throw new Error('DSA requires the hash ' + hashName + ', which is not registered');
