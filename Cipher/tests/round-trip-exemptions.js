@@ -206,7 +206,13 @@ const ROUND_TRIP_EXEMPT = new Map([
   // constant rather than a signature, so the exemption below states the kind of
   // construction it is, not that its implementation is finished. The kind is why
   // this sweep cannot round-trip it; the repair is tracked separately.
-  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3) in its verifying direction only: it checks a '
+    + 'signed message and returns the message that message carries, so no plaintext is ever recovered '
+    + 'from a ciphertext. It does not sign, and says so by returning null from CreateInstance(false) '
+    + 'rather than emitting a signature whose Gaussian sampling nothing could check. Verification is '
+    + 'gated by the committed vectors, which drive all four published combinations - both parameter '
+    + "sets, and a modified message, a modified signature and a wrong public key that must each fail - "
+    + 'against the round 3 submission\'s own Known Answer Tests'],
   ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with no decryption direction at all'],
   ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and verification, with no decryption direction at all'],
   ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; its trapdoor inverts a signature, not a message'],
@@ -218,7 +224,12 @@ const ROUND_TRIP_EXEMPT = new Map([
   // --- key encapsulation: the recoverable value is a shared secret ---
   // Restored and under repair. A KEM does round-trip, but of the shared secret
   // rather than of a plaintext, which is why it is exempt from this sweep.
-  ['Classic McEliece', 'key encapsulation (Classic McEliece, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['Classic McEliece', 'key encapsulation (Classic McEliece, NIST PQC round 4): encapsulation produces '
+    + 'a ciphertext and a 32-byte shared secret, and decapsulation recovers the secret rather than any '
+    + "plaintext, so this sweep's property does not apply. The property that does is gated by the "
+    + 'committed vectors, which drive key generation, encapsulation and decapsulation separately '
+    + "against the submission's own Known Answer Tests and assert that a modified ciphertext and a "
+    + 'wrong private key both fail to recover the published secret'],
   ['HQC', 'key encapsulation (HQC, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
   ['BIKE', 'key encapsulation (BIKE, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
   ['SIKE', 'key encapsulation (SIKE): the recoverable value is the shared secret, not a plaintext. The scheme is cryptographically dead - Castryck and Decru recover the key in minutes (eprint 2022/975) - and is marked BROKEN here'],
