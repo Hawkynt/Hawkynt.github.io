@@ -138,8 +138,11 @@ const ROUND_TRIP_EXEMPT = new Map([
   // Both parties derive the same secret from public values. Nothing is sent that
   // could be decrypted, and both of these say so by returning null for the
   // inverse instance rather than inventing one.
-  ['Diffie-Hellman', 'key agreement (RFC 2631): each side derives a shared secret from the '
-    + "other's public value; no plaintext is transmitted, and CreateInstance(true) returns null"],
+  ['Diffie-Hellman', 'key agreement (RFC 2631) over the RFC 3526 and RFC 5114 MODP groups: each '
+    + "side raises the other's public value to its own private exponent, so no plaintext is "
+    + 'transmitted and CreateInstance(true) returns null. The property that does apply is agreement '
+    + 'rather than inversion, and it is gated by the committed vectors: RFC 5114 Appendix A drives '
+    + 'party A and party B separately for each of the three groups and asserts they reach the same Z'],
   ['X25519', 'key agreement (RFC 7748): each side derives a shared secret from the other\'s '
     + 'public value; no plaintext is transmitted, and CreateInstance(true) returns null'],
 
