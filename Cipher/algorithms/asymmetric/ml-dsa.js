@@ -287,6 +287,22 @@
   // The selection is the part of FIPS 204 the Dilithium registration does not
   // exercise: the context string, HashML-DSA across the SHA-2, SHA-3 and
   // SHAKE families, and ExternalMu-ML-DSA deterministic and hedged.
+  //
+  // The six signing cases were chosen so that every component of the private
+  // key is pinned by at least three of them. That is not automatic. skEncode
+  // lays the key out as rho || K || tr || s1 || s2 || t0, and s2 reaches the
+  // signature only through the low-bits rejection test and the hint, bounded
+  // by beta against a rounding window of 2*gamma2, so on many messages a wrong
+  // s2 still produces the right signature. Zeroing each component in turn and
+  // re-running these cases gives:
+  //
+  //   rho, K, s1, t0   caught by all six
+  //   s2               caught by tcId 53, tcId 207 and tcId 331
+  //   tr               caught by the four that derive mu themselves
+  //
+  // tr is not read at all under ExternalMu-ML-DSA, where the caller supplies
+  // mu already bound to the key, so the two external mu cases are silent about
+  // it by definition rather than by omission.
 
   const KG44_SEED = OpCodes.Hex8ToBytes("2AA7609556919CCE9893561BB4120CDD9CFF12734267A8CCB4B2D2CA93066E1E");
 
