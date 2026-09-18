@@ -39,7 +39,7 @@
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
-          TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // ===== ELLIPTIC CURVE MATHEMATICS =====
 
@@ -278,6 +278,35 @@
     }
   }
 
+  /**
+   * Wrap a published (r, s) pair as the DER SEQUENCE a signature is carried
+   * in, so the test vectors below can quote the exact hexadecimal printed in
+   * RFC 6979 rather than a re-encoded copy of it. The framing is the ASN.1
+   * rule and nothing else: each integer is minimally encoded, with a leading
+   * zero octet added only when the high bit would otherwise read as a sign.
+   *
+   * @param {string} rHex - r as published, big-endian hexadecimal
+   * @param {string} sHex - s as published, big-endian hexadecimal
+   * @returns {uint8[]} DER-encoded signature
+   */
+  function derSignature(rHex, sHex) {
+    const encodeLength = (length) => length < 0x80
+      ? [length]
+      : [0x81, length];
+
+    const encodeInteger = (hex) => {
+      let bytes = OpCodes.Hex8ToBytes(hex.length % 2 ? '0' + hex : hex);
+      while (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.AndN(bytes[1], 0x80) === 0) {
+        bytes = bytes.slice(1);
+      }
+      if (OpCodes.AndN(bytes[0], 0x80) !== 0) bytes = [0x00].concat(bytes);
+      return [0x02].concat(encodeLength(bytes.length), bytes);
+    };
+
+    const body = encodeInteger(rHex).concat(encodeInteger(sHex));
+    return [0x30].concat(encodeLength(body.length), body);
+  }
+
   // ===== STANDARD CURVE DEFINITIONS =====
 
   const CURVES = {
@@ -343,16 +372,208 @@
   CURVES['P-384'] = CURVES['secp384r1'];
   CURVES['P-521'] = CURVES['secp521r1'];
 
-  // ===== ENSURE SHA-256 IS AVAILABLE =====
+  // ===== HASHING AND RFC 6979 =====
 
-  // Try to load SHA-256 for proper ECDSA operation
-  let SHA256_LOADED = false;
-  if (typeof require !== 'undefined') {
-    try {
-      require('../hash/sha256.js');
-      SHA256_LOADED = true;
-    } catch (error) {
-      // SHA-256 not available, will use fallback hash
+  // ECDSA signs a digest, so the hash is not optional and there is no useful
+  // behaviour when it is missing: a substitute hash produces a signature that
+  // no other implementation will ever verify, which is worse than refusing to
+  // sign. The digests are pulled in on first use and every path below fails
+  // loudly if the requested one is absent.
+  //
+  // On first use rather than at load: requiring them here would register four
+  // SHA-2 variants while this file is being loaded, and every tool that
+  // attributes an algorithm to whichever file was loading when it registered
+  // would then file SHA-512 under asymmetric ciphers.
+  let hashesLoaded = false;
+  function loadHashes() {
+    if (hashesLoaded) return;
+    hashesLoaded = true;
+    if (typeof require === 'undefined') return;
+
+    for (const mod of ['../hash/sha1.js', '../hash/sha256.js', '../hash/sha512.js']) {
+      try {
+        require(mod);
+      } catch (error) {
+        // In the browser these arrive as script tags instead; Find() reports it.
+      }
+    }
+  }
+
+  // Digest and HMAC block sizes, in octets, for the hashes FIPS 186-4 approves
+  // for ECDSA. Both are properties of the hash rather than of this file, so
+  // they are listed once and read by name.
+  const HASH_PARAMS = {
+    'SHA-1':   { outLen: 20, blockLen: 64 },
+    'SHA-224': { outLen: 28, blockLen: 64 },
+    'SHA-256': { outLen: 32, blockLen: 64 },
+    'SHA-384': { outLen: 48, blockLen: 128 },
+    'SHA-512': { outLen: 64, blockLen: 128 }
+  };
+
+  /**
+   * Digest a byte array with a registered hash algorithm.
+   * @param {string} hashName - Registered algorithm name, e.g. "SHA-256"
+   * @param {uint8[]} bytes - Message octets
+   * @returns {uint8[]} Digest octets
+   */
+  function digest(hashName, bytes) {
+    loadHashes();
+
+    const algorithm = AlgorithmFramework.Find(hashName);
+    if (!algorithm) {
+      throw new Error(`ECDSA requires the hash ${hashName}, which is not registered`);
+    }
+
+    const instance = algorithm.CreateInstance();
+    instance.Feed(bytes);
+    return instance.Result();
+  }
+
+  /**
+   * Concatenate byte arrays without spreading them into an argument list.
+   * @param {...uint8[]} parts - Arrays to join
+   * @returns {uint8[]} Concatenation
+   */
+  function concatBytes() {
+    const out = [];
+    for (let p = 0; p < arguments.length; ++p) {
+      const part = arguments[p];
+      for (let i = 0; i < part.length; ++i) out.push(part[i]);
+    }
+    return out;
+  }
+
+  /**
+   * HMAC (RFC 2104) over one of the digests above. RFC 6979 builds its nonce
+   * from HMAC keyed by the private key, so this is part of the signature.
+   * @param {string} hashName - Registered hash algorithm name
+   * @param {uint8[]} key - MAC key octets
+   * @param {uint8[]} message - Message octets
+   * @returns {uint8[]} MAC octets
+   */
+  function hmac(hashName, key, message) {
+    const params = HASH_PARAMS[hashName];
+    if (!params) throw new Error(`No HMAC block size known for ${hashName}`);
+
+    const blockLen = params.blockLen;
+    const k = key.length > blockLen ? digest(hashName, key) : key.slice();
+    while (k.length < blockLen) k.push(0x00);
+
+    const innerPad = new Array(blockLen);
+    const outerPad = new Array(blockLen);
+    for (let i = 0; i < blockLen; ++i) {
+      innerPad[i] = OpCodes.XorN(k[i], 0x36);
+      outerPad[i] = OpCodes.XorN(k[i], 0x5C);
+    }
+
+    const innerHash = digest(hashName, concatBytes(innerPad, message));
+    return digest(hashName, concatBytes(outerPad, innerHash));
+  }
+
+  /**
+   * Interpret octets as a big-endian unsigned integer.
+   * @param {uint8[]} bytes - Octets
+   * @returns {BigInt} The integer
+   */
+  function octetsToInt(bytes) {
+    let value = 0n;
+    for (let i = 0; i < bytes.length; ++i) {
+      value = OpCodes.OrN(OpCodes.ShiftLn(value, 8), BigInt(bytes[i]));
+    }
+    return value;
+  }
+
+  /**
+   * RFC 6979 section 2.3.3: render an integer as exactly rlen octets.
+   * @param {BigInt} value - The integer
+   * @param {number} rlen - Output length in octets
+   * @returns {uint8[]} Big-endian fixed-width octets
+   */
+  function intToOctets(value, rlen) {
+    const bytes = new Array(rlen);
+    let v = value;
+    for (let i = rlen - 1; i >= 0; --i) {
+      bytes[i] = Number(OpCodes.AndN(v, 0xFFn));
+      v = OpCodes.ShiftRn(v, 8);
+    }
+    return bytes;
+  }
+
+  /**
+   * RFC 6979 section 2.3.2 / FIPS 186-4 section 6.4: take the leftmost qlen
+   * bits of an octet string. This is a truncation, not a reduction modulo the
+   * group order - reducing instead changes the digest whenever it exceeds the
+   * order, and the signature then fails to verify anywhere else.
+   * @param {uint8[]} bytes - Octets, normally a digest
+   * @param {number} qlen - Bit length of the group order
+   * @returns {BigInt} The truncated integer
+   */
+  function bitsToInt(bytes, qlen) {
+    const value = octetsToInt(bytes);
+    const blen = bytes.length * 8;
+    return blen > qlen ? OpCodes.ShiftRn(value, blen - qlen) : value;
+  }
+
+  /**
+   * RFC 6979 section 2.3.4.
+   * @param {uint8[]} bytes - Digest octets
+   * @param {BigInt} q - Group order
+   * @param {number} qlen - Bit length of q
+   * @param {number} rlen - Octet length used by the generator
+   * @returns {uint8[]} Octets of the reduced digest
+   */
+  function bitsToOctets(bytes, q, qlen, rlen) {
+    const z1 = bitsToInt(bytes, qlen);
+    const z2 = z1 >= q ? z1 - q : z1;
+    return intToOctets(z2, rlen);
+  }
+
+  /**
+   * RFC 6979 section 3.2: derive the per-signature nonce k deterministically
+   * from the private key and the message digest with HMAC-DRBG.
+   *
+   * The nonce is the whole security of ECDSA. Anything an attacker can predict
+   * or solve for - a counter, a hash of the message alone, or any value that
+   * is an invertible function of the private key - yields the private key from
+   * a single signature, because s = k^-1 (e + r*d) is linear in both k and d.
+   *
+   * @param {string} hashName - Registered hash algorithm name
+   * @param {BigInt} q - Group order
+   * @param {BigInt} x - Private key
+   * @param {uint8[]} h1 - Digest of the message
+   * @returns {BigInt} A nonce in [1, q-1]
+   */
+  function deterministicNonce(hashName, q, x, h1) {
+    const params = HASH_PARAMS[hashName];
+    if (!params) throw new Error(`No digest length known for ${hashName}`);
+
+    const hlen = params.outLen;
+    const qlen = q.toString(2).length;
+    const rlen = Math.ceil(qlen / 8);
+
+    const xOctets = intToOctets(x, rlen);
+    const hOctets = bitsToOctets(h1, q, qlen, rlen);
+
+    let V = new Array(hlen).fill(0x01);
+    let K = new Array(hlen).fill(0x00);
+
+    K = hmac(hashName, K, concatBytes(V, [0x00], xOctets, hOctets));
+    V = hmac(hashName, K, V);
+    K = hmac(hashName, K, concatBytes(V, [0x01], xOctets, hOctets));
+    V = hmac(hashName, K, V);
+
+    for (;;) {
+      let T = [];
+      while (T.length * 8 < qlen) {
+        V = hmac(hashName, K, V);
+        T = concatBytes(T, V);
+      }
+
+      const k = bitsToInt(T, qlen);
+      if (k >= 1n && k < q) return k;
+
+      K = hmac(hashName, K, concatBytes(V, [0x00]));
+      V = hmac(hashName, K, V);
     }
   }
 
@@ -363,7 +584,7 @@
       super();
 
       this.name = "ECDSA";
-      this.description = "Elliptic Curve Digital Signature Algorithm for signing and verification. Production-quality implementation using JavaScript native BigInt with support for NIST and SEC standard curves.";
+      this.description = "Elliptic Curve Digital Signature Algorithm over secp256k1, P-256, P-384 and P-521, signing a SHA-1 or SHA-2 digest with the deterministic nonce of RFC 6979 and producing a DER-encoded (r, s). Verified against the RFC 6979 signing vectors and the Wycheproof verification suites, including their invalid-encoding cases. Arithmetic is plain BigInt and is not constant-time, so a key used where an attacker can time the signer is not protected.";
       this.inventor = "Scott Vanstone";
       this.year = 1992;
       this.category = CategoryType.ASYMMETRIC;
@@ -389,29 +610,179 @@
       this.references = [
         new LinkItem("OpenSSL ECDSA Implementation", "https://github.com/openssl/openssl/blob/master/crypto/ec/ecdsa_ossl.c"),
         new LinkItem("libsecp256k1", "https://github.com/bitcoin-core/secp256k1"),
-        new LinkItem("Google Wycheproof ECDSA Test Vectors", "https://github.com/google/wycheproof/tree/master/testvectors")
+        new LinkItem("Wycheproof ECDSA Test Vectors", "https://github.com/C2SP/wycheproof/tree/main/testvectors_v1")
       ];
 
-      // Official Wycheproof test vectors
-      // For signature verification: input = message, expected = validation result (boolean as array)
+      this.knownVulnerabilities = [
+        new Vulnerability("Nonce Reuse and Bias",
+          "Two signatures made with the same k, or nonces with a handful of predictable "
+          + "bits, yield the private key directly from the pair of s values - this is how "
+          + "the PlayStation 3 code-signing key and a number of Bitcoin wallets were lost",
+          "Signing here derives k from the private key and the digest per RFC 6979, so no "
+          + "randomness source can go wrong; do not substitute a counter or a value derived "
+          + "from the message alone",
+          "https://www.rfc-editor.org/rfc/rfc6979#section-3.2"),
+        new Vulnerability("Timing and Trace Leakage",
+          "Scalar multiplication here branches on the bits of the nonce, so an attacker "
+          + "able to time or trace the signer learns k and therefore the private key",
+          "Use a constant-time implementation wherever an attacker shares a machine with "
+          + "the signer; this file is a reference for the mathematics, not a hardened signer",
+          "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf")
+      ];
+
+      // Signing vectors come from RFC 6979 Appendix A.2, which publishes k, r
+      // and s for each curve and hash. They work as known-answer tests only
+      // because the nonce is deterministic: with a random k there is no
+      // expected signature to compare against, and a vector could then assert
+      // nothing about the signature it is supposed to pin down.
+      //
+      // Verification vectors come from Wycheproof, which supplies invalid
+      // cases as well as valid ones. Rejecting a bad signature is the half of
+      // the contract that a "does it produce output" test never reaches.
+      const RFC6979 = "https://www.rfc-editor.org/rfc/rfc6979#appendix-A.2";
+      const WYCHEPROOF = "https://github.com/C2SP/wycheproof/blob/main/testvectors_v1/ecdsa_secp256r1_sha256_test.json";
+      const WYCHEPROOF_KEY = OpCodes.Hex8ToBytes(
+        "042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838" +
+        "c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e");
+
       this.tests = [
         {
-          text: "Wycheproof secp256r1 SHA-256 Test Vector #1",
-          uri: "https://github.com/google/wycheproof/blob/master/testvectors/ecdsa_secp256r1_sha256_test.json",
+          text: 'RFC 6979 A.2.5 - P-256, SHA-256, message "sample"',
+          uri: RFC6979,
           curve: 'secp256r1',
-          publicKey: OpCodes.Hex8ToBytes("042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e"),
-          input: OpCodes.Hex8ToBytes("313233343030"), // message
-          signature: OpCodes.Hex8ToBytes("304402202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e1802204cd60b855d442f5b3c7b11eb6c4e0ae7525fe710fab9aa7c77a67f79e6fadd76"),
-          expected: [1] // valid signature = true (1)
+          hashAlgorithm: 'SHA-256',
+          privateKey: OpCodes.Hex8ToBytes("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721"),
+          input: OpCodes.AnsiToBytes("sample"),
+          expected: derSignature(
+            "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716",
+            "F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8")
         },
         {
-          text: "Wycheproof secp256r1 SHA-256 Test Vector #2 (valid signature)",
-          uri: "https://github.com/google/wycheproof/blob/master/testvectors/ecdsa_secp256r1_sha256_test.json",
+          text: 'RFC 6979 A.2.5 - P-256, SHA-256, message "test"',
+          uri: RFC6979,
           curve: 'secp256r1',
-          publicKey: OpCodes.Hex8ToBytes("042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e"),
-          input: OpCodes.Hex8ToBytes("313233343030"), // message
-          signature: OpCodes.Hex8ToBytes("304502202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"),
-          expected: [1] // valid signature = true (1)
+          hashAlgorithm: 'SHA-256',
+          privateKey: OpCodes.Hex8ToBytes("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721"),
+          input: OpCodes.AnsiToBytes("test"),
+          expected: derSignature(
+            "F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367",
+            "019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083")
+        },
+        {
+          text: 'RFC 6979 A.2.5 - P-256, SHA-1, message "sample"',
+          uri: RFC6979,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-1',
+          privateKey: OpCodes.Hex8ToBytes("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721"),
+          input: OpCodes.AnsiToBytes("sample"),
+          expected: derSignature(
+            "61340C88C3AAEBEB4F6D667F672CA9759A6CCAA9FA8811313039EE4A35471D32",
+            "6D7F147DAC089441BB2E2FE8F7A3FA264B9C475098FDCF6E00D7C996E1B8B7EB")
+        },
+        {
+          text: 'RFC 6979 A.2.6 - P-384, SHA-384, message "sample"',
+          uri: RFC6979,
+          curve: 'secp384r1',
+          hashAlgorithm: 'SHA-384',
+          privateKey: OpCodes.Hex8ToBytes(
+            "6B9D3DAD2E1B8C1C05B19875B6659F4DE23C3B667BF297BA9AA47740787137D8" +
+            "96D5724E4C70A825F872C9EA60D2EDF5"),
+          input: OpCodes.AnsiToBytes("sample"),
+          expected: derSignature(
+            "94EDBB92A5ECB8AAD4736E56C691916B3F88140666CE9FA73D64C4EA95AD133C" +
+            "81A648152E44ACF96E36DD1E80FABE46",
+            "99EF4AEB15F178CEA1FE40DB2603138F130E740A19624526203B6351D0A3A94F" +
+            "A329C145786E679E7B82C71A38628AC8")
+        },
+        {
+          // P-521 pushes the SEQUENCE past 127 content octets, so this is the
+          // vector that fails if the DER length reverts to the short form.
+          text: 'RFC 6979 A.2.7 - P-521, SHA-512, message "sample"',
+          uri: RFC6979,
+          curve: 'secp521r1',
+          hashAlgorithm: 'SHA-512',
+          privateKey: OpCodes.Hex8ToBytes(
+            "00FAD06DAA62BA3B25D2FB40133DA757205DE67F5BB0018FEE8C86E1B68C7E75" +
+            "CAA896EB32F1F47C70855836A6D16FCC1466F6D8FBEC67DB89EC0C08B0E996B8" +
+            "3538"),
+          input: OpCodes.AnsiToBytes("sample"),
+          expected: derSignature(
+            "0C328FAFCBD79DD77850370C46325D987CB525569FB63C5D3BC53950E6D4C5F1" +
+            "74E25A1EE9017B5D450606ADD152B534931D7D4E8455CC91F9B15BF05EC36E37" +
+            "7FA",
+            "0617CCE7CF5064806C467F678D3B4080D6F1CC50AF26CA209417308281B68AF2" +
+            "82623EAA63E5B5C0723D8B8C37FF0777B1A20F8CCB1DCCC43997F1EE0E44DA4A" +
+            "67A")
+        },
+        {
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 5 - valid signature",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "304402202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "02204cd60b855d442f5b3c7b11eb6c4e0ae7525fe710fab9aa7c77a67f79e6fadd76"),
+          expected: [1]
+        },
+        {
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 7 - valid signature",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "304502202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"),
+          expected: [1]
+        },
+        {
+          // Same r and s as tcId 7 with the leading zero octet of s dropped.
+          // The numbers still satisfy the verification equation; what makes it
+          // invalid is that the encoding is not DER. A verifier that reads r
+          // and s out of whatever it can parse accepts two distinct byte
+          // strings as one signature.
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 6 - invalid, s misses its leading zero",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "304402202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "0220b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"),
+          expected: [0]
+        },
+        {
+          // The mirror of tcId 6: there s lost the zero octet it needed, here
+          // r carries two it does not. Both encodings hold the same numbers as
+          // tcId 7 and both must be refused, which takes a minimality check in
+          // each direction rather than only a sign check.
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 84 - invalid, zeros prepended to r",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "3047022200002ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db"),
+          expected: [0]
+        },
+        {
+          text: "Wycheproof ecdsa_secp256r1_sha256 tcId 23 - invalid, zeros appended to the SEQUENCE",
+          uri: WYCHEPROOF,
+          curve: 'secp256r1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "304702202ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e18" +
+            "022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db" +
+            "0000"),
+          expected: [0]
         }
       ];
     }
@@ -449,6 +820,22 @@
       this.inputBuffer = [];
       this.messageHash = null;
       this.signature = null;
+      this._hashAlgorithm = 'SHA-256';
+    }
+
+    // Which digest the signature is taken over. FIPS 186-4 permits any
+    // approved hash, and RFC 6979 derives the nonce from the same one, so the
+    // choice has to travel with the instance rather than be hard-coded.
+    set hashAlgorithm(name) {
+      if (!name) return;
+      if (!HASH_PARAMS[name]) {
+        throw new Error(`Unsupported hash for ECDSA: ${name}`);
+      }
+      this._hashAlgorithm = name;
+    }
+
+    get hashAlgorithm() {
+      return this._hashAlgorithm;
     }
 
     // Property setters/getters for compatibility
@@ -558,24 +945,22 @@
       }
     }
 
-    // Sign message (RFC 6979 deterministic k for educational purposes)
+    // Sign message with the RFC 6979 deterministic nonce
     _sign() {
       if (!this._privateKey) {
         throw new Error('Private key required for signing');
       }
 
-      if (this.inputBuffer.length === 0) {
-        throw new Error('No message to sign');
-      }
-
+      // The empty string is a message like any other and SHA-256 has a
+      // defined digest for it, so signing it is not an error.
       const message = [...this.inputBuffer];
       this.inputBuffer = [];
 
-      // Hash the message (simplified - in production use proper hash)
-      const e = this._hashMessage(message);
-
-      // Generate deterministic k (simplified RFC 6979)
-      const k = this._generateK(e);
+      // The digest is needed twice and must be the same octets both times: as
+      // the integer e that enters s, and as the input to the nonce generator.
+      const h1 = digest(this._hashAlgorithm, message);
+      const e = bitsToInt(h1, this._curve.n.toString(2).length);
+      const k = deterministicNonce(this._hashAlgorithm, this._curve.n, this._privateKey, h1);
 
       // Compute r = (k * G).x mod n
       const kG = this._curve.multiply(k, this._curve.G);
@@ -603,17 +988,22 @@
         throw new Error('Public key required for verification');
       }
 
-      if (this.inputBuffer.length === 0) {
-        throw new Error('No data to verify');
-      }
-
       // Extract message and signature
       // In test vectors, signature is provided separately via signature property
       if (this.signature && this.signature.length > 0) {
         const message = [...this.inputBuffer];
         this.inputBuffer = [];
 
-        const { r, s } = this._decodeDER(this.signature);
+        // A signature that is not a well-formed DER SEQUENCE of two INTEGERs
+        // is not a signature. Recovering r and s from a malformed encoding and
+        // verifying them anyway is what lets an attacker present many distinct
+        // byte strings for one accepted signature.
+        let r, s;
+        try {
+          ({ r, s } = this._decodeDER(this.signature));
+        } catch (error) {
+          return false;
+        }
 
         // Hash the message
         const e = this._hashMessage(message);
@@ -661,81 +1051,79 @@
       return v === r;
     }
 
-    // Hash message to integer using SHA-256
+    // Digest the message and truncate it to the group order per FIPS 186-4
     _hashMessage(message) {
-      // Use real SHA-256 for Wycheproof test vector compatibility
-      // Load SHA-256 from algorithm framework if available
-      let hash;
-
-      if (typeof AlgorithmFramework !== 'undefined' && AlgorithmFramework.Find) {
-        try {
-          // Try to use the project's SHA-256 implementation
-          const sha256 = AlgorithmFramework.Find('SHA-256');
-          if (sha256) {
-            const hashInstance = sha256.CreateInstance();
-            hashInstance.Feed(message);
-            hash = hashInstance.Result();
-          } else {
-            // Fallback to simplified hash
-            hash = this._sha256Fallback(message);
-          }
-        } catch (error) {
-          // Fallback to simplified hash
-          hash = this._sha256Fallback(message);
-        }
-      } else {
-        // Fallback to simplified hash
-        hash = this._sha256Fallback(message);
-      }
-
-      // Convert hash bytes to BigInt
-      let e = 0n;
-      for (let i = 0; i < hash.length; ++i) {
-        e = OpCodes.OrN(OpCodes.ShiftLn(e, 8n), BigInt(hash[i]));
-      }
-
-      // Ensure e is in proper range for the curve
-      // Truncate if necessary (FIPS 186-4 requirement)
-      if (e >= this._curve.n) {
-        e = e % this._curve.n;
-      }
-
-      return e;
+      return bitsToInt(digest(this._hashAlgorithm, message), this._curve.n.toString(2).length);
     }
 
-    // Fallback hash function (NOT cryptographically secure)
-    // Only used when SHA-256 is unavailable - for educational demonstration
-    _sha256Fallback(message) {
-      // This is NOT a real SHA-256! It's a placeholder for educational purposes.
-      // Real ECDSA MUST use a proper cryptographic hash function.
-      const hash = new Array(32).fill(0);
+    // DER definite length: a single octet below 128, otherwise a count octet
+    // with the high bit set followed by that many length octets. A P-521
+    // signature is about 139 content octets, so the short form alone produced
+    // a SEQUENCE header no other parser would accept.
+    _encodeLength(length) {
+      if (length < 0x80) return [length];
 
-      // Simple deterministic mixing (NOT secure)
-      for (let i = 0; i < message.length; ++i) {
-        const byte = message[i];
-        hash[i % 32] = OpCodes.AndN(hash[i % 32] + byte, 0xFF);
-        hash[(i + 7) % 32] = OpCodes.XorN(hash[(i + 7) % 32], byte);
-        hash[(i + 13) % 32] = OpCodes.AndN(hash[(i + 13) % 32] + OpCodes.Shl32(byte, 1), 0xFF);
+      const lengthBytes = [];
+      let remaining = length;
+      while (remaining > 0) {
+        lengthBytes.unshift(Number(OpCodes.AndN(remaining, 0xFF)));
+        remaining = Number(OpCodes.ShiftRn(BigInt(remaining), 8));
       }
-
-      // Additional mixing
-      for (let round = 0; round < 3; ++round) {
-        for (let i = 0; i < 32; ++i) {
-          const mix = OpCodes.AndN(hash[i] + hash[(i + 1) % 32] + hash[(i + 31) % 32], 0xFF);
-          hash[i] = OpCodes.RotL8(mix, (i % 8));
-        }
-      }
-
-      return hash;
+      return [0x80 + lengthBytes.length].concat(lengthBytes);
     }
 
-    // Generate deterministic k (simplified RFC 6979)
-    _generateK(e) {
-      // Simplified deterministic k generation
-      // In production, implement full RFC 6979 with HMAC-DRBG
-      const seed = (e + this._privateKey) % this._curve.n;
-      const k = (seed % (this._curve.n - 1n)) + 1n;
-      return k;
+    // Read a DER definite length, returning the value and the octets consumed.
+    // DER admits exactly one encoding per length: the short form below 128 and
+    // the shortest long form above it. BER alternatives are rejected.
+    _decodeLength(der, pos) {
+      if (pos >= der.length) throw new Error('Invalid DER signature: truncated length');
+
+      const first = der[pos];
+      if (first < 0x80) return { length: first, next: pos + 1 };
+      if (first === 0x80) throw new Error('Invalid DER signature: indefinite length');
+
+      const count = first - 0x80;
+      if (count > 4 || pos + count >= der.length) {
+        throw new Error('Invalid DER signature: unsupported length encoding');
+      }
+      if (der[pos + 1] === 0x00) {
+        throw new Error('Invalid DER signature: non-minimal length encoding');
+      }
+
+      let length = 0;
+      for (let i = 0; i < count; ++i) {
+        length = length * 256 + der[pos + 1 + i];
+      }
+      if (length < 0x80) {
+        throw new Error('Invalid DER signature: long form used for a short length');
+      }
+
+      return { length, next: pos + 1 + count };
+    }
+
+    // Read one DER INTEGER and return it as a non-negative BigInt. DER requires
+    // the shortest two's-complement encoding, so a leading 0x00 is legal only
+    // to keep a high bit from reading as a sign bit.
+    _decodeInteger(der, pos) {
+      if (der[pos] !== 0x02) {
+        throw new Error('Invalid DER signature: expected an INTEGER');
+      }
+
+      const header = this._decodeLength(der, pos + 1);
+      const end = header.next + header.length;
+      if (header.length === 0 || end > der.length) {
+        throw new Error('Invalid DER signature: INTEGER out of bounds');
+      }
+
+      const bytes = der.slice(header.next, end);
+      if (OpCodes.AndN(bytes[0], 0x80) !== 0) {
+        throw new Error('Invalid DER signature: negative INTEGER');
+      }
+      if (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.AndN(bytes[1], 0x80) === 0) {
+        throw new Error('Invalid DER signature: non-minimal INTEGER');
+      }
+
+      return { value: this._bytesToInteger(bytes), next: end };
     }
 
     // Encode signature as DER
@@ -743,48 +1131,33 @@
       const rBytes = this._integerToBytes(r);
       const sBytes = this._integerToBytes(s);
 
-      const rLen = rBytes.length;
-      const sLen = sBytes.length;
-      const totalLen = 2 + rLen + 2 + sLen;
+      const body = [0x02].concat(this._encodeLength(rBytes.length), rBytes,
+                                 [0x02], this._encodeLength(sBytes.length), sBytes);
 
-      return [
-        0x30, totalLen,
-        0x02, rLen, ...rBytes,
-        0x02, sLen, ...sBytes
-      ];
+      return [0x30].concat(this._encodeLength(body.length), body);
     }
 
-    // Decode DER signature
+    // Decode DER signature. The SEQUENCE must hold exactly two INTEGERs and
+    // must end where the input ends: anything appended after s is a second
+    // encoding of the same signature, which a verifier must not accept.
     _decodeDER(der) {
-      if (der[0] !== 0x30) {
+      if (der.length < 2 || der[0] !== 0x30) {
         throw new Error('Invalid DER signature: missing SEQUENCE tag');
       }
 
-      let pos = 2;
-
-      // Read r
-      if (der[pos] !== 0x02) {
-        throw new Error('Invalid DER signature: missing INTEGER tag for r');
+      const seq = this._decodeLength(der, 1);
+      if (seq.next + seq.length !== der.length) {
+        throw new Error('Invalid DER signature: SEQUENCE does not span the input');
       }
-      pos++;
 
-      const rLen = der[pos++];
-      const rBytes = der.slice(pos, pos + rLen);
-      pos += rLen;
+      const rField = this._decodeInteger(der, seq.next);
+      const sField = this._decodeInteger(der, rField.next);
 
-      // Read s
-      if (der[pos] !== 0x02) {
-        throw new Error('Invalid DER signature: missing INTEGER tag for s');
+      if (sField.next !== der.length) {
+        throw new Error('Invalid DER signature: trailing data after s');
       }
-      pos++;
 
-      const sLen = der[pos++];
-      const sBytes = der.slice(pos, pos + sLen);
-
-      const r = this._bytesToInteger(rBytes);
-      const s = this._bytesToInteger(sBytes);
-
-      return { r, s };
+      return { r: rField.value, s: sField.value };
     }
 
     _integerToBytes(value) {
