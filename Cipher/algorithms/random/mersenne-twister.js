@@ -103,9 +103,14 @@
         )
       ];
 
-      // Test vectors generated from reference mt19937ar implementation
+      // Test vectors are the init_genrand() sequences defined by mt19937ar.c.
       // Note: The mt19937ar.out file uses init_by_array() with seed array {0x123, 0x234, 0x345, 0x456}
-      // These test vectors use init_genrand() with simple 32-bit seeds for easier validation
+      // These test vectors use init_genrand() with simple 32-bit seeds for easier validation.
+      // Seed 5489 is the engine's default, so its sequence is also the one std::mt19937
+      // produces when default-constructed. Every value below was taken from NumPy's
+      // MT19937 bit generator (numpy.random.MT19937 under scalar legacy seeding, which
+      // is mt19937ar's init_genrand) via random_raw(), i.e. from an independent
+      // implementation rather than from this code.
       this.tests = [
         {
           text: "MT19937 with seed 5489 (default seed, first 10 outputs)",
@@ -114,16 +119,16 @@
           seed: OpCodes.Unpack32LE(5489), // 5489 as little-endian bytes
           outputSize: 40, // 10 uint32 values = 40 bytes
           expected: OpCodes.ConcatArrays([
-            OpCodes.Unpack32LE(376485915),   // Verified with reference implementation
-            OpCodes.Unpack32LE(3675503792),
-            OpCodes.Unpack32LE(3777897591),
-            OpCodes.Unpack32LE(3869246300),
-            OpCodes.Unpack32LE(2651799552),
-            OpCodes.Unpack32LE(2496696840),
-            OpCodes.Unpack32LE(2949357450),
-            OpCodes.Unpack32LE(1342551794),
-            OpCodes.Unpack32LE(1771045778),
-            OpCodes.Unpack32LE(317509827)
+            OpCodes.Unpack32LE(3499211612),
+            OpCodes.Unpack32LE(581869302),
+            OpCodes.Unpack32LE(3890346734),
+            OpCodes.Unpack32LE(3586334585),
+            OpCodes.Unpack32LE(545404204),
+            OpCodes.Unpack32LE(4161255391),
+            OpCodes.Unpack32LE(3922919429),
+            OpCodes.Unpack32LE(949333985),
+            OpCodes.Unpack32LE(2715962298),
+            OpCodes.Unpack32LE(1323567403)
           ])
         },
         {
@@ -133,16 +138,16 @@
           seed: OpCodes.Unpack32LE(1), // 1 as little-endian bytes
           outputSize: 40, // 10 uint32 values = 40 bytes
           expected: OpCodes.ConcatArrays([
-            OpCodes.Unpack32LE(774130764),   // Verified with reference implementation
-            OpCodes.Unpack32LE(2332414448),
-            OpCodes.Unpack32LE(3106955262),
-            OpCodes.Unpack32LE(967038878),
-            OpCodes.Unpack32LE(2655393804),
-            OpCodes.Unpack32LE(862710512),
-            OpCodes.Unpack32LE(834360892),
-            OpCodes.Unpack32LE(3748795418),
-            OpCodes.Unpack32LE(3870927516),
-            OpCodes.Unpack32LE(2071169545)
+            OpCodes.Unpack32LE(1791095845),
+            OpCodes.Unpack32LE(4282876139),
+            OpCodes.Unpack32LE(3093770124),
+            OpCodes.Unpack32LE(4005303368),
+            OpCodes.Unpack32LE(491263),
+            OpCodes.Unpack32LE(550290313),
+            OpCodes.Unpack32LE(1298508491),
+            OpCodes.Unpack32LE(4290846341),
+            OpCodes.Unpack32LE(630311759),
+            OpCodes.Unpack32LE(1013994432)
           ])
         },
         {
@@ -152,11 +157,11 @@
           seed: OpCodes.Unpack32LE(123456789), // 123456789 as little-endian bytes
           outputSize: 20, // 5 uint32 values = 20 bytes
           expected: OpCodes.ConcatArrays([
-            OpCodes.Unpack32LE(3481605019),  // Verified with reference implementation
-            OpCodes.Unpack32LE(865328785),
-            OpCodes.Unpack32LE(1447750686),
-            OpCodes.Unpack32LE(4025893196),
-            OpCodes.Unpack32LE(2890053587)
+            OpCodes.Unpack32LE(2288500408),
+            OpCodes.Unpack32LE(4254805660),
+            OpCodes.Unpack32LE(2294099250),
+            OpCodes.Unpack32LE(56498137),
+            OpCodes.Unpack32LE(2188513626)
           ])
         }
       ];
@@ -222,9 +227,11 @@
         // state[i] = f * (state[i-1] XOR (state[i-1] shr 30)) + i
         const prev = this._state[this._index - 1];
         const xored = OpCodes.XorN(prev, OpCodes.Shr32(prev, 30));
-        // CRITICAL: Must truncate multiplication to 32-bit BEFORE adding index
-        // to avoid JavaScript floating-point precision loss with large numbers
-        const mult = OpCodes.ToUint32(INIT_MULTIPLIER * xored);
+        // The product 1812433253 * xored reaches ~2^63, far beyond the 2^53 that a
+        // JavaScript number holds exactly, so it must be multiplied with 32-bit
+        // wrapping semantics rather than truncated after the fact - truncating a
+        // value whose low bits have already been rounded away cannot recover them.
+        const mult = OpCodes.Mul32(INIT_MULTIPLIER, xored);
         this._state[this._index] = OpCodes.ToUint32(mult + this._index);
       }
 
