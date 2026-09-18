@@ -120,9 +120,13 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'plaintext is ever recovered from its output'],
   ['FAEST', 'signature scheme (FAEST, VOLE-in-the-head, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
+  ['SLH-DSA', 'signature scheme (FIPS 205): a FORS few-time signature under a hypertree of WOTS+ '
+    + 'one-time keys; signing and verifying recover no plaintext'],
+  ['SPHINCS+', 'signature scheme (SPHINCS+ round-3 submission to the NIST PQC project): the '
+    + 'pre-standardisation form of FIPS 205, signs and verifies and recovers no plaintext'],
 
   // Dilithium, FALCON, SLH-DSA, SPHINCS+, Rainbow, MAYO, PERK, LWE-Signature
-  // and ESIGN were listed here. They are gone from the collection rather than
+  // and ESIGN were listed here. They were gone from the collection rather than
   // from this list alone: none of them signed anything. Each returned a
   // constant - a template string carrying its parameter set and the length of
   // the message, its own parameter-set name, or a fixed byte pattern - so
@@ -130,8 +134,7 @@ const ROUND_TRIP_EXEMPT = new Map([
   // committed vector asserted that constant. Implementing any of them means
   // lattice trapdoor sampling, a hypertree of one-time signatures, or a
   // multivariate quadratic system, each checked against the NIST vectors;
-  // none of that can be approximated, and a catalogue that does not claim
-  // SPHINCS+ is more use than one that claims it and returns thirty bytes.
+  // none of that can be approximated.
   //
   // ESIGN, LWE-Signature and the four MAYO parameter sets are back, and all six
   // are deliberately absent from this list. Each implements MAYO.API.sign and
@@ -144,7 +147,16 @@ const ROUND_TRIP_EXEMPT = new Map([
   // files octet for octet and rederives every one of their public keys; ESIGN
   // reproduces all twenty published NESSIE ESIGN-D signatures byte for byte;
   // LWE-Signature has nothing published to check against and says so in its own
-  // vector comment. The remaining five stay absent from the collection.
+  // vector comment.
+  //
+  // SLH-DSA and SPHINCS+ are back too, and are listed above because they are
+  // the other shape of signature API: sign returns the signature alone, so
+  // there is no message to recover from it. SLH-DSA reproduces all 120 NIST
+  // ACVP FIPS 205 keyGen vectors and all 168 sigVer cases including their six
+  // kinds of published negative; SPHINCS+ reproduces the round-3 PQCsignKAT
+  // files, all 100 counts for both 128s parameter sets, which means reproducing
+  // the submission's CTR_DRBG seeding as well. The remaining three - FALCON,
+  // Rainbow and PERK - stay absent from the collection.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
