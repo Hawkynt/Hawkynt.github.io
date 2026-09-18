@@ -128,14 +128,18 @@ const ROUND_TRIP_EXEMPT = new Map([
   // none of that can be approximated, and a catalogue that does not claim
   // SPHINCS+ is more use than one that claims it and returns thirty bytes.
   //
-  // ESIGN and LWE-Signature are back and are both deliberately absent from this
-  // list. Each follows the convention the NIST signature API uses - signing
-  // yields signature || message, and the inverse direction checks the signature
-  // and returns the message it carries - so each has a round trip that is a
-  // real property rather than a missing one, and both suites drive it. ESIGN
+  // ESIGN, LWE-Signature and the four MAYO parameter sets are back, and all six
+  // are deliberately absent from this list. Each implements MAYO.API.sign and
+  // sign_open, which is also what the NIST signature API prescribes generally:
+  // signing yields signature || message, and the inverse direction checks the
+  // signature and returns the message it carries. So each has a round trip that
+  // is a real property rather than a missing one, and all three suites drive it.
+  //
+  // MAYO reproduces all 400 signed messages of the four official PQCsignKAT
+  // files octet for octet and rederives every one of their public keys; ESIGN
   // reproduces all twenty published NESSIE ESIGN-D signatures byte for byte;
   // LWE-Signature has nothing published to check against and says so in its own
-  // vector comment. The other seven remain absent from the collection.
+  // vector comment. The remaining five stay absent from the collection.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
