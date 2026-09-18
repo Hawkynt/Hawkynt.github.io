@@ -1004,7 +1004,7 @@
       this.year = 2024;
       this.category = CategoryType.ASYMMETRIC;
       this.subCategory = "Post-Quantum Signature";
-      this.securityStatus = null;
+      this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.INTERNATIONAL;
 
