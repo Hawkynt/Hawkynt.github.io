@@ -105,34 +105,28 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'signing has no inverse; verification consumes a signature, not a ciphertext'],
   ['Schnorr (BIP-340)', 'signature scheme (BIP-340): CreateInstance(true) returns null by design; '
     + 'verification consumes a signature, not a ciphertext'],
-  ['Dilithium', 'signature scheme (CRYSTALS-Dilithium, NIST PQC round 3): signs and verifies, '
-    + 'so no plaintext is ever recovered from its output'],
   ['ML-DSA', 'signature scheme (FIPS 204): signs and verifies, so no plaintext is ever recovered '
     + 'from its output'],
-  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is '
-    + 'ever recovered from its output'],
-  ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with '
-    + 'no decryption direction at all'],
-  ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and '
-    + 'verification, with no decryption direction at all'],
-  ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; '
-    + 'its trapdoor inverts a signature, not a message'],
   ['SQIsign', 'signature scheme (SQIsign, NIST additional signatures): signs and verifies, so no '
     + 'plaintext is ever recovered from its output'],
-  ['MAYO', 'signature scheme (MAYO, NIST additional signatures): signs and verifies, so no '
-    + 'plaintext is ever recovered from its output'],
-  ['PERK', 'signature scheme (PERK, MPC-in-the-head, NIST additional signatures): signs and '
-    + 'verifies, so no plaintext is ever recovered from its output'],
   ['CROSS', 'signature scheme (CROSS, restricted decoding, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
   ['HAWK', 'signature scheme (HAWK, NIST additional signatures): signs and verifies, so no '
     + 'plaintext is ever recovered from its output'],
   ['FAEST', 'signature scheme (FAEST, VOLE-in-the-head, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
-  ['LWE-Signature', 'signature scheme (lattice-based, Lyubashevsky-style): signs and verifies, so '
-    + 'no plaintext is ever recovered from its output'],
-  ['ESIGN', 'signature scheme (ESIGN, Okamoto; NESSIE submission): signs and verifies, so no '
-    + 'plaintext is ever recovered from its output'],
+
+  // Dilithium, FALCON, SLH-DSA, SPHINCS+, Rainbow, MAYO, PERK, LWE-Signature
+  // and ESIGN were listed here. They are gone from the collection rather than
+  // from this list alone: none of them signed anything. Each returned a
+  // constant - a template string carrying its parameter set and the length of
+  // the message, its own parameter-set name, or a fixed byte pattern - so
+  // signing two different messages produced identical output, and the
+  // committed vector asserted that constant. Implementing any of them means
+  // lattice trapdoor sampling, a hypertree of one-time signatures, or a
+  // multivariate quadratic system, each checked against the NIST vectors;
+  // none of that can be approximated, and a catalogue that does not claim
+  // SPHINCS+ is more use than one that claims it and returns thirty bytes.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
