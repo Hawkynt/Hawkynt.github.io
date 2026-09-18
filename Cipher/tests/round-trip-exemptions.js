@@ -165,6 +165,30 @@ const ROUND_TRIP_EXEMPT = new Map([
   // paths were repaired. All four round-trip now and are driven by the suite, so
   // the entries are gone rather than left behind to excuse a future regression.
 
+  // --- signature schemes: sign and verify, never encrypt and decrypt ---
+  // Restored to the collection and under repair: each of these returned a
+  // constant rather than a signature, so the exemption below states the kind of
+  // construction it is, not that its implementation is finished. The kind is why
+  // this sweep cannot round-trip it; the repair is tracked separately.
+  ['Dilithium', 'signature scheme (CRYSTALS-Dilithium, NIST PQC round 3): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with no decryption direction at all'],
+  ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and verification, with no decryption direction at all'],
+  ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; its trapdoor inverts a signature, not a message'],
+  ['MAYO', 'signature scheme (MAYO, NIST additional signatures): signs and verifies, so no plaintext is ever recovered from its output'],
+  ['PERK', 'signature scheme (PERK, MPC-in-the-head, NIST additional signatures): signs and verifies, so no plaintext is recovered'],
+  ['LWE-Signature', 'signature scheme (lattice, learning-with-errors): signs and verifies, so no plaintext is recovered from its output'],
+  ['ESIGN', 'signature scheme (ESIGN, Okamoto): signs and verifies; its trapdoor inverts a signature, not a message'],
+
+  // --- key encapsulation: the recoverable value is a shared secret ---
+  // Restored and under repair. A KEM does round-trip, but of the shared secret
+  // rather than of a plaintext, which is why it is exempt from this sweep.
+  ['NTRU', 'key encapsulation (NTRU, NIST PQC round 3): encapsulates to a ciphertext and a shared secret; the recoverable value is the secret, not a plaintext'],
+  ['Classic McEliece', 'key encapsulation (Classic McEliece, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['HQC', 'key encapsulation (HQC, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['BIKE', 'key encapsulation (BIKE, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['SIKE', 'key encapsulation (SIKE): the recoverable value is the shared secret, not a plaintext. The scheme is cryptographically dead - Castryck and Decru recover the key in minutes (eprint 2022/975) - and is marked BROKEN here'],
+
 ]);
 
 // Each entry names the algorithm, the vector property that puts the instance
