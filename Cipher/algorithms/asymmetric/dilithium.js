@@ -73,32 +73,38 @@
     : (typeof window !== 'undefined' ? window
     : (typeof self !== 'undefined' ? self : {}));
 
-  let SHAKEAlgorithmClass = globalScope.SHAKEAlgorithm;
-
-  if (!SHAKEAlgorithmClass && typeof require !== 'undefined') {
-    try {
-      SHAKEAlgorithmClass = require('../hash/shake.js').SHAKEAlgorithm;
-    } catch (e) {
-      // Resolved from the registry instead, below.
-    }
-  }
-
   const shakeAlgorithms = { 128: null, 256: null };
 
   /**
-   * Resolve a SHAKE algorithm object, preferring the module export and falling
-   * back to whatever the registry holds under that name.
+   * Resolve a SHAKE algorithm object: the registry first, then the global
+   * scope, then the module.
+   *
+   * The lookup is deferred to first use rather than done while this file loads,
+   * and it is deliberate. Both the README generator and the browser script-tag
+   * checker attribute an algorithm to whichever source file was being loaded
+   * when it registered, so a top-level require of the SHAKE module files
+   * SHAKE128 and SHAKE256 under this directory and drops them from the hash
+   * index. Resolving on demand leaves shake.js to register itself when the
+   * walk reaches it.
+   *
    * @param {number} variant - 128 or 256
    * @returns {object} An algorithm exposing CreateInstance()
    */
   function shakeAlgorithm(variant) {
     if (shakeAlgorithms[variant]) return shakeAlgorithms[variant];
 
-    let algo = null;
-    if (SHAKEAlgorithmClass) {
-      algo = new SHAKEAlgorithmClass(String(variant));
-    } else if (AlgorithmFramework.Find) {
-      algo = AlgorithmFramework.Find('SHAKE' + variant);
+    let algo = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHAKE' + variant) : null;
+
+    if (!algo) {
+      let SHAKEAlgorithmClass = globalScope.SHAKEAlgorithm;
+      if (!SHAKEAlgorithmClass && typeof require !== 'undefined') {
+        try {
+          SHAKEAlgorithmClass = require('../hash/shake.js').SHAKEAlgorithm;
+        } catch (e) {
+          // Reported as a missing dependency below.
+        }
+      }
+      if (SHAKEAlgorithmClass) algo = new SHAKEAlgorithmClass(String(variant));
     }
 
     if (!algo) throw new Error('SHAKE' + variant + ' is required by ML-DSA and was not found');
