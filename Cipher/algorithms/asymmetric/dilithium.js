@@ -14,15 +14,19 @@
  * gen-val/json-files/ML-DSA-{keyGen,sigGen,sigVer}-FIPS204):
  *
  *   ML-DSA-keyGen-FIPS204   75/75   seed to public key and private key
- *   ML-DSA-sigGen-FIPS204  270/270  internal and external interfaces,
- *                                   deterministic and hedged, pure and pre-hash
- *   ML-DSA-sigVer-FIPS204  135/135  including every published negative case
+ *   ML-DSA-sigGen-FIPS204  360/360  internal and external interfaces,
+ *                                   deterministic and hedged, pure, pre-hash
+ *                                   and external mu
+ *   ML-DSA-sigVer-FIPS204  180/180  including every published negative case
  *
- * A representative subset of those vectors is committed below. Pre-hash
- * signing (ML-DSA.Sign with a message digest and its OID) is deliberately not
- * exposed here: it would make this file depend on the SHA-2 and SHA-3 modules
- * at load time, and the property it adds is message pre-processing rather than
- * lattice arithmetic.
+ * A representative subset of those vectors is committed below.
+ *
+ * This file is the lattice core and registers it under the round-3 name. The
+ * message pre-processing that FIPS 204 layers on top - the context string, the
+ * pre-hash variant HashML-DSA, and ExternalMu-ML-DSA - is registered by
+ * ml-dsa.js, which calls straight into the functions here rather than carrying
+ * a second copy of them. Pre-hash needs the SHA-2 and SHA-3 modules, and
+ * keeping it there keeps that dependency out of this file.
  */
 
 // Load AlgorithmFramework (REQUIRED)
@@ -1073,6 +1077,32 @@
   }
 
   /**
+   * The message representative bound to the key: mu = H(tr || M', 64).
+   *
+   * ExternalMu-ML-DSA splits signing in two so that a large message can be
+   * absorbed somewhere other than where the private key lives. The caller
+   * computes mu and passes it in, and the binding to tr has then already
+   * happened. Everything after this point is identical either way.
+   *
+   * @param {number[]|null|undefined} externalMu - 64 bytes, or nothing
+   * @param {number[]} tr - the 64 byte public key digest held by the key
+   * @param {number[]} messageRepresentative - M'
+   * @returns {number[]} mu
+   */
+  function resolveMu(externalMu, tr, messageRepresentative) {
+    if (externalMu === null || externalMu === undefined) {
+      const muInput = tr.slice();
+      appendAll(muInput, messageRepresentative);
+      return H(muInput, 64);
+    }
+
+    if (externalMu.length !== 64)
+      throw new Error('ML-DSA external mu must be 64 bytes, got ' + externalMu.length);
+
+    return externalMu.slice();
+  }
+
+  /**
    * ML-DSA.Sign_internal: the rejection loop of FIPS 204 algorithm 7.
    *
    * An attempt is thrown away when the response would leak the secret - the
@@ -1082,12 +1112,17 @@
    * still verify and still leak, which is why all three are checked here.
    *
    * @param {number[]} sk - the private key
-   * @param {number[]} messageRepresentative - M', already domain separated
+   * @param {number[]} messageRepresentative - M', already domain separated;
+   *   ignored when externalMu is supplied
    * @param {number[]} rnd - 32 bytes, all zero for deterministic signing
    * @param {object} P - parameter set
+   * @param {number[]} [externalMu] - a 64 byte mu computed by the caller. This
+   *   is the ExternalMu-ML-DSA entry point, where the message representative
+   *   was bound to the key outside this function and only the lattice half of
+   *   signing is wanted here.
    * @returns {number[]} the signature
    */
-  function signInternal(sk, messageRepresentative, rnd, P) {
+  function signInternal(sk, messageRepresentative, rnd, P, externalMu) {
     if (sk.length !== P.privateKeySize)
       throw new Error('ML-DSA private key must be ' + P.privateKeySize + ' bytes, got ' + sk.length);
     if (rnd.length !== SEED_BYTES)
@@ -1105,9 +1140,7 @@
       t0Hat.push(ntt(key.t0[i].map(modQ)));
     }
 
-    const muInput = key.tr.slice();
-    appendAll(muInput, messageRepresentative);
-    const mu = H(muInput, 64);
+    const mu = resolveMu(externalMu, key.tr, messageRepresentative);
 
     const rhoInput = key.K.slice();
     appendAll(rhoInput, rnd);
@@ -1185,12 +1218,15 @@
   /**
    * ML-DSA.Verify_internal.
    * @param {number[]} pk - the public key
-   * @param {number[]} messageRepresentative - M', already domain separated
+   * @param {number[]} messageRepresentative - M', already domain separated;
+   *   ignored when externalMu is supplied
    * @param {number[]} sig - the signature
    * @param {object} P - parameter set
+   * @param {number[]} [externalMu] - a 64 byte mu computed by the caller, the
+   *   ExternalMu-ML-DSA entry point
    * @returns {boolean} whether the signature is valid
    */
-  function verifyInternal(pk, messageRepresentative, sig, P) {
+  function verifyInternal(pk, messageRepresentative, sig, P, externalMu) {
     if (pk.length !== P.publicKeySize || sig.length !== P.signatureSize) return false;
 
     const parsed = sigDecode(sig, P);
@@ -1207,9 +1243,7 @@
     const key = pkDecode(pk, P);
     const A = expandA(key.rho, P);
 
-    const muInput = H(pk, TR_BYTES);
-    appendAll(muInput, messageRepresentative);
-    const mu = H(muInput, 64);
+    const mu = resolveMu(externalMu, H(pk, TR_BYTES), messageRepresentative);
 
     const cHat = ntt(sampleInBall(parsed.cTilde, P));
 
@@ -2713,12 +2747,22 @@
 
   // ===== EXPORTS =====
 
-  return {
+  const exported = {
     DilithiumCipher, DilithiumInstance,
     PARAMETER_SETS, Q, N, ZETAS,
     ntt, inverseNtt, pointwiseMultiply, polyMultiplySchoolbook,
     power2Round, decompose, highBits, lowBits, makeHint, useHint,
     simpleBitPack, simpleBitUnpack, bitPack, bitUnpack, hintBitPack, hintBitUnpack,
+    findParameterSet, parameterSetByLength,
     keyGenInternal, signInternal, verifyInternal, pureMessageRepresentative
   };
+
+  // ml-dsa.js registers the FIPS 204 interface over this same core rather than
+  // carrying a second copy of the lattice arithmetic. Under CommonJS it reaches
+  // the core through require; in the browser the factory return value is
+  // discarded, so the core is published here for it to find. Nothing else reads
+  // this global.
+  globalScope.DilithiumCore = exported;
+
+  return exported;
 }));
