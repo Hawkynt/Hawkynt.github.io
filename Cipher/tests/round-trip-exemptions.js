@@ -127,6 +127,14 @@ const ROUND_TRIP_EXEMPT = new Map([
   // multivariate quadratic system, each checked against the NIST vectors;
   // none of that can be approximated, and a catalogue that does not claim
   // SPHINCS+ is more use than one that claims it and returns thirty bytes.
+  //
+  // ESIGN is back and is deliberately absent from this list. It reproduces all
+  // twenty published NESSIE ESIGN-D signatures byte for byte, and it does have
+  // an inverse to gate, because it follows the convention the NIST signature
+  // API uses: signing yields signature || message, and the inverse direction
+  // checks the signature and returns the message it carries. So the round trip
+  // is a real property of it and is driven by both suites rather than excused
+  // here. The other eight remain absent from the collection.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
