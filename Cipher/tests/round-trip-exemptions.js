@@ -105,78 +105,61 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'signing has no inverse; verification consumes a signature, not a ciphertext'],
   ['Schnorr (BIP-340)', 'signature scheme (BIP-340): CreateInstance(true) returns null by design; '
     + 'verification consumes a signature, not a ciphertext'],
-  ['Dilithium', 'signature scheme (CRYSTALS-Dilithium, NIST PQC round 3): signs and verifies, '
-    + 'so no plaintext is ever recovered from its output'],
   ['ML-DSA', 'signature scheme (FIPS 204): signs and verifies, so no plaintext is ever recovered '
     + 'from its output'],
-  ['FALCON', 'signature scheme (Falcon, NIST PQC round 3): signs and verifies, so no plaintext is '
-    + 'ever recovered from its output'],
-  ['SLH-DSA', 'signature scheme (FIPS 205): stateless hash-based signing and verification, with '
-    + 'no decryption direction at all'],
-  ['SPHINCS+', 'signature scheme (SPHINCS+, NIST PQC round 3): stateless hash-based signing and '
-    + 'verification, with no decryption direction at all'],
-  ['Rainbow', 'signature scheme (Rainbow, multivariate, NIST PQC round 3): signs and verifies; '
-    + 'its trapdoor inverts a signature, not a message'],
   ['SQIsign', 'signature scheme (SQIsign, NIST additional signatures): signs and verifies, so no '
     + 'plaintext is ever recovered from its output'],
-  ['MAYO', 'signature scheme (MAYO, NIST additional signatures): signs and verifies, so no '
-    + 'plaintext is ever recovered from its output'],
-  ['PERK', 'signature scheme (PERK, MPC-in-the-head, NIST additional signatures): signs and '
-    + 'verifies, so no plaintext is ever recovered from its output'],
   ['CROSS', 'signature scheme (CROSS, restricted decoding, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
   ['HAWK', 'signature scheme (HAWK, NIST additional signatures): signs and verifies, so no '
     + 'plaintext is ever recovered from its output'],
   ['FAEST', 'signature scheme (FAEST, VOLE-in-the-head, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
-  ['LWE-Signature', 'signature scheme (lattice-based, Lyubashevsky-style): signs and verifies, so '
-    + 'no plaintext is ever recovered from its output'],
-  ['ESIGN', 'signature scheme (ESIGN, Okamoto; NESSIE submission): signs and verifies, so no '
-    + 'plaintext is ever recovered from its output'],
+
+  // Dilithium, FALCON, SLH-DSA, SPHINCS+, Rainbow, MAYO, PERK, LWE-Signature
+  // and ESIGN were listed here. They are gone from the collection rather than
+  // from this list alone: none of them signed anything. Each returned a
+  // constant - a template string carrying its parameter set and the length of
+  // the message, its own parameter-set name, or a fixed byte pattern - so
+  // signing two different messages produced identical output, and the
+  // committed vector asserted that constant. Implementing any of them means
+  // lattice trapdoor sampling, a hypertree of one-time signatures, or a
+  // multivariate quadratic system, each checked against the NIST vectors;
+  // none of that can be approximated, and a catalogue that does not claim
+  // SPHINCS+ is more use than one that claims it and returns thirty bytes.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
   // could be decrypted, and both of these say so by returning null for the
   // inverse instance rather than inventing one.
-  ['Diffie-Hellman', 'key agreement (RFC 2631): each side derives a shared secret from the '
-    + "other's public value; no plaintext is transmitted, and CreateInstance(true) returns null"],
+  ['Diffie-Hellman', 'key agreement (RFC 2631) over the RFC 3526 and RFC 5114 MODP groups: each '
+    + "side raises the other's public value to its own private exponent, so no plaintext is "
+    + 'transmitted and CreateInstance(true) returns null. The property that does apply is agreement '
+    + 'rather than inversion, and it is gated by the committed vectors: RFC 5114 Appendix A drives '
+    + 'party A and party B separately for each of the three groups and asserts they reach the same Z'],
   ['X25519', 'key agreement (RFC 7748): each side derives a shared secret from the other\'s '
     + 'public value; no plaintext is transmitted, and CreateInstance(true) returns null'],
 
   // --- key encapsulation: the property is shared-secret recovery, not plaintext ---
   // A KEM encapsulates to a ciphertext plus a shared secret and decapsulates the
   // ciphertext back to that secret, so the round trip is over the secret rather
-  // than over a message. None of the four below performs either operation. They
-  // are not decryption paths that need repairing: they are stubs standing where
-  // an implementation should be, and each entry records exactly what the code
-  // returns instead so the gap cannot be mistaken for a subtle bug. Repairing
-  // any of them means writing the scheme and replacing its committed vector,
-  // because the vector is the stub's own output.
-  ['NTRU', 'open defect (stub): not an implementation of NTRU. The forward path returns the '
-    + 'ASCII text NTRU_ENCRYPTED_<paramset>_<length>_BYTES_NTRU_<paramset>_EDUCATIONAL and the '
-    + 'inverse path returns the letter A repeated <length> times, so neither a message nor a '
-    + 'shared secret is ever recovered; the committed vector is that ASCII text. Needs a real '
-    + 'NTRU-HPS ring implementation and NIST vectors, not a repaired inverse'],
-  ['Classic McEliece', 'open defect (stub): not an implementation of Classic McEliece. Result() '
-    + 'returns the ASCII parameter-set name mceliece348864 for every input in both directions, '
-    + 'which is why a 12-byte message comes back as those 14 bytes. The _encapsulate/_decapsulate '
-    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext '
-    + 'in the clear, so wiring it up would buy a passing round trip over no cryptography at all. '
-    + 'Needs real binary Goppa key generation and Patterson decoding, and NIST vectors'],
-  ['BIKE', 'open defect (stub): not an implementation of BIKE. There is no key pair, no '
-    + 'encapsulation and no decapsulation; CreateInstance ignores its isInverse argument entirely, '
-    + 'so a single direction exists, and Result() folds any input into eight bytes with an ad-hoc '
-    + 'rotate-and-add mixer. Both committed vectors are outputs of that mixer. Needs real QC-MDPC '
-    + 'key generation and a bit-flipping decoder, and NIST vectors'],
-  ['HQC', 'open defect (stub): not an implementation of HQC. Result() returns the ASCII '
-    + 'parameter-set name hqc-128 for every input in both directions. The _encapsulate/_decapsulate '
-    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext in '
-    + 'the clear. Needs a real quasi-cyclic construction with the concatenated Reed-Muller and '
-    + 'Reed-Solomon decoder, and NIST vectors'],
-  ['SIKE', 'open defect (stub): not an implementation of SIKE, and the scheme itself is dead - '
-    + 'Castryck and Decru recover the key in minutes (eprint 2022/975), which is why it is already '
-    + 'marked BROKEN here. The code carries no isogeny arithmetic and no key pair; CreateInstance '
-    + 'ignores isInverse and Result() folds any input into eight bytes with a rotate-and-xor mixer'],
+  // than over a message. Only FrodoKEM performs either operation, and it is not
+  // listed here because it is driven and passes.
+  //
+  // NTRU, Classic McEliece, BIKE, HQC and SIKE were listed here as stubs: none
+  // of them implemented its scheme. NTRU returned the ASCII text
+  // NTRU_ENCRYPTED_<paramset>_<length>_BYTES_... and the letter A repeated;
+  // Classic McEliece and HQC returned their parameter-set names mceliece348864
+  // and hqc-128 for every input in both directions, so a flipped bit in a
+  // 32-byte message produced byte-identical output; BIKE and SIKE had no key
+  // pair and ignored isInverse, folding any input into eight bytes with an
+  // ad-hoc mixer. Each committed vector was the stub's own output. An exemption
+  // cannot make a name in the catalogue true, so the five registrations were
+  // removed rather than carried as permanent open defects: a reader of the list
+  // has no way to tell a stub apart from an implementation. Adding any of them
+  // back means writing the scheme - binary Goppa keys and Patterson decoding,
+  // the concatenated Reed-Muller/Reed-Solomon decoder, QC-MDPC bit-flipping, or
+  // the truncated polynomial ring - and verifying it against the NIST PQC KATs.
 
   // RSA, ElGamal, LUC and Rabin-Williams were listed here while their decryption
   // paths were repaired. All four round-trip now and are driven by the suite, so
