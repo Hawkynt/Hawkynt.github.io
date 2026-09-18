@@ -591,8 +591,11 @@
       // Signature for verification
       this._signature = null;
 
-      // Digest the signature is taken over
-      this._hashAlgorithm = 'SHA-1';
+      // Digest the signature is taken over. SHA-256 rather than the SHA-1 of
+      // the original standard: against the 2048/256 parameter set a 160-bit
+      // digest fills only 160 of the 256 bits of z, and a caller who never
+      // sets this would get that weaker signature without being told.
+      this._hashAlgorithm = 'SHA-256';
     }
 
     // Property setters for test vector support
