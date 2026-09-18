@@ -146,37 +146,23 @@ const ROUND_TRIP_EXEMPT = new Map([
   // --- key encapsulation: the property is shared-secret recovery, not plaintext ---
   // A KEM encapsulates to a ciphertext plus a shared secret and decapsulates the
   // ciphertext back to that secret, so the round trip is over the secret rather
-  // than over a message. None of the four below performs either operation. They
-  // are not decryption paths that need repairing: they are stubs standing where
-  // an implementation should be, and each entry records exactly what the code
-  // returns instead so the gap cannot be mistaken for a subtle bug. Repairing
-  // any of them means writing the scheme and replacing its committed vector,
-  // because the vector is the stub's own output.
-  ['NTRU', 'open defect (stub): not an implementation of NTRU. The forward path returns the '
-    + 'ASCII text NTRU_ENCRYPTED_<paramset>_<length>_BYTES_NTRU_<paramset>_EDUCATIONAL and the '
-    + 'inverse path returns the letter A repeated <length> times, so neither a message nor a '
-    + 'shared secret is ever recovered; the committed vector is that ASCII text. Needs a real '
-    + 'NTRU-HPS ring implementation and NIST vectors, not a repaired inverse'],
-  ['Classic McEliece', 'open defect (stub): not an implementation of Classic McEliece. Result() '
-    + 'returns the ASCII parameter-set name mceliece348864 for every input in both directions, '
-    + 'which is why a 12-byte message comes back as those 14 bytes. The _encapsulate/_decapsulate '
-    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext '
-    + 'in the clear, so wiring it up would buy a passing round trip over no cryptography at all. '
-    + 'Needs real binary Goppa key generation and Patterson decoding, and NIST vectors'],
-  ['BIKE', 'open defect (stub): not an implementation of BIKE. There is no key pair, no '
-    + 'encapsulation and no decapsulation; CreateInstance ignores its isInverse argument entirely, '
-    + 'so a single direction exists, and Result() folds any input into eight bytes with an ad-hoc '
-    + 'rotate-and-add mixer. Both committed vectors are outputs of that mixer. Needs real QC-MDPC '
-    + 'key generation and a bit-flipping decoder, and NIST vectors'],
-  ['HQC', 'open defect (stub): not an implementation of HQC. Result() returns the ASCII '
-    + 'parameter-set name hqc-128 for every input in both directions. The _encapsulate/_decapsulate '
-    + 'pair is unreachable from Feed/Result and carries the shared secret through the ciphertext in '
-    + 'the clear. Needs a real quasi-cyclic construction with the concatenated Reed-Muller and '
-    + 'Reed-Solomon decoder, and NIST vectors'],
-  ['SIKE', 'open defect (stub): not an implementation of SIKE, and the scheme itself is dead - '
-    + 'Castryck and Decru recover the key in minutes (eprint 2022/975), which is why it is already '
-    + 'marked BROKEN here. The code carries no isogeny arithmetic and no key pair; CreateInstance '
-    + 'ignores isInverse and Result() folds any input into eight bytes with a rotate-and-xor mixer'],
+  // than over a message. Only FrodoKEM performs either operation, and it is not
+  // listed here because it is driven and passes.
+  //
+  // NTRU, Classic McEliece, BIKE, HQC and SIKE were listed here as stubs: none
+  // of them implemented its scheme. NTRU returned the ASCII text
+  // NTRU_ENCRYPTED_<paramset>_<length>_BYTES_... and the letter A repeated;
+  // Classic McEliece and HQC returned their parameter-set names mceliece348864
+  // and hqc-128 for every input in both directions, so a flipped bit in a
+  // 32-byte message produced byte-identical output; BIKE and SIKE had no key
+  // pair and ignored isInverse, folding any input into eight bytes with an
+  // ad-hoc mixer. Each committed vector was the stub's own output. An exemption
+  // cannot make a name in the catalogue true, so the five registrations were
+  // removed rather than carried as permanent open defects: a reader of the list
+  // has no way to tell a stub apart from an implementation. Adding any of them
+  // back means writing the scheme - binary Goppa keys and Patterson decoding,
+  // the concatenated Reed-Muller/Reed-Solomon decoder, QC-MDPC bit-flipping, or
+  // the truncated polynomial ring - and verifying it against the NIST PQC KATs.
 
   // RSA, ElGamal, LUC and Rabin-Williams were listed here while their decryption
   // paths were repaired. All four round-trip now and are driven by the suite, so
