@@ -115,18 +115,22 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'plaintext is ever recovered from its output'],
   ['FAEST', 'signature scheme (FAEST, VOLE-in-the-head, NIST additional signatures): signs and '
     + 'verifies, so no plaintext is ever recovered from its output'],
+  ['SLH-DSA', 'signature scheme (FIPS 205): a FORS few-time signature under a hypertree of WOTS+ '
+    + 'one-time keys; signing and verifying recover no plaintext'],
+  ['SPHINCS+', 'signature scheme (SPHINCS+ round-3 submission to the NIST PQC project): the '
+    + 'pre-standardisation form of FIPS 205, signs and verifies and recovers no plaintext'],
 
-  // Dilithium, FALCON, SLH-DSA, SPHINCS+, Rainbow, MAYO, PERK, LWE-Signature
-  // and ESIGN were listed here. They are gone from the collection rather than
-  // from this list alone: none of them signed anything. Each returned a
-  // constant - a template string carrying its parameter set and the length of
-  // the message, its own parameter-set name, or a fixed byte pattern - so
-  // signing two different messages produced identical output, and the
-  // committed vector asserted that constant. Implementing any of them means
-  // lattice trapdoor sampling, a hypertree of one-time signatures, or a
-  // multivariate quadratic system, each checked against the NIST vectors;
-  // none of that can be approximated, and a catalogue that does not claim
-  // SPHINCS+ is more use than one that claims it and returns thirty bytes.
+  // Dilithium, FALCON, Rainbow, MAYO, PERK, LWE-Signature and ESIGN were
+  // listed here. They are gone from the collection rather than from this list
+  // alone: none of them signed anything. Each returned a constant - a template
+  // string carrying its parameter set and the length of the message, its own
+  // parameter-set name, or a fixed byte pattern - so signing two different
+  // messages produced identical output, and the committed vector asserted that
+  // constant. Implementing any of them means lattice trapdoor sampling or a
+  // multivariate quadratic system, each checked against the NIST vectors; none
+  // of that can be approximated. SLH-DSA and SPHINCS+ were on that list too and
+  // have since been implemented for real, against the NIST ACVP FIPS 205
+  // vectors and the round-3 PQCsignKAT files respectively.
 
   // --- key agreement: no plaintext exists ---
   // Both parties derive the same secret from public values. Nothing is sent that
