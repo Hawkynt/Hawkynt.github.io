@@ -594,7 +594,9 @@
       this.country = CountryCode.CA;
 
       this.SupportedKeySizes = [
-        new KeySize(224, 224, 0),  // secp224r1
+        // secp224r1 was declared here as well, but no such curve exists in
+        // CURVES above and setting it has always thrown. Four curves are
+        // implemented and each of the three sizes below is pinned by a vector.
         new KeySize(256, 256, 0),  // secp256k1, secp256r1
         new KeySize(384, 384, 0),  // secp384r1
         new KeySize(521, 521, 0)   // secp521r1
@@ -644,6 +646,16 @@
       const WYCHEPROOF_KEY = OpCodes.Hex8ToBytes(
         "042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838" +
         "c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e");
+
+      // secp256k1 is the fourth implemented curve and the only one RFC 6979
+      // does not publish a signing vector for, so it is pinned by Wycheproof
+      // verification cases instead. It is a Koblitz curve - a = 0 - and the
+      // point arithmetic takes a different branch there than on the three
+      // NIST curves, which is why leaving it unpinned left a real gap.
+      const WYCHEPROOF_K1 = "https://github.com/C2SP/wycheproof/blob/main/testvectors_v1/ecdsa_secp256k1_sha256_test.json";
+      const WYCHEPROOF_K1_KEY = OpCodes.Hex8ToBytes(
+        "04782c8ed17e3b2a783b5464f33b09652a71c678e05ec51e84e2bcfc663a3de963" +
+        "af9acb4280b8c7f7c42f4ef9aba6245ec1ec1712fd38a0fa96418d8cd6aa6152");
 
       this.tests = [
         {
@@ -783,6 +795,30 @@
             "022100b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db" +
             "0000"),
           expected: [0]
+        },
+        {
+          text: "Wycheproof ecdsa_secp256k1_sha256 tcId 1 - valid signature over the empty message",
+          uri: WYCHEPROOF_K1,
+          curve: 'secp256k1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_K1_KEY,
+          input: [],
+          signature: OpCodes.Hex8ToBytes(
+            "3046022100f80ae4f96cdbc9d853f83d47aae225bf407d51c56b7776cd67d0dc195d99a9dc" +
+            "022100b303e26be1f73465315221f0b331528807a1a9b6eb068ede6eebeaaa49af8a36"),
+          expected: [1]
+        },
+        {
+          text: "Wycheproof ecdsa_secp256k1_sha256 tcId 3 - valid signature",
+          uri: WYCHEPROOF_K1,
+          curve: 'secp256k1',
+          hashAlgorithm: 'SHA-256',
+          publicKey: WYCHEPROOF_K1_KEY,
+          input: OpCodes.Hex8ToBytes("313233343030"),
+          signature: OpCodes.Hex8ToBytes(
+            "3045022100d035ee1f17fdb0b2681b163e33c359932659990af77dca632012b30b27a057b3" +
+            "02201939d9f3b2858bc13e3474cb50e6a82be44faa71940f876c1cba4c3e989202b6"),
+          expected: [1]
         }
       ];
     }
