@@ -15,11 +15,14 @@
  */
 (function(root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define([], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
   } else {
-    root.X25519 = factory();
+    root.X25519 = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }(
   (function() {
@@ -29,22 +32,23 @@
     if (typeof self !== 'undefined') return self;
     throw new Error('Unable to locate global object');
   })(),
-  function() {
+  function(AlgorithmFramework, OpCodes) {
     'use strict';
 
-    // Load AlgorithmFramework
-    if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    // The dependencies arrive through the wrapper above rather than off a
+    // `global` binding, which only Node defines - reading `global` directly
+    // threw a ReferenceError under a plain script tag and this file never
+    // registered in the browser at all.
+    if (!AlgorithmFramework) {
+      throw new Error('AlgorithmFramework dependency is required');
     }
 
-    // Load OpCodes for utility functions
-    if (!global.OpCodes && typeof require !== 'undefined') {
-      global.OpCodes = require('../../OpCodes.js');
+    if (!OpCodes) {
+      throw new Error('OpCodes dependency is required');
     }
 
     const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
             AsymmetricCipherAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
-    const OpCodes = global.OpCodes;
 
     // ==================== CURVE25519 FIELD ARITHMETIC ====================
 
