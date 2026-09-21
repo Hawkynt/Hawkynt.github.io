@@ -338,31 +338,38 @@
 
   // ===== SHA-512 INTEGRATION =====
 
+  // Ed25519 is defined over SHA-512, so the digest comes from this collection's
+  // own verified implementation.
+  //
+  // It is resolved on first use rather than while this file loads, for two
+  // reasons. In the browser the hash script tags come after the asymmetric
+  // ones, so nothing named SHA-512 exists yet at load time. Under Node a
+  // module-scope require would register SHA-384 and SHA-512 while this file was
+  // loading, and every tool that attributes an algorithm to whichever file was
+  // loading when it registered would then file both under asymmetric ciphers.
+
   /**
    * Get SHA-512 hash function instance
+   * @returns {Object} A fresh SHA-512 instance
    */
   function getSHA512() {
-    // Try to load SHA-512 from AlgorithmFramework registry
-    if (typeof global !== 'undefined' && global.AlgorithmFramework) {
-      const sha512Algo = global.AlgorithmFramework.Find('SHA-512');
-      if (sha512Algo) {
-        return sha512Algo.CreateInstance();
+    // The registry is the normal path. In the browser the hash script tag has
+    // run long before anyone signs; under Node the load below puts it there.
+    let algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-512') : null;
+
+    if (!algorithm && typeof require !== 'undefined') {
+      try {
+        require('../hash/sha512.js');
+        algorithm = AlgorithmFramework.Find('SHA-512');
+      } catch (e) {
+        // Reported as a missing dependency below.
       }
     }
 
-    // Fallback: Try to load directly
-    try {
-      if (typeof require !== 'undefined') {
-        const SHA512Module = require('../hash/sha512.js');
-        if (SHA512Module && SHA512Module.CreateInstance) {
-          return SHA512Module.CreateInstance();
-        }
-      }
-    } catch (e) {
-      // Ignore
-    }
+    if (!algorithm)
+      throw new Error('SHA-512 implementation not available. Please load sha512.js first.');
 
-    throw new Error('SHA-512 implementation not available. Please load sha512.js first.');
+    return algorithm.CreateInstance();
   }
 
   /**

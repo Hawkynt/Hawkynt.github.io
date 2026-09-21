@@ -11,15 +11,14 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes', '../hash/sha256'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes'),
-      require('../hash/sha256')
+      require('../../OpCodes')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes, root.SHA2_256);
+    factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -27,7 +26,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, SHA256Module) {
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -38,16 +37,17 @@
     throw new Error('OpCodes dependency is required');
   }
 
-  if (!SHA256Module) {
-    throw new Error('SHA-256 module dependency is required');
-  }
+  const globalScope = (function() {
+    if (typeof globalThis !== 'undefined') return globalThis;
+    if (typeof window !== 'undefined') return window;
+    if (typeof global !== 'undefined') return global;
+    if (typeof self !== 'undefined') return self;
+    throw new Error('Unable to locate global object');
+  })();
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
-
-  // SHA-256 helper using the proven implementation
-  const sha256Algorithm = new SHA256Module.SHA2_256Algorithm();
 
   // ===== SECP256K1 CURVE CONSTANTS =====
 
@@ -300,13 +300,53 @@
 
   // ===== SHA-256 IMPLEMENTATION =====
 
+  // BIP-340 is defined over SHA-256, so the digest is taken from this
+  // collection's own verified implementation rather than restated here.
+  //
+  // It is resolved on first use rather than while this file loads. In the
+  // browser the hash script tags come after the asymmetric ones, so nothing
+  // named SHA-256 exists yet at load time and a module-scope lookup would make
+  // Schnorr fail to register at all. Under Node a module-scope require would
+  // register SHA-224 and SHA-256 while this file was loading, and every tool
+  // that attributes an algorithm to whichever file was loading when it
+  // registered would then file both of them under asymmetric ciphers.
+  let sha256Algorithm = null;
+
+  /**
+   * Resolve the registered SHA-256, once.
+   * @returns {Object} The SHA-256 algorithm
+   */
+  function sha256Implementation() {
+    if (sha256Algorithm) return sha256Algorithm;
+
+    let found = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-256') : null;
+
+    if (!found) {
+      let sha256Module = globalScope.SHA2_256;
+      if (!sha256Module && typeof require !== 'undefined') {
+        try {
+          sha256Module = require('../hash/sha256.js');
+        } catch (error) {
+          // Reported as a missing dependency below.
+        }
+      }
+      if (sha256Module && sha256Module.SHA2_256Algorithm) found = new sha256Module.SHA2_256Algorithm();
+    }
+
+    if (!found)
+      throw new Error('Schnorr requires the hash SHA-256, which is not registered');
+
+    sha256Algorithm = found;
+    return sha256Algorithm;
+  }
+
   /**
    * SHA-256 hash function using the proven implementation from algorithms/hash/sha256.js
    * @param {Array<number>} data - Input data as byte array
    * @returns {Array<number>} - 32-byte hash output
    */
   function sha256(data) {
-    const instance = sha256Algorithm.CreateInstance();
+    const instance = sha256Implementation().CreateInstance();
     instance.Feed(data);
     return instance.Result();
   }
