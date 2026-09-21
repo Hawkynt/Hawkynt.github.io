@@ -94,6 +94,8 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **RIPEMD-160** (`ripemd.js`) - RACE Integrity Primitives Evaluation Message Digest with 160-bit output
 - **RIPEMD-256** (`ripemd.js`) - RIPEMD-256 is an extension of RIPEMD-128 with 256-bit output
 - **RIPEMD-320** (`ripemd.js`) - Extended RIPEMD hash function producing 320-bit digest
+- **SHA-224** (`sha256.js`) - SHA-224 is a truncated version of SHA-256 producing a 224-bit digest
+- **SHA-256** (`sha256.js`) - SHA-256 (Secure Hash Algorithm 256-bit) is a cryptographic hash function from the SHA-2 family designed by NIST
 - **SHA-3-224** (`sha3.js`) - SHA-3-224 produces 224-bit digests using the Keccak sponge construction with capacity 448 bits
 - **SHA-3-256** (`sha3.js`) - SHA-3-256 produces 256-bit digests using the Keccak sponge construction with capacity 512 bits
 - **SHA-3-384** (`sha3.js`) - SHA-3-384 produces 384-bit digests using the Keccak sponge construction with capacity 768 bits

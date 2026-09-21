@@ -81,6 +81,46 @@
     }
   };
 
+  /**
+   * Read a parameter set selector from whatever the caller supplied. Both
+   * spellings used across this collection are accepted: decimal digits in
+   * ASCII, and a big-endian 16-bit count. The ASCII form used to be read as a
+   * 16-bit count, so "976" arrived as 0x3937 and quietly selected 640.
+   * @param {uint8[]|string|number} keyData - Parameter set selector
+   * @returns {number} The lattice dimension n
+   */
+  function parseParameterSet(keyData) {
+    if (typeof keyData === 'number') {
+      return keyData;
+    }
+
+    if (typeof keyData === 'string') {
+      return parseInt(keyData, 10);
+    }
+
+    if (keyData && typeof keyData.length === 'number') {
+      let digits = '';
+      let allDigits = keyData.length > 0;
+      for (let i = 0; i < keyData.length; ++i) {
+        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+          allDigits = false;
+          break;
+        }
+        digits += String.fromCharCode(keyData[i]);
+      }
+
+      if (allDigits) {
+        return parseInt(digits, 10);
+      }
+
+      if (keyData.length >= 2) {
+        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      }
+    }
+
+    throw new Error('FrodoKEM: unrecognised parameter set selector');
+  }
+
   class FrodoKEMCipher extends AsymmetricCipherAlgorithm {
     constructor() {
       super();
@@ -123,21 +163,45 @@
         new Vulnerability("Timing Attacks", "Variable-time operations can leak information about secret keys. Implement constant-time operations and protect against side-channels.")
       ];
 
-      // Test vectors - educational implementation with NIST-based parameters
+      // The ciphertext this file produces is not FrodoKEM's. The scheme here
+      // is the educational stand-in its security status advertises - a key
+      // stream derived from a deterministic matrix - so the published KAT
+      // files of the NIST submission say nothing about it and there is no
+      // expected ciphertext anywhere that it could be measured against.
+      //
+      // What the vectors below do pin is the property that is actually being
+      // claimed: that each of the three declared parameter sets is selected by
+      // its own name and recovers what it encrypted. The expected value is the
+      // input, which is how this collection writes a round-trip vector; the
+      // engine runs the reverse instance and compares.
+      //
+      // Two vectors used to carry a ciphertext under a NIST citation. Nothing
+      // in that submission published those bytes - they can only have come
+      // from running this file - and the parameter set selector was read as a
+      // 16-bit count, so the one labelled 976 was running 640 as well.
+      const FRODO_SPEC = "https://frodokem.org/files/FrodoKEM-specification-20210604.pdf";
+
       this.tests = [
         {
-          text: "FrodoKEM-640 Educational Encryption Test",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-3/submissions/FrodoKEM-Round3.zip",
-          input: OpCodes.Hex8ToBytes("01020304050607080910111213141516"), // 16 bytes test message
-          key: OpCodes.AnsiToBytes("640"), // Parameter set indicator
-          expected: [16,0,0,0,5,29,237,253,197,173,141,108,84,38,246,194,11,247,215,171] // Expected encrypted format
+          text: "FrodoKEM-640 round-trip under the parameter set named 640",
+          uri: FRODO_SPEC,
+          input: OpCodes.Hex8ToBytes("01020304050607080910111213141516"),
+          key: OpCodes.AnsiToBytes("640"),
+          expected: OpCodes.Hex8ToBytes("01020304050607080910111213141516")
         },
         {
-          text: "FrodoKEM-976 Educational Encryption Test",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-3/submissions/FrodoKEM-Round3.zip",
+          text: "FrodoKEM-976 round-trip under the parameter set named 976",
+          uri: FRODO_SPEC,
           input: OpCodes.Hex8ToBytes("deadbeefcafebabe0123456789abcdef"),
           key: OpCodes.AnsiToBytes("976"),
-          expected: [16,0,0,0,194,160,88,48,114,103,217,244,20,38,187,176,57,58,182,173] // Expected encrypted format
+          expected: OpCodes.Hex8ToBytes("deadbeefcafebabe0123456789abcdef")
+        },
+        {
+          text: "FrodoKEM-1344 round-trip under the parameter set named 1344",
+          uri: FRODO_SPEC,
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.AnsiToBytes("1344"),
+          expected: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
         }
       ];
     }
@@ -218,11 +282,11 @@
 
     // Initialize FrodoKEM with specified parameter set
     Init(n) {
-      let paramName;
-      if (n === 640) paramName = 'FrodoKEM-640';
-      else if (n === 976) paramName = 'FrodoKEM-976';
-      else if (n === 1344) paramName = 'FrodoKEM-1344';
-      else paramName = 'FrodoKEM-640'; // Default
+      // An unrecognised n used to fall back to FrodoKEM-640 in silence, which
+      // meant a caller asking for 976 or 1344 was handed 640 and had no way to
+      // tell. The three sets differ in the key stream they derive, so the
+      // wrong one is not a detail.
+      const paramName = 'FrodoKEM-' + n;
 
       if (!FRODO_PARAMS[paramName]) {
         throw new Error('Invalid FrodoKEM parameter set. Use 640, 976, or 1344.');
@@ -402,21 +466,7 @@
     KeySetup(keyData) {
       this._keyData = keyData;
 
-      let n = 640; // Default
-      if (Array.isArray(keyData) && keyData.length >= 2) {
-        n = OpCodes.Pack16BE(keyData[0], keyData[1]);
-      } else if (typeof keyData === 'string') {
-        const parsed = parseInt(keyData);
-        if ([640, 976, 1344].includes(parsed)) {
-          n = parsed;
-        }
-      } else if (typeof keyData === 'number') {
-        if ([640, 976, 1344].includes(keyData)) {
-          n = keyData;
-        }
-      }
-
-      this.Init(n);
+      this.Init(parseParameterSet(keyData));
 
       // Generate educational keys
       const keyPair = this._generateEducationalKeys();

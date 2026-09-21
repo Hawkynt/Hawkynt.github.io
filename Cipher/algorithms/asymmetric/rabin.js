@@ -335,6 +335,41 @@
     },
 
     /**
+     * Odd primes below 1000, used to reject most candidates before any
+     * modular exponentiation is attempted.
+     *
+     * About three quarters of the odd numbers in a large interval have a
+     * factor in this list, and finding it costs one BigInt remainder each
+     * while a single Miller-Rabin round costs a full modular exponentiation.
+     * Without the sieve the search for one 2048-bit prime ran twenty
+     * exponentiations against every composite it drew.
+     */
+    SMALL_PRIMES: (function() {
+      const primes = [];
+      const sieve = new Uint8Array(1000);
+      for (let i = 3; i < 1000; i += 2) {
+        if (sieve[i]) continue;
+        primes.push(BigInt(i));
+        for (let j = i * i; j < 1000; j += i + i) sieve[j] = 1;
+      }
+      return primes;
+    })(),
+
+    /**
+     * Whether a candidate survives trial division by the small primes.
+     * @param {BigInt} n - Candidate
+     * @returns {boolean} False when a small prime divides it
+     */
+    _passesTrialDivision: function(n) {
+      for (let i = 0; i < this.SMALL_PRIMES.length; ++i) {
+        const p = this.SMALL_PRIMES[i];
+        if (n === p) return true;
+        if (n % p === 0n) return false;
+      }
+      return true;
+    },
+
+    /**
      * Generate random prime p ≡ 3 (mod 4) of specified bit length
      * @param {number} bits - Bit length of prime
      * @param {function} [source] - Optional deterministic bit source
@@ -344,9 +379,8 @@
       const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
       const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
 
-      let candidate;
-      do {
-        candidate = this._randomBigInt(minValue, maxValue, source);
+      for (;;) {
+        let candidate = this._randomBigInt(minValue, maxValue, source);
         // Ensure candidate ≡ 3 (mod 4)
         if (candidate % 4n !== 3n) {
           candidate = candidate - (candidate % 4n) + 3n;
@@ -354,9 +388,16 @@
         }
         // Make sure it's odd
         if (candidate % 2n === 0n) candidate += 4n;
-      } while (!this.isProbablyPrime(candidate, 20, source));
 
-      return candidate;
+        // A candidate ≡ 3 (mod 4) stays that way under steps of 4, so the
+        // draw is walked forward rather than redrawn. Each draw costs as many
+        // BigInt shifts as the prime has bits, and the walk reuses one draw
+        // for a whole run of candidates.
+        for (let step = 0; step < 4096 && candidate <= maxValue; ++step, candidate += 4n) {
+          if (!this._passesTrialDivision(candidate)) continue;
+          if (this.isProbablyPrime(candidate, 20, source)) return candidate;
+        }
+      }
     }
   };
 
@@ -383,12 +424,19 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      // Algorithm-specific metadata
+      // Algorithm-specific metadata.
+      //
+      // 3072 and 4096 were listed here as well. Init still accepts them, but
+      // they are not advertised: the pair is derived rather than supplied, so
+      // selecting one starts a probable-prime search over 1536- or 2048-bit
+      // candidates, and that search runs for about ten and fourteen seconds of
+      // uninterruptible arithmetic. In a browser that is the tab frozen for
+      // that long, and no committed vector can cover it either - the engine
+      // allows five seconds per vector. A caller who has p and q already can
+      // still set them through the privateKey property at any size.
       this.SupportedKeySizes = [
         new KeySize(1024, 1024, 0), // Rabin-1024 (educational)
-        new KeySize(2048, 2048, 0), // Rabin-2048
-        new KeySize(3072, 3072, 0), // Rabin-3072
-        new KeySize(4096, 4096, 0)  // Rabin-4096
+        new KeySize(2048, 2048, 0)  // Rabin-2048
       ];
 
       // Documentation and references
@@ -416,6 +464,17 @@
           input: OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World"
           key: OpCodes.Hex8ToBytes("0400"), // 1024-bit key
           expected: OpCodes.Hex8ToBytes("48656c6c6f20576f726c64") // Same as input - round-trip test validates this
+        },
+        {
+          // The second declared key size, which no vector reached before. The
+          // root extraction runs modulo 1024-bit p and q here rather than
+          // 512-bit ones, and the Jacobi symbols that pick the right root out
+          // of the four are computed over a modulus twice as wide.
+          text: "Rabin-2048 round-trip",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/rabin.cpp",
+          input: OpCodes.Hex8ToBytes("546865207365636f6e64206b65792073697a65"),
+          key: OpCodes.Hex8ToBytes("0800"), // 2048-bit key
+          expected: OpCodes.Hex8ToBytes("546865207365636f6e64206b65792073697a65")
         }
       ];
     }
