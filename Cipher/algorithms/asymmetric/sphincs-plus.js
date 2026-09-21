@@ -220,6 +220,36 @@
           expected: OpCodes.Hex8ToBytes(SHAKE_128F.pk)
         },
         {
+          // The 192- and 256-bit parameter sets. Both are declared as
+          // supported key sizes, and until these two vectors existed nothing
+          // ran either of them: every other case here is an n = 16 set, so the
+          // quantities DeriveParameters computes from n - the Winternitz
+          // chain count, the FORS digest width, the tree index widths - were
+          // only ever measured at one value of n.
+          text: "SPHINCS+-SHA-256-192f-simple key generation, PQCsignKAT count 0",
+          uri: "https://sphincs.org/data/sphincs+-round3-submission-nist.zip",
+          parameterSet: "SPHINCS+-SHA-256-192f-simple",
+          input: OpCodes.Hex8ToBytes(
+            "7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D" +
+            "B505D7CFAD1B497499323C8686325E4792F267AAFA3F87CA60D01CB54F29202A" +
+            "3E784CCB7EBCDCFD"),
+          expected: OpCodes.Hex8ToBytes(
+            "92F267AAFA3F87CA60D01CB54F29202A3E784CCB7EBCDCFD1396FA01ACFF7B0B" +
+            "C42B85767DB44482A447D82A11254749")
+        },
+        {
+          text: "SPHINCS+-SHA-256-256f-simple key generation, PQCsignKAT count 0",
+          uri: "https://sphincs.org/data/sphincs+-round3-submission-nist.zip",
+          parameterSet: "SPHINCS+-SHA-256-256f-simple",
+          input: OpCodes.Hex8ToBytes(
+            "7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D" +
+            "B505D7CFAD1B497499323C8686325E4792F267AAFA3F87CA60D01CB54F29202A" +
+            "3E784CCB7EBCDCFD45542B7F6AF778742E0F4479175084AA488B3B74340678AA"),
+          expected: OpCodes.Hex8ToBytes(
+            "3E784CCB7EBCDCFD45542B7F6AF778742E0F4479175084AA488B3B74340678AA" +
+            "C3EEDB1BECF37FC508C07CC79BE53AFB6FE2F0DD8396C54DB7E368FAE83261EF")
+        },
+        {
           text: "SPHINCS+-SHA-256-128f-simple signature, PQCsignKAT count 0",
           uri: "https://sphincs.org/data/sphincs+-round3-submission-nist.zip",
           parameterSet: "SPHINCS+-SHA-256-128f-simple",
