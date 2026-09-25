@@ -7234,6 +7234,7 @@
         // Module-level parameter tables keyed by a runtime variant string (see
         // preScanComputedIndexedConstObjects's doc comment) - must run before the
         // transformTopLevel loop below transforms the table's own `const` declaration.
+        this.dynamicDictionaryTableNames = new Set();
         this.dictionaryTableNames = this.preScanComputedIndexedConstObjects(jsAst);
         // Module-level object-literal singletons whose methods hold real mutable `this`
         // state (see detectStatefulSingletonNames's doc comment) - must also run before
@@ -7922,6 +7923,8 @@
           // value). Checked before the default static-class handling below.
           if (this.dictionaryTableNames.has(name)) {
             this.transformObjectToDictionaryTable(name, decl.init, targetClass);
+          } else if (this.dynamicDictionaryTableNames?.has(name)) {
+            this.transformObjectToDynamicDictionary(name, decl.init, targetClass);
           } else {
             const asInstance = this.instanceSingletonNames.has(name);
             const staticClass = this.transformObjectToStaticClass(name, decl.init, asInstance);
@@ -8615,8 +8618,13 @@
         for (const decl of node.declarations) {
           const name = decl.id?.name;
           if (!name || !computedIndexedNames.has(name)) continue;
-          const init = decl.init;
-          if (!init || (init.type !== 'ObjectExpression' && init.type !== 'ObjectLiteral') || !init.properties?.length) continue;
+          let init = decl.init;
+          // Object.freeze({...}) is the table itself (transformVariableDeclaration unwraps it too)
+          while (init && (init.type === 'ObjectFreeze' || init.type === 'ObjectSeal')) init = init.object;
+          if (!init || (init.type !== 'ObjectExpression' && init.type !== 'ObjectLiteral')) continue;
+          // An empty `{}` filled at runtime (sike.js's `PARAMETER_SETS[name] = ...`)
+          // is a dictionary by construction.
+          if (!init.properties?.length) { this.dynamicDictionaryTableNames.add(name); continue; }
           // Every property's own value must itself be a plain data record (an object
           // literal whose own fields are all simple scalars, no nested objects/
           // methods) - a genuine "table of records" shape. Anything else (nested
@@ -8634,9 +8642,46 @@
             });
           });
           if (isUniformRecordTable) tableNames.add(name);
+          else if (!this._containsFunctionOrSpread(init)) this.dynamicDictionaryTableNames.add(name);
         }
       }
       return tableNames;
+    }
+
+    /** True when an object literal holds a function or a spread anywhere inside. */
+    _containsFunctionOrSpread(node) {
+      let found = false;
+      this._walkAstNodes(node, (n) => {
+        if (n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' ||
+            n.type === 'SpreadElement' || n.type === 'ObjectSpread') found = true;
+      });
+      return found;
+    }
+
+    /**
+     * A module-level object-literal table indexed with a runtime key whose rows are
+     * not uniform records (nested tables, scalar rows - e.g. ecdsa.js's `CURVES`,
+     * mayo.js's `WHIP_POSITIONS`, sike.js's `PARAMETER_SETS`): a static class is a
+     * type, so `NAME[key]` fails (CS0119). Emit `Dictionary<string, dynamic>` instead,
+     * each row an ordinary transformed value, read back dynamically.
+     */
+    transformObjectToDynamicDictionary(name, objNode, targetClass) {
+      const dictType = CSharpType.Dictionary(CSharpType.String(), CSharpType.Dynamic());
+      const dictInit = new CSharpObjectInitializer(true);
+      for (const prop of objNode.properties) {
+        let keyName = prop.key;
+        if (keyName && typeof keyName === 'object') keyName = keyName.name ?? keyName.value;
+        if (keyName == null) continue;
+        dictInit.assignments.push({ name: String(keyName), value: this.transformExpression(prop.value) });
+      }
+      const dictCreation = new CSharpObjectCreation(dictType, []);
+      dictCreation.initializer = dictInit;
+      const field = new CSharpField(this.toPascalCase(name), dictType);
+      field.isStatic = true;
+      field.isReadOnly = true;
+      field.initializer = dictCreation;
+      targetClass.members.push(field);
+      this.registerVariableType(name, dictType);
     }
 
     /**
