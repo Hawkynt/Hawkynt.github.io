@@ -14805,6 +14805,21 @@
           return new CSharpMemberAccess(groupsAccess, 'Value');
         }
 
+        // A string-keyed Dictionary (a JS object used as a table, e.g. elgamal.js's
+        // `ELGAMAL_KEYS[this.keySize]` over `{ 512: ..., 1024: ... }`) looked up with a
+        // number: JS converts the key to its decimal string, so do the same rather
+        // than casting it to int (CS1503).
+        const isStringKeyedDictionary = targetType && !targetType.isArray &&
+          ((targetType.name === 'Dictionary' && targetType.genericArguments?.[0]?.name === 'string') ||
+           /^Dictionary<string\s*,/.test(targetType.name || ''));
+        if (isStringKeyedDictionary) {
+          const keyType = this.inferFullExpressionType(node.property);
+          if (keyType && !keyType.isArray && keyType.name !== 'string' && keyType.name !== 'dynamic' && keyType.name !== 'object') {
+            return new CSharpElementAccess(target, new CSharpMethodCall(index, 'ToString', []));
+          }
+          return new CSharpElementAccess(target, index);
+        }
+
         // C# requires int for array indices. Cast uint expressions to int.
         const indexExpr = this.ensureIntIndex(index, node.property);
         return new CSharpElementAccess(target, indexExpr);
@@ -15538,6 +15553,13 @@
           return new CSharpMethodCall(new CSharpIdentifier('Array'), 'ForEach', [target, ...args]);
         }
         if (methodName === 'toString' && args.length === 1) {
+          // bigint.toString(radix): BigInteger has neither a radix ToString nor a
+          // Convert.ToString overload (CS1503), and ToString("X") pads a sign digit -
+          // use the runtime stub's JS-compatible FrameworkFunctions.ToRadixString.
+          const receiverType = this.inferFullExpressionType(node.callee.object);
+          if (receiverType?.name === 'BigInteger' && !receiverType.isArray) {
+            return new CSharpMethodCall(null, 'ToRadixString', [target, args[0]]);
+          }
           // number.toString(radix) - convert to base string
           // For radix 16: value.ToString("X")
           if (args[0].nodeType === 'Literal' && args[0].value === 16) {
@@ -22580,6 +22602,21 @@
      * Note: This creates a new array, caller must handle assignment if needed
      * Uses Concat when value is a SpreadElement or array type, Append for single elements
      */
+    /**
+     * `this.inputBuffer.push(data)` with an array `data` - the Feed() fallback branch
+     * most algorithms carry. By the framework contract the input buffer is a flat byte
+     * buffer, never jagged, so the rule above (keep push as one element) cannot apply:
+     * Append would not compile (CS1929). Appending the bytes is the only reading that
+     * types.
+     */
+    _isFlatFeedBufferAppendOfArray(arrayNode, valueType) {
+      if (!valueType?.isArray || valueType.elementType?.isArray) return false;
+      const prop = arrayNode?.type === 'ThisPropertyAccess'
+        ? (typeof arrayNode.property === 'string' ? arrayNode.property : arrayNode.property?.name)
+        : (arrayNode?.type === 'MemberExpression' && arrayNode.object?.type === 'ThisExpression' ? arrayNode.property?.name : null);
+      return /^_?inputBuffer$/i.test(prop || '');
+    }
+
     transformArrayAppend(node) {
       const array = this.transformExpression(node.array);
 
@@ -22613,7 +22650,7 @@
       // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
       // single element - forcing Concat here as a workaround for an under-inferred
       // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread;
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
@@ -22695,7 +22732,7 @@
       // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
       // single element - forcing Concat here as a workaround for an under-inferred
       // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread;
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
