@@ -14153,6 +14153,11 @@
           return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
         }
 
+        // !dynamic -> JS falsiness at runtime (see ensureBooleanCondition).
+        if (operandType?.name === 'dynamic' && !operandType.isArray) {
+          return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [operand]), true);
+        }
+
         // For bool or unknown, use normal !
         return new CSharpUnaryExpression('!', operand, true);
       }
@@ -14638,7 +14643,20 @@
       return null;
     }
 
+    /** A bare `crypto` that is the Web Crypto global, not a local or module binding. */
+    _isWebCryptoGlobal(node) {
+      return node?.type === 'Identifier' && node.name === 'crypto' &&
+        !this._moduleBindingName(node) && !this.getVariableType('crypto') && !this.variableNameMap.has('crypto');
+    }
+
     transformMemberExpression(node) {
+      // `crypto.getRandomValues` read as a feature test (`typeof crypto !== 'undefined'
+      // && crypto.getRandomValues`) - always available through the runtime stub.
+      if (!node.computed && (node.property?.name || node.property?.value) === 'getRandomValues' &&
+          this._isWebCryptoGlobal(node.object)) {
+        return CSharpLiteral.Bool(true);
+      }
+
       // `global.OpCodes` (bare, or as the object of further member/call access - e.g.
       // fish.js's `global.OpCodes.ClearArray(this._key)`) - OpCodes is always the same
       // statically-compiled `OpCodes` class in the emitted C#, never actually loaded
@@ -14916,6 +14934,13 @@
         // against a small stub `AlgorithmFramework.Find` that's added to the compilation
         // unit on demand (see needsAlgorithmFrameworkStub / transform()) instead of leaving
         // a bare `AlgorithmFramework` identifier with no class behind it (CS0103).
+        // Web Crypto's `crypto.getRandomValues(buffer)` (the random-byte source of the
+        // RSA/ElGamal/LUC/Rabin-Williams key generators) - no such global in C#
+        // (CS0103); the runtime stub's GetRandomValues fills from the platform CSPRNG.
+        if (methodName === 'getRandomValues' && this._isWebCryptoGlobal(node.callee.object)) {
+          return new CSharpMethodCall(null, 'GetRandomValues', args);
+        }
+
         if (this.isAlgorithmFrameworkRoot(node.callee.object)) {
           this.needsAlgorithmFrameworkStub = true;
           return new CSharpMethodCall(new CSharpIdentifier('AlgorithmFramework'), methodName, args);
@@ -18093,6 +18118,9 @@
         // !x - if x is non-bool, use x == 0 or x == null
         const inferredArgType = this.inferFullExpressionType(node.argument);
         if (inferredArgType && !['bool', 'boolean'].includes(inferredArgType.name)) {
+          if (inferredArgType.name === 'dynamic' && !inferredArgType.isArray) {
+            return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [this.transformExpression(node.argument)]), true);
+          }
           // For arrays/objects/class instances: !arr -> arr == null
           if (inferredArgType.isArray || inferredArgType.name === 'object' || inferredArgType.name === 'string' ||
               this._isClassReferenceType(inferredArgType)) {
@@ -18190,6 +18218,13 @@
       // For string, check both null and empty (or just != null for simple check)
       if (type?.name === 'string') {
         return new CSharpBinaryExpression(expr, '!=', CSharpLiteral.Null());
+      }
+
+      // A dynamic value may hold an object, a number or a bool at runtime; only the
+      // runtime stub's JS truthiness test is right for all of them (`dynamic != 0`
+      // throws for an object).
+      if (type?.name === 'dynamic' && !type.isArray) {
+        return new CSharpMethodCall(null, 'IsTruthy', [expr]);
       }
 
       // For numeric types, add != 0
