@@ -108,30 +108,30 @@
           // same square out.
           text: "Wikipedia worked example - square BGWKZ/QPNDS/IOAXE/FCLUM/THYVR, FLEEATONCE taken as one block",
           uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
-          input: global.OpCodes.AnsiToBytes("FLEEATONCE"),
-          key: global.OpCodes.AnsiToBytes("BGWKZQPNDSIOAXEFCLUMTHYVR,10"),
-          expected: global.OpCodes.AnsiToBytes("UAEOLWRINS")
+          input: OpCodes.AnsiToBytes("FLEEATONCE"),
+          key: OpCodes.AnsiToBytes("BGWKZQPNDSIOAXEFCLUMTHYVR,10"),
+          expected: OpCodes.AnsiToBytes("UAEOLWRINS")
         },
         {
           text: "Plain A-Z square, period 5. The Wikipedia article carries no value for this input; the vector covers the unkeyed square",
           uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
-          input: global.OpCodes.AnsiToBytes("HELLO"),
-          key: global.OpCodes.AnsiToBytes("5"), // period of 5
-          expected: global.OpCodes.AnsiToBytes("FNNVD")
+          input: OpCodes.AnsiToBytes("HELLO"),
+          key: OpCodes.AnsiToBytes("5"), // period of 5
+          expected: OpCodes.AnsiToBytes("FNNVD")
         },
         {
           text: "Keyword CIPHER, period 3. dCode carries no value for this input; the vector covers a keyed square and a block shorter than the message",
           uri: "https://www.dcode.fr/bifid-cipher",
-          input: global.OpCodes.AnsiToBytes("ATTACK"),
-          key: global.OpCodes.AnsiToBytes("CIPHER,3"), // keyword CIPHER, period 3
-          expected: global.OpCodes.AnsiToBytes("DQTRKI")
+          input: OpCodes.AnsiToBytes("ATTACK"),
+          key: OpCodes.AnsiToBytes("CIPHER,3"), // keyword CIPHER, period 3
+          expected: OpCodes.AnsiToBytes("DQTRKI")
         },
         {
           text: "Period 1 - a single-letter block is its own coordinate pair, so one letter passes through unchanged",
           uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
-          input: global.OpCodes.AnsiToBytes("A"),
-          key: global.OpCodes.AnsiToBytes("1"), // period of 1
-          expected: global.OpCodes.AnsiToBytes("A")
+          input: OpCodes.AnsiToBytes("A"),
+          key: OpCodes.AnsiToBytes("1"), // period of 1
+          expected: OpCodes.AnsiToBytes("A")
         }
       ];
 

@@ -88,37 +88,37 @@
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("f"), // "f"
+          OpCodes.AnsiToBytes("f"), // "f"
           [54, 54], // "66"
           "Base16 single character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("fo"), // "fo"
+          OpCodes.AnsiToBytes("fo"), // "fo"
           [54, 54, 54, 70], // "666F"
           "Base16 two character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("foo"), // "foo"
+          OpCodes.AnsiToBytes("foo"), // "foo"
           [54, 54, 54, 70, 54, 70], // "666F6F"
           "Base16 three character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("foob"), // "foob"
+          OpCodes.AnsiToBytes("foob"), // "foob"
           [54, 54, 54, 70, 54, 70, 54, 50], // "666F6F62"
           "Base16 four character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("fooba"), // "fooba"
+          OpCodes.AnsiToBytes("fooba"), // "fooba"
           [54, 54, 54, 70, 54, 70, 54, 50, 54, 49], // "666F6F6261"
           "Base16 five character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("foobar"), // "foobar"
+          OpCodes.AnsiToBytes("foobar"), // "foobar"
           [54, 54, 54, 70, 54, 70, 54, 50, 54, 49, 55, 50], // "666F6F626172"
           "Base16 six character test - RFC 4648",
           "https://tools.ietf.org/html/rfc4648#section-10"

@@ -24,7 +24,7 @@
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(require('../../OpCodes'));
   } else {
-    factory(root.OpCodes);
+    root.BrotliDictionary = factory(root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;

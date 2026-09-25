@@ -122,23 +122,23 @@
         {
           text: "Practical Cryptography worked example - DEFENDTHEEASTWALLOFTHECASTLE under FORTIFICATION",
           uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
-          input: global.OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
-          key: global.OpCodes.AnsiToBytes("FORTIFICATION"),
-          expected: global.OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY")
+          input: OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
+          key: OpCodes.AnsiToBytes("FORTIFICATION"),
+          expected: OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY")
         },
         {
           text: "Reciprocity - the same worked example run again on its own ciphertext returns the plaintext",
           uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
-          input: global.OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY"),
-          key: global.OpCodes.AnsiToBytes("FORTIFICATION"),
-          expected: global.OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE")
+          input: OpCodes.AnsiToBytes("SYNNJSCVRNRLAHUTUKUCVRYRLANY"),
+          key: OpCodes.AnsiToBytes("FORTIFICATION"),
+          expected: OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE")
         },
         {
           text: "First row of the published tableau read straight off - key letter A pairs A-M with N-Z",
           uri: "http://practicalcryptography.com/ciphers/porta-cipher/",
-          input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-          key: global.OpCodes.AnsiToBytes("A"),
-          expected: global.OpCodes.AnsiToBytes("NOPQRSTUVWXYZABCDEFGHIJKLM")
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+          key: OpCodes.AnsiToBytes("A"),
+          expected: OpCodes.AnsiToBytes("NOPQRSTUVWXYZABCDEFGHIJKLM")
         }
       ];
 
