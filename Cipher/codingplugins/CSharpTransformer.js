@@ -3638,6 +3638,16 @@
           }
         }
 
+        // this.field = { ... } - an object literal becomes a C# anonymous type, which
+        // no named field type can hold (e.g. rsa.js/elgamal.js's `this._publicKey =
+        // { n, e, keySize }` behind a `_publicKey` the name heuristic types byte[] -
+        // CS0029 at the assignment, CS1061 at every `.n` read).
+        if (node.type === 'AssignmentExpression' && node.operator === '=' &&
+            (node.right?.type === 'ObjectExpression' || node.right?.type === 'ObjectLiteral')) {
+          const fieldName = getThisFieldName(node.left);
+          if (fieldName) dynamicFields.add(fieldName);
+        }
+
         // this.field.key = ... / this.field.Key = ... (every AlgorithmFramework
         // instance exposes a key setter, whichever case the source happens to use)
         if (node.type === 'AssignmentExpression' && node.operator === '=' &&
@@ -19380,12 +19390,15 @@
               // parameter. `fieldTypeOverride` carries the field's real, independent
               // type in that case; propType alone is reused for both otherwise.
               let fieldTypeOverride = null;
+              // A backing field assigned an object literal anywhere is dynamic (see
+              // preScanDynamicInstanceFields) whatever the accessors' names suggest.
+              if (this.dynamicInstanceFields?.has(propName)) propType = CSharpType.Dynamic();
 
               // Find the accessor getter or setter to determine type - but skip a
               // trivial passthrough accessor (see isTrivialAccessorPassthrough), which
               // gives no real evidence and would otherwise mask the field's own
               // concrete initializer below with a generic name-based guess.
-              for (const item of classBody) {
+              for (const item of (propType ? [] : classBody)) {
                 if (item.type === 'MethodDefinition' && item.key?.name === propName.substring(1)) {
                   if (item.kind === 'get' && !this.isTrivialAccessorPassthrough(item.value, 'get', propName)) {
                     propType = this.inferReturnType(item.value);
@@ -19732,11 +19745,14 @@
             // BACKING FIELD's own type when a non-trivial setter converts its
             // parameter into a differently-shaped accumulator before storing it.
             let fieldTypeOverride = null;
+            // A backing field assigned an object literal anywhere is dynamic (see
+            // preScanDynamicInstanceFields) whatever the accessors' names suggest.
+            if (this.dynamicInstanceFields?.has(propName)) propType = CSharpType.Dynamic();
 
             // Find the accessor getter or setter to determine type - skipping a
             // trivial passthrough accessor (see isTrivialAccessorPassthrough), which
             // gives no real evidence beyond a generic name-based guess.
-            for (const item of classBody) {
+            for (const item of (propType ? [] : classBody)) {
               if (item.type === 'MethodDefinition' && item.key?.name === propName.substring(1)) {
                 if (item.kind === 'get' && !this.isTrivialAccessorPassthrough(item.value, 'get', propName)) {
                   propType = this.inferReturnType(item.value);
