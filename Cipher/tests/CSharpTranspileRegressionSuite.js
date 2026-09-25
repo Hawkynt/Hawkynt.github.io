@@ -97,6 +97,14 @@ check('module binding: a same-named parameter shadows the module binding (functi
   expectMatch(code, /table => table\[0\]/, 'the arrow keeps its own parameter');
 });
 
+check('IIFE hoisting: two IIFEs with the same local get distinct module names; a shadowing parameter is kept', () => {
+  const code = transpile('const A = (() => { const table = [1, 2]; return table; })();\nconst B = (() => { const table = [3, 4]; const f = (table) => table[0]; return f(table); })();');
+  expectMatch(code, /\bTable\b[^;]*=/, 'the first hoisted Table');
+  expectMatch(code, /\bTable_2\b[^;]*=/, 'the second, renamed Table_2');
+  expectMatch(code, /table => table\[0\]/, 'the arrow parameter untouched');
+  expectMatch(code, /F\(Table_2\)/, 'the second IIFE reading its own renamed local');
+});
+
 // ---------------------------------------------------------------------------
 // Locals that camelCase onto a parameter name
 // ---------------------------------------------------------------------------
