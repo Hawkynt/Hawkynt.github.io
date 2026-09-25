@@ -3510,7 +3510,11 @@
               // guess here previously replaced a working `dynamic` field with `uint?`,
               // breaking the very `.CreateInstance(...)` call the field exists for
               // (CS1061: "uint? has no CreateInstance").
-              if (returnType?.isArray) resolved.set(fieldName, returnType);
+              // A tuple return type is just as concrete: it only ever comes from a
+              // returned object literal (e.g. darkcrypt-gtea.js's `_buildSchedule()`
+              // returning `{ RK, W }`), and a dynamic field would lose the element
+              // names at runtime.
+              if (returnType?.isArray || (returnType?.isTuple && returnType.tupleElements)) resolved.set(fieldName, returnType);
             } else if (!resolved.has(fieldName) &&
                        (right?.type === 'ArraySlice' ||
                         (right?.type === 'CallExpression' && right.callee?.type === 'MemberExpression' &&
@@ -11145,6 +11149,19 @@
           name = newName;
         }
         this.methodDeclaredVars.add(name);
+
+        // `const { RK, W } = this._sched;` - the source of an OBJECT destructuring is an
+        // object. When its inferred type is a scalar or an array (a name-based guess,
+        // e.g. uint), the member reads that follow cannot compile (CS1061), so hold the
+        // source as dynamic instead.
+        if (decl.ilNodeType === 'DestructureTemp' && decl.destructureKind === 'object' && decl.init) {
+          const sourceType = this.inferFullExpressionType(decl.init);
+          if (!sourceType || sourceType.isArray || CSHARP_VALUE_TYPES.has(sourceType.name)) {
+            this.registerVariableType(originalName, CSharpType.Dynamic());
+            results.push(new CSharpVariableDeclaration(name, CSharpType.Dynamic(), this.transformExpression(decl.init)));
+            continue;
+          }
+        }
 
         let type = CSharpType.Var();
         let initializer = null;
@@ -18785,6 +18802,7 @@
       // the operator site instead - see transformBinaryExpression's dynamic-operand cast.
       if (initialValue.type === 'Literal' && initialValue.value === null) {
         const resolvedType = propName && this.nullFieldResolvedTypes?.get(propName);
+        if (resolvedType?.isTuple) return resolvedType;
         if (resolvedType) {
           const t = new CSharpType(resolvedType.name, {
             isArray: resolvedType.isArray,
