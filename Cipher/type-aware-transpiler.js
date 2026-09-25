@@ -3583,6 +3583,7 @@
             id: { type: 'Identifier', name: tempName, resultType: sourceType },
             init: transformedInit,
             ilNodeType: 'DestructureTemp',
+            destructureKind: decl.id.type === 'ObjectPattern' ? 'object' : 'array',
             resultType: sourceType
           });
 
