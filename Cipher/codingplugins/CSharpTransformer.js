@@ -6967,11 +6967,14 @@
       this.moduleBindingTargets = new Map();
       if (!Array.isArray(programBody)) return;
 
-      const isFunctionNode = n => n && (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression');
+      // 'ArrowFunction' is the IL's own name for an arrow function
+      const isFunctionNode = n => n && (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' ||
+        n.type === 'ArrowFunctionExpression' || n.type === 'ArrowFunction');
       const isIIFE = n => n && n.type === 'CallExpression' && isFunctionNode(n.callee) && n.callee.body?.type === 'BlockStatement';
       const patternNames = (p, out) => {
         if (!p) return out;
-        if (p.type === 'Identifier') out.push(p.name);
+        if (typeof p === 'string') out.push(p); // IL arrow params may be bare names
+        else if (p.type === 'Identifier') out.push(p.name);
         else if (p.type === 'AssignmentPattern') patternNames(p.left, out);
         else if (p.type === 'RestElement') patternNames(p.argument, out);
         else if (p.type === 'ObjectPattern') for (const prop of p.properties || []) patternNames(prop.type === 'RestElement' ? prop : prop.value, out);
