@@ -846,6 +846,30 @@ namespace ${namespace}
             return blocks.ToArray();
         }
 
+        // JavaScript truthiness for values only known at runtime (dynamic).
+        public static bool IsTruthy(object value)
+        {
+            switch (value)
+            {
+                case null: return false;
+                case bool b: return b;
+                case string s: return s.Length != 0;
+                case double d: return d != 0 && !double.IsNaN(d);
+                case float f: return f != 0 && !float.IsNaN(f);
+                case BigInteger big: return !big.IsZero;
+                case char ch: return ch != 0;
+                case IConvertible c when value.GetType().IsPrimitive: return c.ToDecimal(null) != 0;
+                default: return true;
+            }
+        }
+
+        // Web Crypto's crypto.getRandomValues: fills the buffer from the platform CSPRNG.
+        public static T[] GetRandomValues<T>(T[] buffer) where T : struct
+        {
+            System.Security.Cryptography.RandomNumberGenerator.Fill(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buffer.AsSpan()));
+            return buffer;
+        }
+
         // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
         public static string ToRadixString(BigInteger value, long radix)
         {
