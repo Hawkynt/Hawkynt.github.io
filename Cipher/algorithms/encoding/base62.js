@@ -298,7 +298,7 @@
 
     createTestVectors() {
       // Ensure OpCodes is available
-      if (!global.OpCodes) {
+      if (!OpCodes) {
         return [];
       }
 
