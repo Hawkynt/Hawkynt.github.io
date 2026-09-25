@@ -735,6 +735,9 @@
    * Enhanced AST Parser with Type Awareness
    * Extends the original parser to extract and use type information
    */
+  // Tokenized as KEYWORD, but legal JavaScript binding/reference names.
+  const CONTEXTUAL_KEYWORDS = new Set(['get', 'set', 'static', 'async', 'of', 'as']);
+
   class TypeAwareJSASTParser {
     // Shared type knowledge loaded from library files (OpCodes.js, AlgorithmFramework.js)
     static sharedTypeKnowledge = null;
@@ -3583,6 +3586,7 @@
             id: { type: 'Identifier', name: tempName, resultType: sourceType },
             init: transformedInit,
             ilNodeType: 'DestructureTemp',
+            destructureKind: decl.id.type === 'ObjectPattern' ? 'object' : 'array',
             resultType: sourceType
           });
 
@@ -4343,12 +4347,19 @@
     hoistIIFEVariables(ast) {
       if (!ast || !ast.body) return ast;
 
+      // Names already bound at module level. Hoisting an IIFE's locals next to
+      // them must not redeclare one (dilithium.js's POW2 and ZETAS IIFEs both use a
+      // local `table` - hoisted as-is that is `const table` twice: a SyntaxError in
+      // JavaScript, CS0102 in C#), so colliding locals are renamed first.
+      const taken = new Set();
+      for (const stmt of ast.body) for (const name of this._topLevelDeclaredNames(stmt)) taken.add(name);
+
       const newBody = [];
 
       for (const stmt of ast.body) {
         // Check for variable declarations with IIFE initializers
         if (stmt.type === 'VariableDeclaration') {
-          const expanded = this._expandIIFEDeclarations(stmt);
+          const expanded = this._expandIIFEDeclarations(stmt, taken);
           newBody.push(...expanded);
         } else {
           newBody.push(stmt);
@@ -4359,10 +4370,81 @@
     }
 
     /**
+     * Names a statement binds in its own scope (var/let/const incl. destructuring
+     * patterns, function and class declarations).
+     * @private
+     */
+    _topLevelDeclaredNames(stmt) {
+      const names = [];
+      const fromPattern = (p) => {
+        if (!p) return;
+        if (p.type === 'Identifier') names.push(p.name);
+        else if (p.type === 'AssignmentPattern') fromPattern(p.left);
+        else if (p.type === 'RestElement') fromPattern(p.argument);
+        else if (p.type === 'ObjectPattern') (p.properties || []).forEach(q => fromPattern(q.type === 'RestElement' ? q : q.value));
+        else if (p.type === 'ArrayPattern') (p.elements || []).forEach(fromPattern);
+      };
+      if (stmt?.type === 'VariableDeclaration') (stmt.declarations || []).forEach(d => fromPattern(d.id));
+      else if ((stmt?.type === 'FunctionDeclaration' || stmt?.type === 'ClassDeclaration') && stmt.id?.name) names.push(stmt.id.name);
+      return names;
+    }
+
+    /**
+     * Rename every reference to `oldName` inside `node` to `newName`, leaving
+     * nested functions that bind their own `oldName` untouched, and never touching
+     * non-computed property keys or member names.
+     * @private
+     */
+    _renameBinding(node, oldName, newName) {
+      const isFunction = n => n && (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression');
+      const rebinds = (fn) => {
+        const names = [];
+        for (const p of fn.params || []) names.push(...this._topLevelDeclaredNames({ type: 'VariableDeclaration', declarations: [{ id: p }] }));
+        if (fn.type === 'FunctionExpression' && fn.id?.name) names.push(fn.id.name);
+        const visit = (n) => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(visit); return; }
+          if (isFunction(n)) { if (n.type === 'FunctionDeclaration' && n.id?.name) names.push(n.id.name); return; }
+          names.push(...this._topLevelDeclaredNames(n));
+          if (n.type === 'CatchClause' && n.param) names.push(...this._topLevelDeclaredNames({ type: 'VariableDeclaration', declarations: [{ id: n.param }] }));
+          for (const key in n) if (key !== 'loc' && key !== 'range' && n[key] && typeof n[key] === 'object') visit(n[key]);
+        };
+        visit(fn.body);
+        return names.includes(oldName);
+      };
+      const walk = (n) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n.type === 'Identifier') { if (n.name === oldName) n.name = newName; return; }
+        if (isFunction(n)) {
+          if (n.type === 'FunctionDeclaration' && n.id?.name === oldName) n.id.name = newName;
+          if (rebinds(n)) return;
+          for (const p of n.params || []) if (p?.type === 'AssignmentPattern') walk(p.right);
+          walk(n.body);
+          return;
+        }
+        if (n.type === 'Property' || n.type === 'ObjectProperty') {
+          if (n.computed) walk(n.key);
+          if (n.value === n.key) n.value = { ...n.key };
+          walk(n.value);
+          if (n.shorthand && n.value?.type === 'Identifier' && n.value.name !== n.key?.name) n.shorthand = false;
+          return;
+        }
+        if (n.type === 'MemberExpression') { walk(n.object); if (n.computed) walk(n.property); return; }
+        if (n.type === 'MethodDefinition' || n.type === 'PropertyDefinition') { if (n.computed) walk(n.key); walk(n.value); return; }
+        for (const key in n) {
+          if (key === 'loc' || key === 'range') continue;
+          if (n[key] && typeof n[key] === 'object') walk(n[key]);
+        }
+      };
+      walk(node);
+    }
+
+    /**
      * Expand a VariableDeclaration that may contain IIFE initializers
      * @private
      */
-    _expandIIFEDeclarations(stmt) {
+    _expandIIFEDeclarations(stmt, taken = new Set()) {
       const results = [];
       const kind = stmt.kind;
 
@@ -4370,6 +4452,19 @@
         // Check if the initializer is an IIFE: (() => { ... })() or (function() { ... })()
         const iife = this._extractIIFE(decl.init);
         if (iife) {
+          // Give locals that would collide with a module-level name a fresh one.
+          if (iife.body?.type === 'BlockStatement') {
+            const locals = [];
+            for (const inner of iife.body.body || []) locals.push(...this._topLevelDeclaredNames(inner));
+            for (const name of new Set(locals)) {
+              if (!taken.has(name)) { taken.add(name); continue; }
+              let suffix = 2;
+              while (taken.has(`${name}_${suffix}`)) ++suffix;
+              const fresh = `${name}_${suffix}`;
+              this._renameBinding(iife.body.body, name, fresh);
+              taken.add(fresh);
+            }
+          }
           // Extract statements and return value from the IIFE
           const { hoistedStatements, returnValue } = this._processIIFEBody(iife, kind);
 
@@ -7888,6 +7983,8 @@
             return this.parseFunctionExpression();
           } else if (this.currentToken.value === 'class') {
             return this.parseClassExpression();
+          } else if (CONTEXTUAL_KEYWORDS.has(this.currentToken.value)) {
+            return this.parseIdentifier();
           } else if (this.currentToken.value === 'typeof') {
             this.advance();
             return {
@@ -7967,6 +8064,13 @@
      * Parse identifier
      */
     parseIdentifier() {
+      // Contextual keywords are ordinary binding names outside their own syntax,
+      // e.g. `const set = {...}` / `for (const set of sets)` (bike.js, hqc.js, ...).
+      if (this.currentToken?.type === 'KEYWORD' && CONTEXTUAL_KEYWORDS.has(this.currentToken.value)) {
+        const node = { type: 'Identifier', name: this.currentToken.value };
+        this.advance();
+        return node;
+      }
       if (!this.currentToken || this.currentToken.type !== 'IDENTIFIER') {
         throw new Error(`Expected identifier, got: ${this.currentToken ? this.currentToken.type : 'EOF'}`);
       }
