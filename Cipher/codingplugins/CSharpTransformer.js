@@ -10738,7 +10738,10 @@
 
       // Clear method-scoped variable tracking for collision detection
       const prevMethodDeclaredVars = this.methodDeclaredVars;
-      this.methodDeclaredVars = new Set();
+      // Parameters occupy their names too: JS `function f(a) { const A = a || 1; }`
+      // or `(L, R) => { for (let r ...) }` camelCase a local onto a parameter's name,
+      // which C# rejects (CS0136/CS0841) unless the local is renamed.
+      this.methodDeclaredVars = new Set((method?.parameters || []).map(p => p?.name).filter(Boolean));
       const prevVariableNameMap = this.variableNameMap;
       // Copy existing mappings (includes parameter name mappings) into new scope
       this.variableNameMap = new Map(prevVariableNameMap);
@@ -20316,7 +20319,8 @@
         // rewritten to the nonexistent `i6` (CS0103), while the declaration itself
         // stayed the un-renamed `i`.
         const prevMethodDeclaredVars = this.methodDeclaredVars;
-        this.methodDeclaredVars = new Set();
+        // Parameters occupy their names (see transformFunctionBody).
+        this.methodDeclaredVars = new Set(ctor.parameters.map(p => p?.name).filter(Boolean));
         const prevVariableNameMap = this.variableNameMap;
         this.variableNameMap = new Map(prevVariableNameMap);
 
