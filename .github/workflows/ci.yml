@@ -84,6 +84,14 @@ jobs:
         working-directory: Cipher
         run: node tests/ChunkedFeedSuite.js
 
+      # The suites above require() each file; the site loads them through plain
+      # script tags with no require, module or global. This evaluates every tag
+      # in index.html in page order, so a file that throws or never registers in
+      # the browser fails the build - twenty did while passing everything above.
+      - name: Load every script tag as the browser does
+        working-directory: Cipher
+        run: node tests/BrowserLoadSuite.js
+
   # The algorithm reference is derived entirely from the implementations, so it
   # is built on every run and published as an artifact rather than committed —
   # a generated tree in the history would only ever go stale between runs.

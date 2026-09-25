@@ -110,23 +110,23 @@
         {
           text: "Basic Test",
           uri: "https://cryptii.com/pipes/cadaenus-cipher",
-          input: global.OpCodes.AnsiToBytes("HELLO"),
-          key: global.OpCodes.AnsiToBytes("SECRET"),
-          expected: global.OpCodes.AnsiToBytes("RXGIC")
+          input: OpCodes.AnsiToBytes("HELLO"),
+          key: OpCodes.AnsiToBytes("SECRET"),
+          expected: OpCodes.AnsiToBytes("RXGIC")
         },
         {
           text: "Alphabet Test",
           uri: "https://www.dcode.fr/cadaenus-cipher",
-          input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-          key: global.OpCodes.AnsiToBytes("KEY"),
-          expected: global.OpCodes.AnsiToBytes("MPSCHDCGBSVEDFNBMPECHNCGPS")
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+          key: OpCodes.AnsiToBytes("KEY"),
+          expected: OpCodes.AnsiToBytes("MPSCHDCGBSVEDFNBMPECHNCGPS")
         },
         {
           text: "Position Dependency Test",
           uri: "https://en.wikipedia.org/wiki/CADAENUS",
-          input: global.OpCodes.AnsiToBytes("AAAAA"),
-          key: global.OpCodes.AnsiToBytes("CIPHER"),
-          expected: global.OpCodes.AnsiToBytes("SXJMD")
+          input: OpCodes.AnsiToBytes("AAAAA"),
+          key: OpCodes.AnsiToBytes("CIPHER"),
+          expected: OpCodes.AnsiToBytes("SXJMD")
         }
       ];
 
