@@ -6934,6 +6934,145 @@
      * @param {Object} jsAst - JavaScript AST from parser
      * @returns {CSharpCompilationUnit} C# AST
      */
+    /**
+     * Module-level bindings are hoisted onto the main class under PascalCase names
+     * (`const rol32 = ...` -> `Rol32`, IIFE locals the same way), but a plain
+     * identifier reference keeps its JS spelling, so every camelCase module-level
+     * const, table or helper was referenced by a name that does not exist (CS0103).
+     *
+     * Resolves each Identifier reference lexically: one that reaches a module-level
+     * binding without passing a same-named parameter or local of an enclosing
+     * function is recorded (by node identity - the AST is not mutated), and
+     * transformIdentifier / the bare-call path emit the binding's C# name for it.
+     * Block scoping is approximated by function scoping, which can only make a
+     * reference look shadowed - i.e. left as before - never wrongly renamed.
+     * @param {Array} programBody - top-level statements
+     */
+    preScanModuleBindingReferences(programBody) {
+      this.moduleBindingRefs = new WeakSet();
+      this.moduleBindingTargets = new Map();
+      if (!Array.isArray(programBody)) return;
+
+      const isFunctionNode = n => n && (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression');
+      const isIIFE = n => n && n.type === 'CallExpression' && isFunctionNode(n.callee) && n.callee.body?.type === 'BlockStatement';
+      const patternNames = (p, out) => {
+        if (!p) return out;
+        if (p.type === 'Identifier') out.push(p.name);
+        else if (p.type === 'AssignmentPattern') patternNames(p.left, out);
+        else if (p.type === 'RestElement') patternNames(p.argument, out);
+        else if (p.type === 'ObjectPattern') for (const prop of p.properties || []) patternNames(prop.type === 'RestElement' ? prop : prop.value, out);
+        else if (p.type === 'ArrayPattern') for (const el of p.elements || []) patternNames(el, out);
+        return out;
+      };
+
+      // Functions whose own locals ARE module bindings (hoisted IIFE bodies): the
+      // hoisted names must not count as shadowing inside them.
+      const transparent = new Map();
+      const bindings = new Set();
+      const collect = (stmts) => {
+        for (const stmt of stmts || []) {
+          if (stmt?.type === 'VariableDeclaration') {
+            for (const decl of stmt.declarations || []) {
+              if (decl.id?.type !== 'Identifier' || !decl.init) continue;
+              bindings.add(decl.id.name);
+              if (isIIFE(decl.init)) hoistIIFE(decl.init, !!this.getIIFEReturnValue(decl.init));
+            }
+          } else if (stmt?.type === 'FunctionDeclaration' && stmt.id?.name) {
+            bindings.add(stmt.id.name);
+          } else if (stmt?.type === 'ExpressionStatement' && isIIFE(stmt.expression)) {
+            hoistIIFE(stmt.expression, false);
+          }
+        }
+      };
+      const hoistIIFE = (call, returnsValue) => {
+        const body = call.callee.body.body || [];
+        const hoisted = new Set();
+        if (returnsValue) {
+          // extractIIFELocalDeclarations: only the body's own variable declarations
+          for (const stmt of body)
+            if (stmt?.type === 'VariableDeclaration')
+              for (const decl of stmt.declarations || [])
+                if (decl.id?.type === 'Identifier' && decl.init) { bindings.add(decl.id.name); hoisted.add(decl.id.name); }
+        } else {
+          // transformIIFE: the whole body is transformed as top-level code
+          const before = new Set(bindings);
+          collect(body);
+          for (const name of bindings) if (!before.has(name)) hoisted.add(name);
+        }
+        transparent.set(call.callee, hoisted);
+      };
+      collect(programBody);
+
+      for (const name of bindings) {
+        const target = this.toPascalCase(name);
+        if (target !== name) this.moduleBindingTargets.set(name, target);
+      }
+      if (this.moduleBindingTargets.size === 0) return;
+
+      const declaredIn = (fn) => {
+        const names = [];
+        for (const p of fn.params || []) patternNames(p, names);
+        if (fn.type === 'FunctionExpression' && fn.id?.name) names.push(fn.id.name);
+        const visit = (n) => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(visit); return; }
+          if (isFunctionNode(n)) { if (n.type === 'FunctionDeclaration' && n.id?.name) names.push(n.id.name); return; }
+          if (n.type === 'VariableDeclaration') for (const d of n.declarations || []) patternNames(d.id, names);
+          if (n.type === 'ClassDeclaration' && n.id?.name) names.push(n.id.name);
+          if (n.type === 'CatchClause' && n.param) patternNames(n.param, names);
+          for (const key in n) {
+            if (SKIP_KEYS.has(key)) continue;
+            const v = n[key];
+            if (v && typeof v === 'object') visit(v);
+          }
+        };
+        visit(fn.body);
+        const set = new Set(names);
+        const hoisted = transparent.get(fn);
+        if (hoisted) for (const h of hoisted) set.delete(h);
+        return set;
+      };
+
+      const SKIP_KEYS = new Set(['type', 'loc', 'range', 'start', 'end', 'typeInfo', 'resultType', 'inferredType',
+        'leadingComments', 'trailingComments', 'parent', 'ilNodeType']);
+      const scopes = [];
+      const visited = new WeakSet();
+      const walk = (n) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (visited.has(n)) return;
+        visited.add(n);
+        if (n.type === 'Identifier') {
+          if (this.moduleBindingTargets.has(n.name) && !scopes.some(s => s.has(n.name)))
+            this.moduleBindingRefs.add(n);
+          return;
+        }
+        if (isFunctionNode(n)) {
+          scopes.push(declaredIn(n));
+          for (const p of n.params || []) if (p?.type === 'AssignmentPattern') walk(p.right);
+          walk(n.body);
+          scopes.pop();
+          return;
+        }
+        for (const key in n) {
+          if (SKIP_KEYS.has(key) || key === 'id' || key === 'label' || key === 'params') continue;
+          if ((key === 'property' || key === 'key') && !n.computed) continue;
+          const v = n[key];
+          if (v && typeof v === 'object') walk(v);
+        }
+      };
+      walk(programBody);
+    }
+
+    /**
+     * The C# name for an Identifier node that preScanModuleBindingReferences
+     * resolved to a renamed module-level binding, else null.
+     */
+    _moduleBindingName(node) {
+      if (!node || !this.moduleBindingRefs?.has(node)) return null;
+      return this.moduleBindingTargets.get(node.name) || null;
+    }
+
     transform(jsAst) {
       const unit = new CSharpCompilationUnit();
 
@@ -7018,6 +7157,7 @@
         // castArgumentsToParameterTypes had no signature to look up and silently fell
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
+        this.preScanModuleBindingReferences(jsAst.body);
         // Register module-scope BigInteger constants (e.g. asymmetric-crypto curve
         // primes/generators declared `const P = 0xFFFF...FC2Fn;`) as static fields
         // BEFORE pre-registering any function signature below - see
@@ -7875,6 +8015,7 @@
           let fieldName = this.toPascalCase(name);
           if (targetClass.nestedTypes?.some(nt => nt.name === fieldName)) {
             fieldName += 'Field';
+            if (this.moduleBindingTargets?.has(name)) this.moduleBindingTargets.set(name, fieldName);
           }
           // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment - a module-level const
           // hoisted here as a field of the MAIN wrapper class, whose name coincides
@@ -13064,6 +13205,11 @@
         return new CSharpMemberAccess(new CSharpIdentifier(this.mainClassName || 'GeneratedClass'), qualifiedName);
       }
 
+      // A reference to a module-level binding hoisted under its PascalCase name
+      // (see preScanModuleBindingReferences).
+      const moduleBindingName = this._moduleBindingName(node);
+      if (moduleBindingName) return new CSharpIdentifier(this.escapeReservedKeyword(moduleBindingName));
+
       // Map JavaScript keywords to C# equivalents
       if (name === 'undefined') return CSharpLiteral.Null();
       if (name === 'NaN') return new CSharpMemberAccess(new CSharpIdentifier('double'), 'NaN');
@@ -15697,7 +15843,8 @@
       // `intsTo32bits` local was actually declared (CS0103).
       const varType = this.getVariableType(funcName);
       if (varType) {
-        const referencedName = this.variableNameMap.has(funcName) ? this.variableNameMap.get(funcName) : funcName;
+        const referencedName = this._moduleBindingName(node.callee) ||
+          (this.variableNameMap.has(funcName) ? this.variableNameMap.get(funcName) : funcName);
         // A local closure's OWN parameter types (see inferFunctionExpressionDelegateType)
         // are inferred independently, purely from ITS OWN body's usage evidence - unlike
         // a real class method, they never get the cross-call-site unification real
