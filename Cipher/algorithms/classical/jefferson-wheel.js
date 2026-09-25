@@ -86,16 +86,16 @@
           {
             text: "dCode worked example - JEFFERSON on the 25 standard wheels, read one row below",
             uri: "https://www.dcode.fr/jefferson-wheel-cipher",
-            input: global.OpCodes.AnsiToBytes("JEFFERSON"),
-            key: global.OpCodes.AnsiToBytes("25|1"),
-            expected: global.OpCodes.AnsiToBytes("FHYGMNYBL")
+            input: OpCodes.AnsiToBytes("JEFFERSON"),
+            key: OpCodes.AnsiToBytes("25|1"),
+            expected: OpCodes.AnsiToBytes("FHYGMNYBL")
           },
           {
             text: "Offset zero is the identity row - the plaintext row is the ciphertext row",
             uri: "https://en.wikipedia.org/wiki/Jefferson_disk",
-            input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
-            key: global.OpCodes.AnsiToBytes("25|0"),
-            expected: global.OpCodes.AnsiToBytes("ATTACKATDAWN")
+            input: OpCodes.AnsiToBytes("ATTACKATDAWN"),
+            key: OpCodes.AnsiToBytes("25|0"),
+            expected: OpCodes.AnsiToBytes("ATTACKATDAWN")
           }
         ];
 
@@ -165,7 +165,7 @@
 
         // Set default key if none set
         if (!this.keyScheduled) {
-          this.key = global.OpCodes.AnsiToBytes("10|0");
+          this.key = OpCodes.AnsiToBytes("10|0");
         }
 
         return true;
@@ -295,7 +295,7 @@
       Process(input, isEncryption = true) {
         // Ensure key is set up (fallback to default)
         if (!this.keyScheduled) {
-          this.key = global.OpCodes.AnsiToBytes("10|0");
+          this.key = OpCodes.AnsiToBytes("10|0");
         }
 
         const result = [];
@@ -318,9 +318,9 @@
       }
 
       ClearData() {
-        if (global.OpCodes.ClearArray) {
-          global.OpCodes.ClearArray(this.wheels);
-          global.OpCodes.ClearArray(this.wheelPositions);
+        if (OpCodes.ClearArray) {
+          OpCodes.ClearArray(this.wheels);
+          OpCodes.ClearArray(this.wheelPositions);
         }
         this.keyScheduled = false;
       }

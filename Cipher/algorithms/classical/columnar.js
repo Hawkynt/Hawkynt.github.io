@@ -118,23 +118,23 @@
           {
             text: "Three columns with a short last row filled out with X. No published source carries this value",
             uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
-            input: global.OpCodes.AnsiToBytes("HELLO"),
-            key: global.OpCodes.AnsiToBytes("KEY"),
-            expected: global.OpCodes.AnsiToBytes("EOHLLX")
+            input: OpCodes.AnsiToBytes("HELLO"),
+            key: OpCodes.AnsiToBytes("KEY"),
+            expected: OpCodes.AnsiToBytes("EOHLLX")
           },
           {
             text: "Keyword with a repeated letter - SECRET dedupes to five columns. No published source carries this value",
             uri: "https://www.dcode.fr/columnar-transposition-cipher",
-            input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
-            key: global.OpCodes.AnsiToBytes("SECRET"),
-            expected: global.OpCodes.AnsiToBytes("TTXTANADXAKWCAX")
+            input: OpCodes.AnsiToBytes("ATTACKATDAWN"),
+            key: OpCodes.AnsiToBytes("SECRET"),
+            expected: OpCodes.AnsiToBytes("TTXTANADXAKWCAX")
           },
           {
             text: "Single column - one column is no transposition at all and needs no padding",
             uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
-            input: global.OpCodes.AnsiToBytes("A"),
-            key: global.OpCodes.AnsiToBytes("Z"),
-            expected: global.OpCodes.AnsiToBytes("A")
+            input: OpCodes.AnsiToBytes("A"),
+            key: OpCodes.AnsiToBytes("Z"),
+            expected: OpCodes.AnsiToBytes("A")
           }
         ];
 

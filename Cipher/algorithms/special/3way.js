@@ -99,13 +99,13 @@
         this.tests = [
           new TestCase(
             new Array(12).fill(0), // All zeros input
-            global.OpCodes.Hex8ToBytes("ffffffffffffffff00000000"), // Actual output from implementation
+            OpCodes.Hex8ToBytes("ffffffffffffffff00000000"), // Actual output from implementation
             "3-Way Educational Test - All Zeros (Forward Only)",
             "Educational implementation test vector"
           ),
           new TestCase(
-            global.OpCodes.Hex8ToBytes("fedcba9876543210fedcba98"), // Pattern input
-            global.OpCodes.Hex8ToBytes("18941cd4404040401cd05894"), // Actual output from implementation  
+            OpCodes.Hex8ToBytes("fedcba9876543210fedcba98"), // Pattern input
+            OpCodes.Hex8ToBytes("18941cd4404040401cd05894"), // Actual output from implementation  
             "3-Way Educational Test - Pattern (Forward Only)",
             "Educational implementation test vector"
           )
@@ -113,7 +113,7 @@
 
         // Associate keys with test vectors
         this.tests[0].key = new Array(12).fill(0); // All zeros key
-        this.tests[1].key = global.OpCodes.Hex8ToBytes("0123456789abcdef01234567"); // Pattern key
+        this.tests[1].key = OpCodes.Hex8ToBytes("0123456789abcdef01234567"); // Pattern key
       }
 
       CreateInstance(isInverse = false) {
@@ -166,7 +166,7 @@
           if (round === 0) {
             // Initial key
             for (let i = 0; i < 3; i++) {
-              roundKey[i] = global.OpCodes.Pack32LE(
+              roundKey[i] = OpCodes.Pack32LE(
                 this._key[i * 4],
                 this._key[i * 4 + 1], 
                 this._key[i * 4 + 2],
@@ -181,8 +181,8 @@
             roundKey[2] = prevKey[2];
 
             // Apply round constant
-            const rcon = global.OpCodes.AndN(global.OpCodes.Shl32(1, round - 1), global.OpCodes.MASK32);
-            roundKey[0] = global.OpCodes.XorN(roundKey[0], rcon);
+            const rcon = OpCodes.AndN(OpCodes.Shl32(1, round - 1), OpCodes.MASK32);
+            roundKey[0] = OpCodes.XorN(roundKey[0], rcon);
 
             // Simple key schedule transformation
             roundKey[0] = this._theta(roundKey[0]);
@@ -233,7 +233,7 @@
         // Convert to three 32-bit words
         const state = [];
         for (let i = 0; i < 3; i++) {
-          state[i] = global.OpCodes.Pack32LE(
+          state[i] = OpCodes.Pack32LE(
             block[i * 4] || 0,
             block[i * 4 + 1] || 0,
             block[i * 4 + 2] || 0,
@@ -274,7 +274,7 @@
         // Convert back to bytes
         const result = [];
         for (let i = 0; i < 3; i++) {
-          const bytes = global.OpCodes.Unpack32LE(state[i]);
+          const bytes = OpCodes.Unpack32LE(state[i]);
           for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
         }
 
@@ -286,7 +286,7 @@
       _processBlockInverse(block) {
         const state = [];
         for (let i = 0; i < 3; i++) {
-          state[i] = global.OpCodes.Pack32LE(
+          state[i] = OpCodes.Pack32LE(
             block[i * 4] || 0,
             block[i * 4 + 1] || 0,
             block[i * 4 + 2] || 0,
@@ -328,7 +328,7 @@
 
         const result = [];
         for (let i = 0; i < 3; i++) {
-          const bytes = global.OpCodes.Unpack32LE(state[i]);
+          const bytes = OpCodes.Unpack32LE(state[i]);
           for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
         }
 
@@ -337,19 +337,19 @@
 
       // Theta linear transformation
       _theta(x) {
-        const y = global.OpCodes.XorN(x, global.OpCodes.XorN(global.OpCodes.RotL32(x, 16), global.OpCodes.RotL32(x, 8)));
-        return global.OpCodes.ToUint32(y);
+        const y = OpCodes.XorN(x, OpCodes.XorN(OpCodes.RotL32(x, 16), OpCodes.RotL32(x, 8)));
+        return OpCodes.ToUint32(y);
       }
 
       // Pi permutation
       _pi(x) {
         let result = 0;
         for (let i = 0; i < 32; i++) {
-          const bit = global.OpCodes.AndN(global.OpCodes.Shr32(x, i), 1);
+          const bit = OpCodes.AndN(OpCodes.Shr32(x, i), 1);
           const newPos = this._piTable[i];
-          result = global.OpCodes.OrN(result, global.OpCodes.Shl32(bit, newPos));
+          result = OpCodes.OrN(result, OpCodes.Shl32(bit, newPos));
         }
-        return global.OpCodes.ToUint32(result);
+        return OpCodes.ToUint32(result);
       }
 
       // Inverse of theta.
@@ -363,12 +363,12 @@
       //   p^-1 = (1 + m)^-1 = 1 + m + m^2 + m^3
       // because (1 + m)(1 + m + m^2 + m^3) = 1 + m^4 = 1.
       _thetaInverse(x) {
-        const m = v => global.OpCodes.XorN(global.OpCodes.RotL32(v, 8), global.OpCodes.RotL32(v, 16));
+        const m = v => OpCodes.XorN(OpCodes.RotL32(v, 8), OpCodes.RotL32(v, 16));
         const m1 = m(x);
         const m2 = m(m1);
         const m3 = m(m2);
-        const y = global.OpCodes.XorN(global.OpCodes.XorN(x, m1), global.OpCodes.XorN(m2, m3));
-        return global.OpCodes.ToUint32(y);
+        const y = OpCodes.XorN(OpCodes.XorN(x, m1), OpCodes.XorN(m2, m3));
+        return OpCodes.ToUint32(y);
       }
 
       // Inverse of the pi bit permutation: pi sends bit i to bit _piTable[i], so
@@ -377,15 +377,15 @@
         let result = 0;
         const table = this._piTable;
         for (let i = 0; i < 32; i++) {
-          const bit = global.OpCodes.AndN(global.OpCodes.Shr32(x, table[i]), 1);
-          result = global.OpCodes.OrN(result, global.OpCodes.Shl32(bit, i));
+          const bit = OpCodes.AndN(OpCodes.Shr32(x, table[i]), 1);
+          result = OpCodes.OrN(result, OpCodes.Shl32(bit, i));
         }
-        return global.OpCodes.ToUint32(result);
+        return OpCodes.ToUint32(result);
       }
 
       // Gamma substitution (simplified)
       _gamma(a, b, c) {
-        return global.OpCodes.XorN(a, global.OpCodes.OrN(b, ~c));
+        return OpCodes.XorN(a, OpCodes.OrN(b, ~c));
       }
 
       get _piTable() {

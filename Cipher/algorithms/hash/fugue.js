@@ -12,16 +12,6 @@
  * (c)2006-2025 Hawkynt
  */
 
-// Load AlgorithmFramework (REQUIRED)
-if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-}
-
-// Load OpCodes for cryptographic operations (REQUIRED)
-if (!global.OpCodes && typeof require !== 'undefined') {
-  global.OpCodes = require('../../OpCodes.js');
-}
-
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
