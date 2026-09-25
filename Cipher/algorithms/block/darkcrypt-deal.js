@@ -38,15 +38,17 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes', './des'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './des'], function (AlgorithmFramework, OpCodes, DES) {
+      return factory(AlgorithmFramework, OpCodes, function () { return DES; });
+    });
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
       require('../../OpCodes'),
-      require('./des')
+      function () { return require('./des'); }
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes, root.DES);
+    factory(root.AlgorithmFramework, root.OpCodes, function () { return root.DES; });
   }
 }((function () {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -54,18 +56,26 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, DESModule) {
+})(), function (AlgorithmFramework, OpCodes, loadDES) {
   'use strict';
 
   if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
   if (!OpCodes) throw new Error('OpCodes dependency is required');
-  if (!DESModule) throw new Error('DES dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const { DESAlgorithm, DESInstance } = DESModule;
+  // DES is resolved at first use rather than at load: the page loads this
+  // file before des.js, so root.DES does not exist yet when this runs.
+  let desModule = null;
+  function getDES() {
+    if (!desModule) {
+      desModule = loadDES();
+      if (!desModule) throw new Error('DES dependency is required');
+    }
+    return desModule;
+  }
 
   const ROUNDS = 8;
   const KEY_BLOCKS = 4;
@@ -146,7 +156,7 @@
       // Internal helper DES instance/algorithm used as the DEAL round function
       // and for key-schedule expansion. Only ever used in "encrypt" mode: DEAL
       // decryption is achieved purely by reversing the round-key order.
-      this._desAlgorithm = new DESAlgorithm();
+      this._desAlgorithm = new (getDES().DESAlgorithm)();
     }
 
     set key(keyBytes) {
@@ -184,7 +194,7 @@
     // DES-encrypt an 8-byte block under an 8-byte key (used both for the
     // DEAL round function and for round-key expansion).
     _desEncrypt(keyBytes, blockBytes) {
-      const inst = new DESInstance(this._desAlgorithm, false);
+      const inst = new (getDES().DESInstance)(this._desAlgorithm, false);
       inst.key = keyBytes;
       inst.Feed(blockBytes);
       return inst.Result();
