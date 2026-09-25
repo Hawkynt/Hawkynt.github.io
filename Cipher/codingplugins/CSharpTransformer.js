@@ -9614,6 +9614,13 @@
             // handful of common English table-name substrings and otherwise
             // misclassified short/cryptic field names (like "KLi1") as string keys.
             arrayIndexParams.add(propName);
+          } else if (node.object?.type === 'MemberExpression' && !node.object.computed &&
+                     !objectsWithStringKeys.has(node.object.property?.name || node.object.property?.value)) {
+            // `record.<table>[param]` - the same convention one level down (e.g.
+            // darkcrypt-cobra.js's `tabs.P16[round]`): extractObjName reports the
+            // record (`tabs`), not the indexed table, so the name heuristic below
+            // would call `round` a string key.
+            arrayIndexParams.add(propName);
           } else {
             // Check if the object name suggests an array (state, buffer, block, etc.)
             // Use exact match for single-letter names, substring match for longer names
