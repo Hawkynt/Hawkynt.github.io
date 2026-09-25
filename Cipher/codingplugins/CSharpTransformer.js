@@ -21049,12 +21049,14 @@
     inferFunctionExpressionDelegateType(node) {
       const body = node.body;
       const isBlockBody = body && body.type === 'BlockStatement';
-      const arrayUsageParams = isBlockBody ? this.detectArrayUsageParams(body) : new Set();
+      // Expression bodies count too: crypton.js's `const piMix = (words, n0) =>
+      // words[0] & ...` indexes `words`, which the name-based fallback typed uint (CS0021).
+      const arrayUsageParams = body && typeof body === 'object' ? this.detectArrayUsageParams(body) : new Set();
 
       const paramTypes = (node.params || []).map(p => {
         // IL AST 'ArrowFunction' params may be plain strings, not { name } nodes.
         const rawName = typeof p === 'string' ? p : (p.name || p.left?.name || 'param');
-        if (isBlockBody && arrayUsageParams.has(rawName)) {
+        if (arrayUsageParams.has(rawName)) {
           return CSharpType.Array(this.detectArrayElementType(rawName, body));
         }
         if (isBlockBody && this.isUsedAsScalar32Bit(rawName, body)) {
