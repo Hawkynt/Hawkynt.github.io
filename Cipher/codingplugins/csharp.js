@@ -846,6 +846,24 @@ namespace ${namespace}
             return blocks.ToArray();
         }
 
+        // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
+        public static string ToRadixString(BigInteger value, long radix)
+        {
+            if (radix < 2 || radix > 36) throw new ArgumentOutOfRangeException(nameof(radix));
+            if (value.IsZero) return "0";
+            const string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+            var negative = value.Sign < 0;
+            var remaining = BigInteger.Abs(value);
+            var result = new System.Text.StringBuilder();
+            while (!remaining.IsZero)
+            {
+                result.Insert(0, digits[(int)(remaining % radix)]);
+                remaining /= radix;
+            }
+            if (negative) result.Insert(0, '-');
+            return result.ToString();
+        }
+
         private static T Option<T>(object options, string name, T fallback)
         {
             var property = options?.GetType().GetProperty(name);
