@@ -3486,6 +3486,15 @@
             const right = node.right;
             if (right && right.type === 'Literal' && right.value === null) {
               hasNullAssignment.add(fieldName);
+            } else if (!resolved.has(fieldName) && right?.type === 'NewExpression' &&
+                       right.callee?.type === 'Identifier' && /^[A-Z]/.test(right.callee.name || '') &&
+                       !/^(Array|Uint8Array|Uint16Array|Uint32Array|Int8Array|Int16Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array|ArrayBuffer|DataView|Map|Set|WeakMap|Object|Error|TypeError|RangeError|Date|RegExp)$/.test(right.callee.name)) {
+              // e.g. sha1.js's `this._absorber = null;` in the constructor and
+              // `this._absorber = new BlockAbsorber(...)` in a setter: constructing a
+              // named class is concrete evidence of the field's type. Without it the
+              // field stayed `dynamic`, and every call on it taking a lambda failed
+              // with CS1977.
+              resolved.set(fieldName, new CSharpType(right.callee.name));
             } else if (!resolved.has(fieldName) && (right?.type === 'ThisMethodCall' || right?.type === 'ParentMethodCall')) {
               const pascalMethod = this.toPascalCase(right.method || '');
               const sig = this.getMethodSignature(this.currentClass.name, pascalMethod);
@@ -3501,7 +3510,11 @@
               // guess here previously replaced a working `dynamic` field with `uint?`,
               // breaking the very `.CreateInstance(...)` call the field exists for
               // (CS1061: "uint? has no CreateInstance").
-              if (returnType?.isArray) resolved.set(fieldName, returnType);
+              // A tuple return type is just as concrete: it only ever comes from a
+              // returned object literal (e.g. darkcrypt-gtea.js's `_buildSchedule()`
+              // returning `{ RK, W }`), and a dynamic field would lose the element
+              // names at runtime.
+              if (returnType?.isArray || (returnType?.isTuple && returnType.tupleElements)) resolved.set(fieldName, returnType);
             } else if (!resolved.has(fieldName) &&
                        (right?.type === 'ArraySlice' ||
                         (right?.type === 'CallExpression' && right.callee?.type === 'MemberExpression' &&
@@ -3623,6 +3636,16 @@
             const fieldName = getThisFieldName(node.callee.object);
             if (fieldName) dynamicFields.add(fieldName);
           }
+        }
+
+        // this.field = { ... } - an object literal becomes a C# anonymous type, which
+        // no named field type can hold (e.g. rsa.js/elgamal.js's `this._publicKey =
+        // { n, e, keySize }` behind a `_publicKey` the name heuristic types byte[] -
+        // CS0029 at the assignment, CS1061 at every `.n` read).
+        if (node.type === 'AssignmentExpression' && node.operator === '=' &&
+            (node.right?.type === 'ObjectExpression' || node.right?.type === 'ObjectLiteral')) {
+          const fieldName = getThisFieldName(node.left);
+          if (fieldName) dynamicFields.add(fieldName);
         }
 
         // this.field.key = ... / this.field.Key = ... (every AlgorithmFramework
@@ -6925,6 +6948,148 @@
      * @param {Object} jsAst - JavaScript AST from parser
      * @returns {CSharpCompilationUnit} C# AST
      */
+    /**
+     * Module-level bindings are hoisted onto the main class under PascalCase names
+     * (`const rol32 = ...` -> `Rol32`, IIFE locals the same way), but a plain
+     * identifier reference keeps its JS spelling, so every camelCase module-level
+     * const, table or helper was referenced by a name that does not exist (CS0103).
+     *
+     * Resolves each Identifier reference lexically: one that reaches a module-level
+     * binding without passing a same-named parameter or local of an enclosing
+     * function is recorded (by node identity - the AST is not mutated), and
+     * transformIdentifier / the bare-call path emit the binding's C# name for it.
+     * Block scoping is approximated by function scoping, which can only make a
+     * reference look shadowed - i.e. left as before - never wrongly renamed.
+     * @param {Array} programBody - top-level statements
+     */
+    preScanModuleBindingReferences(programBody) {
+      this.moduleBindingRefs = new WeakSet();
+      this.moduleBindingTargets = new Map();
+      if (!Array.isArray(programBody)) return;
+
+      // 'ArrowFunction' is the IL's own name for an arrow function
+      const isFunctionNode = n => n && (n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' ||
+        n.type === 'ArrowFunctionExpression' || n.type === 'ArrowFunction');
+      const isIIFE = n => n && n.type === 'CallExpression' && isFunctionNode(n.callee) && n.callee.body?.type === 'BlockStatement';
+      const patternNames = (p, out) => {
+        if (!p) return out;
+        if (typeof p === 'string') out.push(p); // IL arrow params may be bare names
+        else if (p.type === 'Identifier') out.push(p.name);
+        else if (p.type === 'AssignmentPattern') patternNames(p.left, out);
+        else if (p.type === 'RestElement') patternNames(p.argument, out);
+        else if (p.type === 'ObjectPattern') for (const prop of p.properties || []) patternNames(prop.type === 'RestElement' ? prop : prop.value, out);
+        else if (p.type === 'ArrayPattern') for (const el of p.elements || []) patternNames(el, out);
+        return out;
+      };
+
+      // Functions whose own locals ARE module bindings (hoisted IIFE bodies): the
+      // hoisted names must not count as shadowing inside them.
+      const transparent = new Map();
+      const bindings = new Set();
+      const collect = (stmts) => {
+        for (const stmt of stmts || []) {
+          if (stmt?.type === 'VariableDeclaration') {
+            for (const decl of stmt.declarations || []) {
+              if (decl.id?.type !== 'Identifier' || !decl.init) continue;
+              bindings.add(decl.id.name);
+              if (isIIFE(decl.init)) hoistIIFE(decl.init, !!this.getIIFEReturnValue(decl.init));
+            }
+          } else if (stmt?.type === 'FunctionDeclaration' && stmt.id?.name) {
+            bindings.add(stmt.id.name);
+          } else if (stmt?.type === 'ExpressionStatement' && isIIFE(stmt.expression)) {
+            hoistIIFE(stmt.expression, false);
+          }
+        }
+      };
+      const hoistIIFE = (call, returnsValue) => {
+        const body = call.callee.body.body || [];
+        const hoisted = new Set();
+        if (returnsValue) {
+          // extractIIFELocalDeclarations: only the body's own variable declarations
+          for (const stmt of body)
+            if (stmt?.type === 'VariableDeclaration')
+              for (const decl of stmt.declarations || [])
+                if (decl.id?.type === 'Identifier' && decl.init) { bindings.add(decl.id.name); hoisted.add(decl.id.name); }
+        } else {
+          // transformIIFE: the whole body is transformed as top-level code
+          const before = new Set(bindings);
+          collect(body);
+          for (const name of bindings) if (!before.has(name)) hoisted.add(name);
+        }
+        transparent.set(call.callee, hoisted);
+      };
+      collect(programBody);
+
+      for (const name of bindings) {
+        const target = this.toPascalCase(name);
+        if (target !== name) this.moduleBindingTargets.set(name, target);
+      }
+      if (this.moduleBindingTargets.size === 0) return;
+
+      const declaredIn = (fn) => {
+        const names = [];
+        for (const p of fn.params || []) patternNames(p, names);
+        if (fn.type === 'FunctionExpression' && fn.id?.name) names.push(fn.id.name);
+        const visit = (n) => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(visit); return; }
+          if (isFunctionNode(n)) { if (n.type === 'FunctionDeclaration' && n.id?.name) names.push(n.id.name); return; }
+          if (n.type === 'VariableDeclaration') for (const d of n.declarations || []) patternNames(d.id, names);
+          if (n.type === 'ClassDeclaration' && n.id?.name) names.push(n.id.name);
+          if (n.type === 'CatchClause' && n.param) patternNames(n.param, names);
+          for (const key in n) {
+            if (SKIP_KEYS.has(key)) continue;
+            const v = n[key];
+            if (v && typeof v === 'object') visit(v);
+          }
+        };
+        visit(fn.body);
+        const set = new Set(names);
+        const hoisted = transparent.get(fn);
+        if (hoisted) for (const h of hoisted) set.delete(h);
+        return set;
+      };
+
+      const SKIP_KEYS = new Set(['type', 'loc', 'range', 'start', 'end', 'typeInfo', 'resultType', 'inferredType',
+        'leadingComments', 'trailingComments', 'parent', 'ilNodeType']);
+      const scopes = [];
+      const visited = new WeakSet();
+      const walk = (n) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (visited.has(n)) return;
+        visited.add(n);
+        if (n.type === 'Identifier') {
+          if (this.moduleBindingTargets.has(n.name) && !scopes.some(s => s.has(n.name)))
+            this.moduleBindingRefs.add(n);
+          return;
+        }
+        if (isFunctionNode(n)) {
+          scopes.push(declaredIn(n));
+          for (const p of n.params || []) if (p?.type === 'AssignmentPattern') walk(p.right);
+          walk(n.body);
+          scopes.pop();
+          return;
+        }
+        for (const key in n) {
+          if (SKIP_KEYS.has(key) || key === 'id' || key === 'label' || key === 'params') continue;
+          if ((key === 'property' || key === 'key') && !n.computed) continue;
+          const v = n[key];
+          if (v && typeof v === 'object') walk(v);
+        }
+      };
+      walk(programBody);
+    }
+
+    /**
+     * The C# name for an Identifier node that preScanModuleBindingReferences
+     * resolved to a renamed module-level binding, else null.
+     */
+    _moduleBindingName(node) {
+      if (!node || !this.moduleBindingRefs?.has(node)) return null;
+      return this.moduleBindingTargets.get(node.name) || null;
+    }
+
     transform(jsAst) {
       const unit = new CSharpCompilationUnit();
 
@@ -7009,6 +7174,7 @@
         // castArgumentsToParameterTypes had no signature to look up and silently fell
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
+        this.preScanModuleBindingReferences(jsAst.body);
         // Register module-scope BigInteger constants (e.g. asymmetric-crypto curve
         // primes/generators declared `const P = 0xFFFF...FC2Fn;`) as static fields
         // BEFORE pre-registering any function signature below - see
@@ -7071,6 +7237,7 @@
         // Module-level parameter tables keyed by a runtime variant string (see
         // preScanComputedIndexedConstObjects's doc comment) - must run before the
         // transformTopLevel loop below transforms the table's own `const` declaration.
+        this.dynamicDictionaryTableNames = new Set();
         this.dictionaryTableNames = this.preScanComputedIndexedConstObjects(jsAst);
         // Module-level object-literal singletons whose methods hold real mutable `this`
         // state (see detectStatefulSingletonNames's doc comment) - must also run before
@@ -7759,6 +7926,8 @@
           // value). Checked before the default static-class handling below.
           if (this.dictionaryTableNames.has(name)) {
             this.transformObjectToDictionaryTable(name, decl.init, targetClass);
+          } else if (this.dynamicDictionaryTableNames?.has(name)) {
+            this.transformObjectToDynamicDictionary(name, decl.init, targetClass);
           } else {
             const asInstance = this.instanceSingletonNames.has(name);
             const staticClass = this.transformObjectToStaticClass(name, decl.init, asInstance);
@@ -7866,6 +8035,7 @@
           let fieldName = this.toPascalCase(name);
           if (targetClass.nestedTypes?.some(nt => nt.name === fieldName)) {
             fieldName += 'Field';
+            if (this.moduleBindingTargets?.has(name)) this.moduleBindingTargets.set(name, fieldName);
           }
           // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment - a module-level const
           // hoisted here as a field of the MAIN wrapper class, whose name coincides
@@ -8451,8 +8621,13 @@
         for (const decl of node.declarations) {
           const name = decl.id?.name;
           if (!name || !computedIndexedNames.has(name)) continue;
-          const init = decl.init;
-          if (!init || (init.type !== 'ObjectExpression' && init.type !== 'ObjectLiteral') || !init.properties?.length) continue;
+          let init = decl.init;
+          // Object.freeze({...}) is the table itself (transformVariableDeclaration unwraps it too)
+          while (init && (init.type === 'ObjectFreeze' || init.type === 'ObjectSeal')) init = init.object;
+          if (!init || (init.type !== 'ObjectExpression' && init.type !== 'ObjectLiteral')) continue;
+          // An empty `{}` filled at runtime (sike.js's `PARAMETER_SETS[name] = ...`)
+          // is a dictionary by construction.
+          if (!init.properties?.length) { this.dynamicDictionaryTableNames.add(name); continue; }
           // Every property's own value must itself be a plain data record (an object
           // literal whose own fields are all simple scalars, no nested objects/
           // methods) - a genuine "table of records" shape. Anything else (nested
@@ -8470,9 +8645,46 @@
             });
           });
           if (isUniformRecordTable) tableNames.add(name);
+          else if (!this._containsFunctionOrSpread(init)) this.dynamicDictionaryTableNames.add(name);
         }
       }
       return tableNames;
+    }
+
+    /** True when an object literal holds a function or a spread anywhere inside. */
+    _containsFunctionOrSpread(node) {
+      let found = false;
+      this._walkAstNodes(node, (n) => {
+        if (n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' ||
+            n.type === 'SpreadElement' || n.type === 'ObjectSpread') found = true;
+      });
+      return found;
+    }
+
+    /**
+     * A module-level object-literal table indexed with a runtime key whose rows are
+     * not uniform records (nested tables, scalar rows - e.g. ecdsa.js's `CURVES`,
+     * mayo.js's `WHIP_POSITIONS`, sike.js's `PARAMETER_SETS`): a static class is a
+     * type, so `NAME[key]` fails (CS0119). Emit `Dictionary<string, dynamic>` instead,
+     * each row an ordinary transformed value, read back dynamically.
+     */
+    transformObjectToDynamicDictionary(name, objNode, targetClass) {
+      const dictType = CSharpType.Dictionary(CSharpType.String(), CSharpType.Dynamic());
+      const dictInit = new CSharpObjectInitializer(true);
+      for (const prop of objNode.properties) {
+        let keyName = prop.key;
+        if (keyName && typeof keyName === 'object') keyName = keyName.name ?? keyName.value;
+        if (keyName == null) continue;
+        dictInit.assignments.push({ name: String(keyName), value: this.transformExpression(prop.value) });
+      }
+      const dictCreation = new CSharpObjectCreation(dictType, []);
+      dictCreation.initializer = dictInit;
+      const field = new CSharpField(this.toPascalCase(name), dictType);
+      field.isStatic = true;
+      field.isReadOnly = true;
+      field.initializer = dictCreation;
+      targetClass.members.push(field);
+      this.registerVariableType(name, dictType);
     }
 
     /**
@@ -9449,6 +9661,13 @@
             // that over the name-pattern heuristic below, which only recognizes a
             // handful of common English table-name substrings and otherwise
             // misclassified short/cryptic field names (like "KLi1") as string keys.
+            arrayIndexParams.add(propName);
+          } else if (node.object?.type === 'MemberExpression' && !node.object.computed &&
+                     !objectsWithStringKeys.has(node.object.property?.name || node.object.property?.value)) {
+            // `record.<table>[param]` - the same convention one level down (e.g.
+            // darkcrypt-cobra.js's `tabs.P16[round]`): extractObjName reports the
+            // record (`tabs`), not the indexed table, so the name heuristic below
+            // would call `round` a string key.
             arrayIndexParams.add(propName);
           } else {
             // Check if the object name suggests an array (state, buffer, block, etc.)
@@ -10588,7 +10807,10 @@
 
       // Clear method-scoped variable tracking for collision detection
       const prevMethodDeclaredVars = this.methodDeclaredVars;
-      this.methodDeclaredVars = new Set();
+      // Parameters occupy their names too: JS `function f(a) { const A = a || 1; }`
+      // or `(L, R) => { for (let r ...) }` camelCase a local onto a parameter's name,
+      // which C# rejects (CS0136/CS0841) unless the local is renamed.
+      this.methodDeclaredVars = new Set((method?.parameters || []).map(p => p?.name).filter(Boolean));
       const prevVariableNameMap = this.variableNameMap;
       // Copy existing mappings (includes parameter name mappings) into new scope
       this.variableNameMap = new Map(prevVariableNameMap);
@@ -10992,6 +11214,19 @@
           name = newName;
         }
         this.methodDeclaredVars.add(name);
+
+        // `const { RK, W } = this._sched;` - the source of an OBJECT destructuring is an
+        // object. When its inferred type is a scalar or an array (a name-based guess,
+        // e.g. uint), the member reads that follow cannot compile (CS1061), so hold the
+        // source as dynamic instead.
+        if (decl.ilNodeType === 'DestructureTemp' && decl.destructureKind === 'object' && decl.init) {
+          const sourceType = this.inferFullExpressionType(decl.init);
+          if (!sourceType || sourceType.isArray || CSHARP_VALUE_TYPES.has(sourceType.name)) {
+            this.registerVariableType(originalName, CSharpType.Dynamic());
+            results.push(new CSharpVariableDeclaration(name, CSharpType.Dynamic(), this.transformExpression(decl.init)));
+            continue;
+          }
+        }
 
         let type = CSharpType.Var();
         let initializer = null;
@@ -13055,6 +13290,11 @@
         return new CSharpMemberAccess(new CSharpIdentifier(this.mainClassName || 'GeneratedClass'), qualifiedName);
       }
 
+      // A reference to a module-level binding hoisted under its PascalCase name
+      // (see preScanModuleBindingReferences).
+      const moduleBindingName = this._moduleBindingName(node);
+      if (moduleBindingName) return new CSharpIdentifier(this.escapeReservedKeyword(moduleBindingName));
+
       // Map JavaScript keywords to C# equivalents
       if (name === 'undefined') return CSharpLiteral.Null();
       if (name === 'NaN') return new CSharpMemberAccess(new CSharpIdentifier('double'), 'NaN');
@@ -13962,6 +14202,17 @@
           return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
         }
 
+        // A class-typed operand (e.g. blake2.js's `if (!this._hasher)` once the field
+        // resolves to Blake2bHasher) is a reference: !x -> x == null (CS0023 otherwise).
+        if (this._isClassReferenceType(operandType)) {
+          return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
+        }
+
+        // !dynamic -> JS falsiness at runtime (see ensureBooleanCondition).
+        if (operandType?.name === 'dynamic' && !operandType.isArray) {
+          return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [operand]), true);
+        }
+
         // For bool or unknown, use normal !
         return new CSharpUnaryExpression('!', operand, true);
       }
@@ -14447,7 +14698,20 @@
       return null;
     }
 
+    /** A bare `crypto` that is the Web Crypto global, not a local or module binding. */
+    _isWebCryptoGlobal(node) {
+      return node?.type === 'Identifier' && node.name === 'crypto' &&
+        !this._moduleBindingName(node) && !this.getVariableType('crypto') && !this.variableNameMap.has('crypto');
+    }
+
     transformMemberExpression(node) {
+      // `crypto.getRandomValues` read as a feature test (`typeof crypto !== 'undefined'
+      // && crypto.getRandomValues`) - always available through the runtime stub.
+      if (!node.computed && (node.property?.name || node.property?.value) === 'getRandomValues' &&
+          this._isWebCryptoGlobal(node.object)) {
+        return CSharpLiteral.Bool(true);
+      }
+
       // `global.OpCodes` (bare, or as the object of further member/call access - e.g.
       // fish.js's `global.OpCodes.ClearArray(this._key)`) - OpCodes is always the same
       // statically-compiled `OpCodes` class in the emitted C#, never actually loaded
@@ -14624,6 +14888,21 @@
           return new CSharpMemberAccess(groupsAccess, 'Value');
         }
 
+        // A string-keyed Dictionary (a JS object used as a table, e.g. elgamal.js's
+        // `ELGAMAL_KEYS[this.keySize]` over `{ 512: ..., 1024: ... }`) looked up with a
+        // number: JS converts the key to its decimal string, so do the same rather
+        // than casting it to int (CS1503).
+        const isStringKeyedDictionary = targetType && !targetType.isArray &&
+          ((targetType.name === 'Dictionary' && targetType.genericArguments?.[0]?.name === 'string') ||
+           /^Dictionary<string\s*,/.test(targetType.name || ''));
+        if (isStringKeyedDictionary) {
+          const keyType = this.inferFullExpressionType(node.property);
+          if (keyType && !keyType.isArray && keyType.name !== 'string' && keyType.name !== 'dynamic' && keyType.name !== 'object') {
+            return new CSharpElementAccess(target, new CSharpMethodCall(index, 'ToString', []));
+          }
+          return new CSharpElementAccess(target, index);
+        }
+
         // C# requires int for array indices. Cast uint expressions to int.
         const indexExpr = this.ensureIntIndex(index, node.property);
         return new CSharpElementAccess(target, indexExpr);
@@ -14710,6 +14989,13 @@
         // against a small stub `AlgorithmFramework.Find` that's added to the compilation
         // unit on demand (see needsAlgorithmFrameworkStub / transform()) instead of leaving
         // a bare `AlgorithmFramework` identifier with no class behind it (CS0103).
+        // Web Crypto's `crypto.getRandomValues(buffer)` (the random-byte source of the
+        // RSA/ElGamal/LUC/Rabin-Williams key generators) - no such global in C#
+        // (CS0103); the runtime stub's GetRandomValues fills from the platform CSPRNG.
+        if (methodName === 'getRandomValues' && this._isWebCryptoGlobal(node.callee.object)) {
+          return new CSharpMethodCall(null, 'GetRandomValues', args);
+        }
+
         if (this.isAlgorithmFrameworkRoot(node.callee.object)) {
           this.needsAlgorithmFrameworkStub = true;
           return new CSharpMethodCall(new CSharpIdentifier('AlgorithmFramework'), methodName, args);
@@ -15357,6 +15643,13 @@
           return new CSharpMethodCall(new CSharpIdentifier('Array'), 'ForEach', [target, ...args]);
         }
         if (methodName === 'toString' && args.length === 1) {
+          // bigint.toString(radix): BigInteger has neither a radix ToString nor a
+          // Convert.ToString overload (CS1503), and ToString("X") pads a sign digit -
+          // use the runtime stub's JS-compatible FrameworkFunctions.ToRadixString.
+          const receiverType = this.inferFullExpressionType(node.callee.object);
+          if (receiverType?.name === 'BigInteger' && !receiverType.isArray) {
+            return new CSharpMethodCall(null, 'ToRadixString', [target, args[0]]);
+          }
           // number.toString(radix) - convert to base string
           // For radix 16: value.ToString("X")
           if (args[0].nodeType === 'Literal' && args[0].value === 16) {
@@ -15682,7 +15975,8 @@
       // `intsTo32bits` local was actually declared (CS0103).
       const varType = this.getVariableType(funcName);
       if (varType) {
-        const referencedName = this.variableNameMap.has(funcName) ? this.variableNameMap.get(funcName) : funcName;
+        const referencedName = this._moduleBindingName(node.callee) ||
+          (this.variableNameMap.has(funcName) ? this.variableNameMap.get(funcName) : funcName);
         // A local closure's OWN parameter types (see inferFunctionExpressionDelegateType)
         // are inferred independently, purely from ITS OWN body's usage evidence - unlike
         // a real class method, they never get the cross-call-site unification real
@@ -15966,6 +16260,18 @@
           return transformed;
         });
         return new CSharpObjectCreation(new CSharpType('KeySize'), intArgs);
+      }
+
+      // The framework's BlockAbsorber(long blockSize, Action<byte[]> processBlock)
+      // (csharp.js stub). A block size read from a `dynamic` field (e.g. keccak.js's
+      // `new BlockAbsorber(this.rate, block => ...)`) would make the whole
+      // construction dynamically bound, and a lambda cannot be an argument to that
+      // (CS1977) - so pin the size to its declared parameter type.
+      if (typeName === 'BlockAbsorber' && args.length >= 1) {
+        const sizeType = this.inferFullExpressionType(node.arguments[0]);
+        if (!sizeType || sizeType.isArray || !['int', 'uint', 'byte', 'ushort', 'short', 'long'].includes(sizeType.name))
+          args[0] = new CSharpCast(new CSharpType('long'), args[0]);
+        return new CSharpObjectCreation(new CSharpType('BlockAbsorber'), args);
       }
 
       // Handle JavaScript Error types -> C# Exception types
@@ -17806,6 +18112,15 @@
      * @param {Object} node - The JavaScript AST expression node
      * @returns {Object} A C# AST expression that evaluates to bool
      */
+    /**
+     * True for a named, non-array, non-tuple type that is not a primitive, string,
+     * object, dynamic or var placeholder - i.e. a class, whose truthiness is a null test.
+     */
+    _isClassReferenceType(type) {
+      return !!(type?.name && !type.isArray && !type.isTuple && !PRIMITIVE_OR_SPECIAL_TYPE_NAMES.has(type.name) &&
+        type.name !== 'boolean' && !/[<>?(]/.test(type.name));
+    }
+
     ensureBooleanCondition(node) {
       // If it's already a comparison or logical expression, transform normally
       if (node.type === 'BinaryExpression') {
@@ -17858,8 +18173,12 @@
         // !x - if x is non-bool, use x == 0 or x == null
         const inferredArgType = this.inferFullExpressionType(node.argument);
         if (inferredArgType && !['bool', 'boolean'].includes(inferredArgType.name)) {
-          // For arrays/objects: !arr -> arr == null
-          if (inferredArgType.isArray || inferredArgType.name === 'object' || inferredArgType.name === 'string') {
+          if (inferredArgType.name === 'dynamic' && !inferredArgType.isArray) {
+            return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [this.transformExpression(node.argument)]), true);
+          }
+          // For arrays/objects/class instances: !arr -> arr == null
+          if (inferredArgType.isArray || inferredArgType.name === 'object' || inferredArgType.name === 'string' ||
+              this._isClassReferenceType(inferredArgType)) {
             return new CSharpBinaryExpression(
               this.transformExpression(node.argument),
               '==',
@@ -17954,6 +18273,13 @@
       // For string, check both null and empty (or just != null for simple check)
       if (type?.name === 'string') {
         return new CSharpBinaryExpression(expr, '!=', CSharpLiteral.Null());
+      }
+
+      // A dynamic value may hold an object, a number or a bool at runtime; only the
+      // runtime stub's JS truthiness test is right for all of them (`dynamic != 0`
+      // throws for an object).
+      if (type?.name === 'dynamic' && !type.isArray) {
+        return new CSharpMethodCall(null, 'IsTruthy', [expr]);
       }
 
       // For numeric types, add != 0
@@ -18598,6 +18924,7 @@
       // the operator site instead - see transformBinaryExpression's dynamic-operand cast.
       if (initialValue.type === 'Literal' && initialValue.value === null) {
         const resolvedType = propName && this.nullFieldResolvedTypes?.get(propName);
+        if (resolvedType?.isTuple) return resolvedType;
         if (resolvedType) {
           const t = new CSharpType(resolvedType.name, {
             isArray: resolvedType.isArray,
@@ -19153,12 +19480,15 @@
               // parameter. `fieldTypeOverride` carries the field's real, independent
               // type in that case; propType alone is reused for both otherwise.
               let fieldTypeOverride = null;
+              // A backing field assigned an object literal anywhere is dynamic (see
+              // preScanDynamicInstanceFields) whatever the accessors' names suggest.
+              if (this.dynamicInstanceFields?.has(propName)) propType = CSharpType.Dynamic();
 
               // Find the accessor getter or setter to determine type - but skip a
               // trivial passthrough accessor (see isTrivialAccessorPassthrough), which
               // gives no real evidence and would otherwise mask the field's own
               // concrete initializer below with a generic name-based guess.
-              for (const item of classBody) {
+              for (const item of (propType ? [] : classBody)) {
                 if (item.type === 'MethodDefinition' && item.key?.name === propName.substring(1)) {
                   if (item.kind === 'get' && !this.isTrivialAccessorPassthrough(item.value, 'get', propName)) {
                     propType = this.inferReturnType(item.value);
@@ -19505,11 +19835,14 @@
             // BACKING FIELD's own type when a non-trivial setter converts its
             // parameter into a differently-shaped accumulator before storing it.
             let fieldTypeOverride = null;
+            // A backing field assigned an object literal anywhere is dynamic (see
+            // preScanDynamicInstanceFields) whatever the accessors' names suggest.
+            if (this.dynamicInstanceFields?.has(propName)) propType = CSharpType.Dynamic();
 
             // Find the accessor getter or setter to determine type - skipping a
             // trivial passthrough accessor (see isTrivialAccessorPassthrough), which
             // gives no real evidence beyond a generic name-based guess.
-            for (const item of classBody) {
+            for (const item of (propType ? [] : classBody)) {
               if (item.type === 'MethodDefinition' && item.key?.name === propName.substring(1)) {
                 if (item.kind === 'get' && !this.isTrivialAccessorPassthrough(item.value, 'get', propName)) {
                   propType = this.inferReturnType(item.value);
@@ -20132,7 +20465,8 @@
         // rewritten to the nonexistent `i6` (CS0103), while the declaration itself
         // stayed the un-renamed `i`.
         const prevMethodDeclaredVars = this.methodDeclaredVars;
-        this.methodDeclaredVars = new Set();
+        // Parameters occupy their names (see transformFunctionBody).
+        this.methodDeclaredVars = new Set(ctor.parameters.map(p => p?.name).filter(Boolean));
         const prevVariableNameMap = this.variableNameMap;
         this.variableNameMap = new Map(prevVariableNameMap);
 
@@ -20865,12 +21199,14 @@
     inferFunctionExpressionDelegateType(node) {
       const body = node.body;
       const isBlockBody = body && body.type === 'BlockStatement';
-      const arrayUsageParams = isBlockBody ? this.detectArrayUsageParams(body) : new Set();
+      // Expression bodies count too: crypton.js's `const piMix = (words, n0) =>
+      // words[0] & ...` indexes `words`, which the name-based fallback typed uint (CS0021).
+      const arrayUsageParams = body && typeof body === 'object' ? this.detectArrayUsageParams(body) : new Set();
 
       const paramTypes = (node.params || []).map(p => {
         // IL AST 'ArrowFunction' params may be plain strings, not { name } nodes.
         const rawName = typeof p === 'string' ? p : (p.name || p.left?.name || 'param');
-        if (isBlockBody && arrayUsageParams.has(rawName)) {
+        if (arrayUsageParams.has(rawName)) {
           return CSharpType.Array(this.detectArrayElementType(rawName, body));
         }
         if (isBlockBody && this.isUsedAsScalar32Bit(rawName, body)) {
@@ -22372,6 +22708,21 @@
      * Note: This creates a new array, caller must handle assignment if needed
      * Uses Concat when value is a SpreadElement or array type, Append for single elements
      */
+    /**
+     * `this.inputBuffer.push(data)` with an array `data` - the Feed() fallback branch
+     * most algorithms carry. By the framework contract the input buffer is a flat byte
+     * buffer, never jagged, so the rule above (keep push as one element) cannot apply:
+     * Append would not compile (CS1929). Appending the bytes is the only reading that
+     * types.
+     */
+    _isFlatFeedBufferAppendOfArray(arrayNode, valueType) {
+      if (!valueType?.isArray || valueType.elementType?.isArray) return false;
+      const prop = arrayNode?.type === 'ThisPropertyAccess'
+        ? (typeof arrayNode.property === 'string' ? arrayNode.property : arrayNode.property?.name)
+        : (arrayNode?.type === 'MemberExpression' && arrayNode.object?.type === 'ThisExpression' ? arrayNode.property?.name : null);
+      return /^_?inputBuffer$/i.test(prop || '');
+    }
+
     transformArrayAppend(node) {
       const array = this.transformExpression(node.array);
 
@@ -22405,7 +22756,7 @@
       // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
       // single element - forcing Concat here as a workaround for an under-inferred
       // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread;
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
@@ -22487,7 +22838,7 @@
       // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
       // single element - forcing Concat here as a workaround for an under-inferred
       // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread;
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])

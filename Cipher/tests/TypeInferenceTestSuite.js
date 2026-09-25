@@ -285,10 +285,11 @@ class TypeInferenceTestSuite {
         'float64', 'Float literal → float64', 'const x = 3.14'
       );
 
-      // Note: JavaScript parser converts 0.0 to 0 (integer), so we get int32
+      // Decimal-point source text is an explicit float even for a whole value
+      // (see _isExplicitFloatLiteralText)
       this.assertEqual(
         this.inferType('const x = 0.0;', this.findVarInit),
-        'int32', 'Zero literal → int32 (JS parser converts 0.0 to 0)', 'const x = 0.0'
+        'float64', 'Zero literal written as 0.0 → float64', 'const x = 0.0'
       );
 
       // Boolean literals
@@ -345,20 +346,31 @@ class TypeInferenceTestSuite {
         'int32[]', 'Empty array → default int32[]', 'const x = []'
       );
 
-      // Single element inference - elements are int32 by default
+      // Integer literal arrays take the tightest element type that fits every
+      // element (boundaries 0xFF / 0xFFFF / 0xFFFFFFFF)
       this.assertEqual(
         this.inferType('const x = [0];', this.findVarInit),
-        'int32[]', 'Array with int32 elements → int32[]', 'const x = [0]'
+        'uint8[]', 'Array of byte-range literals → uint8[]', 'const x = [0]'
+      );
+
+      this.assertEqual(
+        this.inferType('const x = [255];', this.findVarInit),
+        'uint8[]', 'Array at the uint8 upper bound → uint8[]', 'const x = [255]'
       );
 
       this.assertEqual(
         this.inferType('const x = [256];', this.findVarInit),
-        'int32[]', 'Array with int32 elements → int32[]', 'const x = [256]'
+        'uint16[]', 'Array just above uint8 → uint16[]', 'const x = [256]'
       );
 
       this.assertEqual(
         this.inferType('const x = [65536];', this.findVarInit),
-        'int32[]', 'Array with int32 elements → int32[]', 'const x = [65536]'
+        'uint32[]', 'Array just above uint16 → uint32[]', 'const x = [65536]'
+      );
+
+      this.assertEqual(
+        this.inferType('const x = [-1, 5];', this.findVarInit),
+        'int32[]', 'Array with a negative literal → int32[]', 'const x = [-1, 5]'
       );
 
       // Large elements require widening
@@ -367,15 +379,15 @@ class TypeInferenceTestSuite {
         'uint32[]', 'Array with uint32 element → uint32[]', 'const x = [2147483648]'
       );
 
-      // Mixed elements - all int32 stays int32
+      // Mixed elements - the widest element decides
       this.assertEqual(
         this.inferType('const x = [0, 256];', this.findVarInit),
-        'int32[]', 'Mixed small ints → int32[]', 'const x = [0, 256]'
+        'uint16[]', 'Mixed byte/word ints → uint16[]', 'const x = [0, 256]'
       );
 
       this.assertEqual(
         this.inferType('const x = [1, 65536, 3];', this.findVarInit),
-        'int32[]', 'Mixed small ints → int32[]', 'const x = [1, 65536, 3]'
+        'uint32[]', 'Mixed ints up to 65536 → uint32[]', 'const x = [1, 65536, 3]'
       );
 
       // String array
@@ -1063,7 +1075,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code3, this.findReturnArg),
-        'usize', 'arr.length → usize', 'arr.length'
+        'int32', 'arr.length → int32', 'arr.length'
       );
 
       // TypedArray length
@@ -1075,7 +1087,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code4, this.findReturnArg),
-        'usize', 'TypedArray.length → usize', 'new Uint32Array(10).length'
+        'int32', 'TypedArray.length → int32', 'new Uint32Array(10).length'
       );
 
       // String length
@@ -1087,7 +1099,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code5, this.findReturnArg),
-        'usize', 'string.length → usize', '"hello".length'
+        'int32', 'string.length → int32', '"hello".length'
       );
 
       // Indexing into TypedArray variable
@@ -1116,7 +1128,7 @@ class TypeInferenceTestSuite {
       // This tests that this.data.length resolves correctly
       this.assertEqual(
         this.inferType(code7, this.findReturnArg),
-        'usize', 'this.data.length → usize', 'this.data.length'
+        'int32', 'this.data.length → int32', 'this.data.length'
       );
     });
   }
@@ -1136,7 +1148,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code1, this.findReturnArg),
-        'int32[]', 'arr.slice() → same array type', 'arr.slice(0, 2)'
+        'uint8[]', 'arr.slice() → same array type', 'arr.slice(0, 2)'
       );
 
       const code2 = `
@@ -1147,7 +1159,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code2, this.findReturnArg),
-        'int32', 'arr.pop() → element type', 'arr.pop()'
+        'uint8', 'arr.pop() → element type', 'arr.pop()'
       );
 
       const code3 = `
@@ -1158,7 +1170,7 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code3, this.findReturnArg),
-        'usize', 'arr.push() → usize (length)', 'arr.push(4)'
+        'int32', 'arr.push() → int32 (new length)', 'arr.push(4)'
       );
 
       const code4 = `
@@ -1309,7 +1321,7 @@ class TypeInferenceTestSuite {
       if (types?.ArrayLength) {
         this.assertEqual(
           types.ArrayLength(),
-          'usize', 'ArrayLength() → usize', 'ArrayLength result type'
+          'int32', 'ArrayLength() → int32', 'ArrayLength result type'
         );
       }
 

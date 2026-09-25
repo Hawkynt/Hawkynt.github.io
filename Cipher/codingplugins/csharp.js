@@ -405,6 +405,7 @@ class CSharpPlugin extends LanguagePlugin {
     usings.add('using System.Collections.Generic;');
     usings.add('using System.Linq;');
     usings.add('using System.Numerics;');
+    usings.add(`using static ${namespace}.FrameworkFunctions;`);
 
     // Remove using statements from the original code
     const codeWithoutUsings = code.replace(usingRegex, '').replace(/^\s*\n/gm, '');
@@ -764,6 +765,175 @@ namespace ${namespace}
         public KeySize(int min, int max, int step) { MinSize = min; MaxSize = max; Step = step; }
     }
 
+    // Mirrors AlgorithmFramework.js's BlockAbsorber: buffers input and hands every
+    // complete block but the last to processBlock; Finish passes the held tail to a
+    // finalizer. The finalizer overloads cover the JS call shapes (held, pending)
+    // and (held, pending, totalLength), returning a value or not.
+    public class BlockAbsorber
+    {
+        private readonly int _blockSize;
+        private readonly Action<byte[]> _processBlock;
+        private readonly byte[] _held;
+        private int _pending;
+        private long _length;
+
+        public BlockAbsorber(long blockSize, Action<byte[]> processBlock)
+        {
+            if (blockSize <= 0) throw new ArgumentException("BlockAbsorber: blockSize must be positive");
+            _blockSize = (int)blockSize;
+            _processBlock = processBlock ?? throw new ArgumentNullException(nameof(processBlock));
+            _held = new byte[_blockSize];
+        }
+
+        public int BlockSize => _blockSize;
+        public int Pending => _pending;
+        public long Length => _length;
+
+        public void Absorb(byte[] data)
+        {
+            if (data == null || data.Length == 0) return;
+            var offset = 0;
+            while (offset < data.Length)
+            {
+                if (_pending == _blockSize)
+                {
+                    _processBlock(_held);
+                    _pending = 0;
+                }
+                var take = Math.Min(_blockSize - _pending, data.Length - offset);
+                Array.Copy(data, offset, _held, _pending, take);
+                _pending += take;
+                offset += take;
+                _length += take;
+            }
+        }
+
+        private byte[] Tail() => _held.Take(_pending).ToArray();
+        public T Finish<T>(Func<byte[], int, T> finalize) => finalize(Tail(), _pending);
+        public T Finish<T>(Func<byte[], int, long, T> finalize) => finalize(Tail(), _pending, _length);
+        public void Finish(Action<byte[], int> finalize) => finalize(Tail(), _pending);
+        public void Finish(Action<byte[], int, long> finalize) => finalize(Tail(), _pending, _length);
+
+        public void Reset()
+        {
+            Array.Clear(_held, 0, _held.Length);
+            _pending = 0;
+            _length = 0;
+        }
+    }
+
+    // Mirrors AlgorithmFramework.js's free padding functions; imported with
+    // "using static" so the bare JS calls resolve unchanged.
+    public static class FrameworkFunctions
+    {
+        public static byte[][] SpongePadBlocks(byte[] held, long pending, long rate, long separator)
+        {
+            if (rate <= 0) throw new ArgumentException("SpongePadBlocks: rate must be positive");
+            if (pending < 0 || pending > rate) throw new ArgumentException("SpongePadBlocks: pending " + pending + " outside 0.." + rate);
+            var blocks = new List<byte[]>();
+            var block = new byte[rate];
+            for (var i = 0; i < pending; ++i) block[i] = held[i];
+            var used = pending;
+            if (used == rate)
+            {
+                blocks.Add(block);
+                block = new byte[rate];
+                used = 0;
+            }
+            block[used] = unchecked((byte)separator);
+            block[rate - 1] |= 0x80;
+            blocks.Add(block);
+            return blocks.ToArray();
+        }
+
+        // JavaScript truthiness for values only known at runtime (dynamic).
+        public static bool IsTruthy(object value)
+        {
+            switch (value)
+            {
+                case null: return false;
+                case bool b: return b;
+                case string s: return s.Length != 0;
+                case double d: return d != 0 && !double.IsNaN(d);
+                case float f: return f != 0 && !float.IsNaN(f);
+                case BigInteger big: return !big.IsZero;
+                case char ch: return ch != 0;
+                case IConvertible c when value.GetType().IsPrimitive: return c.ToDecimal(null) != 0;
+                default: return true;
+            }
+        }
+
+        // Web Crypto's crypto.getRandomValues: fills the buffer from the platform CSPRNG.
+        public static T[] GetRandomValues<T>(T[] buffer) where T : struct
+        {
+            System.Security.Cryptography.RandomNumberGenerator.Fill(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buffer.AsSpan()));
+            return buffer;
+        }
+
+        // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
+        public static string ToRadixString(BigInteger value, long radix)
+        {
+            if (radix < 2 || radix > 36) throw new ArgumentOutOfRangeException(nameof(radix));
+            if (value.IsZero) return "0";
+            const string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+            var negative = value.Sign < 0;
+            var remaining = BigInteger.Abs(value);
+            var result = new System.Text.StringBuilder();
+            while (!remaining.IsZero)
+            {
+                result.Insert(0, digits[(int)(remaining % radix)]);
+                remaining /= radix;
+            }
+            if (negative) result.Insert(0, '-');
+            return result.ToString();
+        }
+
+        private static T Option<T>(object options, string name, T fallback)
+        {
+            var property = options?.GetType().GetProperty(name);
+            var value = property?.GetValue(options);
+            return value == null ? fallback : (T)Convert.ChangeType(value, typeof(T));
+        }
+
+        public static byte[][] MerkleDamgardBlocks(byte[] held, long pending, long totalLength, object options)
+        {
+            var blockSize = Option(options, "BlockSize", 0);
+            if (blockSize <= 0) throw new ArgumentException("MerkleDamgardBlocks: blockSize must be positive");
+            if (pending < 0 || pending > blockSize) throw new ArgumentException("MerkleDamgardBlocks: pending " + pending + " outside 0.." + blockSize);
+            var padByte = Option(options, "PadByte", 0x80);
+            var lengthBytes = Option(options, "LengthBytes", 8);
+            var littleEndian = Option(options, "LengthLittleEndian", false);
+            var inBits = Option(options, "LengthInBits", true);
+            if (lengthBytes < 0 || lengthBytes >= blockSize) throw new ArgumentException("MerkleDamgardBlocks: lengthBytes " + lengthBytes + " does not fit a " + blockSize + "-byte block");
+
+            var blocks = new List<byte[]>();
+            var block = new byte[blockSize];
+            for (var i = 0; i < pending; ++i) block[i] = held[i];
+            var used = (int)pending;
+            if (used == blockSize)
+            {
+                blocks.Add(block);
+                block = new byte[blockSize];
+                used = 0;
+            }
+            block[used++] = unchecked((byte)padByte);
+            if (used > blockSize - lengthBytes)
+            {
+                blocks.Add(block);
+                block = new byte[blockSize];
+            }
+            var remaining = new BigInteger(Math.Max(0, totalLength)) * (inBits ? 8 : 1);
+            for (var i = 0; i < lengthBytes; ++i)
+            {
+                var index = littleEndian ? i : lengthBytes - 1 - i;
+                block[blockSize - lengthBytes + index] = (byte)(remaining % 256);
+                remaining /= 256;
+            }
+            blocks.Add(block);
+            return blocks.ToArray();
+        }
+    }
+
     // Mirrors OpCodes.js's own OpCodes._BitStream (constructed via
     // OpCodes.CreateBitStream(initialBytes)) - an MSB-first bit-packing writer/reader
     // used by compression algorithms (e.g. compression/golomb-bitstream.js) needing
@@ -1109,6 +1279,19 @@ namespace ${namespace}
                 b >>= 1;
             }
             return result;
+        }
+        // OpCodes.js GFMul: multiplication in GF(2^width) modulo an irreducible polynomial
+        public static uint GFMul(long a, long b, long irreducible, long width) {
+            long result = 0;
+            long mask = (1L << (int)width) - 1;
+            while (b != 0) {
+                if ((b & 1) != 0) result ^= a;
+                a <<= 1;
+                if ((a & (1L << (int)width)) != 0) a ^= irreducible;
+                a &= mask;
+                b >>= 1;
+            }
+            return (uint)result;
         }
         // Modular operations
         public static uint ModPow(uint b, uint e, uint m) {
