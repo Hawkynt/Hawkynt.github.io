@@ -19,15 +19,17 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes', '../stream/zuc'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', '../stream/zuc'], function (AlgorithmFramework, OpCodes, ZUC) {
+      return factory(AlgorithmFramework, OpCodes, function () { return ZUC; });
+    });
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
       require('../../OpCodes'),
-      require('../stream/zuc')
+      function () { return require('../stream/zuc'); }
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes, root.ZUC);
+    factory(root.AlgorithmFramework, root.OpCodes, function () { return root.ZUC; });
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -35,7 +37,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, ZUC) {
+})(), function (AlgorithmFramework, OpCodes, loadZUC) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -46,8 +48,16 @@
     throw new Error('OpCodes dependency is required');
   }
 
-  if (!ZUC) {
-    throw new Error('ZUC stream cipher dependency is required');
+  // ZUC is resolved at first use rather than at load: the page loads the mac
+  // directory before stream/zuc.js, and requiring another directory's module
+  // at load would also make that module count towards this directory.
+  let zucModule = null;
+  function getZUC() {
+    if (!zucModule) {
+      zucModule = loadZUC();
+      if (!zucModule) throw new Error('ZUC stream cipher dependency is required');
+    }
+    return zucModule;
   }
 
   // Extract framework components
@@ -256,7 +266,7 @@
       }
 
       // Initialize ZUC engine
-      const zucAlgo = new ZUC.ZUCAlgorithm();
+      const zucAlgo = new (getZUC().ZUCAlgorithm)();
       this.zucEngine = zucAlgo.CreateInstance();
       this.zucEngine.key = this._key;
       this.zucEngine.iv = this._iv;
