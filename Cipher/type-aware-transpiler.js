@@ -735,6 +735,9 @@
    * Enhanced AST Parser with Type Awareness
    * Extends the original parser to extract and use type information
    */
+  // Tokenized as KEYWORD, but legal JavaScript binding/reference names.
+  const CONTEXTUAL_KEYWORDS = new Set(['get', 'set', 'static', 'async', 'of', 'as']);
+
   class TypeAwareJSASTParser {
     // Shared type knowledge loaded from library files (OpCodes.js, AlgorithmFramework.js)
     static sharedTypeKnowledge = null;
@@ -7889,6 +7892,8 @@
             return this.parseFunctionExpression();
           } else if (this.currentToken.value === 'class') {
             return this.parseClassExpression();
+          } else if (CONTEXTUAL_KEYWORDS.has(this.currentToken.value)) {
+            return this.parseIdentifier();
           } else if (this.currentToken.value === 'typeof') {
             this.advance();
             return {
@@ -7968,6 +7973,13 @@
      * Parse identifier
      */
     parseIdentifier() {
+      // Contextual keywords are ordinary binding names outside their own syntax,
+      // e.g. `const set = {...}` / `for (const set of sets)` (bike.js, hqc.js, ...).
+      if (this.currentToken?.type === 'KEYWORD' && CONTEXTUAL_KEYWORDS.has(this.currentToken.value)) {
+        const node = { type: 'Identifier', name: this.currentToken.value };
+        this.advance();
+        return node;
+      }
       if (!this.currentToken || this.currentToken.type !== 'IDENTIFIER') {
         throw new Error(`Expected identifier, got: ${this.currentToken ? this.currentToken.type : 'EOF'}`);
       }
