@@ -3486,6 +3486,15 @@
             const right = node.right;
             if (right && right.type === 'Literal' && right.value === null) {
               hasNullAssignment.add(fieldName);
+            } else if (!resolved.has(fieldName) && right?.type === 'NewExpression' &&
+                       right.callee?.type === 'Identifier' && /^[A-Z]/.test(right.callee.name || '') &&
+                       !/^(Array|Uint8Array|Uint16Array|Uint32Array|Int8Array|Int16Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array|ArrayBuffer|DataView|Map|Set|WeakMap|Object|Error|TypeError|RangeError|Date|RegExp)$/.test(right.callee.name)) {
+              // e.g. sha1.js's `this._absorber = null;` in the constructor and
+              // `this._absorber = new BlockAbsorber(...)` in a setter: constructing a
+              // named class is concrete evidence of the field's type. Without it the
+              // field stayed `dynamic`, and every call on it taking a lambda failed
+              // with CS1977.
+              resolved.set(fieldName, new CSharpType(right.callee.name));
             } else if (!resolved.has(fieldName) && (right?.type === 'ThisMethodCall' || right?.type === 'ParentMethodCall')) {
               const pascalMethod = this.toPascalCase(right.method || '');
               const sig = this.getMethodSignature(this.currentClass.name, pascalMethod);
@@ -13962,6 +13971,12 @@
           return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
         }
 
+        // A class-typed operand (e.g. blake2.js's `if (!this._hasher)` once the field
+        // resolves to Blake2bHasher) is a reference: !x -> x == null (CS0023 otherwise).
+        if (this._isClassReferenceType(operandType)) {
+          return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
+        }
+
         // For bool or unknown, use normal !
         return new CSharpUnaryExpression('!', operand, true);
       }
@@ -15968,6 +15983,18 @@
         return new CSharpObjectCreation(new CSharpType('KeySize'), intArgs);
       }
 
+      // The framework's BlockAbsorber(long blockSize, Action<byte[]> processBlock)
+      // (csharp.js stub). A block size read from a `dynamic` field (e.g. keccak.js's
+      // `new BlockAbsorber(this.rate, block => ...)`) would make the whole
+      // construction dynamically bound, and a lambda cannot be an argument to that
+      // (CS1977) - so pin the size to its declared parameter type.
+      if (typeName === 'BlockAbsorber' && args.length >= 1) {
+        const sizeType = this.inferFullExpressionType(node.arguments[0]);
+        if (!sizeType || sizeType.isArray || !['int', 'uint', 'byte', 'ushort', 'short', 'long'].includes(sizeType.name))
+          args[0] = new CSharpCast(new CSharpType('long'), args[0]);
+        return new CSharpObjectCreation(new CSharpType('BlockAbsorber'), args);
+      }
+
       // Handle JavaScript Error types -> C# Exception types
       if (typeName === 'Error') {
         return new CSharpObjectCreation(new CSharpType('Exception'), args);
@@ -17806,6 +17833,15 @@
      * @param {Object} node - The JavaScript AST expression node
      * @returns {Object} A C# AST expression that evaluates to bool
      */
+    /**
+     * True for a named, non-array, non-tuple type that is not a primitive, string,
+     * object, dynamic or var placeholder - i.e. a class, whose truthiness is a null test.
+     */
+    _isClassReferenceType(type) {
+      return !!(type?.name && !type.isArray && !type.isTuple && !PRIMITIVE_OR_SPECIAL_TYPE_NAMES.has(type.name) &&
+        type.name !== 'boolean' && !/[<>?(]/.test(type.name));
+    }
+
     ensureBooleanCondition(node) {
       // If it's already a comparison or logical expression, transform normally
       if (node.type === 'BinaryExpression') {
@@ -17858,8 +17894,9 @@
         // !x - if x is non-bool, use x == 0 or x == null
         const inferredArgType = this.inferFullExpressionType(node.argument);
         if (inferredArgType && !['bool', 'boolean'].includes(inferredArgType.name)) {
-          // For arrays/objects: !arr -> arr == null
-          if (inferredArgType.isArray || inferredArgType.name === 'object' || inferredArgType.name === 'string') {
+          // For arrays/objects/class instances: !arr -> arr == null
+          if (inferredArgType.isArray || inferredArgType.name === 'object' || inferredArgType.name === 'string' ||
+              this._isClassReferenceType(inferredArgType)) {
             return new CSharpBinaryExpression(
               this.transformExpression(node.argument),
               '==',
