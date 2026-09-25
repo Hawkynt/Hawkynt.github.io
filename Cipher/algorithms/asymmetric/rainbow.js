@@ -651,6 +651,7 @@
 
   const PARAMETER_SETS = {
     'Rainbow-I': { gfSize: 16, v1: 36, o1: 32, o2: 32, hashLen: 32, level: 1, label: 'Ia' },
+    'Rainbow-III': { gfSize: 256, v1: 68, o1: 32, o2: 48, hashLen: 48, level: 3, label: 'IIIc' },
     'Rainbow-V': { gfSize: 256, v1: 96, o1: 36, o2: 64, hashLen: 64, level: 5, label: 'Vc' }
   };
 
@@ -1242,6 +1243,81 @@
     ]
   };
 
+  // ===== the set whose response file was never generated =====
+  //
+  // The round-three package creates a KAT directory for all nine combinations
+  // of parameter set and key format and populates three: Rainbow-I
+  // circumzenithal, Rainbow-V classic and Rainbow-V circumzenithal. The other
+  // six directories, Rainbow-III's three among them, are empty. The generator
+  // that would have filled them ships beside them, so this is an omission
+  // rather than a decision, but the files do not exist and no third party ever
+  // published them. The earlier packages do not fill the gap either: round
+  // two's level-three sets are different maps, (68,36,36) over GF(256) and a
+  // GF(31) set this code does not carry, and round one ships no response file
+  // at all.
+  //
+  // A digest of each missing record was published, though. PQClean carried all
+  // nine Rainbow parameter sets until it dropped the scheme in 2022, and each
+  // META.yml records a nistkat-sha256 taken over the count = 0 record of the
+  // response file - the seed, the message length, the message, the public key,
+  // the secret key, the signed message length and the signed message, eight
+  // lines joined by newlines with one at the end. liboqs 0.7.2 publishes the
+  // same digests. The input side is public too: every NIST request file is the
+  // same hundred seeds and messages, and the round-three package ships it for
+  // the sets it did populate.
+  //
+  // That is enough to check a reconstruction without the file. The two entries
+  // below are reconstructions rather than transcriptions, and both are pinned:
+  // rebuilding the whole count = 0 record from the published request seed
+  // reproduces all three published Rainbow-III digests, one per key format.
+  //
+  //   classic          1eb9bb6e63cfdbd05a6eaca9989e969fd234b110b67ff7e6373e1af080b35f41
+  //   circumzenithal   1b5cbbdef12492ba8176309a44461d3d64a05b049f78edb85af1d166f4b64f32
+  //   compressed       8f895e88918df9e26123b5e0be722e952f3603bfc1f6b2859a8155edf3907969
+  //
+  // The six sets whose response files do ship are the control, and all six
+  // reproduce their published digest under the same reconstruction, so a
+  // mismatch would have implicated the harness rather than the scheme. Nine of
+  // nine reproduce. The compressed format shares its signature with the
+  // circumzenithal one and differs only in which key the record prints, so it
+  // needs no separate vector here.
+  //
+  // Registering the set also puts the SHA-384 branch under test for the first
+  // time: hashLen is 32 for Rainbow-I and 64 for Rainbow-V, so nothing the
+  // suite ran reached 48.
+
+  const RECONSTRUCTED = {
+    'Rainbow-III': [
+      {
+        format: 'classic',
+        digest: '1eb9bb6e63cfdbd05a6eaca9989e969fd234b110b67ff7e6373e1af080b35f41',
+        uri: 'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-classic/META.yml',
+        key: '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+            '6033c99a65042be545eed707341bd14f73ca178f2a5b244a87e847dcab29a90866' +
+            '76d7a7a4b35e3904a9edd7b399b1bd104a19373a415029bccd4c707b416eed683f' +
+            '13a9189ef0bdc151116cbf6d6a9d4bc019faa58fd770b6f567a410c700b48c488a' +
+            '375c33866f3febb8dedf239c64ff9a36f092e3d6192b9a0726b06672a540a892fa' +
+            '7ba47dbe7f3e66bf394ed328a107b8edceb39ad2e43c6ee441f39ece871397ac'
+      },
+      {
+        format: 'circumzenithal',
+        digest: '1b5cbbdef12492ba8176309a44461d3d64a05b049f78edb85af1d166f4b64f32',
+        uri: 'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-circumzenithal/META.yml',
+        key: '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
+             '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+            '451f524fef128edbe93814c041d5edd2c8a0226e05e13942b5b832c864a9618426' +
+            '1745a5b530d09d51773c3e6f3c8297e3a8e6e4dbd23e56bda10b5c3a491f7a5d9e' +
+            'a819d712fc6565429f965fd7264041e5f2007085de29930b20b187bb9e5bc4bcac' +
+            '01c35cabc97f5ec6476c42138c3d18a1dbd23ba22b31b21bdbe5421ac1b837a793' +
+            '123c80e2b5028a0763872e76e45f6aa9d675e2d667e6f68024d5ef1143d21713'
+      }
+    ]
+  };
+
   // ===== ALGORITHM =====
 
   class RainbowAlgorithm extends AsymmetricCipherAlgorithm {
@@ -1310,7 +1386,7 @@
           'Use ML-DSA (FIPS 204), SLH-DSA (FIPS 205) or Falcon',
           'https://doi.org/10.6028/NIST.IR.8413'),
         new Vulnerability('Published demonstration keys',
-          'The seeds in the test vectors are printed in this file, come from published Known '
+          'The seeds in the test vectors are printed in this file, derive from published Known '
           + 'Answer Test data and confer no secrecy whatever',
           'Nothing here is usable as a key. The scheme itself is broken, so there is no safe '
           + 'way to supply a real one either',
@@ -1319,9 +1395,10 @@
 
       // Test vectors.
       //
-      // Every expected value is the sm field of an entry of a PQCsignKAT file
-      // of the round-three submission, and every key is the seed material that
-      // entry's DRBG produced. None of it was generated by this file.
+      // For Rainbow-I and Rainbow-V every expected value is the sm field of an
+      // entry of a PQCsignKAT file of the round-three submission, and every key
+      // is the seed material that entry's DRBG produced. None of it was
+      // generated by this file.
       //
       // Measured over the published response files, not only the entries
       // committed here. Every entry checked reproduces its public key, its
@@ -1335,11 +1412,11 @@
       // The Rainbow-V files are 389 and 668 megabytes and only their leading
       // entries were retrieved; nothing in them was skipped.
       //
-      // The round-three package divides Rainbow into three parameter sets and
-      // three key formats, nine combinations in all, and ships a response file
-      // for only three of them: the two above and Rainbow-I circumzenithal.
-      // There is none for Rainbow-III in any format, which is why no
-      // Rainbow-III parameter set is registered here.
+      // Separately, and covering every combination rather than the three with a
+      // response file, this code reproduces the nistkat-sha256 PQClean publishes
+      // over the count = 0 record for all nine parameter set and key format
+      // pairs, the three compressed ones and the three Rainbow-III ones
+      // included. See RECONSTRUCTED for what that digest is taken over.
       //
       // The round-two package publishes two more response files for parameter
       // sets the round-three reference still carries. Its classic GF(16) set,
@@ -1349,6 +1426,12 @@
       // single entry because the signature it records does not verify under
       // the public key it records, the submitted generator having left the
       // wrong half of the T transform in the secret key.
+      //
+      // Rainbow-III has no published response file in any round or any key
+      // format. Its vectors come from RECONSTRUCTED instead, rebuilt from the
+      // published request seed and checked against the digest PQClean publishes
+      // over the record they belong to; the reasoning is above that table, and
+      // each vector says in its own text what it is.
       this.tests = (KAT[setName] || []).map(entry => ({
         text: setName + ' ' + entry.file.split('/')[1].replace(/_/g, ' ')
               + ' KAT entry ' + entry.count,
@@ -1356,7 +1439,16 @@
         input: OpCodes.Hex8ToBytes(entry.msg),
         key: OpCodes.Hex8ToBytes(entry.key),
         expected: OpCodes.Hex8ToBytes(entry.sm)
-      }));
+      })).concat((RECONSTRUCTED[setName] || []).map(entry => ({
+        text: setName + ' ' + entry.format + ' KAT entry 0, reconstructed: the submission '
+              + 'left this response file ungenerated, so the record was rebuilt from the '
+              + 'published request seed and checked against the nistkat-sha256 '
+              + entry.digest.slice(0, 16) + '... that PQClean publishes over it',
+        uri: entry.uri,
+        input: OpCodes.Hex8ToBytes(entry.msg),
+        key: OpCodes.Hex8ToBytes(entry.key),
+        expected: OpCodes.Hex8ToBytes(entry.sm)
+      })));
     }
 
     /**
