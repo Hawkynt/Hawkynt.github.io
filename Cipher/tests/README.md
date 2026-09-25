@@ -265,6 +265,8 @@ const result = await testAPI.testAlgorithm('./algorithms/block/rijndael.js');
 - **TestDemo.js** - Verification that both interfaces are identical
 - **TranspilerValidationSuite.js** - Cross-language transpiler validation
 - **CodeGenTestSuite.js** - Comprehensive transpiler AST coverage tests
+- **TypeInferenceTestSuite.js** - Type inference of the shared transpiler AST
+- **CSharpTranspileRegressionSuite.js** - Given/when/then regressions for systematic C# transpilation faults; also compiles and runs the C# runtime stubs when the .NET SDK is present (`--no-dotnet` skips that)
 - **README.md** - This documentation
 
 ## Verification
