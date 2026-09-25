@@ -1280,6 +1280,19 @@ namespace ${namespace}
             }
             return result;
         }
+        // OpCodes.js GFMul: multiplication in GF(2^width) modulo an irreducible polynomial
+        public static uint GFMul(long a, long b, long irreducible, long width) {
+            long result = 0;
+            long mask = (1L << (int)width) - 1;
+            while (b != 0) {
+                if ((b & 1) != 0) result ^= a;
+                a <<= 1;
+                if ((a & (1L << (int)width)) != 0) a ^= irreducible;
+                a &= mask;
+                b >>= 1;
+            }
+            return (uint)result;
+        }
         // Modular operations
         public static uint ModPow(uint b, uint e, uint m) {
             if (m == 1) return 0;
