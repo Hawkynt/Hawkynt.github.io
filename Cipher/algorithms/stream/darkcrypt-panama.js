@@ -61,18 +61,25 @@
     }
 
     reset() {
+      /** @type {uint32[]} */
       this.a = new Uint32Array(17);
+      /** @type {uint32[][]} */
       this.b = new Array(STAGES);
       for (let i = 0; i < STAGES; i++) this.b[i] = new Uint32Array(STAGE_SIZE);
+      /** @type {int32} */
       this.bstart = 0;
     }
 
+    /**
+     * @param {int32} i - Mill word position
+     * @returns {int32} Index of that word after the gamma permutation
+     */
     _aIndex(i) { return (i * 13 + 16) % 17; }
 
     /**
      * One round of the belt-and-mill machine.
-     * @param {Uint32Array|null} input - 8-word block to push, or null to pull.
-     * @param {number[]|null} output - if given, 32 bytes of keystream are appended.
+     * @param {uint32[]|null} input - 8-word block to push, or null to pull.
+     * @param {uint8[]|null} output - if given, 32 bytes of keystream are appended.
      */
     _iterate(input, output) {
       const c = new Uint32Array(17);
@@ -81,7 +88,10 @@
         for (let i = 0; i < STAGE_SIZE; i++) {
           const word = this.a[this._aIndex(i + 9)];
           const bytes = OpCodes.Unpack32LE(word);
-          output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+          output.push(bytes[0]);
+          output.push(bytes[1]);
+          output.push(bytes[2]);
+          output.push(bytes[3]);
         }
       }
 
@@ -202,6 +212,8 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -210,10 +222,14 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {int32} */
       this.IV_SIZE = 32;
 
+      /** @type {PanamaCore|null} */
       this.core = null;
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
@@ -222,9 +238,15 @@
      */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
       if (!isValidSize) throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
@@ -267,7 +289,9 @@
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /** @type {uint8[]} */
@@ -281,7 +305,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint32[]}
+     */
     _wordsFromBytes(bytes) {
+      /** @type {uint32[]} */
       const w = new Uint32Array(STAGE_SIZE);
       for (let i = 0; i < STAGE_SIZE; i++) {
         w[i] = OpCodes.Pack32LE(bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]);
@@ -305,6 +334,9 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _generateBlock() {
       /** @type {uint8[]} */
       const keystream = [];
@@ -312,6 +344,9 @@
       return keystream;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._generateBlock();
