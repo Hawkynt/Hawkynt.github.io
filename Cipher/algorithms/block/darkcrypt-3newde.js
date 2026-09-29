@@ -213,7 +213,8 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
-      this._roundKeys = null;
+      /** @type {uint32[]|null} */
+      this._roundWords = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
@@ -224,12 +225,12 @@
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._roundWords = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 24)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. 3NewDE (DarkCrypt) requires exactly 24 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._roundKeys = this._buildRoundKeys(this._key);
+      this._roundWords = this._buildRoundKeys(this._key);
     }
 
     /**
@@ -262,56 +263,78 @@
     // Only the HIGH nibble of each of the first 16 key bytes is effective (see file header).
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} The 32 round-key words
      */
     _buildRoundKeys(keyBytes) {
+      /** @type {uint32[]} */
       const N = new Array(16);
       for (let i = 0; i < 16; i++) N[i] = OpCodes.And32(OpCodes.Shr32(keyBytes[i], 4), 0xF);
 
-      const idx = (base, r) => N[OpCodes.And32(base + r, 0xF)];
-      const roundKeys = [];
+      /**
+       * @param {int32} base - Nibble offset
+       * @param {int32} r - Round
+       * @returns {uint32} Key nibble N[(base + r) mod 16]
+       */
+      function idx(base, r) { return N[OpCodes.And32(base + r, 0xF)]; }
+      /** @type {uint32[]} */
+      const roundWords = [];
       for (let r = 0; r < 16; r++) {
-        const g1 = OpCodes.And32(OpCodes.Shl32(idx(13, r), 2) | OpCodes.Shr32(N[r], 2), 0x3F);
-        const g2 = OpCodes.And32(OpCodes.Shl32(idx(6, r), 2) | OpCodes.Shr32(idx(11, r), 2), 0x3F);
-        const g3 = OpCodes.And32(OpCodes.Shl32(idx(10, r), 2) | OpCodes.Shr32(idx(3, r), 2), 0x3F);
-        const g4 = OpCodes.And32(OpCodes.Shl32(idx(1, r), 2) | OpCodes.Shr32(idx(8, r), 2), 0x3F);
-        const dword0 = OpCodes.ToUint32(g1 | OpCodes.Shl32(g2, 8) | OpCodes.Shl32(g3, 16) | OpCodes.Shl32(g4, 24));
+        const g1 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(idx(13, r), 2), OpCodes.Shr32(N[r], 2)), 0x3F);
+        const g2 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(idx(6, r), 2), OpCodes.Shr32(idx(11, r), 2)), 0x3F);
+        const g3 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(idx(10, r), 2), OpCodes.Shr32(idx(3, r), 2)), 0x3F);
+        const g4 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(idx(1, r), 2), OpCodes.Shr32(idx(8, r), 2)), 0x3F);
+        const dword0 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(g1, OpCodes.Shl32(g2, 8)), OpCodes.Shl32(g3, 16)), OpCodes.Shl32(g4, 24));
 
-        const g5 = OpCodes.And32(OpCodes.Shl32(OpCodes.And32(N[r], 0x3), 4) | idx(9, r), 0x3F);
-        const g6 = OpCodes.And32(OpCodes.Shl32(OpCodes.And32(idx(11, r), 0x3), 4) | idx(2, r), 0x3F);
-        const g7 = OpCodes.And32(OpCodes.Shl32(OpCodes.And32(idx(3, r), 0x3), 4) | idx(14, r), 0x3F);
-        const g8 = OpCodes.And32(OpCodes.Shl32(OpCodes.And32(idx(8, r), 0x3), 4) | idx(5, r), 0x3F);
-        const dword1 = OpCodes.ToUint32(g5 | OpCodes.Shl32(g6, 8) | OpCodes.Shl32(g7, 16) | OpCodes.Shl32(g8, 24));
+        const g5 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(N[r], 0x3), 4), idx(9, r)), 0x3F);
+        const g6 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(idx(11, r), 0x3), 4), idx(2, r)), 0x3F);
+        const g7 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(idx(3, r), 0x3), 4), idx(14, r)), 0x3F);
+        const g8 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(idx(8, r), 0x3), 4), idx(5, r)), 0x3F);
+        const dword1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(g5, OpCodes.Shl32(g6, 8)), OpCodes.Shl32(g7, 16)), OpCodes.Shl32(g8, 24));
 
-        roundKeys.push(dword0, dword1);
+        roundWords.push(dword0);
+        roundWords.push(dword1);
       }
-      return roundKeys;
+      return roundWords;
     }
 
     // f(R,k0,k1): classic DES E-expansion+S-box+P-permutation via the ROR(R,4) trick.
+    /**
+     * @param {uint32} R - Half block
+     * @param {uint32} k0 - First round-key word
+     * @param {uint32} k1 - Second round-key word
+     * @returns {uint32} Round function output
+     */
     _feistelF(R, k0, k1) {
       const a = OpCodes.Xor32(OpCodes.RotR32(R, 4), k0);
       const b = OpCodes.Xor32(R, k1);
+      /** @type {uint32} */
       let r = 0;
-      r |= T6[OpCodes.And32(a, 0x3F)];
-      r |= T4[OpCodes.And32(OpCodes.Shr32(a, 8), 0x3F)];
-      r |= T2[OpCodes.And32(OpCodes.Shr32(a, 16), 0x3F)];
-      r |= T0[OpCodes.And32(OpCodes.Shr32(a, 24), 0x3F)];
-      r |= T7[OpCodes.And32(b, 0x3F)];
-      r |= T5[OpCodes.And32(OpCodes.Shr32(b, 8), 0x3F)];
-      r |= T3[OpCodes.And32(OpCodes.Shr32(b, 16), 0x3F)];
-      r |= T1[OpCodes.And32(OpCodes.Shr32(b, 24), 0x3F)];
+      r = OpCodes.Or32(r, T6[OpCodes.And32(a, 0x3F)]);
+      r = OpCodes.Or32(r, T4[OpCodes.And32(OpCodes.Shr32(a, 8), 0x3F)]);
+      r = OpCodes.Or32(r, T2[OpCodes.And32(OpCodes.Shr32(a, 16), 0x3F)]);
+      r = OpCodes.Or32(r, T0[OpCodes.And32(OpCodes.Shr32(a, 24), 0x3F)]);
+      r = OpCodes.Or32(r, T7[OpCodes.And32(b, 0x3F)]);
+      r = OpCodes.Or32(r, T5[OpCodes.And32(OpCodes.Shr32(b, 8), 0x3F)]);
+      r = OpCodes.Or32(r, T3[OpCodes.And32(OpCodes.Shr32(b, 16), 0x3F)]);
+      r = OpCodes.Or32(r, T1[OpCodes.And32(OpCodes.Shr32(b, 24), 0x3F)]);
       return OpCodes.ToUint32(r);
     }
 
     // DES-style Feistel core, WITHOUT IP/FP (initial/final rotate-by-1 replaces the
     // standard IP/FP interaction with the ROR(R,4) round-function trick).
-    _core(L, R, roundKeys) {
+    /**
+     * @param {uint32} L - Left half
+     * @param {uint32} R - Right half
+     * @param {uint32[]} roundWords - Round-key words in application order
+     * @returns {uint32[]} Output halves [left, right]
+     */
+    _core(L, R, roundWords) {
       L = OpCodes.RotL32(L, 1);
       R = OpCodes.RotL32(R, 1);
       for (let i = 0; i < 8; i++) {
-        const f1 = this._feistelF(R, roundKeys[4 * i], roundKeys[4 * i + 1]);
+        const f1 = this._feistelF(R, roundWords[4 * i], roundWords[4 * i + 1]);
         L = OpCodes.Xor32(L, f1);
-        const f2 = this._feistelF(L, roundKeys[4 * i + 2], roundKeys[4 * i + 3]);
+        const f2 = this._feistelF(L, roundWords[4 * i + 2], roundWords[4 * i + 3]);
         R = OpCodes.Xor32(R, f2);
       }
       return [OpCodes.RotR32(R, 1), OpCodes.RotR32(L, 1)];
@@ -324,7 +347,8 @@
     _encryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-      const [outL, outR] = this._core(L, R, this._roundKeys);
+      const out = this._core(L, R, this._roundWords);
+      const outL = out[0], outR = out[1];
       return [...OpCodes.Unpack32BE(outL), ...OpCodes.Unpack32BE(outR)];
     }
 
@@ -335,9 +359,14 @@
     _decryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+      /** @type {uint32[]} */
       const reversed = [];
-      for (let r = 15; r >= 0; r--) reversed.push(this._roundKeys[2 * r], this._roundKeys[2 * r + 1]);
-      const [outL, outR] = this._core(L, R, reversed);
+      for (let r = 15; r >= 0; r--) {
+        reversed.push(this._roundWords[2 * r]);
+        reversed.push(this._roundWords[2 * r + 1]);
+      }
+      const out = this._core(L, R, reversed);
+      const outL = out[0], outR = out[1];
       return [...OpCodes.Unpack32BE(outL), ...OpCodes.Unpack32BE(outR)];
     }
   }
