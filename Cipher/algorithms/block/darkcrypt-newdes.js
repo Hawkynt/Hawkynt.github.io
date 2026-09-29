@@ -45,6 +45,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // NewDES rotor S-box (Robert Scott, 1985 / Mark Riordan reference, 1990)
+  /** @type {uint8[]} */
   const ROTOR = [
     32,137,239,188,102,125,221, 72,212, 68, 81, 37, 86,237,147,149,
     70,229, 17,124,115,207, 33, 20,122,143, 25,215, 51,183,138,142,
@@ -117,34 +118,53 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptNewDESInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptNewDESInstance(this, isInverse);
     }
   }
 
   class DarkCryptNewDESInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptNewDESAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._schedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 15)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. NewDES-120 (DarkCrypt) requires exactly 15 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. NewDES-120 (DarkCrypt) requires exactly 15 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // Original (1985) key schedule: 60-byte "unravelled" key, formed by
       // simply repeating the 15-byte key 4 times.
-      this._schedule = new Array(60);
+      /** @type {uint8[]} */
+      const schedule = new Array(60);
+      this._schedule = schedule;
       for (let i = 0; i < 60; i++) this._schedule[i] = this._key[i % 15];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -157,8 +177,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -174,45 +195,68 @@
     // decryption applies the identical steps in exact reverse order (each step
     // is a self-inverse XOR of one register as a function of others, so
     // reversing the whole sequence inverts the transform).
+    // Each step is three consecutive entries: target register, source register
+    // (-1 for the special step on b[2], keyed by b[4] XOR b[5]) and key byte.
+    /**
+     * @returns {int32[]} Steps as (target, source, key) triples
+     */
     _steps() {
       const s = this._schedule;
+      /** @type {int32[]} */
       const steps = [];
       let idx = 0;
       for (let iter = 0; iter < 8; iter++) {
-        steps.push({ t: 4, src: 0, k: s[idx++] });
-        steps.push({ t: 5, src: 1, k: s[idx++] });
-        steps.push({ t: 6, src: 2, k: s[idx++] });
-        steps.push({ t: 7, src: 3, k: s[idx++] });
-        steps.push({ t: 1, src: 4, k: s[idx++] });
-        steps.push({ t: 2, special: true });
-        steps.push({ t: 3, src: 6, k: s[idx++] });
-        steps.push({ t: 0, src: 7, k: s[idx++] });
+        steps.push(4); steps.push(0); steps.push(s[idx++]);
+        steps.push(5); steps.push(1); steps.push(s[idx++]);
+        steps.push(6); steps.push(2); steps.push(s[idx++]);
+        steps.push(7); steps.push(3); steps.push(s[idx++]);
+        steps.push(1); steps.push(4); steps.push(s[idx++]);
+        steps.push(2); steps.push(-1); steps.push(0);
+        steps.push(3); steps.push(6); steps.push(s[idx++]);
+        steps.push(0); steps.push(7); steps.push(s[idx++]);
       }
-      steps.push({ t: 4, src: 0, k: s[idx++] });
-      steps.push({ t: 5, src: 1, k: s[idx++] });
-      steps.push({ t: 6, src: 2, k: s[idx++] });
-      steps.push({ t: 7, src: 3, k: s[idx++] });
+      steps.push(4); steps.push(0); steps.push(s[idx++]);
+      steps.push(5); steps.push(1); steps.push(s[idx++]);
+      steps.push(6); steps.push(2); steps.push(s[idx++]);
+      steps.push(7); steps.push(3); steps.push(s[idx++]);
       return steps;
     }
 
-    _mask(b, step) {
-      if (step.special) return ROTOR[OpCodes.Xor32(b[4], b[5])];
-      return ROTOR[OpCodes.Xor32(b[step.src], step.k)];
+    /**
+     * @param {uint8[]} b - Block registers
+     * @param {int32} src - Source register, or -1 for the special step
+     * @param {int32} k - Key byte
+     * @returns {uint8} Rotor value to XOR into the target register
+     */
+    _mask(b, src, k) {
+      if (src < 0) return ROTOR[OpCodes.Xor32(b[4], b[5])];
+      return ROTOR[OpCodes.Xor32(b[src], k)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const b = block.slice();
       const steps = this._steps();
-      for (const st of steps) b[st.t] = OpCodes.Xor32(b[st.t], this._mask(b, st));
+      for (let i = 0; i < steps.length; i += 3) {
+        const t = steps[i];
+        b[t] = OpCodes.Xor32(b[t], this._mask(b, steps[i + 1], steps[i + 2]));
+      }
       return b;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const b = block.slice();
       const steps = this._steps();
-      for (let i = steps.length - 1; i >= 0; i--) {
-        const st = steps[i];
-        b[st.t] = OpCodes.Xor32(b[st.t], this._mask(b, st));
+      for (let i = steps.length - 3; i >= 0; i -= 3) {
+        const t = steps[i];
+        b[t] = OpCodes.Xor32(b[t], this._mask(b, steps[i + 1], steps[i + 2]));
       }
       return b;
     }

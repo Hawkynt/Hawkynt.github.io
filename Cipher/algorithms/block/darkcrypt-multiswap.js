@@ -58,23 +58,40 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  // Multiplicative inverse of an odd 32-bit number modulo 2^32 (extended Euclid, exact via BigInt).
+  /**
+   * Multiplicative inverse of an odd 32-bit number modulo 2^32, by Newton
+   * (Hensel) iteration x := x*(2 - a*x): a is its own inverse modulo 8, and
+   * every step doubles the number of correct low bits (3, 6, 12, 24, 48).
+   * The inverse of an odd number modulo 2^32 is unique.
+   * @param {uint32} a - Odd value
+   * @returns {uint32} a^-1 mod 2^32
+   */
   function modInverse32(a) {
-    let oldR = BigInt(OpCodes.ToUint32(a));
-    let r = OpCodes.ShiftLn(1n, 32);
-    let oldS = 1n, s = 0n;
-    while (r !== 0n) {
-      const q = oldR / r;
-      [oldR, r] = [r, oldR - q * r];
-      [oldS, s] = [s, oldS - q * s];
-    }
-    const m = OpCodes.ShiftLn(1n, 32);
-    return Number(((oldS % m) + m) % m);
+    const v = OpCodes.ToUint32(a);
+    /** @type {uint32} */
+    let x = v;
+    for (let i = 0; i < 4; i++)
+      x = OpCodes.Mul32(x, OpCodes.Sub32(2, OpCodes.Mul32(v, x)));
+    return x;
   }
 
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Word with its 16-bit halves swapped
+   */
   function swap16(x) { return OpCodes.RotL32(x, 16); }
 
   // f(v) = swap(swap(swap(swap(v*k0)*k1)*k2)*k3)*k4 + k5  (4 swaps, 5 multiplies, mod 2^32)
+  /**
+   * @param {uint32} v - Input word
+   * @param {uint32} k0 - Multiplier
+   * @param {uint32} k1 - Multiplier
+   * @param {uint32} k2 - Multiplier
+   * @param {uint32} k3 - Multiplier
+   * @param {uint32} k4 - Multiplier
+   * @param {uint32} k5 - Addend
+   * @returns {uint32} Stage output
+   */
   function forwardStage(v, k0, k1, k2, k3, k4, k5) {
     let t = OpCodes.ToUint32(v);
     t = OpCodes.Mul32(t, k0); t = swap16(t);
@@ -87,6 +104,16 @@
   }
 
   // Mathematical inverse of forwardStage: subtract k5, undo the 5 multiply/swap steps in reverse.
+  /**
+   * @param {uint32} r - Stage output
+   * @param {uint32} ik0 - Inverse multiplier
+   * @param {uint32} ik1 - Inverse multiplier
+   * @param {uint32} ik2 - Inverse multiplier
+   * @param {uint32} ik3 - Inverse multiplier
+   * @param {uint32} ik4 - Inverse multiplier
+   * @param {uint32} k5 - Addend
+   * @returns {uint32} Stage input
+   */
   function inverseStage(r, ik0, ik1, ik2, ik3, ik4, k5) {
     let t = OpCodes.ToUint32(r - k5);
     t = OpCodes.Mul32(t, ik4); t = swap16(t);
@@ -150,47 +177,78 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMultiswapInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMultiswapInstance(this, isInverse);
     }
   }
 
   class DarkCryptMultiswapInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMultiswapAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint32[][]|null} */
+      this._sched = null;
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
       if (keyBytes.length !== 56)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Multiswap (DarkCrypt) requires exactly 56 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Multiswap (DarkCrypt) requires exactly 56 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} key - 56-byte key
+     * @returns {uint32[][]} [subkeys k0..k11, their inverses, [s0, s1] initial chaining state]
+     */
     _buildSchedule(key) {
+      /** @type {uint32[]} */
       const w = [];
       for (let i = 0; i < 14; i++)
         w.push(OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]));
 
+      /** @type {uint32[]} */
       const k = [];
-      for (let i = 0; i < 12; i++) k.push(OpCodes.ToUint32(w[i] | 1));
+      for (let i = 0; i < 12; i++) k.push(OpCodes.Or32(w[i], 1));
 
-      const s0 = w[12], s1 = w[13];
+      /** @type {uint32[]} */
+      const chain = [w[12], w[13]];
 
       // Only the 10 multiplicative subkeys (k0..k4, k6..k10) need inverses; k5/k11 are additive.
+      /** @type {int32[]} */
+      const multiplicative = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10];
+      /** @type {uint32[]} */
       const ik = new Array(12);
-      for (const i of [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]) ik[i] = modInverse32(k[i]);
+      for (let j = 0; j < multiplicative.length; j++) {
+        const i = multiplicative[j];
+        ik[i] = modInverse32(k[i]);
+      }
 
-      return { k, ik, s0, s1 };
+      return [k, ik, chain];
     }
 
     Feed(data) {
@@ -203,8 +261,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -214,8 +273,13 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const { k, s0, s1 } = this._sched;
+      const k = this._sched[0];
+      const s0 = this._sched[2][0], s1 = this._sched[2][1];
       const x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const x1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
 
@@ -227,8 +291,13 @@
       return [...OpCodes.Unpack32LE(c0), ...OpCodes.Unpack32LE(c1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const { k, ik, s0, s1 } = this._sched;
+      const k = this._sched[0], ik = this._sched[1];
+      const s0 = this._sched[2][0], s1 = this._sched[2][1];
       const c0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const c1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
 

@@ -95,6 +95,7 @@
   const NTABLES = 8;           // number of permutation tables (key schedule)
   const BLOCK_SIZE = 256;      // BassOmatic block size in bytes
   const MAXTICS = 16383;       // give up on a stuck LFSR after this many tics
+  /** @type {uint8[]} */
   const BIT_MASKS = [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01];
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -209,7 +210,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BassOMaticInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -230,31 +231,40 @@
   class BassOMaticInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BassOMaticAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
 
       // Key-schedule ("key context") state, mirrors basslib.c static state
+      /** @type {uint8[][]|null} */
       this.tlist = null;         // 8 permutation tables of 256 bytes each
+      /** @type {uint8[]|null} */
       this.bitmasks = null;      // per-table 50%-set bitshredder masks
+      /** @type {uint32} */
       this.nrounds = 0;          // 1-8 rounds
       this.shred8ways = false;   // slow 8-way vs fast 50%-mask bit shredding
       this.hardrand = false;     // rebuild tables once more via BassOmatic itself
       this.rerand = false;       // rebuild tables before every block
       this.uncryp = false;       // true while this context decrypts
 
+      /** @type {uint8[]|null} */
       this.lfsr = null;          // 256-byte LFSR buffer
+      /** @type {int32} */
       this.rtail = 0;            // index into lfsr buffer
 
+      /** @type {uint8[]|null} */
       this.randbuf = null;       // scratch buffer used only while hardrand is set up
+      /** @type {int32} */
       this.randbufCounter = 0;
     }
 
@@ -284,7 +294,7 @@
 
       // initkey() rejects a key shorter than 2 bytes (control byte + body)
       if (keyBytes.length < 2) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. BassOmatic requires at least 2 bytes (1 control byte + 1 key byte)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. BassOmatic requires at least 2 bytes (1 control byte + 1 key byte)");
       }
 
       // The original source silently clamps the key to 255 bytes
@@ -320,8 +330,8 @@
       let count = BLOCK_SIZE;
       while (count--) {
         ltail = (ltail + 255) % BLOCK_SIZE;
-        const value = OpCodes.XorN(OpCodes.XorN(lfsr[ltap0], lfsr[ltap82]), lfsr[ltap255]);
-        lfsr[ltail] = OpCodes.AndN(value, 0xFF);
+        const value = OpCodes.Xor32(OpCodes.Xor32(lfsr[ltap0], lfsr[ltap82]), lfsr[ltap255]);
+        lfsr[ltail] = OpCodes.And32(value, 0xFF);
         ltap0 = (ltap0 + 255) % BLOCK_SIZE;
         ltap82 = (ltap82 + 255) % BLOCK_SIZE;
         ltap255 = (ltap255 + 255) % BLOCK_SIZE;
@@ -331,6 +341,7 @@
     /**
      * getlfsr - fetch one pseudo-random byte from the LFSR, stepping it
      * whenever the tail wraps around.
+     * @returns {uint8} Next pseudo-random byte
      */
     _getlfsr() {
       if (this.rtail === 0)
@@ -343,15 +354,16 @@
      * initlfsr - seed the LFSR buffer from key material. Cumulatively adds
      * the (repeating) seed bytes with carry wraparound so every one of the
      * 8 bit-parallel LFSRs receives a mix of 1s and 0s.
+     * @param {uint8[]} seed - Key material
      */
     _initlfsr(seed) {
       const size = seed.length;
-      this.lfsr = new Array(BLOCK_SIZE).fill(0);
+      this.lfsr = OpCodes.CreateArray(BLOCK_SIZE, 0);
       this.rtail = 0;
-      let c = OpCodes.AndN(size, 0xFFFF);
+      let c = OpCodes.And32(size, 0xFFFF);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        c = OpCodes.AndN(c + seed[i % size], 0xFFFF);
-        this.lfsr[i] = OpCodes.AndN(c + Math.floor(c / 256), 0xFF);
+        c = OpCodes.And32(OpCodes.Add32(c, seed[i % size]), 0xFFFF);
+        this.lfsr[i] = OpCodes.And32(OpCodes.Add32(c, OpCodes.Shr32(c, 8)), 0xFF);
       }
     }
 
@@ -362,7 +374,7 @@
     _stomplfsr() {
       let i = 255, idx = 0;
       while (i) {
-        this.lfsr[idx] = OpCodes.XorN(this.lfsr[idx], i);
+        this.lfsr[idx] = OpCodes.Xor32(this.lfsr[idx], i);
         ++idx;
         --i;
       }
@@ -375,9 +387,13 @@
      * random bytes (from the LFSR, or from the BassOmatic itself when
      * useHardRand is set) and append them to the table only the first time
      * each value is seen, until all 256 values are placed.
+     * @param {uint8[]} table - 256-byte table to fill
+     * @param {boolean} useHardRand - Draw from the BassOmatic instead of the LFSR
      */
     _buildtbl(table, useHardRand) {
-      const notdup = new Array(BLOCK_SIZE).fill(true);
+      /** @type {boolean[]} */
+      const notdup = new Array(BLOCK_SIZE);
+      for (let i = 0; i < BLOCK_SIZE; ++i) notdup[i] = true;
       let tlen = 0;
       let randtics = MAXTICS;
       do {
@@ -395,23 +411,38 @@
         this.rtail = 0;
     }
 
-    /** invert - build the inverse of a permutation table. */
+    /**
+     * invert - build the inverse of a permutation table.
+     * @param {uint8[]} intable - Permutation
+     * @returns {uint8[]} Inverse permutation
+     */
     _invertTable(intable) {
+      /** @type {uint8[]} */
       const outtable = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i)
         outtable[intable[i]] = i;
       return outtable;
     }
 
-    /** transpose - out[i] = in[table[i]] for every index. */
+    /**
+     * transpose - out[i] = in[table[i]] for every index.
+     * @param {uint8[]} inArr - Input bytes
+     * @param {uint8[]} table - Index table
+     * @returns {uint8[]} Transposed bytes
+     */
     _transpose(inArr, table) {
+      /** @type {uint8[]} */
       const out = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i)
         out[i] = inArr[table[i]];
       return out;
     }
 
-    /** halfmask - true iff exactly half (4) of the 8 bits of c are set. */
+    /**
+     * halfmask - true iff exactly half (4) of the 8 bits of c are set.
+     * @param {uint8} c - Byte
+     * @returns {boolean} Whether exactly four bits are set
+     */
     _halfmask(c) {
       return OpCodes.PopCount(c) === 4;
     }
@@ -420,6 +451,8 @@
      * getmask - scan a table (in the order 0,255,254,...,1, matching the
      * byte-wraparound loop of the original C code) for the first entry
      * with exactly 4 bits set, for use as a 50%-bitmask.
+     * @param {uint8[]} table - Table to scan
+     * @returns {uint8} Bitmask
      */
     _getmask(table) {
       if (this._halfmask(table[0]))
@@ -436,12 +469,14 @@
      * shredding is selected, their 50%-bitmasks), each mixed through a
      * freshly built transposer table, then invert them all if this
      * context is set up for decryption.
+     * @param {boolean} useHardRand - Draw from the BassOmatic instead of the LFSR
+     * @param {boolean} invertForDecrypt - Invert the tables afterwards
      */
     _bldtbls(useHardRand, invertForDecrypt) {
-      const mixer = new Array(BLOCK_SIZE).fill(0);
+      const mixer = OpCodes.CreateArray(BLOCK_SIZE, 0);
       this._buildtbl(mixer, useHardRand);
 
-      const tmp = new Array(BLOCK_SIZE).fill(0);
+      const tmp = OpCodes.CreateArray(BLOCK_SIZE, 0);
       for (let i = 0; i < NTABLES; ++i) {
         this._buildtbl(tmp, useHardRand);
         if (!this.shred8ways)
@@ -458,9 +493,10 @@
     /**
      * initbrand - prime the randbuf scratch buffer used by bassrand():
      * key material first, padded out to 256 bytes with fresh LFSR output.
+     * @param {uint8[]} seed - Key material
      */
     _initbrand(seed) {
-      this.randbuf = new Array(BLOCK_SIZE).fill(0);
+      this.randbuf = OpCodes.CreateArray(BLOCK_SIZE, 0);
       const seedlen = Math.min(seed.length, BLOCK_SIZE);
       let i = 0;
       for (; i < seedlen; ++i)
@@ -474,6 +510,7 @@
      * bassrand - BassOmatic's own pseudo-random generator: once randbuf is
      * exhausted, re-encrypt it (using the currently-defined tables, always
      * in the encryption direction) to produce a fresh 256-byte pool.
+     * @returns {uint8} Next pseudo-random byte
      */
     _bassrand() {
       if (this.randbufCounter === 0)
@@ -484,7 +521,11 @@
 
     // ===== Round primitives (ported from basslib.c) =====
 
-    /** shred1bit - 8-way random bit shred: scatter each bit-plane through its own table. */
+    /**
+     * shred1bit - 8-way random bit shred: scatter each bit-plane through its own table.
+     * @param {uint8[]} inArr - Input bytes
+     * @param {uint8[]} outArr - Output bytes (overwritten)
+     */
     _shred1bit(inArr, outArr) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
         outArr[i] = 0;
@@ -492,65 +533,101 @@
         const bitmask = BIT_MASKS[bitIndex];
         const table = this.tlist[bitIndex];
         for (let i = 0; i < BLOCK_SIZE; ++i)
-          outArr[table[i]] = OpCodes.OrN(outArr[table[i]], OpCodes.AndN(inArr[i], bitmask));
+          outArr[table[i]] = OpCodes.Or32(outArr[table[i]], OpCodes.And32(inArr[i], bitmask));
       }
     }
 
-    /** shred4bit - 2-way random bit shred: split each byte in half via bitmask, scatter each half through its own table. */
+    /**
+     * shred4bit - 2-way random bit shred: split each byte in half via bitmask, scatter each half through its own table.
+     * @param {uint8[]} inArr - Input bytes
+     * @param {uint8[]} outArr - Output bytes (overwritten)
+     * @param {uint8[]} t1 - Table for the masked half
+     * @param {uint8[]} t2 - Table for the other half
+     * @param {uint8} bitmask - 50% bitmask
+     */
     _shred4bit(inArr, outArr, t1, t2, bitmask) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        outArr[t1[i]] = OpCodes.AndN(inArr[i], bitmask);
-      const invMask = OpCodes.AndN(OpCodes.Not32(bitmask), 0xFF);
+        outArr[t1[i]] = OpCodes.And32(inArr[i], bitmask);
+      const invMask = OpCodes.And32(OpCodes.Not32(bitmask), 0xFF);
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        outArr[t2[i]] = OpCodes.OrN(outArr[t2[i]], OpCodes.AndN(inArr[i], invMask));
+        outArr[t2[i]] = OpCodes.Or32(outArr[t2[i]], OpCodes.And32(inArr[i], invMask));
     }
 
-    /** multilookup - substitute 32-byte groups through a rotating selection of the 8 tables. */
+    /**
+     * multilookup - substitute 32-byte groups through a rotating selection of the 8 tables.
+     * @param {uint8[]} inArr - Input bytes
+     * @param {uint8[]} outArr - Output bytes (overwritten)
+     * @param {uint32} tiStart - First table index
+     */
     _multilookup(inArr, outArr, tiStart) {
-      let ti = OpCodes.AndN(tiStart, 0xFF);
+      let ti = OpCodes.And32(tiStart, 0xFF);
       for (let group = 0; group < NTABLES; ++group) {
-        const table = this.tlist[OpCodes.AndN(ti, 7)];
-        ti = OpCodes.AndN(ti + 1, 0xFF);
+        const table = this.tlist[OpCodes.And32(ti, 7)];
+        ti = OpCodes.And32(OpCodes.Add32(ti, 1), 0xFF);
         const base = group * 32;
         for (let pos = 0; pos < 32; ++pos)
           outArr[base + pos] = table[inArr[base + pos]];
       }
     }
 
-    /** xortable - XOR the block with a permutation table (its own inverse when the table is unchanged). */
+    /**
+     * xortable - XOR the block with a permutation table (its own inverse when the table is unchanged).
+     * @param {uint8[]} block - Block (modified in place)
+     * @param {uint8[]} table - Permutation table
+     */
     _xortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        block[i] = OpCodes.XorN(block[i], table[i]);
+        block[i] = OpCodes.Xor32(block[i], table[i]);
     }
 
-    /** ixortable - inverse of xortable when table has already been inverted. */
+    /**
+     * ixortable - inverse of xortable when table has already been inverted.
+     * @param {uint8[]} block - Block (modified in place)
+     * @param {uint8[]} table - Inverted permutation table
+     */
     _ixortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        block[table[i]] = OpCodes.XorN(block[table[i]], i);
+        block[table[i]] = OpCodes.Xor32(block[table[i]], i);
     }
 
-    /** rake - unkeyed diffusion: cumulative forward XOR, then cumulative backward addition mod 256. */
+    /**
+     * rake - unkeyed diffusion: cumulative forward XOR, then cumulative backward addition mod 256.
+     * @param {uint8[]} block - Input block
+     */
     _rake(block) {
       for (let i = 1; i < BLOCK_SIZE; ++i)
-        block[i] = OpCodes.XorN(block[i], block[i - 1]);
+        block[i] = OpCodes.Xor32(block[i], block[i - 1]);
       for (let i = BLOCK_SIZE - 2; i >= 0; --i)
         block[i] = OpCodes.AddMod(block[i], block[i + 1], 256);
     }
 
-    /** unrake - inverse of rake: cumulative forward subtraction mod 256, then cumulative backward XOR. */
+    /**
+     * unrake - inverse of rake: cumulative forward subtraction mod 256, then cumulative backward XOR.
+     * @param {uint8[]} block - Input block
+     */
     _unrake(block) {
       for (let i = 0; i < BLOCK_SIZE - 1; ++i)
         block[i] = OpCodes.SubMod(block[i], block[i + 1], 256);
       for (let i = BLOCK_SIZE - 1; i >= 1; --i)
-        block[i] = OpCodes.XorN(block[i], block[i - 1]);
+        block[i] = OpCodes.Xor32(block[i], block[i - 1]);
     }
 
-    /** f(i,j) - circular addressing mod 8 into tlist, as used throughout bassomatic(). */
+    /**
+     * f(i,j) - circular addressing mod 8 into tlist, as used throughout bassomatic().
+     * @param {int32} i - Round
+     * @param {int32} j - Offset
+     * @returns {uint32} Table index 0..7
+     */
     _f(i, j) {
-      return OpCodes.AndN(i + j, 7);
+      return OpCodes.And32(i + j, 7);
     }
 
-    /** tl(i,j) - convenience accessor for tlist[f(i,j)]. */
+    /**
+     * tl(i,j) - convenience accessor for tlist[f(i,j)].
+     * @param {int32} i - Round
+     * @param {int32} j - Offset
+     * @returns {uint8[]} Permutation table
+     */
     _tl(i, j) {
       return this.tlist[this._f(i, j)];
     }
@@ -559,18 +636,19 @@
      * bassomatic - encipher (or decipher) exactly one 256-byte block,
      * running this.nrounds rounds forward for encryption or backward for
      * decryption. Rebuilds all tables first if rerand is set.
+     * @param {uint8[]} inBlock - 256-byte block
+     * @param {boolean} [applyRerand=true] - Rebuild the tables first when rerand is set
+     * @returns {uint8[]} Processed block
      */
-    _bassomaticCore(inBlock, applyRerand) {
-      if (applyRerand === undefined)
-        applyRerand = true;
+    _bassomaticCore(inBlock, applyRerand = true) {
       if (applyRerand && this.rerand)
         this._bldtbls(false, this.uncryp);
 
       let out = inBlock.slice();
-      let tmp = new Array(BLOCK_SIZE).fill(0);
+      let tmp = OpCodes.CreateArray(BLOCK_SIZE, 0);
 
       if (this.uncryp) {
-        for (let i = this.nrounds - 1; i >= 0; --i) {
+        for (let i = OpCodes.ToInt(this.nrounds) - 1; i >= 0; --i) {
           this._multilookup(out, tmp, this._f(i, 2));
           this._unrake(tmp);
           if (this.shred8ways)
@@ -600,23 +678,28 @@
      * initkey - derive the full key context (rounds, shredding mode,
      * randomization mode, and all 8 permutation tables) from the key.
      * keyBytes[0] is the control byte; keyBytes[1..] is the seed material.
+     * @param {uint8[]} keyBytes - Key bytes
+     * @param {boolean} decrypt - Set the context up for decryption
      */
     _initKey(keyBytes, decrypt) {
       const control = keyBytes[0];
-      this.nrounds = OpCodes.AndN(control, 0x07) + 1;
-      this.shred8ways = OpCodes.AndN(control, 0x08) !== 0;
-      this.rerand = OpCodes.AndN(control, 0x20) !== 0;
-      this.hardrand = OpCodes.AndN(control, 0x10) !== 0 && !this.rerand;
+      this.nrounds = OpCodes.Add32(OpCodes.And32(control, 0x07), 1);
+      this.shred8ways = OpCodes.And32(control, 0x08) !== 0;
+      this.rerand = OpCodes.And32(control, 0x20) !== 0;
+      this.hardrand = OpCodes.And32(control, 0x10) !== 0 && !this.rerand;
       this.uncryp = false; // initially assume encrypt, in case of hardrand
 
-      this.tlist = new Array(NTABLES).fill(null);
-      this.bitmasks = new Array(NTABLES).fill(0);
+      /** @type {uint8[][]} */
+      const tables = new Array(NTABLES);
+      for (let i = 0; i < NTABLES; ++i) tables[i] = null;
+      this.tlist = tables;
+      this.bitmasks = OpCodes.CreateArray(NTABLES, 0);
 
       const keyBody = keyBytes.slice(1);
       this._initlfsr(keyBody);
 
       // build (and discard) a throwaway table to prime the LFSR
-      this._buildtbl(new Array(BLOCK_SIZE).fill(0), false);
+      this._buildtbl(OpCodes.CreateArray(BLOCK_SIZE, 0), false);
 
       if (!this.rerand)
         this._bldtbls(false, decrypt && !this.hardrand);
@@ -636,6 +719,8 @@
 
     /**
      * Encrypt a single 256-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
       return this._bassomaticCore(block);
@@ -643,6 +728,8 @@
 
     /**
      * Decrypt a single 256-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
       return this._bassomaticCore(block);
@@ -673,9 +760,10 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 256-byte block

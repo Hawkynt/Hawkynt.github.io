@@ -107,7 +107,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Skip32Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -124,14 +124,16 @@
   class Skip32Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Skip32} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = 4;
       this.KeySize = 0;
@@ -170,7 +172,7 @@
       }
 
       if (keyBytes.length !== 10) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 10)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 10)");
       }
 
       this._key = [...keyBytes];
@@ -186,62 +188,76 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * G-function: 4 rounds of Feistel using the F-table
+     * @param {uint32} w - 16-bit input word
+     * @param {int32} k - Round counter
+     * @returns {uint32} 16-bit output word
+     */
     _g(w, k) {
       // G-function: 4 rounds of Feistel using F-table
-      let g1 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
-      let g2 = OpCodes.AndN(w, 0xFF);
+      let g1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      let g2 = OpCodes.And32(w, 0xFF);
 
-      const g3 = OpCodes.XorN(this.ftable[OpCodes.XorN(g2, this._key[(4 * k) % 10])], g1);
-      const g4 = OpCodes.XorN(this.ftable[OpCodes.XorN(g3, this._key[(4 * k + 1) % 10])], g2);
-      const g5 = OpCodes.XorN(this.ftable[OpCodes.XorN(g4, this._key[(4 * k + 2) % 10])], g3);
-      const g6 = OpCodes.XorN(this.ftable[OpCodes.XorN(g5, this._key[(4 * k + 3) % 10])], g4);
+      const g3 = OpCodes.Xor32(this.ftable[OpCodes.Xor32(g2, this._key[(4 * k) % 10])], g1);
+      const g4 = OpCodes.Xor32(this.ftable[OpCodes.Xor32(g3, this._key[(4 * k + 1) % 10])], g2);
+      const g5 = OpCodes.Xor32(this.ftable[OpCodes.Xor32(g4, this._key[(4 * k + 2) % 10])], g3);
+      const g6 = OpCodes.Xor32(this.ftable[OpCodes.Xor32(g5, this._key[(4 * k + 3) % 10])], g4);
 
-      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(g5, 8), g6), 0xFFFF);
+      return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(g5, 8), g6), 0xFFFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Load 32-bit value (big-endian)
-      let wl = OpCodes.OrN(OpCodes.Shl32(block[0], 8), block[1]);  // High 16 bits
-      let wr = OpCodes.OrN(OpCodes.Shl32(block[2], 8), block[3]);  // Low 16 bits
+      let wl = OpCodes.Or32(OpCodes.Shl32(block[0], 8), block[1]);  // High 16 bits
+      let wr = OpCodes.Or32(OpCodes.Shl32(block[2], 8), block[3]);  // Low 16 bits
 
       // 24 rounds of Feistel (2 rounds per iteration)
       let k = 0;
       for (let i = 0; i < 12; ++i) {
-        wr = OpCodes.XorN(wr, OpCodes.XorN(this._g(wl, k), k));
+        wr = OpCodes.Xor32(wr, OpCodes.Xor32(this._g(wl, k), k));
         k++;
-        wl = OpCodes.XorN(wl, OpCodes.XorN(this._g(wr, k), k));
+        wl = OpCodes.Xor32(wl, OpCodes.Xor32(this._g(wr, k), k));
         k++;
       }
 
       // Output with wr and wl swapped
       return [
-        OpCodes.AndN(OpCodes.Shr32(wr, 8), 0xFF),
-        OpCodes.AndN(wr, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(wl, 8), 0xFF),
-        OpCodes.AndN(wl, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(wr, 8), 0xFF),
+        OpCodes.And32(wr, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(wl, 8), 0xFF),
+        OpCodes.And32(wl, 0xFF)
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Load 32-bit value (big-endian)
-      let wl = OpCodes.OrN(OpCodes.Shl32(block[0], 8), block[1]);
-      let wr = OpCodes.OrN(OpCodes.Shl32(block[2], 8), block[3]);
+      let wl = OpCodes.Or32(OpCodes.Shl32(block[0], 8), block[1]);
+      let wr = OpCodes.Or32(OpCodes.Shl32(block[2], 8), block[3]);
 
       // 24 rounds in reverse (2 rounds per iteration, same pattern as encrypt but k goes backwards)
       let k = 23;
       for (let i = 0; i < 12; ++i) {
-        wr = OpCodes.XorN(wr, OpCodes.XorN(this._g(wl, k), k));
+        wr = OpCodes.Xor32(wr, OpCodes.Xor32(this._g(wl, k), k));
         k--;
-        wl = OpCodes.XorN(wl, OpCodes.XorN(this._g(wr, k), k));
+        wl = OpCodes.Xor32(wl, OpCodes.Xor32(this._g(wr, k), k));
         k--;
       }
 
       // Output with wr and wl swapped
       return [
-        OpCodes.AndN(OpCodes.Shr32(wr, 8), 0xFF),
-        OpCodes.AndN(wr, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(wl, 8), 0xFF),
-        OpCodes.AndN(wl, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(wr, 8), 0xFF),
+        OpCodes.And32(wr, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(wl, 8), 0xFF),
+        OpCodes.And32(wl, 0xFF)
       ];
     }
 
@@ -267,9 +283,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

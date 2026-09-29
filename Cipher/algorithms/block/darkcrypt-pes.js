@@ -47,16 +47,25 @@
   const ROUNDS = 8;
 
   // Multiplication modulo 2^16+1, where 0 represents 2^16 (IDEA/PES special case).
+  /**
+   * @param {uint32} a - First factor (reduced to 16 bits)
+   * @param {uint32} b - Second factor (reduced to 16 bits)
+   * @returns {uint16} Product modulo 2^16+1 (0 stands for 2^16)
+   */
   function mulMod(a, b) {
     a = OpCodes.ToUint16(a);
     b = OpCodes.ToUint16(b);
     if (a === 0) return OpCodes.ToUint16(MOD - b);
     if (b === 0) return OpCodes.ToUint16(MOD - a);
-    const p = a * b;
+    const p = OpCodes.Mul32(a, b); // below 2^32, so the exact product
     return OpCodes.ToUint16(p % MOD);
   }
 
   // Multiplicative inverse modulo 2^16+1 (extended Euclid).
+  /**
+   * @param {uint32} x - Value (reduced to 16 bits)
+   * @returns {uint16} Multiplicative inverse modulo 2^16+1
+   */
   function mulInv(x) {
     x = OpCodes.ToUint16(x);
     const kk = (x === 0) ? 65536 : x;
@@ -70,9 +79,18 @@
     return inv === 65536 ? 0 : inv;
   }
 
+  /**
+   * @param {uint32} v - Value
+   * @param {uint32} k - Key word to divide by
+   * @returns {uint16} v times the inverse of k, modulo 2^16+1
+   */
   function invMul(v, k) { return mulMod(v, mulInv(k)); }
 
   // Additive inverse modulo 2^16.
+  /**
+   * @param {uint32} x - Value
+   * @returns {uint16} Additive inverse modulo 2^16
+   */
   function addInv(x) { return OpCodes.ToUint16(0x10000 - OpCodes.ToUint16(x)); }
 
   // Bit-rotating 55-word key expansion (same recurrence family later reused
@@ -80,15 +98,21 @@
   // schedule, and each subsequent word is derived by a 9/7-bit split of
   // earlier words (equivalent to rotating a 128-bit register left by 25 bits
   // and re-slicing it into 16-bit windows).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint16[]} 55 expanded key words
+   */
   function expandKey(keyBytes) {
+    /** @type {uint16[]} */
     const w = new Array(55);
     for (let i = 0; i < 8; i++) w[i] = OpCodes.Pack16LE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
     for (let i = 8; i < 55; i++) {
       const phase = i % 8;
+      /** @type {uint32} */
       let v;
       if (phase === 6) v = OpCodes.Xor32(OpCodes.Shl32(w[i-7], 9), OpCodes.Shr32(w[i-14], 7));
       else if (phase === 7) v = OpCodes.Xor32(OpCodes.Shl32(w[i-15], 9), OpCodes.Shr32(w[i-14], 7));
-      else v = OpCodes.Shl32(w[i-7], 9) - OpCodes.Shr32(w[i-6], 7);
+      else v = OpCodes.Sub32(OpCodes.Shl32(w[i-7], 9), OpCodes.Shr32(w[i-6], 7)); // only its low 16 bits are kept
       w[i] = OpCodes.ToUint16(v);
     }
     return w;
@@ -96,14 +120,27 @@
 
   // Round-key tables Ka..Kf for rounds 1..9 (1-based), sourced directly from
   // consecutive groups of 6 expanded words with no further transformation.
+  // Indices of the six round-key tables returned by buildTables.
+  const KA = 0, KB = 1, KC = 2, KE = 3, KD = 4, KF = 5;
+
+  /**
+   * @param {uint16[]} w - Expanded key words
+   * @returns {uint16[][]} Tables Ka, Kb, Kc, Ke, Kd, Kf (indexed by KA..KF), each 1-based by round
+   */
   function buildTables(w) {
-    const Ka = [0], Kb = [0], Kc = [0], Ke = [0], Kd = [0], Kf = [0];
+    /** @type {uint16[][]} */
+    const tables = [];
+    for (let t = 0; t < 6; t++) {
+      /** @type {uint16[]} */
+      const table = [0];
+      tables.push(table);
+    }
     for (let r = 1; r <= 9; r++) {
       const base = (r - 1) * 6;
-      Ka[r] = w[base]; Kb[r] = w[base+1]; Kc[r] = w[base+2];
-      Ke[r] = w[base+3]; Kd[r] = w[base+4]; Kf[r] = w[base+5];
+      tables[KA][r] = w[base]; tables[KB][r] = w[base+1]; tables[KC][r] = w[base+2];
+      tables[KE][r] = w[base+3]; tables[KD][r] = w[base+4]; tables[KF][r] = w[base+5];
     }
-    return { Ka, Kb, Kc, Ke, Kd, Kf };
+    return tables;
   }
 
   class DarkCryptPESAlgorithm extends BlockCipherAlgorithm {
@@ -151,31 +188,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptPESInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptPESInstance(this, isInverse);
     }
   }
 
   class DarkCryptPESInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptPESAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint16[][]|null} */
       this._T = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. PES (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. PES (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._T = buildTables(expandKey(keyBytes));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -188,8 +242,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -199,6 +254,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const T = this._T;
       let X1 = OpCodes.Pack16LE(block[0], block[1]);
@@ -207,13 +266,13 @@
       let X4 = OpCodes.Pack16LE(block[6], block[7]);
 
       for (let r = 1; r <= ROUNDS; r++) {
-        const A = mulMod(X1, T.Ka[r]);
-        const B = mulMod(X2, T.Kb[r]);
-        const X3p = OpCodes.ToUint16(X3 + T.Kc[r]);
-        const X4p = OpCodes.ToUint16(X4 + T.Ke[r]);
-        const C = mulMod(OpCodes.Xor32(A, X3p), T.Kd[r]);
+        const A = mulMod(X1, T[KA][r]);
+        const B = mulMod(X2, T[KB][r]);
+        const X3p = OpCodes.ToUint16(X3 + T[KC][r]);
+        const X4p = OpCodes.ToUint16(X4 + T[KE][r]);
+        const C = mulMod(OpCodes.Xor32(A, X3p), T[KD][r]);
         const D = OpCodes.ToUint16(OpCodes.Xor32(B, X4p) + C);
-        const E = mulMod(D, T.Kf[r]);
+        const E = mulMod(D, T[KF][r]);
         const F = OpCodes.ToUint16(C + E);
 
         X1 = OpCodes.Xor32(E, X3p);
@@ -222,10 +281,10 @@
         X4 = OpCodes.Xor32(B, F);
       }
 
-      const Y1 = mulMod(X1, T.Ka[9]);
-      const Y2 = mulMod(X2, T.Kb[9]);
-      const Y3 = OpCodes.ToUint16(X3 + T.Kc[9]);
-      const Y4 = OpCodes.ToUint16(X4 + T.Ke[9]);
+      const Y1 = mulMod(X1, T[KA][9]);
+      const Y2 = mulMod(X2, T[KB][9]);
+      const Y3 = OpCodes.ToUint16(X3 + T[KC][9]);
+      const Y4 = OpCodes.ToUint16(X4 + T[KE][9]);
 
       return [
         ...OpCodes.Unpack16LE(Y1), ...OpCodes.Unpack16LE(Y2),
@@ -233,6 +292,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const T = this._T;
       let X1 = OpCodes.Pack16LE(block[0], block[1]);
@@ -240,26 +303,26 @@
       let X3 = OpCodes.Pack16LE(block[4], block[5]);
       let X4 = OpCodes.Pack16LE(block[6], block[7]);
 
-      X1 = invMul(X1, T.Ka[9]);
-      X2 = invMul(X2, T.Kb[9]);
-      X3 = OpCodes.ToUint16(X3 - T.Kc[9]);
-      X4 = OpCodes.ToUint16(X4 - T.Ke[9]);
+      X1 = invMul(X1, T[KA][9]);
+      X2 = invMul(X2, T[KB][9]);
+      X3 = OpCodes.ToUint16(X3 - T[KC][9]);
+      X4 = OpCodes.ToUint16(X4 - T[KE][9]);
 
       for (let r = ROUNDS; r >= 1; r--) {
         const G = X3, H = X1;
-        const C = mulMod(OpCodes.Xor32(G, H), T.Kd[r]);
+        const C = mulMod(OpCodes.Xor32(G, H), T[KD][r]);
         const D = OpCodes.ToUint16(OpCodes.Xor32(X4, X2) + C);
-        const E = mulMod(D, T.Kf[r]);
+        const E = mulMod(D, T[KF][r]);
         const F = OpCodes.ToUint16(C + E);
 
         const X4p = OpCodes.Xor32(F, X2);
-        const X4n = OpCodes.ToUint16(X4p - T.Ke[r]);
+        const X4n = OpCodes.ToUint16(X4p - T[KE][r]);
         const B = OpCodes.Xor32(X4, F);
-        const X2n = invMul(B, T.Kb[r]);
+        const X2n = invMul(B, T[KB][r]);
         const A = OpCodes.Xor32(G, E);
         const X3p = OpCodes.Xor32(H, E);
-        const X3n = OpCodes.ToUint16(X3p - T.Kc[r]);
-        const X1n = invMul(A, T.Ka[r]);
+        const X3n = OpCodes.ToUint16(X3p - T[KC][r]);
+        const X1n = invMul(A, T[KA][r]);
 
         X1 = X1n; X2 = X2n; X3 = X3n; X4 = X4n;
       }

@@ -118,10 +118,16 @@
     "550737421110002040128607469796644894392870725815636064932916505344844021" +
     "9525634365177082072073179061196";
 
+  /**
+   * @returns {uint8[]} The 251 seed bytes (five-digit groups mod 256)
+   */
   function buildRandomSeed() {
+    /** @type {uint8[]} */
     const seed = new Array(251);
     for (let i = 0; i < 251; ++i) {
-      seed[i] = parseInt(RAND_DIGITS.substr(i * 5, 5), 10) % 256;
+      /** @type {int32} */
+      const group = parseInt(RAND_DIGITS.substr(i * 5, 5), 10);
+      seed[i] = group % 256;
     }
     return seed;
   }
@@ -142,14 +148,21 @@
   // Turns an arbitrary byte range into a permutation of its own index range by a
   // key-driven selection sweep: at each step the next unused value is chosen at
   // an offset given by the incoming byte. FROG AES submission, "makePermutation".
+  /**
+   * @param {uint8[]} data - Internal key bytes, updated in place
+   * @param {int32} offset - Start of the range
+   * @param {int32} length - Length of the range
+   */
   function makePermutation(data, offset, length) {
+    /** @type {uint8[]} */
     const use = new Array(length);
     for (let i = 0; i < length; ++i) use[i] = i;
 
+    /** @type {uint32} */
     let index = 0;
     let last = length - 1;
     for (let i = 0; i < length - 1; ++i) {
-      index = (index + data[offset + i]) % (last + 1);
+      index = OpCodes.Add32(index, data[offset + i]) % (last + 1);
       data[offset + i] = use[index];
       if (index < last) use.splice(index, 1);
       --last;
@@ -158,7 +171,13 @@
     data[offset + length - 1] = use[0];
   }
 
+  /**
+   * @param {uint8[]} data - Internal key bytes, updated in place
+   * @param {int32} offset - Start of the permutation
+   * @param {int32} length - Length of the permutation
+   */
   function invertPermutation(data, offset, length) {
+    /** @type {uint8[]} */
     const inverse = new Array(length);
     for (let i = 0; i < length; ++i) inverse[data[offset + i]] = i;
     for (let i = 0; i < length; ++i) data[offset + i] = inverse[i];
@@ -168,8 +187,16 @@
   // every byte position is reachable from every other. FROG AES submission,
   // "make1Cycle". A side effect is that bombPermu[i] is never i, which is what
   // keeps the round function's third step from cancelling its own input.
+  /**
+   * @param {uint8[]} data - Internal key bytes, updated in place
+   * @param {int32} offset - Start of bombPermu
+   * @param {int32} blockLength - Block length in bytes
+   */
   function make1Cycle(data, offset, blockLength) {
-    const used = new Array(blockLength).fill(0);
+    /** @type {uint8[]} */
+    const used = new Array(blockLength);
+    used.fill(0);
+    /** @type {int32} */
     let j = 0;
     for (let i = 0; i < blockLength - 1; ++i) {
       if (data[offset + j] === 0) {
@@ -178,6 +205,7 @@
           k = (k + 1) % blockLength;
         } while (used[k] !== 0);
         data[offset + j] = k;
+        /** @type {int32} */
         let l = k;
         while (data[offset + l] !== k) l = data[offset + l];
         data[offset + l] = 0;
@@ -190,6 +218,11 @@
   // Stops bombPermu[i] pointing at the byte the round function's second step
   // already XORs, which would otherwise undo it. FROG AES submission,
   // "removeReferences".
+  /**
+   * @param {uint8[]} data - Internal key bytes, updated in place
+   * @param {int32} offset - Start of bombPermu
+   * @param {int32} blockLength - Block length in bytes
+   */
   function removeReferences(data, offset, blockLength) {
     for (let i = 0; i < blockLength; ++i) {
       const j = (i + 1) % blockLength;
@@ -197,6 +230,12 @@
     }
   }
 
+  /**
+   * @param {uint8[]} bytes - Raw internal key material, turned into the internal key in place
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   * @returns {uint8[]} The same array
+   */
   function makeInternalKey(bytes, blockLength, rounds) {
     for (let r = 0; r < rounds; ++r) {
       const substAt = r * SUBKEY_LEN + blockLength;
@@ -211,6 +250,11 @@
 
   // Replaces every round's substPermu by its inverse, which is the only
   // difference between the encryption and the decryption internal key.
+  /**
+   * @param {uint8[]} internalKey - Internal key, updated in place
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   */
   function invertSubstitutions(internalKey, blockLength, rounds) {
     for (let r = 0; r < rounds; ++r)
       invertPermutation(internalKey, r * SUBKEY_LEN + blockLength, 256);
@@ -218,19 +262,31 @@
 
   // ===== BLOCK TRANSFORM =====
 
+  /**
+   * @param {uint8[]} state - Block, encrypted in place
+   * @param {uint8[]} internalKey - Internal key
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   */
   function frogEncrypt(state, internalKey, blockLength, rounds) {
     for (let r = 0; r < rounds; ++r) {
       const xorAt = r * SUBKEY_LEN;
       const substAt = xorAt + blockLength;
       const bombAt = substAt + 256;
       for (let i = 0; i < blockLength; ++i) {
-        state[i] = internalKey[substAt + OpCodes.XorN(state[i], internalKey[xorAt + i])];
+        state[i] = internalKey[OpCodes.Add32(substAt, OpCodes.Xor32(state[i], internalKey[xorAt + i]))];
         state[(i + 1) % blockLength] ^= state[i];
         state[internalKey[bombAt + i]] ^= state[i];
       }
     }
   }
 
+  /**
+   * @param {uint8[]} state - Block, decrypted in place
+   * @param {uint8[]} internalKey - Internal key
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   */
   function frogDecrypt(state, internalKey, blockLength, rounds) {
     for (let r = rounds - 1; r >= 0; --r) {
       const xorAt = r * SUBKEY_LEN;
@@ -239,20 +295,27 @@
       for (let i = blockLength - 1; i >= 0; --i) {
         state[internalKey[bombAt + i]] ^= state[i];
         state[(i + 1) % blockLength] ^= state[i];
-        state[i] = OpCodes.XorN(internalKey[substAt + state[i]], internalKey[xorAt + i]);
+        state[i] = OpCodes.Xor32(internalKey[OpCodes.Add32(substAt, state[i])], internalKey[xorAt + i]);
       }
     }
   }
 
   // ===== KEY SCHEDULE =====
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   * @returns {uint8[]} Encryption internal key
+   */
   function generateKeys(keyBytes, blockLength, rounds) {
     const keyLength = keyBytes.length;
     const internalKeyLength = SUBKEY_LEN * rounds;
 
+    /** @type {uint8[]} */
     const simpleKey = new Array(internalKeyLength);
     for (let i = 0; i < internalKeyLength; ++i) {
-      simpleKey[i] = OpCodes.XorN(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
+      simpleKey[i] = OpCodes.Xor32(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
     }
 
     const intermediateKey = makeInternalKey(simpleKey, blockLength, rounds);
@@ -260,11 +323,14 @@
     // Self-keying pass: an IV derived from the user key is encrypted over and
     // over under the intermediate internal key, OFB fashion, and the output
     // stream becomes the final internal key material.
-    const iv = new Array(blockLength).fill(0);
+    /** @type {uint8[]} */
+    const iv = new Array(blockLength);
+    iv.fill(0);
     const ivLength = Math.min(keyLength, blockLength);
     for (let i = 0; i < ivLength; ++i) iv[i] ^= keyBytes[i];
     iv[0] ^= keyLength;
 
+    /** @type {uint8[]} */
     const material = new Array(internalKeyLength);
     let filled = 0;
     while (filled < internalKeyLength) {
@@ -389,22 +455,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {FROGInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new FROGInstance(this, isInverse);
     }
   }
 
   class FROGInstance extends IBlockCipherInstance {
+    /**
+     * @param {FROG} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._roundKeys = null;
       this.BlockSize = BLOCK_LEN;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -413,25 +493,36 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-        && (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // The internal key differs between the two directions: decryption needs
       // each round's substPermu replaced by its inverse.
+      /** @type {uint8[]} */
       const ordered = [];
       for (let i = keyBytes.length - 1; i >= 0; --i) ordered.push(keyBytes[i]);
       this._roundKeys = generateKeys(ordered, BLOCK_LEN, ROUNDS);
       if (this.isInverse) invertSubstitutions(this._roundKeys, BLOCK_LEN, ROUNDS);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -444,10 +535,12 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % BLOCK_LEN !== 0)
-        throw new Error(`Input length must be a multiple of ${BLOCK_LEN} bytes`);
+        throw new Error("Input length must be a multiple of " + BLOCK_LEN + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += BLOCK_LEN) {
+        /** @type {uint8[]} */
         const state = [];
         for (let _i = BLOCK_LEN - 1; _i >= 0; --_i) state.push(this.inputBuffer[i + _i]);
         if (this.isInverse) frogDecrypt(state, this._roundKeys, BLOCK_LEN, ROUNDS);

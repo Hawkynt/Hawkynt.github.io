@@ -56,9 +56,15 @@
 
   // ===== SHARED COMPONENTS =====
 
-  // Shared S-box generation functions
+  /**
+   * Shared S-box generation: a bijective S-box built by permuting 0-255
+   * @param {int32} seedKey - Seed
+   * @param {int32} multiplier - Multiplier
+   * @returns {uint8[]} S-box
+   */
   function generateSBox(seedKey, multiplier) {
     // Create a proper bijective S-box by permuting 0-255
+    /** @type {uint8[]} */
     const sbox = new Array(256);
 
     // Initialize with identity
@@ -78,7 +84,12 @@
     return sbox;
   }
 
+  /**
+   * @param {uint8[]} sbox - Bijective S-box
+   * @returns {uint8[]} Inverse S-box
+   */
   function generateInverseSBox(sbox) {
+    /** @type {uint8[]} */
     const invSbox = new Array(256);
     for (let i = 0; i < 256; i++) {
       invSbox[sbox[i]] = i;
@@ -94,7 +105,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class REDOC2Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class REDOC2Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -103,33 +114,33 @@
       this.description = "IBM's experimental data-dependent cipher from the 1980s with 80-bit blocks and 160-bit keys. Uses data-dependent permutations, substitutions, and enclave operations with 10 rounds. Educational implementation only.";
       this.inventor = "IBM Research";
       this.year = 1980;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.ADVANCED;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(20, 20, 1) // 160-bit keys only
+        new KeySize(20, 20, 1) // 160-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(10, 10, 1) // 80-bit blocks only
+        new KeySize(10, 10, 1) // 80-bit blocks only
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("IBM Cryptographic Research Documents", "https://www.ibm.com/security/cryptography/"),
-        new AlgorithmFramework.LinkItem("Fast Software Encryption Proceedings", "https://link.springer.com/conference/fse")
+        new LinkItem("IBM Cryptographic Research Documents", "https://www.ibm.com/security/cryptography/"),
+        new LinkItem("Fast Software Encryption Proceedings", "https://link.springer.com/conference/fse")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Data-Dependent Cipher Design Research", "https://eprint.iacr.org/"),
-        new AlgorithmFramework.LinkItem("IBM Internal Research Archives", "https://researcher.watson.ibm.com/")
+        new LinkItem("Data-Dependent Cipher Design Research", "https://eprint.iacr.org/"),
+        new LinkItem("IBM Internal Research Archives", "https://researcher.watson.ibm.com/")
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Educational Implementation", "Simplified implementation may not reflect full security of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
+        new Vulnerability("Educational Implementation", "Simplified implementation may not reflect full security of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
       ];
 
       // Test vectors
@@ -147,7 +158,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {REDOC2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -161,27 +172,38 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class REDOC2Instance extends AlgorithmFramework.IBlockCipherInstance {
+  class REDOC2Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {REDOC2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 20;
 
       // REDOC II parameters - simplified implementation
+      /** @type {int32} */
       this.ROUNDS = 10;
 
       // Precomputed S-boxes for educational purposes
+      /** @type {uint8[]} */
       this.SBOX = generateSBox(0x5A, 131);
+      /** @type {uint8[]} */
       this.SBOX_INV = generateInverseSBox(this.SBOX);
+      /** @type {uint8[]|null} */
+      this.keyX = null;
+      /** @type {uint8[]|null} */
+      this.keyY = null;
+      /** @type {uint8[][]|null} */
+      this.roundKeys = null;
     }
 
     /**
@@ -193,6 +215,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -208,6 +233,9 @@
       this._setupKey();
     }
 
+    /**
+     * Split the key and derive the round keys
+     */
     _setupKey() {
       if (!this._key) return;
 
@@ -219,13 +247,18 @@
       this.roundKeys = this._generateRoundKeys();
     }
 
+    /**
+     * @returns {uint8[][]} One round key per round
+     */
     _generateRoundKeys() {
+      /** @type {uint8[][]} */
       const roundKeys = [];
 
       for (let round = 0; round < this.ROUNDS; round++) {
+        /** @type {uint8[]} */
         const roundKey = new Array(10);
         for (let i = 0; i < 10; i++) {
-          roundKey[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.keyX[i], this.keyY[(i + round) % 10]), round), 0xFF);
+          roundKey[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this.keyX[i], this.keyY[(i + round) % 10]), round), 0xFF);
         }
         roundKeys.push(roundKey);
       }
@@ -261,9 +294,10 @@
         throw new Error('No data fed');
       }
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -273,6 +307,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 10) {
         throw new Error('REDOC II requires 10-byte blocks');
@@ -289,6 +327,10 @@
       return data;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 10) {
         throw new Error('REDOC II requires 10-byte blocks');
@@ -305,13 +347,19 @@
       return data;
     }
 
+    /**
+     * One round, applied in place
+     * @param {uint8[]} data - Block bytes
+     * @param {uint8[]} roundKey - Round key
+     * @param {boolean} encrypt - Forward (true) or inverse (false) round
+     */
     _roundFunction(data, roundKey, encrypt) {
       if (encrypt) {
         // Simplified symmetric encryption round
 
         // Step 1: XOR with round key
         for (let i = 0; i < 10; i++) {
-          data[i] ^= roundKey[i];
+          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
         }
 
         // Step 2: S-box substitution
@@ -321,12 +369,12 @@
 
         // Step 3: Simple rotation based on position
         for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotL8(data[i], (i + 1)&0x07);
+          data[i] = OpCodes.RotL8(data[i], OpCodes.And32(i + 1, 0x07));
         }
 
         // Step 4: Left-right mixing (like Feistel)
         for (let i = 0; i < 5; i++) {
-          data[i] ^= data[i + 5];
+          data[i] = OpCodes.Xor8(data[i], data[i + 5]);
         }
 
       } else {
@@ -334,12 +382,12 @@
 
         // Reverse Step 4: Left-right mixing
         for (let i = 0; i < 5; i++) {
-          data[i] ^= data[i + 5];
+          data[i] = OpCodes.Xor8(data[i], data[i + 5]);
         }
 
         // Reverse Step 3: Simple rotation
         for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotR8(data[i], (i + 1)&0x07);
+          data[i] = OpCodes.RotR8(data[i], OpCodes.And32(i + 1, 0x07));
         }
 
         // Reverse Step 2: Inverse S-box substitution
@@ -349,7 +397,7 @@
 
         // Reverse Step 1: XOR with round key
         for (let i = 0; i < 10; i++) {
-          data[i] ^= roundKey[i];
+          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
         }
       }
     }
@@ -363,7 +411,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class REDOC3Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class REDOC3Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -372,34 +420,34 @@
       this.description = "Enhanced version of IBM's REDOC II cipher with 128-bit blocks and 256-bit keys. Features improved security and stronger diffusion compared to REDOC II. Educational implementation only.";
       this.inventor = "IBM Research";
       this.year = 1985;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.ADVANCED;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(32, 32, 1) // 256-bit keys only
+        new KeySize(32, 32, 1) // 256-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // 128-bit blocks only
+        new KeySize(16, 16, 1) // 128-bit blocks only
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("IBM Cryptographic Research Publications", "https://www.ibm.com/security/cryptography/"),
-        new AlgorithmFramework.LinkItem("Data-Dependent Cipher Design Papers", "https://link.springer.com/conference/fse"),
-        new AlgorithmFramework.LinkItem("Advanced Cryptography Textbooks", "https://www.springer.com/gp/computer-science/security-and-cryptology")
+        new LinkItem("IBM Cryptographic Research Publications", "https://www.ibm.com/security/cryptography/"),
+        new LinkItem("Data-Dependent Cipher Design Papers", "https://link.springer.com/conference/fse"),
+        new LinkItem("Advanced Cryptography Textbooks", "https://www.springer.com/gp/computer-science/security-and-cryptology")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("CEX Cryptographic Library", "https://github.com/Steppenwolfe65/CEX"),
-        new AlgorithmFramework.LinkItem("Academic Research on Experimental Ciphers", "https://eprint.iacr.org/")
+        new LinkItem("CEX Cryptographic Library", "https://github.com/Steppenwolfe65/CEX"),
+        new LinkItem("Academic Research on Experimental Ciphers", "https://eprint.iacr.org/")
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Educational Implementation", "Simplified implementation may not capture full security properties of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
+        new Vulnerability("Educational Implementation", "Simplified implementation may not capture full security properties of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
       ];
 
       // Test vectors
@@ -417,7 +465,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {REDOC3Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -431,27 +479,42 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
+  class REDOC3Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {REDOC3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 32;
 
       // REDOC III parameters - enhanced over REDOC II
+      /** @type {int32} */
       this.ROUNDS = 12; // More rounds than REDOC II
 
       // Enhanced S-boxes for educational purposes
+      /** @type {uint8[]} */
       this.SBOX = generateSBox(0x9E, 157);
+      /** @type {uint8[]} */
       this.SBOX_INV = generateInverseSBox(this.SBOX);
+      /** @type {uint8[]|null} */
+      this.keyA = null;
+      /** @type {uint8[]|null} */
+      this.keyB = null;
+      /** @type {uint8[]|null} */
+      this.keyC = null;
+      /** @type {uint8[]|null} */
+      this.keyD = null;
+      /** @type {uint8[][]|null} */
+      this.roundKeys = null;
     }
 
     /**
@@ -463,6 +526,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -478,6 +544,9 @@
       this._setupKey();
     }
 
+    /**
+     * Split the key and derive the round keys
+     */
     _setupKey() {
       if (!this._key) return;
 
@@ -491,14 +560,19 @@
       this.roundKeys = this._generateRoundKeys();
     }
 
+    /**
+     * @returns {uint8[][]} One round key per round
+     */
     _generateRoundKeys() {
+      /** @type {uint8[][]} */
       const roundKeys = [];
 
       for (let round = 0; round < this.ROUNDS; round++) {
+        /** @type {uint8[]} */
         const roundKey = new Array(16);
         for (let i = 0; i < 16; i++) {
           // Enhanced key schedule using all four key quarters
-          roundKey[i] = (this.keyA[i % 8]^this.keyB[(i + round) % 8]^this.keyC[(i + round * 2) % 8]^this.keyD[(i + round * 3) % 8]^round)&0xFF;
+          roundKey[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.keyA[i % 8], this.keyB[(i + round) % 8]), this.keyC[(i + round * 2) % 8]), this.keyD[(i + round * 3) % 8]), round), 0xFF);
         }
         roundKeys.push(roundKey);
       }
@@ -534,9 +608,10 @@
         throw new Error('No data fed');
       }
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -546,6 +621,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('REDOC III requires 16-byte blocks');
@@ -562,6 +641,10 @@
       return data;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('REDOC III requires 16-byte blocks');
@@ -578,13 +661,19 @@
       return data;
     }
 
+    /**
+     * One round, applied in place
+     * @param {uint8[]} data - Block bytes
+     * @param {uint8[]} roundKey - Round key
+     * @param {boolean} encrypt - Forward (true) or inverse (false) round
+     */
     _roundFunction(data, roundKey, encrypt) {
       if (encrypt) {
         // Enhanced encryption round for REDOC III
 
         // Step 1: XOR with round key
         for (let i = 0; i < 16; i++) {
-          data[i] ^= roundKey[i];
+          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
         }
 
         // Step 2: S-box substitution
@@ -594,15 +683,15 @@
 
         // Step 3: Enhanced rotation based on position (16-byte block)
         for (let i = 0; i < 16; i++) {
-          data[i] = OpCodes.RotL8(data[i], (i + 1)&0x07);
+          data[i] = OpCodes.RotL8(data[i], OpCodes.And32(i + 1, 0x07));
         }
 
         // Step 4: Enhanced diffusion - Four-way mixing
         for (let i = 0; i < 4; i++) {
           // Mix each quartet with others
-          data[i] ^= OpCodes.XorN(OpCodes.XorN(data[i + 4], data[i + 8]), data[i + 12]);
-          data[i + 4] ^= OpCodes.XorN(data[i + 8], data[i + 12]);
-          data[i + 8] ^= data[i + 12];
+          data[i] = OpCodes.Xor8(data[i], OpCodes.Xor8(OpCodes.Xor8(data[i + 4], data[i + 8]), data[i + 12]));
+          data[i + 4] = OpCodes.Xor8(data[i + 4], OpCodes.Xor8(data[i + 8], data[i + 12]));
+          data[i + 8] = OpCodes.Xor8(data[i + 8], data[i + 12]);
         }
 
       } else {
@@ -610,14 +699,14 @@
 
         // Reverse Step 4: Enhanced diffusion
         for (let i = 3; i >= 0; i--) {
-          data[i + 8] ^= data[i + 12];
-          data[i + 4] ^= OpCodes.XorN(data[i + 8], data[i + 12]);
-          data[i] ^= OpCodes.XorN(OpCodes.XorN(data[i + 4], data[i + 8]), data[i + 12]);
+          data[i + 8] = OpCodes.Xor8(data[i + 8], data[i + 12]);
+          data[i + 4] = OpCodes.Xor8(data[i + 4], OpCodes.Xor8(data[i + 8], data[i + 12]));
+          data[i] = OpCodes.Xor8(data[i], OpCodes.Xor8(OpCodes.Xor8(data[i + 4], data[i + 8]), data[i + 12]));
         }
 
         // Reverse Step 3: Enhanced rotation
         for (let i = 0; i < 16; i++) {
-          data[i] = OpCodes.RotR8(data[i], (i + 1)&0x07);
+          data[i] = OpCodes.RotR8(data[i], OpCodes.And32(i + 1, 0x07));
         }
 
         // Reverse Step 2: Inverse S-box substitution
@@ -627,7 +716,7 @@
 
         // Reverse Step 1: XOR with round key
         for (let i = 0; i < 16; i++) {
-          data[i] ^= roundKey[i];
+          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
         }
       }
     }

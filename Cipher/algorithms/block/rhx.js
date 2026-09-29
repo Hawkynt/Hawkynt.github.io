@@ -143,7 +143,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RHXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -161,26 +161,22 @@
   class RHXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RHXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128-bit blocks
       this.KeySize = 0;
 
-      // RHX configuration constants
-      this.ROUNDS_CONFIG = {
-        256: 22,  // RHX-256: 22 rounds
-        512: 30,  // RHX-512: 30 rounds 
-        1024: 38  // RHX-1024: 38 rounds
-      };
-
       // Rijndael S-box (same as AES)
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -201,6 +197,7 @@
       ];
 
       // Inverse S-box for decryption
+      /** @type {uint8[]} */
       this.INV_SBOX = [
         0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
         0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -220,8 +217,22 @@
         0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
       ];
 
+      /** @type {uint8[][]|null} */
       this.roundKeys = null;
+      /** @type {int32} */
       this.numRounds = 0;
+    }
+
+    /**
+     * RHX round count for a key size
+     * @param {int32} keyBits - Key size in bits
+     * @returns {int32} 22 (RHX-256), 30 (RHX-512), 38 (RHX-1024), or 0 when unsupported
+     */
+    _roundsFor(keyBits) {
+      if (keyBits === 256) return 22;
+      if (keyBits === 512) return 30;
+      if (keyBits === 1024) return 38;
+      return 0;
     }
 
     // Property setter for key
@@ -245,13 +256,13 @@
       }
 
       const keyBits = keyBytes.length * 8;
-      if (!this.ROUNDS_CONFIG[keyBits]) {
-        throw new Error(`Invalid RHX key size: ${keyBits} bits. Supported: 256, 512, 1024 bits`);
+      if (this._roundsFor(keyBits) === 0) {
+        throw new Error("Invalid RHX key size: " + keyBits + " bits. Supported: 256, 512, 1024 bits");
       }
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this.numRounds = this.ROUNDS_CONFIG[keyBits];
+      this.numRounds = this._roundsFor(keyBits);
 
       // Generate key schedule using CEX+ HKDF-based expansion
       this.roundKeys = this._generateKeySchedule(keyBytes, this.numRounds);
@@ -299,6 +310,7 @@
         throw new Error("RHX requires input length to be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process data in 16-byte blocks
@@ -314,7 +326,12 @@
       return output;
     }
 
-    // Generate extended key schedule using CEX+ HKDF-based expansion
+    /**
+     * Generate extended key schedule using CEX+ HKDF-based expansion
+     * @param {uint8[]} masterKey - Key bytes
+     * @param {int32} numRounds - Round count
+     * @returns {uint8[][]} numRounds + 1 round keys of 16 bytes
+     */
     _generateKeySchedule(masterKey, numRounds) {
       const totalRoundKeys = numRounds + 1;
       const totalKeyBytes = totalRoundKeys * 16; // 16 bytes per round key
@@ -324,6 +341,7 @@
       const expandedKey = this._expandKeyMaterial(masterKey, totalKeyBytes);
 
       // Split into round keys
+      /** @type {uint8[][]} */
       const roundKeys = [];
       for (let i = 0; i < totalRoundKeys; i++) {
         const startIdx = i * 16;
@@ -333,10 +351,17 @@
       return roundKeys;
     }
 
-    // Simplified key expansion for educational RHX implementation
-    // This replaces the complex HKDF with a deterministic expansion for testing
+    /**
+     * Simplified key expansion for educational RHX implementation
+     * This replaces the complex HKDF with a deterministic expansion for testing
+     * @param {uint8[]} masterKey - Key bytes
+     * @param {int32} totalBytes - Bytes to produce
+     * @returns {uint8[]} Expanded key material
+     */
     _expandKeyMaterial(masterKey, totalBytes) {
+      /** @type {uint8[]} */
       const expanded = [];
+      /** @type {uint8[]} */
       let state = [...masterKey];
 
       // Use a deterministic expansion similar to Rijndael but extended
@@ -347,12 +372,12 @@
         }
 
         // Add round constant-like value
-        const roundConstant = (expanded.length / 16)&0xFF;
-        state[0] ^= roundConstant;
+        const roundConstant = OpCodes.And32(expanded.length / 16, 0xFF);
+        state[0] = OpCodes.Xor32(state[0], roundConstant);
 
         // XOR with a pattern based on position
         for (let i = 0; i < state.length; i++) {
-          state[i] ^= ((expanded.length + i) * 0x67)&0xFF;
+          state[i] = OpCodes.Xor32(state[i], OpCodes.And32((expanded.length + i) * 0x67, 0xFF));
         }
 
         // Output bytes from current state
@@ -367,7 +392,10 @@
       return expanded.slice(0, totalBytes);
     }
 
-    // Rotate state array for key expansion
+    /**
+     * Rotate state array for key expansion
+     * @param {uint8[]} state - State bytes (rotated in place)
+     */
     _rotateState(state) {
       if (state.length >= 4) {
         // Rotate words within the state
@@ -381,7 +409,12 @@
 
 
     // Process a single 16-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
+      /** @type {uint8[]} */
       let state = [...block];
 
       if (this.isInverse) {
@@ -418,19 +451,29 @@
     }
 
     // RHX transformations (same as AES)
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _subBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.SBOX[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _invSubBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.INV_SBOX[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _shiftRows(state) {
+      /** @type {uint8[]} */
       const temp = [...state];
 
       // Row 1: shift left by 1
@@ -443,7 +486,11 @@
       state[3] = temp[15]; state[7] = temp[3]; state[11] = temp[7]; state[15] = temp[11];
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _invShiftRows(state) {
+      /** @type {uint8[]} */
       const temp = [...state];
 
       // Row 1: shift right by 1
@@ -456,6 +503,9 @@
       state[3] = temp[7]; state[7] = temp[11]; state[11] = temp[15]; state[15] = temp[3];
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const offset = col * 4;
@@ -464,13 +514,16 @@
         const s2 = state[offset + 2];
         const s3 = state[offset + 3];
 
-        state[offset] = OpCodes.GF256Mul(0x02, s0)^OpCodes.GF256Mul(0x03, s1)^s2^s3;
-        state[offset + 1] = s0^OpCodes.GF256Mul(0x02, s1)^OpCodes.GF256Mul(0x03, s2)^s3;
-        state[offset + 2] = s0^s1^OpCodes.GF256Mul(0x02, s2)^OpCodes.GF256Mul(0x03, s3);
-        state[offset + 3] = OpCodes.GF256Mul(0x03, s0)^s1^s2^OpCodes.GF256Mul(0x02, s3);
+        state[offset] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x02, s0), OpCodes.GF256Mul(0x03, s1)), s2), s3);
+        state[offset + 1] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, OpCodes.GF256Mul(0x02, s1)), OpCodes.GF256Mul(0x03, s2)), s3);
+        state[offset + 2] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, s1), OpCodes.GF256Mul(0x02, s2)), OpCodes.GF256Mul(0x03, s3));
+        state[offset + 3] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x03, s0), s1), s2), OpCodes.GF256Mul(0x02, s3));
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (transformed in place)
+     */
     _invMixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const offset = col * 4;
@@ -479,26 +532,21 @@
         const s2 = state[offset + 2];
         const s3 = state[offset + 3];
 
-        state[offset] = OpCodes.GF256Mul(0x0e, s0)^OpCodes.GF256Mul(0x0b, s1)^OpCodes.GF256Mul(0x0d, s2)^OpCodes.GF256Mul(0x09, s3);
-        state[offset + 1] = OpCodes.GF256Mul(0x09, s0)^OpCodes.GF256Mul(0x0e, s1)^OpCodes.GF256Mul(0x0b, s2)^OpCodes.GF256Mul(0x0d, s3);
-        state[offset + 2] = OpCodes.GF256Mul(0x0d, s0)^OpCodes.GF256Mul(0x09, s1)^OpCodes.GF256Mul(0x0e, s2)^OpCodes.GF256Mul(0x0b, s3);
-        state[offset + 3] = OpCodes.GF256Mul(0x0b, s0)^OpCodes.GF256Mul(0x0d, s1)^OpCodes.GF256Mul(0x09, s2)^OpCodes.GF256Mul(0x0e, s3);
+        state[offset] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x0e, s0), OpCodes.GF256Mul(0x0b, s1)), OpCodes.GF256Mul(0x0d, s2)), OpCodes.GF256Mul(0x09, s3));
+        state[offset + 1] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x09, s0), OpCodes.GF256Mul(0x0e, s1)), OpCodes.GF256Mul(0x0b, s2)), OpCodes.GF256Mul(0x0d, s3));
+        state[offset + 2] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x0d, s0), OpCodes.GF256Mul(0x09, s1)), OpCodes.GF256Mul(0x0e, s2)), OpCodes.GF256Mul(0x0b, s3));
+        state[offset + 3] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x0b, s0), OpCodes.GF256Mul(0x0d, s1)), OpCodes.GF256Mul(0x09, s2)), OpCodes.GF256Mul(0x0e, s3));
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (modified in place)
+     * @param {uint8[]} roundKey - 16 round-key bytes
+     */
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.Xor8(state[i], roundKey[i]);
       }
-    }
-
-    // Helper functions
-    _stringToBytes(str) {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i)&0xFF);
-      }
-      return bytes;
     }
 
   }

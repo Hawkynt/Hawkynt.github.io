@@ -111,29 +111,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptXTEA3Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptXTEA3Instance(this, isInverse);
     }
   }
 
   class DarkCryptXTEA3Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptXTEA3Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. XTEA-3 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. XTEA-3 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -146,8 +162,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -157,7 +174,11 @@
       return output;
     }
 
+    /**
+     * @returns {uint32[]} The key as eight little-endian words
+     */
     _keyWords() {
+      /** @type {uint32[]} */
       const k = [];
       for (let i = 0; i < 8; i++) {
         const o = i * 4;
@@ -166,6 +187,10 @@
       return k;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -178,8 +203,10 @@
       v2 = OpCodes.ToUint32(v2 + k[2]);
       v3 = OpCodes.ToUint32(v3 + k[3]);
 
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < ROUNDS; i++) {
+        /** @type {int32} */
         const idxA = OpCodes.And32(sum, 3);
         const a = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxA], v1) + OpCodes.Shl32(v1, 4));
         const b = OpCodes.Xor32(a, OpCodes.ToUint32(v3 + sum));
@@ -188,6 +215,7 @@
 
         sum = OpCodes.ToUint32(sum + DELTA);
 
+        /** @type {int32} */
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const d = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxC], v3) + OpCodes.Shl32(v3, 4));
         const e = OpCodes.Xor32(d, OpCodes.ToUint32(v1 + sum));
@@ -208,6 +236,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -225,6 +257,7 @@
         // Undo the end-of-round permutation (v0,v1,v2,v3) := (v1, v2', v3, v0')
         const v0n = v3, v2n = v1, v1b = v0, v3b = v2;
 
+        /** @type {int32} */
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const d = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxC], v3b) + OpCodes.Shl32(v3b, 4));
         const e = OpCodes.Xor32(d, OpCodes.ToUint32(v1b + sum));
@@ -233,6 +266,7 @@
 
         sum = OpCodes.ToUint32(sum - DELTA);
 
+        /** @type {int32} */
         const idxA = OpCodes.And32(sum, 3);
         const a = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxA], v1b) + OpCodes.Shl32(v1b, 4));
         const b = OpCodes.Xor32(a, OpCodes.ToUint32(v3b + sum));

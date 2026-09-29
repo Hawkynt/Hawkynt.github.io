@@ -197,7 +197,7 @@
 
       // Validate key size (must be 16 bytes)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. TEA requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. TEA requires exactly 16 bytes");
       }
 
       this._key = [...keyBytes];
@@ -242,16 +242,17 @@
       const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
       const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
+      /** @type {uint32} */
       let sum = 0;
 
       // 32 rounds of TEA encryption
       for (let i = 0; i < this.ROUNDS; i++) {
         sum = OpCodes.ToUint32(sum + this.DELTA);
-        v0 = OpCodes.ToUint32(v0 + OpCodes.XorN(OpCodes.XorN(
+        v0 = OpCodes.ToUint32(v0 + OpCodes.Xor32(OpCodes.Xor32(
           OpCodes.ToUint32(OpCodes.Shl32(v1, 4) + k0),
           OpCodes.ToUint32(v1 + sum)),
           OpCodes.ToUint32(OpCodes.Shr32(v1, 5) + k1)));
-        v1 = OpCodes.ToUint32(v1 + OpCodes.XorN(OpCodes.XorN(
+        v1 = OpCodes.ToUint32(v1 + OpCodes.Xor32(OpCodes.Xor32(
           OpCodes.ToUint32(OpCodes.Shl32(v0, 4) + k2),
           OpCodes.ToUint32(v0 + sum)),
           OpCodes.ToUint32(OpCodes.Shr32(v0, 5) + k3)));
@@ -285,11 +286,11 @@
 
       // 32 rounds of TEA decryption (reverse order)
       for (let i = 0; i < this.ROUNDS; i++) {
-        v1 = OpCodes.ToUint32(v1 - OpCodes.XorN(OpCodes.XorN(
+        v1 = OpCodes.ToUint32(v1 - OpCodes.Xor32(OpCodes.Xor32(
           OpCodes.ToUint32(OpCodes.Shl32(v0, 4) + k2),
           OpCodes.ToUint32(v0 + sum)),
           OpCodes.ToUint32(OpCodes.Shr32(v0, 5) + k3)));
-        v0 = OpCodes.ToUint32(v0 - OpCodes.XorN(OpCodes.XorN(
+        v0 = OpCodes.ToUint32(v0 - OpCodes.Xor32(OpCodes.Xor32(
           OpCodes.ToUint32(OpCodes.Shl32(v1, 4) + k0),
           OpCodes.ToUint32(v1 + sum)),
           OpCodes.ToUint32(OpCodes.Shr32(v1, 5) + k1)));
