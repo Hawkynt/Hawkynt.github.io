@@ -62,9 +62,12 @@
   // Build the 256-entry table via the four-round doubled RC4-style key schedule.
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[]} 256-entry table
    */
   function keySchedule(keyBytes) {
-    const table = new Array(256).fill(0);
+    /** @type {uint32[]} */
+    const table = new Array(256);
+    table.fill(0);
     for (let round = 0; round < 4; ++round) {
       for (let i = 0; i < 256; ++i)
         table[i] = OpCodes.ToUint32(OpCodes.Shl32(table[i], 8) + i);
@@ -72,7 +75,7 @@
       let j = round;
       for (let pass = 0; pass < 2; ++pass) {
         for (let i = 0; i < 256; ++i) {
-          j = OpCodes.And32(j + OpCodes.And32(table[i], 0xFF) + keyBytes[i % 16], 0xFF);
+          j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, OpCodes.And32(table[i], 0xFF)), keyBytes[i % 16]), 0xFF);
           const t = table[i]; table[i] = table[j]; table[j] = t;
         }
       }
@@ -83,15 +86,31 @@
 
   // Prime the Fibonacci-style position counter and build the doubling checkpoints
   // (equivalent to the priming call made once from setup() with position=0).
+  // Generator state layout: [[index, x1, x2, x3], history1, history2, history3]
+  /**
+   * @param {uint32[]} table - Key table
+   * @returns {uint32[][]} Generator state (layout above)
+   */
   function primeState(table) {
+    /** @type {uint32} */
     let esi = 0x8000;
+    /** @type {uint32} */
     let counter = 1;
-    let eax = 0, edx = 0;
+    /** @type {uint32} */
+    let eax = 0;
+    /** @type {uint32} */
+    let edx = 0;
     let index = 0;
 
-    const history1 = new Array(CHECKPOINT_ROUNDS).fill(0);
-    const history2 = new Array(CHECKPOINT_ROUNDS).fill(0);
-    const history3 = new Array(CHECKPOINT_ROUNDS).fill(0);
+    /** @type {uint32[]} */
+    const history1 = new Array(CHECKPOINT_ROUNDS);
+    history1.fill(0);
+    /** @type {uint32[]} */
+    const history2 = new Array(CHECKPOINT_ROUNDS);
+    history2.fill(0);
+    /** @type {uint32[]} */
+    const history3 = new Array(CHECKPOINT_ROUNDS);
+    history3.fill(0);
 
     for (;;) {
       eax = OpCodes.ToUint32(eax + counter);
@@ -110,25 +129,35 @@
       eax = OpCodes.RotL32(eax, 8);
       eax = OpCodes.Xor32(eax, table[OpCodes.And32(eax, 0xFF)]);
       edx = OpCodes.Xor32(edx, table[OpCodes.And32(edx, 0xFF)]);
-      counter = OpCodes.ToUint32(counter * 2);
+      counter = OpCodes.Mul32(counter, 2);
       eax = OpCodes.RotL32(eax, 8);
 
       esi = OpCodes.Shr32(esi, 1);
       if (!(esi > 0)) break;
     }
 
-    return {
-      index, x1: eax, x2: edx, x3: counter,
-      history1, history2, history3
-    };
+    /** @type {uint32[]} */
+    const registers = [index, eax, edx, counter];
+    /** @type {uint32[][]} */
+    const state = [registers, history1, history2, history3];
+    return state;
   }
 
   // Produce `count` 32-bit keystream words, advancing state in place.
+  /**
+   * @param {uint32[]} table - Key table
+   * @param {uint32[][]} state - Generator state (see primeState), advanced in place
+   * @param {int32} count - Number of words
+   * @returns {uint32[]} Keystream words
+   */
   function generateWords(table, state, count) {
+    /** @type {uint32[]} */
     const out = [];
-    let index = state.index;
-    let eax = state.x1, edx = state.x2, ecx = state.x3;
-    const h1 = state.history1, h2 = state.history2, h3 = state.history3;
+    const registers = state[0];
+    /** @type {int32} */
+    let index = registers[0];
+    let eax = registers[1], edx = registers[2], ecx = registers[3];
+    const h1 = state[1], h2 = state[2], h3 = state[3];
 
     for (let k = 0; k < count; ++k) {
       // Refresh (extend) checkpoints via single-step advances while the
@@ -147,7 +176,7 @@
         a = OpCodes.RotL32(a, 8);
         a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
         d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
-        c = OpCodes.ToUint32(c * 2);
+        c = OpCodes.Mul32(c, 2);
         a = OpCodes.RotL32(a, 8);
 
         eax = a; edx = d; ecx = c;
@@ -156,7 +185,7 @@
 
       // Fast path: emit one keystream word from the current state, then
       // pull the next word forward from the previous checkpoint.
-      out.push(OpCodes.XorN(eax, edx));
+      out.push(OpCodes.Xor32(eax, edx));
 
       let a = OpCodes.ToUint32(~h1[index - 1]);
       a = OpCodes.RotR32(a, 8);
@@ -165,17 +194,17 @@
       a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
 
       let d = h2[index - 1];
-      d = OpCodes.XorN(d, table[OpCodes.And32(d, 0xFF)]);
+      d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
       d = OpCodes.RotL32(d, 8);
       d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
       d = OpCodes.RotL32(d, 8);
 
-      const newX3 = OpCodes.ToUint32(2 * h3[index - 1] + 1);
+      const newX3 = OpCodes.Add32(OpCodes.Mul32(2, h3[index - 1]), 1);
       eax = a; edx = d; ecx = newX3;
       index--;
     }
 
-    state.index = index; state.x1 = eax; state.x2 = edx; state.x3 = ecx;
+    registers[0] = index; registers[1] = eax; registers[2] = edx; registers[3] = ecx;
     return out;
   }
 
@@ -236,7 +265,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._table = null;
+      /** @type {uint32[][]|null} */
       this._state = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -292,9 +323,11 @@
      */
     _transformBlock(block) {
       const words = generateWords(this._table, this._state, 4);
+      /** @type {uint8[]} */
       const ks = [];
-      for (const w of words) ks.push(...OpCodes.Unpack32LE(w));
+      for (let w = 0; w < words.length; w++) ks.push(...OpCodes.Unpack32LE(words[w]));
 
+      /** @type {uint8[]} */
       const out = new Array(this.BlockSize);
       for (let i = 0; i < this.BlockSize; ++i) out[i] = OpCodes.Xor32(block[i], ks[i]);
       return out;
