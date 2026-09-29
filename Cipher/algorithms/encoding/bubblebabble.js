@@ -123,14 +123,16 @@
       ];
 
       // BubbleBabble character sets, per draft-huima-01.txt section 2.
+      /** @type {string} */
       this.consonants = "bcdfghklmnprstvzx";  // 17 consonants, indices 0-16 (index 16 = 'x', reserved as the even-length capstone marker)
+      /** @type {string} */
       this.vowels = "aeiouy";                 // 6 vowels, indices 0-5
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BubbleBabbleInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -147,14 +149,22 @@
   class BubbleBabbleInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BubbleBabbleAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {string} */
+      this.vowels = algorithm.vowels;
+      /** @type {string} */
+      this.consonants = algorithm.consonants;
     }
 
     /**
@@ -173,8 +183,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -187,9 +203,11 @@
       if (!this._feedBuffer) {
         throw new Error('BubbleBabbleInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
@@ -202,28 +220,43 @@
    * every tuple and updated from each tuple's own two raw bytes, so a
    * single-bit corruption anywhere in the encoded string is very likely
    * to fail the a/c validity check on decode.
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} ASCII Bubble Babble text
    */
 
     encode(data) {
-      const V = this.algorithm.vowels;
-      const C = this.algorithm.consonants;
+      /** @type {string} */
+      const V = this.vowels;
+      /** @type {string} */
+      const C = this.consonants;
+      /** @type {int32} */
       const K = data.length;
+      /** @type {int32} */
       const numPairs = Math.floor(K / 2);
 
+      /** @type {string} */
       let result = "x";
+      /** @type {int32} */
       let checksum = 1; // C[1] = 1
 
       for (let i = 0; i < numPairs; i++) {
+        /** @type {int32} */
         const d1 = data[2 * i];
+        /** @type {int32} */
         const d2 = data[2 * i + 1];
 
-        const a = (OpCodes.And32(OpCodes.Shr32(d1, 6), 3) + checksum) % 6;
+        /** @type {int32} */
+        const a = OpCodes.Add32(OpCodes.And32(OpCodes.Shr32(d1, 6), 3), checksum) % 6;
+        /** @type {int32} */
         const b = OpCodes.And32(OpCodes.Shr32(d1, 2), 15);
-        const c = (OpCodes.And32(d1, 3) + Math.floor(checksum / 6)) % 6;
+        /** @type {int32} */
+        const c = OpCodes.Add32(OpCodes.And32(d1, 3), Math.floor(checksum / 6)) % 6;
+        /** @type {int32} */
         const d = OpCodes.And32(OpCodes.Shr32(d2, 4), 15);
+        /** @type {int32} */
         const e = OpCodes.And32(d2, 15);
 
-        result += V[a] + C[b] + V[c] + C[d] + '-' + C[e];
+        result += V.charAt(a) + C.charAt(b) + V.charAt(c) + C.charAt(d) + '-' + C.charAt(e);
 
         // Next checksum uses this pair's own raw bytes, per spec:
         // C[n] = (C[n-1]*5 + (D[2n-3]*7 + D[2n-2])) mod 36.
@@ -235,20 +268,27 @@
         // "end of data" marker - consonant index 16 ('x') - which a real
         // byte-derived b (always 0-15) can never produce, so decode can
         // tell the two partial-tuple forms apart unambiguously.
+        /** @type {int32} */
         const a = checksum % 6;
+        /** @type {int32} */
         const c = Math.floor(checksum / 6);
-        result += V[a] + C[16] + V[c];
+        result += V.charAt(a) + C.charAt(16) + V.charAt(c);
       } else {
+        /** @type {int32} */
         const d1 = data[K - 1];
-        const a = (OpCodes.And32(OpCodes.Shr32(d1, 6), 3) + checksum) % 6;
+        /** @type {int32} */
+        const a = OpCodes.Add32(OpCodes.And32(OpCodes.Shr32(d1, 6), 3), checksum) % 6;
+        /** @type {int32} */
         const b = OpCodes.And32(OpCodes.Shr32(d1, 2), 15);
-        const c = (OpCodes.And32(d1, 3) + Math.floor(checksum / 6)) % 6;
-        result += V[a] + C[b] + V[c];
+        /** @type {int32} */
+        const c = OpCodes.Add32(OpCodes.And32(d1, 3), Math.floor(checksum / 6)) % 6;
+        result += V.charAt(a) + C.charAt(b) + V.charAt(c);
       }
 
       result += "x";
 
       // Convert string to byte array
+      /** @type {uint8[]} */
       const resultBytes = [];
       for (let i = 0; i < result.length; i++) {
         resultBytes.push(result.charCodeAt(i));
@@ -256,91 +296,136 @@
       return resultBytes;
     }
 
+    /**
+     * Index of a vowel character
+     * @param {string} ch - Character
+     * @param {int32} where - Its position, for the error message
+     * @returns {int32} Vowel index 0..5
+     */
+    readVowel(ch, where) {
+      /** @type {int32} */
+      const v = this.vowels.indexOf(ch);
+      if (v < 0) {
+        throw new Error("BubbleBabbleInstance.decode: invalid vowel character '" + ch + "' at " + where);
+      }
+      return v;
+    }
+
+    /**
+     * Index of a consonant character
+     * @param {string} ch - Character
+     * @param {int32} where - Its position, for the error message
+     * @returns {int32} Consonant index 0..16
+     */
+    readConsonant(ch, where) {
+      /** @type {int32} */
+      const c = this.consonants.indexOf(ch);
+      if (c < 0) {
+        throw new Error("BubbleBabbleInstance.decode: invalid consonant character '" + ch + "' at " + where);
+      }
+      return c;
+    }
+
+    /**
+     * Proper (always non-negative) modulo 6 - JS's % keeps the dividend's
+     * sign, but (a - checksum) is routinely negative here.
+     * @param {int32} n - Dividend
+     * @returns {int32} n mod 6 in 0..5
+     */
+    mod6(n) {
+      return ((n % 6) + 6) % 6;
+    }
+
+    /**
+     * Decode Bubble Babble text to bytes
+     * @param {uint8[]} data - ASCII Bubble Babble text
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
+      /** @type {string} */
       const encoded = OpCodes.BytesToChars(data);
-      const V = this.algorithm.vowels;
-      const C = this.algorithm.consonants;
 
-      if (this.vowelIndex === undefined) {
-        this.vowelIndex = {};
-        for (let i = 0; i < V.length; i++) this.vowelIndex[V[i]] = i;
-        this.consonantIndex = {};
-        for (let i = 0; i < C.length; i++) this.consonantIndex[C[i]] = i;
-      }
-
-      if (encoded.length < 5 || encoded[0] !== 'x' || encoded[encoded.length - 1] !== 'x') {
+      if (encoded.length < 5 || encoded.charAt(0) !== 'x' || encoded.charAt(encoded.length - 1) !== 'x') {
         throw new Error("BubbleBabbleInstance.decode: encoded string must start and end with 'x'");
       }
 
+      /** @type {string} */
       const core = encoded.slice(1, -1);
+      /** @type {int32} */
       const coreLen = core.length;
       if (coreLen < 3 || (coreLen - 3) % 6 !== 0) {
-        throw new Error(`BubbleBabbleInstance.decode: invalid encoded length ${encoded.length} for Bubble Babble`);
+        throw new Error("BubbleBabbleInstance.decode: invalid encoded length " + encoded.length + " for Bubble Babble");
       }
+      /** @type {int32} */
       const numPairs = (coreLen - 3) / 6;
 
-      const readVowel = (ch, where) => {
-        const v = this.vowelIndex[ch];
-        if (v === undefined) throw new Error(`BubbleBabbleInstance.decode: invalid vowel character '${ch}' at ${where}`);
-        return v;
-      };
-      const readConsonant = (ch, where) => {
-        const c = this.consonantIndex[ch];
-        if (c === undefined) throw new Error(`BubbleBabbleInstance.decode: invalid consonant character '${ch}' at ${where}`);
-        return c;
-      };
-      // Proper (always non-negative) modulo - JS's % keeps the dividend's
-      // sign, but (a - checksum) is routinely negative here.
-      const mod6 = n => ((n % 6) + 6) % 6;
-
-      const result = [];
+      /** @type {int32} */
       let checksum = 1;
+      /** @type {int32} */
       let pos = 0;
 
       for (let i = 0; i < numPairs; i++) {
-        const a = readVowel(core[pos], pos);
-        const b = readConsonant(core[pos + 1], pos + 1);
-        const c = readVowel(core[pos + 2], pos + 2);
-        const d = readConsonant(core[pos + 3], pos + 3);
-        if (core[pos + 4] !== '-') {
-          throw new Error(`BubbleBabbleInstance.decode: expected '-' separator at position ${pos + 4}`);
+        /** @type {int32} */
+        const a = this.readVowel(core.charAt(pos), pos);
+        /** @type {int32} */
+        const b = this.readConsonant(core.charAt(pos + 1), pos + 1);
+        /** @type {int32} */
+        const c = this.readVowel(core.charAt(pos + 2), pos + 2);
+        /** @type {int32} */
+        const d = this.readConsonant(core.charAt(pos + 3), pos + 3);
+        if (core.charAt(pos + 4) !== '-') {
+          throw new Error("BubbleBabbleInstance.decode: expected '-' separator at position " + (pos + 4));
         }
-        const e = readConsonant(core[pos + 5], pos + 5);
+        /** @type {int32} */
+        const e = this.readConsonant(core.charAt(pos + 5), pos + 5);
         pos += 6;
 
-        const top2 = mod6(a - checksum);
-        const bottom2 = mod6(c - Math.floor(checksum / 6));
+        /** @type {int32} */
+        const top2 = this.mod6(a - checksum);
+        /** @type {int32} */
+        const bottom2 = this.mod6(c - Math.floor(checksum / 6));
         if (top2 >= 4 || bottom2 >= 4) {
-          throw new Error(`BubbleBabbleInstance.decode: checksum validation failed on tuple ${i + 1}`);
+          throw new Error("BubbleBabbleInstance.decode: checksum validation failed on tuple " + (i + 1));
         }
 
+        /** @type {int32} */
         const d1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(top2, 6), OpCodes.Shl32(b, 2)), bottom2);
+        /** @type {int32} */
         const d2 = OpCodes.Or32(OpCodes.Shl32(d, 4), e);
-        result.push(d1, d2);
+        result.push(d1);
+        result.push(d2);
 
         checksum = (checksum * 5 + (d1 * 7 + d2)) % 36;
       }
 
       // Partial tuple: consonant index 16 ('x') means "capstone, no data";
       // any other consonant index means the odd trailing data byte.
-      const a = readVowel(core[pos], pos);
-      const b = readConsonant(core[pos + 1], pos + 1);
-      const c = readVowel(core[pos + 2], pos + 2);
+      /** @type {int32} */
+      const a = this.readVowel(core.charAt(pos), pos);
+      /** @type {int32} */
+      const b = this.readConsonant(core.charAt(pos + 1), pos + 1);
+      /** @type {int32} */
+      const c = this.readVowel(core.charAt(pos + 2), pos + 2);
 
       if (b === 16) {
         if (a !== checksum % 6 || c !== Math.floor(checksum / 6)) {
           throw new Error('BubbleBabbleInstance.decode: checksum validation failed on final capstone tuple');
         }
       } else {
-        const top2 = mod6(a - checksum);
-        const bottom2 = mod6(c - Math.floor(checksum / 6));
+        /** @type {int32} */
+        const top2 = this.mod6(a - checksum);
+        /** @type {int32} */
+        const bottom2 = this.mod6(c - Math.floor(checksum / 6));
         if (top2 >= 4 || bottom2 >= 4) {
           throw new Error('BubbleBabbleInstance.decode: checksum validation failed on final tuple');
         }
+        /** @type {int32} */
         const d1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(top2, 6), OpCodes.Shl32(b, 2)), bottom2);
         result.push(d1);
       }
