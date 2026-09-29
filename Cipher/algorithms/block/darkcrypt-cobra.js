@@ -219,6 +219,9 @@
   /** @type {uint32[]} */
   const PTRAIL_BASE = [0x578FDFE3, 0x3AC372E6, 0xB83ACB02, 0x2002397A];
 
+  // Key table set layout (uint32[][]): P-array, four S-boxes, trailing whitening words.
+  const TAB_P16 = 0, TAB_S0 = 1, TAB_S1 = 2, TAB_S2 = 3, TAB_S3 = 4, TAB_PTRAIL = 5;
+
   class DarkCryptCobraAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -290,6 +293,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._tabs = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -337,32 +341,46 @@
     }
 
     // Blowfish F function: F(round,x) = ((S0[b3]+S1[b2]) ^ S2[b1]) + S3[b0], x first XORed with P16[round].
+    /**
+     * @param {uint32[][]} tabs - Key tables (TAB_P16, TAB_S0..TAB_S3, TAB_PTRAIL)
+     * @param {int32} round - Round index
+     * @param {uint32} x - Right half
+     * @returns {uint32} F value
+     */
     _f(tabs, round, x) {
-      const t = OpCodes.Xor32(x, tabs.P16[round]);
+      const t = OpCodes.Xor32(x, tabs[TAB_P16][round]);
       const b3 = OpCodes.And32(OpCodes.Shr32(t, 24), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(t, 16), 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF), b0 = OpCodes.And32(t, 0xFF);
-      let r = OpCodes.ToUint32(tabs.S0[b3] + tabs.S1[b2]);
-      r = OpCodes.Xor32(r, tabs.S2[b1]);
-      r = OpCodes.ToUint32(r + tabs.S3[b0]);
+      let r = OpCodes.ToUint32(tabs[TAB_S0][b3] + tabs[TAB_S1][b2]);
+      r = OpCodes.Xor32(r, tabs[TAB_S2][b1]);
+      r = OpCodes.ToUint32(r + tabs[TAB_S3][b0]);
       return r;
     }
 
     // Core Feistel primitive shared by encrypt and the key-schedule self-encryption; mutates LR in place.
+    /**
+     * @param {uint32[][]} tabs - Key tables (TAB_P16, TAB_S0..TAB_S3, TAB_PTRAIL)
+     * @param {uint32[]} LR - Left and right half, replaced in place
+     */
     _coreEncrypt(tabs, LR) {
-      let L = OpCodes.Xor32(LR[0], tabs.Ptrail[0]);
-      let R = OpCodes.Xor32(LR[1], tabs.Ptrail[1]);
+      let L = OpCodes.Xor32(LR[0], tabs[TAB_PTRAIL][0]);
+      let R = OpCodes.Xor32(LR[1], tabs[TAB_PTRAIL][1]);
       for (let i = 0; i < ROUNDS; i++) {
         const savedR = R;
         const t = OpCodes.Xor32(this._f(tabs, i, R), L);
         R = OpCodes.RotR32(t, 1);
         L = savedR;
       }
-      LR[0] = OpCodes.Xor32(L, tabs.Ptrail[2]);
-      LR[1] = OpCodes.Xor32(R, tabs.Ptrail[3]);
+      LR[0] = OpCodes.Xor32(L, tabs[TAB_PTRAIL][2]);
+      LR[1] = OpCodes.Xor32(R, tabs[TAB_PTRAIL][3]);
     }
 
+    /**
+     * @param {uint32[][]} tabs - Key tables (TAB_P16, TAB_S0..TAB_S3, TAB_PTRAIL)
+     * @param {uint32[]} LR - Left and right half, replaced in place
+     */
     _coreDecrypt(tabs, LR) {
-      let L = OpCodes.Xor32(LR[0], tabs.Ptrail[2]);
-      let R = OpCodes.Xor32(LR[1], tabs.Ptrail[3]);
+      let L = OpCodes.Xor32(LR[0], tabs[TAB_PTRAIL][2]);
+      let R = OpCodes.Xor32(LR[1], tabs[TAB_PTRAIL][3]);
       for (let i = ROUNDS - 1; i >= 0; i--) {
         const savedL = L;
         const rotIn = OpCodes.RotL32(R, 1);
@@ -370,38 +388,40 @@
         L = OpCodes.Xor32(rotIn, t);
         R = savedL;
       }
-      LR[0] = OpCodes.Xor32(L, tabs.Ptrail[0]);
-      LR[1] = OpCodes.Xor32(R, tabs.Ptrail[1]);
+      LR[0] = OpCodes.Xor32(L, tabs[TAB_PTRAIL][0]);
+      LR[1] = OpCodes.Xor32(R, tabs[TAB_PTRAIL][1]);
     }
 
     // Blowfish-style self-encryption key schedule with DarkCrypt's two-pass P-array mix.
+    /**
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {uint32[][]} Key tables (TAB_P16, TAB_S0..TAB_S3, TAB_PTRAIL)
+     */
     _scheduleKey(key) {
-      const tabs = {
-        P16: [...P16_BASE], S0: [...S0_BASE], S1: [...S1_BASE], S2: [...S2_BASE], S3: [...S3_BASE],
-        Ptrail: [...PTRAIL_BASE]
-      };
+      /** @type {uint32[][]} */
+      const tabs = [[...P16_BASE], [...S0_BASE], [...S1_BASE], [...S2_BASE], [...S3_BASE], [...PTRAIL_BASE]];
 
-      let K = new Array(8);
+      /** @type {uint32[]} */
+      const K = new Array(8);
       for (let i = 0; i < 8; i++) K[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
 
-      for (let i = 0; i < 16; i++) tabs.P16[i] = OpCodes.Xor32(tabs.P16[i], K[OpCodes.And32(i, 7)]);
+      for (let i = 0; i < 16; i++) tabs[TAB_P16][i] = OpCodes.Xor32(tabs[TAB_P16][i], K[OpCodes.And32(i, 7)]);
 
-      /** @type {uint8[]} */
+      /** @type {uint32[]} */
       let LR = [0, 0];
       this._coreEncrypt(tabs, LR);
-      tabs.P16[0] = LR[0]; tabs.P16[1] = LR[1];
+      tabs[TAB_P16][0] = LR[0]; tabs[TAB_P16][1] = LR[1];
 
       for (let i = 0; i < 8; i++) K[i] = OpCodes.RotR32(K[i], 1);
-      for (let i = 0; i < 16; i++) tabs.P16[i] = OpCodes.Xor32(tabs.P16[i], K[OpCodes.And32(i, 7)]);
+      for (let i = 0; i < 16; i++) tabs[TAB_P16][i] = OpCodes.Xor32(tabs[TAB_P16][i], K[OpCodes.And32(i, 7)]);
 
-      /** @type {uint8[]} */
       LR = [0, 0];
       for (let idx = 0; idx < 16; idx += 2) {
         this._coreEncrypt(tabs, LR);
-        tabs.P16[idx] = LR[0]; tabs.P16[idx + 1] = LR[1];
+        tabs[TAB_P16][idx] = LR[0]; tabs[TAB_P16][idx + 1] = LR[1];
       }
-      for (const name of ['S0', 'S1', 'S2', 'S3']) {
-        const arr = tabs[name];
+      for (let s = TAB_S0; s <= TAB_S3; s++) {
+        const arr = tabs[s];
         for (let idx = 0; idx < 256; idx += 2) {
           this._coreEncrypt(tabs, LR);
           arr[idx] = LR[0]; arr[idx + 1] = LR[1];
@@ -409,7 +429,7 @@
       }
       for (let idx = 0; idx < 4; idx += 2) {
         this._coreEncrypt(tabs, LR);
-        tabs.Ptrail[idx] = LR[0]; tabs.Ptrail[idx + 1] = LR[1];
+        tabs[TAB_PTRAIL][idx] = LR[0]; tabs[TAB_PTRAIL][idx + 1] = LR[1];
       }
 
       return tabs;
@@ -420,6 +440,7 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       const LR = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7])
@@ -433,6 +454,7 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       const LR = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7])

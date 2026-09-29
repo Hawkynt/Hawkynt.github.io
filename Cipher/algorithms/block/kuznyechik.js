@@ -79,7 +79,13 @@
   ]);
 
   // GF(OpCodes.Xor32(2, 8)) multiplication with irreducible polynomial 0x1C3 (OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 7) + OpCodes.Xor32(x, 6) + x + 1)
+  /**
+   * @param {uint8} a - First factor
+   * @param {uint8} b - Second factor
+   * @returns {uint32} Product in GF(2^8)
+   */
   function gfMul(a, b) {
+    /** @type {uint32} */
     let result = 0;
     let aVal = OpCodes.And32(a, 0xFF);
     let bVal = OpCodes.And32(b, 0xFF);
@@ -98,11 +104,13 @@
   // The linear feedback coefficients determine l(a)
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function transformR(block) {
     const result = new Uint8Array(16);
 
     // Calculate l(a) = sum of gfMul(LINEAR[i], a[i]) for i=0..15
+    /** @type {uint32} */
     let l = 0;
     for (let i = 0; i < 16; ++i) {
       l = OpCodes.Xor32(l, gfMul(LINEAR[i], block[i]));
@@ -119,6 +127,7 @@
   // L transformation = R applied 16 times (RFC 7801)
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function transformL(block) {
     let result = new Uint8Array(block);
@@ -131,6 +140,7 @@
   // Inverse R transformation
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function invTransformR(block) {
     const result = new Uint8Array(16);
@@ -141,6 +151,7 @@
     }
 
     // Calculate l(a')
+    /** @type {uint32} */
     let l = 0;
     for (let i = 0; i < 16; ++i) {
       l = OpCodes.Xor32(l, gfMul(LINEAR[i], result[i]));
@@ -153,6 +164,7 @@
   // Inverse L transformation = R^{-1} applied 16 times
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function invTransformL(block) {
     let result = new Uint8Array(block);
@@ -165,6 +177,7 @@
   // Substitution transformation S (apply S-box to all bytes)
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function transformS(block) {
     const result = new Uint8Array(16);
@@ -177,6 +190,7 @@
   // Inverse substitution transformation S^{-1}
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   function invTransformS(block) {
     const result = new Uint8Array(16);
@@ -189,6 +203,8 @@
   // XOR transformation X[k]
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - Round key
+   * @returns {uint8[]} Output block
    */
   function transformX(block, key) {
     const result = new Uint8Array(16);
@@ -200,7 +216,11 @@
 
   // Feistel round constants from RFC 7801 Section 4.3
   // Pre-compute all 32 round constants
+  /**
+   * @returns {uint8[][]} The 32 iteration constants
+   */
   function computeRoundConstants() {
+    /** @type {uint8[][]} */
     const constants = [];
     for (let i = 1; i <= 32; ++i) {
       const vec = new Uint8Array(16);
@@ -210,11 +230,14 @@
     return constants;
   }
 
+  /** @type {uint8[][]} */
   const ROUND_CONSTANTS = computeRoundConstants();
 
   // LSX transformation: L ∘ S ∘ X[k]
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - Round key
+   * @returns {uint8[]} Output block
    */
   function transformLSX(block, key) {
     let result = transformX(block, key);
@@ -225,7 +248,12 @@
 
   // Key schedule from RFC 7801 Section 4.3 and 4.4
   // Generates 10 round keys K_1 through K_10
+  /**
+   * @param {uint8[]} key - 32 key bytes
+   * @returns {uint8[][]} The 10 round keys
+   */
   function keyExpansion(key) {
+    /** @type {uint8[][]} */
     const keys = new Array(10);
 
     // K_1 = first 16 bytes of key, K_2 = last 16 bytes
@@ -358,6 +386,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 

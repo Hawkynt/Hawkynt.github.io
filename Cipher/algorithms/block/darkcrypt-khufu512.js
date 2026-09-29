@@ -76,20 +76,34 @@
   /** @type {uint8[]} */
   const ROT = [16, 16, 8, 8, 16, 16, 24, 24];
 
-  function makeRng() {
-    let seed = 0;
-    return {
-      srand(s) { seed = OpCodes.ToUint32(s); },
-      rand() { seed = OpCodes.ToUint32(Math.imul(seed, 0x41C64E6D) + 0x3039); return OpCodes.And32(OpCodes.Shr32(seed, 16), 0x7FFF); }
-    };
-  }
+  /**
+   * @param {uint32} x - Word
+   * @param {int32} n - Rotation count
+   * @returns {uint32} x rotated right by n
+   */
   function ror32(x, n) { return OpCodes.RotR32(OpCodes.ToUint32(x), n); }
+  /**
+   * @param {uint8[]} arr - Bytes
+   * @param {int32} off - Offset of the first byte
+   * @returns {uint32} Little-endian word
+   */
   function pack32LE(arr, off) { return OpCodes.Pack32LE(arr[off], arr[off + 1], arr[off + 2], arr[off + 3]); }
+  /**
+   * @param {uint8[]} arr - Bytes (written in place)
+   * @param {int32} off - Offset of the first byte
+   * @param {uint32} v - Word to store little-endian
+   */
   function writeLE(arr, off, v) {
     const b = OpCodes.Unpack32LE(v);
     arr[off] = b[0]; arr[off + 1] = b[1]; arr[off + 2] = b[2]; arr[off + 3] = b[3];
   }
 
+  /**
+   * @param {uint32} L - Left half
+   * @param {uint32} R - Right half
+   * @param {uint32[][]} octetTables - Eight 256-entry S-boxes
+   * @returns {uint32[]} The two output halves
+   */
   function encryptRounds(L, R, octetTables) {
     for (let k = 7; k >= 0; k--) {
       const sbox = octetTables[k];
@@ -98,8 +112,16 @@
         else { L = OpCodes.ToUint32(OpCodes.Xor32(L, sbox[OpCodes.And32(R, 0xFF)])); R = ror32(R, ROT[r]); }
       }
     }
-    return [L, R];
+    /** @type {uint32[]} */
+    const halves = [L, R];
+    return halves;
   }
+  /**
+   * @param {uint32} L - Left half
+   * @param {uint32} R - Right half
+   * @param {uint32[][]} octetTables - Eight 256-entry S-boxes
+   * @returns {uint32[]} The two output halves
+   */
   function decryptRounds(L, R, octetTables) {
     for (let k = 0; k <= 7; k++) {
       const sbox = octetTables[k];
@@ -108,43 +130,67 @@
         else { R = OpCodes.RotL32(R, ROT[r]); L = OpCodes.ToUint32(OpCodes.Xor32(L, sbox[OpCodes.And32(R, 0xFF)])); }
       }
     }
-    return [L, R];
+    /** @type {uint32[]} */
+    const halves = [L, R];
+    return halves;
   }
 
   // Module-level shared "leftover" octet state: mirrors the DarkCrypt implementation's
   // GLOBAL key-schedule memory. Octets not yet rebuilt within a given setup pass still
   // show whatever the previous setup() call last left there. Starts all-zero, matching
   // a freshly loaded, zero-initialized state.
+  /** @type {uint32[][]} */
   const sharedOctets = [
     new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256),
     new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
   ];
 
+  // Table set layout: entries 0..7 are the octet S-boxes, entry 8 holds the
+  // whitening words [preL, preR, postL, postR].
+  const WHITENING = 8;
+
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[][]} Octet S-boxes 0..7 and the whitening words at index WHITENING
    */
   function buildTablesOnce(keyBytes) {
     const seed = pack32LE(keyBytes, 64);
-    const rng = makeRng();
-    rng.srand(seed);
+    // Borland-style LCG rand(), seeded with srand(seed)
+    /** @type {uint32} */
+    let rngSeed = OpCodes.ToUint32(seed);
     const rawSeed = new Uint32Array(256);
-    for (let i = 0; i < 256; i++) rawSeed[i] = rng.rand();
+    for (let i = 0; i < 256; i++) {
+      rngSeed = OpCodes.Add32(OpCodes.Mul32(rngSeed, 0x41C64E6D), 0x3039);
+      rawSeed[i] = OpCodes.And32(OpCodes.Shr32(rngSeed, 16), 0x7FFF);
+    }
 
-    const state = { preL: 0, preR: 0, postL: 0, postR: 0 };
+    /** @type {uint32[]} */
+    const state = [0, 0, 0, 0]; // preL, preR, postL, postR
     const buf64 = Uint8Array.from(keyBytes.slice(0, 64));
+    /** @type {int32} */
     let batchCounter = 0;
 
+    /**
+     * Re-encrypt the 64-byte buffer with the current shared octets
+     */
     function regenerateBatch() {
       for (let b = 0; b < 8; b++) {
         let L = pack32LE(buf64, b * 8);
         let R = pack32LE(buf64, b * 8 + 4);
-        L = OpCodes.ToUint32(OpCodes.Xor32(L, state.preL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, state.preR));
-        [L, R] = encryptRounds(L, R, sharedOctets);
-        L = OpCodes.ToUint32(OpCodes.Xor32(L, state.postL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, state.postR));
+        L = OpCodes.ToUint32(OpCodes.Xor32(L, state[0])); R = OpCodes.ToUint32(OpCodes.Xor32(R, state[1]));
+        /** @type {uint32[]} */
+        const halves = encryptRounds(L, R, sharedOctets);
+        L = halves[0]; R = halves[1];
+        L = OpCodes.ToUint32(OpCodes.Xor32(L, state[2])); R = OpCodes.ToUint32(OpCodes.Xor32(R, state[3]));
         writeLE(buf64, b * 8, L); writeLE(buf64, b * 8 + 4, R);
       }
       batchCounter = 16;
     }
+    /**
+     * Next swap index drawn from the buffer
+     * @param {int32} lo - Lowest allowed index
+     * @returns {int32} Index in lo..255 (16..255 right after a regeneration)
+     */
     function nextKeyRandom(lo) {
       let effectiveLo = lo;
       if (batchCounter === 0) { regenerateBatch(); effectiveLo = 16; }
@@ -152,9 +198,12 @@
       const val = pack32LE(buf64, dwordIndex * 4);
       batchCounter--;
       const range = 256 - effectiveLo;
-      return (val % range) + effectiveLo;
+      /** @type {int32} */
+      const reduced = val % range;
+      return reduced + effectiveLo;
     }
 
+    /** @type {uint32[][]} */
     const snapshot = [
       new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256),
       new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
@@ -176,12 +225,13 @@
       snapshot[k].set(table);
     }
 
-    state.preL = pack32LE(keyBytes, 0);
-    state.preR = pack32LE(keyBytes, 4);
-    state.postL = pack32LE(keyBytes, 8);
-    state.postR = pack32LE(keyBytes, 12);
+    state[0] = pack32LE(keyBytes, 0);
+    state[1] = pack32LE(keyBytes, 4);
+    state[2] = pack32LE(keyBytes, 8);
+    state[3] = pack32LE(keyBytes, 12);
 
-    return { octetTables: snapshot, state };
+    snapshot.push(state);
+    return snapshot;
   }
 
   // setup(key) in the DarkCrypt implementation is always exercised twice per key
@@ -194,18 +244,24 @@
   // of mutating the shared leftover state again, so encrypt/decrypt of one key stay
   // mutually consistent while distinct keys still see the real call-order
   // dependent leftover state on their first use.
-  const tablesCache = new Map();
+  /** @type {string[]} */
+  const tablesCacheKeys = [];
+  /** @type {uint32[][][]} */
+  const tablesCacheValues = [];
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[][]} Octet S-boxes and whitening words (see buildTablesOnce)
    */
   function buildTables(keyBytes) {
-    const cacheKey = Array.from(keyBytes).join(',');
-    let tables = tablesCache.get(cacheKey);
-    if (!tables) {
-      tables = buildTablesOnce(keyBytes);
-      buildTablesOnce(keyBytes);
-      tablesCache.set(cacheKey, tables);
-    }
+    /** @type {string} */
+    let cacheKey = "";
+    for (let i = 0; i < keyBytes.length; i++) cacheKey += (i > 0 ? "," : "") + keyBytes[i];
+    for (let i = 0; i < tablesCacheKeys.length; i++)
+      if (tablesCacheKeys[i] === cacheKey) return tablesCacheValues[i];
+    const tables = buildTablesOnce(keyBytes);
+    buildTablesOnce(keyBytes);
+    tablesCacheKeys.push(cacheKey);
+    tablesCacheValues.push(tables);
     return tables;
   }
 
@@ -291,6 +347,7 @@
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      /** @type {uint32[][]|null} */
       this._tables = null;
     }
 
@@ -326,17 +383,23 @@
       /** @type {uint8[]} */
       const output = [];
       const t = this._tables;
+      const whitening = t[WHITENING];
+      const octets = t.slice(0, WHITENING);
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
         let L = pack32LE(block, 0), R = pack32LE(block, 4);
         if (this.isInverse) {
-          L = OpCodes.ToUint32(OpCodes.Xor32(L, t.state.postL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, t.state.postR));
-          [L, R] = decryptRounds(L, R, t.octetTables);
-          L = OpCodes.ToUint32(OpCodes.Xor32(L, t.state.preL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, t.state.preR));
+          L = OpCodes.ToUint32(OpCodes.Xor32(L, whitening[2])); R = OpCodes.ToUint32(OpCodes.Xor32(R, whitening[3]));
+          /** @type {uint32[]} */
+          const halves = decryptRounds(L, R, octets);
+          L = halves[0]; R = halves[1];
+          L = OpCodes.ToUint32(OpCodes.Xor32(L, whitening[0])); R = OpCodes.ToUint32(OpCodes.Xor32(R, whitening[1]));
         } else {
-          L = OpCodes.ToUint32(OpCodes.Xor32(L, t.state.preL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, t.state.preR));
-          [L, R] = encryptRounds(L, R, t.octetTables);
-          L = OpCodes.ToUint32(OpCodes.Xor32(L, t.state.postL)); R = OpCodes.ToUint32(OpCodes.Xor32(R, t.state.postR));
+          L = OpCodes.ToUint32(OpCodes.Xor32(L, whitening[0])); R = OpCodes.ToUint32(OpCodes.Xor32(R, whitening[1]));
+          /** @type {uint32[]} */
+          const halves = encryptRounds(L, R, octets);
+          L = halves[0]; R = halves[1];
+          L = OpCodes.ToUint32(OpCodes.Xor32(L, whitening[2])); R = OpCodes.ToUint32(OpCodes.Xor32(R, whitening[3]));
         }
         const out = new Uint8Array(8);
         writeLE(out, 0, L); writeLE(out, 4, R);
