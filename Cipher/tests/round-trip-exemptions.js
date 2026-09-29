@@ -232,6 +232,7 @@ const ROUND_TRIP_EXEMPT = new Map([
     + 'wrong private key both fail to recover the published secret'],
   ['HQC', 'key encapsulation (HQC, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
   ['BIKE', 'key encapsulation (BIKE, NIST PQC round 4): the recoverable value is the shared secret, not a plaintext'],
+  ['ML-KEM', 'key encapsulation (FIPS 203): the recoverable value is the shared secret, not a plaintext'],
   ['SIKE', 'key encapsulation (SIKE): the recoverable value is the shared secret, not a plaintext. The scheme is cryptographically dead - Castryck and Decru recover the key in minutes (eprint 2022/975) - and is marked BROKEN here'],
 
 ]);
