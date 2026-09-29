@@ -61,12 +61,13 @@
 
   /**
    * CHAM-64/128 encryption function
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} input - 8-byte input block
-   * @returns {Uint8Array} - 8-byte output block
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} input - 8-byte input block
+   * @returns {uint8[]} - 8-byte output block
    */
   function cham64_128_encrypt(key, input) {
     // Unpack key and generate key schedule (16 words of 16 bits each)
+    /** @type {uint16[]} */
     const k = new Array(16);
     k[0] = OpCodes.Pack16LE(key[0], key[1]);
     k[1] = OpCodes.Pack16LE(key[2], key[3]);
@@ -78,22 +79,22 @@
     k[7] = OpCodes.Pack16LE(key[14], key[15]);
 
     // Key schedule generation (from C reference)
-    k[8] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 11)), 0xFFFF);
-    k[9] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 11)), 0xFFFF);
-    k[10] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 11)), 0xFFFF);
-    k[11] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 11)), 0xFFFF);
-    k[12] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 11)), 0xFFFF);
-    k[13] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 11)), 0xFFFF);
-    k[14] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 11)), 0xFFFF);
-    k[15] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 11)), 0xFFFF);
-    k[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 8)), 0xFFFF);
-    k[1] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 8)), 0xFFFF);
-    k[2] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 8)), 0xFFFF);
-    k[3] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 8)), 0xFFFF);
-    k[4] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 8)), 0xFFFF);
-    k[5] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 8)), 0xFFFF);
-    k[6] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 8)), 0xFFFF);
-    k[7] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 8)), 0xFFFF);
+    k[8] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 11)), 0xFFFF);
+    k[9] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 11)), 0xFFFF);
+    k[10] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 11)), 0xFFFF);
+    k[11] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 11)), 0xFFFF);
+    k[12] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 11)), 0xFFFF);
+    k[13] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 11)), 0xFFFF);
+    k[14] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 11)), 0xFFFF);
+    k[15] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 11)), 0xFFFF);
+    k[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 8)), 0xFFFF);
+    k[1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 8)), 0xFFFF);
+    k[2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 8)), 0xFFFF);
+    k[3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 8)), 0xFFFF);
+    k[4] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 8)), 0xFFFF);
+    k[5] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 8)), 0xFFFF);
+    k[6] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 8)), 0xFFFF);
+    k[7] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 8)), 0xFFFF);
 
     // Unpack input block (4 words of 16 bits each)
     let x0 = OpCodes.Pack16LE(input[0], input[1]);
@@ -104,10 +105,10 @@
     // Perform 80 rounds (4 at a time)
     for (let round = 0; round < 80; round += 4) {
       // Round operations: ((x ^ round_const) + (rotate(next_x) ^ key))
-      x0 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x0, round) + OpCodes.XorN(OpCodes.RotL16(x1, 1), k[round % 16]), 0xFFFF), 8);
-      x1 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x1, (round + 1)) + OpCodes.XorN(OpCodes.RotL16(x2, 8), k[(round + 1) % 16]), 0xFFFF), 1);
-      x2 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x2, (round + 2)) + OpCodes.XorN(OpCodes.RotL16(x3, 1), k[(round + 2) % 16]), 0xFFFF), 8);
-      x3 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x3, (round + 3)) + OpCodes.XorN(OpCodes.RotL16(x0, 8), k[(round + 3) % 16]), 0xFFFF), 1);
+      x0 = OpCodes.RotL16(OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(x0, round), OpCodes.Xor32(OpCodes.RotL16(x1, 1), k[round % 16])), 0xFFFF), 8);
+      x1 = OpCodes.RotL16(OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(x1, (round + 1)), OpCodes.Xor32(OpCodes.RotL16(x2, 8), k[(round + 1) % 16])), 0xFFFF), 1);
+      x2 = OpCodes.RotL16(OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(x2, (round + 2)), OpCodes.Xor32(OpCodes.RotL16(x3, 1), k[(round + 2) % 16])), 0xFFFF), 8);
+      x3 = OpCodes.RotL16(OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(x3, (round + 3)), OpCodes.Xor32(OpCodes.RotL16(x0, 8), k[(round + 3) % 16])), 0xFFFF), 1);
     }
 
     // Pack output block
@@ -128,30 +129,31 @@
   /**
    * Adjusts Z state for next block (Galois Field doubling in GF(2^64))
    * Doubles the 64-bit prefix in the F(2^64) field
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
    */
   function comet_adjust_block_key(Z) {
     // Carry bit from bit 63 (byte 7, bit 7)
-    const mask = OpCodes.AndN(Z[7], 0x80) ? 0x1B : 0x00;
+    const mask = OpCodes.And32(Z[7], 0x80) ? 0x1B : 0x00;
 
     // Left shift by 1 bit across 8 bytes
     for (let i = 7; i > 0; --i) {
-      Z[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
+      Z[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
     }
-    Z[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
+    Z[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
   }
 
   /**
    * Shuffle function for 64-bit blocks
    * Permutes: [x01(32), x2(16), x3(16)] -> [x3(16), ROR1(x2), x01(32)]
    * Where x01 is the concatenation of x0 and x1 (16 bits each)
-   * @param {Uint8Array} block - 8-byte block
-   * @returns {Uint8Array} - Shuffled 8-byte block
+   * @param {uint8[]} block - 8-byte block
+   * @returns {uint8[]} - Shuffled 8-byte block
    */
   function comet_shuffle_block_64(block) {
     // Pack bytes to words
     const x01 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     const x2 = OpCodes.Pack16LE(block[4], block[5]);
+    /** @type {uint8[]} */
     const x3_bytes = [block[6], block[7]];
 
     // Shuffle: [x3, ROR1(x2), x01]
@@ -166,10 +168,10 @@
 
   /**
    * Process associated data
-   * @param {Uint8Array} Y - 8-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} ad - Associated data
+   * @param {uint8[]} Y - 8-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} ad - Associated data
    */
   function comet_process_ad(Y, Z, key, ad) {
     // Domain separator for associated data
@@ -209,11 +211,11 @@
 
   /**
    * Encrypt plaintext
-   * @param {Uint8Array} Y - 8-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} plaintext - Input plaintext
-   * @returns {Uint8Array} - Ciphertext (same length as plaintext)
+   * @param {uint8[]} Y - 8-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} plaintext - Input plaintext
+   * @returns {uint8[]} - Ciphertext (same length as plaintext)
    */
   function comet_encrypt_64(Y, Z, key, plaintext) {
     // Domain separator for payload data
@@ -238,7 +240,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < 8; ++i) {
-        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
+        ciphertext[offset + i] = OpCodes.Xor32(plaintext[offset + i], Ys[i]);
       }
 
       offset += 8;
@@ -262,7 +264,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
+        ciphertext[offset + i] = OpCodes.Xor32(plaintext[offset + i], Ys[i]);
       }
     }
 
@@ -271,11 +273,11 @@
 
   /**
    * Decrypt ciphertext
-   * @param {Uint8Array} Y - 8-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} ciphertext - Input ciphertext
-   * @returns {Uint8Array} - Plaintext (same length as ciphertext)
+   * @param {uint8[]} Y - 8-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} ciphertext - Input ciphertext
+   * @returns {uint8[]} - Plaintext (same length as ciphertext)
    */
   function comet_decrypt_64(Y, Z, key, ciphertext) {
     // Domain separator for payload data
@@ -295,7 +297,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < 8; ++i) {
-        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
+        plaintext[offset + i] = OpCodes.Xor32(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with plaintext
@@ -318,7 +320,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
+        plaintext[offset + i] = OpCodes.Xor32(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with partial plaintext
@@ -595,6 +597,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @returns {uint8[]}
+     */
     _encrypt(plaintext) {
       // Initialize Y and Z states (from C reference)
       const Y = new Uint8Array(8); // Start with zeros
@@ -615,6 +621,7 @@
       }
 
       // Encrypt plaintext
+      /** @type {uint8[]} */
       let ciphertext;
       if (plaintext.length > 0) {
         ciphertext = comet_encrypt_64(Y, Z, this._key, plaintext);
@@ -634,13 +641,19 @@
       return Array.from(result);
     }
 
+    /**
+     * @param {uint8[]} ciphertextAndTag
+     * @returns {uint8[]}
+     */
     _decrypt(ciphertextAndTag) {
       if (ciphertextAndTag.length < 8) {
         throw new Error("Invalid ciphertext: too short for authentication tag");
       }
 
       // Split ciphertext and tag
+      /** @type {uint8[]} */
       const ciphertext = ciphertextAndTag.slice(0, -8);
+      /** @type {uint8[]} */
       const receivedTag = ciphertextAndTag.slice(-8);
 
       // Initialize Y and Z states (from C reference)
@@ -662,6 +675,7 @@
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       let plaintext;
       if (ciphertext.length > 0) {
         plaintext = comet_decrypt_64(Y, Z, this._key, ciphertext);
