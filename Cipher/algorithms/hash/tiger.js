@@ -61,6 +61,7 @@
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   // Pass multipliers, one per pass
+  /** @type {BigInt[]} */
   const MULTIPLIERS = Object.freeze([5n, 7n, 9n]);
 
   // Key schedule constants from the Tiger specification
@@ -68,6 +69,7 @@
   const KS_CONST_B = 0x0123456789ABCDEFn;
 
   // Initial chaining value
+  /** @type {BigInt[]} */
   const TIGER_IV = Object.freeze([
     0x0123456789ABCDEFn,
     0xFEDCBA9876543210n,
@@ -77,6 +79,7 @@
   // ===== TIGER S-BOXES =====
   // 4 x 256 published 64-bit entries.
 
+  /** @type {BigInt[]} */
   const T1 = Object.freeze([
     0x02AAB17CF7E90C5En, 0xAC424B03E243A8ECn, 0x72CD5BE30DD5FCD3n, 0x6D019B93F6F97F3An,
     0xCD9978FFD21F9193n, 0x7573A1C9708029E2n, 0xB164326B922A83C3n, 0x46883EEE04915870n,
@@ -144,6 +147,7 @@
     0xFFED95D8F1EA02A2n, 0xE72B3BD61464D43Dn, 0xA6300F170BDC4820n, 0xEBC18760ED78A77An
   ]);
 
+  /** @type {BigInt[]} */
   const T2 = Object.freeze([
     0xE6A6BE5A05A12138n, 0xB5A122A5B4F87C98n, 0x563C6089140B6990n, 0x4C46CB2E391F5DD5n,
     0xD932ADDBC9B79434n, 0x08EA70E42015AFF5n, 0xD765A6673E478CF1n, 0xC4FB757EAB278D99n,
@@ -211,6 +215,7 @@
     0x9010A91E84711AE9n, 0x4DF7F0B7B1498371n, 0xD62A2EABC0977179n, 0x22FAC097AA8D5C0En
   ]);
 
+  /** @type {BigInt[]} */
   const T3 = Object.freeze([
     0xF49FCC2FF1DAF39Bn, 0x487FD5C66FF29281n, 0xE8A30667FCDCA83Fn, 0x2C9B4BE3D2FCCE63n,
     0xDA3FF74B93FBBBC2n, 0x2FA165D2FE70BA66n, 0xA103E279970E93D4n, 0xBECDEC77B0E45E71n,
@@ -278,6 +283,7 @@
     0x454C6FE9F2C0C1CDn, 0x419CF6496412691Cn, 0xD3DC3BEF265B0F70n, 0x6D0E60F5C3578A9En
   ]);
 
+  /** @type {BigInt[]} */
   const T4 = Object.freeze([
     0x5B0E608526323C55n, 0x1A46C1A9FA1B59F5n, 0xA9E245A17C4C8FFAn, 0x65CA5159DB2955D7n,
     0x05DB0A76CE35AFC2n, 0x81EAC77EA9113D45n, 0x528EF88AB6AC0A0Dn, 0xA09EA253597BE3FFn,
@@ -347,26 +353,55 @@
 
   // ===== 64-BIT HELPERS =====
 
+  /**
+   * Sum modulo 2^64
+   * @param {BigInt} a - 64-bit word
+   * @param {BigInt} b - 64-bit word
+   * @returns {BigInt} (a + b) mod 2^64
+   */
   function Add64(a, b) {
     return OpCodes.AndN(a + b, MASK64);
   }
 
+  /**
+   * Difference modulo 2^64
+   * @param {BigInt} a - 64-bit word
+   * @param {BigInt} b - 64-bit word
+   * @returns {BigInt} (a - b) mod 2^64
+   */
   function Sub64(a, b) {
     return OpCodes.AndN(a - b, MASK64);
   }
 
+  /**
+   * Product modulo 2^64
+   * @param {BigInt} a - 64-bit word
+   * @param {BigInt} b - 64-bit word
+   * @returns {BigInt} (a * b) mod 2^64
+   */
   function Mul64(a, b) {
     return OpCodes.AndN(a * b, MASK64);
   }
 
-  // Bitwise complement inside 64 bits, expressed as XOR with the all-ones word
+  /**
+   * Bitwise complement inside 64 bits, expressed as XOR with the all-ones word
+   * @param {BigInt} a - 64-bit word
+   * @returns {BigInt} NOT a (64 bits)
+   */
   function Not64(a) {
     return OpCodes.XorN(a, MASK64);
   }
 
-  // Byte k of a 64-bit word, counting from the least significant byte
+  /**
+   * Byte k of a 64-bit word, counting from the least significant byte
+   * @param {BigInt} value - 64-bit word
+   * @param {int32} k - Byte index 0..7
+   * @returns {uint8} The byte
+   */
   function ByteOf(value, k) {
-    return Number(OpCodes.AndN(OpCodes.ShiftRn(value, k * 8), 0xFFn));
+    /** @type {uint8} */
+    const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, k * 8), 0xFFn));
+    return b;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -504,7 +539,7 @@
     /**
      * Create new hash instance
      * @param {boolean} [isInverse=false] - unused, hashes have no inverse
-     * @returns {Object} New hash instance
+     * @returns {TigerAlgorithmInstance} New hash instance (null for the inverse)
      */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
@@ -518,20 +553,29 @@
    * @extends {IHashFunctionInstance}
    */
   class TigerAlgorithmInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a Tiger instance
+     * @param {TigerAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
       this.OutputSize = TIGER_DIGESTSIZE;
+      /** @type {BigInt[]} */
       this._state = [TIGER_IV[0], TIGER_IV[1], TIGER_IV[2]];
+      /** @type {BlockAbsorber} */
       this._absorber = new BlockAbsorber(TIGER_BLOCKSIZE, block => this._processBlock(block));
     }
 
     /**
      * Feed data to the hash. Successive calls extend the message.
      * @param {uint8[]} data - Input data bytes
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!Array.isArray(data) && !ArrayBuffer.isView(data)) {
+      // Byte arrays and typed arrays are accepted; strings, numbers and
+      // other primitives are not
+      if (typeof data !== 'object') {
         throw new Error("Invalid input data - must be byte array");
       }
       this._absorber.Absorb(Array.from(data));
@@ -545,6 +589,7 @@
       // Result() must stay repeatable: Finish hands out a copy of the held
       // bytes without advancing the absorber, so snapshotting the chaining
       // value is enough to undo the padding blocks afterwards.
+      /** @type {BigInt[]} */
       const snapshot = [this._state[0], this._state[1], this._state[2]];
 
       this._absorber.Finish((held, pending, total) => {
@@ -558,6 +603,7 @@
         for (const block of blocks) this._processBlock(block);
       });
 
+      /** @type {uint8[]} */
       const digest = new Array(TIGER_DIGESTSIZE);
       let at = 0;
       for (let i = 0; i < 3; i++) {
@@ -573,11 +619,12 @@
      * One Tiger round: mix message word x into c, then feed the bytes of c
      * through the four S-boxes into a and b.
      * @param {BigInt[]} regs - the three chaining registers
-     * @param {int} ia - index of register a
-     * @param {int} ib - index of register b
-     * @param {int} ic - index of register c
+     * @param {int32} ia - index of register a
+     * @param {int32} ib - index of register b
+     * @param {int32} ic - index of register c
      * @param {BigInt} x - message word
      * @param {BigInt} mul - pass multiplier
+     * @returns {void}
      */
     _round(regs, ia, ib, ic, x, mul) {
       regs[ic] = OpCodes.XorN(regs[ic], x);
@@ -599,6 +646,7 @@
     /**
      * Key schedule applied to the eight message words between passes.
      * @param {BigInt[]} x - the eight message words, modified in place
+     * @returns {void}
      */
     _keySchedule(x) {
       x[0] = Sub64(x[0], OpCodes.XorN(x[7], KS_CONST_A));
@@ -622,22 +670,28 @@
     /**
      * Compress one 512-bit block into the chaining value.
      * @param {uint8[]} block - exactly 64 bytes
+     * @returns {void}
      */
     _processBlock(block) {
       // Eight little-endian 64-bit message words
+      /** @type {BigInt[]} */
       const x = new Array(8);
       for (let i = 0; i < 8; i++) {
+        /** @type {BigInt} */
         let word = 0n;
         for (let j = 7; j >= 0; j--)
           word = OpCodes.OrN(OpCodes.ShiftLn(word, 8), BigInt(OpCodes.ToByte(block[i * 8 + j])));
         x[i] = word;
       }
 
+      /** @type {BigInt[]} */
       const regs = [this._state[0], this._state[1], this._state[2]];
+      /** @type {BigInt[]} */
       const save = [regs[0], regs[1], regs[2]];
 
       // Each pass starts with a different register playing the role of a, so
       // that after eight rounds the roles have rotated by one position.
+      /** @type {int32[][]} */
       const STARTS = [[0, 1, 2], [2, 0, 1], [1, 2, 0]];
 
       for (let pass = 0; pass < TIGER_PASSES; pass++) {
