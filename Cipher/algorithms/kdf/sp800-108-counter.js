@@ -184,9 +184,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new SP 800-108 counter-mode KDF instance
+   * @param {boolean} [isInverse=false] - True returns null: the KDF has no inverse
+   * @returns {SP800108CounterInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -199,103 +199,149 @@
 
   // Instance class - handles the actual KDF computation
   /**
- * SP800108Counter cipher instance implementing Feed/Result pattern
+ * SP 800-108 counter-mode KDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class SP800108CounterInstance extends IKdfInstance {
+    /**
+     * Initialize an SP 800-108 counter-mode KDF instance
+     * @param {SP800108CounterAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} Input key material KI (null until fed or set) */
       this._keyInput = null;
+      /** @type {uint8[]} Label (null means empty) */
       this._label = null;
+      /** @type {uint8[]} Context (null means empty) */
       this._context = null;
+      /** @type {int32} */
       this._counterBits = 32;  // Default counter bits (8, 16, 24, or 32)
+      /** @type {int32} */
       this._outputLength = 32;  // Default output length
+      /** @type {string} */
       this._hashAlgorithm = 'SHA-256';  // Default hash function for HMAC
     }
 
-    // Property setter for input key material (KI) - matches test vector 'input' field
-    set input(keyBytes) {
-      if (!keyBytes || !Array.isArray(keyBytes)) {
-        throw new Error("Key input must be a byte array");
-      }
-      this._keyInput = [...keyBytes];
+    // Property accessors for input key material (KI) - matches test vector 'input' field
+    /** @returns {uint8[]} Copy of the input key material, or null */
+    get input() {
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
-    get input() {
-      return this._keyInput ? [...this._keyInput] : null;
+    /**
+     * @param {uint8[]} value - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set input(value) {
+      if (!value || !Array.isArray(value)) {
+        throw new Error("Key input must be a byte array");
+      }
+      this._keyInput = value.slice();
     }
 
     // Alias for compatibility
-    set keyInput(keyBytes) {
-      this.input = keyBytes;
-    }
-
+    /** @returns {uint8[]} Copy of the input key material, or null */
     get keyInput() {
-      return this.input;
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
-    // Property setter for label (optional fixed input data)
-    set label(labelBytes) {
-      this._label = labelBytes && Array.isArray(labelBytes) ? [...labelBytes] : [];
+    /**
+     * @param {uint8[]} value - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set keyInput(value) {
+      this.input = value;
     }
 
+    // Label (optional fixed input data)
+    /** @returns {uint8[]} Copy of the label */
     get label() {
-      return this._label ? [...this._label] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._label) { copy = this._label.slice(); }
+      return copy;
     }
 
-    // Property setter for context (optional fixed input data)
-    set context(contextBytes) {
-      this._context = contextBytes && Array.isArray(contextBytes) ? [...contextBytes] : [];
+    /** @param {uint8[]} value - Label (copied; anything but an array clears it) */
+    set label(value) {
+      if (value && Array.isArray(value)) { this._label = value.slice(); } else { this._label = []; }
     }
 
+    // Context (optional fixed input data)
+    /** @returns {uint8[]} Copy of the context */
     get context() {
-      return this._context ? [...this._context] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._context) { copy = this._context.slice(); }
+      return copy;
+    }
+
+    /** @param {uint8[]} value - Context (copied; anything but an array clears it) */
+    set context(value) {
+      if (value && Array.isArray(value)) { this._context = value.slice(); } else { this._context = []; }
     }
 
     // Counter bits (8, 16, 24, or 32)
-    set counterBits(bits) {
-      if (![8, 16, 24, 32].includes(bits)) {
-        throw new Error("Counter bits must be one of: 8, 16, 24, 32");
-      }
-      this._counterBits = bits;
-    }
-
+    /** @returns {int32} Counter width in bits */
     get counterBits() {
       return this._counterBits;
     }
 
-    // Output length in bytes
-    set outputLength(bytes) {
-      if (!Number.isInteger(bytes) || bytes < 1 || bytes > 65535) {
-        throw new Error("Output length must be between 1 and 65535 bytes");
+    /**
+     * @param {int32} value - Counter width: 8, 16, 24 or 32
+     * @throws {Error} For any other width
+     */
+    set counterBits(value) {
+      if (value !== 8 && value !== 16 && value !== 24 && value !== 32) {
+        throw new Error("Counter bits must be one of: 8, 16, 24, 32");
       }
-      this._outputLength = bytes;
+      this._counterBits = value;
     }
 
+    // Output length in bytes
+    /** @returns {int32} Output length in bytes */
     get outputLength() {
       return this._outputLength;
     }
 
-    // Hash algorithm used for HMAC (SHA-256, SHA-512, etc.)
-    set hashAlgorithm(algo) {
-      if (!algo || typeof algo !== 'string') {
-        throw new Error("Hash algorithm must be a valid string");
+    /**
+     * @param {int32} value - Output length, 1..65535
+     * @throws {Error} If it is not an integer in range
+     */
+    set outputLength(value) {
+      if (!Number.isInteger(value) || value < 1 || value > 65535) {
+        throw new Error("Output length must be between 1 and 65535 bytes");
       }
-      this._hashAlgorithm = algo.toUpperCase();
+      this._outputLength = value;
     }
 
+    // Hash algorithm used for HMAC (SHA-256, SHA-512, etc.)
+    /** @returns {string} Hash name (upper case) */
     get hashAlgorithm() {
       return this._hashAlgorithm;
+    }
+
+    /**
+     * @param {string} value - SHA-1, SHA-256 or SHA-512 (any case, dash optional)
+     * @throws {Error} If it is not a non-empty string
+     */
+    set hashAlgorithm(value) {
+      if (!value || typeof value !== 'string') {
+        throw new Error("Hash algorithm must be a valid string");
+      }
+      this._hashAlgorithm = value.toUpperCase();
     }
 
     // Main derivation method
     // For KDFs, Feed() is used to provide the input key material
     /**
-   * Feed data to cipher for processing
+   * Feed input key material (anything but an array is ignored)
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -309,9 +355,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no key material was given, or the hash is unsupported or unavailable
    */
 
     Result() {
@@ -323,9 +369,10 @@
         throw new Error("Output length must be at least 1 byte");
       }
 
-      // Get HMAC function for the specified hash algorithm
-      const hmacFunc = this._getHMACFunction();
+      // Reject an unsupported hash before deriving anything
+      this._checkHashAlgorithm();
 
+      /** @type {uint8[]} */
       const output = [];
       const counterBytes = this._counterBits / 8;
       const outputBits = this._outputLength * 8;
@@ -337,6 +384,7 @@
       // SP 800-108 Counter Mode KDF
       // Each block: HMAC(K_I, [i]_r || Label || 0x00 || Context || [L]_32)
       for (let i = 1; i <= blocksNeeded; i++) {
+        /** @type {uint8[]} */
         const blockInput = [];
 
         // Add counter [i]_r (r bits, encoded in big-endian)
@@ -345,7 +393,7 @@
 
         // Add label
         if (this._label && this._label.length > 0) {
-          blockInput.push(...this._label);
+          for (let _i = 0; _i < this._label.length; _i++) blockInput.push(this._label[_i]);
         }
 
         // Add fixed separator (0x00)
@@ -353,19 +401,17 @@
 
         // Add context
         if (this._context && this._context.length > 0) {
-          blockInput.push(...this._context);
+          for (let _i = 0; _i < this._context.length; _i++) blockInput.push(this._context[_i]);
         }
 
         // Add output length in bits [L]_32 (always 32 bits, big-endian)
-        blockInput.push(
-          OpCodes.Shr32(outputBits, 24)&0xFF,
-          OpCodes.Shr32(outputBits, 16)&0xFF,
-          OpCodes.Shr32(outputBits, 8)&0xFF,
-          outputBits&0xFF
-        );
+        blockInput.push(OpCodes.ToByte(OpCodes.Shr32(outputBits, 24)));
+        blockInput.push(OpCodes.ToByte(OpCodes.Shr32(outputBits, 16)));
+        blockInput.push(OpCodes.ToByte(OpCodes.Shr32(outputBits, 8)));
+        blockInput.push(OpCodes.ToByte(outputBits));
 
         // Compute HMAC(K_I, block_input)
-        const blockOutput = hmacFunc(this._keyInput, blockInput);
+        const blockOutput = this._hmacSelected(this._keyInput, blockInput);
         for (let _i = 0; _i < blockOutput.length; _i++) output.push(blockOutput[_i]);
       }
 
@@ -373,38 +419,59 @@
       return output.slice(0, this._outputLength);
     }
 
-    // Encode counter as big-endian bytes
+    /**
+     * Encode counter as big-endian bytes
+     * @param {int32} counter - Counter value
+     * @param {int32} numBytes - Counter width in bytes
+     * @returns {uint8[]} Encoded counter
+     */
     _encodeCounter(counter, numBytes) {
+      /** @type {uint8[]} */
       const result = [];
       for (let i = numBytes - 1; i >= 0; i--) {
-        result.push(OpCodes.Shr32(counter, i * 8)&0xFF);
+        result.push(OpCodes.ToByte(OpCodes.Shr32(counter, i * 8)));
       }
       return result;
     }
 
-    // Get HMAC function for the specified hash algorithm
-    _getHMACFunction() {
-      // Determine hash output size and implement basic HMAC
+    /**
+     * Reject a hash algorithm this KDF has no HMAC for
+     * @returns {void}
+     * @throws {Error} Unless the hash is SHA-1, SHA-256 or SHA-512
+     */
+    _checkHashAlgorithm() {
       const hashAlgo = this._hashAlgorithm.toUpperCase();
-
-      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
-        return (key, message) => {
-          return this._hmacSHA256(key, message);
-        };
-      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
-        return (key, message) => {
-          return this._hmacSHA512(key, message);
-        };
-      } else if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
-        return (key, message) => {
-          return this._hmacSHA1(key, message);
-        };
-      } else {
-        throw new Error(`Unsupported hash algorithm: ${this._hashAlgorithm}`);
+      if (hashAlgo !== 'SHA-256' && hashAlgo !== 'SHA256' && hashAlgo !== 'SHA-512' && hashAlgo !== 'SHA512' &&
+          hashAlgo !== 'SHA-1' && hashAlgo !== 'SHA1') {
+        throw new Error('Unsupported hash algorithm: ' + this._hashAlgorithm);
       }
     }
 
-    // Get HMAC output size for the selected hash
+    /**
+     * HMAC with the selected hash
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
+    _hmacSelected(key, message) {
+      const hashAlgo = this._hashAlgorithm.toUpperCase();
+
+      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
+        return this._hmacSHA256(key, message);
+      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
+        return this._hmacSHA512(key, message);
+      } else if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
+        return this._hmacSHA1(key, message);
+      } else {
+        throw new Error('Unsupported hash algorithm: ' + this._hashAlgorithm);
+      }
+    }
+
+    /**
+     * Get HMAC output size for the selected hash
+     * @returns {int32} Output size in bytes
+     */
     _getHMACOutputSize() {
       const hashAlgo = this._hashAlgorithm.toUpperCase();
       if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') return 32;
@@ -413,41 +480,56 @@
       return 32;  // Default to SHA-256 output size
     }
 
-    // Implementation of HMAC-SHA256 using Web Crypto or fallback
+    /**
+     * HMAC-SHA256
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA256(key, message) {
       return this._hmacCompute(key, message, 'SHA-256', 32);
     }
 
-    // Implementation of HMAC-SHA512 using Web Crypto or fallback
+    /**
+     * HMAC-SHA512
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA512(key, message) {
       return this._hmacCompute(key, message, 'SHA-512', 64);
     }
 
-    // Implementation of HMAC-SHA1 using Web Crypto or fallback
+    /**
+     * HMAC-SHA1
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA1(key, message) {
       return this._hmacCompute(key, message, 'SHA-1', 20);
     }
 
-    // Generic HMAC computation
+    /**
+     * Generic HMAC computation: Node crypto under CommonJS, else a registered
+     * HMAC-<hash> algorithm, else the built-in HMAC-SHA256
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512
+     * @param {int32} hashOutputSize - MAC length in bytes (informational)
+     * @returns {uint8[]} MAC
+     * @throws {Error} If no implementation is available
+     */
     _hmacCompute(key, message, hashName, hashOutputSize) {
-      // Try using Node.js crypto if available
-      if (typeof require !== 'undefined') {
-        try {
-          const crypto = require('crypto');
-          const hmac = crypto.createHmac(
-            hashName.replace('-', '').toLowerCase(),
-            Buffer.from(key)
-          );
-          hmac.update(Buffer.from(message));
-          return Array.from(hmac.digest());
-        } catch (e) {
-          // Fall through to alternate implementation
-        }
-      }
-
-      // Check if we have HMAC in OpCodes (unlikely but possible)
-      if (OpCodes && OpCodes.HMAC) {
-        return OpCodes.HMAC(key, message, hashName);
+      // Use Node.js crypto if available
+      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
+        const crypto = require('crypto');
+        const hmac = crypto.createHmac(
+          hashName.replace('-', '').toLowerCase(),
+          Buffer.from(key)
+        );
+        hmac.update(Buffer.from(message));
+        return Array.from(hmac.digest());
       }
 
       // Try using AlgorithmFramework HMAC implementation
@@ -462,23 +544,23 @@
       }
 
       throw new Error(
-        `Cannot compute HMAC: No crypto library available for ${hashName}. Ensure HMAC algorithms are loaded before SP800-108-Counter.`
+        'Cannot compute HMAC: No crypto library available for ' + hashName + '. Ensure HMAC algorithms are loaded before SP800-108-Counter.'
       );
     }
 
-    // HMAC computation using AlgorithmFramework's HMAC implementation
+    /**
+     * HMAC computation using a registered HMAC-<hash> algorithm
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
+     * @returns {uint8[]} MAC, or null when no such algorithm is registered
+     */
     _hmacWithFramework(key, message, hashName) {
       // Map hash names to HMAC algorithm names in the framework
-      const hmacAlgoMap = {
-        'SHA-1': 'HMAC-SHA-1',
-        'SHA1': 'HMAC-SHA-1',
-        'SHA-256': 'HMAC-SHA-256',
-        'SHA256': 'HMAC-SHA-256',
-        'SHA-512': 'HMAC-SHA-512',
-        'SHA512': 'HMAC-SHA-512'
-      };
-
-      const hmacAlgoName = hmacAlgoMap[hashName];
+      let hmacAlgoName = '';
+      if (hashName === 'SHA-1' || hashName === 'SHA1') { hmacAlgoName = 'HMAC-SHA-1'; }
+      if (hashName === 'SHA-256' || hashName === 'SHA256') { hmacAlgoName = 'HMAC-SHA-256'; }
+      if (hashName === 'SHA-512' || hashName === 'SHA512') { hmacAlgoName = 'HMAC-SHA-512'; }
       if (!hmacAlgoName) {
         return null;
       }
@@ -486,25 +568,32 @@
       // Try to find the HMAC algorithm in the framework
       const hmacAlgo = AlgorithmFramework.Find(hmacAlgoName);
       if (hmacAlgo) {
+        /** @type {IMacInstance} */
         const instance = hmacAlgo.CreateInstance(false);
         if (instance) {
           instance.key = key;
           instance.Feed(message);
-          return instance.Result();
+          /** @type {uint8[]} */
+          const mac = instance.Result();
+          return mac;
         }
       }
 
       return null;
     }
 
-    // Pure JavaScript HMAC-SHA256 implementation (fallback when no crypto available)
+    /**
+     * Pure JavaScript HMAC-SHA256 (fallback when no crypto is available).
+     * Pads (and, for a long key, hashes) the key array in place.
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} 32-byte MAC
+     */
     _hmacSha256Pure(key, message) {
       const BLOCK_SIZE = 64;
-      const OUTPUT_SIZE = 32;
 
-      // Ensure key and message are arrays
-      let keyArr = Array.isArray(key) ? key : Array.from(key);
-      const msgArr = Array.isArray(message) ? message : Array.from(message);
+      let keyArr = key;
+      const msgArr = message;
 
       // If key is longer than block size, hash it
       if (keyArr.length > BLOCK_SIZE) {
@@ -517,7 +606,9 @@
       }
 
       // Create inner and outer padding
+      /** @type {uint8[]} */
       const ipad = keyArr.map(b => OpCodes.Xor32(b, 0x36));
+      /** @type {uint8[]} */
       const opad = keyArr.map(b => OpCodes.Xor32(b, 0x5c));
 
       // Inner hash: SHA256(ipad || message)
@@ -529,37 +620,29 @@
       return this._sha256Pure(outerInput);
     }
 
-    // Pure JavaScript SHA-256 implementation
+    /**
+     * Pure JavaScript SHA-256 (pads the message array in place)
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} 32-byte digest
+     */
     _sha256Pure(message) {
       // SHA-256 constants
-      const K = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-      ];
+      const K = OpCodes.Hex32ToDWords(
+        '428a2f9871374491b5c0fbcfe9b5dba53956c25b59f111f1923f82a4ab1c5ed5' +
+        'd807aa9812835b01243185be550c7dc372be5d7480deb1fe9bdc06a7c19bf174' +
+        'e49b69c1efbe47860fc19dc6240ca1cc2de92c6f4a7484aa5cb0a9dc76f988da' +
+        '983e5152a831c66db00327c8bf597fc7c6e00bf3d5a7914706ca635114292967' +
+        '27b70a852e1b21384d2c6dfc53380d13650a7354766a0abb81c2c92e92722c85' +
+        'a2bfe8a1a81a664bc24b8b70c76c51a3d192e819d6990624f40e3585106aa070' +
+        '19a4c1161e376c082748774c34b0bcb5391c0cb34ed8aa4a5b9cca4f682e6ff3' +
+        '748f82ee78a5636f84c878148cc7020890befffaa4506cebbef9a3f7c67178f2'
+      );
 
       // Initial hash values
-      let H = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-      ];
-
-      // Helper functions
-      const rotr = (x, n) => OpCodes.ToUint32((OpCodes.Shr32(x, n))|OpCodes.Shl32(x, 32 - n));
-      const ch = (x, y, z) => OpCodes.ToUint32(OpCodes.Xor32((x&y), ((~x)&z)));
-      const maj = (x, y, z) => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32((x&y), (x&z)), (y&z)));
-      const sigma0 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 2), rotr(x, 13)), rotr(x, 22)));
-      const sigma1 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 6), rotr(x, 11)), rotr(x, 25)));
-      const gamma0 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 7), rotr(x, 18)), OpCodes.Shr32(x, 3)));
-      const gamma1 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 17), rotr(x, 19)), OpCodes.Shr32(x, 10)));
+      const H = OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19');
 
       // Pre-processing: adding padding bits
-      const msgArr = Array.isArray(message) ? message : Array.from(message);
+      const msgArr = message;
       const msgLen = msgArr.length;
       const bitLen = msgLen * 8;
 
@@ -571,58 +654,71 @@
 
       // Append original length in bits as 64-bit big-endian
       for (let i = 7; i >= 0; i--) {
-        msgArr.push(Math.floor(bitLen / Math.pow(2, i * 8))&0xff);
+        msgArr.push(OpCodes.ToByte(Math.floor(bitLen / Math.pow(2, i * 8))));
       }
 
       // Process each 512-bit block
       for (let offset = 0; offset < msgArr.length; offset += 64) {
+        /** @type {uint32[]} */
         const W = new Array(64);
 
         // Copy block into first 16 words
         for (let i = 0; i < 16; i++) {
-          W[i] = OpCodes.ToUint32((OpCodes.Shl32(msgArr[offset + i * 4], 24))|(OpCodes.Shl32(msgArr[offset + i * 4 + 1], 16))|(OpCodes.Shl32(msgArr[offset + i * 4 + 2], 8))|msgArr[offset + i * 4 + 3]);
+          W[i] = OpCodes.Pack32BE(msgArr[offset + i * 4], msgArr[offset + i * 4 + 1], msgArr[offset + i * 4 + 2], msgArr[offset + i * 4 + 3]);
         }
 
         // Extend the first 16 words into the remaining 48 words
         for (let i = 16; i < 64; i++) {
-          W[i] = OpCodes.ToUint32(gamma1(W[i - 2]) + W[i - 7] + gamma0(W[i - 15]) + W[i - 16]);
+          const g1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(W[i - 2], 17), OpCodes.RotR32(W[i - 2], 19)), OpCodes.Shr32(W[i - 2], 10));
+          const g0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(W[i - 15], 7), OpCodes.RotR32(W[i - 15], 18)), OpCodes.Shr32(W[i - 15], 3));
+          W[i] = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(g1, W[i - 7]), g0), W[i - 16]);
         }
 
         // Initialize working variables
-        let [a, b, c, d, e, f, g, h] = H;
+        let a = H[0];
+        let b = H[1];
+        let c = H[2];
+        let d = H[3];
+        let e = H[4];
+        let f = H[5];
+        let g = H[6];
+        let h = H[7];
 
         // Main loop
         for (let i = 0; i < 64; i++) {
-          const T1 = OpCodes.ToUint32(h + sigma1(e) + ch(e, f, g) + K[i] + W[i]);
-          const T2 = OpCodes.ToUint32(sigma0(a) + maj(a, b, c));
+          const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
+          const ch = OpCodes.Xor32(OpCodes.And32(e, f), OpCodes.And32(OpCodes.Not32(e), g));
+          const s0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
+          const maj = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(a, b), OpCodes.And32(a, c)), OpCodes.And32(b, c));
+          const T1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(h, s1), ch), K[i]), W[i]);
+          const T2 = OpCodes.Add32(s0, maj);
           h = g;
           g = f;
           f = e;
-          e = OpCodes.ToUint32(d + T1);
+          e = OpCodes.Add32(d, T1);
           d = c;
           c = b;
           b = a;
-          a = OpCodes.ToUint32(T1 + T2);
+          a = OpCodes.Add32(T1, T2);
         }
 
         // Add compressed chunk to current hash value
-        H[0] = OpCodes.ToUint32(H[0] + a);
-        H[1] = OpCodes.ToUint32(H[1] + b);
-        H[2] = OpCodes.ToUint32(H[2] + c);
-        H[3] = OpCodes.ToUint32(H[3] + d);
-        H[4] = OpCodes.ToUint32(H[4] + e);
-        H[5] = OpCodes.ToUint32(H[5] + f);
-        H[6] = OpCodes.ToUint32(H[6] + g);
-        H[7] = OpCodes.ToUint32(H[7] + h);
+        H[0] = OpCodes.Add32(H[0], a);
+        H[1] = OpCodes.Add32(H[1], b);
+        H[2] = OpCodes.Add32(H[2], c);
+        H[3] = OpCodes.Add32(H[3], d);
+        H[4] = OpCodes.Add32(H[4], e);
+        H[5] = OpCodes.Add32(H[5], f);
+        H[6] = OpCodes.Add32(H[6], g);
+        H[7] = OpCodes.Add32(H[7], h);
       }
 
       // Produce the final hash value (big-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result.push(OpCodes.Shr32(H[i], 24)&0xff);
-        result.push(OpCodes.Shr32(H[i], 16)&0xff);
-        result.push(OpCodes.Shr32(H[i], 8)&0xff);
-        result.push(H[i]&0xff);
+        const bytes = OpCodes.Unpack32BE(H[i]);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
       return result;
     }
