@@ -64,7 +64,8 @@
   // S-box used by the DarkCrypt implementation. Self-inverse (S[S[x]]=x for all x) but
   // NOT the same permutation as the published Anubis/Khazad S-box, despite the paper's
   // claim of using an identical construction.
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     186,84,47,116,83,211,210,77,80,172,141,191,112,82,154,76,234,213,151,209,51,81,91,166,
     222,72,168,153,219,50,183,252,227,158,145,155,226,187,65,110,165,203,107,149,161,243,177,2,
     204,196,29,20,195,99,218,93,95,220,125,205,127,90,108,92,247,38,255,237,232,157,111,142,
@@ -76,38 +77,55 @@
     231,117,239,52,49,212,208,134,126,173,253,41,48,59,159,248,198,19,6,5,197,17,119,124,
     122,120,54,28,57,89,24,86,179,176,36,32,178,146,163,192,68,98,16,180,132,67,147,194,
     74,189,143,45,188,156,106,64,207,162,128,79,31,202,170,66
-  ]);
+  ];
+  Object.freeze(SBOX);
 
   // GF(2^8) with p8(x) = x^8+x^6+x^3+x^2+1 (reduction byte 0x4D, full modulus 0x14D).
+  /** @type {uint32} */
   const P8 = 0x14D;
-  function gmul(a, b) { return OpCodes.GFMul(a, b, P8, 8); }
+  /**
+   * @param {uint8} a - Field element
+   * @param {uint8} b - Field element
+   * @returns {uint8} a * b in GF(2^8) modulo p8
+   */
+  function gmul(a, b) { return OpCodes.And32(OpCodes.GFMul(a, b, P8, 8), 0xFF); }
 
   // Involutory MDS diffusion matrix used by the round function's theta layer (D*D = I).
-  const D_MATRIX = [[3,2,2],[4,5,4],[6,6,7]];
+  /** @type {uint8[][]} */
+  const D_MATRIX = [OpCodes.Hex8ToBytes("030202"), OpCodes.Hex8ToBytes("040504"), OpCodes.Hex8ToBytes("060607")];
 
-  // Cube root of unity c(x) = x^85 mod p8(x) = 0x1C, used to build the key-schedule's E matrix.
-  const CUBE_ROOT = 0x1C;
-  const E_MATRIX = [
-    [OpCodes.Xor32(1, CUBE_ROOT), CUBE_ROOT, CUBE_ROOT],
-    [CUBE_ROOT, OpCodes.Xor32(1, CUBE_ROOT), CUBE_ROOT],
-    [CUBE_ROOT, CUBE_ROOT, OpCodes.Xor32(1, CUBE_ROOT)]
-  ];
+  // Cube root of unity c(x) = x^85 mod p8(x) = 0x1C, used to build the key-schedule's E matrix:
+  // E = I + c * J (J = all-ones), i.e. 1^0x1C = 0x1D on the diagonal and 0x1C elsewhere.
+  /** @type {uint8[][]} */
+  const E_MATRIX = [OpCodes.Hex8ToBytes("1d1c1c"), OpCodes.Hex8ToBytes("1c1d1c"), OpCodes.Hex8ToBytes("1c1c1d")];
 
+  /**
+   * @param {uint8[][]} matrix - 3x3 matrix
+   * @param {uint8[]} col - Column of 3 bytes
+   * @returns {uint8[]} matrix * col over GF(2^8)
+   */
   function matmul3(matrix, col) {
     /** @type {uint8[]} */
     const out = [0, 0, 0];
     for (let i = 0; i < 3; i++) {
+      /** @type {uint32} */
       let v = 0;
-      for (let j = 0; j < 3; j++) v ^= gmul(matrix[i][j], col[j]);
+      for (let j = 0; j < 3; j++) v = OpCodes.Xor32(v, gmul(matrix[i][j], col[j]));
       out[i] = v;
     }
     return out;
   }
 
+  /** @type {int32} */
   const BLOCK_COLS = 4; // 96-bit block = 3 rows x 4 columns, fixed regardless of key size
 
   // gamma: nonlinear S-box substitution layer, every byte of the state.
+  /**
+   * @param {uint8[]} state - State bytes
+   * @returns {uint8[]} Substituted state
+   */
   function gamma(state) {
+    /** @type {uint8[]} */
     const out = new Array(state.length);
     for (let i = 0; i < state.length; i++) out[i] = SBOX[state[i]];
     return out;
@@ -115,18 +133,30 @@
 
   // pi: row permutation layer. Block state is column-major (state[col*3+row]).
   // Row 0 unchanged; row i in {1,2}: b[i][j] = a[i][i XOR j]. Self-inverse.
+  /**
+   * @param {uint8[]} state - State bytes
+   * @param {int32} cols - Number of columns
+   * @returns {uint8[]} Permuted state
+   */
   function piLayer(state, cols) {
     const out = state.slice();
     for (let i = 1; i < 3; i++)
       for (let j = 0; j < cols; j++)
-        out[j * 3 + i] = state[OpCodes.Xor32(i, j) * 3 + i];
+        out[j * 3 + i] = state[OpCodes.Add32(OpCodes.Mul32(OpCodes.Xor32(i, j), 3), i)];
     return out;
   }
 
   // theta: linear MDS diffusion layer, D-matrix multiply applied per column.
+  /**
+   * @param {uint8[]} state - State bytes
+   * @param {int32} cols - Number of columns
+   * @returns {uint8[]} Diffused state
+   */
   function thetaLayer(state, cols) {
+    /** @type {uint8[]} */
     const out = new Array(cols * 3);
     for (let c = 0; c < cols; c++) {
+      /** @type {uint8[]} */
       const col = [state[c * 3 + 0], state[c * 3 + 1], state[c * 3 + 2]];
       const nc = matmul3(D_MATRIX, col);
       out[c * 3 + 0] = nc[0]; out[c * 3 + 1] = nc[1]; out[c * 3 + 2] = nc[2];
@@ -134,7 +164,13 @@
     return out;
   }
 
+  /**
+   * @param {uint8[]} a - Bytes
+   * @param {uint8[]} b - Bytes
+   * @returns {uint8[]} a XOR b
+   */
   function xorState(a, b) {
+    /** @type {uint8[]} */
     const out = new Array(a.length);
     for (let i = 0; i < a.length; i++) out[i] = OpCodes.Xor32(a[i], b[i]);
     return out;
@@ -144,36 +180,50 @@
   // DarkCrypt behavior (R=23) exactly; the formula for other key sizes is an unverified
   // extrapolation of the paper's own linear per-t progression, shifted to fit that
   // single confirmed data point.
+  /**
+   * @param {int32} t - Key bytes / 6
+   * @returns {int32} Number of rounds
+   */
   function roundCountFor(t) { return 4 * t + 7; }
+
+  // phi: round key kappa from key-schedule matrix: S-box row 0 of the first 4 columns, rows 1-2 raw.
+  /**
+   * @param {uint8[]} mat - Key-schedule matrix (column-major)
+   * @returns {uint8[]} Round key
+   */
+  function phi(mat) {
+    /** @type {uint8[]} */
+    const out = new Array(3 * BLOCK_COLS);
+    for (let c = 0; c < BLOCK_COLS; c++) {
+      out[c * 3 + 0] = SBOX[mat[c * 3 + 0]];
+      out[c * 3 + 1] = mat[c * 3 + 1];
+      out[c * 3 + 2] = mat[c * 3 + 2];
+    }
+    return out;
+  }
 
   // Key schedule: 3 x 2t byte matrix (column-major), evolved via constant addition
   // (sigma_q), cyclic row shift (xi), and E-matrix diffusion (mu). Round key kappa^(r)
-  // is derived from K^(r) via phi: S-box row 0 of the first 4 columns, rows 1-2 raw.
+  // is derived from K^(r) via phi.
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} rounds - Number of rounds
+   * @param {int32} t - Key bytes / 6
+   * @returns {uint8[][]} Round keys kappa^(0) .. kappa^(rounds)
    */
   function keySchedule(keyBytes, rounds, t) {
     const cols2t = 2 * t;
     let K = keyBytes.slice(); // 3 x cols2t, column-major: K[col*3+row]
 
-    function phi(mat) {
-      const out = new Array(3 * BLOCK_COLS);
-      for (let c = 0; c < BLOCK_COLS; c++) {
-        out[c * 3 + 0] = SBOX[mat[c * 3 + 0]];
-        out[c * 3 + 1] = mat[c * 3 + 1];
-        out[c * 3 + 2] = mat[c * 3 + 2];
-      }
-      return out;
-    }
-
-    const roundKeys = [phi(K)]; // kappa^(0)
+    /** @type {uint8[][]} */
+    const kappas = [phi(K)]; // kappa^(0)
 
     for (let r = 1; r <= rounds; r++) {
       // sigma_q: constant addition into row 0 only.
       const K2 = K.slice();
       for (let j = 0; j < cols2t; j++) {
         const q = SBOX[OpCodes.And32(cols2t * (r - 1) + j, 0xFF)];
-        K2[j * 3 + 0] ^= q;
+        K2[j * 3 + 0] = OpCodes.Xor32(K2[j * 3 + 0], q);
       }
       // xi: cyclic shift, row 1 left by one column, row 2 right by one column.
       const K3 = K2.slice();
@@ -182,62 +232,71 @@
         K3[j * 3 + 2] = K2[((j - 1 + cols2t) % cols2t) * 3 + 2];
       }
       // mu: E-matrix multiply, applied per column across all cols2t columns.
+      /** @type {uint8[]} */
       const K4 = new Array(3 * cols2t);
       for (let c = 0; c < cols2t; c++) {
+        /** @type {uint8[]} */
         const col = [K3[c * 3 + 0], K3[c * 3 + 1], K3[c * 3 + 2]];
         const nc = matmul3(E_MATRIX, col);
         K4[c * 3 + 0] = nc[0]; K4[c * 3 + 1] = nc[1]; K4[c * 3 + 2] = nc[2];
       }
       K = K4;
-      roundKeys.push(phi(K));
+      kappas.push(phi(K));
     }
-    return roundKeys; // length rounds+1: kappa^(0) .. kappa^(rounds)
+    return kappas; // length rounds+1: kappa^(0) .. kappa^(rounds)
   }
 
   /**
+   * @param {uint8[]} ptBytes - 12 plaintext bytes
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} t - Key bytes / 6
+   * @returns {uint8[]} 12 ciphertext bytes
    */
   function encryptBlock(ptBytes, keyBytes, t) {
     const R = roundCountFor(t);
-    const roundKeys = keySchedule(keyBytes, R, t);
-    let state = xorState(ptBytes, roundKeys[0]);
+    const kappas = keySchedule(keyBytes, R, t);
+    let state = xorState(ptBytes, kappas[0]);
     for (let r = 1; r < R; r++) {
       state = gamma(state);
       state = piLayer(state, BLOCK_COLS);
       state = thetaLayer(state, BLOCK_COLS);
-      state = xorState(state, roundKeys[r]);
+      state = xorState(state, kappas[r]);
     }
     // Last Round Function: gamma, pi, sigma (no theta).
     state = gamma(state);
     state = piLayer(state, BLOCK_COLS);
-    state = xorState(state, roundKeys[R]);
+    state = xorState(state, kappas[R]);
     return state;
   }
 
   /**
+   * @param {uint8[]} ctBytes - 12 ciphertext bytes
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} t - Key bytes / 6
+   * @returns {uint8[]} 12 plaintext bytes
    */
   function decryptBlock(ctBytes, keyBytes, t) {
     const R = roundCountFor(t);
-    const encKeys = keySchedule(keyBytes, R, t);
+    const encKappas = keySchedule(keyBytes, R, t);
 
     // Involutional decryption: round keys used in reverse order; every key except
     // the two outermost ones is pre-transformed by theta.
-    const decKeys = new Array(R + 1);
-    decKeys[0] = encKeys[R];
-    decKeys[R] = encKeys[0];
-    for (let r = 1; r < R; r++) decKeys[r] = thetaLayer(encKeys[R - r], BLOCK_COLS);
+    /** @type {uint8[][]} */
+    const decKappas = new Array(R + 1);
+    decKappas[0] = encKappas[R];
+    decKappas[R] = encKappas[0];
+    for (let r = 1; r < R; r++) decKappas[r] = thetaLayer(encKappas[R - r], BLOCK_COLS);
 
-    let state = xorState(ctBytes, decKeys[0]);
+    let state = xorState(ctBytes, decKappas[0]);
     for (let r = 1; r < R; r++) {
       state = gamma(state);
       state = piLayer(state, BLOCK_COLS);
       state = thetaLayer(state, BLOCK_COLS);
-      state = xorState(state, decKeys[r]);
+      state = xorState(state, decKappas[r]);
     }
     state = gamma(state);
     state = piLayer(state, BLOCK_COLS);
-    state = xorState(state, decKeys[R]);
+    state = xorState(state, decKappas[R]);
     return state;
   }
 
@@ -312,7 +371,10 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {int32} */
       this._t = 0;
+      /** @type {KeySize[]} */
+      this._sizeRules = algorithm.SupportedKeySizes;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 12;
@@ -324,10 +386,16 @@
      */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._t = 0; this.KeySize = 0; return; }
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      const sizes = this._sizeRules;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+          (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
       if (!isValidSize)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. Curupira-1 (DarkCrypt) requires 12, 18, or 24 bytes");
       this._key = [...keyBytes];
