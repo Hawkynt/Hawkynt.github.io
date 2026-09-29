@@ -196,6 +196,9 @@
   // confirmed point.
   function roundCountFor(t) { return 2 * t + 10; }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function computeRoundKeys(keyBytes, rounds, t) {
     const bufSize = 6 * t;
     let buf = keyBytes.slice();
@@ -207,6 +210,9 @@
     return kappas; // length rounds+1: kappa^(0) .. kappa^(rounds)
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function encryptBlock(ptBytes, keyBytes, t) {
     const R = roundCountFor(t);
     const kappas = computeRoundKeys(keyBytes, R, t);
@@ -223,6 +229,9 @@
     return state;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function decryptBlock(ctBytes, keyBytes, t) {
     const R = roundCountFor(t);
     const kappas = computeRoundKeys(keyBytes, R, t);
@@ -299,22 +308,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptCurupira2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptCurupira2Instance(this, isInverse);
     }
   }
 
   class DarkCryptCurupira2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptCurupira2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._t = 0;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 12;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._t = 0; this.KeySize = 0; return; }
       const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
@@ -328,6 +350,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -342,6 +367,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

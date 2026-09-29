@@ -765,6 +765,9 @@
   // per segment); false = self-referential re-seed from whatever is already sitting in
   // `scratch` -- i.e. leftover contents from a PRIOR call -- xored with the segment
   // index (pass 2, 2048 KSA iterations per segment).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildSbox(scratch, keyBytes, keyLen, seedByte, usesCopyInit) {
     let runningByte = seedByte;
     const iters = usesCopyInit ? 1024 : 2048;
@@ -793,6 +796,9 @@
 
   // Same RC4-KSA-style permutation, applied once to the 256-byte round-key scratch
   // table (written directly into mem[0..256), i.e. the WORK180 region).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildKeyScratch(mem, keyBytes, keyLen, seedByte, usesCopyInit) {
     if (usesCopyInit) { for (let b = 0; b < 256; b++) mem[b] = T_COPY180[b]; }
     else { for (let b = 0; b < 256; b++) mem[b] = b; }
@@ -870,6 +876,9 @@
     }
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function setup(keyBytes) {
     const scratch = new Array(0x8000).fill(0);
     const mem = new Array(MEM_SIZE).fill(0);
@@ -944,22 +953,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptVSEN10Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptVSEN10Instance(this, isInverse);
     }
   }
 
   class DarkCryptVSEN10Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptVSEN10Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._mem = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._mem = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -969,6 +991,9 @@
       this._mem = setup(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -983,6 +1008,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -992,6 +1018,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const word0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const word1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -999,6 +1029,10 @@
       return [...OpCodes.Unpack32LE(c0), ...OpCodes.Unpack32LE(c1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const word0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const word1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

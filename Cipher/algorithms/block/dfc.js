@@ -156,7 +156,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DFCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -331,7 +331,7 @@
   class DFCInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DFC} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -340,6 +340,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // bytes
       this.KeySize = 0;    // will be set when key is assigned
@@ -411,6 +412,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -435,6 +437,10 @@
     }
 
     // Private methods for actual crypto operations
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
         throw new Error("Invalid block or key schedule not initialized");
@@ -456,6 +462,10 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
         throw new Error("Invalid block or key schedule not initialized");

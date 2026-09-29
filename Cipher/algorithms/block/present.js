@@ -222,7 +222,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PresentInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -239,7 +239,7 @@
   class PresentInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PresentAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -248,6 +248,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
       this.KeySize = 0;
@@ -314,6 +315,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -332,6 +334,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("PRESENT requires exactly 8 bytes per block");
@@ -358,6 +364,10 @@
       return this._stateToBytes(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("PRESENT requires exactly 8 bytes per block");
@@ -531,6 +541,9 @@
     }
 
     // Generate round keys using PRESENT key schedule (variant-specific)
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes) {
       if (this.algorithm.KEY_SIZE_BITS === 80) {
         return this._generateRoundKeys80(keyBytes);
@@ -540,6 +553,9 @@
     }
 
     // Generate round keys for PRESENT-80
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys80(keyBytes) {
       const roundKeys = [];
 
@@ -593,6 +609,9 @@
     }
 
     // Generate round keys for PRESENT-128
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys128(keyBytes) {
       const roundKeys = [];
 

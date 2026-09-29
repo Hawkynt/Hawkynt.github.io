@@ -100,7 +100,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KeeloqInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -117,14 +117,16 @@
   class KeeloqInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Keeloq} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = 4;
       this.KeySize = 0;
@@ -168,6 +170,10 @@
       return OpCodes.And32(OpCodes.Shr32(this.NLF, input), 0x1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Load 32-bit value (big-endian)
       let state = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -210,6 +216,10 @@
       return [...OpCodes.Unpack32BE(state)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Load 32-bit value (big-endian)
       let state = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -277,6 +287,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

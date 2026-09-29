@@ -220,7 +220,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MacGuffinInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -237,7 +237,7 @@
   class MacGuffinInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MacGuffinAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -246,6 +246,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -414,11 +415,19 @@
       return ek;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(input) {
       return MacGuffinInstance._toBytes(
         MacGuffinInstance._forward(MacGuffinInstance._toWords(input), this.subkeys));
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(input) {
       return MacGuffinInstance._toBytes(
         MacGuffinInstance._backward(MacGuffinInstance._toWords(input), this.subkeys));

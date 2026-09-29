@@ -152,6 +152,10 @@ class HierocryptL1 extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {HierocryptL1Instance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new HierocryptL1Instance(this, isInverse);
   }
@@ -161,16 +165,25 @@ class HierocryptL1 extends BlockCipherAlgorithm {
  * Instance class implementing the Hierocrypt-L1 cipher
  */
 class HierocryptL1Instance extends IBlockCipherInstance {
+  /**
+   * @param {HierocryptL1} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
     this._roundKeys = null;
     this.BlockSize = 8;
     this.KeySize = 0;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -188,6 +201,9 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     this._roundKeys = HierocryptL1Instance._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() { return this._key ? [...this._key] : null; }
 
   Feed(data) {
@@ -203,6 +219,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
       throw new Error("Input length must be multiple of 8 bytes");
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i += 8) {
       const block = this.inputBuffer.slice(i, i + 8);
@@ -322,6 +339,9 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
   // ---- key schedule (spec section 3.2.3 - 3.2.7) ----
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   static _expandKey(keyBytes) {
     const XOR4 = HierocryptL1Instance._xor4;
     const M5 = HierocryptL1Instance._M5;
@@ -397,6 +417,10 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     return XOR8(Sinv(HierocryptL1Instance._MDSLinv(XOR8(Sinv(x), k2))), k1);
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(block) {
     const K = this._roundKeys;
     let x = block.slice();
@@ -405,6 +429,10 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     return HierocryptL1Instance._xor8(x, K[7][0].concat(K[7][1]));
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(block) {
     const K = this._roundKeys;
     let x = HierocryptL1Instance._xor8(block, K[7][0].concat(K[7][1]));

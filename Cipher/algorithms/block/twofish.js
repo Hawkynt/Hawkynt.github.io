@@ -271,7 +271,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TwofishInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -288,7 +288,7 @@
   class TwofishInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TwofishAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -296,6 +296,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -426,6 +427,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(input) {
       let x0 = OpCodes.Xor32(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[INPUT_WHITEN]);
       let x1 = OpCodes.Xor32(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[INPUT_WHITEN + 1]);
@@ -458,6 +463,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(input) {
       let x2 = OpCodes.Xor32(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[OUTPUT_WHITEN]);
       let x3 = OpCodes.Xor32(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[OUTPUT_WHITEN + 1]);

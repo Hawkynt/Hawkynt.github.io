@@ -246,6 +246,9 @@
 
   // ===== KEY SCHEDULE =====
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function generateKeys(keyBytes, blockLength, rounds) {
     const keyLength = keyBytes.length;
     const internalKeyLength = SUBKEY_LEN * rounds;
@@ -389,22 +392,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {FROGInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new FROGInstance(this, isInverse);
     }
   }
 
   class FROGInstance extends IBlockCipherInstance {
+    /**
+     * @param {FROG} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
       this.BlockSize = BLOCK_LEN;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -432,6 +448,9 @@
       if (this.isInverse) invertSubstitutions(this._roundKeys, BLOCK_LEN, ROUNDS);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -446,6 +465,7 @@
       if (this.inputBuffer.length % BLOCK_LEN !== 0)
         throw new Error("Input length must be a multiple of " + BLOCK_LEN + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += BLOCK_LEN) {
         const state = [];

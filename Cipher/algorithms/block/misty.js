@@ -253,7 +253,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MISTY1Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -330,7 +330,7 @@
   class MISTY1Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MISTY1Cipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -339,6 +339,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -410,6 +411,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -427,6 +429,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       // MISTY1 key schedule - RFC 2994 Section 2.2
       // Convert 16 key bytes to 8 key words K[0]...K[7]
@@ -461,6 +466,10 @@
       return { EK, K };
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       // P is split into the leftmost 32-bit D0 and the rightmost 32-bit D1
       const EK = this.roundKeys.EK;
@@ -485,6 +494,10 @@
       return [...high, ...low];
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       // D1 is the leftmost 32-bit of C, D0 the rightmost 32-bit
       const EK = this.roundKeys.EK;
@@ -572,7 +585,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MISTY2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -634,7 +647,7 @@
   class MISTY2Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MISTY2Cipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -643,6 +656,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -714,6 +728,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -731,6 +746,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes) {
       // Convert key bytes to 16-bit words
       const K = new Array(8);
@@ -771,6 +789,10 @@
       return keys;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       // Convert bytes to 32-bit words (big-endian)
       let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
@@ -804,6 +826,10 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       // Convert bytes to 32-bit words (big-endian)
       let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);

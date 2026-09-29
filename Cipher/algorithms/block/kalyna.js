@@ -952,7 +952,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KalynaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -1078,6 +1078,10 @@
     // ===== ENCRYPTION/DECRYPTION =====
 
     // Encrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+    /**
+     * @param {uint8[]} plaintext - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(plaintext, key) {
       const msg = new Array(2);
       for (let i = 0; i < 2; i++) {
@@ -1143,6 +1147,10 @@
     }
 
     // Decrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+    /**
+     * @param {uint8[]} ciphertext - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(ciphertext, key) {
       const msg = new Array(2);
       for (let i = 0; i < 2; i++) {
@@ -1220,14 +1228,16 @@
   class KalynaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KalynaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -1290,6 +1300,7 @@
         throw new Error("Kalyna: Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

@@ -146,7 +146,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FEALNXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -165,7 +165,7 @@
   class FEALNXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FEALNXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -174,6 +174,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // 64-bit blocks
       this.KeySize = 0;   // will be set when key is assigned
@@ -258,6 +259,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -326,6 +328,9 @@
 
     // Generate round keys for FEAL-NX (128-bit key schedule)
     // Returns byte array of subkeys: 2*(numberOfRounds+4) bytes
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes, numRounds) {
       // Total subkeys needed: 2*(numberOfRounds+4) bytes
       const subKeys = new Array(2 * (numRounds + 4));
@@ -383,6 +388,10 @@
     }
 
     // Encrypt 8-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const N = this._rounds;
       const subkeys = this.roundKeys;
@@ -420,6 +429,10 @@
     }
 
     // Decrypt 8-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const N = this._rounds;
       const subkeys = this.roundKeys;

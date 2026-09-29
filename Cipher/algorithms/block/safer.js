@@ -201,7 +201,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SaferInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -218,7 +218,7 @@
   class SaferInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SaferAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -228,6 +228,7 @@
       this.key = null;
       this.expandedKey = null;
       this.nofRounds = 0;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
       this.KeySize = 0;
@@ -323,6 +324,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -341,6 +343,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("SAFER requires exactly 8 bytes per block");
@@ -400,6 +406,10 @@
               OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("SAFER requires exactly 8 bytes per block");
@@ -485,6 +495,9 @@
     }
 
     // Expand user key to round keys
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const nofRounds = this.nofRounds;
       if (nofRounds > this.algorithm.MAX_ROUNDS) {

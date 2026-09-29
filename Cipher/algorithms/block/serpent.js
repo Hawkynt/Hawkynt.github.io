@@ -153,7 +153,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SerpentInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -170,7 +170,7 @@
   class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SerpentAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -179,6 +179,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -620,6 +621,10 @@
     }
 
     // Encrypt a block based on Bouncy Castle reference
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Serpent block size must be exactly 16 bytes');
@@ -668,6 +673,10 @@
     }
 
     // Decrypt a block based on Bouncy Castle reference
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Serpent block size must be exactly 16 bytes');

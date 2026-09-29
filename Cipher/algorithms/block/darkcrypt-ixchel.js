@@ -106,25 +106,38 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptIxchelInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptIxchelInstance(this, isInverse);
     }
   }
 
   class DarkCryptIxchelInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptIxchelAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._rc = null;
       this._keytab = null;
       this._pre = null;
       this._post = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this._rc = null; this._keytab = null;
@@ -138,12 +151,18 @@
       this._setup(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     // Key schedule: stretches the 16 key words to 64, runs
     // an RC6-style mixing pass through the fixed S-box to build the round
     // constants (RC) and the ARX-post-mixed lookup table (KEYTAB), and derives
     // the two whitening quads.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _setup(keyBytes) {
       const K = new Array(16);
       for (let i = 0; i < 16; i++)
@@ -202,6 +221,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -214,6 +234,10 @@
     // Sixteen-round encryption. Each round: branching-addition diffusion layer,
     // two keyed "g" mixing stages (rol16 XOR (shl6 ^ shr8)) with variable
     // rotation, then a nonlinear byte-substitution layer gated by KEYTAB.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const RC = this._rc, KEYTAB = this._keytab, PRE = this._pre, POST = this._post;
       const w = [];
@@ -357,6 +381,10 @@
     // Sixteen-round decryption: inverts the nonlinear layer, the two keyed "g"
     // mixing stages and finally the branching-addition diffusion layer, in
     // reverse round order.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const RC = this._rc, KEYTAB = this._keytab, PRE = this._pre, POST = this._post;
       const w = [];

@@ -100,22 +100,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKinebickInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKinebickInstance(this, isInverse);
     }
   }
 
   class DarkCryptKinebickInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKinebickAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._dv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._dv = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -125,9 +138,15 @@
       this._setup(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     // Key schedule: builds round keys / permutations into a memory image.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _setup(keyBytes) {
       const buf = new ArrayBuffer(0x12200);
       const dv = new DataView(buf);
@@ -206,6 +225,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -215,6 +235,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @param {boolean} isDecrypt - Decrypt instead of encrypt
+     */
     _run(block, isDecrypt) {
       const dv = this._dv;
       const bb = new ArrayBuffer(16);
@@ -2635,7 +2659,15 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) { return this._run(block, false); }
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) { return this._run(block, true); }
   }
 

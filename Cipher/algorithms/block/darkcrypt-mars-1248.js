@@ -110,16 +110,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMARS1248Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMARS1248Instance(this, isInverse);
     }
   }
 
   class DarkCryptMARS1248Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMARS1248Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -198,6 +208,9 @@
       this.S1 = (a) => this.Sbox[OpCodes.And32(a, 0xFF) + 256];
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this.expandedKey = null; return; }
       if (keyBytes.length !== 156)
@@ -207,6 +220,9 @@
       this.expandedKey = this._expandKey(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -221,6 +237,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -255,6 +272,9 @@
     // indexing so the same stirring/permutation/mask-tweak logic works
     // unmodified for any key length (Nk=8/16/39 for the 256/512/1248-bit
     // variants observed in this DarkCrypt variant family).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const Nk = keyBytes.length / 4;
       const keyWords = new Array(Nk);
@@ -302,6 +322,10 @@
       return K;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let a = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let b = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -352,6 +376,10 @@
       return [].concat(OpCodes.Unpack32LE(a), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(d));
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let d = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let c = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

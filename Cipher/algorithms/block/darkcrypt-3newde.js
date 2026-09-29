@@ -194,22 +194,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCrypt3NewDEInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCrypt3NewDEInstance(this, isInverse);
     }
   }
 
   class DarkCrypt3NewDEInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCrypt3NewDEAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 24)
@@ -219,6 +232,9 @@
       this._roundKeys = this._buildRoundKeys(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -233,6 +249,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -243,6 +260,9 @@
     }
 
     // Only the HIGH nibble of each of the first 16 key bytes is effective (see file header).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _buildRoundKeys(keyBytes) {
       const N = new Array(16);
       for (let i = 0; i < 16; i++) N[i] = OpCodes.And32(OpCodes.Shr32(keyBytes[i], 4), 0xF);
@@ -297,6 +317,10 @@
       return [OpCodes.RotR32(R, 1), OpCodes.RotR32(L, 1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -304,6 +328,10 @@
       return [...OpCodes.Unpack32BE(outL), ...OpCodes.Unpack32BE(outR)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);

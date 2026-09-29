@@ -104,22 +104,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRC5Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRC5Instance(this, isInverse);
     }
   }
 
   class DarkCryptRC5Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRC5Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.expandedKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.expandedKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -129,6 +142,9 @@
       this._keyExpansion();
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -143,6 +159,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -189,6 +206,10 @@
     }
 
     // Only bytes 0-7 are transformed by the real 64-bit RC5 cipher; bytes 8-15 pass through unchanged.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -209,6 +230,10 @@
       return [...OpCodes.Unpack32LE(A), ...OpCodes.Unpack32LE(B), ...block.slice(8, 16)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

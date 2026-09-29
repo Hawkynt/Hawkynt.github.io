@@ -230,22 +230,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptLetsief3Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptLetsief3Instance(this, isInverse);
     }
   }
 
   class DarkCryptLetsief3Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptLetsief3Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._schedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -255,6 +268,9 @@
       this._schedule = this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -269,6 +285,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -349,6 +366,10 @@
       return [na, nb];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const { subkey } = this._schedule;
       let v0 = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), subkey[0]);
@@ -362,6 +383,10 @@
       return [...OpCodes.Unpack32BE(v0), ...OpCodes.Unpack32BE(v1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const { subkey } = this._schedule;
       let a = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), subkey[14]);

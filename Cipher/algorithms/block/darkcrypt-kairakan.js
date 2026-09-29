@@ -198,21 +198,34 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKairakanInstance} New instance
+     */
     CreateInstance(isInverse = false) { return new DarkCryptKairakanInstance(this, isInverse); }
   }
 
   class DarkCryptKairakanInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKairakanAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._K = null;
       this._T = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -223,6 +236,9 @@
       this._T = this._buildTables(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -237,6 +253,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -298,6 +315,10 @@
     // Explicit, unrolled 32-step mix/refresh sequence (see header comment for the
     // two irregular spots at steps 8/9, 24/25 (reused unrefreshed source) and
     // 16/17 (extra refresh of word A)).
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const T = this._T, K = this._K;
       let A = OpCodes.ToUint32(K[0] + OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
@@ -379,6 +400,10 @@
     // Exact algebraic inverse of _encryptBlock: same 64 operations, in reverse order,
     // each individually inverted (subtraction instead of addition, inverse substitution
     // + right-rotate instead of left-rotate + substitution).
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const T = this._T, K = this._K;
       let A = OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), K[4]);

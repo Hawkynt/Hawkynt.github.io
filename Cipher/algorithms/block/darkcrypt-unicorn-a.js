@@ -274,22 +274,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptUnicornAInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptUnicornAInstance(this, isInverse);
     }
   }
 
   class DarkCryptUnicornAInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptUnicornAAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._schedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -299,6 +312,9 @@
       this._schedule = this._buildKeySchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -313,6 +329,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -327,6 +344,9 @@
     // 8-word key state) followed by 9 extraction passes of 16 MT calls each
     // (the first 8 calls per pass are non-extracting, the next 8 extract one
     // word each), then maps WK[] onto IK0..IK7 and FKa/SKa/FKb/SKb per round.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _buildKeySchedule(keyBytes) {
       const LINE = 8;
       const n = 16 + 2; // 18
@@ -372,6 +392,10 @@
       return { IK, FKa, SKa, FKb, SKb };
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const ks = this._schedule;
       const P0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -397,6 +421,10 @@
       return [...OpCodes.Unpack32BE(C0), ...OpCodes.Unpack32BE(C1), ...OpCodes.Unpack32BE(C2), ...OpCodes.Unpack32BE(C3)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const ks = this._schedule;
       const C0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

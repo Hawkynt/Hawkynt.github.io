@@ -177,7 +177,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MagentaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -194,7 +194,7 @@
   class MagentaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MagentaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -203,6 +203,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -275,6 +276,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -410,6 +412,10 @@
     }
 
     // MAGENTA encryption
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(data) {
       if (data.length !== 16) {
         throw new Error('Block size must be 16 bytes');
@@ -434,6 +440,10 @@
     }
 
     // MAGENTA decryption
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(data) {
       if (data.length !== 16) {
         throw new Error('Block size must be 16 bytes');

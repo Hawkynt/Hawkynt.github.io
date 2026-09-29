@@ -239,22 +239,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptQ128Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptQ128Instance(this, isInverse);
     }
   }
 
   class DarkCryptQ128Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptQ128Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -264,6 +277,9 @@
       this._roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -278,6 +294,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -287,6 +304,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _blockToWords(block) {
       return [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
@@ -306,6 +326,9 @@
     // Runs the key through the same 4-step spread network used by encryption (see file header),
     // but with right rotations and no round-key addition; the state after each of the last 16
     // of 19 iterations becomes that round's 4-word round key.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       let [a, b, c, d] = this._blockToWords(keyBytes);
       const rk = [];
@@ -326,6 +349,10 @@
       return rk; // 64 words = 16 rounds * 4
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const rk = this._roundKeys;
       let [a, b, c, d] = this._blockToWords(block);
@@ -348,6 +375,10 @@
       return this._wordsToBlock([a, b, c, d]);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const rk = this._roundKeys;
       let [a, b, c, d] = this._blockToWords(block);

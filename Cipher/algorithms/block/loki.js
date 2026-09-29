@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LOKI89Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,7 +132,7 @@
   class LOKI89Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LOKI89Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -141,6 +141,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 8;
@@ -177,6 +178,9 @@
       return this._key;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -240,6 +244,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -249,6 +254,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('LOKI89 requires 8-byte blocks');
@@ -284,6 +293,10 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('LOKI89 requires 8-byte blocks');
@@ -444,7 +457,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LOKI91Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -461,7 +474,7 @@
   class LOKI91Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LOKI91Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -470,6 +483,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 8;
@@ -508,6 +522,9 @@
       return this._key;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -622,6 +639,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -631,6 +649,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('LOKI91 requires 8-byte blocks');
@@ -657,6 +679,10 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('LOKI91 requires 8-byte blocks');
@@ -792,7 +818,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LOKI97Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -809,7 +835,7 @@
   class LOKI97Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LOKI97Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -818,6 +844,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -856,6 +883,9 @@
       return this._key;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -975,6 +1005,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -984,6 +1015,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('LOKI97 requires 16-byte blocks');
@@ -1012,6 +1047,10 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('LOKI97 requires 16-byte blocks');

@@ -181,6 +181,9 @@ let LuciferAlgorithm, LuciferInstance;
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   CreateInstance(isInverse = false) {
     return new LuciferInstance(this, isInverse);
   }
@@ -188,6 +191,9 @@ let LuciferAlgorithm, LuciferInstance;
 
   // Instance class for actual encryption/decryption
   LuciferInstance = class extends IBlockCipherInstance {
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
@@ -198,6 +204,9 @@ let LuciferAlgorithm, LuciferInstance;
     this.subKeys = null;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -260,6 +269,8 @@ let LuciferAlgorithm, LuciferInstance;
    * Sixteen rounds of Lucifer over a 16-byte block. Each round confuses the
    * upper half through the two S-boxes and diffuses the result into the lower
    * half, then the halves exchange roles.
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _transform(block) {
     const b = block.slice();
@@ -319,6 +330,8 @@ let LuciferAlgorithm, LuciferInstance;
 
   /**
    * Encrypt a 128-bit block
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _encryptBlock(block) {
     return this._transform(block);
@@ -326,6 +339,8 @@ let LuciferAlgorithm, LuciferInstance;
 
   /**
    * Decrypt a 128-bit block (same transform driven by the reversed key schedule)
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _decryptBlock(block) {
     return this._transform(block);

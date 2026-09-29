@@ -113,7 +113,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CHAMInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -130,7 +130,7 @@
   class CHAMInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CHAMCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -139,6 +139,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.outputBuffer = [];
       this.BlockSize = 16;    // 128-bit blocks
@@ -228,6 +229,10 @@
       this.outputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('CHAM: Input must be exactly 16 bytes');
@@ -282,6 +287,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('CHAM: Input must be exactly 16 bytes');
@@ -343,6 +352,9 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const words = [
         OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),

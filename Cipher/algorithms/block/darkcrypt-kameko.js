@@ -479,22 +479,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKamekoInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKamekoInstance(this, isInverse);
     }
   }
 
   class DarkCryptKamekoInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKamekoAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._B = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._B = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -504,6 +517,9 @@
       this._B = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -518,6 +534,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -621,6 +638,10 @@
       return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this._T(0, sel1, a), this._T(1, sel2, b)), this._T(2, sel3, c)), this._T(3, sel4, d)), 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const B = this._B;
       const state = [...block];
@@ -631,6 +652,10 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const B = this._B;
       const state = [...block];

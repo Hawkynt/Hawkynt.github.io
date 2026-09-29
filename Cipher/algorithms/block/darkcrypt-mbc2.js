@@ -125,22 +125,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMBC2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMBC2Instance(this, isInverse);
     }
   }
 
   class DarkCryptMBC2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMBC2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._table = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._table = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -150,6 +163,9 @@
       this._table = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -164,6 +180,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -236,6 +253,9 @@
     }
 
     // Unpack an 8-byte block into 64 bits, MSB-first within each little-endian 32-bit word.
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _blockToBits(block) {
       const bits = new Array(STATE_BITS);
       const w0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -271,6 +291,10 @@
       return { selection: top6.concat(sums), parity };
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const state = this._blockToBits(block);
       for (let base = 0; base < ROUNDS * ROUND_STRIDE; base += ROUND_STRIDE) {
@@ -296,6 +320,10 @@
       return this._bitsToBlock(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const state = this._blockToBits(block);
       for (let base = (ROUNDS - 1) * ROUND_STRIDE; base >= 0; base -= ROUND_STRIDE) {

@@ -160,7 +160,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BlowfishInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -177,7 +177,7 @@
   class BlowfishInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BlowfishAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -185,6 +185,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -510,6 +511,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -522,6 +527,10 @@
       return [...leftBytes, ...rightBytes];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);

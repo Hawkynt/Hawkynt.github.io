@@ -103,6 +103,9 @@
   }
 
   // Core stateless two-round transform shared by encrypt/decrypt/key-setup.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function coreEncrypt(block, S1, S2) {
     let lLeft = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let rLeft = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -132,6 +135,9 @@
     return [...OpCodes.Unpack32LE(lLeft), ...OpCodes.Unpack32LE(rLeft), ...OpCodes.Unpack32LE(lRight), ...OpCodes.Unpack32LE(rRight)];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function coreDecrypt(block, S1, S2) {
     let lLeft = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let rLeft = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -260,23 +266,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptNSEAInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptNSEAInstance(this, isInverse);
     }
   }
 
   class DarkCryptNSEAInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptNSEAAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._S1 = null;
       this._S2 = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._S1 = null; this._S2 = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 36)
@@ -288,6 +307,9 @@
       this._S2 = S2;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -302,6 +324,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

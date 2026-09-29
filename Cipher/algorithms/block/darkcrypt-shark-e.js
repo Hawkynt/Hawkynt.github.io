@@ -142,6 +142,9 @@
     return xorBytes(sboxed, BOOTSTRAP_INIT_KEYS[6]);
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keyBufBlock(keyBytes, blockIndex) {
     const n = keyBytes.length;
     const bytes = [];
@@ -152,6 +155,9 @@
 
   // Plain CFB round-key schedule: RK[0]=E(0), RK[i]=keyMaterial[i] XOR E(RK[i-1]) for i=1..6.
   // The final round key is additionally passed through SHARK's inverse-MDS matrix.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function deriveEncryptRoundKeys(keyBytes) {
     let feedback = new Array(8).fill(0);
     const RK = [];
@@ -227,16 +233,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SharkEDarkCryptInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SharkEDarkCryptInstance(this, isInverse);
     }
   }
 
   class SharkEDarkCryptInstance extends IBlockCipherInstance {
+    /**
+     * @param {SharkEDarkCryptAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -245,6 +261,9 @@
       this._decryptRK = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0;
@@ -260,6 +279,9 @@
       this._decryptRK = deriveDecryptRoundKeys(this._encryptRK);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -274,6 +296,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -284,6 +307,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const RK = this._encryptRK;
       let state = block.slice().reverse();
@@ -297,6 +324,10 @@
       return state.reverse();
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const dRK = this._decryptRK;
       let state = block.slice().reverse();

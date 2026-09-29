@@ -179,21 +179,34 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMDCKarnInstance} New instance
+     */
     CreateInstance(isInverse = false) { return new DarkCryptMDCKarnInstance(this, isInverse); }
   }
 
   class DarkCryptMDCKarnInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMDCKarnAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._K1 = null;
       this._K2 = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 32;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K1 = null; this._K2 = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 96)
@@ -204,6 +217,9 @@
       this._K2 = keyBytes.slice(48, 96);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -218,6 +234,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -227,11 +244,19 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const P1 = block.slice(0, 16), P2 = block.slice(16, 32);
       return mdcKarnEncrypt(P1, P2, this._K1, this._K2);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const C1 = block.slice(0, 16), C2 = block.slice(16, 32);
       return mdcKarnDecrypt(C1, C2, this._K1, this._K2);
