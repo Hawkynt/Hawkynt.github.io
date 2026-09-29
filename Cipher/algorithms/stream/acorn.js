@@ -48,6 +48,43 @@
   // Use AEAD if available, otherwise StreamCipher
   const BaseAlgorithm = AeadAlgorithm || StreamCipherAlgorithm;
 
+  // ===== ACORN-128 STATE =====
+
+  // The 293-bit ACORN-128 state: six LFSRs split into 32-bit low and high parts,
+  // the 4 spare bits s7 and the flag telling whether the AAD padding ran.
+  class AcornRegisters {
+    constructor() {
+      /** @type {uint32} */
+      this.s1_l = 0;
+      /** @type {uint32} */
+      this.s1_h = 0;
+      /** @type {uint32} */
+      this.s2_l = 0;
+      /** @type {uint32} */
+      this.s2_h = 0;
+      /** @type {uint32} */
+      this.s3_l = 0;
+      /** @type {uint32} */
+      this.s3_h = 0;
+      /** @type {uint32} */
+      this.s4_l = 0;
+      /** @type {uint32} */
+      this.s4_h = 0;
+      /** @type {uint32} */
+      this.s5_l = 0;
+      /** @type {uint32} */
+      this.s5_h = 0;
+      /** @type {uint32} */
+      this.s6_l = 0;
+      /** @type {uint32} */
+      this.s6_h = 0;
+      /** @type {uint32} */
+      this.s7 = 0;
+      /** @type {int32} */
+      this.authDone = 0;
+    }
+  }
+
   // ===== ACORN-128 CONSTANTS =====
 
   /** @const {uint32} */ const CA_ONE_WORD = 0xFFFFFFFF;
@@ -198,16 +235,8 @@
       this.inputBuffer = [];
 
       // ACORN-128 state (293 bits across 6 LFSRs + 4 spare bits)
-      this.state = {
-        s1_l: 0, s1_h: 0,
-        s2_l: 0, s2_h: 0,
-        s3_l: 0, s3_h: 0,
-        s4_l: 0, s4_h: 0,
-        s5_l: 0, s5_h: 0,
-        s6_l: 0, s6_h: 0,
-        s7: 0,
-        authDone: 0
-      };
+      /** @type {AcornRegisters} */
+      this._regs = new AcornRegisters();
     }
 
     /**
@@ -359,8 +388,14 @@
       this._resetState();
       this._initializeState(this._key, this._iv);
 
-      const aadBytes = this._aad || [];
-      const inputBytes = this.inputBuffer || [];
+      /** @type {uint8[]} */
+      let aadBytes = [];
+      if (this._aad) {
+        aadBytes = this._aad;
+      }
+      /** @type {uint8[]} */
+      let inputBytes = [];
+      if (this.inputBuffer) inputBytes = this.inputBuffer;
 
       if (this.isInverse) {
         // Decryption + authentication verification
@@ -368,16 +403,20 @@
           throw new Error("Input too short for authentication tag (minimum 16 bytes)");
         }
 
+        /** @type {uint8[]} */
         const ciphertext = inputBytes.slice(0, -16);
+        /** @type {uint8[]} */
         const expectedTag = inputBytes.slice(-16);
 
         // Process AAD
         this._absorbAAD(aadBytes);
 
         // Decrypt
+        /** @type {uint8[]} */
         const plaintext = this._decryptBytes(ciphertext);
 
         // Verify authentication tag
+        /** @type {uint8[]} */
         const computedTag = this._finalizeTag();
         if (!OpCodes.SecureCompare(computedTag, expectedTag)) {
           throw new Error("Authentication tag verification failed - message integrity compromised");
@@ -392,14 +431,18 @@
         this._absorbAAD(aadBytes);
 
         // Encrypt
+        /** @type {uint8[]} */
         const ciphertext = this._encryptBytes(inputBytes);
 
         // Generate authentication tag
+        /** @type {uint8[]} */
         const tag = this._finalizeTag();
 
         // Return ciphertext + tag
         this.inputBuffer = [];
-        return [...ciphertext, ...tag];
+        /** @type {uint8[]} */
+        const sealed = [...ciphertext, ...tag];
+        return sealed;
       }
     }
 
@@ -408,14 +451,14 @@
      * @private
      */
     _resetState() {
-      this.state.s1_l = this.state.s1_h = 0;
-      this.state.s2_l = this.state.s2_h = 0;
-      this.state.s3_l = this.state.s3_h = 0;
-      this.state.s4_l = this.state.s4_h = 0;
-      this.state.s5_l = this.state.s5_h = 0;
-      this.state.s6_l = this.state.s6_h = 0;
-      this.state.s7 = 0;
-      this.state.authDone = 0;
+      this._regs.s1_l = this._regs.s1_h = 0;
+      this._regs.s2_l = this._regs.s2_h = 0;
+      this._regs.s3_l = this._regs.s3_h = 0;
+      this._regs.s4_l = this._regs.s4_h = 0;
+      this._regs.s5_l = this._regs.s5_h = 0;
+      this._regs.s6_l = this._regs.s6_h = 0;
+      this._regs.s7 = 0;
+      this._regs.authDone = 0;
     }
 
     /**
@@ -426,14 +469,16 @@
      */
     _initializeState(keyBytes, ivBytes) {
       // Convert bytes to 32-bit words (little-endian)
-      const keyWords = [
+      /** @type {uint32[]} */
+      const kwords = [
         this._bytesToWord(keyBytes, 0),
         this._bytesToWord(keyBytes, 4),
         this._bytesToWord(keyBytes, 8),
         this._bytesToWord(keyBytes, 12)
       ];
 
-      const ivWords = [
+      /** @type {uint32[]} */
+      const vwords = [
         this._bytesToWord(ivBytes, 0),
         this._bytesToWord(ivBytes, 4),
         this._bytesToWord(ivBytes, 8),
@@ -443,24 +488,24 @@
       // ACORN initialization (320 steps)
       // Load key
       for (let i = 0; i < 4; i++) {
-        this._encryptWord(keyWords[i], CA_ONE_WORD, CB_ONE_WORD);
+        this._encryptWord(kwords[i], CA_ONE_WORD, CB_ONE_WORD);
       }
 
       // Load IV
       for (let i = 0; i < 4; i++) {
-        this._encryptWord(ivWords[i], CA_ONE_WORD, CB_ONE_WORD);
+        this._encryptWord(vwords[i], CA_ONE_WORD, CB_ONE_WORD);
       }
 
       // Load key XOR 1
-      this._encryptWord(OpCodes.ToUint32(OpCodes.XorN(keyWords[0], 0x00000001)), CA_ONE_WORD, CB_ONE_WORD);
-      this._encryptWord(keyWords[1], CA_ONE_WORD, CB_ONE_WORD);
-      this._encryptWord(keyWords[2], CA_ONE_WORD, CB_ONE_WORD);
-      this._encryptWord(keyWords[3], CA_ONE_WORD, CB_ONE_WORD);
+      this._encryptWord(OpCodes.ToUint32(OpCodes.Xor32(kwords[0], 0x00000001)), CA_ONE_WORD, CB_ONE_WORD);
+      this._encryptWord(kwords[1], CA_ONE_WORD, CB_ONE_WORD);
+      this._encryptWord(kwords[2], CA_ONE_WORD, CB_ONE_WORD);
+      this._encryptWord(kwords[3], CA_ONE_WORD, CB_ONE_WORD);
 
       // Warm-up rounds (11 * 4 = 44 steps)
       for (let round = 0; round < 11; round++) {
         for (let i = 0; i < 4; i++) {
-          this._encryptWord(keyWords[i], CA_ONE_WORD, CB_ONE_WORD);
+          this._encryptWord(kwords[i], CA_ONE_WORD, CB_ONE_WORD);
         }
       }
     }
@@ -495,10 +540,10 @@
      * @returns {uint8} Majority result
      */
     _maj8(x, y, z) {
-      const a = OpCodes.AndN(x, 0xFF);
-      const b = OpCodes.AndN(y, 0xFF);
-      const c = OpCodes.AndN(z, 0xFF);
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(a, c)), OpCodes.AndN(b, c)), 0xFF);
+      const a = OpCodes.And32(x, 0xFF);
+      const b = OpCodes.And32(y, 0xFF);
+      const c = OpCodes.And32(z, 0xFF);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(a, b), OpCodes.And32(a, c)), OpCodes.And32(b, c)), 0xFF);
     }
 
     /**
@@ -510,16 +555,16 @@
      * @returns {uint8} Choice result
      */
     _ch8(x, y, z) {
-      const a = OpCodes.AndN(x, 0xFF);
-      const b = OpCodes.AndN(y, 0xFF);
-      const c = OpCodes.AndN(z, 0xFF);
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(OpCodes.AndN(~a, 0xFF), c)), 0xFF);
+      const a = OpCodes.And32(x, 0xFF);
+      const b = OpCodes.And32(y, 0xFF);
+      const c = OpCodes.And32(z, 0xFF);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.And32(a, b), OpCodes.And32(OpCodes.And32(~a, 0xFF), c)), 0xFF);
     }
 
     /**
      * Ensure value is unsigned 32-bit
      * @private
-     * @param {number} value - Input value
+     * @param {uint32} value - Input value
      * @returns {uint32} Unsigned 32-bit result
      */
     _toUint32(value) {
@@ -533,26 +578,26 @@
      * @param {uint8} feedback - Feedback byte
      */
     _applyShift8(s7Low, feedback) {
-      const mixed = OpCodes.AndN(OpCodes.XorN(s7Low, OpCodes.AndN(OpCodes.Shl32(feedback, 4), 0xFF)), 0xFF);
-      this.state.s7 = OpCodes.AndN(OpCodes.Shr32(feedback, 4), 0x0F);
+      const mixed = OpCodes.And32(OpCodes.Xor32(s7Low, OpCodes.And32(OpCodes.Shl32(feedback, 4), 0xFF)), 0xFF);
+      this._regs.s7 = OpCodes.And32(OpCodes.Shr32(feedback, 4), 0x0F);
 
-      this.state.s1_l = this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s1_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s1_h, 0xFF), 24)));
-      this.state.s1_h = OpCodes.AndN(this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s1_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.AndN(this.state.s2_l, 0xFF), 61 - 40)))), S1_HIGH_MASK);
+      this._regs.s1_l = this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s1_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s1_h, 0xFF), 24)));
+      this._regs.s1_h = OpCodes.And32(this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s1_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.And32(this._regs.s2_l, 0xFF), 61 - 40)))), S1_HIGH_MASK);
 
-      this.state.s2_l = this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s2_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s2_h, 0xFF), 24)));
-      this.state.s2_h = OpCodes.AndN(this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s2_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.AndN(this.state.s3_l, 0xFF), 46 - 40)))), S2_HIGH_MASK);
+      this._regs.s2_l = this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s2_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s2_h, 0xFF), 24)));
+      this._regs.s2_h = OpCodes.And32(this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s2_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.And32(this._regs.s3_l, 0xFF), 46 - 40)))), S2_HIGH_MASK);
 
-      this.state.s3_l = this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s3_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s3_h, 0xFF), 24)));
-      this.state.s3_h = OpCodes.AndN(this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s3_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.AndN(this.state.s4_l, 0xFF), 47 - 40)))), S3_HIGH_MASK);
+      this._regs.s3_l = this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s3_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s3_h, 0xFF), 24)));
+      this._regs.s3_h = OpCodes.And32(this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s3_h, 8), OpCodes.ToUint32(OpCodes.Shl32(OpCodes.And32(this._regs.s4_l, 0xFF), 47 - 40)))), S3_HIGH_MASK);
 
-      this.state.s4_l = this._toUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(this.state.s4_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s4_h, 0xFF), 24)), OpCodes.Shl32(OpCodes.AndN(this.state.s5_l, 0xFF), 39 - 8)));
-      this.state.s4_h = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(this.state.s5_l, 0xFF), 40 - 39), S4_HIGH_MASK);
+      this._regs.s4_l = this._toUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(this._regs.s4_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s4_h, 0xFF), 24)), OpCodes.Shl32(OpCodes.And32(this._regs.s5_l, 0xFF), 39 - 8)));
+      this._regs.s4_h = OpCodes.And32(OpCodes.Shr32(OpCodes.And32(this._regs.s5_l, 0xFF), 40 - 39), S4_HIGH_MASK);
 
-      this.state.s5_l = this._toUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(this.state.s5_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s5_h, 0xFF), 24)), OpCodes.Shl32(OpCodes.AndN(this.state.s6_l, 0xFF), 37 - 8)));
-      this.state.s5_h = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(this.state.s6_l, 0xFF), 40 - 37), S5_HIGH_MASK);
+      this._regs.s5_l = this._toUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(this._regs.s5_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s5_h, 0xFF), 24)), OpCodes.Shl32(OpCodes.And32(this._regs.s6_l, 0xFF), 37 - 8)));
+      this._regs.s5_h = OpCodes.And32(OpCodes.Shr32(OpCodes.And32(this._regs.s6_l, 0xFF), 40 - 37), S5_HIGH_MASK);
 
-      this.state.s6_l = this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s6_l, 8), OpCodes.Shl32(OpCodes.AndN(this.state.s6_h, 0xFF), 24)));
-      this.state.s6_h = OpCodes.AndN(this._toUint32(OpCodes.OrN(OpCodes.Shr32(this.state.s6_h, 8), OpCodes.Shl32(mixed, 19))), S6_HIGH_MASK);
+      this._regs.s6_l = this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s6_l, 8), OpCodes.Shl32(OpCodes.And32(this._regs.s6_h, 0xFF), 24)));
+      this._regs.s6_h = OpCodes.And32(this._toUint32(OpCodes.Or32(OpCodes.Shr32(this._regs.s6_h, 8), OpCodes.Shl32(mixed, 19))), S6_HIGH_MASK);
     }
 
     /**
@@ -564,30 +609,32 @@
      * @returns {uint8} Encrypted ciphertext byte
      */
     _acornEncrypt8(plaintextByte, caByte, cbByte) {
-      const s244 = OpCodes.AndN(OpCodes.Shr32(this.state.s6_l, 14), 0xFF);
-      const s235 = OpCodes.AndN(OpCodes.Shr32(this.state.s6_l, 5), 0xFF);
-      const s196 = OpCodes.AndN(OpCodes.Shr32(this.state.s5_l, 3), 0xFF);
-      const s160 = OpCodes.AndN(OpCodes.Shr32(this.state.s4_l, 6), 0xFF);
-      const s111 = OpCodes.AndN(OpCodes.Shr32(this.state.s3_l, 4), 0xFF);
-      const s66 = OpCodes.AndN(OpCodes.Shr32(this.state.s2_l, 5), 0xFF);
-      const s23 = OpCodes.AndN(OpCodes.Shr32(this.state.s1_l, 23), 0xFF);
-      const s12 = OpCodes.AndN(OpCodes.Shr32(this.state.s1_l, 12), 0xFF);
+      const s244 = OpCodes.And32(OpCodes.Shr32(this._regs.s6_l, 14), 0xFF);
+      const s235 = OpCodes.And32(OpCodes.Shr32(this._regs.s6_l, 5), 0xFF);
+      const s196 = OpCodes.And32(OpCodes.Shr32(this._regs.s5_l, 3), 0xFF);
+      const s160 = OpCodes.And32(OpCodes.Shr32(this._regs.s4_l, 6), 0xFF);
+      const s111 = OpCodes.And32(OpCodes.Shr32(this._regs.s3_l, 4), 0xFF);
+      const s66 = OpCodes.And32(OpCodes.Shr32(this._regs.s2_l, 5), 0xFF);
+      const s23 = OpCodes.And32(OpCodes.Shr32(this._regs.s1_l, 23), 0xFF);
+      const s12 = OpCodes.And32(OpCodes.Shr32(this._regs.s1_l, 12), 0xFF);
 
-      let s7Low = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.state.s7, s235), OpCodes.AndN(this.state.s6_l, 0xFF)), 0xFF);
-      this.state.s6_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s6_l, s196), OpCodes.AndN(this.state.s5_l, 0xFF)));
-      this.state.s5_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s5_l, s160), OpCodes.AndN(this.state.s4_l, 0xFF)));
-      this.state.s4_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s4_l, s111), OpCodes.AndN(this.state.s3_l, 0xFF)));
-      this.state.s3_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s3_l, s66), OpCodes.AndN(this.state.s2_l, 0xFF)));
-      this.state.s2_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s2_l, s23), OpCodes.AndN(this.state.s1_l, 0xFF)));
+      /** @type {uint32} */
+      let s7Low = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s7, s235), OpCodes.And32(this._regs.s6_l, 0xFF)), 0xFF);
+      this._regs.s6_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s6_l, s196), OpCodes.And32(this._regs.s5_l, 0xFF)));
+      this._regs.s5_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s5_l, s160), OpCodes.And32(this._regs.s4_l, 0xFF)));
+      this._regs.s4_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s4_l, s111), OpCodes.And32(this._regs.s3_l, 0xFF)));
+      this._regs.s3_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s3_l, s66), OpCodes.And32(this._regs.s2_l, 0xFF)));
+      this._regs.s2_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s2_l, s23), OpCodes.And32(this._regs.s1_l, 0xFF)));
 
-      const keystream = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s12, OpCodes.AndN(this.state.s4_l, 0xFF)), this._maj8(s235, this.state.s2_l, this.state.s5_l)), this._ch8(this.state.s6_l, s111, s66)), 0xFF);
-      const caMask = OpCodes.AndN(caByte, s196);
-      const cbMask = OpCodes.AndN(cbByte, keystream);
-      let feedback = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(this.state.s1_l, 0xFF), OpCodes.AndN(~this.state.s3_l, 0xFF)), this._maj8(s244, s23, s160)), caMask), cbMask), 0xFF);
-      feedback = OpCodes.XorN(feedback, OpCodes.AndN(plaintextByte, 0xFF));
+      const keystream = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s12, OpCodes.And32(this._regs.s4_l, 0xFF)), this._maj8(s235, this._regs.s2_l, this._regs.s5_l)), this._ch8(this._regs.s6_l, s111, s66)), 0xFF);
+      const caMask = OpCodes.And32(caByte, s196);
+      const cbMask = OpCodes.And32(cbByte, keystream);
+      /** @type {uint32} */
+      let feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(this._regs.s1_l, 0xFF), OpCodes.And32(~this._regs.s3_l, 0xFF)), this._maj8(s244, s23, s160)), caMask), cbMask), 0xFF);
+      feedback = OpCodes.Xor32(feedback, OpCodes.And32(plaintextByte, 0xFF));
 
       this._applyShift8(s7Low, feedback);
-      return OpCodes.AndN(OpCodes.XorN(plaintextByte, keystream), 0xFF);
+      return OpCodes.And32(OpCodes.Xor32(plaintextByte, keystream), 0xFF);
     }
 
     /**
@@ -597,27 +644,29 @@
      * @returns {uint8} Decrypted plaintext byte
      */
     _acornDecrypt8(ciphertextByte) {
-      const s244 = OpCodes.AndN(OpCodes.Shr32(this.state.s6_l, 14), 0xFF);
-      const s235 = OpCodes.AndN(OpCodes.Shr32(this.state.s6_l, 5), 0xFF);
-      const s196 = OpCodes.AndN(OpCodes.Shr32(this.state.s5_l, 3), 0xFF);
-      const s160 = OpCodes.AndN(OpCodes.Shr32(this.state.s4_l, 6), 0xFF);
-      const s111 = OpCodes.AndN(OpCodes.Shr32(this.state.s3_l, 4), 0xFF);
-      const s66 = OpCodes.AndN(OpCodes.Shr32(this.state.s2_l, 5), 0xFF);
-      const s23 = OpCodes.AndN(OpCodes.Shr32(this.state.s1_l, 23), 0xFF);
-      const s12 = OpCodes.AndN(OpCodes.Shr32(this.state.s1_l, 12), 0xFF);
+      const s244 = OpCodes.And32(OpCodes.Shr32(this._regs.s6_l, 14), 0xFF);
+      const s235 = OpCodes.And32(OpCodes.Shr32(this._regs.s6_l, 5), 0xFF);
+      const s196 = OpCodes.And32(OpCodes.Shr32(this._regs.s5_l, 3), 0xFF);
+      const s160 = OpCodes.And32(OpCodes.Shr32(this._regs.s4_l, 6), 0xFF);
+      const s111 = OpCodes.And32(OpCodes.Shr32(this._regs.s3_l, 4), 0xFF);
+      const s66 = OpCodes.And32(OpCodes.Shr32(this._regs.s2_l, 5), 0xFF);
+      const s23 = OpCodes.And32(OpCodes.Shr32(this._regs.s1_l, 23), 0xFF);
+      const s12 = OpCodes.And32(OpCodes.Shr32(this._regs.s1_l, 12), 0xFF);
 
-      let s7Low = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.state.s7, s235), OpCodes.AndN(this.state.s6_l, 0xFF)), 0xFF);
-      this.state.s6_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s6_l, s196), OpCodes.AndN(this.state.s5_l, 0xFF)));
-      this.state.s5_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s5_l, s160), OpCodes.AndN(this.state.s4_l, 0xFF)));
-      this.state.s4_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s4_l, s111), OpCodes.AndN(this.state.s3_l, 0xFF)));
-      this.state.s3_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s3_l, s66), OpCodes.AndN(this.state.s2_l, 0xFF)));
-      this.state.s2_l = this._toUint32(OpCodes.XorN(OpCodes.XorN(this.state.s2_l, s23), OpCodes.AndN(this.state.s1_l, 0xFF)));
+      /** @type {uint32} */
+      let s7Low = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s7, s235), OpCodes.And32(this._regs.s6_l, 0xFF)), 0xFF);
+      this._regs.s6_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s6_l, s196), OpCodes.And32(this._regs.s5_l, 0xFF)));
+      this._regs.s5_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s5_l, s160), OpCodes.And32(this._regs.s4_l, 0xFF)));
+      this._regs.s4_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s4_l, s111), OpCodes.And32(this._regs.s3_l, 0xFF)));
+      this._regs.s3_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s3_l, s66), OpCodes.And32(this._regs.s2_l, 0xFF)));
+      this._regs.s2_l = this._toUint32(OpCodes.Xor32(OpCodes.Xor32(this._regs.s2_l, s23), OpCodes.And32(this._regs.s1_l, 0xFF)));
 
-      const keystream = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s12, OpCodes.AndN(this.state.s4_l, 0xFF)), this._maj8(s235, this.state.s2_l, this.state.s5_l)), this._ch8(this.state.s6_l, s111, s66)), 0xFF);
-      const plaintext = OpCodes.AndN(OpCodes.XorN(ciphertextByte, keystream), 0xFF);
+      const keystream = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s12, OpCodes.And32(this._regs.s4_l, 0xFF)), this._maj8(s235, this._regs.s2_l, this._regs.s5_l)), this._ch8(this._regs.s6_l, s111, s66)), 0xFF);
+      const plaintext = OpCodes.And32(OpCodes.Xor32(ciphertextByte, keystream), 0xFF);
 
-      let feedback = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(this.state.s1_l, 0xFF), OpCodes.AndN(~this.state.s3_l, 0xFF)), this._maj8(s244, s23, s160)), s196), 0xFF);
-      feedback = OpCodes.XorN(feedback, plaintext);
+      /** @type {uint32} */
+      let feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(this._regs.s1_l, 0xFF), OpCodes.And32(~this._regs.s3_l, 0xFF)), this._maj8(s244, s23, s160)), s196), 0xFF);
+      feedback = OpCodes.Xor32(feedback, plaintext);
 
       this._applyShift8(s7Low, feedback);
       return plaintext;
@@ -632,13 +681,14 @@
      * @returns {uint32} Processed 32-bit word
      */
     _encryptWord(word, caWord, cbWord) {
+      /** @type {uint32} */
       let result = 0;
       for (let offset = 0; offset < 32; offset += 8) {
-        const inputByte = OpCodes.AndN(OpCodes.Shr32(word, offset), 0xFF);
-        const caByte = OpCodes.AndN(OpCodes.Shr32(caWord, offset), 0xFF);
-        const cbByte = OpCodes.AndN(OpCodes.Shr32(cbWord, offset), 0xFF);
+        const inputByte = OpCodes.And32(OpCodes.Shr32(word, offset), 0xFF);
+        const caByte = OpCodes.And32(OpCodes.Shr32(caWord, offset), 0xFF);
+        const cbByte = OpCodes.And32(OpCodes.Shr32(cbWord, offset), 0xFF);
         const outByte = this._acornEncrypt8(inputByte, caByte, cbByte);
-        result = OpCodes.OrN(result, OpCodes.Shl32(outByte, offset));
+        result = OpCodes.Or32(result, OpCodes.Shl32(outByte, offset));
       }
       return OpCodes.ToUint32(result);
     }
@@ -668,7 +718,7 @@
       if (!aad || aad.length === 0) return;
 
       for (let i = 0; i < aad.length; i++) {
-        this._acornEncrypt8(OpCodes.AndN(aad[i], 0xFF), CA_ONE_BYTE, CB_ONE_BYTE);
+        this._acornEncrypt8(OpCodes.And32(aad[i], 0xFF), CA_ONE_BYTE, CB_ONE_BYTE);
       }
     }
 
@@ -679,16 +729,21 @@
      * @returns {uint8[]} Encrypted ciphertext
      */
     _encryptBytes(plaintext) {
-      if (!this.state.authDone) {
+      if (!this._regs.authDone) {
         this._acornPad(CB_ONE_WORD);
-        this.state.authDone = 1;
+        this._regs.authDone = 1;
       }
 
-      if (!plaintext || plaintext.length === 0) return [];
+      if (!plaintext || plaintext.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const output = new Array(plaintext.length);
       for (let i = 0; i < plaintext.length; i++) {
-        output[i] = this._acornEncrypt8(OpCodes.AndN(plaintext[i], 0xFF), CA_ONE_BYTE, CB_ZERO_BYTE);
+        output[i] = this._acornEncrypt8(OpCodes.And32(plaintext[i], 0xFF), CA_ONE_BYTE, CB_ZERO_BYTE);
       }
       return output;
     }
@@ -700,16 +755,21 @@
      * @returns {uint8[]} Decrypted plaintext
      */
     _decryptBytes(ciphertext) {
-      if (!this.state.authDone) {
+      if (!this._regs.authDone) {
         this._acornPad(CB_ONE_WORD);
-        this.state.authDone = 1;
+        this._regs.authDone = 1;
       }
 
-      if (!ciphertext || ciphertext.length === 0) return [];
+      if (!ciphertext || ciphertext.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const output = new Array(ciphertext.length);
       for (let i = 0; i < ciphertext.length; i++) {
-        output[i] = this._acornDecrypt8(OpCodes.AndN(ciphertext[i], 0xFF));
+        output[i] = this._acornDecrypt8(OpCodes.And32(ciphertext[i], 0xFF));
       }
       return output;
     }
@@ -720,7 +780,7 @@
      * @returns {uint8[]} 16-byte authentication tag
      */
     _finalizeTag() {
-      if (!this.state.authDone) {
+      if (!this._regs.authDone) {
         this._acornPad(CB_ONE_WORD);
       }
 
@@ -731,9 +791,11 @@
         this._encryptWord(0, CA_ONE_WORD, CB_ONE_WORD);
       }
 
+      /** @type {uint8[]} */
       const tagBytes = [];
       for (let i = 0; i < 4; i++) {
         const word = this._encryptWord(0, CA_ONE_WORD, CB_ONE_WORD);
+        /** @type {uint8[]} */
         const bytes = this._wordToBytes(word);
         for (let _i = 0; _i < bytes.length; _i++) tagBytes.push(bytes[_i]);
       }
