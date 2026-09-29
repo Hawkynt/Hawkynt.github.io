@@ -97,78 +97,156 @@
     6,10,15,21, 6,10,15,21, 6,10,15,21, 6,10,15,21
   ];
 
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} i
+   * @returns {uint32}
+   */
   function packWordLE(bytes, i) {
     return OpCodes.Pack32LE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
   }
 
+  /**
+   * @param {uint32} word
+   * @param {uint8[]} out
+   * @param {int32} i
+   */
   function unpackWordLE(word, out, i) {
     const b = OpCodes.Unpack32LE(word);
     out[i] = b[0]; out[i + 1] = b[1]; out[i + 2] = b[2]; out[i + 3] = b[3];
   }
 
-  function stateToBytes(state) {
+  /**
+   * @param {uint32[]} h
+   * @returns {uint8[]}
+   */
+  function stateToBytes(h) {
+    /** @type {uint8[]} */
     const out = new Array(16);
-    for (let i = 0; i < 4; i++) unpackWordLE(state[i], out, i * 4);
+    for (let i = 0; i < 4; i++) unpackWordLE(h[i], out, i * 4);
     return out;
   }
 
   // MD5 compression function with Davies-Meyer feedback. `state` (4 words) is
   // mutated in place; `msgBytes` is a fixed 64-byte block; `K` is the
   // (possibly scrambled) 64-entry round-constant table.
-  function md5CompressFeedback(state, msgBytes, K) {
+  /**
+   * @param {uint32[]} h
+   * @param {uint8[]} msgBytes
+   * @param {uint32[]} K
+   */
+  function md5CompressFeedback(h, msgBytes, K) {
+    /** @type {uint32[]} */
     const M = new Array(16);
     for (let i = 0; i < 16; i++) M[i] = packWordLE(msgBytes, i * 4);
 
-    let A = state[0], B = state[1], C = state[2], D = state[3];
-    const a0 = A, b0 = B, c0 = C, d0 = D;
+    /** @type {uint32} */
+    let A = h[0];
+    /** @type {uint32} */
+    let B = h[1];
+    /** @type {uint32} */
+    let C = h[2];
+    /** @type {uint32} */
+    let D = h[3];
+    /** @type {uint32} */
+    const a0 = A;
+    /** @type {uint32} */
+    const b0 = B;
+    /** @type {uint32} */
+    const c0 = C;
+    /** @type {uint32} */
+    const d0 = D;
 
     for (let i = 0; i < 64; i++) {
-      let f, g;
-      if (i < 16) { f = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D))); g = i; }
-      else if (i < 32) { f = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C))); g = (5 * i + 1) % 16; }
+      /** @type {uint32} */
+      let f = 0;
+      /** @type {int32} */
+      let g = 0;
+      if (i < 16) { f = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(OpCodes.Not32(B), D))); g = i; }
+      else if (i < 32) { f = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(OpCodes.Not32(D), C))); g = (5 * i + 1) % 16; }
       else if (i < 48) { f = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D)); g = (3 * i + 5) % 16; }
-      else { f = OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D)))); g = (7 * i) % 16; }
+      else { f = OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.Not32(D)))); g = (7 * i) % 16; }
 
-      f = OpCodes.ToUint32(f + A + K[i] + M[g]);
+      f = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(f, A), K[i]), M[g]);
       A = D; D = C; C = B;
-      B = OpCodes.ToUint32(B + OpCodes.RotL32(f, MD5_SHIFTS[i]));
+      B = OpCodes.Add32(B, OpCodes.RotL32(f, MD5_SHIFTS[i]));
     }
 
-    state[0] = OpCodes.ToUint32(a0 + A);
-    state[1] = OpCodes.ToUint32(b0 + B);
-    state[2] = OpCodes.ToUint32(c0 + C);
-    state[3] = OpCodes.ToUint32(d0 + D);
+    h[0] = OpCodes.Add32(a0, A);
+    h[1] = OpCodes.Add32(b0, B);
+    h[2] = OpCodes.Add32(c0, C);
+    h[3] = OpCodes.Add32(d0, D);
   }
 
   // CFB encrypt `len` bytes (multiple of 16) of `buf` in place: each 16-byte
   // block is XORed with a freshly compressed keystream block, and the
   // resulting CIPHERTEXT becomes the chaining state for the next block.
-  function cfbEncryptInPlace(buf, len, state, msgBytes, K) {
+  /**
+   * @param {uint8[]} buf
+   * @param {int32} len
+   * @param {uint32[]} h
+   * @param {uint8[]} msgBytes
+   * @param {uint32[]} K
+   */
+  function cfbEncryptInPlace(buf, len, h, msgBytes, K) {
     for (let off = 0; off < len; off += 16) {
-      md5CompressFeedback(state, msgBytes, K);
-      const ks = stateToBytes(state);
+      md5CompressFeedback(h, msgBytes, K);
+      /** @type {uint8[]} */
+      const ks = stateToBytes(h);
       for (let i = 0; i < 16; i++) buf[off + i] = OpCodes.Xor8(buf[off + i], ks[i]);
-      for (let i = 0; i < 4; i++) state[i] = packWordLE(buf, off + i * 4);
+      for (let i = 0; i < 4; i++) h[i] = packWordLE(buf, off + i * 4);
     }
   }
 
   // CFB decrypt: identical keystream derivation, but the chaining state for
   // the next block must come from the CIPHERTEXT (the original input bytes),
   // not the recovered plaintext.
-  function cfbDecryptInPlace(buf, len, state, msgBytes, K) {
+  /**
+   * @param {uint8[]} buf
+   * @param {int32} len
+   * @param {uint32[]} h
+   * @param {uint8[]} msgBytes
+   * @param {uint32[]} K
+   */
+  function cfbDecryptInPlace(buf, len, h, msgBytes, K) {
     for (let off = 0; off < len; off += 16) {
-      md5CompressFeedback(state, msgBytes, K);
-      const ks = stateToBytes(state);
+      md5CompressFeedback(h, msgBytes, K);
+      /** @type {uint8[]} */
+      const ks = stateToBytes(h);
+      /** @type {uint8[]} */
       const ctBlock = buf.slice(off, off + 16);
       for (let i = 0; i < 16; i++) buf[off + i] = OpCodes.Xor8(buf[off + i], ks[i]);
-      for (let i = 0; i < 4; i++) state[i] = packWordLE(ctBlock, i * 4);
+      for (let i = 0; i < 4; i++) h[i] = packWordLE(ctBlock, i * 4);
     }
   }
 
+  // Working context produced by mdcSetup: chaining words, round-constant
+  // table and the fixed message block.
+  class MdcContext {
+    constructor() {
+      /** @type {uint32[]} */
+      this.chain = [];
+      /** @type {uint32[]} */
+      this.constants = [];
+      /** @type {uint8[]} */
+      this.message = [];
+    }
+  }
+
+  /**
+   * @param {uint8[]} key64
+   * @param {uint8[]} iv8
+   * @returns {MdcContext}
+   */
   function mdcSetup(key64, iv8) {
+    /** @type {uint32[]} */
     const K = STANDARD_MD5_K.slice();
-    const ivA = packWordLE(iv8, 0), ivB = packWordLE(iv8, 4);
-    const state = [ivA, ivB, ivA, ivB];
+    /** @type {uint32} */
+    const ivA = packWordLE(iv8, 0);
+    /** @type {uint32} */
+    const ivB = packWordLE(iv8, 4);
+    /** @type {uint32[]} */
+    const chain = [ivA, ivB, ivA, ivB];
 
     const scratch = OpCodes.CreateArray(SCRATCH_SIZE, 0);
     scratch[0] = 0x00; scratch[1] = 0x40; // 16-bit big-endian length header (64)
@@ -177,14 +255,16 @@
     const msg = OpCodes.CreateArray(KEY_SIZE, 0); // message stays all-zero through the warm-up
 
     for (let round = 0; round < WARMUP_ROUNDS; round++) {
-      cfbEncryptInPlace(scratch, SCRATCH_SIZE, state, msg, K);
+      cfbEncryptInPlace(scratch, SCRATCH_SIZE, chain, msg, K);
       for (let i = 0; i < 64; i++) K[i] = packWordLE(scratch, i * 4);
     }
 
-    cfbEncryptInPlace(scratch, KEY_SIZE, state, msg, K);
-    const finalMsg = scratch.slice(0, KEY_SIZE);
-
-    return { state: state, K: K, msg: finalMsg };
+    cfbEncryptInPlace(scratch, KEY_SIZE, chain, msg, K);
+    const ctx = new MdcContext();
+    ctx.chain = chain;
+    ctx.constants = K;
+    ctx.message = scratch.slice(0, KEY_SIZE);
+    return ctx;
   }
 
   class MDCAlgorithm extends StreamCipherAlgorithm {
@@ -307,9 +387,10 @@
       const paddedLen = Math.ceil(n / 16) * 16;
       while (padded.length < paddedLen) padded.push(0);
 
+      /** @type {MdcContext} */
       const ctx = mdcSetup(this._key, this._iv);
-      if (this.isInverse) cfbDecryptInPlace(padded, paddedLen, ctx.state, ctx.msg, ctx.K);
-      else cfbEncryptInPlace(padded, paddedLen, ctx.state, ctx.msg, ctx.K);
+      if (this.isInverse) cfbDecryptInPlace(padded, paddedLen, ctx.chain, ctx.message, ctx.constants);
+      else cfbEncryptInPlace(padded, paddedLen, ctx.chain, ctx.message, ctx.constants);
 
       const output = padded.slice(0, n);
       this.inputBuffer = [];
