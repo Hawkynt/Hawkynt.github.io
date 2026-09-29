@@ -50,39 +50,56 @@
   const SUBKEYS = 52; // 8 rounds * 6 + 4 (final half-round)
 
   // Multiplication modulo 2^16+1, with 0 representing 2^16 (IDEA's special case)
+  /**
+   * @param {uint32} x - First factor (0 represents 2^16)
+   * @param {uint32} y - Second factor (0 represents 2^16)
+   * @returns {uint16} x * y mod 2^16+1
+   */
   function mulMod(x, y) {
     x = OpCodes.ToUint16(x);
     y = OpCodes.ToUint16(y);
     if (x === 0) return OpCodes.ToUint16(BASE - y);
     if (y === 0) return OpCodes.ToUint16(BASE - x);
 
-    const p = x * y;               // at most 0xFFFE0001, safe in a JS double
+    const p = OpCodes.Mul32(x, y);  // at most 0xFFFE0001, exact in 32 bits
     const lo = OpCodes.And32(p, 0xFFFF);
     const hi = OpCodes.Shr32(p, 16);
-    let r = lo - hi;
-    if (r < 0) r += BASE;
+    // lo - hi, plus 2^16+1 when that is negative (the 32-bit wrap cancels)
+    let r = OpCodes.Sub32(lo, hi);
+    if (lo < hi) r = OpCodes.Add32(r, BASE);
     return OpCodes.ToUint16(r);
   }
 
   // Multiplicative inverse modulo 2^16+1 (extended Euclid)
+  /**
+   * @param {uint32} x - Value in [0, 2^16)
+   * @returns {uint16} Multiplicative inverse mod 2^16+1
+   */
   function mulInv(x) {
+    /** @type {uint32} */
+    let t0 = 1;
     if (x <= 1) return OpCodes.ToUint16(x);
 
-    let t0 = 1, t1 = Math.floor(BASE / x);
+    /** @type {uint32} */
+    let t1 = Math.floor(BASE / x);
     let y = BASE % x;
     while (y !== 1) {
       const q = Math.floor(x / y);
       x = x % y;
-      t0 = OpCodes.ToUint16(t0 + t1 * q);
+      t0 = OpCodes.ToUint16(OpCodes.Add32(t0, OpCodes.Mul32(t1, q)));
       if (x === 1) return t0;
       const q2 = Math.floor(y / x);
       y = y % x;
-      t1 = OpCodes.ToUint16(t1 + t0 * q2);
+      t1 = OpCodes.ToUint16(OpCodes.Add32(t1, OpCodes.Mul32(t0, q2)));
     }
     return OpCodes.ToUint16(BASE - t1);
   }
 
   // Additive inverse modulo 2^16
+  /**
+   * @param {uint32} x - 16-bit value
+   * @returns {uint16} Additive inverse mod 2^16
+   */
   function addInv(x) {
     return OpCodes.ToUint16(OpCodes.And32(OpCodes.ToUint32(0x10000 - OpCodes.ToUint16(x)), 0xFFFF));
   }
@@ -169,7 +186,9 @@
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      /** @type {uint16[]|null} */
       this.encryptKeys = null;
+      /** @type {uint16[]|null} */
       this.decryptKeys = null;
     }
 
@@ -224,27 +243,34 @@
     // explicit 128-bit rotating register).
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint16[]} The 52 encryption subkeys
      */
     _expandKey(keyBytes) {
-      const key = new Array(SUBKEYS);
+      /** @type {uint16[]} */
+      const ek = new Array(SUBKEYS);
       for (let i = 0; i < 8; i++)
-        key[i] = OpCodes.Pack16BE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
+        ek[i] = OpCodes.Pack16BE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
 
       for (let i = 8; i < SUBKEYS; i++) {
         const m = OpCodes.And32(i, 7);
         if (m < 6) {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(key[i - 7], 9) | OpCodes.Shr16(key[i - 6], 7));
+          ek[i] = OpCodes.ToUint16(OpCodes.Shl16(ek[i - 7], 9) | OpCodes.Shr16(ek[i - 6], 7));
         } else if (m === 6) {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(key[i - 7], 9) | OpCodes.Shr16(key[i - 14], 7));
+          ek[i] = OpCodes.ToUint16(OpCodes.Shl16(ek[i - 7], 9) | OpCodes.Shr16(ek[i - 14], 7));
         } else {
-          key[i] = OpCodes.ToUint16(OpCodes.Shl16(key[i - 15], 9) | OpCodes.Shr16(key[i - 14], 7));
+          ek[i] = OpCodes.ToUint16(OpCodes.Shl16(ek[i - 15], 9) | OpCodes.Shr16(ek[i - 14], 7));
         }
       }
-      return key;
+      return ek;
     }
 
     // Derive the 52 decryption subkeys from the encryption subkeys
+    /**
+     * @param {uint16[]} ek - Encryption subkeys
+     * @returns {uint16[]} Decryption subkeys
+     */
     _invertKey(ek) {
+      /** @type {uint16[]} */
       const dk = new Array(SUBKEYS);
       let inOff = 0, p = SUBKEYS;
 
@@ -278,10 +304,11 @@
     }
 
     /**
+     * @param {uint16[]} roundKeys - Encryption or decryption subkeys
      * @param {uint8[]} block - Input block
      * @returns {uint8[]} Output block
      */
-    _crypt(subkeys, block) {
+    _crypt(roundKeys, block) {
       let x0 = OpCodes.Pack16BE(block[0], block[1]);
       let x1 = OpCodes.Pack16BE(block[2], block[3]);
       let x2 = OpCodes.Pack16BE(block[4], block[5]);
@@ -289,18 +316,18 @@
 
       let k = 0;
       for (let round = 0; round < ROUNDS; round++) {
-        x0 = mulMod(x0, subkeys[k++]);
-        x1 = OpCodes.ToUint16(x1 + subkeys[k++]);
-        x2 = OpCodes.ToUint16(x2 + subkeys[k++]);
-        x3 = mulMod(x3, subkeys[k++]);
+        x0 = mulMod(x0, roundKeys[k++]);
+        x1 = OpCodes.ToUint16(x1 + roundKeys[k++]);
+        x2 = OpCodes.ToUint16(x2 + roundKeys[k++]);
+        x3 = mulMod(x3, roundKeys[k++]);
 
         const t0 = x1;
         const t1 = x2;
         x2 = OpCodes.Xor32(x2, x0);
         x1 = OpCodes.Xor32(x1, x3);
-        x2 = mulMod(x2, subkeys[k++]);
+        x2 = mulMod(x2, roundKeys[k++]);
         x1 = OpCodes.ToUint16(x1 + x2);
-        x1 = mulMod(x1, subkeys[k++]);
+        x1 = mulMod(x1, roundKeys[k++]);
         x2 = OpCodes.ToUint16(x2 + x1);
 
         x0 = OpCodes.Xor32(x0, x1);
@@ -310,10 +337,10 @@
       }
 
       // final half-round output transformation (note x1/x2 swapped back)
-      const y0 = mulMod(x0, subkeys[k++]);
-      const y1 = OpCodes.ToUint16(x2 + subkeys[k++]);
-      const y2 = OpCodes.ToUint16(x1 + subkeys[k++]);
-      const y3 = mulMod(x3, subkeys[k]);
+      const y0 = mulMod(x0, roundKeys[k++]);
+      const y1 = OpCodes.ToUint16(x2 + roundKeys[k++]);
+      const y2 = OpCodes.ToUint16(x1 + roundKeys[k++]);
+      const y3 = mulMod(x3, roundKeys[k]);
 
       return [
         ...OpCodes.Unpack16BE(y0), ...OpCodes.Unpack16BE(y1),

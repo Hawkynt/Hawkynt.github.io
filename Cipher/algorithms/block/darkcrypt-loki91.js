@@ -74,7 +74,14 @@
                    27, 19, 11, 3, 26, 18, 10, 2, 25, 17, 9, 1, 24, 16, 8, 0];
 
   // GF(2^8) multiply modulo the given generator polynomial (Russian-peasant algorithm).
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @param {uint32} gen - Modulus polynomial
+   * @returns {uint32} Product
+   */
   function gfMultiply(a, b, gen) {
+    /** @type {uint32} */
     let result = 0;
     a = OpCodes.And32(a, 0xFFFF);
     b = OpCodes.And32(b, 0xFFFF);
@@ -88,9 +95,16 @@
   }
 
   // GF(2^8) modular exponentiation via square-and-multiply.
+  /**
+   * @param {uint32} base - Base
+   * @param {uint32} exp - Exponent
+   * @param {uint32} gen - Modulus polynomial
+   * @returns {uint32} Power
+   */
   function gfPow(base, exp, gen) {
-    if (base === 0) return 0;
+    /** @type {uint32} */
     let result = 1;
+    if (base === 0) return 0;
     let b = OpCodes.And32(base, 0xFFFF);
     let e = exp;
     while (e !== 0) {
@@ -104,15 +118,24 @@
   // LOKI'91 S-box: 12-bit input -> row (4 bits from input[11,10,1,0]) selects the
   // GF(2^8) modulus/exponent; column = ((input>>2)&0xFF) - 17*row - 1 (mod 256);
   // output = column^Exp(row) mod Gen(row) in GF(2^8).
+  /**
+   * @param {uint32} x - 12-bit input
+   * @returns {uint32} 8-bit output
+   */
   function sBox(x) {
     const row = OpCodes.And32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(x, 8), 0xC), OpCodes.And32(x, 3)), 0xF);
     const col8 = OpCodes.And32(OpCodes.Shr32(x, 2), 0xFF);
-    const adj = OpCodes.And32(~(row * 17), 0xFF);
+    const adj = OpCodes.And32(~OpCodes.Mul32(row, 17), 0xFF);
     const col = OpCodes.And32(col8 + adj, 0xFF);
     return gfPow(col, EXP[row], GEN[row]);
   }
 
+  /**
+   * @param {uint32} x - Input word
+   * @returns {uint32} Permuted word
+   */
   function permuteP(x) {
+    /** @type {uint32} */
     let out = 0;
     for (let i = 0; i < 32; i++) {
       const bit = OpCodes.And32(OpCodes.Shr32(x, P_TABLE[i]), 1);
@@ -123,13 +146,18 @@
 
   // LOKI'91 round function: f(R,K) = P(S(E(R XOR K))), with the standard overlapping
   // 12-bit E-expansion (bits [0-11], [8-19], [16-27], and the wrap-around [24-31,0-3]).
+  /**
+   * @param {uint32} R - Right half
+   * @param {uint32} K - Round key
+   * @returns {uint32} Round function output
+   */
   function roundF(R, K) {
-    const t = OpCodes.XorN(R, K);
+    const t = OpCodes.Xor32(R, K);
     const e0 = OpCodes.And32(t, 0xFFF);
     const e1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFFF);
     const e2 = OpCodes.And32(OpCodes.Shr32(t, 16), 0xFFF);
     const e3 = OpCodes.And32(OpCodes.RotL32(t, 8), 0xFFF);
-    const s = OpCodes.ToUint32(sBox(e0) | OpCodes.Shl32(sBox(e1), 8) | OpCodes.Shl32(sBox(e2), 16) | OpCodes.Shl32(sBox(e3), 24));
+    const s = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(sBox(e0), OpCodes.Shl32(sBox(e1), 8)), OpCodes.Shl32(sBox(e2), 16)), OpCodes.Shl32(sBox(e3), 24));
     return permuteP(s);
   }
 
@@ -204,6 +232,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -222,12 +251,14 @@
       this.KeySize = keyBytes.length;
       // The 512-bit key is used directly as 16 raw 32-bit round subkeys (native byte order),
       // one word per round -- no key-rotation schedule (unlike standard 64-bit-key LOKI'91).
-      this.roundKeys = new Array(ROUNDS);
+      /** @type {uint32[]} */
+      const rk = [];
       for (let i = 0; i < ROUNDS; i++) {
-        this.roundKeys[i] = OpCodes.Pack32LE(
+        rk.push(OpCodes.Pack32LE(
           this._key[4 * i], this._key[4 * i + 1], this._key[4 * i + 2], this._key[4 * i + 3]
-        );
+        ));
       }
+      this.roundKeys = rk;
     }
 
     /**

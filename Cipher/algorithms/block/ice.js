@@ -50,152 +50,182 @@
   // ===== SHARED ICE IMPLEMENTATION =====
 
   // Shared S/P-box initialization and cryptographic primitives
-  class IceCore {
-    static spBoxInitialized = false;
-    static spBox = null;
 
-    // Static S/P-box initialization (shared across all ICE variants)
-    static initSPBoxes() {
-      if (IceCore.spBoxInitialized) return;
+  // Galois Field multiplication
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @param {uint32} m - Modulus polynomial
+   * @returns {uint32} Product
+   */
+  function gfMult(a, b, m) {
+    /** @type {uint32} */
+    let res = 0;
 
-      IceCore.spBox = [];
+    while (b !== 0) {
+      if (OpCodes.And32(b, 1) !== 0) {
+        res = OpCodes.Xor32(res, a);
+      }
 
-      // S-box moduli and XOR constants for initialization
-      const sMod = [
-        [333, 313, 505, 369],
-        [379, 375, 319, 391],
-        [361, 445, 451, 397],
-        [397, 425, 395, 505]
-      ];
+      a = OpCodes.Shl32(a, 1);
+      b = OpCodes.Shr32(b, 1);
 
-      const sXor = [
-        [0x83, 0x85, 0x9b, 0xcd],
-        [0xcc, 0xa7, 0xad, 0x41],
-        [0x4b, 0x2e, 0xd4, 0x33],
-        [0xea, 0xcb, 0x2e, 0x04]
-      ];
+      if (a >= 256) {
+        a = OpCodes.Xor32(a, m);
+      }
+    }
 
+    return res;
+  }
+
+  // Galois Field exponentiation to power of 7
+  /**
+   * @param {uint32} b - Base
+   * @param {uint32} m - Modulus polynomial
+   * @returns {uint32} b^7
+   */
+  function gfExp7(b, m) {
+    if (b === 0) return 0;
+
+    let x = gfMult(b, b, m);
+    x = gfMult(b, x, m);
+    x = gfMult(x, x, m);
+    return gfMult(b, x, m);
+  }
+
+  // ICE 32-bit permutation
+  /**
+   * @param {uint32} x - Input word
+   * @param {uint32[]} pBox - Output bit for each input bit
+   * @returns {uint32} Permuted word
+   */
+  function perm32(x, pBox) {
+    /** @type {uint32} */
+    let res = 0;
+    let i = 0;
+
+    while (x !== 0) {
+      if (OpCodes.And32(x, 1) !== 0) {
+        res = OpCodes.Or32(res, pBox[i]);
+      }
+      ++i;
+      x = OpCodes.Shr32(x, 1);
+    }
+
+    return OpCodes.ToUint32(res);
+  }
+
+  // S/P-box initialization (shared across all ICE variants)
+  /**
+   * @returns {uint32[][]} Four combined S/P-boxes of 1024 entries
+   */
+  function buildSpBoxes() {
+    /** @type {uint32[][]} */
+    const spBox = [];
+
+    // S-box moduli and XOR constants for initialization
+    /** @type {uint16[][]} */
+    const sMod = [
+      [333, 313, 505, 369],
+      [379, 375, 319, 391],
+      [361, 445, 451, 397],
+      [397, 425, 395, 505]
+    ];
+
+    /** @type {uint8[][]} */
+    const sXor = [
+      [0x83, 0x85, 0x9b, 0xcd],
+      [0xcc, 0xa7, 0xad, 0x41],
+      [0x4b, 0x2e, 0xd4, 0x33],
+      [0xea, 0xcb, 0x2e, 0x04]
+    ];
+
+    /** @type {uint32[]} */
+    const pBox = [
+      0x00000001, 0x00000080, 0x00000400, 0x00002000,
+      0x00080000, 0x00200000, 0x01000000, 0x40000000,
+      0x00000008, 0x00000020, 0x00000100, 0x00004000,
+      0x00010000, 0x00800000, 0x04000000, 0x20000000,
+      0x00000004, 0x00000010, 0x00000200, 0x00008000,
+      0x00020000, 0x00400000, 0x08000000, 0x10000000,
+      0x00000002, 0x00000040, 0x00000800, 0x00001000,
+      0x00040000, 0x00100000, 0x02000000, 0x80000000
+    ];
+
+    // Initialize 4 S-boxes, each with 1024 entries
+    for (let i = 0; i < 4; ++i) {
       /** @type {uint32[]} */
-      const pBox = [
-        0x00000001, 0x00000080, 0x00000400, 0x00002000,
-        0x00080000, 0x00200000, 0x01000000, 0x40000000,
-        0x00000008, 0x00000020, 0x00000100, 0x00004000,
-        0x00010000, 0x00800000, 0x04000000, 0x20000000,
-        0x00000004, 0x00000010, 0x00000200, 0x00008000,
-        0x00020000, 0x00400000, 0x08000000, 0x10000000,
-        0x00000002, 0x00000040, 0x00000800, 0x00001000,
-        0x00040000, 0x00100000, 0x02000000, 0x80000000
-      ];
+      const box = new Array(1024);
 
-      // Initialize 4 S-boxes, each with 1024 entries
-      for (let i = 0; i < 4; ++i) {
-        IceCore.spBox[i] = new Array(1024);
+      for (let j = 0; j < 1024; ++j) {
+        const col = OpCodes.And32(OpCodes.Shr32(j, 1), 0xff);
+        const sRow = OpCodes.Or32(OpCodes.And32(j, 0x1), OpCodes.Shr32(OpCodes.And32(j, 0x200), 8));
 
-        for (let j = 0; j < 1024; ++j) {
-          const col = OpCodes.And32(OpCodes.Shr32(j, 1), 0xff);
-          const row = OpCodes.Or32(OpCodes.And32(j, 0x1), OpCodes.Shr32(OpCodes.And32(j, 0x200), 8));
-
-          // Apply Galois Field exponentiation and permutation
-          const x = OpCodes.Shl32(IceCore.gfExp7(OpCodes.Xor32(col, sXor[i][row]), sMod[i][row]), 24 - i * 8);
-          IceCore.spBox[i][j] = IceCore.perm32(x, pBox);
-        }
+        // Apply Galois Field exponentiation and permutation
+        const x = OpCodes.Shl32(gfExp7(OpCodes.Xor32(col, sXor[i][sRow]), sMod[i][sRow]), 24 - i * 8);
+        box[j] = perm32(x, pBox);
       }
 
-      IceCore.spBoxInitialized = true;
+      spBox.push(box);
     }
 
-    // Galois Field multiplication
-    static gfMult(a, b, m) {
-      let res = 0;
+    return spBox;
+  }
 
-      while (b !== 0) {
-        if (OpCodes.And32(b, 1) !== 0) {
-          res = OpCodes.Xor32(res, a);
-        }
+  /** @type {uint32[][]} */
+  const SP_BOX = buildSpBoxes();
 
-        a = OpCodes.Shl32(a, 1);
-        b = OpCodes.Shr32(b, 1);
+  // ICE round function
+  /**
+   * @param {uint32} p - Right half
+   * @param {uint32[]} subkey - Three subkey words
+   * @returns {uint32} Round function output
+   */
+  function roundFunc(p, subkey) {
+    // Extract and expand right half
+    let tl = OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(p, 16), 0x3ff), OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(p, 14), OpCodes.Shl32(p, 18)), 0xffc00));
+    let tr = OpCodes.Or32(OpCodes.And32(p, 0x3ff), OpCodes.And32(OpCodes.Shl32(p, 2), 0xffc00));
 
-        if (a >= 256) {
-          a = OpCodes.Xor32(a, m);
-        }
-      }
+    // Key-dependent bit selection
+    let al = OpCodes.And32(subkey[2], OpCodes.Xor32(tl, tr));
+    let ar = OpCodes.Xor32(al, tr);
+    al = OpCodes.Xor32(al, tl);
 
-      return res;
-    }
+    // XOR with subkey
+    al = OpCodes.Xor32(al, subkey[0]);
+    ar = OpCodes.Xor32(ar, subkey[1]);
 
-    // Galois Field exponentiation to power of 7
-    static gfExp7(b, m) {
-      if (b === 0) return 0;
-
-      let x = IceCore.gfMult(b, b, m);
-      x = IceCore.gfMult(b, x, m);
-      x = IceCore.gfMult(x, x, m);
-      return IceCore.gfMult(b, x, m);
-    }
-
-    // ICE 32-bit permutation
-    static perm32(x, pBox) {
-      let res = 0;
-      let i = 0;
-
-      while (x !== 0) {
-        if (OpCodes.And32(x, 1) !== 0) {
-          res = OpCodes.Or32(res, pBox[i]);
-        }
-        ++i;
-        x = OpCodes.Shr32(x, 1);
-      }
-
-      return OpCodes.ToUint32(res);
-    }
-
-    // ICE round function
-    static roundFunc(p, subkey) {
-      // Extract and expand right half
-      let tl = OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(p, 16), 0x3ff), OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(p, 14), OpCodes.Shl32(p, 18)), 0xffc00));
-      let tr = OpCodes.Or32(OpCodes.And32(p, 0x3ff), OpCodes.And32(OpCodes.Shl32(p, 2), 0xffc00));
-
-      // Key-dependent bit selection
-      let al = OpCodes.And32(subkey[2], OpCodes.Xor32(tl, tr));
-      let ar = OpCodes.Xor32(al, tr);
-      al = OpCodes.Xor32(al, tl);
-
-      // XOR with subkey
-      al = OpCodes.Xor32(al, subkey[0]);
-      ar = OpCodes.Xor32(ar, subkey[1]);
-
-      // S-box substitution and P-box permutation (combined in spBox)
-      return OpCodes.ToUint32(OpCodes.Or32(
-        OpCodes.Or32(
-          OpCodes.OrN(IceCore.spBox[0][OpCodes.Shr32(al, 10)], IceCore.spBox[1][OpCodes.And32(al, 0x3ff)]),
-          IceCore.spBox[2][OpCodes.Shr32(ar, 10)]
-        ),
-        IceCore.spBox[3][OpCodes.And32(ar, 0x3ff)]
-      ));
-    }
+    // S-box substitution and P-box permutation (combined in SP_BOX)
+    return OpCodes.Or32(
+      OpCodes.Or32(
+        OpCodes.Or32(SP_BOX[0][OpCodes.Shr32(al, 10)], SP_BOX[1][OpCodes.And32(al, 0x3ff)]),
+        SP_BOX[2][OpCodes.Shr32(ar, 10)]
+      ),
+      SP_BOX[3][OpCodes.And32(ar, 0x3ff)]
+    );
   }
 
   // Base instance class with shared encryption/decryption logic
   class IceInstanceBase extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BlockCipherAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      /** @type {int32} */
       this._rounds = 16; // Default to standard ICE
-
-      // Initialize shared S-boxes
-      IceCore.initSPBoxes();
 
       // Initialize constants
       this._initConstants();
@@ -203,6 +233,7 @@
 
     _initConstants() {
       // S-box moduli for Galois Field operations
+      /** @type {uint16[][]} */
       this.sMod = [
         [333, 313, 505, 369],
         [379, 375, 319, 391],
@@ -211,6 +242,7 @@
       ];
 
       // S-box XOR constants
+      /** @type {uint8[][]} */
       this.sXor = [
         [0x83, 0x85, 0x9b, 0xcd],
         [0xcc, 0xa7, 0xad, 0x41],
@@ -251,10 +283,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -274,10 +313,16 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @returns {int32} Number of rounds
+     */
     get rounds() {
       return this._rounds;
     }
 
+    /**
+     * @param {int32} value - Number of rounds (8, 16 or 32)
+     */
     set rounds(value) {
       // Validate rounds
       if (value !== 8 && value !== 16 && value !== 32) {
@@ -306,14 +351,29 @@
 
 
     // Build 8 rounds of key schedule
-    _scheduleBuild(kb, n, krotIdx) {
+    /**
+     * Build the key schedule for this variant's round count
+     * @param {uint8[]} key - Key bytes
+     * @returns {uint32[][]} Three subkey words per round
+     */
+    _generateKeySchedule(key) {
+      throw new Error("_generateKeySchedule() not implemented");
+    }
+
+    /**
+     * @param {uint32[][]} schedule - Key schedule being built
+     * @param {uint32[]} kb - Four 16-bit key words (consumed)
+     * @param {int32} n - First round to fill
+     * @param {int32} krotIdx - Offset into the key rotation schedule
+     */
+    _scheduleBuild(schedule, kb, n, krotIdx) {
       for (let i = 0; i < 8; ++i) {
         const kr = this.keyRot[krotIdx + i];
-        const subkey = this.keySchedule[n + i];
+        const sk = schedule[n + i];
 
         // Initialize subkey to zeros
         for (let j = 0; j < 3; ++j) {
-          subkey[j] = 0;
+          sk[j] = 0;
         }
 
         // Build subkey from key bits
@@ -321,19 +381,26 @@
           const currSk = j % 3;
 
           for (let k = 0; k < 4; ++k) {
-            const kbIdx = OpCodes.And32(kr + k, 3);
+            const kbIdx = OpCodes.And32(OpCodes.Add32(kr, k), 3);
             const bit = OpCodes.And32(kb[kbIdx], 1);
 
-            subkey[currSk] = OpCodes.Or32(OpCodes.Shl32(subkey[currSk], 1), bit);
+            sk[currSk] = OpCodes.Or32(OpCodes.Shl32(sk[currSk], 1), bit);
             kb[kbIdx] = OpCodes.Or32(OpCodes.Shr32(kb[kbIdx], 1), OpCodes.Shl32(OpCodes.Xor32(bit, 1), 15));
           }
         }
       }
     }
 
+    /**
+     * @param {uint8[]} plaintext - 8-byte block
+     * @returns {uint8[]} 8-byte ciphertext
+     */
     EncryptBlock(plaintext) {
       // Pack plaintext bytes into two 32-bit words (big-endian)
-      let l = 0, r = 0;
+      /** @type {uint32} */
+      let l = 0;
+      /** @type {uint32} */
+      let r = 0;
 
       for (let i = 0; i < 4; ++i) {
         l = OpCodes.Or32(l, OpCodes.Shl32(OpCodes.And32(plaintext[i], 0xff), 24 - i * 8));
@@ -345,11 +412,12 @@
 
       // Feistel network
       for (let i = 0; i < this._rounds; i += 2) {
-        l = OpCodes.Xor32(l, IceCore.roundFunc(r, this.keySchedule[i]));
-        r = OpCodes.Xor32(r, IceCore.roundFunc(l, this.keySchedule[i + 1]));
+        l = OpCodes.Xor32(l, roundFunc(r, this.keySchedule[i]));
+        r = OpCodes.Xor32(r, roundFunc(l, this.keySchedule[i + 1]));
       }
 
       // Unpack to bytes (big-endian, reversed order)
+      /** @type {uint8[]} */
       const ciphertext = new Array(8);
       for (let i = 0; i < 4; ++i) {
         ciphertext[3 - i] = OpCodes.And32(OpCodes.ToUint32(r), 0xff);
@@ -361,9 +429,16 @@
       return ciphertext;
     }
 
+    /**
+     * @param {uint8[]} ciphertext - 8-byte block
+     * @returns {uint8[]} 8-byte plaintext
+     */
     DecryptBlock(ciphertext) {
       // Pack ciphertext bytes into two 32-bit words (big-endian)
-      let l = 0, r = 0;
+      /** @type {uint32} */
+      let l = 0;
+      /** @type {uint32} */
+      let r = 0;
 
       for (let i = 0; i < 4; ++i) {
         l = OpCodes.Or32(l, OpCodes.Shl32(OpCodes.And32(ciphertext[i], 0xff), 24 - i * 8));
@@ -375,11 +450,12 @@
 
       // Feistel network - reverse order for decryption
       for (let i = this._rounds - 1; i > 0; i -= 2) {
-        l = OpCodes.Xor32(l, IceCore.roundFunc(r, this.keySchedule[i]));
-        r = OpCodes.Xor32(r, IceCore.roundFunc(l, this.keySchedule[i - 1]));
+        l = OpCodes.Xor32(l, roundFunc(r, this.keySchedule[i]));
+        r = OpCodes.Xor32(r, roundFunc(l, this.keySchedule[i - 1]));
       }
 
       // Unpack to bytes (big-endian, reversed order)
+      /** @type {uint8[]} */
       const plaintext = new Array(8);
       for (let i = 0; i < 4; ++i) {
         plaintext[3 - i] = OpCodes.And32(OpCodes.ToUint32(r), 0xff);
@@ -459,7 +535,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IceInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -470,7 +546,7 @@
   class IceInstance extends IceInstanceBase {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {IceAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -480,15 +556,22 @@
     }
 
     // Generate key schedule for ICE Level 1 (8 or 16 rounds)
+    /**
+     * @param {uint8[]} key - Key bytes
+     * @returns {uint32[][]} Three subkey words per round
+     */
     _generateKeySchedule(key) {
+      /** @type {uint32[][]} */
       const schedule = new Array(this._rounds);
       for (let i = 0; i < this._rounds; ++i) {
-        schedule[i] = new Array(3);
+        /** @type {uint32[]} */
+        const roundWords = new Array(3);
+        schedule[i] = roundWords;
       }
 
-      this.keySchedule = schedule;
 
       // Extract 4 16-bit words from key (big-endian)
+      /** @type {uint32[]} */
       const kb = new Array(4);
       for (let j = 0; j < 4; ++j) {
         kb[3 - j] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(key[j * 2], 0xff), 8), OpCodes.And32(key[j * 2 + 1], 0xff));
@@ -496,11 +579,11 @@
 
       if (this._rounds === 8) {
         // Thin-ICE: Only build first 8 rounds
-        this._scheduleBuild(kb, 0, 0);
+        this._scheduleBuild(schedule, kb, 0, 0);
       } else {
         // Standard ICE (16 rounds): Build forward and reverse
-        this._scheduleBuild(kb, 0, 0);
-        this._scheduleBuild(kb, 8, 8);
+        this._scheduleBuild(schedule, kb, 0, 0);
+        this._scheduleBuild(schedule, kb, 8, 8);
       }
 
       return schedule;
@@ -565,7 +648,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Ice2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -576,7 +659,7 @@
   class Ice2Instance extends IceInstanceBase {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Ice2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -586,16 +669,23 @@
     }
 
     // Generate key schedule for ICE-2 (32 rounds)
+    /**
+     * @param {uint8[]} key - Key bytes
+     * @returns {uint32[][]} Three subkey words per round
+     */
     _generateKeySchedule(key) {
+      /** @type {uint32[][]} */
       const schedule = new Array(this._rounds);
       for (let i = 0; i < this._rounds; ++i) {
-        schedule[i] = new Array(3);
+        /** @type {uint32[]} */
+        const roundWords = new Array(3);
+        schedule[i] = roundWords;
       }
 
-      this.keySchedule = schedule;
 
       // ICE-2 has level 2 (size = 2)
       const size = 2;
+      /** @type {uint32[]} */
       const kb = new Array(4);
 
       for (let i = 0; i < size; ++i) {
@@ -605,9 +695,9 @@
         }
 
         // Build forward rounds
-        this._scheduleBuild(kb, i * 8, 0);
+        this._scheduleBuild(schedule, kb, i * 8, 0);
         // Build reverse rounds
-        this._scheduleBuild(kb, this._rounds - 8 - i * 8, 8);
+        this._scheduleBuild(schedule, kb, this._rounds - 8 - i * 8, 8);
       }
 
       return schedule;
@@ -628,5 +718,5 @@
 
   // ===== EXPORTS =====
 
-  return { IceAlgorithm, IceInstance, Ice2Algorithm, Ice2Instance, IceCore };
+  return { IceAlgorithm, IceInstance, Ice2Algorithm, Ice2Instance };
 }));

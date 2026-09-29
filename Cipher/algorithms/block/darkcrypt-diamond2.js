@@ -62,14 +62,26 @@
   // Substitution box for round r, byte position j, input value v.
   // Every box is S[v] = (C - v) & 0xFF with C = 0xFF, except the very first
   // box (round 0, position 0) which uses C = 0xFE. Each box is an involution.
+  /**
+   * @param {int32} round - Round index
+   * @param {int32} pos - Byte position
+   * @param {uint8} value - Input byte
+   * @returns {uint8} Substituted byte
+   */
   function sbox(round, pos, value) {
     const c = (round === 0 && pos === 0) ? 0xFE : 0xFF;
     return OpCodes.And32(c - value, 0xFF);
   }
 
   // Diamond bit permutation: y[i] bit b = x[(i + b) mod 16] bit b.
+  /**
+   * @param {uint8[]} x - Input block
+   * @returns {uint8[]} Permuted block
+   */
   function permute(x) {
-    const y = new Array(BLOCK_BYTES).fill(0);
+    /** @type {uint8[]} */
+    const y = new Array(BLOCK_BYTES);
+    y.fill(0);
     for (let i = 0; i < BLOCK_BYTES; i++) {
       let v = 0;
       for (let b = 0; b < 8; b++) v |= OpCodes.And32(x[OpCodes.And32(i + b, 15)], OpCodes.Shl32(1, b));
@@ -79,8 +91,14 @@
   }
 
   // Inverse permutation: x[a] bit b = y[(a - b) mod 16] bit b.
+  /**
+   * @param {uint8[]} y - Input block
+   * @returns {uint8[]} Inverse-permuted block
+   */
   function inversePermute(y) {
-    const x = new Array(BLOCK_BYTES).fill(0);
+    /** @type {uint8[]} */
+    const x = new Array(BLOCK_BYTES);
+    x.fill(0);
     for (let a = 0; a < BLOCK_BYTES; a++) {
       let v = 0;
       for (let b = 0; b < 8; b++) v |= OpCodes.And32(y[OpCodes.And32(a - b, 15)], OpCodes.Shl32(1, b));
@@ -228,7 +246,8 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      let buf = new Array(BLOCK_BYTES);
+      /** @type {uint8[]} */
+      const buf = new Array(BLOCK_BYTES);
       for (let j = 0; j < BLOCK_BYTES; j++) buf[j] = sbox(0, j, block[j]);
       for (let r = 1; r < ROUNDS; r++) {
         const p = permute(buf);
