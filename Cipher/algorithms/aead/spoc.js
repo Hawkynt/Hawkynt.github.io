@@ -60,14 +60,26 @@
   ];
 
   // Simeck-64 round function (used in sLiSCP-light-256)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rcBit
+   * @returns {uint32}
+   */
   function simeck64Round(x, y, rcBit) {
     const rotl5 = OpCodes.RotL32(x, 5);
     const rotl1 = OpCodes.RotL32(x, 1);
-    y = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0xFFFFFFFE), (rcBit&1)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.And32(rotl5, x)), rotl1), 0xFFFFFFFE), OpCodes.And32(rcBit, 1)));
     return y;
   }
 
   // Simeck-64 box (8 rounds)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rc
+   * @returns {uint32[]}
+   */
   function simeck64Box(x, y, rc) {
     for (let i = 0; i < 8; ++i) {
       if (i % 2 === 0) {
@@ -82,6 +94,9 @@
   }
 
   // sLiSCP-light-256 permutation (for SpoC-128)
+  /**
+   * @param {uint8[]} state
+   */
   function sliscpLight256PermuteSpoc(state) {
     // Load state as 8 x 32-bit words (big-endian)
     let x0 = OpCodes.Pack32BE(state[0], state[1], state[2], state[3]);
@@ -98,22 +113,26 @@
       const rcOffset = round * 4;
 
       // Apply Simeck-64 to two 64-bit sub-blocks
-      [x2, x3] = simeck64Box(x2, x3, SLISCP_LIGHT256_RC[rcOffset]);
-      [x6, x7] = simeck64Box(x6, x7, SLISCP_LIGHT256_RC[rcOffset + 1]);
+      const box2 = simeck64Box(x2, x3, SLISCP_LIGHT256_RC[rcOffset]);
+      x2 = box2[0];
+      x3 = box2[1];
+      const box6 = simeck64Box(x6, x7, SLISCP_LIGHT256_RC[rcOffset + 1]);
+      x6 = box6[0];
+      x7 = box6[1];
 
       // Add step constants
-      x0 = OpCodes.ToUint32((x0^0xFFFFFFFF));
-      x1 = OpCodes.ToUint32((x1^0xFFFFFF00^SLISCP_LIGHT256_RC[rcOffset + 2]));
-      x4 = OpCodes.ToUint32((x4^0xFFFFFFFF));
-      x5 = OpCodes.ToUint32((x5^0xFFFFFF00^SLISCP_LIGHT256_RC[rcOffset + 3]));
+      x0 = OpCodes.ToUint32(OpCodes.Xor32(x0, 0xFFFFFFFF));
+      x1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x1, 0xFFFFFF00), SLISCP_LIGHT256_RC[rcOffset + 2]));
+      x4 = OpCodes.ToUint32(OpCodes.Xor32(x4, 0xFFFFFFFF));
+      x5 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x5, 0xFFFFFF00), SLISCP_LIGHT256_RC[rcOffset + 3]));
 
       // Mix the sub-blocks
-      const t0 = OpCodes.ToUint32((x0^x2));
-      const t1 = OpCodes.ToUint32((x1^x3));
+      const t0 = OpCodes.ToUint32(OpCodes.Xor32(x0, x2));
+      const t1 = OpCodes.ToUint32(OpCodes.Xor32(x1, x3));
       x0 = x2;
       x1 = x3;
-      x2 = OpCodes.ToUint32((x4^x6));
-      x3 = OpCodes.ToUint32((x5^x7));
+      x2 = OpCodes.ToUint32(OpCodes.Xor32(x4, x6));
+      x3 = OpCodes.ToUint32(OpCodes.Xor32(x5, x7));
       x4 = x6;
       x5 = x7;
       x6 = t0;
@@ -163,26 +182,48 @@
   const SPOC_64_MASK_POS = [6, 7, 8, 9, 18, 19, 20, 21];
 
   // Load 24-bit word (big-endian)
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @returns {uint32}
+   */
   function loadWord24BE(bytes, offset) {
-    return OpCodes.ToUint32((OpCodes.Shl32(bytes[offset], 16))|(OpCodes.Shl32(bytes[offset + 1], 8))|bytes[offset + 2]);
+    return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(bytes[offset], 16), OpCodes.Shl32(bytes[offset + 1], 8)), bytes[offset + 2]));
   }
 
   // Store 24-bit word (big-endian)
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @param {uint32} value
+   */
   function storeWord24BE(bytes, offset, value) {
-    bytes[offset] = (OpCodes.Shr32(value, 16))&0xFF;
-    bytes[offset + 1] = (OpCodes.Shr32(value, 8))&0xFF;
-    bytes[offset + 2] = value&0xFF;
+    bytes[offset] = OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF);
+    bytes[offset + 1] = OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF);
+    bytes[offset + 2] = OpCodes.And32(value, 0xFF);
   }
 
   // Simeck-48 round function (used in sLiSCP-light-192)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rcBit
+   * @returns {uint32}
+   */
   function simeck48Round(x, y, rcBit) {
-    const rotl5 = ((OpCodes.Shl32(x, 5))|(OpCodes.Shr32(x, 19)))&0x00FFFFFF;
-    const rotl1 = ((OpCodes.Shl32(x, 1))|(OpCodes.Shr32(x, 23)))&0x00FFFFFF;
-    y = OpCodes.ToUint32((OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0x00FFFFFE), (rcBit&1)))&0x00FFFFFF);
+    const rotl5 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, 5), OpCodes.Shr32(x, 19)), 0x00FFFFFF);
+    const rotl1 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, 1), OpCodes.Shr32(x, 23)), 0x00FFFFFF);
+    y = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.And32(rotl5, x)), rotl1), 0x00FFFFFE), OpCodes.And32(rcBit, 1)), 0x00FFFFFF));
     return y;
   }
 
   // Simeck-48 box (6 rounds)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rc
+   * @returns {uint32[]}
+   */
   function simeck48Box(x, y, rc) {
     for (let i = 0; i < 6; ++i) {
       if (i % 2 === 0) {
@@ -197,6 +238,9 @@
   }
 
   // sLiSCP-light-192 permutation (for SpoC-64)
+  /**
+   * @param {uint8[]} state
+   */
   function sliscpLight192Permute(state) {
     // Load state as 8 x 24-bit words (big-endian)
     let x0 = loadWord24BE(state, 0);
@@ -213,22 +257,26 @@
       const rcOffset = round * 4;
 
       // Apply Simeck-48 to two 48-bit sub-blocks
-      [x2, x3] = simeck48Box(x2, x3, SLISCP_LIGHT192_RC[rcOffset]);
-      [x6, x7] = simeck48Box(x6, x7, SLISCP_LIGHT192_RC[rcOffset + 1]);
+      const box2 = simeck48Box(x2, x3, SLISCP_LIGHT192_RC[rcOffset]);
+      x2 = box2[0];
+      x3 = box2[1];
+      const box6 = simeck48Box(x6, x7, SLISCP_LIGHT192_RC[rcOffset + 1]);
+      x6 = box6[0];
+      x7 = box6[1];
 
       // Add step constants
-      x0 = OpCodes.ToUint32((x0^0x00FFFFFF));
-      x1 = OpCodes.ToUint32((x1^0x00FFFF00^SLISCP_LIGHT192_RC[rcOffset + 2]));
-      x4 = OpCodes.ToUint32((x4^0x00FFFFFF));
-      x5 = OpCodes.ToUint32((x5^0x00FFFF00^SLISCP_LIGHT192_RC[rcOffset + 3]));
+      x0 = OpCodes.ToUint32(OpCodes.Xor32(x0, 0x00FFFFFF));
+      x1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x1, 0x00FFFF00), SLISCP_LIGHT192_RC[rcOffset + 2]));
+      x4 = OpCodes.ToUint32(OpCodes.Xor32(x4, 0x00FFFFFF));
+      x5 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x5, 0x00FFFF00), SLISCP_LIGHT192_RC[rcOffset + 3]));
 
       // Mix the sub-blocks
-      const t0 = OpCodes.ToUint32((x0^x2));
-      const t1 = OpCodes.ToUint32((x1^x3));
+      const t0 = OpCodes.ToUint32(OpCodes.Xor32(x0, x2));
+      const t1 = OpCodes.ToUint32(OpCodes.Xor32(x1, x3));
       x0 = x2;
       x1 = x3;
-      x2 = OpCodes.ToUint32((x4^x6));
-      x3 = OpCodes.ToUint32((x5^x7));
+      x2 = OpCodes.ToUint32(OpCodes.Xor32(x4, x6));
+      x3 = OpCodes.ToUint32(OpCodes.Xor32(x5, x7));
       x4 = x6;
       x5 = x7;
       x6 = t0;
@@ -445,7 +493,12 @@
      * @returns {uint8[]|null}
      */
     get aad() {
-      return this._associatedData ? [...this._associatedData] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._associatedData) {
+        copy = [...this._associatedData];
+      }
+      return copy;
     }
 
 
@@ -457,10 +510,17 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
+      if (!this._nonce) {
+        throw new Error("Nonce not set");
+      }
 
+      /** @type {uint8[]} */
       const state = new Array(32);
-      const ad = this._associatedData || [];
+      /** @type {uint8[]} */
+      let ad = [];
+      if (this._associatedData) {
+        ad = this._associatedData;
+      }
       const adlen = ad.length;
 
       // Initialize state: nonce || key
@@ -591,9 +651,10 @@
         sliscpLight256PermuteSpoc(state);
 
         // Check tag (constant-time comparison)
+        /** @type {uint32} */
         let tagMatch = 0;
         for (let i = 0; i < 16; ++i) {
-          tagMatch |= OpCodes.Xor32(state[i + 16], ciphertext[mlen + i]);
+          tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[i + 16], ciphertext[mlen + i]));
         }
 
         if (tagMatch !== 0) {
@@ -796,7 +857,12 @@
      * @returns {uint8[]|null}
      */
     get aad() {
-      return this._associatedData ? [...this._associatedData] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._associatedData) {
+        copy = [...this._associatedData];
+      }
+      return copy;
     }
 
 
@@ -808,10 +874,17 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
+      if (!this._nonce) {
+        throw new Error("Nonce not set");
+      }
 
+      /** @type {uint8[]} */
       const state = new Array(24);
-      const ad = this._associatedData || [];
+      /** @type {uint8[]} */
+      let ad = [];
+      if (this._associatedData) {
+        ad = this._associatedData;
+      }
       const adlen = ad.length;
 
       // Initialize state by interleaving key and nonce
@@ -941,8 +1014,14 @@
         sliscpLight192Permute(state);
 
         // Append 8-byte tag
-        ciphertext.push(state[6], state[7], state[8], state[9]);
-        ciphertext.push(state[18], state[19], state[20], state[21]);
+        ciphertext.push(state[6]);
+        ciphertext.push(state[7]);
+        ciphertext.push(state[8]);
+        ciphertext.push(state[9]);
+        ciphertext.push(state[18]);
+        ciphertext.push(state[19]);
+        ciphertext.push(state[20]);
+        ciphertext.push(state[21]);
 
         this.inputBuffer = [];
         return ciphertext;
@@ -977,7 +1056,14 @@
             const m6 = OpCodes.Xor32(ciphertext[cOffset + 6], state[14]);
             const m7 = OpCodes.Xor32(ciphertext[cOffset + 7], state[15]);
 
-            plaintext.push(m0, m1, m2, m3, m4, m5, m6, m7);
+            plaintext.push(m0);
+            plaintext.push(m1);
+            plaintext.push(m2);
+            plaintext.push(m3);
+            plaintext.push(m4);
+            plaintext.push(m5);
+            plaintext.push(m6);
+            plaintext.push(m7);
 
             state[6] = OpCodes.Xor32(state[6], m0);
             state[7] = OpCodes.Xor32(state[7], m1);
@@ -1013,15 +1099,16 @@
         sliscpLight192Permute(state);
 
         // Check 8-byte tag (constant-time comparison)
+        /** @type {uint32} */
         let tagMatch = 0;
-        tagMatch |= OpCodes.Xor32(state[6], ciphertext[mlen]);
-        tagMatch |= OpCodes.Xor32(state[7], ciphertext[mlen + 1]);
-        tagMatch |= OpCodes.Xor32(state[8], ciphertext[mlen + 2]);
-        tagMatch |= OpCodes.Xor32(state[9], ciphertext[mlen + 3]);
-        tagMatch |= OpCodes.Xor32(state[18], ciphertext[mlen + 4]);
-        tagMatch |= OpCodes.Xor32(state[19], ciphertext[mlen + 5]);
-        tagMatch |= OpCodes.Xor32(state[20], ciphertext[mlen + 6]);
-        tagMatch |= OpCodes.Xor32(state[21], ciphertext[mlen + 7]);
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[6], ciphertext[mlen]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[7], ciphertext[mlen + 1]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[8], ciphertext[mlen + 2]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[9], ciphertext[mlen + 3]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[18], ciphertext[mlen + 4]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[19], ciphertext[mlen + 5]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[20], ciphertext[mlen + 6]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(state[21], ciphertext[mlen + 7]));
 
         if (tagMatch !== 0) {
           throw new Error("Authentication tag verification failed");
