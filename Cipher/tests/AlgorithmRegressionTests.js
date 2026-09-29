@@ -158,6 +158,28 @@ test('SP 800-108 counter: given a page without HMAC, when a key is derived, then
   correctOrRefused(attempt(() => sp800108(framework, 'SHA-256', KBKDF_KEY80, 48)), KBKDF_SHA256_KEY80_48, 'HMAC');
 });
 
+function gmac(framework, keyHex, nonceHex, messageHex) {
+  const instance = framework.Find('GMAC').CreateInstance();
+  instance.key = Array.from(Buffer.from(keyHex, 'hex'));
+  instance.nonce = Array.from(Buffer.from(nonceHex, 'hex'));
+  instance.Feed(Array.from(Buffer.from(messageHex, 'hex')));
+  return instance.Result();
+}
+// node: createCipheriv('aes-128-gcm', key, nonce), setAAD(message), empty plaintext, getAuthTag()
+const GMAC_KEY = '010e1b2835424f5c697683909daab7c4';
+const GMAC_NONCE = '020f1c293643505d6a778491';
+const GMAC_MESSAGE = '03101d2a3744515e6b7885929facb9c6d3e0edfa';
+const GMAC_TAG = 'be845653884a7a35f9d79b6fd26134cf';
+
+test('GMAC: given a page with Rijndael, when a 20-byte message is authenticated, then the tag is node AES-GCM\'s', () => {
+  const framework = pageWith('algorithms/block/rijndael.js', 'algorithms/mac/gmac.js');
+  equalHex(gmac(framework, GMAC_KEY, GMAC_NONCE, GMAC_MESSAGE), GMAC_TAG);
+});
+test('GMAC: given a page without AES, when a message is authenticated, then the tag is node AES-GCM\'s or a refusal naming AES - never a wrong tag', () => {
+  const framework = pageWith('algorithms/mac/gmac.js');
+  correctOrRefused(attempt(() => gmac(framework, GMAC_KEY, GMAC_NONCE, GMAC_MESSAGE)), GMAC_TAG, 'AES');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
