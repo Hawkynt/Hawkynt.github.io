@@ -62,7 +62,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== MD6 CONSTANTS (standard, w=64) =====
 
@@ -87,6 +87,7 @@
   const SMASK = 0x7311c2812425cfa0n;
 
   // Per-step (right-shift, left-shift) pairs for the 16-step loop unrolling (w=64)
+  /** @type {int32[][]} */
   const SHIFTS = [
     [10, 11], [5, 24], [13, 9], [10, 16],
     [11, 15], [12, 9], [2, 27], [7, 15],
@@ -95,6 +96,7 @@
   ];
 
   // Q = initial 960 bits of the fractional part of sqrt(6), as 15 64-bit words
+  /** @type {BigInt[]} */
   const Q = [
     0x7311c2812425cfa0n, 0x6432286434aac8e7n, 0xb60450e9ef68b7c1n,
     0xe8fb23908d9f06f1n, 0xdd2e76cba691e5bfn, 0x0cd0d63b2c30bc41n,
@@ -103,6 +105,12 @@
     0xc878c1dd04c4b633n, 0x3b72066c7a1552acn, 0x0d6f3522631effcbn
   ];
 
+  /**
+   * Default round count: 40 + floor(d/4), at least 80 when keyed
+   * @param {int32} d - Digest size in bits
+   * @param {int32} keylen - Key length in bytes
+   * @returns {int32} Number of rounds
+   */
   function md6DefaultR(d, keylen) {
     // Default number of rounds is forty plus floor(d/4);
     // unless keylen > 0, in which case it must be >= 80 as well.
@@ -115,6 +123,12 @@
   //       "store raw bytes, then reverse-per-word on a little-endian host"
   //       behavior net effect for input data and for the final digest) =====
 
+  /**
+   * Read one big-endian 64-bit word; bytes past the end read as zero
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} offset - Index of the most significant byte
+   * @returns {BigInt} The word
+   */
   function bytesToWordBE(bytes, offset) {
     let w = 0n;
     for (let i = 0; i < 8; i++) {
@@ -124,10 +138,16 @@
     return w;
   }
 
+  /**
+   * Write one 64-bit word as 8 big-endian bytes
+   * @param {BigInt} word - The word
+   * @returns {uint8[]} 8 bytes, most significant first
+   */
   function wordToBytesBE(word) {
+    /** @type {uint8[]} */
     const out = new Uint8Array(8);
     for (let i = 7; i >= 0; i--) {
-      out[i] = Number(OpCodes.AndN(word, 0xFFn));
+      out[i] = OpCodes.ToByte(Number(OpCodes.AndN(word, 0xFFn)));
       word = OpCodes.ShiftRn(word, 8);
     }
     return out;
@@ -135,9 +155,15 @@
 
   // ===== "bare" compression routine: n-word input -> c-word output =====
 
+  /**
+   * @param {BigInt[]} N - The 89 packed input words
+   * @param {int32} r - Round count
+   * @returns {BigInt[]} The 16-word chaining value
+   */
   function md6Compress(N, r) {
     // N: array of 89 BigInt words (already packed). r: round count.
     const total = r * C_WORDS + N_WORDS;
+    /** @type {BigInt[]} */
     const A = new Array(total);
     for (let i = 0; i < N_WORDS; i++) A[i] = OpCodes.AndN(N[i], MASK64);
     for (let i = N_WORDS; i < total; i++) A[i] = 0n;
@@ -164,6 +190,16 @@
     return A.slice(total - C_WORDS, total);
   }
 
+  /**
+   * Pack the control word V (r@48|L@40|z@36|p@20|keylen@12|d@0)
+   * @param {int32} r - Round count
+   * @param {int32} L - Mode parameter
+   * @param {int32} z - 1 for the final compression, else 0
+   * @param {int32} p - Number of padding bits in the block
+   * @param {int32} keylen - Key length in bytes
+   * @param {int32} d - Digest size in bits
+   * @returns {BigInt} The control word
+   */
   function makeControlWord(r, L, z, p, keylen, d) {
     return OpCodes.AndN(
       OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
@@ -178,11 +214,32 @@
     );
   }
 
+  /**
+   * Pack the node ID U (ell@56|i)
+   * @param {int32} ell - Tree level
+   * @param {int32} i - Index within the level
+   * @returns {BigInt} The node ID
+   */
   function makeNodeID(ell, i) {
     return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(BigInt(ell), 56), BigInt(i)), MASK64);
   }
 
+  /**
+   * Assemble Q, K, U, V and the data block into N and compress it
+   * @param {BigInt[]} K - Key words
+   * @param {int32} ell - Tree level
+   * @param {int32} i - Index within the level
+   * @param {int32} r - Round count
+   * @param {int32} L - Mode parameter
+   * @param {int32} z - 1 for the final compression, else 0
+   * @param {int32} p - Number of padding bits in the block
+   * @param {int32} keylen - Key length in bytes
+   * @param {int32} d - Digest size in bits
+   * @param {BigInt[]} B - The 64 data words
+   * @returns {BigInt[]} The 16-word chaining value
+   */
   function standardCompress(K, ell, i, r, L, z, p, keylen, d, B) {
+    /** @type {BigInt[]} */
     const N = new Array(N_WORDS);
     let ni = 0;
     for (let j = 0; j < Q_WORDS; j++) N[ni++] = Q[j];
@@ -193,26 +250,71 @@
     return md6Compress(N, r);
   }
 
+  /**
+   * A block of zero words
+   * @param {int32} count - Number of words
+   * @returns {BigInt[]} count zero words
+   */
+  function zeroWords(count) {
+    /** @type {BigInt[]} */
+    const words = [];
+    for (let i = 0; i < count; i++) words.push(0n);
+    return words;
+  }
+
+  /**
+   * One zero counter per tree level
+   * @returns {int32[]} MAX_STACK_HEIGHT zeros
+   */
+  function zeroLevels() {
+    /** @type {int32[]} */
+    const levels = [];
+    for (let i = 0; i < MAX_STACK_HEIGHT; i++) levels.push(0);
+    return levels;
+  }
+
   // ===== MD6 mode of operation (stack-based sequential/tree hashing) =====
 
   class MD6State {
+    /**
+     * @param {int32} d - Digest size in bits
+     */
     constructor(d) {
+      /** @type {int32} */
       this.d = d;
+      /** @type {int32} */
       this.r = md6DefaultR(d, 0);
+      /** @type {int32} */
       this.L = DEFAULT_L;
+      /** @type {int32} */
       this.keylen = 0;
-      this.K = new Array(K_WORDS).fill(0n);
+      /** @type {BigInt[]} */
+      this.K = zeroWords(K_WORDS);
+      /** @type {int32} */
       this.top = 1;
-      this.bits = new Array(MAX_STACK_HEIGHT).fill(0);
-      this.iForLevel = new Array(MAX_STACK_HEIGHT).fill(0);
+      /** @type {int32[]} */
+      this.bits = zeroLevels();
+      /** @type {int32[]} */
+      this.iForLevel = zeroLevels();
+      /** @type {BigInt[][]} */
       this.Bwords = [];
-      for (let i = 0; i < MAX_STACK_HEIGHT; i++) this.Bwords.push(new Array(B_WORDS).fill(0n));
+      for (let i = 0; i < MAX_STACK_HEIGHT; i++) this.Bwords.push(zeroWords(B_WORDS));
+      /** @type {uint8[]} */
       this.level1Bytes = new Uint8Array(B_WORDS * 8); // raw message bytes for leaf level
       if (this.L === 0) this.bits[1] = C_WORDS * W_BITS; // SEQ mode IV setup
+      /** @type {boolean} */
       this.finalized = false;
+      /** @type {BigInt[]} */
       this.hashval = null;
+      /** @type {uint8[]} */
+      this.digest = null;
     }
 
+    /**
+     * Absorb message bytes into the leaf level
+     * @param {uint8[]} dataBytes - Message bytes
+     * @returns {void}
+     */
     update(dataBytes) {
       let j = 0;
       while (j < dataBytes.length) {
@@ -228,7 +330,14 @@
       }
     }
 
+    /**
+     * Compress the pending block of a level and clear it
+     * @param {int32} ell - Tree level
+     * @param {int32} z - 1 for the final compression, else 0
+     * @returns {BigInt[]} The 16-word chaining value
+     */
     compressBlock(ell, z) {
+      /** @type {BigInt[]} */
       let B;
       if (ell === 1) {
         B = new Array(B_WORDS);
@@ -243,11 +352,18 @@
       this.bits[ell] = 0;
       this.iForLevel[ell]++;
       if (ell === 1) this.level1Bytes.fill(0);
-      else this.Bwords[ell] = new Array(B_WORDS).fill(0n);
+      else this.Bwords[ell] = zeroWords(B_WORDS);
 
       return C;
     }
 
+    /**
+     * Compress a level when its block is full (or finalizing) and carry the
+     * chaining value up the tree
+     * @param {int32} ell - Tree level
+     * @param {boolean} final - True while finalizing
+     * @returns {void}
+     */
     process(ell, final) {
       if (!final) {
         if (this.bits[ell] < B_WORDS * W_BITS) return;
@@ -275,9 +391,13 @@
       this.bits[nextLevel] += C_WORDS * W_BITS;
       if (nextLevel > this.top) this.top = nextLevel;
 
-      return this.process(nextLevel, final);
+      this.process(nextLevel, final);
     }
 
+    /**
+     * Finish the tree and return the digest (cached after the first call)
+     * @returns {uint8[]} The first d/8 bytes of the final chaining value
+     */
     final() {
       if (this.finalized) return this.digest;
 
@@ -293,6 +413,7 @@
       // This implementation predates the MD6 reference's 4/15/2009 fix and takes
       // the FIRST d bits of this buffer as the digest, not the last d bits (see
       // header comment) -- so no "shift from the end" step here.
+      /** @type {uint8[]} */
       const full = new Uint8Array(C_WORDS * 8);
       for (let w = 0; w < C_WORDS; w++) full.set(wordToBytesBE(this.hashval[w]), w * 8);
 
@@ -300,6 +421,7 @@
       // bit-trimming is needed -- this implementation only supports the
       // digest size the DarkCrypt implementation actually produces.
       const fullOrPartialBytes = Math.ceil(this.d / 8);
+      /** @type {uint8[]} */
       const trimmed = new Uint8Array(fullOrPartialBytes);
       for (let i = 0; i < fullOrPartialBytes; i++)
         trimmed[i] = full[i];
@@ -326,7 +448,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [64]; // 512 bits (digest size hardcoded by the DarkCrypt implementation)
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits (digest size hardcoded by the DarkCrypt implementation)
       this.blockSize = 512;             // 64 words * 8 bytes per compression block
       this.outputSize = 64;
 
@@ -365,6 +487,11 @@
       ];
     }
 
+    /**
+     * Create a hash instance
+     * @param {boolean} [isInverse=false] - Hashes have no inverse
+     * @returns {DarkCryptMD6Instance} New hash instance, or null for the inverse
+     */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new DarkCryptMD6Instance(this);
@@ -372,26 +499,50 @@
   }
 
   class DarkCryptMD6Instance extends IHashFunctionInstance {
+    /**
+     * @param {DarkCryptMD6Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {MD6State} */
       this.state = new MD6State(512);
     }
 
+    /**
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       this.state.update(data);
     }
 
+    /**
+     * @returns {uint8[]} 64-byte digest
+     */
     Result() {
-      return Array.from(this.state.final());
+      /** @type {uint8[]} */
+      const digest = this.state.final();
+      return Array.from(digest);
     }
 
+    /**
+     * Hash a whole message on a fresh state
+     * @param {uint8[]} input - Message bytes
+     * @param {uint8[]} key - Unused
+     * @returns {uint8[]} 64-byte digest
+     */
     ProcessData(input, key) {
       this.state = new MD6State(512);
       this.state.update(input);
-      return Array.from(this.state.final());
+      /** @type {uint8[]} */
+      const digest = this.state.final();
+      return Array.from(digest);
     }
 
+    /**
+     * @returns {void}
+     */
     Reset() {
       this.state = new MD6State(512);
     }
