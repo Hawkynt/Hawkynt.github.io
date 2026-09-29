@@ -109,4 +109,4 @@ function run(context) {
   };
 }
 
-module.exports = { run };
+module.exports = { run, browserContext };

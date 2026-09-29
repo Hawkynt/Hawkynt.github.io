@@ -113,6 +113,61 @@ test('ModInverseN: given a negative modulus, when inverted, then a RangeError is
   throws(() => OpCodes.ModInverseN(3n, -11n), RangeError);
 });
 
+// ---------------------------------------------------------------- Pack64 / Unpack64
+function bytesEqual(actual, expected) {
+  if (!Array.isArray(actual) || actual.length !== expected.length || actual.some((b, i) => b !== expected[i]))
+    throw new Error(`expected [${expected}], got [${actual}]`);
+}
+// Boundary values with their 8 big-endian bytes (the spec is positional notation)
+const QWORDS = [
+  ['0', 0n, [0, 0, 0, 0, 0, 0, 0, 0]],
+  ['1', 1n, [0, 0, 0, 0, 0, 0, 0, 1]],
+  ['2^32 - 1', 0xFFFFFFFFn, [0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF]],
+  ['2^32', 0x100000000n, [0, 0, 0, 1, 0, 0, 0, 0]],
+  ['2^53', 1n << 53n, [0, 0x20, 0, 0, 0, 0, 0, 0]],
+  ['2^64 - 1', (1n << 64n) - 1n, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]],
+  ['0x0102030405060708', 0x0102030405060708n, [1, 2, 3, 4, 5, 6, 7, 8]]
+];
+for (const [name, value, be] of QWORDS) {
+  const le = be.slice().reverse();
+  test(`Pack64BE: given the big-endian bytes of ${name}, when packed, then the BigInt ${name} is returned`, () => {
+    equal(OpCodes.Pack64BE(...be), value);
+  });
+  test(`Pack64LE: given the little-endian bytes of ${name}, when packed, then the BigInt ${name} is returned`, () => {
+    equal(OpCodes.Pack64LE(...le), value);
+  });
+  test(`Unpack64BE: given the BigInt ${name}, when unpacked, then its 8 big-endian bytes are returned`, () => {
+    bytesEqual(OpCodes.Unpack64BE(value), be);
+  });
+  test(`Unpack64LE: given the BigInt ${name}, when unpacked, then its 8 little-endian bytes are returned`, () => {
+    bytesEqual(OpCodes.Unpack64LE(value), le);
+  });
+  test(`Pack64/Unpack64: given ${name}, when unpacked and packed again in either byte order, then it round-trips`, () => {
+    equal(OpCodes.Pack64BE(...OpCodes.Unpack64BE(value)), value);
+    equal(OpCodes.Pack64LE(...OpCodes.Unpack64LE(value)), value);
+  });
+}
+test('Pack64BE: given bytes above 0xFF, when packed, then only their low 8 bits count', () => {
+  equal(OpCodes.Pack64BE(0x101, 0, 0, 0, 0, 0, 0, 0x1FF), (1n << 56n) + 0xFFn);
+});
+test('Pack64LE: given bytes above 0xFF, when packed, then only their low 8 bits count', () => {
+  equal(OpCodes.Pack64LE(0x1FF, 0, 0, 0, 0, 0, 0, 0x101), (1n << 56n) + 0xFFn);
+});
+test('Unpack64BE/LE: given 2^53 as a Number (a safe integer), when unpacked, then the bytes equal those of the BigInt', () => {
+  bytesEqual(OpCodes.Unpack64BE(2 ** 53), [0, 0x20, 0, 0, 0, 0, 0, 0]);
+  bytesEqual(OpCodes.Unpack64LE(2 ** 53), [0, 0, 0, 0, 0, 0, 0x20, 0]);
+});
+test('Unpack64BE/LE: given 2^64 (one past the range), when unpacked, then it wraps to 0 like every 64-bit word', () => {
+  bytesEqual(OpCodes.Unpack64BE(1n << 64n), [0, 0, 0, 0, 0, 0, 0, 0]);
+  bytesEqual(OpCodes.Unpack64LE(1n << 64n), [0, 0, 0, 0, 0, 0, 0, 0]);
+});
+test('Unpack64BE: given -1n, when unpacked, then its 64-bit two\'s complement (all ones) is returned', () => {
+  bytesEqual(OpCodes.Unpack64BE(-1n), [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+});
+test('Unpack64LE: given a fractional Number, when unpacked, then a RangeError is thrown', () => {
+  throws(() => OpCodes.Unpack64LE(1.5), RangeError);
+});
+
 /**
  * Run every OpCodes helper case.
  * @param {object} options - { verbose }
