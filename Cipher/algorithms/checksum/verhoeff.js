@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * Verhoeff check digit computation
+   * @class
+   * @extends {Algorithm}
+   */
   class VerhoeffAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.NL; // Netherlands
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum Verhoeff implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/verhoeff.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Uses three mathematical tables: multiplication, permutation, inverse",
         "Based on dihedral group D5 (symmetries of pentagon)",
@@ -95,9 +106,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {VerhoeffInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -107,24 +118,26 @@
   }
 
   /**
- * Verhoeff cipher instance implementing Feed/Result pattern
+ * Verhoeff instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class VerhoeffInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a Verhoeff instance
+   * @param {VerhoeffAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} Decimal digits fed since the last Result() */
       this.digits = [];
 
       // Multiplication table (dihedral group D5)
+      /** @type {uint8[][]} */
       this.d = [
         [0,1,2,3,4,5,6,7,8,9],
         [1,2,3,4,0,6,7,8,9,5],
@@ -139,6 +152,7 @@
       ];
 
       // Permutation table
+      /** @type {uint8[][]} */
       this.p = [
         [0,1,2,3,4,5,6,7,8,9],
         [1,5,7,6,2,8,3,0,9,4],
@@ -151,13 +165,13 @@
       ];
 
       // Inverse table
+      /** @type {uint8[]} */
       this.inv = [0,4,3,2,1,5,6,7,8,9];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; its decimal digits are collected, everything else is skipped
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -167,34 +181,36 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.digits.push(data[i] - 0x30);
+          /** @type {int32} */
+          const code = data[i];
+          this.digits.push(code - 0x30);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Compute the check digit of the digits fed so far and reset
+   * @returns {uint8[]} One byte: the Verhoeff check digit (0 when no digit was fed)
    */
 
     Result() {
-      if (this.digits.length === 0) {
-        this.digits = [];
-        return [0];
+      /** @type {uint8} */
+      let checkDigit = 0;
+
+      if (this.digits.length > 0) {
+        // Verhoeff algorithm: process from right to left
+        /** @type {uint8} */
+        let c = 0;
+
+        for (let i = 0; i < this.digits.length; i++) {
+          const digit = this.digits[this.digits.length - 1 - i]; // Right to left
+          const permutedDigit = this.p[(i + 1) % 8][digit];
+          c = this.d[c][permutedDigit];
+        }
+
+        // Check digit is the inverse of c
+        checkDigit = this.inv[c];
       }
-
-      // Verhoeff algorithm: process from right to left
-      let c = 0;
-
-      for (let i = 0; i < this.digits.length; i++) {
-        const digit = this.digits[this.digits.length - 1 - i]; // Right to left
-        const permutedDigit = this.p[(i + 1) % 8][digit];
-        c = this.d[c][permutedDigit];
-      }
-
-      // Check digit is the inverse of c
-      const checkDigit = this.inv[c];
 
       this.digits = [];
       return [checkDigit];
