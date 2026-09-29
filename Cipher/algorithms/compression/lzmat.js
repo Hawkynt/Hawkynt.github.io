@@ -40,6 +40,7 @@
   // puts every position in one bucket, so the walk has to be bounded; 64 is
   // enough to reach a maximal match on the redundant data that matters while
   // keeping the search linear in practice.
+  /** @type {int32} */
   const CHAIN_DEPTH = 64;
 
   if (!OpCodes) {
@@ -59,11 +60,35 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // Builds `length` bytes of a repeating pangram, for the large round-trip vector.
+  /**
+   * @param {int32} length - Number of bytes
+   * @returns {uint8[]} The pangram repeated to that length
+   */
   function repeatText(length) {
+    /** @type {uint8[]} */
     const unit = OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ");
+    /** @type {uint8[]} */
     const out = new Array(length);
-    for (let i = 0; i < length; i++) out[i] = unit[i % unit.length];
+    for (let i = 0; i < length; i++) {
+      out[i] = unit[i % unit.length];
+    }
     return out;
+  }
+
+  /**
+   * Longest match found at a position
+   */
+  class LZMATMatch {
+    /**
+     * @param {int32} distance - Distance back to the match source
+     * @param {int32} length - Match length (0 when none)
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
+    }
   }
 
   /**
@@ -88,10 +113,15 @@
         this.country = CountryCode.RU;
 
         // Configuration parameters - LZMAT specific
+        /** @type {int32} */
         this.MATCH_TABLE_SIZE = 4096;    // Match table size
+        /** @type {int32} */
         this.WINDOW_SIZE = 8192;         // Sliding window size
+        /** @type {int32} */
         this.MIN_MATCH_LENGTH = 3;       // Minimum match length
+        /** @type {int32} */
         this.MAX_MATCH_LENGTH = 255;     // Maximum match length (the match record stores it in one byte)
+        /** @type {int32} */
         this.MAX_DISTANCE = 8191;        // Maximum backward distance
 
         // Documentation and references
@@ -153,27 +183,49 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LZMATInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LZMATInstance(this, isInverse);
       }
     }
 
     class LZMATInstance extends IAlgorithmInstance {
+      /**
+       * @param {LZMATCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {int32} */
         this.matchTableSize = algorithm.MATCH_TABLE_SIZE;
+        /** @type {int32} */
         this.windowSize = algorithm.WINDOW_SIZE;
+        /** @type {int32} */
         this.minMatchLength = algorithm.MIN_MATCH_LENGTH;
+        /** @type {int32} */
         this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
+        /** @type {int32} */
         this.maxDistance = algorithm.MAX_DISTANCE;
       }
 
 
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
         if (this.isInverse) {
@@ -183,8 +235,13 @@
         }
       }
 
+      /**
+       * @returns {uint8[]} Flagged literals and matches
+       */
       _compress() {
+        /** @type {uint8[]} */
         const result = [];
+        /** @type {int32} */
         let pos = 0;
 
         // Hash chains are extended as the encoder advances, so every candidate
@@ -194,17 +251,23 @@
         // left only the last 16 positions of the file, all of them ahead of the
         // cursor and therefore discarded. Nothing ever matched and the encoder
         // emitted two bytes per input byte.
+        /** @type {int32} */
         const length = this.inputBuffer.length;
-        const chainHead = new Map();
+        // Newest position per hash bucket, -1 while a bucket is empty
+        /** @type {int32[]} */
+        const chainHead = new Int32Array(this.matchTableSize).fill(-1);
+        /** @type {int32[]} */
         const chainPrev = new Int32Array(length > 0 ? length : 1).fill(-1);
 
         while (pos < this.inputBuffer.length) {
           // Find the longest match using the chains built so far
+          /** @type {LZMATMatch} */
           const match = this._findLongestMatch(pos, chainHead, chainPrev);
 
           if (match.length >= this.minMatchLength) {
             // Encode as match: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
             result.push(1); // Match flag
+            /** @type {uint8[]} */
             const distanceBytes = OpCodes.Unpack16BE(match.distance);
             result.push(distanceBytes[0]); // High byte
             result.push(distanceBytes[1]); // Low byte
@@ -214,7 +277,9 @@
             result.push(match.length);
             // Every position the match covers still has to enter the chains, or
             // later positions cannot reference anything inside it.
-            for (let k = 0; k < match.length; k++) this._insertPosition(pos + k, chainHead, chainPrev);
+            for (let k = 0; k < match.length; k++) {
+              this._insertPosition(pos + k, chainHead, chainPrev);
+            }
             pos += match.length;
           } else {
             // Encode as literal: [FLAG=0][LITERAL]
@@ -225,34 +290,48 @@
           }
         }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
         const result = [];
+        /** @type {int32} */
         let i = 0;
 
         while (i < this.inputBuffer.length) {
+          /** @type {uint8} */
           const flag = this.inputBuffer[i++];
 
           if (flag === 1 && i + 3 <= this.inputBuffer.length) {
             // Match: [DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
+            /** @type {uint8} */
             const distHigh = this.inputBuffer[i++];
+            /** @type {uint8} */
             const distLow = this.inputBuffer[i++];
+            /** @type {int32} */
             const distance = OpCodes.Pack16BE(distHigh, distLow);
+            /** @type {uint8} */
             const length = this.inputBuffer[i++];
 
             // Copy from history buffer
             for (let j = 0; j < length; j++) {
+              /** @type {int32} */
               const copyPos = result.length - distance;
               // A back-reference outside the output produced so far means the
               // stream is not one this decoder wrote. Substituting a zero used
               // to hide that: the caller received plausible bytes of the right
               // length and no indication anything was wrong.
-              if (copyPos < 0 || copyPos >= result.length)
+              if (copyPos < 0 || copyPos >= result.length) {
                 throw new Error('LZMAT: back-reference at distance ' + distance
                   + ' points outside the ' + result.length + ' bytes decoded so far');
+              }
               result.push(result[copyPos]);
             }
           } else if (flag === 0 && i < this.inputBuffer.length) {
@@ -263,51 +342,72 @@
           }
         }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       /**
        * Build match table for efficient pattern finding
        * Uses hash-based indexing of 3-byte sequences
+       * @param {int32} pos - Position entering the chains
+       * @param {int32[]} chainHead - Newest position per bucket (-1 = empty)
+       * @param {int32[]} chainPrev - Previous position in the same bucket
        */
       _insertPosition(pos, chainHead, chainPrev) {
-        if (pos + 2 >= this.inputBuffer.length) return;
+        if (pos + 2 >= this.inputBuffer.length) {
+          return;
+        }
 
+        /** @type {uint32} */
         const hash = this._hashBytes(pos);
-        chainPrev[pos] = chainHead.has(hash) ? chainHead.get(hash) : -1;
-        chainHead.set(hash, pos);
+        chainPrev[pos] = chainHead[hash];
+        chainHead[hash] = pos;
       }
 
       /**
        * Hash 3 bytes at position for match table indexing
+       * @param {int32} pos - Position of the three bytes
+       * @returns {uint32} Bucket index
        */
       _hashBytes(pos) {
         if (pos + 2 >= this.inputBuffer.length) {
           return 0;
         }
 
+        /** @type {uint8} */
         const b0 = this.inputBuffer[pos];
+        /** @type {uint8} */
         const b1 = this.inputBuffer[pos + 1];
+        /** @type {uint8} */
         const b2 = this.inputBuffer[pos + 2];
 
         // Simple hash function for 3-byte sequences
         // Equivalent to: ((OpCodes.Shl32(b0, 16))|(OpCodes.Shl32(b1, 8))|b2)
-        return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(b0, 16), OpCodes.Shl32(b1, 8)), b2)) % this.matchTableSize;
+        return OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 16), OpCodes.Shl32(b1, 8)), b2) % this.matchTableSize;
       }
 
       /**
        * Find longest match at current position using match table
+       * @param {int32} pos - Position to match
+       * @param {int32[]} chainHead - Newest position per bucket (-1 = empty)
+       * @param {int32[]} chainPrev - Previous position in the same bucket
+       * @returns {LZMATMatch} Longest match
        */
       _findLongestMatch(pos, chainHead, chainPrev) {
+        /** @type {int32} */
         let bestDistance = 0;
+        /** @type {int32} */
         let bestLength = 0;
 
         if (pos + 2 >= this.inputBuffer.length) {
-          return { distance: 0, length: 0 };
+          return new LZMATMatch(0, 0);
         }
 
+        /** @type {uint32} */
         const hash = this._hashBytes(pos);
+        /** @type {int32} */
         const maxLen = Math.min(
           this.maxMatchLength,
           this.inputBuffer.length - pos
@@ -315,11 +415,15 @@
 
         // The chain runs newest first, so the first candidate outside the window
         // ends the walk: everything behind it is older still.
-        let candidatePos = chainHead.has(hash) ? chainHead.get(hash) : -1;
+        /** @type {int32} */
+        let candidatePos = chainHead[hash];
         for (let depth = 0; candidatePos >= 0 && depth < CHAIN_DEPTH; depth++) {
-          if (pos - candidatePos > this.maxDistance) break;
+          if (pos - candidatePos > this.maxDistance) {
+            break;
+          }
 
           // Count matching bytes
+          /** @type {int32} */
           let matchLength = 0;
           while (matchLength < maxLen &&
                  this.inputBuffer[candidatePos + matchLength] === this.inputBuffer[pos + matchLength]) {
@@ -338,10 +442,7 @@
           candidatePos = chainPrev[candidatePos];
         }
 
-        return {
-          distance: bestDistance,
-          length: bestLength
-        };
+        return new LZMATMatch(bestDistance, bestLength);
       }
     }
 
