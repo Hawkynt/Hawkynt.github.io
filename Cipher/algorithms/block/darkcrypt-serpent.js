@@ -355,22 +355,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSerpentInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSerpentInstance(this, isInverse);
     }
   }
 
   class DarkCryptSerpentInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSerpentAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -380,6 +393,9 @@
       this.roundKeys = this._generateRoundKeys(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -394,6 +410,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -406,6 +423,9 @@
     // Non-overlapping flat prekey-word generation: w[i] = ROTL(w[i-8]^w[i-5]^w[i-3]^w[i-1]^PHI^i, 11)
     // for i = 0..131, seeded with the 8 key words w[-8..-1]. Round key K_i is derived from the
     // non-overlapping quad w[4i..4i+3] via S-boxes cycling S3,S2,S1,S0,S7,S6,S5,S4.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes) {
       const NUM_PREKEY_WORDS = 4 * (ROUNDS + 1); // 132
       const w = new Array(8 + NUM_PREKEY_WORDS).fill(0);
@@ -452,6 +472,10 @@
       return [nX0, nX1, nX2, nX3];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let X0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let X1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -478,6 +502,10 @@
       return [...OpCodes.Unpack32LE(X0), ...OpCodes.Unpack32LE(X1), ...OpCodes.Unpack32LE(X2), ...OpCodes.Unpack32LE(X3)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let X0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let X1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

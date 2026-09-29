@@ -248,6 +248,9 @@
 
   // ========================[ KEY EXPANSION ]========================
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function initializeKX(keyBytes, keyBitSize, cipherId, backup) {
     const KX = new Array(HPC_KX_SIZE);
 
@@ -1143,6 +1146,10 @@
 
   // ========================[ EXTENDED CIPHER (513+ bits) ]========================
 
+  /**
+   * @param {uint8[]} plaintext - Input block
+   * @param {uint8[]} ciphertext - Input block
+   */
   function extendedEncrypt(state, spice, KX, plaintext, ciphertext, blockSize, mask, backup) {
     const LWD = Math.ceil(blockSize / 64);
     let qmask = LWD - 1;
@@ -1257,6 +1264,10 @@
     }
   }
 
+  /**
+   * @param {uint8[]} ciphertext - Input block
+   * @param {uint8[]} plaintext - Input block
+   */
   function extendedDecrypt(state, spice, KX, ciphertext, plaintext, blockSize, mask, backup) {
     const LWD = Math.ceil(blockSize / 64);
     let qmask = LWD - 1;
@@ -1450,6 +1461,10 @@
       ];
     }
 
+    /**
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     * @returns {HPCInstance} New instance
+     */
     CreateInstance(isInverse) {
       return new HPCInstance(this, isInverse);
     }
@@ -1464,10 +1479,16 @@
  */
 
   class HPCInstance extends IBlockCipherInstance {
+    /**
+     * @param {HPCAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._keyBitSize = 0;
       this._blockSizeBits = null;

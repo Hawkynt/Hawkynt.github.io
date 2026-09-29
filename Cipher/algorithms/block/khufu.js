@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KhufuInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,14 +156,16 @@
   class KhufuInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KhufuAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // 64 bits
 
@@ -250,6 +252,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -380,6 +383,10 @@
       return val;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Pack input bytes to 32-bit words (big-endian)
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -442,6 +449,10 @@
       return [...leftBytes, ...rightBytes];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Pack input bytes to 32-bit words (big-endian)
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

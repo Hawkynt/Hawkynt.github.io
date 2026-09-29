@@ -210,7 +210,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BassOMaticInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -231,14 +231,16 @@
   class BassOMaticInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BassOMaticAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
@@ -518,19 +520,28 @@
       }
     }
 
-    /** xortable - XOR the block with a permutation table (its own inverse when the table is unchanged). */
+    /**
+     * xortable - XOR the block with a permutation table (its own inverse when the table is unchanged).
+     * @param {uint8[]} block - Input block
+     */
     _xortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
         block[i] = OpCodes.XorN(block[i], table[i]);
     }
 
-    /** ixortable - inverse of xortable when table has already been inverted. */
+    /**
+     * ixortable - inverse of xortable when table has already been inverted.
+     * @param {uint8[]} block - Input block
+     */
     _ixortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
         block[table[i]] = OpCodes.Xor32(block[table[i]], i);
     }
 
-    /** rake - unkeyed diffusion: cumulative forward XOR, then cumulative backward addition mod 256. */
+    /**
+     * rake - unkeyed diffusion: cumulative forward XOR, then cumulative backward addition mod 256.
+     * @param {uint8[]} block - Input block
+     */
     _rake(block) {
       for (let i = 1; i < BLOCK_SIZE; ++i)
         block[i] = OpCodes.XorN(block[i], block[i - 1]);
@@ -538,7 +549,10 @@
         block[i] = OpCodes.AddMod(block[i], block[i + 1], 256);
     }
 
-    /** unrake - inverse of rake: cumulative forward subtraction mod 256, then cumulative backward XOR. */
+    /**
+     * unrake - inverse of rake: cumulative forward subtraction mod 256, then cumulative backward XOR.
+     * @param {uint8[]} block - Input block
+     */
     _unrake(block) {
       for (let i = 0; i < BLOCK_SIZE - 1; ++i)
         block[i] = OpCodes.SubMod(block[i], block[i + 1], 256);
@@ -601,6 +615,7 @@
      * initkey - derive the full key context (rounds, shredding mode,
      * randomization mode, and all 8 permutation tables) from the key.
      * keyBytes[0] is the control byte; keyBytes[1..] is the seed material.
+     * @param {uint8[]} keyBytes - Key bytes
      */
     _initKey(keyBytes, decrypt) {
       const control = keyBytes[0];
@@ -637,6 +652,8 @@
 
     /**
      * Encrypt a single 256-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
       return this._bassomaticCore(block);
@@ -644,6 +661,8 @@
 
     /**
      * Decrypt a single 256-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
       return this._bassomaticCore(block);
@@ -677,6 +696,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 256-byte block

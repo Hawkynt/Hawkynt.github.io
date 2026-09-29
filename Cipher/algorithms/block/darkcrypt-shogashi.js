@@ -97,6 +97,9 @@
   }
 
   // Derive the 128-word round-subkey array SK from the 64-byte (512-bit) key.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function deriveSubkeys(keyBytes) {
     const K = []; for (let i = 0; i < 16; i++) K.push(le32(keyBytes, i*4));
     const P = new Array(128);
@@ -3852,22 +3855,35 @@ function decBlock(blk, SK, S0, S1, S2, S3){
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptShogashiInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptShogashiInstance(this, isInverse);
     }
   }
 
   class DarkCryptShogashiInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptShogashiAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._SK = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._SK = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -3877,6 +3893,9 @@ function decBlock(blk, SK, S0, S1, S2, S3){
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -3891,6 +3910,7 @@ function decBlock(blk, SK, S0, S1, S2, S3){
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

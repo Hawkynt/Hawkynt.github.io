@@ -319,7 +319,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CAST128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -336,14 +336,16 @@
   class CAST128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CAST128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.Km = null;
       this.Kr = null;
@@ -555,6 +557,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let blockIndex = 0;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -779,6 +782,10 @@
       return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(this.S1[OpCodes.GetByte(I, 3)] + this.S2[OpCodes.GetByte(I, 2)]), this.S3[OpCodes.GetByte(I, 1)]) - this.S4[OpCodes.GetByte(I, 0)]);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockIndex, block) {
       let Li = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let Ri = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -806,6 +813,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockIndex, block) {
       let Li = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let Ri = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -904,7 +915,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CAST256Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -921,7 +932,7 @@
   class CAST256Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CAST256Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -930,6 +941,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = { km: null, kr: null };
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
 
@@ -1002,6 +1014,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -1094,6 +1107,10 @@
       return { km, kr };
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('CAST-256 requires 16-byte blocks');
@@ -1131,6 +1148,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('CAST-256 requires 16-byte blocks');

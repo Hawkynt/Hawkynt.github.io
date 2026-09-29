@@ -171,7 +171,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LEAInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -189,7 +189,7 @@
   class LEAInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LEAAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -199,6 +199,7 @@
       this.key = null;
       this.roundKeys = null;
       this.rounds = 0;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128-bit blocks
       this.KeySize = 0;    // will be set when key is assigned
@@ -279,6 +280,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -398,6 +400,10 @@
     }
 
     // Encrypt 128-bit block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Convert input to 32-bit words using OpCodes (little-endian for LEA)
       let X = [
@@ -437,6 +443,10 @@
     }
 
     // Decrypt 128-bit block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Convert input to 32-bit words using OpCodes (little-endian for LEA)
       let X = [

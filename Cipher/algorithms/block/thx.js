@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {THXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,14 +154,16 @@
   class THXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {THXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128-bit blocks
       this.KeySize = 0;
@@ -304,6 +306,7 @@
         throw new Error("THX requires input length to be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process data in 16-byte blocks
@@ -436,6 +439,10 @@
     }
 
     // Process a single 16-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       // Convert block to 32-bit words (little-endian)
       let r0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);

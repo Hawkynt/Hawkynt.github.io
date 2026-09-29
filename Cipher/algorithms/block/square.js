@@ -294,6 +294,9 @@
     }
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function squareGenerateRoundKeys(keyBytes) {
     const totalWords = (SQUARE_ROUNDS + 1) * 4;
     const baseWords = new Uint32Array(totalWords);
@@ -461,7 +464,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SquareInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -478,13 +481,14 @@
   class SquareInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SquareAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = !!isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -561,6 +565,7 @@
         throw new Error('Input length must be multiple of ' + this.BlockSize + ' bytes');
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -574,6 +579,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!this.encRoundKeys) {
         throw new Error('Encryption round keys not initialised');
@@ -640,6 +649,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!this.decRoundKeys) {
         throw new Error('Decryption round keys not initialised');

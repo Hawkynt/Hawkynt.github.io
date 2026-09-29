@@ -149,6 +149,9 @@
   // Key schedule: 3 x 2t byte matrix (column-major), evolved via constant addition
   // (sigma_q), cyclic row shift (xi), and E-matrix diffusion (mu). Round key kappa^(r)
   // is derived from K^(r) via phi: S-box row 0 of the first 4 columns, rows 1-2 raw.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keySchedule(keyBytes, rounds, t) {
     const cols2t = 2 * t;
     let K = keyBytes.slice(); // 3 x cols2t, column-major: K[col*3+row]
@@ -191,6 +194,9 @@
     return roundKeys; // length rounds+1: kappa^(0) .. kappa^(rounds)
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function encryptBlock(ptBytes, keyBytes, t) {
     const R = roundCountFor(t);
     const roundKeys = keySchedule(keyBytes, R, t);
@@ -208,6 +214,9 @@
     return state;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function decryptBlock(ctBytes, keyBytes, t) {
     const R = roundCountFor(t);
     const encKeys = keySchedule(keyBytes, R, t);
@@ -284,22 +293,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptCurupira1Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptCurupira1Instance(this, isInverse);
     }
   }
 
   class DarkCryptCurupira1Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptCurupira1Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._t = 0;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 12;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._t = 0; this.KeySize = 0; return; }
       const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
@@ -313,6 +335,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -327,6 +352,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

@@ -576,7 +576,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ForkSkinny128_256Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -594,14 +594,16 @@
   class ForkSkinny128_256Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ForkSkinny128_256} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._forkOutput = "both"; // "left", "right", or "both"
     }
@@ -670,6 +672,7 @@
         throw new Error("Input must be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
@@ -689,6 +692,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       const state = new ForkSkinny128_256_State();
 
@@ -759,6 +766,10 @@
       return outputLeft.concat(outputRight); // Both outputs concatenated
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       const state = new ForkSkinny128_256_State();
 
@@ -893,7 +904,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ForkSkinny128_384Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -911,14 +922,16 @@
   class ForkSkinny128_384Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ForkSkinny128_384} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._forkOutput = "both";
     }
@@ -987,6 +1000,7 @@
         throw new Error("Input must be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
@@ -1006,6 +1020,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       const state = new ForkSkinny128_384_State();
 
@@ -1072,6 +1090,10 @@
       return outputLeft.concat(outputRight);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       const state = new ForkSkinny128_384_State();
 

@@ -60,6 +60,9 @@
   const CHECKPOINT_ROUNDS = 16; // number of doubling checkpoints built during priming
 
   // Build the 256-entry table via the four-round doubled RC4-style key schedule.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keySchedule(keyBytes) {
     const table = new Array(256).fill(0);
     for (let round = 0; round < 4; ++round) {
@@ -214,23 +217,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptLeviathanInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptLeviathanInstance(this, isInverse);
     }
   }
 
   class DarkCryptLeviathanInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptLeviathanAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._table = null;
       this._state = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._table = null; this._state = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -241,6 +257,9 @@
       this._state = primeState(this._table);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -255,6 +274,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -266,6 +286,10 @@
 
     // Encryption and decryption are the same XOR-with-keystream operation
     // (self-inverse); the generator state advances identically either way.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _transformBlock(block) {
       const words = generateWords(this._table, this._state, 4);
       const ks = [];

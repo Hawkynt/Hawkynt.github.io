@@ -226,7 +226,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CLEFIAInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -243,14 +243,16 @@
   class CLEFIAInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CLEFIAAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -310,6 +312,7 @@
         throw new Error("Input length must be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const block = this.inputBuffer.slice(i, i + 16);
@@ -589,6 +592,10 @@
       return OpCodes.Pack32BE(z[0], z[1], z[2], z[3]);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encrypt(block) {
       // Convert input block to four 32-bit words (big-endian per RFC 6114)
       let p0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -639,6 +646,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decrypt(block) {
       // Convert input block to four 32-bit words (big-endian per RFC 6114)
       let c0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

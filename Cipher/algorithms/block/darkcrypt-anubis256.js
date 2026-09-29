@@ -331,23 +331,36 @@
       this.T5 = AnubisOrigTables.T5;
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptAnubis256Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptAnubis256Instance(this, isInverse);
     }
   }
 
   class DarkCryptAnubis256Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptAnubis256Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeyEnc = null;
       this.roundKeyDec = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -364,6 +377,9 @@
       this._generateKeySchedule(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -378,6 +394,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       const roundKey = this.isInverse ? this.roundKeyDec : this.roundKeyEnc;
 
@@ -390,6 +407,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _crypt(bytes, roundKey) {
       const state = new Array(4);
       const inter = new Array(4);

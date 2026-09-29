@@ -141,6 +141,9 @@
       ];
     }
 
+    /**
+     * @returns {NewDESInstance} New instance
+     */
     CreateInstance(isDecryptMode) {
       return new NewDESInstance(this, isDecryptMode);
     }
@@ -154,11 +157,15 @@
  */
 
   class NewDESInstance extends IBlockCipherInstance {
+    /**
+     * @param {NewDESAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm, isDecryptMode) {
       super(algorithm);
       this.isDecryptMode = isDecryptMode || false;
       this.encryptionKey = null;
       this.decryptionKey = null;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.buffer = [];
 
@@ -187,6 +194,9 @@
     }
 
     // Setter for key property (called by test framework)
+    /**
+     * @param {uint8[]|null} keyValue - Key bytes, or null to clear
+     */
     set key(keyValue) {
       if (keyValue) {
         this._setupKey(keyValue);
@@ -202,6 +212,9 @@
       return this._key;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _setupKey(keyBytes) {
       if (!keyBytes) {
         throw new Error("Key is required");
@@ -274,6 +287,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(blockIndex, data) {
       if (data.length !== 8) {
         throw new Error('NewDES requires exactly 8 bytes per block');
@@ -281,6 +298,10 @@
       return this._encryptBlock(data);
     }
 
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(blockIndex, data) {
       if (data.length !== 8) {
         throw new Error('NewDES requires exactly 8 bytes per block');
@@ -327,7 +348,7 @@
 
     /**
      * Core NewDES block transformation
-     * @param {Array} block - 8-byte block to transform
+     * @param {uint8[]} block - 8-byte block to transform
      * @param {Array} unravelledKey - 119-byte key schedule (17 rounds * 7 bytes per round)
      */
     _newdesBlock(block, unravelledKey) {
@@ -355,7 +376,7 @@
 
     /**
      * Core NewDES block transformation for decryption
-     * @param {Array} block - 8-byte block to transform
+     * @param {uint8[]} block - 8-byte block to transform
      * @param {Array} unravelledKey - 119-byte key schedule (17 rounds * 7 bytes per round)
      */
     _newdesBlockDecrypt(block, unravelledKey) {
@@ -366,8 +387,8 @@
 
     /**
      * Encrypt a single block
-     * @param {Array} block - 8-byte input block
-     * @returns {Array} 8-byte encrypted block
+     * @param {uint8[]} block - 8-byte input block
+     * @returns {uint8[]} 8-byte encrypted block
      */
     _encryptBlock(block) {
       if (!this.encryptionKey || !block || block.length !== 8) {
@@ -385,8 +406,8 @@
 
     /**
      * Decrypt a single block
-     * @param {Array} block - 8-byte encrypted block
-     * @returns {Array} 8-byte decrypted block
+     * @param {uint8[]} block - 8-byte encrypted block
+     * @returns {uint8[]} 8-byte decrypted block
      */
     _decryptBlock(block) {
       if (!this.decryptionKey || !block || block.length !== 8) {

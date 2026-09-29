@@ -107,7 +107,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Skip32Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -124,14 +124,16 @@
   class Skip32Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Skip32} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = 4;
       this.KeySize = 0;
@@ -199,6 +201,10 @@
       return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(g5, 8), g6), 0xFFFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Load 32-bit value (big-endian)
       let wl = OpCodes.Or32(OpCodes.Shl32(block[0], 8), block[1]);  // High 16 bits
@@ -222,6 +228,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Load 32-bit value (big-endian)
       let wl = OpCodes.Or32(OpCodes.Shl32(block[0], 8), block[1]);
@@ -270,6 +280,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

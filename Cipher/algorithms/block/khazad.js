@@ -738,7 +738,7 @@ const rawRoundConstants = [
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KhazadInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -755,7 +755,7 @@ const rawRoundConstants = [
   class KhazadInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KhazadAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -764,7 +764,9 @@ const rawRoundConstants = [
       this.isInverse = isInverse;
       this.BlockSize = 8;
       this._keySize = 16;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.roundKeyEncHi = new Uint32Array(ROUNDS + 1);
       this.roundKeyEncLo = new Uint32Array(ROUNDS + 1);
@@ -781,6 +783,9 @@ const rawRoundConstants = [
       return this._key ? OpCodes.CopyArray(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (value === null || value === undefined) {
         this._key = null;
@@ -811,10 +816,18 @@ const rawRoundConstants = [
       this.key = key;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(blockIndex, block) {
       return this._crypt(block, this.roundKeyEncHi, this.roundKeyEncLo);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(blockIndex, block) {
       return this._crypt(block, this.roundKeyDecHi, this.roundKeyDecLo);
     }
@@ -861,6 +874,7 @@ const rawRoundConstants = [
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const roundKeyHi = this.isInverse ? this.roundKeyDecHi : this.roundKeyEncHi;
       const roundKeyLo = this.isInverse ? this.roundKeyDecLo : this.roundKeyEncLo;
@@ -882,6 +896,9 @@ const rawRoundConstants = [
       this.roundKeyDecLo.fill(0);
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateKeySchedule(keyBytes) {
       const tables = this.algorithm.tables;
       const rcHi = this.algorithm.roundConstantsHi;
@@ -931,6 +948,10 @@ const rawRoundConstants = [
       this.roundKeyDecLo[ROUNDS] = this.roundKeyEncLo[0];
     }
 
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _crypt(bytes, roundKeyHi, roundKeyLo) {
       const block = Array.isArray(bytes) ? bytes.slice() : Array.from(bytes);
       if (block.length !== this.BlockSize) {

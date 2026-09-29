@@ -148,6 +148,9 @@
   }
 
   // Fixed bit-diagonal permutation: dest[p].bit[k] = src[(p+k) mod 16].bit[k]
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function permute(block) {
     const out = new Array(BLOCK_BYTES).fill(0);
     for (let p = 0; p < BLOCK_BYTES; p++) {
@@ -160,6 +163,9 @@
   }
 
   // Inverse of permute(): dest[p].bit[k] = src[(p-k) mod 16].bit[k]
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function inversePermute(block) {
     const out = new Array(BLOCK_BYTES).fill(0);
     for (let p = 0; p < BLOCK_BYTES; p++) {
@@ -173,6 +179,9 @@
     return out;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function substitute(block, tableRow) {
     const out = new Array(BLOCK_BYTES);
     for (let p = 0; p < BLOCK_BYTES; p++) out[p] = tableRow[p][block[p]];
@@ -236,23 +245,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMPJ2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMPJ2Instance(this, isInverse);
     }
   }
 
   class DarkCryptMPJ2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMPJ2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._tables = null;
       this._invTables = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; this._invTables = null; return; }
       if (keyBytes.length !== 16)
@@ -263,6 +285,9 @@
       this._invTables = this._tables.map(row => row.map(invertTable));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -277,6 +302,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -286,6 +312,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let working = substitute(block, this._tables[0]);
       for (let r = 1; r < ROUNDS; r++)
@@ -293,6 +323,10 @@
       return working;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let working = block;
       for (let r = ROUNDS - 1; r >= 1; r--)

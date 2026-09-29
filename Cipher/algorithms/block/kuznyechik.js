@@ -96,6 +96,9 @@
   // Single R transformation from RFC 7801:
   // R(a) = a[15] ⊕ l(a[0..14] || 0) where l is linear feedback
   // The linear feedback coefficients determine l(a)
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function transformR(block) {
     const result = new Uint8Array(16);
 
@@ -114,6 +117,9 @@
   }
 
   // L transformation = R applied 16 times (RFC 7801)
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function transformL(block) {
     let result = new Uint8Array(block);
     for (let i = 0; i < 16; ++i) {
@@ -123,6 +129,9 @@
   }
 
   // Inverse R transformation
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function invTransformR(block) {
     const result = new Uint8Array(16);
 
@@ -142,6 +151,9 @@
   }
 
   // Inverse L transformation = R^{-1} applied 16 times
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function invTransformL(block) {
     let result = new Uint8Array(block);
     for (let i = 0; i < 16; ++i) {
@@ -151,6 +163,9 @@
   }
 
   // Substitution transformation S (apply S-box to all bytes)
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function transformS(block) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -160,6 +175,9 @@
   }
 
   // Inverse substitution transformation S^{-1}
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function invTransformS(block) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -169,6 +187,9 @@
   }
 
   // XOR transformation X[k]
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function transformX(block, key) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -192,6 +213,9 @@
   const ROUND_CONSTANTS = computeRoundConstants();
 
   // LSX transformation: L ∘ S ∘ X[k]
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function transformLSX(block, key) {
     let result = transformX(block, key);
     result = transformS(result);
@@ -306,7 +330,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KuznyechikInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -323,14 +347,16 @@
   class KuznyechikInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Kuznyechik} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
     }
@@ -390,6 +416,7 @@
         throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 16;
 
@@ -403,6 +430,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(block) {
       // RFC 7801 encryption: apply 9 rounds of LSX, then final X
       let state = new Uint8Array(block);
@@ -420,6 +451,10 @@
       return Array.from(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(block) {
       // RFC 7801 decryption: inverse operations in reverse order
       let state = new Uint8Array(block);

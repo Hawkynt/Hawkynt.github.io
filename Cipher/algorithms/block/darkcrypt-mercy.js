@@ -136,6 +136,9 @@
     return w;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keySchedule(keyBytes) {
     const inv = buildInverseTable();
     const st = rc4Init(keyBytes.slice(0, 16));
@@ -235,6 +238,10 @@
     return b;
   }
 
+  /**
+   * @param {uint8[]} blockBytes - Input block
+   * @returns {uint8[]} Output block
+   */
   function encryptBlock(ks, blockBytes) {
     const words = bytesToWords(blockBytes);
     const T = ks.T;
@@ -250,6 +257,10 @@
     return wordsToBytes(words);
   }
 
+  /**
+   * @param {uint8[]} blockBytes - Input block
+   * @returns {uint8[]} Output block
+   */
   function decryptBlock(ks, blockBytes) {
     const words = bytesToWords(blockBytes);
     const T = ks.T;
@@ -369,21 +380,33 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMercyInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMercyInstance(this, isInverse);
     }
   }
 
   class DarkCryptMercyInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMercyAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this._ks = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._ks = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -392,6 +415,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._ks ? this._ks : null; }
 
     Feed(data) {
@@ -406,6 +432,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

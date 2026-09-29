@@ -125,6 +125,9 @@
 
   // Encrypt1024: the 16-word MIX/permute structure is the standard Threefish-1024 definition;
   // RT supplies DarkCrypt's non-standard rotation amounts.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function encrypt1024(block, K, T) {
     let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = block;
     for (let r = 0; r < 19; r++) {
@@ -229,6 +232,9 @@
     return [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function decrypt1024(block, K, T) {
     let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = block;
     let tmp;
@@ -372,21 +378,34 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptThreefish1024Instance} New instance
+     */
     CreateInstance(isInverse = false) { return new DarkCryptThreefish1024Instance(this, isInverse); }
   }
 
   class DarkCryptThreefish1024Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptThreefish1024Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._K = null;
       this._T = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 128;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 144)
@@ -402,6 +421,9 @@
       this._T = twWords;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -416,6 +438,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -425,12 +448,20 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const words = bytesToWords64LE(block, 16);
       const out = encrypt1024(words, this._K, this._T);
       return words64ToBytesLE(out);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const words = bytesToWords64LE(block, 16);
       const out = decrypt1024(words, this._K, this._T);

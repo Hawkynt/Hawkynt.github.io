@@ -164,6 +164,9 @@ let MARSAlgorithm, MARSInstance;
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   CreateInstance(isInverse = false) {
     return new MARSInstance(this, isInverse);
   }
@@ -171,6 +174,9 @@ let MARSAlgorithm, MARSInstance;
 
   // Instance class for actual encryption/decryption
   MARSInstance = class extends IBlockCipherInstance {
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
@@ -184,6 +190,9 @@ let MARSAlgorithm, MARSInstance;
     this._initializeSBoxes();
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -321,6 +330,9 @@ let MARSAlgorithm, MARSInstance;
     this.S1 = (a) => this.Sbox[(a&0xFF) + 256];
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   _expandKey(keyBytes) {
     // MARS key expansion - generates 40 32-bit subkeys (following Crypto++ implementation)
     const T = new Array(15); // Temporary key words
@@ -377,6 +389,10 @@ let MARSAlgorithm, MARSInstance;
   }
 
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(block) {
     // Convert to 32-bit words
     let a = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -445,6 +461,10 @@ let MARSAlgorithm, MARSInstance;
     return result;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(block) {
     // Convert to 32-bit words - Crypto++ Block::Get reads in reverse order for decryption
     let d = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);

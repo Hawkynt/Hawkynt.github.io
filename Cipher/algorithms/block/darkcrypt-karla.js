@@ -131,22 +131,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKarlaInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKarlaInstance(this, isInverse);
     }
   }
 
   class DarkCryptKarlaInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKarlaAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._schedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 20)
@@ -156,6 +169,9 @@
       this._schedule = this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -170,6 +186,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -181,6 +198,9 @@
 
     // Key schedule: 10 raw key words, then 54 derived words via three chained
     // 16-bit multiplications seeded with MD5-style magic-number halves.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _buildSchedule(keyBytes) {
       const T = new Array(SCHEDULE_LEN);
       for (let i = 0; i < 10; i++)
@@ -203,6 +223,10 @@
       return T;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const T = this._schedule;
       let buf = [
@@ -227,6 +251,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const T = this._schedule;
       let buf = [

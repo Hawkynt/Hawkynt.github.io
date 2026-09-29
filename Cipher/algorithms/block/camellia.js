@@ -149,7 +149,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CamelliaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -166,7 +166,7 @@
   class CamelliaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CamelliaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -175,6 +175,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this._keyIs128 = false;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -737,6 +738,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} plaintext - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(plaintext) {
       if (!this.key) {
         throw new Error('Key not set');
@@ -749,6 +754,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} ciphertext - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(ciphertext) {
       // For decryption, we need to set up the key schedule for decryption
       // Store current key and re-setup for decryption
