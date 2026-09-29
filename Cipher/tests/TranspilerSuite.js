@@ -9,6 +9,8 @@
  * - INFERENCE: type inference of the shared transpiler AST (TypeInferenceTests.js)
  * - POLICY: the type resolution order - OpCodes JSDoc, framework interfaces,
  *   local JSDoc - and the untyped-site count built on it (TypePolicyTests.js)
+ * - JSDOC: every OpCodes and AlgorithmFramework member is fully typed by
+ *   JSDoc, the two tiers every algorithm's types come from (JSDocTierAudit.js)
  *
  * Options:
  *   --only=<a,b>          run only these categories (e.g. --only=codegen,csharp)
@@ -30,7 +32,8 @@ const Runner = require('./CategoryRunner');
 const CATEGORIES = [
   { key: 'codegen', label: 'CODEGEN', title: 'Code generation for every language and dialect', module: './CodeGenTests' },
   { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' },
-  { key: 'policy', label: 'POLICY', title: 'Type resolution order and untyped-site count', module: './TypePolicyTests' }
+  { key: 'policy', label: 'POLICY', title: 'Type resolution order and untyped-site count', module: './TypePolicyTests' },
+  { key: 'jsdoc', label: 'JSDOC', title: 'OpCodes and AlgorithmFramework JSDoc completeness', module: './JSDocTierAudit' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 
