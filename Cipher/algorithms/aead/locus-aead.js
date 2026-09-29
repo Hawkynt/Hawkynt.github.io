@@ -614,16 +614,20 @@
   class LocusAeadInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LocusAead} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.tagSize = 8; // LOCUS uses 64-bit (8-byte) tags
     }
@@ -654,6 +658,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -665,14 +672,23 @@
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return [...this._aad];
     }

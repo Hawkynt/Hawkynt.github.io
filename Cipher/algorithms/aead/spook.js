@@ -439,7 +439,7 @@
       this.variant = variant;
       this.shadowSize = shadowSize;
 
-      this.name = `Spook-128-${shadowSize}-${variant}`;
+      this.name = "Spook-128-" + shadowSize + "-" + variant;
       this.description = `NIST Lightweight Cryptography candidate providing authenticated encryption with side-channel protection. Uses ${shadowSize === 512 ? 'Shadow-512' : 'Shadow-384'} permutation with Clyde-128 tweakable block cipher. The ${variant === 'su' ? 'single-user' : 'multi-user'} variant offers ${variant === 'su' ? '128-bit' : '256-bit'} key security.`;
       this.inventor = "Davide Bellizia, Francesco Berti, Olivier Bronchain, Gaetan Cassiers, Sebastien Duval, Chun Guo, Gregor Leander, Gaetan Leurent, Itamar Levi, Charles Momin, Olivier Pereira, Thomas Peters, Francois-Xavier Standaert, Friedrich Wiemer";
       this.year = 2019;
@@ -532,16 +532,16 @@
         ]
       };
 
-      const variantKey = `${this.shadowSize}-${this.variant}`;
+      const variantKey = this.shadowSize + "-" + this.variant;
       const expected = expectedByVariant[variantKey];
       if (!expected) return [];
 
-      const katUri = `https://github.com/rweather/lightweight-crypto/blob/master/test/kat/${this.name}.txt`;
+      const katUri = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/" + this.name + ".txt";
       const vectors = [];
       for (let i = 0; i < cases.length; ++i) {
         const [count, ptHex, adHex] = cases[i];
         vectors.push({
-          text: `NIST LWC round-2 KAT ${this.name} Count = ${count} (PT ${ptHex.length / 2} bytes, AD ${adHex.length / 2} bytes)`,
+          text: "NIST LWC round-2 KAT " + this.name + " Count = " + count + " (PT " + (ptHex.length / 2) + " bytes, AD " + (adHex.length / 2) + " bytes)",
           uri: katUri,
           input: OpCodes.Hex8ToBytes(ptHex),
           key: OpCodes.Hex8ToBytes(this.variant === 'su' ? suKey : muKey),
@@ -575,16 +575,21 @@
   class SpookAeadInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpookAead} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._ad = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -602,7 +607,7 @@
 
       const expectedSize = this.algorithm.variant === 'su' ? SPOOK_SU_KEY_SIZE : SPOOK_MU_KEY_SIZE;
       if (keyBytes.length !== expectedSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${expectedSize})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + expectedSize + ")");
       }
 
       this._key = [...keyBytes];
@@ -617,6 +622,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -624,38 +632,59 @@
       }
 
       if (nonceBytes.length !== SPOOK_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${SPOOK_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + SPOOK_NONCE_SIZE + ")");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Canonical AEAD associated-data property used by the framework.
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._ad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._ad ? [...this._ad] : [];
     }
 
     // Aliases kept for callers that use the shorter/longer spellings.
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set ad(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get ad() {
       return this.aad;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -705,6 +734,7 @@
       }
 
       // Encrypt plaintext
+      /** @type {uint8[]} */
       const ciphertext = [];
       if (plaintext.length > 0) {
         this._encryptData(state, ciphertext, plaintext);
@@ -744,6 +774,7 @@
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
       if (ciphertext.length > 0) {
         this._decryptData(state, plaintext, ciphertext);
@@ -771,7 +802,7 @@
     _initializeState(key, nonce) {
       const shadowSize = this.algorithm.shadowSize;
       const stateSize = shadowSize === 512 ? SHADOW512_STATE_SIZE : SHADOW384_STATE_SIZE;
-      const state = new Array(stateSize).fill(0);
+      const state = OpCodes.CreateArray(stateSize, 0);
 
       // Handle multi-user variant
       if (this.algorithm.variant === 'mu') {

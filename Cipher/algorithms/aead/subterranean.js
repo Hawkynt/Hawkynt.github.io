@@ -311,6 +311,7 @@
      * Squeezes output bytes from the state
      */
     squeeze(length) {
+      /** @type {uint8[]} */
       const output = [];
 
       while (length > 4) {
@@ -460,16 +461,20 @@
   class SubterraneanAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SubterraneanAEAD} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -486,7 +491,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -499,6 +504,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -506,14 +514,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -522,12 +536,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -553,6 +576,7 @@
     _encrypt() {
       const plaintext = this.inputBuffer;
       const state = new SubterraneanState();
+      /** @type {uint8[]} */
       const output = [];
 
       // Initialize state and absorb key and nonce
@@ -613,6 +637,7 @@
       const ciphertext = this.inputBuffer.slice(0, -16);
       const receivedTag = this.inputBuffer.slice(-16);
       const state = new SubterraneanState();
+      /** @type {uint8[]} */
       const output = [];
 
       // Initialize state and absorb key and nonce

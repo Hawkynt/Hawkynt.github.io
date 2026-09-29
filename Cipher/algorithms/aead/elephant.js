@@ -63,6 +63,7 @@
    * Spongent S-box lookup table (4-bit to 4-bit non-linear transformation)
    * Applied byte-wise for efficient implementation
    */
+  /** @type {uint8[]} */
   var SPONGENT_SBOX = [
     0xee, 0xed, 0xeb, 0xe0, 0xe2, 0xe1, 0xe4, 0xef, 0xe7, 0xea, 0xe8, 0xe5, 0xe9, 0xec, 0xe3, 0xe6,
     0xde, 0xdd, 0xdb, 0xd0, 0xd2, 0xd1, 0xd4, 0xdf, 0xd7, 0xda, 0xd8, 0xd5, 0xd9, 0xdc, 0xd3, 0xd6,
@@ -85,7 +86,7 @@
   /**
    * Generic Spongent permutation based on Bouncy Castle reference implementation
    * Supports both 160-bit (Dumbo) and 176-bit (Jumbo) variants
-   * @param {Array} state - byte array of state (20 or 22 bytes)
+   * @param {uint8[]} state - byte array of state (20 or 22 bytes)
    * @param {number} nBits - state size in bits (160 or 176)
    * @param {number} nRounds - number of rounds (80 or 90)
    * @param {number} lfsrIV - initial value for round constant LFSR (0x75 or 0x45)
@@ -280,9 +281,12 @@
     constructor(algorithm, variant) {
       super(algorithm);
       this.variant = variant;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.nbIts = 0;
       this.adOff = 0;
@@ -353,6 +357,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -364,14 +371,23 @@
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? [...adBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }

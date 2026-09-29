@@ -180,16 +180,20 @@
   class Grain128AEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Grain128AEADAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Grain-128 state (using 32-bit words for bit-level operations)
@@ -198,6 +202,7 @@
       this.authAcc = new Array(2); // 64-bit accumulator (2 x 32-bit words)
       this.authSr = new Array(2);  // 64-bit shift register (2 x 32-bit words)
 
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -220,7 +225,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Grain-128-AEAD key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("Grain-128-AEAD key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -237,6 +242,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -249,18 +257,24 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Grain-128-AEAD requires exactly 12 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("Grain-128-AEAD requires exactly 12 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -274,6 +288,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -317,6 +334,7 @@
         throw new Error("Grain-128-AEAD not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       if (this.isInverse) {
@@ -580,6 +598,7 @@
 
     // Encrypt plaintext
     _encrypt(plaintext) {
+      /** @type {uint8[]} */
       const ciphertext = [];
       for (let i = 0; i < plaintext.length; ++i) {
         let cc = 0;
@@ -596,6 +615,7 @@
 
     // Decrypt ciphertext
     _decrypt(ciphertext) {
+      /** @type {uint8[]} */
       const plaintext = [];
       for (let i = 0; i < ciphertext.length; ++i) {
         let cc = 0;

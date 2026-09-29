@@ -65,6 +65,7 @@
   const STATE_INBYTES = 32;
 
   // PHOTON permutation round constants
+  /** @type {uint8[]} */
   const RC = [
      1,  0,  2,  6, 14, 15, 13,  9,
      3,  2,  0,  4, 12, 13, 15, 11,
@@ -93,6 +94,7 @@
   ];
 
   // PHOTON S-box
+  /** @type {uint8[]} */
   const sbox = [ 12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2 ];
 
   // PHOTON-256 permutation
@@ -346,22 +348,27 @@
   class PhotonBeetleAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PhotonBeetleAEADAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // PHOTON-256 state
-      this.state = new Array(STATE_INBYTES).fill(0);
-      this.state_2d = Array.from({ length: D }, () => new Array(D).fill(0));
+      this.state = OpCodes.CreateArray(STATE_INBYTES, 0);
+      this.state_2d = Array.from({ length: D }, () => OpCodes.CreateArray(D, 0));
 
+      /** @type {boolean} */
       this.initialized = false;
       this.rate = algorithm.rateInBytes;
     }
@@ -385,7 +392,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`PhotonBeetle-AEAD key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("PhotonBeetle-AEAD key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -401,6 +408,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -413,17 +423,23 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`PhotonBeetle-AEAD requires exactly 16 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("PhotonBeetle-AEAD requires exactly 16 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -437,6 +453,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -575,7 +594,9 @@
           }
 
           this.inputBuffer = [];
-          return [];  // Return empty plaintext
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;  // Return empty plaintext
         } else {
           // Encryption with empty plaintext: just generate tag
           PHOTON_Permutation(this.state, this.state_2d);

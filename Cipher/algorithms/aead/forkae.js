@@ -51,7 +51,7 @@
 
   // Helper: Pad block with 0x80 followed by zeros
   function padBlock(data, blockSize) {
-    const padded = new Array(blockSize).fill(0);
+    const padded = OpCodes.CreateArray(blockSize, 0);
     padded.splice(0, data.length, ...data);
     if (data.length < blockSize) {
       padded[data.length] = 0x80;
@@ -104,7 +104,7 @@
       const algo = Find(this.forkSkinnyVariant);
 
       if (!algo) {
-        throw new Error(`ForkSkinny variant ${this.forkSkinnyVariant} not found in registry`);
+        throw new Error("ForkSkinny variant " + this.forkSkinnyVariant + " not found in registry");
       }
 
       return algo.CreateInstance(false);
@@ -112,7 +112,7 @@
 
     encrypt(key, nonce, plaintext, ad) {
       // Initialize tweakey
-      const tweakey = new Array(this.tweakeySize).fill(0);
+      const tweakey = OpCodes.CreateArray(this.tweakeySize, 0);
       // TK1 = key
       tweakey.splice(0, 16, ...key.slice(0, 16));
       // TK2 = nonce || counter || padding (for 48-byte tweakey)
@@ -120,7 +120,7 @@
       tweakey.splice(16, this.nonceSize, ...nonce);
 
       // Tag accumulator (XOR of all intermediate tags)
-      const tag = new Array(this.blockSize).fill(0);
+      const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
       const forkskinny = this.getForkSkinnyInstance();
@@ -172,6 +172,7 @@
       }
 
       // Process plaintext
+      /** @type {uint8[]} */
       const ciphertext = [];
       counter = 1;
       let ptPos = 0;
@@ -243,12 +244,12 @@
       }
 
       // Initialize tweakey
-      const tweakey = new Array(this.tweakeySize).fill(0);
+      const tweakey = OpCodes.CreateArray(this.tweakeySize, 0);
       tweakey.splice(0, 16, ...key.slice(0, 16));
       tweakey.splice(16, this.nonceSize, ...nonce);
 
       // Tag accumulator
-      const tag = new Array(this.blockSize).fill(0);
+      const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
       const forkskinny = this.getForkSkinnyInstance();
@@ -304,6 +305,7 @@
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
       counter = 1;
       let ctPos = 0;
@@ -471,16 +473,19 @@
   class PAEFForkSkinny128_256Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PAEFForkSkinny128_256} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       // Use the registered ForkSkinny-128-256 algorithm
       this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256");
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._ad = [];
       this._data = [];
@@ -498,7 +503,7 @@
         return;
       }
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
       this._key = [...keyBytes];
     }
@@ -512,34 +517,52 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== 14) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes");
       }
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._ad = adBytes ? [...adBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._ad];
     }
 
     // Alias for test vectors
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this.associatedData = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this.associatedData;
     }

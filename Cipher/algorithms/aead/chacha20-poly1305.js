@@ -172,16 +172,21 @@
   class ChaCha20Poly1305Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ChaCha20Poly1305Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._aad = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // ChaCha20-Poly1305 constants
@@ -205,7 +210,7 @@
       }
 
       if (keyBytes.length !== this.KEY_SIZE) {
-        throw new Error(`ChaCha20-Poly1305 requires exactly ${this.KEY_SIZE}-byte (256-bit) key, got ${keyBytes.length} bytes`);
+        throw new Error("ChaCha20-Poly1305 requires exactly " + this.KEY_SIZE + "-byte (256-bit) key, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -220,6 +225,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || !Array.isArray(nonceBytes)) {
         this._nonce = null;
@@ -227,20 +235,29 @@
       }
 
       if (nonceBytes.length !== this.NONCE_SIZE) {
-        throw new Error(`ChaCha20-Poly1305 requires exactly ${this.NONCE_SIZE}-byte (96-bit) nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("ChaCha20-Poly1305 requires exactly " + this.NONCE_SIZE + "-byte (96-bit) nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set associatedData(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._aad ? [...this._aad] : [];
     }
@@ -352,6 +369,7 @@
      * RFC 8439 Section 2.4
      */
     _chacha20Encrypt(key, nonce, counter, data) {
+      /** @type {uint8[]} */
       const result = [];
       let blockCounter = counter;
 
@@ -430,6 +448,7 @@
       }
 
       // Serialize to bytes (little-endian)
+      /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
         const bytes = OpCodes.Unpack32LE(workingState[i]);

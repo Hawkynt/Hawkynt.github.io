@@ -566,14 +566,17 @@
   class EstateTweGIFTInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EstateTweGIFT} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._ad = [];
       this._inputBuffer = [];
@@ -609,6 +612,9 @@
     }
 
     // Nonce property with validation
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -622,15 +628,24 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
 
     // Associated data property
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._ad = aadBytes ? Array.from(aadBytes) : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._ad.slice();
     }
