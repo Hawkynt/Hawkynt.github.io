@@ -61,46 +61,70 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_WINDOW = 65536;
+  /** @type {int32} */
   const OFFSET_BITS = 16;
+  /** @type {int32} */
   const HASH_BITS = 16;
+  /** @type {int32} */
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  /** @type {int32} */
   const MAX_CHAIN_STEPS = 128;
+  /** @type {uint32} */
   const KNUTH_MULTIPLIER = 2654435761;
 
   // ===== BIT STREAM UTILITIES =====
 
   /** MSB-first bit writer; a partial final byte is zero padded on flush. */
   class BitWriter {
+    /**
+     * @param {uint8[]} output - Byte array the completed bytes are appended to
+     */
     constructor(output) {
+      /** @type {uint8[]} */
       this.output = output;
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} bit - Bit (only the lowest bit is used)
+     */
     writeBit(bit) {
       this.buffer = OpCodes.Or32(this.buffer, OpCodes.Shl32(OpCodes.And32(bit, 1), 7 - this.bitsInBuffer));
       ++this.bitsInBuffer;
 
-      if (this.bitsInBuffer !== 8)
+      if (this.bitsInBuffer !== 8) {
         return;
+      }
 
-      this.output.push(this.buffer&0xFF);
+      this.output.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} count - Number of low bits written, most significant first
+     */
     writeBits(value, count) {
-      for (let i = 0; i < count; ++i)
+      for (let i = 0; i < count; ++i) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, count - 1 - i), 1));
+      }
     }
 
+    /** Append the partial last byte, if any */
     flushBits() {
-      if (this.bitsInBuffer <= 0)
+      if (this.bitsInBuffer <= 0) {
         return;
+      }
 
-      this.output.push(this.buffer&0xFF);
+      this.output.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
       this.bitsInBuffer = 0;
     }
@@ -108,38 +132,63 @@
 
   /** MSB-first bit reader. */
   class BitReader {
+    /**
+     * @param {uint8[]} data - Bytes to read
+     * @param {int32} offset - Index of the first byte
+     */
     constructor(data, offset) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = offset;
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
       if (this.bitsInBuffer === 0) {
-        if (this.pos >= this.data.length)
+        if (this.pos >= this.data.length) {
           throw new Error('Crush: unexpected end of stream while reading bits');
+        }
         this.buffer = this.data[this.pos++];
         this.bitsInBuffer = 8;
       }
 
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.buffer, 7), 1);
       this.buffer = OpCodes.And32(OpCodes.Shl32(this.buffer, 1), 0xFF);
       --this.bitsInBuffer;
       return bit;
     }
 
+    /**
+     * @param {int32} count - Number of bits
+     * @returns {uint32} Their value, first bit most significant
+     */
     readBits(count) {
+      /** @type {uint32} */
       let result = 0;
-      for (let i = 0; i < count; ++i)
+      for (let i = 0; i < count; ++i) {
         result = OpCodes.Or32(OpCodes.Shl32(result, 1), this.readBit());
+      }
       return result;
     }
   }
 
-  /** Index of the most significant set bit of a positive integer. */
+  /**
+   * Index of the most significant set bit of a positive integer.
+   * @param {uint32} value - Value
+   * @returns {int32} floor(log2(value)), 0 for 0 and 1
+   */
   function highestBitIndex(value) {
+    /** @type {int32} */
     let index = 0;
+    /** @type {uint32} */
     let v = OpCodes.Shr32(value, 1);
     while (v !== 0) {
       ++index;
@@ -148,27 +197,49 @@
     return index;
   }
 
-  /** Number of bits an Elias-gamma code for value occupies: 2*floor(log2(v)) + 1. */
+  /**
+   * Number of bits an Elias-gamma code for value occupies: 2*floor(log2(v)) + 1.
+   * @param {uint32} value - Value >= 1
+   * @returns {int32} Code length
+   */
   function gammaBits(value) {
     return 2 * highestBitIndex(value) + 1;
   }
 
+  /**
+   * @param {BitWriter} writer - Output bits
+   * @param {uint32} value - Value >= 1
+   */
   function writeGamma(writer, value) {
+    /** @type {int32} */
     const bits = highestBitIndex(value);
-    for (let i = 0; i < bits; ++i)
+    for (let i = 0; i < bits; ++i) {
       writer.writeBit(0);
-    for (let i = bits; i >= 0; --i)
+    }
+    for (let i = bits; i >= 0; --i) {
       writer.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+    }
   }
 
+  /**
+   * @param {BitReader} reader - Input bits
+   * @returns {uint32} Decoded value
+   */
   function readGamma(reader) {
+    /** @type {int32} */
     let zeros = 0;
-    while (reader.readBit() === 0)
+    /** @type {uint32} */
+    let bit = reader.readBit();
+    while (bit === 0) {
       ++zeros;
+      bit = reader.readBit();
+    }
 
+    /** @type {uint32} */
     let value = 1;
-    for (let i = 0; i < zeros; ++i)
+    for (let i = 0; i < zeros; ++i) {
       value = OpCodes.Or32(OpCodes.Shl32(value, 1), reader.readBit());
+    }
 
     return value;
   }
@@ -252,52 +323,99 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {CrushInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new CrushInstance(this, isInverse);
     }
   }
 
+  /**
+   * Longest match (length, offset) found for every position
+   */
+  class CrushMatches {
+    /**
+     * @param {int32[]} length - Match length per position (0 = none)
+     * @param {int32[]} offset - Match offset per position
+     */
+    constructor(length, offset) {
+      /** @type {int32[]} */
+      this.length = length;
+      /** @type {int32[]} */
+      this.offset = offset;
+    }
+  }
+
   class CrushInstance extends IAlgorithmInstance {
+    /**
+     * @param {CrushCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // true = decompress, false = compress
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
+      const fresh = [];
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0) return [];
-        const result = this.decompress(this.inputBuffer);
-        this.inputBuffer = [];
-        return result;
+        if (this.inputBuffer.length === 0) {
+          return fresh;
+        }
+        /** @type {uint8[]} */
+        const decoded = this.decompress(this.inputBuffer);
+        this.inputBuffer = fresh;
+        return decoded;
       }
 
       // Even empty input yields the fixed 4-byte size header.
+      /** @type {uint8[]} */
       const result = this.compress(this.inputBuffer);
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes (a missing array counts as empty)
+     * @returns {uint8[]} Size header and token bit stream
+     */
     compress(data) {
-      const src = data || [];
+      /** @type {uint8[]} */
+      let src = data;
+      if (!src) {
+        src = [];
+      }
+      /** @type {int32} */
       const n = src.length;
-      const output = [];
+      /** @type {uint8[]} */
+      const output = OpCodes.Unpack32LE(n);
 
-      output.push(n&0xFF);
-      output.push(OpCodes.Shr32(n, 8)&0xFF);
-      output.push(OpCodes.Shr32(n, 16)&0xFF);
-      output.push(OpCodes.Shr32(n, 24)&0xFF);
-
-      if (n === 0)
+      if (n === 0) {
         return output;
+      }
 
+      /** @type {CrushMatches} */
       const matches = this._findAllMatches(src);
+      /** @type {int32[]} */
       const choiceLen = this._optimalParse(matches.length, n);
 
+      /** @type {BitWriter} */
       const writer = new BitWriter(output);
+      /** @type {int32} */
       let i = 0;
       while (i < n) {
+        /** @type {int32} */
         const len = choiceLen[i];
         if (len >= MIN_MATCH) {
           writer.writeBit(1);
@@ -315,75 +433,125 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} data - Size header and token bit stream
+     * @returns {uint8[]} Decoded bytes
+     */
     decompress(data) {
-      const bytes = data || [];
-      if (bytes.length < 4)
-        return [];
+      /** @type {uint8[]} */
+      let bytes = data;
+      if (!bytes) {
+        bytes = [];
+      }
+      if (bytes.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      if (originalSize === 0)
-        return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {BitReader} */
       const reader = new BitReader(bytes, 4);
+      /** @type {uint8[]} */
       const dst = new Array(originalSize);
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < originalSize) {
+        /** @type {uint32} */
         const tag = reader.readBit();
         if (tag === 0) {
-          dst[pos++] = reader.readBits(8)&0xFF;
+          /** @type {uint32} */
+          const literal = reader.readBits(8);
+          dst[pos++] = OpCodes.And32(literal, 0xFF);
         } else {
-          const len = readGamma(reader) + MIN_MATCH - 1;
-          const off = reader.readBits(OFFSET_BITS) + 1;
+          /** @type {float64} */
+          const lengthCode = readGamma(reader);
+          /** @type {float64} */
+          const len = lengthCode + MIN_MATCH - 1;
+          /** @type {uint32} */
+          const offsetCode = reader.readBits(OFFSET_BITS);
+          /** @type {int32} */
+          const off = offsetCode + 1;
 
-          if (off > pos)
+          if (off > pos) {
             throw new Error('Crush: match offset ' + off + ' invalid at position ' + pos);
+          }
 
-          for (let k = 0; k < len && pos < originalSize; ++k, ++pos)
+          for (let k = 0; k < len && pos < originalSize; ++k, ++pos) {
             dst[pos] = dst[pos - off];
+          }
         }
       }
 
       return dst;
     }
 
-    /** Longest match reachable within the window for every position. */
+    /**
+     * Longest match reachable within the window for every position.
+     * @param {uint8[]} src - Input bytes
+     * @returns {CrushMatches} Match length and offset per position
+     */
     _findAllMatches(src) {
+      /** @type {int32} */
       const n = src.length;
+      /** @type {int32[]} */
       const length = new Int32Array(n);
+      /** @type {int32[]} */
       const offset = new Int32Array(n);
 
+      /** @type {int32[]} */
       const hashHead = new Int32Array(HASH_SIZE);
       hashHead.fill(-1);
+      /** @type {int32[]} */
       const chain = new Int32Array(n);
 
       for (let i = 0; i < n; ++i) {
         if (i + MIN_MATCH <= n) {
+          /** @type {uint32} */
           const h = this._hash3(src, i);
+          /** @type {int32} */
           let candidate = hashHead[h];
+          /** @type {int32} */
           const minPos = Math.max(0, i - MAX_WINDOW);
+          /** @type {int32} */
           const maxLen = n - i;
+          /** @type {int32} */
           let bestLen = 0;
+          /** @type {int32} */
           let bestOff = 0;
+          /** @type {int32} */
           let steps = MAX_CHAIN_STEPS;
 
           while (candidate >= minPos && steps-- > 0) {
             if (bestLen === 0 || src[candidate + bestLen] === src[i + bestLen]) {
+              /** @type {int32} */
               let len = 0;
-              while (len < maxLen && src[candidate + len] === src[i + len])
+              while (len < maxLen && src[candidate + len] === src[i + len]) {
                 ++len;
+              }
 
               if (len > bestLen) {
                 bestLen = len;
                 bestOff = i - candidate;
-                if (bestLen >= maxLen)
+                if (bestLen >= maxLen) {
                   break;
+                }
               }
             }
 
+            /** @type {int32} */
             const prev = chain[candidate];
-            if (prev >= candidate)
+            if (prev >= candidate) {
               break;
+            }
             candidate = prev;
           }
 
@@ -397,7 +565,7 @@
         }
       }
 
-      return { length: length, offset: offset };
+      return new CrushMatches(length, offset);
     }
 
     /**
@@ -405,30 +573,45 @@
      * lengths at each position are the longest length reachable in each
      * Elias-gamma cost bracket, since all lengths inside a bracket cost the
      * same number of bits.
+     * @param {int32[]} matchLen - Longest match length per position
+     * @param {int32} n - Input length
+     * @returns {int32[]} Chosen match length per position (0 = literal)
      */
     _optimalParse(matchLen, n) {
+      /** @type {int32} */
       const literalCost = 1 + 8;
+      /** @type {int32[]} */
       const cost = new Int32Array(n + 1);
+      /** @type {int32[]} */
       const choiceLen = new Int32Array(n);
 
       for (let i = n - 1; i >= 0; --i) {
+        /** @type {int32} */
         let best = literalCost + cost[i + 1];
+        /** @type {int32} */
         let bestLen = 0;
 
+        /** @type {int32} */
         const maxLen = matchLen[i];
         if (maxLen >= MIN_MATCH) {
+          /** @type {int32} */
           const maxV = maxLen - MIN_MATCH + 1;
+          /** @type {int32} */
           let upper = 1;
           for (;;) {
+            /** @type {int32} */
             const v = Math.min(maxV, upper);
+            /** @type {int32} */
             const len = v + MIN_MATCH - 1;
+            /** @type {int32} */
             const candidateCost = 1 + gammaBits(v) + OFFSET_BITS + cost[i + len];
             if (candidateCost < best) {
               best = candidateCost;
               bestLen = len;
             }
-            if (v === maxV)
+            if (v === maxV) {
               break;
+            }
             upper = upper * 2 + 1;
           }
         }
@@ -440,9 +623,21 @@
       return choiceLen;
     }
 
-    /** Knuth multiplicative hash over the three bytes at pos, folded to 16 bits. */
+    /**
+     * Knuth multiplicative hash over the three bytes at pos, folded to 16 bits.
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position of the three bytes
+     * @returns {uint32} Bucket
+     */
     _hash3(data, pos) {
-      const key = data[pos] * 65536 + data[pos + 1] * 256 + data[pos + 2];
+      /** @type {int32} */
+      const b0 = data[pos];
+      /** @type {int32} */
+      const b1 = data[pos + 1];
+      /** @type {int32} */
+      const b2 = data[pos + 2];
+      /** @type {int32} */
+      const key = b0 * 65536 + b1 * 256 + b2;
       return OpCodes.Shr32(OpCodes.Mul32(key, KNUTH_MULTIPLIER), 32 - HASH_BITS);
     }
   }
