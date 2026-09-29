@@ -54,9 +54,14 @@
   const ODD_CORRECTION = 0x2AAAAAAA;
 
   // Per-stage round constants XORed into word 0 only; each is the previous one doubled.
+  /** @type {uint32[]} */
   const EXTRA = [0x0DAE, 0x1B5C, 0x36B8, 0x6D70, 0xDAE0, 0x1B5C0, 0x36B80];
 
   // "theta" XOR diffusion layer shared by encryption and decryption (it is its own inverse).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Diffused words
+   */
   function diffuse(w) {
     const e = OpCodes.Xor32(w[2], w[0]);
     const a = OpCodes.Xor32(w[1], w[3]);
@@ -65,6 +70,10 @@
 
   // Forward round transform. The multiplication step is intentionally omitted: see the
   // implementation-quirk note above (computed but discarded in the original).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Words after the forward round
+   */
   function roundForward(w) {
     const s = w.slice();
     if (OpCodes.And32(s[0], 1)) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
@@ -72,6 +81,10 @@
   }
 
   // Inverse round transform: diffuse first, then the same odd correction (both are self-inverse).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Words after the inverse round
+   */
   function roundInverse(w) {
     const s = diffuse(w);
     if (OpCodes.And32(s[0], 1)) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
@@ -130,26 +143,39 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMMB2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMMB2Instance(this, isInverse);
     }
   }
 
   class DarkCryptMMB2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMMB2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._K = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MMB2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MMB2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K = [
@@ -160,6 +186,9 @@
       ];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -172,8 +201,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -183,6 +213,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
+     */
     _blockToWords(block) {
       return [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
@@ -192,6 +226,10 @@
       ];
     }
 
+    /**
+     * @param {uint32[]} w - Four state words
+     * @returns {uint8[]} 16-byte block
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -199,6 +237,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
@@ -213,9 +255,14 @@
       return this._wordsToBlock(w);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
+      /** @type {int32[]} */
       const encRounds = [6, 5, 4, 3, 2, 1, 0];
       for (let idx = 0; idx < STAGES; idx++) {
         const r = encRounds[idx];

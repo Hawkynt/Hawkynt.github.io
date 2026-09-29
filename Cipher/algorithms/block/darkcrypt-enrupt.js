@@ -102,33 +102,50 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptEnruptInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptEnruptInstance(this, isInverse);
     }
   }
 
   class DarkCryptEnruptInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptEnruptAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._keyWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 64;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._keyWords = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Enrupt-512-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Enrupt-512-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
-      this._keyWords = [];
+      this._keyWords = new Array(WORDS);
       for (let k = 0; k < WORDS; k++)
         this._keyWords[k] = OpCodes.Pack32LE(keyBytes[4*k], keyBytes[4*k+1], keyBytes[4*k+2], keyBytes[4*k+3]);
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -141,8 +158,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -153,47 +171,72 @@
     }
 
     // f(a,b,kw,i) = 9 * ror( (2*a) ^ b ^ kw ^ i, 8 )
+    /**
+     * @param {uint32} a - Previous state word
+     * @param {uint32} b - Next state word
+     * @param {uint32} kw - Key word
+     * @param {int32} i - Step number
+     * @returns {uint32} Round function value
+     */
     _f(a, b, kw, i) {
-      let t = OpCodes.ToUint32(a + a);
+      let t = OpCodes.Add32(a, a);
       t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(t, b), OpCodes.Xor32(kw, i)));
       t = OpCodes.RotR32(t, 8);
-      return OpCodes.ToUint32(t * 9);
+      return OpCodes.Mul32(t, 9);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} State words
+     */
     _loadState(block) {
-      const S = [];
+      /** @type {uint32[]} */
+      const words = new Array(WORDS);
       for (let k = 0; k < WORDS; k++)
-        S[k] = OpCodes.Pack32LE(block[4*k], block[4*k+1], block[4*k+2], block[4*k+3]);
-      return S;
+        words[k] = OpCodes.Pack32LE(block[4*k], block[4*k+1], block[4*k+2], block[4*k+3]);
+      return words;
     }
 
-    _storeState(S) {
+    /**
+     * @param {uint32[]} words - State words
+     * @returns {uint8[]} State bytes
+     */
+    _storeState(words) {
+      /** @type {uint8[]} */
       const out = [];
       for (let k = 0; k < WORDS; k++)
-        out.push(...OpCodes.Unpack32LE(S[k]));
+        out.push(...OpCodes.Unpack32LE(words[k]));
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const S = this._loadState(block);
+      const words = this._loadState(block);
       const K = this._keyWords;
       for (let i = 1; i <= STEPS; i++) {
         const kw = K[i % WORDS];
-        const t = OpCodes.ToUint32(OpCodes.Xor32(this._f(S[(i-1) % WORDS], S[(i+1) % WORDS], kw, i), kw));
-        S[i % WORDS] = OpCodes.ToUint32(OpCodes.Xor32(S[i % WORDS], t));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(this._f(words[(i-1) % WORDS], words[(i+1) % WORDS], kw, i), kw));
+        words[i % WORDS] = OpCodes.ToUint32(OpCodes.Xor32(words[i % WORDS], t));
       }
-      return this._storeState(S);
+      return this._storeState(words);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const S = this._loadState(block);
+      const words = this._loadState(block);
       const K = this._keyWords;
       for (let i = STEPS; i >= 1; i--) {
         const kw = K[i % WORDS];
-        const t = OpCodes.ToUint32(OpCodes.Xor32(this._f(S[(i-1) % WORDS], S[(i+1) % WORDS], kw, i), kw));
-        S[i % WORDS] = OpCodes.ToUint32(OpCodes.Xor32(S[i % WORDS], t));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(this._f(words[(i-1) % WORDS], words[(i+1) % WORDS], kw, i), kw));
+        words[i % WORDS] = OpCodes.ToUint32(OpCodes.Xor32(words[i % WORDS], t));
       }
-      return this._storeState(S);
+      return this._storeState(words);
     }
   }
 

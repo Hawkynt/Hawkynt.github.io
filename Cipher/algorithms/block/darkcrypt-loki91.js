@@ -61,17 +61,27 @@
   // Standard LOKI'91 S-box parameters: 16 rows, each an irreducible-polynomial-like
   // GF(2^8) modulus (Gen) and a fixed exponent (Exp=31), matching the DarkCrypt
   // implementation's S-box generator/exponent table.
+  /** @type {uint16[]} */
   const GEN = [0x177, 0x17b, 0x187, 0x18b, 0x18d, 0x19f, 0x1a3, 0x1a9,
                0x1b1, 0x1bd, 0x1c3, 0x1cf, 0x1d7, 0x1dd, 0x1e7, 0x1f3];
+  /** @type {uint8[]} */
   const EXP = [31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31];
 
   // Standard LOKI'91 32-bit P-permutation table (output bit (31-i) = input bit P_TABLE[i]),
   // matching the DarkCrypt implementation's permutation table.
+  /** @type {uint8[]} */
   const P_TABLE = [31, 23, 15, 7, 30, 22, 14, 6, 29, 21, 13, 5, 28, 20, 12, 4,
                    27, 19, 11, 3, 26, 18, 10, 2, 25, 17, 9, 1, 24, 16, 8, 0];
 
   // GF(2^8) multiply modulo the given generator polynomial (Russian-peasant algorithm).
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @param {uint32} gen - Modulus polynomial
+   * @returns {uint32} Product
+   */
   function gfMultiply(a, b, gen) {
+    /** @type {uint32} */
     let result = 0;
     a = OpCodes.And32(a, 0xFFFF);
     b = OpCodes.And32(b, 0xFFFF);
@@ -85,9 +95,16 @@
   }
 
   // GF(2^8) modular exponentiation via square-and-multiply.
+  /**
+   * @param {uint32} base - Base
+   * @param {uint32} exp - Exponent
+   * @param {uint32} gen - Modulus polynomial
+   * @returns {uint32} Power
+   */
   function gfPow(base, exp, gen) {
-    if (base === 0) return 0;
+    /** @type {uint32} */
     let result = 1;
+    if (base === 0) return 0;
     let b = OpCodes.And32(base, 0xFFFF);
     let e = exp;
     while (e !== 0) {
@@ -101,15 +118,24 @@
   // LOKI'91 S-box: 12-bit input -> row (4 bits from input[11,10,1,0]) selects the
   // GF(2^8) modulus/exponent; column = ((input>>2)&0xFF) - 17*row - 1 (mod 256);
   // output = column^Exp(row) mod Gen(row) in GF(2^8).
+  /**
+   * @param {uint32} x - 12-bit input
+   * @returns {uint32} 8-bit output
+   */
   function sBox(x) {
     const row = OpCodes.And32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(x, 8), 0xC), OpCodes.And32(x, 3)), 0xF);
     const col8 = OpCodes.And32(OpCodes.Shr32(x, 2), 0xFF);
-    const adj = OpCodes.And32(~(row * 17), 0xFF);
+    const adj = OpCodes.And32(~OpCodes.Mul32(row, 17), 0xFF);
     const col = OpCodes.And32(col8 + adj, 0xFF);
     return gfPow(col, EXP[row], GEN[row]);
   }
 
+  /**
+   * @param {uint32} x - Input word
+   * @returns {uint32} Permuted word
+   */
   function permuteP(x) {
+    /** @type {uint32} */
     let out = 0;
     for (let i = 0; i < 32; i++) {
       const bit = OpCodes.And32(OpCodes.Shr32(x, P_TABLE[i]), 1);
@@ -120,13 +146,18 @@
 
   // LOKI'91 round function: f(R,K) = P(S(E(R XOR K))), with the standard overlapping
   // 12-bit E-expansion (bits [0-11], [8-19], [16-27], and the wrap-around [24-31,0-3]).
+  /**
+   * @param {uint32} R - Right half
+   * @param {uint32} K - Round key
+   * @returns {uint32} Round function output
+   */
   function roundF(R, K) {
-    const t = OpCodes.XorN(R, K);
+    const t = OpCodes.Xor32(R, K);
     const e0 = OpCodes.And32(t, 0xFFF);
     const e1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFFF);
     const e2 = OpCodes.And32(OpCodes.Shr32(t, 16), 0xFFF);
     const e3 = OpCodes.And32(OpCodes.RotL32(t, 8), 0xFFF);
-    const s = OpCodes.ToUint32(sBox(e0) | OpCodes.Shl32(sBox(e1), 8) | OpCodes.Shl32(sBox(e2), 16) | OpCodes.Shl32(sBox(e3), 24));
+    const s = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(sBox(e0), OpCodes.Shl32(sBox(e1), 8)), OpCodes.Shl32(sBox(e2), 16)), OpCodes.Shl32(sBox(e3), 24));
     return permuteP(s);
   }
 
@@ -182,38 +213,57 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptLOKI91Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptLOKI91Instance(this, isInverse);
     }
   }
 
   class DarkCryptLOKI91Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptLOKI91Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LOKI'91-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LOKI'91-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // The 512-bit key is used directly as 16 raw 32-bit round subkeys (native byte order),
       // one word per round -- no key-rotation schedule (unlike standard 64-bit-key LOKI'91).
-      this.roundKeys = new Array(ROUNDS);
+      /** @type {uint32[]} */
+      const rk = [];
       for (let i = 0; i < ROUNDS; i++) {
-        this.roundKeys[i] = OpCodes.Pack32LE(
+        rk.push(OpCodes.Pack32LE(
           this._key[4 * i], this._key[4 * i + 1], this._key[4 * i + 2], this._key[4 * i + 3]
-        );
+        ));
       }
+      this.roundKeys = rk;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -226,8 +276,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -239,25 +290,33 @@
 
     // Only bytes 0-7 are transformed by the real 64-bit LOKI'91 Feistel cipher;
     // bytes 8-15 pass through unchanged. Data words are big-endian internally.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let X = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let Y = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       for (let i = 0; i < ROUNDS; i += 2) {
-        X = OpCodes.XorN(X, roundF(Y, this.roundKeys[i]));
-        Y = OpCodes.XorN(Y, roundF(X, this.roundKeys[i + 1]));
+        X = OpCodes.Xor32(X, roundF(Y, this.roundKeys[i]));
+        Y = OpCodes.Xor32(Y, roundF(X, this.roundKeys[i + 1]));
       }
 
       return [...OpCodes.Unpack32BE(Y), ...OpCodes.Unpack32BE(X), ...block.slice(8, 16)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let X = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let Y = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       for (let i = ROUNDS - 1; i > 0; i -= 2) {
-        X = OpCodes.XorN(X, roundF(Y, this.roundKeys[i]));
-        Y = OpCodes.XorN(Y, roundF(X, this.roundKeys[i - 1]));
+        X = OpCodes.Xor32(X, roundF(Y, this.roundKeys[i]));
+        Y = OpCodes.Xor32(Y, roundF(X, this.roundKeys[i - 1]));
       }
 
       return [...OpCodes.Unpack32BE(Y), ...OpCodes.Unpack32BE(X), ...block.slice(8, 16)];

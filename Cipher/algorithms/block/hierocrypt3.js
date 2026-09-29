@@ -90,21 +90,38 @@ class Hierocrypt3 extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {Hierocrypt3Instance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new Hierocrypt3Instance(this, isInverse);
   }
 }
 
 class Hierocrypt3Instance extends IBlockCipherInstance {
+  /**
+   * @param {Hierocrypt3} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {KeySize[]} */
+    this._keySizes = algorithm.SupportedKeySizes;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[][]|null} */
     this._roundKeys = null;
+    /** @type {int32} */
     this._rounds = 0;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -112,12 +129,18 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this._keySizes;
+    let isValidSize = false;
+    for (let s = 0; s < sizes.length; s++) {
+      const ks = sizes[s];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -125,6 +148,9 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     this._roundKeys = this._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() { return this._key ? [...this._key] : null; }
 
   Feed(data) {
@@ -137,13 +163,14 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+    /** @type {uint8[]} */
     const output = [];
     const blockSize = 16;
 
     for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
       const block = this.inputBuffer.slice(i, i + blockSize);
       if (block.length !== blockSize) {
-        throw new Error(`Incomplete block: ${block.length} bytes`);
+        throw new Error("Incomplete block: " + block.length + " bytes");
       }
 
       const processedBlock = this.isInverse ?
@@ -157,6 +184,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return output;
   }
 
+  /**
+   * @param {int32} keyLength - Key length in bytes
+   * @returns {int32} Round count
+   */
   _getRounds(keyLength) {
     switch (keyLength) {
       case 16: return 7;  // 6.5 rounds (7 for simplicity)
@@ -166,8 +197,13 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     }
   }
 
+  /**
+   * @param {uint8[]} key - Key bytes
+   * @returns {uint8[][]} Round keys
+   */
   _expandKey(key) {
     const totalRounds = this._rounds + 1;
+    /** @type {uint8[][]} */
     const roundKeys = new Array(totalRounds);
 
     for (let i = 0; i < totalRounds; i++) {
@@ -181,14 +217,18 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     for (let round = 1; round < totalRounds; round++) {
       for (let i = 0; i < 16; i++) {
         roundKeys[round][i] = roundKeys[round - 1][i];
-        roundKeys[round][i] = OpCodes.XorN(roundKeys[round][i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.AndN(round, 7)));
-        roundKeys[round][i] = OpCodes.XorN(roundKeys[round][i], OpCodes.AndN(OpCodes.Add32(round * 16, i), 0xFF));
+        roundKeys[round][i] = OpCodes.Xor32(roundKeys[round][i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.And32(round, 7)));
+        roundKeys[round][i] = OpCodes.Xor32(roundKeys[round][i], OpCodes.And32(OpCodes.Add32(round * 16, i), 0xFF));
       }
     }
 
     return roundKeys;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(data) {
     let state = new Uint8Array(data);
 
@@ -205,6 +245,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return state;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(data) {
     let state = new Uint8Array(data);
 
@@ -221,12 +265,21 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return state;
   }
 
+  /**
+   * @param {uint8[]} state - State bytes, updated in place
+   * @param {int32} round - Round-key index
+   */
   _addRoundKey(state, round) {
     for (let i = 0; i < 16; i++) {
-      state[i] = OpCodes.XorN(state[i], this._roundKeys[round][i]);
+      state[i] = OpCodes.Xor32(state[i], this._roundKeys[round][i]);
     }
   }
 
+  /**
+   * @param {uint8[]} state - State bytes
+   * @param {int32} round - Round number
+   * @returns {uint8[]} New state
+   */
   _xsBoxLayer(state, round) {
     const newState = new Uint8Array(16);
 
@@ -245,6 +298,11 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return newState;
   }
 
+  /**
+   * @param {uint8[]} state - State bytes
+   * @param {int32} round - Round number
+   * @returns {uint8[]} New state
+   */
   _invXsBoxLayer(state, round) {
     const newState = new Uint8Array(state);
 
@@ -263,15 +321,25 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return newState;
   }
 
+  /**
+   * @param {uint8} byte - Input byte
+   * @param {int32} round - Round number
+   * @returns {uint8} Substituted byte
+   */
   _sBox(byte, round) {
     let result = byte;
-    result = OpCodes.XorN(result, OpCodes.RotL8(result, 1));
-    result = OpCodes.XorN(result, OpCodes.RotL8(result, 2));
-    result = OpCodes.XorN(result, OpCodes.AndN(round * 17, 0xFF));
-    result = OpCodes.AndN(OpCodes.XorN(result * 7, OpCodes.Shr32(result, 4)), 0xFF);
+    result = OpCodes.Xor32(result, OpCodes.RotL8(result, 1));
+    result = OpCodes.Xor32(result, OpCodes.RotL8(result, 2));
+    result = OpCodes.Xor32(result, OpCodes.And32(round * 17, 0xFF));
+    result = OpCodes.And32(OpCodes.Xor32(result * 7, OpCodes.Shr32(result, 4)), 0xFF);
     return result;
   }
 
+  /**
+   * @param {uint8} byte - Input byte
+   * @param {int32} round - Round number
+   * @returns {uint8} Preimage byte
+   */
   _invSBox(byte, round) {
     for (let i = 0; i < 256; i++) {
       if (this._sBox(i, round) === byte) {
@@ -281,6 +349,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return byte;
   }
 
+  /**
+   * @param {uint8[]} state - State bytes
+   * @returns {uint8[]} New state
+   */
   _linearDiffusion(state) {
     const newState = new Uint8Array(16);
 
@@ -289,7 +361,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
         newState[i * 4 + j] = 0;
         for (let k = 0; k < 4; k++) {
           const mixValue = this._getMixValue(j, k);
-          newState[i * 4 + j] = OpCodes.XorN(newState[i * 4 + j], OpCodes.GF256Mul(state[i * 4 + k], mixValue));
+          newState[i * 4 + j] = OpCodes.Xor32(newState[i * 4 + j], OpCodes.GF256Mul(state[i * 4 + k], mixValue));
         }
       }
     }
@@ -305,6 +377,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return newState;
   }
 
+  /**
+   * @param {uint8[]} state - State bytes
+   * @returns {uint8[]} New state
+   */
   _invLinearDiffusion(state) {
     const tempState = new Uint8Array(state);
 
@@ -322,7 +398,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
         newState[i * 4 + j] = 0;
         for (let k = 0; k < 4; k++) {
           const mixValue = this._getInvMixValue(j, k);
-          newState[i * 4 + j] = OpCodes.XorN(newState[i * 4 + j], OpCodes.GF256Mul(tempState[i * 4 + k], mixValue));
+          newState[i * 4 + j] = OpCodes.Xor32(newState[i * 4 + j], OpCodes.GF256Mul(tempState[i * 4 + k], mixValue));
         }
       }
     }
@@ -330,7 +406,13 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return newState;
   }
 
+  /**
+   * @param {int32} row - Matrix row
+   * @param {int32} col - Matrix column
+   * @returns {uint8} Coefficient
+   */
   _getMixValue(row, col) {
+    /** @type {uint8[][]} */
     const mixMatrix = [
       [0x02, 0x03, 0x01, 0x01],
       [0x01, 0x02, 0x03, 0x01],
@@ -340,7 +422,13 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return mixMatrix[row][col];
   }
 
+  /**
+   * @param {int32} row - Matrix row
+   * @param {int32} col - Matrix column
+   * @returns {uint8} Coefficient
+   */
   _getInvMixValue(row, col) {
+    /** @type {uint8[][]} */
     const invMixMatrix = [
       [0x0E, 0x0B, 0x0D, 0x09],
       [0x09, 0x0E, 0x0B, 0x0D],

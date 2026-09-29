@@ -61,6 +61,7 @@
   const ROUNDS = 10;
 
   // DarkCrypt's C2 "SecretConstant" S-box (DarkCrypt's own constant, not the 4C Entity's licensed production S-box).
+  /** @type {uint8[]} */
   const SBOX = [
     0xA3,0xD7,0x09,0x83,0xF8,0x48,0xF6,0xF4,0xB3,0x21,0x15,0x78,0x99,0xB1,0xAF,0xF9,
     0xE7,0x2D,0x4D,0x8A,0xCE,0x4C,0xCA,0x2E,0x52,0x95,0xD9,0x1E,0x4E,0x38,0x44,0x28,
@@ -134,31 +135,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptC2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptC2Instance(this, isInverse);
     }
   }
 
   class DarkCryptC2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptC2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. C2 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. C2 (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -171,8 +189,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -183,6 +202,11 @@
     }
 
     // Round function F(data,key): S-box substitution plus byte/word rotations.
+    /**
+     * @param {uint32} data - Right half
+     * @param {uint32} key - Round key
+     * @returns {uint32} Round function output
+     */
     _f(data, key) {
       const t = OpCodes.ToUint32(data + key);
       const v0 = SBOX[OpCodes.And32(t, 0xFF)];
@@ -194,9 +218,14 @@
     }
 
     // Key schedule: only the first 7 bytes (56 bits) of the 8-byte key are used.
+    /**
+     * @param {uint8[]} key - 8-byte key
+     * @returns {uint32[]} Round keys
+     */
     _scheduleKey(key) {
       let L = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(key[0], 16), OpCodes.Shl32(key[1], 8)), key[2]));
       let R = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(key[3], 24), OpCodes.Shl32(key[4], 16)), OpCodes.Shl32(key[5], 8)), key[6]));
+      /** @type {uint32[]} */
       const rk = new Array(ROUNDS);
       for (let i = 0; i < ROUNDS; i++) {
         L = OpCodes.And32(L, 0xFFFFFF);
@@ -210,6 +239,10 @@
       return rk;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let L = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -224,6 +257,10 @@
       return [...OpCodes.Unpack32LE(L), ...OpCodes.Unpack32LE(R)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let L = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

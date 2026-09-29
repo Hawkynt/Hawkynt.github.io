@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SHXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,26 +154,22 @@
   class SHXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SHXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128-bit blocks
       this.KeySize = 0;
 
-      // SHX configuration constants (CEX specification)
-      this.ROUNDS_CONFIG = {
-        256: 40,  // SHX-256: 40 rounds
-        512: 48,  // SHX-512: 48 rounds
-        1024: 64  // SHX-1024: 64 rounds
-      };
-
       // Serpent S-boxes (original specification)
+      /** @type {uint8[][]} */
       this.SBOX = [
         // S0
         [3,8,15,1,10,6,5,11,14,13,4,2,7,0,9,12],
@@ -194,6 +190,7 @@
       ];
 
       // Inverse S-boxes for decryption
+      /** @type {uint8[][]} */
       this.INV_SBOX = [
         // IS0
         [13,3,11,0,10,6,5,12,1,14,4,7,15,9,8,2],
@@ -214,10 +211,25 @@
       ];
 
       // Golden ratio constant for key schedule
+      /** @type {uint32} */
       this.PHI = 0x9e3779b9;
 
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
+      /** @type {int32} */
       this.numRounds = 0;
+    }
+
+    /**
+     * Round count for a key size (SHX configuration, CEX specification)
+     * @param {int32} keyBits - Key size in bits
+     * @returns {int32} 40 for SHX-256, 48 for SHX-512, 64 for SHX-1024, else 0
+     */
+    _roundsFor(keyBits) {
+      if (keyBits === 256) return 40;
+      if (keyBits === 512) return 48;
+      if (keyBits === 1024) return 64;
+      return 0;
     }
 
     // Property setter for key
@@ -241,13 +253,14 @@
       }
 
       const keyBits = keyBytes.length * 8;
-      if (!this.ROUNDS_CONFIG[keyBits]) {
-        throw new Error(`Invalid SHX key size: ${keyBits} bits. Supported: 256, 512, 1024 bits`);
+      const rounds = this._roundsFor(keyBits);
+      if (rounds === 0) {
+        throw new Error("Invalid SHX key size: " + keyBits + " bits. Supported: 256, 512, 1024 bits");
       }
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this.numRounds = this.ROUNDS_CONFIG[keyBits];
+      this.numRounds = rounds;
 
       // Generate key schedule using extended Serpent key expansion
       this.roundKeys = this._generateKeySchedule(keyBytes, this.numRounds);
@@ -295,6 +308,7 @@
         throw new Error("SHX requires input length to be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process data in 16-byte blocks
@@ -311,57 +325,69 @@
     }
 
     // Generate extended key schedule based on Serpent with extended rounds
+    /**
+     * @param {uint8[]} masterKey - Key bytes
+     * @param {int32} numRounds - Number of rounds
+     * @returns {uint32[][]} numRounds + 1 round keys of four words
+     */
     _generateKeySchedule(masterKey, numRounds) {
       const totalRoundKeys = numRounds + 1;
       const keyWords = Math.max(8, Math.ceil(masterKey.length / 4)); // At least 8 words
 
       // Pad master key to 32 bytes minimum
+      /** @type {uint8[]} */
       const paddedKey = [...masterKey];
       while (paddedKey.length < keyWords * 4) {
         paddedKey.push(0);
       }
 
       // Convert to 32-bit words
-      const w = [];
+      /** @type {uint32[]} */
+      const words = [];
       for (let i = 0; i < keyWords; i++) {
         const idx = i * 4;
-        w[i] = OpCodes.Pack32LE(
-          paddedKey[idx] || 0,
-          paddedKey[idx + 1] || 0,
-          paddedKey[idx + 2] || 0,
-          paddedKey[idx + 3] || 0
-        );
+        words.push(OpCodes.Pack32LE(
+          paddedKey[idx],
+          paddedKey[idx + 1],
+          paddedKey[idx + 2],
+          paddedKey[idx + 3]
+        ));
       }
 
       // Generate extended key schedule
       for (let i = keyWords; i < totalRoundKeys * 4; i++) {
-        const temp1 = OpCodes.Xor32(w[i-8], w[i-5]);
-        const temp2 = OpCodes.Xor32(temp1, w[i-3]);
-        const temp3 = OpCodes.Xor32(temp2, w[i-1]);
+        const temp1 = OpCodes.Xor32(words[i-8], words[i-5]);
+        const temp2 = OpCodes.Xor32(temp1, words[i-3]);
+        const temp3 = OpCodes.Xor32(temp2, words[i-1]);
         const temp4 = OpCodes.Xor32(temp3, this.PHI);
-        w[i] = OpCodes.RotL32(OpCodes.Xor32(temp4, i), 11);
+        words.push(OpCodes.RotL32(OpCodes.Xor32(temp4, i), 11));
       }
 
       // Group into round keys and apply S-box transformations
-      const roundKeys = [];
+      /** @type {uint32[][]} */
+      const schedule = [];
       for (let round = 0; round < totalRoundKeys; round++) {
         const offset = round * 4;
-        let k0 = w[offset];
-        let k1 = w[offset + 1];
-        let k2 = w[offset + 2];
-        let k3 = w[offset + 3];
+        let k0 = words[offset];
+        let k1 = words[offset + 1];
+        let k2 = words[offset + 2];
+        let k3 = words[offset + 3];
 
         // Apply S-box transformation for key schedule
         const sboxIndex = (3 - (round % 4)) % 8;
         [k0, k1, k2, k3] = this._applySBox(k0, k1, k2, k3, sboxIndex);
 
-        roundKeys.push([k0, k1, k2, k3]);
+        schedule.push([k0, k1, k2, k3]);
       }
 
-      return roundKeys;
+      return schedule;
     }
 
     // Process a single 16-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       // Convert block to 32-bit words (little-endian)
       let x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -430,43 +456,70 @@
       return [...bytes0, ...bytes1, ...bytes2, ...bytes3];
     }
 
+    // Process each nibble of a word through a 4-bit S-box
+    /**
+     * @param {uint8[]} box - 16-entry S-box
+     * @param {uint32} word - Input word
+     * @returns {uint32} Substituted word
+     */
+    _substituteWord(box, word) {
+      /** @type {uint32} */
+      let result = 0;
+      for (let i = 0; i < 8; i++) {
+        const nibble = OpCodes.And32(OpCodes.Shr32(word, i * 4), 0xF);
+        result = OpCodes.Or32(result, OpCodes.Shl32(box[nibble], i * 4));
+      }
+      return result;
+    }
+
     // Apply S-box substitution
+    /**
+     * @param {uint32} x0 - Word 0
+     * @param {uint32} x1 - Word 1
+     * @param {uint32} x2 - Word 2
+     * @param {uint32} x3 - Word 3
+     * @param {int32} sboxIndex - S-box number
+     * @returns {uint32[]} The four substituted words
+     */
     _applySBox(x0, x1, x2, x3, sboxIndex) {
       const sbox = this.SBOX[sboxIndex % 8];
-
-      // Process each nibble through S-box
-      const processWord = (word) => {
-        let result = 0;
-        for (let i = 0; i < 8; i++) {
-          const nibble = OpCodes.Shr32(word, i * 4)&0xF;
-          const substituted = sbox[nibble];
-          result |= OpCodes.Shl32(substituted, i * 4);
-        }
-        return OpCodes.ToUint32(result);
-      };
-
-      return [processWord(x0), processWord(x1), processWord(x2), processWord(x3)];
+      /** @type {uint32[]} */
+      const out = [];
+      out.push(this._substituteWord(sbox, x0));
+      out.push(this._substituteWord(sbox, x1));
+      out.push(this._substituteWord(sbox, x2));
+      out.push(this._substituteWord(sbox, x3));
+      return out;
     }
 
     // Apply inverse S-box substitution
+    /**
+     * @param {uint32} x0 - Word 0
+     * @param {uint32} x1 - Word 1
+     * @param {uint32} x2 - Word 2
+     * @param {uint32} x3 - Word 3
+     * @param {int32} sboxIndex - S-box number
+     * @returns {uint32[]} The four substituted words
+     */
     _applyInvSBox(x0, x1, x2, x3, sboxIndex) {
       const invSbox = this.INV_SBOX[sboxIndex % 8];
-
-      // Process each nibble through inverse S-box
-      const processWord = (word) => {
-        let result = 0;
-        for (let i = 0; i < 8; i++) {
-          const nibble = OpCodes.Shr32(word, i * 4)&0xF;
-          const substituted = invSbox[nibble];
-          result |= OpCodes.Shl32(substituted, i * 4);
-        }
-        return OpCodes.ToUint32(result);
-      };
-
-      return [processWord(x0), processWord(x1), processWord(x2), processWord(x3)];
+      /** @type {uint32[]} */
+      const out = [];
+      out.push(this._substituteWord(invSbox, x0));
+      out.push(this._substituteWord(invSbox, x1));
+      out.push(this._substituteWord(invSbox, x2));
+      out.push(this._substituteWord(invSbox, x3));
+      return out;
     }
 
     // Linear transformation (Serpent's L function)
+    /**
+     * @param {uint32} x0 - Word 0
+     * @param {uint32} x1 - Word 1
+     * @param {uint32} x2 - Word 2
+     * @param {uint32} x3 - Word 3
+     * @returns {uint32[]} The four transformed words
+     */
     _linearTransform(x0, x1, x2, x3) {
       x0 = OpCodes.RotL32(x0, 13);
       x2 = OpCodes.RotL32(x2, 3);
@@ -483,6 +536,13 @@
     }
 
     // Inverse linear transformation
+    /**
+     * @param {uint32} x0 - Word 0
+     * @param {uint32} x1 - Word 1
+     * @param {uint32} x2 - Word 2
+     * @param {uint32} x3 - Word 3
+     * @returns {uint32[]} The four transformed words
+     */
     _invLinearTransform(x0, x1, x2, x3) {
       x2 = OpCodes.RotR32(x2, 22);
       x0 = OpCodes.RotR32(x0, 5);

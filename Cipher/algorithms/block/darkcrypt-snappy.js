@@ -62,6 +62,7 @@
   const BLOCK_BYTES = 8;
 
   // Fixed 256-byte substitution box.
+  /** @type {uint8[]} */
   const SBOX = [
     0x89, 0x56, 0xb3, 0x44, 0x5d, 0x69, 0x13, 0xc0, 0x61, 0x1e, 0xed, 0xa6, 0xcb, 0x36, 0xa2, 0x1b,
     0xe0, 0xd5, 0xba, 0xbe, 0x55, 0xfc, 0x4e, 0xcd, 0xee, 0x07, 0x9e, 0x5a, 0xdc, 0xc9, 0xfe, 0x3c,
@@ -82,12 +83,21 @@
   ];
 
   // Fixed byte-position permutation (8 entries).
+  /** @type {uint8[]} */
   const TABLE2 = [0x00, 0x03, 0x02, 0x05, 0x04, 0x07, 0x06, 0x01];
 
   // Fixed round permutation (16 entries).
+  /** @type {uint8[]} */
   const TABLE3 = [0x00, 0x03, 0x0a, 0x05, 0x04, 0x07, 0x0e, 0x09, 0x08, 0x0b, 0x02, 0x0d, 0x0c, 0x0f, 0x06, 0x01];
 
   // Computes the byte XORed into block[i] during round r; reads every other byte of block.
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - 16-byte key
+   * @param {int32} r - Round index (0..15)
+   * @param {int32} i - Byte position (0..7)
+   * @returns {uint8} Byte to XOR into block[i]
+   */
   function mix(block, key, r, i) {
     let ah = SBOX[r * 8 + i];
     for (let j = 0; j < BLOCK_BYTES; j++) {
@@ -149,29 +159,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSnappyInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSnappyInstance(this, isInverse);
     }
   }
 
   class DarkCryptSnappyInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSnappyAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Snappy (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Snappy (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -184,8 +210,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -195,6 +222,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const b = [...block];
       const key = this._key;
@@ -204,6 +235,10 @@
       return b;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const b = [...block];
       const key = this._key;

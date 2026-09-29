@@ -68,38 +68,38 @@
       this.description = "Declassified NSA block cipher from 1998, originally designed for the Clipper chip. Uses unbalanced Feistel network with 32 rounds, 64-bit blocks, and 80-bit keys. Historical significance only.";
       this.inventor = "NSA (National Security Agency)";
       this.year = 1987;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.BROKEN;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(10, 10, 1) // Fixed 80-bit key
+        new KeySize(10, 10, 1) // Fixed 80-bit key
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // Fixed 64-bit blocks
+        new KeySize(8, 8, 1) // Fixed 64-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("Skipjack and KEA Algorithm Specifications", "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/skipjack/skipjack.pdf"),
-        new AlgorithmFramework.LinkItem("NIST Special Publication 800-17", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
-        new AlgorithmFramework.LinkItem("Declassification of SkipJack", "https://www.nsa.gov/news-features/declassified-documents/")
+        new LinkItem("Skipjack and KEA Algorithm Specifications", "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/skipjack/skipjack.pdf"),
+        new LinkItem("NIST Special Publication 800-17", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
+        new LinkItem("Declassification of SkipJack", "https://www.nsa.gov/news-features/declassified-documents/")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original NSA Reference Implementation", "https://github.com/coruus/nist-testvectors"),
-        new AlgorithmFramework.LinkItem("Cryptanalysis of SkipJack", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
-        new AlgorithmFramework.LinkItem("SkipJack Cryptanalysis Papers", "https://eprint.iacr.org/")
+        new LinkItem("Original NSA Reference Implementation", "https://github.com/coruus/nist-testvectors"),
+        new LinkItem("Cryptanalysis of SkipJack", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
+        new LinkItem("SkipJack Cryptanalysis Papers", "https://eprint.iacr.org/")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("NIST Withdrawal", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
-        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "Weak key schedule allows related-key attacks", "Historical and educational interest only", "https://eprint.iacr.org/")
+        new Vulnerability("NIST Withdrawal", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
+        new Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
+        new Vulnerability("Related-key attacks", "Weak key schedule allows related-key attacks", "Historical and educational interest only", "https://eprint.iacr.org/")
       ];
 
       // Test vectors verified with BouncyCastle reference implementation
@@ -146,7 +146,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SkipjackInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,7 +163,7 @@
   class SkipjackInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SkipjackAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -172,12 +172,17 @@
       this.isInverse = isInverse;
       this.key = null;
       this.keyBytes = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this.key0 = null;
+      /** @type {uint8[]|null} */
       this.key1 = null;
+      /** @type {uint8[]|null} */
       this.key2 = null;
+      /** @type {uint8[]|null} */
       this.key3 = null;
 
       // Initialize F-table (S-box) - Official from NSA specification
@@ -204,7 +209,7 @@
 
       // Validate key size
       if (keyBytes.length !== 10) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 10)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 10)");
       }
 
       this._key = [...keyBytes];
@@ -212,10 +217,10 @@
       this.KeySize = keyBytes.length;
 
       // Expand the key to 128 bytes in 4 parts (following BouncyCastle)
-      this.key0 = new Array(32);
-      this.key1 = new Array(32);
-      this.key2 = new Array(32);
-      this.key3 = new Array(32);
+      this.key0 = OpCodes.CreateArray(32, 0);
+      this.key1 = OpCodes.CreateArray(32, 0);
+      this.key2 = OpCodes.CreateArray(32, 0);
+      this.key3 = OpCodes.CreateArray(32, 0);
       
       for (let i = 0; i < 32; i++) {
         this.key0[i] = keyBytes[(i * 4 + 0) % 10];
@@ -274,36 +279,44 @@
 
     /**
      * The G permutation (following BouncyCastle implementation)
+     * @param {int32} k - Round counter (0..31)
+     * @param {uint32} w - 16-bit input word
+     * @returns {uint32} 16-bit output word
      */
     _G(k, w) {
-      let g1 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
-      let g2 = OpCodes.AndN(w, 0xFF);
+      let g1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      let g2 = OpCodes.And32(w, 0xFF);
 
-      let g3 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g2, this.key0[k])], g1);
-      let g4 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g3, this.key1[k])], g2);
-      let g5 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g4, this.key2[k])], g3);
-      let g6 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g5, this.key3[k])], g4);
+      let g3 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g2, this.key0[k])], g1);
+      let g4 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g3, this.key1[k])], g2);
+      let g5 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g4, this.key2[k])], g3);
+      let g6 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g5, this.key3[k])], g4);
       
-      return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(g5, 8), g6));
+      return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(g5, 8), g6));
     }
     
     /**
      * The inverse of the G permutation (H function)
+     * @param {int32} k - Round counter (0..31)
+     * @param {uint32} w - 16-bit input word
+     * @returns {uint32} 16-bit output word
      */
     _H(k, w) {
-      let h1 = OpCodes.AndN(w, 0xFF);
-      let h2 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
+      let h1 = OpCodes.And32(w, 0xFF);
+      let h2 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
 
-      let h3 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h2, this.key3[k])], h1);
-      let h4 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h3, this.key2[k])], h2);
-      let h5 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h4, this.key1[k])], h3);
-      let h6 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h5, this.key0[k])], h4);
+      let h3 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h2, this.key3[k])], h1);
+      let h4 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h3, this.key2[k])], h2);
+      let h5 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h4, this.key1[k])], h3);
+      let h6 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h5, this.key0[k])], h4);
 
-      return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(h6, 8), h5));
+      return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(h6, 8), h5));
     }
 
     /**
      * Encrypt 64-bit block (following BouncyCastle implementation)
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     EncryptBlock(block) {
       if (block.length !== 8) {
@@ -315,10 +328,10 @@
       }
 
       // Convert plaintext to 4 16-bit words (big-endian)
-      let w1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[0], 8), OpCodes.AndN(block[1], 0xFF)));
-      let w2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[2], 8), OpCodes.AndN(block[3], 0xFF)));
-      let w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[4], 8), OpCodes.AndN(block[5], 0xFF)));
-      let w4 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[6], 8), OpCodes.AndN(block[7], 0xFF)));
+      let w1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[0], 8), OpCodes.And32(block[1], 0xFF)));
+      let w2 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[2], 8), OpCodes.And32(block[3], 0xFF)));
+      let w3 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[4], 8), OpCodes.And32(block[5], 0xFF)));
+      let w4 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[6], 8), OpCodes.And32(block[7], 0xFF)));
 
       let k = 0;
 
@@ -330,7 +343,7 @@
           w4 = w3;
           w3 = w2;
           w2 = this._G(k, w1);
-          w1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w2, tmp), (k + 1)));
+          w1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w2, tmp), (k + 1)));
           k++;
         }
 
@@ -338,7 +351,7 @@
         for (let i = 0; i < 8; i++) {
           const tmp = w4;
           w4 = w3;
-          w3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w1, w2), (k + 1)));
+          w3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w1, w2), (k + 1)));
           w2 = this._G(k, w1);
           w1 = tmp;
           k++;
@@ -347,10 +360,10 @@
 
       // Pack back to bytes
       const cipherBytes = [
-        OpCodes.AndN(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.AndN(w1, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.AndN(w2, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.AndN(w3, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.AndN(w4, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF)
       ];
 
       return cipherBytes;
@@ -358,6 +371,8 @@
 
     /**
      * Decrypt 64-bit block (following BouncyCastle implementation)
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     DecryptBlock(block) {
       if (block.length !== 8) {
@@ -370,10 +385,10 @@
 
       // Convert ciphertext to 4 16-bit words (big-endian)
       // Note: BouncyCastle uses different order for decryption input
-      let w2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[0], 8), OpCodes.AndN(block[1], 0xFF)));
-      let w1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[2], 8), OpCodes.AndN(block[3], 0xFF)));
-      let w4 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[4], 8), OpCodes.AndN(block[5], 0xFF)));
-      let w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[6], 8), OpCodes.AndN(block[7], 0xFF)));
+      let w2 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[0], 8), OpCodes.And32(block[1], 0xFF)));
+      let w1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[2], 8), OpCodes.And32(block[3], 0xFF)));
+      let w4 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[4], 8), OpCodes.And32(block[5], 0xFF)));
+      let w3 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[6], 8), OpCodes.And32(block[7], 0xFF)));
 
       let k = 31;
 
@@ -385,7 +400,7 @@
           w4 = w3;
           w3 = w2;
           w2 = this._H(k, w1);
-          w1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w2, tmp), (k + 1)));
+          w1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w2, tmp), (k + 1)));
           k--;
         }
 
@@ -393,7 +408,7 @@
         for (let i = 0; i < 8; i++) {
           const tmp = w4;
           w4 = w3;
-          w3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w1, w2), (k + 1)));
+          w3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w1, w2), (k + 1)));
           w2 = this._H(k, w1);
           w1 = tmp;
           k--;
@@ -402,10 +417,10 @@
 
       // Pack back to bytes (different order for decryption output)
       const plainBytes = [
-        OpCodes.AndN(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.AndN(w2, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.AndN(w1, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.AndN(w4, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.AndN(w3, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF)
       ];
 
       return plainBytes;

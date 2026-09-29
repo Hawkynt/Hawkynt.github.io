@@ -101,29 +101,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptXXTEAInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptXXTEAInstance(this, isInverse);
     }
   }
 
   class DarkCryptXXTEAInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptXXTEAAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = N * 4; // 120 bytes
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. XXTEA (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. XXTEA (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -136,8 +152,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -158,6 +175,15 @@
 
     // MX(y,z,sum,p,e) = ((z>>>9 ^ y<<2) + (y>>>3 ^ z<<6)) ^ ((sum^y) + (key[(p&3)^e]^z))
     // (DarkCrypt uses shifts 9/2 and 3/6 instead of the textbook 5/2 and 3/4)
+    /**
+     * @param {uint32} y - Next word
+     * @param {uint32} z - Previous word
+     * @param {uint32} sum - Running delta sum
+     * @param {int32} p - Word index
+     * @param {uint32} e - Key-selector bits of sum
+     * @param {uint32[]} k - Key words
+     * @returns {uint32} Mixing term
+     */
     _MX(y, z, sum, p, e, k) {
       const t1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(z, 9), OpCodes.Shl32(y, 2)));
       const t2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 6)));
@@ -166,7 +192,12 @@
       return OpCodes.ToUint32(OpCodes.Xor32(a, b));
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Little-endian words of the block
+     */
     _wordsFromBlock(block) {
+      /** @type {uint32[]} */
       const v = new Array(N);
       for (let i = 0; i < N; i++) {
         const o = i * 4;
@@ -175,15 +206,25 @@
       return v;
     }
 
+    /**
+     * @param {uint32[]} v - Block words
+     * @returns {uint8[]} Little-endian bytes of the words
+     */
     _blockFromWords(v) {
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < N; i++) out.push(...OpCodes.Unpack32LE(v[i]));
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const v = this._wordsFromBlock(block);
       const k = this._keyWords();
+      /** @type {uint32} */
       let sum = 0;
       let z = v[N - 1];
       for (let r = 0; r < ROUNDS; r++) {
@@ -203,6 +244,10 @@
       return this._blockFromWords(v);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const v = this._wordsFromBlock(block);
       const k = this._keyWords();

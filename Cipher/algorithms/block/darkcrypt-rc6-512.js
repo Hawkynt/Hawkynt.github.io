@@ -52,10 +52,22 @@
   const ROUNDS = 20;
   const TABLE_SIZE = 2 * ROUNDS + 4; // 44
 
+  /**
+   * Rotate left by the low five bits of positions
+   * @param {uint32} value - Word
+   * @param {uint32} positions - Rotation amount (mod 32)
+   * @returns {uint32} Rotated word
+   */
   function rotL(value, positions) {
     return OpCodes.RotL32(OpCodes.ToUint32(value), OpCodes.And32(positions, 31));
   }
 
+  /**
+   * Rotate right by the low five bits of positions
+   * @param {uint32} value - Word
+   * @param {uint32} positions - Rotation amount (mod 32)
+   * @returns {uint32} Rotated word
+   */
   function rotR(value, positions) {
     return OpCodes.RotR32(OpCodes.ToUint32(value), OpCodes.And32(positions, 31));
   }
@@ -112,31 +124,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRC6_512Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRC6_512Instance(this, isInverse);
     }
   }
 
   class DarkCryptRC6_512Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRC6_512Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.keySchedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC6-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC6-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._generateKeySchedule();
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -149,8 +178,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -165,6 +195,7 @@
     // unlike textbook RC5/RC6's little-endian packing).
     _generateKeySchedule() {
       const c = Math.max(1, Math.floor(this.KeySize / 4));
+      /** @type {uint32[]} */
       const L = new Array(c);
       for (let j = 0; j < c; j++) {
         L[j] = OpCodes.Pack32BE(
@@ -178,11 +209,15 @@
         this.keySchedule[k] = OpCodes.ToUint32(this.keySchedule[k - 1] + Q32);
 
       const iterations = 3 * Math.max(c, TABLE_SIZE);
-      let A = 0, B = 0, i = 0, j = 0;
+      /** @type {uint32} */
+      let A = 0;
+      /** @type {uint32} */
+      let B = 0;
+      let i = 0, j = 0;
 
       for (let k = 0; k < iterations; k++) {
-        A = this.keySchedule[i] = rotL(OpCodes.ToUint32(this.keySchedule[i] + A + B), 3);
-        B = L[j] = rotL(OpCodes.ToUint32(L[j] + A + B), OpCodes.AndN(A + B, 31));
+        A = this.keySchedule[i] = rotL(OpCodes.Add32(OpCodes.Add32(this.keySchedule[i], A), B), 3);
+        B = L[j] = rotL(OpCodes.Add32(OpCodes.Add32(L[j], A), B), OpCodes.And32(OpCodes.Add32(A, B), 31));
 
         i = (i + 1) % TABLE_SIZE;
         j = (j + 1) % c;
@@ -191,6 +226,10 @@
       OpCodes.ClearArray(L);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -201,13 +240,13 @@
       D = OpCodes.ToUint32(D + this.keySchedule[1]);
 
       for (let i = 1; i <= ROUNDS; i++) {
-        const t = rotL(Math.imul(B, OpCodes.ToUint32(2 * B + 1)), 5);
-        const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
+        const t = rotL(OpCodes.Mul32(B, OpCodes.Add32(OpCodes.Add32(B, B), 1)), 5);
+        const u = rotL(OpCodes.Mul32(D, OpCodes.Add32(OpCodes.Add32(D, D), 1)), 5);
 
-        A = rotL(OpCodes.XorN(A, t), OpCodes.AndN(u, 31));
+        A = rotL(OpCodes.Xor32(A, t), OpCodes.And32(u, 31));
         A = OpCodes.ToUint32(A + this.keySchedule[2 * i]);
 
-        C = rotL(OpCodes.XorN(C, u), OpCodes.AndN(t, 31));
+        C = rotL(OpCodes.Xor32(C, u), OpCodes.And32(t, 31));
         C = OpCodes.ToUint32(C + this.keySchedule[2 * i + 1]);
 
         const tmp = A; A = B; B = C; C = D; D = tmp;
@@ -222,6 +261,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -234,16 +277,16 @@
       for (let i = ROUNDS; i >= 1; i--) {
         const tmp = D; D = C; C = B; B = A; A = tmp;
 
-        const t = rotL(Math.imul(B, OpCodes.ToUint32(2 * B + 1)), 5);
-        const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
+        const t = rotL(OpCodes.Mul32(B, OpCodes.Add32(OpCodes.Add32(B, B), 1)), 5);
+        const u = rotL(OpCodes.Mul32(D, OpCodes.Add32(OpCodes.Add32(D, D), 1)), 5);
 
         C = OpCodes.ToUint32(C - this.keySchedule[2 * i + 1]);
-        C = rotR(C, OpCodes.AndN(t, 31));
-        C = OpCodes.XorN(C, u);
+        C = rotR(C, OpCodes.And32(t, 31));
+        C = OpCodes.Xor32(C, u);
 
         A = OpCodes.ToUint32(A - this.keySchedule[2 * i]);
-        A = rotR(A, OpCodes.AndN(u, 31));
-        A = OpCodes.XorN(A, t);
+        A = rotR(A, OpCodes.And32(u, 31));
+        A = OpCodes.Xor32(A, t);
       }
 
       D = OpCodes.ToUint32(D - this.keySchedule[1]);

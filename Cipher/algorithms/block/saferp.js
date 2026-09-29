@@ -76,6 +76,7 @@
   ]);
 
   // Bias words for key schedule
+  /** @type {uint8[][]} */
   const safer_bias = [
     [  70, 151, 177, 186, 163, 183,  16,  10, 197,  55, 179, 201,  90,  40, 172, 100],
     [ 236, 171, 170, 198, 103, 149,  88,  13, 248, 154, 246, 110, 102, 220,   5,  61],
@@ -192,7 +193,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SAFERPInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -209,17 +210,21 @@
   class SAFERPInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SAFERPAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {int32} */
       this._rounds = 0;
-      this.K = []; // Round keys
+      /** @type {uint8[][]|null} */
+      this.keyRows = null; // Round keys
     }
 
     /**
@@ -235,11 +240,11 @@
       }
 
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16, 24, or 32)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16, 24, or 32)");
       }
 
       this._key = [...keyBytes];
-      this._scheduleKey();
+      this.keyRows = this._scheduleKey();
     }
 
     /**
@@ -251,21 +256,32 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {int32} value - Requested rounds (8, 12 or 16; the key size decides)
+     */
     set rounds(value) {
       // Rounds are determined by key size, but allow override
       if (value !== 8 && value !== 12 && value !== 16) {
-        throw new Error(`Invalid rounds: ${value} (must be 8, 12, or 16)`);
+        throw new Error("Invalid rounds: " + value + " (must be 8, 12, or 16)");
       }
       // Will be set during key schedule
     }
 
+    /**
+     * @returns {int32} Round count of the current key
+     */
     get rounds() {
       return this._rounds;
     }
 
+    /**
+     * SAFER+ key schedule (also sets the round count)
+     * @returns {uint8[][]} 2 * rounds + 1 round keys of 16 bytes
+     */
     _scheduleKey() {
       const keylen = this._key.length;
       const t = new Uint8Array(33);
+      /** @type {uint32} */
       let y = 0;
 
       // The round/PHT/shuffle layout below indexes the state in the opposite
@@ -284,14 +300,15 @@
 
       // Initialize round key array
       const maxRounds = this._rounds * 2 + 1;
-      this.K = new Array(maxRounds);
+      /** @type {uint8[][]} */
+      const keys = new Array(maxRounds);
       for (let i = 0; i < maxRounds; ++i) {
-        this.K[i] = new Uint8Array(16);
+        keys[i] = new Uint8Array(16);
       }
 
       // First round key is initial part of augmented key
       for (let x = 0; x < 16; ++x) {
-        this.K[0][x] = t[x];
+        keys[0][x] = t[x];
       }
 
       // Generate remaining round keys
@@ -305,37 +322,64 @@
         // Select bytes and add bias
         let z = x;
         for (let y = 0; y < 16; ++y) {
-          this.K[x][y] = (t[z] + safer_bias[x - 1][y])&255;
+          keys[x][y] = OpCodes.And32(OpCodes.Add32(t[z], safer_bias[x - 1][y]), 255);
           if (++z === tlen) z = 0;
         }
       }
+      return keys;
     }
 
     // PHT (Pseudo-Hadamard Transform)
+    /**
+     * @param {uint8[]} b - 16-byte state (updated in place)
+     */
     _pht(b) {
-      b[0] = (b[0] + (b[1] = (b[0] + b[1])&255))&255;
-      b[2] = (b[2] + (b[3] = (b[3] + b[2])&255))&255;
-      b[4] = (b[4] + (b[5] = (b[5] + b[4])&255))&255;
-      b[6] = (b[6] + (b[7] = (b[7] + b[6])&255))&255;
-      b[8] = (b[8] + (b[9] = (b[9] + b[8])&255))&255;
-      b[10] = (b[10] + (b[11] = (b[11] + b[10])&255))&255;
-      b[12] = (b[12] + (b[13] = (b[13] + b[12])&255))&255;
-      b[14] = (b[14] + (b[15] = (b[15] + b[14])&255))&255;
+      b[1] = OpCodes.And32(OpCodes.Add32(b[0], b[1]), 255);
+      b[0] = OpCodes.And32(OpCodes.Add32(b[0], b[1]), 255);
+      b[3] = OpCodes.And32(OpCodes.Add32(b[3], b[2]), 255);
+      b[2] = OpCodes.And32(OpCodes.Add32(b[2], b[3]), 255);
+      b[5] = OpCodes.And32(OpCodes.Add32(b[5], b[4]), 255);
+      b[4] = OpCodes.And32(OpCodes.Add32(b[4], b[5]), 255);
+      b[7] = OpCodes.And32(OpCodes.Add32(b[7], b[6]), 255);
+      b[6] = OpCodes.And32(OpCodes.Add32(b[6], b[7]), 255);
+      b[9] = OpCodes.And32(OpCodes.Add32(b[9], b[8]), 255);
+      b[8] = OpCodes.And32(OpCodes.Add32(b[8], b[9]), 255);
+      b[11] = OpCodes.And32(OpCodes.Add32(b[11], b[10]), 255);
+      b[10] = OpCodes.And32(OpCodes.Add32(b[10], b[11]), 255);
+      b[13] = OpCodes.And32(OpCodes.Add32(b[13], b[12]), 255);
+      b[12] = OpCodes.And32(OpCodes.Add32(b[12], b[13]), 255);
+      b[15] = OpCodes.And32(OpCodes.Add32(b[15], b[14]), 255);
+      b[14] = OpCodes.And32(OpCodes.Add32(b[14], b[15]), 255);
     }
 
     // Inverse PHT
+    /**
+     * @param {uint8[]} b - 16-byte state (updated in place)
+     */
     _ipht(b) {
-      b[15] = (b[15] - (b[14] = (b[14] - b[15])&255))&255;
-      b[13] = (b[13] - (b[12] = (b[12] - b[13])&255))&255;
-      b[11] = (b[11] - (b[10] = (b[10] - b[11])&255))&255;
-      b[9] = (b[9] - (b[8] = (b[8] - b[9])&255))&255;
-      b[7] = (b[7] - (b[6] = (b[6] - b[7])&255))&255;
-      b[5] = (b[5] - (b[4] = (b[4] - b[5])&255))&255;
-      b[3] = (b[3] - (b[2] = (b[2] - b[3])&255))&255;
-      b[1] = (b[1] - (b[0] = (b[0] - b[1])&255))&255;
+      b[14] = OpCodes.And32(OpCodes.Sub32(b[14], b[15]), 255);
+      b[15] = OpCodes.And32(OpCodes.Sub32(b[15], b[14]), 255);
+      b[12] = OpCodes.And32(OpCodes.Sub32(b[12], b[13]), 255);
+      b[13] = OpCodes.And32(OpCodes.Sub32(b[13], b[12]), 255);
+      b[10] = OpCodes.And32(OpCodes.Sub32(b[10], b[11]), 255);
+      b[11] = OpCodes.And32(OpCodes.Sub32(b[11], b[10]), 255);
+      b[8] = OpCodes.And32(OpCodes.Sub32(b[8], b[9]), 255);
+      b[9] = OpCodes.And32(OpCodes.Sub32(b[9], b[8]), 255);
+      b[6] = OpCodes.And32(OpCodes.Sub32(b[6], b[7]), 255);
+      b[7] = OpCodes.And32(OpCodes.Sub32(b[7], b[6]), 255);
+      b[4] = OpCodes.And32(OpCodes.Sub32(b[4], b[5]), 255);
+      b[5] = OpCodes.And32(OpCodes.Sub32(b[5], b[4]), 255);
+      b[2] = OpCodes.And32(OpCodes.Sub32(b[2], b[3]), 255);
+      b[3] = OpCodes.And32(OpCodes.Sub32(b[3], b[2]), 255);
+      b[0] = OpCodes.And32(OpCodes.Sub32(b[0], b[1]), 255);
+      b[1] = OpCodes.And32(OpCodes.Sub32(b[1], b[0]), 255);
     }
 
     // Armenian Shuffle
+    /**
+     * @param {uint8[]} b - Source state
+     * @param {uint8[]} b2 - Destination state
+     */
     _shuffle(b, b2) {
       b2[0] = b[8]; b2[1] = b[11]; b2[2] = b[12]; b2[3] = b[15];
       b2[4] = b[2]; b2[5] = b[1]; b2[6] = b[6]; b2[7] = b[5];
@@ -344,6 +388,10 @@
     }
 
     // Inverse Armenian Shuffle
+    /**
+     * @param {uint8[]} b - Source state
+     * @param {uint8[]} b2 - Destination state
+     */
     _ishuffle(b, b2) {
       b2[0] = b[12]; b2[1] = b[5]; b2[2] = b[4]; b2[3] = b[15];
       b2[4] = b[14]; b2[5] = b[7]; b2[6] = b[6]; b2[7] = b[13];
@@ -352,6 +400,10 @@
     }
 
     // Linear Transform (4 rounds of PHT + Shuffle)
+    /**
+     * @param {uint8[]} b - State (transformed in place)
+     * @param {uint8[]} b2 - Scratch/output state
+     */
     _lt(b, b2) {
       this._pht(b); this._shuffle(b, b2);
       this._pht(b2); this._shuffle(b2, b);
@@ -360,6 +412,10 @@
     }
 
     // Inverse Linear Transform
+    /**
+     * @param {uint8[]} b - State (transformed in place)
+     * @param {uint8[]} b2 - Scratch/output state
+     */
     _ilt(b, b2) {
       this._ipht(b);
       this._ishuffle(b, b2); this._ipht(b2);
@@ -368,49 +424,57 @@
     }
 
     // Round function
+    /**
+     * @param {uint8[]} b - 16-byte state (updated in place)
+     * @param {int32} keyIdx - Index of the first of the two round keys
+     */
     _round(b, keyIdx) {
-      const k = this.K[keyIdx];
-      const k1 = this.K[keyIdx + 1];
+      const k = this.keyRows[keyIdx];
+      const k1 = this.keyRows[keyIdx + 1];
 
-      b[0] = (safer_ebox[(b[0]^k[0])&255] + k1[0])&255;
-      b[1] = safer_lbox[(b[1] + k[1])&255]^k1[1];
-      b[2] = safer_lbox[(b[2] + k[2])&255]^k1[2];
-      b[3] = (safer_ebox[(b[3]^k[3])&255] + k1[3])&255;
-      b[4] = (safer_ebox[(b[4]^k[4])&255] + k1[4])&255;
-      b[5] = safer_lbox[(b[5] + k[5])&255]^k1[5];
-      b[6] = safer_lbox[(b[6] + k[6])&255]^k1[6];
-      b[7] = (safer_ebox[(b[7]^k[7])&255] + k1[7])&255;
-      b[8] = (safer_ebox[(b[8]^k[8])&255] + k1[8])&255;
-      b[9] = safer_lbox[(b[9] + k[9])&255]^k1[9];
-      b[10] = safer_lbox[(b[10] + k[10])&255]^k1[10];
-      b[11] = (safer_ebox[(b[11]^k[11])&255] + k1[11])&255;
-      b[12] = (safer_ebox[(b[12]^k[12])&255] + k1[12])&255;
-      b[13] = safer_lbox[(b[13] + k[13])&255]^k1[13];
-      b[14] = safer_lbox[(b[14] + k[14])&255]^k1[14];
-      b[15] = (safer_ebox[(b[15]^k[15])&255] + k1[15])&255;
+      b[0] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[0], k[0]), 255)], k1[0]), 255);
+      b[1] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[1], k[1]), 255)], k1[1]);
+      b[2] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[2], k[2]), 255)], k1[2]);
+      b[3] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[3], k[3]), 255)], k1[3]), 255);
+      b[4] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[4], k[4]), 255)], k1[4]), 255);
+      b[5] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[5], k[5]), 255)], k1[5]);
+      b[6] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[6], k[6]), 255)], k1[6]);
+      b[7] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[7], k[7]), 255)], k1[7]), 255);
+      b[8] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[8], k[8]), 255)], k1[8]), 255);
+      b[9] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[9], k[9]), 255)], k1[9]);
+      b[10] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[10], k[10]), 255)], k1[10]);
+      b[11] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[11], k[11]), 255)], k1[11]), 255);
+      b[12] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[12], k[12]), 255)], k1[12]), 255);
+      b[13] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[13], k[13]), 255)], k1[13]);
+      b[14] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Add32(b[14], k[14]), 255)], k1[14]);
+      b[15] = OpCodes.And32(OpCodes.Add32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[15], k[15]), 255)], k1[15]), 255);
     }
 
     // Inverse round function
+    /**
+     * @param {uint8[]} b - 16-byte state (updated in place)
+     * @param {int32} keyIdx - Index of the first of the two round keys
+     */
     _iround(b, keyIdx) {
-      const k = this.K[keyIdx];
-      const k1 = this.K[keyIdx + 1];
+      const k = this.keyRows[keyIdx];
+      const k1 = this.keyRows[keyIdx + 1];
 
-      b[0] = safer_lbox[(b[0] - k1[0])&255]^k[0];
-      b[1] = (safer_ebox[(b[1]^k1[1])&255] - k[1])&255;
-      b[2] = (safer_ebox[(b[2]^k1[2])&255] - k[2])&255;
-      b[3] = safer_lbox[(b[3] - k1[3])&255]^k[3];
-      b[4] = safer_lbox[(b[4] - k1[4])&255]^k[4];
-      b[5] = (safer_ebox[(b[5]^k1[5])&255] - k[5])&255;
-      b[6] = (safer_ebox[(b[6]^k1[6])&255] - k[6])&255;
-      b[7] = safer_lbox[(b[7] - k1[7])&255]^k[7];
-      b[8] = safer_lbox[(b[8] - k1[8])&255]^k[8];
-      b[9] = (safer_ebox[(b[9]^k1[9])&255] - k[9])&255;
-      b[10] = (safer_ebox[(b[10]^k1[10])&255] - k[10])&255;
-      b[11] = safer_lbox[(b[11] - k1[11])&255]^k[11];
-      b[12] = safer_lbox[(b[12] - k1[12])&255]^k[12];
-      b[13] = (safer_ebox[(b[13]^k1[13])&255] - k[13])&255;
-      b[14] = (safer_ebox[(b[14]^k1[14])&255] - k[14])&255;
-      b[15] = safer_lbox[(b[15] - k1[15])&255]^k[15];
+      b[0] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[0], k1[0]), 255)], k[0]);
+      b[1] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[1], k1[1]), 255)], k[1]), 255);
+      b[2] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[2], k1[2]), 255)], k[2]), 255);
+      b[3] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[3], k1[3]), 255)], k[3]);
+      b[4] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[4], k1[4]), 255)], k[4]);
+      b[5] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[5], k1[5]), 255)], k[5]), 255);
+      b[6] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[6], k1[6]), 255)], k[6]), 255);
+      b[7] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[7], k1[7]), 255)], k[7]);
+      b[8] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[8], k1[8]), 255)], k[8]);
+      b[9] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[9], k1[9]), 255)], k[9]), 255);
+      b[10] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[10], k1[10]), 255)], k[10]), 255);
+      b[11] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[11], k1[11]), 255)], k[11]);
+      b[12] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[12], k1[12]), 255)], k[12]);
+      b[13] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[13], k1[13]), 255)], k[13]), 255);
+      b[14] = OpCodes.And32(OpCodes.Sub32(safer_ebox[OpCodes.And32(OpCodes.Xor32(b[14], k1[14]), 255)], k[14]), 255);
+      b[15] = OpCodes.Xor32(safer_lbox[OpCodes.And32(OpCodes.Sub32(b[15], k1[15]), 255)], k[15]);
     }
 
     /**
@@ -435,9 +499,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % BLOCK_SIZE !== 0) {
-        throw new Error(`Input must be multiple of ${BLOCK_SIZE} bytes`);
+        throw new Error("Input must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {
@@ -450,22 +515,22 @@
 
         if (this.isInverse) {
           // Decrypt
-          const finalKey = this.K[this._rounds * 2];
+          const finalKey = this.keyRows[this._rounds * 2];
           block[0] = OpCodes.Xor32(block[0], finalKey[0]);
-          block[1] = (block[1] - finalKey[1])&255;
-          block[2] = (block[2] - finalKey[2])&255;
+          block[1] = OpCodes.And32(OpCodes.Sub32(block[1], finalKey[1]), 255);
+          block[2] = OpCodes.And32(OpCodes.Sub32(block[2], finalKey[2]), 255);
           block[3] = OpCodes.Xor32(block[3], finalKey[3]);
           block[4] = OpCodes.Xor32(block[4], finalKey[4]);
-          block[5] = (block[5] - finalKey[5])&255;
-          block[6] = (block[6] - finalKey[6])&255;
+          block[5] = OpCodes.And32(OpCodes.Sub32(block[5], finalKey[5]), 255);
+          block[6] = OpCodes.And32(OpCodes.Sub32(block[6], finalKey[6]), 255);
           block[7] = OpCodes.Xor32(block[7], finalKey[7]);
           block[8] = OpCodes.Xor32(block[8], finalKey[8]);
-          block[9] = (block[9] - finalKey[9])&255;
-          block[10] = (block[10] - finalKey[10])&255;
+          block[9] = OpCodes.And32(OpCodes.Sub32(block[9], finalKey[9]), 255);
+          block[10] = OpCodes.And32(OpCodes.Sub32(block[10], finalKey[10]), 255);
           block[11] = OpCodes.Xor32(block[11], finalKey[11]);
           block[12] = OpCodes.Xor32(block[12], finalKey[12]);
-          block[13] = (block[13] - finalKey[13])&255;
-          block[14] = (block[14] - finalKey[14])&255;
+          block[13] = OpCodes.And32(OpCodes.Sub32(block[13], finalKey[13]), 255);
+          block[14] = OpCodes.And32(OpCodes.Sub32(block[14], finalKey[14]), 255);
           block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
           // Reverse rounds
@@ -516,22 +581,22 @@
           }
 
           // Final key mixing
-          const finalKey = this.K[this._rounds * 2];
+          const finalKey = this.keyRows[this._rounds * 2];
           block[0] = OpCodes.Xor32(block[0], finalKey[0]);
-          block[1] = (block[1] + finalKey[1])&255;
-          block[2] = (block[2] + finalKey[2])&255;
+          block[1] = OpCodes.And32(OpCodes.Add32(block[1], finalKey[1]), 255);
+          block[2] = OpCodes.And32(OpCodes.Add32(block[2], finalKey[2]), 255);
           block[3] = OpCodes.Xor32(block[3], finalKey[3]);
           block[4] = OpCodes.Xor32(block[4], finalKey[4]);
-          block[5] = (block[5] + finalKey[5])&255;
-          block[6] = (block[6] + finalKey[6])&255;
+          block[5] = OpCodes.And32(OpCodes.Add32(block[5], finalKey[5]), 255);
+          block[6] = OpCodes.And32(OpCodes.Add32(block[6], finalKey[6]), 255);
           block[7] = OpCodes.Xor32(block[7], finalKey[7]);
           block[8] = OpCodes.Xor32(block[8], finalKey[8]);
-          block[9] = (block[9] + finalKey[9])&255;
-          block[10] = (block[10] + finalKey[10])&255;
+          block[9] = OpCodes.And32(OpCodes.Add32(block[9], finalKey[9]), 255);
+          block[10] = OpCodes.And32(OpCodes.Add32(block[10], finalKey[10]), 255);
           block[11] = OpCodes.Xor32(block[11], finalKey[11]);
           block[12] = OpCodes.Xor32(block[12], finalKey[12]);
-          block[13] = (block[13] + finalKey[13])&255;
-          block[14] = (block[14] + finalKey[14])&255;
+          block[13] = OpCodes.And32(OpCodes.Add32(block[13], finalKey[13]), 255);
+          block[14] = OpCodes.And32(OpCodes.Add32(block[14], finalKey[14]), 255);
           block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
           for (let _i = block.length - 1; _i >= 0; _i--) output.push(block[_i]);
