@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * CUSIPChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class CUSIPChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum CUSIP implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/cusip.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Format: 6 issuer ID + 2 issue ID + 1 check digit",
         "Character values: 0-9 = numeric, A-Z = 10-35, * = 36, @ = 37, # = 38",
@@ -96,9 +107,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {CUSIPChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -108,28 +119,28 @@
   }
 
   /**
- * CUSIPChecksum cipher instance implementing Feed/Result pattern
+ * CUSIPChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class CUSIPChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {CUSIPChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {string[]} Upper-cased characters fed so far */
       this.chars = [];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -143,22 +154,17 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Compute the check digit over the first 8 characters fed and reset
+   * @returns {uint8[]} One byte: the check digit (0 when nothing was fed)
    */
 
     Result() {
-      if (this.chars.length === 0) {
-        this.chars = [];
-        return [0];
-      }
-
-      // Calculate sum using modified Luhn algorithm
+      // Calculate sum using modified Luhn algorithm (no character leaves it at 0)
       let sum = 0;
 
-      for (let i = 0; i < Math.min(this.chars.length, 8); i++) {
-        let value;
+      for (let i = 0; i < this.chars.length && i < 8; i++) {
+        /** @type {int32} */
+        let value = 0;
         const char = this.chars[i];
 
         // Convert character to numeric value
