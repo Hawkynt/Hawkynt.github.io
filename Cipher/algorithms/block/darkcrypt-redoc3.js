@@ -141,7 +141,9 @@
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this._table = null;
+      /** @type {uint8[]|null} */
       this._subkey = null;
     }
 
@@ -164,10 +166,18 @@
     get key() { return this._key ? [...this._key] : null; }
 
     // Classic LCG (Borland/Turbo C runtime rand()): seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF
+    /**
+     * Build the key-dependent substitution table
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {uint8[]} Table of TABLE_SIZE bytes
+     */
     _buildTable(key) {
       const table = new Uint8Array(TABLE_SIZE);
       for (let edi = 1; edi <= KEY_BYTES; edi++) {
-        let b0, b1;
+        /** @type {uint8} */
+        let b0 = 0;
+        /** @type {uint8} */
+        let b1 = 0;
         if (edi === KEY_BYTES) {
           b0 = key[KEY_BYTES - 1];
           b1 = key[0];
@@ -175,8 +185,9 @@
           b0 = key[edi - 1];
           b1 = key[edi];
         }
-        let seed = OpCodes.ToUint32(b0 | OpCodes.Shl32(b1, 8) | SEED_GARBAGE);
+        let seed = OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), SEED_GARBAGE);
         let pos = 0;
+        /** @type {int32} */
         const step = STEP_TABLE[edi];
         for (let i = 0; i < TABLE_SIZE; i++) {
           pos = (pos + step) % TABLE_SIZE;
@@ -193,6 +204,11 @@
       return table;
     }
 
+    /**
+     * Fold the table into the 16-byte subkey
+     * @param {uint8[]} table - Substitution table
+     * @returns {uint8[]} 16 subkey bytes
+     */
     _foldSubkey(table) {
       const subkey = new Uint8Array(16);
       let pos = 0;
@@ -234,14 +250,14 @@
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.Xor32(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.Xor32(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si + 8], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
 
       return [...data, block[8], block[9]];
@@ -256,14 +272,14 @@
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.Xor32(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si + 8], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.Xor32(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
 
       return [...data, block[8], block[9]];
