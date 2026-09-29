@@ -46,13 +46,20 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /**
+   * @returns {uint8[]}
+   */
   function buildInternalPermutation() {
     const seed = "This is the seed for generating the fixed internal permutation for Py. " +
       "The permutation is used in the key setup and IV setup as a source of nonlinearity. " +
       "The shifted special keys on a keyboard are ~!@#$%^&*()_+{}:|<>?";
+    /** @type {uint8[]} */
+    /** @type {uint8[]} */
     const ip = new Array(256);
     for (let i = 0; i < 256; i++) ip[i] = i;
-    let j = 0, p = 0;
+    /** @type {uint32} */
+    let j = 0;
+    let p = 0;
     for (let i = 0; i < 256 * 16; i++) {
       j = OpCodes.And32(j + seed.charCodeAt(p), 0xFF);
       const tmp = ip[OpCodes.And32(i, 0xFF)];
@@ -139,12 +146,19 @@
       this._iv = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint32[]|null} */
       this.Y = null;
+      /** @type {uint8[]|null} */
       this.P = null;
+      /** @type {uint8[]|null} */
       this.E = null;
+      /** @type {uint32} */
       this.s = 0;
+      /** @type {int32} */
       this.R = 0;
+      /** @type {uint8[]} */
       this.ksBuf = [];
+      /** @type {int32} */
       this.ksPos = 0;
     }
 
@@ -207,11 +221,35 @@
       return output;
     }
 
+    /**
+     * @param {int32} idx - Virtual Y index (YMININD..)
+     * @returns {uint32} Y word
+     */
     _getY(idx) { return OpCodes.ToUint32(this.Y[idx + YOFF]); }
+    /**
+     * @param {int32} idx - Virtual Y index (YMININD..)
+     * @param {uint32} val - Word to store
+     */
     _setY(idx, val) { this.Y[idx + YOFF] = OpCodes.ToUint32(val); }
+    /**
+     * @param {int32} idx - P index
+     * @returns {uint8} P entry
+     */
     _getP(idx) { return this.P[idx]; }
+    /**
+     * @param {int32} idx - P index
+     * @param {uint8} val - Entry to store
+     */
     _setP(idx, val) { this.P[idx] = val; }
+    /**
+     * @param {int32} idx - E index
+     * @returns {uint8} E entry
+     */
     _getE(idx) { return this.E[idx]; }
+    /**
+     * @param {int32} idx - E index
+     * @param {uint8} val - Entry to store
+     */
     _setE(idx, val) { this.E[idx] = val; }
 
     _initialize() {
@@ -219,6 +257,8 @@
       const keysizeb = key.length, ivsizeb = iv.length;
 
       // --- Key setup (identical structure across the whole Py family) ---
+      /** @type {uint32} */
+      /** @type {uint32} */
       let s = IP[keysizeb - 1];
       s = OpCodes.Or32((OpCodes.Shl32(s, 8)), IP[OpCodes.And32(OpCodes.Xor32(s, ivsizeb - 1), 0xFF)]);
       s = OpCodes.Or32((OpCodes.Shl32(s, 8)), IP[OpCodes.And32(OpCodes.Xor32(s, key[0]), 0xFF)]);
@@ -233,7 +273,9 @@
         const s0 = IP[OpCodes.And32(s, 0xFF)];
         s = OpCodes.Xor32(s, (OpCodes.ToUint32(OpCodes.RotL32(s, 8) + s0)));
       }
-      this.Y = new Array(PYSIZE + 4096);
+      /** @type {uint32[]} */
+      const yWords = new Array(PYSIZE + 4096);
+      this.Y = yWords;
       let j = 0;
       for (let i = YMININD; i <= YMAXIND; i++) {
         s = OpCodes.ToUint32(s + key[j]);
@@ -247,7 +289,9 @@
       // --- Tweaked IV setup (Py6-width, doubled EIV feedback buffer) ---
       let v = OpCodes.And32(OpCodes.Xor32(iv[0], OpCodes.And32(OpCodes.Shr32(this._getY(0), 16), 0xFF)), 0xFF);
       let d = OpCodes.And32(OpCodes.Or32(OpCodes.Xor32(iv[1 % ivsizeb], OpCodes.And32(OpCodes.Shr32(this._getY(1), 16), 0xFF)), 1), 0xFF);
-      this.P = new Array(64 + 4096);
+      /** @type {uint8[]} */
+      const pBytes = new Array(64 + 4096);
+      this.P = pBytes;
       {
         let vv = v;
         for (let i = 0; i < 64; i++) {
@@ -259,13 +303,15 @@
       s = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(v, 24), OpCodes.Shl32(d, 16)), OpCodes.Shl32(this._getP(62), 8)), this._getP(63));
       s = OpCodes.Xor32(s, (OpCodes.ToUint32(this._getY(YMININD) + this._getY(YMAXIND))));
 
-      this.E = new Array(64 + 4096);
+      /** @type {uint8[]} */
+      const eBytes = new Array(64 + 4096);
+      this.E = eBytes;
       const eivWidth = ivsizeb * 2;
       const eivBase = 64 - eivWidth;
 
       // First mixing pass: derives two 6-bit feedback bytes per IV byte.
       for (let i = 0; i < ivsizeb; i++) {
-        s = OpCodes.ToUint32(s + iv[i] + this._getY(YMININD + i));
+        s = OpCodes.Add32(OpCodes.Add32(s, iv[i]), this._getY(YMININD + i));
         const s0 = this._getP(OpCodes.And32(s, MASK));
         this._setE(i + eivBase, s0);
         const s1 = this._getP(OpCodes.And32(OpCodes.Shr32(s, 2), MASK));
@@ -274,7 +320,7 @@
       }
       // Second pass (the tweak): feeds back the just-produced EIV bytes.
       for (let i = 0; i < eivWidth; i++) {
-        s = OpCodes.ToUint32(s + this._getE(((i + eivWidth - 1) % eivWidth) + eivBase) + this._getY(YMAXIND - i));
+        s = OpCodes.Add32(OpCodes.Add32(s, this._getE(((i + eivWidth - 1) % eivWidth) + eivBase)), this._getY(YMAXIND - i));
         const s0 = this._getP(OpCodes.And32(s, MASK));
         this._setE(i + eivBase, OpCodes.And32((this._getE(i + eivBase) + s0), MASK));
         s = OpCodes.Xor32(OpCodes.RotL32(s, 6), s0);
@@ -283,6 +329,8 @@
       for (let R = 0; R < PYSIZE; R++) {
         const readIdx = R + eivBase;
         const writeIdx = readIdx + ivsizeb;
+        /** @type {int32} */
+        /** @type {int32} */
         const x0 = OpCodes.And32(OpCodes.Xor32(this._getE(readIdx), OpCodes.And32(s, MASK)), MASK);
         this._setE(writeIdx, x0);
 
@@ -293,8 +341,8 @@
         this._setY(R + YMAXIND + 1, OpCodes.ToUint32(this._getY(R + YMININD) + OpCodes.Xor32(s, this._getY(R + x0))));
       }
 
-      s = OpCodes.ToUint32(s + this._getY(PYSIZE + 8) + this._getY(PYSIZE + 21) + this._getY(PYSIZE + 48));
-      if (s === 0) s = OpCodes.ToUint32(keysizeb * 8 + (OpCodes.Shl32((ivsizeb * 8), 16)) + 0x87654321);
+      s = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(s, this._getY(PYSIZE + 8)), this._getY(PYSIZE + 21)), this._getY(PYSIZE + 48));
+      if (s === 0) s = OpCodes.Add32(OpCodes.Add32(keysizeb * 8, OpCodes.Shl32((ivsizeb * 8), 16)), 0x87654321);
 
       this.s = s;
       this.R = PYSIZE;
@@ -302,31 +350,41 @@
       this.ksPos = 0;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _round() {
       const R = this.R;
       let s = this.s;
 
-      const x0 = OpCodes.And32(this._getY(R + 43), MASK);
+      /** @type {int32} */
+        /** @type {int32} */
+        const x0 = OpCodes.And32(this._getY(R + 43), MASK);
       this._setP(R + 64, this._getP(R + x0));
       this._setP(R + x0, this._getP(R + 0));
 
-      s = OpCodes.ToUint32(s + this._getY(R + this._getP(R + 1 + 18)));
-      s = OpCodes.ToUint32(s - this._getY(R + this._getP(R + 1 + 57)));
+      s = OpCodes.Add32(s, this._getY(R + this._getP(R + 1 + 18)));
+      s = OpCodes.Sub32(s, this._getY(R + this._getP(R + 1 + 57)));
       s = OpCodes.RotL32(s, OpCodes.And32(this._getP(R + 1 + 26), 31));
-      const newY = OpCodes.ToUint32(OpCodes.Xor32(s, this._getY(R + YMININD)) + this._getY(R + this._getP(R + 1 + 48)));
+      const newY = OpCodes.Add32(OpCodes.Xor32(s, this._getY(R + YMININD)), this._getY(R + this._getP(R + 1 + 48)));
       this._setY(R + YMAXIND + 1, newY);
 
       s = OpCodes.RotL32(s, 11);
-      const out1 = OpCodes.ToUint32(OpCodes.Xor32(s, this._getY(R + 64)) + this._getY(R + this._getP(R + 1 + 8)));
+      const out1 = OpCodes.Add32(OpCodes.Xor32(s, this._getY(R + 64)), this._getY(R + this._getP(R + 1 + 8)));
       s = OpCodes.RotL32(s, 7);
-      const out2 = OpCodes.ToUint32(OpCodes.Xor32(s, this._getY(R - 1)) + this._getY(R + this._getP(R + 1 + 21)));
+      const out2 = OpCodes.Add32(OpCodes.Xor32(s, this._getY(R - 1)), this._getY(R + this._getP(R + 1 + 21)));
 
       this.s = s;
       this.R = R + 1;
 
-      return [...OpCodes.Unpack32LE(out1), ...OpCodes.Unpack32LE(out2)];
+      /** @type {uint8[]} */
+      const bytes = [...OpCodes.Unpack32LE(out1), ...OpCodes.Unpack32LE(out2)];
+      return bytes;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this.ksPos >= this.ksBuf.length) {
         this.ksBuf = this._round();
