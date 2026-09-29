@@ -54,7 +54,8 @@
   // ===== TWOFISH CONSTANTS =====
 
   // Twofish S-box permutation tables from reference implementation
-  const P = Object.freeze([
+  /** @type {uint8[][]} */
+  const P = [
     // p0
     [
       0xA9, 0x67, 0xB3, 0xE8, 0x04, 0xFD, 0xA3, 0x76, 0x9A, 0x92, 0x80, 0x78, 0xE4, 0xDD, 0xD1, 0x38,
@@ -93,13 +94,30 @@
       0x22, 0xC9, 0xC0, 0x9B, 0x89, 0xD4, 0xED, 0xAB, 0x12, 0xA2, 0x0D, 0x52, 0xBB, 0x02, 0x2F, 0xA9,
       0xD7, 0x61, 0x1E, 0xB4, 0x50, 0x04, 0xF6, 0xC2, 0x16, 0x25, 0x86, 0x56, 0x55, 0x09, 0xBE, 0x91
     ]
-  ]);
+  ];
+  Object.freeze(P);
 
   // Constants from C# reference
-  const P_00 = 1, P_01 = 0, P_02 = 0, P_03 = P_01^1, P_04 = 1;
-  const P_10 = 0, P_11 = 0, P_12 = 1, P_13 = P_11^1, P_14 = 0;
-  const P_20 = 1, P_21 = 1, P_22 = 0, P_23 = P_21^1, P_24 = 0;
-  const P_30 = 0, P_31 = 1, P_32 = 1, P_33 = P_31^1, P_34 = 1;
+  const P_00 = 1;
+  const P_01 = 0;
+  const P_02 = 0;
+  const P_03 = OpCodes.Xor32(P_01, 1);
+  const P_04 = 1;
+  const P_10 = 0;
+  const P_11 = 0;
+  const P_12 = 1;
+  const P_13 = OpCodes.Xor32(P_11, 1);
+  const P_14 = 0;
+  const P_20 = 1;
+  const P_21 = 1;
+  const P_22 = 0;
+  const P_23 = OpCodes.Xor32(P_21, 1);
+  const P_24 = 0;
+  const P_30 = 0;
+  const P_31 = 1;
+  const P_32 = 1;
+  const P_33 = OpCodes.Xor32(P_31, 1);
+  const P_34 = 1;
 
   const GF256_FDBK = 0x169;
   const GF256_FDBK_2 = Math.floor(GF256_FDBK / 2);
@@ -221,29 +239,40 @@
       ];
 
       // Initialize MDS matrices
+      /** @type {uint32[]} */
       this.gMDS0 = new Array(MAX_KEY_BITS);
+      /** @type {uint32[]} */
       this.gMDS1 = new Array(MAX_KEY_BITS);
+      /** @type {uint32[]} */
       this.gMDS2 = new Array(MAX_KEY_BITS);
+      /** @type {uint32[]} */
       this.gMDS3 = new Array(MAX_KEY_BITS);
       this._initializeMDS();
     }
 
+    /**
+     * Fill the four MDS lookup tables
+     */
     _initializeMDS() {
+      /** @type {uint8[]} */
       const m1 = new Array(2);
+      /** @type {uint8[]} */
       const mX = new Array(2);
+      /** @type {uint8[]} */
       const mY = new Array(2);
-      let j;
+      /** @type {uint32} */
+      let j = 0;
 
       for (let i = 0; i < MAX_KEY_BITS; i++) {
-        j = P[0][i]&0xff;
+        j = OpCodes.And32(P[0][i], 0xff);
         m1[0] = j;
-        mX[0] = this._Mx_X(j)&0xff;
-        mY[0] = this._Mx_Y(j)&0xff;
+        mX[0] = OpCodes.And32(this._Mx_X(j), 0xff);
+        mY[0] = OpCodes.And32(this._Mx_Y(j), 0xff);
 
-        j = P[1][i]&0xff;
+        j = OpCodes.And32(P[1][i], 0xff);
         m1[1] = j;
-        mX[1] = this._Mx_X(j)&0xff;
-        mY[1] = this._Mx_Y(j)&0xff;
+        mX[1] = OpCodes.And32(this._Mx_X(j), 0xff);
+        mY[1] = OpCodes.And32(this._Mx_Y(j), 0xff);
 
         this.gMDS0[i] = OpCodes.Pack32LE(m1[P_00], mX[P_00], mY[P_00], mY[P_00]);
         this.gMDS1[i] = OpCodes.Pack32LE(mY[P_10], mY[P_10], mX[P_10], m1[P_10]);
@@ -252,20 +281,38 @@
       }
     }
 
+    // (x is a byte here, so the unsigned Xor32 results equal the old raw XOR results)
+    /**
+     * @param {uint32} x - Byte
+     * @returns {uint32} x/2 with feedback
+     */
     _LFSR1(x) {
-      return ((OpCodes.Shr32(x, 1))^(((x&0x01) !== 0) ? GF256_FDBK_2 : 0));
+      return OpCodes.Xor32(OpCodes.Shr32(x, 1), OpCodes.And32(x, 0x01) !== 0 ? GF256_FDBK_2 : 0);
     }
 
+    /**
+     * @param {uint32} x - Byte
+     * @returns {uint32} x/4 with feedback
+     */
     _LFSR2(x) {
-      return ((OpCodes.Shr32(x, 2))^(((x&0x02) !== 0) ? GF256_FDBK_2 : 0)^(((x&0x01) !== 0) ? GF256_FDBK_4 : 0));
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(x, 2), OpCodes.And32(x, 0x02) !== 0 ? GF256_FDBK_2 : 0),
+        OpCodes.And32(x, 0x01) !== 0 ? GF256_FDBK_4 : 0);
     }
 
+    /**
+     * @param {uint32} x - Byte
+     * @returns {uint32} MDS multiply by X
+     */
     _Mx_X(x) {
-      return x^this._LFSR2(x);
+      return OpCodes.Xor32(x, this._LFSR2(x));
     }
 
+    /**
+     * @param {uint32} x - Byte
+     * @returns {uint32} MDS multiply by Y
+     */
     _Mx_Y(x) {
-      return x^this._LFSR1(x)^this._LFSR2(x);
+      return OpCodes.Xor32(OpCodes.Xor32(x, this._LFSR1(x)), this._LFSR2(x));
     }
 
     /**
@@ -294,6 +341,17 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      // Copied from the typed algorithm (the C# translation cannot reach them through this.algorithm)
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {uint32[]} */
+      this._mds0 = algorithm.gMDS0;
+      /** @type {uint32[]} */
+      this._mds1 = algorithm.gMDS1;
+      /** @type {uint32[]} */
+      this._mds2 = algorithm.gMDS2;
+      /** @type {uint32[]} */
+      this._mds3 = algorithm.gMDS3;
       this.isInverse = isInverse;
       this.key = null;
       /** @type {uint8[]} */
@@ -302,9 +360,13 @@
       this.KeySize = 0;
 
       // Twofish-specific state
+      /** @type {uint32[]|null} */
       this.gSubKeys = null;
+      /** @type {uint32[]|null} */
       this.gSBox = null;
+      /** @type {int32} */
       this.k64Cnt = 0;
+      /** @type {uint8[]|null} */
       this.workingKey = null;
     }
 
@@ -324,9 +386,15 @@
       }
 
       // Validate key size (16, 24, or 32 bytes)
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this._keySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. Twofish requires 16, 24, or 32 bytes");
@@ -362,10 +430,20 @@
     }
 
 
+    /**
+     * @param {uint8[]} key - 16, 24 or 32 key bytes
+     */
     _setKey(key) {
+      // Words past k64Cnt stay 0 (they used to be read as undefined || 0).
+      /** @type {uint32[]} */
       const k32e = new Array(Math.floor(MAX_KEY_BITS / 64));
+      k32e.fill(0);
+      /** @type {uint32[]} */
       const k32o = new Array(Math.floor(MAX_KEY_BITS / 64));
+      k32o.fill(0);
+      /** @type {uint32[]} */
       const sBoxKeys = new Array(Math.floor(MAX_KEY_BITS / 64));
+      sBoxKeys.fill(0);
       this.gSubKeys = new Array(TOTAL_SUBKEYS);
 
       // Extract key material
@@ -376,11 +454,16 @@
         sBoxKeys[this.k64Cnt - 1 - i] = this._RS_MDS_Encode(k32e[i], k32o[i]);
       }
 
-      let q, A, B;
+      /** @type {uint32} */
+      let q = 0;
+      /** @type {uint32} */
+      let A = 0;
+      /** @type {uint32} */
+      let B = 0;
       for (let i = 0; i < Math.floor(TOTAL_SUBKEYS / 2); i++) {
-        q = i * SK_STEP;
+        q = OpCodes.Mul32(i, SK_STEP); // i <= 19, so the product stays below 2^32
         A = this._F32(q, k32e);
-        B = this._F32(q + SK_BUMP, k32o);
+        B = this._F32(OpCodes.Add32(q, SK_BUMP), k32o);
         B = OpCodes.RotL32(B, 8);
         A = OpCodes.ToUint32((A + B));
         this.gSubKeys[i * 2] = A;
@@ -389,39 +472,49 @@
       }
 
       // Fully expand the S-box table for speed
-      const k0 = sBoxKeys[0] || 0;
-      const k1 = sBoxKeys[1] || 0;
-      const k2 = sBoxKeys[2] || 0;
-      const k3 = sBoxKeys[3] || 0;
-      let b0, b1, b2, b3;
+      const k0 = sBoxKeys[0];
+      const k1 = sBoxKeys[1];
+      const k2 = sBoxKeys[2];
+      const k3 = sBoxKeys[3];
+      /** @type {uint32} */
+      let b0 = 0;
+      /** @type {uint32} */
+      let b1 = 0;
+      /** @type {uint32} */
+      let b2 = 0;
+      /** @type {uint32} */
+      let b3 = 0;
       this.gSBox = new Array(4 * MAX_KEY_BITS);
-      
+
       for (let i = 0; i < MAX_KEY_BITS; i++) {
-        b0 = b1 = b2 = b3 = i;
-        switch (this.k64Cnt&3) {
+        b0 = i;
+        b1 = i;
+        b2 = i;
+        b3 = i;
+        switch (OpCodes.And32(this.k64Cnt, 3)) {
           case 1:
-            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][b0]&0xff)^this._M_b0(k0)];
-            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][b1]&0xff)^this._M_b1(k0)];
-            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][b2]&0xff)^this._M_b2(k0)];
-            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][b3]&0xff)^this._M_b3(k0)];
+            this.gSBox[i * 2] = this._mds0[OpCodes.Xor32(OpCodes.And32(P[P_01][b0], 0xff), this._M_b0(k0))];
+            this.gSBox[i * 2 + 1] = this._mds1[OpCodes.Xor32(OpCodes.And32(P[P_11][b1], 0xff), this._M_b1(k0))];
+            this.gSBox[i * 2 + 0x200] = this._mds2[OpCodes.Xor32(OpCodes.And32(P[P_21][b2], 0xff), this._M_b2(k0))];
+            this.gSBox[i * 2 + 0x201] = this._mds3[OpCodes.Xor32(OpCodes.And32(P[P_31][b3], 0xff), this._M_b3(k0))];
             break;
           case 0: // 256 bits of key
-            b0 = (P[P_04][b0]&0xff)^this._M_b0(k3);
-            b1 = (P[P_14][b1]&0xff)^this._M_b1(k3);
-            b2 = (P[P_24][b2]&0xff)^this._M_b2(k3);
-            b3 = (P[P_34][b3]&0xff)^this._M_b3(k3);
+            b0 = OpCodes.Xor32(OpCodes.And32(P[P_04][b0], 0xff), this._M_b0(k3));
+            b1 = OpCodes.Xor32(OpCodes.And32(P[P_14][b1], 0xff), this._M_b1(k3));
+            b2 = OpCodes.Xor32(OpCodes.And32(P[P_24][b2], 0xff), this._M_b2(k3));
+            b3 = OpCodes.Xor32(OpCodes.And32(P[P_34][b3], 0xff), this._M_b3(k3));
             // fall through
           case 3: // 192 bits of key
-            b0 = (P[P_03][b0]&0xff)^this._M_b0(k2);
-            b1 = (P[P_13][b1]&0xff)^this._M_b1(k2);
-            b2 = (P[P_23][b2]&0xff)^this._M_b2(k2);
-            b3 = (P[P_33][b3]&0xff)^this._M_b3(k2);
+            b0 = OpCodes.Xor32(OpCodes.And32(P[P_03][b0], 0xff), this._M_b0(k2));
+            b1 = OpCodes.Xor32(OpCodes.And32(P[P_13][b1], 0xff), this._M_b1(k2));
+            b2 = OpCodes.Xor32(OpCodes.And32(P[P_23][b2], 0xff), this._M_b2(k2));
+            b3 = OpCodes.Xor32(OpCodes.And32(P[P_33][b3], 0xff), this._M_b3(k2));
             // fall through
           case 2: // 128 bits of key
-            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][(P[P_02][b0]&0xff)^this._M_b0(k1)]&0xff)^this._M_b0(k0)];
-            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][(P[P_12][b1]&0xff)^this._M_b1(k1)]&0xff)^this._M_b1(k0)];
-            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][(P[P_22][b2]&0xff)^this._M_b2(k1)]&0xff)^this._M_b2(k0)];
-            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][(P[P_32][b3]&0xff)^this._M_b3(k1)]&0xff)^this._M_b3(k0)];
+            this.gSBox[i * 2] = this._mds0[OpCodes.Xor32(OpCodes.And32(P[P_01][OpCodes.Xor32(OpCodes.And32(P[P_02][b0], 0xff), this._M_b0(k1))], 0xff), this._M_b0(k0))];
+            this.gSBox[i * 2 + 1] = this._mds1[OpCodes.Xor32(OpCodes.And32(P[P_11][OpCodes.Xor32(OpCodes.And32(P[P_12][b1], 0xff), this._M_b1(k1))], 0xff), this._M_b1(k0))];
+            this.gSBox[i * 2 + 0x200] = this._mds2[OpCodes.Xor32(OpCodes.And32(P[P_21][OpCodes.Xor32(OpCodes.And32(P[P_22][b2], 0xff), this._M_b2(k1))], 0xff), this._M_b2(k0))];
+            this.gSBox[i * 2 + 0x201] = this._mds3[OpCodes.Xor32(OpCodes.And32(P[P_31][OpCodes.Xor32(OpCodes.And32(P[P_32][b3], 0xff), this._M_b3(k1))], 0xff), this._M_b3(k0))];
             break;
         }
       }
@@ -437,29 +530,36 @@
       let x2 = OpCodes.Xor32(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[INPUT_WHITEN + 2]);
       let x3 = OpCodes.Xor32(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[INPUT_WHITEN + 3]);
 
+      // (the PHT sums are taken mod 2^32 either way, so Add32/Mul32 chains give the old ToUint32 of the exact sum)
       let k = ROUND_SUBKEYS;
-      let t0, t1;
+      /** @type {uint32} */
+      let t0 = 0;
+      /** @type {uint32} */
+      let t1 = 0;
       for (let r = 0; r < ROUNDS; r += 2) {
         t0 = this._Fe32_0(x0);
         t1 = this._Fe32_3(x1);
-        x2 = OpCodes.Xor32(x2, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
+        x2 = OpCodes.Xor32(x2, OpCodes.Add32(OpCodes.Add32(t0, t1), this.gSubKeys[k++]));
         x2 = OpCodes.RotR32(x2, 1);
-        x3 = OpCodes.Xor32(OpCodes.RotL32(x3, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
+        x3 = OpCodes.Xor32(OpCodes.RotL32(x3, 1), OpCodes.Add32(OpCodes.Add32(t0, OpCodes.Mul32(2, t1)), this.gSubKeys[k++]));
 
         t0 = this._Fe32_0(x2);
         t1 = this._Fe32_3(x3);
-        x0 = OpCodes.Xor32(x0, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
+        x0 = OpCodes.Xor32(x0, OpCodes.Add32(OpCodes.Add32(t0, t1), this.gSubKeys[k++]));
         x0 = OpCodes.RotR32(x0, 1);
-        x1 = OpCodes.Xor32(OpCodes.RotL32(x1, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
+        x1 = OpCodes.Xor32(OpCodes.RotL32(x1, 1), OpCodes.Add32(OpCodes.Add32(t0, OpCodes.Mul32(2, t1)), this.gSubKeys[k++]));
       }
 
+      /** @type {uint8[]} */
       const output = [];
-      const out2 = OpCodes.Unpack32LE(OpCodes.Xor32(x2, this.gSubKeys[OUTPUT_WHITEN]));
-      const out3 = OpCodes.Unpack32LE(OpCodes.Xor32(x3, this.gSubKeys[OUTPUT_WHITEN + 1]));
-      const out0 = OpCodes.Unpack32LE(OpCodes.Xor32(x0, this.gSubKeys[OUTPUT_WHITEN + 2]));
-      const out1 = OpCodes.Unpack32LE(OpCodes.Xor32(x1, this.gSubKeys[OUTPUT_WHITEN + 3]));
-      
-      output.push(...out2, ...out3, ...out0, ...out1);
+      const w2 = OpCodes.Xor32(x2, this.gSubKeys[OUTPUT_WHITEN]);
+      const w3 = OpCodes.Xor32(x3, this.gSubKeys[OUTPUT_WHITEN + 1]);
+      const w0 = OpCodes.Xor32(x0, this.gSubKeys[OUTPUT_WHITEN + 2]);
+      const w1 = OpCodes.Xor32(x1, this.gSubKeys[OUTPUT_WHITEN + 3]);
+      output.push(...OpCodes.Unpack32LE(w2));
+      output.push(...OpCodes.Unpack32LE(w3));
+      output.push(...OpCodes.Unpack32LE(w0));
+      output.push(...OpCodes.Unpack32LE(w1));
       return output;
     }
 
@@ -474,81 +574,102 @@
       let x1 = OpCodes.Xor32(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[OUTPUT_WHITEN + 3]);
 
       let k = ROUND_SUBKEYS + 2 * ROUNDS - 1;
-      let t0, t1;
+      /** @type {uint32} */
+      let t0 = 0;
+      /** @type {uint32} */
+      let t1 = 0;
       for (let r = 0; r < ROUNDS; r += 2) {
         t0 = this._Fe32_0(x2);
         t1 = this._Fe32_3(x3);
-        x1 = OpCodes.Xor32(x1, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
-        x0 = OpCodes.Xor32(OpCodes.RotL32(x0, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
+        x1 = OpCodes.Xor32(x1, OpCodes.Add32(OpCodes.Add32(t0, OpCodes.Mul32(2, t1)), this.gSubKeys[k--]));
+        x0 = OpCodes.Xor32(OpCodes.RotL32(x0, 1), OpCodes.Add32(OpCodes.Add32(t0, t1), this.gSubKeys[k--]));
         x1 = OpCodes.RotR32(x1, 1);
 
         t0 = this._Fe32_0(x0);
         t1 = this._Fe32_3(x1);
-        x3 = OpCodes.Xor32(x3, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
-        x2 = OpCodes.Xor32(OpCodes.RotL32(x2, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
+        x3 = OpCodes.Xor32(x3, OpCodes.Add32(OpCodes.Add32(t0, OpCodes.Mul32(2, t1)), this.gSubKeys[k--]));
+        x2 = OpCodes.Xor32(OpCodes.RotL32(x2, 1), OpCodes.Add32(OpCodes.Add32(t0, t1), this.gSubKeys[k--]));
         x3 = OpCodes.RotR32(x3, 1);
       }
 
+      /** @type {uint8[]} */
       const output = [];
-      const out0 = OpCodes.Unpack32LE(OpCodes.Xor32(x0, this.gSubKeys[INPUT_WHITEN]));
-      const out1 = OpCodes.Unpack32LE(OpCodes.Xor32(x1, this.gSubKeys[INPUT_WHITEN + 1]));
-      const out2 = OpCodes.Unpack32LE(OpCodes.Xor32(x2, this.gSubKeys[INPUT_WHITEN + 2]));
-      const out3 = OpCodes.Unpack32LE(OpCodes.Xor32(x3, this.gSubKeys[INPUT_WHITEN + 3]));
-      
-      output.push(...out0, ...out1, ...out2, ...out3);
+      const w0 = OpCodes.Xor32(x0, this.gSubKeys[INPUT_WHITEN]);
+      const w1 = OpCodes.Xor32(x1, this.gSubKeys[INPUT_WHITEN + 1]);
+      const w2 = OpCodes.Xor32(x2, this.gSubKeys[INPUT_WHITEN + 2]);
+      const w3 = OpCodes.Xor32(x3, this.gSubKeys[INPUT_WHITEN + 3]);
+      output.push(...OpCodes.Unpack32LE(w0));
+      output.push(...OpCodes.Unpack32LE(w1));
+      output.push(...OpCodes.Unpack32LE(w2));
+      output.push(...OpCodes.Unpack32LE(w3));
       return output;
     }
 
+    /**
+     * @param {uint32} x - Input word
+     * @param {uint32[]} k32 - Four key words (zero past the key length)
+     * @returns {uint32} h(x, k32)
+     */
     _F32(x, k32) {
       let b0 = this._M_b0(x);
       let b1 = this._M_b1(x);
       let b2 = this._M_b2(x);
       let b3 = this._M_b3(x);
-      const k0 = k32[0] || 0;
-      const k1 = k32[1] || 0;
-      const k2 = k32[2] || 0;
-      const k3 = k32[3] || 0;
+      const k0 = k32[0];
+      const k1 = k32[1];
+      const k2 = k32[2];
+      const k3 = k32[3];
 
+      /** @type {uint32} */
       let result = 0;
-      switch (this.k64Cnt&3) {
+      switch (OpCodes.And32(this.k64Cnt, 3)) {
         case 1:
-          result = this.algorithm.gMDS0[(P[P_01][b0]&0xff)^this._M_b0(k0)]^this.algorithm.gMDS1[(P[P_11][b1]&0xff)^this._M_b1(k0)]^this.algorithm.gMDS2[(P[P_21][b2]&0xff)^this._M_b2(k0)]^this.algorithm.gMDS3[(P[P_31][b3]&0xff)^this._M_b3(k0)];
+          result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this._mds0[OpCodes.Xor32(OpCodes.And32(P[P_01][b0], 0xff), this._M_b0(k0))], this._mds1[OpCodes.Xor32(OpCodes.And32(P[P_11][b1], 0xff), this._M_b1(k0))]), this._mds2[OpCodes.Xor32(OpCodes.And32(P[P_21][b2], 0xff), this._M_b2(k0))]), this._mds3[OpCodes.Xor32(OpCodes.And32(P[P_31][b3], 0xff), this._M_b3(k0))]);
           break;
         case 0: // 256 bits of key
-          b0 = (P[P_04][b0]&0xff)^this._M_b0(k3);
-          b1 = (P[P_14][b1]&0xff)^this._M_b1(k3);
-          b2 = (P[P_24][b2]&0xff)^this._M_b2(k3);
-          b3 = (P[P_34][b3]&0xff)^this._M_b3(k3);
+          b0 = OpCodes.Xor32(OpCodes.And32(P[P_04][b0], 0xff), this._M_b0(k3));
+          b1 = OpCodes.Xor32(OpCodes.And32(P[P_14][b1], 0xff), this._M_b1(k3));
+          b2 = OpCodes.Xor32(OpCodes.And32(P[P_24][b2], 0xff), this._M_b2(k3));
+          b3 = OpCodes.Xor32(OpCodes.And32(P[P_34][b3], 0xff), this._M_b3(k3));
           // fall through
         case 3: // 192 bits of key
-          b0 = (P[P_03][b0]&0xff)^this._M_b0(k2);
-          b1 = (P[P_13][b1]&0xff)^this._M_b1(k2);
-          b2 = (P[P_23][b2]&0xff)^this._M_b2(k2);
-          b3 = (P[P_33][b3]&0xff)^this._M_b3(k2);
+          b0 = OpCodes.Xor32(OpCodes.And32(P[P_03][b0], 0xff), this._M_b0(k2));
+          b1 = OpCodes.Xor32(OpCodes.And32(P[P_13][b1], 0xff), this._M_b1(k2));
+          b2 = OpCodes.Xor32(OpCodes.And32(P[P_23][b2], 0xff), this._M_b2(k2));
+          b3 = OpCodes.Xor32(OpCodes.And32(P[P_33][b3], 0xff), this._M_b3(k2));
           // fall through
         case 2: // 128 bits of key
-          result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
-                  this.algorithm.gMDS0[(P[P_01][(P[P_02][b0]&0xff)^this._M_b0(k1)]&0xff)^this._M_b0(k0)],
-                  this.algorithm.gMDS1[(P[P_11][(P[P_12][b1]&0xff)^this._M_b1(k1)]&0xff)^this._M_b1(k0)]),
-                  this.algorithm.gMDS2[(P[P_21][(P[P_22][b2]&0xff)^this._M_b2(k1)]&0xff)^this._M_b2(k0)]),
-                  this.algorithm.gMDS3[(P[P_31][(P[P_32][b3]&0xff)^this._M_b3(k1)]&0xff)^this._M_b3(k0)]);
+          result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  this._mds0[OpCodes.Xor32(OpCodes.And32(P[P_01][OpCodes.Xor32(OpCodes.And32(P[P_02][b0], 0xff), this._M_b0(k1))], 0xff), this._M_b0(k0))],
+                  this._mds1[OpCodes.Xor32(OpCodes.And32(P[P_11][OpCodes.Xor32(OpCodes.And32(P[P_12][b1], 0xff), this._M_b1(k1))], 0xff), this._M_b1(k0))]),
+                  this._mds2[OpCodes.Xor32(OpCodes.And32(P[P_21][OpCodes.Xor32(OpCodes.And32(P[P_22][b2], 0xff), this._M_b2(k1))], 0xff), this._M_b2(k0))]),
+                  this._mds3[OpCodes.Xor32(OpCodes.And32(P[P_31][OpCodes.Xor32(OpCodes.And32(P[P_32][b3], 0xff), this._M_b3(k1))], 0xff), this._M_b3(k0))]);
           break;
       }
       return OpCodes.ToUint32(result);
     }
 
+    /**
+     * @param {uint32} k0 - Even key word
+     * @param {uint32} k1 - Odd key word
+     * @returns {uint32} Reed-Solomon encoded S-box key word
+     */
     _RS_MDS_Encode(k0, k1) {
       let r = k1;
       for (let i = 0; i < 4; i++) { // shift 1 byte at a time
         r = this._RS_rem(r);
       }
-      r = OpCodes.XorN(r, k0);
+      r = OpCodes.Xor32(r, k0);
       for (let i = 0; i < 4; i++) {
         r = this._RS_rem(r);
       }
       return OpCodes.ToUint32(r);
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} One Reed-Solomon remainder step
+     */
     _RS_rem(x) {
       const b = OpCodes.And32(OpCodes.Shr32(x, 24), 0xff);
       const g2 = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(b, 1), (OpCodes.And32(b, 0x80) !== 0 ? RS_GF_FDBK : 0)), 0xff);
@@ -556,36 +677,61 @@
       return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(x, 8), OpCodes.Shl32(g3, 24)), OpCodes.Shl32(g2, 16)), OpCodes.Shl32(g3, 8)), b));
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Byte 0
+     */
     _M_b0(x) {
       return OpCodes.And32(x, 0xff);
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Byte 1
+     */
     _M_b1(x) {
       return OpCodes.And32(OpCodes.Shr32(x, 8), 0xff);
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Byte 2
+     */
     _M_b2(x) {
       return OpCodes.And32(OpCodes.Shr32(x, 16), 0xff);
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Byte 3
+     */
     _M_b3(x) {
       return OpCodes.And32(OpCodes.Shr32(x, 24), 0xff);
     }
 
+    // (table index = base + 2 * byte, small non-negative numbers)
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} g(x) through the expanded S-box table
+     */
     _Fe32_0(x) {
-      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
-             this.gSBox[0x000 + 2 * OpCodes.And32(x, 0xff)],
-             this.gSBox[0x001 + 2 * OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)]),
-             this.gSBox[0x200 + 2 * OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)]),
-             this.gSBox[0x201 + 2 * OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)]);
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+             this.gSBox[OpCodes.Add32(0x000, OpCodes.Mul32(2, OpCodes.And32(x, 0xff)))],
+             this.gSBox[OpCodes.Add32(0x001, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)))]),
+             this.gSBox[OpCodes.Add32(0x200, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)))]),
+             this.gSBox[OpCodes.Add32(0x201, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)))]);
     }
 
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} g(ROL(x, 8)) through the expanded S-box table
+     */
     _Fe32_3(x) {
-      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
-             this.gSBox[0x000 + 2 * OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)],
-             this.gSBox[0x001 + 2 * OpCodes.And32(x, 0xff)]),
-             this.gSBox[0x200 + 2 * OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)]),
-             this.gSBox[0x201 + 2 * OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)]);
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+             this.gSBox[OpCodes.Add32(0x000, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)))],
+             this.gSBox[OpCodes.Add32(0x001, OpCodes.Mul32(2, OpCodes.And32(x, 0xff)))]),
+             this.gSBox[OpCodes.Add32(0x200, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)))]),
+             this.gSBox[OpCodes.Add32(0x201, OpCodes.Mul32(2, OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)))]);
     }
   }
 
