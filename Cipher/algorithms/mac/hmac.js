@@ -117,9 +117,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {HMACInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -138,25 +138,43 @@
  */
 
   class HMACInstance extends IMacInstance {
+    /**
+     * Initialize an HMAC instance
+     * @param {HMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {string} */
       this._hashFunction = 'MD5'; // Default hash function
       this.inputBuffer = [];
 
       // HMAC constants
+      /** @type {uint8} */
       this.IPAD = 0x36;
+      /** @type {uint8} */
       this.OPAD = 0x5C;
+    }
 
-      // Block sizes for different hash functions
-      this.BLOCK_SIZES = {
-        'MD5': 64,
-        'SHA-1': 64,
-        'SHA-224': 64,
-        'SHA-256': 64,
-        'SHA-384': 128,
-        'SHA-512': 128
-      };
+    /**
+     * Block size of a supported hash function
+     * @param {string} hashFunction - Upper-case hash function name
+     * @returns {int32} Block size in bytes, or 0 when the hash function is not supported
+     */
+    _blockSizeOf(hashFunction) {
+      switch (hashFunction) {
+        case 'MD5':
+        case 'SHA-1':
+        case 'SHA-224':
+        case 'SHA-256':
+          return 64;
+        case 'SHA-384':
+        case 'SHA-512':
+          return 128;
+        default:
+          return 0;
+      }
     }
 
     // Property setter for key
@@ -183,24 +201,35 @@
     }
 
     // Property setter for hash function
+    /**
+     * Select the hash function
+     * @param {string|uint8[]} hashFunc - Hash function name, as a string or as its ANSI bytes (test vectors)
+     * @throws {Error} If the value is neither, or names an unsupported hash function
+     */
     set hashFunction(hashFunc) {
       // Convert byte array to string if needed (from test vectors)
-      let funcName = hashFunc;
+      /** @type {string} */
+      let funcName;
       if (Array.isArray(hashFunc)) {
         funcName = OpCodes.BytesToAnsi(hashFunc);
-      }
-
-      if (typeof funcName !== 'string') {
+      } else if (typeof hashFunc === 'string') {
+        funcName = hashFunc;
+      } else {
         throw new Error('Invalid hash function - must be string or byte array');
       }
 
+      /** @type {string} */
       const upperFunc = funcName.toUpperCase();
-      if (!this.BLOCK_SIZES[upperFunc]) {
+      if (this._blockSizeOf(upperFunc) === 0) {
         throw new Error('Unsupported hash function: ' + funcName);
       }
       this._hashFunction = upperFunc;
     }
 
+    /**
+     * Name of the selected hash function
+     * @returns {string} Upper-case hash function name
+     */
     get hashFunction() {
       return this._hashFunction;
     }
@@ -239,6 +268,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} MAC bytes
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error('Key not set');
@@ -250,14 +285,22 @@
     }
 
     // Core HMAC computation
+    /**
+     * HMAC(K, m) = H((K' xor opad) || H((K' xor ipad) || m)), RFC 2104
+     * @param {uint8[]} message - Message bytes
+     * @param {uint8[]} key - Key bytes (any length)
+     * @param {string} hashFunction - Upper-case hash function name
+     * @returns {uint8[]} MAC bytes
+     */
     _computeHMAC(message, key, hashFunction) {
-      const blockSize = this.BLOCK_SIZES[hashFunction];
-      if (!blockSize) {
+      const blockSize = this._blockSizeOf(hashFunction);
+      if (blockSize === 0) {
         throw new Error('Unsupported hash function: ' + hashFunction);
       }
 
       // Prepare key (hash if too long, pad if too short)
-      let processedKey = [...key];
+      /** @type {uint8[]} */
+      let processedKey = key.slice();
 
       // If key is longer than block size, hash it
       if (processedKey.length > blockSize) {
@@ -270,35 +313,66 @@
       }
 
       // Create inner and outer padded keys
+      /** @type {uint8[]} */
       const innerKey = new Array(blockSize);
+      /** @type {uint8[]} */
       const outerKey = new Array(blockSize);
 
       for (let i = 0; i < blockSize; i++) {
-        innerKey[i] = OpCodes.XorN(processedKey[i], this.IPAD);
-        outerKey[i] = OpCodes.XorN(processedKey[i], this.OPAD);
+        innerKey[i] = OpCodes.Xor8(processedKey[i], this.IPAD);
+        outerKey[i] = OpCodes.Xor8(processedKey[i], this.OPAD);
       }
 
       // Inner hash: Hash(K XOR ipad, message)
-      const innerData = [...innerKey, ...message];
+      /** @type {uint8[]} */
+      const innerData = innerKey.concat(message);
       const innerHash = this._hashBytes(innerData, hashFunction);
 
       // Outer hash: Hash(K XOR opad, Hash(K XOR ipad, message))
-      const outerData = [...outerKey, ...innerHash];
+      /** @type {uint8[]} */
+      const outerData = outerKey.concat(innerHash);
       const finalHash = this._hashBytes(outerData, hashFunction);
 
       return finalHash;
     }
 
+    /**
+     * Source file (in ../hash, without extension) that registers a hash algorithm
+     * @param {string} hashFunction - Registered hash algorithm name
+     * @returns {string} File name: MD5 lives in md.js, SHA-224 in sha256.js and
+     *                   SHA-384 in sha512.js; any other name maps to itself,
+     *                   lower-case and without dashes
+     */
+    _hashFileOf(hashFunction) {
+      switch (hashFunction) {
+        case 'MD5':
+          return 'md';
+        case 'SHA-224':
+          return 'sha256';
+        case 'SHA-384':
+          return 'sha512';
+        default:
+          return hashFunction.toLowerCase().replace(/-/g, '');
+      }
+    }
+
     // Helper to hash byte arrays using specified hash function
+    /**
+     * Hash bytes with a registered hash algorithm
+     * @param {uint8[]} data - Bytes to hash
+     * @param {string} hashFunction - Registered hash algorithm name
+     * @returns {uint8[]} Digest bytes
+     * @throws {Error} If the hash algorithm cannot be found or instantiated
+     */
     _hashBytes(data, hashFunction) {
       // Find the hash algorithm in the framework
+      /** @type {Algorithm} */
       let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
 
       // If not found, try to load it dynamically (for testing environments)
       if (!hashAlgorithm && typeof require !== 'undefined') {
         try {
-          const hashFileName = hashFunction.toLowerCase().replace(/-/g, '');
-          require(`../hash/${hashFileName}.js`);
+          require('../hash/' + this._hashFileOf(hashFunction) + '.js');
           hashAlgorithm = AlgorithmFramework.Find(hashFunction);
         } catch (loadError) {
           // Ignore load errors, will throw below if still not found
@@ -310,6 +384,7 @@
       }
 
       // Create hash instance and compute hash
+      /** @type {IHashFunctionInstance} */
       const hashInstance = hashAlgorithm.CreateInstance();
       if (!hashInstance) {
         throw new Error('Cannot create instance for hash function ' + hashFunction);
@@ -317,7 +392,9 @@
 
       // Feed data and get result
       hashInstance.Feed(data);
-      return hashInstance.Result();
+      /** @type {uint8[]} */
+      const digest = hashInstance.Result();
+      return digest;
     }
   }
 

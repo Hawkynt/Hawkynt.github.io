@@ -77,19 +77,11 @@
 
       // KDF-specific properties
       this.SaltRequired = false;
-      this.SupportedOutputSizes = [1, 64]; // Limited to one hash block (max SHA-512 = 64 bytes)
+      this.SupportedOutputSizes = [new KeySize(1, 64, 1)]; // Limited to one hash block (max SHA-512 = 64 bytes)
 
       // KDF1 constants
       this.DEFAULT_HASH = 'SHA-1';
       this.DEFAULT_OUTPUT_LENGTH = 20;
-      this.HASH_FUNCTIONS = {
-        'SHA-1': { size: 20, name: 'SHA-1' },
-        'SHA1': { size: 20, name: 'SHA-1' },
-        'SHA-256': { size: 32, name: 'SHA-256' },
-        'SHA256': { size: 32, name: 'SHA-256' },
-        'SHA-512': { size: 64, name: 'SHA-512' },
-        'SHA512': { size: 64, name: 'SHA-512' }
-      };
 
       // Documentation and references
       this.documentation = [
@@ -159,12 +151,12 @@
       ];
 
       // Configure test parameters
-      this.tests[0].salt = [];
+      this.tests[0].salt = OpCodes.Hex8ToBytes('');
       this.tests[0].outputSize = 20;
       this.tests[0].hashFunction = 'SHA-1';
       this.tests[0].expected = OpCodes.Hex8ToBytes("A0D760447F105CE64DB99FF2FC92F961F24E7D9C");
 
-      this.tests[1].salt = [];
+      this.tests[1].salt = OpCodes.Hex8ToBytes('');
       this.tests[1].outputSize = 10;
       this.tests[1].hashFunction = 'SHA-1';
       this.tests[1].expected = OpCodes.Hex8ToBytes("A0D760447F105CE64DB9");
@@ -179,7 +171,7 @@
       this.tests[3].hashFunction = 'SHA-1';
       this.tests[3].expected = OpCodes.Hex8ToBytes("A0D760447F105CE64DB99FF2FC92F961F24E7D9C");
 
-      this.tests[4].salt = [];
+      this.tests[4].salt = OpCodes.Hex8ToBytes('');
       this.tests[4].outputSize = 20;
       this.tests[4].hashFunction = 'SHA-1';
       this.tests[4].expected = OpCodes.Hex8ToBytes("DBFEFA0EA12D352C4AE5B0AF17D061E0E2C469A8");
@@ -191,9 +183,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new KDF1 instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: KDF1 has no inverse
+   * @returns {KDF1Instance} New KDF1 instance
    */
 
     CreateInstance(isInverse = false) {
@@ -220,19 +212,11 @@
 
       // KDF-specific properties
       this.SaltRequired = false;
-      this.SupportedOutputSizes = [1, 2147483647]; // Up to 2GB output (limited by 32-bit counter)
+      this.SupportedOutputSizes = [new KeySize(1, 2147483647, 1)]; // Up to 2GB output (limited by 32-bit counter)
 
       // KDF1-ISO constants
       this.DEFAULT_HASH = 'SHA-1';
       this.DEFAULT_OUTPUT_LENGTH = 20;
-      this.HASH_FUNCTIONS = {
-        'SHA-1': { size: 20, name: 'SHA-1' },
-        'SHA1': { size: 20, name: 'SHA-1' },
-        'SHA-256': { size: 32, name: 'SHA-256' },
-        'SHA256': { size: 32, name: 'SHA-256' },
-        'SHA-512': { size: 64, name: 'SHA-512' },
-        'SHA512': { size: 64, name: 'SHA-512' }
-      };
 
       // Documentation and references
       this.documentation = [
@@ -291,31 +275,31 @@
       ];
 
       // Configure test parameters
-      this.tests[0].salt = [];
+      this.tests[0].salt = OpCodes.Hex8ToBytes('');
       this.tests[0].outputSize = 107;
       this.tests[0].hashFunction = 'SHA-1';
       this.tests[0].expected = OpCodes.Hex8ToBytes("C325EBBB41A82551D5D0AD4834870A05EF3918C8CAAE38873F07DCA43127A4DEE36A6CA5970F6C06926037DE7DF79C4915D83FF705821D2C46A1FA7BB81B73E27176FEB7FD3A45E40B843F1AAEBCCB1EF4FA7EE3B9B491A342F43EAAA435EFDED41E0A3A6EC2EFF1F2ED95");
 
-      this.tests[1].salt = [];
+      this.tests[1].salt = OpCodes.Hex8ToBytes('');
       this.tests[1].outputSize = 20;
       this.tests[1].hashFunction = 'SHA-1';
       this.tests[1].expected = OpCodes.Hex8ToBytes("281D7CB2D7D5531ED1F9382152D9BE9A89A1DF09");
 
-      this.tests[2].salt = [];
+      this.tests[2].salt = OpCodes.Hex8ToBytes('');
       this.tests[2].outputSize = 20;
       this.tests[2].hashFunction = 'SHA-256';
       this.tests[2].expected = OpCodes.Hex8ToBytes("0742BA966813AF75536BB6149CC44FC256FD6406");
 
-      this.tests[3].salt = [];
+      this.tests[3].salt = OpCodes.Hex8ToBytes('');
       this.tests[3].outputSize = 20;
       this.tests[3].hashFunction = 'SHA-256';
       this.tests[3].expected = OpCodes.Hex8ToBytes("6F0195F38EED2417AA6EB7A365245073E58711DB");
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new KDF1-ISO-18033 instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: KDF1-ISO-18033 has no inverse
+   * @returns {KDF1ISO18033Instance} New KDF1-ISO-18033 instance
    */
 
     CreateInstance(isInverse = false) {
@@ -326,44 +310,59 @@
   // ===== KDF1 INSTANCE IMPLEMENTATION =====
 
   /**
- * KDF1 cipher instance implementing Feed/Result pattern
+ * KDF1 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class KDF1Instance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a KDF1 instance
+   * @param {KDF1Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: KDF1 has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 20; // Default to SHA-1 output size
+      /** @type {uint8[]} */
       this._salt = [];
+      /** @type {string} */
       this._hashFunction = 'SHA-1';
+      /** @type {uint8[]} Shared secret (null until fed or set) */
       this._secret = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} Salt */
     get salt() { return this._salt; }
-    set salt(value) { this._salt = Array.isArray(value) ? value : []; }
+    /** @param {uint8[]} value - Salt (anything but an array clears it) */
+    set salt(value) {
+      if (Array.isArray(value)) { this._salt = value; } else { this._salt = []; }
+    }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {string} Hash name */
     get hashFunction() { return this._hashFunction; }
-    set hashFunction(value) { this._hashFunction = value || 'SHA-1'; }
+    /** @param {string} value - Hash name (empty selects SHA-1) */
+    set hashFunction(value) {
+      if (value) { this._hashFunction = value; } else { this._hashFunction = 'SHA-1'; }
+    }
 
+    /** @returns {uint8[]} Shared secret */
     get secret() { return this._secret; }
+    /** @param {uint8[]} value - Shared secret */
     set secret(value) { this._secret = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed shared secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -383,9 +382,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no secret was fed or set, or the hash or length is unsupported
    */
 
     Result() {
@@ -394,28 +393,33 @@
       }
 
       const secret = this._secret;
-      const salt = this._salt || [];
-      const outputSize = this.OutputSize || 20;
-      const hashFunc = this._hashFunction || 'SHA-1';
+      /** @type {uint8[]} */
+      let salt = [];
+      if (this._salt) { salt = this._salt; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 20; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA-1'; }
 
       return this.deriveKey(secret, salt, outputSize, hashFunc);
     }
 
+    /**
+     * KDF1 (IEEE 1363): truncate(H(secret || salt), outputLength)
+     * @param {uint8[]} secret - Shared secret
+     * @param {uint8[]} salt - Salt / other info
+     * @param {int32} outputLength - Output length, at most the hash length
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported or the length exceeds it
+     */
     deriveKey(secret, salt, outputLength, hashFunction) {
       // KDF1 (IEEE 1363) implementation
       // Output = truncate(H(secret || salt), outputLength)
       // NOTE: Limited to single hash block
 
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
-      }
-
-      const hashLen = hashInfo.size;
+      const hashName = hashFunction;
+      const hashLen = this.hashSize(hashName);
 
       // KDF1 (IEEE 1363) is limited to single hash output
       if (outputLength > hashLen) {
@@ -432,46 +436,64 @@
       return hash.slice(0, outputLength);
     }
 
-    hashData(data, hashFunction) {
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      // Map hash names to AlgorithmFramework-registered algorithm names
-      const hashMap = {
-        'SHA-1': 'SHA-1',
-        'SHA1': 'SHA-1',
-        'SHA-256': 'SHA-256',
-        'SHA256': 'SHA-256',
-        'SHA-512': 'SHA-512',
-        'SHA512': 'SHA-512'
-      };
-
-      const actualHashName = hashMap[hashName];
-      if (!actualHashName) {
-        throw new Error('Unsupported hash function: ' + hashName);
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
+     * @returns {int32} Digest size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA-1': case 'SHA1': return 20;
+        case 'SHA-256': case 'SHA256': return 32;
+        case 'SHA-512': case 'SHA512': return 64;
+        default: throw new Error('Unsupported hash function: ' + hashName);
       }
-
-      return this.performHash(data, actualHashName);
     }
 
-    // Compute a hash using the registered AlgorithmFramework hash algorithm.
-    // Registry-first: Find() is checked before require() falls back to loading the module.
-    performHash(data, hashFunction) {
-      const hashFileNames = {
-        'SHA-1': '../hash/sha1.js',
-        'SHA-256': '../hash/sha256.js',
-        'SHA-512': '../hash/sha512.js'
-      };
+    /**
+     * Name the framework registers a supported hash under
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
+     * @returns {string} Registered name
+     * @throws {Error} If the hash is unsupported
+     */
+    registeredHashName(hashName) {
+      switch (hashName) {
+        case 'SHA-1': case 'SHA1': return 'SHA-1';
+        case 'SHA-256': case 'SHA256': return 'SHA-256';
+        case 'SHA-512': case 'SHA512': return 'SHA-512';
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
 
+    /**
+     * Hash with a supported hash
+     * @param {uint8[]} data - Message
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Digest
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
+    hashData(data, hashFunction) {
+      return this.performHash(data, this.registeredHashName(hashFunction));
+    }
+
+    /**
+     * Compute a hash using the registered AlgorithmFramework hash algorithm.
+     * Registry-first: Find() is checked before require() falls back to loading
+     * the module (CommonJS only; an AMD or browser loader cannot require
+     * synchronously).
+     * @param {uint8[]} data - Message
+     * @param {string} hashFunction - Registered hash name
+     * @returns {uint8[]} Digest
+     * @throws {Error} If the hash is not available
+     */
+    performHash(data, hashFunction) {
       let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
 
-      if (!hashAlgorithm && typeof require !== 'undefined' && hashFileNames[hashFunction]) {
-        try {
-          require(hashFileNames[hashFunction]);
-        } catch (e) {
-          // Ignore load errors, handled by the check below
-        }
+      if (!hashAlgorithm && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        if (hashFunction === 'SHA-1') { require('../hash/sha1.js'); }
+        if (hashFunction === 'SHA-256') { require('../hash/sha256.js'); }
+        if (hashFunction === 'SHA-512') { require('../hash/sha512.js'); }
         hashAlgorithm = AlgorithmFramework.Find(hashFunction);
       }
 
@@ -479,53 +501,71 @@
         throw new Error('Hash algorithm ' + hashFunction + ' not available. Ensure hash algorithms are loaded before KDF1.');
       }
 
+      /** @type {IHashFunctionInstance} */
       const hashInstance = hashAlgorithm.CreateInstance(false);
       hashInstance.Feed(data);
-      return hashInstance.Result();
+      /** @type {uint8[]} */
+      const digest = hashInstance.Result();
+      return digest;
     }
   }
 
   // ===== KDF1-ISO-18033 INSTANCE IMPLEMENTATION =====
 
   /**
- * KDF1ISO18033 cipher instance implementing Feed/Result pattern
+ * KDF1-ISO-18033 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class KDF1ISO18033Instance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a KDF1-ISO-18033 instance
+   * @param {KDF1ISO18033Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: KDF1-ISO-18033 has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 20; // Default to SHA-1 output size
+      /** @type {uint8[]} */
       this._salt = [];
+      /** @type {string} */
       this._hashFunction = 'SHA-1';
+      /** @type {uint8[]} Shared secret (null until fed or set) */
       this._secret = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} Salt */
     get salt() { return this._salt; }
-    set salt(value) { this._salt = Array.isArray(value) ? value : []; }
+    /** @param {uint8[]} value - Salt (anything but an array clears it) */
+    set salt(value) {
+      if (Array.isArray(value)) { this._salt = value; } else { this._salt = []; }
+    }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {string} Hash name */
     get hashFunction() { return this._hashFunction; }
-    set hashFunction(value) { this._hashFunction = value || 'SHA-1'; }
+    /** @param {string} value - Hash name (empty selects SHA-1) */
+    set hashFunction(value) {
+      if (value) { this._hashFunction = value; } else { this._hashFunction = 'SHA-1'; }
+    }
 
+    /** @returns {uint8[]} Shared secret */
     get secret() { return this._secret; }
+    /** @param {uint8[]} value - Shared secret */
     set secret(value) { this._secret = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed shared secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -545,9 +585,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no secret was fed or set, or the hash or length is unsupported
    */
 
     Result() {
@@ -556,28 +596,33 @@
       }
 
       const secret = this._secret;
-      const salt = this._salt || [];
-      const outputSize = this.OutputSize || 20;
-      const hashFunc = this._hashFunction || 'SHA-1';
+      /** @type {uint8[]} */
+      let salt = [];
+      if (this._salt) { salt = this._salt; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 20; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA-1'; }
 
       return this.deriveKey(secret, salt, outputSize, hashFunc);
     }
 
+    /**
+     * KDF1-ISO-18033: H(secret || counter || salt) for counter = 0, 1, ...
+     * @param {uint8[]} secret - Shared secret
+     * @param {uint8[]} salt - Salt / other info
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported
+     */
     deriveKey(secret, salt, outputLength, hashFunction) {
       // KDF1-ISO-18033 implementation based on ISO/IEC 18033-2
       // Output = H(secret || counter || salt) for counter = 0, 1, 2, ...
       // Counter is 32-bit big-endian, starting at 0
 
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
-      }
-
-      const hashLen = hashInfo.size;
+      const hashName = hashFunction;
+      const hashLen = this.hashSize(hashName);
       const numBlocks = Math.ceil(outputLength / hashLen);
 
       // Limit to 2^32 blocks (as per ISO 18033-2 and Botan implementation)
@@ -585,6 +630,7 @@
         throw new Error('KDF1-ISO-18033 maximum output length exceeded (> 2^32 blocks)');
       }
 
+      /** @type {uint8[]} */
       let output = [];
 
       // Generate each block using counter-based iteration
@@ -605,6 +651,13 @@
       return output.slice(0, outputLength);
     }
 
+    /**
+     * secret || counter (big-endian 32-bit) || salt
+     * @param {uint8[]} secret - Shared secret
+     * @param {int32} counter - Block counter
+     * @param {uint8[]} salt - Salt / other info
+     * @returns {uint8[]} Hash input
+     */
     concatenateInputs(secret, counter, salt) {
       // KDF1-ISO-18033 input order: secret || counter (big-endian 32-bit) || salt
       // Use OpCodes for all byte operations and array manipulation
@@ -617,46 +670,64 @@
       return OpCodes.ConcatArrays([secret, counterBytes, salt]);
     }
 
-    hashData(data, hashFunction) {
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      // Map hash names to AlgorithmFramework-registered algorithm names
-      const hashMap = {
-        'SHA-1': 'SHA-1',
-        'SHA1': 'SHA-1',
-        'SHA-256': 'SHA-256',
-        'SHA256': 'SHA-256',
-        'SHA-512': 'SHA-512',
-        'SHA512': 'SHA-512'
-      };
-
-      const actualHashName = hashMap[hashName];
-      if (!actualHashName) {
-        throw new Error('Unsupported hash function: ' + hashName);
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
+     * @returns {int32} Digest size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA-1': case 'SHA1': return 20;
+        case 'SHA-256': case 'SHA256': return 32;
+        case 'SHA-512': case 'SHA512': return 64;
+        default: throw new Error('Unsupported hash function: ' + hashName);
       }
-
-      return this.performHash(data, actualHashName);
     }
 
-    // Compute a hash using the registered AlgorithmFramework hash algorithm.
-    // Registry-first: Find() is checked before require() falls back to loading the module.
-    performHash(data, hashFunction) {
-      const hashFileNames = {
-        'SHA-1': '../hash/sha1.js',
-        'SHA-256': '../hash/sha256.js',
-        'SHA-512': '../hash/sha512.js'
-      };
+    /**
+     * Name the framework registers a supported hash under
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
+     * @returns {string} Registered name
+     * @throws {Error} If the hash is unsupported
+     */
+    registeredHashName(hashName) {
+      switch (hashName) {
+        case 'SHA-1': case 'SHA1': return 'SHA-1';
+        case 'SHA-256': case 'SHA256': return 'SHA-256';
+        case 'SHA-512': case 'SHA512': return 'SHA-512';
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
 
+    /**
+     * Hash with a supported hash
+     * @param {uint8[]} data - Message
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Digest
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
+    hashData(data, hashFunction) {
+      return this.performHash(data, this.registeredHashName(hashFunction));
+    }
+
+    /**
+     * Compute a hash using the registered AlgorithmFramework hash algorithm.
+     * Registry-first: Find() is checked before require() falls back to loading
+     * the module (CommonJS only; an AMD or browser loader cannot require
+     * synchronously).
+     * @param {uint8[]} data - Message
+     * @param {string} hashFunction - Registered hash name
+     * @returns {uint8[]} Digest
+     * @throws {Error} If the hash is not available
+     */
+    performHash(data, hashFunction) {
       let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
 
-      if (!hashAlgorithm && typeof require !== 'undefined' && hashFileNames[hashFunction]) {
-        try {
-          require(hashFileNames[hashFunction]);
-        } catch (e) {
-          // Ignore load errors, handled by the check below
-        }
+      if (!hashAlgorithm && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        if (hashFunction === 'SHA-1') { require('../hash/sha1.js'); }
+        if (hashFunction === 'SHA-256') { require('../hash/sha256.js'); }
+        if (hashFunction === 'SHA-512') { require('../hash/sha512.js'); }
         hashAlgorithm = AlgorithmFramework.Find(hashFunction);
       }
 
@@ -664,9 +735,12 @@
         throw new Error('Hash algorithm ' + hashFunction + ' not available. Ensure hash algorithms are loaded before KDF1.');
       }
 
+      /** @type {IHashFunctionInstance} */
       const hashInstance = hashAlgorithm.CreateInstance(false);
       hashInstance.Feed(data);
-      return hashInstance.Result();
+      /** @type {uint8[]} */
+      const digest = hashInstance.Result();
+      return digest;
     }
   }
 

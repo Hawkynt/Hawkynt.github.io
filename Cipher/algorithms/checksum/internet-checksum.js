@@ -53,6 +53,11 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * InternetChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class InternetChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -147,15 +152,23 @@
  */
 
   class InternetChecksumInstance extends IAlgorithmInstance {
+    /**
+     * Initialize a checksum instance
+     * @param {InternetChecksumAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint32} Running 1's complement sum, folded to 16 bits after every word */
       this.sum = 0;
+      /** @type {uint8} Odd trailing octet carried into the next Feed */
+      this.pending = 0;
+      /** @type {boolean} Whether pending holds an octet */
+      this.hasPending = false;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -174,13 +187,13 @@
       // different word sequence than Feed(a || b) whenever a had odd length.
       let i = 0;
       if (this.hasPending) {
-        this._addWord(OpCodes.OrN(OpCodes.Shl32(this.pending, 8), data[0]));
+        this._addWord(OpCodes.Or32(OpCodes.Shl32(this.pending, 8), data[0]));
         this.hasPending = false;
         i = 1;
       }
 
       for (; i + 1 < data.length; i += 2) {
-        this._addWord(OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]));
+        this._addWord(OpCodes.Or32(OpCodes.Shl32(data[i], 8), data[i + 1]));
       }
 
       if (i < data.length) {
@@ -191,22 +204,22 @@
 
     /**
      * Add one 16-bit word to the running 1's complement sum
-     * @param {number} word - 16-bit word
+     * @param {uint32} word - 16-bit word
+     * @returns {void}
      */
     _addWord(word) {
-      this.sum += word;
+      this.sum = OpCodes.Add32(this.sum, word);
 
       // Handle carry (convert to 1's complement arithmetic)
       const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
       while (this.sum > maxValue) {
-        this.sum = OpCodes.AndN(this.sum, maxValue) + OpCodes.Shr32(this.sum, 16);
+        this.sum = OpCodes.Add32(OpCodes.And32(this.sum, maxValue), OpCodes.Shr32(this.sum, 16));
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
@@ -218,7 +231,7 @@
 
       // Take 1's complement of the final sum
       const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
-      const checksum = OpCodes.AndN((~this.sum), maxValue);
+      const checksum = OpCodes.And32(OpCodes.Not32(this.sum), maxValue);
 
       // Return as 2-byte array (big-endian)
       const result = OpCodes.Unpack16BE(checksum);

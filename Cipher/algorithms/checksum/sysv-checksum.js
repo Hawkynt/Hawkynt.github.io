@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * SYSVChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class SYSVChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
+      /** @type {int32} */
       this.checksumSize = 32; // Returns 32-bit sum
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("GNU coreutils sum.c (sysv_sum_file) reference implementation", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: Sum all bytes, result mod 2^16",
         "Output: 16-bit checksum (0-65535)",
@@ -94,9 +105,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {SYSVChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -106,28 +117,28 @@
   }
 
   /**
- * SYSVChecksum cipher instance implementing Feed/Result pattern
+ * SYSVChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class SYSVChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {SYSVChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running 16-bit sum */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -136,14 +147,13 @@
       // Sum all bytes, keeping 16-bit result
       const mask16 = OpCodes.BitMask(16);
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.AndN(this.sum + data[i], mask16);
+        this.sum = OpCodes.And32(OpCodes.Add32(this.sum, data[i]), mask16);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {

@@ -228,9 +228,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new TLS 1.0/1.1 PRF instance
+   * @param {boolean} [isInverse=false] - True returns null: the PRF has no inverse
+   * @returns {TLSPRFInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -243,68 +243,98 @@
 
   // TLS 1.0/1.1 PRF Instance
   /**
- * TLSPRF cipher instance implementing Feed/Result pattern
+ * TLS 1.0/1.1 PRF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class TLSPRFInstance extends IKdfInstance {
+    /**
+     * Initialize a TLS 1.0/1.1 PRF instance
+     * @param {TLSPRFAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} Secret (null until fed or set) */
       this._secret = null;
+      /** @type {uint8[]} Seed (null until set; required) */
       this._salt = null;
+      /** @type {uint8[]} */
       this._label = []; // Empty by default (not used in basic TLS-PRF)
+      /** @type {int32} */
       this._outputSize = 32;
     }
 
-    set secret(secretBytes) {
-      if (!secretBytes || !Array.isArray(secretBytes)) {
+    /** @returns {uint8[]} Copy of the secret, or null */
+    get secret() {
+      if (this._secret) { return this._secret.slice(); }
+      return null;
+    }
+
+    /**
+     * @param {uint8[]} value - Secret (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set secret(value) {
+      if (!value || !Array.isArray(value)) {
         throw new Error('Invalid secret - must be byte array');
       }
-      this._secret = [...secretBytes];
+      this._secret = value.slice();
     }
 
-    get secret() {
-      return this._secret ? [...this._secret] : null;
+    /** @returns {uint8[]} Copy of the seed, or null */
+    get salt() {
+      if (this._salt) { return this._salt.slice(); }
+      return null;
     }
 
-    set salt(saltBytes) {
-      if (!Array.isArray(saltBytes)) {
+    /**
+     * @param {uint8[]} value - Seed (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set salt(value) {
+      if (!Array.isArray(value)) {
         throw new Error('Invalid salt - must be byte array');
       }
-      this._salt = [...saltBytes];
+      this._salt = value.slice();
     }
 
-    get salt() {
-      return this._salt ? [...this._salt] : null;
+    /** @returns {uint8[]} Copy of the label */
+    get label() {
+      return this._label.slice();
     }
 
-    set label(labelBytes) {
-      if (!Array.isArray(labelBytes)) {
+    /**
+     * @param {uint8[]} value - Label (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set label(value) {
+      if (!Array.isArray(value)) {
         throw new Error('Invalid label - must be byte array');
       }
-      this._label = [...labelBytes];
+      this._label = value.slice();
     }
 
-    get label() {
-      return [...this._label];
-    }
-
-    set outputSize(size) {
-      if (typeof size !== 'number' || size < 1) {
-        throw new Error('Invalid output size');
-      }
-      this._outputSize = size;
-    }
-
+    /** @returns {int32} Output size in bytes */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
-   * Feed data to cipher for processing
+     * @param {int32} value - Output size in bytes
+     * @throws {Error} If it is not a positive number
+     */
+    set outputSize(value) {
+      if (typeof value !== 'number' || value < 1) {
+        throw new Error('Invalid output size');
+      }
+      this._outputSize = value;
+    }
+
+    /**
+   * Feed secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not a byte array
    */
 
     Feed(data) {
@@ -319,9 +349,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive: P_MD5(S1, label + seed) XOR P_SHA-1(S2, label + seed)
+   * @returns {uint8[]} Derived bytes
+   * @throws {Error} If secret or seed is missing, or HMAC is unavailable
    */
 
     Result() {
@@ -336,7 +366,7 @@
       // PRF(secret, label, seed) = P_MD5(S1, label + seed) XOR P_SHA-1(S2, label + seed)
 
       const secret = this._secret;
-      const labelSeed = [...this._label, ...this._salt];
+      const labelSeed = this._label.concat(this._salt);
 
       // Split secret in half (with overlap if odd length)
       const halfLen = Math.ceil(secret.length / 2);
@@ -353,25 +383,32 @@
       return result;
     }
 
-    // P_hash function as defined in RFC 2246
-    // P_hash(secret, seed) = HMAC_hash(secret, A(1) + seed) +
-    //                        HMAC_hash(secret, A(2) + seed) +
-    //                        HMAC_hash(secret, A(3) + seed) + ...
-    // where A(0) = seed
-    //       A(i) = HMAC_hash(secret, A(i-1))
+
+    /**
+     * P_hash (RFC 2246 / RFC 5246):
+     * HMAC_hash(secret, A(1) + seed) + HMAC_hash(secret, A(2) + seed) + ...,
+     * A(0) = seed, A(i) = HMAC_hash(secret, A(i-1))
+     * @param {uint8[]} secret - HMAC key
+     * @param {uint8[]} seed - Label || seed
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashName - Hash name for HMAC
+     * @returns {uint8[]} Output
+     * @throws {Error} If HMAC is not available
+     */
     _pHash(secret, seed, outputLength, hashName) {
-      const hmacAlgo = this._getHMAC();
+      this._getHMAC();
+      /** @type {uint8[]} */
       const output = [];
 
       // A(0) = seed
-      let a = [...seed];
+      let a = seed.slice();
 
       while (output.length < outputLength) {
         // A(i) = HMAC_hash(secret, A(i-1))
-        a = this._hmac(secret, a, hashName, hmacAlgo);
+        a = this._hmac(secret, a, hashName);
 
         // HMAC_hash(secret, A(i) + seed)
-        const chunk = this._hmac(secret, [...a, ...seed], hashName, hmacAlgo);
+        const chunk = this._hmac(secret, a.concat(seed), hashName);
 
         for (let _i = 0; _i < chunk.length; _i++) output.push(chunk[_i]);
       }
@@ -380,26 +417,38 @@
       return output.slice(0, outputLength);
     }
 
-    // Helper to compute HMAC
-    _hmac(key, data, hashName, hmacAlgo) {
+    /**
+     * HMAC with the registered HMAC algorithm
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} data - Message
+     * @param {string} hashName - Hash name
+     * @returns {uint8[]} MAC
+     */
+    _hmac(key, data, hashName) {
+      const hmacAlgo = AlgorithmFramework.Find('HMAC');
+      /** @type {IMacInstance} */
       const instance = hmacAlgo.CreateInstance();
       instance.key = key;
       instance.hashFunction = hashName;
       instance.Feed(data);
-      return instance.Result();
+      /** @type {uint8[]} */
+      const mac = instance.Result();
+      return mac;
     }
 
-    // Get HMAC algorithm from framework
+    /**
+     * Get the HMAC algorithm from the framework, loading it under CommonJS
+     * when it is not registered yet (an AMD or browser loader cannot require
+     * synchronously)
+     * @returns {Algorithm} The HMAC algorithm
+     * @throws {Error} If HMAC is not available
+     */
     _getHMAC() {
       let hmacAlgo = AlgorithmFramework.Find('HMAC');
 
-      if (!hmacAlgo && typeof require !== 'undefined') {
-        try {
-          require('../mac/hmac.js');
-          hmacAlgo = AlgorithmFramework.Find('HMAC');
-        } catch (loadError) {
-          // Ignore load errors
-        }
+      if (!hmacAlgo && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../mac/hmac.js');
+        hmacAlgo = AlgorithmFramework.Find('HMAC');
       }
 
       if (!hmacAlgo) {
@@ -413,14 +462,20 @@
   // ===== TLS 1.2 PRF IMPLEMENTATION =====
 
   class TLS12PRFAlgorithm extends KdfAlgorithm {
+    /**
+     * TLS 1.2 PRF over one HMAC hash
+     * @param {string} hashName - SHA-224, SHA-256, SHA-384 or SHA-512 (empty selects SHA-256)
+     */
     constructor(hashName) {
       super();
 
-      this._hashName = hashName || 'SHA-256';
+      /** @type {string} */
+      this._hashName = 'SHA-256';
+      if (hashName) { this._hashName = hashName; }
 
       // Required metadata
-      this.name = `TLS-12-PRF(HMAC(${this._hashName}))`;
-      this.description = `TLS 1.2 Pseudorandom Function using HMAC-${this._hashName}. Modern TLS key derivation supporting arbitrary hash functions. Uses P_hash construction with single PRF instead of dual MD5+SHA-1.`;
+      this.name = 'TLS-12-PRF(HMAC(' + this._hashName + '))';
+      this.description = 'TLS 1.2 Pseudorandom Function using HMAC-' + this._hashName + '. Modern TLS key derivation supporting arbitrary hash functions. Uses P_hash construction with single PRF instead of dual MD5+SHA-1.';
       this.inventor = "IETF TLS Working Group";
       this.year = 2008;
       this.category = CategoryType.KDF;
@@ -450,15 +505,9 @@
       this.knownVulnerabilities = [];
 
       // Test vectors from RFC and IETF archives
-      this.tests = this._getTestVectors(this._hashName);
-    }
-
-    _getTestVectors(hashName) {
-      const vectors = [];
-
       // Test vectors from https://www.ietf.org/mail-archive/web/tls/current/msg03416.html
-      if (hashName === 'SHA-224') {
-        vectors.push({
+      if (this._hashName === 'SHA-224') {
+        this.tests = [{
           text: "IETF TLS 1.2 SHA-224 Test Vector",
           uri: "https://www.ietf.org/mail-archive/web/tls/current/msg03416.html",
           input: OpCodes.Hex8ToBytes('e18828740352b530d69b34c6597dea2e'),
@@ -466,9 +515,9 @@
           label: OpCodes.Hex8ToBytes('74657374206c6162656c'), // "test label"
           outputSize: 88,
           expected: OpCodes.Hex8ToBytes('224d8af3c0453393a9779789d21cf7da5ee62ae6b617873d489428efc8dd58d1566e7029e2ca3a5ecd355dc64d4d927e2fbd78c4233e8604b14749a77a92a70fddf614bc0df623d798604e4ca5512794d802a258e82f86cf')
-        });
-      } else if (hashName === 'SHA-256') {
-        vectors.push({
+        }];
+      } else if (this._hashName === 'SHA-256') {
+        this.tests = [{
           text: "IETF TLS 1.2 SHA-256 Test Vector",
           uri: "https://www.ietf.org/mail-archive/web/tls/current/msg03416.html",
           input: OpCodes.Hex8ToBytes('9bbe436ba940f017b17652849a71db35'),
@@ -476,9 +525,9 @@
           label: OpCodes.Hex8ToBytes('74657374206c6162656c'), // "test label"
           outputSize: 100,
           expected: OpCodes.Hex8ToBytes('e3f229ba727be17b8d122620557cd453c2aab21d07c3d495329b52d4e61edb5a6b301791e90d35c9c9a46b4e14baf9af0fa022f7077def17abfd3797c0564bab4fbc91666e9def9b97fce34f796789baa48082d122ee42c5a72e5a5110fff70187347b66')
-        });
-      } else if (hashName === 'SHA-384') {
-        vectors.push({
+        }];
+      } else if (this._hashName === 'SHA-384') {
+        this.tests = [{
           text: "IETF TLS 1.2 SHA-384 Test Vector",
           uri: "https://www.ietf.org/mail-archive/web/tls/current/msg03416.html",
           input: OpCodes.Hex8ToBytes('b80b733d6ceefcdc71566ea48e5567df'),
@@ -486,9 +535,9 @@
           label: OpCodes.Hex8ToBytes('74657374206c6162656c'), // "test label"
           outputSize: 148,
           expected: OpCodes.Hex8ToBytes('7b0c18e9ced410ed1804f2cfa34a336a1c14dffb4900bb5fd7942107e81c83cde9ca0faa60be9fe34f82b1233c9146a0e534cb400fed2700884f9dc236f80edd8bfa961144c9e8d792eca722a7b32fc3d416d473ebc2c5fd4abfdad05d9184259b5bf8cd4d90fa0d31e2dec479e4f1a26066f2eea9a69236a3e52655c9e9aee691c8f3a26854308d5eaa3be85e0990703d73e56f')
-        });
-      } else if (hashName === 'SHA-512') {
-        vectors.push({
+        }];
+      } else if (this._hashName === 'SHA-512') {
+        this.tests = [{
           text: "IETF TLS 1.2 SHA-512 Test Vector",
           uri: "https://www.ietf.org/mail-archive/web/tls/current/msg03416.html",
           input: OpCodes.Hex8ToBytes('b0323523c1853599584d88568bbb05eb'),
@@ -496,16 +545,17 @@
           label: OpCodes.Hex8ToBytes('74657374206c6162656c'), // "test label"
           outputSize: 196,
           expected: OpCodes.Hex8ToBytes('1261f588c798c5c201ff036e7a9cb5edcd7fe3f94c669a122a4638d7d508b283042df6789875c7147e906d868bc75c45e20eb40c1cf4a1713b27371f68432592f7dc8ea8ef223e12ea8507841311bf68653d0cfc4056d811f025c45ddfa6e6fec702f054b409d6f28dd0a3233e498da41a3e75c5630eedbe22fe254e33a1b0e9f6b9826675bec7d01a845658dc9c397545401d40b9f46c7a400ee1b8f81ca0a60d1a397a1028bff5d2ef5066126842fb8da4197632bdb54ff6633f86bbc836e640d4d898')
-        });
+        }];
+      } else {
+        this.tests = [];
       }
-
-      return vectors;
     }
 
+
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new TLS 1.2 PRF instance
+   * @param {boolean} [isInverse=false] - True returns null: the PRF has no inverse
+   * @returns {TLS12PRFInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -518,69 +568,101 @@
 
   // TLS 1.2 PRF Instance
   /**
- * TLS12PRF cipher instance implementing Feed/Result pattern
+ * TLS 1.2 PRF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class TLS12PRFInstance extends IKdfInstance {
+    /**
+     * Initialize a TLS 1.2 PRF instance
+     * @param {TLS12PRFAlgorithm} algorithm - Parent algorithm instance
+     * @param {string} hashName - Hash name for HMAC
+     */
     constructor(algorithm, hashName) {
       super(algorithm);
+      /** @type {string} */
       this._hashName = hashName;
+      /** @type {uint8[]} Secret (null until fed or set) */
       this._secret = null;
+      /** @type {uint8[]} Seed (null until set; required) */
       this._salt = null;
+      /** @type {uint8[]} */
       this._label = [];
+      /** @type {int32} */
       this._outputSize = 32;
     }
 
-    set secret(secretBytes) {
-      if (!secretBytes || !Array.isArray(secretBytes)) {
+    /** @returns {uint8[]} Copy of the secret, or null */
+    get secret() {
+      if (this._secret) { return this._secret.slice(); }
+      return null;
+    }
+
+    /**
+     * @param {uint8[]} value - Secret (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set secret(value) {
+      if (!value || !Array.isArray(value)) {
         throw new Error('Invalid secret - must be byte array');
       }
-      this._secret = [...secretBytes];
+      this._secret = value.slice();
     }
 
-    get secret() {
-      return this._secret ? [...this._secret] : null;
+    /** @returns {uint8[]} Copy of the seed, or null */
+    get salt() {
+      if (this._salt) { return this._salt.slice(); }
+      return null;
     }
 
-    set salt(saltBytes) {
-      if (!Array.isArray(saltBytes)) {
+    /**
+     * @param {uint8[]} value - Seed (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set salt(value) {
+      if (!Array.isArray(value)) {
         throw new Error('Invalid salt - must be byte array');
       }
-      this._salt = [...saltBytes];
+      this._salt = value.slice();
     }
 
-    get salt() {
-      return this._salt ? [...this._salt] : null;
+    /** @returns {uint8[]} Copy of the label */
+    get label() {
+      return this._label.slice();
     }
 
-    set label(labelBytes) {
-      if (!Array.isArray(labelBytes)) {
+    /**
+     * @param {uint8[]} value - Label (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set label(value) {
+      if (!Array.isArray(value)) {
         throw new Error('Invalid label - must be byte array');
       }
-      this._label = [...labelBytes];
+      this._label = value.slice();
     }
 
-    get label() {
-      return [...this._label];
-    }
-
-    set outputSize(size) {
-      if (typeof size !== 'number' || size < 1) {
-        throw new Error('Invalid output size');
-      }
-      this._outputSize = size;
-    }
-
+    /** @returns {int32} Output size in bytes */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
-   * Feed data to cipher for processing
+     * @param {int32} value - Output size in bytes
+     * @throws {Error} If it is not a positive number
+     */
+    set outputSize(value) {
+      if (typeof value !== 'number' || value < 1) {
+        throw new Error('Invalid output size');
+      }
+      this._outputSize = value;
+    }
+
+    /**
+   * Feed secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not a byte array
    */
 
     Feed(data) {
@@ -595,9 +677,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive: P_<hash>(secret, label + seed)
+   * @returns {uint8[]} Derived bytes
+   * @throws {Error} If secret or seed is missing, or HMAC is unavailable
    */
 
     Result() {
@@ -609,44 +691,76 @@
       }
 
       // TLS 1.2 PRF(secret, label, seed) = P_<hash>(secret, label + seed)
-      const labelSeed = [...this._label, ...this._salt];
+      const labelSeed = this._label.concat(this._salt);
       return this._pHash(this._secret, labelSeed, this._outputSize, this._hashName);
     }
 
-    // P_hash function (same as TLS 1.0 but with single hash)
+
+    /**
+     * P_hash (RFC 2246 / RFC 5246):
+     * HMAC_hash(secret, A(1) + seed) + HMAC_hash(secret, A(2) + seed) + ...,
+     * A(0) = seed, A(i) = HMAC_hash(secret, A(i-1))
+     * @param {uint8[]} secret - HMAC key
+     * @param {uint8[]} seed - Label || seed
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashName - Hash name for HMAC
+     * @returns {uint8[]} Output
+     * @throws {Error} If HMAC is not available
+     */
     _pHash(secret, seed, outputLength, hashName) {
-      const hmacAlgo = this._getHMAC();
+      this._getHMAC();
+      /** @type {uint8[]} */
       const output = [];
 
-      let a = [...seed];
+      // A(0) = seed
+      let a = seed.slice();
 
       while (output.length < outputLength) {
-        a = this._hmac(secret, a, hashName, hmacAlgo);
-        const chunk = this._hmac(secret, [...a, ...seed], hashName, hmacAlgo);
+        // A(i) = HMAC_hash(secret, A(i-1))
+        a = this._hmac(secret, a, hashName);
+
+        // HMAC_hash(secret, A(i) + seed)
+        const chunk = this._hmac(secret, a.concat(seed), hashName);
+
         for (let _i = 0; _i < chunk.length; _i++) output.push(chunk[_i]);
       }
 
+      // Truncate to exact output length
       return output.slice(0, outputLength);
     }
 
-    _hmac(key, data, hashName, hmacAlgo) {
+    /**
+     * HMAC with the registered HMAC algorithm
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} data - Message
+     * @param {string} hashName - Hash name
+     * @returns {uint8[]} MAC
+     */
+    _hmac(key, data, hashName) {
+      const hmacAlgo = AlgorithmFramework.Find('HMAC');
+      /** @type {IMacInstance} */
       const instance = hmacAlgo.CreateInstance();
       instance.key = key;
       instance.hashFunction = hashName;
       instance.Feed(data);
-      return instance.Result();
+      /** @type {uint8[]} */
+      const mac = instance.Result();
+      return mac;
     }
 
+    /**
+     * Get the HMAC algorithm from the framework, loading it under CommonJS
+     * when it is not registered yet (an AMD or browser loader cannot require
+     * synchronously)
+     * @returns {Algorithm} The HMAC algorithm
+     * @throws {Error} If HMAC is not available
+     */
     _getHMAC() {
       let hmacAlgo = AlgorithmFramework.Find('HMAC');
 
-      if (!hmacAlgo && typeof require !== 'undefined') {
-        try {
-          require('../mac/hmac.js');
-          hmacAlgo = AlgorithmFramework.Find('HMAC');
-        } catch (loadError) {
-          // Ignore
-        }
+      if (!hmacAlgo && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../mac/hmac.js');
+        hmacAlgo = AlgorithmFramework.Find('HMAC');
       }
 
       if (!hmacAlgo) {
@@ -666,9 +780,10 @@
   }
 
   // Register TLS 1.2 PRF variants
+  /** @type {string[]} */
   const hashFunctions = ['SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
-  for (const hashName of hashFunctions) {
-    const tls12Instance = new TLS12PRFAlgorithm(hashName);
+  for (let i = 0; i < hashFunctions.length; i++) {
+    const tls12Instance = new TLS12PRFAlgorithm(hashFunctions[i]);
     if (!AlgorithmFramework.Find(tls12Instance.name)) {
       RegisterAlgorithm(tls12Instance);
     }

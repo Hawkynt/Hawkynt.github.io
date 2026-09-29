@@ -146,9 +146,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {HMACSHA256Instance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -167,18 +167,28 @@
  */
 
   class HMACSHA256Instance extends IMacInstance {
+    /**
+     * Initialize an HMAC-SHA256 instance
+     * @param {HMACSHA256Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {int32} */
       this._outputSize = 32; // Default full SHA-256 output
       this.inputBuffer = [];
 
       // HMAC constants (RFC 2104)
+      /** @type {uint8} */
       this.IPAD = 0x36;
+      /** @type {uint8} */
       this.OPAD = 0x5C;
+      /** @type {int32} */
       this.BLOCK_SIZE = 64; // SHA-256 block size in bytes
 
       // SHA-256 algorithm reference
+      /** @type {Algorithm} */
       this._sha256Algorithm = null;
     }
 
@@ -206,6 +216,11 @@
     }
 
     // Property setter for output size (allows truncation)
+    /**
+     * Truncate the MAC
+     * @param {int32} size - Output size in bytes, 1..32
+     * @throws {Error} If size is not a number in 1..32
+     */
     set outputSize(size) {
       if (typeof size !== 'number' || size < 1 || size > 32) {
         throw new Error('Invalid output size - must be 1-32 bytes');
@@ -213,13 +228,17 @@
       this._outputSize = size;
     }
 
+    /**
+     * Output size in bytes
+     * @returns {int32} Output size in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
      * Get SHA-256 algorithm from framework
-     * @returns {object} SHA-256 algorithm instance
+     * @returns {Algorithm} SHA-256 algorithm
      */
     _getSHA256Algorithm() {
       if (this._sha256Algorithm) {
@@ -247,25 +266,34 @@
     }
 
     /**
+     * Create a SHA-256 instance
+     * @returns {IHashFunctionInstance} New SHA-256 instance (null when the algorithm declines)
+     */
+    _createSHA256Instance() {
+      return this._getSHA256Algorithm().CreateInstance();
+    }
+
+    /**
      * Hash byte array using SHA-256
-     * @param {Array} data - Data to hash
-     * @returns {Array} SHA-256 hash (32 bytes)
+     * @param {uint8[]} data - Data to hash
+     * @returns {uint8[]} SHA-256 hash (32 bytes)
      */
     _hashSHA256(data) {
-      const sha256 = this._getSHA256Algorithm();
-      const hashInstance = sha256.CreateInstance();
+      const hashInstance = this._createSHA256Instance();
 
       if (!hashInstance) {
         throw new Error('Cannot create SHA-256 instance');
       }
 
       hashInstance.Feed(data);
-      return hashInstance.Result();
+      /** @type {uint8[]} */
+      const digest = hashInstance.Result();
+      return digest;
     }
 
     /**
      * Feed data to the HMAC
-     * @param {Array} data - Input data as byte array
+     * @param {uint8[]} data - Input data as byte array
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -277,7 +305,7 @@
 
     /**
      * Get the HMAC result
-     * @returns {Array} HMAC-SHA256 digest (32 bytes or truncated)
+     * @returns {uint8[]} HMAC-SHA256 digest (32 bytes or truncated)
      */
     Result() {
       if (!this._key) {
@@ -297,8 +325,8 @@
 
     /**
      * Compute MAC (IMacInstance interface)
-     * @param {Array} data - Data to authenticate
-     * @returns {Array} HMAC-SHA256 digest
+     * @param {uint8[]} data - Data to authenticate
+     * @returns {uint8[]} HMAC-SHA256 digest
      */
     ComputeMac(data) {
       if (!this._key) {
@@ -321,13 +349,14 @@
      * Core HMAC computation
      * RFC 2104: HMAC(K, m) = H((K ⊕ opad) || H((K ⊕ ipad) || m))
      *
-     * @param {Array} message - Message to authenticate
-     * @param {Array} key - Secret key
-     * @returns {Array} HMAC digest (32 bytes)
+     * @param {uint8[]} message - Message to authenticate
+     * @param {uint8[]} key - Secret key
+     * @returns {uint8[]} HMAC digest (32 bytes)
      */
     _computeHMAC(message, key) {
       // Step 1: Prepare key (hash if too long, pad if too short)
-      let processedKey = [...key];
+      /** @type {uint8[]} */
+      let processedKey = key.slice();
 
       // If key is longer than block size, hash it first
       if (processedKey.length > this.BLOCK_SIZE) {
@@ -341,20 +370,24 @@
 
       // Step 2: Create inner and outer padded keys
       // K ⊕ ipad and K ⊕ opad
+      /** @type {uint8[]} */
       const innerKey = new Array(this.BLOCK_SIZE);
+      /** @type {uint8[]} */
       const outerKey = new Array(this.BLOCK_SIZE);
 
       for (let i = 0; i < this.BLOCK_SIZE; i++) {
-        innerKey[i] = OpCodes.XorN(processedKey[i], this.IPAD);
-        outerKey[i] = OpCodes.XorN(processedKey[i], this.OPAD);
+        innerKey[i] = OpCodes.Xor8(processedKey[i], this.IPAD);
+        outerKey[i] = OpCodes.Xor8(processedKey[i], this.OPAD);
       }
 
       // Step 3: Inner hash - H((K ⊕ ipad) || message)
-      const innerData = [...innerKey, ...message];
+      /** @type {uint8[]} */
+      const innerData = innerKey.concat(message);
       const innerHash = this._hashSHA256(innerData);
 
       // Step 4: Outer hash - H((K ⊕ opad) || innerHash)
-      const outerData = [...outerKey, ...innerHash];
+      /** @type {uint8[]} */
+      const outerData = outerKey.concat(innerHash);
       const finalHash = this._hashSHA256(outerData);
 
       // Clear sensitive data
@@ -367,6 +400,7 @@
 
     /**
      * Clear sensitive data
+     * @returns {void}
      */
     ClearData() {
       if (this._key) {

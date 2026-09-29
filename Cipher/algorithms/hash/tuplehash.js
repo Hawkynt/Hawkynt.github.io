@@ -31,20 +31,14 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Load CSHAKE for underlying implementation
-  // Try global scope first (browser), then require (Node.js)
-  const global = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof self !== 'undefined' ? self : {}));
-
-  let cSHAKEAlgorithm = global.cSHAKEAlgorithm;
-
-  if (!cSHAKEAlgorithm && typeof require !== 'undefined') {
+  // Load cSHAKE, which registers the cSHAKE128/cSHAKE256 instances this file
+  // looks up at run time. A browser has already loaded it through its script
+  // tag; the check in the instance constructor reports a missing one.
+  if (typeof require !== 'undefined') {
     try {
-      const CSHAKE = require('./cshake.js');
-      cSHAKEAlgorithm = CSHAKE.cSHAKEAlgorithm;
+      require('./cshake.js');
     } catch(e) {
       // cSHAKE will be checked at runtime
     }
@@ -52,50 +46,57 @@
 
   /**
    * Left-encode: Encode integer with length prefix at start
-   * @param {number} value - Value to encode
-   * @returns {Array<number>} Encoded bytes [length, bytes...]
+   * @param {uint32} value - Value to encode
+   * @returns {uint8[]} Encoded bytes [length, bytes...]
    */
   function leftEncode(value) {
     // Count bytes needed
     let n = 1;
-    let v = value;
-    while ((v = OpCodes.Shr32(v, 8)) !== 0) n++;
+    let v = OpCodes.Shr32(value, 8);
+    while (v !== 0) {
+      n++;
+      v = OpCodes.Shr32(v, 8);
+    }
 
-    const result = new Array(n + 1);
-    result[0] = n;
+    /** @type {uint8[]} */
+    const result = [n];
     for (let i = 1; i <= n; i++) {
-      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i)), 0xFF);
+      result.push(OpCodes.GetByte(value, n - i));
     }
     return result;
   }
 
   /**
    * Right-encode: Encode integer with length suffix at end
-   * @param {number} value - Value to encode
-   * @returns {Array<number>} Encoded bytes [bytes..., length]
+   * @param {uint32} value - Value to encode
+   * @returns {uint8[]} Encoded bytes [bytes..., length]
    */
   function rightEncode(value) {
     // Count bytes needed
     let n = 1;
-    let v = value;
-    while ((v = OpCodes.Shr32(v, 8)) !== 0) n++;
-
-    const result = new Array(n + 1);
-    result[n] = n;
-    for (let i = 0; i < n; i++) {
-      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i - 1)), 0xFF);
+    let v = OpCodes.Shr32(value, 8);
+    while (v !== 0) {
+      n++;
+      v = OpCodes.Shr32(v, 8);
     }
+
+    /** @type {uint8[]} */
+    const result = [];
+    for (let i = 0; i < n; i++) {
+      result.push(OpCodes.GetByte(value, n - i - 1));
+    }
+    result.push(n);
     return result;
   }
 
   /**
    * Encode tuple element: leftEncode(bitLength) || data
-   * @param {Array<number>} data - Data bytes
-   * @returns {Array<number>} Encoded tuple element
+   * @param {uint8[]} data - Data bytes
+   * @returns {uint8[]} Encoded tuple element
    */
   function encodeTuple(data) {
     const bitLength = data.length * 8;
-    return [...leftEncode(bitLength), ...data];
+    return leftEncode(bitLength).concat(data);
   }
 
   /**
@@ -118,7 +119,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [{ minSize: 1, maxSize: 1024, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(1, 1024, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -257,7 +258,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [{ minSize: 1, maxSize: 1024, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(1, 1024, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -374,77 +375,129 @@
   }
 
   /**
- * TupleHash cipher instance implementing Feed/Result pattern
+ * TupleHash instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class TupleHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a TupleHash instance
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm instance
+     * @param {int32} securityBits - 128 or 256
+     */
     constructor(algorithm, securityBits) {
       super(algorithm);
 
+      /** @type {int32} */
       this.securityBits = securityBits;
+      /** @type {IHashFunctionInstance} Underlying cSHAKE instance */
+      this.cshake = null;
+      /** @type {int32} Output length in bytes, defaulting by security level */
+      this._outputSize = securityBits === 128 ? 32 : 64;
+      /** @type {uint8[]} */
+      this._customization = [];
+      /** @type {boolean} */
+      this._xofMode = false;
+      /** @type {boolean} */
+      this._firstOutput = true;
 
+      this._newCshake();
+    }
+
+    /**
+     * Start a fresh cSHAKE instance with N = "TupleHash" and the current S
+     * @returns {void}
+     */
+    _newCshake() {
       // Get registered cSHAKE algorithm
-      const cshakeName = securityBits === 128 ? 'cSHAKE128' : 'cSHAKE256';
+      const cshakeName = this.securityBits === 128 ? 'cSHAKE128' : 'cSHAKE256';
       const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
 
       if (!cshakeAlgo) {
-        throw new Error(`${cshakeName} is required for TupleHash`);
+        throw new Error(cshakeName + ' is required for TupleHash');
       }
 
-      this.cshake = cshakeAlgo.CreateInstance();
-      this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
-
-      this._outputSize = securityBits === 128 ? 32 : 64; // Default based on security level
-      this._customization = [];
-      this._xofMode = false;
-      this._firstOutput = true;
+      /** @type {IHashFunctionInstance} */
+      const cshake = cshakeAlgo.CreateInstance();
+      cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
+      cshake.customization = this._customization;
+      this.cshake = cshake;
     }
 
+    /**
+     * Set the output length
+     * @param {int32} size - Output length in bytes, 1..1024
+     */
     set outputSize(size) {
       if (size < 1 || size > 1024) {
-        throw new Error(`Invalid output size: ${size} bytes`);
+        throw new Error('Invalid output size: ' + size + ' bytes');
       }
       this._outputSize = size;
     }
 
+    /**
+     * The output length
+     * @returns {int32} Output length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
+    /**
+     * Set the customization string S
+     * @param {uint8[]} customBytes - S as bytes (null clears it)
+     */
     set customization(customBytes) {
-      this._customization = customBytes ? [...customBytes] : [];
+      /** @type {uint8[]} */
+      const copy = [];
+      if (customBytes !== null && customBytes !== undefined) {
+        for (let i = 0; i < customBytes.length; i++) copy.push(customBytes[i]);
+      }
+      this._customization = copy;
       this.cshake.customization = this._customization;
     }
 
+    /**
+     * The customization string S
+     * @returns {uint8[]} Copy of S
+     */
     get customization() {
-      return [...this._customization];
+      return this._customization.slice();
     }
 
+    /**
+     * Select XOF output (right_encode(0)) instead of fixed-length output
+     * @param {boolean} enabled - True for TupleHashXOF
+     */
     set xofMode(enabled) {
-      this._xofMode = !!enabled;
+      this._xofMode = enabled ? true : false;
     }
 
+    /**
+     * Whether XOF output is selected
+     * @returns {boolean} True for TupleHashXOF
+     */
     get xofMode() {
       return this._xofMode;
     }
 
+    /**
+     * Special property for testing: feeds every element of an array of byte arrays
+     * @param {uint8[][]} tupleArray - Tuple elements
+     */
     set tuples(tupleArray) {
-      // Special property for testing: accepts array of byte arrays
-      if (!tupleArray || !Array.isArray(tupleArray)) return;
+      if (!Array.isArray(tupleArray)) return;
 
-      for (const tuple of tupleArray) {
-        this.Feed(tuple);
+      for (let i = 0; i < tupleArray.length; i++) {
+        this.Feed(tupleArray[i]);
       }
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed one tuple element
+     * @param {uint8[]} data - Element bytes
+     */
     Feed(data) {
       // A zero-length element is still an element. SP 800-185 builds TupleHash
       // over encode_string(X_i) for every i, and encode_string("") is
@@ -461,11 +514,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Digest of the tuple fed so far; starts a new tuple
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this._firstOutput) {
         this._firstOutput = false;
@@ -479,14 +530,11 @@
 
       // Get output from CSHAKE
       this.cshake.outputSize = this._outputSize;
+      /** @type {uint8[]} */
       const result = this.cshake.Result();
 
       // Reset for next operation
-      const cshakeName = this.securityBits === 128 ? 'cSHAKE128' : 'cSHAKE256';
-      const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
-      this.cshake = cshakeAlgo.CreateInstance();
-      this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
-      this.cshake.customization = this._customization;
+      this._newCshake();
       this._firstOutput = true;
 
       return result;

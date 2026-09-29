@@ -81,7 +81,7 @@
       this.country = CountryCode.FR;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [DIGEST_BYTES]; // 32 bits
+      this.SupportedOutputSizes = [new KeySize(DIGEST_BYTES, DIGEST_BYTES, 1)]; // 32 bits
 
       // Performance and technical specifications
       this.blockSize = STRIPE; // 128 bits = 16 bytes
@@ -240,7 +240,7 @@
 
   class XXHash32AlgorithmInstance extends IHashFunctionInstance {
     /**
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XXHash32Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Unused
    */
 
@@ -248,7 +248,22 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = DIGEST_BYTES;
+      /** @type {uint32} */
       this._seed = 0;
+      /** @type {uint32} */
+      this._acc1 = 0;
+      /** @type {uint32} */
+      this._acc2 = 0;
+      /** @type {uint32} */
+      this._acc3 = 0;
+      /** @type {uint32} */
+      this._acc4 = 0;
+      /** @type {uint8[]} */
+      this._held = [];
+      /** @type {int32} */
+      this._pending = 0;
+      /** @type {int32} */
+      this._length = 0;
       this.Init();
     }
 
@@ -256,14 +271,15 @@
      * Reset the streaming state. XXH32 keeps four accumulators, a 16-byte
      * holdback for the partial stripe and the total length, which is what
      * decides between the long and short finalization paths.
+     * @returns {boolean} Always true
      */
     Init() {
       const seed = OpCodes.ToDWord(this._seed);
-      this._acc1 = OpCodes.ToDWord(seed + PRIME32_1 + PRIME32_2);
-      this._acc2 = OpCodes.ToDWord(seed + PRIME32_2);
-      this._acc3 = OpCodes.ToDWord(seed);
-      this._acc4 = OpCodes.ToDWord(seed - PRIME32_1);
-      this._held = new Array(STRIPE).fill(0);
+      this._acc1 = OpCodes.Add32(OpCodes.Add32(seed, PRIME32_1), PRIME32_2);
+      this._acc2 = OpCodes.Add32(seed, PRIME32_2);
+      this._acc3 = seed;
+      this._acc4 = OpCodes.Sub32(seed, PRIME32_1);
+      this._held = OpCodes.CreateArray(STRIPE, 0);
       this._pending = 0;
       this._length = 0;
       return true;
@@ -271,12 +287,11 @@
 
     /**
      * Set the 32-bit seed. Changing the seed restarts the message.
-     * @param {number|uint8[]} key - Seed as a number or 4 little-endian bytes
+     * @param {uint8[]} key - Seed as 4 little-endian bytes (anything shorter selects seed 0)
+     * @returns {boolean} Always true
      */
     KeySetup(key) {
-      if (typeof key === 'number') {
-        this._seed = OpCodes.ToDWord(key);
-      } else if (Array.isArray(key) && key.length >= 4) {
+      if (Array.isArray(key) && key.length >= 4) {
         this._seed = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
       } else {
         this._seed = 0;
@@ -289,19 +304,32 @@
      * Round function, specification step 2.
      * The multiplications must wrap at 32 bits; a double-precision product of
      * two 32-bit values loses low bits, so they go through Mul32.
+     * @param {uint32} acc - Accumulator
+     * @param {uint32} lane - Input lane
+     * @returns {uint32} New accumulator
      */
     _round(acc, lane) {
-      acc = OpCodes.ToDWord(acc + OpCodes.Mul32(lane, PRIME32_2));
+      acc = OpCodes.Add32(acc, OpCodes.Mul32(lane, PRIME32_2));
       acc = OpCodes.RotL32(acc, 13);
       return OpCodes.Mul32(acc, PRIME32_1);
     }
 
-    /** Read one little-endian 32-bit lane out of a byte array */
+    /**
+     * Read one little-endian 32-bit lane out of a byte array
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} offset - Index of the first byte
+     * @returns {uint32} The lane
+     */
     _lane(data, offset) {
       return OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
     }
 
-    /** Consume one full 16-byte stripe into the four accumulators */
+    /**
+     * Consume one full 16-byte stripe into the four accumulators
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} offset - Index of the first byte
+     * @returns {void}
+     */
     _stripe(data, offset) {
       this._acc1 = this._round(this._acc1, this._lane(data, offset));
       this._acc2 = this._round(this._acc2, this._lane(data, offset + 4));
@@ -352,33 +380,32 @@
      * @returns {uint8[]} 4-byte digest, most significant byte first
      */
     Result() {
+      /** @type {uint32} */
       let hash;
 
       // The accumulators are only merged when the message reached at least one
       // stripe. A shorter message never touched them and starts from the seed.
       if (this._length >= STRIPE) {
-        hash = OpCodes.ToDWord(
-          OpCodes.RotL32(this._acc1, 1) +
-          OpCodes.RotL32(this._acc2, 7) +
-          OpCodes.RotL32(this._acc3, 12) +
-          OpCodes.RotL32(this._acc4, 18)
+        hash = OpCodes.Add32(
+          OpCodes.Add32(OpCodes.RotL32(this._acc1, 1), OpCodes.RotL32(this._acc2, 7)),
+          OpCodes.Add32(OpCodes.RotL32(this._acc3, 12), OpCodes.RotL32(this._acc4, 18))
         );
       } else {
-        hash = OpCodes.ToDWord(this._seed + PRIME32_5);
+        hash = OpCodes.Add32(this._seed, PRIME32_5);
       }
 
-      hash = OpCodes.ToDWord(hash + this._length);
+      hash = OpCodes.Add32(hash, this._length);
 
       // Remaining whole lanes, then remaining bytes.
       let offset = 0;
       while (offset + 4 <= this._pending) {
-        hash = OpCodes.ToDWord(hash + OpCodes.Mul32(this._lane(this._held, offset), PRIME32_3));
+        hash = OpCodes.Add32(hash, OpCodes.Mul32(this._lane(this._held, offset), PRIME32_3));
         hash = OpCodes.Mul32(OpCodes.RotL32(hash, 17), PRIME32_4);
         offset += 4;
       }
 
       while (offset < this._pending) {
-        hash = OpCodes.ToDWord(hash + OpCodes.Mul32(this._held[offset], PRIME32_5));
+        hash = OpCodes.Add32(hash, OpCodes.Mul32(this._held[offset], PRIME32_5));
         hash = OpCodes.Mul32(OpCodes.RotL32(hash, 11), PRIME32_1);
         offset++;
       }
@@ -389,7 +416,11 @@
       return OpCodes.Unpack32BE(hash);
     }
 
-    /** Final mix, specification step 6 */
+    /**
+     * Final mix, specification step 6
+     * @param {uint32} hash - Value to mix
+     * @returns {uint32} Mixed value
+     */
     _avalanche(hash) {
       hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 15));
       hash = OpCodes.Mul32(hash, PRIME32_2);
@@ -410,6 +441,10 @@
       return this.Result();
     }
 
+    /**
+     * Reset the state
+     * @returns {void}
+     */
     ClearData() {
       this.Init();
     }
