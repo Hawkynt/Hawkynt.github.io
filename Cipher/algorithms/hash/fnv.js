@@ -44,7 +44,9 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // FNV-1a 32-bit constants
+  /** @type {uint32} */
   const FNV_32_PRIME = 16777619;      // 0x01000193
+  /** @type {uint32} */
   const FNV_32_OFFSET_BASIS = 2166136261; // 0x811c9dc5
 
   /**
@@ -69,7 +71,7 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [4]; // 32 bits = 4 bytes
+      this.SupportedOutputSizes = [new KeySize(4, 4, 1)]; // 32 bits = 4 bytes
 
       // Performance and technical specifications
       this.blockSize = 1; // Processes one byte at a time
@@ -113,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FNVAlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -122,16 +124,16 @@
   }
 
   /**
- * FNVAlgorithm cipher instance implementing Feed/Result pattern
+ * FNV-1a instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class FNVAlgorithmInstance extends IHashFunctionInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize an FNV-1a instance
+   * @param {FNVAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -140,12 +142,15 @@
       this.OutputSize = 4; // 32 bits = 4 bytes
 
       // FNV state
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._length = 0;
     }
 
     /**
      * Initialize the hash state
+     * @returns {void}
      */
     Init() {
       this._buffer = [];
@@ -154,15 +159,11 @@
 
     /**
      * Add data to the hash calculation
-     * @param {Array} data - Data to hash as byte array
+     * @param {uint8[]} data - Data to hash as byte array
+     * @returns {void}
      */
     Update(data) {
       if (!data || data.length === 0) return;
-
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
 
       this._buffer = this._buffer.concat(Array.from(data));
       this._length += data.length;
@@ -170,7 +171,7 @@
 
     /**
      * Finalize the hash calculation and return result as byte array
-     * @returns {Array} Hash digest as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Final() {
       return this._computeFNV1a(this._buffer);
@@ -178,8 +179,8 @@
 
     /**
      * Hash a complete message in one operation
-     * @param {Array} message - Message to hash as byte array
-     * @returns {Array} Hash digest as byte array
+     * @param {uint8[]} message - Message to hash as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Hash(message) {
       this.Init();
@@ -189,17 +190,17 @@
 
     /**
      * Core FNV-1a computation
-     * @param {Array} data - Input data as byte array
-     * @returns {Array} FNV-1a hash digest
+     * @param {uint8[]} data - Input data as byte array
+     * @returns {uint8[]} FNV-1a hash digest
      */
     _computeFNV1a(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.AnsiToBytes(data);
+      /** @type {uint32} */
       let hash = FNV_32_OFFSET_BASIS;
 
-      for (let i = 0; i < bytes.length; i++) {
+      for (let i = 0; i < data.length; i++) {
         // FNV-1a: XOR byte first, then multiply
-        hash = OpCodes.ToUint32(OpCodes.XorN(hash, OpCodes.AndN(bytes[i], 0xFF)));
-        hash = OpCodes.ToUint32(Math.imul(hash, FNV_32_PRIME));
+        hash = OpCodes.Xor32(hash, OpCodes.And32(data[i], 0xFF));
+        hash = OpCodes.Mul32(hash, FNV_32_PRIME);
       }
 
       // Return as 4-byte array using OpCodes
@@ -207,23 +208,41 @@
     }
 
     /**
-     * Required interface methods for IAlgorithmInstance compatibility
+     * Hashes need no key
+     * @param {uint8[]} key - Ignored
+     * @returns {boolean} Always true
      */
     KeySetup(key) {
       // Hashes don't use keys
       return true;
     }
 
+    /**
+     * Hash the given block
+     * @param {int32} blockIndex - Ignored
+     * @param {uint8[]} plaintext - Message bytes
+     * @returns {uint8[]} Hash digest
+     */
     EncryptBlock(blockIndex, plaintext) {
       // Return hash of the plaintext
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions are one-way
+     * @param {int32} blockIndex - Ignored
+     * @param {uint8[]} ciphertext - Ignored
+     * @returns {uint8[]} Never returns
+     */
     DecryptBlock(blockIndex, ciphertext) {
       // Hash functions are one-way
       throw new Error('FNV-1a is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Wipe the buffered message
+     * @returns {void}
+     */
     ClearData() {
       if (this._buffer) OpCodes.ClearArray(this._buffer);
       this._length = 0;
@@ -231,7 +250,7 @@
 
     /**
      * Feed method required by test suite - processes input data
-     * @param {Array} data - Input data as byte array
+     * @param {uint8[]} data - Input data as byte array
      */
     Feed(data) {
       if (!this._buffer) this.Init();
@@ -240,7 +259,7 @@
 
     /**
      * Result method required by test suite - returns final hash
-     * @returns {Array} Hash digest as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Result() {
       return this.Final();
