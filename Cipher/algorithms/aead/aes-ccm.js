@@ -160,18 +160,31 @@
   class AesCcmInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AesCcm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.sizesSupportedTagSizes = algorithm.SupportedTagSizes;
+      /** @type {KeySize[]} */
+      this.sizesSupportedNonceSizes = algorithm.SupportedNonceSizes;
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._associatedData = null;
+      /** @type {uint8[]} */
       this._plaintext = [];
+      /** @type {int32} */
       this._tagSize = 16;  // Initialize with valid default
+      /** @type {IBlockCipherInstance|null} */
       this._aesInstance = null;
     }
 
@@ -188,19 +201,27 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Expected 16-32 bytes.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Expected 16-32 bytes.");
       }
 
       this._key = OpCodes.CopyArray(keyBytes);
 
       // Use the AES block cipher registered in the AlgorithmFramework for the
       // forward-only cipher operations CCM requires (CBC-MAC and CTR keystream).
-      this._aesInstance = AesCcmInstance._createAesEncryptor(this._key);
+      /** @type {IBlockCipherInstance} */
+      const aes = AesCcmInstance._createAesEncryptor(this._key);
+      this._aesInstance = aes;
     }
 
     /**
@@ -212,58 +233,94 @@
       return this._key ? OpCodes.CopyArray(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedNonceSizes.some(ks =>
-        nonceBytes.length >= ks.minSize && nonceBytes.length <= ks.maxSize
-      );
+      const sizes = this.sizesSupportedNonceSizes;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (nonceBytes.length >= ks.minSize && nonceBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes. Expected 7-13 bytes.`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes. Expected 7-13 bytes.");
       }
 
       this._nonce = OpCodes.CopyArray(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? OpCodes.CopyArray(this._nonce) : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? OpCodes.CopyArray(adBytes) : null;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData ? OpCodes.CopyArray(this._associatedData) : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this._associatedData = adBytes ? OpCodes.CopyArray(adBytes) : null;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._associatedData ? OpCodes.CopyArray(this._associatedData) : null;
     }
 
+    /**
+     * @param {int32} size
+     */
     set tagSize(size) {
       // Allow 0 during initialization (set by parent class), will be overridden
       if (size !== 0) {
-        const isValidSize = this.algorithm.SupportedTagSizes.some(ts =>
-          size >= ts.minSize && size <= ts.maxSize && (size - ts.minSize) % ts.stepSize === 0
-        );
+        const sizes = this.sizesSupportedTagSizes;
+        let isValidSize = false;
+        for (let k = 0; k < sizes.length; k++) {
+          const ts = sizes[k];
+          if (size >= ts.minSize && size <= ts.maxSize && (size - ts.minSize) % ts.stepSize === 0) {
+            isValidSize = true;
+            break;
+          }
+        }
         if (!isValidSize) {
-          throw new Error(`Invalid tag size: ${size}. Must be an even value between 4 and 16 bytes.`);
+          throw new Error("Invalid tag size: " + size + ". Must be an even value between 4 and 16 bytes.");
         }
       }
-      this._tagSize = size || 16;  // Default to 16 if 0
+      this._tagSize = size ? size : 16;  // Default to 16 if 0
     }
 
+    /**
+     * @returns {int32}
+     */
     get tagSize() {
-      return this._tagSize || 16;  // Default to 16 if not set
+      return this._tagSize ? this._tagSize : 16;  // Default to 16 if not set
     }
 
     /**
@@ -288,8 +345,11 @@
 
     Result() {
       if (!this._key) throw new Error('Key not set');
-      if (!this._nonce) throw new Error('Nonce not set');
+      if (!this._nonce) {
+        throw new Error('Nonce not set');
+      }
 
+      /** @type {uint8[]} */
       const plaintext = this._plaintext;
       this._plaintext = [];
 
@@ -297,12 +357,12 @@
       const M = this._tagSize;  // Authentication tag size
 
       if (L < 2 || L > 8) {
-        throw new Error(`Invalid L parameter: ${L}. Must be 2-8.`);
+        throw new Error("Invalid L parameter: " + L + ". Must be 2-8.");
       }
 
       const maxLength = Math.pow(2, 8 * L);
       if (plaintext.length >= maxLength) {
-        throw new Error(`Message length exceeds 2^(8*${L}) bytes`);
+        throw new Error("Message length exceeds 2^(8*" + L + ") bytes");
       }
 
       if (this.isInverse) {
@@ -312,36 +372,57 @@
           throw new Error('Ciphertext too short for tag');
         }
 
+        /** @type {uint8[]} */
         const ciphertextData = OpCodes.ArraySlice(plaintext, 0, tagStart);
+        /** @type {uint8[]} */
         const receivedTag = OpCodes.ArraySlice(plaintext, tagStart, plaintext.length);
 
         return this._decryptAndVerify(ciphertextData, receivedTag, L, M);
       }
 
       // Encryption: encrypt, compute MAC, append tag
-      const encrypted = this._encryptAndAuthenticate(plaintext, L, M);
-      return OpCodes.ConcatArrays([encrypted.ciphertext, encrypted.tag]);
+      return this._encryptAndAuthenticate(plaintext, L, M);
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @param {int32} L
+     * @param {int32} M
+     * @returns {uint8[]}
+     */
     _encryptAndAuthenticate(plaintext, L, M) {
       // Step 1: Compute the raw CBC-MAC value T over B0 || encoded(AAD) || plaintext
+      /** @type {uint8[]} */
       const T = this._computeCbcMac(plaintext, L, M);
 
       // Step 2: Mask T with S0 = CIPH_K(Ctr0) and truncate to M bytes
+      /** @type {uint8[]} */
       const tag = this._maskTag(T, L);
 
       // Step 3: Encrypt the plaintext with the counter starting at 1
+      /** @type {uint8[]} */
       const ciphertext = this._encryptPayload(plaintext, L);
 
-      return { ciphertext: ciphertext, tag: tag };
+      // Output is ciphertext || tag
+      return OpCodes.ConcatArrays([ciphertext, tag]);
     }
 
+    /**
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} receivedTag
+     * @param {int32} L
+     * @param {int32} M
+     * @returns {uint8[]}
+     */
     _decryptAndVerify(ciphertext, receivedTag, L, M) {
       // Step 1: Decrypt ciphertext (CTR mode is its own inverse)
+      /** @type {uint8[]} */
       const plaintext = this._encryptPayload(ciphertext, L);
 
       // Step 2: Recompute the expected masked tag from the decrypted plaintext
+      /** @type {uint8[]} */
       const T_expected = this._computeCbcMac(plaintext, L, M);
+      /** @type {uint8[]} */
       const expectedTag = this._maskTag(T_expected, L);
 
       // Step 3: Verify tag (constant-time comparison)
@@ -352,15 +433,23 @@
       return plaintext;
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @param {int32} L
+     * @param {int32} M
+     * @returns {uint8[]}
+     */
     _computeCbcMac(plaintext, L, M) {
       const blockSize = 16;
 
       // Format B_0 block
+      /** @type {uint8[]} */
       const B0 = this._formatB0(plaintext.length, L, M);
 
       // Prepare message to authenticate: B_0 || pad16(encoded_AD) || pad16(plaintext)
       // The associated data field and the payload field are each zero-padded to a
       // block boundary independently before being concatenated (RFC 3610 section 2.2).
+      /** @type {uint8[][]} */
       const parts = [B0];
 
       if (this._associatedData && this._associatedData.length > 0) {
@@ -374,12 +463,15 @@
       const msgToAuth = OpCodes.ConcatArrays(parts);
 
       // CBC-MAC
+      /** @type {uint8[]} */
       let X = OpCodes.CreateArray(blockSize, 0);
 
       for (let i = 0; i < msgToAuth.length; i += blockSize) {
         const block = OpCodes.ArraySlice(msgToAuth, i, i + blockSize);
         X = OpCodes.XorArrays(X, block);
-        X = this._aesInstance.EncryptBlock(X);
+        /** @type {uint8[]} */
+        const mixed = this._aesInstance.EncryptBlock(X);
+        X = mixed;
       }
 
       // Return first M bytes as the raw (unmasked) MAC
@@ -387,20 +479,38 @@
     }
 
     // Zero-pad `data` to a multiple of blockSize bytes.
+    /**
+     * @param {uint8[]} data
+     * @param {int32} blockSize
+     * @returns {uint8[]}
+     */
     _padToBlock(data, blockSize) {
       const padLength = (blockSize - (data.length % blockSize)) % blockSize;
       return padLength > 0 ? OpCodes.ConcatArrays([data, OpCodes.CreateArray(padLength, 0)]) : OpCodes.CopyArray(data);
     }
 
     // Mask the raw CBC-MAC value T with S0 = CIPH_K(Ctr0), truncated to M bytes.
+    /**
+     * @param {uint8[]} T
+     * @param {int32} L
+     * @returns {uint8[]}
+     */
     _maskTag(T, L) {
+      /** @type {uint8[]} */
       const counterBlock0 = this._formatCounterBlock(0, L);
+      /** @type {uint8[]} */
       const S0 = this._aesInstance.EncryptBlock(counterBlock0);
       return OpCodes.XorArrays(T, S0);
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} L
+     * @returns {uint8[]}
+     */
     _encryptPayload(data, L) {
       const blockSize = 16;
+      /** @type {uint8[]} */
       let result = [];
       let counterValue = 1;
 
@@ -408,7 +518,9 @@
       for (let i = 0; i < data.length; i += blockSize) {
         const block = OpCodes.ArraySlice(data, i, Math.min(i + blockSize, data.length));
 
+        /** @type {uint8[]} */
         const counterBlock = this._formatCounterBlock(counterValue, L);
+        /** @type {uint8[]} */
         const keystreamBlock = this._aesInstance.EncryptBlock(counterBlock);
 
         const xored = OpCodes.XorArrays(block, keystreamBlock);
@@ -420,43 +532,78 @@
       return result;
     }
 
+    /**
+     * @param {int32} messageLength
+     * @param {int32} L
+     * @param {int32} M
+     * @returns {uint8[]}
+     */
     _formatB0(messageLength, L, M) {
       const hasAad = !!(this._associatedData && this._associatedData.length > 0);
       const adataFlag = hasAad ? 0x40 : 0;
+      /** @type {int32} */
       const mField = (M - 2) / 2;         // Bits 3-5: (M-2)/2
+      /** @type {uint8} */
       const flags = adataFlag + (mField * 8) + (L - 1);  // Bits 0-2: L-1
 
+      /** @type {uint8[]} */
       const lengthField = this._encodeLength(messageLength, L);
 
-      return OpCodes.ConcatArrays([[flags], OpCodes.CopyArray(this._nonce), lengthField]);
+      /** @type {uint8[]} */
+      const flagByte = [flags];
+      return OpCodes.ConcatArrays([flagByte, OpCodes.CopyArray(this._nonce), lengthField]);
     }
 
-    _formatCounterBlock(counter, L) {
+    /**
+     * @param {int32} position
+     * @param {int32} L
+     * @returns {uint8[]}
+     */
+    _formatCounterBlock(position, L) {
+      /** @type {uint8} */
       const flags = L - 1;
-      const counterField = this._encodeLength(counter, L);
+      /** @type {uint8[]} */
+      const counterField = this._encodeLength(position, L);
 
-      return OpCodes.ConcatArrays([[flags], OpCodes.CopyArray(this._nonce), counterField]);
+      /** @type {uint8[]} */
+      const flagByte = [flags];
+      return OpCodes.ConcatArrays([flagByte, OpCodes.CopyArray(this._nonce), counterField]);
     }
 
     // Encode a non-negative integer as `length` big-endian bytes (length <= 8).
-    _encodeLength(value, length) {
+    /**
+     * @param {int32} value
+     * @param {int32} width
+     * @returns {uint8[]}
+     */
+    _encodeLength(value, width) {
       const split = OpCodes.Split64(value);
+      /** @type {uint8[]} */
       const full = OpCodes.ConcatArrays([OpCodes.Unpack32BE(split.high32), OpCodes.Unpack32BE(split.low32)]);
-      return OpCodes.ArraySlice(full, 8 - length, 8);
+      return OpCodes.ArraySlice(full, 8 - width, 8);
     }
 
     // Encode the associated data length prefix as specified in RFC 3610 section 2.2 / NIST SP 800-38C Appendix A.
+    /**
+     * @param {uint8[]} ad
+     * @returns {uint8[]}
+     */
     _encodeAssociatedData(ad) {
       const len = ad.length;
+      /** @type {uint8[]} */
       let lengthPrefix;
 
       if (len < 0xFF00) {
         lengthPrefix = OpCodes.Unpack16BE(len);
       } else if (len <= 0xFFFFFFFF) {
-        lengthPrefix = OpCodes.ConcatArrays([[0xFF, 0xFE], OpCodes.Unpack32BE(len)]);
+        /** @type {uint8[]} */
+        const marker = [0xFF, 0xFE];
+        lengthPrefix = OpCodes.ConcatArrays([marker, OpCodes.Unpack32BE(len)]);
       } else {
         const split = OpCodes.Split64(len);
-        lengthPrefix = OpCodes.ConcatArrays([[0xFF, 0xFF], OpCodes.Unpack32BE(split.high32), OpCodes.Unpack32BE(split.low32)]);
+        /** @type {uint8[]} */
+        const marker = [0xFF, 0xFF];
+        lengthPrefix = OpCodes.ConcatArrays([marker, OpCodes.Unpack32BE(split.high32), OpCodes.Unpack32BE(split.low32)]);
       }
 
       return OpCodes.ConcatArrays([lengthPrefix, ad]);
@@ -466,18 +613,25 @@
     // CCM only ever needs the forward AES transform (both for CBC-MAC and CTR
     // keystream generation), so a single encrypt-mode instance suffices.
 
+    /**
+     * @param {uint8[]} key
+     * @returns {IBlockCipherInstance}
+     */
     static _createAesEncryptor(key) {
-      let aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)') || AlgorithmFramework.Find('AES');
+      let aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
+      if (!aesAlgorithm) aesAlgorithm = AlgorithmFramework.Find('AES');
 
       if (!aesAlgorithm && typeof require !== 'undefined') {
         try { require('../block/rijndael.js'); } catch (loadError) { /* fall back below */ }
-        aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)') || AlgorithmFramework.Find('AES');
+        aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
+        if (!aesAlgorithm) aesAlgorithm = AlgorithmFramework.Find('AES');
       }
 
       if (!aesAlgorithm) {
         throw new Error('AES block cipher is not available in the AlgorithmFramework registry');
       }
 
+      /** @type {IBlockCipherInstance} */
       const instance = aesAlgorithm.CreateInstance(false);
       instance.key = key;
       return instance;

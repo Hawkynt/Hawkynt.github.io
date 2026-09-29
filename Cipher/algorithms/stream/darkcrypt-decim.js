@@ -80,8 +80,11 @@
   const QUEUE_LEN = 64;
 
   // LFSR-relative tap indices (0-based), as implemented in the DarkCrypt Total Commander plugin.
+  /** @type {uint16[]} */
   const FEEDBACK_TAPS = [0, 3, 4, 41, 84, 103, 134, 163, 164, 165, 206, 253, 270, 283];
+  /** @type {uint16[]} */
   const FILTER_XOR_TAPS = [1, 21, 39, 51, 73, 120, 159, 187, 203, 236, 244, 263, 276, 287];
+  /** @type {uint16[]} */
   const FILTER_SUM_TAPS = [21, 39, 51, 73, 120, 159, 187, 203, 236, 244, 263, 276, 287];
 
   class DarkCryptDecimAlgorithm extends StreamCipherAlgorithm {
@@ -141,48 +144,93 @@
   }
 
   class DarkCryptDecimInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptDecimAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {uint8[]|null} */
       this._lfsr = null;        // 288-entry bit array (0/1)
-      this._c = 0; this._p = 0; this._n = 0; this._out = 0; // ABSG automaton state
+      // ABSG automaton state
+      /** @type {uint32} */
+      this._c = 0;
+      /** @type {uint32} */
+      this._p = 0;
+      /** @type {uint32} */
+      this._n = 0;
+      /** @type {uint32} */
+      this._out = 0;
+      /** @type {uint8[]|null} */
       this._queue = null;       // 64-entry FIFO of ABSG/raw output bits
+      /** @type {int32} */
       this._queueCount = 0;
+      /** @type {int32} */
       this._bitCount = 0;       // bits accumulated into current output byte
+      /** @type {uint32} */
       this._accByte = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DECIM (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DECIM (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 16)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. DECIM (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. DECIM (DarkCrypt) requires exactly 16 bytes");
       this._iv = [...ivBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._lfsr) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._lfsr) throw new Error("Key/IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -195,26 +243,26 @@
     _tryInit() {
       if (!this._key || !this._iv) { this._lfsr = null; return; }
 
-      const lfsr = new Array(LFSR_LEN).fill(0);
+      const lfsr = OpCodes.CreateArray(LFSR_LEN, 0);
 
       // LFSR[0..127] = key bits, LSB-first per byte.
       for (let i = 0; i < 128; i++) {
         const byteIdx = OpCodes.Shr32(i, 3), bitIdx = OpCodes.And32(i, 7);
-        lfsr[i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIdx], bitIdx), 1);
+        lfsr[i] = OpCodes.And32(OpCodes.Shr32(this._key[byteIdx], bitIdx), 1);
       }
       // LFSR[128..255] = key bits again, XORed with the IV bits (also LSB-first).
       for (let i = 0; i < 128; i++) {
         const byteIdx = OpCodes.Shr32(i, 3), bitIdx = OpCodes.And32(i, 7);
-        const kBit = OpCodes.AndN(OpCodes.Shr32(this._key[byteIdx], bitIdx), 1);
-        const vBit = OpCodes.AndN(OpCodes.Shr32(this._iv[byteIdx], bitIdx), 1);
-        lfsr[128 + i] = OpCodes.XorN(kBit, vBit);
+        const kBit = OpCodes.And32(OpCodes.Shr32(this._key[byteIdx], bitIdx), 1);
+        const vBit = OpCodes.And32(OpCodes.Shr32(this._iv[byteIdx], bitIdx), 1);
+        lfsr[128 + i] = OpCodes.Xor32(kBit, vBit);
       }
       // LFSR[256..287]: fixed alternating pattern (absolute index odd -> 1).
       for (let idx = 256; idx < LFSR_LEN; idx++) lfsr[idx] = (idx % 2 === 1) ? 1 : 0;
 
       this._lfsr = lfsr;
       this._c = 0; this._p = 0; this._n = 0; this._out = 0;
-      this._queue = new Array(QUEUE_LEN).fill(0);
+      this._queue = OpCodes.CreateArray(QUEUE_LEN, 0);
       this._queueCount = 0;
       this._bitCount = 0;
       this._accByte = 0;
@@ -222,8 +270,10 @@
       // Initialization warm-up: feedback bit also folds in the filter bit and LFSR[1];
       // the ABSG automaton is not clocked here.
       for (let i = 0; i < WARMUP_ROUNDS; i++) {
-        const { feedback, filterBit } = this._computeFeedbackAndFilter();
-        const newBit = OpCodes.XorN(OpCodes.XorN(feedback, filterBit), this._lfsr[1]);
+        const bits = this._computeFeedbackAndFilter();
+        const feedback = bits[0];
+        const filterBit = bits[1];
+        const newBit = OpCodes.Xor32(OpCodes.Xor32(feedback, filterBit), this._lfsr[1]);
         this._shiftInsert(newBit);
       }
 
@@ -243,25 +293,36 @@
 
     // Computes the linear feedback bit and the nonlinear filter bit from the
     // current LFSR contents, without modifying the LFSR.
+    /**
+     * @returns {uint8[]}
+     */
     _computeFeedbackAndFilter() {
       const lfsr = this._lfsr;
 
+      /** @type {uint32} */
       let feedback = 0;
-      for (let i = 0; i < FEEDBACK_TAPS.length; i++) feedback = OpCodes.XorN(feedback, lfsr[FEEDBACK_TAPS[i]]);
+      for (let i = 0; i < FEEDBACK_TAPS.length; i++) feedback = OpCodes.Xor32(feedback, lfsr[FEEDBACK_TAPS[i]]);
 
+      /** @type {uint32} */
       let xorAll = 0;
-      for (let i = 0; i < FILTER_XOR_TAPS.length; i++) xorAll = OpCodes.XorN(xorAll, lfsr[FILTER_XOR_TAPS[i]]);
+      for (let i = 0; i < FILTER_XOR_TAPS.length; i++) xorAll = OpCodes.Xor32(xorAll, lfsr[FILTER_XOR_TAPS[i]]);
 
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < FILTER_SUM_TAPS.length; i++) sum += lfsr[FILTER_SUM_TAPS[i]];
 
-      const filterBit = OpCodes.XorN(OpCodes.AndN(OpCodes.Shr32(sum, 1), 1), xorAll);
+      const filterBit = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr32(sum, 1), 1), xorAll);
 
-      return { feedback, filterBit };
+      /** @type {uint8[]} */
+      const bits = [feedback, filterBit];
+      return bits;
     }
 
     // Discards LFSR[0] and shifts every remaining bit down by one position,
     // inserting newBit at the top (position LFSR_LEN-1).
+    /**
+     * @param {uint8} newBit
+     */
     _shiftInsert(newBit) {
       const lfsr = this._lfsr;
       lfsr.shift();
@@ -269,6 +330,9 @@
     }
 
     // Standard 1-bit-input ABSG automaton transition (c,p,n,out state).
+    /**
+     * @param {uint32} d
+     */
     _absgStep(d) {
       if (this._c === 0) {
         this._p = d;
@@ -276,9 +340,9 @@
         this._out = 0;
         this._c = 1;
       } else {
-        const newOut = OpCodes.XorN(this._n, d);
-        const newN = OpCodes.XorN(this._p, d);
-        const newC = OpCodes.XorN(this._p, d);
+        const newOut = OpCodes.Xor32(this._n, d);
+        const newN = OpCodes.Xor32(this._p, d);
+        const newC = OpCodes.Xor32(this._p, d);
         this._out = newOut;
         this._n = newN;
         this._c = newC;
@@ -290,7 +354,9 @@
     // the LFSR, the filter bit drives the ABSG automaton, and an accepted
     // ABSG output bit (when c returns to 0) is enqueued at the FIFO tail.
     _absgEnqueueClock() {
-      const { feedback, filterBit } = this._computeFeedbackAndFilter();
+      const bits = this._computeFeedbackAndFilter();
+      const feedback = bits[0];
+      const filterBit = bits[1];
       this._shiftInsert(feedback);
       this._absgStep(filterBit);
       if (this._c === 0 && this._queueCount < QUEUE_LEN) {
@@ -303,7 +369,9 @@
     // enqueues the RAW filter bit directly, bypassing the ABSG automaton, at an
     // index one past the current count (reproducing the DarkCrypt implementation's off-by-one slot use).
     _rawEnqueueClock() {
-      const { feedback, filterBit } = this._computeFeedbackAndFilter();
+      const bits = this._computeFeedbackAndFilter();
+      const feedback = bits[0];
+      const filterBit = bits[1];
       this._shiftInsert(feedback);
       this._queueCount++;
       const idx = this._queueCount;
@@ -314,29 +382,38 @@
     // Consumes one bit from the FIFO head into the byte-packer (LSB-first),
     // shifting the FIFO down by one. Returns a completed byte whenever 8 bits
     // had already been accumulated at entry (matching the DarkCrypt implementation's packer).
+    /**
+     * @returns {int32}
+     */
     _dequeue() {
       const flag = (this._bitCount === 8);
-      let byteOut = null;
+      /** @type {int32} */
+      let byteOut = -1; // no completed byte
       if (flag) {
         byteOut = OpCodes.And32(this._accByte, 0xFF);
         this._bitCount = 0;
         this._accByte = 0;
       }
       const bit = this._queue[0];
-      this._accByte = OpCodes.OrN(this._accByte, OpCodes.Shl32(bit, this._bitCount));
+      this._accByte = OpCodes.Or32(this._accByte, OpCodes.Shl32(bit, this._bitCount));
       this._bitCount++;
       for (let i = 0; i < this._queue.length - 1; i++) this._queue[i] = this._queue[i + 1];
       this._queue[this._queue.length - 1] = 0;
       this._queueCount--;
-      return { flag, byteOut };
+      return byteOut;
     }
 
     // Reproduces crypt()'s exact control flow: 4 ABSG-mediated clocks per attempt,
     // one dequeue attempt, and — only once the FIFO is completely empty and more
     // output is still needed — up to 4 passes of {8 raw clocks + one dequeue
     // attempt} to refill it.
+    /**
+     * @param {uint8[]} input
+     * @returns {uint8[]}
+     */
     _crypt(input) {
       const len = input.length;
+      /** @type {uint8[]} */
       const out = new Array(len);
       let processed = 0;
       if (len <= 0) return out;
@@ -344,18 +421,18 @@
       while (true) {
         for (let i = 0; i < 4; i++) this._absgEnqueueClock();
 
-        let { flag, byteOut } = this._dequeue();
-        if (flag) {
-          out[processed] = OpCodes.XorN(input[processed], byteOut);
+        const byteOut = this._dequeue();
+        if (byteOut >= 0) {
+          out[processed] = OpCodes.Xor32(input[processed], byteOut);
           processed++;
         }
 
         if (this._queueCount === 0 && processed < len) {
           for (let pass = 0; pass < 4; pass++) {
             for (let k = 0; k < 8; k++) this._rawEnqueueClock();
-            const r = this._dequeue();
-            if (r.flag) {
-              out[processed] = OpCodes.XorN(input[processed], r.byteOut);
+            const refill = this._dequeue();
+            if (refill >= 0) {
+              out[processed] = OpCodes.Xor32(input[processed], refill);
               processed++;
             }
           }

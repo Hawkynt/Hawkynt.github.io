@@ -34,7 +34,8 @@
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // Leviathan S-box (AES S-box)
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -51,7 +52,7 @@
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-  ]);
+  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -113,37 +114,62 @@ class Leviathan extends StreamCipherAlgorithm {
 }
 
 class LeviathanInstance extends IAlgorithmInstance {
+  /**
+   * @param {Leviathan} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._iv = new Array(32).fill(0);
+    /** @type {uint8[]|null} */
+    this._iv = OpCodes.CreateArray(32, 0);
 
     // Leviathan state
+    /** @type {uint32[]|null} */
     this.state = null;
+    /** @type {uint8[]|null} */
     this.wordBuffer = null;
+    /** @type {int32} */
     this.wordBufferPos = 0;
 
     // Constants
+    /** @type {int32} */
     this.STATE_SIZE = 128;     // 128 words = 4096 bits
+    /** @type {int32} */
     this.LFSR_COUNT = 8;       // 8 parallel LFSRs
+    /** @type {int32} */
     this.LFSR_SIZE = 16;       // Each LFSR has 16 words
     this.INIT_ROUNDS = 2048;   // Initialization rounds
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -152,11 +178,17 @@ class LeviathanInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     if (!ivBytes || ivBytes.length !== 32) {
-      this._iv = new Array(32).fill(0);
+      this._iv = OpCodes.CreateArray(32, 0);
     } else {
       this._iv = [...ivBytes];
     }
@@ -166,26 +198,38 @@ class LeviathanInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this._iv ? [...this._iv] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
 
     // Handle empty input
     if (this.inputBuffer.length === 0) {
-      return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -199,6 +243,7 @@ class LeviathanInstance extends IAlgorithmInstance {
     this.state = new Array(this.STATE_SIZE);
 
     // Convert key to 32-bit words (8 words from 32 bytes)
+    /** @type {uint32[]} */
     const keyWords = [];
     for (let i = 0; i < 32; i += 4) {
       keyWords.push(OpCodes.Pack32LE(
@@ -207,6 +252,7 @@ class LeviathanInstance extends IAlgorithmInstance {
     }
 
     // Convert IV to 32-bit words (8 words from 32 bytes)
+    /** @type {uint32[]} */
     const ivWords = [];
     for (let i = 0; i < 32; i += 4) {
       ivWords.push(OpCodes.Pack32LE(
@@ -222,7 +268,7 @@ class LeviathanInstance extends IAlgorithmInstance {
         this.state[i] = ivWords[i - keyWords.length];
       } else {
         // Fill remaining state with derived material
-        this.state[i] = OpCodes.XorN(this.state[i % keyWords.length],
+        this.state[i] = OpCodes.Xor32(this.state[i % keyWords.length],
                        this.state[(i * 3) % ivWords.length + keyWords.length]);
       }
     }
@@ -253,10 +299,11 @@ class LeviathanInstance extends IAlgorithmInstance {
 
   /**
    * Mix single LFSR section
+   * @param {int32} offset
    */
   _mixLFSR(offset) {
     // LFSR feedback with multiple tap points
-    const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[offset],
+    const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.state[offset],
                      this.state[offset + 3]),
                      this.state[offset + 7]),
                      this.state[offset + 12]);
@@ -277,7 +324,7 @@ class LeviathanInstance extends IAlgorithmInstance {
       const lfsr2_offset = (i + 1) * this.LFSR_SIZE;
 
       // Mix last word of current LFSR with first word of next LFSR
-      const mix = OpCodes.XorN(this.state[lfsr1_offset + this.LFSR_SIZE - 1],
+      const mix = OpCodes.Xor32(this.state[lfsr1_offset + this.LFSR_SIZE - 1],
                  this.state[lfsr2_offset]);
 
       this.state[lfsr1_offset + this.LFSR_SIZE - 1] = mix;
@@ -287,6 +334,7 @@ class LeviathanInstance extends IAlgorithmInstance {
 
   /**
    * Nonlinear filter function using S-box
+   * @returns {uint32}
    */
   _nonlinearFilter() {
     // Extract values from specific positions in the large state
@@ -298,9 +346,9 @@ class LeviathanInstance extends IAlgorithmInstance {
     const x6 = this.state[119];
 
     // Apply S-box operations
-    const bytes1 = OpCodes.Unpack32LE(OpCodes.XorN(x1, x4));
-    const bytes2 = OpCodes.Unpack32LE(OpCodes.XorN(x2, x5));
-    const bytes3 = OpCodes.Unpack32LE(OpCodes.XorN(x3, x6));
+    const bytes1 = OpCodes.Unpack32LE(OpCodes.Xor32(x1, x4));
+    const bytes2 = OpCodes.Unpack32LE(OpCodes.Xor32(x2, x5));
+    const bytes3 = OpCodes.Unpack32LE(OpCodes.Xor32(x3, x6));
 
     const sbox_out1 = OpCodes.Pack32LE(
       SBOX[bytes1[0]], SBOX[bytes1[1]],
@@ -318,13 +366,14 @@ class LeviathanInstance extends IAlgorithmInstance {
     );
 
     // Combine with rotation and XOR
-    return OpCodes.XorN(OpCodes.XorN(sbox_out1,
+    return OpCodes.Xor32(OpCodes.Xor32(sbox_out1,
            OpCodes.RotL32(sbox_out2, 8)),
            OpCodes.RotL32(sbox_out3, 16));
   }
 
   /**
    * Generate one keystream word (32 bits)
+   * @returns {uint32}
    */
   _generateKeystreamWord() {
     // Update the large state
@@ -336,6 +385,7 @@ class LeviathanInstance extends IAlgorithmInstance {
 
   /**
    * Generate one keystream byte
+   * @returns {uint8}
    */
   _generateKeystreamByte() {
     if (!this.wordBuffer || this.wordBufferPos >= 4) {

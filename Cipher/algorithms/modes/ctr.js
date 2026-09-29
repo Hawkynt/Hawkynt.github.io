@@ -102,11 +102,11 @@
       ];
 
       // Add common test parameters
-      this.tests.forEach(test => {
-        test.cipher = "AES";  // Use AES cipher for NIST test vectors
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
-        test.iv = OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"); // Test nonce/IV
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].cipher = "AES";  // Use AES cipher for NIST this.tests[i] vectors
+        this.tests[i].key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 this.tests[i] key
+        this.tests[i].iv = OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"); // Test nonce/IV
+      }
     }
 
     /**
@@ -129,15 +129,18 @@
   class CtrModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CtrAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.nonce = null;
       this.counter = 0;
     }
@@ -155,14 +158,14 @@
 
     /**
      * Set the nonce (IV for counter mode)
-     * @param {Array} nonce - Nonce value (must match block size)
+     * @param {uint8[]} nonce - Nonce value (must match block size)
      */
     setNonce(nonce) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before nonce");
       }
       if (!nonce || nonce.length !== this.blockCipher.BlockSize) {
-        throw new Error(`Nonce must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("Nonce must be " + this.blockCipher.BlockSize + " bytes");
       }
       this.nonce = [...nonce]; // Copy nonce
       this.counter = 0; // Reset counter when setting new nonce
@@ -194,8 +197,9 @@
 
     /**
      * Increment counter in big-endian format
-     * @param {Array} counterBlock - Counter block to increment
-     * @param {number} increment - Value to add to counter
+     * @param {uint8[]} counterBlock - Counter block to increment
+     * @param {int32} [increment=1] - Value to add to counter
+     * @returns {uint8[]} Incremented counter block
      */
     _incrementCounter(counterBlock, increment = 1) {
       const result = [...counterBlock];
@@ -204,7 +208,7 @@
       // Add from least significant byte (right to left)
       for (let i = result.length - 1; i >= 0 && carry > 0; i--) {
         const sum = result[i] + carry;
-        result[i] = OpCodes.AndN(sum, 0xFF);
+        result[i] = OpCodes.And32(sum, 0xFF);
         carry = Math.floor(sum / 256);
       }
 
@@ -229,6 +233,7 @@
       }
 
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const output = [];
       let counterBlock = [...this.nonce]; // Start with nonce as initial counter
 
@@ -239,9 +244,11 @@
         const inputBlock = this.inputBuffer.slice(i, i + remainingBytes);
 
         // Encrypt the counter block to create keystream
+        /** @type {IBlockCipherInstance} */
         const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
         encryptCipher.key = this.blockCipher.key;
         encryptCipher.Feed(counterBlock);
+        /** @type {uint8[]} */
         const keystream = encryptCipher.Result();
 
         // XOR input with keystream to get output

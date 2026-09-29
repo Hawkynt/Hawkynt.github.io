@@ -52,19 +52,33 @@
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // 32 round (constant, operation) pairs applied to the working table, in order.
-  const ROUNDS = [
-    [0x12345679, 'sub'], [0x369D036B, 'sub'], [0x5C28F5BF, 'add'], [0x147AE13D, 'add'],
-    [0x3D70A3B7, 'add'], [0x47AE14DB, 'sub'], [0x28F5C16F, 'add'], [0x7AE1444D, 'add'],
-    [0x70A3CCE7, 'add'], [0x51EB66B5, 'add'], [0x0A3DCBE1, 'sub'], [0x1EB963A3, 'sub'],
-    [0x5C2C2AE9, 'sub'], [0x148480BB, 'sub'], [0x3D8D8231, 'sub'], [0x4757796D, 'add'],
-    [0x29F993B9, 'sub'], [0x7DECBB2B, 'sub'], [0x79C63181, 'sub'], [0x6D529483, 'sub'],
-    [0x47F7BD89, 'sub'], [0x2818C765, 'add'], [0x784A562F, 'add'], [0x68DF028D, 'add'],
-    [0x3A9D07A7, 'add'], [0x5028E90B, 'sub'], [0x0F8544DF, 'add'], [0x2E8FCE9D, 'add'],
-    [0x74509429, 'sub'], [0x5CF1BC7B, 'sub'], [0x16D53571, 'sub'], [0x447FA053, 'sub']
+  /** @type {uint32[]} */
+  const ROUND_CONSTANTS = [
+    0x12345679, 0x369D036B, 0x5C28F5BF, 0x147AE13D,
+    0x3D70A3B7, 0x47AE14DB, 0x28F5C16F, 0x7AE1444D,
+    0x70A3CCE7, 0x51EB66B5, 0x0A3DCBE1, 0x1EB963A3,
+    0x5C2C2AE9, 0x148480BB, 0x3D8D8231, 0x4757796D,
+    0x29F993B9, 0x7DECBB2B, 0x79C63181, 0x6D529483,
+    0x47F7BD89, 0x2818C765, 0x784A562F, 0x68DF028D,
+    0x3A9D07A7, 0x5028E90B, 0x0F8544DF, 0x2E8FCE9D,
+    0x74509429, 0x5CF1BC7B, 0x16D53571, 0x447FA053
+  ];
+  /** @type {string[]} */
+  const ROUND_OPS = [
+    'sub', 'sub', 'add', 'add', 'add', 'sub', 'add', 'add',
+    'add', 'add', 'sub', 'sub', 'sub', 'sub', 'sub', 'add',
+    'sub', 'sub', 'sub', 'sub', 'sub', 'add', 'add', 'add',
+    'add', 'sub', 'add', 'add', 'sub', 'sub', 'sub', 'sub'
   ];
 
+  /**
+   * @param {uint32} val - Table word
+   * @param {string} op - 'add' or 'sub'
+   * @param {uint32} c - Round constant
+   * @returns {uint32} val + c or val - c, modulo 2^32
+   */
   function applyRoundOp(val, op, c) {
-    return op === 'add' ? OpCodes.ToUint32(val + c) : OpCodes.ToUint32(val - c);
+    return op === 'add' ? OpCodes.Add32(val, c) : OpCodes.Sub32(val, c);
   }
 
   class DarkCryptKontonAlgorithm extends StreamCipherAlgorithm {
@@ -117,33 +131,55 @@
   }
 
   class DarkCryptKontonInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptKontonAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
+      /** @type {uint32[]|null} */
       this._table = null;   // 32 x 32-bit working words
+      /** @type {uint32} */
       this._acc = 0;        // 32-bit accumulator
+      /** @type {uint32} */
       this._rot = 0;        // 5-bit rotation tracker
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Konton (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Konton (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -155,8 +191,12 @@
 
     // ---- table pack/reset ----
 
+    /**
+     * @param {uint8[]} work
+     */
     _pack(work) {
       // table[i] = big-endian uint32 from work[4i..4i+3]; resets accumulator & rotation tracker.
+      /** @type {uint32[]} */
       const table = new Array(32);
       for (let i = 0; i < 32; i++) {
         const o = i * 4;
@@ -169,26 +209,31 @@
 
     // ---- one advance step: walks all 32 table words, returns new accumulator ----
 
+    /**
+     * @returns {uint32}
+     */
     _advance() {
       let acc = this._acc;
       let rot = this._rot;
+      /** @type {uint32} */
       let prevVal = 0;
 
       for (let i = 0; i < 32; i++) {
-        const [c, op] = ROUNDS[i];
+        const c = ROUND_CONSTANTS[i];
+        const op = ROUND_OPS[i];
         let val = applyRoundOp(this._table[i], op, c);
         if (i > 0 && prevVal === 0)
           val = applyRoundOp(val, op, c);
 
-        rot = OpCodes.AndN(rot + OpCodes.AndN(val, 0xFF), 0x1F);
+        rot = OpCodes.And32(OpCodes.Add32(rot, OpCodes.And32(val, 0xFF)), 0x1F);
         acc = OpCodes.RotL32(acc, rot);
-        rot = OpCodes.AndN(rot + OpCodes.AndN(acc, 0xFF), 0x1F);
+        rot = OpCodes.And32(OpCodes.Add32(rot, OpCodes.And32(acc, 0xFF)), 0x1F);
 
         prevVal = val;
         this._table[i] = val;
 
         const rotatedVal = OpCodes.RotL32(val, rot);
-        acc = OpCodes.ToUint32(acc + rotatedVal);
+        acc = OpCodes.Add32(acc, rotatedVal);
       }
 
       if (acc === 0 && rot === 0) rot = 1;
@@ -205,31 +250,36 @@
     // has just recovered. Folding in the ciphertext instead desynchronizes the
     // generator from the second byte pair onwards, which is why decryption
     // returned the first byte correctly and nothing else.
+    /**
+     * @param {uint8[]} buf
+     * @param {int32} len
+     * @param {boolean} decrypting
+     */
     _cryptBuffer(buf, len, decrypting) {
       let i = 0;
       while (i < len) {
         const r = this._advance();
-        const ks = OpCodes.AndN(OpCodes.Shr32(r, 16), 0xFFFF);
+        const ks = OpCodes.And32(OpCodes.Shr32(r, 16), 0xFFFF);
 
-        const b0 = OpCodes.AndN(ks, 0xFF);
-        const out0 = OpCodes.XorN(buf[i], b0);
+        const b0 = OpCodes.And32(ks, 0xFF);
+        const out0 = OpCodes.Xor32(buf[i], b0);
         const p0 = decrypting ? out0 : buf[i];
-        this._acc = OpCodes.ToUint32(this._acc + p0);
+        this._acc = OpCodes.Add32(this._acc, p0);
         buf[i] = out0;
         i++;
         if (i >= len) break;
 
-        const b1 = OpCodes.AndN(OpCodes.Shr32(ks, 8), 0xFF);
-        const out1 = OpCodes.XorN(buf[i], b1);
+        const b1 = OpCodes.And32(OpCodes.Shr32(ks, 8), 0xFF);
+        const out1 = OpCodes.Xor32(buf[i], b1);
         const p1 = decrypting ? out1 : buf[i];
-        this._acc = OpCodes.ToUint32(this._acc + OpCodes.Shl32(p1, 8));
+        this._acc = OpCodes.Add32(this._acc, OpCodes.Shl32(p1, 8));
         buf[i] = out1;
         i++;
       }
     }
 
     _initialize() {
-      const work = new Array(128).fill(0);
+      const work = OpCodes.CreateArray(128, 0);
       let remaining = this._key.length;
       let keyOff = 0;
 
@@ -237,7 +287,7 @@
         this._pack(work);
         const chunk = Math.min(remaining, 128);
         for (let i = 0; i < chunk; i++)
-          work[i] = OpCodes.XorN(work[i], this._key[keyOff + i]);
+          work[i] = OpCodes.Xor32(work[i], this._key[keyOff + i]);
 
         // Key setup always self-encrypts, whichever direction the instance serves.
         this._cryptBuffer(work, 128, false);
@@ -249,7 +299,12 @@
       this._pack(work);
     }
 
+    /**
+     * @param {uint8[]} data
+     * @returns {uint8[]}
+     */
     _process(data) {
+      /** @type {uint8[]} */
       const buf = [...data];
       this._cryptBuffer(buf, buf.length, this.isInverse);
       return buf;

@@ -66,6 +66,7 @@
   const WARMUP_CLOCKS = 32;
 
   // Standard AES S-box (used to build the SNOW 2.0 FSM's non-linear function S(w))
+  /** @type {uint8[]} */
   const SBOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -140,21 +141,49 @@
 
   // AES round T-table (Te0), derived from the standard AES S-box:
   // TE0[x] = (2*S[x]) | (S[x]<<8) | (S[x]<<16) | (3*S[x]<<24)   (little-endian byte packing)
+  /**
+   * @param {uint8} x - Field element
+   * @returns {uint8} 2*x in GF(2^8)
+   */
   function gfMul2(x) { return OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(x, 1), (OpCodes.And32(x, 0x80) ? 0x1B : 0)), 0xFF); }
+  /**
+   * @param {uint8} x - Field element
+   * @returns {uint8} 3*x in GF(2^8)
+   */
   function gfMul3(x) { return OpCodes.Xor32(gfMul2(x), x); }
-  const TE0 = new Array(256);
-  for (let x = 0; x < 256; x++) {
-    const s = SBOX[x];
-    TE0[x] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(gfMul3(s), 24), OpCodes.Shl32(s, 16)), OpCodes.Shl32(s, 8)), gfMul2(s));
+  /**
+   * @returns {uint32[]} The AES T-table Te0
+   */
+  function buildTe0() {
+    /** @type {uint32[]} */
+    const table = new Array(256);
+    for (let x = 0; x < 256; x++) {
+      const s = SBOX[x];
+      table[x] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(gfMul3(s), 24), OpCodes.Shl32(s, 16)), OpCodes.Shl32(s, 8)), gfMul2(s));
+    }
+    return table;
   }
+  const TE0 = buildTe0();
 
   // SNOW 2.0 FSM non-linear function: one AES round (SubBytes+MixColumns) on a 32-bit word.
+  /**
+   * @param {uint32} w
+   * @returns {uint32}
+   */
   function sBoxWord(w) {
     const b0 = OpCodes.And32(w, 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF), b3 = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
     return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[b0], OpCodes.RotL32(TE0[b1], 8)), OpCodes.RotL32(TE0[b2], 16)), OpCodes.RotL32(TE0[b3], 24));
   }
 
+  /**
+   * @param {uint32} x - LFSR word
+   * @returns {uint32} x * alpha
+   */
   function mulAlpha(x) { return OpCodes.Xor32(OpCodes.Shl32(x, 8), MULA_TABLE[OpCodes.Shr32(x, 24)]); }
+  /**
+   * @param {uint32} x - LFSR word
+   * @returns {uint32} x / alpha
+   */
   function divAlpha(x) { return OpCodes.Xor32(OpCodes.Shr32(x, 8), DIVA_TABLE[OpCodes.And32(x, 0xFF)]); }
 
   class DarkCryptSnow2Algorithm extends StreamCipherAlgorithm {
@@ -211,53 +240,93 @@
   }
 
   class DarkCryptSnow2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSnow2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint32[]|null} */
       this._s = null;      // 16-word LFSR state (circular buffer)
+      /** @type {int32} */
       this._head = 0;      // logical index of s0 within the circular buffer
+      /** @type {uint32} */
       this._r1 = 0;
+      /** @type {uint32} */
       this._r2 = 0;
+      /** @type {uint8[]} */
       this._pendingBytes = [];
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._s = null; return; }
       if (keyBytes.length !== KEY_LEN)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SNOW 2.0 (DarkCrypt) requires exactly ${KEY_LEN} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SNOW 2.0 (DarkCrypt) requires exactly " + KEY_LEN + " bytes");
       this._key = [...keyBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this._s = null; return; }
       if (ivBytes.length !== IV_LEN)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. SNOW 2.0 (DarkCrypt) requires exactly ${IV_LEN} bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. SNOW 2.0 (DarkCrypt) requires exactly " + IV_LEN + " bytes");
       this._iv = [...ivBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._s) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._s) throw new Error("Key/IV not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -267,12 +336,14 @@
       if (!this._key || !this._iv) { this._s = null; return; }
 
       // Load 8 big-endian 32-bit key words k0..k7
+      /** @type {uint32[]} */
       const k = new Array(8);
       for (let i = 0; i < 8; i++) {
         const o = i * 4;
         k[i] = OpCodes.Pack32BE(this._key[o], this._key[o + 1], this._key[o + 2], this._key[o + 3]);
       }
       // Load 4 big-endian 32-bit IV words iv0..iv3
+      /** @type {uint32[]} */
       const iv = new Array(4);
       for (let i = 0; i < 4; i++) {
         const o = i * 4;
@@ -280,15 +351,16 @@
       }
 
       // Standard SNOW 2.0 256-bit key loading: s_i = ~k_(7-i) for i=0..7, s_(8+i) = k_(7-i) for i=0..7
+      /** @type {uint32[]} */
       const s = new Array(16);
       for (let i = 0; i < 8; i++) s[i] = OpCodes.Not32(k[7 - i]);
       for (let i = 0; i < 8; i++) s[8 + i] = k[7 - i];
 
       // IV folding (as implemented in the DarkCrypt plugin)
-      s[10] = OpCodes.XorN(s[10], iv[1]); // s10 ^= iv word1 (bytes 4..7)
-      s[9] = OpCodes.XorN(s[9], iv[0]);  // s9  ^= iv word0 (bytes 0..3)
-      s[12] = OpCodes.XorN(s[12], iv[2]); // s12 ^= iv word2 (bytes 8..11)
-      s[15] = OpCodes.XorN(s[15], iv[3]); // s15 ^= iv word3 (bytes 12..15)
+      s[10] = OpCodes.Xor32(s[10], iv[1]); // s10 ^= iv word1 (bytes 4..7)
+      s[9] = OpCodes.Xor32(s[9], iv[0]);  // s9  ^= iv word0 (bytes 0..3)
+      s[12] = OpCodes.Xor32(s[12], iv[2]); // s12 ^= iv word2 (bytes 8..11)
+      s[15] = OpCodes.Xor32(s[15], iv[3]); // s15 ^= iv word3 (bytes 12..15)
 
       this._s = s;
       this._head = 0;
@@ -301,11 +373,19 @@
       this._clock(false);
     }
 
+    /**
+     * @param {int32} offset - Logical LFSR position
+     * @returns {uint32} LFSR word at that position
+     */
     _tap(offset) { return this._s[OpCodes.And32(this._head + offset, 15)]; }
 
     // One SNOW 2.0 clock. withF=true folds the FSM feedback into the LFSR update (key/IV
     // warm-up mode, no output); withF=false is normal generation mode and returns the
     // 32-bit keystream word z = (s15 + R1) XOR R2 XOR s0.
+    /**
+     * @param {boolean} withF
+     * @returns {uint32|null}
+     */
     _clock(withF) {
       const s = this._s;
       const s0 = this._tap(0);
@@ -314,14 +394,15 @@
       const s11 = this._tap(11);
       const s15 = this._tap(15);
 
-      const f = OpCodes.XorN(OpCodes.Add32(s15, this._r1), this._r2);
+      const f = OpCodes.Xor32(OpCodes.Add32(s15, this._r1), this._r2);
 
-      let v = OpCodes.XorN(OpCodes.XorN(mulAlpha(s0), s2), divAlpha(s11));
+      let v = OpCodes.Xor32(OpCodes.Xor32(mulAlpha(s0), s2), divAlpha(s11));
+      /** @type {uint32|null} */
       let z = null;
       if (withF)
-        v = OpCodes.XorN(v, f);
+        v = OpCodes.Xor32(v, f);
       else
-        z = OpCodes.XorN(f, s0);
+        z = OpCodes.Xor32(f, s0);
 
       const r2New = sBoxWord(this._r1);
       const r1New = OpCodes.Add32(this._r2, s5); // R1' = R2(old) + s5(old); R2' = S(R1(old))
@@ -333,6 +414,9 @@
       return z;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this._pendingBytes.length === 0) {
         const z = this._clock(false);

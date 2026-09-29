@@ -67,11 +67,13 @@
   const STAGES = 80;          // number of e-transformer pipeline stages
   const KEY_DIGITS = 40;      // two-bit digits carried by the 80-bit key
   const IV_DIGITS = 32;       // two-bit digits carried by the 64-bit IV
+  /** @type {uint8[]} */
   const TAIL_DIGITS = [3, 2, 1, 0, 0, 1, 2, 3]; // fixed padding appended after key+IV digits
 
   // The four fixed 4x4 quasigroups on the alphabet {0,1,2,3} that every
   // e-transformer stage is built from. Q[q][a][b] is the quasigroup q
   // applied to operands (a, b).
+  /** @type {uint8[][][]} */
   const QUASIGROUPS = [
     [[0, 2, 1, 3], [2, 1, 3, 0], [1, 3, 0, 2], [3, 0, 2, 1]],
     [[1, 3, 0, 2], [0, 1, 2, 3], [2, 0, 3, 1], [3, 2, 1, 0]],
@@ -119,7 +121,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("00010203040506070809"),
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("50ba2a55711e9be5bd8901ceab15538548891e65601888716d14b46e1550ad11f90774f6514f403d6cfd118cf6e3baf383cc171d2b4b965cb37d14d175a9bcb8ddda1b8c282e811f199e73870c96b66595e8d80389e7682cd22e0ac9b2fa7d2c07184c5d24bcb2c6c7f855db25de890a6feed9dd07fbb135a4fea0bce4239718")
         },
         {
@@ -139,42 +141,75 @@
   }
 
   class Edon80Instance extends IAlgorithmInstance {
+    /**
+     * @param {Edon80Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {uint8[][][]|null} */
       this.stageQuasigroups = null; // one of QUASIGROUPS per pipeline stage, chosen by the key
+      /** @type {uint8[]|null} */
       this.state = null;            // 80 two-bit pipeline register values
+      /** @type {uint32} */
       this.counter = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 10)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Edon80 (DarkCrypt) requires exactly 10 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Edon80 (DarkCrypt) requires exactly 10 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 8)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Edon80 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Edon80 (DarkCrypt) requires exactly 8 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -182,15 +217,21 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("Edon80 (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("Edon80 (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -199,26 +240,32 @@
     // ===== Edon80 (80-bit key / 64-bit IV variant) core =====
 
     // Split each byte into four two-bit digits, most significant first.
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint8[]}
+     */
     static _bytesToDigits(bytes) {
+      /** @type {uint8[]} */
       const digits = [];
       for (let i = 0; i < bytes.length; i++) {
         const b = bytes[i];
-        digits.push(
-          OpCodes.And32(OpCodes.Shr32(b, 6), 3),
-          OpCodes.And32(OpCodes.Shr32(b, 4), 3),
-          OpCodes.And32(OpCodes.Shr32(b, 2), 3),
-          OpCodes.And32(b, 3)
-        );
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 6), 3));
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 4), 3));
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 2), 3));
+        digits.push(OpCodes.And32(b, 3));
       }
       return digits;
     }
 
     _initialize() {
+      /** @type {uint8[]} */
       const keyDigits = Edon80Instance._bytesToDigits(this._key); // 40 digits
+      /** @type {uint8[]} */
       const ivDigits = Edon80Instance._bytesToDigits(this._iv);   // 32 digits
 
       // Bind each of the 80 pipeline stages to a quasigroup selected by the
       // key digits; the choice for stages 0-39 is repeated for stages 40-79.
+      /** @type {uint8[][][]} */
       const stageQuasigroups = new Array(STAGES);
       for (let m = 0; m < KEY_DIGITS; m++) {
         const chosen = QUASIGROUPS[keyDigits[m]];
@@ -229,7 +276,9 @@
 
       // Build the 80-digit leader sequence: key digits, then IV digits,
       // then the fixed tail, and load it into the initial pipeline state.
+      /** @type {uint8[]} */
       const leaders = new Array(STAGES);
+      /** @type {uint8[]} */
       const state = new Array(STAGES);
       let p = 0;
       for (let i = 0; i < KEY_DIGITS; i++, p++) leaders[p] = state[p] = keyDigits[i];
@@ -251,6 +300,10 @@
 
     // One full pass of the pipeline, driven by a two-bit input digit fed
     // into stage 0. Returns the digit produced by the last stage.
+    /**
+     * @param {uint32} inputDigit
+     * @returns {uint8}
+     */
     _pipelinePass(inputDigit) {
       const state = this.state;
       const Q0 = this.stageQuasigroups[0];
@@ -264,6 +317,9 @@
 
     // One keystream digit: advance the counter, run two pipeline passes,
     // keep only the second pass's output digit.
+    /**
+     * @returns {uint8}
+     */
     _nextDigit() {
       this.counter = OpCodes.And32(this.counter + 1, 3);
       this._pipelinePass(this.counter);
@@ -271,7 +327,11 @@
       return this._pipelinePass(this.counter);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let b = 0;
       for (let i = 0; i < 4; i++) b = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(b, 2), this._nextDigit()), 0xFF);
       return b;

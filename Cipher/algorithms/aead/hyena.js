@@ -67,9 +67,13 @@
 
   // GIFT-128 key schedule (nibble-based variant for HYENA)
   class GIFT128NKeySchedule {
+    /**
+     * @param {uint8[]} key - 16-byte key
+     */
     constructor(key) {
       // HYENA uses little-endian nibble-based representation
       // Per C reference line 789: k[0]=key[0..3], k[1]=key[8..11], k[2]=key[4..7], k[3]=key[12..15]
+      /** @type {uint32[]} */
       this.k = new Uint32Array(4);
       this.k[0] = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
       this.k[1] = OpCodes.Pack32LE(key[8], key[9], key[10], key[11]);
@@ -79,12 +83,22 @@
   }
 
   // Bit permutation helper
+  /**
+   * @param {uint32} value
+   * @param {uint32} mask
+   * @param {int32} shift
+   * @returns {uint32}
+   */
   function bitPermuteStep(value, mask, shift) {
     const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
     return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift)));
   }
 
   // PERM3_INNER - core permutation for GIFT-128
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3Inner(x) {
     x = bitPermuteStep(x, 0x0a0a0a0a, 3);
     x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -94,23 +108,43 @@
   }
 
   // Row permutations PERM0-PERM3
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm0(x) {
     return OpCodes.RotL32(perm3Inner(x), 8);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm1(x) {
     return OpCodes.RotL32(perm3Inner(x), 16);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm2(x) {
     return OpCodes.RotL32(perm3Inner(x), 24);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3(x) {
     return perm3Inner(x);
   }
 
   // Convert nibble-based to word-based representation
+  /**
+   * @param {uint8[]} input
+   * @returns {uint8[]}
+   */
   function gift128nToWords(input) {
     // Load as little-endian 32-bit words
     let s0 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
@@ -119,6 +153,10 @@
     let s3 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
 
     // Apply permutation to convert nibbles to bit-sliced words
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     function permWords(x) {
       x = bitPermuteStep(x, 0x0a0a0a0a, 3);
       x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -155,6 +193,10 @@
   }
 
   // Convert word-based to nibble-based representation
+  /**
+   * @param {uint8[]} input
+   * @returns {uint8[]}
+   */
   function gift128nToNibbles(input) {
     // Load bytes and rearrange
     const s0 = OpCodes.Or32(OpCodes.Shl32(input[12], 24), OpCodes.Or32(OpCodes.Shl32(input[8], 16), OpCodes.Or32(OpCodes.Shl32(input[4], 8), input[0])));
@@ -163,6 +205,10 @@
     const s3 = OpCodes.Or32(OpCodes.Shl32(input[15], 24), OpCodes.Or32(OpCodes.Shl32(input[11], 16), OpCodes.Or32(OpCodes.Shl32(input[7], 8), input[3])));
 
     // Apply inverse permutation
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     function invPermWords(x) {
       x = bitPermuteStep(x, 0x00aa00aa, 7);
       x = bitPermuteStep(x, 0x0000cccc, 14);
@@ -178,6 +224,7 @@
 
     // Store as little-endian 32-bit words
     const output = new Uint8Array(16);
+    /** @type {uint32[]} */
     const words = [t0, t1, t2, t3];
     for (let i = 0; i < 4; ++i) {
       const w = words[3 - i];
@@ -191,6 +238,11 @@
   }
 
   // GIFT-128 bit-sliced encryption (TINY variant - matches C reference exactly)
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} state
+   * @returns {uint8[]}
+   */
   function gift128bEncrypt(ks, state) {
     let s0 = OpCodes.Pack32BE(state[0], state[1], state[2], state[3]);
     let s1 = OpCodes.Pack32BE(state[4], state[5], state[6], state[7]);
@@ -198,9 +250,13 @@
     let s3 = OpCodes.Pack32BE(state[12], state[13], state[14], state[15]);
 
     // Initialize key words (pre-swapped for round function, per C line 1096-1099)
+    /** @type {uint32} */
     let w0 = ks.k[3];
+    /** @type {uint32} */
     let w1 = ks.k[1];
+    /** @type {uint32} */
     let w2 = ks.k[2];
+    /** @type {uint32} */
     let w3 = ks.k[0];
 
     // Perform 40 rounds (per C line 1102-1133)
@@ -242,18 +298,28 @@
     const b2 = OpCodes.Unpack32BE(s2);
     const b3 = OpCodes.Unpack32BE(s3);
 
-    return [
+    /** @type {uint8[]} */
+    const block = [
       b0[0], b0[1], b0[2], b0[3],
       b1[0], b1[1], b1[2], b1[3],
       b2[0], b2[1], b2[2], b2[3],
       b3[0], b3[1], b3[2], b3[3]
     ];
+    return block;
   }
 
   // GIFT-128 nibble-based encryption (wrapper around bit-sliced)
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function gift128nEncrypt(ks, output, input) {
+    /** @type {uint8[]} */
     const words = gift128nToWords(input);
+    /** @type {uint8[]} */
     const encrypted = gift128bEncrypt(ks, words);
+    /** @type {uint8[]} */
     const nibbles = gift128nToNibbles(encrypted);
     for (let i = 0; i < 16; ++i) {
       output[i] = nibbles[i];
@@ -264,6 +330,9 @@
 
   // Double a delta value in F(2^64) field
   // D = OpCodes.Shl32(D, 1) if top bit is 0, or D = (OpCodes.Shl32(D, 1))^0x1B otherwise
+  /**
+   * @param {uint8[]} D
+   */
   function hyenaDoubleDelta(D) {
     const mask = OpCodes.And32(OpCodes.Shr32(D[0], 7), 1);
     for (let i = 0; i < 7; ++i) {
@@ -274,6 +343,9 @@
 
   // Triple a delta value in F(2^64) field
   // D' = D^(OpCodes.Shl32(D, 1)) if top bit is 0, or D' = D^(OpCodes.Shl32(D, 1))^0x1B otherwise
+  /**
+   * @param {uint8[]} D
+   */
   function hyenaTripleDelta(D) {
     const mask = OpCodes.And32(OpCodes.Shr32(D[0], 7), 1);
     for (let i = 0; i < 7; ++i) {
@@ -285,6 +357,14 @@
   // ===== HYENA-v1 IMPLEMENTATION =====
 
   // Process associated data for HYENA-v1
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} Y
+   * @param {uint8[]} D
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   * @param {int32} mlen
+   */
   function hyenaV1ProcessAD(ks, Y, D, ad, adlen, mlen) {
     const feedback = new Uint8Array(16);
     hyenaDoubleDelta(D);
@@ -351,6 +431,13 @@
   }
 
   // HYENA-v1 encryption
+  /**
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @param {uint8[]} plaintext
+   * @param {uint8[]} ad
+   * @returns {uint8[]}
+   */
   function hyenaV1Encrypt(key, nonce, plaintext, ad) {
     const ks = new GIFT128NKeySchedule(key);
     const Y = new Uint8Array(16);
@@ -477,6 +564,13 @@
   }
 
   // HYENA-v1 decryption
+  /**
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @param {uint8[]} ciphertext
+   * @param {uint8[]} ad
+   * @returns {uint8[]|null}
+   */
   function hyenaV1Decrypt(key, nonce, ciphertext, ad) {
     if (ciphertext.length < 16) {
       return null; // Invalid ciphertext length
@@ -752,16 +846,21 @@
   class HyenaInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HyenaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.aad = [];
     }
 
@@ -779,7 +878,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -795,6 +894,9 @@
     }
 
     // Nonce property
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -802,21 +904,35 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 12)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 12)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Associated data property
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this.aad = adBytes ? [...adBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = [...adBytes];
+      }
+      this.aad = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this.aad];
     }
@@ -850,6 +966,7 @@
       const input = new Uint8Array(this.inputBuffer);
       const ad = new Uint8Array(this.aad);
 
+      /** @type {uint8[]|null} */
       let output;
       if (this.isInverse) {
         // Decryption

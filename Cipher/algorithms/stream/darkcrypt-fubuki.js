@@ -91,28 +91,40 @@
 
   class MersenneTwister19937 {
     constructor() {
+      /** @type {uint32[]} */
       this.mt = new Uint32Array(MT_N);
+      /** @type {int32} */
       this.mti = MT_N + 1;
     }
 
+    /**
+     * @param {uint32} seed
+     */
     initGenrand(seed) {
       this.mt[0] = OpCodes.ToUint32(seed);
       for (this.mti = 1; this.mti < MT_N; this.mti++) {
         const prev = this.mt[this.mti - 1];
-        this.mt[this.mti] = OpCodes.ToUint32(OpCodes.Mul32(1812433253, OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30))) + this.mti);
+        this.mt[this.mti] = OpCodes.Add32(OpCodes.Mul32(1812433253, OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30))), this.mti);
       }
     }
 
     // Array-seeding scheme (2002 revision): accepts a key of arbitrary word length.
+    /**
+     * @param {uint32[]} initKey
+     */
     initByArray(initKey) {
       const keyLength = initKey.length;
       this.initGenrand(19650218);
-      let i = 1, j = 0;
+      /** @type {int32} */
+      let i = 1;
+      /** @type {int32} */
+      let j = 0;
+      /** @type {int32} */
       let k = (MT_N > keyLength ? MT_N : keyLength);
       for (; k; k--) {
         const prev = this.mt[i - 1];
         this.mt[i] = OpCodes.Xor32(this.mt[i], OpCodes.Mul32(OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30)), 1664525));
-        this.mt[i] = OpCodes.ToUint32(this.mt[i] + initKey[j] + j);
+        this.mt[i] = OpCodes.Add32(OpCodes.Add32(this.mt[i], initKey[j]), j);
         i++; j++;
         if (i >= MT_N) { this.mt[0] = this.mt[MT_N - 1]; i = 1; }
         if (j >= keyLength) j = 0;
@@ -120,7 +132,7 @@
       for (k = MT_N - 1; k; k--) {
         const prev = this.mt[i - 1];
         this.mt[i] = OpCodes.Xor32(this.mt[i], OpCodes.Mul32(OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30)), 1566083941));
-        this.mt[i] = OpCodes.ToUint32(this.mt[i] - i);
+        this.mt[i] = OpCodes.Sub32(this.mt[i], i);
         i++;
         if (i >= MT_N) { this.mt[0] = this.mt[MT_N - 1]; i = 1; }
       }
@@ -129,10 +141,15 @@
 
     // Raw 32-bit output word, WITHOUT the tempering transform: Fubuki's authors
     // removed tempering, relying on the cipher's own nonlinear mixing instead.
+    /**
+     * @returns {uint32}
+     */
     nextRaw() {
+      /** @type {uint32[]} */
       const mt = this.mt;
       if (this.mti >= MT_N) {
-        let kk;
+        /** @type {int32} */
+        let kk = 0;
         for (kk = 0; kk < MT_N - MT_M; kk++) {
           const y = OpCodes.Or32(OpCodes.And32(mt[kk], MT_UPPER_MASK), OpCodes.And32(mt[kk + 1], MT_LOWER_MASK));
           mt[kk] = OpCodes.Xor32(OpCodes.Xor32(mt[kk + MT_M], OpCodes.Shr32(y, 1)), (OpCodes.And32(y, 1) ? MT_MATRIX_A : 0));
@@ -148,7 +165,12 @@
       return mt[this.mti++];
     }
 
+    /**
+     * @param {int32} len
+     * @returns {uint32[]}
+     */
     nextTuple(len) {
+      /** @type {uint32[]} */
       const out = new Uint32Array(len);
       for (let i = 0; i < len; i++) out[i] = this.nextRaw();
       return out;
@@ -157,11 +179,16 @@
 
   // Multiplicative inverse modulo 2^32 (needed to invert the multiply step of
   // each word-wise primitive function when decoding).
+  /**
+   * @param {uint32} m
+   * @returns {uint32}
+   */
   function invMod32(m) {
     m = OpCodes.ToUint32(m);
+    /** @type {uint32} */
     let inv = OpCodes.ToUint32(1);
     for (let i = 30; i >= 0; i--) {
-      const t = OpCodes.ToUint32(OpCodes.Mul32(inv, m) - 1);
+      const t = OpCodes.Sub32(OpCodes.Mul32(inv, m), 1);
       if ((OpCodes.Shl32(t, i)) !== 0) inv = OpCodes.Or32(inv, OpCodes.Shl32(1, (32 - i - 1)));
     }
     return OpCodes.ToUint32(inv);
@@ -203,15 +230,15 @@
           text: "DarkCrypt Fubuki - 512-bit key, zero initial value, 128 zero bytes",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-          iv: new Array(64).fill(0),
-          input: new Array(128).fill(0),
+          iv: OpCodes.CreateArray(64, 0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("e7a824ba3c50c8a7d88a534fae0aeacf32a9e53a484b1ffd549ad8c24a1538e44ca2fcbc3d3d07d4f66238ec0786188ad559f1865b4d15937667934eef3dd1e283597c6c1792b3c0ac235173e4099100617534faf737aa1bcdbe8c3e2cdcf6dd8491da13d6b8da73868d5398f794d5eac3df453d348b4efcec187694bbd13882")
         },
         {
           text: "DarkCrypt Fubuki - 512-bit key, zero initial value, incrementing 64-byte input (fresh setup)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-          iv: new Array(64).fill(0),
+          iv: OpCodes.CreateArray(64, 0),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("f8876dc89d3331a7bef5e9dcf2860402b6a9a38864cbf13d65df3c30e312a643c33516aa4d26eb44a44680d36582da86de579aea2e88eeb788343c2991b9f07f")
         }
@@ -224,38 +251,68 @@
   }
 
   class DarkCryptFubukiInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptFubukiAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Fubuki (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Fubuki (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 64)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Fubuki (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Fubuki (DarkCrypt) requires exactly 64 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -263,12 +320,18 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("Fubuki (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("Fubuki (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = this._process(this.inputBuffer, this.isInverse);
       this.inputBuffer = [];
       return output;
@@ -277,14 +340,22 @@
     // ===== Fubuki core =====
 
     _initialize() {
-      if (!this._key || !this._iv) return;
+      if (!this._key || !this._iv) {
+        return;
+      }
 
+      /** @type {MersenneTwister19937} */
       this.mt = new MersenneTwister19937();
+      /** @type {uint32[]} */
       this.multiTable = new Uint32Array(MULTI_SIZE);
+      /** @type {uint32[]} */
       this.invTable = new Uint32Array(MULTI_SIZE);
+      /** @type {uint32[]} */
       this.addTable = new Uint32Array(ADD_SIZE);
+      /** @type {int32} */
       this.jump = 0;
 
+      /** @type {uint32[]} */
       const initWords = this._bytesToWordsLE(this._key).concat(this._bytesToWordsLE(this._iv));
       this.mt.initByArray(Uint32Array.from(initWords));
 
@@ -295,7 +366,12 @@
       this.initialized = true;
     }
 
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint32[]}
+     */
     _bytesToWordsLE(bytes) {
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < bytes.length; i += 4)
         words.push(OpCodes.Pack32LE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
@@ -303,9 +379,11 @@
     }
 
     _prepareMultiTable() {
+      /** @type {uint32[]} */
       const w = this.mt.nextTuple(MULTI_SIZE);
       for (let i = 0; i < MULTI_SIZE; i++) this.multiTable[i] = w[i];
       for (let i = 0; i < MULTI_SIZE; i += 2) {
+        /** @type {uint32} */
         let a = this.multiTable[i];
         a = OpCodes.Or32(OpCodes.And32(a, 0xfffffff8), 0x3);
         a = OpCodes.Or32(a, OpCodes.Shr32(0x80000000, (i % 8)));
@@ -314,6 +392,7 @@
 
         // The odd-indexed multiplier's shift amount is i+1 (not (i+1) mod 8) --
         // preserved exactly as the published reference computes it.
+        /** @type {uint32} */
         let b = this.multiTable[i + 1];
         const shiftOdd = i + 1;
         b = OpCodes.Or32(OpCodes.And32(b, 0xfffffff0), 0x7);
@@ -328,11 +407,14 @@
     }
 
     _prepareAddTable() {
+      /** @type {uint32[]} */
       const w = this.mt.nextTuple(ADD_SIZE);
       for (let i = 0; i < ADD_SIZE; i++) this.addTable[i] = w[i];
       for (let i = 0; i < ADD_SIZE; i++) {
-        let s = OpCodes.And32(i * 1103515245 + 12345, ADD_SIZE - 1);
+        /** @type {uint32} */
+        let s = OpCodes.And32(OpCodes.Add32(OpCodes.Mul32(i, 1103515245), 12345), ADD_SIZE - 1);
         s ^= OpCodes.Shr32(s, Math.floor(LOG_ADD_SIZE / 2));
+        /** @type {uint32} */
         let at = this.addTable[i];
         at = OpCodes.Shl32(at, LOG_ADD_SIZE);
         at = OpCodes.Or32(at, s);
@@ -342,29 +424,41 @@
 
     // ---- word-wise primitive encryption functions ----
 
+    /**
+     * @param {uint32[]} block
+     */
     _empr(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
         block[i] = OpCodes.Xor32(block[i], param[i]);
         block[i] = OpCodes.Mul32(block[i], this.multiTable[OpCodes.Shr32(param[(i + 1) % TUPLE], 27)]);
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
-        block[idx] = OpCodes.ToUint32(block[idx] + this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
-        block[i] = OpCodes.Or32(OpCodes.Shl32((~block[i]), (32 - s)), OpCodes.Shr32(block[i], s));
+        block[idx] = OpCodes.Add32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
+        block[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.Not32(block[i]), (32 - s)), OpCodes.Shr32(block[i], s));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _emprInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
-        block[i] = OpCodes.Or32(OpCodes.Shr32((~block[i]), (32 - s)), OpCodes.Shl32(block[i], s));
+        block[i] = OpCodes.Or32(OpCodes.Shr32(OpCodes.Not32(block[i]), (32 - s)), OpCodes.Shl32(block[i], s));
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
-        block[idx] = OpCodes.ToUint32(block[idx] - this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
+        block[idx] = OpCodes.Sub32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
         block[i] = OpCodes.Mul32(block[i], this.invTable[OpCodes.Shr32(param[(i + 1) % TUPLE], 27)]);
         block[i] = OpCodes.Xor32(block[i], param[i]);
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _emer(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
@@ -372,13 +466,17 @@
         block[i] = OpCodes.Mul32(block[i], this.multiTable[OpCodes.Shr32(param[(i + 2) % TUPLE], 27)]);
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
         block[idx] = OpCodes.Xor32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
-        block[i] = OpCodes.Or32(OpCodes.Shl32((~block[i]), (32 - s)), OpCodes.Shr32(block[i], s));
+        block[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.Not32(block[i]), (32 - s)), OpCodes.Shr32(block[i], s));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _emerInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
-        block[i] = OpCodes.Or32(OpCodes.Shr32((~block[i]), (32 - s)), OpCodes.Shl32(block[i], s));
+        block[i] = OpCodes.Or32(OpCodes.Shr32(OpCodes.Not32(block[i]), (32 - s)), OpCodes.Shl32(block[i], s));
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
         block[idx] = OpCodes.Xor32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
         block[i] = OpCodes.Mul32(block[i], this.invTable[OpCodes.Shr32(param[(i + 2) % TUPLE], 27)]);
@@ -386,29 +484,41 @@
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _emps(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
         block[i] = OpCodes.Xor32(block[i], param[i]);
         block[i] = OpCodes.Mul32(block[i], this.multiTable[OpCodes.Shr32(param[(i + 2) % TUPLE], 27)]);
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
-        block[idx] = OpCodes.ToUint32(block[idx] + this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
+        block[idx] = OpCodes.Add32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _empsInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
-        block[idx] = OpCodes.ToUint32(block[idx] - this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
+        block[idx] = OpCodes.Sub32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
         block[i] = OpCodes.Mul32(block[i], this.invTable[OpCodes.Shr32(param[(i + 2) % TUPLE], 27)]);
         block[i] = OpCodes.Xor32(block[i], param[i]);
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _emes(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
@@ -416,13 +526,17 @@
         block[i] = OpCodes.Mul32(block[i], this.multiTable[OpCodes.Shr32(param[(i + 3) % TUPLE], 27)]);
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
         block[idx] = OpCodes.Xor32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _emesInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[i], 28), 0x10), 0x17);
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
         const idx = OpCodes.And32((i + this.jump), LOW_MASK);
         block[idx] = OpCodes.Xor32(block[idx], this.addTable[OpCodes.Shr32(block[i], 32 - LOG_ADD_SIZE)]);
         block[i] = OpCodes.Mul32(block[i], this.invTable[OpCodes.Shr32(param[(i + 3) % TUPLE], 27)]);
@@ -432,59 +546,87 @@
 
     // ---- inter-word primitive encryption functions ----
 
+    /**
+     * @param {uint32[]} block
+     */
     _ma(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[j], 28), 0x10), 0x17);
-        block[i] = OpCodes.ToUint32(block[i] + OpCodes.Mul32(block[j], param[i]));
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
+        block[i] = OpCodes.Add32(block[i], OpCodes.Mul32(block[j], param[i]));
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _maInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
         const s = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(param[j], 28), 0x10), 0x17);
-        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32((~block[i]), s));
-        block[i] = OpCodes.ToUint32(block[i] - OpCodes.Mul32(block[j], param[i]));
+        block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(OpCodes.Not32(block[i]), s));
+        block[i] = OpCodes.Sub32(block[i], OpCodes.Mul32(block[j], param[i]));
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _mem(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Mul32(block[j], block[k]));
-        block[i] = OpCodes.ToUint32(block[i] - param[i]);
+        block[i] = OpCodes.Sub32(block[i], param[i]);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 16));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _memInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 16));
-        block[i] = OpCodes.ToUint32(block[i] + param[i]);
+        block[i] = OpCodes.Add32(block[i], param[i]);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Mul32(block[j], block[k]));
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _ome(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Mul32(OpCodes.Or32(block[k], param[i]), block[j]));
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 16));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _omeInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 16));
@@ -492,19 +634,29 @@
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _eme(block) {
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
       for (let i = 0; i < TUPLE; i++) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Mul32(OpCodes.Xor32(block[k], param[i]), block[j]));
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 17));
       }
     }
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _emeInv(block, param) {
       for (let i = TUPLE - 1; i >= 0; i--) {
         const j = OpCodes.And32((i - this.jump), LOW_MASK);
+        /** @type {uint32} */
         let k = OpCodes.Shr32(param[j], 32 - LOG_TUPLE);
         if (k === i) k = OpCodes.And32((k - 1), LOW_MASK);
         block[i] = OpCodes.Xor32(block[i], OpCodes.Shr32(block[i], 17));
@@ -514,37 +666,53 @@
 
     // ---- vertical-rotate primitive (cuts off within-word bit relations) ----
 
+    /**
+     * @param {uint32[]} block
+     */
     _vertRotate(block) {
       const jumpOdd = OpCodes.Or32((this.jump - 1), 0x1);
+      /** @type {uint32[]} */
       const param = this.mt.nextTuple(TUPLE);
-      const key = OpCodes.ToUint32(OpCodes.Shl32((param[0] + param[TUPLE - 1]), 2) + 1);
-      const rkey = OpCodes.ToUint32(~key);
+      const mask = OpCodes.Add32(OpCodes.Shl32(OpCodes.Add32(param[0], param[TUPLE - 1]), 2), 1);
+      const rmask = OpCodes.Not32(mask);
+      /** @type {uint32} */
       const s0 = block[0];
+      /** @type {int32} */
       let j = 0;
       for (let i = 0; i < TUPLE; i++) {
         const u = OpCodes.And32((j - jumpOdd), LOW_MASK);
-        block[j] = OpCodes.Or32(OpCodes.And32(block[j], rkey), OpCodes.And32(OpCodes.ToUint32(~block[u]), key));
+        block[j] = OpCodes.Or32(OpCodes.And32(block[j], rmask), OpCodes.And32(OpCodes.Not32(block[u]), mask));
         j = u;
       }
-      block[j] = OpCodes.Or32(OpCodes.And32(block[j], rkey), OpCodes.And32(OpCodes.ToUint32(~s0), key));
-      for (let i = 0; i < TUPLE; i++) block[i] = OpCodes.ToUint32(block[i] + param[i]);
+      block[j] = OpCodes.Or32(OpCodes.And32(block[j], rmask), OpCodes.And32(OpCodes.Not32(s0), mask));
+      for (let i = 0; i < TUPLE; i++) block[i] = OpCodes.Add32(block[i], param[i]);
     }
 
+    /**
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _vertRotateInv(block, param) {
       const jumpOdd = OpCodes.Or32((this.jump - 1), 0x1);
-      for (let i = 0; i < TUPLE; i++) block[i] = OpCodes.ToUint32(block[i] - param[i]);
-      const key = OpCodes.ToUint32(OpCodes.Shl32((param[0] + param[TUPLE - 1]), 2) + 1);
-      const rkey = OpCodes.ToUint32(~key);
+      for (let i = 0; i < TUPLE; i++) block[i] = OpCodes.Sub32(block[i], param[i]);
+      const mask = OpCodes.Add32(OpCodes.Shl32(OpCodes.Add32(param[0], param[TUPLE - 1]), 2), 1);
+      const rmask = OpCodes.Not32(mask);
+      /** @type {uint32} */
       const s0 = block[0];
+      /** @type {int32} */
       let j = 0;
       for (let i = 0; i < TUPLE; i++) {
         const u = OpCodes.And32((j + jumpOdd), LOW_MASK);
-        block[j] = OpCodes.Or32(OpCodes.And32(block[j], rkey), OpCodes.And32(OpCodes.ToUint32(~block[u]), key));
+        block[j] = OpCodes.Or32(OpCodes.And32(block[j], rmask), OpCodes.And32(OpCodes.Not32(block[u]), mask));
         j = u;
       }
-      block[j] = OpCodes.Or32(OpCodes.And32(block[j], rkey), OpCodes.And32(OpCodes.ToUint32(~s0), key));
+      block[j] = OpCodes.Or32(OpCodes.And32(block[j], rmask), OpCodes.And32(OpCodes.Not32(s0), mask));
     }
 
+    /**
+     * @param {uint32} c
+     * @param {uint32[]} block
+     */
     _applyWord(c, block) {
       switch (c) {
         case 0: this._empr(block); break;
@@ -553,6 +721,10 @@
         case 3: this._emes(block); break;
       }
     }
+    /**
+     * @param {uint32} c
+     * @param {uint32[]} block
+     */
     _applyInter(c, block) {
       switch (c) {
         case 0: this._ma(block); break;
@@ -561,6 +733,11 @@
         case 3: this._eme(block); break;
       }
     }
+    /**
+     * @param {uint32} c
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _applyWordInv(c, block, param) {
       switch (c) {
         case 0: this._emprInv(block, param); break;
@@ -569,6 +746,11 @@
         case 3: this._emesInv(block, param); break;
       }
     }
+    /**
+     * @param {uint32} c
+     * @param {uint32[]} block
+     * @param {uint32[]} param
+     */
     _applyInterInv(c, block, param) {
       switch (c) {
         case 0: this._maInv(block, param); break;
@@ -581,7 +763,11 @@
     // Draws the four-word function-choice tuple, mixes it, and returns the
     // array whose most significant 16 bits select all eight (word/inter-word)
     // primitives used over the block's four rounds.
+    /**
+     * @returns {uint32[]}
+     */
     _drawFuncChoice() {
+      /** @type {uint32[]} */
       const funcChoice = this.mt.nextTuple(4);
       funcChoice[2] = OpCodes.Mul32(funcChoice[2], OpCodes.Or32(funcChoice[0], 1));
       funcChoice[3] = OpCodes.Mul32(funcChoice[3], OpCodes.Or32(funcChoice[1], 1));
@@ -590,13 +776,20 @@
       return funcChoice;
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       const funcChoice = this._drawFuncChoice();
       this.jump = 1;
 
+      /** @type {int32} */
       let j = 0;
       while (j < 2 * ITERATION) {
+        /** @type {uint32} */
         let t = OpCodes.Shr32(j, 4);
+        /** @type {uint32} */
         let c = OpCodes.And32(OpCodes.Shr32(funcChoice[t], (OpCodes.And32(j, 0xf) * 2)), 0x3);
         j++;
         this._applyWord(c, block);
@@ -613,17 +806,28 @@
       }
     }
 
+    /**
+     * @param {uint32[]} block
+     */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       const funcChoice = this._drawFuncChoice();
 
+      /** @type {uint32[][]} */
       const tempRand = [];
-      for (let n = 0; n < 3 * ITERATION; n++) tempRand.push(this.mt.nextTuple(TUPLE));
+      for (let n = 0; n < 3 * ITERATION; n++) {
+        /** @type {uint32[]} */
+        const draw = this.mt.nextTuple(TUPLE);
+        tempRand.push(draw);
+      }
 
       let k = 3 * ITERATION;
       this.jump = OpCodes.Shl32(1, ((3 * ITERATION - 1) % LOG_TUPLE));
 
       for (let j = 2 * ITERATION - 1; j >= 0; ) {
+        /** @type {uint32} */
         let t = OpCodes.Shr32(j, 4);
+        /** @type {uint32} */
         let c = OpCodes.And32(OpCodes.Shr32(funcChoice[t], (OpCodes.And32(j, 0xf) * 2)), 0x3);
         j--;
 
@@ -663,16 +867,24 @@
     // input length threw away exactly the bytes the inverse needs, which is why
     // any input that was not a block multiple encrypted happily and then came
     // back as noise. A length outside the domain is refused here instead.
+    /**
+     * @param {uint8[]} bytesIn
+     * @param {boolean} isInverse
+     * @returns {uint8[]}
+     */
     _process(bytesIn, isInverse) {
       const blockBytes = 4 * TUPLE;
       if (bytesIn.length % blockBytes !== 0)
-        throw new Error(`Fubuki (DarkCrypt) encodes whole ${blockBytes}-byte blocks; `
-          + `${bytesIn.length} bytes is not a multiple of ${blockBytes}`);
+        throw new Error("Fubuki (DarkCrypt) encodes whole " + blockBytes + "-byte blocks; "
+          + bytesIn.length + " bytes is not a multiple of " + blockBytes);
 
+      /** @type {int32} */
       const repeat = bytesIn.length / blockBytes;
+      /** @type {uint8[]} */
       const out = [];
       let pos = 0;
       for (let r = 0; r < repeat; r++) {
+        /** @type {uint32[]} */
         const block = new Uint32Array(TUPLE);
         for (let i = 0; i < TUPLE; i++)
           block[i] = OpCodes.Pack32LE(bytesIn[pos + i * 4], bytesIn[pos + i * 4 + 1],
@@ -682,7 +894,10 @@
 
         for (let i = 0; i < TUPLE; i++) {
           const bytes = OpCodes.Unpack32LE(block[i]);
-          out.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+          out.push(bytes[0]);
+          out.push(bytes[1]);
+          out.push(bytes[2]);
+          out.push(bytes[3]);
         }
         pos += blockBytes;
       }

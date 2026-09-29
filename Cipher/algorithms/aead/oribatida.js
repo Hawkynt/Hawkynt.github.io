@@ -44,6 +44,7 @@
 
   // ===== SHARED CONSTANTS =====
 
+  /** @type {uint64} */
   const SIMP_RC = 0x3369F885192C0EF5n; // 62-bit round constant (shared by both variants)
 
   // Domain separation constants (shared by both variants)
@@ -73,69 +74,111 @@
 
   // ===== 48-BIT HELPER FUNCTIONS (for SimP-192) =====
 
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @returns {uint64}
+   */
   function load48BE(bytes, offset) {
-    return OpCodes.ShiftLn(BigInt(bytes[offset]), 40)|OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 32)|OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 24)|OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 16)|OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 8)|BigInt(bytes[offset + 5]);
+    return OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.ShiftLn(BigInt(bytes[offset]), 40), OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 32)), OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 24)), OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 16)), OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 8)), BigInt(bytes[offset + 5]));
   }
 
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @param {uint64} value
+   */
   function store48BE(bytes, offset, value) {
-    bytes[offset] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
-    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
-    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
-    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
-    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
-    bytes[offset + 5] = Number(OpCodes.AndN(value, 0xFFn));
+    bytes[offset] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn)));
+    bytes[offset + 1] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn)));
+    bytes[offset + 2] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn)));
+    bytes[offset + 3] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn)));
+    bytes[offset + 4] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn)));
+    bytes[offset + 5] = OpCodes.ToByte(Number(OpCodes.AndN(value, 0xFFn)));
   }
 
+  /**
+   * @param {uint64} value
+   * @param {int32} positions
+   * @returns {uint64}
+   */
   function rotl48(value, positions) {
     positions = positions % 48;
     const mask = 0x0000FFFFFFFFFFFFn;
-    return OpCodes.AndN(OpCodes.ShiftLn(value, positions)|OpCodes.ShiftRn(value, 48 - positions), mask);
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(value, positions), OpCodes.ShiftRn(value, 48 - positions)), mask);
   }
 
+  /**
+   * @param {uint64} value
+   * @param {int32} positions
+   * @returns {uint64}
+   */
   function rotr48(value, positions) {
     positions = positions % 48;
     const mask = 0x0000FFFFFFFFFFFFn;
-    return OpCodes.AndN(OpCodes.ShiftRn(value, positions)|OpCodes.ShiftLn(value, 48 - positions), mask);
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, positions), OpCodes.ShiftLn(value, 48 - positions)), mask);
   }
 
   // ===== 64-BIT HELPER FUNCTIONS (for SimP-256) =====
 
+  /**
+   * @param {uint64} value
+   * @param {int32} positions
+   * @returns {uint64}
+   */
   function rotl64(value, positions) {
     positions = positions % 64;
     if (positions === 0) return value;
     return OpCodes.RotL64n(value, positions);
   }
 
+  /**
+   * @param {uint64} value
+   * @param {int32} positions
+   * @returns {uint64}
+   */
   function rotr64(value, positions) {
     positions = positions % 64;
     if (positions === 0) return value;
     return OpCodes.RotR64n(value, positions);
   }
 
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @returns {uint64}
+   */
   function load64BE(bytes, offset) {
-    return (
-      OpCodes.ShiftLn(BigInt(bytes[offset]), 56)|OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 48)|OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 40)|OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 32)|OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 24)|OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 16)|OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 8)|BigInt(bytes[offset + 7])
-    );
+    return OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.ShiftLn(BigInt(bytes[offset]), 56), OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 48)), OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 40)), OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 32)), OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 24)), OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 16)), OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 8)), BigInt(bytes[offset + 7]));
   }
 
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @param {uint64} value
+   */
   function store64BE(bytes, offset, value) {
-    bytes[offset] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56), 0xFFn));
-    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48), 0xFFn));
-    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
-    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
-    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
-    bytes[offset + 5] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
-    bytes[offset + 6] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
-    bytes[offset + 7] = Number(OpCodes.AndN(value, 0xFFn));
+    bytes[offset] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56), 0xFFn)));
+    bytes[offset + 1] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48), 0xFFn)));
+    bytes[offset + 2] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn)));
+    bytes[offset + 3] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn)));
+    bytes[offset + 4] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn)));
+    bytes[offset + 5] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn)));
+    bytes[offset + 6] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn)));
+    bytes[offset + 7] = OpCodes.ToByte(Number(OpCodes.AndN(value, 0xFFn)));
   }
 
   // ===== SimP-192 PERMUTATION (48-bit words, 26 rounds) =====
 
   class SimP192 {
     constructor() {
-      this.state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
     }
 
+    /**
+     * @param {uint8[]} bytes
+     */
     loadState(bytes) {
       if (bytes.length !== SIMP_192_STATE_SIZE) {
         throw new Error('Invalid state size for SimP-192');
@@ -145,11 +188,18 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     extractState() {
       return this.state.slice();
     }
 
+    /**
+     * @param {int32} steps
+     */
     permute(steps) {
+      /** @type {uint64} */
       let z = SIMP_RC;
 
       // Load state as four 48-bit words
@@ -163,26 +213,26 @@
         // Perform all rounds for this step (two at a time)
         for (let round = 0; round < SIMP_192_ROUNDS / 2; ++round) {
           // First round of pair
-          let t1 = x3^(rotl48(x2, 1)&rotl48(x2, 8))^rotl48(x2, 2)^x1;
-          let t0 = x1^rotr48(x0, 3)^rotr48(x0, 4)^0x0000FFFFFFFFFFFCn^(z&1n);
+          let t1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x3, OpCodes.AndN(rotl48(x2, 1), rotl48(x2, 8))), rotl48(x2, 2)), x1);
+          let t0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x1, rotr48(x0, 3)), rotr48(x0, 4)), 0x0000FFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
-          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
+          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
 
           // Truncate to 48 bits
-          t0 &= 0x0000FFFFFFFFFFFFn;
-          t1 &= 0x0000FFFFFFFFFFFFn;
+          t0 = OpCodes.AndN(t0, 0x0000FFFFFFFFFFFFn);
+          t1 = OpCodes.AndN(t1, 0x0000FFFFFFFFFFFFn);
 
           // Second round of pair
-          x2 = x2^(rotl48(t1, 1)&rotl48(t1, 8))^rotl48(t1, 2)^x0;
-          x0 = x0^rotr48(t0, 3)^rotr48(t0, 4)^0x0000FFFFFFFFFFFCn^(z&1n);
+          x2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x2, OpCodes.AndN(rotl48(t1, 1), rotl48(t1, 8))), rotl48(t1, 2)), x0);
+          x0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x0, rotr48(t0, 3)), rotr48(t0, 4)), 0x0000FFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
-          x0 &= 0x0000FFFFFFFFFFFFn;
-          x2 &= 0x0000FFFFFFFFFFFFn;
+          x0 = OpCodes.AndN(x0, 0x0000FFFFFFFFFFFFn);
+          x2 = OpCodes.AndN(x2, 0x0000FFFFFFFFFFFFn);
 
           x1 = t0;
           x3 = t1;
 
-          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
+          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -204,20 +254,37 @@
       store48BE(this.state, 18, x3);
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} offset
+     * @param {int32} length
+     */
     xorBytes(data, offset, length) {
       for (let i = 0; i < length; ++i) {
         this.state[i] = OpCodes.Xor32(this.state[i], data[offset + i]);
       }
     }
 
+    /**
+     * @param {int32} position
+     * @param {uint8} value
+     */
     xorByte(position, value) {
       this.state[position] = OpCodes.Xor32(this.state[position], value);
     }
 
+    /**
+     * @param {int32} offset
+     * @param {int32} length
+     * @returns {uint8[]}
+     */
     getBytes(offset, length) {
       return this.state.slice(offset, offset + length);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     getMask() {
       return this.state.slice(SIMP_192_STATE_SIZE - ORIBATIDA_192_MASK_SIZE, SIMP_192_STATE_SIZE);
     }
@@ -227,9 +294,13 @@
 
   class SimP256 {
     constructor() {
-      this.state = new Array(SIMP_256_STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(SIMP_256_STATE_SIZE, 0);
     }
 
+    /**
+     * @param {uint8[]} bytes
+     */
     loadState(bytes) {
       if (bytes.length !== SIMP_256_STATE_SIZE) {
         throw new Error('Invalid state size for SimP-256');
@@ -239,11 +310,18 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     extractState() {
       return this.state.slice();
     }
 
+    /**
+     * @param {int32} steps
+     */
     permute(steps) {
+      /** @type {uint64} */
       let z = SIMP_RC;
 
       // Load state as four 64-bit words
@@ -257,19 +335,19 @@
         // Perform all rounds for this step (two at a time)
         for (let round = 0; round < SIMP_256_ROUNDS / 2; ++round) {
           // First round of pair
-          let t1 = x3^(rotl64(x2, 1)&rotl64(x2, 8))^rotl64(x2, 2)^x1;
-          let t0 = x1^rotr64(x0, 3)^rotr64(x0, 4)^0xFFFFFFFFFFFFFFFCn^(z&1n);
+          let t1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x3, OpCodes.AndN(rotl64(x2, 1), rotl64(x2, 8))), rotl64(x2, 2)), x1);
+          let t0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x1, rotr64(x0, 3)), rotr64(x0, 4)), 0xFFFFFFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
-          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
+          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
 
           // Second round of pair
-          x2 = x2^(rotl64(t1, 1)&rotl64(t1, 8))^rotl64(t1, 2)^x0;
-          x0 = x0^rotr64(t0, 3)^rotr64(t0, 4)^0xFFFFFFFFFFFFFFFCn^(z&1n);
+          x2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x2, OpCodes.AndN(rotl64(t1, 1), rotl64(t1, 8))), rotl64(t1, 2)), x0);
+          x0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x0, rotr64(t0, 3)), rotr64(t0, 4)), 0xFFFFFFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
           x1 = t0;
           x3 = t1;
 
-          z = OpCodes.ShiftRn(z, 1)|OpCodes.ShiftLn(z, 61); // Rotate round constant
+          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -290,20 +368,37 @@
       store64BE(this.state, 24, x3);
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} offset
+     * @param {int32} length
+     */
     xorBytes(data, offset, length) {
       for (let i = 0; i < length; ++i) {
         this.state[i] = OpCodes.Xor32(this.state[i], data[offset + i]);
       }
     }
 
+    /**
+     * @param {int32} position
+     * @param {uint8} value
+     */
     xorByte(position, value) {
       this.state[position] = OpCodes.Xor32(this.state[position], value);
     }
 
+    /**
+     * @param {int32} offset
+     * @param {int32} length
+     * @returns {uint8[]}
+     */
     getBytes(offset, length) {
       return this.state.slice(offset, offset + length);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     getMask() {
       return this.state.slice(SIMP_256_STATE_SIZE - ORIBATIDA_256_MASK_SIZE, SIMP_256_STATE_SIZE);
     }
@@ -311,7 +406,14 @@
 
   // ===== DOMAIN SEPARATION FUNCTION (parameterized) =====
 
+  /**
+   * @param {int32} adlen
+   * @param {int32} mlen
+   * @param {int32} RATE
+   * @returns {uint8[]}
+   */
   function getDomains(adlen, mlen, RATE) {
+    /** @type {uint8[]} */
     const domains = new Array(3);
 
     // Domain separation for nonce
@@ -471,10 +573,15 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this._inputBuffer = [];
     }
 
@@ -489,7 +596,7 @@
         return;
       }
       if (keyBytes.length !== ORIBATIDA_192_KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${ORIBATIDA_192_KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + ORIBATIDA_192_KEY_SIZE + ")");
       }
       this._key = keyBytes.slice();
     }
@@ -502,27 +609,49 @@
       return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== ORIBATIDA_192_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${ORIBATIDA_192_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + ORIBATIDA_192_NONCE_SIZE + ")");
       }
       this._nonce = nonceBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
-      this._aad = adBytes ? adBytes.slice() : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = adBytes.slice();
+      }
+      this._aad = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
-      return this._aad ? this._aad.slice() : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._aad) {
+        copy = this._aad.slice();
+      }
+      return copy;
     }
 
     /**
@@ -554,13 +683,20 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @param {uint8[]} associatedData
+     * @returns {uint8[]}
+     */
     _encrypt(plaintext, associatedData) {
       const mlen = plaintext.length;
       const adlen = associatedData.length;
       const domains = getDomains(adlen, mlen, ORIBATIDA_192_RATE);
 
+      /** @type {SimP192} */
       const simp = new SimP192();
-      const state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      const state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
 
       for (let i = 0; i < ORIBATIDA_192_NONCE_SIZE; ++i) {
         state[i] = this._nonce[i];
@@ -571,6 +707,7 @@
 
       simp.loadState(state);
 
+      /** @type {uint8[]} */
       let mask;
       if (adlen === 0) {
         mask = simp.getMask();
@@ -600,10 +737,12 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const ciphertext = [];
       let mPos = 0;
 
       while (mlen - mPos > ORIBATIDA_192_RATE) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -622,6 +761,7 @@
 
       const remaining = mlen - mPos;
       if (remaining === ORIBATIDA_192_RATE) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -633,6 +773,7 @@
         simp.xorByte(SIMP_192_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
         simp.permute(4);
       } else if (remaining > 0) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, remaining);
         for (let i = 0; i < remaining; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -650,12 +791,18 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const tag = simp.getBytes(0, ORIBATIDA_192_TAG_SIZE);
       for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
       return ciphertext;
     }
 
+    /**
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} associatedData
+     * @returns {uint8[]}
+     */
     _decrypt(ciphertext, associatedData) {
       if (ciphertext.length < ORIBATIDA_192_TAG_SIZE) {
         throw new Error("Invalid ciphertext: too short for authentication tag");
@@ -665,8 +812,10 @@
       const adlen = associatedData.length;
       const domains = getDomains(adlen, clen, ORIBATIDA_192_RATE);
 
+      /** @type {SimP192} */
       const simp = new SimP192();
-      const state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      const state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
 
       for (let i = 0; i < ORIBATIDA_192_NONCE_SIZE; ++i) {
         state[i] = this._nonce[i];
@@ -677,6 +826,7 @@
 
       simp.loadState(state);
 
+      /** @type {uint8[]} */
       let mask;
       if (adlen === 0) {
         mask = simp.getMask();
@@ -706,10 +856,12 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const plaintext = [];
       let cPos = 0;
 
       while (clen - cPos > ORIBATIDA_192_RATE) {
+        /** @type {uint8[]} */
         const block = new Array(ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -718,6 +870,7 @@
           block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -733,6 +886,7 @@
 
       const remaining = clen - cPos;
       if (remaining === ORIBATIDA_192_RATE) {
+        /** @type {uint8[]} */
         const block = new Array(ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -741,6 +895,7 @@
           block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -750,6 +905,7 @@
         simp.xorByte(SIMP_192_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
         simp.permute(4);
       } else if (remaining > 0) {
+        /** @type {uint8[]} */
         const block = new Array(remaining);
         for (let i = 0; i < remaining; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -762,6 +918,7 @@
           }
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < remaining; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -773,9 +930,11 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const computedTag = simp.getBytes(0, ORIBATIDA_192_TAG_SIZE);
       const receivedTag = ciphertext.slice(clen, clen + ORIBATIDA_192_TAG_SIZE);
 
+      /** @type {uint32} */
       let tagMatch = 0;
       for (let i = 0; i < ORIBATIDA_192_TAG_SIZE; ++i) {
         tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(computedTag[i], receivedTag[i]));
@@ -914,10 +1073,15 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this._inputBuffer = [];
     }
 
@@ -932,7 +1096,7 @@
         return;
       }
       if (keyBytes.length !== ORIBATIDA_256_KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${ORIBATIDA_256_KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + ORIBATIDA_256_KEY_SIZE + ")");
       }
       this._key = keyBytes.slice();
     }
@@ -945,27 +1109,49 @@
       return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== ORIBATIDA_256_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${ORIBATIDA_256_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + ORIBATIDA_256_NONCE_SIZE + ")");
       }
       this._nonce = nonceBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
-      this._aad = adBytes ? adBytes.slice() : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = adBytes.slice();
+      }
+      this._aad = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
-      return this._aad ? this._aad.slice() : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._aad) {
+        copy = this._aad.slice();
+      }
+      return copy;
     }
 
     /**
@@ -997,12 +1183,19 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @param {uint8[]} associatedData
+     * @returns {uint8[]}
+     */
     _encrypt(plaintext, associatedData) {
       const mlen = plaintext.length;
       const adlen = associatedData.length;
       const domains = getDomains(adlen, mlen, ORIBATIDA_256_RATE);
 
+      /** @type {SimP256} */
       const simp = new SimP256();
+      /** @type {uint8[]} */
       const state = new Array(SIMP_256_STATE_SIZE);
 
       for (let i = 0; i < ORIBATIDA_256_NONCE_SIZE; ++i) {
@@ -1014,6 +1207,7 @@
 
       simp.loadState(state);
 
+      /** @type {uint8[]} */
       let mask;
       if (adlen === 0) {
         mask = simp.getMask();
@@ -1043,10 +1237,12 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const ciphertext = [];
       let mPos = 0;
 
       while (mlen - mPos > ORIBATIDA_256_RATE) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -1065,6 +1261,7 @@
 
       const remaining = mlen - mPos;
       if (remaining === ORIBATIDA_256_RATE) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -1076,6 +1273,7 @@
         simp.xorByte(SIMP_256_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
         simp.permute(4);
       } else if (remaining > 0) {
+        /** @type {uint8[]} */
         const stateBytes = simp.getBytes(0, remaining);
         for (let i = 0; i < remaining; ++i) {
           ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
@@ -1093,12 +1291,18 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const tag = simp.getBytes(0, ORIBATIDA_256_TAG_SIZE);
       for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
       return ciphertext;
     }
 
+    /**
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} associatedData
+     * @returns {uint8[]}
+     */
     _decrypt(ciphertext, associatedData) {
       if (ciphertext.length < ORIBATIDA_256_TAG_SIZE) {
         throw new Error("Invalid ciphertext: too short for authentication tag");
@@ -1108,7 +1312,9 @@
       const adlen = associatedData.length;
       const domains = getDomains(adlen, clen, ORIBATIDA_256_RATE);
 
+      /** @type {SimP256} */
       const simp = new SimP256();
+      /** @type {uint8[]} */
       const state = new Array(SIMP_256_STATE_SIZE);
 
       for (let i = 0; i < ORIBATIDA_256_NONCE_SIZE; ++i) {
@@ -1120,6 +1326,7 @@
 
       simp.loadState(state);
 
+      /** @type {uint8[]} */
       let mask;
       if (adlen === 0) {
         mask = simp.getMask();
@@ -1149,10 +1356,12 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const plaintext = [];
       let cPos = 0;
 
       while (clen - cPos > ORIBATIDA_256_RATE) {
+        /** @type {uint8[]} */
         const block = new Array(ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -1161,6 +1370,7 @@
           block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -1176,6 +1386,7 @@
 
       const remaining = clen - cPos;
       if (remaining === ORIBATIDA_256_RATE) {
+        /** @type {uint8[]} */
         const block = new Array(ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -1184,6 +1395,7 @@
           block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -1193,6 +1405,7 @@
         simp.xorByte(SIMP_256_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
         simp.permute(4);
       } else if (remaining > 0) {
+        /** @type {uint8[]} */
         const block = new Array(remaining);
         for (let i = 0; i < remaining; ++i) {
           block[i] = ciphertext[cPos + i];
@@ -1205,6 +1418,7 @@
           }
         }
 
+        /** @type {uint8[]} */
         const stateBytes = simp.extractState();
         for (let i = 0; i < remaining; ++i) {
           plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
@@ -1216,9 +1430,11 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const computedTag = simp.getBytes(0, ORIBATIDA_256_TAG_SIZE);
       const receivedTag = ciphertext.slice(clen, clen + ORIBATIDA_256_TAG_SIZE);
 
+      /** @type {uint32} */
       let tagMatch = 0;
       for (let i = 0; i < ORIBATIDA_256_TAG_SIZE; ++i) {
         tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(computedTag[i], receivedTag[i]));

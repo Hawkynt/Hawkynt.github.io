@@ -91,17 +91,32 @@ class ChaCha20 extends StreamCipherAlgorithm {
 }
 
 class ChaCha20Instance extends IAlgorithmInstance {
+  /**
+   * @param {ChaCha20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._nonce = new Array(12).fill(0);
+    /** @type {uint8[]|null} */
+    this._nonce = OpCodes.CreateArray(12, 0);
+    /** @type {uint32} */
     this._counter = 0;
+    /** @type {uint32[]} */
     this.state = new Array(16);
+    /** @type {uint8[]} */
     this.keystreamBuffer = [];
+    /** @type {int32} */
     this.keystreamPosition = 0;
 
+    /** @type {uint32[]} */
     this.CONSTANTS = [
       OpCodes.Pack32LE(0x65, 0x78, 0x70, 0x61), // "expand 32-byte k" - "expa"
       OpCodes.Pack32LE(0x6e, 0x64, 0x20, 0x33), // "nd 3"
@@ -110,45 +125,72 @@ class ChaCha20Instance extends IAlgorithmInstance {
     ];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._initializeState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 12) {
-      this._nonce = new Array(12).fill(0);
+      this._nonce = OpCodes.CreateArray(12, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
     this._initializeState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     this.nonce = ivBytes;
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this.nonce; }
 
-  set counter(counterValue) {
-    this._counter = counterValue || 0;
+  /**
+   * @param {uint32} value - Initial block counter (falsy: 0)
+   */
+  set counter(value) {
+    this._counter = value ? value : 0;
     if (this._key && this._nonce) {
       this._initializeState();
     }
@@ -156,20 +198,29 @@ class ChaCha20Instance extends IAlgorithmInstance {
 
   get counter() { return this._counter; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -213,25 +264,36 @@ class ChaCha20Instance extends IAlgorithmInstance {
     this.keystreamPosition = 0;
   }
 
-  _quarterRound(state, a, b, c, d) {
-    state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.XorN(state[d], state[a]);
-    state[d] = OpCodes.RotL32(state[d], 16);
+  /**
+   * @param {uint32[]} x
+   * @param {int32} a
+   * @param {int32} b
+   * @param {int32} c
+   * @param {int32} d
+   */
+  _quarterRound(x, a, b, c, d) {
+    x[a] = OpCodes.Add32(x[a], x[b]);
+    x[d] = OpCodes.Xor32(x[d], x[a]);
+    x[d] = OpCodes.RotL32(x[d], 16);
 
-    state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.XorN(state[b], state[c]);
-    state[b] = OpCodes.RotL32(state[b], 12);
+    x[c] = OpCodes.Add32(x[c], x[d]);
+    x[b] = OpCodes.Xor32(x[b], x[c]);
+    x[b] = OpCodes.RotL32(x[b], 12);
 
-    state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.XorN(state[d], state[a]);
-    state[d] = OpCodes.RotL32(state[d], 8);
+    x[a] = OpCodes.Add32(x[a], x[b]);
+    x[d] = OpCodes.Xor32(x[d], x[a]);
+    x[d] = OpCodes.RotL32(x[d], 8);
 
-    state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.XorN(state[b], state[c]);
-    state[b] = OpCodes.RotL32(state[b], 7);
+    x[c] = OpCodes.Add32(x[c], x[d]);
+    x[b] = OpCodes.Xor32(x[b], x[c]);
+    x[b] = OpCodes.RotL32(x[b], 7);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _generateBlock() {
+    /** @type {uint32[]} */
     const workingState = this.state.slice(0);
 
     // Perform 20 rounds (10 double-rounds)
@@ -255,10 +317,14 @@ class ChaCha20Instance extends IAlgorithmInstance {
     }
 
     // Convert words to bytes (little-endian)
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
       const bytes = OpCodes.Unpack32LE(workingState[i]);
-      keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+      keystream.push(bytes[0]);
+      keystream.push(bytes[1]);
+      keystream.push(bytes[2]);
+      keystream.push(bytes[3]);
     }
 
     // Increment counter for next block
@@ -268,6 +334,9 @@ class ChaCha20Instance extends IAlgorithmInstance {
     return keystream;
   }
 
+  /**
+   * @returns {uint8}
+   */
   _getNextKeystreamByte() {
     if (this.keystreamPosition >= this.keystreamBuffer.length) {
       this.keystreamBuffer = this._generateBlock();

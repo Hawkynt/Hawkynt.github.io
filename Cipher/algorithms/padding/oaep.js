@@ -94,12 +94,14 @@
       ];
 
       // Add test parameters
-      this.tests.forEach(test => {
-        test.keySize = 128; // 1024-bit RSA key (128 bytes)
-        test.hashFunction = "SHA-1";
-        test.mgfFunction = "MGF1";
-        test.label = []; // Empty label
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        /** @type {uint8[]} */
+        const emptyLabel = [];
+        this.tests[i].keySize = 128; // 1024-bit RSA key (128 bytes)
+        this.tests[i].hashFunction = "SHA-1";
+        this.tests[i].mgfFunction = "MGF1";
+        this.tests[i].label = emptyLabel; // Empty label
+      }
     }
 
     /**
@@ -122,23 +124,36 @@
   class OaepInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {OaepAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._keySize = 128; // Default RSA key size in bytes (1024 bits)
+      /** @type {string} */
       this._hashFunction = "SHA-1";
+      /** @type {string} */
       this._mgfFunction = "MGF1";
+      /** @type {uint8[]} */
       this._label = []; // Optional label (usually empty)
+      /** @type {uint8[]|null} */
       this._seed = null; // Explicit seed for deterministic testing
     }
 
-    // Property getters and setters for test framework
+    /**
+     * RSA key size in bytes
+     * @returns {int32} Key size
+     */
     get keySize() { return this._keySize; }
+
+    /**
+     * @param {int32} value - RSA key size in bytes (at least 64)
+     */
     set keySize(value) {
       if (!value || value < 64) {
         throw new Error("RSA key size must be at least 64 bytes (512 bits)");
@@ -146,25 +161,55 @@
       this._keySize = value;
     }
 
+    /**
+     * Hash function name
+     * @returns {string} Hash function name
+     */
     get hashFunction() { return this._hashFunction; }
+
+    /**
+     * @param {string} value - Hash function name (empty: SHA-1)
+     */
     set hashFunction(value) {
-      this._hashFunction = value || "SHA-1";
+      this._hashFunction = value ? value : "SHA-1";
     }
 
+    /**
+     * Mask generation function name
+     * @returns {string} MGF name
+     */
     get mgfFunction() { return this._mgfFunction; }
+
+    /**
+     * @param {string} value - Mask generation function name (empty: MGF1)
+     */
     set mgfFunction(value) {
-      this._mgfFunction = value || "MGF1";
+      this._mgfFunction = value ? value : "MGF1";
     }
 
+    /**
+     * OAEP label
+     * @returns {uint8[]} Label bytes
+     */
     get label() { return this._label; }
+
+    /**
+     * @param {uint8[]|null} value - Label bytes (null: empty label)
+     */
     set label(value) {
-      this._label = value || [];
+      if (value) {
+        this._label = value;
+      } else {
+        /** @type {uint8[]} */
+        const emptyLabel = [];
+        this._label = emptyLabel;
+      }
     }
 
     /**
      * Set explicit seed for deterministic OAEP padding
      * When set, this seed is used instead of generating one
-     * @param {Array} seedBytes - Seed bytes for deterministic padding
+     * @param {uint8[]|null} seedBytes - Seed bytes for deterministic padding
      */
     set seed(seedBytes) {
       if (!seedBytes) {
@@ -174,6 +219,9 @@
       this._seed = [...seedBytes];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the explicit seed
+     */
     get seed() {
       return this._seed ? [...this._seed] : null;
     }
@@ -190,7 +238,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._unpadOAEP();
       } else {
@@ -201,7 +251,7 @@
 
     /**
      * Apply OAEP padding (simplified educational implementation)
-     * @returns {Array} OAEP padded data
+     * @returns {uint8[]} OAEP padded data
      */
     _padOAEP() {
       const message = this.inputBuffer;
@@ -209,7 +259,7 @@
 
       // Check message length constraints
       if (message.length > this._keySize - 2 * hashLength - 2) {
-        throw new Error(`Message too long for OAEP padding. Maximum length: ${this._keySize - 2 * hashLength - 2} bytes`);
+        throw new Error("Message too long for OAEP padding. Maximum length: " + (this._keySize - 2 * hashLength - 2) + " bytes");
       }
 
       // Step 1: Hash the label (usually empty)
@@ -217,7 +267,7 @@
 
       // Step 2: Generate PS (padding string of zeros)
       const paddingLength = this._keySize - message.length - 2 * hashLength - 2;
-      const paddingString = new Array(paddingLength).fill(0);
+      const paddingString = OpCodes.CreateArray(paddingLength, 0);
 
       // Step 3: Construct DB = labelHash || PS || 0x01 || message
       const db = [...labelHash, ...paddingString, 0x01, ...message];
@@ -229,13 +279,21 @@
       const dbMask = this._mgf1(seed, db.length);
 
       // Step 6: Mask DB
-      const maskedDB = db.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
+      /** @type {uint8[]} */
+      const maskedDB = new Array(db.length);
+      for (let i = 0; i < db.length; i++) {
+        maskedDB[i] = OpCodes.Xor8(db[i], dbMask[i]);
+      }
 
       // Step 7: Generate mask for seed
       const seedMask = this._mgf1(maskedDB, hashLength);
 
       // Step 8: Mask seed
-      const maskedSeed = seed.map((byte, i) => OpCodes.XorN(byte, seedMask[i]));
+      /** @type {uint8[]} */
+      const maskedSeed = new Array(seed.length);
+      for (let i = 0; i < seed.length; i++) {
+        maskedSeed[i] = OpCodes.Xor8(seed[i], seedMask[i]);
+      }
 
       // Step 9: Construct EM = 0x00 || maskedSeed || maskedDB
       const result = [0x00, ...maskedSeed, ...maskedDB];
@@ -251,7 +309,7 @@
 
     /**
      * Remove OAEP padding (simplified educational implementation)
-     * @returns {Array} Original message
+     * @returns {uint8[]} Original message
      */
     _unpadOAEP() {
       const paddedMessage = this.inputBuffer;
@@ -271,11 +329,19 @@
 
       // Unmask seed
       const seedMask = this._mgf1(maskedDB, hashLength);
-      const seed = maskedSeed.map((byte, i) => OpCodes.XorN(byte, seedMask[i]));
+      /** @type {uint8[]} */
+      const seed = new Array(maskedSeed.length);
+      for (let i = 0; i < maskedSeed.length; i++) {
+        seed[i] = OpCodes.Xor8(maskedSeed[i], seedMask[i]);
+      }
 
       // Unmask DB
       const dbMask = this._mgf1(seed, maskedDB.length);
-      const db = maskedDB.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
+      /** @type {uint8[]} */
+      const db = new Array(maskedDB.length);
+      for (let i = 0; i < maskedDB.length; i++) {
+        db[i] = OpCodes.Xor8(maskedDB[i], dbMask[i]);
+      }
 
       // Extract labelHash and find message
       const labelHash = this._simpleHash(this._label);
@@ -316,7 +382,7 @@
 
     /**
      * Get hash length based on hash function
-     * @returns {number} Hash length in bytes
+     * @returns {int32} Hash length in bytes
      */
     _getHashLength() {
       switch (this._hashFunction) {
@@ -330,19 +396,20 @@
 
     /**
      * Simple hash function (educational implementation)
-     * @param {Array} data - Data to hash
-     * @returns {Array} Hash value
+     * @param {uint8[]} data - Data to hash
+     * @returns {uint8[]} Hash value
      */
     _simpleHash(data) {
       const hashLength = this._getHashLength();
+      /** @type {uint8[]} */
       const hash = new Array(hashLength);
 
       // Simple hash: XOR data in chunks and add constants
       for (let i = 0; i < hashLength; i++) {
-        hash[i] = OpCodes.AndN((i * 17 + 42), 0xFF); // Base pattern
+        hash[i] = OpCodes.And32(i * 17 + 42, 0xFF); // Base pattern
 
         for (let j = 0; j < data.length; j++) {
-          hash[i] = OpCodes.XorN(hash[i], data[j]);
+          hash[i] = OpCodes.Xor8(hash[i], data[j]);
           hash[i] = OpCodes.RotL8(hash[i], 1); // Rotate left 1 bit
         }
       }
@@ -353,34 +420,18 @@
     /**
      * Generate deterministic seed for educational/testing purposes
      * In production, use cryptographically secure random generation
-     * @param {number} length - Seed length in bytes
-     * @param {Array} message - Message bytes for deterministic generation
-     * @returns {Array} Deterministic seed
+     * @param {int32} length - Seed length in bytes
+     * @param {uint8[]} message - Message bytes for deterministic generation
+     * @returns {uint8[]} Deterministic seed
      */
     _generateDeterministicSeed(length, message) {
+      /** @type {uint8[]} */
       const seed = new Array(length);
       // Use simple XOR pattern based on message for deterministic output
       for (let i = 0; i < length; i++) {
-        seed[i] = OpCodes.AndN((i * 23 + 17), 0xFF); // Base pattern
+        seed[i] = OpCodes.And32(i * 23 + 17, 0xFF); // Base pattern
         if (message && message.length > 0) {
-          seed[i] = OpCodes.XorN(seed[i], message[i % message.length]);
-        }
-      }
-      return seed;
-    }
-
-    /**
-     * Generate random seed (for production use)
-     * @param {number} length - Seed length in bytes
-     * @returns {Array} Random seed
-     */
-    _generateRandomSeed(length) {
-      const seed = new Array(length);
-      for (let i = 0; i < length; i++) {
-        if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
-          seed[i] = OpCodes.SecureRandom(256);
-        } else {
-          seed[i] = Math.floor(Math.random() * 256);
+          seed[i] = OpCodes.Xor8(seed[i], message[i % message.length]);
         }
       }
       return seed;
@@ -388,11 +439,12 @@
 
     /**
      * MGF1 mask generation function (simplified educational implementation)
-     * @param {Array} seed - Seed value
-     * @param {number} length - Desired mask length
-     * @returns {Array} Generated mask
+     * @param {uint8[]} seed - Seed value
+     * @param {int32} length - Desired mask length
+     * @returns {uint8[]} Generated mask
      */
     _mgf1(seed, length) {
+      /** @type {uint8[]} */
       const mask = new Array(length);
       const hashLength = this._getHashLength();
 

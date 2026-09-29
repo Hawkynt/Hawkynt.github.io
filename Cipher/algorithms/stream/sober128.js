@@ -246,7 +246,7 @@
         {
           text: "LibTomCrypt Test Vector - 128-bit key, 4-byte IV",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/stream/sober128/sober128_test.c",
-          input: new Array(20).fill(0),
+          input: OpCodes.CreateArray(20, 0),
           key: OpCodes.AnsiToBytes("test key 128bits"),
           iv: new Uint8Array([0x00, 0x00, 0x00, 0x00]),
           expected: OpCodes.Hex8ToBytes("43500ccf89919f1daa377495f4b458c240378bbb")
@@ -254,9 +254,9 @@
         {
           text: "DarkCrypt keystream, incremental key",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          iv: new Array(16).fill(0),
+          iv: OpCodes.CreateArray(16, 0),
           expected: OpCodes.Hex8ToBytes("f0348280f75f4051b97a4ba5c6535204a344e639110df57ff515c3af11776f87e9fc8e9a661ef4e9272c0e71d891b997ba63ba2392a1da420a336f54733e0197c280386ee9b035c9d78ca0c1884025e9649047b791d74de0557abefabd7eaf1c722acf3bc83600023531bee7aa750779f4405a3b9ab14ed2e732d71a476a729f")
         },
         {
@@ -264,7 +264,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          iv: new Array(16).fill(0),
+          iv: OpCodes.CreateArray(16, 0),
           expected: OpCodes.Hex8ToBytes("f0358083f35a4656b17341aeca5e5c0bb355f42a0518e368ed0cd9b40d6a7198c9ddacb9423bd2ce0f05245af4bc97b88a528810a694ec75320a556f4f033fa8")
         }
       ];
@@ -292,15 +292,19 @@
   class SOBER128Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SOBER128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // SOBER-128 state
@@ -309,6 +313,7 @@
       this.konst = 0;                    // Key-dependent constant
       this.sbuf = 0;                     // Partial word encryption buffer
       this.nbuf = 0;                     // Number of buffered bits (0-31)
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -334,7 +339,7 @@
 
       // Key must be multiple of 4 bytes
       if (keyLength === 0 || OpCodes.And32(keyLength, 3) !== 0) {
-        throw new Error(`Invalid SOBER-128 key size: ${keyLength} bytes. Key length must be multiple of 4 bytes`);
+        throw new Error("Invalid SOBER-128 key size: " + keyLength + " bytes. Key length must be multiple of 4 bytes");
       }
 
       this._key = Array.from(keyBytes);
@@ -350,6 +355,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -364,7 +372,7 @@
 
       // IV must be multiple of 4 bytes
       if (ivLength === 0 || OpCodes.And32(ivLength, 3) !== 0) {
-        throw new Error(`Invalid SOBER-128 IV size: ${ivLength} bytes. IV length must be multiple of 4 bytes`);
+        throw new Error("Invalid SOBER-128 IV size: " + ivLength + " bytes. IV length must be multiple of 4 bytes");
       }
 
       this._iv = Array.from(ivData);
@@ -384,12 +392,18 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
-      return this.iv;
+      return this._iv ? [...this._iv] : null;
     }
 
     // Feed data to the cipher
@@ -429,6 +443,7 @@
         throw new Error("SOBER-128 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let inlen = this.inputBuffer.length;
       let inpos = 0;
@@ -553,6 +568,11 @@
     }
 
     // Convert 4 bytes to 32-bit word (little-endian)
+    /**
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @returns {uint32}
+     */
     _byte2word(bytes, offset) {
       return OpCodes.Pack32LE(
         bytes[offset],

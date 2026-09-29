@@ -156,6 +156,25 @@
   }
 
   /**
+   * Input split into alphabet and format characters
+   */
+  class FpeCharacters {
+    /**
+     * @param {string[]} alphabetChars - Characters of the alphabet, in order
+     * @param {string[]} formatChars - Other characters, in order
+     * @param {string[]} positions - Kind of each input character: 'alphabet' or 'format'
+     */
+    constructor(alphabetChars, formatChars, positions) {
+      /** @type {string[]} */
+      this.alphabetChars = alphabetChars;
+      /** @type {string[]} */
+      this.formatChars = formatChars;
+      /** @type {string[]} */
+      this.positions = positions;
+    }
+  }
+
+  /**
  * FpeMode cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -164,18 +183,24 @@
   class FpeModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FpeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]} */
       this.tweak = [];
+      /** @type {string} */
       this.alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"; // Default alphabet
+      /** @type {boolean} */
       this.preserveFormatChars = true; // Preserve non-alphabet characters
     }
 
@@ -192,7 +217,7 @@
 
     /**
      * Set the encryption key
-     * @param {Array} key - Key for block cipher
+     * @param {uint8[]} key - Key for block cipher
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -203,10 +228,16 @@
 
     /**
      * Set the tweak value
-     * @param {Array} tweak - Tweak value for FPE mode
+     * @param {uint8[]} tweak - Tweak value for FPE mode
      */
     setTweak(tweak) {
-      this.tweak = tweak ? [...tweak] : [];
+      if (tweak) {
+        this.tweak = [...tweak];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.tweak = empty;
+      }
     }
 
     /**
@@ -271,14 +302,21 @@
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const byte = this.inputBuffer[i];
         if (byte < 0 || byte > 0x7F)
-          throw new Error(`FPE operates on 7-bit text; byte ${byte} at offset ${i} is outside that range`);
+          throw new Error("FPE operates on 7-bit text; byte " + byte + " at offset " + i + " is outside that range");
       }
 
       // Convert input to string for processing
       const inputStr = OpCodes.BytesToAnsi(this.inputBuffer);
 
       // Extract alphabet characters and their positions
-      const { alphabetChars, formatChars, positions } = this._extractCharacters(inputStr);
+      /** @type {FpeCharacters} */
+      const extracted = this._extractCharacters(inputStr);
+      /** @type {string[]} */
+      const alphabetChars = extracted.alphabetChars;
+      /** @type {string[]} */
+      const formatChars = extracted.formatChars;
+      /** @type {string[]} */
+      const positions = extracted.positions;
 
       if (alphabetChars.length < 2) {
         throw new Error("Input must contain at least 2 alphabet characters for FPE");
@@ -300,53 +338,68 @@
     /**
      * Extract alphabet and format characters with their positions
      * @param {string} input - Input string
-     * @returns {Object} Extracted character information
+     * @returns {FpeCharacters} Extracted character information
      */
     _extractCharacters(input) {
+      /** @type {string[]} */
       const alphabetChars = [];
+      /** @type {string[]} */
       const formatChars = [];
+      /** @type {string[]} */
       const positions = [];
 
       for (let i = 0; i < input.length; i++) {
-        const char = input[i];
+        /** @type {string} */
+        const char = input.charAt(i);
         if (this.alphabet.includes(char)) {
           alphabetChars.push(char);
-          positions.push({ type: 'alphabet', index: alphabetChars.length - 1 });
+          positions.push('alphabet');
         } else if (this.preserveFormatChars) {
           formatChars.push(char);
-          positions.push({ type: 'format', index: formatChars.length - 1 });
+          positions.push('format');
         } else {
-          throw new Error(`Character '${char}' not in alphabet and format preservation disabled`);
+          throw new Error("Character '" + char + "' not in alphabet and format preservation disabled");
         }
       }
 
-      return { alphabetChars, formatChars, positions };
+      const extracted = new FpeCharacters(alphabetChars, formatChars, positions);
+      return extracted;
     }
 
     /**
      * Apply FPE transformation to alphabet characters
-     * @param {Array} chars - Alphabet characters to transform
-     * @returns {Array} Transformed characters
+     * @param {string[]} chars - Alphabet characters to transform
+     * @returns {string[]} Transformed characters
      */
     _applyFPE(chars) {
       // Convert characters to numerals: the position in the alphabet is the
       // numeral value, so the alphabet length is the radix.
-      const numerals = chars.map(char => this.alphabet.indexOf(char));
+      /** @type {int32[]} */
+      const numerals = new Array(chars.length);
+      for (let i = 0; i < chars.length; i++) numerals[i] = this.alphabet.indexOf(chars[i]);
 
       if (numerals.length < 2) {
         return chars; // Can't apply a Feistel network to a single character
       }
 
       const result = this._ff1(numerals, this.alphabet.length);
-      return result.map(num => this.alphabet[num]);
+      /** @type {string[]} */
+      const transformed = new Array(result.length);
+      for (let i = 0; i < result.length; i++) transformed[i] = this.alphabet.charAt(result[i]);
+      return transformed;
     }
 
     /**
      * Numeral string to integer, most significant numeral first
      * @private
+     * @param {int32[]} numerals
+     * @param {int32} radix
+     * @returns {BigInt}
      */
     _numRadix(numerals, radix) {
+      /** @type {BigInt} */
       const base = BigInt(radix);
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < numerals.length; i++) value = value * base + BigInt(numerals[i]);
       return value;
@@ -355,13 +408,20 @@
     /**
      * Integer to a numeral string of the given length
      * @private
+     * @param {BigInt} value
+     * @param {int32} length
+     * @param {int32} radix
+     * @returns {int32[]}
      */
     _strRadix(value, length, radix) {
+      /** @type {BigInt} */
       const base = BigInt(radix);
-      const numerals = new Array(length).fill(0);
+      /** @type {int32[]} */
+      const numerals = new Array(length); // every element is written below
+      /** @type {BigInt} */
       let remaining = value;
       for (let i = length - 1; i >= 0; i--) {
-        numerals[i] = Number(remaining % base);
+        numerals[i] = OpCodes.ToInt(Number(remaining % base));
         remaining = remaining / base;
       }
       return numerals;
@@ -370,8 +430,11 @@
     /**
      * Big-endian byte string to integer
      * @private
+     * @param {uint8[]} bytes
+     * @returns {BigInt}
      */
     _bytesToInt(bytes) {
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < bytes.length; i++) value = value * 256n + BigInt(bytes[i]);
       return value;
@@ -380,12 +443,16 @@
     /**
      * Integer to a big-endian byte string of the given length
      * @private
+     * @param {BigInt} value
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     _intToBytes(value, length) {
-      const bytes = new Array(length).fill(0);
+      const bytes = OpCodes.CreateArray(length, 0);
+      /** @type {BigInt} */
       let remaining = value;
       for (let i = length - 1; i >= 0; i--) {
-        bytes[i] = Number(remaining % 256n);
+        bytes[i] = OpCodes.ToByte(Number(remaining % 256n));
         remaining = remaining / 256n;
       }
       return bytes;
@@ -394,20 +461,27 @@
     /**
      * Apply the underlying block cipher to one block
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _ciph(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const enciphered = cipher.Result();
+      return enciphered;
     }
 
     /**
      * PRF from SP 800-38G: CBC-MAC over a block-aligned string with a zero IV
      * @private
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
     _prf(data) {
-      let y = new Array(16).fill(0);
+      let y = OpCodes.CreateArray(16, 0);
       for (let i = 0; i < data.length; i += 16) {
         y = this._ciph(OpCodes.XorArrays(y, data.slice(i, i + 16)));
       }
@@ -417,6 +491,9 @@
     /**
      * FF1 encryption and decryption (NIST SP 800-38G algorithms 7 and 8)
      * @private
+     * @param {int32[]} symbols
+     * @param {int32} radix
+     * @returns {int32[]}
      */
     _ff1(symbols, radix) {
       const n = symbols.length;
@@ -429,11 +506,12 @@
 
       const nBytes = OpCodes.Unpack32BE(n);
       const tBytes = OpCodes.Unpack32BE(t);
+      /** @type {uint8[]} */
       const p = [
         1, 2, 1,
-        OpCodes.AndN(OpCodes.Shr32(radix, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(radix, 8), 0xFF),
-        OpCodes.AndN(radix, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(radix, 16), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(radix, 8), 0xFF),
+        OpCodes.And32(radix, 0xFF),
         10,
         u % 256,
         nBytes[0], nBytes[1], nBytes[2], nBytes[3],
@@ -445,10 +523,11 @@
       let a = symbols.slice(0, u);
       let bHalf = symbols.slice(u);
 
-      const rounds = this.isInverse ? [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-      for (const round of rounds) {
+      // Rounds 0..9 when encrypting, 9..0 when decrypting
+      for (let roundIndex = 0; roundIndex < 10; roundIndex++) {
+        const round = this.isInverse ? 9 - roundIndex : roundIndex;
         const source = this.isInverse ? a : bHalf;
+        /** @type {uint8[]} */
         const q = [];
         for (let i = 0; i < this.tweak.length; i++) q.push(this.tweak[i]);
         for (let i = 0; i < padLength; i++) q.push(0);
@@ -456,11 +535,13 @@
         const sourceBytes = this._intToBytes(this._numRadix(source, radix), b);
         for (let i = 0; i < sourceBytes.length; i++) q.push(sourceBytes[i]);
 
+        /** @type {uint8[]} */
         const prfInput = [];
         for (let i = 0; i < p.length; i++) prfInput.push(p[i]);
         for (let i = 0; i < q.length; i++) prfInput.push(q[i]);
         const r = this._prf(prfInput);
 
+        /** @type {uint8[]} */
         const s = [];
         for (let i = 0; i < r.length; i++) s.push(r[i]);
         for (let j = 1; s.length < d; j++) {
@@ -471,14 +552,17 @@
         const y = this._bytesToInt(s.slice(0, d));
 
         const m = (round % 2 === 0) ? u : v;
+        /** @type {BigInt} */
         const modulus = BigInt(radix) ** BigInt(m);
 
         if (this.isInverse) {
+          /** @type {BigInt} */
           let c = (this._numRadix(bHalf, radix) - y) % modulus;
           if (c < 0n) c += modulus;
           bHalf = a;
           a = this._strRadix(c, m, radix);
         } else {
+          /** @type {BigInt} */
           const c = (this._numRadix(a, radix) + y) % modulus;
           a = bHalf;
           bHalf = this._strRadix(c, m, radix);
@@ -490,18 +574,19 @@
 
     /**
      * Reconstruct string with format characters preserved
-     * @param {Array} alphabetChars - Processed alphabet characters
-     * @param {Array} formatChars - Original format characters
-     * @param {Array} positions - Character position information
+     * @param {string[]} alphabetChars - Processed alphabet characters
+     * @param {string[]} formatChars - Original format characters
+     * @param {string[]} positions - Kind of each character: 'alphabet' or 'format'
      * @returns {string} Reconstructed string
      */
     _reconstructString(alphabetChars, formatChars, positions) {
+      /** @type {string[]} */
       const result = [];
       let alphabetIndex = 0;
       let formatIndex = 0;
 
-      for (const pos of positions) {
-        if (pos.type === 'alphabet') {
+      for (let i = 0; i < positions.length; i++) {
+        if (positions[i] === 'alphabet') {
           result.push(alphabetChars[alphabetIndex++]);
         } else {
           result.push(formatChars[formatIndex++]);
