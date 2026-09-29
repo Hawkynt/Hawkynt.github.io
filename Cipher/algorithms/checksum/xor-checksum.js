@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * XORChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class XORChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8; // bits
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("pynmea2 XOR checksum implementation", "https://github.com/Knio/pynmea2/blob/master/pynmea2/nmea.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Very simple: XOR all bytes together",
         "Used in NMEA GPS sentences (between $ and *)",
@@ -93,9 +104,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {XORChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -105,46 +116,45 @@
   }
 
   /**
- * XORChecksum cipher instance implementing Feed/Result pattern
+ * XORChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class XORChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {XORChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} XOR of all bytes */
       this.checksum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.checksum = OpCodes.XorN(this.checksum, data[i]);
+        this.checksum = OpCodes.Xor32(this.checksum, data[i]);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
-      const result = [OpCodes.AndN(this.checksum, 0xFF)];
+      const result = [OpCodes.ToUint8(this.checksum)];
       this.checksum = 0;
       return result;
     }

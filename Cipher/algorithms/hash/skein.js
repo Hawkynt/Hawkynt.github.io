@@ -40,7 +40,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== THREEFISH-512 CIPHER IMPLEMENTATION =====
 
@@ -57,30 +57,49 @@
   const ROUNDS_512 = 72;
   const C_240 = 0x1BD11BDAA9FC1A22n; // Key schedule parity constant
 
-  // Rotate left and XOR for mixing
+  /**
+   * Rotate left and XOR for mixing: rotl64(x, n) xor xor, both reduced to 64 bits
+   * @param {BigInt} x - word to rotate (may exceed 64 bits)
+   * @param {int32} n - rotation count
+   * @param {BigInt} xor - word to XOR in (may exceed 64 bits)
+   * @returns {BigInt} 64-bit result
+   */
   function rotlXor64(x, n, xor) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = OpCodes.AndN(BigInt(x), mask);
-    xor = OpCodes.AndN(BigInt(xor), mask);
-    n = OpCodes.AndN(Number(n), 63);
-    return OpCodes.AndN(OpCodes.XorN(OpCodes.RotL64n(x, n), xor), mask);
+    const word = OpCodes.AndN(x, mask);
+    const other = OpCodes.AndN(xor, mask);
+    const count = OpCodes.And32(n, 63);
+    return OpCodes.AndN(OpCodes.XorN(OpCodes.RotL64n(word, count), other), mask);
   }
 
-  // XOR and rotate right for unmixing
+  /**
+   * XOR and rotate right for unmixing: rotr64(x xor xor, n)
+   * @param {BigInt} x - word (may exceed 64 bits)
+   * @param {int32} n - rotation count
+   * @param {BigInt} xor - word to XOR in (may exceed 64 bits)
+   * @returns {BigInt} 64-bit result
+   */
   function xorRotr64(x, n, xor) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = OpCodes.AndN(BigInt(x), mask);
-    xor = OpCodes.AndN(BigInt(xor), mask);
-    const xored = OpCodes.XorN(x, xor);
-    n = OpCodes.AndN(Number(n), 63);
-    return OpCodes.AndN(OpCodes.RotR64n(xored, n), mask);
+    const word = OpCodes.AndN(x, mask);
+    const other = OpCodes.AndN(xor, mask);
+    const xored = OpCodes.XorN(word, other);
+    const count = OpCodes.And32(n, 63);
+    return OpCodes.AndN(OpCodes.RotR64n(xored, count), mask);
   }
 
-  // Threefish-512 encryption
+  /**
+   * Threefish-512 encryption of one block
+   * @param {BigInt[]} key - eight 64-bit key words
+   * @param {BigInt[]} tweak - two 64-bit tweak words
+   * @param {BigInt[]} block - eight 64-bit plaintext words
+   * @returns {BigInt[]} eight 64-bit ciphertext words
+   */
   function threefish512Encrypt(key, tweak, block) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
 
     // Key schedule (extended key with parity)
+    /** @type {BigInt[]} */
     const kw = new Array(17);
     let knw = C_240;
     for (let i = 0; i < 8; i++) {
@@ -93,6 +112,7 @@
     }
 
     // Tweak schedule
+    /** @type {BigInt[]} */
     const t = new Array(5);
     t[0] = OpCodes.AndN(BigInt(tweak[0]), mask);
     t[1] = OpCodes.AndN(BigInt(tweak[1]), mask);
@@ -189,10 +209,12 @@
     }
 
     // Mask all to 64-bit before returning
-    return [
+    /** @type {BigInt[]} */
+    const out = [
       OpCodes.AndN(b0, mask), OpCodes.AndN(b1, mask), OpCodes.AndN(b2, mask), OpCodes.AndN(b3, mask),
       OpCodes.AndN(b4, mask), OpCodes.AndN(b5, mask), OpCodes.AndN(b6, mask), OpCodes.AndN(b7, mask)
     ];
+    return out;
   }
 
   // ===== SKEIN-512 UBI MODE =====
@@ -205,15 +227,32 @@
   const T1_FINAL = OpCodes.ShiftLn(1n, 63);
   const T1_FIRST = OpCodes.ShiftLn(1n, 62);
 
+  /**
+   * Unique Block Iteration over Threefish-512
+   * @class
+   */
   class SkeinUBI {
+    /**
+     * @param {int32} blockSize - bytes per block (64 for Skein-512)
+     */
     constructor(blockSize) {
+      /** @type {int32} */
       this.blockSize = blockSize; // 64 bytes for Skein-512
+      /** @type {uint8[]} */
       this.currentBlock = new Uint8Array(blockSize);
+      /** @type {int32} */
       this.currentOffset = 0;
+      /** @type {BigInt[]} */
       this.tweak = [0n, 0n]; // [T0, T1]
+      /** @type {BigInt[]} */
       this.message = new Array(8); // 8 x 64-bit words
     }
 
+    /**
+     * Start a new UBI invocation of the given type
+     * @param {int32} type - block type (config, message, output)
+     * @returns {void}
+     */
     reset(type) {
       this.tweak[0] = 0n;
       this.tweak[1] = OpCodes.ShiftLn(BigInt(type), 56); // Type in bits 120-125
@@ -221,6 +260,14 @@
       this.currentOffset = 0;
     }
 
+    /**
+     * Absorb bytes, compressing every block that is followed by more data
+     * @param {uint8[]} data - source bytes
+     * @param {int32} offset - first byte to take
+     * @param {int32} length - number of bytes to take
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     update(data, offset, length, chain) {
       let copied = 0;
       while (copied < length) {
@@ -240,6 +287,11 @@
       }
     }
 
+    /**
+     * Compress the current block into the chaining value
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     processBlock(chain) {
       // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
@@ -256,6 +308,7 @@
       }
 
       // Encrypt message with Threefish using current chain as key
+      /** @type {BigInt[]} */
       const output = threefish512Encrypt(chain, this.tweak, this.message);
 
       // XOR with message (Davies-Meyer construction)
@@ -264,6 +317,11 @@
       }
     }
 
+    /**
+     * Zero-pad and compress the last block with the final flag set
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     doFinal(chain) {
       // Pad remaining block with zeros
       for (let i = this.currentOffset; i < this.blockSize; i++) {
@@ -279,16 +337,28 @@
   // ===== SKEIN HASH FUNCTION =====
 
   // Precalculated initial state for Skein-512-512 (from Skein 1.3 spec Appendix C)
-  const INITIAL_STATE_512_512 = Object.freeze([
+  /** @type {BigInt[]} */
+  const INITIAL_STATE_512_512 = [
     0x4903ADFF749C51CEn, 0x0D95DE399746DF03n, 0x8FD1934127C79BCEn, 0x9A255629FF352CB1n,
     0x5DB62599DF6CA7B0n, 0xEABE394CA9D5C3F4n, 0x991112C71A75B523n, 0xAE18A40B660FCC33n
-  ]);
+  ];
 
+  /**
+   * Skein-512 with a configurable output length
+   * @class
+   */
   class SkeinHasher {
+    /**
+     * @param {int32} outputBits - digest length in bits
+     */
     constructor(outputBits) {
+      /** @type {int32} */
       this.outputBits = outputBits;
+      /** @type {int32} */
       this.blockSize = 64; // Skein-512 uses 64-byte blocks
+      /** @type {BigInt[]} */
       this.chain = new Array(8); // 8 x 64-bit state
+      /** @type {SkeinUBI} */
       this.ubi = new SkeinUBI(this.blockSize);
 
       // Initialize chain with precalculated initial state for 512-512
@@ -305,9 +375,14 @@
       }
 
       // Save initial state for reset
-      this.initialState = [...this.chain];
+      /** @type {BigInt[]} */
+      this.initialState = this.chain.slice();
     }
 
+    /**
+     * Chain the configuration block (UBI type 4) into the zero state
+     * @returns {void}
+     */
     processConfig() {
       // Configuration block: "SHA3" (4 bytes) + version (2 bytes) + reserved (2 bytes) + output length (8 bytes)
       const config = new Uint8Array(32);
@@ -321,7 +396,9 @@
       // Output length in bits (little-endian 64-bit)
       const outBits = BigInt(this.outputBits);
       for (let i = 0; i < 8; i++) {
-        config[8 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(outBits, BigInt(i * 8)), 0xFFn));
+        /** @type {uint8} */
+        const lengthByte = Number(OpCodes.AndN(OpCodes.ShiftRn(outBits, i * 8), 0xFFn));
+        config[8 + i] = lengthByte;
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
@@ -329,13 +406,19 @@
       this.ubi.doFinal(this.chain);
     }
 
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - message bytes
+     * @returns {void}
+     */
     update(data) {
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
       this.ubi.update(data, 0, data.length, this.chain);
     }
 
+    /**
+     * Finish the message and run the output transformation
+     * @returns {uint8[]} outputBits/8 digest bytes (a Uint8Array)
+     */
     finalize() {
       // Finalize message block
       this.ubi.doFinal(this.chain);
@@ -350,7 +433,8 @@
       this.ubi.reset(PARAM_TYPE_OUTPUT);
       this.ubi.update(counter, 0, 8, this.chain);
 
-      const outputWords = [...this.chain]; // Copy chain before final
+      /** @type {BigInt[]} */
+      const outputWords = this.chain.slice(); // Copy chain before final
       this.ubi.doFinal(outputWords);
 
       // Convert 64-bit words to bytes (little-endian)
@@ -359,13 +443,19 @@
         const word = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(j * 8)), 0xFFn));
+          /** @type {uint8} */
+          const digestByte = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
+          result[i * 8 + j] = digestByte;
         }
       }
 
       return result;
     }
 
+    /**
+     * Back to the initial chaining value
+     * @returns {void}
+     */
     reset() {
       for (let i = 0; i < 8; i++) {
         this.chain[i] = this.initialState[i];
@@ -396,8 +486,10 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [64]; // 512 bits
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits
+      /** @type {int32} */
       this.blockSize = 64;
+      /** @type {int32} */
       this.outputSize = 64;
 
       this.documentation = [
@@ -469,7 +561,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SkeinInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -485,8 +577,12 @@
  */
 
   class SkeinInstance extends IHashFunctionInstance {
+    /**
+     * @param {SkeinAlgorithm} algorithm - parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {SkeinHasher} */
       this.hasher = new SkeinHasher(512);
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
     }
@@ -509,16 +605,30 @@
    */
 
     Result() {
-      return this.hasher.finalize();
+      /** @type {uint8[]} */
+      const digest = this.hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Hash one whole message from the initial state
+     * @param {uint8[]} input - message bytes
+     * @param {uint8[]} key - unused
+     * @returns {uint8[]} digest
+     */
     ProcessData(input, key) {
       this.hasher.reset();
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
       this.hasher.update(input);
-      return this.hasher.finalize();
+      /** @type {uint8[]} */
+      const digest = this.hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Start over with a fresh hasher
+     * @returns {void}
+     */
     Reset() {
       this.hasher = new SkeinHasher(512);
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);

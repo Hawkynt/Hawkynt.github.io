@@ -54,7 +54,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          KdfAlgorithm, IKdfInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
+          KdfAlgorithm, IKdfInstance, IHashFunctionInstance, TestCase, LinkItem, Vulnerability,
+          KeySize } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -75,16 +76,7 @@
 
       // KDF-specific properties
       this.SaltRequired = false; // Salt is optional
-      this.SupportedOutputSizes = [1, 8191]; // Max ~2^32 * hash_len bits
-
-      // Hash function support
-      this.HASH_FUNCTIONS = {
-        'SHA-1': { size: 20, name: 'SHA-1', blockSize: 64 },
-        'SHA-224': { size: 28, name: 'SHA-224', blockSize: 64 },
-        'SHA-256': { size: 32, name: 'SHA-256', blockSize: 64 },
-        'SHA-384': { size: 48, name: 'SHA-384', blockSize: 128 },
-        'SHA-512': { size: 64, name: 'SHA-512', blockSize: 128 }
-      };
+      this.SupportedOutputSizes = [new KeySize(1, 8191, 1)]; // Max ~2^32 * hash_len bits
 
       // Documentation and references
       this.documentation = [
@@ -226,90 +218,90 @@
 
       // Add test parameters for each test vector
       // SHA-1 vectors
-      this.tests[0].salt = [];
+      this.tests[0].salt = OpCodes.Hex8ToBytes('');
       this.tests[0].label = OpCodes.Hex8ToBytes("6C5544797A91115DC3330EBD003851D239A706FF2AA2AB70039C5510DDF06420");
       this.tests[0].hashFunction = 'SHA-1';
       this.tests[0].outputSize = 4;
 
-      this.tests[1].salt = [];
+      this.tests[1].salt = OpCodes.Hex8ToBytes('');
       this.tests[1].label = OpCodes.Hex8ToBytes("F9C06213585289654996F0C40467B9A69480AB8D5B16A08C7A0C5F1570F966EF");
       this.tests[1].hashFunction = 'SHA-1';
       this.tests[1].outputSize = 5;
 
-      this.tests[2].salt = [];
+      this.tests[2].salt = OpCodes.Hex8ToBytes('');
       this.tests[2].label = OpCodes.Hex8ToBytes("EA0E5D80A76BB5063148CC997B76DA2D895BC3E4DFF37C48579CC4E580F1FDA3");
       this.tests[2].hashFunction = 'SHA-1';
       this.tests[2].outputSize = 33;
 
       // SHA-224 vectors
-      this.tests[3].salt = [];
+      this.tests[3].salt = OpCodes.Hex8ToBytes('');
       this.tests[3].label = OpCodes.Hex8ToBytes("6C5544797A91115DC3330EBD003851D239A706FF2AA2AB70039C5510DDF06420");
       this.tests[3].hashFunction = 'SHA-224';
       this.tests[3].outputSize = 4;
 
-      this.tests[4].salt = [];
+      this.tests[4].salt = OpCodes.Hex8ToBytes('');
       this.tests[4].label = OpCodes.Hex8ToBytes("F9C06213585289654996F0C40467B9A69480AB8D5B16A08C7A0C5F1570F966EF");
       this.tests[4].hashFunction = 'SHA-224';
       this.tests[4].outputSize = 5;
 
       // SHA-256 vectors
-      this.tests[5].salt = [];
+      this.tests[5].salt = OpCodes.Hex8ToBytes('');
       this.tests[5].label = OpCodes.Hex8ToBytes("6C5544797A91115DC3330EBD003851D239A706FF2AA2AB70039C5510DDF06420");
       this.tests[5].hashFunction = 'SHA-256';
       this.tests[5].outputSize = 4;
 
-      this.tests[6].salt = [];
+      this.tests[6].salt = OpCodes.Hex8ToBytes('');
       this.tests[6].label = OpCodes.Hex8ToBytes("F9C06213585289654996F0C40467B9A69480AB8D5B16A08C7A0C5F1570F966EF");
       this.tests[6].hashFunction = 'SHA-256';
       this.tests[6].outputSize = 5;
 
-      this.tests[7].salt = [];
+      this.tests[7].salt = OpCodes.Hex8ToBytes('');
       this.tests[7].label = OpCodes.Hex8ToBytes("9D4169CC1427F2A407191B84AB7ABAACE66A95CA26AB0915803106315080F331");
       this.tests[7].hashFunction = 'SHA-256';
       this.tests[7].outputSize = 6;
 
-      this.tests[8].salt = [];
+      this.tests[8].salt = OpCodes.Hex8ToBytes('');
       this.tests[8].label = OpCodes.Hex8ToBytes("430312B971580AC2ABBE70998F136D3CACE833E0B165B74C351AFE5FA20D1EB7");
       this.tests[8].hashFunction = 'SHA-256';
       this.tests[8].outputSize = 7;
 
-      this.tests[9].salt = [];
+      this.tests[9].salt = OpCodes.Hex8ToBytes('');
       this.tests[9].label = OpCodes.Hex8ToBytes("EDEFB6C58327538F3B4F7E4B9AF30C7025122DE56B7E682E56D7EFE433C2CA85");
       this.tests[9].hashFunction = 'SHA-256';
       this.tests[9].outputSize = 8;
 
       // SHA-384 vectors
-      this.tests[10].salt = [];
+      this.tests[10].salt = OpCodes.Hex8ToBytes('');
       this.tests[10].label = OpCodes.Hex8ToBytes("6C5544797A91115DC3330EBD003851D239A706FF2AA2AB70039C5510DDF06420");
       this.tests[10].hashFunction = 'SHA-384';
       this.tests[10].outputSize = 4;
 
-      this.tests[11].salt = [];
+      this.tests[11].salt = OpCodes.Hex8ToBytes('');
       this.tests[11].label = OpCodes.Hex8ToBytes("F9C06213585289654996F0C40467B9A69480AB8D5B16A08C7A0C5F1570F966EF");
       this.tests[11].hashFunction = 'SHA-384';
       this.tests[11].outputSize = 5;
 
       // SHA-512 vectors
-      this.tests[12].salt = [];
+      this.tests[12].salt = OpCodes.Hex8ToBytes('');
       this.tests[12].label = OpCodes.Hex8ToBytes("6C5544797A91115DC3330EBD003851D239A706FF2AA2AB70039C5510DDF06420");
       this.tests[12].hashFunction = 'SHA-512';
       this.tests[12].outputSize = 4;
 
-      this.tests[13].salt = [];
+      this.tests[13].salt = OpCodes.Hex8ToBytes('');
       this.tests[13].label = OpCodes.Hex8ToBytes("F9C06213585289654996F0C40467B9A69480AB8D5B16A08C7A0C5F1570F966EF");
       this.tests[13].hashFunction = 'SHA-512';
       this.tests[13].outputSize = 5;
 
-      this.tests[14].salt = [];
+      this.tests[14].salt = OpCodes.Hex8ToBytes('');
       this.tests[14].label = OpCodes.Hex8ToBytes("9D4169CC1427F2A407191B84AB7ABAACE66A95CA26AB0915803106315080F331");
       this.tests[14].hashFunction = 'SHA-512';
       this.tests[14].outputSize = 6;
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new SP 800-56A KDF instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
+   * @returns {SP80056AInstance} New instance
    */
 
     CreateInstance(isInverse = false) {
@@ -318,45 +310,71 @@
   }
 
   /**
- * SP80056A cipher instance implementing Feed/Result pattern
+ * SP 800-56A one-step KDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class SP80056AInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize an SP 800-56A KDF instance
+   * @param {SP80056AAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default output size
+      /** @type {uint8[]} */
       this._salt = [];
+      /** @type {uint8[]} */
       this._label = [];
+      /** @type {string} */
       this._hashFunction = 'SHA-256';
+      /** @type {uint8[]} Shared secret Z (null until the first Feed) */
       this._secret = null;
     }
 
-    // Property getters and setters
-    get salt() { return this._salt ? [...this._salt] : []; }
-    set salt(value) { this._salt = value ? [...value] : []; }
+    // Property getters and setters (copies in and out)
+    /** @returns {uint8[]} Copy of the salt (HMAC key; empty selects the plain hash) */
+    get salt() {
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._salt) { copy = this._salt.slice(); }
+      return copy;
+    }
+    /** @param {uint8[]} value - Salt (null clears it) */
+    set salt(value) {
+      if (value) { this._salt = value.slice(); } else { this._salt = []; }
+    }
 
-    get label() { return this._label ? [...this._label] : []; }
-    set label(value) { this._label = value ? [...value] : []; }
+    /** @returns {uint8[]} Copy of the FixedInfo */
+    get label() {
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._label) { copy = this._label.slice(); }
+      return copy;
+    }
+    /** @param {uint8[]} value - FixedInfo (null clears it) */
+    set label(value) {
+      if (value) { this._label = value.slice(); } else { this._label = []; }
+    }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {string} Hash name: SHA-1, SHA-224, SHA-256, SHA-384 or SHA-512 */
     get hashFunction() { return this._hashFunction; }
+    /** @param {string} value - Hash name: SHA-1, SHA-224, SHA-256, SHA-384 or SHA-512 */
     set hashFunction(value) { this._hashFunction = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed shared secret Z
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -377,9 +395,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If nothing was fed or the hash is unsupported
    */
 
     Result() {
@@ -388,28 +406,50 @@
       }
 
       const secret = this._secret;
-      const salt = this._salt || [];
-      const label = this._label || [];
+      /** @type {uint8[]} */
+      let salt = [];
+      if (this._salt) { salt = this._salt; }
+      /** @type {uint8[]} */
+      let label = [];
+      if (this._label) { label = this._label; }
       const outputSize = this.OutputSize;
       const hashFunc = this._hashFunction;
 
       return this.deriveKey(secret, salt, label, outputSize, hashFunc);
     }
 
-    deriveKey(secret, salt, fixedInfo, outputLength, hashFunction) {
-      // NIST SP 800-56A Rev. 3 Section 5.8.1 - Single-Step KDF
-      //
-      // Format: counter || Z || FixedInfo
-      // - counter: 32-bit big-endian starting at 1
-      // - Z: shared secret from key agreement
-      // - FixedInfo: additional context information (label)
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA-1, SHA-224, SHA-256, SHA-384 or SHA-512
+     * @returns {int32} Digest size in bytes, 0 when unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA-1': return 20;
+        case 'SHA-224': return 28;
+        case 'SHA-256': return 32;
+        case 'SHA-384': return 48;
+        case 'SHA-512': return 64;
+        default: return 0;
+      }
+    }
 
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashFunction];
-      if (!hashInfo) {
+    /**
+     * NIST SP 800-56A Rev. 3 section 5.8.1 one-step KDF: counter || Z || FixedInfo,
+     * hashed, or HMAC'd with the salt as key when a salt is set
+     * @param {uint8[]} secret - Shared secret Z
+     * @param {uint8[]} salt - HMAC key (empty selects the plain hash)
+     * @param {uint8[]} fixedInfo - FixedInfo
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
+    deriveKey(secret, salt, fixedInfo, outputLength, hashFunction) {
+      const hashLen = this.hashSize(hashFunction);
+      if (hashLen === 0) {
         throw new Error('Unsupported hash function: ' + hashFunction);
       }
-
-      const hashLen = hashInfo.size;
 
       // Calculate number of iterations needed
       // reps = ceil(outputLength / hashLen)
@@ -420,12 +460,13 @@
         throw new Error('SP800-56A KDF requested output too large');
       }
 
-      // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      // Get hash algorithm from framework (registered under the same name)
+      const hashAlg = AlgorithmFramework.Find(hashFunction);
       if (!hashAlg) {
-        throw new Error('Hash function not found: ' + hashInfo.name);
+        throw new Error('Hash function not found: ' + hashFunction);
       }
 
+      /** @type {uint8[]} */
       let result = [];
 
       // For HMAC mode (when salt is provided), use HMAC construction
@@ -438,12 +479,14 @@
 
         const blockInput = counterBytes.concat(secret).concat(fixedInfo);
 
+        /** @type {uint8[]} */
         let blockHash;
         if (useHmac) {
           // Use HMAC with salt as key
           blockHash = this.calculateHMAC(salt, blockInput, hashFunction);
         } else {
           // Use plain hash
+          /** @type {IHashFunctionInstance} */
           const hashInst = hashAlg.CreateInstance();
           hashInst.Feed(blockInput);
           blockHash = hashInst.Result();
@@ -456,30 +499,38 @@
       return result.slice(0, outputLength);
     }
 
+    /**
+     * HMAC (RFC 2104) over a registered hash
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} MAC
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
     calculateHMAC(key, message, hashFunction) {
-      // HMAC construction as per RFC 2104
-      // HMAC(K, m) = H((K' XOR opad) || H((K' XOR ipad) || m))
-
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashFunction];
-      if (!hashInfo) {
+      if (this.hashSize(hashFunction) === 0) {
         throw new Error('Unsupported hash function: ' + hashFunction);
       }
 
-      const blockSize = hashInfo.blockSize;
+      let blockSize = 64;
+      if (hashFunction === 'SHA-384' || hashFunction === 'SHA-512') { blockSize = 128; }
 
       // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      const hashAlg = AlgorithmFramework.Find(hashFunction);
       if (!hashAlg) {
-        throw new Error('Hash function not found: ' + hashInfo.name);
+        throw new Error('Hash function not found: ' + hashFunction);
       }
 
       // Prepare key - pad or hash if needed
-      let keyPrime = [...key];
+      let keyPrime = key.slice();
       if (keyPrime.length > blockSize) {
         // If key is longer than block size, hash it first
+        /** @type {IHashFunctionInstance} */
         const hashInst = hashAlg.CreateInstance();
         hashInst.Feed(keyPrime);
-        keyPrime = hashInst.Result();
+        /** @type {uint8[]} */
+        const hashedKey = hashInst.Result();
+        keyPrime = hashedKey;
       }
 
       // Pad key to block size
@@ -488,21 +539,31 @@
       }
 
       // HMAC constants
-      const ipad = new Array(blockSize).fill(0x36);
-      const opad = new Array(blockSize).fill(0x5c);
+      /** @type {uint8[]} */
+      const ipad = [];
+      /** @type {uint8[]} */
+      const opad = [];
+      for (let i = 0; i < blockSize; i++) {
+        ipad.push(0x36);
+        opad.push(0x5c);
+      }
 
       // Inner hash: H((K' XOR ipad) || message)
       const innerKey = OpCodes.XorArrays(keyPrime, ipad);
       const innerInput = innerKey.concat(message);
+      /** @type {IHashFunctionInstance} */
       const innerHashInst = hashAlg.CreateInstance();
       innerHashInst.Feed(innerInput);
+      /** @type {uint8[]} */
       const innerHash = innerHashInst.Result();
 
       // Outer hash: H((K' XOR opad) || innerHash)
       const outerKey = OpCodes.XorArrays(keyPrime, opad);
       const outerInput = outerKey.concat(innerHash);
+      /** @type {IHashFunctionInstance} */
       const outerHashInst = hashAlg.CreateInstance();
       outerHashInst.Feed(outerInput);
+      /** @type {uint8[]} */
       const result = outerHashInst.Result();
 
       return result;

@@ -48,66 +48,109 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // DarkCrypt Keccak: the permutation core uses standard Keccak-f[1600] round
   // constants and rotation offsets, but only the first 18 (of the standard 24)
   // rounds are executed.
-  const ROUNDS = 18;
-
-  const RC = Object.freeze([
-    [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
-    [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
-    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x8000000a, 0x00000000],
-    [0x8000808b, 0x00000000], [0x0000008b, 0x80000000], [0x00008089, 0x80000000], [0x00008003, 0x80000000],
-    [0x00008002, 0x80000000], [0x00000080, 0x80000000]
-  ]);
-
-  const RHO_OFFSETS = Object.freeze([
-    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41,
-    45, 15, 21, 8, 18, 2, 61, 56, 14
-  ]);
+  /** @type {int32} */
+  const KECCAK_ROUNDS = 18;
 
   // DarkCrypt Keccak block size: 64 bytes (512-bit rate, 1088-bit capacity).
+  /** @type {int32} */
   const RATE = 64;
 
   // Fixed padding suffix appended after the message before zero-filling to a
   // multiple of RATE (replaces the standard pad10*1 scheme).
-  const PAD_SUFFIX = Object.freeze(OpCodes.Hex8ToBytes("01404001"));
+  const PAD_SUFFIX = OpCodes.Hex8ToBytes("01404001");
 
-  const OUTPUT_SIZE = 64; // 512-bit digest
+  /** @type {int32} 512-bit digest */
+  const OUTPUT_SIZE = 64;
 
-  function xor64(a, b) { return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])]; }
+  // Keccak round constants (24 rounds) - FIPS 202 compliant, split into the
+  // low and high 32-bit halves of each 64-bit lane constant
+  const RC_LO = OpCodes.Hex32ToDWords(
+    '00000001' + '00008082' + '0000808a' + '80008000' + '0000808b' + '80000001' + '80008081' + '00008009' +
+    '0000008a' + '00000088' + '80008009' + '8000000a' + '8000808b' + '0000008b' + '00008089' + '00008003' +
+    '00008002' + '00000080' + '0000800a' + '8000000a' + '80008081' + '00008080' + '80000001' + '80008008'
+  );
+  const RC_HI = OpCodes.Hex32ToDWords(
+    '00000000' + '00000000' + '80000000' + '80000000' + '00000000' + '00000000' + '80000000' + '80000000' +
+    '00000000' + '00000000' + '00000000' + '00000000' + '00000000' + '80000000' + '80000000' + '80000000' +
+    '80000000' + '80000000' + '00000000' + '80000000' + '80000000' + '80000000' + '00000000' + '80000000'
+  );
 
+  // Rotation offsets for rho step
+  /** @type {int32[]} */
+  const RHO_OFFSETS = [
+    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41,
+    45, 15, 21, 8, 18, 2, 61, 56, 14
+  ];
+
+  /**
+   * 64-bit XOR operation
+   * @param {uint32[]} a - [low32, high32]
+   * @param {uint32[]} b - [low32, high32]
+   * @returns {uint32[]} XOR result [low32, high32]
+   */
+  function xor64(a, b) {
+    /** @type {uint32[]} */
+    const r = [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])];
+    return r;
+  }
+
+  /**
+   * 64-bit left rotation (using 32-bit operations)
+   * @param {uint32[]} val - [low32, high32]
+   * @param {int32} positions - Rotation positions
+   * @returns {uint32[]} Rotated [low32, high32]
+   */
   function rotl64(val, positions) {
-    const [low, high] = val;
+    const low = val[0];
+    const high = val[1];
     positions %= 64;
-    if (positions === 0) return [low, high];
-    if (positions === 32) return [high, low];
+
+    /** @type {uint32[]} */
+    const r = [low, high];
+    if (positions === 0) return r;
+    if (positions === 32) {
+      r[0] = high;
+      r[1] = low;
+      return r;
+    }
 
     if (positions < 32) {
-      return [
-        OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)),
-        OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))
-      ];
+      r[0] = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions));
+      r[1] = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions));
+      return r;
     }
 
     positions -= 32;
-    return [
-      OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)),
-      OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))
-    ];
+    r[0] = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions));
+    r[1] = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions));
+    return r;
   }
 
+  /**
+   * Keccak-f[1600] permutation
+   * @param {uint32[][]} state - 25 x [low32, high32] state array
+   * @returns {void}
+   */
   function keccakF(state) {
-    for (let round = 0; round < ROUNDS; round++) {
-      // Theta
+    for (let round = 0; round < KECCAK_ROUNDS; round++) {
+      // Theta step
+      /** @type {uint32[][]} */
       const C = new Array(5);
       for (let x = 0; x < 5; x++) {
-        C[x] = [0, 0];
-        for (let y = 0; y < 5; y++) C[x] = xor64(C[x], state[x + 5 * y]);
+        /** @type {uint32[]} */
+        const zero = [0, 0];
+        C[x] = zero;
+        for (let y = 0; y < 5; y++) {
+          C[x] = xor64(C[x], state[x + 5 * y]);
+        }
       }
 
+      /** @type {uint32[][]} */
       const D = new Array(5);
       for (let x = 0; x < 5; x++) {
         D[x] = xor64(C[(x + 4) % 5], rotl64(C[(x + 1) % 5], 1));
@@ -119,38 +162,56 @@
         }
       }
 
-      // Rho
+      // Rho step
       for (let i = 0; i < 25; i++) {
         state[i] = rotl64(state[i], RHO_OFFSETS[i]);
       }
 
-      // Pi
+      // Pi step
+      /** @type {uint32[][]} */
       const temp = new Array(25);
-      for (let i = 0; i < 25; i++) temp[i] = [state[i][0], state[i][1]];
+      for (let i = 0; i < 25; i++) {
+        temp[i] = state[i].slice();
+      }
+
       for (let x = 0; x < 5; x++) {
         for (let y = 0; y < 5; y++) {
           state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
         }
       }
 
-      // Chi
+      // Chi step
       for (let y = 0; y < 5; y++) {
+        /** @type {uint32[][]} */
         const row = new Array(5);
-        for (let x = 0; x < 5; x++) row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
         for (let x = 0; x < 5; x++) {
-          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [OpCodes.AndN(notNext[0], row[(x + 2) % 5][0]), OpCodes.AndN(notNext[1], row[(x + 2) % 5][1])];
+          row[x] = state[x + 5 * y].slice();
+        }
+
+        for (let x = 0; x < 5; x++) {
+          /** @type {uint32[]} */
+          const andResult = [
+            OpCodes.And32(OpCodes.Not32(row[(x + 1) % 5][0]), row[(x + 2) % 5][0]),
+            OpCodes.And32(OpCodes.Not32(row[(x + 1) % 5][1]), row[(x + 2) % 5][1])
+          ];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }
 
-      // Iota
-      state[0] = xor64(state[0], RC[round]);
+      // Iota step
+      /** @type {uint32[]} */
+      const rc = [RC_LO[round], RC_HI[round]];
+      state[0] = xor64(state[0], rc);
     }
   }
 
   // ===== ALGORITHM REGISTRATION =====
 
+  /**
+   * DarkCrypt Keccak variant
+   * @class
+   * @extends {HashFunctionAlgorithm}
+   */
   class DarkCryptKeccakAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -165,8 +226,10 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.BE;
 
-      this.SupportedOutputSizes = [OUTPUT_SIZE]; // 512 bits
+      this.SupportedOutputSizes = [new KeySize(OUTPUT_SIZE, OUTPUT_SIZE, 1)]; // 512 bits
+      /** @type {int32} */
       this.blockSize = RATE;
+      /** @type {int32} */
       this.outputSize = OUTPUT_SIZE;
 
       this.documentation = [
@@ -202,50 +265,78 @@
       ];
     }
 
+    /**
+     * Create new hash instance
+     * @param {boolean} [isInverse=false] - A hash has no inverse: true yields null
+     * @returns {DarkCryptKeccakInstance} New hash instance
+     */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new DarkCryptKeccakInstance(this);
     }
   }
 
+  /**
+   * DarkCrypt Keccak instance implementing the Feed/Result pattern
+   * @class
+   * @extends {IHashFunctionInstance}
+   */
   class DarkCryptKeccakInstance extends IHashFunctionInstance {
+    /**
+     * Initialize an instance
+     * @param {DarkCryptKeccakAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} Message bytes fed so far */
       this.buffer = [];
     }
 
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Input data bytes
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) this.buffer.push(data[i]);
     }
 
+    /**
+     * Digest of everything fed so far
+     * @returns {uint8[]} 64-byte digest
+     */
     Result() {
       const stream = this.buffer.concat(PAD_SUFFIX);
       const padLen = (RATE - (stream.length % RATE)) % RATE;
       for (let i = 0; i < padLen; i++) stream.push(0);
 
+      /** @type {uint32[][]} */
       const state = new Array(25);
-      for (let i = 0; i < 25; i++) state[i] = [0, 0];
+      for (let i = 0; i < 25; i++) {
+        /** @type {uint32[]} */
+        const lane = [0, 0];
+        state[i] = lane;
+      }
 
       for (let off = 0; off < stream.length; off += RATE) {
         for (let i = 0; i < RATE; i += 8) {
           const low = OpCodes.Pack32LE(stream[off + i], stream[off + i + 1], stream[off + i + 2], stream[off + i + 3]);
           const high = OpCodes.Pack32LE(stream[off + i + 4], stream[off + i + 5], stream[off + i + 6], stream[off + i + 7]);
           const idx = i / 8;
-          state[idx][0] = OpCodes.XorN(state[idx][0], low);
-          state[idx][1] = OpCodes.XorN(state[idx][1], high);
+          state[idx][0] = OpCodes.Xor32(state[idx][0], low);
+          state[idx][1] = OpCodes.Xor32(state[idx][1], high);
         }
         keccakF(state);
       }
 
-      const output = new Array(OUTPUT_SIZE);
-      let outputOffset = 0;
+      /** @type {uint8[]} */
+      const output = [];
       for (let i = 0; i < OUTPUT_SIZE; i += 8) {
         const idx = i / 8;
         const bytes1 = OpCodes.Unpack32LE(state[idx][0]);
         const bytes2 = OpCodes.Unpack32LE(state[idx][1]);
-        for (let j = 0; j < 4; j++) output[outputOffset++] = bytes1[j];
-        for (let j = 0; j < 4; j++) output[outputOffset++] = bytes2[j];
+        for (let j = 0; j < 4; j++) output.push(bytes1[j]);
+        for (let j = 0; j < 4; j++) output.push(bytes2[j]);
       }
 
       return output;

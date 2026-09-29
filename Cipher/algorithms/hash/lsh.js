@@ -50,7 +50,8 @@
   const LSH256_ROT_EVEN_BETA = 1;
   const LSH256_ROT_ODD_ALPHA = 5;
   const LSH256_ROT_ODD_BETA = 17;
-  const LSH256_GAMMA = new Uint32Array([0, 8, 16, 24, 24, 16, 8, 0]);
+  /** @type {int32[]} */
+  const LSH256_GAMMA = [0, 8, 16, 24, 24, 16, 8, 0];
 
   // LSH-224 Initial Values
   const LSH256_IV224 = new Uint32Array([
@@ -109,34 +110,39 @@
   const LSH512_ROT_EVEN_BETA = 59;
   const LSH512_ROT_ODD_ALPHA = 7;
   const LSH512_ROT_ODD_BETA = 3;
-  const LSH512_GAMMA = Object.freeze([0, 16, 32, 48, 8, 24, 40, 56]);
+  /** @type {int32[]} */
+  const LSH512_GAMMA = [0, 16, 32, 48, 8, 24, 40, 56];
 
   // LSH-384 Initial Values
-  const LSH512_IV384 = Object.freeze([
+  /** @type {BigInt[]} */
+  const LSH512_IV384 = [
     0x53156a66292808f6n, 0xb2c4f362b204c2bcn, 0xb84b7213bfa05c4en, 0x976ceb7c1b299f73n,
     0xdf0cc63c0570ae97n, 0xda4441baa486ce3fn, 0x6559f5d9b5f2acc2n, 0x22dacf19b4b52a16n,
     0xbbcdacefde80953an, 0xc9891a2879725b3en, 0x7c9fe6330237e440n, 0xa30ba550553f7431n,
     0xbb08043fb34e3e30n, 0xa0dec48d54618eadn, 0x150317267464bc57n, 0x32d1501fde63dc93n
-  ]);
+  ];
 
   // LSH-512 Initial Values
-  const LSH512_IV512 = Object.freeze([
+  /** @type {BigInt[]} */
+  const LSH512_IV512 = [
     0xadd50f3c7f07094en, 0xe3f3cee8f9418a4fn, 0xb527ecde5b3d0ae9n, 0x2ef6dec68076f501n,
     0x8cb994cae5aca216n, 0xfbb9eae4bba48cc7n, 0x650a526174725fean, 0x1f9a61a73f8d8085n,
     0xb6607378173b539bn, 0x1bc99853b0c0b9edn, 0xdf727fc19b182d47n, 0xdbef360cf893a457n,
     0x4981f5e570147e80n, 0xd00c4490ca7d3e30n, 0x5d73940c0e4ae1ecn, 0x894085e2edb2d819n
-  ]);
+  ];
 
   // LSH-512-256 Initial Values
-  const LSH512_IV256 = Object.freeze([
+  /** @type {BigInt[]} */
+  const LSH512_IV256 = [
     0x6dc57c33df989423n, 0xd8ea7f6e8342c199n, 0x76df8356f8603ac4n, 0x40f1b44de838223an,
     0x39ffe7cfc31484cdn, 0x39c4326cc5281548n, 0x8a2ff85a346045d8n, 0xff202aa46dbdd61en,
     0xcf785b3cd5fcdb8bn, 0x1f0323b64a8150bfn, 0xff75d972f29ea355n, 0x2e567f30bf1ca9e1n,
     0xb596875bf8ff6dban, 0xfcca39b089ef4615n, 0xecff4017d020b4b6n, 0x7e77384c772ed802n
-  ]);
+  ];
 
   // LSH512 Step Constants (224 constants for 28 steps × 8 words)
-  const LSH512_StepConstants = Object.freeze([
+  /** @type {BigInt[]} */
+  const LSH512_StepConstants = [
     0x97884283c938982an, 0xba1fca93533e2355n, 0xc519a2e87aeb1c03n, 0x9a0fc95462af17b1n,
     0xfc3dda8ab019a82bn, 0x02825d079a895407n, 0x79f2d0a7ee06a6f7n, 0xd76d15eed9fdf5fen,
     0x1fcac64d01d0c2c1n, 0xd9ea5de69161790fn, 0xdebc8b6366071fc8n, 0xa9d91db711c6c94bn,
@@ -193,166 +199,185 @@
     0xf86fbfc20539c415n, 0x74bafa5ec7100d19n, 0xa824151810f0f495n, 0x8723432791e38ebbn,
     0x8eeaeb91d66ed539n, 0x73d8a1549dfd7e06n, 0x0387f2ffe3f13a9bn, 0xa5004995aac15193n,
     0x682f81c73efdda0dn, 0x2fb55925d71d268dn, 0xcc392d2901e58a3dn, 0xaa666ab975724a42n
-  ]);
+  ];
 
   // 64-bit mask for BigInt operations
+  /** @type {BigInt} */
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
-  // 64-bit rotation using BigInt
-  function rotl64(val, n) {
-    n = BigInt(n) % 64n;
-    return OpCodes.OrN(OpCodes.ShiftLn(val, n), OpCodes.ShiftRn(val, 64n - n))&MASK64;
-  }
+  // Word offsets of the four 8-word sub-message blocks inside the sub_msgs arrays
+  /** @type {int32} */
+  const SUBMSG_E_L = 0;
+  /** @type {int32} */
+  const SUBMSG_E_R = 8;
+  /** @type {int32} */
+  const SUBMSG_O_L = 16;
+  /** @type {int32} */
+  const SUBMSG_O_R = 24;
 
   // ============================================================================
   // LSH-256 FAMILY INSTANCE (32-bit operations)
   // ============================================================================
 
   /**
- * LSH256 cipher instance implementing Feed/Result pattern
+ * LSH256 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class LSH256Instance extends IHashFunctionInstance {
-    constructor(algorithm, iv, outputSize) {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+     * @param {int32} outputSize - Digest size in bytes: 28 (LSH-224) or 32 (LSH-256)
+     */
+    constructor(algorithm, outputSize) {
       super(algorithm);
-      this.iv = iv;
+      /** @type {uint32[]} Initial chaining value of the variant */
+      this._initialCv = LSH256_IV256;
+      if (outputSize === 28) this._initialCv = LSH256_IV224;
+      /** @type {int32} */
       this.outputSize = outputSize;
+      /** @type {uint32[]} */
       this.cv_l = new Uint32Array(8);
+      /** @type {uint32[]} */
       this.cv_r = new Uint32Array(8);
+      /** @type {uint32[]} Sub-messages: even left/right, odd left/right (8 words each) */
       this.sub_msgs = new Uint32Array(32);
-      this.last_block = new Uint8Array(LSH256_MSG_BLK_BYTE_LEN);
+      /** @type {uint8[]} */
+      this.last_block = OpCodes.CreateArray(LSH256_MSG_BLK_BYTE_LEN, 0);
+      /** @type {int32} */
       this.remain_databitlen = 0;
       this._initialize();
     }
 
+    /**
+     * Load the IV and clear the sub-messages
+     * @returns {void}
+     */
     _initialize() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = this.iv[i];
-        this.cv_r[i] = this.iv[i + 8];
+        this.cv_l[i] = this._initialCv[i];
+        this.cv_r[i] = this._initialCv[i + 8];
       }
       this.sub_msgs.fill(0);
       this.remain_databitlen = 0;
     }
 
-    _load_msg_blk(msgblk) {
-      const submsg_e_l = new Uint32Array(this.sub_msgs.buffer, 0, 8);
-      const submsg_e_r = new Uint32Array(this.sub_msgs.buffer, 32, 8);
-      const submsg_o_l = new Uint32Array(this.sub_msgs.buffer, 64, 8);
-      const submsg_o_r = new Uint32Array(this.sub_msgs.buffer, 96, 8);
-
-      for (let i = 0; i < 8; i++) {
-        submsg_e_l[i] = OpCodes.Pack32LE(msgblk[i*4], msgblk[i*4+1], msgblk[i*4+2], msgblk[i*4+3]);
-        submsg_e_r[i] = OpCodes.Pack32LE(msgblk[32+i*4], msgblk[32+i*4+1], msgblk[32+i*4+2], msgblk[32+i*4+3]);
-        submsg_o_l[i] = OpCodes.Pack32LE(msgblk[64+i*4], msgblk[64+i*4+1], msgblk[64+i*4+2], msgblk[64+i*4+3]);
-        submsg_o_r[i] = OpCodes.Pack32LE(msgblk[96+i*4], msgblk[96+i*4+1], msgblk[96+i*4+2], msgblk[96+i*4+3]);
+    /**
+     * Load a 128-byte message block into the sub-messages (little-endian words)
+     * @param {uint8[]} msgblk - Message bytes
+     * @param {int32} off - Offset of the block in msgblk
+     * @returns {void}
+     */
+    _load_msg_blk(msgblk, off) {
+      for (let i = 0; i < 32; i++) {
+        /** @type {int32} */
+        const p = off + i * 4;
+        this.sub_msgs[i] = OpCodes.Pack32LE(msgblk[p], msgblk[p + 1], msgblk[p + 2], msgblk[p + 3]);
       }
     }
 
+    /**
+     * One half of the message expansion: dst[k] = src[k] + dst[perm(k)] (mod 2^32)
+     * @param {int32} dst - Word offset of the sub-message being expanded
+     * @param {int32} src - Word offset of the other sub-message
+     * @returns {void}
+     */
+    _msg_exp(dst, src) {
+      const m = this.sub_msgs;
+      /** @type {uint32} */
+      let temp = m[dst];
+      m[dst] = OpCodes.Add32(m[src], m[dst + 3]);
+      m[dst + 3] = OpCodes.Add32(m[src + 3], m[dst + 1]);
+      m[dst + 1] = OpCodes.Add32(m[src + 1], m[dst + 2]);
+      m[dst + 2] = OpCodes.Add32(m[src + 2], temp);
+      temp = m[dst + 4];
+      m[dst + 4] = OpCodes.Add32(m[src + 4], m[dst + 7]);
+      m[dst + 7] = OpCodes.Add32(m[src + 7], m[dst + 6]);
+      m[dst + 6] = OpCodes.Add32(m[src + 6], m[dst + 5]);
+      m[dst + 5] = OpCodes.Add32(m[src + 5], temp);
+    }
+
+    /**
+     * Even message expansion
+     * @returns {void}
+     */
     _msg_exp_even() {
-      const submsg_e_l = new Uint32Array(this.sub_msgs.buffer, 0, 8);
-      const submsg_e_r = new Uint32Array(this.sub_msgs.buffer, 32, 8);
-      const submsg_o_l = new Uint32Array(this.sub_msgs.buffer, 64, 8);
-      const submsg_o_r = new Uint32Array(this.sub_msgs.buffer, 96, 8);
-
-      let temp;
-      temp = submsg_e_l[0];
-      submsg_e_l[0] = OpCodes.ToUint32(submsg_o_l[0] + submsg_e_l[3]);
-      submsg_e_l[3] = OpCodes.ToUint32(submsg_o_l[3] + submsg_e_l[1]);
-      submsg_e_l[1] = OpCodes.ToUint32(submsg_o_l[1] + submsg_e_l[2]);
-      submsg_e_l[2] = OpCodes.ToUint32(submsg_o_l[2] + temp);
-      temp = submsg_e_l[4];
-      submsg_e_l[4] = OpCodes.ToUint32(submsg_o_l[4] + submsg_e_l[7]);
-      submsg_e_l[7] = OpCodes.ToUint32(submsg_o_l[7] + submsg_e_l[6]);
-      submsg_e_l[6] = OpCodes.ToUint32(submsg_o_l[6] + submsg_e_l[5]);
-      submsg_e_l[5] = OpCodes.ToUint32(submsg_o_l[5] + temp);
-      temp = submsg_e_r[0];
-      submsg_e_r[0] = OpCodes.ToUint32(submsg_o_r[0] + submsg_e_r[3]);
-      submsg_e_r[3] = OpCodes.ToUint32(submsg_o_r[3] + submsg_e_r[1]);
-      submsg_e_r[1] = OpCodes.ToUint32(submsg_o_r[1] + submsg_e_r[2]);
-      submsg_e_r[2] = OpCodes.ToUint32(submsg_o_r[2] + temp);
-      temp = submsg_e_r[4];
-      submsg_e_r[4] = OpCodes.ToUint32(submsg_o_r[4] + submsg_e_r[7]);
-      submsg_e_r[7] = OpCodes.ToUint32(submsg_o_r[7] + submsg_e_r[6]);
-      submsg_e_r[6] = OpCodes.ToUint32(submsg_o_r[6] + submsg_e_r[5]);
-      submsg_e_r[5] = OpCodes.ToUint32(submsg_o_r[5] + temp);
+      this._msg_exp(SUBMSG_E_L, SUBMSG_O_L);
+      this._msg_exp(SUBMSG_E_R, SUBMSG_O_R);
     }
 
+    /**
+     * Odd message expansion
+     * @returns {void}
+     */
     _msg_exp_odd() {
-      const submsg_e_l = new Uint32Array(this.sub_msgs.buffer, 0, 8);
-      const submsg_e_r = new Uint32Array(this.sub_msgs.buffer, 32, 8);
-      const submsg_o_l = new Uint32Array(this.sub_msgs.buffer, 64, 8);
-      const submsg_o_r = new Uint32Array(this.sub_msgs.buffer, 96, 8);
-
-      let temp;
-      temp = submsg_o_l[0];
-      submsg_o_l[0] = OpCodes.ToUint32(submsg_e_l[0] + submsg_o_l[3]);
-      submsg_o_l[3] = OpCodes.ToUint32(submsg_e_l[3] + submsg_o_l[1]);
-      submsg_o_l[1] = OpCodes.ToUint32(submsg_e_l[1] + submsg_o_l[2]);
-      submsg_o_l[2] = OpCodes.ToUint32(submsg_e_l[2] + temp);
-      temp = submsg_o_l[4];
-      submsg_o_l[4] = OpCodes.ToUint32(submsg_e_l[4] + submsg_o_l[7]);
-      submsg_o_l[7] = OpCodes.ToUint32(submsg_e_l[7] + submsg_o_l[6]);
-      submsg_o_l[6] = OpCodes.ToUint32(submsg_e_l[6] + submsg_o_l[5]);
-      submsg_o_l[5] = OpCodes.ToUint32(submsg_e_l[5] + temp);
-      temp = submsg_o_r[0];
-      submsg_o_r[0] = OpCodes.ToUint32(submsg_e_r[0] + submsg_o_r[3]);
-      submsg_o_r[3] = OpCodes.ToUint32(submsg_e_r[3] + submsg_o_r[1]);
-      submsg_o_r[1] = OpCodes.ToUint32(submsg_e_r[1] + submsg_o_r[2]);
-      submsg_o_r[2] = OpCodes.ToUint32(submsg_e_r[2] + temp);
-      temp = submsg_o_r[4];
-      submsg_o_r[4] = OpCodes.ToUint32(submsg_e_r[4] + submsg_o_r[7]);
-      submsg_o_r[7] = OpCodes.ToUint32(submsg_e_r[7] + submsg_o_r[6]);
-      submsg_o_r[6] = OpCodes.ToUint32(submsg_e_r[6] + submsg_o_r[5]);
-      submsg_o_r[5] = OpCodes.ToUint32(submsg_e_r[5] + temp);
+      this._msg_exp(SUBMSG_O_L, SUBMSG_E_L);
+      this._msg_exp(SUBMSG_O_R, SUBMSG_E_R);
     }
 
-    _msg_add_even() {
-      const submsg_e_l = new Uint32Array(this.sub_msgs.buffer, 0, 8);
-      const submsg_e_r = new Uint32Array(this.sub_msgs.buffer, 32, 8);
+    /**
+     * XOR a left/right sub-message pair into the chaining value
+     * @param {int32} left - Word offset of the left sub-message
+     * @param {int32} right - Word offset of the right sub-message
+     * @returns {void}
+     */
+    _msg_add(left, right) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], submsg_e_l[i]);
-        this.cv_r[i] = OpCodes.Xor32(this.cv_r[i], submsg_e_r[i]);
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], this.sub_msgs[left + i]);
+        this.cv_r[i] = OpCodes.Xor32(this.cv_r[i], this.sub_msgs[right + i]);
       }
     }
 
-    _msg_add_odd() {
-      const submsg_o_l = new Uint32Array(this.sub_msgs.buffer, 64, 8);
-      const submsg_o_r = new Uint32Array(this.sub_msgs.buffer, 96, 8);
-      for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], submsg_o_l[i]);
-        this.cv_r[i] = OpCodes.Xor32(this.cv_r[i], submsg_o_r[i]);
-      }
-    }
-
+    /**
+     * cv_l += cv_r (mod 2^32)
+     * @returns {void}
+     */
     _add_blk() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.ToUint32(this.cv_l[i] + this.cv_r[i]);
+        this.cv_l[i] = OpCodes.Add32(this.cv_l[i], this.cv_r[i]);
       }
     }
 
+    /**
+     * Rotate every word of cv_l
+     * @param {int32} r - Rotation amount
+     * @returns {void}
+     */
     _rotate_blk(r) {
       for (let i = 0; i < 8; i++) {
         this.cv_l[i] = OpCodes.RotL32(this.cv_l[i], r);
       }
     }
 
-    _xor_with_const(const_v) {
+    /**
+     * XOR the step constants into cv_l
+     * @param {int32} offset - Index of the first of 8 step constants
+     * @returns {void}
+     */
+    _xor_with_const(offset) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], const_v[i]);
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], LSH256_StepConstants[offset + i]);
       }
     }
 
+    /**
+     * Rotate the words of cv_r by the gamma amounts
+     * @returns {void}
+     */
     _rotate_msg_gamma() {
       for (let i = 1; i < 7; i++) {
         this.cv_r[i] = OpCodes.RotL32(this.cv_r[i], LSH256_GAMMA[i]);
       }
     }
 
+    /**
+     * Word permutation of the chaining value
+     * @returns {void}
+     */
     _word_perm() {
-      let temp;
-      temp = this.cv_l[0];
+      /** @type {uint32} */
+      let temp = this.cv_l[0];
       this.cv_l[0] = this.cv_l[6];
       this.cv_l[6] = this.cv_r[6];
       this.cv_r[6] = this.cv_r[2];
@@ -372,12 +397,19 @@
       this.cv_r[3] = temp;
     }
 
-    _mix(alpha, beta, const_v) {
+    /**
+     * Mix function of one step
+     * @param {int32} alpha - Rotation of cv_l
+     * @param {int32} beta - Rotation of cv_r
+     * @param {int32} constOffset - Index of the step constants
+     * @returns {void}
+     */
+    _mix(alpha, beta, constOffset) {
       this._add_blk();
       this._rotate_blk(alpha);
-      this._xor_with_const(const_v);
+      this._xor_with_const(constOffset);
       for (let i = 0; i < 8; i++) {
-        this.cv_r[i] = OpCodes.ToUint32(this.cv_r[i] + this.cv_l[i]);
+        this.cv_r[i] = OpCodes.Add32(this.cv_r[i], this.cv_l[i]);
       }
       for (let i = 0; i < 8; i++) {
         this.cv_r[i] = OpCodes.RotL32(this.cv_r[i], beta);
@@ -386,48 +418,52 @@
       this._rotate_msg_gamma();
     }
 
-    _compress(msgblk) {
-      this._load_msg_blk(msgblk);
+    /**
+     * Compress one 128-byte message block
+     * @param {uint8[]} msgblk - Message bytes
+     * @param {int32} off - Offset of the block in msgblk
+     * @returns {void}
+     */
+    _compress(msgblk, off) {
+      this._load_msg_blk(msgblk, off);
 
-      this._msg_add_even();
-      const const_v0 = LSH256_StepConstants.subarray(0, 8);
-      this._mix(LSH256_ROT_EVEN_ALPHA, LSH256_ROT_EVEN_BETA, const_v0);
+      this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
+      this._mix(LSH256_ROT_EVEN_ALPHA, LSH256_ROT_EVEN_BETA, 0);
       this._word_perm();
 
-      this._msg_add_odd();
-      const const_v1 = LSH256_StepConstants.subarray(8, 16);
-      this._mix(LSH256_ROT_ODD_ALPHA, LSH256_ROT_ODD_BETA, const_v1);
+      this._msg_add(SUBMSG_O_L, SUBMSG_O_R);
+      this._mix(LSH256_ROT_ODD_ALPHA, LSH256_ROT_ODD_BETA, 8);
       this._word_perm();
 
       for (let i = 1; i < LSH256_NUM_STEPS / 2; i++) {
         this._msg_exp_even();
-        this._msg_add_even();
-        const const_ve = LSH256_StepConstants.subarray(16 * i, 16 * i + 8);
-        this._mix(LSH256_ROT_EVEN_ALPHA, LSH256_ROT_EVEN_BETA, const_ve);
+        this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
+        this._mix(LSH256_ROT_EVEN_ALPHA, LSH256_ROT_EVEN_BETA, 16 * i);
         this._word_perm();
 
         this._msg_exp_odd();
-        this._msg_add_odd();
-        const const_vo = LSH256_StepConstants.subarray(16 * i + 8, 16 * i + 16);
-        this._mix(LSH256_ROT_ODD_ALPHA, LSH256_ROT_ODD_BETA, const_vo);
+        this._msg_add(SUBMSG_O_L, SUBMSG_O_R);
+        this._mix(LSH256_ROT_ODD_ALPHA, LSH256_ROT_ODD_BETA, 16 * i + 8);
         this._word_perm();
       }
 
       this._msg_exp_even();
-      this._msg_add_even();
+      this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
+      /** @type {int32} */
       let databytelen = data.length;
+      /** @type {int32} */
       let dataOffset = 0;
+      /** @type {int32} */
       let remain_msg_byte = OpCodes.Shr32(this.remain_databitlen, 3);
 
       if (databytelen + remain_msg_byte < LSH256_MSG_BLK_BYTE_LEN) {
@@ -439,11 +475,12 @@
       }
 
       if (remain_msg_byte > 0) {
+        /** @type {int32} */
         const more_byte = LSH256_MSG_BLK_BYTE_LEN - remain_msg_byte;
         for (let i = 0; i < more_byte; i++) {
           this.last_block[remain_msg_byte + i] = data[dataOffset + i];
         }
-        this._compress(this.last_block);
+        this._compress(this.last_block, 0);
         dataOffset += more_byte;
         databytelen -= more_byte;
         remain_msg_byte = 0;
@@ -451,8 +488,7 @@
       }
 
       while (databytelen >= LSH256_MSG_BLK_BYTE_LEN) {
-        const block = data.slice(dataOffset, dataOffset + LSH256_MSG_BLK_BYTE_LEN);
-        this._compress(block);
+        this._compress(data, dataOffset);
         dataOffset += LSH256_MSG_BLK_BYTE_LEN;
         databytelen -= LSH256_MSG_BLK_BYTE_LEN;
       }
@@ -466,12 +502,11 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Finish the hash
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
+      /** @type {int32} */
       const remain_msg_byte = OpCodes.Shr32(this.remain_databitlen, 3);
 
       this.last_block[remain_msg_byte] = 0x80;
@@ -479,19 +514,24 @@
         this.last_block[i] = 0;
       }
 
-      this._compress(this.last_block);
+      this._compress(this.last_block, 0);
 
       for (let i = 0; i < 8; i++) {
         this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], this.cv_r[i]);
       }
 
-      const hash = new Uint8Array(this.outputSize);
-      const hashView = new DataView(hash.buffer);
-      for (let i = 0; i < this.outputSize / 4; i++) {
-        hashView.setUint32(i * 4, this.cv_l[i], true);
+      // Little-endian words of cv_l, truncated to the digest size
+      /** @type {uint8[]} */
+      const hash = [];
+      /** @type {int32} */
+      const words = OpCodes.Shr32(this.outputSize, 2);
+      for (let i = 0; i < words; i++) {
+        /** @type {uint8[]} */
+        const bytes = OpCodes.Unpack32LE(this.cv_l[i]);
+        hash.push(bytes[0], bytes[1], bytes[2], bytes[3]);
       }
 
-      return Array.from(hash);
+      return hash;
     }
   }
 
@@ -500,152 +540,181 @@
   // ============================================================================
 
   /**
- * LSH512 cipher instance implementing Feed/Result pattern
+ * LSH512 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class LSH512Instance extends IHashFunctionInstance {
-    constructor(algorithm, iv, outputSize) {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+     * @param {int32} outputSize - Digest size in bytes: 32 (LSH-512-256), 48 (LSH-384) or 64 (LSH-512)
+     */
+    constructor(algorithm, outputSize) {
       super(algorithm);
-      this.iv = iv;
+      /** @type {BigInt[]} Initial chaining value of the variant */
+      this._initialCv = LSH512_IV512;
+      if (outputSize === 48) this._initialCv = LSH512_IV384;
+      else if (outputSize === 32) this._initialCv = LSH512_IV256;
+      /** @type {int32} */
       this.outputSize = outputSize;
+      /** @type {BigInt[]} */
       this.cv_l = new Array(8);
+      /** @type {BigInt[]} */
       this.cv_r = new Array(8);
-      this.submsg_e_l = new Array(8);
-      this.submsg_e_r = new Array(8);
-      this.submsg_o_l = new Array(8);
-      this.submsg_o_r = new Array(8);
-      this.buffer = new Uint8Array(LSH512_MSG_BLK_BYTE_LEN);
+      /** @type {BigInt[]} Sub-messages: even left/right, odd left/right (8 words each) */
+      this.sub_msgs = new Array(32);
+      /** @type {uint8[]} */
+      this.buffer = OpCodes.CreateArray(LSH512_MSG_BLK_BYTE_LEN, 0);
+      /** @type {int32} */
       this.bufferLength = 0;
       this._init();
     }
 
+    /**
+     * Load the IV and clear the sub-messages
+     * @returns {void}
+     */
     _init() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = this.iv[i];
-        this.cv_r[i] = this.iv[i + 8];
+        this.cv_l[i] = this._initialCv[i];
+        this.cv_r[i] = this._initialCv[i + 8];
       }
 
-      for (let i = 0; i < 8; i++) {
-        this.submsg_e_l[i] = 0n;
-        this.submsg_e_r[i] = 0n;
-        this.submsg_o_l[i] = 0n;
-        this.submsg_o_r[i] = 0n;
+      for (let i = 0; i < 32; i++) {
+        this.sub_msgs[i] = 0n;
       }
 
       this.bufferLength = 0;
     }
 
+    /**
+     * Read a little-endian 64-bit word
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} p - Offset of the word
+     * @returns {BigInt} 64-bit word
+     */
+    _load64(bytes, p) {
+      /** @type {uint32} */
+      const lo = OpCodes.Pack32LE(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]);
+      /** @type {uint32} */
+      const hi = OpCodes.Pack32LE(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
+      return OpCodes.OrN(OpCodes.ShiftLn(BigInt(hi), 32), BigInt(lo));
+    }
+
+    /**
+     * Load a 256-byte message block into the sub-messages
+     * @param {uint8[]} msgblk - Message bytes
+     * @returns {void}
+     */
     _load_msg_blk(msgblk) {
-      const view = new DataView(msgblk.buffer, msgblk.byteOffset, msgblk.byteLength);
-
-      for (let i = 0; i < 8; i++) {
-        this.submsg_e_l[i] = view.getBigUint64(i * 8, true);
-        this.submsg_e_r[i] = view.getBigUint64(64 + i * 8, true);
-        this.submsg_o_l[i] = view.getBigUint64(128 + i * 8, true);
-        this.submsg_o_r[i] = view.getBigUint64(192 + i * 8, true);
+      for (let i = 0; i < 32; i++) {
+        this.sub_msgs[i] = this._load64(msgblk, i * 8);
       }
     }
 
+    /**
+     * One half of the message expansion: dst[k] = src[k] + dst[perm(k)] (mod 2^64)
+     * @param {int32} dst - Word offset of the sub-message being expanded
+     * @param {int32} src - Word offset of the other sub-message
+     * @returns {void}
+     */
+    _msg_exp(dst, src) {
+      const m = this.sub_msgs;
+      /** @type {BigInt} */
+      let temp = m[dst];
+      m[dst] = OpCodes.AndN(m[src] + m[dst + 3], MASK64);
+      m[dst + 3] = OpCodes.AndN(m[src + 3] + m[dst + 1], MASK64);
+      m[dst + 1] = OpCodes.AndN(m[src + 1] + m[dst + 2], MASK64);
+      m[dst + 2] = OpCodes.AndN(m[src + 2] + temp, MASK64);
+
+      temp = m[dst + 4];
+      m[dst + 4] = OpCodes.AndN(m[src + 4] + m[dst + 7], MASK64);
+      m[dst + 7] = OpCodes.AndN(m[src + 7] + m[dst + 6], MASK64);
+      m[dst + 6] = OpCodes.AndN(m[src + 6] + m[dst + 5], MASK64);
+      m[dst + 5] = OpCodes.AndN(m[src + 5] + temp, MASK64);
+    }
+
+    /**
+     * Even message expansion
+     * @returns {void}
+     */
     _msg_exp_even() {
-      let temp;
-
-      temp = this.submsg_e_l[0];
-      this.submsg_e_l[0] = OpCodes.AndN(this.submsg_o_l[0] + this.submsg_e_l[3], MASK64);
-      this.submsg_e_l[3] = OpCodes.AndN(this.submsg_o_l[3] + this.submsg_e_l[1], MASK64);
-      this.submsg_e_l[1] = OpCodes.AndN(this.submsg_o_l[1] + this.submsg_e_l[2], MASK64);
-      this.submsg_e_l[2] = OpCodes.AndN(this.submsg_o_l[2] + temp, MASK64);
-
-      temp = this.submsg_e_l[4];
-      this.submsg_e_l[4] = OpCodes.AndN(this.submsg_o_l[4] + this.submsg_e_l[7], MASK64);
-      this.submsg_e_l[7] = OpCodes.AndN(this.submsg_o_l[7] + this.submsg_e_l[6], MASK64);
-      this.submsg_e_l[6] = OpCodes.AndN(this.submsg_o_l[6] + this.submsg_e_l[5], MASK64);
-      this.submsg_e_l[5] = OpCodes.AndN(this.submsg_o_l[5] + temp, MASK64);
-
-      temp = this.submsg_e_r[0];
-      this.submsg_e_r[0] = OpCodes.AndN(this.submsg_o_r[0] + this.submsg_e_r[3], MASK64);
-      this.submsg_e_r[3] = OpCodes.AndN(this.submsg_o_r[3] + this.submsg_e_r[1], MASK64);
-      this.submsg_e_r[1] = OpCodes.AndN(this.submsg_o_r[1] + this.submsg_e_r[2], MASK64);
-      this.submsg_e_r[2] = OpCodes.AndN(this.submsg_o_r[2] + temp, MASK64);
-
-      temp = this.submsg_e_r[4];
-      this.submsg_e_r[4] = OpCodes.AndN(this.submsg_o_r[4] + this.submsg_e_r[7], MASK64);
-      this.submsg_e_r[7] = OpCodes.AndN(this.submsg_o_r[7] + this.submsg_e_r[6], MASK64);
-      this.submsg_e_r[6] = OpCodes.AndN(this.submsg_o_r[6] + this.submsg_e_r[5], MASK64);
-      this.submsg_e_r[5] = OpCodes.AndN(this.submsg_o_r[5] + temp, MASK64);
+      this._msg_exp(SUBMSG_E_L, SUBMSG_O_L);
+      this._msg_exp(SUBMSG_E_R, SUBMSG_O_R);
     }
 
+    /**
+     * Odd message expansion
+     * @returns {void}
+     */
     _msg_exp_odd() {
-      let temp;
-
-      temp = this.submsg_o_l[0];
-      this.submsg_o_l[0] = OpCodes.AndN(this.submsg_e_l[0] + this.submsg_o_l[3], MASK64);
-      this.submsg_o_l[3] = OpCodes.AndN(this.submsg_e_l[3] + this.submsg_o_l[1], MASK64);
-      this.submsg_o_l[1] = OpCodes.AndN(this.submsg_e_l[1] + this.submsg_o_l[2], MASK64);
-      this.submsg_o_l[2] = OpCodes.AndN(this.submsg_e_l[2] + temp, MASK64);
-
-      temp = this.submsg_o_l[4];
-      this.submsg_o_l[4] = OpCodes.AndN(this.submsg_e_l[4] + this.submsg_o_l[7], MASK64);
-      this.submsg_o_l[7] = OpCodes.AndN(this.submsg_e_l[7] + this.submsg_o_l[6], MASK64);
-      this.submsg_o_l[6] = OpCodes.AndN(this.submsg_e_l[6] + this.submsg_o_l[5], MASK64);
-      this.submsg_o_l[5] = OpCodes.AndN(this.submsg_e_l[5] + temp, MASK64);
-
-      temp = this.submsg_o_r[0];
-      this.submsg_o_r[0] = OpCodes.AndN(this.submsg_e_r[0] + this.submsg_o_r[3], MASK64);
-      this.submsg_o_r[3] = OpCodes.AndN(this.submsg_e_r[3] + this.submsg_o_r[1], MASK64);
-      this.submsg_o_r[1] = OpCodes.AndN(this.submsg_e_r[1] + this.submsg_o_r[2], MASK64);
-      this.submsg_o_r[2] = OpCodes.AndN(this.submsg_e_r[2] + temp, MASK64);
-
-      temp = this.submsg_o_r[4];
-      this.submsg_o_r[4] = OpCodes.AndN(this.submsg_e_r[4] + this.submsg_o_r[7], MASK64);
-      this.submsg_o_r[7] = OpCodes.AndN(this.submsg_e_r[7] + this.submsg_o_r[6], MASK64);
-      this.submsg_o_r[6] = OpCodes.AndN(this.submsg_e_r[6] + this.submsg_o_r[5], MASK64);
-      this.submsg_o_r[5] = OpCodes.AndN(this.submsg_e_r[5] + temp, MASK64);
+      this._msg_exp(SUBMSG_O_L, SUBMSG_E_L);
+      this._msg_exp(SUBMSG_O_R, SUBMSG_E_R);
     }
 
-    _msg_add_even() {
+    /**
+     * XOR a left/right sub-message pair into the chaining value
+     * @param {int32} left - Word offset of the left sub-message
+     * @param {int32} right - Word offset of the right sub-message
+     * @returns {void}
+     */
+    _msg_add(left, right) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.submsg_e_l[i]);
-        this.cv_r[i] = OpCodes.XorN(this.cv_r[i], this.submsg_e_r[i]);
+        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.sub_msgs[left + i]);
+        this.cv_r[i] = OpCodes.XorN(this.cv_r[i], this.sub_msgs[right + i]);
       }
     }
 
-    _msg_add_odd() {
-      for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.submsg_o_l[i]);
-        this.cv_r[i] = OpCodes.XorN(this.cv_r[i], this.submsg_o_r[i]);
-      }
-    }
-
+    /**
+     * cv_l += cv_r (mod 2^64)
+     * @returns {void}
+     */
     _add_blk() {
       for (let i = 0; i < 8; i++) {
         this.cv_l[i] = OpCodes.AndN(this.cv_l[i] + this.cv_r[i], MASK64);
       }
     }
 
+    /**
+     * Rotate every word of cv_l
+     * @param {int32} alpha - Rotation amount
+     * @returns {void}
+     */
     _rotate_blk(alpha) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = rotl64(this.cv_l[i], alpha);
+        this.cv_l[i] = OpCodes.RotL64n(this.cv_l[i], alpha);
       }
     }
 
+    /**
+     * XOR the step constants into cv_l
+     * @param {int32} offset - Index of the first of 8 step constants
+     * @returns {void}
+     */
     _xor_with_const(offset) {
       for (let i = 0; i < 8; i++) {
         this.cv_l[i] = OpCodes.XorN(this.cv_l[i], LSH512_StepConstants[offset + i]);
       }
     }
 
+    /**
+     * Rotate the words of cv_r by the gamma amounts
+     * @returns {void}
+     */
     _rotate_msg_gamma() {
       for (let i = 1; i < 8; i++) {
-        this.cv_r[i] = rotl64(this.cv_r[i], LSH512_GAMMA[i]);
+        this.cv_r[i] = OpCodes.RotL64n(this.cv_r[i], LSH512_GAMMA[i]);
       }
     }
 
+    /**
+     * Word permutation of the chaining value
+     * @returns {void}
+     */
     _word_perm() {
-      let temp;
-
-      temp = this.cv_l[0];
+      /** @type {BigInt} */
+      let temp = this.cv_l[0];
       this.cv_l[0] = this.cv_l[6];
       this.cv_l[6] = this.cv_r[6];
       this.cv_r[6] = this.cv_r[2];
@@ -666,59 +735,71 @@
       this.cv_r[3] = temp;
     }
 
-    _mix(alpha, beta, const_v_offset) {
+    /**
+     * Mix function of one step
+     * @param {int32} alpha - Rotation of cv_l
+     * @param {int32} beta - Rotation of cv_r
+     * @param {int32} constOffset - Index of the step constants
+     * @returns {void}
+     */
+    _mix(alpha, beta, constOffset) {
       this._add_blk();
       this._rotate_blk(alpha);
-      this._xor_with_const(const_v_offset);
+      this._xor_with_const(constOffset);
 
       for (let i = 0; i < 8; i++) {
         this.cv_r[i] = OpCodes.AndN(this.cv_r[i] + this.cv_l[i], MASK64);
       }
 
       for (let i = 0; i < 8; i++) {
-        this.cv_r[i] = rotl64(this.cv_r[i], beta);
+        this.cv_r[i] = OpCodes.RotL64n(this.cv_r[i], beta);
       }
 
       this._add_blk();
       this._rotate_msg_gamma();
     }
 
+    /**
+     * Compress one 256-byte message block
+     * @param {uint8[]} msgblk - Message bytes
+     * @returns {void}
+     */
     _compress(msgblk) {
       this._load_msg_blk(msgblk);
 
-      this._msg_add_even();
+      this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
       this._mix(LSH512_ROT_EVEN_ALPHA, LSH512_ROT_EVEN_BETA, 0);
       this._word_perm();
 
-      this._msg_add_odd();
+      this._msg_add(SUBMSG_O_L, SUBMSG_O_R);
       this._mix(LSH512_ROT_ODD_ALPHA, LSH512_ROT_ODD_BETA, 8);
       this._word_perm();
 
       for (let i = 1; i < LSH512_NUM_STEPS / 2; i++) {
         this._msg_exp_even();
-        this._msg_add_even();
+        this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
         this._mix(LSH512_ROT_EVEN_ALPHA, LSH512_ROT_EVEN_BETA, 16 * i);
         this._word_perm();
 
         this._msg_exp_odd();
-        this._msg_add_odd();
+        this._msg_add(SUBMSG_O_L, SUBMSG_O_R);
         this._mix(LSH512_ROT_ODD_ALPHA, LSH512_ROT_ODD_BETA, 16 * i + 8);
         this._word_perm();
       }
 
       this._msg_exp_even();
-      this._msg_add_even();
+      this._msg_add(SUBMSG_E_L, SUBMSG_E_R);
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
+      /** @type {int32} */
       let offset = 0;
 
       while (offset < data.length && this.bufferLength < LSH512_MSG_BLK_BYTE_LEN) {
@@ -736,11 +817,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Finish the hash
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
       this.buffer[this.bufferLength] = 0x80;
       for (let i = this.bufferLength + 1; i < LSH512_MSG_BLK_BYTE_LEN; i++) {
@@ -753,14 +832,20 @@
         this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.cv_r[i]);
       }
 
-      const hash = new Uint8Array(this.outputSize);
-      const hashView = new DataView(hash.buffer);
-
-      for (let i = 0; i < this.outputSize / 8; i++) {
-        hashView.setBigUint64(i * 8, this.cv_l[i], true);
+      // Little-endian 64-bit words of cv_l, truncated to the digest size
+      /** @type {uint8[]} */
+      const hash = [];
+      /** @type {int32} */
+      const words = OpCodes.Shr32(this.outputSize, 3);
+      for (let i = 0; i < words; i++) {
+        /** @type {uint8[]} */
+        const lo = OpCodes.Unpack32LE(Number(OpCodes.AndN(this.cv_l[i], 0xFFFFFFFFn)));
+        /** @type {uint8[]} */
+        const hi = OpCodes.Unpack32LE(Number(OpCodes.ShiftRn(this.cv_l[i], 32)));
+        hash.push(lo[0], lo[1], lo[2], lo[3], hi[0], hi[1], hi[2], hi[3]);
       }
 
-      return Array.from(hash);
+      return hash;
     }
   }
 
@@ -829,14 +914,14 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new LSH256Instance(this, LSH256_IV224, 28);
+      return new LSH256Instance(this, 28);
     }
   }
 
@@ -901,14 +986,14 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new LSH256Instance(this, LSH256_IV256, 32);
+      return new LSH256Instance(this, 32);
     }
   }
 
@@ -973,14 +1058,14 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new LSH512Instance(this, LSH512_IV384, 48);
+      return new LSH512Instance(this, 48);
     }
   }
 
@@ -1045,14 +1130,14 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new LSH512Instance(this, LSH512_IV512, 64);
+      return new LSH512Instance(this, 64);
     }
   }
 
@@ -1117,31 +1202,42 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new LSH512Instance(this, LSH512_IV256, 32);
+      return new LSH512Instance(this, 32);
     }
   }
 
   // Register all algorithms
-  const algorithms = [
-    new LSH224Algorithm(),
-    new LSH256Algorithm(),
-    new LSH384Algorithm(),
-    new LSH512Algorithm(),
-    new LSH512_256Algorithm()
-  ];
+  const lsh224Instance = new LSH224Algorithm();
+  if (!AlgorithmFramework.Find(lsh224Instance.name)) {
+    RegisterAlgorithm(lsh224Instance);
+  }
 
-  algorithms.forEach(algo => {
-    if (!AlgorithmFramework.Find(algo.name)) {
-      RegisterAlgorithm(algo);
-    }
-  });
+  const lsh256Instance = new LSH256Algorithm();
+  if (!AlgorithmFramework.Find(lsh256Instance.name)) {
+    RegisterAlgorithm(lsh256Instance);
+  }
+
+  const lsh384Instance = new LSH384Algorithm();
+  if (!AlgorithmFramework.Find(lsh384Instance.name)) {
+    RegisterAlgorithm(lsh384Instance);
+  }
+
+  const lsh512Instance = new LSH512Algorithm();
+  if (!AlgorithmFramework.Find(lsh512Instance.name)) {
+    RegisterAlgorithm(lsh512Instance);
+  }
+
+  const lsh512_256Instance = new LSH512_256Algorithm();
+  if (!AlgorithmFramework.Find(lsh512_256Instance.name)) {
+    RegisterAlgorithm(lsh512_256Instance);
+  }
 
   return {
     LSH224Algorithm,

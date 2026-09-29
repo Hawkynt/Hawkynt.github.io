@@ -31,7 +31,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // ============================================================================
   // SKINNY-128 Primitives (shared by both hash variants)
@@ -39,62 +39,89 @@
 
   /**
    * Apply SKINNY-128 S-box to all bytes in a 32-bit word
+   * @param {uint32} x - four state bytes
+   * @returns {uint32} substituted bytes
    */
   function skinny128_sbox(x) {
     x = OpCodes.ToUint32(x);
-    let y;
+    /** @type {uint32} */
+    let y = 0;
 
-    x = OpCodes.ToUint32((~x));
-    x = OpCodes.Xor32(x, (((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x11111111));
-    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 4)))&0x40404040), y));
-    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shl32(x, 1)))&0x02020202), y));
-    y = (((OpCodes.Shr32(x, 5))&(OpCodes.Shl32(x, 1)))&0x04040404);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
-    x = OpCodes.ToUint32((~x));
+    x = OpCodes.Not32(x);
+    x = OpCodes.Xor32(x, OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 4)), 0x40404040), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shl32(x, 1)), 0x02020202), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 5), OpCodes.Shl32(x, 1)), 0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    x = OpCodes.Not32(x);
 
-    x = OpCodes.ToUint32(((OpCodes.Shl32(x&0x08080808, 1)))|((OpCodes.Shl32(x&0x32323232, 2)))|((OpCodes.Shl32(x&0x01010101, 5)))|((OpCodes.Shr32(x&0x80808080, 6)))|((OpCodes.Shr32(x&0x40404040, 4)))|((OpCodes.Shr32(x&0x04040404, 2))));
+    x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1),
+          OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2)),
+          OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5)),
+          OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6)),
+          OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4)),
+          OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2));
 
     return x;
   }
 
   /**
    * LFSR2 - Linear feedback shift register for TK2 update
+   * @param {uint32} x - four tweakey bytes
+   * @returns {uint32} updated bytes
    */
   function skinny128_LFSR2(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = (OpCodes.Shl32(x, 1))&0xFEFEFEFE;
-    const feedback = ((OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)))&0x01010101);
+    const shifted = OpCodes.And32(OpCodes.Shl32(x, 1), 0xFEFEFEFE);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01010101);
     return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   /**
    * LFSR3 - Linear feedback shift register for TK3 update
+   * @param {uint32} x - four tweakey bytes
+   * @returns {uint32} updated bytes
    */
   function skinny128_LFSR3(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = (OpCodes.Shr32(x, 1))&0x7F7F7F7F;
-    const feedback = ((OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)))&0x80808080);
+    const shifted = OpCodes.And32(OpCodes.Shr32(x, 1), 0x7F7F7F7F);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80808080);
     return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   /**
    * Permute half of the tweakey state
+   * @param {uint32[]} tk - four tweakey rows, updated in place
+   * @param {int32} idx - first row of the half (0 or 2)
+   * @returns {void}
    */
   function skinny128_permute_tk_half(tk, idx) {
     const row2 = tk[idx];
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
 
-    tk[idx] = OpCodes.ToUint32(((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00));
+    tk[idx] = OpCodes.Or32(OpCodes.Or32(
+      OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF),
+      OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000)),
+      OpCodes.And32(row3_rotated, 0xFF00FF00));
 
-    tk[idx + 1] = OpCodes.ToUint32(((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000));
+    tk[idx + 1] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+      OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF),
+      OpCodes.And32(row2, 0xFF000000)),
+      OpCodes.And32(OpCodes.Shl32(row3_rotated, 8), 0x0000FF00)),
+      OpCodes.And32(row3_rotated, 0x00FF0000));
   }
 
   /**
    * SKINNY-128-256 encryption using full tweakey
    * (48 rounds with combined TK1+TK2 tweakey)
+   * @param {uint8[]} tk - 32-byte tweakey
+   * @param {uint8[]} ciphertext - 16-byte output, written
+   * @param {uint8[]} plaintext - 16-byte input
+   * @returns {void}
    */
   function skinny128_256_encrypt_tk_full(tk, ciphertext, plaintext) {
     // Load plaintext state
@@ -104,7 +131,9 @@
     let s3 = OpCodes.Pack32LE(plaintext[12], plaintext[13], plaintext[14], plaintext[15]);
 
     // Copy tweakey for local modification
+    /** @type {uint32[]} */
     const TK1 = new Array(4);
+    /** @type {uint32[]} */
     const TK2 = new Array(4);
 
     for (let i = 0; i < 4; i++) {
@@ -113,16 +142,17 @@
     }
 
     // 48 rounds (SKINNY-128-256), grouped in sets of 4
+    /** @type {uint32} */
     let rc = 0;
     for (let round = 0; round < 48; round += 4) {
 
       // Round 1
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), (rc&0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), OpCodes.And32(rc, 0x0F)));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
@@ -137,12 +167,12 @@
       TK2[3] = skinny128_LFSR2(TK2[3]);
 
       // Round 2
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), (rc&0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), OpCodes.And32(rc, 0x0F)));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
@@ -157,12 +187,12 @@
       TK2[1] = skinny128_LFSR2(TK2[1]);
 
       // Round 3
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), (rc&0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), OpCodes.And32(rc, 0x0F)));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
@@ -177,12 +207,12 @@
       TK2[3] = skinny128_LFSR2(TK2[3]);
 
       // Round 4
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), (rc&0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), OpCodes.And32(rc, 0x0F)));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
@@ -214,6 +244,10 @@
   /**
    * SKINNY-128-384 encryption using full tweakey
    * (56 rounds with combined TK1+TK2+TK3 tweakey)
+   * @param {uint8[]} tk - 48-byte tweakey
+   * @param {uint8[]} ciphertext - 16-byte output, written
+   * @param {uint8[]} plaintext - 16-byte input
+   * @returns {void}
    */
   function skinny128_384_encrypt_tk_full(tk, ciphertext, plaintext) {
     // Load plaintext state
@@ -223,8 +257,11 @@
     let s3 = OpCodes.Pack32LE(plaintext[12], plaintext[13], plaintext[14], plaintext[15]);
 
     // Copy tweakey for local modification
+    /** @type {uint32[]} */
     const TK1 = new Array(4);
+    /** @type {uint32[]} */
     const TK2 = new Array(4);
+    /** @type {uint32[]} */
     const TK3 = new Array(4);
 
     for (let i = 0; i < 4; i++) {
@@ -234,16 +271,17 @@
     }
 
     // 56 rounds (SKINNY-128-384), grouped in sets of 4
+    /** @type {uint32} */
     let rc = 0;
     for (let round = 0; round < 56; round += 4) {
 
       // Round 1
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), OpCodes.And32(rc, 0x0F)));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
@@ -261,12 +299,12 @@
       TK3[3] = skinny128_LFSR3(TK3[3]);
 
       // Round 2
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), OpCodes.And32(rc, 0x0F)));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
@@ -284,12 +322,12 @@
       TK3[1] = skinny128_LFSR3(TK3[1]);
 
       // Round 3
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), OpCodes.And32(rc, 0x0F)));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
@@ -307,12 +345,12 @@
       TK3[3] = skinny128_LFSR3(TK3[3]);
 
       // Round 4
-      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), OpCodes.And32(rc, 0x0F)));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
@@ -368,7 +406,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem("SKINNY-AEAD and SKINNY-Hash Specification (NIST LWC Round 2)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/SKINNY-spec-round2.pdf"),
@@ -422,9 +460,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {SKINNYtk2HashInstance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -434,22 +472,34 @@
   }
 
   /**
- * SKINNYtk2Hash cipher instance implementing Feed/Result pattern
+ * SKINNYtk2Hash hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class SKINNYtk2HashInstance extends IHashFunctionInstance {
+    /**
+     * @param {SKINNYtk2Hash} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
       this.STATE_SIZE = 32;
+      /** @type {int32} */
       this.RATE = 4;
+      /** @type {uint8[]} */
       this.state = new Uint8Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(this.RATE);
+      /** @type {int32} */
       this.bufferPos = 0;
       this.Reset();
     }
 
+    /**
+     * Load the initial state and empty the buffer
+     * @returns {void}
+     */
     Reset() {
       this.state.fill(0);
       this.state[this.RATE] = 0x80; // Initial padding position marker
@@ -458,9 +508,8 @@
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the hash
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -477,7 +526,7 @@
       while (this.bufferPos === this.RATE) {
         // XOR buffer into state
         for (let i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[i];
+          this.state[i] = OpCodes.Xor8(this.state[i], this.buffer[i]);
         }
 
         // Permute state
@@ -493,24 +542,24 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Finish the message and return the digest (the instance then restarts)
+   * @returns {uint8[]} 32-byte digest
    */
 
     Result() {
       // XOR partial block into state
       for (let i = 0; i < this.bufferPos; i++) {
-        this.state[i] ^= this.buffer[i];
+        this.state[i] = OpCodes.Xor8(this.state[i], this.buffer[i]);
       }
 
       // Apply 0x80 padding byte
-      this.state[this.bufferPos] ^= 0x80;
+      this.state[this.bufferPos] = OpCodes.Xor8(this.state[this.bufferPos], 0x80);
 
       // Permute
       this._permute();
 
       // Extract first 16 bytes
+      /** @type {uint8[]} */
       const output = new Array(32);
       for (let i = 0; i < 16; i++) {
         output[i] = this.state[i];
@@ -530,20 +579,30 @@
       return output;
     }
 
+    /**
+     * The state permutation: SKINNY-128-256 keyed by the state itself
+     * @returns {void}
+     */
     _permute() {
-      const temp = new Uint8Array(32);
+      /** @type {uint8[]} */
+      const half0 = new Uint8Array(16);
+      /** @type {uint8[]} */
+      const half1 = new Uint8Array(16);
+      /** @type {uint8[]} */
       const block = new Uint8Array(16);
-      block.fill(0);
 
       // Encrypt block[0:16] = {0x00, 0x00...} using state as tweakey
-      skinny128_256_encrypt_tk_full(this.state, temp, block);
+      skinny128_256_encrypt_tk_full(this.state, half0, block);
 
       // Encrypt block[16:32] = {0x01, 0x00...} using state as tweakey
       block[0] = 0x01;
-      skinny128_256_encrypt_tk_full(this.state, temp.subarray(16), block);
+      skinny128_256_encrypt_tk_full(this.state, half1, block);
 
       // Update state
-      this.state.set(temp);
+      for (let i = 0; i < 16; i++) {
+        this.state[i] = half0[i];
+        this.state[16 + i] = half1[i];
+      }
     }
   }
 
@@ -571,7 +630,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem("SKINNY-AEAD and SKINNY-Hash Specification (NIST LWC Round 2)", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/SKINNY-spec-round2.pdf"),
@@ -625,9 +684,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {SKINNYtk3HashInstance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -637,22 +696,34 @@
   }
 
   /**
- * SKINNYtk3Hash cipher instance implementing Feed/Result pattern
+ * SKINNYtk3Hash hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class SKINNYtk3HashInstance extends IHashFunctionInstance {
+    /**
+     * @param {SKINNYtk3Hash} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
       this.STATE_SIZE = 48;
+      /** @type {int32} */
       this.RATE = 16;
+      /** @type {uint8[]} */
       this.state = new Uint8Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(this.RATE);
+      /** @type {int32} */
       this.bufferPos = 0;
       this.Reset();
     }
 
+    /**
+     * Load the initial state and empty the buffer
+     * @returns {void}
+     */
     Reset() {
       this.state.fill(0);
       this.state[this.RATE] = 0x80; // Initial padding position marker
@@ -661,9 +732,8 @@
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the hash
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -680,7 +750,7 @@
       while (this.bufferPos === this.RATE) {
         // XOR buffer into state
         for (let i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[i];
+          this.state[i] = OpCodes.Xor8(this.state[i], this.buffer[i]);
         }
 
         // Permute state
@@ -696,24 +766,24 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Finish the message and return the digest (the instance then restarts)
+   * @returns {uint8[]} 32-byte digest
    */
 
     Result() {
       // XOR partial block into state
       for (let i = 0; i < this.bufferPos; i++) {
-        this.state[i] ^= this.buffer[i];
+        this.state[i] = OpCodes.Xor8(this.state[i], this.buffer[i]);
       }
 
       // Apply 0x80 padding byte
-      this.state[this.bufferPos] ^= 0x80;
+      this.state[this.bufferPos] = OpCodes.Xor8(this.state[this.bufferPos], 0x80);
 
       // Permute
       this._permute();
 
       // Extract first 16 bytes
+      /** @type {uint8[]} */
       const output = new Array(32);
       for (let i = 0; i < 16; i++) {
         output[i] = this.state[i];
@@ -733,24 +803,37 @@
       return output;
     }
 
+    /**
+     * The state permutation: SKINNY-128-384 keyed by the state itself
+     * @returns {void}
+     */
     _permute() {
-      const temp = new Uint8Array(48);
+      /** @type {uint8[]} */
+      const third0 = new Uint8Array(16);
+      /** @type {uint8[]} */
+      const third1 = new Uint8Array(16);
+      /** @type {uint8[]} */
+      const third2 = new Uint8Array(16);
+      /** @type {uint8[]} */
       const block = new Uint8Array(16);
-      block.fill(0);
 
       // Encrypt block[0:16] = {0x00, 0x00...} using state as tweakey
-      skinny128_384_encrypt_tk_full(this.state, temp, block);
+      skinny128_384_encrypt_tk_full(this.state, third0, block);
 
       // Encrypt block[16:32] = {0x01, 0x00...} using state as tweakey
       block[0] = 0x01;
-      skinny128_384_encrypt_tk_full(this.state, temp.subarray(16), block);
+      skinny128_384_encrypt_tk_full(this.state, third1, block);
 
       // Encrypt block[32:48] = {0x02, 0x00...} using state as tweakey
       block[0] = 0x02;
-      skinny128_384_encrypt_tk_full(this.state, temp.subarray(32), block);
+      skinny128_384_encrypt_tk_full(this.state, third2, block);
 
       // Update state
-      this.state.set(temp);
+      for (let i = 0; i < 16; i++) {
+        this.state[i] = third0[i];
+        this.state[16 + i] = third1[i];
+        this.state[32 + i] = third2[i];
+      }
     }
   }
 

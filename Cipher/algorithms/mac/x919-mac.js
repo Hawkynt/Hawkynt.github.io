@@ -137,9 +137,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {X919MACInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -158,13 +158,22 @@
  */
 
   class X919MACInstance extends IMacInstance {
+    /**
+     * Initialize an X9.19-MAC instance
+     * @param {X919MACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
       this.inputBuffer = [];
-      this.state = new Array(8).fill(0); // 8-byte DES block state
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(8, 0); // 8-byte DES block state
+      /** @type {IBlockCipherInstance} */
       this.des1 = null;
+      /** @type {IBlockCipherInstance} */
       this.des2 = null;
+      /** @type {int32} */
       this.position = 0; // Position within current block
     }
 
@@ -205,8 +214,14 @@
     }
 
     // Initialize DES instances
+    /**
+     * Create the two keyed DES instances (encrypt with K1, decrypt with K2)
+     * @returns {void}
+     * @throws {Error} If DES is not registered
+     */
     _initializeDES() {
       // Get DES algorithm from registry
+      /** @type {Algorithm} */
       const DESAlgorithm = Find("DES");
       if (!DESAlgorithm) {
         throw new Error("DES algorithm not found in registry - ensure des.js is loaded");
@@ -260,8 +275,13 @@
     }
 
     // Encrypt current state block using DES1
+    /**
+     * Replace the chaining state by its DES encryption under K1
+     * @returns {void}
+     */
     _encryptBlock() {
       this.des1.Feed(this.state);
+      /** @type {uint8[]} */
       const encrypted = this.des1.Result();
       this.state = encrypted;
     }
@@ -285,13 +305,15 @@
 
       // Apply final 3DES-EDE: Decrypt with DES2, then Encrypt with DES1
       this.des2.Feed(this.state);
+      /** @type {uint8[]} */
       const decrypted = this.des2.Result();
 
       this.des1.Feed(decrypted);
+      /** @type {uint8[]} */
       const mac = this.des1.Result();
 
       // Reset state for next MAC computation
-      this.state = new Array(8).fill(0);
+      this.state = OpCodes.CreateArray(8, 0);
       this.position = 0;
       this.inputBuffer = [];
 
@@ -299,6 +321,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message, discarding any partial state
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 8-byte MAC
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -308,7 +336,7 @@
       }
 
       // Reset state
-      this.state = new Array(8).fill(0);
+      this.state = OpCodes.CreateArray(8, 0);
       this.position = 0;
 
       // Feed data and get result
