@@ -225,6 +225,15 @@ namespace RegressionTest {
       Eq("tail", absorber.Finish((held, pending, total) => Convert.ToHexString(held) + "/" + pending + "/" + total), "05/1/5");
       // GFMul: AES field, 0x57 * 0x83 = 0xC1 (FIPS-197 example)
       Eq("gfmul", OpCodes.GFMul(0x57, 0x83, 0x11B, 8), 0xC1);
+      // ModN keeps the result in [0, m); ModInverseN matches the JS helper, 0 for m = 1, throws when not invertible
+      Eq("modn-neg", OpCodes.ModN(new BigInteger(-3), new BigInteger(7)), 4);
+      Eq("modn-edge", OpCodes.ModN(new BigInteger(-7), new BigInteger(7)), 0);
+      Eq("modinv", OpCodes.ModInverseN(new BigInteger(3), new BigInteger(11)), 4);
+      Eq("modinv-neg", OpCodes.ModInverseN(new BigInteger(-8), new BigInteger(11)), 4);
+      Eq("modinv-m1", OpCodes.ModInverseN(new BigInteger(5), BigInteger.One), 0);
+      var threw = false;
+      try { OpCodes.ModInverseN(new BigInteger(4), new BigInteger(8)); } catch (ArgumentException) { threw = true; }
+      Eq("modinv-none", threw, true);
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }
