@@ -79,9 +79,13 @@
   // ===== GIFT-128 KEY SCHEDULE =====
 
   class GIFT128NKeySchedule {
+    /**
+     * @param {uint8[]} key - 16-byte key
+     */
     constructor(key) {
       // Use little-endian key byte order from HYENA/ESTATE submission
       // Mirror the fixslicing word order of 3, 1, 2, 0
+      /** @type {uint32[]} */
       this.k = new Uint32Array(4);
       this.k[0] = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
       this.k[1] = OpCodes.Pack32LE(key[8], key[9], key[10], key[11]);
@@ -92,11 +96,21 @@
 
   // ===== BIT PERMUTATION HELPERS =====
 
+  /**
+   * @param {uint32} value
+   * @param {uint32} mask
+   * @param {int32} shift
+   * @returns {uint32}
+   */
   function bitPermuteStep(value, mask, shift) {
-    const t = ((OpCodes.Shr32(value, shift))^value)&mask;
-    return OpCodes.ToUint32((value^t)^(OpCodes.Shl32(t, shift)));
+    const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift));
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3Inner(x) {
     x = bitPermuteStep(x, 0x0a0a0a0a, 3);
     x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -105,18 +119,34 @@
     return OpCodes.ToUint32(x);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm0(x) {
     return OpCodes.RotL32(perm3Inner(x), 8);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm1(x) {
     return OpCodes.RotL32(perm3Inner(x), 16);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm2(x) {
     return OpCodes.RotL32(perm3Inner(x), 24);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3(x) {
     return perm3Inner(x);
   }
@@ -125,6 +155,10 @@
 
   // Convert nibble-based representation to word-based
   // Matches C reference: gift128n_to_words() in internal-gift128.c lines 155-207
+  /**
+   * @param {uint8[]} input
+   * @returns {uint32[]}
+   */
   function gift128nToWords(input) {
     // Load little-endian 32-bit words (HYENA nibble order)
     let s0 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
@@ -133,6 +167,10 @@
     let s3 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
 
     // Apply PERM_WORDS to rearrange bits
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     const permWords = function(x) {
       x = bitPermuteStep(x, 0x0a0a0a0a, 3);
       x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -150,24 +188,25 @@
     // C ref: output[0]=s0, output[1]=s1, output[2]=s2, output[3]=s3,
     //        output[4]=s0>>8, output[5]=s1>>8, ...
     const output = new Uint8Array(16);
-    output[0] = s0&0xFF;
-    output[1] = s1&0xFF;
-    output[2] = s2&0xFF;
-    output[3] = s3&0xFF;
-    output[4] = (OpCodes.Shr32(s0, 8))&0xFF;
-    output[5] = (OpCodes.Shr32(s1, 8))&0xFF;
-    output[6] = (OpCodes.Shr32(s2, 8))&0xFF;
-    output[7] = (OpCodes.Shr32(s3, 8))&0xFF;
-    output[8] = (OpCodes.Shr32(s0, 16))&0xFF;
-    output[9] = (OpCodes.Shr32(s1, 16))&0xFF;
-    output[10] = (OpCodes.Shr32(s2, 16))&0xFF;
-    output[11] = (OpCodes.Shr32(s3, 16))&0xFF;
-    output[12] = (OpCodes.Shr32(s0, 24))&0xFF;
-    output[13] = (OpCodes.Shr32(s1, 24))&0xFF;
-    output[14] = (OpCodes.Shr32(s2, 24))&0xFF;
-    output[15] = (OpCodes.Shr32(s3, 24))&0xFF;
+    output[0] = OpCodes.And32(s0, 0xFF);
+    output[1] = OpCodes.And32(s1, 0xFF);
+    output[2] = OpCodes.And32(s2, 0xFF);
+    output[3] = OpCodes.And32(s3, 0xFF);
+    output[4] = OpCodes.And32(OpCodes.Shr32(s0, 8), 0xFF);
+    output[5] = OpCodes.And32(OpCodes.Shr32(s1, 8), 0xFF);
+    output[6] = OpCodes.And32(OpCodes.Shr32(s2, 8), 0xFF);
+    output[7] = OpCodes.And32(OpCodes.Shr32(s3, 8), 0xFF);
+    output[8] = OpCodes.And32(OpCodes.Shr32(s0, 16), 0xFF);
+    output[9] = OpCodes.And32(OpCodes.Shr32(s1, 16), 0xFF);
+    output[10] = OpCodes.And32(OpCodes.Shr32(s2, 16), 0xFF);
+    output[11] = OpCodes.And32(OpCodes.Shr32(s3, 16), 0xFF);
+    output[12] = OpCodes.And32(OpCodes.Shr32(s0, 24), 0xFF);
+    output[13] = OpCodes.And32(OpCodes.Shr32(s1, 24), 0xFF);
+    output[14] = OpCodes.And32(OpCodes.Shr32(s2, 24), 0xFF);
+    output[15] = OpCodes.And32(OpCodes.Shr32(s3, 24), 0xFF);
 
     // Pack into 32-bit words for processing
+    /** @type {uint32[]} */
     const words = new Uint32Array(4);
     words[0] = OpCodes.Pack32BE(output[0], output[1], output[2], output[3]);
     words[1] = OpCodes.Pack32BE(output[4], output[5], output[6], output[7]);
@@ -179,6 +218,10 @@
 
   // Convert word-based representation to nibble-based
   // Matches C reference: gift128n_to_nibbles() in internal-gift128.c lines 215-259
+  /**
+   * @param {uint32[]} input
+   * @returns {uint8[]}
+   */
   function gift128nToNibbles(input) {
     // Unpack 32-bit words to bytes (reverse of the packing in toWords)
     const bytes = new Uint8Array(16);
@@ -193,10 +236,14 @@
 
     // De-interleave bytes to reconstruct the four words
     // C ref: s0 = (input[12]<<24)|(input[8]<<16)|(input[4]<<8)|input[0]
-    let s0 = (OpCodes.Shl32(bytes[12], 24))|(OpCodes.Shl32(bytes[8], 16))|(OpCodes.Shl32(bytes[4], 8))|bytes[0];
-    let s1 = (OpCodes.Shl32(bytes[13], 24))|(OpCodes.Shl32(bytes[9], 16))|(OpCodes.Shl32(bytes[5], 8))|bytes[1];
-    let s2 = (OpCodes.Shl32(bytes[14], 24))|(OpCodes.Shl32(bytes[10], 16))|(OpCodes.Shl32(bytes[6], 8))|bytes[2];
-    let s3 = (OpCodes.Shl32(bytes[15], 24))|(OpCodes.Shl32(bytes[11], 16))|(OpCodes.Shl32(bytes[7], 8))|bytes[3];
+    /** @type {uint32} */
+    let s0 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(bytes[12], 24), OpCodes.Shl32(bytes[8], 16)), OpCodes.Shl32(bytes[4], 8)), bytes[0]);
+    /** @type {uint32} */
+    let s1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(bytes[13], 24), OpCodes.Shl32(bytes[9], 16)), OpCodes.Shl32(bytes[5], 8)), bytes[1]);
+    /** @type {uint32} */
+    let s2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(bytes[14], 24), OpCodes.Shl32(bytes[10], 16)), OpCodes.Shl32(bytes[6], 8)), bytes[2]);
+    /** @type {uint32} */
+    let s3 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(bytes[15], 24), OpCodes.Shl32(bytes[11], 16)), OpCodes.Shl32(bytes[7], 8)), bytes[3]);
 
     s0 = OpCodes.ToUint32(s0);
     s1 = OpCodes.ToUint32(s1);
@@ -204,6 +251,10 @@
     s3 = OpCodes.ToUint32(s3);
 
     // Apply inverse of PERM_WORDS
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     const invPermWords = function(x) {
       x = bitPermuteStep(x, 0x00aa00aa, 7);
       x = bitPermuteStep(x, 0x0000cccc, 14);
@@ -234,32 +285,48 @@
 
   // ===== TweGIFT-128 ENCRYPTION =====
 
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} input
+   * @param {uint32} tweak
+   * @returns {uint8[]}
+   */
   function gift128tEncrypt(ks, input, tweak) {
     // Convert from nibbles to words
+    /** @type {uint32[]} */
     const words = gift128nToWords(input);
+    /** @type {uint32} */
     let s0 = words[0];
+    /** @type {uint32} */
     let s1 = words[1];
+    /** @type {uint32} */
     let s2 = words[2];
+    /** @type {uint32} */
     let s3 = words[3];
 
     // Initialize key schedule
+    /** @type {uint32} */
     let w0 = ks.k[3];
+    /** @type {uint32} */
     let w1 = ks.k[1];
+    /** @type {uint32} */
     let w2 = ks.k[2];
+    /** @type {uint32} */
     let w3 = ks.k[0];
 
     // Perform all 40 rounds
     for (let round = 0; round < 40; ++round) {
       // SubCells - apply the S-box
-      s1 = OpCodes.Xor32(s1, s0&s2);
-      s0 = OpCodes.Xor32(s0, s1&s3);
-      s2 = OpCodes.Xor32(s2, s0|s1);
+      s1 = OpCodes.Xor32(s1, OpCodes.And32(s0, s2));
+      s0 = OpCodes.Xor32(s0, OpCodes.And32(s1, s3));
+      s2 = OpCodes.Xor32(s2, OpCodes.Or32(s0, s1));
       s3 = OpCodes.Xor32(s3, s2);
       s1 = OpCodes.Xor32(s1, s3);
       s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
-      s2 = OpCodes.Xor32(s2, s0&s1);
+      s2 = OpCodes.Xor32(s2, OpCodes.And32(s0, s1));
 
       // Swap s0 and s3
+      /** @type {uint32} */
       let temp = s0;
       s0 = s3;
       s3 = temp;
@@ -273,7 +340,7 @@
       // AddRoundKey - XOR in the key schedule and round constant
       s2 = OpCodes.Xor32(s2, w1);
       s1 = OpCodes.Xor32(s1, w3);
-      s3 = OpCodes.Xor32(s3, OpCodes.ToUint32(0x80000000^GIFT128_RC[round]));
+      s3 = OpCodes.Xor32(s3, OpCodes.Xor32(0x80000000, GIFT128_RC[round]));
 
       // AddTweak - XOR in the tweak every 5 rounds except the last
       if (((round + 1) % 5) === 0 && round < 39) {
@@ -285,10 +352,11 @@
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = OpCodes.ToUint32(OpCodes.Shr32((temp&0xFFFC0000), 2)|OpCodes.Shl32((temp&0x00030000), 14)|OpCodes.Shl32((temp&0x00000FFF), 4)|OpCodes.Shr32((temp&0x0000F000), 12));
+      w0 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(temp, 0xFFFC0000), 2), OpCodes.Shl32(OpCodes.And32(temp, 0x00030000), 14)), OpCodes.Shl32(OpCodes.And32(temp, 0x00000FFF), 4)), OpCodes.Shr32(OpCodes.And32(temp, 0x0000F000), 12));
     }
 
     // Pack result and convert to nibbles
+    /** @type {uint32[]} */
     const outWords = new Uint32Array(4);
     outWords[0] = s0;
     outWords[1] = s1;
@@ -299,6 +367,11 @@
   }
 
   // GIFT-128n encryption (tweak = 0)
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} input
+   * @returns {uint8[]}
+   */
   function gift128nEncrypt(ks, input) {
     return gift128tEncrypt(ks, input, 0);
   }
@@ -306,6 +379,13 @@
   // ===== ESTATE FCBC AUTHENTICATION =====
 
   // FCBC MAC for variable-length messages
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} tag
+   * @param {uint8[]} m
+   * @param {uint32} tweak1
+   * @param {uint32} tweak2
+   */
   function estateFCBC(ks, tag, m, tweak1, tweak2) {
     let offset = 0;
     const mlen = m.length;
@@ -316,6 +396,7 @@
       for (let i = 0; i < 16; ++i) {
         tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
+      /** @type {uint8[]} */
       const encrypted = gift128nEncrypt(ks, tag);
       for (let i = 0; i < 16; ++i) {
         tag[i] = encrypted[i];
@@ -330,6 +411,7 @@
       for (let i = 0; i < 16; ++i) {
         tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
+      /** @type {uint8[]} */
       const encrypted = gift128tEncrypt(ks, tag, tweak1);
       for (let i = 0; i < 16; ++i) {
         tag[i] = encrypted[i];
@@ -340,6 +422,7 @@
         tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
       tag[remaining] = OpCodes.Xor32(tag[remaining], 0x01); // Padding bit
+      /** @type {uint8[]} */
       const encrypted = gift128tEncrypt(ks, tag, tweak2);
       for (let i = 0; i < 16; ++i) {
         tag[i] = encrypted[i];
@@ -348,12 +431,19 @@
   }
 
   // ESTATE authentication (computes MAC over AD and message)
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} tag
+   * @param {uint8[]} m
+   * @param {uint8[]} ad
+   */
   function estateAuthenticate(ks, tag, m, ad) {
     const mlen = m.length;
     const adlen = ad.length;
 
     // Handle case where both message and AD are empty
     if (mlen === 0 && adlen === 0) {
+      /** @type {uint8[]} */
       const encrypted = gift128tEncrypt(ks, tag, GIFT128T_TWEAK_8);
       for (let i = 0; i < 16; ++i) {
         tag[i] = encrypted[i];
@@ -362,6 +452,7 @@
     }
 
     // Encrypt the nonce
+    /** @type {uint8[]} */
     const encrypted = gift128tEncrypt(ks, tag, GIFT128T_TWEAK_1);
     for (let i = 0; i < 16; ++i) {
       tag[i] = encrypted[i];
@@ -385,7 +476,14 @@
   // ===== ESTATE ENCRYPTION =====
 
   // OFB encryption/decryption (symmetric operation)
+  /**
+   * @param {GIFT128NKeySchedule} ks
+   * @param {uint8[]} tag
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function estateEncrypt(ks, tag, output, input) {
+    /** @type {uint8[]} */
     const block = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
       block[i] = tag[i];
@@ -396,6 +494,7 @@
 
     // Process full blocks
     while (offset + 16 <= len) {
+      /** @type {uint8[]} */
       const encrypted = gift128nEncrypt(ks, block);
       for (let i = 0; i < 16; ++i) {
         output[offset + i] = OpCodes.Xor32(encrypted[i], input[offset + i]);
@@ -407,6 +506,7 @@
     // Process partial last block
     const remaining = len - offset;
     if (remaining > 0) {
+      /** @type {uint8[]} */
       const encrypted = gift128nEncrypt(ks, block);
       for (let i = 0; i < remaining; ++i) {
         output[offset + i] = OpCodes.Xor32(encrypted[i], input[offset + i]);
@@ -416,10 +516,16 @@
 
   // ===== CONSTANT-TIME TAG COMPARISON =====
 
+  /**
+   * @param {uint8[]} a
+   * @param {uint8[]} b
+   * @returns {boolean}
+   */
   function constantTimeCompare(a, b) {
+    /** @type {uint32} */
     let result = 0;
     for (let i = 0; i < 16; ++i) {
-      result |= OpCodes.Xor32(a[i], b[i]);
+      result = OpCodes.Or32(result, OpCodes.Xor32(a[i], b[i]));
     }
     return result === 0;
   }
@@ -578,7 +684,9 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._ad = [];
+      /** @type {uint8[]} */
       this._inputBuffer = [];
     }
 
@@ -640,7 +748,12 @@
      * @param {uint8[]|null} aadBytes
      */
     set aad(aadBytes) {
-      this._ad = aadBytes ? Array.from(aadBytes) : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = Array.from(aadBytes);
+      }
+      this._ad = copy;
     }
 
     /**
@@ -686,6 +799,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       // Initialize key schedule
       const ks = new GIFT128NKeySchedule(this._key);
@@ -714,6 +830,9 @@
       return Array.from(result);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const ciphertext = new Uint8Array(this._inputBuffer);
 
@@ -754,6 +873,10 @@
     }
 
     // Decrypt and verify
+    /**
+     * @param {uint8[]} ciphertext
+     * @returns {uint8[]}
+     */
     Decrypt(ciphertext) {
       if (!this._key) {
         throw new Error("Key not set");
