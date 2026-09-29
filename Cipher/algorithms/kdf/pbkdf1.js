@@ -39,7 +39,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          KdfAlgorithm, IKdfInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
+          KdfAlgorithm, IKdfInstance, IHashFunctionInstance, TestCase, LinkItem, Vulnerability,
+          KeySize } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -60,7 +61,7 @@
 
       // KDF-specific properties
       this.SaltRequired = true;
-      this.SupportedOutputSizes = [1, 20]; // Max 20 bytes (SHA-1 output size)
+      this.SupportedOutputSizes = [new KeySize(1, 20, 1)]; // Max 20 bytes (SHA-1 output size)
 
       // Documentation and references
       this.documentation = [
@@ -181,9 +182,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new PBKDF1 instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: PBKDF1 has no inverse
+   * @returns {PBKDF1Instance} New PBKDF1 instance
    */
 
     CreateInstance(isInverse = false) {
@@ -192,16 +193,16 @@
   }
 
   /**
- * PBKDF1 cipher instance implementing Feed/Result pattern
+ * PBKDF1 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class PBKDF1Instance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a PBKDF1 instance
+   * @param {PBKDF1Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: PBKDF1 has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -209,23 +210,31 @@
       this.isInverse = isInverse;
       this.OutputSize = 16; // Default 128-bit output
       this.Iterations = 1000; // Default iteration count
+      /** @type {uint8[]} Salt (required before Result) */
       this.salt = null;
+      /** @type {string} Hash name: MD5 or SHA-1 (any case, dash optional) */
       this.hashFunction = 'SHA-1'; // Default hash function
+      /** @type {uint8[]} Fed password bytes (null until the first Feed) */
       this._inputData = null;
+      /** @type {uint8[]} Password set directly (null uses the fed bytes) */
       this.password = null;
     }
 
     // Property aliases for test vector compatibility
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {int32} Iteration count */
     get iterations() { return this.Iterations; }
+    /** @param {int32} value - Iteration count */
     set iterations(value) { this.Iterations = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed password bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -245,9 +254,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If password or salt is missing, or the output size exceeds the hash length
    */
 
     Result() {
@@ -260,21 +269,32 @@
         throw new Error('PBKDF1Instance.Result: Salt required - set salt property');
       }
 
-      const pwd = this.password || this._inputData;
+      /** @type {uint8[]} */
+      let pwd = this.password;
+      if (!pwd) { pwd = this._inputData; }
       const slt = this.salt;
-      const iter = this.Iterations || 1;
-      const outSize = this.OutputSize || 16;
-      const hashFunc = this.hashFunction || 'SHA-1';
+      let iter = this.Iterations;
+      if (!iter) { iter = 1; }
+      let outSize = this.OutputSize;
+      if (!outSize) { outSize = 16; }
+      let hashFunc = this.hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA-1'; }
 
       // Validate output size based on hash function
       const maxOutputSize = this.getHashOutputSize(hashFunc);
       if (outSize > maxOutputSize) {
-        throw new Error(`PBKDF1Instance.Result: Output size ${outSize} exceeds maximum ${maxOutputSize} for ${hashFunc}`);
+        throw new Error('PBKDF1Instance.Result: Output size ' + outSize + ' exceeds maximum ' + maxOutputSize + ' for ' + hashFunc);
       }
 
       return this.deriveKey(pwd, slt, iter, outSize, hashFunc);
     }
 
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashFunction - MD5, SHA-1 or SHA1 (any case)
+     * @returns {int32} Digest size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
     getHashOutputSize(hashFunction) {
       switch (hashFunction.toUpperCase()) {
         case 'MD5':
@@ -283,10 +303,19 @@
         case 'SHA1':
           return 20;
         default:
-          throw new Error(`PBKDF1Instance.getHashOutputSize: Unsupported hash function ${hashFunction}. PBKDF1 only supports MD5 and SHA-1`);
+          throw new Error('PBKDF1Instance.getHashOutputSize: Unsupported hash function ' + hashFunction + '. PBKDF1 only supports MD5 and SHA-1');
       }
     }
 
+    /**
+     * PBKDF1 (RFC 8018 section 5.1)
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} iterations - Iteration count c
+     * @param {int32} outputSize - dkLen, at most the hash length
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     */
     deriveKey(password, salt, iterations, outputSize, hashFunction) {
       // PBKDF1 Algorithm from RFC 8018 Section 5.1:
       // https://tools.ietf.org/html/rfc8018#page-10
@@ -301,7 +330,7 @@
       // - dkLen is desired key length (limited to hash output size)
 
       // T_1 = Hash(password || salt)
-      let T = this.hash([...password, ...salt], hashFunction);
+      let T = this.hash(password.concat(salt), hashFunction);
 
       // T_2 through T_c: repeatedly hash the previous result
       for (let i = 2; i <= iterations; i++) {
@@ -312,32 +341,43 @@
       return T.slice(0, outputSize);
     }
 
+    /**
+     * Digest with the registered hash when available, else the built-in one
+     * @param {uint8[]} data - Message
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Digest
+     * @throws {Error} If the hash is neither registered nor built in
+     */
     hash(data, hashFunction) {
       const hashName = hashFunction.toUpperCase().replace('-', '');
 
       // Try to use framework hash algorithm first
-      const hashAlg = AlgorithmFramework.Find(hashFunction) || AlgorithmFramework.Find(hashName);
+      let hashAlg = AlgorithmFramework.Find(hashFunction);
+      if (!hashAlg) { hashAlg = AlgorithmFramework.Find(hashName); }
       if (hashAlg) {
+        /** @type {IHashFunctionInstance} */
         const hashInstance = hashAlg.CreateInstance();
         hashInstance.Feed(data);
-        return hashInstance.Result();
+        /** @type {uint8[]} */
+        const digest = hashInstance.Result();
+        return digest;
       }
 
-      // If hash not available, try to load it dynamically
-      try {
-        if (typeof require !== 'undefined') {
-          // Try to load hash algorithm
-          const hashFile = hashFunction.toLowerCase().replace('-', '');
-          require('../hash/' + hashFile + '.js');
-          const hashAlgNow = AlgorithmFramework.Find(hashFunction) || AlgorithmFramework.Find(hashName);
-          if (hashAlgNow) {
-            const hashInstance = hashAlgNow.CreateInstance();
-            hashInstance.Feed(data);
-            return hashInstance.Result();
-          }
+      // If SHA-1 is not registered, load it under CommonJS (Node); an AMD or
+      // browser loader cannot require synchronously, and MD5 has no module of
+      // its own name, so both use the built-in implementations below
+      if (typeof module !== 'undefined' && typeof require !== 'undefined' && hashName === 'SHA1') {
+        require('../hash/sha1.js');
+        let hashAlgNow = AlgorithmFramework.Find(hashFunction);
+        if (!hashAlgNow) { hashAlgNow = AlgorithmFramework.Find(hashName); }
+        if (hashAlgNow) {
+          /** @type {IHashFunctionInstance} */
+          const loadedInstance = hashAlgNow.CreateInstance();
+          loadedInstance.Feed(data);
+          /** @type {uint8[]} */
+          const loadedDigest = loadedInstance.Result();
+          return loadedDigest;
         }
-      } catch (e) {
-        // Ignore loading errors and fall back
       }
 
       // Self-contained implementations for MD5 and SHA-1 as last resort
@@ -347,18 +387,20 @@
         return this.sha1(data);
       }
 
-      throw new Error(`PBKDF1Instance.hash: Hash function ${hashFunction} not available. PBKDF1 only supports MD5 and SHA-1`);
+      throw new Error('PBKDF1Instance.hash: Hash function ' + hashFunction + ' not available. PBKDF1 only supports MD5 and SHA-1');
     }
 
-    // Self-contained MD5 implementation
+    /**
+     * Self-contained MD5 (RFC 1321)
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 16-byte digest
+     */
     md5(data) {
-      // MD5 implementation using OpCodes
-      const MASK32 = 0xFFFFFFFF;
-
       // MD5 initial hash values
       const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476');
 
       // MD5 per-round shift amounts
+      /** @type {int32[]} */
       const s = [
         7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
         5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
@@ -387,7 +429,8 @@
       );
 
       // Pre-processing: pad message
-      const paddedData = [...data];
+      /** @type {uint8[]} */
+      const paddedData = data.slice();
       const originalLength = data.length * 8;
 
       paddedData.push(0x80);
@@ -397,7 +440,7 @@
 
       // Append length as 64-bit little-endian
       // JavaScript bitwise ops are 32-bit, so handle low/high separately
-      const lengthLow = originalLength&0xFFFFFFFF;
+      const lengthLow = OpCodes.ToUint32(originalLength);
       const lengthHigh = Math.floor(originalLength / 0x100000000);
       for (let i = 0; i < 4; i++) {
         paddedData.push(OpCodes.ToByte(OpCodes.Shr32(lengthLow, i * 8)));
@@ -408,6 +451,7 @@
 
       // Process message in chunks of 64 bytes
       for (let chunkStart = 0; chunkStart < paddedData.length; chunkStart += 64) {
+        /** @type {uint32[]} */
         const M = new Array(16);
 
         // Break chunk into sixteen 32-bit little-endian words
@@ -421,40 +465,47 @@
         }
 
         // Initialize hash value for this chunk
-        let A = h[0], B = h[1], C = h[2], D = h[3];
+        let A = h[0];
+        let B = h[1];
+        let C = h[2];
+        let D = h[3];
 
         // Main loop
         for (let i = 0; i < 64; i++) {
-          let F, g;
+          /** @type {uint32} */
+          let F;
+          /** @type {int32} */
+          let g;
           if (i < 16) {
-            F = (B&C)|(~B&D);
+            F = OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(OpCodes.Not32(B), D));
             g = i;
           } else if (i < 32) {
-            F = (D&B)|(~D&C);
+            F = OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(OpCodes.Not32(D), C));
             g = (5 * i + 1) % 16;
           } else if (i < 48) {
             F = OpCodes.Xor32(OpCodes.Xor32(B, C), D);
             g = (3 * i + 5) % 16;
           } else {
-            F = OpCodes.Xor32(C, (B|~D));
+            F = OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.Not32(D)));
             g = (7 * i) % 16;
           }
 
-          const temp = (A + F + K[i] + M[g])&MASK32;
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(A, F), K[i]), M[g]);
           A = D;
           D = C;
           C = B;
-          B = (B + OpCodes.RotL32(temp, s[i]))&MASK32;
+          B = OpCodes.Add32(B, OpCodes.RotL32(temp, s[i]));
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + A)&MASK32;
-        h[1] = (h[1] + B)&MASK32;
-        h[2] = (h[2] + C)&MASK32;
-        h[3] = (h[3] + D)&MASK32;
+        h[0] = OpCodes.Add32(h[0], A);
+        h[1] = OpCodes.Add32(h[1], B);
+        h[2] = OpCodes.Add32(h[2], C);
+        h[3] = OpCodes.Add32(h[3], D);
       }
 
       // Convert to byte array (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(h[i]);
@@ -464,15 +515,18 @@
       return result;
     }
 
-    // Self-contained SHA-1 implementation
+    /**
+     * Self-contained SHA-1 (as built in; see the length encoding below)
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 20-byte digest
+     */
     sha1(data) {
-      const MASK32 = 0xFFFFFFFF;
-
       // SHA-1 initial hash values
       const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
 
       // Pre-processing: pad message
-      const paddedData = [...data];
+      /** @type {uint8[]} */
+      const paddedData = data.slice();
       const originalLength = data.length * 8;
 
       paddedData.push(0x80);
@@ -487,6 +541,7 @@
 
       // Process message in chunks of 64 bytes
       for (let chunkStart = 0; chunkStart < paddedData.length; chunkStart += 64) {
+        /** @type {uint32[]} */
         const w = new Array(80);
 
         // Break chunk into sixteen 32-bit big-endian words
@@ -505,26 +560,33 @@
         }
 
         // Initialize hash value for this chunk
-        let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+        let a = h[0];
+        let b = h[1];
+        let c = h[2];
+        let d = h[3];
+        let e = h[4];
 
         // Main loop
         for (let i = 0; i < 80; i++) {
-          let f, k;
+          /** @type {uint32} */
+          let f;
+          /** @type {uint32} */
+          let k;
           if (i < 20) {
-            f = (b&c)|(~b&d);
+            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
             k = OpCodes.Hex32ToDWords('5A827999')[0];
           } else if (i < 40) {
             f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
           } else if (i < 60) {
-            f = (b&c)|(b&d)|(c&d);
+            f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
             k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
           } else {
             f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
           }
 
-          const temp = (OpCodes.RotL32(a, 5) + f + e + k + w[i])&MASK32;
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), f), e), k), w[i]);
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -533,14 +595,15 @@
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + a)&MASK32;
-        h[1] = (h[1] + b)&MASK32;
-        h[2] = (h[2] + c)&MASK32;
-        h[3] = (h[3] + d)&MASK32;
-        h[4] = (h[4] + e)&MASK32;
+        h[0] = OpCodes.Add32(h[0], a);
+        h[1] = OpCodes.Add32(h[1], b);
+        h[2] = OpCodes.Add32(h[2], c);
+        h[3] = OpCodes.Add32(h[3], d);
+        h[4] = OpCodes.Add32(h[4], e);
       }
 
       // Convert to byte array (big-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 5; i++) {
         const bytes = OpCodes.Unpack32BE(h[i]);
@@ -551,10 +614,20 @@
     }
 
     // Configuration methods
+    /**
+     * Set the salt
+     * @param {uint8[]} salt - Salt bytes
+     * @returns {void}
+     */
     setSalt(salt) {
-      this.salt = Array.isArray(salt) ? salt : OpCodes.AnsiToBytes(salt);
+      this.salt = salt;
     }
 
+    /**
+     * Set the iteration count (warns below 1000)
+     * @param {int32} iterations - Iteration count
+     * @returns {void}
+     */
     setIterations(iterations) {
       if (iterations < 1000) {
         console.warn('PBKDF1: Low iteration count may be insecure. PBKDF1 is deprecated - use PBKDF2 instead');
@@ -562,19 +635,32 @@
       this.Iterations = iterations;
     }
 
+    /**
+     * Set the derived key length
+     * @param {int32} size - Output size in bytes
+     * @returns {void}
+     * @throws {Error} If it exceeds the current hash's digest length
+     */
     setOutputSize(size) {
       const maxSize = this.getHashOutputSize(this.hashFunction);
       if (size > maxSize) {
-        throw new Error(`PBKDF1.setOutputSize: Size ${size} exceeds maximum ${maxSize} for ${this.hashFunction}`);
+        throw new Error('PBKDF1.setOutputSize: Size ' + size + ' exceeds maximum ' + maxSize + ' for ' + this.hashFunction);
       }
       this.OutputSize = size;
     }
 
+    /**
+     * Select the hash
+     * @param {string} hashFunc - MD5, SHA-1 or SHA1 (any case)
+     * @returns {void}
+     * @throws {Error} If the hash is unsupported
+     */
     setHashFunction(hashFunc) {
+      /** @type {string[]} */
       const supported = ['MD5', 'SHA-1', 'SHA1'];
       const normalized = hashFunc.toUpperCase().replace('-', '');
       if (!supported.includes(hashFunc.toUpperCase()) && !supported.includes(normalized)) {
-        throw new Error(`PBKDF1.setHashFunction: ${hashFunc} not supported. Only MD5 and SHA-1 allowed`);
+        throw new Error('PBKDF1.setHashFunction: ' + hashFunc + ' not supported. Only MD5 and SHA-1 allowed');
       }
       this.hashFunction = hashFunc;
     }

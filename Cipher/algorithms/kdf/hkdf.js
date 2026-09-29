@@ -77,16 +77,11 @@
 
       // KDF-specific properties
       this.SaltRequired = false; // Salt is optional in HKDF
-      this.SupportedOutputSizes = [1, 255 * 64]; // 1 to 255*hash_len bytes
+      this.SupportedOutputSizes = [new KeySize(1, 255 * 64, 1)]; // 1 to 255*hash_len bytes
 
       // HKDF constants
       this.DEFAULT_HASH = 'SHA256';
       this.DEFAULT_OUTPUT_LENGTH = 32;
-      this.HASH_FUNCTIONS = {
-        'SHA1': { size: 20, blockSize: 64, name: 'SHA-1' },
-        'SHA256': { size: 32, blockSize: 64, name: 'SHA-256' },
-        'SHA512': { size: 64, blockSize: 128, name: 'SHA-512' }
-      };
 
       // Documentation and references
       this.documentation = [
@@ -145,16 +140,16 @@
       this.tests[1].outputSize = 82;
       this.tests[1].hashFunction = 'SHA256';
 
-      this.tests[2].salt = [];
-      this.tests[2].info = [];
+      this.tests[2].salt = OpCodes.Hex8ToBytes('');
+      this.tests[2].info = OpCodes.Hex8ToBytes('');
       this.tests[2].outputSize = 42;
       this.tests[2].hashFunction = 'SHA256';
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new HKDF instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: HKDF has no inverse
+   * @returns {HKDFInstance} New HKDF instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,44 +158,59 @@
   }
 
   /**
- * HKDF cipher instance implementing Feed/Result pattern
+ * HKDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class HKDFInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize an HKDF instance
+   * @param {HKDFAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: HKDF has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default 256-bit output
+      /** @type {uint8[]} */
       this._salt = [];
+      /** @type {uint8[]} */
       this._info = [];
+      /** @type {string} */
       this._hashFunction = 'SHA256';
+      /** @type {uint8[]} Input keying material set directly (null uses the fed bytes) */
+      this.ikm = null;
+      /** @type {uint8[]} Fed input keying material (null until the first Feed) */
+      this._inputData = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} Salt */
     get salt() { return this._salt; }
+    /** @param {uint8[]} value - Salt */
     set salt(value) { this._salt = value; }
 
+    /** @returns {uint8[]} Context and application specific information */
     get info() { return this._info; }
+    /** @param {uint8[]} value - Context and application specific information */
     set info(value) { this._info = value; }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {string} Hash name: 'SHA1', 'SHA256' or 'SHA512' */
     get hashFunction() { return this._hashFunction; }
+    /** @param {string} value - Hash name: 'SHA1', 'SHA256' or 'SHA512' */
     set hashFunction(value) { this._hashFunction = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed input keying material
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -220,9 +230,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the output keying material
+   * @returns {uint8[]} Output keying material
+   * @throws {Error} If no keying material was set or fed, or the hash is unsupported
    */
 
     Result() {
@@ -231,15 +241,32 @@
         throw new Error('HKDFInstance.Result: Input Keying Material required - use Feed() method or set ikm directly');
       }
 
-      const ikm = this.ikm || this._inputData;
-      const salt = this._salt || [];
-      const info = this._info || [];
-      const outputSize = this.OutputSize || 32;
-      const hashFunc = this._hashFunction || 'SHA256';
+      /** @type {uint8[]} */
+      let ikm = this.ikm;
+      if (!ikm) { ikm = this._inputData; }
+      /** @type {uint8[]} */
+      let salt = [];
+      if (this._salt) { salt = this._salt; }
+      /** @type {uint8[]} */
+      let info = [];
+      if (this._info) { info = this._info; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 32; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA256'; }
 
       return this.deriveKey(ikm, salt, info, outputSize, hashFunc);
     }
 
+    /**
+     * HKDF (RFC 5869): Extract, then Expand
+     * @param {uint8[]} ikm - Input keying material
+     * @param {uint8[]} salt - Salt (empty uses HashLen zero bytes)
+     * @param {uint8[]} info - Context information
+     * @param {int32} outputLength - L, the output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Output keying material
+     */
     deriveKey(ikm, salt, info, outputLength, hashFunction) {
       // Step 1: Extract - PRK = HMAC-Hash(salt, IKM)
       const prk = this.extract(ikm, salt, hashFunction);
@@ -250,30 +277,84 @@
       return okm;
     }
 
-    extract(ikm, salt, hashFunction) {
-      // Convert byte array to string if needed
-      const hashName = Array.isArray(hashFunction) ? String.fromCharCode(...hashFunction) : hashFunction;
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashName - 'SHA1', 'SHA256' or 'SHA512'
+     * @returns {int32} Digest size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA1': return 20;
+        case 'SHA256': return 32;
+        case 'SHA512': return 64;
+        default: throw new Error('Unsupported hash function: ' + hashName);
       }
+    }
+
+    /**
+     * Compression block length of a supported hash (the HMAC key pad length)
+     * @param {string} hashName - 'SHA1', 'SHA256' or 'SHA512'
+     * @returns {int32} Block size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
+    hashBlockSize(hashName) {
+      switch (hashName) {
+        case 'SHA1': return 64;
+        case 'SHA256': return 64;
+        case 'SHA512': return 128;
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
+
+    /**
+     * Registered algorithm name of a supported hash
+     * @param {string} hashName - 'SHA1', 'SHA256' or 'SHA512'
+     * @returns {string} Name the framework registers the hash under
+     * @throws {Error} If the hash is unsupported
+     */
+    hashAlgorithmName(hashName) {
+      switch (hashName) {
+        case 'SHA1': return 'SHA-1';
+        case 'SHA256': return 'SHA-256';
+        case 'SHA512': return 'SHA-512';
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
+
+    /**
+     * HKDF-Extract: PRK = HMAC-Hash(salt, IKM)
+     * @param {uint8[]} ikm - Input keying material
+     * @param {uint8[]} salt - Salt (empty uses HashLen zero bytes)
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Pseudorandom key
+     */
+    extract(ikm, salt, hashFunction) {
+      const hashLen = this.hashSize(hashFunction);
 
       // If salt is empty, use string of zeros of hash length
-      const actualSalt = salt.length > 0 ? salt : new Array(hashInfo.size).fill(0);
+      /** @type {uint8[]} */
+      let actualSalt = salt;
+      if (salt.length === 0) {
+        actualSalt = [];
+        for (let i = 0; i < hashLen; i++) actualSalt.push(0);
+      }
 
       // PRK = HMAC-Hash(salt, IKM)
       return this.calculateHMAC(actualSalt, ikm, hashFunction);
     }
 
+    /**
+     * HKDF-Expand: T(i) = HMAC-Hash(PRK, T(i-1) | info | i)
+     * @param {uint8[]} prk - Pseudorandom key
+     * @param {uint8[]} info - Context information
+     * @param {int32} outputLength - L, the output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Output keying material
+     * @throws {Error} If more than 255 blocks are needed
+     */
     expand(prk, info, outputLength, hashFunction) {
-      // Convert byte array to string if needed
-      const hashName = Array.isArray(hashFunction) ? String.fromCharCode(...hashFunction) : hashFunction;
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
-      }
-
-      const hashLen = hashInfo.size;
+      const hashLen = this.hashSize(hashFunction);
       const numBlocks = Math.ceil(outputLength / hashLen);
 
       // Check output length constraint
@@ -281,12 +362,16 @@
         throw new Error('Output length too large for HKDF-Expand');
       }
 
+      /** @type {uint8[]} */
       let okm = [];
+      /** @type {uint8[]} */
       let previousBlock = [];
 
       // Generate each block: T(i) = HMAC-Hash(PRK, T(i-1)|info|i)
       for (let i = 1; i <= numBlocks; i++) {
-        const blockInput = previousBlock.concat(info).concat([i]);
+        /** @type {uint8[]} */
+        const blockInput = previousBlock.concat(info);
+        blockInput.push(i);
         const blockHash = this.calculateHMAC(prk, blockInput, hashFunction);
 
         okm = okm.concat(blockHash);
@@ -299,38 +384,40 @@
       return okm.slice(0, outputLength);
     }
 
+    /**
+     * HMAC (RFC 2104) over a registered hash
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} MAC
+     * @throws {Error} If the hash is unsupported or not registered
+     */
     calculateHMAC(key, message, hashFunction) {
       // Standalone HMAC implementation (RFC 2104)
       // HMAC(K, m) = H((K' XOR opad) || H((K' XOR ipad) || m))
       // where K' is the key padded to block size
 
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
-      }
-
       // RFC 2104 pads the key to the hash's own block size. SHA-512 compresses
       // 128-byte blocks, not 64, so this has to come from the hash description.
-      const blockSize = hashInfo.blockSize;
-      const hashLen = hashInfo.size;
+      const blockSize = this.hashBlockSize(hashFunction);
+      const hashAlgName = this.hashAlgorithmName(hashFunction);
 
       // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      const hashAlg = AlgorithmFramework.Find(hashAlgName);
       if (!hashAlg) {
-        throw new Error('Hash function not found: ' + hashInfo.name);
+        throw new Error('Hash function not found: ' + hashAlgName);
       }
 
       // Prepare key - pad or hash if needed
-      let keyPrime = [...key];
+      let keyPrime = key.slice();
       if (keyPrime.length > blockSize) {
         // If key is longer than block size, hash it first
+        /** @type {IHashFunctionInstance} */
         const hashInst = hashAlg.CreateInstance();
         hashInst.Feed(keyPrime);
-        keyPrime = hashInst.Result();
+        /** @type {uint8[]} */
+        const hashedKey = hashInst.Result();
+        keyPrime = hashedKey;
       }
 
       // Pad key to block size
@@ -343,16 +430,24 @@
       const opad = 0x5c;
 
       // Inner hash: H((K' XOR ipad) || message)
-      const innerKey = keyPrime.map(b => OpCodes.XorN(b, ipad));
+      /** @type {uint8[]} */
+      const innerKey = keyPrime.map(b => OpCodes.Xor8(b, ipad));
       const innerInput = innerKey.concat(message);
+      /** @type {IHashFunctionInstance} */
       const innerHashInst = hashAlg.CreateInstance();
-      const innerHash = innerHashInst.Hash(innerInput);
+      innerHashInst.Feed(innerInput);
+      /** @type {uint8[]} */
+      const innerHash = innerHashInst.Result();
 
       // Outer hash: H((K' XOR opad) || innerHash)
-      const outerKey = keyPrime.map(b => OpCodes.XorN(b, opad));
+      /** @type {uint8[]} */
+      const outerKey = keyPrime.map(b => OpCodes.Xor8(b, opad));
       const outerInput = outerKey.concat(innerHash);
+      /** @type {IHashFunctionInstance} */
       const outerHashInst = hashAlg.CreateInstance();
-      const result = outerHashInst.Hash(outerInput);
+      outerHashInst.Feed(outerInput);
+      /** @type {uint8[]} */
+      const result = outerHashInst.Result();
 
       return result;
     }
