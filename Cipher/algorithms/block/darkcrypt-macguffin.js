@@ -51,6 +51,7 @@
   // The 8 DES S-boxes, reduced to their two "outer" output bits and
   // pre-shifted into their final bit position within the 16-bit F output
   // (left-right DES order, per Blaze's mcg.c).
+  /** @type {uint16[][]} */
   const SBOXES = [
     [0x0002,0x0000,0x0000,0x0003,0x0003,0x0001,0x0001,0x0000,0x0000,0x0002,0x0003,0x0000,0x0003,0x0003,0x0002,0x0001,
      0x0001,0x0002,0x0002,0x0000,0x0000,0x0002,0x0002,0x0003,0x0001,0x0003,0x0003,0x0001,0x0000,0x0001,0x0001,0x0002,
@@ -88,6 +89,7 @@
 
   // Input-bit selection for each of the 8 S-boxes: two bits taken from each
   // of the three 16-bit registers "a", "b", "c" fed into the round function.
+  /** @type {int32[][]} */
   const SBITS = [
     [2,5,6,9,11,13], [1,4,7,10,8,14],
     [3,6,8,13,0,15], [12,14,1,2,4,10],
@@ -95,25 +97,43 @@
     [9,15,5,11,2,7], [11,13,0,4,3,9]
   ];
 
-  // GUFN round function: 3 register words in, 16 bits out (2 per S-box).
+  /**
+   * GUFN round function: 3 register words in, 16 bits out (2 per S-box).
+   * @param {uint16} a - Register word a
+   * @param {uint16} b - Register word b
+   * @param {uint16} c - Register word c
+   * @returns {uint16} 16-bit round output
+   */
   function roundF(a, b, c) {
+    /** @type {uint16} */
     let out = 0;
     for (let j = 0; j < 8; j++) {
       const s = SBITS[j];
-      const idx = OpCodes.And32(OpCodes.Shr32(a, s[0]), 1) | OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(a, s[1]), 1), 1) |
-                  OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(b, s[2]), 1), 2) | OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(b, s[3]), 1), 3) |
-                  OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(c, s[4]), 1), 4) | OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(c, s[5]), 1), 5);
-      out |= SBOXES[j][idx];
+      const idx = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+                  OpCodes.And32(OpCodes.Shr32(a, s[0]), 1), OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(a, s[1]), 1), 1)),
+                  OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(b, s[2]), 1), 2)), OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(b, s[3]), 1), 3)),
+                  OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(c, s[4]), 1), 4)), OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(c, s[5]), 1), 5));
+      out = OpCodes.Or16(out, SBOXES[j][idx]);
     }
-    return OpCodes.And32(out, 0xFFFF);
+    return out;
   }
 
-  // Blaze's "encrypt" round sequence: subkeys consumed forward, ek[0..95].
+  /**
+   * Blaze's "encrypt" round sequence: subkeys consumed forward, ek[0..95].
+   * @param {uint16[]} words - Four state words
+   * @param {uint16[]} ek - Round-key words
+   * @returns {uint16[]} Four state words
+   */
   function forwardRounds(words, ek) {
-    let [r0, r1, r2, r3] = words;
+    let r0 = words[0], r1 = words[1], r2 = words[2], r3 = words[3];
     let p = 0;
     for (let i = 0; i < ROUNDS / 4; i++) {
-      let a, b, c;
+      /** @type {uint16} */
+      let a;
+      /** @type {uint16} */
+      let b;
+      /** @type {uint16} */
+      let c;
       a = OpCodes.Xor16(r1, ek[p++]); b = OpCodes.Xor16(r2, ek[p++]); c = OpCodes.Xor16(r3, ek[p++]);
       r0 = OpCodes.Xor16(r0, roundF(a, b, c));
       a = OpCodes.Xor16(r2, ek[p++]); b = OpCodes.Xor16(r3, ek[p++]); c = OpCodes.Xor16(r0, ek[p++]);
@@ -123,15 +143,27 @@
       a = OpCodes.Xor16(r0, ek[p++]); b = OpCodes.Xor16(r1, ek[p++]); c = OpCodes.Xor16(r2, ek[p++]);
       r3 = OpCodes.Xor16(r3, roundF(a, b, c));
     }
-    return [r0, r1, r2, r3];
+    /** @type {uint16[]} */
+    const out = [r0, r1, r2, r3];
+    return out;
   }
 
-  // Blaze's "decrypt" round sequence: subkeys consumed backward, ek[95..0].
+  /**
+   * Blaze's "decrypt" round sequence: subkeys consumed backward, ek[95..0].
+   * @param {uint16[]} words - Four state words
+   * @param {uint16[]} ek - Round-key words
+   * @returns {uint16[]} Four state words
+   */
   function reverseRounds(words, ek) {
-    let [r0, r1, r2, r3] = words;
+    let r0 = words[0], r1 = words[1], r2 = words[2], r3 = words[3];
     let p = KSIZE;
     for (let i = 0; i < ROUNDS / 4; i++) {
-      let a, b, c;
+      /** @type {uint16} */
+      let a;
+      /** @type {uint16} */
+      let b;
+      /** @type {uint16} */
+      let c;
       c = OpCodes.Xor16(r2, ek[--p]); b = OpCodes.Xor16(r1, ek[--p]); a = OpCodes.Xor16(r0, ek[--p]);
       r3 = OpCodes.Xor16(r3, roundF(a, b, c));
       c = OpCodes.Xor16(r1, ek[--p]); b = OpCodes.Xor16(r0, ek[--p]); a = OpCodes.Xor16(r3, ek[--p]);
@@ -141,21 +173,30 @@
       c = OpCodes.Xor16(r3, ek[--p]); b = OpCodes.Xor16(r2, ek[--p]); a = OpCodes.Xor16(r1, ek[--p]);
       r0 = OpCodes.Xor16(r0, roundF(a, b, c));
     }
-    return [r0, r1, r2, r3];
+    /** @type {uint16[]} */
+    const out = [r0, r1, r2, r3];
+    return out;
   }
 
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint16[]} Four little-endian 16-bit words
    */
   function blockToWords(block) {
-    return [
+    /** @type {uint16[]} */
+    const words = [
       OpCodes.Pack16LE(block[0], block[1]),
       OpCodes.Pack16LE(block[2], block[3]),
       OpCodes.Pack16LE(block[4], block[5]),
       OpCodes.Pack16LE(block[6], block[7])
     ];
+    return words;
   }
 
+  /**
+   * @param {uint16[]} words - Four 16-bit words
+   * @returns {uint8[]} Little-endian bytes
+   */
   function wordsToBlock(words) {
     return [
       ...OpCodes.Unpack16LE(words[0]),
@@ -171,9 +212,13 @@
   // key array on every pass, until all 96 words have been mixed twice.
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint16[]} Round-key words
    */
   function expandKey(keyBytes) {
-    const ek = new Array(KSIZE).fill(0);
+    /** @type {uint16[]} */
+    const ek = new Array(KSIZE);
+    for (let i = 0; i < KSIZE; i++) ek[i] = 0;
+    /** @type {uint8[][]} */
     const halves = [keyBytes.slice(0, 8), keyBytes.slice(8, 16)];
     for (let i = 0; i < 2; i++) {
       let half = halves[i].slice();
@@ -260,6 +305,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint16[]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
