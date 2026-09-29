@@ -1,220 +1,56 @@
-# SynthelicZ Cipher Tools - Modular Test Suite
+# SynthelicZ Cipher Tools - Tests
 
-The test suite has been refactored to support both **standalone CLI execution** and **module usage for UI integration**, while maintaining identical testing logic across both interfaces.
-
-## Architecture Overview
-
-```
-TestSuite (CLI)
-     ↓
-TestEngine (Core Logic)
-     ↑
-TestAPI (UI Interface)
-```
-
-### Core Components
-
-1. **TestEngine.js** - Core testing logic, no CLI dependencies
-2. **TestSuite.js** - CLI wrapper maintaining backward compatibility
-3. **TestAPI.js** - UI-friendly module interface
-4. **TestDemo.js** - Demonstration that both interfaces use identical logic
-
-## Usage Examples
-
-### 1. CLI Usage (Unchanged)
-
-The CLI interface works exactly as before:
+Two runners, grouped by the question they answer. Each prints one summary line per
+category and a single verdict, and exits non-zero when any check of a selected
+category fails (`2` for an unknown option or category name). CI runs both with no
+arguments.
 
 ```bash
-# Test all algorithms
-node tests/TestSuite.js
-
-# Test single algorithm
-node tests/TestSuite.js rijndael.js
-
-# Verbose output
-node tests/TestSuite.js --verbose
-
-# One category, or one algorithm by file name
-node tests/TestSuite.js --category=hash
-node tests/TestSuite.js --algorithm=murmurhash3
-
-# Lower the TYPES budgets of the tested files to their current counts
-node tests/TestSuite.js --update-type-budgets
+node tests/TestSuite.js         # is each algorithm correct?
+node tests/TranspilerSuite.js   # does the transpiler work?
 ```
 
-### 2. UI Module Usage
+Every other `.js` file here is a module one of them calls.
 
-#### Basic Algorithm Testing
+## `TestSuite.js` - is each algorithm correct?
 
-```javascript
-const TestAPI = require('./tests/TestAPI');
+Every algorithm file is read, compiled and loaded once; every category works from
+that one load.
 
-async function testAlgorithm() {
-  const testAPI = new TestAPI();
-  await testAPI.initialize();
+| Category | Checks | Module |
+|---|---|---|
+| `compilation` | the file compiles as a Node module | `TestEngine.js` |
+| `interface` | it loads and registers at least one algorithm | `TestEngine.js` |
+| `metadata` | the metadata follows CONTRIBUTING.md | `TestEngine.js` |
+| `issues` | no TODO/FIXME/BUG/ISSUE/HACK markers | `TestEngine.js` |
+| `functionality` | every committed vector; an algorithm with an inverse must also recover each vector's input | `TestEngine.js` |
+| `optimization` | OpCodes instead of raw bit operators | `TestEngine.js` |
+| `types` | untyped value sites within the file's budget (see below) | `TypeCoverage.js`, `type-budgets.json` |
+| `roundtrip` | every reversible algorithm decodes its own output over an adversarial corpus, and compressors compress; interoperability with zlib/bzip2 is reported, never gating | `RoundTrip.js` |
+| `chunked` | `Feed(whole)` equals `Feed(part1); Feed(part2); ...` for every split | `ChunkedFeed.js` |
+| `browser` | every script tag of `index.html` evaluates in page order with no `require`, `module` or `global` | `BrowserLoad.js` |
+| `library` | unit tests of the OpCodes helpers and `ByteBuffer` | `OpCodesHelperTests.js`, `ByteBufferTests.js` |
 
-  const result = await testAPI.testAlgorithm('./algorithms/block/rijndael.js');
+Hashes, MACs, KDFs, random generators and the algorithms named in
+`round-trip-exemptions.js` have no inverse: `functionality` does not round-trip
+them and prints no round-trip counter for them.
 
-  if (result.success) {
-    console.log(`${result.algorithm.name}: ${result.summary.score}`);
-    console.log(`Tests passed: ${result.summary.passed}`);
-    console.log(`Percentage: ${result.summary.percentage}%`);
-  }
-}
+`browser` and `library` check the whole collection, so a run narrowed to a file,
+category or algorithm leaves them out unless `--only` names them.
+
+```bash
+node tests/TestSuite.js rijndael.js               # one file
+node tests/TestSuite.js --category=hash           # one category directory
+node tests/TestSuite.js --algorithm=murmurhash3   # the file(s) with that base name
+node tests/TestSuite.js --only=roundtrip,chunked  # only these categories
+node tests/TestSuite.js --skip=types              # everything but these
+node tests/TestSuite.js --verbose                 # every vector and every untyped value site
+node tests/TestSuite.js --update-type-budgets     # lower TYPES budgets to the current counts
+node tests/TestSuite.js --update-type-budgets --allow-budget-increase   # also raise or add budgets
+node tests/TestSuite.js --only=roundtrip --large              # also push 1MB through each algorithm
+node tests/TestSuite.js --only=roundtrip --large-size=8M      # another size (see LARGE-INPUTS.md)
+node tests/TestSuite.js --only=roundtrip --budget=10000       # ms per algorithm for the small corpus
 ```
-
-#### Functionality Testing (Test Vectors)
-
-```javascript
-const TestAPI = require('./tests/TestAPI');
-
-async function testFunctionality() {
-  const testAPI = new TestAPI();
-  await testAPI.initialize();
-
-  // Load algorithm instance
-  const algorithms = await testAPI.loadAlgorithmInstance('./algorithms/block/rijndael.js');
-
-  if (algorithms.success) {
-    const algorithm = algorithms.algorithms[0].algorithm;
-
-    // Test algorithm functionality
-    const result = await testAPI.testAlgorithmFunctionality(algorithm);
-
-    console.log(`Status: ${result.result.status}`);
-    console.log(`Vectors: ${result.result.vectorsPassed}/${result.result.vectorsTotal}`);
-    console.log(`Round-trips: ${result.result.roundTripsPassed}/${result.result.roundTripsAttempted}`);
-  }
-}
-```
-
-#### Individual Test Vector Testing
-
-```javascript
-const TestAPI = require('./tests/TestAPI');
-
-async function testSingleVector() {
-  const testAPI = new TestAPI();
-  await testAPI.initialize();
-
-  // Load algorithm
-  const algorithms = await testAPI.loadAlgorithmInstance('./algorithms/block/rijndael.js');
-  const algorithm = algorithms.algorithms[0].algorithm;
-
-  // Test first vector
-  const vector = algorithm.tests[0];
-  const result = await testAPI.testSingleVector(algorithm, vector, 0);
-
-  console.log(`Vector passed: ${result.result.passed}`);
-  console.log(`Round-trip: ${result.result.roundTripSuccess}`);
-}
-```
-
-#### Batch Testing with Progress
-
-```javascript
-const TestAPI = require('./tests/TestAPI');
-
-async function batchTest() {
-  const testAPI = new TestAPI();
-
-  // Set progress callback
-  testAPI.setProgressCallback((progress) => {
-    console.log(`Testing ${progress.current}/${progress.total}: ${progress.algorithm}`);
-  });
-
-  await testAPI.initialize();
-
-  // Test entire category
-  const result = await testAPI.testCategory('block');
-
-  console.log(`Tested ${result.summary.total} algorithms`);
-  console.log(`Passed: ${result.summary.passed}, Failed: ${result.summary.failed}`);
-}
-```
-
-## Key Features
-
-### ✅ Identical Testing Logic
-
-Both CLI and UI interfaces use the **exact same TestEngine**, ensuring:
-- Same test vector validation
-- Same round-trip testing
-- Same metadata compliance checks
-- Same optimization validation
-- Identical results regardless of interface
-
-### ✅ UI-Friendly Returns
-
-The TestAPI returns structured JSON objects instead of console output:
-
-```javascript
-{
-  success: true,
-  algorithm: {
-    name: "Rijndael (AES)",
-    tests: {
-      compilation: true,
-      interface: true,
-      metadata: true,
-      issues: true,
-      functionality: true,
-      optimization: true
-    },
-    details: { /* detailed results */ }
-  },
-  summary: {
-    passed: true,
-    score: "6/6",
-    percentage: 100,
-    errors: []
-  }
-}
-```
-
-### ✅ Real-time Progress
-
-For UI integration, the TestAPI supports progress callbacks:
-
-```javascript
-const testAPI = new TestAPI({
-  progressCallback: (progress) => {
-    updateProgressBar(progress.current, progress.total);
-    setStatusText(`Testing ${progress.algorithm}...`);
-  }
-});
-```
-
-### ✅ Individual Vector Testing
-
-Perfect for UI test vector execution:
-
-```javascript
-// Load algorithm instance
-const algorithms = await testAPI.loadAlgorithmInstance(filePath);
-const algorithm = algorithms.algorithms[0].algorithm;
-
-// Test each vector individually
-for (let i = 0; i < algorithm.tests.length; i++) {
-  const vector = algorithm.tests[i];
-  const result = await testAPI.testSingleVector(algorithm, vector, i);
-
-  displayVectorResult(i, result.result.passed, result.result.roundTripSuccess);
-}
-```
-
-## Test Categories
-
-Both interfaces test the first 6 categories; the CLI suite adds the 7th:
-
-1. **🔧 Compilation** - JavaScript syntax validation
-2. **🔌 Interface** - AlgorithmFramework compatibility
-3. **📋 Metadata** - CONTRIBUTING.md compliance
-4. **⚠️ Issues** - TODO/FIXME comment detection
-5. **⚡ Functionality** - Test vector validation & round-trips
-6. **🚀 Optimization** - OpCodes usage verification
-7. **🔠 Types** - Untyped value sites against the file's budget (see below)
 
 ### Types: the type resolution policy
 
@@ -233,180 +69,48 @@ is. `type-budgets.json` holds each file's budget: TYPES fails when a file's coun
 rises above it, a budget of 0 means the file is policy-clean, and
 `--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
 given as well to raise one or add a file). `--verbose` lists every site with file, line,
-expression, tier and reason. The run also checks that every OpCodes and framework
-member is fully typed by JSDoc (`JSDocTierAudit.js`).
+expression, tier and reason. That tiers 1 and 2 are themselves fully typed is the
+`jsdoc` category of `TranspilerSuite.js`.
 
-## Advanced Usage
+## `TranspilerSuite.js` - does the transpiler work?
 
-### Core Engine Access
+| Category | Checks | Module |
+|---|---|---|
+| `codegen` | every language plugin and dialect generates code for the shared AST test cases | `CodeGenTests.js` |
+| `inference` | type inference of the shared transpiler AST | `TypeInferenceTests.js` |
+| `policy` | the type resolution order and the untyped-site count built on it | `TypePolicyTests.js` |
+| `jsdoc` | every OpCodes and AlgorithmFramework member is fully typed by JSDoc | `JSDocTierAudit.js` |
+| `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
+| `validation` | transpiles every algorithm to every installed language, compiles it, and runs its vectors where the language is interpreted | `TranspilerValidation.js` |
 
-For advanced scenarios, access the TestEngine directly:
-
-```javascript
-const TestEngine = require('./tests/TestEngine');
-
-const engine = new TestEngine({ verbose: true });
-await engine.loadDependencies();
-
-const result = await engine.testAlgorithm('./path/to/algorithm.js');
-// Direct access to all testing methods
-```
-
-### Algorithm Discovery
-
-Discover available algorithms programmatically:
-
-```javascript
-const testAPI = new TestAPI();
-const discovery = await testAPI.discoverAlgorithms();
-
-console.log(`Found ${discovery.discovery.totalAlgorithms} algorithms`);
-for (const category of discovery.discovery.categories) {
-  console.log(`${category.name}: ${category.count} algorithms`);
-}
-```
-
-## Migration Guide
-
-### For Existing CLI Users
-No changes needed! The CLI works exactly as before.
-
-### For UI Developers
-Replace direct algorithm loading with TestAPI:
-
-```javascript
-// OLD: Manual algorithm testing
-require('./algorithms/block/rijndael.js');
-// manual test vector execution...
-
-// NEW: Use TestAPI
-const testAPI = new TestAPI();
-const result = await testAPI.testAlgorithm('./algorithms/block/rijndael.js');
-// Same functionality tests, UI-friendly results
-```
-
-## Files Overview
-
-- **TestEngine.js** - Core testing logic (reusable)
-- **TestSuite.js** - CLI interface (refactored to use TestEngine)
-- **TestAPI.js** - UI module interface (uses TestEngine)
-- **TestDemo.js** - Verification that both interfaces are identical
-- **TranspilerValidationSuite.js** - Cross-language transpiler validation
-- **CodeGenTestSuite.js** - Comprehensive transpiler AST coverage tests
-- **TypeInferenceTestSuite.js** - Type inference of the shared transpiler AST
-- **TypeCoverage.js** - Untyped value sites of one algorithm file (the TYPES category)
-- **type-budgets.json** - Per-file TYPES budgets (a ratchet: lower them as files get typed)
-- **JSDocTierAudit.js** - Completeness of the OpCodes (tier 1) and framework (tier 2) JSDoc
-- **TypePolicyTests.js** - Given/when/then tests of the tier order and the untyped-site count
-- **OpCodesHelperTests.js** - Given/when/then tests of OpCodes helpers (ModN, ModInverseN)
-- **CSharpTranspileRegressionSuite.js** - Given/when/then regressions for systematic C# transpilation faults; also compiles and runs the C# runtime stubs when the .NET SDK is present (`--no-dotnet` skips that)
-- **README.md** - This documentation
-
-## Verification
-
-Run the demonstration to verify identical behavior:
+`validation` takes over ten minutes unscoped and its result depends on the
+toolchains installed (gcc, g++, dotnet, java, python, php, perl, ruby, go, rustc,
+...), so it runs only when `--only` names it and CI does not run it. A language
+passes when every algorithm it transpiled also compiled. Generated sources go to
+`tests/transpiler-validation-output/`.
 
 ```bash
-node tests/TestDemo.js
+node tests/TranspilerSuite.js --only=codegen --language=python --quick
+node tests/TranspilerSuite.js --only=inference --group=literal   # groups whose name contains "literal"
+node tests/TranspilerSuite.js --only=csharp --no-dotnet          # skip compiling the C# stubs
+node tests/TranspilerSuite.js --only=validation --quick           # 3 algorithms per category
+node tests/TranspilerSuite.js --only=validation --category=block --language=csharp
+node tests/TranspilerSuite.js --only=validation --algorithm=tea   # algorithm files whose name contains "tea"
+node tests/TranspilerSuite.js --only=validation --compile-only --report
 ```
 
-This proves both CLI and UI interfaces produce identical results using the same core testing logic.
+To add a language to `validation`: add its compiler detection to
+`LANGUAGE_COMPILERS` in `TranspilerValidation.js`, a test harness generator
+(`generateXxxTestHarness`), a compile or syntax check (`testXxxCompilation`) and,
+for an interpreted language, an execution function. The language plugin itself is
+picked up from `codingplugins/`.
 
----
+## Shared modules
 
-## Cross-Language Transpiler Validation
-
-The `TranspilerValidationSuite.js` provides comprehensive cross-language testing:
-
-### Features
-
-1. **Auto-detects compilers/interpreters**: C (gcc), C++ (g++), C# (dotnet), Java, Python, PHP, Perl, Ruby, Go, Rust
-2. **Dynamic algorithm discovery**: No hardcoded algorithms - works with all current and future algorithms
-3. **JavaScript reference validation**: Validates algorithms pass JS tests before transpiling
-4. **Multi-language transpilation**: Transpiles each algorithm to all available target languages
-5. **Compilation testing**: Verifies transpiled code compiles/parses correctly
-6. **Runtime execution**: Executes interpreted languages (Python, PHP, Perl, Ruby) to validate test harness
-7. **Detailed reporting**: Generates JSON reports with per-algorithm, per-language results
-
-### Usage
-
-```bash
-# Run all tests
-node tests/TranspilerValidationSuite.js
-
-# Quick test (3 algorithms per category)
-node tests/TranspilerValidationSuite.js --quick
-
-# Test specific algorithm
-node tests/TranspilerValidationSuite.js --algorithm=tea
-
-# Test specific category
-node tests/TranspilerValidationSuite.js --category=block
-
-# Test specific language only
-node tests/TranspilerValidationSuite.js --language=csharp
-
-# Compile-only mode (skip execution)
-node tests/TranspilerValidationSuite.js --compile-only
-
-# Verbose output with error details
-node tests/TranspilerValidationSuite.js --verbose
-
-# Generate detailed JSON report
-node tests/TranspilerValidationSuite.js --report
-
-# Combine options
-node tests/TranspilerValidationSuite.js --quick --language=python --verbose
-```
-
-### Output Example
-
-```
-╔════════════════════════════════════════════════════════════╗
-║       Transpiler Validation Suite                          ║
-╚════════════════════════════════════════════════════════════╝
-
-Detecting compilers/interpreters...
-
-  ✓ C: gcc 13.2.0
-  ✓ C++: g++ 13.2.0
-  ✓ C#: 10.0.100
-  ✓ Python: Python 3.11.9
-  - Java: not found
-
-Target languages: C, C++, C#, Python
-
-Found 240 algorithms to test
-
-━━━ BLOCK (45 algorithms) ━━━
-  rijndael                  OK (4/4)
-  tea                       OK (4/4)
-  blowfish                  PARTIAL (compile: 3/4) [cpp]
-
-Summary (45.2s)
-
-Algorithms: 240 total, 235 JS-validated
-
-Language Results:
-  C:
-    Transpiled: 230/235 (98%)
-    Compiled:   215/230 (93%)
-  C++:
-    Transpiled: 230/235 (98%)
-    Compiled:   210/230 (91%)
-```
-
-### Extending for New Languages
-
-To add support for a new language:
-
-1. Add compiler detection in `LANGUAGE_COMPILERS`
-2. Create a test harness generator function (`generateXxxTestHarness`)
-3. Add compilation/syntax test function (`testXxxCompilation`)
-4. Optionally add execution function for interpreted languages
-
-The suite automatically picks up new language plugins from `codingplugins/`.
-
----
-
-*The modular test suite ensures UI applications can execute the exact same functionality tests as the CLI, maintaining consistency and reliability across all interfaces.*
+- `TestEngine.js` - loads a file and runs its vectors; also loaded by `index.html`, so the page runs the same vector logic
+- `round-trip-exemptions.js` - the algorithms with no meaningful inverse, with the reason for each; also loaded by `index.html`
+- `DummyBlockCipher.js` - the identity cipher cipher modes are tested with; also loaded by `index.html`
+- `TypeCoverage.js`, `type-budgets.json` - the TYPES count and its budgets
+- `CategoryRunner.js` - `--only`/`--skip` selection and the summary, shared by both runners
+- `UnitCases.js` - named given/when/then cases run on demand
+- `LARGE-INPUTS.md` - the measured size ceilings of the large round-trip tier

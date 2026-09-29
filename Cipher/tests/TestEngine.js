@@ -20,7 +20,7 @@
     const vm = isNode ? require('vm') : null;
 
     // The list of algorithms with no meaningful inverse, shared with
-    // RoundTripSuite so that both suites gate on one list rather than each
+    // RoundTrip.js so that both checks gate on one list rather than each
     // carrying its own idea of what is exempt.
     const Exemptions = (function() {
         if (isNode) {

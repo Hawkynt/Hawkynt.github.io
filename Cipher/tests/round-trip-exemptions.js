@@ -3,8 +3,8 @@
  * Round-trip exemptions - the one list saying what is not required to invert
  * (c)2006-2025 Hawkynt
  *
- * Two suites ask the same question and used to answer it separately.
- * RoundTripSuite drives every reversible algorithm with an adversarial corpus;
+ * Two checks ask the same question and used to answer it separately.
+ * RoundTrip.js drives every reversible algorithm with an adversarial corpus;
  * TestEngine checks each algorithm against its own vectors and marks one
  * 'failed-roundtrips' when the inverse does not recover the input. Because
  * TestEngine had no notion of which algorithms are supposed to have an inverse,
