@@ -199,21 +199,31 @@
     }
 
     // Nested S-box network: see file header for the exact bit-level derivation.
+    /**
+     * @param {uint32} x - Round input
+     * @returns {uint32} Round output
+     */
     _f(x) {
       const b3 = OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF);
       const b2 = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF);
       const b1 = OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF);
       const b0 = OpCodes.And32(x, 0xFF);
-      let v1 = OpCodes.And32(OpCodes.Shl32(SBOX[b3], 4), 0xFF) | SBOX[b2];
-      let v0 = SBOX[b0] | OpCodes.And32(OpCodes.Shl32(SBOX[b1], 4), 0xFF);
-      let v2 = OpCodes.And32(OpCodes.Shl32(SBOX[v1], 4), 0xFF) | SBOX[v0];
-      let v3 = OpCodes.And32(OpCodes.Shl32(SBOX[v0], 4), 0xFF) | SBOX[v2];
-      return OpCodes.ToUint32(OpCodes.Shl32(v1, 24) | OpCodes.Shl32(v0, 16) | OpCodes.Shl32(v2, 8) | v3);
+      let v1 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[b3], 4), 0xFF), SBOX[b2]);
+      let v0 = OpCodes.Or32(SBOX[b0], OpCodes.And32(OpCodes.Shl32(SBOX[b1], 4), 0xFF));
+      let v2 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[v1], 4), 0xFF), SBOX[v0]);
+      let v3 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[v0], 4), 0xFF), SBOX[v2]);
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(v1, 24), OpCodes.Shl32(v0, 16)), OpCodes.Shl32(v2, 8)), v3);
     }
 
     // Round-key schedule: 8 key words expanded to 24 round-key words.
+    /**
+     * @param {uint8[]} key - 32-byte key
+     * @returns {uint32[]} 24 round-key words
+     */
     _scheduleKey(key) {
-      const buf = new Array(25).fill(0);
+      /** @type {uint32[]} */
+      const buf = new Array(25);
+      buf.fill(0);
       for (let i = 0; i < 8; i++)
         buf[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
 
