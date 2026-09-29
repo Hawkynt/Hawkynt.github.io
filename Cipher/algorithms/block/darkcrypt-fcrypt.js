@@ -252,16 +252,16 @@
     }
 
     /** @type {uint32[]} */
-    const subkeys = new Array(16);
-    subkeys[0] = bswap32(eax);
+    const roundWords = new Array(16);
+    roundWords[0] = bswap32(eax);
 
     for (let i = 1; i < 16; i++) {
       const oldEax = eax, oldEdx = edx;
       eax = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEax, 11), OpCodes.Shl32(OpCodes.And32(oldEdx, 0x7FF), 21)));
       edx = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEdx, 11), OpCodes.Shl32(OpCodes.And32(oldEax, 0x7FF), 13)));
-      subkeys[i] = bswap32(eax);
+      roundWords[i] = bswap32(eax);
     }
-    return subkeys;
+    return roundWords;
   }
 
   function darkCryptFcryptF(t) {
