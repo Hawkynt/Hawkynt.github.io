@@ -115,21 +115,37 @@ class XSalsa20 extends StreamCipherAlgorithm {
 }
 
 class XSalsa20Instance extends IAlgorithmInstance {
+  /**
+   * @param {XSalsa20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
-    this.state = new Array(16);
+    /** @type {uint32[]} */
+    this._matrix = new Array(16);
+    /** @type {uint8[]} */
     this.keystreamBuffer = [];
+    /** @type {int32} */
     this.bufferIndex = 0;
-    this.counter = [0, 0];
+    /** @type {uint32[]} */
+    this._blockNumber = [0, 0];
 
     // Salsa20 constants: "expand 32-byte k"
+    /** @type {uint32[]} */
     this.SIGMA = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -137,7 +153,7 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
 
     if (keyBytes.length !== 32) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -146,11 +162,17 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 24) {
-      throw new Error(`XSalsa20 requires 24-byte nonce, got ${nonceBytes ? nonceBytes.length : 0} bytes`);
+      throw new Error("XSalsa20 requires 24-byte nonce, got " + (nonceBytes ? nonceBytes.length : 0) + " bytes");
     }
     this._nonce = [...nonceBytes];
     if (this._key) {
@@ -158,8 +180,14 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
@@ -167,15 +195,21 @@ class XSalsa20Instance extends IAlgorithmInstance {
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     if (!this._nonce) throw new Error("Nonce not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -183,189 +217,246 @@ class XSalsa20Instance extends IAlgorithmInstance {
   }
 
   _setupState() {
-    if (!this._key || !this._nonce) return;
+    if (!this._key || !this._nonce) {
+      return;
+    }
 
     // XSalsa20: Use HSalsa20 to derive subkey from first 16 bytes of nonce
+    /** @type {uint8[]} */
     const subkey = this._hsalsa20(this._key, this._nonce.slice(0, 16));
 
     // Initialize Salsa20 state with derived subkey and last 8 bytes of nonce
-    this.state[0] = this.SIGMA[0];
-    this.state[5] = this.SIGMA[1];
-    this.state[10] = this.SIGMA[2];
-    this.state[15] = this.SIGMA[3];
+    this._matrix[0] = this.SIGMA[0];
+    this._matrix[5] = this.SIGMA[1];
+    this._matrix[10] = this.SIGMA[2];
+    this._matrix[15] = this.SIGMA[3];
 
     // Subkey (256 bits)
-    this.state[1] = OpCodes.Pack32LE(subkey[0], subkey[1], subkey[2], subkey[3]);
-    this.state[2] = OpCodes.Pack32LE(subkey[4], subkey[5], subkey[6], subkey[7]);
-    this.state[3] = OpCodes.Pack32LE(subkey[8], subkey[9], subkey[10], subkey[11]);
-    this.state[4] = OpCodes.Pack32LE(subkey[12], subkey[13], subkey[14], subkey[15]);
-    this.state[11] = OpCodes.Pack32LE(subkey[16], subkey[17], subkey[18], subkey[19]);
-    this.state[12] = OpCodes.Pack32LE(subkey[20], subkey[21], subkey[22], subkey[23]);
-    this.state[13] = OpCodes.Pack32LE(subkey[24], subkey[25], subkey[26], subkey[27]);
-    this.state[14] = OpCodes.Pack32LE(subkey[28], subkey[29], subkey[30], subkey[31]);
+    this._matrix[1] = OpCodes.Pack32LE(subkey[0], subkey[1], subkey[2], subkey[3]);
+    this._matrix[2] = OpCodes.Pack32LE(subkey[4], subkey[5], subkey[6], subkey[7]);
+    this._matrix[3] = OpCodes.Pack32LE(subkey[8], subkey[9], subkey[10], subkey[11]);
+    this._matrix[4] = OpCodes.Pack32LE(subkey[12], subkey[13], subkey[14], subkey[15]);
+    this._matrix[11] = OpCodes.Pack32LE(subkey[16], subkey[17], subkey[18], subkey[19]);
+    this._matrix[12] = OpCodes.Pack32LE(subkey[20], subkey[21], subkey[22], subkey[23]);
+    this._matrix[13] = OpCodes.Pack32LE(subkey[24], subkey[25], subkey[26], subkey[27]);
+    this._matrix[14] = OpCodes.Pack32LE(subkey[28], subkey[29], subkey[30], subkey[31]);
 
     // Last 8 bytes of nonce (64 bits)
-    this.state[6] = OpCodes.Pack32LE(this._nonce[16], this._nonce[17], this._nonce[18], this._nonce[19]);
-    this.state[7] = OpCodes.Pack32LE(this._nonce[20], this._nonce[21], this._nonce[22], this._nonce[23]);
+    this._matrix[6] = OpCodes.Pack32LE(this._nonce[16], this._nonce[17], this._nonce[18], this._nonce[19]);
+    this._matrix[7] = OpCodes.Pack32LE(this._nonce[20], this._nonce[21], this._nonce[22], this._nonce[23]);
 
     // Counter (64 bits)
-    this.counter = [0, 0];
-    this.state[8] = 0;
-    this.state[9] = 0;
+    this._blockNumber = [0, 0];
+    this._matrix[8] = 0;
+    this._matrix[9] = 0;
 
     this.keystreamBuffer = [];
     this.bufferIndex = 0;
   }
 
+  /**
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @returns {uint8[]}
+   */
   _hsalsa20(key, nonce) {
     // HSalsa20: Salsa20 core without final addition
     // Input: 256-bit key + 128-bit nonce
     // Output: 256-bit subkey
-    const state = new Array(16);
+    /** @type {uint32[]} */
+    const st = new Array(16);
 
     // Constants
-    state[0] = this.SIGMA[0];
-    state[5] = this.SIGMA[1];
-    state[10] = this.SIGMA[2];
-    state[15] = this.SIGMA[3];
+    st[0] = this.SIGMA[0];
+    st[5] = this.SIGMA[1];
+    st[10] = this.SIGMA[2];
+    st[15] = this.SIGMA[3];
 
     // Key (256 bits)
-    state[1] = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
-    state[2] = OpCodes.Pack32LE(key[4], key[5], key[6], key[7]);
-    state[3] = OpCodes.Pack32LE(key[8], key[9], key[10], key[11]);
-    state[4] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
-    state[11] = OpCodes.Pack32LE(key[16], key[17], key[18], key[19]);
-    state[12] = OpCodes.Pack32LE(key[20], key[21], key[22], key[23]);
-    state[13] = OpCodes.Pack32LE(key[24], key[25], key[26], key[27]);
-    state[14] = OpCodes.Pack32LE(key[28], key[29], key[30], key[31]);
+    st[1] = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
+    st[2] = OpCodes.Pack32LE(key[4], key[5], key[6], key[7]);
+    st[3] = OpCodes.Pack32LE(key[8], key[9], key[10], key[11]);
+    st[4] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
+    st[11] = OpCodes.Pack32LE(key[16], key[17], key[18], key[19]);
+    st[12] = OpCodes.Pack32LE(key[20], key[21], key[22], key[23]);
+    st[13] = OpCodes.Pack32LE(key[24], key[25], key[26], key[27]);
+    st[14] = OpCodes.Pack32LE(key[28], key[29], key[30], key[31]);
 
     // First 16 bytes of nonce (128 bits)
-    state[6] = OpCodes.Pack32LE(nonce[0], nonce[1], nonce[2], nonce[3]);
-    state[7] = OpCodes.Pack32LE(nonce[4], nonce[5], nonce[6], nonce[7]);
-    state[8] = OpCodes.Pack32LE(nonce[8], nonce[9], nonce[10], nonce[11]);
-    state[9] = OpCodes.Pack32LE(nonce[12], nonce[13], nonce[14], nonce[15]);
+    st[6] = OpCodes.Pack32LE(nonce[0], nonce[1], nonce[2], nonce[3]);
+    st[7] = OpCodes.Pack32LE(nonce[4], nonce[5], nonce[6], nonce[7]);
+    st[8] = OpCodes.Pack32LE(nonce[8], nonce[9], nonce[10], nonce[11]);
+    st[9] = OpCodes.Pack32LE(nonce[12], nonce[13], nonce[14], nonce[15]);
 
     // Run Salsa20 core (20 rounds)
-    const output = this._salsa20Core(state);
+    /** @type {uint32[]} */
+    const mixed = this._salsa20Core(st);
 
     // HSalsa20: Extract subkey without addition (positions 0, 5-9, 10, 15)
     // This differs from regular Salsa20 which adds input to output
+    /** @type {uint8[]} */
     const subkey = new Array(32);
-    let subbytes;
+    /** @type {uint8[]} */
+    let subbytes = [];
 
     // Extract bytes in order: [0, 5, 10, 15, 6, 7, 8, 9]
-    subbytes = OpCodes.Unpack32LE(output[0] - state[0]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[0], st[0]));
     subkey[0] = subbytes[0]; subkey[1] = subbytes[1]; subkey[2] = subbytes[2]; subkey[3] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[5] - state[5]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[5], st[5]));
     subkey[4] = subbytes[0]; subkey[5] = subbytes[1]; subkey[6] = subbytes[2]; subkey[7] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[10] - state[10]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[10], st[10]));
     subkey[8] = subbytes[0]; subkey[9] = subbytes[1]; subkey[10] = subbytes[2]; subkey[11] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[15] - state[15]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[15], st[15]));
     subkey[12] = subbytes[0]; subkey[13] = subbytes[1]; subkey[14] = subbytes[2]; subkey[15] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[6] - state[6]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[6], st[6]));
     subkey[16] = subbytes[0]; subkey[17] = subbytes[1]; subkey[18] = subbytes[2]; subkey[19] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[7] - state[7]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[7], st[7]));
     subkey[20] = subbytes[0]; subkey[21] = subbytes[1]; subkey[22] = subbytes[2]; subkey[23] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[8] - state[8]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[8], st[8]));
     subkey[24] = subbytes[0]; subkey[25] = subbytes[1]; subkey[26] = subbytes[2]; subkey[27] = subbytes[3];
 
-    subbytes = OpCodes.Unpack32LE(output[9] - state[9]);
+    subbytes = OpCodes.Unpack32LE(OpCodes.Sub32(mixed[9], st[9]));
     subkey[28] = subbytes[0]; subkey[29] = subbytes[1]; subkey[30] = subbytes[2]; subkey[31] = subbytes[3];
 
     return subkey;
   }
 
-  _salsa20Core(input) {
+  /**
+   * @param {uint32[]} words
+   * @returns {uint32[]}
+   */
+  _salsa20Core(words) {
     // Salsa20 core: 20 rounds of column and diagonal rounds
-    let x0 = input[0], x1 = input[1], x2 = input[2], x3 = input[3];
-    let x4 = input[4], x5 = input[5], x6 = input[6], x7 = input[7];
-    let x8 = input[8], x9 = input[9], x10 = input[10], x11 = input[11];
-    let x12 = input[12], x13 = input[13], x14 = input[14], x15 = input[15];
+    /** @type {uint32} */
+    let x0 = words[0];
+    /** @type {uint32} */
+    let x1 = words[1];
+    /** @type {uint32} */
+    let x2 = words[2];
+    /** @type {uint32} */
+    let x3 = words[3];
+    /** @type {uint32} */
+    let x4 = words[4];
+    /** @type {uint32} */
+    let x5 = words[5];
+    /** @type {uint32} */
+    let x6 = words[6];
+    /** @type {uint32} */
+    let x7 = words[7];
+    /** @type {uint32} */
+    let x8 = words[8];
+    /** @type {uint32} */
+    let x9 = words[9];
+    /** @type {uint32} */
+    let x10 = words[10];
+    /** @type {uint32} */
+    let x11 = words[11];
+    /** @type {uint32} */
+    let x12 = words[12];
+    /** @type {uint32} */
+    let x13 = words[13];
+    /** @type {uint32} */
+    let x14 = words[14];
+    /** @type {uint32} */
+    let x15 = words[15];
 
     // 20 rounds (10 double-rounds)
     for (let i = 0; i < 10; i++) {
       // Column rounds
-      x4 = OpCodes.XorN(x4, OpCodes.RotL32(OpCodes.ToInt(x0 + x12), 7));
-      x8 = OpCodes.XorN(x8, OpCodes.RotL32(OpCodes.ToInt(x4 + x0), 9));
-      x12 = OpCodes.XorN(x12, OpCodes.RotL32(OpCodes.ToInt(x8 + x4), 13));
-      x0 = OpCodes.XorN(x0, OpCodes.RotL32(OpCodes.ToInt(x12 + x8), 18));
+      x4 = OpCodes.Xor32(x4, OpCodes.RotL32(OpCodes.Add32(x0, x12), 7));
+      x8 = OpCodes.Xor32(x8, OpCodes.RotL32(OpCodes.Add32(x4, x0), 9));
+      x12 = OpCodes.Xor32(x12, OpCodes.RotL32(OpCodes.Add32(x8, x4), 13));
+      x0 = OpCodes.Xor32(x0, OpCodes.RotL32(OpCodes.Add32(x12, x8), 18));
 
-      x9 = OpCodes.XorN(x9, OpCodes.RotL32(OpCodes.ToInt(x5 + x1), 7));
-      x13 = OpCodes.XorN(x13, OpCodes.RotL32(OpCodes.ToInt(x9 + x5), 9));
-      x1 = OpCodes.XorN(x1, OpCodes.RotL32(OpCodes.ToInt(x13 + x9), 13));
-      x5 = OpCodes.XorN(x5, OpCodes.RotL32(OpCodes.ToInt(x1 + x13), 18));
+      x9 = OpCodes.Xor32(x9, OpCodes.RotL32(OpCodes.Add32(x5, x1), 7));
+      x13 = OpCodes.Xor32(x13, OpCodes.RotL32(OpCodes.Add32(x9, x5), 9));
+      x1 = OpCodes.Xor32(x1, OpCodes.RotL32(OpCodes.Add32(x13, x9), 13));
+      x5 = OpCodes.Xor32(x5, OpCodes.RotL32(OpCodes.Add32(x1, x13), 18));
 
-      x14 = OpCodes.XorN(x14, OpCodes.RotL32(OpCodes.ToInt(x10 + x6), 7));
-      x2 = OpCodes.XorN(x2, OpCodes.RotL32(OpCodes.ToInt(x14 + x10), 9));
-      x6 = OpCodes.XorN(x6, OpCodes.RotL32(OpCodes.ToInt(x2 + x14), 13));
-      x10 = OpCodes.XorN(x10, OpCodes.RotL32(OpCodes.ToInt(x6 + x2), 18));
+      x14 = OpCodes.Xor32(x14, OpCodes.RotL32(OpCodes.Add32(x10, x6), 7));
+      x2 = OpCodes.Xor32(x2, OpCodes.RotL32(OpCodes.Add32(x14, x10), 9));
+      x6 = OpCodes.Xor32(x6, OpCodes.RotL32(OpCodes.Add32(x2, x14), 13));
+      x10 = OpCodes.Xor32(x10, OpCodes.RotL32(OpCodes.Add32(x6, x2), 18));
 
-      x3 = OpCodes.XorN(x3, OpCodes.RotL32(OpCodes.ToInt(x15 + x11), 7));
-      x7 = OpCodes.XorN(x7, OpCodes.RotL32(OpCodes.ToInt(x3 + x15), 9));
-      x11 = OpCodes.XorN(x11, OpCodes.RotL32(OpCodes.ToInt(x7 + x3), 13));
-      x15 = OpCodes.XorN(x15, OpCodes.RotL32(OpCodes.ToInt(x11 + x7), 18));
+      x3 = OpCodes.Xor32(x3, OpCodes.RotL32(OpCodes.Add32(x15, x11), 7));
+      x7 = OpCodes.Xor32(x7, OpCodes.RotL32(OpCodes.Add32(x3, x15), 9));
+      x11 = OpCodes.Xor32(x11, OpCodes.RotL32(OpCodes.Add32(x7, x3), 13));
+      x15 = OpCodes.Xor32(x15, OpCodes.RotL32(OpCodes.Add32(x11, x7), 18));
 
       // Diagonal rounds
-      x1 = OpCodes.XorN(x1, OpCodes.RotL32(OpCodes.ToInt(x0 + x3), 7));
-      x2 = OpCodes.XorN(x2, OpCodes.RotL32(OpCodes.ToInt(x1 + x0), 9));
-      x3 = OpCodes.XorN(x3, OpCodes.RotL32(OpCodes.ToInt(x2 + x1), 13));
-      x0 = OpCodes.XorN(x0, OpCodes.RotL32(OpCodes.ToInt(x3 + x2), 18));
+      x1 = OpCodes.Xor32(x1, OpCodes.RotL32(OpCodes.Add32(x0, x3), 7));
+      x2 = OpCodes.Xor32(x2, OpCodes.RotL32(OpCodes.Add32(x1, x0), 9));
+      x3 = OpCodes.Xor32(x3, OpCodes.RotL32(OpCodes.Add32(x2, x1), 13));
+      x0 = OpCodes.Xor32(x0, OpCodes.RotL32(OpCodes.Add32(x3, x2), 18));
 
-      x6 = OpCodes.XorN(x6, OpCodes.RotL32(OpCodes.ToInt(x5 + x4), 7));
-      x7 = OpCodes.XorN(x7, OpCodes.RotL32(OpCodes.ToInt(x6 + x5), 9));
-      x4 = OpCodes.XorN(x4, OpCodes.RotL32(OpCodes.ToInt(x7 + x6), 13));
-      x5 = OpCodes.XorN(x5, OpCodes.RotL32(OpCodes.ToInt(x4 + x7), 18));
+      x6 = OpCodes.Xor32(x6, OpCodes.RotL32(OpCodes.Add32(x5, x4), 7));
+      x7 = OpCodes.Xor32(x7, OpCodes.RotL32(OpCodes.Add32(x6, x5), 9));
+      x4 = OpCodes.Xor32(x4, OpCodes.RotL32(OpCodes.Add32(x7, x6), 13));
+      x5 = OpCodes.Xor32(x5, OpCodes.RotL32(OpCodes.Add32(x4, x7), 18));
 
-      x11 = OpCodes.XorN(x11, OpCodes.RotL32(OpCodes.ToInt(x10 + x9), 7));
-      x8 = OpCodes.XorN(x8, OpCodes.RotL32(OpCodes.ToInt(x11 + x10), 9));
-      x9 = OpCodes.XorN(x9, OpCodes.RotL32(OpCodes.ToInt(x8 + x11), 13));
-      x10 = OpCodes.XorN(x10, OpCodes.RotL32(OpCodes.ToInt(x9 + x8), 18));
+      x11 = OpCodes.Xor32(x11, OpCodes.RotL32(OpCodes.Add32(x10, x9), 7));
+      x8 = OpCodes.Xor32(x8, OpCodes.RotL32(OpCodes.Add32(x11, x10), 9));
+      x9 = OpCodes.Xor32(x9, OpCodes.RotL32(OpCodes.Add32(x8, x11), 13));
+      x10 = OpCodes.Xor32(x10, OpCodes.RotL32(OpCodes.Add32(x9, x8), 18));
 
-      x12 = OpCodes.XorN(x12, OpCodes.RotL32(OpCodes.ToInt(x15 + x14), 7));
-      x13 = OpCodes.XorN(x13, OpCodes.RotL32(OpCodes.ToInt(x12 + x15), 9));
-      x14 = OpCodes.XorN(x14, OpCodes.RotL32(OpCodes.ToInt(x13 + x12), 13));
-      x15 = OpCodes.XorN(x15, OpCodes.RotL32(OpCodes.ToInt(x14 + x13), 18));
+      x12 = OpCodes.Xor32(x12, OpCodes.RotL32(OpCodes.Add32(x15, x14), 7));
+      x13 = OpCodes.Xor32(x13, OpCodes.RotL32(OpCodes.Add32(x12, x15), 9));
+      x14 = OpCodes.Xor32(x14, OpCodes.RotL32(OpCodes.Add32(x13, x12), 13));
+      x15 = OpCodes.Xor32(x15, OpCodes.RotL32(OpCodes.Add32(x14, x13), 18));
     }
 
     // Add input to output (final step of Salsa20)
-    return [
-      OpCodes.ToInt(x0 + input[0]), OpCodes.ToInt(x1 + input[1]), OpCodes.ToInt(x2 + input[2]), OpCodes.ToInt(x3 + input[3]),
-      OpCodes.ToInt(x4 + input[4]), OpCodes.ToInt(x5 + input[5]), OpCodes.ToInt(x6 + input[6]), OpCodes.ToInt(x7 + input[7]),
-      OpCodes.ToInt(x8 + input[8]), OpCodes.ToInt(x9 + input[9]), OpCodes.ToInt(x10 + input[10]), OpCodes.ToInt(x11 + input[11]),
-      OpCodes.ToInt(x12 + input[12]), OpCodes.ToInt(x13 + input[13]), OpCodes.ToInt(x14 + input[14]), OpCodes.ToInt(x15 + input[15])
+    /** @type {uint32[]} */
+    const sum = [
+      OpCodes.Add32(x0, words[0]), OpCodes.Add32(x1, words[1]), OpCodes.Add32(x2, words[2]), OpCodes.Add32(x3, words[3]),
+      OpCodes.Add32(x4, words[4]), OpCodes.Add32(x5, words[5]), OpCodes.Add32(x6, words[6]), OpCodes.Add32(x7, words[7]),
+      OpCodes.Add32(x8, words[8]), OpCodes.Add32(x9, words[9]), OpCodes.Add32(x10, words[10]), OpCodes.Add32(x11, words[11]),
+      OpCodes.Add32(x12, words[12]), OpCodes.Add32(x13, words[13]), OpCodes.Add32(x14, words[14]), OpCodes.Add32(x15, words[15])
     ];
+    return sum;
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _generateBlock() {
     // Update counter in state
-    this.state[8] = this.counter[0];
-    this.state[9] = this.counter[1];
+    this._matrix[8] = this._blockNumber[0];
+    this._matrix[9] = this._blockNumber[1];
 
     // Generate keystream block
-    const output = this._salsa20Core(this.state);
+    /** @type {uint32[]} */
+    const words = this._salsa20Core(this._matrix);
 
     // Convert to bytes
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
-      const bytes = OpCodes.Unpack32LE(output[i]);
-      keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+      const bytes = OpCodes.Unpack32LE(words[i]);
+      keystream.push(bytes[0]);
+      keystream.push(bytes[1]);
+      keystream.push(bytes[2]);
+      keystream.push(bytes[3]);
     }
 
     // Increment counter
-    this.counter[0] = OpCodes.ToUint32(this.counter[0] + 1);
-    if (this.counter[0] === 0) {
-      this.counter[1] = OpCodes.ToUint32(this.counter[1] + 1);
+    this._blockNumber[0] = OpCodes.Add32(this._blockNumber[0], 1);
+    if (this._blockNumber[0] === 0) {
+      this._blockNumber[1] = OpCodes.Add32(this._blockNumber[1], 1);
     }
 
     return keystream;
   }
 
+  /**
+   * @returns {uint8}
+   */
   _getNextKeystreamByte() {
     if (this.bufferIndex >= this.keystreamBuffer.length) {
       this.keystreamBuffer = this._generateBlock();

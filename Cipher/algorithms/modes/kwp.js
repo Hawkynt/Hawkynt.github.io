@@ -124,14 +124,16 @@
   class KwpModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KwpAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.kek = null; // Key Encryption Key
     }
@@ -152,7 +154,7 @@
 
     /**
      * Set the Key Encryption Key (KEK)
-     * @param {Array} kek - Key Encryption Key (128, 192, or 256 bits)
+     * @param {uint8[]} kek - Key Encryption Key (128, 192, or 256 bits)
      */
     setKEK(kek) {
       if (!kek || (kek.length !== 16 && kek.length !== 24 && kek.length !== 32)) {
@@ -206,7 +208,7 @@
 
     /**
      * Wrap a key with padding using RFC 5649 algorithm
-     * @returns {Array} Wrapped key with padding
+     * @returns {uint8[]} Wrapped key with padding
      */
     _wrapKeyWithPadding() {
       const plainKey = this.inputBuffer;
@@ -226,20 +228,23 @@
       }
 
       // Construct KWP IV: 0xA65959A6 || original_length (32-bit big-endian)
+      /** @type {uint8[]} */
       const kwpIV = [
         0xA6, 0x59, 0x59, 0xA6,
-        OpCodes.AndN(OpCodes.Shr32(originalLength, 24), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(originalLength, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(originalLength, 8), 0xFF),
-        OpCodes.AndN(originalLength, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(originalLength, 24), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(originalLength, 16), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(originalLength, 8), 0xFF),
+        OpCodes.And32(originalLength, 0xFF)
       ];
 
+      /** @type {uint8[]} */
       let result;
 
       if (paddedKey.length === 8) {
         // Special case: single 64-bit block
         // Encrypt IV || padded_key directly
         const input = kwpIV.concat(paddedKey);
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.kek;
         cipher.Feed(input);
@@ -250,6 +255,7 @@
 
         // Initialize variables
         let A = [...kwpIV]; // Use KWP IV instead of default KW IV
+        /** @type {uint8[][]} */
         const R = new Array(n + 1); // Array of 64-bit registers
         R[0] = null; // R[0] is not used
 
@@ -263,9 +269,11 @@
           for (let i = 1; i <= n; i++) {
             // Encrypt A || R[i] with KEK
             const input = A.concat(R[i]);
+            /** @type {IBlockCipherInstance} */
             const cipher = this.blockCipher.algorithm.CreateInstance(false);
             cipher.key = this.kek;
             cipher.Feed(input);
+            /** @type {uint8[]} */
             const B = cipher.Result();
 
             // Split result and update
@@ -274,10 +282,10 @@
 
             // XOR MSB of A with (n*j)+i
             const t = (n * j) + i;
-            A[7] = OpCodes.XorN(A[7], OpCodes.AndN(t, 0xFF));
-            A[6] = OpCodes.XorN(A[6], OpCodes.AndN(OpCodes.Shr32(t, 8), 0xFF));
-            A[5] = OpCodes.XorN(A[5], OpCodes.AndN(OpCodes.Shr32(t, 16), 0xFF));
-            A[4] = OpCodes.XorN(A[4], OpCodes.AndN(OpCodes.Shr32(t, 24), 0xFF));
+            A[7] = OpCodes.Xor8(A[7], OpCodes.And32(t, 0xFF));
+            A[6] = OpCodes.Xor8(A[6], OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF));
+            A[5] = OpCodes.Xor8(A[5], OpCodes.And32(OpCodes.Shr32(t, 16), 0xFF));
+            A[4] = OpCodes.Xor8(A[4], OpCodes.And32(OpCodes.Shr32(t, 24), 0xFF));
           }
         }
 
@@ -289,7 +297,9 @@
 
         // Clear sensitive arrays
         OpCodes.ClearArray(A);
-        R.forEach(r => r && OpCodes.ClearArray(r));
+        for (let i = 1; i <= n; i++) {
+          if (R[i]) OpCodes.ClearArray(R[i]);
+        }
       }
 
       // Clear sensitive data
@@ -302,7 +312,7 @@
 
     /**
      * Unwrap a key with padding using RFC 5649 algorithm
-     * @returns {Array} Unwrapped key with padding removed
+     * @returns {uint8[]} Unwrapped key with padding removed
      */
     _unwrapKeyWithPadding() {
       const wrappedKey = this.inputBuffer;
@@ -312,11 +322,13 @@
         throw new Error("Wrapped key must be at least 16 bytes and multiple of 8 bytes");
       }
 
+      /** @type {uint8[]} */
       let decrypted;
 
       if (wrappedKey.length === 16) {
         // Special case: single block
         // Decrypt directly to get IV || padded_key
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(true);
         cipher.key = this.kek;
         cipher.Feed(wrappedKey);
@@ -327,6 +339,7 @@
 
         // Initialize variables
         let A = wrappedKey.slice(0, 8); // 64-bit IV
+        /** @type {uint8[][]} */
         const R = new Array(n + 1); // Array of 64-bit registers
         R[0] = null; // R[0] is not used
 
@@ -340,16 +353,18 @@
           for (let i = n; i >= 1; i--) {
             // XOR MSB of A with (n*j)+i
             const t = (n * j) + i;
-            A[7] = OpCodes.XorN(A[7], OpCodes.AndN(t, 0xFF));
-            A[6] = OpCodes.XorN(A[6], OpCodes.AndN(OpCodes.Shr32(t, 8), 0xFF));
-            A[5] = OpCodes.XorN(A[5], OpCodes.AndN(OpCodes.Shr32(t, 16), 0xFF));
-            A[4] = OpCodes.XorN(A[4], OpCodes.AndN(OpCodes.Shr32(t, 24), 0xFF));
+            A[7] = OpCodes.Xor8(A[7], OpCodes.And32(t, 0xFF));
+            A[6] = OpCodes.Xor8(A[6], OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF));
+            A[5] = OpCodes.Xor8(A[5], OpCodes.And32(OpCodes.Shr32(t, 16), 0xFF));
+            A[4] = OpCodes.Xor8(A[4], OpCodes.And32(OpCodes.Shr32(t, 24), 0xFF));
 
             // Decrypt A || R[i] with KEK
             const input = A.concat(R[i]);
+            /** @type {IBlockCipherInstance} */
             const cipher = this.blockCipher.algorithm.CreateInstance(true);
             cipher.key = this.kek;
             cipher.Feed(input);
+            /** @type {uint8[]} */
             const B = cipher.Result();
 
             // Split result and update
@@ -366,7 +381,9 @@
 
         // Clear sensitive arrays
         OpCodes.ClearArray(A);
-        R.forEach(r => r && OpCodes.ClearArray(r));
+        for (let i = 1; i <= n; i++) {
+          if (R[i]) OpCodes.ClearArray(R[i]);
+        }
       }
 
       // Extract IV and verify KWP format
@@ -379,7 +396,7 @@
       }
 
       // Extract original key length
-      const originalLength = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(iv[4], 24), OpCodes.Shl32(iv[5], 16)), OpCodes.Shl32(iv[6], 8)), iv[7]);
+      const originalLength = OpCodes.ToInt(OpCodes.Pack32BE(iv[4], iv[5], iv[6], iv[7]));
 
       // Validate length
       if (originalLength > paddedKey.length) {

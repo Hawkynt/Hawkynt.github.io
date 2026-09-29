@@ -114,7 +114,7 @@
         {
           text: "BouncyCastle VMPC-KSA3 Test Vector - First 4 keystream bytes",
           uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCKSA3Test.java",
-          input: new Array(4).fill(0),
+          input: OpCodes.CreateArray(4, 0),
           key: OpCodes.Hex8ToBytes("9661410AB797D8A9EB767C21172DF6C7"),
           iv: OpCodes.Hex8ToBytes("4B5C2F003E67F39557A8D26F3DA2B155"),
           // Verified against BouncyCastle Java reference: positions 0,1,2,3 = B6,EB,AE,FE
@@ -123,7 +123,7 @@
         {
           text: "BouncyCastle VMPC-KSA3 Test Vector - First 256 bytes (positions 252-255)",
           uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCKSA3Test.java",
-          input: new Array(256).fill(0),
+          input: OpCodes.CreateArray(256, 0),
           key: OpCodes.Hex8ToBytes("9661410AB797D8A9EB767C21172DF6C7"),
           iv: OpCodes.Hex8ToBytes("4B5C2F003E67F39557A8D26F3DA2B155"),
           // Complete first 256 bytes - verified against BouncyCastle Java reference
@@ -143,7 +143,7 @@
         {
           text: "BouncyCastle VMPC-KSA3 Test Vector - First 1024 bytes (positions 1020-1023)",
           uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCKSA3Test.java",
-          input: new Array(1024).fill(0),
+          input: OpCodes.CreateArray(1024, 0),
           key: OpCodes.Hex8ToBytes("9661410AB797D8A9EB767C21172DF6C7"),
           iv: OpCodes.Hex8ToBytes("4B5C2F003E67F39557A8D26F3DA2B155"),
           // Complete first 1024 bytes - verified against BouncyCastle Java reference
@@ -186,7 +186,7 @@
         {
           text: "DarkCrypt Vmpcksa3 - 128-byte keystream (key=00..3F, IV=00)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           iv: [0],
           expected: OpCodes.Hex8ToBytes("c3797e46d1b54a9707eee65f959e3dbe9e7ddcb58fe52cc08b499ce32827b33753b92509203fc78da3639ff47e3ea74612981d425acb95408f907696b5b17247946099f1182c64615ca2cff19700af9ebc8da907047b650e864edf5d24bf7fcf5f650e2df707046a574f9be149152233c1daf7b5f6e1fa817d375ee1d1049d26")
@@ -224,21 +224,29 @@
   class VMPCKSA3Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VMPCKSA3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // VMPC state
+      /** @type {uint8[]} */
       this.P = new Array(256);  // S-box permutation (called P in VMPC spec)
+      /** @type {uint32} */
       this.n = 0;               // PRGA counter n
+      /** @type {uint8} */
       this.s = 0;               // PRGA counter s
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -262,7 +270,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid VMPC-KSA3 key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid VMPC-KSA3 key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -283,6 +291,9 @@
     }
 
     // Property setter for IV/nonce
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -296,7 +307,7 @@
 
       const ivLength = ivData.length;
       if (ivLength < 1 || ivLength > 768) {
-        throw new Error(`Invalid VMPC-KSA3 IV size: ${ivLength} bytes. Requires 1-768 bytes`);
+        throw new Error("Invalid VMPC-KSA3 IV size: " + ivLength + " bytes. Requires 1-768 bytes");
       }
 
       this._iv = [...ivData];
@@ -316,10 +327,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -367,6 +384,7 @@
         throw new Error("VMPC-KSA3 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
@@ -398,7 +416,7 @@
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + keyByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), keyByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -412,7 +430,7 @@
         const ivByte = this._iv[m % this._iv.length];
 
         // s = P[(s + P[i] + iv[m mod ivLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + ivByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), ivByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -427,7 +445,7 @@
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + keyByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), keyByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -442,6 +460,9 @@
 
     // Pseudo-Random Generation Algorithm (PRGA) - generate one keystream byte
     // This is IDENTICAL to standard VMPC - only the KSA differs
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
       // Load P[n]
       const pn = this.P[OpCodes.ToByte(this.n)];

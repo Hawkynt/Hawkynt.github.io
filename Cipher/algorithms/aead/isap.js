@@ -52,6 +52,12 @@
   // Extracted from isap-hash.js for code reuse
 
   // 64-bit rotation using OpCodes principles
+  /**
+   * @param {uint32} low
+   * @param {uint32} high
+   * @param {int32} positions
+   * @returns {uint32[]}
+   */
   function rotr64(low, high, positions) {
     positions %= 64;
     if (positions === 0) return [low, high];
@@ -59,28 +65,51 @@
 
     if (positions < 32) {
       return [
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))),
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)))
+        OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))),
+        OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)))
       ];
     }
 
     positions -= 32;
     return [
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))),
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)))
+      OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))),
+      OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)))
     ];
+  }
+
+  /**
+   * A zero 64-bit word as a fresh [low32, high32] pair
+   * @returns {uint32[]}
+   */
+  function zeroWordPair() {
+    /** @type {uint32[]} */
+    const pair = [0, 0];
+    return pair;
   }
 
   // Ascon state: 5 x 64-bit words stored as [low32, high32] pairs
   class AsconState {
     constructor() {
+      /** @type {uint32[][]} */
       this.S = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        this.S[i] = [0, 0];
+        this.S[i] = zeroWordPair();
       }
     }
 
     // Set state from key and IV
+    /**
+     * @param {uint32} x0_low
+     * @param {uint32} x0_high
+     * @param {uint32} x1_low
+     * @param {uint32} x1_high
+     * @param {uint32} x2_low
+     * @param {uint32} x2_high
+     * @param {uint32} x3_low
+     * @param {uint32} x3_high
+     * @param {uint32} x4_low
+     * @param {uint32} x4_high
+     */
     set(x0_low, x0_high, x1_low, x1_high, x2_low, x2_high, x3_low, x3_high, x4_low, x4_high) {
       this.S[0] = [x0_low, x0_high];
       this.S[1] = [x1_low, x1_high];
@@ -90,6 +119,9 @@
     }
 
     // Copy from another state
+    /**
+     * @param {AsconState} other
+     */
     copyFrom(other) {
       for (let i = 0; i < 5; ++i) {
         this.S[i] = [other.S[i][0], other.S[i][1]];
@@ -97,39 +129,42 @@
     }
 
     // Ascon permutation round
+    /**
+     * @param {uint32} c
+     */
     round(c) {
       // Apply constant to S2
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], c));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][0], c));
 
       // Pre-XOR phase
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
-      this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]);
-      this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]);
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[4][1]);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.Xor32(this.S[4][1], this.S[3][1]);
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.Xor32(this.S[2][1], this.S[1][1]);
 
       // S-box: Compute ~xi&xj (Chi layer)
-      const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
-      const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
-      const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
-      const t1_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][1], this.S[2][1]));
-      const t2_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][0], this.S[3][0]));
-      const t2_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][1], this.S[3][1]));
-      const t3_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][0], this.S[4][0]));
-      const t3_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][1], this.S[4][1]));
-      const t4_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][0], this.S[0][0]));
-      const t4_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][1], this.S[0][1]));
+      const t0_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[0][0]), this.S[1][0]));
+      const t0_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[0][1]), this.S[1][1]));
+      const t1_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[1][0]), this.S[2][0]));
+      const t1_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[1][1]), this.S[2][1]));
+      const t2_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[2][0]), this.S[3][0]));
+      const t2_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[2][1]), this.S[3][1]));
+      const t3_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[3][0]), this.S[4][0]));
+      const t3_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[3][1]), this.S[4][1]));
+      const t4_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[4][0]), this.S[0][0]));
+      const t4_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[4][1]), this.S[0][1]));
 
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], t1_l); this.S[0][1] = OpCodes.XorN(this.S[0][1], t1_h);
-      this.S[1][0] = OpCodes.XorN(this.S[1][0], t2_l); this.S[1][1] = OpCodes.XorN(this.S[1][1], t2_h);
-      this.S[2][0] = OpCodes.XorN(this.S[2][0], t3_l); this.S[2][1] = OpCodes.XorN(this.S[2][1], t3_h);
-      this.S[3][0] = OpCodes.XorN(this.S[3][0], t4_l); this.S[3][1] = OpCodes.XorN(this.S[3][1], t4_h);
-      this.S[4][0] = OpCodes.XorN(this.S[4][0], t0_l); this.S[4][1] = OpCodes.XorN(this.S[4][1], t0_h);
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], t1_l); this.S[0][1] = OpCodes.Xor32(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], t2_l); this.S[1][1] = OpCodes.Xor32(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], t3_l); this.S[2][1] = OpCodes.Xor32(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], t4_l); this.S[3][1] = OpCodes.Xor32(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], t0_l); this.S[4][1] = OpCodes.Xor32(this.S[4][1], t0_h);
 
       // Post-XOR phase
-      this.S[1][0] = OpCodes.XorN(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.XorN(this.S[1][1], this.S[0][1]);
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
-      this.S[3][0] = OpCodes.XorN(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.XorN(this.S[3][1], this.S[2][1]);
-      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);
-      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.Xor32(this.S[1][1], this.S[0][1]);
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[4][1]);
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.Xor32(this.S[3][1], this.S[2][1]);
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][1]));
 
       // Linear diffusion layer
       const s0_l = this.S[0][0], s0_h = this.S[0][1];
@@ -140,28 +175,28 @@
 
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]));
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s0_l, r0[0]), r1[0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s0_h, r0[1]), r1[1]));
 
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]));
-      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]));
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s1_l, r0[0]), r1[0]));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s1_h, r0[1]), r1[1]));
 
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]));
-      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s2_l, r0[0]), r1[0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s2_h, r0[1]), r1[1]));
 
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]));
-      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]));
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s3_l, r0[0]), r1[0]));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s3_h, r0[1]), r1[1]));
 
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]));
-      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_h, r0[1]), r1[1]));
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s4_l, r0[0]), r1[0]));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s4_h, r0[1]), r1[1]));
     }
 
     // Ascon-p[12] permutation
@@ -316,33 +351,46 @@
   class ISAPA128AInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ISAPA128AAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
 
       // ISAP-A-128A parameters
+      /** @type {int32} */
       this.RATE = 8; // 64 bits = 8 bytes
+      /** @type {int32} */
       this.KEY_SIZE = 16;
+      /** @type {int32} */
       this.NONCE_SIZE = 16;
+      /** @type {int32} */
       this.TAG_SIZE = 16;
 
       // ISAP-A-128A IVs (as 64-bit big-endian values)
       // Reference: BouncyCastle ISAPEngine.java ISAPAEAD_A_128A
       // IV1 = 0x01 || keySize*8 || rate*8 || 0x01 || sH || sB || sE || sK
       //     = 0x01 80 40 01 0C 01 06 0C = 108156764297430540
+      /** @type {uint32[]} */
       this.ISAP_IV1_64 = [0x0c01060c, 0x01804001]; // [low32, high32] of big-endian value
       // IV2 = 0x02 80 40 01 0C 01 06 0C = 180214358335358476
+      /** @type {uint32[]} */
       this.ISAP_IV2_64 = [0x0c01060c, 0x02804001];
       // IV3 = 0x03 80 40 01 0C 01 06 0C = 252271952373286412
+      /** @type {uint32[]} */
       this.ISAP_IV3_64 = [0x0c01060c, 0x03804001];
     }
 
@@ -361,7 +409,7 @@
       }
 
       if (keyBytes.length !== this.KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -376,6 +424,9 @@
     get key() { return this._key ? [...this._key] : null; }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -384,20 +435,34 @@
       }
 
       if (nonceBytes.length !== this.NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this._associatedData = adBytes ? [...adBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = [...adBytes];
+      }
+      this._associatedData = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() { return [...this._associatedData]; }
 
     _initializeIfReady() {
@@ -438,11 +503,16 @@
     }
 
     // Encryption: plaintext -> ciphertext || tag
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
 
       // 1. Encrypt plaintext
+      /** @type {AsconState} */
       const encState = this._isap_rk(this.ISAP_IV3_64, this._nonce);
       // Set nonce in state[3:4]
       const nonce64_0 = OpCodes.Pack32BE(this._nonce[0], this._nonce[1], this._nonce[2], this._nonce[3]);
@@ -459,10 +529,11 @@
         const blockSize = Math.min(this.RATE, plaintext.length - offset);
 
         // XOR plaintext with state[0] to produce ciphertext
+        /** @type {uint8[]} */
         const stateBytes = OpCodes.Unpack32BE(encState.S[0][1]).concat(OpCodes.Unpack32BE(encState.S[0][0]));
 
         for (let i = 0; i < blockSize; ++i) {
-          output.push(OpCodes.XorN(plaintext[offset + i], stateBytes[i]));
+          output.push(OpCodes.Xor32(plaintext[offset + i], stateBytes[i]));
         }
 
         offset += blockSize;
@@ -481,6 +552,9 @@
     }
 
     // Decryption: ciphertext || tag -> plaintext (or error)
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const input = this.inputBuffer;
 
@@ -492,6 +566,7 @@
       const receivedTag = input.slice(input.length - this.TAG_SIZE);
 
       // 1. Compute authentication tag over ciphertext
+      /** @type {uint8[]} */
       const computedTag = this._isap_mac(ciphertext);
 
       // 2. Verify tag (constant-time comparison)
@@ -507,7 +582,9 @@
       }
 
       // 3. Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
+      /** @type {AsconState} */
       const encState = this._isap_rk(this.ISAP_IV3_64, this._nonce);
       // Set nonce in state[3:4]
       const nonce64_0 = OpCodes.Pack32BE(this._nonce[0], this._nonce[1], this._nonce[2], this._nonce[3]);
@@ -523,10 +600,11 @@
       while (offset < ciphertext.length) {
         const blockSize = Math.min(this.RATE, ciphertext.length - offset);
 
+        /** @type {uint8[]} */
         const stateBytes = OpCodes.Unpack32BE(encState.S[0][1]).concat(OpCodes.Unpack32BE(encState.S[0][0]));
 
         for (let i = 0; i < blockSize; ++i) {
-          plaintext.push(OpCodes.XorN(ciphertext[offset + i], stateBytes[i]));
+          plaintext.push(OpCodes.Xor32(ciphertext[offset + i], stateBytes[i]));
         }
 
         offset += blockSize;
@@ -542,6 +620,11 @@
 
     // ISAP re-keying function
     // Reference: BouncyCastle ISAPEngine.java isap_rk(), internal-isap.h
+    /**
+     * @param {uint32[]} iv64
+     * @param {uint8[]} y
+     * @returns {AsconState}
+     */
     _isap_rk(iv64, y) {
       const state = new AsconState();
 
@@ -555,8 +638,8 @@
       state.S[0] = [k64_1, k64_0]; // x0 = K[0:8]
       state.S[1] = [k64_3, k64_2]; // x1 = K[8:16]
       state.S[2] = [iv64[0], iv64[1]]; // x2 = IV
-      state.S[3] = [0, 0];
-      state.S[4] = [0, 0];
+      state.S[3] = zeroWordPair();
+      state.S[4] = zeroWordPair();
 
       state.p12(); // sK rounds
 
@@ -566,18 +649,18 @@
       for (let bit = 0; bit < numBits; ++bit) {
         const byteIndex = Math.floor(bit / 8);
         const bitIndex = 7 - (bit % 8);
-        const bitValue = OpCodes.AndN(OpCodes.Shr32(y[byteIndex], bitIndex), 0x01);
+        const bitValue = OpCodes.And32(OpCodes.Shr32(y[byteIndex], bitIndex), 0x01);
 
         // XOR bit into state[0] MSB: x0 ^= OpCodes.Shl32((OpCodes.Shl32(bit, 7)), 56)
-        state.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(bitValue, 7), 24)));
+        state.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(bitValue, 7), 24)));
 
         // Single round (sB = 1)
         state.round(0x4b); // Last round constant
       }
 
       // Absorb final bit
-      const lastBit = OpCodes.AndN(y[y.length - 1], 0x01);
-      state.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(lastBit, 7), 24)));
+      const lastBit = OpCodes.And32(y[y.length - 1], 0x01);
+      state.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(lastBit, 7), 24)));
 
       state.p12(); // Final sK rounds
 
@@ -586,6 +669,10 @@
 
     // ISAP MAC computation
     // Reference: BouncyCastle ISAPEngine.java processMACFinal(), internal-isap.h isap_mac()
+    /**
+     * @param {uint8[]} ciphertext
+     * @returns {uint8[]}
+     */
     _isap_mac(ciphertext) {
       const macState = new AsconState();
 
@@ -599,8 +686,8 @@
       macState.S[0] = [nonce64_1, nonce64_0];
       macState.S[1] = [nonce64_3, nonce64_2];
       macState.S[2] = [this.ISAP_IV1_64[0], this.ISAP_IV1_64[1]];
-      macState.S[3] = [0, 0];
-      macState.S[4] = [0, 0];
+      macState.S[3] = zeroWordPair();
+      macState.S[4] = zeroWordPair();
 
       macState.p12(); // sH rounds
 
@@ -615,8 +702,8 @@
           this._associatedData[offset + 4], this._associatedData[offset + 5],
           this._associatedData[offset + 6], this._associatedData[offset + 7]
         );
-        macState.S[0][1] = OpCodes.XorN(macState.S[0][1], block64_high);
-        macState.S[0][0] = OpCodes.XorN(macState.S[0][0], block64_low);
+        macState.S[0][1] = OpCodes.Xor32(macState.S[0][1], block64_high);
+        macState.S[0][0] = OpCodes.Xor32(macState.S[0][0], block64_low);
         macState.p12();
         offset += this.RATE;
       }
@@ -625,13 +712,13 @@
       const adRemainder = this._associatedData.length - offset;
       for (let i = 0; i < adRemainder; ++i) {
         const shiftAmount = (7 - i) * 8;
-        macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(OpCodes.AndN(this._associatedData[offset + i], 0xFF), shiftAmount)));
+        macState.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(macState.S[0][1], OpCodes.Shl32(OpCodes.And32(this._associatedData[offset + i], 0xFF), shiftAmount)));
       }
-      macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(0x80, (7 - adRemainder) * 8)));
+      macState.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(macState.S[0][1], OpCodes.Shl32(0x80, (7 - adRemainder) * 8)));
       macState.p12();
 
       // Domain separation
-      macState.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(macState.S[4][0], 1));
+      macState.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(macState.S[4][0], 1));
 
       // Absorb ciphertext
       offset = 0;
@@ -644,8 +731,8 @@
           ciphertext[offset + 4], ciphertext[offset + 5],
           ciphertext[offset + 6], ciphertext[offset + 7]
         );
-        macState.S[0][1] = OpCodes.XorN(macState.S[0][1], block64_high);
-        macState.S[0][0] = OpCodes.XorN(macState.S[0][0], block64_low);
+        macState.S[0][1] = OpCodes.Xor32(macState.S[0][1], block64_high);
+        macState.S[0][0] = OpCodes.Xor32(macState.S[0][0], block64_low);
         macState.p12();
         offset += this.RATE;
       }
@@ -654,12 +741,13 @@
       const ctRemainder = ciphertext.length - offset;
       for (let i = 0; i < ctRemainder; ++i) {
         const shiftAmount = (7 - i) * 8;
-        macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(OpCodes.AndN(ciphertext[offset + i], 0xFF), shiftAmount)));
+        macState.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(macState.S[0][1], OpCodes.Shl32(OpCodes.And32(ciphertext[offset + i], 0xFF), shiftAmount)));
       }
-      macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(0x80, (7 - ctRemainder) * 8)));
+      macState.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(macState.S[0][1], OpCodes.Shl32(0x80, (7 - ctRemainder) * 8)));
       macState.p12();
 
       // Derive K* (re-keyed key)
+      /** @type {uint8[]} */
       const tag = [];
       tag.push(...OpCodes.Unpack32BE(macState.S[0][1]));
       tag.push(...OpCodes.Unpack32BE(macState.S[0][0]));
@@ -667,11 +755,15 @@
       tag.push(...OpCodes.Unpack32BE(macState.S[1][0]));
 
       // Save state[2:4]
+      /** @type {uint32[]} */
       const saved2 = [macState.S[2][0], macState.S[2][1]];
+      /** @type {uint32[]} */
       const saved3 = [macState.S[3][0], macState.S[3][1]];
+      /** @type {uint32[]} */
       const saved4 = [macState.S[4][0], macState.S[4][1]];
 
       // Re-key with IV2
+      /** @type {AsconState} */
       const rekeyState = this._isap_rk(this.ISAP_IV2_64, tag);
       macState.S[0] = [rekeyState.S[0][0], rekeyState.S[0][1]];
       macState.S[1] = [rekeyState.S[1][0], rekeyState.S[1][1]];
@@ -684,6 +776,7 @@
       // Squeeze tag
       macState.p12();
 
+      /** @type {uint8[]} */
       const finalTag = [];
       finalTag.push(...OpCodes.Unpack32BE(macState.S[0][1]));
       finalTag.push(...OpCodes.Unpack32BE(macState.S[0][0]));

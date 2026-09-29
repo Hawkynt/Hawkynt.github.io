@@ -52,6 +52,7 @@
 
   // fd: 1024-entry nonlinear Boolean function table (10-bit LFSRd tap
   // selection -> 1 output bit), as implemented in the DarkCrypt Total Commander plugin.
+  /** @type {uint8[]} */
   const FD_TABLE = [
     0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,0,0,1,1,1,1,0,0,
     0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,0,0,1,1,1,1,0,0,
@@ -87,8 +88,14 @@
     1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,
   ];
 
-  if (FD_TABLE.length !== 1024) throw new Error('LILI fd table must have 1024 entries');
+  if (FD_TABLE.length !== 1024) {
+    throw new Error('LILI fd table must have 1024 entries');
+  }
 
+  /**
+   * @param {int32} x - Value
+   * @returns {uint32} x modulo 2^32
+   */
   function u32(x) { return OpCodes.ToUint32(x); }
 
   class DarkCryptLiliAlgorithm extends StreamCipherAlgorithm {
@@ -142,10 +149,17 @@
   }
 
   class DarkCryptLiliInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptLiliAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       // LFSRc: c0 = low 32 bits, c1 = high (7 significant bits, but kept
       // unmasked exactly like the DarkCrypt implementation, which never re-masks it after a shift).
@@ -157,29 +171,44 @@
       this._d2 = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LILI-128 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LILI-128 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._generateKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._generateKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -216,11 +245,14 @@
       this._d0 = d0; this._d1 = d1; this._d2 = d2;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamBit() {
       // fc: 2-tap clock control value (0-3), read before this bit's C-clock.
       const t26 = OpCodes.Shr32(OpCodes.And32(this._c0, 0x4000000), 25);
       const t18 = OpCodes.Shr32(OpCodes.And32(this._c0, 0x40000), 18);
-      const k = OpCodes.OrN(t26, t18);
+      const k = OpCodes.Or32(t26, t18);
 
       // Clock LFSRc by exactly 1 (regular clock).
       const newC1 = OpCodes.Or32(OpCodes.Shl32(this._c1, 1), OpCodes.Shr32(this._c0, 31));
@@ -234,7 +266,7 @@
       fbC = OpCodes.Xor32(fbC, OpCodes.Shr32(this._c0, 14));
       fbC = OpCodes.Xor32(fbC, OpCodes.Shr32(this._c0, 2));
       fbC = OpCodes.And32(fbC, 1);
-      this._c0 = u32(this._c0 | fbC);
+      this._c0 = OpCodes.Or32(this._c0, fbC);
 
       // fd: assemble the 10-bit LFSRd tap selector, read before this bit's D-clocking.
       let idx = 0;
@@ -264,16 +296,20 @@
         fbD = OpCodes.Xor32(fbD, OpCodes.Shr32(this._d1, 7));
         fbD = OpCodes.Xor32(fbD, OpCodes.Shr32(this._d0, 1));
         fbD = OpCodes.And32(fbD, 1);
-        this._d0 = u32(this._d0 | fbD);
+        this._d0 = OpCodes.Or32(this._d0, fbD);
       }
 
       return bit;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++)
-        byte = OpCodes.OrN(OpCodes.AndN(OpCodes.Shl32(byte, 1), 0xFF), this._generateKeystreamBit());
+        byte = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(byte, 1), 0xFF), this._generateKeystreamBit());
       return byte;
     }
   }

@@ -62,6 +62,7 @@
 
   // LFSRc feedback masks: 2 rows of 16 bytes, selected by the outgoing top
   // bit of byte0 before each shift.
+  /** @type {uint8[]} */
   const TABLE_C = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x7c, 0xa8, 0x97, 0xc1, 0x44, 0x87, 0xa7, 0xce, 0x37, 0xbe, 0x99, 0x98, 0x62, 0x87, 0xcb, 0xc3
@@ -69,6 +70,7 @@
 
   // LFSRd feedback masks: 2 rows of 16 bytes, same scheme as TABLE_C but for
   // the D register.
+  /** @type {uint8[]} */
   const TABLE_D = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x06, 0x08, 0x19, 0x46, 0xa5, 0x34, 0x3a, 0x66, 0x96, 0xaa, 0xd3, 0x70, 0xf5, 0xf8, 0x8b, 0xbe
@@ -77,6 +79,7 @@
   // fd: 4096-entry nonlinear Boolean function table (12-bit LFSRd tap
   // selection -> 1 output bit), packed as 128 little-endian 32-bit words
   // (bit (31 - (index & 31)) of word (index >> 5)).
+  /** @type {uint8[]} */
   const FD_TABLE_BYTES = [
     0xa5, 0x69, 0x5a, 0x96, 0x5a, 0x96, 0xa5, 0x69, 0x5a, 0x96, 0xa5, 0x69, 0x5a, 0x96, 0xa5, 0x69,
     0x55, 0x99, 0xaa, 0x66, 0xaa, 0x66, 0x55, 0x99, 0xaa, 0x66, 0x55, 0x99, 0xaa, 0x66, 0x55, 0x99,
@@ -112,28 +115,49 @@
     0xfd, 0x32, 0xfe, 0x31, 0x01, 0xce, 0x02, 0xcd, 0x5e, 0x95, 0x56, 0x97, 0x5d, 0x91, 0x5f, 0x99
   ];
 
-  if (FD_TABLE_BYTES.length !== 512) throw new Error('LILI-2 fd table must have 512 bytes (4096 bits)');
+  if (FD_TABLE_BYTES.length !== 512) {
+    throw new Error('LILI-2 fd table must have 512 bytes (4096 bits)');
+  }
 
   // Pack into 128 little-endian 32-bit words for fast bit extraction.
+  /** @type {uint32[]} */
   const FD_TABLE = [];
   for (let i = 0; i < 128; i++)
     FD_TABLE.push(OpCodes.Pack32LE(FD_TABLE_BYTES[i*4], FD_TABLE_BYTES[i*4+1], FD_TABLE_BYTES[i*4+2], FD_TABLE_BYTES[i*4+3]));
 
+  /**
+   * @param {uint32} index
+   * @returns {uint32}
+   */
   function fdBit(index) {
     const row = OpCodes.Shr32(index, 5);
+    /** @type {int32} */
     const bitpos = 31 - OpCodes.And32(index, 0x1f);
-    return OpCodes.AndN(OpCodes.Shr32(FD_TABLE[row], bitpos), 1);
+    return OpCodes.And32(OpCodes.Shr32(FD_TABLE[row], bitpos), 1);
   }
 
-  // 128-bit (16-byte) MSB-first left shift by 1 bit. Returns the outgoing
-  // top bit of byte0 (used to select the feedback mask) and the shifted bytes.
+  // Outgoing top bit of byte0 of a 128-bit MSB-first register (selects the
+  // feedback mask row when the register is shifted left by 1 bit).
+  /**
+   * @param {uint8[]} bytes - 16-byte register
+   * @returns {uint32} 0 or 1
+   */
+  function topBit(bytes) {
+    return OpCodes.And32(OpCodes.Shr32(bytes[0], 7), 1);
+  }
+
+  // 128-bit (16-byte) MSB-first left shift by 1 bit; returns the shifted bytes.
+  /**
+   * @param {uint8[]} bytes - 16-byte register
+   * @returns {uint8[]} shifted register
+   */
   function shiftLeft1(bytes) {
-    const row = OpCodes.AndN(OpCodes.Shr32(bytes[0], 7), 1);
+    /** @type {uint8[]} */
     const out = new Array(16);
     for (let i = 0; i < 15; i++)
-      out[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(bytes[i], 1), OpCodes.Shr32(bytes[i+1], 7)), 0xFF);
-    out[15] = OpCodes.AndN(OpCodes.Shl32(bytes[15], 1), 0xFF);
-    return { row, out };
+      out[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(bytes[i], 1), OpCodes.Shr32(bytes[i+1], 7)), 0xFF);
+    out[15] = OpCodes.And32(OpCodes.Shl32(bytes[15], 1), 0xFF);
+    return out;
   }
 
   class DarkCryptLili2Algorithm extends StreamCipherAlgorithm {
@@ -188,51 +212,88 @@
   }
 
   class DarkCryptLili2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptLili2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._iv = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      this._iv = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]|null} */
       this._c = null; // LFSRc: 16 bytes
+      /** @type {uint8[]|null} */
       this._d = null; // LFSRd: 16 bytes
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
-      this._iv = ivBytes ? [...ivBytes] : new Array(16).fill(0);
+      this._iv = ivBytes ? [...ivBytes] : OpCodes.CreateArray(16, 0);
       if (this._iv.length !== 16)
-        throw new Error(`Invalid IV size: ${this._iv.length} bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size: " + this._iv.length + " bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes");
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return [...this._iv]; }
 
+    /**
+     * @param {uint8[]|null} n
+     */
     set nonce(n) { this.iv = n; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._generateKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._generateKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -242,18 +303,20 @@
       const k = this._key;
       const iv = this._iv;
 
+      /** @type {uint8[]} */
       const c = new Array(16);
+      /** @type {uint8[]} */
       const d = new Array(16);
       for (let i = 0; i < 15; i++) {
         c[i] = k[i];
-        d[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(k[i], 1), OpCodes.Shr32(k[i+1], 7)), 0xFF);
+        d[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(k[i], 1), OpCodes.Shr32(k[i+1], 7)), 0xFF);
       }
       c[15] = k[15];
-      d[15] = OpCodes.AndN(OpCodes.Shl32(k[15], 1), 0xFF);
+      d[15] = OpCodes.And32(OpCodes.Shl32(k[15], 1), 0xFF);
 
       for (let i = 0; i < 16; i++) {
-        c[i] = OpCodes.XorN(c[i], iv[i]);
-        d[i] = OpCodes.XorN(d[i], iv[i]);
+        c[i] = OpCodes.Xor8(c[i], iv[i]);
+        d[i] = OpCodes.Xor8(d[i], iv[i]);
       }
 
       this._c = c;
@@ -261,52 +324,79 @@
 
       // Two self-referential 255-bit compression rounds.
       for (let round = 0; round < 2; round++) {
+        /** @type {uint8[]} */
         const buf32 = this._generateBits(255);
         this._c = buf32.slice(0, 16);
         this._d = buf32.slice(16, 32);
       }
 
-      this._d[15] = OpCodes.AndN(this._d[15], 0xFE);
+      this._d[15] = OpCodes.And32(this._d[15], 0xFE);
     }
 
+    /**
+     * @returns {int32}
+     */
     _clockC() {
       const oldC = this._c;
-      const k = 1 + OpCodes.AndN(OpCodes.Shr32(oldC[0], 6), 1) + 2 * OpCodes.AndN(oldC[15], 1);
-      const { row, out } = shiftLeft1(oldC);
+      /** @type {int32} */
+      const tapHigh = OpCodes.And32(OpCodes.Shr32(oldC[0], 6), 1);
+      /** @type {int32} */
+      const tapLow = OpCodes.And32(oldC[15], 1);
+      /** @type {int32} */
+      const k = 1 + tapHigh + 2 * tapLow;
+      /** @type {int32} */
+      const row = topBit(oldC);
+      /** @type {uint8[]} */
+      const out = shiftLeft1(oldC);
+      /** @type {int32} */
       const base = row * 16;
-      for (let i = 0; i < 16; i++) out[i] = OpCodes.XorN(out[i], TABLE_C[base + i]);
+      for (let i = 0; i < 16; i++) out[i] = OpCodes.Xor8(out[i], TABLE_C[base + i]);
       this._c = out;
       return k;
     }
 
+    /**
+     * @returns {uint32}
+     */
     _dTapIndex() {
       const d = this._d;
+      /** @type {uint32} */
       let idx = 0;
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xF], 1), 1), 11);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xF], 2), 1), 10);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xF], 4), 1), 9);
-      idx |= OpCodes.Shl32(OpCodes.AndN(d[0xE], 1), 8);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xE], 5), 1), 7);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xD], 5), 1), 6);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xC], 7), 1), 5);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[0xA], 5), 1), 4);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[7], 2), 1), 3);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[5], 1), 1), 2);
-      idx |= OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(d[3], 1), 1), 1);
-      idx |= OpCodes.AndN(OpCodes.Shr32(d[0], 3), 1);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xF], 1), 1), 11);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xF], 2), 1), 10);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xF], 4), 1), 9);
+      idx |= OpCodes.Shl32(OpCodes.And32(d[0xE], 1), 8);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xE], 5), 1), 7);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xD], 5), 1), 6);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xC], 7), 1), 5);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[0xA], 5), 1), 4);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[7], 2), 1), 3);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[5], 1), 1), 2);
+      idx |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(d[3], 1), 1), 1);
+      idx |= OpCodes.And32(OpCodes.Shr32(d[0], 3), 1);
       return idx;
     }
 
     _clockDOnce() {
-      const { row, out } = shiftLeft1(this._d);
+      /** @type {int32} */
+      const row = topBit(this._d);
+      /** @type {uint8[]} */
+      const out = shiftLeft1(this._d);
+      /** @type {int32} */
       const base = row * 16;
-      for (let i = 0; i < 16; i++) out[i] = OpCodes.XorN(out[i], TABLE_D[base + i]);
+      for (let i = 0; i < 16; i++) out[i] = OpCodes.Xor8(out[i], TABLE_D[base + i]);
       this._d = out;
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
+      /** @type {int32} */
       const k = this._clockC();
+      /** @type {uint32} */
       const idx = this._dTapIndex();
+      /** @type {uint32} */
       const bit = fdBit(idx);
       for (let i = 0; i < k; i++) this._clockDOnce();
       return bit;
@@ -316,28 +406,38 @@
     // matching the key-expansion helper exactly (including its
     // last-partial-byte MSB alignment; only used internally by _initialize
     // for the 255-bit compression rounds).
+    /**
+     * @param {int32} nbits
+     * @returns {uint8[]}
+     */
     _generateBits(nbits) {
+      /** @type {int32} */
       const nbytes = Math.ceil(nbits / 8);
-      const out = new Array(nbytes).fill(0);
+      /** @type {uint8[]} */
+      const out = OpCodes.CreateArray(nbytes, 0);
       let bitPos = 0;
       for (let n = 0; n < nbits; n++) {
         const bytePos = OpCodes.Shr32(bitPos, 3);
         const bit = this._generateKeystreamBit();
-        out[bytePos] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(out[bytePos], 1), bit), 0xFF);
+        out[bytePos] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(out[bytePos], 1), bit), 0xFF);
         bitPos++;
       }
       const rem = nbits % 8;
       if (rem !== 0) {
         const lastByte = nbytes - 1;
-        out[lastByte] = OpCodes.AndN(OpCodes.Shl32(out[lastByte], 8 - rem), 0xFF);
+        out[lastByte] = OpCodes.And32(OpCodes.Shl32(out[lastByte], 8 - rem), 0xFF);
       }
       return out;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++)
-        byte = OpCodes.OrN(OpCodes.AndN(OpCodes.Shl32(byte, 1), 0xFF), this._generateKeystreamBit());
+        byte = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(byte, 1), 0xFF), this._generateKeystreamBit());
       return byte;
     }
   }

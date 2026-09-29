@@ -37,10 +37,12 @@
   const TAG_SIZE = 16;
 
   // MORUS-640 constants (32-bit words)
-  const CONSTANTS_640 = Object.freeze([
-    [0x02010100, 0x0d080503, 0x59372215, 0x6279e990],
-    [0x55183ddb, 0xf12fc26d, 0x42311120, 0xdd28b573]
-  ]);
+  /** @type {uint32[]} */
+  const CONST_0 = [0x02010100, 0x0d080503, 0x59372215, 0x6279e990];
+  /** @type {uint32[]} */
+  const CONST_1 = [0x55183ddb, 0xf12fc26d, 0x42311120, 0xdd28b573];
+  /** @type {uint32[][]} */
+  const CONSTANTS_640 = Object.freeze([CONST_0, CONST_1]);
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -104,29 +106,49 @@ class MORUS extends StreamCipherAlgorithm {
 }
 
 class MORUSInstance extends IAlgorithmInstance {
+  /**
+   * @param {MORUS} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
 
     // MORUS-640 state (5 registers of 4×32-bit words)
-    this.state = null;
+    /** @type {uint32[][]|null} */
+    this._lanes = null;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -135,11 +157,17 @@ class MORUSInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 16) {
-      this._nonce = new Array(16).fill(0);
+      this._nonce = OpCodes.CreateArray(16, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
@@ -149,20 +177,30 @@ class MORUSInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     // The nonce is optional at the interface; the setter substitutes the all-zero
     // nonce, matching what it already does when handed a wrong-sized one.
     if (!this._nonce) this.nonce = null;
 
+    /** @type {uint8[]} */
     const data = this.inputBuffer;
     this.inputBuffer = [];
 
@@ -171,47 +209,69 @@ class MORUSInstance extends IAlgorithmInstance {
     // second Result() on the same instance produced a different keystream.
     this._reinitialize();
 
-    return this.isInverse ? this._decrypt(data) : this._encrypt(data);
+    if (this.isInverse) {
+      return this._decrypt(data);
+    }
+    return this._encrypt(data);
   }
 
+  /**
+   * @param {uint8[]} plaintext
+   * @returns {uint8[]}
+   */
   _encrypt(plaintext) {
     // Empty input still authenticates - the output is the bare tag.
-    if (plaintext.length === 0) return this._generateTag(0, 0);
+    if (plaintext.length === 0) {
+      return this._generateTag(0, 0);
+    }
 
+    /** @type {uint8[]} */
     const keystream = this._generateKeystream(plaintext.length);
+    /** @type {uint8[]} */
     const ciphertext = OpCodes.XorArrays(plaintext, keystream);
 
     // Generate tag (process plaintext for authentication)
     this._reinitialize();
     this._processPlaintext(plaintext);
+    /** @type {uint8[]} */
     const tag = this._generateTag(0, plaintext.length);
 
     return ciphertext.concat(tag);
   }
 
+  /**
+   * @param {uint8[]} input
+   * @returns {uint8[]}
+   */
   _decrypt(input) {
     // MORUS is authenticated encryption: its output is ciphertext || tag, so its
     // input on the way back must carry that tag. Previously the inverse direction
     // was never implemented - Result() re-ran encryption and appended a second
     // tag, growing the message by 16 bytes instead of recovering the plaintext.
     if (input.length < TAG_SIZE)
-      throw new Error(`MORUS input too short: ${input.length} bytes cannot contain the ${TAG_SIZE}-byte authentication tag`);
+      throw new Error("MORUS input too short: " + input.length + " bytes cannot contain the " + TAG_SIZE + "-byte authentication tag");
 
+    /** @type {uint8[]} */
     const ciphertext = input.slice(0, input.length - TAG_SIZE);
+    /** @type {uint8[]} */
     const receivedTag = input.slice(input.length - TAG_SIZE);
 
+    /** @type {uint8[]} */
     const keystream = this._generateKeystream(ciphertext.length);
+    /** @type {uint8[]} */
     const plaintext = OpCodes.XorArrays(ciphertext, keystream);
 
     this._reinitialize();
     this._processPlaintext(plaintext);
+    /** @type {uint8[]} */
     const expectedTag = this._generateTag(0, plaintext.length);
 
     // Compare the whole tag before reporting, so the comparison time does not
     // depend on how many leading bytes matched.
+    /** @type {uint32} */
     let difference = 0;
     for (let i = 0; i < TAG_SIZE; i++)
-      difference = OpCodes.OrN(difference, OpCodes.XorN(receivedTag[i], expectedTag[i]));
+      difference = OpCodes.Or32(difference, OpCodes.Xor32(receivedTag[i], expectedTag[i]));
     if (difference !== 0)
       throw new Error("MORUS authentication failed: the tag does not match the ciphertext");
 
@@ -219,32 +279,40 @@ class MORUSInstance extends IAlgorithmInstance {
   }
 
   _initialize() {
-    if (!this._key || !this._nonce) return;
+    if (!this._key || !this._nonce) {
+      return;
+    }
 
     // Initialize 5 registers of 4×32-bit words
-    this.state = new Array(5);
+    /** @type {uint32[][]} */
+    const lanes = new Array(5);
+    this._lanes = lanes;
 
     // Convert key and nonce to 32-bit words
+    /** @type {uint32[]} */
     const keyWords = this._bytesToWords(this._key);
+    /** @type {uint32[]} */
     const nonceWords = this._bytesToWords(this._nonce);
 
     // S[0] = key
-    this.state[0] = [...keyWords];
+    this._lanes[0] = [...keyWords];
 
     // S[1] = nonce
-    this.state[1] = [...nonceWords];
+    this._lanes[1] = [...nonceWords];
 
     // S[2] = key XOR nonce
-    this.state[2] = [];
+    /** @type {uint32[]} */
+    const mixed = [];
     for (let i = 0; i < 4; i++) {
-      this.state[2][i] = OpCodes.ToUint32(OpCodes.XorN(keyWords[i], nonceWords[i]));
+      mixed[i] = OpCodes.Xor32(keyWords[i], nonceWords[i]);
     }
+    this._lanes[2] = mixed;
 
     // S[3] = constant
-    this.state[3] = [...CONSTANTS_640[0]];
+    this._lanes[3] = [...CONSTANTS_640[0]];
 
     // S[4] = constant
-    this.state[4] = [...CONSTANTS_640[1]];
+    this._lanes[4] = [...CONSTANTS_640[1]];
 
     // Run initialization rounds (16 rounds)
     for (let i = 0; i < 16; i++) {
@@ -259,15 +327,18 @@ class MORUSInstance extends IAlgorithmInstance {
 
   /**
    * Convert byte array to 32-bit words (little-endian)
+   * @param {uint8[]} bytes
+   * @returns {uint32[]}
    */
   _bytesToWords(bytes) {
+    /** @type {uint32[]} */
     const words = [];
     for (let i = 0; i < bytes.length; i += 4) {
       words.push(OpCodes.Pack32LE(
-        bytes[i] || 0,
-        bytes[i + 1] || 0,
-        bytes[i + 2] || 0,
-        bytes[i + 3] || 0
+        bytes[i],
+        i + 1 < bytes.length ? bytes[i + 1] : 0,
+        i + 2 < bytes.length ? bytes[i + 2] : 0,
+        i + 3 < bytes.length ? bytes[i + 3] : 0
       ));
     }
     return words;
@@ -275,15 +346,19 @@ class MORUSInstance extends IAlgorithmInstance {
 
   /**
    * Convert 32-bit words to byte array (little-endian)
+   * @param {uint32[]} words
+   * @returns {uint8[]}
    */
   _wordsToBytes(words) {
+    /** @type {uint8[]} */
     const bytes = [];
     for (let i = 0; i < words.length; i++) {
+      /** @type {uint32} */
       const word = words[i];
-      bytes.push(OpCodes.AndN(word, 0xFF));
-      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 8), 0xFF));
-      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 16), 0xFF));
-      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 24), 0xFF));
+      bytes.push(OpCodes.And32(word, 0xFF));
+      bytes.push(OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF));
+      bytes.push(OpCodes.And32(OpCodes.Shr32(word, 16), 0xFF));
+      bytes.push(OpCodes.And32(OpCodes.Shr32(word, 24), 0xFF));
     }
     return bytes;
   }
@@ -292,23 +367,26 @@ class MORUSInstance extends IAlgorithmInstance {
    * MORUS state update function
    */
   _updateState() {
+    /** @type {uint32[][]} */
     const newState = new Array(5);
     for (let i = 0; i < 5; i++) {
-      newState[i] = new Array(4);
+      /** @type {uint32[]} */
+      const lane = new Array(4);
+      newState[i] = lane;
     }
 
     // S'[0] = S[0] XOR (S[1] AND S[2]) XOR S[3] XOR (S[1] <<< 5) XOR (S[2] <<< 31)
     for (let i = 0; i < 4; i++) {
       newState[0][i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[0][i], OpCodes.AndN(this.state[1][i], this.state[2][i])),
-              this.state[3][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[0][i], OpCodes.And32(this._lanes[1][i], this._lanes[2][i])),
+              this._lanes[3][i]
             ),
-            OpCodes.RotL32(this.state[1][i], 5)
+            OpCodes.RotL32(this._lanes[1][i], 5)
           ),
-          OpCodes.RotL32(this.state[2][i], 31)
+          OpCodes.RotL32(this._lanes[2][i], 31)
         )
       );
     }
@@ -316,15 +394,15 @@ class MORUSInstance extends IAlgorithmInstance {
     // S'[1] = S[1] XOR (S[2] AND S[3]) XOR S[4] XOR (S[2] <<< 13) XOR (S[3] <<< 3)
     for (let i = 0; i < 4; i++) {
       newState[1][i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[1][i], OpCodes.AndN(this.state[2][i], this.state[3][i])),
-              this.state[4][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[1][i], OpCodes.And32(this._lanes[2][i], this._lanes[3][i])),
+              this._lanes[4][i]
             ),
-            OpCodes.RotL32(this.state[2][i], 13)
+            OpCodes.RotL32(this._lanes[2][i], 13)
           ),
-          OpCodes.RotL32(this.state[3][i], 3)
+          OpCodes.RotL32(this._lanes[3][i], 3)
         )
       );
     }
@@ -332,15 +410,15 @@ class MORUSInstance extends IAlgorithmInstance {
     // S'[2] = S[2] XOR (S[3] AND S[4]) XOR S[0] XOR (S[3] <<< 27) XOR (S[4] <<< 14)
     for (let i = 0; i < 4; i++) {
       newState[2][i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[2][i], OpCodes.AndN(this.state[3][i], this.state[4][i])),
-              this.state[0][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[2][i], OpCodes.And32(this._lanes[3][i], this._lanes[4][i])),
+              this._lanes[0][i]
             ),
-            OpCodes.RotL32(this.state[3][i], 27)
+            OpCodes.RotL32(this._lanes[3][i], 27)
           ),
-          OpCodes.RotL32(this.state[4][i], 14)
+          OpCodes.RotL32(this._lanes[4][i], 14)
         )
       );
     }
@@ -348,15 +426,15 @@ class MORUSInstance extends IAlgorithmInstance {
     // S'[3] = S[3] XOR (S[4] AND S[0]) XOR S[1] XOR (S[4] <<< 15) XOR (S[0] <<< 9)
     for (let i = 0; i < 4; i++) {
       newState[3][i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[3][i], OpCodes.AndN(this.state[4][i], this.state[0][i])),
-              this.state[1][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[3][i], OpCodes.And32(this._lanes[4][i], this._lanes[0][i])),
+              this._lanes[1][i]
             ),
-            OpCodes.RotL32(this.state[4][i], 15)
+            OpCodes.RotL32(this._lanes[4][i], 15)
           ),
-          OpCodes.RotL32(this.state[0][i], 9)
+          OpCodes.RotL32(this._lanes[0][i], 9)
         )
       );
     }
@@ -364,39 +442,43 @@ class MORUSInstance extends IAlgorithmInstance {
     // S'[4] = S[4] XOR (S[0] AND S[1]) XOR S[2] XOR (S[0] <<< 29) XOR (S[1] <<< 18)
     for (let i = 0; i < 4; i++) {
       newState[4][i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[4][i], OpCodes.AndN(this.state[0][i], this.state[1][i])),
-              this.state[2][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[4][i], OpCodes.And32(this._lanes[0][i], this._lanes[1][i])),
+              this._lanes[2][i]
             ),
-            OpCodes.RotL32(this.state[0][i], 29)
+            OpCodes.RotL32(this._lanes[0][i], 29)
           ),
-          OpCodes.RotL32(this.state[1][i], 18)
+          OpCodes.RotL32(this._lanes[1][i], 18)
         )
       );
     }
 
-    this.state = newState;
+    this._lanes = newState;
   }
 
   /**
    * Generate keystream
+   * @param {int32} lengthBytes
+   * @returns {uint8[]}
    */
   _generateKeystream(lengthBytes) {
+    /** @type {uint32[]} */
     const keystreamWords = [];
 
     while (keystreamWords.length * 4 < lengthBytes) {
       // Keystream = S[0] XOR S[1] XOR (S[2] AND S[3]) XOR S[4]
+      /** @type {uint32[]} */
       const ks = new Array(4);
       for (let i = 0; i < 4; i++) {
         ks[i] = OpCodes.ToUint32(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(this.state[0][i], this.state[1][i]),
-              OpCodes.AndN(this.state[2][i], this.state[3][i])
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(this._lanes[0][i], this._lanes[1][i]),
+              OpCodes.And32(this._lanes[2][i], this._lanes[3][i])
             ),
-            this.state[4][i]
+            this._lanes[4][i]
           )
         );
       }
@@ -406,23 +488,27 @@ class MORUSInstance extends IAlgorithmInstance {
     }
 
     // Convert to bytes and trim to requested length
+    /** @type {uint8[]} */
     const keystreamBytes = this._wordsToBytes(keystreamWords);
     return keystreamBytes.slice(0, lengthBytes);
   }
 
   /**
    * Process plaintext for authentication
+   * @param {uint8[]} plaintext
    */
   _processPlaintext(plaintext) {
     for (let i = 0; i < plaintext.length; i += 16) {
+      /** @type {uint8[]} */
       const block = plaintext.slice(i, i + 16);
       while (block.length < 16) {
         block.push(0);
       }
 
+      /** @type {uint32[]} */
       const blockWords = this._bytesToWords(block);
       for (let j = 0; j < 4; j++) {
-        this.state[0][j] = OpCodes.ToUint32(OpCodes.XorN(this.state[0][j], blockWords[j]));
+        this._lanes[0][j] = OpCodes.ToUint32(OpCodes.Xor32(this._lanes[0][j], blockWords[j]));
       }
 
       this._updateState();
@@ -431,22 +517,26 @@ class MORUSInstance extends IAlgorithmInstance {
 
   /**
    * Generate authentication tag
+   * @param {int32} aadLength
+   * @param {int32} plaintextLength
+   * @returns {uint8[]}
    */
   _generateTag(aadLength, plaintextLength) {
     // Encode lengths as 64-bit little-endian values
+    /** @type {uint32[]} */
     const lengthWords = new Array(4);
 
     // AAD length (little-endian 64-bit)
-    lengthWords[0] = OpCodes.AndN(aadLength, 0xFFFFFFFF);
-    lengthWords[1] = OpCodes.AndN(Math.floor(aadLength / 0x100000000), 0xFFFFFFFF);
+    lengthWords[0] = OpCodes.And32(aadLength, 0xFFFFFFFF);
+    lengthWords[1] = OpCodes.And32(Math.floor(aadLength / 0x100000000), 0xFFFFFFFF);
 
     // Plaintext length (little-endian 64-bit)
-    lengthWords[2] = OpCodes.AndN(plaintextLength, 0xFFFFFFFF);
-    lengthWords[3] = OpCodes.AndN(Math.floor(plaintextLength / 0x100000000), 0xFFFFFFFF);
+    lengthWords[2] = OpCodes.And32(plaintextLength, 0xFFFFFFFF);
+    lengthWords[3] = OpCodes.And32(Math.floor(plaintextLength / 0x100000000), 0xFFFFFFFF);
 
     // XOR with state[0]
     for (let i = 0; i < 4; i++) {
-      this.state[0][i] = OpCodes.ToUint32(OpCodes.XorN(this.state[0][i], lengthWords[i]));
+      this._lanes[0][i] = OpCodes.ToUint32(OpCodes.Xor32(this._lanes[0][i], lengthWords[i]));
     }
 
     // Final rounds (10 rounds)
@@ -455,15 +545,16 @@ class MORUSInstance extends IAlgorithmInstance {
     }
 
     // Generate tag: S[0] XOR S[1] XOR S[2] XOR S[3]
+    /** @type {uint32[]} */
     const tagWords = new Array(4);
     for (let i = 0; i < 4; i++) {
       tagWords[i] = OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(this.state[0][i], this.state[1][i]),
-            this.state[2][i]
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(this._lanes[0][i], this._lanes[1][i]),
+            this._lanes[2][i]
           ),
-          this.state[3][i]
+          this._lanes[3][i]
         )
       );
     }

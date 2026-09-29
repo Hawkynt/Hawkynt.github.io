@@ -135,7 +135,7 @@
         {
           text: "DarkCrypt Caracachs: keystream from 128 zero bytes, 32-byte incrementing key",
           uri: "https://totalcmd.net/plugring/darkcryptTC.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           expected: OpCodes.Hex8ToBytes("dff1188b8eb116c923c9ef6207d49e1b830697daf9feaff1b7a2c2371a603fe443932d7dd18728c632ab9c93e7fb242db329afff9fb0c08fcda7b420f9da6aa9a1c1c4cbf751b2f598e8f8ffcc9994ad6feccfa9fce199958e0d9a1740e81a5567bdf9e896d152ff64ebeac2c2d34472e3f37f8890001667fe8e595fc3e1409b")
         },
@@ -170,21 +170,29 @@
   class CARACAHSInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CARACAHSAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // Stream ciphers are symmetric
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // CARACACHS internal state
+      /** @type {uint32[]} */
       this.b = new Array(128);      // Buffer array (32-bit unsigned values)
+      /** @type {uint32} */
       this.a = 0x015a4e35;          // Multiplier constant
+      /** @type {uint32} */
       this.r = 0;                   // Accumulator (16-bit unsigned)
+      /** @type {int32} */
       this.cle = 0;                 // Key-derived array size
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -208,7 +216,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid CARACACHS key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid CARACACHS key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -258,6 +266,7 @@
         throw new Error("No data fed");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each byte through the stream cipher
@@ -276,6 +285,7 @@
     // Initialize CARACACHS cipher with key
     _initializeCaracachs() {
       const lngkey = this._key.length;
+      /** @type {uint8[]} */
       const tab = new Array(258);
 
       // Copy key to tab
@@ -300,10 +310,10 @@
       for (let z = 0; z < this.cle; ++z) {
         if (z === (this.cle - 1) && reste !== 0) {
           // Last element is odd byte
-          this.b[z] = (this._key[y] * 256) % 65536;
+          this.b[z] = OpCodes.And32(OpCodes.Shl32(this._key[y], 8), 0xFFFF);
         } else {
           // Pack two bytes into 16-bit word
-          this.b[z] = ((this._key[y] * 256) % 65536) + this._key[y + 1];
+          this.b[z] = OpCodes.Add32(OpCodes.And32(OpCodes.Shl32(this._key[y], 8), 0xFFFF), this._key[y + 1]);
           ++y;
         }
         ++y;
@@ -323,14 +333,14 @@
       // Self-encrypt the key material
       for (let i = 0; i < lngkey; ++i) {
         const plain = this._encode(tab[i]);
-        tab[i] = OpCodes.XorN(tab[i], plain);
+        tab[i] = OpCodes.Xor8(tab[i], plain);
       }
 
       // Additional mixing rounds
       let i = lngkey - 1;
       for (let z = 1; z <= ((lngkey + 1) * 10); ++z) {
         const plain = this._encode(tab[i]);
-        tab[i] = OpCodes.XorN(tab[i], plain);
+        tab[i] = OpCodes.Xor8(tab[i], plain);
         ++i;
         if (i >= lngkey) {
           i = 0;
@@ -352,9 +362,9 @@
       y = 0;
       for (let z = 0; z < this.cle; ++z) {
         if (z === (this.cle - 1) && reste !== 0) {
-          this.b[z] = (tab[y] * 256) % 65536;
+          this.b[z] = OpCodes.And32(OpCodes.Shl32(tab[y], 8), 0xFFFF);
         } else {
-          this.b[z] = ((tab[y] * 256) % 65536) + tab[y + 1];
+          this.b[z] = OpCodes.Add32(OpCodes.And32(OpCodes.Shl32(tab[y], 8), 0xFFFF), tab[y + 1]);
           ++y;
         }
         ++y;
@@ -378,22 +388,29 @@
     }
 
     // Stream generation function
+    /**
+     * @param {int32} index
+     */
     _stream(index) {
       // b[index] = (b[index] * a) + 1
       // CRITICAL: Use Math.imul for correct 32-bit integer multiplication
-      this.b[index] = OpCodes.ToUint32(Math.imul(this.b[index], this.a) + 1);
+      this.b[index] = OpCodes.Add32(OpCodes.Mul32(this.b[index], this.a), 1);
 
       // r = r + ((b[index] shr 16) AND 0x7fff)
       // NOTE: r is treated as 32-bit unsigned in the C code
-      this.r = OpCodes.ToUint32(this.r + OpCodes.AndN(OpCodes.Shr32(this.b[index], 16), 0x7FFF));
+      this.r = OpCodes.Add32(this.r, OpCodes.And32(OpCodes.Shr32(this.b[index], 16), 0x7FFF));
 
       // r = (r shl (r%16)) OR (r shr (16-(r%16)))
       // This rotation operates on the full 32-bit value
       const rotAmount = this.r % 16;
-      this.r = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.r, rotAmount), OpCodes.Shr32(this.r, (16 - rotAmount))));
+      this.r = OpCodes.Or32(OpCodes.Shl32(this.r, rotAmount), OpCodes.Shr32(this.r, (16 - rotAmount)));
     }
 
     // Process a single byte in the direction this instance was created for.
+    /**
+     * @param {uint8} byte
+     * @returns {uint8}
+     */
     _processByte(byte) {
       return this._transform(byte, this.isInverse);
     }
@@ -406,6 +423,11 @@
     // recovered instead. Feeding the ciphertext leaves the two states diverged
     // from the second byte onwards, which is why decryption returned the first
     // byte correctly and garbage after it.
+    /**
+     * @param {uint8} byte
+     * @param {boolean} decrypting
+     * @returns {uint8}
+     */
     _transform(byte, decrypting) {
       // Run stream for cle iterations
       for (let index = 0; index < this.cle; ++index) {
@@ -413,17 +435,21 @@
       }
 
       // XOR byte with r
-      const masked = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
+      const masked = OpCodes.Xor8(byte, OpCodes.And32(this.r, 0xFF));
       const d = decrypting ? masked : byte;
 
       // Update state (r is 32-bit unsigned)
-      this.r = OpCodes.ToUint32(this.r + d);
-      this.b[this.cle - 1] = OpCodes.ToUint32(this.b[this.cle - 1] + d);
+      this.r = OpCodes.Add32(this.r, d);
+      this.b[this.cle - 1] = OpCodes.Add32(this.b[this.cle - 1], d);
 
       return masked;
     }
 
     // Helper for the key setup phase, which always self-encrypts (forward).
+    /**
+     * @param {uint8} byte
+     * @returns {uint8}
+     */
     _encode(byte) {
       return this._transform(byte, false);
     }

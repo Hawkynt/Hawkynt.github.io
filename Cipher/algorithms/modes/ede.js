@@ -119,6 +119,25 @@
   }
 
   /**
+   * The three single-cipher keys of a triple pass
+   */
+  class EdeKeyParts {
+    /**
+     * @param {uint8[]} k1 - First key
+     * @param {uint8[]} k2 - Second key
+     * @param {uint8[]} k3 - Third key
+     */
+    constructor(k1, k2, k3) {
+      /** @type {uint8[]} */
+      this.k1 = k1;
+      /** @type {uint8[]} */
+      this.k2 = k2;
+      /** @type {uint8[]} */
+      this.k3 = k3;
+    }
+  }
+
+  /**
  * EdeMode cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -127,17 +146,24 @@
   class EdeModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EdeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
+      this.blockCipher = null;
+      /** @type {Algorithm|null} */
       this.blockCipherAlgorithm = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {EdeKeyParts|null} */
       this._keyParts = null;
+      /** @type {string|null} */
       this._mode = null; // 'EDE2' or 'EDE3'
     }
 
@@ -156,23 +182,28 @@
     /**
      * Determine the expected single key size for the underlying cipher
      * This is a heuristic based on common key sizes
+     * @param {int32} totalKeyLength
+     * @returns {int32}
      */
     _determineSingleKeySize(totalKeyLength) {
       // Common single key sizes for block ciphers
+      /** @type {int32[]} */
       const commonKeySizes = [8, 16, 24, 32]; // DES, AES-128, AES-192, AES-256
 
       // First check if it's exactly 2x or 3x a common size (prefer multi-key modes)
       // This handles cases like 16 bytes = 2x8 (2-key DES) vs 1x16 (single AES-128)
 
       // Check if it's exactly 3x a common size (3-key mode)
-      for (const size of commonKeySizes) {
+      for (let i = 0; i < commonKeySizes.length; i++) {
+        const size = commonKeySizes[i];
         if (totalKeyLength === size * 3) {
           return size;
         }
       }
 
       // Check if it's exactly 2x a common size (2-key mode)
-      for (const size of commonKeySizes) {
+      for (let i = 0; i < commonKeySizes.length; i++) {
+        const size = commonKeySizes[i];
         if (totalKeyLength === size * 2) {
           return size;
         }
@@ -197,6 +228,7 @@
      * Set the key - supports both 2-key and 3-key variants
      * 2-key: Key length = 2x single key size, uses K1-K2-K1
      * 3-key: Key length = 3x single key size, uses K1-K2-K3
+     * @param {uint8[]} keyBytes
      */
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -213,27 +245,30 @@
       if (keyLength === singleKeySize * 2) {
         // EDE2 mode: K1-K2-K1
         this._mode = 'EDE2';
-        this._keyParts = {
-          k1: keyBytes.slice(0, singleKeySize),
-          k2: keyBytes.slice(singleKeySize, singleKeySize * 2),
-          k3: keyBytes.slice(0, singleKeySize) // K3 = K1
-        };
+        const keyParts = new EdeKeyParts(
+          keyBytes.slice(0, singleKeySize),
+          keyBytes.slice(singleKeySize, singleKeySize * 2),
+          keyBytes.slice(0, singleKeySize) // K3 = K1
+        );
+        this._keyParts = keyParts;
       } else if (keyLength === singleKeySize * 3) {
         // EDE3 mode: K1-K2-K3
         this._mode = 'EDE3';
-        this._keyParts = {
-          k1: keyBytes.slice(0, singleKeySize),
-          k2: keyBytes.slice(singleKeySize, singleKeySize * 2),
-          k3: keyBytes.slice(singleKeySize * 2, singleKeySize * 3)
-        };
+        const keyParts = new EdeKeyParts(
+          keyBytes.slice(0, singleKeySize),
+          keyBytes.slice(singleKeySize, singleKeySize * 2),
+          keyBytes.slice(singleKeySize * 2, singleKeySize * 3)
+        );
+        this._keyParts = keyParts;
       } else if (keyLength === singleKeySize) {
         // Single key mode: all three keys are the same (compatible with single encryption)
         this._mode = 'EDE1';
-        this._keyParts = {
-          k1: keyBytes,
-          k2: keyBytes,
-          k3: keyBytes
-        };
+        const keyParts = new EdeKeyParts(
+          keyBytes,
+          keyBytes,
+          keyBytes
+        );
+        this._keyParts = keyParts;
       } else {
         // Try to adapt: if key is longer, use first portion for 3-key mode
         if (keyLength > singleKeySize * 2) {
@@ -243,21 +278,23 @@
           const k2Size = Math.min(singleKeySize, keyLength - singleKeySize);
           const k3Size = Math.min(singleKeySize, keyLength - singleKeySize * 2);
 
-          this._keyParts = {
-            k1: keyBytes.slice(0, k1Size),
-            k2: keyBytes.slice(k1Size, k1Size + k2Size),
-            k3: keyBytes.slice(k1Size + k2Size, k1Size + k2Size + k3Size)
-          };
+          const k1Part = keyBytes.slice(0, k1Size);
+          const keyParts = new EdeKeyParts(
+            k1Part,
+            keyBytes.slice(k1Size, k1Size + k2Size),
+            keyBytes.slice(k1Size + k2Size, k1Size + k2Size + k3Size)
+          );
 
           // Pad k2 and k3 if necessary by repeating k1
           if (k2Size < singleKeySize) {
-            this._keyParts.k2 = this._keyParts.k1;
+            keyParts.k2 = k1Part;
           }
           if (k3Size < singleKeySize) {
-            this._keyParts.k3 = this._keyParts.k1;
+            keyParts.k3 = k1Part;
           }
+          this._keyParts = keyParts;
         } else {
-          throw new Error(`Key length ${keyLength} is not compatible with EDE mode. Expected ${singleKeySize}, ${singleKeySize * 2}, or ${singleKeySize * 3} bytes.`);
+          throw new Error("Key length " + keyLength + " is not compatible with EDE mode. Expected " + singleKeySize + ", " + (singleKeySize * 2) + ", or " + (singleKeySize * 3) + " bytes.");
         }
       }
     }
@@ -307,52 +344,72 @@
 
       // For EDE mode, we need to create three separate cipher instances
       // We use the algorithm from the provided cipher instance
-      const algorithm = this.blockCipherAlgorithm || this.blockCipher.algorithm;
+      /** @type {Algorithm} */
+      const algorithm = this.blockCipherAlgorithm ? this.blockCipherAlgorithm : this.blockCipher.algorithm;
       if (!algorithm || !algorithm.CreateInstance) {
         throw new Error("Cannot access block cipher algorithm for EDE mode");
       }
 
+      /** @type {uint8[]} */
+      const k1 = this._keyParts.k1;
+      /** @type {uint8[]} */
+      const k2 = this._keyParts.k2;
+      /** @type {uint8[]} */
+      const k3 = this._keyParts.k3;
+
       // EDE operations
       if (this.isInverse) {
         // For decryption: D1(E2(D3(ciphertext)))
+        /** @type {IBlockCipherInstance} */
         const decipher1 = algorithm.CreateInstance(true);  // Decrypt with K1
+        /** @type {IBlockCipherInstance} */
         const encipher2 = algorithm.CreateInstance(false); // Encrypt with K2
+        /** @type {IBlockCipherInstance} */
         const decipher3 = algorithm.CreateInstance(true);  // Decrypt with K3
 
-        decipher3.key = this._keyParts.k3;
-        encipher2.key = this._keyParts.k2;
-        decipher1.key = this._keyParts.k1;
+        decipher3.key = k3;
+        encipher2.key = k2;
+        decipher1.key = k1;
 
         // Process: D1(E2(D3(ciphertext)))
         decipher3.Feed(this.inputBuffer);
+        /** @type {uint8[]} */
         const temp1 = decipher3.Result();
 
         encipher2.Feed(temp1);
+        /** @type {uint8[]} */
         const temp2 = encipher2.Result();
 
         decipher1.Feed(temp2);
+        /** @type {uint8[]} */
         const result = decipher1.Result();
 
         this.inputBuffer = [];
         return result;
       } else {
         // For encryption: E3(D2(E1(plaintext)))
+        /** @type {IBlockCipherInstance} */
         const encipher1 = algorithm.CreateInstance(false); // Encrypt with K1
+        /** @type {IBlockCipherInstance} */
         const decipher2 = algorithm.CreateInstance(true);  // Decrypt with K2
+        /** @type {IBlockCipherInstance} */
         const encipher3 = algorithm.CreateInstance(false); // Encrypt with K3
 
-        encipher1.key = this._keyParts.k1;
-        decipher2.key = this._keyParts.k2;
-        encipher3.key = this._keyParts.k3;
+        encipher1.key = k1;
+        decipher2.key = k2;
+        encipher3.key = k3;
 
         // Process: E3(D2(E1(plaintext)))
         encipher1.Feed(this.inputBuffer);
+        /** @type {uint8[]} */
         const temp1 = encipher1.Result();
 
         decipher2.Feed(temp1);
+        /** @type {uint8[]} */
         const temp2 = decipher2.Result();
 
         encipher3.Feed(temp2);
+        /** @type {uint8[]} */
         const result = encipher3.Result();
 
         this.inputBuffer = [];
