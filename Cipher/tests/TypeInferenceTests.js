@@ -1,13 +1,13 @@
 /**
- * TypeInferenceTestSuite.js - Comprehensive Type Inference Validation
+ * TypeInferenceTests.js - Comprehensive Type Inference Validation
  *
  * Tests the type inference system in type-aware-transpiler.js under all edge cases.
  * This is foundational for generating correct typed code for Rust, C, C++, C#, Go, Java.
  *
- * Usage:
- *   node tests/TypeInferenceTestSuite.js
- *   node tests/TypeInferenceTestSuite.js --verbose
- *   node tests/TypeInferenceTestSuite.js --category=literals
+ * The INFERENCE category:
+ *   node tests/TranspilerSuite.js --only=inference
+ *   node tests/TranspilerSuite.js --only=inference --verbose
+ *   node tests/TranspilerSuite.js --only=inference --group=literal   # groups whose name contains "literal"
  */
 
 'use strict';
@@ -91,7 +91,7 @@ class TypeInferenceTestSuite {
    * Run a category of tests
    */
   runCategory(name, testFn) {
-    if (this.categoryFilter && this.categoryFilter !== name.toLowerCase())
+    if (this.categoryFilter && !name.toLowerCase().includes(this.categoryFilter))
       return;
 
     this.currentCategory = name;
@@ -1545,12 +1545,6 @@ class TypeInferenceTestSuite {
   // ============================================================================
 
   run() {
-    console.log('\x1b[1m\x1b[36m');
-    console.log('╔════════════════════════════════════════════════════════════╗');
-    console.log('║         Type Inference Test Suite                          ║');
-    console.log('╚════════════════════════════════════════════════════════════╝');
-    console.log('\x1b[0m');
-
     const startTime = Date.now();
 
     // Run all test categories
@@ -1604,65 +1598,21 @@ class TypeInferenceTestSuite {
     console.log(`\nCompleted in ${elapsed}ms`);
     console.log('\x1b[1m════════════════════════════════════════════════════════════\x1b[0m\n');
 
-    // Exit with appropriate code
-    process.exit(this.failed > 0 ? 1 : 0);
+    const categories = new Set(this.errors.map(e => e.category));
+    return { passed: this.passed, failed: this.failed, detail: this.failed ? `failing groups: ${[...categories].join(', ')}` : '' };
   }
 }
 
-// ============================================================================
-// CLI Entry Point
-// ============================================================================
-
-function main() {
-  const args = process.argv.slice(2);
-  const options = {
-    verbose: args.includes('--verbose') || args.includes('-v'),
-    category: null
-  };
-
-  // Parse --category=xxx
-  for (const arg of args) {
-    if (arg.startsWith('--category='))
-      options.category = arg.split('=')[1].toLowerCase();
-  }
-
-  // Help
-  if (args.includes('--help') || args.includes('-h')) {
-    console.log(`
-Type Inference Test Suite
-
-Usage:
-  node tests/TypeInferenceTestSuite.js [options]
-
-Options:
-  --verbose, -v       Show all test results (not just failures)
-  --category=NAME     Run only tests in specified category
-  --help, -h          Show this help
-
-Categories:
-  literals            Literal type inference
-  arrays              Array type inference
-  binary              Binary expression types
-  unary               Unary expression types
-  conditional         Conditional/logical expressions
-  scope               Variable scope tracking
-  class               Class field/method types
-  jsdoc               JSDoc type flow
-  member              Member expression types
-  call                Call expression types
-  operations          OPERATION_RESULT_TYPES mapping
-  edge                Edge cases
-
-Examples:
-  node tests/TypeInferenceTestSuite.js
-  node tests/TypeInferenceTestSuite.js --verbose
-  node tests/TypeInferenceTestSuite.js --category=literals
-`);
-    process.exit(0);
-  }
-
-  const suite = new TypeInferenceTestSuite(options);
-  suite.run();
+/**
+ * INFERENCE: type inference of the shared transpiler AST.
+ * @param {object} options - { verbose, group } (group: one test group, e.g. literals)
+ * @returns {object} { passed, failed, detail }
+ */
+function run(options = {}) {
+  return new TypeInferenceTestSuite({
+    verbose: Boolean(options.verbose),
+    category: options.group ? options.group.toLowerCase() : null
+  }).run();
 }
 
-main();
+module.exports = { run };
