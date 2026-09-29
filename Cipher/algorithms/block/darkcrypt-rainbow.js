@@ -189,7 +189,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._ctx = null;   // forward (encryption) round-key table, 16 x [w0..w3]
+      /** @type {uint32[][]|null} */
       this._dctx = null;  // inverse (decryption) round-key table, 16 x [w0..w3]
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -206,9 +208,7 @@
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. Rainbow (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      const { ctx, dctx } = this._buildSchedule(this._key);
-      this._ctx = ctx;
-      this._dctx = dctx;
+      this._buildSchedule(this._key);
     }
 
     /**
@@ -241,6 +241,10 @@
     // Sequential ROR(3/5/7/11)-and-XOR diffusion; each new word uses the
     // already-updated earlier words of this same call (matches the DLL's
     // in-place, register-chained computation).
+    /**
+     * @param {uint32[]} b - Four words
+     * @returns {uint32[]} Diffused words
+     */
     _mix(b) {
       const n0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(b[0], 3), OpCodes.RotR32(b[1], 5)), OpCodes.RotR32(b[2], 7)), OpCodes.RotR32(b[3], 11)), MIX_CONST));
       const n1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(n0, 5), OpCodes.RotR32(b[1], 7)), OpCodes.RotR32(b[2], 11)), OpCodes.RotR32(b[3], 3)), MIX_CONST));
@@ -250,13 +254,22 @@
     }
 
     // word0 replaced with NOT(word1 XOR word2 XOR word3)
+    /**
+     * @param {uint32[]} b - Four words
+     * @returns {uint32[]} Words with word0 replaced
+     */
     _checksum(b) {
       return [OpCodes.ToUint32(~(OpCodes.Xor32(OpCodes.Xor32(b[1], b[2]), b[3]))), b[1], b[2], b[3]];
     }
 
     // Circular AND/XOR mix: out[j] = XOR over k=0..3 of (A[k] AND B[(k+j) mod 4])
+    /**
+     * @param {uint32[]} a - Four words
+     * @param {uint32[]} b - Four words
+     * @returns {uint32[]} Mixed words
+     */
     _mixAnd(a, b) {
-      /** @type {uint8[]} */
+      /** @type {uint32[]} */
       const out = [0, 0, 0, 0];
       for (let j = 0; j < 4; j++) {
         let v = 0;
@@ -267,6 +280,7 @@
     }
 
     /**
+     * Build the forward (_ctx) and inverse (_dctx) round-key tables
      * @param {uint8[]} keyBytes - Key bytes
      */
     _buildSchedule(keyBytes) {
@@ -283,14 +297,26 @@
         OpCodes.Pack32LE(keyBytes[28], keyBytes[29], keyBytes[30], keyBytes[31])
       ];
 
-      /** @type {uint8[]} */
-      const seed = [0, 1, 2, 3].map(i => OpCodes.Xor32(k0[i], k1[i]));
-      const rk = [this._mix(seed)];
+      /** @type {uint32[]} */
+      const seed = [];
+      for (let i = 0; i < 4; i++) seed.push(OpCodes.Xor32(k0[i], k1[i]));
+      /** @type {uint32[][]} */
+      const rk = [];
+      rk.push(this._mix(seed));
       for (let i = 1; i < 15; i++) rk.push(this._mix(rk[i - 1]));
-      const rkc = rk.map((b, i) => (i % 2 === 0) ? this._checksum(b) : b);
+      /** @type {uint32[][]} */
+      const rkc = [];
+      for (let i = 0; i < rk.length; i++) {
+        if (i % 2 === 0) rkc.push(this._checksum(rk[i]));
+        else rkc.push(rk[i]);
+      }
 
-      const ctx = [k0, ...rkc]; // 16 entries: k0, RK0..RK14
 
+      /** @type {uint32[][]} */
+      const ctx = [k0]; // 16 entries: k0, RK0..RK14
+      for (let i = 0; i < rkc.length; i++) ctx.push(rkc[i]);
+
+      /** @type {uint32[][]} */
       const dctx = [
         this._mixAnd(rkc[13], rkc[14]), rkc[14],
         this._mixAnd(rkc[11], rkc[12]), rkc[12],
@@ -302,37 +328,58 @@
         this._mixAnd(k0, rkc[0]), rkc[0]
       ];
 
-      return { ctx, dctx };
+      this._ctx = ctx;
+      this._dctx = dctx;
     }
 
     // Position-dependent substitution: word0 uses one byte/table permutation,
     // words 1 and 3 share a second, word2 uses a third.
+    /**
+     * @param {uint32} w - Word
+     * @returns {uint32} Substituted word (word0 permutation)
+     */
     _sub0(w) {
       const b0 = OpCodes.And32(w, 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF), b3 = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
-      return OpCodes.ToUint32(S1[b1] | OpCodes.Shl32(S0[b0], 8) | OpCodes.Shl32(S1[b3], 16) | OpCodes.Shl32(S0[b2], 24));
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(S1[b1], OpCodes.Shl32(S0[b0], 8)), OpCodes.Shl32(S1[b3], 16)), OpCodes.Shl32(S0[b2], 24));
     }
 
+    /**
+     * @param {uint32} w - Word
+     * @returns {uint32} Substituted word (word1/word3 permutation)
+     */
     _sub1(w) {
       const b0 = OpCodes.And32(w, 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF), b3 = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
-      return OpCodes.ToUint32(S1[b2] | OpCodes.Shl32(S1[b3], 8) | OpCodes.Shl32(S0[b0], 16) | OpCodes.Shl32(S0[b1], 24));
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(S1[b2], OpCodes.Shl32(S1[b3], 8)), OpCodes.Shl32(S0[b0], 16)), OpCodes.Shl32(S0[b1], 24));
     }
 
+    /**
+     * @param {uint32} w - Word
+     * @returns {uint32} Substituted word (word2 permutation)
+     */
     _sub2(w) {
       const b0 = OpCodes.And32(w, 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF), b3 = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
-      return OpCodes.ToUint32(S1[b3] | OpCodes.Shl32(S1[b2], 8) | OpCodes.Shl32(S0[b1], 16) | OpCodes.Shl32(S0[b0], 24));
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(S1[b3], OpCodes.Shl32(S1[b2], 8)), OpCodes.Shl32(S0[b1], 16)), OpCodes.Shl32(S0[b0], 24));
     }
 
     // Applies the 8-round primitive using the given round-key table
     // (either the forward CTX table for encryption, or the DCTX table for
     // decryption — the round structure itself is identical either way).
+    /**
+     * @param {uint32[]} state - Four state words
+     * @param {uint32[][]} table - Round-key table
+     * @returns {uint32[]} Output words
+     */
     _process(state, table) {
       let s = state;
       for (let i = 0; i < ROUNDS; i++) {
         const xorKey = table[2 * i];
         const andKey = table[2 * i + 1];
-        /** @type {uint8[]} */
-        s = [0, 1, 2, 3].map(idx => OpCodes.Xor32(s[idx], xorKey[idx]));
-        const mixed = this._mixAnd(s, andKey);
+        /** @type {uint32[]} */
+        const xored = [];
+        for (let idx = 0; idx < 4; idx++) xored.push(OpCodes.Xor32(s[idx], xorKey[idx]));
+        s = xored;
+        const mixed
+ = this._mixAnd(s, andKey);
         if (i < ROUNDS - 1)
           s = [this._sub0(mixed[0]), this._sub1(mixed[1]), this._sub2(mixed[2]), this._sub1(mixed[3])];
         else
