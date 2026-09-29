@@ -65,10 +65,11 @@
   // Cumulative left-rotation amount (from the ORIGINAL PC1 output) used per round
   // by DarkCrypt's schedule generator: rounds are recomputed from pc1[], not
   // rotated incrementally from the previous round.
-  /** @type {uint8[]} */
+  /** @type {int32[]} */
   const ROT = [1,2,4,6,8,10,12,14,15,17,19,21,23,25,27,28];
   /** @type {uint8[]} */
   const PTAB = [16,7,20,21,29,12,28,17,1,15,23,26,5,18,31,10,2,8,24,14,32,27,3,9,19,13,30,6,22,11,4,25];
+  /** @type {uint8[][]} */
   const SBOXES = [
     [14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7, 0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8,
      4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0, 15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13],
@@ -113,78 +114,147 @@
   // tables. DarkCrypt's window extraction (see F() below) delivers the 6-bit
   // S-box index with a different bit ordering than the textbook row/col split,
   // so the raw 6-bit value is first re-mapped to a standard "row*16+col" index.
-  const invP = new Array(32);
-  for (let k = 0; k < 32; k++)
-    for (let j = 0; j < 32; j++)
-      if (PTAB[j] - 1 === k) { invP[k] = j; break; }
-
-  const SP = [];
-  for (let i = 0; i < 8; i++) {
-    const box = new Array(64);
-    for (let v = 0; v < 64; v++) {
-      const rowCol = OpCodes.Shl32(OpCodes.And32(v, 1), 4) | OpCodes.And32(v, 0x20) | OpCodes.And32(OpCodes.Shr32(v, 1), 0xF);
-      const nibble = SBOXES[i][rowCol];
-      let accum = 0;
-      for (let bitPos = 0; bitPos < 4; bitPos++) {
-        if (OpCodes.And32(nibble, OpCodes.Shr32(8, bitPos))) {
-          const outBit = 31 - invP[i * 4 + bitPos];
-          accum |= OpCodes.Shl32(1, outBit);
-        }
-      }
-      box[v] = OpCodes.ToUint32(accum);
-    }
-    SP.push(box);
+  /**
+   * @returns {int32[]} invP[k] = j such that PTAB[j] - 1 = k
+   */
+  function buildInvP() {
+    /** @type {int32[]} */
+    const invP = new Array(32);
+    for (let k = 0; k < 32; k++)
+      for (let j = 0; j < 32; j++)
+        if (OpCodes.Sub32(PTAB[j], 1) === k) { invP[k] = j; break; }
+    return invP;
   }
 
+  /**
+   * @returns {uint32[][]} The eight 64-entry S-box/P-permutation tables
+   */
+  function buildSP() {
+    const invP = buildInvP();
+    /** @type {uint32[][]} */
+    const sp = [];
+    for (let i = 0; i < 8; i++) {
+      /** @type {uint32[]} */
+      const box = new Array(64);
+      for (let v = 0; v < 64; v++) {
+        const rowCol = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(v, 1), 4), OpCodes.And32(v, 0x20)), OpCodes.And32(OpCodes.Shr32(v, 1), 0xF));
+        const nibble = SBOXES[i][rowCol];
+        /** @type {uint32} */
+        let accum = 0;
+        for (let bitPos = 0; bitPos < 4; bitPos++) {
+          if (OpCodes.And32(nibble, OpCodes.Shr32(8, bitPos)) !== 0) {
+            const outBit = 31 - invP[i * 4 + bitPos];
+            accum = OpCodes.Or32(accum, OpCodes.Shl32(1, outBit));
+          }
+        }
+        box[v] = accum;
+      }
+      sp.push(box);
+    }
+    return sp;
+  }
+
+  /** @type {uint32[][]} */
+  const SP = buildSP();
+
+  /**
+   * @param {uint8[]} bytes - Bytes
+   * @returns {uint8[]} Bits (0/1), most significant first
+   */
   function bytesToBits(bytes) {
+    /** @type {uint8[]} */
     const bits = [];
-    for (const b of bytes)
+    for (let k = 0; k < bytes.length; k++) {
+      const b = bytes[k];
       for (let i = 7; i >= 0; i--)
-        bits.push(OpCodes.GetBit(b, i));
+        bits.push(OpCodes.And32(OpCodes.Shr32(b, i), 1));
+    }
     return bits;
   }
 
+  /**
+   * @param {uint8[]} bits - Bits (0/1), most significant first
+   * @returns {uint8[]} Bytes
+   */
   function bitsToBytes(bits) {
+    /** @type {uint8[]} */
     const out = [];
     for (let i = 0; i < bits.length; i += 8) {
+      /** @type {int32} */
       let v = 0;
-      for (let j = 0; j < 8; j++) v = SetHighBitFirst(v, j, bits[i + j]);
+      for (let j = 0; j < 8; j++) v = SetHighBitFirst(v, j, bits[i + j] !== 0);
       out.push(v);
     }
     return out;
   }
+  /**
+   * @param {int32} value - Byte being assembled
+   * @param {int32} j - Bit index counted from the most significant bit
+   * @param {boolean} bit - Bit value
+   * @returns {int32} Updated value
+   */
   function SetHighBitFirst(value, j, bit) { return OpCodes.SetBit(value, 7 - j, bit); }
 
-  function permute(bits, table) { return table.map(pos => bits[pos - 1]); }
+  /**
+   * @param {uint8[]} bits - Bits
+   * @param {uint8[]} table - 1-based source positions
+   * @returns {uint8[]} Permuted bits
+   */
+  function permute(bits, table) {
+    /** @type {uint8[]} */
+    const out = new Array(table.length);
+    for (let i = 0; i < table.length; i++) out[i] = bits[OpCodes.Sub32(table[i], 1)];
+    return out;
+  }
+  /**
+   * @param {uint8[]} block8 - 8 bytes
+   * @returns {uint8[]} Initial-permuted bytes
+   */
   function ipBlock(block8) { return bitsToBytes(permute(bytesToBits(block8), IP)); }
+  /**
+   * @param {uint8[]} block8 - 8 bytes
+   * @returns {uint8[]} Final-permuted bytes
+   */
   function fpBlock(block8) { return bitsToBytes(permute(bytesToBits(block8), FP)); }
 
   // DES round function. R is a 32-bit word built with OpCodes.Pack32LE from the
   // permuted block bytes (little-endian dword layout, matching the DarkCrypt
   // implementation); key8 holds one 6-bit S-box selector per box in its low 6 bits.
+  /**
+   * @param {uint32} R - Half block
+   * @param {uint8[]} key8 - Eight 6-bit S-box selectors
+   * @returns {uint32} Round function output
+   */
   function feistelF(R, key8) {
     const rotR = OpCodes.RotL32(R, 1);
+    /** @type {uint32} */
     let accum = 0;
-    accum |= SP[7][OpCodes.And32(OpCodes.Xor32(key8[7], rotR), 0x3F)];
+    accum = OpCodes.Or32(accum, SP[7][OpCodes.And32(OpCodes.Xor32(key8[7], rotR), 0x3F)]);
     let tmp = OpCodes.Shr32(R, 3);
-    accum |= SP[6][OpCodes.And32(OpCodes.Xor32(key8[6], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); accum |= SP[5][OpCodes.And32(OpCodes.Xor32(key8[5], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); accum |= SP[4][OpCodes.And32(OpCodes.Xor32(key8[4], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); accum |= SP[3][OpCodes.And32(OpCodes.Xor32(key8[3], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); accum |= SP[2][OpCodes.And32(OpCodes.Xor32(key8[2], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); accum |= SP[1][OpCodes.And32(OpCodes.Xor32(key8[1], tmp), 0x3F)];
-    tmp = OpCodes.Shr32(tmp, 4); tmp |= OpCodes.Shl32(OpCodes.And32(R, 1), 5);
-    accum |= SP[0][OpCodes.And32(OpCodes.Xor32(key8[0], tmp), 0x3F)];
-    return OpCodes.ToUint32(accum);
+    accum = OpCodes.Or32(accum, SP[6][OpCodes.And32(OpCodes.Xor32(key8[6], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); accum = OpCodes.Or32(accum, SP[5][OpCodes.And32(OpCodes.Xor32(key8[5], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); accum = OpCodes.Or32(accum, SP[4][OpCodes.And32(OpCodes.Xor32(key8[4], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); accum = OpCodes.Or32(accum, SP[3][OpCodes.And32(OpCodes.Xor32(key8[3], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); accum = OpCodes.Or32(accum, SP[2][OpCodes.And32(OpCodes.Xor32(key8[2], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); accum = OpCodes.Or32(accum, SP[1][OpCodes.And32(OpCodes.Xor32(key8[1], tmp), 0x3F)]);
+    tmp = OpCodes.Shr32(tmp, 4); tmp = OpCodes.Or32(tmp, OpCodes.Shl32(OpCodes.And32(R, 1), 5));
+    accum = OpCodes.Or32(accum, SP[0][OpCodes.And32(OpCodes.Xor32(key8[0], tmp), 0x3F)]);
+    return accum;
   }
 
   // Standard DES key schedule (PC1, per-round cumulative rotation, PC2), packed
   // as 16 rounds x 8 bytes (one byte per S-box holding its 6-bit selector).
+  /**
+   * @param {uint8[]} desKey8 - Parity-fixed DES key
+   * @returns {uint8[][]} 16 rounds of eight 6-bit S-box selectors
+   */
   function buildSubkeys(desKey8) {
     const pc1 = permute(bytesToBits(desKey8), PC1); // 56 bits
-    const subkeys = [];
+    /** @type {uint8[][]} */
+    const roundSel = [];
     for (let r = 0; r < 16; r++) {
       const rot = ROT[r];
+      /** @type {uint8[]} */
       const rotated = new Array(56);
       for (let j = 0; j < 56; j++) {
         const half = j < 28 ? 28 : 56;
@@ -192,51 +262,74 @@
         rotated[j] = pc1[base + ((j - base + rot) % (half - base))];
       }
       const pc2bits = permute(rotated, PC2); // 48 bits
-      const key8 = new Array(8).fill(0);
+      /** @type {uint8[]} */
+      const key8 = new Array(8);
+      key8.fill(0);
       for (let j = 0; j < 48; j++) {
-        const box = (j / 6) | 0, bitInBox = j % 6;
-        if (pc2bits[j]) key8[box] |= OpCodes.Shr32(0x20, bitInBox);
+        const box = Math.floor(j / 6), bitInBox = j % 6;
+        if (pc2bits[j] !== 0) key8[box] = OpCodes.Or32(key8[box], OpCodes.Shr32(0x20, bitInBox));
       }
-      subkeys.push(key8);
+      roundSel.push(key8);
     }
-    return subkeys;
+    return roundSel;
   }
 
-  function desCryptCore(block8, subkeys, decrypt) {
+  /**
+   * @param {uint8[]} block8 - 8 bytes
+   * @param {uint8[][]} roundSel - Round selectors from buildSubkeys
+   * @param {boolean} decrypt - Run the rounds in reverse
+   * @returns {uint8[]} 8 bytes
+   */
+  function desCryptCore(block8, roundSel, decrypt) {
     const ipOut = ipBlock(block8);
     let Y = OpCodes.Pack32LE(ipOut[0], ipOut[1], ipOut[2], ipOut[3]);
     let X = OpCodes.Pack32LE(ipOut[4], ipOut[5], ipOut[6], ipOut[7]);
 
     if (!decrypt) {
       for (let r = 0; r < 16; r++) {
-        if (OpCodes.And32(r, 1) === 0) Y = OpCodes.Xor32(Y, feistelF(X, subkeys[r]));
-        else X = OpCodes.Xor32(X, feistelF(Y, subkeys[r]));
+        if (OpCodes.And32(r, 1) === 0) Y = OpCodes.Xor32(Y, feistelF(X, roundSel[r]));
+        else X = OpCodes.Xor32(X, feistelF(Y, roundSel[r]));
       }
       return fpBlock([...OpCodes.Unpack32LE(X), ...OpCodes.Unpack32LE(Y)]);
     }
 
     for (let i = 0; i < 16; i++) {
       const r = 15 - i;
-      if (OpCodes.And32(i, 1) === 0) Y = OpCodes.Xor32(Y, feistelF(X, subkeys[r]));
-      else X = OpCodes.Xor32(X, feistelF(Y, subkeys[r]));
+      if (OpCodes.And32(i, 1) === 0) Y = OpCodes.Xor32(Y, feistelF(X, roundSel[r]));
+      else X = OpCodes.Xor32(X, feistelF(Y, roundSel[r]));
     }
     return fpBlock([...OpCodes.Unpack32LE(X), ...OpCodes.Unpack32LE(Y)]);
   }
 
   // Forces odd byte parity (standard DES key-parity convention): the low 7 bits
   // are kept as-is and bit 7 is set so the total number of 1-bits is odd.
+  /**
+   * @param {uint8} byte - Key byte
+   * @returns {uint8} Byte with odd parity
+   */
   function oddParityFix(byte) {
     const low7 = OpCodes.And32(byte, 0x7F);
-    let x = low7, parity = 0;
-    for (let i = 0; i < 7; i++) { parity ^= OpCodes.And32(x, 1); x = OpCodes.Shr32(x, 1); }
-    return low7 | OpCodes.Shl32(parity === 0 ? 1 : 0, 7);
+    /** @type {uint32} */
+    let x = low7;
+    /** @type {uint32} */
+    let parity = 0;
+    for (let i = 0; i < 7; i++) { parity = OpCodes.Xor32(parity, OpCodes.And32(x, 1)); x = OpCodes.Shr32(x, 1); }
+    return OpCodes.Or32(low7, OpCodes.Shl32(parity === 0 ? 1 : 0, 7));
   }
 
   // K2 (output whitening key) LFSR: 8 bytes of desKeyOrig, then 8 bytes of K1,
   // each step folding K2SBOX[buf[0]^buf[1]] ^ srcByte into the shift register.
+  /**
+   * @param {uint8[]} desKeyOrig - DES key half as given
+   * @param {uint8[]} K1 - Input whitening key
+   * @returns {uint8[]} Output whitening key
+   */
   function deriveK2(desKeyOrig, K1) {
     /** @type {uint8[]} */
     const buf = [0, 0, 0, 0, 0, 0, 0, 0];
+    /**
+     * @param {uint8} srcByte - Byte shifted in
+     */
     function step(srcByte) {
       const fb = K2SBOX[OpCodes.And32(OpCodes.Xor32(buf[0], buf[1]), 0xFF)];
       for (let i = 0; i < 7; i++) buf[i] = buf[i + 1];
@@ -318,6 +411,12 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
+      this._K1 = null;
+      /** @type {uint8[]|null} */
+      this._K2 = null;
+      /** @type {uint8[][]|null} */
+      this._roundSel = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
@@ -330,7 +429,7 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0;
-        this._K1 = null; this._K2 = null; this._subkeys = null;
+        this._K1 = null; this._K2 = null; this._roundSel = null;
         return;
       }
       if (keyBytes.length !== 16)
@@ -342,8 +441,10 @@
       const desKeyOrig = keyBytes.slice(0, 8);
       this._K1 = keyBytes.slice(8, 16);
       this._K2 = deriveK2(desKeyOrig, this._K1);
-      const desKeyFixed = desKeyOrig.map(oddParityFix);
-      this._subkeys = buildSubkeys(desKeyFixed);
+      /** @type {uint8[]} */
+      const desKeyFixed = new Array(desKeyOrig.length);
+      for (let i = 0; i < desKeyOrig.length; i++) desKeyFixed[i] = oddParityFix(desKeyOrig[i]);
+      this._roundSel = buildSubkeys(desKeyFixed);
     }
 
     /**
@@ -379,7 +480,7 @@
      */
     _encryptBlock(block) {
       let b = OpCodes.XorArrays(block, this._K1);
-      b = desCryptCore(b, this._subkeys, false);
+      b = desCryptCore(b, this._roundSel, false);
       return OpCodes.XorArrays(b, this._K2);
     }
 
@@ -389,7 +490,7 @@
      */
     _decryptBlock(block) {
       let b = OpCodes.XorArrays(block, this._K2);
-      b = desCryptCore(b, this._subkeys, true);
+      b = desCryptCore(b, this._roundSel, true);
       return OpCodes.XorArrays(b, this._K1);
     }
   }

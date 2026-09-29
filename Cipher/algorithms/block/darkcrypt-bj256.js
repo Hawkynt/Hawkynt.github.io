@@ -175,6 +175,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._K = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -192,6 +193,7 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // setup(): identity copy of the 16 little-endian key words — see file header.
+      /** @type {uint32[]} */
       const K = new Array(16);
       for (let i = 0; i < 16; i++)
         K[i] = OpCodes.Pack32LE(keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]);
@@ -231,6 +233,7 @@
      */
     _encryptBlock(block) {
       const K = this._K;
+      /** @type {uint32[]} */
       const w = new Array(8);
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
@@ -788,6 +791,7 @@
       b = OpCodes.Xor32(b, a);  // 00401648
       w[7] = b;  // 0040164A
 
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(w[i]));
       return out;
@@ -799,6 +803,7 @@
      */
     _decryptBlock(block) {
       const K = this._K;
+      /** @type {uint32[]} */
       const w = new Array(8);
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
@@ -1392,6 +1397,7 @@
       b = OpCodes.Xor32(b, a);  // 00401D1C
       w[7] = b;  // 00401D1E
 
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(w[i]));
       return out;
