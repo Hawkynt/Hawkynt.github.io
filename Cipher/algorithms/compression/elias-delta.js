@@ -103,25 +103,45 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       * @returns {EliasDeltaInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new EliasDeltaInstance(this, isInverse);
       }
     }
 
     class EliasDeltaInstance extends IAlgorithmInstance {
+      /**
+       * @param {EliasDeltaAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ?
-          this._decompress(this.inputBuffer) :
-          this._compress(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress(this.inputBuffer);
+        } else {
+          result = this._compress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
@@ -129,23 +149,54 @@
       // block): a 4-byte little-endian original length, followed by the
       // Delta-coded bitstream (MSB-first, zero-padded to a byte boundary).
       // Elias Delta cannot encode 0, so byte values are mapped to (value + 1).
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Length header and Delta codes
+       */
       _compress(data) {
         const bitStream = OpCodes.CreateBitStream();
         bitStream.writeUint32LE(data.length);
-        for (const byte of data) this._encodeDelta(bitStream, byte + 1);
-        return bitStream.toArray();
+        for (let k = 0; k < data.length; k++) {
+          /** @type {int32} */
+          const value = data[k] + 1;
+          this._encodeDelta(bitStream, value);
+        }
+        /** @type {uint8[]} */
+        const bytes = bitStream.toArray();
+        return bytes;
       }
 
+      /**
+       * @param {uint8[]} data - Length header and Delta codes
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 4) return [];
+        /** @type {uint8[]} */
+        const result = [];
+        if (data.length < 4) {
+          return result;
+        }
 
         const bitStream = OpCodes.CreateBitStream(data);
-        const originalLength = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
-        if (originalLength === 0) return [];
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const originalLength = OpCodes.Pack32LE(c0, c1, c2, c3);
+        if (originalLength === 0) {
+          return result;
+        }
 
-        const result = [];
-        for (let i = 0; i < originalLength; i++)
-          result.push(this._decodeDelta(bitStream) - 1);
+        for (let i = 0; i < originalLength; i++) {
+          /** @type {int32} */
+          const value = this._decodeDelta(bitStream) - 1;
+          result.push(value);
+        }
 
         return result;
       }
@@ -155,39 +206,75 @@
        * bit length (N+1) of value, then append the lower N bits of value
        * (without its leading 1), MSB first.
        * @private
+       * @param {_BitStream} bitStream - Output bit stream
+       * @param {int32} value - Positive integer
        */
       _encodeDelta(bitStream, value) {
-        let n = 0, v = value;
-        while (v > 1) { n++; v = Math.floor(v / 2); }
+        /** @type {int32} */
+        let n = 0;
+        /** @type {int32} */
+        let v = value;
+        while (v > 1) {
+          n++;
+          v = Math.floor(v / 2);
+        }
 
         // Gamma-encode (n + 1): floor(log2(n+1)) zero-bits, then binary of (n+1).
+        /** @type {int32} */
         const lenBits = n + 1;
-        let lenLen = 0, tmp = lenBits;
-        while (tmp > 1) { lenLen++; tmp = Math.floor(tmp / 2); }
+        /** @type {int32} */
+        let lenLen = 0;
+        /** @type {int32} */
+        let tmp = lenBits;
+        while (tmp > 1) {
+          lenLen++;
+          tmp = Math.floor(tmp / 2);
+        }
 
-        for (let i = 0; i < lenLen; i++) bitStream.writeBit(0);
-        for (let i = lenLen; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(lenBits, i), 1));
+        for (let i = 0; i < lenLen; i++) {
+          bitStream.writeBit(0);
+        }
+        for (let i = lenLen; i >= 0; i--) {
+          bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(lenBits, i), 1));
+        }
 
         // Lower n bits of value (without the implicit leading 1).
-        for (let i = n - 1; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        for (let i = n - 1; i >= 0; i--) {
+          bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        }
       }
 
       /**
        * Decode an Elias Delta code: Gamma-decode the bit length (n+1), then
        * read n more bits with an implicit leading 1.
        * @private
+       * @param {_BitStream} bitStream - Input bit stream
+       * @returns {int32} Decoded positive integer
        */
       _decodeDelta(bitStream) {
+        /** @type {int32} */
         let lenLen = 0;
-        while (bitStream.readBit() === 0) lenLen++;
+        /** @type {uint32} */
+        let bit = bitStream.readBit();
+        while (bit === 0) {
+          lenLen++;
+          bit = bitStream.readBit();
+        }
 
+        /** @type {int32} */
         let lenBits = 1;
-        for (let i = 0; i < lenLen; i++) lenBits = OpCodes.Or32(OpCodes.Shl32(lenBits, 1), bitStream.readBit());
+        for (let i = 0; i < lenLen; i++) {
+          lenBits = OpCodes.Or32(OpCodes.Shl32(lenBits, 1), bitStream.readBit());
+        }
 
+        /** @type {int32} */
         const n = lenBits - 1;
 
+        /** @type {int32} */
         let value = 1;
-        for (let i = 0; i < n; i++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+        for (let i = 0; i < n; i++) {
+          value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+        }
 
         return value;
       }
