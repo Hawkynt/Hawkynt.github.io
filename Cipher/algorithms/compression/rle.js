@@ -73,7 +73,9 @@
         this.country = CountryCode.US;
 
         // Configuration
+        /** @type {int32} */
         this.MAX_RUN_LENGTH = 255; // Maximum run length in a single encoding
+        /** @type {uint8} */
         this.ESCAPE_CHAR = 0x1B;   // Escape character (ESC)
 
         // Documentation and references
@@ -111,25 +113,42 @@
           )
         ];
       }
-
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {RLEInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new RLEInstance(this, isInverse);
       }
     }
 
     class RLEInstance extends IAlgorithmInstance {
+      /**
+       * @param {RLECompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {int32} */
         this.maxRunLength = algorithm.MAX_RUN_LENGTH;
+        /** @type {uint8} */
         this.escapeChar = algorithm.ESCAPE_CHAR;
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
         if (this.isInverse) {
@@ -139,21 +158,28 @@
         }
       }
 
+      /**
+       * @returns {uint8[]} (length, value) pairs
+       */
       _compress() {
+        /** @type {uint8[]} */
+        const result = [];
         if (this.inputBuffer.length === 0) {
-          return [];
+          return result;
         }
 
-        const result = [];
+        /** @type {int32} */
         let i = 0;
 
         while (i < this.inputBuffer.length) {
+          /** @type {uint8} */
           const currentByte = this.inputBuffer[i];
+          /** @type {int32} */
           let runLength = 1;
 
           // Count consecutive identical bytes
-          while (i + runLength < this.inputBuffer.length && 
-                 this.inputBuffer[i + runLength] === currentByte && 
+          while (i + runLength < this.inputBuffer.length &&
+                 this.inputBuffer[i + runLength] === currentByte &&
                  runLength < this.maxRunLength) {
             runLength++;
           }
@@ -166,22 +192,31 @@
         }
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return result;
       }
 
+      /**
+       * @returns {uint8[]} Expanded bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
+        const result = [];
         if (this.inputBuffer.length === 0) {
-          return [];
+          return result;
         }
 
-        const result = [];
+        /** @type {int32} */
         let i = 0;
 
         while (i + 1 < this.inputBuffer.length) {
           // Decode run: LENGTH + VALUE
+          /** @type {uint8} */
           const runLength = this.inputBuffer[i];
+          /** @type {uint8} */
           const value = this.inputBuffer[i + 1];
 
           for (let j = 0; j < runLength; j++) {
@@ -192,7 +227,9 @@
         }
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return result;
       }
