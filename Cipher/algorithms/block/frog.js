@@ -255,7 +255,7 @@
 
     const simpleKey = new Array(internalKeyLength);
     for (let i = 0; i < internalKeyLength; ++i) {
-      simpleKey[i] = OpCodes.XorN(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
+      simpleKey[i] = OpCodes.Xor32(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
     }
 
     const intermediateKey = makeInternalKey(simpleKey, blockLength, rounds);

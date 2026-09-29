@@ -526,7 +526,7 @@
      */
     _xortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        block[i] = OpCodes.XorN(block[i], table[i]);
+        block[i] = OpCodes.Xor32(block[i], table[i]);
     }
 
     /**
@@ -544,7 +544,7 @@
      */
     _rake(block) {
       for (let i = 1; i < BLOCK_SIZE; ++i)
-        block[i] = OpCodes.XorN(block[i], block[i - 1]);
+        block[i] = OpCodes.Xor32(block[i], block[i - 1]);
       for (let i = BLOCK_SIZE - 2; i >= 0; --i)
         block[i] = OpCodes.AddMod(block[i], block[i + 1], 256);
     }
@@ -557,7 +557,7 @@
       for (let i = 0; i < BLOCK_SIZE - 1; ++i)
         block[i] = OpCodes.SubMod(block[i], block[i + 1], 256);
       for (let i = BLOCK_SIZE - 1; i >= 1; --i)
-        block[i] = OpCodes.XorN(block[i], block[i - 1]);
+        block[i] = OpCodes.Xor32(block[i], block[i - 1]);
     }
 
     /** f(i,j) - circular addressing mod 8 into tlist, as used throughout bassomatic(). */
