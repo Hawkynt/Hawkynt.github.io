@@ -48,16 +48,28 @@
   /** @type {uint8[]} */
   const SB1 = [0x1, 0x0, 0x5, 0x3, 0xE, 0x2, 0xF, 0x7, 0xD, 0xA, 0x9, 0xB, 0xC, 0x8, 0x4, 0x6];
 
-  // Inverse S-boxes
-  const INV_SB0 = new Array(16);
-  const INV_SB1 = new Array(16);
-  for (let i = 0; i < 16; ++i) {
-    INV_SB0[SB0[i]] = i;
-    INV_SB1[SB1[i]] = i;
+  /**
+   * @param {uint8[]} table - Permutation table
+   * @returns {uint8[]} Its inverse
+   */
+  function invertTable(table) {
+    /** @type {uint8[]} */
+    const inv = new Array(table.length);
+    for (let i = 0; i < table.length; ++i) inv[table[i]] = i;
+    return inv;
   }
+
+  // Inverse S-boxes
+  const INV_SB0 = invertTable(SB0);
+  const INV_SB1 = invertTable(SB1);
 
   // 8-bit S-box construction for Midori128
   // SSbi(x, i) constructs 8-bit S-boxes from 4-bit Sb1 using bit permutations
+  /**
+   * @param {uint8} x - Input byte
+   * @param {int32} i - Variant 0..3
+   * @returns {uint8} SSb_i(x)
+   */
   function SSbi(x, i) {
     // Extract individual bits (MSB to LSB)
     const x0 = OpCodes.And8(OpCodes.Shr8(x, 7), 1);
@@ -69,8 +81,24 @@
     const x6 = OpCodes.And8(OpCodes.Shr8(x, 1), 1);
     const x7 = OpCodes.And8(x, 1);
 
-    let a0, a1, a2, a3;  // First group
-    let b0, b1, b2, b3;  // Second group
+    // First group
+    /** @type {uint8} */
+    let a0 = 0;
+    /** @type {uint8} */
+    let a1 = 0;
+    /** @type {uint8} */
+    let a2 = 0;
+    /** @type {uint8} */
+    let a3 = 0;
+    // Second group
+    /** @type {uint8} */
+    let b0 = 0;
+    /** @type {uint8} */
+    let b1 = 0;
+    /** @type {uint8} */
+    let b2 = 0;
+    /** @type {uint8} */
+    let b3 = 0;
 
     // Group bits based on variant i
     if (i === 0) {
@@ -92,8 +120,8 @@
     }
 
     // Apply Sb1 to each 4-bit group
-    const aVal = OpCodes.Shl8(a0, 3) | OpCodes.Shl8(a1, 2) | OpCodes.Shl8(a2, 1) | a3;
-    const bVal = OpCodes.Shl8(b0, 3) | OpCodes.Shl8(b1, 2) | OpCodes.Shl8(b2, 1) | b3;
+    const aVal = OpCodes.Or8(OpCodes.Or8(OpCodes.Or8(OpCodes.Shl8(a0, 3), OpCodes.Shl8(a1, 2)), OpCodes.Shl8(a2, 1)), a3);
+    const bVal = OpCodes.Or8(OpCodes.Or8(OpCodes.Or8(OpCodes.Shl8(b0, 3), OpCodes.Shl8(b1, 2)), OpCodes.Shl8(b2, 1)), b3);
 
     // n0 is the Sb1 image of the upper permuted nibble, n1 that of the lower one.
     // The output bit permutation below is the inverse of the input permutation
@@ -112,7 +140,22 @@
     const n1_2 = OpCodes.And8(OpCodes.Shr8(n1, 1), 1);
     const n1_3 = OpCodes.And8(n1, 1);
 
-    let y0, y1, y2, y3, y4, y5, y6, y7;
+    /** @type {uint8} */
+    let y0 = 0;
+    /** @type {uint8} */
+    let y1 = 0;
+    /** @type {uint8} */
+    let y2 = 0;
+    /** @type {uint8} */
+    let y3 = 0;
+    /** @type {uint8} */
+    let y4 = 0;
+    /** @type {uint8} */
+    let y5 = 0;
+    /** @type {uint8} */
+    let y6 = 0;
+    /** @type {uint8} */
+    let y7 = 0;
 
     // Recombine bits based on variant i
     if (i === 0) {
@@ -134,40 +177,43 @@
     }
 
     // Combine output bits into 8-bit value
-    return OpCodes.Shl8(y0, 7) | OpCodes.Shl8(y1, 6) | OpCodes.Shl8(y2, 5) | OpCodes.Shl8(y3, 4) |
-           OpCodes.Shl8(y4, 3) | OpCodes.Shl8(y5, 2) | OpCodes.Shl8(y6, 1) | y7;
+    const hi = OpCodes.Or8(OpCodes.Or8(OpCodes.Or8(OpCodes.Shl8(y0, 7), OpCodes.Shl8(y1, 6)), OpCodes.Shl8(y2, 5)), OpCodes.Shl8(y3, 4));
+    const lo = OpCodes.Or8(OpCodes.Or8(OpCodes.Or8(OpCodes.Shl8(y4, 3), OpCodes.Shl8(y5, 2)), OpCodes.Shl8(y6, 1)), y7);
+    return OpCodes.Or8(hi, lo);
+  }
+
+  /**
+   * @param {int32} variant - SSb variant 0..3
+   * @returns {uint8[]} The 256-entry 8-bit S-box
+   */
+  function buildSSB(variant) {
+    /** @type {uint8[]} */
+    const table = new Array(256);
+    for (let i = 0; i < 256; ++i) table[i] = SSbi(i, variant);
+    return table;
   }
 
   // Pre-compute 8-bit S-box lookup tables for Midori128
-  const SSB0 = new Array(256);
-  const SSB1 = new Array(256);
-  const SSB2 = new Array(256);
-  const SSB3 = new Array(256);
-
-  for (let i = 0; i < 256; ++i) {
-    SSB0[i] = SSbi(i, 0);
-    SSB1[i] = SSbi(i, 1);
-    SSB2[i] = SSbi(i, 2);
-    SSB3[i] = SSbi(i, 3);
-  }
+  const SSB0 = buildSSB(0);
+  const SSB1 = buildSSB(1);
+  const SSB2 = buildSSB(2);
+  const SSB3 = buildSSB(3);
 
   // Inverse 8-bit S-boxes for Midori128 decryption
-  const INV_SSB0 = new Array(256);
-  const INV_SSB1 = new Array(256);
-  const INV_SSB2 = new Array(256);
-  const INV_SSB3 = new Array(256);
-
-  for (let i = 0; i < 256; ++i) {
-    INV_SSB0[SSB0[i]] = i;
-    INV_SSB1[SSB1[i]] = i;
-    INV_SSB2[SSB2[i]] = i;
-    INV_SSB3[SSB3[i]] = i;
-  }
+  const INV_SSB0 = invertTable(SSB0);
+  const INV_SSB1 = invertTable(SSB1);
+  const INV_SSB2 = invertTable(SSB2);
+  const INV_SSB3 = invertTable(SSB3);
 
   // MixColumns matrix: Binary matrix with 0s on diagonal, 1s elsewhere
   // Operates in GF(2) (simple XOR)
   // NOTE: State is stored in COLUMN-MAJOR order for both Midori64 and Midori128
+  /**
+   * @param {uint8[]} state - 16-cell state (column-major)
+   * @returns {uint8[]} State after MixColumn
+   */
   function mixColumns(state) {
+    /** @type {uint8[]} */
     const result = new Array(state.length);
 
     // For column-major storage: column i = indices [i*4, i*4+1, i*4+2, i*4+3]
@@ -193,10 +239,15 @@
   }
 
   // ShuffleCell permutation
+  /**
+   * @param {uint8[]} state - 16-cell state
+   * @returns {uint8[]} Shuffled state
+   */
   function shuffleCell(state) {
     // Permutation for cell positions [0..15] → P[i]
     /** @type {uint8[]} */
     const perm = [0, 10, 5, 15, 14, 4, 11, 1, 9, 3, 12, 6, 7, 13, 2, 8];
+    /** @type {uint8[]} */
     const result = new Array(16);
 
     for (let i = 0; i < 16; ++i) {
@@ -207,14 +258,20 @@
   }
 
   // Inverse ShuffleCell
+  /**
+   * @param {uint8[]} state - 16-cell state
+   * @returns {uint8[]} Unshuffled state
+   */
   function invShuffleCell(state) {
     /** @type {uint8[]} */
     const perm = [0, 10, 5, 15, 14, 4, 11, 1, 9, 3, 12, 6, 7, 13, 2, 8];
+    /** @type {uint8[]} */
     const invPerm = new Array(16);
     for (let i = 0; i < 16; ++i) {
       invPerm[perm[i]] = i;
     }
 
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = state[invPerm[i]];
@@ -225,6 +282,7 @@
 
   // Round constants (4×4 binary matrices) from Midori specification
   // These are the actual beta/alpha constants used in key schedule
+  /** @type {uint8[][][]} */
   const ROUND_CONSTANTS = [
     [[0,0,1,0],[0,1,0,0],[0,0,1,1],[1,1,1,1]], // C0
     [[0,1,1,0],[1,0,1,0],[1,0,0,0],[1,0,0,0]], // C1
@@ -248,11 +306,19 @@
   ];
 
   // Key schedule for Midori64: uses K₀ for whitening
+  /**
+   * @param {uint8[]} key - 16 key bytes
+   * @param {int32} numRounds - Number of round keys after the whitening key
+   * @returns {uint8[][]} Whitening key followed by the round keys (16 nibbles each)
+   */
   function generateRoundKeys64(key, numRounds) {
-    const roundKeys = [];
+    /** @type {uint8[][]} */
+    const schedule = [];
 
     // Split key into K0 (first 64 bits) and K1 (second 64 bits)
+    /** @type {uint8[]} */
     const k0 = new Array(16);
+    /** @type {uint8[]} */
     const k1 = new Array(16);
     for (let i = 0; i < 8; ++i) {
       k0[2 * i] = OpCodes.And8(OpCodes.Shr8(key[i], 4), 0x0F);
@@ -262,14 +328,16 @@
     }
 
     // Whitening key WK = K0 XOR K1
+    /** @type {uint8[]} */
     const wk = new Array(16);
     for (let i = 0; i < 16; ++i) {
       wk[i] = OpCodes.Xor8(k0[i], k1[i]);
     }
-    roundKeys.push(wk);
+    schedule.push(wk);
 
     // Generate 16 round keys: RKᵢ = K₍ᵢ mod 2₎ ⊕ αᵢ
     for (let r = 0; r < numRounds; ++r) {
+      /** @type {uint8[]} */
       const rk = new Array(16);
       const baseKey = (r % 2 === 0) ? k0 : k1;
       const rConst = ROUND_CONSTANTS[r];
@@ -280,19 +348,26 @@
         const bit = rConst[row][col];
         rk[i] = OpCodes.Xor8(baseKey[i], bit);
       }
-      roundKeys.push(rk);
+      schedule.push(rk);
     }
 
-    return roundKeys;
+    return schedule;
   }
 
   // Key schedule for Midori128
+  /**
+   * @param {uint8[]} key - 16 key bytes
+   * @param {int32} numRounds - Number of round keys
+   * @returns {uint8[][]} Round keys (16 bytes each)
+   */
   function generateRoundKeys128(key, numRounds) {
-    const roundKeys = [];
+    /** @type {uint8[][]} */
+    const schedule = [];
 
     // Generate 19 round keys (indices 0-18)
     // Round constants are 4×4 binary matrices accessed in column-major order
     for (let r = 0; r < numRounds; ++r) {
+      /** @type {uint8[]} */
       const rk = new Array(16);
       const rConst = ROUND_CONSTANTS[r];
 
@@ -306,10 +381,10 @@
         // XOR the key byte with the round constant bit (LSB only)
         rk[i] = OpCodes.Xor8(key[i], bit);
       }
-      roundKeys.push(rk);
+      schedule.push(rk);
     }
 
-    return roundKeys;
+    return schedule;
   }
 
   // ===== Midori64 Implementation =====
@@ -396,6 +471,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 
@@ -474,6 +550,7 @@
      */
     processBlock(block) {
       // Convert block to 16 nibbles (4×4 state)
+      /** @type {uint8[]} */
       let state = new Array(16);
       for (let i = 0; i < 8; ++i) {
         state[2 * i] = OpCodes.And8(OpCodes.Shr8(block[i], 4), 0x0F);
@@ -483,7 +560,7 @@
       // Pre-whitening: XOR with WK (roundKeys[0])
       const wk = this._roundKeys[0];
       for (let i = 0; i < 16; ++i) {
-        state[i] ^= wk[i];
+        state[i] = OpCodes.Xor32(state[i], wk[i]);
       }
 
       if (this.isInverse) {
@@ -497,7 +574,7 @@
         // function proper runs R - 1 times.
         for (let r = 14; r >= 0; --r) {
           for (let i = 0; i < 16; ++i) {
-            state[i] ^= this._roundKeys[r + 1][i];
+            state[i] = OpCodes.Xor32(state[i], this._roundKeys[r + 1][i]);
           }
           state = mixColumns(state);
           state = invShuffleCell(state);
@@ -519,7 +596,7 @@
           state = mixColumns(state);
           // 4. KeyAdd with round key
           for (let i = 0; i < 16; ++i) {
-            state[i] ^= this._roundKeys[r + 1][i];
+            state[i] = OpCodes.Xor32(state[i], this._roundKeys[r + 1][i]);
           }
         }
 
@@ -531,13 +608,14 @@
 
       // Post-whitening: XOR with WK (roundKeys[0])
       for (let i = 0; i < 16; ++i) {
-        state[i] ^= wk[i];
+        state[i] = OpCodes.Xor32(state[i], wk[i]);
       }
 
       // Convert nibbles back to bytes
+      /** @type {uint8[]} */
       const result = new Array(8);
       for (let i = 0; i < 8; ++i) {
-        result[i] = OpCodes.Shl8(OpCodes.And8(state[2 * i], 0x0F), 4) | OpCodes.And8(state[2 * i + 1], 0x0F);
+        result[i] = OpCodes.Or8(OpCodes.Shl8(OpCodes.And8(state[2 * i], 0x0F), 4), OpCodes.And8(state[2 * i + 1], 0x0F));
       }
 
       return result;
@@ -628,6 +706,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 
@@ -708,6 +787,7 @@
       // Midori128 state uses column-major order to match reference implementation
       // Python: i = col * 4 + row, so byte 0->state[0,0], byte 1->state[1,0], etc.
       // We store in linear array but must track column-major semantics
+      /** @type {uint8[]} */
       let state = new Array(16);
       for (let i = 0; i < 16; ++i) {
         state[i] = OpCodes.And8(block[i], 0xFF);
@@ -718,7 +798,7 @@
 
         // Initial key addition with original key
         for (let i = 0; i < 16; ++i) {
-          state[i] ^= this._key[i];
+          state[i] = OpCodes.Xor32(state[i], this._key[i]);
         }
 
         // Inverse of final round: SubCell only
@@ -740,7 +820,7 @@
         for (let r = 18; r >= 0; --r) {
           // KeyAdd
           for (let i = 0; i < 16; ++i) {
-            state[i] ^= this._roundKeys[r][i];
+            state[i] = OpCodes.Xor32(state[i], this._roundKeys[r][i]);
           }
 
           // Inverse: MixColumn → ShuffleCell → SubCell
@@ -762,7 +842,7 @@
 
         // Final key addition with original key
         for (let i = 0; i < 16; ++i) {
-          state[i] ^= this._key[i];
+          state[i] = OpCodes.Xor32(state[i], this._key[i]);
         }
 
       } else {
@@ -770,7 +850,7 @@
 
         // Initial key addition with original key
         for (let i = 0; i < 16; ++i) {
-          state[i] ^= this._key[i];
+          state[i] = OpCodes.Xor32(state[i], this._key[i]);
         }
 
         // 19 rounds: SubCell → ShuffleCell → MixColumn → KeyAdd
@@ -798,7 +878,7 @@
 
           // KeyAdd with round key
           for (let i = 0; i < 16; ++i) {
-            state[i] ^= this._roundKeys[r][i];
+            state[i] = OpCodes.Xor32(state[i], this._roundKeys[r][i]);
           }
         }
 
@@ -817,7 +897,7 @@
         }
 
         for (let i = 0; i < 16; ++i) {
-          state[i] ^= this._key[i];
+          state[i] = OpCodes.Xor32(state[i], this._key[i]);
         }
       }
 
