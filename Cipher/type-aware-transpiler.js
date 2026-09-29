@@ -2010,7 +2010,9 @@
       // First, normalize children
       const normalized = {};
       for (const key of Object.keys(node)) {
-        if (key === 'loc' || key === 'range' || key === 'parent') {
+        // typeInfo/jsDoc hold parsed JSDoc (typeInfo.params is a Map): normalizing
+        // them as AST turned the Map into `{}` and every emitter lost the types.
+        if (key === 'loc' || key === 'range' || key === 'parent' || key === 'typeInfo' || key === 'jsDoc') {
           normalized[key] = node[key];
         } else if (Array.isArray(node[key])) {
           normalized[key] = node[key].map(child => this._normalizeNode(child, newContext)).filter(n => n !== null);
