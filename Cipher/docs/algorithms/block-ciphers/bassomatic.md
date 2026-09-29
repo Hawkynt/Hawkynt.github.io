@@ -1,0 +1,87 @@
+# BassOMatic
+
+> Phil Zimmermann's original cipher from PGP 1.0 with 256-byte blocks and variable key sizes. Cryptographically broken by Eli Biham in 1991 due to differential cryptanalysis vulnerabilities and improper encryption of the last bit of each byte.
+
+## Properties
+
+| Property | Value |
+| --- | --- |
+| Category | Block Ciphers |
+| Sub-category | Block Cipher |
+| Security status | ❌ Broken |
+| Complexity | Intermediate |
+| Inventor | Philip Zimmermann |
+| Year | 1991 |
+| Origin | 🇺🇸 United States |
+| Source | [`algorithms/block/bassomatic.js`](../../../algorithms/block/bassomatic.js) |
+
+## Parameters
+
+| Parameter | Supported values |
+| --- | --- |
+| Key sizes | 2 bytes (16 bits) to 255 bytes (2040 bits) |
+| Block sizes | 256 bytes (2048 bits) |
+
+## Security
+
+**Status:** ❌ Broken
+
+### Known vulnerabilities
+
+| Issue | Description | Mitigation |
+| --- | --- | --- |
+| [Differential Cryptanalysis](https://en.wikipedia.org/wiki/Differential_cryptanalysis) | Eli Biham demonstrated vulnerability to differential cryptanalysis at CRYPTO 1991 | — |
+| [Last Bit Encryption Flaw](https://crypto.stackexchange.com/questions/61948/) | Conceptual error prevented the last bit of each byte from being properly encrypted | — |
+| [Non-uniform Key Space](https://www.algorithmhalloffame.org/algorithms/block-ciphers/bassomatic/) | Control bits create non-uniform key space with key-dependent algorithm variations | — |
+
+## Documentation
+
+- [BassOMatic Cipher - Crypto Wiki](https://cryptography.fandom.com/wiki/BassOmatic)
+- [BassOMatic - Wikipedia](https://en.wikipedia.org/wiki/BassOmatic)
+- [PGP History and Development](https://philzimmermann.com/EN/background/index.html)
+
+## References
+
+- [Cryptanalysis Discussion](https://crypto.stackexchange.com/questions/61948/what-was-the-bassomatic-cipher-and-what-made-it-so-weak)
+- [Algorithm Hall of Fame - BassOmatic](https://www.algorithmhalloffame.org/algorithms/block-ciphers/bassomatic/)
+- [PGP 1.0 Source Archive (unix_pgp10.tar.gz, basslib.c/lfsr.c)](https://archive.org/details/pgp_sourcecode)
+
+## Test vectors
+
+4 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+
+**Vector 1** — [DarkCrypt Bassomatic'89-2040 vector 1/zero](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 000000000000000000000000000000` |
+| `input` | `00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000` |
+| `expected` | `26948fd2c38e8467c2d2d6fdb5e86b1c a4b0a5c7b2c47e226ef8040a3a31a856 815f7b13930b5607f4e39bc071594f57 ed4945712fe2e74d50ef491216ee6db2 31a28a5205f5f0557dc96fd1c080be1a e401b8aaf6810c580fa28d2353a9f86f 4e03251a480294a5029d7c37df69c3e9 128cf494180996c554f3b818913e8245 12bfb1c7c8e8856c6c6c9ecc63285df3 c6fa359808a69d2ceb48cd9388911a28 9e859b8530f3370245a41dccb4dd7764 9da74413653ea5ebd397678c572d7b1d 9bd02810b0bd435028ce49cd07b086f6 b6c63c2a63a38cbf436b366023cdcba4 124a0e2540700fac0413ba3928552790 f2338a9876170c3f0edc3b723cb4ae6d` |
+
+**Vector 2** — [DarkCrypt Bassomatic'89-2040 vector 2/incr](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f 404142434445464748494a4b4c4d4e4f 505152535455565758595a5b5c5d5e5f 606162636465666768696a6b6c6d6e6f 707172737475767778797a7b7c7d7e7f 808182838485868788898a8b8c8d8e8f 909192939495969798999a9b9c9d9e9f a0a1a2a3a4a5a6a7a8a9aaabacadaeaf b0b1b2b3b4b5b6b7b8b9babbbcbdbebf c0c1c2c3c4c5c6c7c8c9cacbcccdcecf d0d1d2d3d4d5d6d7d8d9dadbdcdddedf e0e1e2e3e4e5e6e7e8e9eaebecedeeef f0f1f2f3f4f5f6f7f8f9fafbfcfdfe` |
+| `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f 404142434445464748494a4b4c4d4e4f 505152535455565758595a5b5c5d5e5f 606162636465666768696a6b6c6d6e6f 707172737475767778797a7b7c7d7e7f 808182838485868788898a8b8c8d8e8f 909192939495969798999a9b9c9d9e9f a0a1a2a3a4a5a6a7a8a9aaabacadaeaf b0b1b2b3b4b5b6b7b8b9babbbcbdbebf c0c1c2c3c4c5c6c7c8c9cacbcccdcecf d0d1d2d3d4d5d6d7d8d9dadbdcdddedf e0e1e2e3e4e5e6e7e8e9eaebecedeeef f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff` |
+| `expected` | `87af3c69de4d0a90303c8b47c9fb5a90 15fa98f91d3adb83072bc2ffb96eb18c 96cdbfddbb973232036fa963bcc6f5f7 de1bfac60077b5cb886c5f74eaf586ad 3f3f1278e9cedd1d8f91440a5e0f3070 a8ad804e5ffef4c661feb6f14bea0bdd e107ba0858cf7d487bbb910d0e67701b 21e69d7493b829d82174e6023eca3f94 20765c564ee6c706b8e4bf10b17de9dc 00520ab97b1a954c476d15c13d404103 ffb52d11e19c5f2149b742bc07e1d224 316844c93c591cb56210d28fe3478ef9 28d70dee06c0dbfa9fc2e2f41ad01a61 de036e71ff9227d8671415b8a1fb0a81 3978d70736b8252338b27ffbf30f9954 feb668dc47fba61e7df71c6e5209835b` |
+
+**Vector 3** — [DarkCrypt Bassomatic'89-2040 vector 3/incr2](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0102030405060708090a0b0c0d0e0f10 1112131415161718191a1b1c1d1e1f20 2122232425262728292a2b2c2d2e2f30 3132333435363738393a3b3c3d3e3f40 4142434445464748494a4b4c4d4e4f50 5152535455565758595a5b5c5d5e5f60 6162636465666768696a6b6c6d6e6f70 7172737475767778797a7b7c7d7e7f80 8182838485868788898a8b8c8d8e8f90 9192939495969798999a9b9c9d9e9fa0 a1a2a3a4a5a6a7a8a9aaabacadaeafb0 b1b2b3b4b5b6b7b8b9babbbcbdbebfc0 c1c2c3c4c5c6c7c8c9cacbcccdcecfd0 d1d2d3d4d5d6d7d8d9dadbdcdddedfe0 e1e2e3e4e5e6e7e8e9eaebecedeeeff0 f1f2f3f4f5f6f7f8f9fafbfcfdfeff` |
+| `input` | `101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f 404142434445464748494a4b4c4d4e4f 505152535455565758595a5b5c5d5e5f 606162636465666768696a6b6c6d6e6f 707172737475767778797a7b7c7d7e7f 808182838485868788898a8b8c8d8e8f 909192939495969798999a9b9c9d9e9f a0a1a2a3a4a5a6a7a8a9aaabacadaeaf b0b1b2b3b4b5b6b7b8b9babbbcbdbebf c0c1c2c3c4c5c6c7c8c9cacbcccdcecf d0d1d2d3d4d5d6d7d8d9dadbdcdddedf e0e1e2e3e4e5e6e7e8e9eaebecedeeef f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff 000102030405060708090a0b0c0d0e0f` |
+| `expected` | `5fd6a7d9a7638f9cd30a522a1b62fca7 752240fcb0d3947bcf9dc7c429650faa 3e95715e11bf08d1fcfbbdc6cea78d4d 0528304a9184716478d277cc15919b51 49f6809436d3d9988af98d1fc18a293a f845b4a38d2bd129b1d83324e7340d39 ab826c7aa956a91268dfdb64e7f532ba d86bac581773c961681a19458935d58b d3aa43a5b51e4f8aaf84abe04801e0b3 457bc3f37fff573730242e83a20d9e48 b6e60342c8f912e0b6414af78b0116ad c29de649ecee448b51d8daaf6b002908 72459107ddb038951454d12e293194b7 b59424a1a26babfd3705d218711d2c62 0a05e0b0a138881e2318910c41696edd 46d44b24e0f2ec02d9c68a84054726c8` |
+
+**Vector 4** — [Self-consistency vector cross-checked against a direct port of the original basslib.c/lfsr.c (PGP 1.0, 1991) key schedule and round function - no official BassOmatic test vectors are publicly available](https://archive.org/details/pgp_sourcecode)
+
+| Field | Value |
+| --- | --- |
+| `key` | `03426173734f6d61746963546573744b657931393931504750` |
+| `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f 404142434445464748494a4b4c4d4e4f 505152535455565758595a5b5c5d5e5f 606162636465666768696a6b6c6d6e6f 707172737475767778797a7b7c7d7e7f 808182838485868788898a8b8c8d8e8f 909192939495969798999a9b9c9d9e9f a0a1a2a3a4a5a6a7a8a9aaabacadaeaf b0b1b2b3b4b5b6b7b8b9babbbcbdbebf c0c1c2c3c4c5c6c7c8c9cacbcccdcecf d0d1d2d3d4d5d6d7d8d9dadbdcdddedf e0e1e2e3e4e5e6e7e8e9eaebecedeeef f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff` |
+| `expected` | `d36f501b78fb5b17cbcbc8420417e0cc 3fded4fbd271b251970964a7a0eb43ab 032bf8cc1badc1242173698119268314 2d78e0900fc30546db62e847014e87bd 451a66f371c93c32a8e136100b467a71 3e1bd366193d9eb04c77343bbf4abebe 83d10b08cbc67c6ca2dfd30a4390fe60 0672f13cc846bb77c7f20f147fe1ff0d e65041c8b6771451841aa5a4c77bad7b 45b2d7ce1ba2c8d413ac8a7a6099a66e 384d3d4f6ec8ca07a5887eaa5e75bd98 07df39c2352dd47523385f42d58670d2 63416f58452d2773b6ed59b7e6bab7f2 7d7dd1537456b82a33cc946ac83b7c8c 2f454f409ee2387fd8e87e443c796079 2597e265d3e90cbbe2acf084327d63a1` |
+
+---
+
+[← All algorithms](../README.md)
