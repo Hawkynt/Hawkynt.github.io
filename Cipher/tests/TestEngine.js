@@ -17,7 +17,7 @@
     const isNode = typeof require !== 'undefined';
     const fs = isNode ? require('fs') : null;
     const path = isNode ? require('path') : null;
-    const { execSync } = isNode ? require('child_process') : { execSync: null };
+    const vm = isNode ? require('vm') : null;
 
     // The list of algorithms with no meaningful inverse, shared with
     // RoundTripSuite so that both suites gate on one list rather than each
@@ -99,9 +99,15 @@
             optimization: { passed: false, error: null }
         };
 
-        // Test compilation
+        // The file is read once; a caller that already holds the text (the CLI
+        // suite shares it with the TYPES category) passes it in.
+        const fileContent = typeof options.source === 'string' ? options.source : fs.readFileSync(filePath, 'utf8');
+
+        // Test compilation: the syntax check `node -c` performs, compiled the way
+        // Node compiles a CommonJS module, without starting a process per file
         try {
-            execSync(`node -c "${filePath}"`, { encoding: 'utf8', stdio: 'pipe' });
+            vm.compileFunction(fileContent.replace(/^#!.*/, ''),
+                ['exports', 'require', 'module', '__filename', '__dirname'], { filename: filePath });
             result.compilation.passed = true;
         } catch (error) {
             result.compilation.error = error.message;
@@ -178,7 +184,6 @@
 
         // Test for unresolved issues (TODO, FIXME, etc.)
         const issuePatterns = [/TODO:/gi, /FIXME:/gi, /BUG:/gi, /ISSUE:/gi, /HACK:/gi];
-        const fileContent = fs.readFileSync(filePath, 'utf8');
         const lines = fileContent.split('\n');
         const foundIssues = [];
 
@@ -406,8 +411,11 @@
                 result.passed = _compareArrays(output, vector.expected);
             }
 
-            // Test round-trip or encoding stability if invertible
-            if (_isInvertible(algorithmInstance)) {
+            // Test round-trip or encoding stability if invertible. A category
+            // with no inverse (hashing a hash never recovers the input) and an
+            // algorithm on the no-inverse exemption list are not attempted, so
+            // no round-trip counter is reported for them at all.
+            if (_hasInverse(algorithmInstance) && _isInvertible(algorithmInstance)) {
                 try {
                     if (_requiresEncodingStability(algorithmInstance)) {
                         // Test encoding stability: encode(data) == encode(decode(encode(data)))
@@ -792,6 +800,18 @@
         }
     }
 
+    // Categories whose output never determines the input: a digest, a tag, a
+    // derived key or a random stream has no inverse to check.
+    const NO_INVERSE_CATEGORIES = ['Hash Functions', 'Message Authentication',
+        'Key Derivation Functions', 'Random Number Generators'];
+
+    function _hasInverse(algorithm) {
+        const categoryName = algorithm.category
+            ? (typeof algorithm.category === 'string' ? algorithm.category : algorithm.category.name)
+            : null;
+        return !NO_INVERSE_CATEGORIES.includes(categoryName) && !ROUND_TRIP_EXEMPT.has(algorithm.name);
+    }
+
     function _isInvertible(algorithm) {
         try {
             const instance = algorithm.CreateInstance(true);
@@ -890,6 +910,7 @@
     // ============================================================================
 
     const TestEngine = {
+        LoadDependencies: _loadDependencies,
         TestFile,
         TestAlgorithm,
         TestVector,
