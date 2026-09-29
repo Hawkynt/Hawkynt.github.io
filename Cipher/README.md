@@ -649,55 +649,75 @@ Each algorithm displays as an interactive card with:
 
 ## 🔬 Testing Framework
 
-### CLI Test Suite
+### Running the Tests
 
-The command-line test suite (`tests/TestSuite.js`) provides comprehensive algorithm validation:
+There are two test runners. Each prints one summary line per category and a
+single verdict, and exits non-zero when any check of a selected category fails.
+CI runs both with no arguments.
+
+| Runner | Question it answers | Categories |
+|---|---|---|
+| `tests/TestSuite.js` | Is each algorithm correct? | `compilation`, `interface`, `metadata`, `issues`, `functionality`, `optimization`, `types`, `roundtrip`, `chunked`, `browser`, `library` |
+| `tests/TranspilerSuite.js` | Does the transpiler work? | `codegen`, `inference`, `policy`, `jsdoc`, `csharp`, `validation` (only when named) |
 
 **Usage:**
 ```bash
-# Test all algorithms
+# Everything CI runs
 node tests/TestSuite.js
+node tests/TranspilerSuite.js
 
-# Test specific file
-node tests/TestSuite.js algorithms/block/aes.js
+# One file, one category directory, or the file(s) with one base name
+node tests/TestSuite.js rijndael.js
+node tests/TestSuite.js --category=block
+node tests/TestSuite.js --algorithm=murmurhash3
 
-# Test by category
-node tests/TestSuite.js --category block
+# Pick categories
+node tests/TestSuite.js --only=roundtrip,chunked
+node tests/TestSuite.js --skip=types
+node tests/TranspilerSuite.js --only=codegen --language=python
 
-# Test specific algorithm by name
-node tests/TestSuite.js --algorithm AES
+# Details, including every untyped value site and every vector
+node tests/TestSuite.js --algorithm=sha1 --verbose
 
-# Verbose output with detailed diagnostics
-node tests/TestSuite.js --verbose
-
-# Run with specific test filters
-node tests/TestSuite.js --filter "NIST"
+# Lower the TYPES budgets of the tested files to their current counts
+node tests/TestSuite.js --update-type-budgets
 ```
 
-Round-trip coverage for the reversible categories lives in `tests/RoundTripSuite.js`,
-which also carries the large-input tier. It spans compression, encoding, block and
-stream ciphers, AEAD, classical ciphers, cipher modes, padding schemes, the
-standalone permutations and the asymmetric ciphers. Anything it does not drive is
-named in that file's `ROUND_TRIP_EXEMPT` table with the reason - either the
-construction has no inverse (a signature scheme has nothing to decrypt, a key
-agreement has no plaintext) or the defect is open and stated:
+Every algorithm file is read, compiled and loaded once; all categories work from
+that one load. `browser` and `library` check the whole collection, so a run
+narrowed by a file, `--category` or `--algorithm` leaves them out unless `--only`
+names them. `validation` transpiles, compiles and runs every algorithm in every
+installed language and takes over ten minutes, so it runs only when named:
+`node tests/TranspilerSuite.js --only=validation --quick`.
+[`tests/README.md`](tests/README.md) lists every category and option.
+
+**Round trips.** The `functionality` category checks each committed vector and,
+for an algorithm with an inverse, that the inverse recovers the vector's input.
+Hashes, MACs, KDFs and random generators have no inverse and are not
+round-tripped. The `roundtrip` category goes further for the reversible
+categories: compression, encoding, block and stream ciphers, AEAD, classical
+ciphers, cipher modes, padding schemes, the standalone permutations and the
+asymmetric ciphers. Anything it does not drive is named in the
+`ROUND_TRIP_EXEMPT` table of `tests/round-trip-exemptions.js` with the reason:
+either the construction has no inverse (a signature scheme has nothing to
+decrypt, a key agreement has no plaintext) or the defect is open and stated.
 
 ```bash
 # Round-trip every reversible algorithm over the standard corpus
-node tests/RoundTripSuite.js
+node tests/TestSuite.js --only=roundtrip
 
 # Add the large tier: one child process per algorithm, 1MB each
-node tests/RoundTripSuite.js --large
+node tests/TestSuite.js --only=roundtrip --large
 
 # Any size up to the ~107MB plain-array ceiling
-node tests/RoundTripSuite.js --large-size=8M --category "Compression Algorithms"
+node tests/TestSuite.js --only=roundtrip --large-size=8M --category=compression
 ```
 
 The measured size ceilings, what fails first beyond each of them, and why, are in
 [`tests/LARGE-INPUTS.md`](tests/LARGE-INPUTS.md).
 
-`tests/ChunkedFeedSuite.js` asserts the streaming half of the `Feed`/`Result`
-contract across every registered algorithm:
+**Chunked feeds.** The `chunked` category asserts the streaming half of the
+`Feed`/`Result` contract across every registered algorithm:
 
 ```
 Feed(whole)  ==  Feed(part1); Feed(part2); ... Feed(partN)
@@ -713,50 +733,17 @@ Refusing a second `Feed` is a defensible design and is reported without failing
 the run; returning different bytes without complaining is what fails it. The one
 construction for which the property is genuinely false - TupleHash, whose whole
 purpose is that a tuple of strings hashes differently from their concatenation -
-is named in that file's `CHUNKED_FEED_EXEMPT` table with the reason. An entry is
-deleted as soon as the algorithm agrees, since an exemption that outlives its
-repair hides the next regression:
+is named in the `CHUNKED_FEED_EXEMPT` table of `tests/ChunkedFeed.js` with the
+reason. An entry is deleted as soon as the algorithm agrees, since an exemption
+that outlives its repair hides the next regression:
 
 ```bash
-# Sweep every algorithm for chunked-feed equivalence
-node tests/ChunkedFeedSuite.js
-
-# Narrow to one category or algorithm, and show the passing lines too
-node tests/ChunkedFeedSuite.js --category hash --verbose
-node tests/ChunkedFeedSuite.js --algorithm "SHA-256"
+node tests/TestSuite.js --only=chunked
+node tests/TestSuite.js --only=chunked --category=hash --verbose
 ```
 
-**Test Phases:**
-1. **Syntax Validation** - Ensures JavaScript compiles without errors
-2. **Metadata Validation** - Verifies AlgorithmFramework compliance
-3. **Registration Check** - Confirms algorithm properly registered
-4. **Test Vector Execution** - Runs all test vectors with bit-perfect validation
-5. **Round-Trip Testing** - Tests inverse operations (encrypt→decrypt)
-6. **OpCodes Compliance** - Verifies use of OpCodes library functions
-
-**Output Format:**
-```
-✓ AES (Block Cipher)
-  ✓ Syntax validation passed
-  ✓ Metadata complete (100%)
-  ✓ Test vector #1: NIST FIPS 197 - PASSED
-  ✓ Test vector #2: RFC 3602 - PASSED
-  ✓ Round-trip test - PASSED
-  ✓ OpCodes compliance - PASSED
-
-Summary: <n> algorithm files tested (<m> registered algorithms)
-```
-
-**Exit Codes:**
-- `0` - All tests passed
-- `1` - One or more test failures
-- `2` - Syntax or loading errors
-
-The test suite integrates with CI/CD pipelines and provides detailed failure diagnostics including:
-- Expected vs actual output comparison (hex dump)
-- Test vector origin attribution
-- Stack traces for exceptions
-- Performance metrics (operations/second)
+**Exit codes:** `0` all selected categories passed, `1` a check failed or the run
+crashed, `2` an unknown option or category name.
 
 ### Test Vector Management
 

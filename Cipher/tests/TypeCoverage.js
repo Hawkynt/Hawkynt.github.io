@@ -228,10 +228,11 @@ function analyzeSource(code) {
 /**
  * Analyze one file.
  * @param {string} filePath - Path to the algorithm file
+ * @param {string} [source] - Its text, when the caller has already read it
  * @returns {Object} { sites, parseError, count }
  */
-function analyzeFile(filePath) {
-  const result = analyzeSource(fs.readFileSync(filePath, 'utf8'));
+function analyzeFile(filePath, source) {
+  const result = analyzeSource(typeof source === 'string' ? source : fs.readFileSync(filePath, 'utf8'));
   result.count = result.parseError ? null : result.sites.length;
   return result;
 }
