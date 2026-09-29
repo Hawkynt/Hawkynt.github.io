@@ -20,6 +20,8 @@
  *   framework interfaces, local JSDoc - see TypeCoverage.js), held to each
  *   file's budget in type-budgets.json. The budget is a ratchet: a file fails
  *   when its count rises above it; a budget of 0 means the file is policy-clean.
+ *   That the OpCodes and framework tiers are themselves fully typed is the
+ *   JSDOC category of tests/TranspilerSuite.js.
  *
  * Over the algorithms the files registered:
  * - ROUNDTRIP: every reversible algorithm decodes its own output over an
@@ -56,7 +58,6 @@ const fs = require('fs');
 const path = require('path');
 const TestEngine = require('./TestEngine');
 const TypeCoverage = require('./TypeCoverage');
-const JSDocTierAudit = require('./JSDocTierAudit');
 const RoundTrip = require('./RoundTrip');
 const ChunkedFeed = require('./ChunkedFeed');
 const BrowserLoad = require('./BrowserLoad');
@@ -570,14 +571,6 @@ class TestSuite {
       const t = this.typeTotals;
       types.detail = `${t.sites} untyped value sites: ${t.opcodes} OpCodes JSDoc, ${t.framework} framework, ${t.local} local source` +
         `${t.unparsed ? `; ${t.unparsed} file(s) not parsed` : ''}; +${(this.typeTimeMs / 1000).toFixed(1)}s`;
-
-      // Tiers 1 and 2 are libraries every file relies on: each of their members
-      // must be fully typed by JSDoc, or no algorithm can be.
-      for (const [label, audit] of [['OpCodes JSDoc', JSDocTierAudit.auditOpCodes()], ['AlgorithmFramework JSDoc', JSDocTierAudit.auditFramework()]]) {
-        const gaps = audit.members.filter(m => m.gaps.length > 0);
-        for (const m of gaps) console.log(`  ✗ ${label}.${m.name}: ${m.gaps.join('; ')}`);
-        rows.push({ label, passed: audit.typed, failed: audit.total - audit.typed, detail: 'members fully typed' });
-      }
     }
     const order = SWEEPS.map(s => s.key);
     rows.push(...this.sweepRows.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)));
