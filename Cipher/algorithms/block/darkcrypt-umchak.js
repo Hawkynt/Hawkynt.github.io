@@ -8,15 +8,15 @@
  * (16x32-bit words), little-endian.
  *
  * setup() builds the 64-word round-key schedule in three phases:
- *   1. S[0..63] = key[i mod 16] (the 512-bit key repeated four times)
+ *   1. mixWords[0..63] = key[i mod 16] (the 512-bit key repeated four times)
  *   2. a 64-round ARX/S-box mixing pass runs two chained accumulators (an
  *      RC5-style delta accumulator seeded with TEA's DELTA=0x9E3779B9, and a
  *      constant-stride accumulator seeded with RC5's P32=0xB7E15163); each round
  *      performs two 4-way S-box combines (rows selected from the round index,
  *      the P accumulator, and the running values themselves, each combine
  *      rotated left by 11) mixed with an f(x)=(x<<6)^(x>>>8) round function,
- *      overwriting S[i] with the second combine's result
- *   3. the 64-dword S[] array (viewed as 256 bytes) drives a modified RC4-style
+ *      overwriting mixWords[i] with the second combine's result
+ *   3. the 64-dword mixWords[] array (viewed as 256 bytes) drives a modified RC4-style
  *      key-scheduling permutation of an identity byte array T[0..255] (3 full
  *      768-step passes); the twist is that the running "j" accumulator carries
  *      forward as T[j] instead of the raw index. The final T[] array, read back
@@ -155,8 +155,14 @@
   const DELTA = 0x9E3779B9;
   const PCONST = 0xB7E15163;
 
+  /**
+   * S-box lookup: 32 rows of 256 bytes
+   * @param {uint32} row5 - Row selector (low 5 bits used)
+   * @param {uint32} byteVal - Column byte
+   * @returns {uint8} S-box byte
+   */
   function sboxAt(row5, byteVal) {
-    return SBOX[OpCodes.Shl32(OpCodes.And32(row5, 0x1F), 8) + byteVal];
+    return SBOX[OpCodes.Add32(OpCodes.Shl32(OpCodes.And32(row5, 0x1F), 8), byteVal)];
   }
 
   class DarkCryptUmchakAlgorithm extends BlockCipherAlgorithm {
@@ -229,6 +235,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -278,22 +285,25 @@
     // Builds the 64-word round-key schedule from the 512-bit key.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 64 round-key words
      */
     _setup(keyBytes) {
+      /** @type {uint32[]} */
       const kw = new Array(16);
       for (let i = 0; i < 16; i++)
         kw[i] = OpCodes.Pack32LE(keyBytes[i*4], keyBytes[i*4+1], keyBytes[i*4+2], keyBytes[i*4+3]);
 
-      const S = new Array(64);
-      for (let i = 0; i < 64; i++) S[i] = kw[i % 16];
+      /** @type {uint32[]} */
+      const mixWords = new Array(64);
+      for (let i = 0; i < 64; i++) mixWords[i] = kw[i % 16];
 
       let edx = OpCodes.ToUint32(DELTA);
       let pAccum = OpCodes.ToUint32(PCONST);
 
       for (let i = 0; i < 64; i++) {
         const kwi = kw[i % 16];
-        edx = OpCodes.ToUint32(edx + kwi + DELTA);
-        const ecxv = OpCodes.ToUint32(S[i] + pAccum);
+        edx = OpCodes.Add32(OpCodes.Add32(edx, kwi), DELTA);
+        const ecxv = OpCodes.ToUint32(mixWords[i] + pAccum);
         const rowI = OpCodes.And32(i, 0x1F);
         const rowP = OpCodes.And32(pAccum, 0x1F);
 
@@ -308,7 +318,7 @@
         const v1 = sboxAt(rowP, b1);
         const v2 = sboxAt(rowEcx, b2);
         const v3 = sboxAt(rowEdx, b3);
-        const combined1 = OpCodes.ToUint32(OpCodes.Shl32(v0, 24) | OpCodes.Shl32(v1, 16) | OpCodes.Shl32(v2, 8) | v3);
+        const combined1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(v0, 24), OpCodes.Shl32(v1, 16)), OpCodes.Shl32(v2, 8)), v3);
         const K1 = OpCodes.RotL32(combined1, 11);
         edx = OpCodes.ToUint32(edx + K1);
 
@@ -328,30 +338,31 @@
         const w1 = sboxAt(rowEdiFinal, c1);
         const w2 = sboxAt(rowP, c2);
         const w3 = sboxAt(rowI, c3);
-        const combined2 = OpCodes.ToUint32(OpCodes.Shl32(w0, 24) | OpCodes.Shl32(w1, 16) | OpCodes.Shl32(w2, 8) | w3);
+        const combined2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(w0, 24), OpCodes.Shl32(w1, 16)), OpCodes.Shl32(w2, 8)), w3);
         const K2 = OpCodes.RotL32(combined2, 11);
         edx = OpCodes.ToUint32(edx + K2);
-        S[i] = K2;
+        mixWords[i] = K2;
 
         pAccum = OpCodes.ToUint32(pAccum + PCONST);
       }
 
-      // S[] (64 dwords) viewed as 256 bytes drives a modified RC4-style KSA
+      // mixWords[] (64 dwords) viewed as 256 bytes drives a modified RC4-style KSA
       // that permutes an identity byte array T[0..255].
       const Sbytes = new Uint8Array(256);
       for (let i = 0; i < 64; i++) {
-        const b = OpCodes.Unpack32LE(S[i]);
+        const b = OpCodes.Unpack32LE(mixWords[i]);
         Sbytes[i*4] = b[0]; Sbytes[i*4+1] = b[1]; Sbytes[i*4+2] = b[2]; Sbytes[i*4+3] = b[3];
       }
 
       const T = new Uint8Array(256);
       for (let i = 0; i < 256; i++) T[i] = i;
 
+      /** @type {uint32} */
       let j = 0;
       for (let n = 0; n < 768; n++) {
         const i = OpCodes.And32(n, 0xFF);
         const oldTi = T[i];
-        const J = OpCodes.And32(j + oldTi + Sbytes[i], 0xFF);
+        const J = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, oldTi), Sbytes[i]), 0xFF);
         const V = T[J];
         const W = T[V];
         T[i] = W;
@@ -360,13 +371,20 @@
       }
 
       // Round-key array: T[] reinterpreted as 64 little-endian dwords.
+      /** @type {uint32[]} */
       const K = new Array(64);
       for (let i = 0; i < 64; i++)
         K[i] = OpCodes.Pack32LE(T[i*4], T[i*4+1], T[i*4+2], T[i*4+3]);
       return K;
     }
 
+    /**
+     * f(x) = Shl(x, 6) xor Shr(x, 8)
+     * @param {uint32} x - Input word
+     * @returns {uint32} Mixed word
+     */
     _f(x) {
+
       return OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8));
     }
 
