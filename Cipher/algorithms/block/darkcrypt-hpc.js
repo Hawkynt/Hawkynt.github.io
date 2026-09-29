@@ -53,12 +53,39 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ---- 64-bit BigInt helpers ------------------------------------------------
-  const MASK64 = OpCodes.ShiftLn(1n, 64) - 1n;
-  const m64 = x => OpCodes.AndN(x, MASK64);
-  const shl = (x, n) => m64(OpCodes.ShiftLn(x, n));
-  const shr = (x, n) => OpCodes.ShiftRn(OpCodes.AndN(x, MASK64), n);          // logical right shift
-  const rotr = (x, n) => m64(OpCodes.OrN(OpCodes.ShiftRn(x, n), OpCodes.ShiftLn(x, 64 - n)));
-  const rotl = (x, n) => rotr(x, 64 - n);
+  /** @type {uint64} */
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn;  // 2^64 - 1
+  /** @type {uint64} */
+  const MASK64_HIGH56 = 0xFFFFFFFFFFFFFF00n;  // ~0xFF within 64 bits
+  /**
+   * @param {uint64} x - Value
+   * @returns {uint64} x mod 2^64
+   */
+  function m64(x) { return OpCodes.AndN(x, MASK64); }
+  /**
+   * @param {uint64} x - Value
+   * @param {int32} n - Shift amount
+   * @returns {uint64} (x << n) mod 2^64
+   */
+  function shl(x, n) { return m64(OpCodes.ShiftLn(x, n)); }
+  /**
+   * @param {uint64} x - Value
+   * @param {int32} n - Shift amount
+   * @returns {uint64} Logical right shift of the low 64 bits
+   */
+  function shr(x, n) { return OpCodes.ShiftRn(OpCodes.AndN(x, MASK64), n); }
+  /**
+   * @param {uint64} x - 64-bit value
+   * @param {int32} n - Rotation (0..64)
+   * @returns {uint64} x rotated right by n
+   */
+  function rotr(x, n) { return m64(OpCodes.OrN(OpCodes.ShiftRn(x, n), OpCodes.ShiftLn(x, 64 - n))); }
+  /**
+   * @param {uint64} x - 64-bit value
+   * @param {int32} n - Rotation (0..64)
+   * @returns {uint64} x rotated left by n
+   */
+  function rotl(x, n) { return rotr(x, 64 - n); }
 
   // HPC magic constants (truncated Pi, e and sqrt(2) fractions, 64-bit).
   const PI19 = 0x2B992DDFA23249D6n;
@@ -72,28 +99,53 @@
   const KEYLEN_PARAM = 256n; // DarkCrypt hardcodes the KX seed length to 256 bits
   const SPICE_OFFSET = 32;   // key bytes 32..95 form the 8-word spice
 
+  /**
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} off - Offset of the first byte
+   * @returns {uint64} Big-endian 64-bit word
+   */
   function be64(bytes, off) {
+    /** @type {uint64} */
     let v = 0n;
     for (let i = 0; i < 8; ++i) v = OpCodes.OrN(OpCodes.ShiftLn(v, 8), BigInt(OpCodes.And32(bytes[off + i], 0xFF)));
     return v;
   }
 
+  /**
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} off - Offset of the first byte
+   * @returns {uint64} Little-endian 64-bit word
+   */
   function le64(bytes, off) {
+    /** @type {uint64} */
     let v = 0n;
     for (let i = 0; i < 8; ++i) v |= OpCodes.ShiftLn(BigInt(OpCodes.And32(bytes[off + i], 0xFF)), i * 8);
     return v;
   }
 
+  /**
+   * @param {uint64} v - 64-bit word
+   * @param {uint8[]} out - Destination bytes
+   * @param {int32} off - Offset of the first byte
+   */
   function be64ToBytes(v, out, off) {
-    for (let i = 7; i >= 0; --i) { out[off + i] = Number(OpCodes.AndN(v, 0xFFn)); v = OpCodes.ShiftRn(v, 8); }
+    for (let i = 7; i >= 0; --i) {
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(v, 0xFFn));
+      out[off + i] = b;
+      v = OpCodes.ShiftRn(v, 8);
+    }
   }
 
   // ---- Key expansion (Schroeppel "stir", original pre-Wagner-fix) -----------
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint64[]} The 286-word KX table
    */
   function expandKey(keyBytes) {
-    const KX = new Array(286).fill(0n);
+    /** @type {uint64[]} */
+    const KX = new Array(286);
+    for (let i = 0; i < 286; ++i) KX[i] = 0n;
 
     KX[0] = m64(PI19 + BigInt(CIPHER_ID));
     KX[1] = m64(E19 * KEYLEN_PARAM);
@@ -107,32 +159,38 @@
     KX[2] ^= be64(keyBytes, 16);
     KX[3] ^= be64(keyBytes, 24);
 
-    const s = new Array(8);
-    for (let i = 0; i < 8; ++i) s[i] = KX[248 + i];
+    /** @type {uint64[]} */
+    const stir = new Array(8);
+    for (let i = 0; i < 8; ++i) stir[i] = KX[248 + i];
 
     for (let j = 0; j < 3; ++j) {
       for (let i = 0; i < 256; ++i) {
+        /** @type {uint64} */
         let t = OpCodes.XorN(KX[i], KX[OpCodes.And32(i + 83, 255)]);
-        t = m64(t + KX[Number(OpCodes.AndN(s[0], 0xFFn))]);
-        s[0] ^= t;
-        s[1] = m64(s[1] + s[0]);
-        s[3] ^= s[2];
-        s[5] = m64(s[5] - s[4]);
-        s[7] ^= s[6];
-        s[3] = m64(s[3] + shr(s[0], 13));
-        s[4] ^= shl(s[1], 11);
-        s[5] ^= shl(s[3], Number(OpCodes.AndN(s[1], 31n)));
-        s[6] = m64(s[6] + shr(s[2], 17));
-        s[7] |= m64(s[3] + s[4]);
-        s[2] = m64(s[2] - s[5]);
-        s[0] = m64(s[0] - OpCodes.XorN(s[6], BigInt(i)));
-        s[1] ^= m64(s[5] + PI19);
-        s[2] = m64(s[2] + shr(s[7], j));
-        s[2] ^= s[1];
-        s[4] = m64(s[4] - s[3]);
-        s[6] ^= s[5];
-        s[0] = m64(s[0] + s[7]);
-        KX[i] = m64(s[2] + s[6]);
+        /** @type {int32} */
+        const idx = Number(OpCodes.AndN(stir[0], 0xFFn));
+        t = m64(t + KX[idx]);
+        stir[0] ^= t;
+        stir[1] = m64(stir[1] + stir[0]);
+        stir[3] ^= stir[2];
+        stir[5] = m64(stir[5] - stir[4]);
+        stir[7] ^= stir[6];
+        stir[3] = m64(stir[3] + shr(stir[0], 13));
+        stir[4] ^= shl(stir[1], 11);
+        /** @type {int32} */
+        const sh = Number(OpCodes.AndN(stir[1], 31n));
+        stir[5] ^= shl(stir[3], sh);
+        stir[6] = m64(stir[6] + shr(stir[2], 17));
+        stir[7] |= m64(stir[3] + stir[4]);
+        stir[2] = m64(stir[2] - stir[5]);
+        stir[0] = m64(stir[0] - OpCodes.XorN(stir[6], BigInt(i)));
+        stir[1] ^= m64(stir[5] + PI19);
+        stir[2] = m64(stir[2] + shr(stir[7], j));
+        stir[2] ^= stir[1];
+        stir[4] = m64(stir[4] - stir[3]);
+        stir[6] ^= stir[5];
+        stir[0] = m64(stir[0] + stir[7]);
+        KX[i] = m64(stir[2] + stir[6]);
       }
     }
 
@@ -143,9 +201,12 @@
   }
 
   // ---- HPC-Medium block transform (65-128 bit blocks, here fixed 128) -------
+  /** @type {uint64} */
   const KKC = m64(PI19 + 128n); // p119 + blocksize
 
   /**
+   * @param {uint64[]} KX - Expanded key table
+   * @param {uint64[]} spice - Eight spice words
    * @param {uint8[]} block - Input block
    * @returns {uint8[]} Output block
    */
@@ -154,6 +215,7 @@
     s0 = m64(s0 + KX[128]); s1 = m64(s1 + KX[129]);
 
     for (let i = 0; i < ROUNDS; ++i) {
+      /** @type {int32} */
       let tt = Number(OpCodes.AndN(s0, 0xFFn));
       let k = KX[tt];
       s1 = m64(s1 + k);
@@ -172,7 +234,10 @@
       t = shr(spice[i], 4);
       s1 = m64(s1 + t);
       s0 ^= t;
-      s0 = m64(s0 + shl(s0, 22 + Number(OpCodes.AndN(s0, 31n))));
+      /** @type {int32} */
+      const low5 = Number(OpCodes.AndN(s0, 31n));
+      const sh = 22 + low5;
+      s0 = m64(s0 + shl(s0, sh));
       s0 ^= shr(s0, 23);
       s0 = m64(s0 - spice[OpCodes.Xor32(i, 7)]);
       tt = Number(OpCodes.AndN(s0, 0xFFn));
@@ -183,7 +248,7 @@
       kk ^= k;
       s1 = m64(s1 + shr(kk, 5));
       s0 = m64(s0 - shl(kk, 12));
-      kk &= OpCodes.AndN(~0xFFn, MASK64);
+      kk &= MASK64_HIGH56;
       s0 ^= kk;
       s1 = m64(s1 + s0);
       s0 = m64(s0 + shl(s1, 3));
@@ -196,6 +261,7 @@
     }
 
     s0 = m64(s0 + KX[136]); s1 = m64(s1 + KX[137]);
+    /** @type {uint8[]} */
     const out = new Array(16);
     be64ToBytes(s0, out, 0);
     be64ToBytes(s1, out, 8);
@@ -203,6 +269,8 @@
   }
 
   /**
+   * @param {uint64[]} KX - Expanded key table
+   * @param {uint64[]} spice - Eight spice words
    * @param {uint8[]} block - Input block
    * @returns {uint8[]} Output block
    */
@@ -211,7 +279,12 @@
     s0 = m64(s0 - KX[136]); s1 = m64(s1 - KX[137]);
 
     for (let i = ROUNDS - 1; i >= 0; --i) {
-      let t, k, kk;
+      /** @type {uint64} */
+      let t = 0n;
+      /** @type {uint64} */
+      let k = 0n;
+      /** @type {uint64} */
+      let kk = 0n;
       s0 ^= shr(s0, 33 + i);
       s0 = m64(s0 - spice[OpCodes.Xor32(i, 1)]);
       s0 ^= shr(s1, 4);
@@ -222,10 +295,11 @@
       s0 ^= spice[OpCodes.Xor32(i, 2)];
       s0 = m64(s0 - shl(s1, 3));
       s1 = m64(s1 - s0);
+      /** @type {int32} */
       let tt = Number(OpCodes.AndN(s0, 0xFFn));
       k = KX[tt];
       kk = OpCodes.XorN(KX[tt + 3 * i + 1], k);
-      s0 ^= OpCodes.AndN(kk, OpCodes.AndN(~0xFFn, MASK64));
+      s0 ^= OpCodes.AndN(kk, MASK64_HIGH56);
       s0 = m64(s0 + shl(kk, 12));
       s1 = m64(s1 - shr(kk, 5));
       kk = shl(KX[tt + 3 * i + 1], 8);
@@ -234,7 +308,9 @@
       s0 = m64(s0 + spice[OpCodes.Xor32(i, 7)]);
       s0 ^= shr(s0, 23);
       s0 ^= shr(s0, 46);
-      const sh = 22 + Number(OpCodes.AndN(s0, 31n));
+      /** @type {int32} */
+      const low5 = Number(OpCodes.AndN(s0, 31n));
+      const sh = 22 + low5;
       t = shl(s0, sh);
       kk = shl(m64(s0 - t), sh);
       s0 = m64(s0 - kk);
@@ -259,6 +335,7 @@
     }
 
     s0 = m64(s0 - KX[128]); s1 = m64(s1 - KX[129]);
+    /** @type {uint8[]} */
     const out = new Array(16);
     be64ToBytes(s0, out, 0);
     be64ToBytes(s1, out, 8);
@@ -336,7 +413,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint64[]|null} */
       this._KX = null;
+      /** @type {uint64[]|null} */
       this._spice = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -354,8 +433,10 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._KX = expandKey(this._key);
-      this._spice = new Array(8);
-      for (let i = 0; i < 8; ++i) this._spice[i] = le64(this._key, SPICE_OFFSET + i * 8);
+      /** @type {uint64[]} */
+      const spice = new Array(8);
+      for (let i = 0; i < 8; ++i) spice[i] = le64(this._key, SPICE_OFFSET + i * 8);
+      this._spice = spice;
     }
 
     /**
