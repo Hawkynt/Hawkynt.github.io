@@ -54,7 +54,6 @@
       "The permutation is used in the key setup and IV setup as a source of nonlinearity. " +
       "The shifted special keys on a keyboard are ~!@#$%^&*()_+{}:|<>?";
     /** @type {uint8[]} */
-    /** @type {uint8[]} */
     const ip = new Array(256);
     for (let i = 0; i < 256; i++) ip[i] = i;
     /** @type {uint32} */
@@ -258,7 +257,6 @@
 
       // --- Key setup (identical structure across the whole Py family) ---
       /** @type {uint32} */
-      /** @type {uint32} */
       let s = IP[keysizeb - 1];
       s = OpCodes.Or32((OpCodes.Shl32(s, 8)), IP[OpCodes.And32(OpCodes.Xor32(s, ivsizeb - 1), 0xFF)]);
       s = OpCodes.Or32((OpCodes.Shl32(s, 8)), IP[OpCodes.And32(OpCodes.Xor32(s, key[0]), 0xFF)]);
@@ -330,7 +328,6 @@
         const readIdx = R + eivBase;
         const writeIdx = readIdx + ivsizeb;
         /** @type {int32} */
-        /** @type {int32} */
         const x0 = OpCodes.And32(OpCodes.Xor32(this._getE(readIdx), OpCodes.And32(s, MASK)), MASK);
         this._setE(writeIdx, x0);
 
@@ -358,7 +355,6 @@
       let s = this.s;
 
       /** @type {int32} */
-        /** @type {int32} */
         const x0 = OpCodes.And32(this._getY(R + 43), MASK);
       this._setP(R + 64, this._getP(R + x0));
       this._setP(R + x0, this._getP(R + 0));
