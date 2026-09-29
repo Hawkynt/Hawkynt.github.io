@@ -76,35 +76,51 @@
 
   // ===== ALGORITHM PARAMETERS (fixed to match CompressionWorkbench's BB_Lzap) =====
 
+  /** @type {int32} */
   const MIN_BITS = 9;
+  /** @type {int32} */
   const MAX_BITS = 12;
+  /** @type {int32} */
   const CLEAR_CODE = OpCodes.Shl32(1, MIN_BITS - 1);  // 256
+  /** @type {int32} */
   const STOP_CODE = CLEAR_CODE + 1;                    // 257
+  /** @type {int32} */
   const FIRST_USABLE_CODE = CLEAR_CODE + 2;            // 258
+  /** @type {int32} */
   const MAX_CODE = OpCodes.Shl32(1, MAX_BITS);         // 4096
 
   // ===== BIT STREAM HELPERS (LSB-first) =====
 
   class LsbBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {uint32} value - Value (below 2^width)
+     * @param {int32} width - Number of bits
+     */
     writeBits(value, width) {
-      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(value, this.nBits));
       this.nBits += width;
       while (this.nBits >= 8) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = OpCodes.Shr32(this.buf, 8);
         this.nBits -= 8;
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     flush() {
       if (this.nBits > 0) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = 0;
         this.nBits = 0;
       }
@@ -113,21 +129,45 @@
   }
 
   class LsbBitReader {
+    /**
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} start - Position of the first bit's byte
+     */
     constructor(bytes, start) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {int32} width - Number of bits
+     * @returns {boolean} True when width more bits are available
+     */
+    canRead(width) {
+      return this.nBits + 8 * (this.bytes.length - this.pos) >= width;
+    }
+
+    /**
+     * @param {int32} width - Number of bits
+     * @returns {uint32} Value read
+     */
     readBits(width) {
       while (this.nBits < width) {
-        if (this.pos >= this.bytes.length) throw new Error('LZAP: unexpected end of stream');
-        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        if (this.pos >= this.bytes.length) {
+          throw new Error('LZAP: unexpected end of stream');
+        }
+        this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits));
         this.nBits += 8;
       }
-      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
-      const value = OpCodes.AndN(this.buf, mask);
+      /** @type {uint32} */
+      const mask = OpCodes.Sub32(OpCodes.Shl32(1, width), 1);
+      /** @type {uint32} */
+      const value = OpCodes.And32(this.buf, mask);
       this.buf = OpCodes.Shr32(this.buf, width);
       this.nBits -= width;
       return value;
@@ -138,16 +178,148 @@
 
   // The monotonic code-width growth rule shared by LZW, LZMW and LZAP: the
   // width needed to represent codes up to (but not including) nextCode.
+  /**
+   * @param {int32} nextCode - Next code to be assigned
+   * @returns {int32} Code width in bits
+   */
   function computeWidth(nextCode) {
+    /** @type {int32} */
     let w = MIN_BITS;
-    while (nextCode >= OpCodes.Shl32(1, w) && w < MAX_BITS) ++w;
+    while (nextCode >= OpCodes.Shl32(1, w) && w < MAX_BITS) {
+      ++w;
+    }
     return w;
   }
 
-  function buildInitialTrie() {
-    const root = { children: new Map(), code: -1 };
-    for (let b = 0; b < 256; ++b) root.children.set(b, { children: null, code: b });
-    return root;
+  /**
+   * Dictionary trie: node 0 is the root; every node carries a code (-1 for
+   * structural nodes). The (parent, byte) -> child edges live in an
+   * open-addressing hash table, which only answers lookups and is never
+   * iterated, so its layout cannot influence any code.
+   */
+  class LzapTrie {
+    constructor() {
+      /** @type {int32[]} */
+      this.code = [-1];
+      /** @type {int32[]} */
+      this.edgeParent = new Int32Array(1024).fill(-1);
+      /** @type {int32[]} */
+      this.edgeByte = new Int32Array(1024);
+      /** @type {int32[]} */
+      this.edgeChild = new Int32Array(1024);
+      /** @type {int32} */
+      this.edgeMask = 1023;
+      /** @type {int32} */
+      this.edgeCount = 0;
+      for (let b = 0; b < 256; ++b) {
+        /** @type {int32} */
+        const leaf = this.addNode(b);
+        this.addEdge(0, b, leaf);
+      }
+    }
+
+    /**
+     * @param {int32} nodeCode - Code of the new node (-1 for none)
+     * @returns {int32} New node
+     */
+    addNode(nodeCode) {
+      this.code.push(nodeCode);
+      return this.code.length - 1;
+    }
+
+    /**
+     * @param {int32} parent - Node
+     * @param {int32} value - Edge byte
+     * @returns {int32} Hash table slot of the edge, or the empty slot for it
+     */
+    _slot(parent, value) {
+      /** @type {uint32} */
+      const h = OpCodes.Xor32(OpCodes.Mul32(parent, 0x9E3779B1), OpCodes.Mul32(value, 0x85EBCA77));
+      /** @type {int32} */
+      let slot = OpCodes.And32(OpCodes.Xor32(h, OpCodes.Shr32(h, 16)), this.edgeMask);
+      while (this.edgeParent[slot] !== -1) {
+        if (this.edgeParent[slot] === parent && this.edgeByte[slot] === value) {
+          break;
+        }
+        slot = OpCodes.And32(slot + 1, this.edgeMask);
+      }
+      return slot;
+    }
+
+    /**
+     * @param {int32} parent - Node
+     * @param {int32} value - Edge byte
+     * @returns {int32} Child node, or -1 when there is none
+     */
+    child(parent, value) {
+      /** @type {int32} */
+      const slot = this._slot(parent, value);
+      if (this.edgeParent[slot] === -1) {
+        return -1;
+      }
+      return this.edgeChild[slot];
+    }
+
+    /**
+     * @param {int32} parent - Node
+     * @param {int32} value - Edge byte
+     * @param {int32} childNode - Child node
+     */
+    addEdge(parent, value, childNode) {
+      /** @type {int32} */
+      const slot = this._slot(parent, value);
+      this.edgeParent[slot] = parent;
+      this.edgeByte[slot] = value;
+      this.edgeChild[slot] = childNode;
+      ++this.edgeCount;
+      if (this.edgeCount * 2 > this.edgeMask) {
+        this._grow();
+      }
+    }
+
+    /** Double the edge table and re-insert every edge */
+    _grow() {
+      /** @type {int32[]} */
+      const oldParent = this.edgeParent;
+      /** @type {int32[]} */
+      const oldByte = this.edgeByte;
+      /** @type {int32[]} */
+      const oldChild = this.edgeChild;
+      /** @type {int32} */
+      const size = (this.edgeMask + 1) * 2;
+      this.edgeParent = new Int32Array(size).fill(-1);
+      this.edgeByte = new Int32Array(size);
+      this.edgeChild = new Int32Array(size);
+      this.edgeMask = size - 1;
+      for (let i = 0; i < oldParent.length; i++) {
+        if (oldParent[i] !== -1) {
+          /** @type {int32} */
+          const slot = this._slot(oldParent[i], oldByte[i]);
+          this.edgeParent[slot] = oldParent[i];
+          this.edgeByte[slot] = oldByte[i];
+          this.edgeChild[slot] = oldChild[i];
+        }
+      }
+    }
+  }
+
+  /**
+   * Longest coded dictionary entry found at a position
+   */
+  class LzapMatch {
+    /**
+     * @param {int32} node - Trie node of the entry (-1 when none)
+     * @param {int32} code - Its code (-1 when none)
+     * @param {int32} length - Its length (0 when none)
+     */
+    constructor(node, code, length) {
+      /** @type {int32} */
+      this.node = node;
+      /** @type {int32} */
+      this.code = code;
+      /** @type {int32} */
+      this.length = length;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -231,75 +403,115 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {LzapInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new LzapInstance(this, isInverse);
     }
   }
 
   class LzapInstance extends IAlgorithmInstance {
+    /**
+     * @param {LzapCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      this.inputBuffer = [];
-      return this.isInverse ? this._decompress(input) : this._compress(input);
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      if (this.isInverse) {
+        return this._decompress(input);
+      }
+      return this._compress(input);
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Size header and code stream
+     */
     _compress(data) {
-      const out = [
-        OpCodes.And32(data.length, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF)
-      ];
+      /** @type {uint8[]} */
+      const out = [];
+      out.push(OpCodes.And32(data.length, 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF));
 
-      if (data.length === 0) return out;
+      if (data.length === 0) {
+        return out;
+      }
 
+      /** @type {LsbBitWriter} */
       const writer = new LsbBitWriter();
 
       // Two-deep width pipeline: activeBits is used for the write happening
       // right now, queuedBits is already committed for the NEXT write.
+      /** @type {int32} */
       let activeBits = MIN_BITS;
+      /** @type {int32} */
       let queuedBits = MIN_BITS;
 
-      let root = buildInitialTrie();
+      /** @type {LzapTrie} */
+      let root = new LzapTrie();
+      /** @type {int32} */
       let nextCode = FIRST_USABLE_CODE;
 
+      /** @type {LzapMatch} */
       let match = LzapInstance._findLongestMatch(root, data, 0);
+      /** @type {int32} */
       let curNode = match.node;
+      /** @type {int32} */
       let curCode = match.code;
+      /** @type {int32} */
       let curLen = match.length;
+      /** @type {int32} */
       let pos = 0;
 
       for (;;) {
         writer.writeBits(curCode, activeBits);
         pos += curLen;
-        if (pos >= data.length) break;
+        if (pos >= data.length) {
+          break;
+        }
 
+        /** @type {LzapMatch} */
         const next = LzapInstance._findLongestMatch(root, data, pos);
 
         // Add the previous match concatenated with every prefix of the current
         // match, walking forward from curNode one byte at a time.
-        const inserted = LzapInstance._insertAllPrefixes(curNode, data, pos, next.length, nextCode);
-        nextCode = inserted.nextCode;
+        /** @type {int32} */
+        const assigned = LzapInstance._insertAllPrefixes(root, curNode, data, pos, next.length, nextCode);
+        nextCode += assigned;
 
         // The width queued two writes ago is promoted unconditionally: that
         // promotion reflects an earlier, already-completed insertion and is due
         // regardless of whether this iteration's own insertion succeeded.
         activeBits = queuedBits;
 
-        if (inserted.assigned < next.length) {
+        if (assigned < next.length) {
           // The dictionary filled up partway through (or before) adding this
           // step's prefixes: reset and re-derive the current match against the
           // fresh dictionary. The clear code is written at the just-promoted
           // width, never at a width grown from this abandoned insertion.
           writer.writeBits(CLEAR_CODE, activeBits);
-          root = buildInitialTrie();
+          root = new LzapTrie();
           nextCode = FIRST_USABLE_CODE;
           activeBits = MIN_BITS;
           queuedBits = MIN_BITS;
@@ -318,8 +530,11 @@
       }
 
       writer.writeBits(STOP_CODE, activeBits);
+      /** @type {uint8[]} */
       const bits = writer.flush();
-      for (let i = 0; i < bits.length; i++) out.push(bits[i]);
+      for (let i = 0; i < bits.length; i++) {
+        out.push(bits[i]);
+      }
 
       return out;
     }
@@ -328,18 +543,32 @@
     // is a prefix of data[pos..]. Every node beyond the root carries a code by
     // construction (LZAP codes every prefix it inserts), so the walk simply
     // stops at the first missing child.
-    static _findLongestMatch(root, data, pos) {
-      let node = root;
+    /**
+     * @param {LzapTrie} trie - Dictionary
+     * @param {uint8[]} data - Input bytes
+     * @param {int32} pos - Position to match
+     * @returns {LzapMatch} Longest entry on the path
+     */
+    static _findLongestMatch(trie, data, pos) {
+      /** @type {int32} */
+      let node = 0;
+      /** @type {int32} */
       let len = 0;
+      /** @type {int32} */
       let p = pos;
 
-      while (p < data.length && node.children !== null && node.children.has(data[p])) {
-        node = node.children.get(data[p]);
+      while (p < data.length) {
+        /** @type {int32} */
+        const childNode = trie.child(node, data[p]);
+        if (childNode < 0) {
+          break;
+        }
+        node = childNode;
         ++len;
         ++p;
       }
 
-      return { node: node, code: node.code, length: len };
+      return new LzapMatch(node, trie.code[node], len);
     }
 
     // Inserts one new dictionary entry per prefix of the current match's bytes,
@@ -347,51 +576,83 @@
     // node) one byte at a time - length 1, then 2, then 3, and so on - assigning
     // a fresh code to every node visited. Reports how many prefixes were
     // actually assigned before the dictionary filled up.
-    static _insertAllPrefixes(startNode, data, pos, length, nextCode) {
+    /**
+     * @param {LzapTrie} trie - Dictionary
+     * @param {int32} startNode - Node of the previous match
+     * @param {uint8[]} data - Input bytes
+     * @param {int32} pos - Start of the current match
+     * @param {int32} length - Length of the current match
+     * @param {int32} nextCode - First code to assign
+     * @returns {int32} Number of prefixes assigned (codes used)
+     */
+    static _insertAllPrefixes(trie, startNode, data, pos, length, nextCode) {
+      /** @type {int32} */
       let node = startNode;
+      /** @type {int32} */
       let assigned = 0;
+      /** @type {int32} */
       let code = nextCode;
 
       for (let i = 0; i < length; ++i) {
-        if (code >= MAX_CODE) break;
-
-        const b = data[pos + i];
-        if (node.children === null) node.children = new Map();
-        let child = node.children.get(b);
-        if (child === undefined) {
-          child = { children: null, code: -1 };
-          node.children.set(b, child);
+        if (code >= MAX_CODE) {
+          break;
         }
-        node = child;
-        node.code = code;
+
+        /** @type {uint8} */
+        const b = data[pos + i];
+        /** @type {int32} */
+        let childNode = trie.child(node, b);
+        if (childNode < 0) {
+          childNode = trie.addNode(-1);
+          trie.addEdge(node, b, childNode);
+        }
+        node = childNode;
+        trie.code[node] = code;
         ++code;
         ++assigned;
       }
 
-      return { assigned: assigned, nextCode: code };
+      return assigned;
     }
 
+    /**
+     * @param {uint8[]} data - Size header and code stream
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(data) {
-      if (data.length < 4) return [];
-
-      const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0) return [];
-
-      const reader = new LsbBitReader(data, 4);
+      /** @type {uint8[]} */
       const output = [];
+      if (data.length < 4) {
+        return output;
+      }
 
+      /** @type {uint32} */
+      const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+      if (originalSize === 0) {
+        return output;
+      }
+
+      /** @type {LsbBitReader} */
+      const reader = new LsbBitReader(data, 4);
+
+      /** @type {int32} */
       let currentBits = MIN_BITS;
+      /** @type {int32} */
       let nextCode = FIRST_USABLE_CODE;
+      /** @type {uint8[][]} */
       let dictionary = LzapInstance._initDictionary();
+      /** @type {uint8[]} */
       let previousEntry = null;
 
       while (output.length < originalSize) {
-        let code;
-        try {
-          code = reader.readBits(currentBits);
-        } catch (e) {
+        // A stream that ends in the middle of a code ends the output.
+        /** @type {boolean} */
+        const available = reader.canRead(currentBits);
+        if (!available) {
           break;
         }
+        /** @type {uint32} */
+        const code = reader.readBits(currentBits);
 
         if (code === CLEAR_CODE) {
           dictionary = LzapInstance._initDictionary();
@@ -401,16 +662,24 @@
           continue;
         }
 
-        if (code === STOP_CODE) break;
+        if (code === STOP_CODE) {
+          break;
+        }
 
-        if (code >= dictionary.length)
+        if (code >= dictionary.length) {
           throw new Error('LZAP: invalid code ' + code + ' (dictionary size ' + dictionary.length + ')');
+        }
 
+        /** @type {uint8[]} */
         const entry = dictionary[code];
-        for (let i = 0; i < entry.length; i++) output.push(entry[i]);
+        for (let i = 0; i < entry.length; i++) {
+          output.push(entry[i]);
+        }
 
         if (previousEntry !== null) {
+          /** @type {int32} */
           const prevLen = previousEntry.length;
+          /** @type {boolean} */
           let completed = true;
           for (let prefixLen = 1; prefixLen <= entry.length; ++prefixLen) {
             if (nextCode >= MAX_CODE) {
@@ -418,9 +687,14 @@
               break;
             }
 
+            /** @type {uint8[]} */
             const newEntry = new Array(prevLen + prefixLen);
-            for (let i = 0; i < prevLen; i++) newEntry[i] = previousEntry[i];
-            for (let i = 0; i < prefixLen; i++) newEntry[prevLen + i] = entry[i];
+            for (let i = 0; i < prevLen; i++) {
+              newEntry[i] = previousEntry[i];
+            }
+            for (let i = 0; i < prefixLen; i++) {
+              newEntry[prevLen + i] = entry[i];
+            }
             dictionary.push(newEntry);
             ++nextCode;
           }
@@ -430,7 +704,9 @@
           // outright and writes a clear code at whatever width was already
           // active, so the width must be left untouched here for the upcoming
           // clear code to be read at the width it was written with.
-          if (completed) currentBits = computeWidth(nextCode);
+          if (completed) {
+            currentBits = computeWidth(nextCode);
+          }
         }
 
         previousEntry = entry;
@@ -439,11 +715,21 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[][]} Byte entries plus the clear and stop placeholders
+     */
     static _initDictionary() {
+      /** @type {uint8[][]} */
       const dictionary = [];
-      for (let i = 0; i < CLEAR_CODE; ++i) dictionary.push([i]);
-      dictionary.push([]); // clear code placeholder
-      dictionary.push([]); // stop code placeholder
+      for (let i = 0; i < CLEAR_CODE; ++i) {
+        dictionary.push([i]);
+      }
+      /** @type {uint8[]} */
+      const clearPlaceholder = [];
+      /** @type {uint8[]} */
+      const stopPlaceholder = [];
+      dictionary.push(clearPlaceholder); // clear code placeholder
+      dictionary.push(stopPlaceholder); // stop code placeholder
       return dictionary;
     }
   }
