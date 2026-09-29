@@ -51,250 +51,432 @@
   const ROUNDS = 32;
 
   // Forward S-boxes S0..S7 (standard Serpent boolean formulas).
-  const SBOX = [
-    (a, b, c, d) => { // S0
-      const t1 = OpCodes.XorN(a, d), t3 = OpCodes.XorN(c, t1), t4 = OpCodes.XorN(b, t3);
-      const X3 = OpCodes.Xor32(OpCodes.AndN(a, d), t4);
-      const t7 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
-      const X2 = OpCodes.Xor32(t4, OpCodes.Or32(c, t7));
-      const t12 = OpCodes.And32(X3, OpCodes.Xor32(t3, t7));
-      const X1 = OpCodes.Xor32(~t3, t12);
-      const X0 = OpCodes.Xor32(t12, ~t7);
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S1
-      const t2 = OpCodes.Xor32(b, ~a);
-      const t5 = OpCodes.Xor32(c, OpCodes.Or32(a, t2));
-      const X2 = OpCodes.Xor32(d, t5);
-      const t7 = OpCodes.Xor32(b, OpCodes.Or32(d, t2));
-      const t8 = OpCodes.Xor32(t2, X2);
-      const X3 = OpCodes.Xor32(t8, OpCodes.And32(t5, t7));
-      const t11 = OpCodes.Xor32(t5, t7);
-      const X1 = OpCodes.Xor32(X3, t11);
-      const X0 = OpCodes.Xor32(t5, OpCodes.And32(t8, t11));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S2
-      const t1 = ~a;
-      const t2 = OpCodes.XorN(b, d);
-      const t3 = OpCodes.And32(c, t1);
-      const X0 = OpCodes.Xor32(t2, t3);
-      const t5 = OpCodes.Xor32(c, t1);
-      const t6 = OpCodes.Xor32(c, X0);
-      const t7 = OpCodes.And32(b, t6);
-      const X3 = OpCodes.Xor32(t5, t7);
-      const X2 = OpCodes.Xor32(a, OpCodes.And32(OpCodes.Or32(d, t7), OpCodes.Or32(X0, t5)));
-      const X1 = OpCodes.Xor32(OpCodes.Xor32(t2, X3), OpCodes.Xor32(X2, OpCodes.Or32(d, t1)));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S3
-      const t1 = OpCodes.XorN(a, b);
-      const t2 = OpCodes.AndN(a, c);
-      const t3 = OpCodes.OrN(a, d);
-      const t4 = OpCodes.XorN(c, d);
-      const t5 = OpCodes.And32(t1, t3);
-      const t6 = OpCodes.Or32(t2, t5);
-      const X2 = OpCodes.Xor32(t4, t6);
-      const t8 = OpCodes.Xor32(b, t3);
-      const t9 = OpCodes.Xor32(t6, t8);
-      const t10 = OpCodes.And32(t4, t9);
-      const X0 = OpCodes.Xor32(t1, t10);
-      const t12 = OpCodes.And32(X2, X0);
-      const X1 = OpCodes.Xor32(t9, t12);
-      const X3 = OpCodes.Xor32(OpCodes.OrN(b, d), OpCodes.Xor32(t4, t12));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S4
-      const t1 = OpCodes.XorN(a, d);
-      const t2 = OpCodes.And32(d, t1);
-      const t3 = OpCodes.Xor32(c, t2);
-      const t4 = OpCodes.Or32(b, t3);
-      const X3 = OpCodes.Xor32(t1, t4);
-      const t6 = ~b;
-      const t7 = OpCodes.Or32(t1, t6);
-      const X0 = OpCodes.Xor32(t3, t7);
-      const t9 = OpCodes.And32(a, X0);
-      const t10 = OpCodes.Xor32(t1, t6);
-      const t11 = OpCodes.And32(t4, t10);
-      const X2 = OpCodes.Xor32(t9, t11);
-      const X1 = OpCodes.Xor32(OpCodes.Xor32(a, t3), OpCodes.And32(t10, X2));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S5
-      const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
-      const t3 = OpCodes.XorN(a, d);
-      const t4 = OpCodes.Xor32(c, t1);
-      const t5 = OpCodes.Or32(t2, t3);
-      const X0 = OpCodes.Xor32(t4, t5);
-      const t7 = OpCodes.And32(d, X0);
-      const t8 = OpCodes.Xor32(t2, X0);
-      const X1 = OpCodes.Xor32(t7, t8);
-      const t10 = OpCodes.Or32(t1, X0);
-      const t11 = OpCodes.Or32(t2, t7);
-      const t12 = OpCodes.Xor32(t3, t10);
-      const X2 = OpCodes.Xor32(t11, t12);
-      const X3 = OpCodes.Xor32(OpCodes.Xor32(b, t7), OpCodes.And32(X1, t12));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S6
-      const t1 = ~a;
-      const t2 = OpCodes.XorN(a, d);
-      const t3 = OpCodes.Xor32(b, t2);
-      const t4 = OpCodes.Or32(t1, t2);
-      const t5 = OpCodes.Xor32(c, t4);
-      const X1 = OpCodes.Xor32(b, t5);
-      const t7 = OpCodes.Or32(t2, X1);
-      const t8 = OpCodes.Xor32(d, t7);
-      const t9 = OpCodes.And32(t5, t8);
-      const X2 = OpCodes.Xor32(t3, t9);
-      const t11 = OpCodes.Xor32(t5, t8);
-      const X0 = OpCodes.Xor32(X2, t11);
-      const X3 = OpCodes.Xor32(~t5, OpCodes.And32(t3, t11));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // S7
-      const t1 = OpCodes.XorN(b, c);
-      const t2 = OpCodes.And32(c, t1);
-      const t3 = OpCodes.Xor32(d, t2);
-      const t4 = OpCodes.Xor32(a, t3);
-      const t5 = OpCodes.Or32(d, t1);
-      const t6 = OpCodes.And32(t4, t5);
-      const X1 = OpCodes.Xor32(b, t6);
-      const t8 = OpCodes.Or32(t3, X1);
-      const t9 = OpCodes.And32(a, t4);
-      const X3 = OpCodes.Xor32(t1, t9);
-      const t11 = OpCodes.Xor32(t4, t8);
-      const t12 = OpCodes.And32(X3, t11);
-      const X2 = OpCodes.Xor32(t3, t12);
-      const X0 = OpCodes.Xor32(~t11, OpCodes.And32(X3, X2));
-      return [X0, X1, X2, X3];
+  /**
+   * Serpent S-box S0
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox0(a, b, c, d) {
+    const t1 = OpCodes.Xor32(a, d), t3 = OpCodes.Xor32(c, t1), t4 = OpCodes.Xor32(b, t3);
+    const X3 = OpCodes.Xor32(OpCodes.And32(a, d), t4);
+    const t7 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
+    const X2 = OpCodes.Xor32(t4, OpCodes.Or32(c, t7));
+    const t12 = OpCodes.And32(X3, OpCodes.Xor32(t3, t7));
+    const X1 = OpCodes.Xor32(~t3, t12);
+    const X0 = OpCodes.Xor32(t12, ~t7);
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S1
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox1(a, b, c, d) {
+    const t2 = OpCodes.Xor32(b, ~a);
+    const t5 = OpCodes.Xor32(c, OpCodes.Or32(a, t2));
+    const X2 = OpCodes.Xor32(d, t5);
+    const t7 = OpCodes.Xor32(b, OpCodes.Or32(d, t2));
+    const t8 = OpCodes.Xor32(t2, X2);
+    const X3 = OpCodes.Xor32(t8, OpCodes.And32(t5, t7));
+    const t11 = OpCodes.Xor32(t5, t7);
+    const X1 = OpCodes.Xor32(X3, t11);
+    const X0 = OpCodes.Xor32(t5, OpCodes.And32(t8, t11));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S2
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox2(a, b, c, d) {
+    const t1 = ~a;
+    const t2 = OpCodes.Xor32(b, d);
+    const t3 = OpCodes.And32(c, t1);
+    const X0 = OpCodes.Xor32(t2, t3);
+    const t5 = OpCodes.Xor32(c, t1);
+    const t6 = OpCodes.Xor32(c, X0);
+    const t7 = OpCodes.And32(b, t6);
+    const X3 = OpCodes.Xor32(t5, t7);
+    const X2 = OpCodes.Xor32(a, OpCodes.And32(OpCodes.Or32(d, t7), OpCodes.Or32(X0, t5)));
+    const X1 = OpCodes.Xor32(OpCodes.Xor32(t2, X3), OpCodes.Xor32(X2, OpCodes.Or32(d, t1)));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S3
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox3(a, b, c, d) {
+    const t1 = OpCodes.Xor32(a, b);
+    const t2 = OpCodes.And32(a, c);
+    const t3 = OpCodes.Or32(a, d);
+    const t4 = OpCodes.Xor32(c, d);
+    const t5 = OpCodes.And32(t1, t3);
+    const t6 = OpCodes.Or32(t2, t5);
+    const X2 = OpCodes.Xor32(t4, t6);
+    const t8 = OpCodes.Xor32(b, t3);
+    const t9 = OpCodes.Xor32(t6, t8);
+    const t10 = OpCodes.And32(t4, t9);
+    const X0 = OpCodes.Xor32(t1, t10);
+    const t12 = OpCodes.And32(X2, X0);
+    const X1 = OpCodes.Xor32(t9, t12);
+    const X3 = OpCodes.Xor32(OpCodes.Or32(b, d), OpCodes.Xor32(t4, t12));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S4
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox4(a, b, c, d) {
+    const t1 = OpCodes.Xor32(a, d);
+    const t2 = OpCodes.And32(d, t1);
+    const t3 = OpCodes.Xor32(c, t2);
+    const t4 = OpCodes.Or32(b, t3);
+    const X3 = OpCodes.Xor32(t1, t4);
+    const t6 = ~b;
+    const t7 = OpCodes.Or32(t1, t6);
+    const X0 = OpCodes.Xor32(t3, t7);
+    const t9 = OpCodes.And32(a, X0);
+    const t10 = OpCodes.Xor32(t1, t6);
+    const t11 = OpCodes.And32(t4, t10);
+    const X2 = OpCodes.Xor32(t9, t11);
+    const X1 = OpCodes.Xor32(OpCodes.Xor32(a, t3), OpCodes.And32(t10, X2));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S5
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox5(a, b, c, d) {
+    const t1 = ~a;
+    const t2 = OpCodes.Xor32(a, b);
+    const t3 = OpCodes.Xor32(a, d);
+    const t4 = OpCodes.Xor32(c, t1);
+    const t5 = OpCodes.Or32(t2, t3);
+    const X0 = OpCodes.Xor32(t4, t5);
+    const t7 = OpCodes.And32(d, X0);
+    const t8 = OpCodes.Xor32(t2, X0);
+    const X1 = OpCodes.Xor32(t7, t8);
+    const t10 = OpCodes.Or32(t1, X0);
+    const t11 = OpCodes.Or32(t2, t7);
+    const t12 = OpCodes.Xor32(t3, t10);
+    const X2 = OpCodes.Xor32(t11, t12);
+    const X3 = OpCodes.Xor32(OpCodes.Xor32(b, t7), OpCodes.And32(X1, t12));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S6
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox6(a, b, c, d) {
+    const t1 = ~a;
+    const t2 = OpCodes.Xor32(a, d);
+    const t3 = OpCodes.Xor32(b, t2);
+    const t4 = OpCodes.Or32(t1, t2);
+    const t5 = OpCodes.Xor32(c, t4);
+    const X1 = OpCodes.Xor32(b, t5);
+    const t7 = OpCodes.Or32(t2, X1);
+    const t8 = OpCodes.Xor32(d, t7);
+    const t9 = OpCodes.And32(t5, t8);
+    const X2 = OpCodes.Xor32(t3, t9);
+    const t11 = OpCodes.Xor32(t5, t8);
+    const X0 = OpCodes.Xor32(X2, t11);
+    const X3 = OpCodes.Xor32(~t5, OpCodes.And32(t3, t11));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box S7
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function sbox7(a, b, c, d) {
+    const t1 = OpCodes.Xor32(b, c);
+    const t2 = OpCodes.And32(c, t1);
+    const t3 = OpCodes.Xor32(d, t2);
+    const t4 = OpCodes.Xor32(a, t3);
+    const t5 = OpCodes.Or32(d, t1);
+    const t6 = OpCodes.And32(t4, t5);
+    const X1 = OpCodes.Xor32(b, t6);
+    const t8 = OpCodes.Or32(t3, X1);
+    const t9 = OpCodes.And32(a, t4);
+    const X3 = OpCodes.Xor32(t1, t9);
+    const t11 = OpCodes.Xor32(t4, t8);
+    const t12 = OpCodes.And32(X3, t11);
+    const X2 = OpCodes.Xor32(t3, t12);
+    const X0 = OpCodes.Xor32(~t11, OpCodes.And32(X3, X2));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Apply forward S-box S<index> to four words
+   * @param {int32} index - S-box number 0..7
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function applySbox(index, a, b, c, d) {
+    switch (index) {
+      case 0: return sbox0(a, b, c, d);
+      case 1: return sbox1(a, b, c, d);
+      case 2: return sbox2(a, b, c, d);
+      case 3: return sbox3(a, b, c, d);
+      case 4: return sbox4(a, b, c, d);
+      case 5: return sbox5(a, b, c, d);
+      case 6: return sbox6(a, b, c, d);
+      default: return sbox7(a, b, c, d);
     }
-  ];
+  }
 
   // Inverse S-boxes InvS0..InvS7.
-  const INV_SBOX = [
-    (a, b, c, d) => { // InvS0
-      const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
-      const t4 = OpCodes.Xor32(d, OpCodes.Or32(t1, t2));
-      const t5 = OpCodes.Xor32(c, t4);
-      const X2 = OpCodes.Xor32(t2, t5);
-      const t8 = OpCodes.Xor32(t1, OpCodes.And32(d, t2));
-      const X1 = OpCodes.Xor32(t4, OpCodes.And32(X2, t8));
-      const X3 = OpCodes.Xor32(OpCodes.And32(a, t4), OpCodes.Or32(t5, X1));
-      const X0 = OpCodes.Xor32(X3, OpCodes.Xor32(t5, t8));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS1
-      const t1 = OpCodes.XorN(b, d);
-      const t3 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
-      const t4 = OpCodes.Xor32(t1, t3);
-      const X3 = OpCodes.Xor32(c, t4);
-      const t7 = OpCodes.Xor32(b, OpCodes.And32(t1, t3));
-      const t8 = OpCodes.Or32(X3, t7);
-      const X1 = OpCodes.Xor32(t3, t8);
-      const t10 = ~X1;
-      const t11 = OpCodes.Xor32(X3, t7);
-      const X0 = OpCodes.Xor32(t10, t11);
-      const X2 = OpCodes.Xor32(t4, OpCodes.Or32(t10, t11));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS2
-      const t1 = OpCodes.XorN(b, d);
-      const t2 = ~t1;
-      const t3 = OpCodes.XorN(a, c);
-      const t4 = OpCodes.Xor32(c, t1);
-      const t5 = OpCodes.And32(b, t4);
-      const X0 = OpCodes.Xor32(t3, t5);
-      const t7 = OpCodes.Or32(a, t2);
-      const t8 = OpCodes.Xor32(d, t7);
-      const t9 = OpCodes.Or32(t3, t8);
-      const X3 = OpCodes.Xor32(t1, t9);
-      const t11 = ~t4;
-      const t12 = OpCodes.Or32(X0, X3);
-      const X1 = OpCodes.Xor32(t11, t12);
-      const X2 = OpCodes.Xor32(OpCodes.And32(d, t11), OpCodes.Xor32(t3, t12));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS3
-      const t1 = OpCodes.OrN(a, b);
-      const t2 = OpCodes.XorN(b, c);
-      const t3 = OpCodes.And32(b, t2);
-      const t4 = OpCodes.Xor32(a, t3);
-      const t5 = OpCodes.Xor32(c, t4);
-      const t6 = OpCodes.Or32(d, t4);
-      const X0 = OpCodes.Xor32(t2, t6);
-      const t8 = OpCodes.Or32(t2, t6);
-      const t9 = OpCodes.Xor32(d, t8);
-      const X2 = OpCodes.Xor32(t5, t9);
-      const t11 = OpCodes.Xor32(t1, t9);
-      const t12 = OpCodes.And32(X0, t11);
-      const X3 = OpCodes.Xor32(t4, t12);
-      const X1 = OpCodes.Xor32(X3, OpCodes.Xor32(X0, t11));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS4
-      const t1 = OpCodes.OrN(c, d);
-      const t2 = OpCodes.And32(a, t1);
-      const t3 = OpCodes.Xor32(b, t2);
-      const t4 = OpCodes.And32(a, t3);
-      const t5 = OpCodes.Xor32(c, t4);
-      const X1 = OpCodes.Xor32(d, t5);
-      const t7 = ~a;
-      const t8 = OpCodes.And32(t5, X1);
-      const X3 = OpCodes.Xor32(t3, t8);
-      const t10 = OpCodes.Or32(X1, t7);
-      const t11 = OpCodes.Xor32(d, t10);
-      const X0 = OpCodes.Xor32(X3, t11);
-      const X2 = OpCodes.Xor32(OpCodes.And32(t3, t11), OpCodes.Xor32(X1, t7));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS5
-      const t1 = ~c;
-      const t2 = OpCodes.And32(b, t1);
-      const t3 = OpCodes.Xor32(d, t2);
-      const t4 = OpCodes.And32(a, t3);
-      const t5 = OpCodes.Xor32(b, t1);
-      const X3 = OpCodes.Xor32(t4, t5);
-      const t7 = OpCodes.Or32(b, X3);
-      const t8 = OpCodes.And32(a, t7);
-      const X1 = OpCodes.Xor32(t3, t8);
-      const t10 = OpCodes.OrN(a, d);
-      const t11 = OpCodes.Xor32(t1, t7);
-      const X0 = OpCodes.Xor32(t10, t11);
-      const X2 = OpCodes.Xor32(OpCodes.And32(b, t10), OpCodes.Or32(t4, OpCodes.XorN(a, c)));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS6
-      const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
-      const t3 = OpCodes.Xor32(c, t2);
-      const t4 = OpCodes.Or32(c, t1);
-      const t5 = OpCodes.Xor32(d, t4);
-      const X1 = OpCodes.Xor32(t3, t5);
-      const t7 = OpCodes.And32(t3, t5);
-      const t8 = OpCodes.Xor32(t2, t7);
-      const t9 = OpCodes.Or32(b, t8);
-      const X3 = OpCodes.Xor32(t5, t9);
-      const t11 = OpCodes.Or32(b, X3);
-      const X0 = OpCodes.Xor32(t8, t11);
-      const X2 = OpCodes.Xor32(OpCodes.And32(d, t1), OpCodes.Xor32(t3, t11));
-      return [X0, X1, X2, X3];
-    },
-    (a, b, c, d) => { // InvS7
-      const t3 = OpCodes.Or32(c, OpCodes.AndN(a, b));
-      const t4 = OpCodes.And32(d, OpCodes.OrN(a, b));
-      const X3 = OpCodes.Xor32(t3, t4);
-      const t6 = ~d;
-      const t7 = OpCodes.Xor32(b, t4);
-      const t9 = OpCodes.Or32(t7, OpCodes.Xor32(X3, t6));
-      const X1 = OpCodes.Xor32(a, t9);
-      const X0 = OpCodes.Xor32(OpCodes.Xor32(c, t7), OpCodes.Or32(d, X1));
-      const X2 = OpCodes.Xor32(OpCodes.Xor32(t3, X1), OpCodes.Xor32(X0, OpCodes.And32(a, X3)));
-      return [X0, X1, X2, X3];
+  /**
+   * Serpent S-box InvS0
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox0(a, b, c, d) {
+    const t1 = ~a;
+    const t2 = OpCodes.Xor32(a, b);
+    const t4 = OpCodes.Xor32(d, OpCodes.Or32(t1, t2));
+    const t5 = OpCodes.Xor32(c, t4);
+    const X2 = OpCodes.Xor32(t2, t5);
+    const t8 = OpCodes.Xor32(t1, OpCodes.And32(d, t2));
+    const X1 = OpCodes.Xor32(t4, OpCodes.And32(X2, t8));
+    const X3 = OpCodes.Xor32(OpCodes.And32(a, t4), OpCodes.Or32(t5, X1));
+    const X0 = OpCodes.Xor32(X3, OpCodes.Xor32(t5, t8));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS1
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox1(a, b, c, d) {
+    const t1 = OpCodes.Xor32(b, d);
+    const t3 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
+    const t4 = OpCodes.Xor32(t1, t3);
+    const X3 = OpCodes.Xor32(c, t4);
+    const t7 = OpCodes.Xor32(b, OpCodes.And32(t1, t3));
+    const t8 = OpCodes.Or32(X3, t7);
+    const X1 = OpCodes.Xor32(t3, t8);
+    const t10 = ~X1;
+    const t11 = OpCodes.Xor32(X3, t7);
+    const X0 = OpCodes.Xor32(t10, t11);
+    const X2 = OpCodes.Xor32(t4, OpCodes.Or32(t10, t11));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS2
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox2(a, b, c, d) {
+    const t1 = OpCodes.Xor32(b, d);
+    const t2 = ~t1;
+    const t3 = OpCodes.Xor32(a, c);
+    const t4 = OpCodes.Xor32(c, t1);
+    const t5 = OpCodes.And32(b, t4);
+    const X0 = OpCodes.Xor32(t3, t5);
+    const t7 = OpCodes.Or32(a, t2);
+    const t8 = OpCodes.Xor32(d, t7);
+    const t9 = OpCodes.Or32(t3, t8);
+    const X3 = OpCodes.Xor32(t1, t9);
+    const t11 = ~t4;
+    const t12 = OpCodes.Or32(X0, X3);
+    const X1 = OpCodes.Xor32(t11, t12);
+    const X2 = OpCodes.Xor32(OpCodes.And32(d, t11), OpCodes.Xor32(t3, t12));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS3
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox3(a, b, c, d) {
+    const t1 = OpCodes.Or32(a, b);
+    const t2 = OpCodes.Xor32(b, c);
+    const t3 = OpCodes.And32(b, t2);
+    const t4 = OpCodes.Xor32(a, t3);
+    const t5 = OpCodes.Xor32(c, t4);
+    const t6 = OpCodes.Or32(d, t4);
+    const X0 = OpCodes.Xor32(t2, t6);
+    const t8 = OpCodes.Or32(t2, t6);
+    const t9 = OpCodes.Xor32(d, t8);
+    const X2 = OpCodes.Xor32(t5, t9);
+    const t11 = OpCodes.Xor32(t1, t9);
+    const t12 = OpCodes.And32(X0, t11);
+    const X3 = OpCodes.Xor32(t4, t12);
+    const X1 = OpCodes.Xor32(X3, OpCodes.Xor32(X0, t11));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS4
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox4(a, b, c, d) {
+    const t1 = OpCodes.Or32(c, d);
+    const t2 = OpCodes.And32(a, t1);
+    const t3 = OpCodes.Xor32(b, t2);
+    const t4 = OpCodes.And32(a, t3);
+    const t5 = OpCodes.Xor32(c, t4);
+    const X1 = OpCodes.Xor32(d, t5);
+    const t7 = ~a;
+    const t8 = OpCodes.And32(t5, X1);
+    const X3 = OpCodes.Xor32(t3, t8);
+    const t10 = OpCodes.Or32(X1, t7);
+    const t11 = OpCodes.Xor32(d, t10);
+    const X0 = OpCodes.Xor32(X3, t11);
+    const X2 = OpCodes.Xor32(OpCodes.And32(t3, t11), OpCodes.Xor32(X1, t7));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS5
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox5(a, b, c, d) {
+    const t1 = ~c;
+    const t2 = OpCodes.And32(b, t1);
+    const t3 = OpCodes.Xor32(d, t2);
+    const t4 = OpCodes.And32(a, t3);
+    const t5 = OpCodes.Xor32(b, t1);
+    const X3 = OpCodes.Xor32(t4, t5);
+    const t7 = OpCodes.Or32(b, X3);
+    const t8 = OpCodes.And32(a, t7);
+    const X1 = OpCodes.Xor32(t3, t8);
+    const t10 = OpCodes.Or32(a, d);
+    const t11 = OpCodes.Xor32(t1, t7);
+    const X0 = OpCodes.Xor32(t10, t11);
+    const X2 = OpCodes.Xor32(OpCodes.And32(b, t10), OpCodes.Or32(t4, OpCodes.Xor32(a, c)));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS6
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox6(a, b, c, d) {
+    const t1 = ~a;
+    const t2 = OpCodes.Xor32(a, b);
+    const t3 = OpCodes.Xor32(c, t2);
+    const t4 = OpCodes.Or32(c, t1);
+    const t5 = OpCodes.Xor32(d, t4);
+    const X1 = OpCodes.Xor32(t3, t5);
+    const t7 = OpCodes.And32(t3, t5);
+    const t8 = OpCodes.Xor32(t2, t7);
+    const t9 = OpCodes.Or32(b, t8);
+    const X3 = OpCodes.Xor32(t5, t9);
+    const t11 = OpCodes.Or32(b, X3);
+    const X0 = OpCodes.Xor32(t8, t11);
+    const X2 = OpCodes.Xor32(OpCodes.And32(d, t1), OpCodes.Xor32(t3, t11));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Serpent S-box InvS7
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function invSbox7(a, b, c, d) {
+    const t3 = OpCodes.Or32(c, OpCodes.And32(a, b));
+    const t4 = OpCodes.And32(d, OpCodes.Or32(a, b));
+    const X3 = OpCodes.Xor32(t3, t4);
+    const t6 = ~d;
+    const t7 = OpCodes.Xor32(b, t4);
+    const t9 = OpCodes.Or32(t7, OpCodes.Xor32(X3, t6));
+    const X1 = OpCodes.Xor32(a, t9);
+    const X0 = OpCodes.Xor32(OpCodes.Xor32(c, t7), OpCodes.Or32(d, X1));
+    const X2 = OpCodes.Xor32(OpCodes.Xor32(t3, X1), OpCodes.Xor32(X0, OpCodes.And32(a, X3)));
+    return [X0, X1, X2, X3];
+  }
+
+  /**
+   * Apply inverse S-box InvS<index> to four words
+   * @param {int32} index - S-box number 0..7
+   * @param {uint32} a - Word 0
+   * @param {uint32} b - Word 1
+   * @param {uint32} c - Word 2
+   * @param {uint32} d - Word 3
+   * @returns {uint32[]} The four output words
+   */
+  function applyInvSbox(index, a, b, c, d) {
+    switch (index) {
+      case 0: return invSbox0(a, b, c, d);
+      case 1: return invSbox1(a, b, c, d);
+      case 2: return invSbox2(a, b, c, d);
+      case 3: return invSbox3(a, b, c, d);
+      case 4: return invSbox4(a, b, c, d);
+      case 5: return invSbox5(a, b, c, d);
+      case 6: return invSbox6(a, b, c, d);
+      default: return invSbox7(a, b, c, d);
     }
-  ];
+  }
 
   class DarkCryptSerpentAlgorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -374,6 +556,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -425,10 +608,13 @@
     // non-overlapping quad w[4i..4i+3] via S-boxes cycling S3,S2,S1,S0,S7,S6,S5,S4.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[][]} The 33 round keys
      */
     _generateRoundKeys(keyBytes) {
       const NUM_PREKEY_WORDS = 4 * (ROUNDS + 1); // 132
-      const w = new Array(8 + NUM_PREKEY_WORDS).fill(0);
+      /** @type {uint32[]} */
+      const w = new Array(8 + NUM_PREKEY_WORDS);
+      w.fill(0);
 
       for (let i = 0; i < 8; ++i) {
         w[i] = OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]);
@@ -439,15 +625,24 @@
         w[i] = OpCodes.RotL32(OpCodes.Xor32(gen, (i - 8)), 11);
       }
 
-      const roundKeys = [];
+      /** @type {uint32[][]} */
+      const subkeyWords = [];
       for (let i = 0; i <= ROUNDS; ++i) {
         const o = 8 + 4 * i;
         const sboxIndex = ((3 - (i % 4)) + (Math.floor(i / 4) % 2) * 4) % 8;
-        roundKeys.push(SBOX[sboxIndex](w[o], w[o + 1], w[o + 2], w[o + 3]));
+        subkeyWords.push(applySbox(sboxIndex, w[o], w[o + 1], w[o + 2], w[o + 3]));
       }
-      return roundKeys;
+      return subkeyWords;
     }
 
+    /**
+     * Serpent linear transformation
+     * @param {uint32} X0 - Word 0
+     * @param {uint32} X1 - Word 1
+     * @param {uint32} X2 - Word 2
+     * @param {uint32} X3 - Word 3
+     * @returns {uint32[]} The four output words
+     */
     _linearTransform(X0, X1, X2, X3) {
       const x0 = OpCodes.RotL32(X0, 13);
       const x2 = OpCodes.RotL32(X2, 3);
@@ -460,6 +655,14 @@
       return [nX0, nX1, nX2, nX3];
     }
 
+    /**
+     * Inverse Serpent linear transformation
+     * @param {uint32} X0 - Word 0
+     * @param {uint32} X1 - Word 1
+     * @param {uint32} X2 - Word 2
+     * @param {uint32} X3 - Word 3
+     * @returns {uint32[]} The four output words
+     */
     _inverseLinearTransform(X0, X1, X2, X3) {
       const x2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(X2, 22), X3), OpCodes.Shl32(X1, 7));
       const x0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(X0, 5), X1), X3);
@@ -488,10 +691,11 @@
         X2 = OpCodes.Xor32(X2, this.roundKeys[round][2]);
         X3 = OpCodes.Xor32(X3, this.roundKeys[round][3]);
 
-        [X0, X1, X2, X3] = SBOX[round % 8](X0, X1, X2, X3);
+        [X0, X1, X2, X3] = applySbox(round % 8, X0, X1, X2, X3);
 
-        if (round < ROUNDS - 1)
+        if (round < ROUNDS - 1) {
           [X0, X1, X2, X3] = this._linearTransform(X0, X1, X2, X3);
+        }
       }
 
       X0 = OpCodes.Xor32(X0, this.roundKeys[ROUNDS][0]);
@@ -518,10 +722,11 @@
       X3 = OpCodes.Xor32(X3, this.roundKeys[ROUNDS][3]);
 
       for (let round = ROUNDS - 1; round >= 0; --round) {
-        if (round < ROUNDS - 1)
+        if (round < ROUNDS - 1) {
           [X0, X1, X2, X3] = this._inverseLinearTransform(X0, X1, X2, X3);
+        }
 
-        [X0, X1, X2, X3] = INV_SBOX[round % 8](X0, X1, X2, X3);
+        [X0, X1, X2, X3] = applyInvSbox(round % 8, X0, X1, X2, X3);
 
         X0 = OpCodes.Xor32(X0, this.roundKeys[round][0]);
         X1 = OpCodes.Xor32(X1, this.roundKeys[round][1]);
