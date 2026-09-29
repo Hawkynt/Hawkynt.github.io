@@ -124,10 +124,13 @@
       ];
 
       // E0 constants
+      /** @type {int32[]} */
       this.LFSR_LENGTHS = [25, 31, 33, 39];  // Four LFSR lengths
+      /** @type {int32} */
       this.TOTAL_STATE_BITS = 132;           // 25+31+33+39 + 4 memory bits
 
       // Primitive feedback polynomials for each LFSR (from Bluetooth spec)
+      /** @type {int32[][]} */
       this.FEEDBACK_POLYNOMIALS = [
         // LFSR 0 (25 bits): x^25 + x^20 + x^12 + x^8 + 1
         [0, 8, 12, 20, 24],
@@ -140,6 +143,7 @@
       ];
 
       // Output tap positions for each LFSR
+      /** @type {int32[]} */
       this.OUTPUT_TAPS = [24, 30, 32, 38]; // MSB positions for each LFSR
     }
 
@@ -163,21 +167,33 @@
   class E0Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {E0Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {int32[]} */
+      this.LFSR_LENGTHS = algorithm.LFSR_LENGTHS;
+      /** @type {int32[][]} */
+      this.FEEDBACK_POLYNOMIALS = algorithm.FEEDBACK_POLYNOMIALS;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // E0 state
+      /** @type {uint8[][]} */
       this.lfsr = new Array(4);
+      /** @type {uint32} */
       this.c0 = 0;
+      /** @type {uint32} */
       this.c_minus_1 = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -200,7 +216,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 16) {
-        throw new Error(`Invalid E0 key size: ${keyLength} bytes. Requires 1-16 bytes`);
+        throw new Error("Invalid E0 key size: " + keyLength + " bytes. Requires 1-16 bytes");
       }
 
       this._key = [...keyBytes];
@@ -216,6 +232,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       // E0 doesn't traditionally use IV, but store for compatibility
       this._iv = ivData;
@@ -230,10 +249,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -273,10 +298,11 @@
         throw new Error("E0 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        result.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -287,7 +313,7 @@
     _initializeE0() {
       // Initialize four LFSRs
       for (let i = 0; i < 4; i++) {
-        this.lfsr[i] = new Array(this.algorithm.LFSR_LENGTHS[i]).fill(0);
+        this.lfsr[i] = OpCodes.CreateArray(this.LFSR_LENGTHS[i], 0);
       }
 
       // Load key material into LFSRs
@@ -296,20 +322,20 @@
 
       // Distribute key bits across all four LFSRs
       for (let reg = 0; reg < 4; reg++) {
-        const length = this.algorithm.LFSR_LENGTHS[reg];
+        const length = this.LFSR_LENGTHS[reg];
 
         for (let i = 0; i < length; i++) {
           if (keyBitIndex < totalKeyBits) {
             const byteIndex = Math.floor(keyBitIndex / 8);
             const bitIndex = keyBitIndex % 8;
-            this.lfsr[reg][i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
+            this.lfsr[reg][i] = OpCodes.And32(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
             keyBitIndex++;
           } else {
             // Repeat key pattern if key is shorter than total LFSR space
             const repeatIndex = keyBitIndex % totalKeyBits;
             const byteIndex = Math.floor(repeatIndex / 8);
             const bitIndex = repeatIndex % 8;
-            this.lfsr[reg][i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
+            this.lfsr[reg][i] = OpCodes.And32(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
             keyBitIndex++;
           }
         }
@@ -318,7 +344,7 @@
       // Ensure no LFSR is all zeros
       for (let reg = 0; reg < 4; reg++) {
         let allZero = true;
-        for (let i = 0; i < this.algorithm.LFSR_LENGTHS[reg]; i++) {
+        for (let i = 0; i < this.LFSR_LENGTHS[reg]; i++) {
           if (this.lfsr[reg][i] !== 0) {
             allZero = false;
             break;
@@ -331,21 +357,26 @@
 
       // Initialize memory elements with some key-derived values
       const keyLength = this._key.length;
-      this.c0 = OpCodes.AndN(OpCodes.XorN(this._key[0], this._key[1 % keyLength]), 3);
-      this.c_minus_1 = OpCodes.AndN(OpCodes.XorN(this._key[2 % keyLength], this._key[3 % keyLength]), 3);
+      this.c0 = OpCodes.And32(OpCodes.Xor32(this._key[0], this._key[1 % keyLength]), 3);
+      this.c_minus_1 = OpCodes.And32(OpCodes.Xor32(this._key[2 % keyLength], this._key[3 % keyLength]), 3);
 
       this.initialized = true;
     }
 
+    /**
+     * @param {int32} regIndex
+     * @returns {uint8}
+     */
     _clockLFSR(regIndex) {
       const reg = this.lfsr[regIndex];
-      const length = this.algorithm.LFSR_LENGTHS[regIndex];
-      const taps = this.algorithm.FEEDBACK_POLYNOMIALS[regIndex];
+      const length = this.LFSR_LENGTHS[regIndex];
+      const taps = this.FEEDBACK_POLYNOMIALS[regIndex];
 
       // Calculate feedback using primitive polynomial
+      /** @type {uint32} */
       let feedback = 0;
       for (let i = 0; i < taps.length; i++) {
-        feedback = OpCodes.XorN(feedback, reg[taps[i]]);
+        feedback = OpCodes.Xor32(feedback, reg[taps[i]]);
       }
 
       // Get output bit before shifting
@@ -360,31 +391,40 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} outputs
+     * @returns {uint32}
+     */
     _combiningFunction(outputs) {
       // E0 combining function using majority logic and memory elements
 
       // Sum the four LFSR outputs
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < 4; i++) {
         sum += outputs[i];
       }
 
       // Add memory elements
-      sum += this.c0 + this.c_minus_1;
+      sum = OpCodes.Add32(sum, OpCodes.Add32(this.c0, this.c_minus_1));
 
       // Extract output bit and carry bits
-      const outputBit = OpCodes.AndN(sum, 1);
+      const outputBit = OpCodes.And32(sum, 1);
       const carry = OpCodes.Shr32(sum, 1);
 
       // Update memory elements (simplified E0 state update)
       this.c_minus_1 = this.c0;
-      this.c0 = OpCodes.AndN(carry, 3);  // Keep only 2 bits
+      this.c0 = OpCodes.And32(carry, 3);  // Keep only 2 bits
 
       return outputBit;
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
       // Clock all four LFSRs and get output bits
+      /** @type {uint8[]} */
       const outputs = new Array(4);
       for (let i = 0; i < 4; i++) {
         outputs[i] = this._clockLFSR(i);
@@ -394,12 +434,16 @@
       return this._combiningFunction(outputs);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let keystreamByte = 0;
 
       for (let bit = 0; bit < 8; bit++) {
         const keystreamBit = this._generateKeystreamBit();
-        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
+        keystreamByte = OpCodes.Or32(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
       return keystreamByte;

@@ -43,6 +43,7 @@
           AeadAlgorithm, IAeadInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // sLiSCP-light-256 permutation constants
+  /** @type {uint8[]} */
   const SLISCP_LIGHT256_RC = [
     0x0f, 0x47, 0x08, 0x64, 0x04, 0xb2, 0x86, 0x6b,
     0x43, 0xb5, 0xe2, 0x6f, 0xf1, 0x37, 0x89, 0x2c,
@@ -56,28 +57,57 @@
   ];
 
   // Simeck-64 operations (used in sLiSCP-light-256)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rcBit
+   * @returns {uint32[]}
+   */
   function simeck64Round(x, y, rcBit) {
     const rotLeft5 = OpCodes.RotL32(x, 5);
     const rotLeft1 = OpCodes.RotL32(x, 1);
-    y = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y, OpCodes.AndN(rotLeft5, x)), rotLeft1), 0xFFFFFFFE), rcBit);
-    return [x, y];
+    y = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.And32(rotLeft5, x)), rotLeft1), 0xFFFFFFFE), rcBit);
+    /** @type {uint32[]} */
+    const pair = [x, y];
+    return pair;
   }
 
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rc
+   * @returns {uint32[]}
+   */
   function simeck64Box(x, y, rc) {
-    let _x = x, _y = y;
+    /** @type {uint32} */
+    let _x = x;
+    /** @type {uint32} */
+    let _y = y;
     for (let i = 0; i < 8; ++i) {
-      const rcBit = OpCodes.AndN(OpCodes.Shr32(rc, i), 1);
+      const rcBit = OpCodes.And32(OpCodes.Shr32(rc, i), 1);
       if (i % 2 === 0) {
-        [_x, _y] = simeck64Round(_x, _y, rcBit);
+        /** @type {uint32[]} */
+        const r = simeck64Round(_x, _y, rcBit);
+        _x = r[0];
+        _y = r[1];
       } else {
-        [_y, _x] = simeck64Round(_y, _x, rcBit);
+        /** @type {uint32[]} */
+        const r = simeck64Round(_y, _x, rcBit);
+        _y = r[0];
+        _x = r[1];
       }
     }
-    return [_x, _y];
+    /** @type {uint32[]} */
+    const pair = [_x, _y];
+    return pair;
   }
 
   // sLiSCP-light-256 permutation for SPIX
   // State is 256 bits = 8 x 32-bit words
+  /**
+   * @param {uint8[]} state
+   * @param {int32} rounds
+   */
   function sliscpLight256PermuteSpix(state, rounds) {
     // Load state as 8 x 32-bit big-endian words
     // Pre-swapped layout: words at positions 0,1,2,3,4,5,6,7
@@ -94,22 +124,28 @@
     let rcIndex = 0;
     for (let r = 0; r < rounds; ++r) {
       // Apply Simeck-64 to two 64-bit sub-blocks
-      [x2, x3] = simeck64Box(x2, x3, SLISCP_LIGHT256_RC[rcIndex]);
-      [x6, x7] = simeck64Box(x6, x7, SLISCP_LIGHT256_RC[rcIndex + 1]);
+      /** @type {uint32[]} */
+      const b23 = simeck64Box(x2, x3, SLISCP_LIGHT256_RC[rcIndex]);
+      x2 = b23[0];
+      x3 = b23[1];
+      /** @type {uint32[]} */
+      const b67 = simeck64Box(x6, x7, SLISCP_LIGHT256_RC[rcIndex + 1]);
+      x6 = b67[0];
+      x7 = b67[1];
 
       // Add step constants
-      x0 = OpCodes.XorN(x0, 0xFFFFFFFF);
-      x1 = OpCodes.XorN(x1, OpCodes.XorN(0xFFFFFF00, SLISCP_LIGHT256_RC[rcIndex + 2]));
-      x4 = OpCodes.XorN(x4, 0xFFFFFFFF);
-      x5 = OpCodes.XorN(x5, OpCodes.XorN(0xFFFFFF00, SLISCP_LIGHT256_RC[rcIndex + 3]));
+      x0 = OpCodes.Xor32(x0, 0xFFFFFFFF);
+      x1 = OpCodes.Xor32(x1, OpCodes.Xor32(0xFFFFFF00, SLISCP_LIGHT256_RC[rcIndex + 2]));
+      x4 = OpCodes.Xor32(x4, 0xFFFFFFFF);
+      x5 = OpCodes.Xor32(x5, OpCodes.Xor32(0xFFFFFF00, SLISCP_LIGHT256_RC[rcIndex + 3]));
 
       // Mix the sub-blocks
-      const t0 = OpCodes.XorN(x0, x2);
-      const t1 = OpCodes.XorN(x1, x3);
+      const t0 = OpCodes.Xor32(x0, x2);
+      const t1 = OpCodes.Xor32(x1, x3);
       x0 = x2;
       x1 = x3;
-      x2 = OpCodes.XorN(x4, x6);
-      x3 = OpCodes.XorN(x5, x7);
+      x2 = OpCodes.Xor32(x4, x6);
+      x3 = OpCodes.Xor32(x5, x7);
       x4 = x6;
       x5 = x7;
       x6 = t0;
@@ -139,6 +175,9 @@
   }
 
   // Swap bytes for SPIX state layout
+  /**
+   * @param {uint8[]} state
+   */
   function sliscpLight256SwapSpix(state) {
     // Swap words at positions 12-15 and 24-27
     for (let i = 0; i < 4; ++i) {
@@ -248,16 +287,21 @@
   class SpixInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Spix} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -274,7 +318,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -287,6 +331,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -294,14 +341,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -310,12 +363,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -344,6 +406,9 @@
     }
 
     // Initialize SPIX state
+    /**
+     * @param {uint8[]} state
+     */
     _init(state) {
       // Initialize state by interleaving key and nonce
       // state[0..7] = nonce[0..7]
@@ -365,13 +430,13 @@
       // Absorb key in two permutation operations
       // XOR first half of key into rate (bytes 8-15)
       for (let i = 0; i < 8; ++i) {
-        state[i + 8] = OpCodes.XorN(state[i + 8], this._key[i]);
+        state[i + 8] = OpCodes.Xor32(state[i + 8], this._key[i]);
       }
       sliscpLight256PermuteSpix(state, 18);
 
       // XOR second half of key into rate
       for (let i = 0; i < 8; ++i) {
-        state[i + 8] = OpCodes.XorN(state[i + 8], this._key[i + 8]);
+        state[i + 8] = OpCodes.Xor32(state[i + 8], this._key[i + 8]);
       }
       sliscpLight256PermuteSpix(state, 18);
 
@@ -383,9 +448,9 @@
         // Process full blocks
         while (offset + RATE <= this._aad.length) {
           for (let i = 0; i < RATE; ++i) {
-            state[i + 8] = OpCodes.XorN(state[i + 8], this._aad[offset + i]);
+            state[i + 8] = OpCodes.Xor32(state[i + 8], this._aad[offset + i]);
           }
-          state[31] = OpCodes.XorN(state[31], 0x01); // Domain separation for AD
+          state[31] = OpCodes.Xor32(state[31], 0x01); // Domain separation for AD
           sliscpLight256PermuteSpix(state, 9);
           offset += RATE;
         }
@@ -394,30 +459,35 @@
         if (offset < this._aad.length) {
           const remaining = this._aad.length - offset;
           for (let i = 0; i < remaining; ++i) {
-            state[i + 8] = OpCodes.XorN(state[i + 8], this._aad[offset + i]);
+            state[i + 8] = OpCodes.Xor32(state[i + 8], this._aad[offset + i]);
           }
-          state[8 + remaining] = OpCodes.XorN(state[8 + remaining], 0x80); // Padding
-          state[31] = OpCodes.XorN(state[31], 0x01); // Domain separation for AD
+          state[8 + remaining] = OpCodes.Xor32(state[8 + remaining], 0x80); // Padding
+          state[31] = OpCodes.Xor32(state[31], 0x01); // Domain separation for AD
           sliscpLight256PermuteSpix(state, 9);
         }
       }
     }
 
     // Finalize and extract tag
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     _finalize(state) {
       // Absorb key again
       for (let i = 0; i < 8; ++i) {
-        state[i + 8] = OpCodes.XorN(state[i + 8], this._key[i]);
+        state[i + 8] = OpCodes.Xor32(state[i + 8], this._key[i]);
       }
       sliscpLight256PermuteSpix(state, 18);
 
       for (let i = 0; i < 8; ++i) {
-        state[i + 8] = OpCodes.XorN(state[i + 8], this._key[i + 8]);
+        state[i + 8] = OpCodes.Xor32(state[i + 8], this._key[i + 8]);
       }
       sliscpLight256PermuteSpix(state, 18);
 
       // Extract tag
       sliscpLight256SwapSpix(state);
+      /** @type {uint8[]} */
       const tag = [];
       for (let i = 0; i < 8; ++i) {
         tag.push(state[i + 8]);
@@ -428,11 +498,15 @@
       return tag;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
-      const state = new Array(32).fill(0);
+      const state = OpCodes.CreateArray(32, 0);
       this._init(state);
 
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
       const RATE = 8;
       let offset = 0;
@@ -440,11 +514,11 @@
       // Encrypt plaintext blocks
       while (offset + RATE <= plaintext.length) {
         for (let i = 0; i < RATE; ++i) {
-          const ct = OpCodes.AndN(OpCodes.XorN(state[i + 8], plaintext[offset + i]), 0xFF);
+          const ct = OpCodes.And32(OpCodes.Xor32(state[i + 8], plaintext[offset + i]), 0xFF);
           output.push(ct);
           state[i + 8] = ct; // Update state with ciphertext
         }
-        state[31] = OpCodes.XorN(state[31], 0x02); // Domain separation for message
+        state[31] = OpCodes.Xor32(state[31], 0x02); // Domain separation for message
         sliscpLight256PermuteSpix(state, 9);
         offset += RATE;
       }
@@ -452,15 +526,16 @@
       // Process final partial block (including empty message case)
       const remaining = plaintext.length - offset;
       for (let i = 0; i < remaining; ++i) {
-        const ct = OpCodes.AndN(OpCodes.XorN(state[i + 8], plaintext[offset + i]), 0xFF);
+        const ct = OpCodes.And32(OpCodes.Xor32(state[i + 8], plaintext[offset + i]), 0xFF);
         output.push(ct);
         state[i + 8] = ct;
       }
-      state[8 + remaining] = OpCodes.XorN(state[8 + remaining], 0x80); // Padding
-      state[31] = OpCodes.XorN(state[31], 0x02); // Domain separation for message
+      state[8 + remaining] = OpCodes.Xor32(state[8 + remaining], 0x80); // Padding
+      state[31] = OpCodes.Xor32(state[31], 0x02); // Domain separation for message
       sliscpLight256PermuteSpix(state, 9);
 
       // Generate and append tag
+      /** @type {uint8[]} */
       const tag = this._finalize(state);
       for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
@@ -468,14 +543,20 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer;
       const ctLen = ciphertext.length - 16; // Remove tag length
+      /** @type {uint8[]} */
       const receivedTag = ciphertext.slice(ctLen);
 
-      const state = new Array(32).fill(0);
+      const state = OpCodes.CreateArray(32, 0);
       this._init(state);
 
+      /** @type {uint8[]} */
       const output = [];
       const RATE = 8;
       let offset = 0;
@@ -484,11 +565,11 @@
       while (offset + RATE <= ctLen) {
         for (let i = 0; i < RATE; ++i) {
           const ct = ciphertext[offset + i];
-          const pt = OpCodes.AndN(OpCodes.XorN(state[i + 8], ct), 0xFF);
+          const pt = OpCodes.And32(OpCodes.Xor32(state[i + 8], ct), 0xFF);
           output.push(pt);
           state[i + 8] = ct; // Update state with ciphertext
         }
-        state[31] = OpCodes.XorN(state[31], 0x02); // Domain separation for message
+        state[31] = OpCodes.Xor32(state[31], 0x02); // Domain separation for message
         sliscpLight256PermuteSpix(state, 9);
         offset += RATE;
       }
@@ -497,15 +578,16 @@
       const remaining = ctLen - offset;
       for (let i = 0; i < remaining; ++i) {
         const ct = ciphertext[offset + i];
-        const pt = OpCodes.AndN(OpCodes.XorN(state[i + 8], ct), 0xFF);
+        const pt = OpCodes.And32(OpCodes.Xor32(state[i + 8], ct), 0xFF);
         output.push(pt);
         state[i + 8] = ct;
       }
-      state[8 + remaining] = OpCodes.XorN(state[8 + remaining], 0x80); // Padding
-      state[31] = OpCodes.XorN(state[31], 0x02); // Domain separation for message
+      state[8 + remaining] = OpCodes.Xor32(state[8 + remaining], 0x80); // Padding
+      state[31] = OpCodes.Xor32(state[31], 0x02); // Domain separation for message
       sliscpLight256PermuteSpix(state, 9);
 
       // Verify tag
+      /** @type {uint8[]} */
       const computedTag = this._finalize(state);
       let tagMatch = true;
       for (let i = 0; i < 16; ++i) {

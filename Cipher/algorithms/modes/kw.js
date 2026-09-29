@@ -156,16 +156,20 @@
   class KwModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KwAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.kek = null; // Key Encryption Key
+      /** @type {uint8[]} */
       this.defaultIV = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6]; // RFC 3394 default IV
     }
 
@@ -185,7 +189,7 @@
 
     /**
      * Set the Key Encryption Key (KEK)
-     * @param {Array} kek - Key Encryption Key (128, 192, or 256 bits)
+     * @param {uint8[]} kek - Key Encryption Key (128, 192, or 256 bits)
      */
     setKEK(kek) {
       if (!kek || (kek.length !== 16 && kek.length !== 24 && kek.length !== 32)) {
@@ -239,7 +243,7 @@
 
     /**
      * Wrap a key using the RFC 3394 algorithm
-     * @returns {Array} Wrapped key
+     * @returns {uint8[]} Wrapped key
      */
     _wrapKey() {
       const plainKey = this.inputBuffer;
@@ -256,6 +260,7 @@
 
       // Initialize variables
       let A = [...this.defaultIV]; // 64-bit IV
+      /** @type {uint8[][]} */
       const R = new Array(n + 1); // Array of 64-bit registers
       R[0] = null; // R[0] is not used
 
@@ -269,9 +274,11 @@
         for (let i = 1; i <= n; i++) {
           // Encrypt A || R[i] with KEK
           const input = A.concat(R[i]);
+          /** @type {IBlockCipherInstance} */
           const cipher = this.blockCipher.algorithm.CreateInstance(false);
           cipher.key = this.kek;
           cipher.Feed(input);
+          /** @type {uint8[]} */
           const B = cipher.Result();
 
           // Split result and update
@@ -297,7 +304,9 @@
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
       OpCodes.ClearArray(A);
-      R.forEach(r => r && OpCodes.ClearArray(r));
+      for (let i = 1; i <= n; i++) {
+        if (R[i]) OpCodes.ClearArray(R[i]);
+      }
       this.inputBuffer = [];
 
       return wrapped;
@@ -305,7 +314,7 @@
 
     /**
      * Unwrap a key using the RFC 3394 algorithm
-     * @returns {Array} Unwrapped key
+     * @returns {uint8[]} Unwrapped key
      */
     _unwrapKey() {
       const wrappedKey = this.inputBuffer;
@@ -319,6 +328,7 @@
 
       // Initialize variables
       let A = wrappedKey.slice(0, 8); // 64-bit IV
+      /** @type {uint8[][]} */
       const R = new Array(n + 1); // Array of 64-bit registers
       R[0] = null; // R[0] is not used
 
@@ -340,9 +350,11 @@
 
           // Decrypt A || R[i] with KEK
           const input = A.concat(R[i]);
+          /** @type {IBlockCipherInstance} */
           const cipher = this.blockCipher.algorithm.CreateInstance(true);
           cipher.key = this.kek;
           cipher.Feed(input);
+          /** @type {uint8[]} */
           const B = cipher.Result();
 
           // Split result and update
@@ -359,6 +371,7 @@
       }
 
       // Construct unwrapped key: R[1] || R[2] || ... || R[n]
+      /** @type {uint8[]} */
       const unwrapped = [];
       for (let i = 1; i <= n; i++) {
         for (let j = 0; j < R[i].length; j++) unwrapped.push(R[i][j]);
@@ -367,7 +380,9 @@
       // Clear sensitive data
       OpCodes.ClearArray(this.inputBuffer);
       OpCodes.ClearArray(A);
-      R.forEach(r => r && OpCodes.ClearArray(r));
+      for (let i = 1; i <= n; i++) {
+        if (R[i]) OpCodes.ClearArray(R[i]);
+      }
       this.inputBuffer = [];
 
       return unwrapped;

@@ -97,9 +97,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach(test => {
-        test.blockSize = 16; // 16-byte blocks
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = 16; // 16-byte blocks
+      }
     }
 
     /**
@@ -122,20 +122,22 @@
   class NoPaddingInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NoPaddingAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 16; // Default block size
     }
 
     /**
      * Set the block size for validation
-     * @param {number} blockSize - Block size in bytes (1-255)
+     * @param {int32} blockSize - Block size in bytes (1-255)
      */
     setBlockSize(blockSize) {
       if (!blockSize || blockSize < 1 || blockSize > 255) {
@@ -154,12 +156,14 @@
     Result() {
       // Allow empty input buffer - no padding returns empty for empty input
       if (this.inputBuffer.length === 0) {
-        return []; // Return empty array for empty input
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty; // Return empty array for empty input
       }
 
       // Validate that data length is multiple of block size
       if (this.inputBuffer.length % this.blockSize !== 0) {
-        throw new Error(`Data length (${this.inputBuffer.length}) must be multiple of block size (${this.blockSize}) when using no padding`);
+        throw new Error("Data length (" + this.inputBuffer.length + ") must be multiple of block size (" + this.blockSize + ") when using no padding");
       }
 
       // No padding/unpadding needed - just return the data

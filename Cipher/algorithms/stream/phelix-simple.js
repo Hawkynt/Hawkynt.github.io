@@ -110,70 +110,114 @@ class Phelix extends StreamCipherAlgorithm {
 }
 
 class PhelixInstance extends IAlgorithmInstance {
+  /**
+   * @param {Phelix} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._nonce = new Array(16).fill(0);
+    /** @type {uint8[]|null} */
+    this._nonce = OpCodes.CreateArray(16, 0);
+    /** @type {int32} */
     this.STATE_SIZE = 8;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 16) {
-      this._nonce = new Array(16).fill(0);
+      this._nonce = OpCodes.CreateArray(16, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
 
     // Handle empty input (valid for stream ciphers)
     if (this.inputBuffer.length === 0) {
-      return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
     }
 
-    const output = this._educationalPhelix(this._key, this._nonce || new Array(16).fill(0), this.inputBuffer);
+    const output = this._educationalPhelix(this._key, this._nonce ? this._nonce : OpCodes.CreateArray(16, 0), this.inputBuffer);
     this.inputBuffer = [];
     return output;
   }
 
+  /**
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @param {uint8[]} data
+   * @returns {uint8[]}
+   */
   _educationalPhelix(key, nonce, data) {
     // Initialize state with key and nonce
-    const state = new Array(this.STATE_SIZE);
+    /** @type {uint32[]} */
+    const words = new Array(this.STATE_SIZE);
 
     // Load key (32 bytes = 8 words)
     for (let i = 0; i < 8; i++) {
-      state[i] = OpCodes.Pack32LE(
+      words[i] = OpCodes.Pack32LE(
         key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]
       );
     }
@@ -183,8 +227,8 @@ class PhelixInstance extends IAlgorithmInstance {
       const nonceWord = OpCodes.Pack32LE(
         nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]
       );
-      state[i] = OpCodes.ToUint32(state[i] + nonceWord);
-      state[i + 4] = OpCodes.XorN(state[i + 4], nonceWord);
+      words[i] = OpCodes.Add32(words[i], nonceWord);
+      words[i + 4] = OpCodes.Xor32(words[i + 4], nonceWord);
     }
 
     // Initialize with rounds (Phelix-inspired mixing)
@@ -194,20 +238,22 @@ class PhelixInstance extends IAlgorithmInstance {
         const k = (i + 3) % this.STATE_SIZE;
 
         // Addition mod 2^32, XOR, and rotation (core Phelix operations)
-        state[i] = OpCodes.ToUint32(state[i] + state[j]);
-        state[i] = OpCodes.XorN(state[i], OpCodes.RotL32(state[k], 7));
-        state[i] = OpCodes.RotL32(state[i], 13);
-        state[i] = OpCodes.ToUint32(state[i] + 0x9E3779B9);  // Golden ratio constant
+        words[i] = OpCodes.Add32(words[i], words[j]);
+        words[i] = OpCodes.Xor32(words[i], OpCodes.RotL32(words[k], 7));
+        words[i] = OpCodes.RotL32(words[i], 13);
+        words[i] = OpCodes.Add32(words[i], 0x9E3779B9);  // Golden ratio constant
       }
     }
 
     // Generate keystream and encrypt data
+    /** @type {uint8[]} */
     const output = [];
+    /** @type {uint8[]} */
     const keystreamBytes = [];
 
     // Extract initial keystream
     for (let i = 0; i < 8; i++) {
-      const bytes = OpCodes.Unpack32LE(state[i]);
+      const bytes = OpCodes.Unpack32LE(words[i]);
       for (let _i = 0; _i < bytes.length; _i++) keystreamBytes.push(bytes[_i]);
     }
 
@@ -220,20 +266,20 @@ class PhelixInstance extends IAlgorithmInstance {
           const next = (j + 1) % this.STATE_SIZE;
           const prev = (j + this.STATE_SIZE - 1) % this.STATE_SIZE;
 
-          state[j] = OpCodes.ToUint32(state[j] + state[next]);
-          state[j] = OpCodes.XorN(state[j], OpCodes.RotL32(state[prev], 11));
-          state[j] = OpCodes.RotL32(state[j], 17);
+          words[j] = OpCodes.Add32(words[j], words[next]);
+          words[j] = OpCodes.Xor32(words[j], OpCodes.RotL32(words[prev], 11));
+          words[j] = OpCodes.RotL32(words[j], 17);
         }
 
         // Extract new keystream
         keystreamBytes.length = 0;
         for (let j = 0; j < 8; j++) {
-          const bytes = OpCodes.Unpack32LE(state[j]);
+          const bytes = OpCodes.Unpack32LE(words[j]);
           for (let _i = 0; _i < bytes.length; _i++) keystreamBytes.push(bytes[_i]);
         }
       }
 
-      output.push(OpCodes.XorN(data[i], keystreamBytes[i % keystreamBytes.length]));
+      output.push(OpCodes.Xor8(data[i], keystreamBytes[i % keystreamBytes.length]));
     }
 
     return output;

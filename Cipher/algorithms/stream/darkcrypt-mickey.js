@@ -82,15 +82,20 @@
 
   // Fixed tap-constant vector XORed into R when its top-word overflow bit fires.
   // Used for both of R's shift-rule branches (only the shift rule itself differs).
+  /** @type {uint32[]} */
   const FB_R = [0x42114D31, 0xF3EC4C59, 0x9C679626, 0x803BBE32, 0x375253AF];
 
   // Per-word masks used in S's "chi"-style update term: (S[i] ^ CT_B[i]) & (rot[i] ^ CT_A[i])
+  /** @type {uint32[]} */
   const CT_B = [0x5DD6F25E, 0x79260955, 0x79007062, 0x37AFD931, 0x0FBE06BE];
+  /** @type {uint32[]} */
   const CT_A = [0x7D191F30, 0xFEB63C98, 0x7C00C3E0, 0x6660E345, 0x7FF45BB5];
 
   // Fixed tap-constant vectors XORed into S when its top-word overflow bit fires,
   // selected by S's own shift-rule control bit.
+  /** @type {uint32[]} */
   const S_FB1 = [0x9BF477AB, 0x70798C90, 0x6F9A18B6, 0x6C4B7EE7, 0x11A780EF]; // control bit set
+  /** @type {uint32[]} */
   const S_FB0 = [0xC43C1FAF, 0x0E2FA322, 0x66E54D81, 0xD4544B91, 0x83630BC1]; // control bit clear
 
   class DarkCryptMickeyAlgorithm extends StreamCipherAlgorithm {
@@ -130,7 +135,7 @@
           uri: "https://totalcmd.ru/plugring/darkcryptTC.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("ca56d02c4ce8ce73d6d4c006eed71bd45e4127655d6436243dffa66725c88d85a226bce37d9163b0a97359c1363a7208504d5ece00d6f92865c7abadd32dbb1611e6f343329cab72c22efef487cfd7088ca91049c0ebf143ed90bedecb4903f1bce8be313eb3203a0fbf727de4f01da051074a46b3fdae6456d5bdc112cb6ffe")
         },
         {
@@ -150,41 +155,71 @@
   }
 
   class DarkCryptMickeyInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptMickeyAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
-      this.R = new Array(WORDS).fill(0);
-      this.S = new Array(WORDS).fill(0);
+      this.R = OpCodes.CreateArray(WORDS, 0);
+      this.S = OpCodes.CreateArray(WORDS, 0);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MICKEY 2.0 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MICKEY 2.0 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 16)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. MICKEY 2.0 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. MICKEY 2.0 (DarkCrypt) requires exactly 16 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -192,15 +227,21 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("MICKEY 2.0 (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("MICKEY 2.0 (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
       }
       this.inputBuffer = [];
       return output;
@@ -225,11 +266,17 @@
     }
 
     // Extract the first nbits bits of bytes, most-significant-bit first per byte.
+    /**
+     * @param {uint8[]} bytes
+     * @param {int32} nbits
+     * @returns {uint8[]}
+     */
     _bitsMSBFirst(bytes, nbits) {
+      /** @type {uint8[]} */
       const bits = new Array(nbits);
       for (let i = 0; i < nbits; i++) {
         const byteIndex = OpCodes.Shr32(i, 3);
-        const shift = 7 - OpCodes.And32(i, 7);
+        const shift = OpCodes.Sub32(7, OpCodes.And32(i, 7));
         bits[i] = OpCodes.And32(OpCodes.Shr32(bytes[byteIndex], shift), 1);
       }
       return bits;
@@ -237,6 +284,10 @@
 
     // Clock R (shift-with-taps, optionally self-XOR) using the given control bit
     // and the (already-mixed) input bit for R's top-word overflow computation.
+    /**
+     * @param {uint32} ctrl
+     * @param {uint32} inputBit
+     */
     _clockR(ctrl, inputBit) {
       const R = this.R;
       const msbR4 = OpCodes.And32(OpCodes.Shr32(R[4], 31), 1);
@@ -269,6 +320,10 @@
 
     // Clock S using the given control bit (selects the tail tap-constant table)
     // and the raw input bit.
+    /**
+     * @param {uint32} ctrl
+     * @param {uint32} inputBit
+     */
     _clockS(ctrl, inputBit) {
       const S = this.S;
       const o0 = S[0], o1 = S[1], o2 = S[2], o3 = S[3], o4 = S[4];
@@ -309,6 +364,11 @@
     // One combined MICKEY clock: emits the pre-clock output bit, then clocks
     // both R and S. mixing=true during key/IV loading and the blank rounds;
     // mixing=false during keystream generation.
+    /**
+     * @param {uint32} inputBit
+     * @param {boolean} mixing
+     * @returns {uint32}
+     */
     _clock(inputBit, mixing) {
       const R = this.R, S = this.S;
       const outputBit = OpCodes.And32(OpCodes.Xor32(R[0], S[0]), 1);
@@ -324,7 +384,11 @@
       return outputBit;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let b = 0;
       for (let bitpos = 7; bitpos >= 0; bitpos--) {
         b ^= OpCodes.Shl32(this._clock(0, false), bitpos);

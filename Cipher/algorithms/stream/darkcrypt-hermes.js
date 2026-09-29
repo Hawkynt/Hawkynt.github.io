@@ -53,7 +53,8 @@
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Standard AES (Rijndael) S-box - used verbatim by the DarkCrypt implementation.
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
     0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
     0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
@@ -70,7 +71,7 @@
     0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
     0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
     0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
-  ]);
+  ];
 
   const KEYLEN = 16;   // 128-bit key (bytes)
   const STLEN  = 17;   // state register length
@@ -129,30 +130,50 @@
   }
 
   class DarkCryptHermesInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptHermesAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== KEYLEN)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Hermes8 (DarkCrypt) requires exactly ${KEYLEN} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Hermes8 (DarkCrypt) requires exactly " + KEYLEN + " bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== KEYLEN)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Hermes8 (DarkCrypt) requires exactly ${KEYLEN} bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Hermes8 (DarkCrypt) requires exactly " + KEYLEN + " bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
     // One mixing pass over all 17 state positions (used by both setup and keygen).
@@ -173,6 +194,9 @@
     }
 
     // Run `rounds` mixing passes, advancing n and doing the n%5 extra p step.
+    /**
+     * @param {int32} rounds
+     */
     _runRounds(rounds) {
       for (let r = 0; r < rounds; r++) {
         this._mixPass();
@@ -182,18 +206,29 @@
     }
 
     _initialize() {
-      if (!this._key || !this._iv) return;
+      if (!this._key || !this._iv) {
+        return;
+      }
+      /** @type {uint8[]} */
       this.K = this._key.slice(0, KEYLEN);         // working key = key
+      /** @type {uint8[]} */
       this.ST = new Array(STLEN);
       for (let i = 0; i < STLEN; i++)
         this.ST[i] = (i < KEYLEN) ? OpCodes.And32(this._iv[i], 0xFF) : 0;  // ST[16] = 0
+      /** @type {uint8} */
       this.accu = 0;
+      /** @type {uint32} */
       this.p = 0;
+      /** @type {int32} */
       this.c = 0;
+      /** @type {uint32} */
       this.n = 1;
       this._runRounds(5);   // key/IV schedule: 5 mixing rounds
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -201,9 +236,15 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._iv) throw new Error("IV not set");
+      if (!this._iv) {
+        throw new Error("IV not set");
+      }
+      /** @type {uint8[]} */
       const out = [];
       const total = this.inputBuffer.length;
       let off = 0;

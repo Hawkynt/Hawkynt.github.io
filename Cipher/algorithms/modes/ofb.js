@@ -102,11 +102,11 @@
       ];
 
       // Add common test parameters
-      this.tests.forEach(test => {
-        test.cipher = "AES";  // Use AES cipher for NIST test vectors
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
-        test.iv = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f");  // Test IV
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].cipher = "AES";  // Use AES cipher for NIST this.tests[i] vectors
+        this.tests[i].key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 this.tests[i] key
+        this.tests[i].iv = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f");  // Test IV
+      }
     }
 
     /**
@@ -129,15 +129,18 @@
   class OfbModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {OfbAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv = null;
     }
 
@@ -154,14 +157,14 @@
 
     /**
      * Set the initialization vector (IV)
-     * @param {Array} iv - Initialization vector (must match block size)
+     * @param {uint8[]} iv - Initialization vector (must match block size)
      */
     setIV(iv) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before IV");
       }
       if (!iv || iv.length !== this.blockCipher.BlockSize) {
-        throw new Error(`IV must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("IV must be " + this.blockCipher.BlockSize + " bytes");
       }
       this.iv = [...iv]; // Copy IV
     }
@@ -201,6 +204,7 @@
       }
 
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const output = [];
       let outputRegister = [...this.iv]; // Initialize with IV
 
@@ -211,9 +215,11 @@
         const inputBlock = this.inputBuffer.slice(i, i + remainingBytes);
 
         // Encrypt the output register to create keystream
+        /** @type {IBlockCipherInstance} */
         const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
         encryptCipher.key = this.blockCipher.key;
         encryptCipher.Feed(outputRegister);
+        /** @type {uint8[]} */
         const keystream = encryptCipher.Result();
 
         // XOR input with keystream to get output

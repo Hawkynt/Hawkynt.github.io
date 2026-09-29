@@ -108,15 +108,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach((test, index) => {
-        if (index === 0) {
-          test.blockSize = 32; // 32-byte block for first test
-        } else if (index === 1) {
-          test.blockSize = 16; // 16-byte block for second test
-        } else {
-          test.blockSize = 8; // 8-byte block for third test
-        }
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = i === 0 ? 32 : (i === 1 ? 16 : 8); // 32, 16, then 8-byte blocks
+      }
     }
 
     /**
@@ -139,20 +133,22 @@
   class ZeroPaddingInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ZeroPaddingAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 16; // Default block size
     }
 
     /**
      * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
+     * @param {int32} blockSize - Block size in bytes (1-255)
      */
     setBlockSize(blockSize) {
       if (!blockSize || blockSize < 1 || blockSize > 255) {
@@ -173,7 +169,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._removePadding();
       } else {
@@ -184,7 +182,7 @@
 
     /**
      * Add zero padding to data
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const data = this.inputBuffer;
@@ -214,7 +212,7 @@
       }
 
       // Create zero padding
-      const padding = new Array(paddingLength).fill(0);
+      const padding = OpCodes.CreateArray(paddingLength, 0);
       const result = [...data, ...padding];
 
       // Clear input buffer
@@ -226,7 +224,7 @@
 
     /**
      * Remove zero padding from data (WARNING: Ambiguous)
-     * @returns {Array} Unpadded data
+     * @returns {uint8[]} Unpadded data
      */
     _removePadding() {
       const paddedData = this.inputBuffer;

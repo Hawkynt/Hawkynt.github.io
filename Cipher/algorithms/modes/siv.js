@@ -131,17 +131,22 @@
   class SivModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SivAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]|null} */
       this.key1 = null; // First half of key for MAC
+      /** @type {uint8[]|null} */
       this.key2 = null; // Second half of key for CTR
+      /** @type {uint8[][]} */
       this.aad = []; // Array of associated data strings
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -169,19 +174,24 @@
 
     /**
      * Set associated authenticated data
-     * @param {Array} aadArray - Array of AAD byte arrays
+     * @param {uint8[]} aadArray - One AAD byte array, or an array of AAD byte arrays
      */
     setAAD(aadArray) {
       // RFC 5297 authenticates a vector of associated-data strings. Accept
       // either that (an array of byte arrays) or a single flat byte array,
       // which is how most callers and test vectors supply one header.
-      if (!aadArray || aadArray.length === 0) {
-        this.aad = [];
-      } else if (Array.isArray(aadArray[0])) {
-        this.aad = aadArray.map(a => [...a]);
-      } else {
-        this.aad = [[...aadArray]];
+      /** @type {uint8[][]} */
+      const vectors = [];
+      if (aadArray && aadArray.length > 0) {
+        if (Array.isArray(aadArray[0])) {
+          for (let i = 0; i < aadArray.length; i++) {
+            vectors.push([...aadArray[i]]);
+          }
+        } else {
+          vectors.push([...aadArray]);
+        }
       }
+      this.aad = vectors;
     }
 
     /**
@@ -266,21 +276,21 @@
 
     /**
      * S2V (String-to-Vector) construction for synthetic IV generation
-     * @param {Array} strings - Array of byte arrays to authenticate
-     * @returns {Array} 128-bit synthetic IV
+     * @param {uint8[][]} strings - Array of byte arrays to authenticate
+     * @returns {uint8[]} 128-bit synthetic IV
      */
     _s2v(strings) {
       const blockSize = this.blockCipher.BlockSize;
 
       if (strings.length === 0) {
         // RFC 5297: S2V(K, <empty vector>) = CMAC(K, <one>)
-        const one = new Array(blockSize).fill(0);
+        const one = OpCodes.CreateArray(blockSize, 0);
         one[blockSize - 1] = 1;
         return this._cmac(one);
       }
 
       // D = CMAC(K, <zero>)
-      let d = this._cmac(new Array(blockSize).fill(0));
+      let d = this._cmac(OpCodes.CreateArray(blockSize, 0));
 
       // D = dbl(D) xor CMAC(K, S_i) for every string but the last
       for (let i = 0; i < strings.length - 1; i++) {
@@ -293,15 +303,17 @@
         // T = S_n xorend D: the trailing block of S_n is XORed with D and the
         // head of S_n is left untouched. Building the input the other way round
         // rotates the message and produces a completely different tag.
+        /** @type {uint8[]} */
         const t = [...lastString];
         const offset = t.length - blockSize;
         for (let j = 0; j < blockSize; j++) {
-          t[offset + j] = OpCodes.XorN(t[offset + j], d[j]);
+          t[offset + j] = OpCodes.Xor8(t[offset + j], d[j]);
         }
         return this._cmac(t);
       }
 
       // T = dbl(D) xor pad(S_n)
+      /** @type {uint8[]} */
       const paddedLast = [...lastString, 0x80];
       while (paddedLast.length < blockSize) {
         paddedLast.push(0x00);
@@ -312,8 +324,8 @@
 
     /**
      * CMAC (RFC 4493) under the S2V key
-     * @param {Array} data - Data to authenticate
-     * @returns {Array} CMAC result
+     * @param {uint8[]} data - Data to authenticate
+     * @returns {uint8[]} CMAC result
      */
     _cmac(data) {
       const blockSize = this.blockCipher.BlockSize;
@@ -321,24 +333,26 @@
       // Subkey generation: L = E_K(0^n), K1 = dbl(L), K2 = dbl(K1). Without the
       // subkeys this is a plain CBC-MAC and does not agree with any published
       // AES-CMAC or AES-SIV value.
-      const l = this._encipher(new Array(blockSize).fill(0));
+      const l = this._encipher(OpCodes.CreateArray(blockSize, 0));
       const subKey1 = this._gfDouble(l);
       const subKey2 = this._gfDouble(subKey1);
 
       const complete = data.length > 0 && data.length % blockSize === 0;
       const blockCount = complete ? data.length / blockSize : Math.floor(data.length / blockSize) + 1;
 
+      /** @type {uint8[]} */
       let lastBlock;
       if (complete) {
         lastBlock = OpCodes.XorArrays(data.slice((blockCount - 1) * blockSize), subKey1);
       } else {
         const tail = data.slice((blockCount - 1) * blockSize);
+        /** @type {uint8[]} */
         const padded = [...tail, 0x80];
         while (padded.length < blockSize) padded.push(0x00);
         lastBlock = OpCodes.XorArrays(padded, subKey2);
       }
 
-      let x = new Array(blockSize).fill(0);
+      let x = OpCodes.CreateArray(blockSize, 0);
       for (let i = 0; i < blockCount - 1; i++) {
         const block = data.slice(i * blockSize, (i + 1) * blockSize);
         x = this._encipher(OpCodes.XorArrays(x, block));
@@ -349,45 +363,54 @@
 
     /**
      * Apply the block cipher under the S2V key
+     * @param {uint8[]} block - Block to encrypt
+     * @returns {uint8[]} Encrypted block
      * @private
      */
     _encipher(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key1;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const encrypted = cipher.Result();
+      return encrypted;
     }
 
     /**
      * CTR mode encryption/decryption
-     * @param {Array} data - Data to encrypt/decrypt
-     * @param {Array} iv - Counter initialization vector
-     * @returns {Array} Output data
+     * @param {uint8[]} data - Data to encrypt/decrypt
+     * @param {uint8[]} iv - Counter initialization vector
+     * @returns {uint8[]} Output data
      */
     _ctr(data, iv) {
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const output = [];
 
       // RFC 5297: Q = V bitand (1^64 || 0 || 1^31 || 0 || 1^31). Only the two
       // bits that would otherwise let the counter carry across the 32-bit word
       // boundaries are cleared, not the top bit of the whole value.
+      /** @type {uint8[]} */
       let counter = [...iv];
-      counter[8] = OpCodes.AndN(counter[8], 0x7F);
-      counter[12] = OpCodes.AndN(counter[12], 0x7F);
+      counter[8] = OpCodes.And32(counter[8], 0x7F);
+      counter[12] = OpCodes.And32(counter[12], 0x7F);
 
       for (let i = 0; i < data.length; i += blockSize) {
         const remainingBytes = Math.min(blockSize, data.length - i);
         const inputBlock = data.slice(i, i + remainingBytes);
 
         // Encrypt counter with CTR key
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key2;
         cipher.Feed(counter);
+        /** @type {uint8[]} */
         const keystream = cipher.Result();
 
         // XOR with data
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(OpCodes.XorN(inputBlock[j], keystream[j]));
+          output.push(OpCodes.Xor8(inputBlock[j], keystream[j]));
         }
 
         // Increment counter
@@ -399,23 +422,25 @@
 
     /**
      * GF(2^128) field doubling
-     * @param {Array} block - 128-bit block to double
-     * @returns {Array} Doubled block
+     * @param {uint8[]} block - 128-bit block to double
+     * @returns {uint8[]} Doubled block
      */
     _gfDouble(block) {
+      /** @type {uint8[]} */
       const result = new Array(block.length);
+      /** @type {uint32} */
       let carry = 0;
 
       // Process from right to left
       for (let i = block.length - 1; i >= 0; i--) {
-        const newCarry = OpCodes.AndN(block[i], 0x80) ? 1 : 0;
-        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(block[i], 1), carry), 0xFF);
+        const newCarry = OpCodes.And32(block[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(block[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // XOR with reduction polynomial if carry
       if (carry) {
-        result[result.length - 1] = OpCodes.XorN(result[result.length - 1], 0x87); // x^128 + x^7 + x^2 + x + 1
+        result[result.length - 1] = OpCodes.Xor32(result[result.length - 1], 0x87); // x^128 + x^7 + x^2 + x + 1
       }
 
       return result;
@@ -423,11 +448,11 @@
 
     /**
      * Increment counter for CTR mode
-     * @param {Array} counter - Counter to increment (modified in place)
+     * @param {uint8[]} counter - Counter to increment (modified in place)
      */
     _incrementCounter(counter) {
       for (let i = counter.length - 1; i >= 0; i--) {
-        counter[i] = OpCodes.AndN(counter[i] + 1, 0xFF);
+        counter[i] = OpCodes.And32(counter[i] + 1, 0xFF);
         if (counter[i] !== 0) break; // No carry
       }
     }
