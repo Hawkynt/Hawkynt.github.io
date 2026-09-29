@@ -1523,6 +1523,21 @@ namespace ${namespace}
             }
             return a;
         }
+        public static System.Numerics.BigInteger ModN(System.Numerics.BigInteger a, System.Numerics.BigInteger m) {
+            if (m <= 0) throw new System.ArgumentOutOfRangeException(nameof(m), "ModN requires a positive modulus");
+            var r = a % m;
+            return r < 0 ? r + m : r;
+        }
+        public static System.Numerics.BigInteger ModInverseN(System.Numerics.BigInteger a, System.Numerics.BigInteger m) {
+            System.Numerics.BigInteger oldR = ModN(a, m), r = m, oldS = 1, s = 0;
+            while (r != 0) {
+                var q = System.Numerics.BigInteger.Divide(oldR, r);
+                (oldR, r) = (r, oldR - q * r);
+                (oldS, s) = (s, oldS - q * s);
+            }
+            if (oldR != 1) throw new System.ArgumentException("ModInverseN: value has no inverse modulo m");
+            return ModN(oldS, m);
+        }
         public static int BitCountN(System.Numerics.BigInteger value) {
             if (value == 0) return 1;
             value = value < 0 ? -value : value;
