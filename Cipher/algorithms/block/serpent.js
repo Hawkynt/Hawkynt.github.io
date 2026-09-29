@@ -61,7 +61,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class SerpentAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class SerpentAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -70,36 +70,36 @@
       this.description = "AES finalist cipher by Anderson, Biham, and Knudsen with 32 rounds and 8 S-boxes. Uses substitution-permutation network with 128-bit blocks and 128/192/256-bit keys. Conservative security design.";
       this.inventor = "Ross Anderson, Eli Biham, Lars Knudsen";
       this.year = 1998;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
       this.securityStatus = null; // Conservative assessment - strong cipher but AES preferred
-      this.complexity = AlgorithmFramework.ComplexityType.ADVANCED;
-      this.country = AlgorithmFramework.CountryCode.GB;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.GB;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 32, 8) // 128/192/256-bit
+        new KeySize(16, 32, 8) // 128/192/256-bit
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit blocks
+        new KeySize(16, 16, 0) // Fixed 128-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("Serpent Algorithm Specification", "https://www.cl.cam.ac.uk/~rja14/serpent.html"),
-        new AlgorithmFramework.LinkItem("Serpent: A New Block Cipher Proposal", "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf"),
-        new AlgorithmFramework.LinkItem("NIST AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+        new LinkItem("Serpent Algorithm Specification", "https://www.cl.cam.ac.uk/~rja14/serpent.html"),
+        new LinkItem("Serpent: A New Block Cipher Proposal", "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf"),
+        new LinkItem("NIST AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Crypto++ Serpent Implementation", "https://github.com/weidai11/cryptopp/blob/master/serpent.cpp"),
-        new AlgorithmFramework.LinkItem("libgcrypt Serpent Implementation", "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c"),
-        new AlgorithmFramework.LinkItem("Bouncy Castle Serpent Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines")
+        new LinkItem("Crypto++ Serpent Implementation", "https://github.com/weidai11/cryptopp/blob/master/serpent.cpp"),
+        new LinkItem("libgcrypt Serpent Implementation", "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c"),
+        new LinkItem("Bouncy Castle Serpent Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines")
       ];
 
       // No known practical attacks against full Serpent
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Performance vs AES", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+        new Vulnerability("Performance vs AES", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
       ];
 
       // Published known-answer tests: libgcrypt's serpent_test() self-test data
@@ -167,7 +167,7 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class SerpentInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
    * @param {SerpentAlgorithm} algorithm - Parent algorithm instance
@@ -178,6 +178,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -185,13 +186,19 @@
       this.KeySize = 0;
 
       // Serpent constants
+      /** @type {int32} */
       this.ROUNDS = 32;
+      /** @type {uint32} */
       this.PHI = 0x9e3779b9; // Golden ratio constant for key schedule
 
       // Temporary registers for S-box operations
+      /** @type {uint32} */
       this.X0 = 0;
+      /** @type {uint32} */
       this.X1 = 0;
+      /** @type {uint32} */
       this.X2 = 0;
+      /** @type {uint32} */
       this.X3 = 0;
     }
 
@@ -210,10 +217,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -251,11 +265,17 @@
 
     // S-box implementations using bitwise operations (from Bouncy Castle reference)
     // S0 - { 3, 8,15, 1,10, 6, 5,11,14,13, 4, 2, 7, 0, 9,12 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb0(a, b, c, d) {
-      const t1 = OpCodes.XorN(a, d);
+      const t1 = OpCodes.Xor32(a, d);
       const t3 = OpCodes.Xor32(c, t1);
       const t4 = OpCodes.Xor32(b, t3);
-      this.X3 = OpCodes.Xor32(OpCodes.AndN(a, d), t4);
+      this.X3 = OpCodes.Xor32(OpCodes.And32(a, d), t4);
       const t7 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
       this.X2 = OpCodes.Xor32(t4, OpCodes.Or32(c, t7));
       const t12 = OpCodes.And32(this.X3, OpCodes.Xor32(t3, t7));
@@ -264,9 +284,15 @@
     }
 
     // InvS0 - {13, 3,11, 0,10, 6, 5,12, 1,14, 4, 7,15, 9, 8, 2 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib0(a, b, c, d) {
       const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
+      const t2 = OpCodes.Xor32(a, b);
       const t4 = OpCodes.Xor32(d, OpCodes.Or32(t1, t2));
       const t5 = OpCodes.Xor32(c, t4);
       this.X2 = OpCodes.Xor32(t2, t5);
@@ -277,6 +303,12 @@
     }
 
     // S1 - {15,12, 2, 7, 9, 0, 5,10, 1,11,14, 8, 6,13, 3, 4 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb1(a, b, c, d) {
       const t2 = OpCodes.Xor32(b, ~a);
       const t5 = OpCodes.Xor32(c, OpCodes.Or32(a, t2));
@@ -290,8 +322,14 @@
     }
 
     // InvS1 - { 5, 8, 2,14,15, 6,12, 3,11, 4, 7, 9, 1,13,10, 0 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib1(a, b, c, d) {
-      const t1 = OpCodes.XorN(b, d);
+      const t1 = OpCodes.Xor32(b, d);
       const t3 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
       const t4 = OpCodes.Xor32(t1, t3);
       this.X3 = OpCodes.Xor32(c, t4);
@@ -305,9 +343,15 @@
     }
 
     // S2 - { 8, 6, 7, 9, 3,12,10,15,13, 1,14, 4, 0,11, 5, 2 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb2(a, b, c, d) {
       const t1 = ~a;
-      const t2 = OpCodes.XorN(b, d);
+      const t2 = OpCodes.Xor32(b, d);
       const t3 = OpCodes.And32(c, t1);
       this.X0 = OpCodes.Xor32(t2, t3);
       const t5 = OpCodes.Xor32(c, t1);
@@ -319,10 +363,16 @@
     }
 
     // InvS2 - {12, 9,15, 4,11,14, 1, 2, 0, 3, 6,13, 5, 8,10, 7 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib2(a, b, c, d) {
-      const t1 = OpCodes.XorN(b, d);
+      const t1 = OpCodes.Xor32(b, d);
       const t2 = ~t1;
-      const t3 = OpCodes.XorN(a, c);
+      const t3 = OpCodes.Xor32(a, c);
       const t4 = OpCodes.Xor32(c, t1);
       const t5 = OpCodes.And32(b, t4);
       this.X0 = OpCodes.Xor32(t3, t5);
@@ -337,11 +387,17 @@
     }
 
     // S3 - { 0,15,11, 8,12, 9, 6, 3,13, 1, 2, 4,10, 7, 5,14 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb3(a, b, c, d) {
-      const t1 = OpCodes.XorN(a, b);
-      const t2 = OpCodes.AndN(a, c);
-      const t3 = OpCodes.OrN(a, d);
-      const t4 = OpCodes.XorN(c, d);
+      const t1 = OpCodes.Xor32(a, b);
+      const t2 = OpCodes.And32(a, c);
+      const t3 = OpCodes.Or32(a, d);
+      const t4 = OpCodes.Xor32(c, d);
       const t5 = OpCodes.And32(t1, t3);
       const t6 = OpCodes.Or32(t2, t5);
       this.X2 = OpCodes.Xor32(t4, t6);
@@ -351,13 +407,19 @@
       this.X0 = OpCodes.Xor32(t1, t10);
       const t12 = OpCodes.And32(this.X2, this.X0);
       this.X1 = OpCodes.Xor32(t9, t12);
-      this.X3 = OpCodes.Xor32(OpCodes.OrN(b, d), OpCodes.Xor32(t4, t12));
+      this.X3 = OpCodes.Xor32(OpCodes.Or32(b, d), OpCodes.Xor32(t4, t12));
     }
 
     // InvS3 - { 0, 9,10, 7,11,14, 6,13, 3, 5,12, 2, 4, 8,15, 1 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib3(a, b, c, d) {
-      const t1 = OpCodes.OrN(a, b);
-      const t2 = OpCodes.XorN(b, c);
+      const t1 = OpCodes.Or32(a, b);
+      const t2 = OpCodes.Xor32(b, c);
       const t3 = OpCodes.And32(b, t2);
       const t4 = OpCodes.Xor32(a, t3);
       const t5 = OpCodes.Xor32(c, t4);
@@ -373,8 +435,14 @@
     }
 
     // S4 - { 1,15, 8, 3,12, 0,11, 6, 2, 5, 4,10, 9,14, 7,13 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb4(a, b, c, d) {
-      const t1 = OpCodes.XorN(a, d);
+      const t1 = OpCodes.Xor32(a, d);
       const t2 = OpCodes.And32(d, t1);
       const t3 = OpCodes.Xor32(c, t2);
       const t4 = OpCodes.Or32(b, t3);
@@ -390,8 +458,14 @@
     }
 
     // InvS4 - { 5, 0, 8, 3,10, 9, 7,14, 2,12,11, 6, 4,15,13, 1 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib4(a, b, c, d) {
-      const t1 = OpCodes.OrN(c, d);
+      const t1 = OpCodes.Or32(c, d);
       const t2 = OpCodes.And32(a, t1);
       const t3 = OpCodes.Xor32(b, t2);
       const t4 = OpCodes.And32(a, t3);
@@ -407,10 +481,16 @@
     }
 
     // S5 - {15, 5, 2,11, 4,10, 9,12, 0, 3,14, 8,13, 6, 7, 1 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb5(a, b, c, d) {
       const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
-      const t3 = OpCodes.XorN(a, d);
+      const t2 = OpCodes.Xor32(a, b);
+      const t3 = OpCodes.Xor32(a, d);
       const t4 = OpCodes.Xor32(c, t1);
       const t5 = OpCodes.Or32(t2, t3);
       this.X0 = OpCodes.Xor32(t4, t5);
@@ -425,6 +505,12 @@
     }
 
     // InvS5 - { 8,15, 2, 9, 4, 1,13,14,11, 6, 5, 3, 7,12,10, 0 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib5(a, b, c, d) {
       const t1 = ~c;
       const t2 = OpCodes.And32(b, t1);
@@ -435,16 +521,22 @@
       const t7 = OpCodes.Or32(b, this.X3);
       const t8 = OpCodes.And32(a, t7);
       this.X1 = OpCodes.Xor32(t3, t8);
-      const t10 = OpCodes.OrN(a, d);
+      const t10 = OpCodes.Or32(a, d);
       const t11 = OpCodes.Xor32(t1, t7);
       this.X0 = OpCodes.Xor32(t10, t11);
-      this.X2 = OpCodes.Xor32(OpCodes.And32(b, t10), OpCodes.Or32(t4, OpCodes.XorN(a, c)));
+      this.X2 = OpCodes.Xor32(OpCodes.And32(b, t10), OpCodes.Or32(t4, OpCodes.Xor32(a, c)));
     }
 
     // S6 - { 7, 2,12, 5, 8, 4, 6,11,14, 9, 1,15,13, 3,10, 0 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb6(a, b, c, d) {
       const t1 = ~a;
-      const t2 = OpCodes.XorN(a, d);
+      const t2 = OpCodes.Xor32(a, d);
       const t3 = OpCodes.Xor32(b, t2);
       const t4 = OpCodes.Or32(t1, t2);
       const t5 = OpCodes.Xor32(c, t4);
@@ -459,9 +551,15 @@
     }
 
     // InvS6 - {15,10, 1,13, 5, 3, 6, 0, 4, 9,14, 7, 2,12, 8,11 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib6(a, b, c, d) {
       const t1 = ~a;
-      const t2 = OpCodes.XorN(a, b);
+      const t2 = OpCodes.Xor32(a, b);
       const t3 = OpCodes.Xor32(c, t2);
       const t4 = OpCodes.Or32(c, t1);
       const t5 = OpCodes.Xor32(d, t4);
@@ -476,8 +574,14 @@
     }
 
     // S7 - { 1,13,15, 0,14, 8, 2,11, 7, 4,12,10, 9, 3, 5, 6 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _sb7(a, b, c, d) {
-      const t1 = OpCodes.XorN(b, c);
+      const t1 = OpCodes.Xor32(b, c);
       const t2 = OpCodes.And32(c, t1);
       const t3 = OpCodes.Xor32(d, t2);
       const t4 = OpCodes.Xor32(a, t3);
@@ -494,9 +598,15 @@
     }
 
     // InvS7 - { 3, 0, 6,13, 9,14,15, 8, 5,12,11, 7,10, 1, 4, 2 }
+    /**
+     * @param {uint32} a - Input word a
+     * @param {uint32} b - Input word b
+     * @param {uint32} c - Input word c
+     * @param {uint32} d - Input word d
+     */
     _ib7(a, b, c, d) {
-      const t3 = OpCodes.Or32(c, OpCodes.AndN(a, b));
-      const t4 = OpCodes.And32(d, OpCodes.OrN(a, b));
+      const t3 = OpCodes.Or32(c, OpCodes.And32(a, b));
+      const t4 = OpCodes.And32(d, OpCodes.Or32(a, b));
       this.X3 = OpCodes.Xor32(t3, t4);
       const t6 = ~d;
       const t7 = OpCodes.Xor32(b, t4);
@@ -532,12 +642,20 @@
     }
 
     // Key scheduling function - exact libgcrypt implementation
+    /**
+     * @param {uint8[]} key - 16..32 key bytes
+     * @returns {uint32[][]} 33 round keys of four words
+     */
     _generateKeySchedule(key) {
       // Initialize 8-word key array
-      const w = new Array(8).fill(0);
+      /** @type {uint32[]} */
+      const w = new Array(8);
+      w.fill(0);
 
       // Copy key bytes into words (little-endian)
-      const keyBytes = new Array(32).fill(0);
+      /** @type {uint8[]} */
+      const keyBytes = new Array(32);
+      keyBytes.fill(0);
       for (let i = 0; i < Math.min(key.length, 32); i++) {
         keyBytes[i] = key[i];
       }
@@ -555,6 +673,7 @@
       }
 
       // Generate subkeys using exact libgcrypt EXPAND_KEY4 algorithm
+      /** @type {uint32[][]} */
       const roundKeys = [];
       
       for (let round = 0; round < 33; round++) {
@@ -563,7 +682,7 @@
         const r = round * 4;
 
         // EXPAND_KEY4 macro implementation
-        /** @type {uint8[]} */
+        /** @type {uint32[]} */
         const wo = [0, 0, 0, 0];
         
         wo[0] = w[(r+0)%8] = OpCodes.RotL32(
@@ -584,13 +703,18 @@
         this.X0 = wo[0]; this.X1 = wo[1]; this.X2 = wo[2]; this.X3 = wo[3];
         this._applySBox(sboxNum);
         
-        roundKeys[round] = [this.X0, this.X1, this.X2, this.X3];
+        /** @type {uint32[]} */
+        const subkey = [this.X0, this.X1, this.X2, this.X3];
+        roundKeys[round] = subkey;
       }
 
       return roundKeys;
     }
 
     // Helper method to apply S-box based on index
+    /**
+     * @param {int32} sboxIndex - S-box number 0..7
+     */
     _applySBox(sboxIndex) {
       const a = this.X0, b = this.X1, c = this.X2, d = this.X3;
       switch (sboxIndex) {
@@ -606,6 +730,9 @@
     }
 
     // Helper method to apply inverse S-box based on index
+    /**
+     * @param {int32} sboxIndex - S-box number 0..7
+     */
     _applyInverseSBox(sboxIndex) {
       const a = this.X0, b = this.X1, c = this.X2, d = this.X3;
       switch (sboxIndex) {
@@ -661,6 +788,7 @@
       this.X3 = OpCodes.Xor32(this.X3, this.roundKeys[32][3]);
 
       // Convert back to bytes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       const bytes0 = OpCodes.Unpack32LE(this.X0);
       const bytes1 = OpCodes.Unpack32LE(this.X1);
@@ -713,6 +841,7 @@
       }
 
       // Convert back to bytes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       const bytes0 = OpCodes.Unpack32LE(this.X0);
       const bytes1 = OpCodes.Unpack32LE(this.X1);
