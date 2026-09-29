@@ -73,6 +73,7 @@
   // The four fixed 4x4 quasigroups on the alphabet {0,1,2,3} that every
   // e-transformer stage is built from. Q[q][a][b] is the quasigroup q
   // applied to operands (a, b).
+  /** @type {uint8[][][]} */
   const QUASIGROUPS = [
     [[0, 2, 1, 3], [2, 1, 3, 0], [1, 3, 0, 2], [3, 0, 2, 1]],
     [[1, 3, 0, 2], [0, 1, 2, 3], [2, 0, 3, 1], [3, 2, 1, 0]],
@@ -155,8 +156,11 @@
       /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {uint8[][][]|null} */
       this.stageQuasigroups = null; // one of QUASIGROUPS per pipeline stage, chosen by the key
+      /** @type {uint8[]|null} */
       this.state = null;            // 80 two-bit pipeline register values
+      /** @type {uint32} */
       this.counter = 0;
       /** @type {boolean} */
       this.initialized = false;
@@ -236,26 +240,32 @@
     // ===== Edon80 (80-bit key / 64-bit IV variant) core =====
 
     // Split each byte into four two-bit digits, most significant first.
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint8[]}
+     */
     static _bytesToDigits(bytes) {
+      /** @type {uint8[]} */
       const digits = [];
       for (let i = 0; i < bytes.length; i++) {
         const b = bytes[i];
-        digits.push(
-          OpCodes.And32(OpCodes.Shr32(b, 6), 3),
-          OpCodes.And32(OpCodes.Shr32(b, 4), 3),
-          OpCodes.And32(OpCodes.Shr32(b, 2), 3),
-          OpCodes.And32(b, 3)
-        );
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 6), 3));
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 4), 3));
+        digits.push(OpCodes.And32(OpCodes.Shr32(b, 2), 3));
+        digits.push(OpCodes.And32(b, 3));
       }
       return digits;
     }
 
     _initialize() {
+      /** @type {uint8[]} */
       const keyDigits = Edon80Instance._bytesToDigits(this._key); // 40 digits
+      /** @type {uint8[]} */
       const ivDigits = Edon80Instance._bytesToDigits(this._iv);   // 32 digits
 
       // Bind each of the 80 pipeline stages to a quasigroup selected by the
       // key digits; the choice for stages 0-39 is repeated for stages 40-79.
+      /** @type {uint8[][][]} */
       const stageQuasigroups = new Array(STAGES);
       for (let m = 0; m < KEY_DIGITS; m++) {
         const chosen = QUASIGROUPS[keyDigits[m]];
@@ -266,7 +276,9 @@
 
       // Build the 80-digit leader sequence: key digits, then IV digits,
       // then the fixed tail, and load it into the initial pipeline state.
+      /** @type {uint8[]} */
       const leaders = new Array(STAGES);
+      /** @type {uint8[]} */
       const state = new Array(STAGES);
       let p = 0;
       for (let i = 0; i < KEY_DIGITS; i++, p++) leaders[p] = state[p] = keyDigits[i];
@@ -288,6 +300,10 @@
 
     // One full pass of the pipeline, driven by a two-bit input digit fed
     // into stage 0. Returns the digit produced by the last stage.
+    /**
+     * @param {uint32} inputDigit
+     * @returns {uint8}
+     */
     _pipelinePass(inputDigit) {
       const state = this.state;
       const Q0 = this.stageQuasigroups[0];
@@ -301,6 +317,9 @@
 
     // One keystream digit: advance the counter, run two pipeline passes,
     // keep only the second pass's output digit.
+    /**
+     * @returns {uint8}
+     */
     _nextDigit() {
       this.counter = OpCodes.And32(this.counter + 1, 3);
       this._pipelinePass(this.counter);
@@ -308,7 +327,11 @@
       return this._pipelinePass(this.counter);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let b = 0;
       for (let i = 0; i < 4; i++) b = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(b, 2), this._nextDigit()), 0xFF);
       return b;
