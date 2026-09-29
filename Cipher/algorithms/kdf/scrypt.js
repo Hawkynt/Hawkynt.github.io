@@ -228,7 +228,7 @@
       // Feed is a streaming interface: successive calls extend the password
       // rather than being dropped, so Feed(a); Feed(b) derives from the same
       // octet string as Feed(a || b).
-      if (this._password === null) this._password = [];
+      if (!this._password) this._password = [];
       for (let i = 0; i < data.length; i++) this._password.push(data[i]);
     }
 
@@ -240,18 +240,18 @@
    */
 
     Result() {
-      if (this._password === null || this._salt === null) {
+      if (!this._password || !this._salt) {
         throw new Error('Password and salt required for scrypt');
       }
 
-      // A parameter set to 0 falls back to its default
+      // A parameter left unset (0, undefined) falls back to its default
       return this._computeScrypt(
         this._password,
         this._salt,
-        this._N === 0 ? 16 : this._N,
-        this._r === 0 ? 1 : this._r,
-        this._p === 0 ? 1 : this._p,
-        this._keyLength === 0 ? 64 : this._keyLength
+        this._N ? this._N : 16,
+        this._r ? this._r : 1,
+        this._p ? this._p : 1,
+        this._keyLength ? this._keyLength : 64
       );
     }
 
