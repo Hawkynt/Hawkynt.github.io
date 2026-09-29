@@ -126,9 +126,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new SP 800-56C two-step KDF instance
+   * @param {boolean} [isInverse=false] - True returns null: the KDF has no inverse
+   * @returns {SP80056CInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -141,80 +141,121 @@
 
   // Instance class - handles the actual KDF computation
   /**
- * SP80056C cipher instance implementing Feed/Result pattern
+ * SP 800-56C two-step KDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class SP80056CInstance extends IKdfInstance {
+    /**
+     * Initialize an SP 800-56C two-step KDF instance
+     * @param {SP80056CAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} Input key material Z (null until fed or set) */
       this._keyInput = null;
+      /** @type {uint8[]} Salt (null or empty selects HashLen zero bytes) */
       this._salt = null;
+      /** @type {uint8[]} FixedInfo (null means empty) */
       this._label = null;
+      /** @type {int32} */
       this._outputLength = 32;  // Default output length
+      /** @type {string} */
       this._hashAlgorithm = 'SHA-256';  // Default hash function for HMAC
     }
 
     // Property setter for input key material (shared secret) - matches test vector 'input' field
+    /**
+     * @param {uint8[]} keyBytes - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
     set input(keyBytes) {
       if (!keyBytes || !Array.isArray(keyBytes)) {
         throw new Error("Key input must be a byte array");
       }
-      this._keyInput = [...keyBytes];
+      this._keyInput = keyBytes.slice();
     }
 
+    /** @returns {uint8[]} Copy of the input key material, or null */
     get input() {
-      return this._keyInput ? [...this._keyInput] : null;
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
     // Alias for compatibility
+    /**
+     * @param {uint8[]} keyBytes - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
     set keyInput(keyBytes) {
       this.input = keyBytes;
     }
 
+    /** @returns {uint8[]} Copy of the input key material, or null */
     get keyInput() {
-      return this.input;
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
     // Property setter for salt (optional)
+    /** @param {uint8[]} saltBytes - Salt (copied; anything but an array clears it) */
     set salt(saltBytes) {
-      this._salt = saltBytes && Array.isArray(saltBytes) ? [...saltBytes] : [];
+      if (saltBytes && Array.isArray(saltBytes)) { this._salt = saltBytes.slice(); } else { this._salt = []; }
     }
 
+    /** @returns {uint8[]} Copy of the salt */
     get salt() {
-      return this._salt ? [...this._salt] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._salt) { copy = this._salt.slice(); }
+      return copy;
     }
 
     // Property setter for label (application-specific context information)
+    /** @param {uint8[]} labelBytes - FixedInfo (copied; anything but an array clears it) */
     set label(labelBytes) {
-      this._label = labelBytes && Array.isArray(labelBytes) ? [...labelBytes] : [];
+      if (labelBytes && Array.isArray(labelBytes)) { this._label = labelBytes.slice(); } else { this._label = []; }
     }
 
+    /** @returns {uint8[]} Copy of the FixedInfo */
     get label() {
-      return this._label ? [...this._label] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._label) { copy = this._label.slice(); }
+      return copy;
     }
 
     // Output length in bytes
-    set outputLength(bytes) {
-      if (!Number.isInteger(bytes) || bytes < 1 || bytes > 16320) {
+    /**
+     * @param {int32} value - Output length, 1..16320
+     * @throws {Error} If it is not an integer in range
+     */
+    set outputLength(value) {
+      if (!Number.isInteger(value) || value < 1 || value > 16320) {
         throw new Error("Output length must be between 1 and 16320 bytes");
       }
-      this._outputLength = bytes;
+      this._outputLength = value;
     }
 
+    /** @returns {int32} Output length in bytes */
     get outputLength() {
       return this._outputLength;
     }
 
     // Hash algorithm used for HMAC (SHA-1, SHA-256, SHA-512)
-    set hashAlgorithm(algo) {
-      if (!algo || typeof algo !== 'string') {
+    /**
+     * @param {string} value - SHA-1, SHA-256 or SHA-512 (any case, dash optional)
+     * @throws {Error} If it is not a non-empty string
+     */
+    set hashAlgorithm(value) {
+      if (!value || typeof value !== 'string') {
         throw new Error("Hash algorithm must be a valid string");
       }
-      this._hashAlgorithm = algo.toUpperCase();
+      this._hashAlgorithm = value.toUpperCase();
     }
 
+    /** @returns {string} Hash name (upper case) */
     get hashAlgorithm() {
       return this._hashAlgorithm;
     }
@@ -222,9 +263,8 @@
     // Main derivation method
     // For KDFs, Feed() is used to provide the input key material
     /**
-   * Feed data to cipher for processing
+   * Feed input key material (anything but an array is ignored)
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -238,9 +278,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no key material was given, or the hash is unsupported or unavailable
    */
 
     Result() {
@@ -258,9 +298,12 @@
       //   K_DK (PRK) = HMAC-hash(salt, Z)
       // If salt is empty, use a string of zeros equal to the HMAC output length.
       const hmacOutputBytes = this._hmacOutputSize(hashName);
-      const actualSalt = (this._salt && this._salt.length > 0)
-        ? this._salt
-        : new Array(hmacOutputBytes).fill(0);
+      /** @type {uint8[]} */
+      let actualSalt = this._salt;
+      if (!(this._salt && this._salt.length > 0)) {
+        actualSalt = [];
+        for (let i = 0; i < hmacOutputBytes; i++) actualSalt.push(0);
+      }
 
       const prk = this._hmac(actualSalt, this._keyInput, hashName);
 
@@ -274,12 +317,16 @@
       }
 
       const outputBits = OpCodes.Unpack32BE(OpCodes.ToUint32(this._outputLength * 8));
-      const label = this._label || [];
+      /** @type {uint8[]} */
+      let label = this._label;
+      if (!label) { label = OpCodes.Hex8ToBytes(''); }
+      const separator = OpCodes.Hex8ToBytes('00');
 
+      /** @type {uint8[]} */
       let output = [];
       for (let i = 1; i <= numBlocks; i++) {
         const counterBytes = OpCodes.Unpack32BE(OpCodes.ToUint32(i));
-        const blockInput = OpCodes.ConcatArrays([counterBytes, label, [0x00], outputBits]);
+        const blockInput = OpCodes.ConcatArrays([counterBytes, label, separator, outputBits]);
         const blockOutput = this._hmac(prk, blockInput, hashName);
         output = OpCodes.ConcatArrays([output, blockOutput]);
       }
@@ -288,39 +335,50 @@
       return output.slice(0, this._outputLength);
     }
 
-    // Normalize hash algorithm aliases to the AlgorithmFramework-registered names
+    /**
+     * Normalize hash algorithm aliases to the AlgorithmFramework-registered names
+     * @param {string} hashAlgo - Hash name (empty selects SHA-256)
+     * @returns {string} SHA-1, SHA-256 or SHA-512
+     * @throws {Error} If the hash is unsupported
+     */
     _normalizeHashName(hashAlgo) {
-      const name = (hashAlgo || 'SHA-256').toUpperCase();
-      const hashMap = {
-        'SHA-1': 'SHA-1', 'SHA1': 'SHA-1',
-        'SHA-256': 'SHA-256', 'SHA256': 'SHA-256',
-        'SHA-512': 'SHA-512', 'SHA512': 'SHA-512'
-      };
-      const resolved = hashMap[name];
-      if (!resolved) {
-        throw new Error(`Unsupported hash algorithm: ${hashAlgo}`);
+      let name = 'SHA-256';
+      if (hashAlgo) { name = hashAlgo.toUpperCase(); }
+      switch (name) {
+        case 'SHA-1': case 'SHA1': return 'SHA-1';
+        case 'SHA-256': case 'SHA256': return 'SHA-256';
+        case 'SHA-512': case 'SHA512': return 'SHA-512';
+        default: throw new Error('Unsupported hash algorithm: ' + hashAlgo);
       }
-      return resolved;
     }
 
-    // HMAC output size for the selected hash, in bytes
+    /**
+     * HMAC output size for the selected hash, in bytes
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512
+     * @returns {int32} Output size
+     */
     _hmacOutputSize(hashName) {
       if (hashName === 'SHA-512') return 64;
       if (hashName === 'SHA-1') return 20;
       return 32; // SHA-256
     }
 
-    // Compute HMAC-hash(key, message) using the registered HMAC algorithm
-    // Registry-first: Find() is checked before require() falls back to loading the module
+    /**
+     * Compute HMAC-hash(key, message) using the registered HMAC algorithm.
+     * Registry-first: Find() is checked before require() falls back to loading
+     * the module (CommonJS only; an AMD or browser loader cannot require
+     * synchronously).
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - Registered hash name
+     * @returns {uint8[]} MAC
+     * @throws {Error} If HMAC is not available
+     */
     _hmac(key, message, hashName) {
       let hmacAlgorithm = AlgorithmFramework.Find('HMAC');
 
-      if (!hmacAlgorithm && typeof require !== 'undefined') {
-        try {
-          require('../mac/hmac.js');
-        } catch (e) {
-          // Ignore load errors, handled by the check below
-        }
+      if (!hmacAlgorithm && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../mac/hmac.js');
         hmacAlgorithm = AlgorithmFramework.Find('HMAC');
       }
 
@@ -328,11 +386,14 @@
         throw new Error('HMAC algorithm not available - required for SP800-56C key derivation');
       }
 
+      /** @type {IMacInstance} */
       const hmacInstance = hmacAlgorithm.CreateInstance(false);
       hmacInstance.key = key;
       hmacInstance.hashFunction = hashName;
       hmacInstance.Feed(message);
-      return hmacInstance.Result();
+      /** @type {uint8[]} */
+      const mac = hmacInstance.Result();
+      return mac;
     }
   }
 

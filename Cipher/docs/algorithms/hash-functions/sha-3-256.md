@@ -20,7 +20,7 @@
 
 | Parameter | Supported values |
 | --- | --- |
-| Hash sizes | 32 bytes (256 bits) |
+| Output sizes | 32 bytes (256 bits) |
 
 ## Security
 

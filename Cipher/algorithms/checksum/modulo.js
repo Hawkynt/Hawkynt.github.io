@@ -29,7 +29,11 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
@@ -40,6 +44,11 @@
   // MODULO-10 CHECKSUM
   // ============================================================================
 
+  /**
+   * Modulo-10 digit sum
+   * @class
+   * @extends {Algorithm}
+   */
   class Modulo10ChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -54,6 +63,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8; // Returns single digit (0-9)
 
       this.documentation = [
@@ -65,6 +75,7 @@
         new LinkItem("python-stdnum generic checksum utilities", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/util.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: sum all digits, result mod 10",
         "Check digit: (10 - sum mod 10) mod 10",
@@ -97,9 +108,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Modulo10ChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -109,28 +120,28 @@
   }
 
   /**
- * Modulo10Checksum cipher instance implementing Feed/Result pattern
+ * Modulo10Checksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Modulo10ChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Modulo10ChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} Sum of the digits fed so far */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; characters the checksum does not use are skipped
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -140,15 +151,16 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.sum += (data[i] - 0x30); // '0' = 0x30
+          /** @type {int32} */
+          const code = data[i];
+          this.sum += (code - 0x30); // '0' = 0x30
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} One byte holding the checksum value
    */
 
     Result() {
@@ -162,6 +174,11 @@
   // MODULO-11 CHECKSUM
   // ============================================================================
 
+  /**
+   * Modulo-11 weighted check digit
+   * @class
+   * @extends {Algorithm}
+   */
   class Modulo11ChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -176,6 +193,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8; // Returns 0-10 (X)
 
       this.documentation = [
@@ -188,6 +206,7 @@
         new LinkItem("python-stdnum ISBN-10 modulo-11 check digit implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/isbn.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: weighted sum with position-based weights",
         "Standard weights: (n+1), n, (n-1), ..., 2 from LEFT to RIGHT",
@@ -223,9 +242,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Modulo11ChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -235,28 +254,28 @@
   }
 
   /**
- * Modulo11Checksum cipher instance implementing Feed/Result pattern
+ * Modulo11Checksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Modulo11ChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Modulo11ChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} Decimal digits fed since the last Result() */
       this.digits = [];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; characters the checksum does not use are skipped
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -266,23 +285,20 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.digits.push(data[i] - 0x30); // '0' = 0x30
+          /** @type {int32} */
+          const code = data[i];
+          this.digits.push(code - 0x30); // '0' = 0x30
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} One byte holding the checksum value
    */
 
     Result() {
-      if (this.digits.length === 0) {
-        this.digits = [];
-        return [0];
-      }
-
+      // No digit gives a zero sum and so the check digit 0.
       // Calculate weighted sum (weights from left to right: 10, 9, 8, ..., 2)
       // For ISBN-10: first digit × 10 + second digit × 9 + ... + ninth digit × 2
       let sum = 0;
@@ -290,7 +306,9 @@
 
       for (let i = 0; i < n; i++) {
         const weight = n + 1 - i; // For n=9: weights are 10, 9, 8, 7, 6, 5, 4, 3, 2
-        sum += this.digits[i] * weight;
+        /** @type {int32} */
+        const digit = this.digits[i];
+        sum += digit * weight;
       }
 
       // Check digit calculation: (11 - sum mod 11) mod 11
@@ -305,6 +323,11 @@
   // MODULO-97 CHECKSUM
   // ============================================================================
 
+  /**
+   * Modulo-97 (ISO 7064) remainder
+   * @class
+   * @extends {Algorithm}
+   */
   class Modulo97ChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -319,6 +342,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8; // Returns 1-byte value (0-96)
 
       this.documentation = [
@@ -331,6 +355,7 @@
         new LinkItem("python-stdnum ISO 7064 mod 97-10 implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/iso7064/mod_97_10.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: Convert digits to number, compute mod 97",
         "Used in: IBAN validation (mod-97-10)",
@@ -365,9 +390,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Modulo97ChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -377,28 +402,28 @@
   }
 
   /**
- * Modulo97Checksum cipher instance implementing Feed/Result pattern
+ * Modulo97Checksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Modulo97ChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Modulo97ChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {string} Decimal digits fed so far (letters expanded to 10..35) */
       this.digitString = '';
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; characters the checksum does not use are skipped
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -414,33 +439,27 @@
         // Accept letters A-Z (for IBAN: A=10, B=11, ..., Z=35)
         else if (char >= 'A' && char <= 'Z') {
           const value = char.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
-          this.digitString += value.toString();
+          this.digitString = this.digitString + value;
         }
         else if (char >= 'a' && char <= 'z') {
           const value = char.charCodeAt(0) - 'a'.charCodeAt(0) + 10;
-          this.digitString += value.toString();
+          this.digitString = this.digitString + value;
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} One byte holding the checksum value
    */
 
     Result() {
-      if (this.digitString.length === 0) {
-        this.digitString = '';
-        return [0];
-      }
-
       // Calculate mod 97 using sequential digit processing
-      // (avoids overflow for very long numbers)
+      // (avoids overflow for very long numbers); no digit gives 0
       let remainder = 0;
 
       for (let i = 0; i < this.digitString.length; i++) {
-        const digit = parseInt(this.digitString[i], 10);
+        const digit = this.digitString.charCodeAt(i) - 0x30;
         remainder = (remainder * 10 + digit) % 97;
       }
 

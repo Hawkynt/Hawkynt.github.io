@@ -137,9 +137,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checking instance
+   * @param {boolean} [isInverse=false] - Checking has no inverse
+   * @returns {ConstantWeightCodeInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -149,28 +149,36 @@
   }
 
   /**
- * ConstantWeightCode cipher instance implementing Feed/Result pattern
+ * ConstantWeightCode instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IErrorCorrectionInstance}
  */
 
   class ConstantWeightCodeInstance extends IErrorCorrectionInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checking instance for the 3-of-5 code
+   * @param {ConstantWeightCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} The codeword fed last, null before the first Feed */
       this.result = null;
 
       // Default: 3-of-5 code
+      /** @type {int32} */
       this._weight = 3; // Required number of 1-bits
+      /** @type {int32} */
       this._length = 5; // Total codeword length
     }
 
+    /**
+     * Required number of 1-bits
+     * @param {int32} w - Weight, 0..32
+     * @throws {Error} If the weight is out of range
+     */
     set weight(w) {
       if (w < 0 || w > 32) {
         throw new Error('ConstantWeightCodeInstance.weight: Must be between 0 and 32');
@@ -178,10 +186,19 @@
       this._weight = w;
     }
 
+    /**
+     * Required number of 1-bits
+     * @returns {int32} Weight
+     */
     get weight() {
       return this._weight;
     }
 
+    /**
+     * Codeword length in bits
+     * @param {int32} len - Length, 1..64
+     * @throws {Error} If the length is out of range
+     */
     set length(len) {
       if (len < 1 || len > 64) {
         throw new Error('ConstantWeightCodeInstance.length: Must be between 1 and 64');
@@ -189,14 +206,18 @@
       this._length = len;
     }
 
+    /**
+     * Codeword length in bits
+     * @returns {int32} Length
+     */
     get length() {
       return this._length;
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * Feed one codeword to check
+   * @param {uint8[]} data - Codeword bits (0/1)
+   * @throws {Error} If the input is not an array or has the wrong length
    */
 
     Feed(data) {
@@ -212,9 +233,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the codeword fed last (unchanged)
+   * @returns {uint8[]} The codeword
+   * @throws {Error} If no data was fed
    */
 
     Result() {
@@ -224,58 +245,102 @@
       return this.result;
     }
 
+    /**
+     * Number of 1-bits in a codeword
+     * @param {uint8[]} data - Codeword bits
+     * @returns {int32} Sum of the elements
+     */
+    _hammingWeight(data) {
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i];
+      return sum;
+    }
+
+    /**
+     * Check a codeword's length and weight; a weight violation is only logged
+     * @param {uint8[]} data - Codeword bits
+     * @returns {uint8[]} The codeword, unchanged
+     * @throws {Error} If the length is wrong
+     */
     validate(data) {
       // Check if codeword has correct weight
       if (data.length !== this._length) {
-        throw new Error(`Constant weight code: Expected length ${this._length}, got ${data.length}`);
+        throw new Error('Constant weight code: Expected length ' + this._length + ', got ' + data.length);
       }
 
-      const hammingWeight = data.reduce((sum, bit) => sum + bit, 0);
+      const hammingWeight = this._hammingWeight(data);
       const isValid = hammingWeight === this._weight;
 
       if (!isValid) {
-        console.warn(`Constant weight code: Invalid weight ${hammingWeight}, expected ${this._weight}`);
+        console.warn('Constant weight code: Invalid weight ' + hammingWeight + ', expected ' + this._weight);
       }
 
       return data; // Return original data with validation status
     }
 
+    /**
+     * Alias for validate in inverse mode
+     * @param {uint8[]} data - Codeword bits
+     * @returns {uint8[]} The codeword, unchanged
+     */
     verify(data) {
       // Alias for validate in inverse mode
       return this.validate(data);
     }
 
+    /**
+     * Whether a codeword violates the code
+     * @param {uint8[]} data - Codeword bits
+     * @returns {boolean} True if the length or the weight is wrong
+     */
     DetectError(data) {
       if (data.length !== this._length) return true;
 
-      const hammingWeight = data.reduce((sum, bit) => sum + bit, 0);
+      const hammingWeight = this._hammingWeight(data);
       return hammingWeight !== this._weight;
     }
 
-    // Helper: Generate all valid m-of-n codewords
+    /**
+     * Generate all valid m-of-n codewords
+     * @returns {uint8[][]} Every codeword, in lexicographic order of the 1-bit positions
+     */
     generateCodewords() {
-      const codewords = [];
-      const n = this._length;
-      const m = this._weight;
-
       // Generate all combinations of m positions out of n
-      const generate = (current, start, count) => {
-        if (count === m) {
-          const codeword = new Array(n).fill(0);
-          for (const pos of current) {
-            codeword[pos] = 1;
-          }
-          codewords.push(codeword);
-          return;
-        }
+      /** @type {int32[]} */
+      const none = new Array(0);
+      return this._generateCodewords(none, 0, 0);
+    }
 
-        for (let i = start; i <= n - (m - count); ++i) {
-          generate([...current, i], i + 1, count + 1);
-        }
-      };
+    /**
+     * All codewords whose first 1-bit positions are the given ones
+     * @param {int32[]} current - Positions chosen so far
+     * @param {int32} start - First position still available
+     * @param {int32} count - Number of positions chosen so far
+     * @returns {uint8[][]} The completed codewords, in lexicographic order of the positions
+     */
+    _generateCodewords(current, start, count) {
+      const len = this._length;
+      const weight = this._weight;
+      /** @type {uint8[][]} */
+      let found = new Array(0);
 
-      generate([], 0, 0);
-      return codewords;
+      if (count === weight) {
+        /** @type {uint8[]} */
+        const bits = new Array(len);
+        for (let i = 0; i < len; ++i) bits[i] = 0;
+        for (let i = 0; i < current.length; ++i) {
+          bits[current[i]] = 1;
+        }
+        found.push(bits);
+        return found;
+      }
+
+      for (let i = start; i <= len - (weight - count); ++i) {
+        /** @type {int32[]} */
+        const next = current.concat([i]);
+        found = found.concat(this._generateCodewords(next, i + 1, count + 1));
+      }
+      return found;
     }
   }
 

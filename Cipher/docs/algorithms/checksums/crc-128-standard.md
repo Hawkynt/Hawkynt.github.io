@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| CRC is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm. | — | Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection. |
-| CRC-128 has limited output space, making collisions relatively easy to find intentionally. | — | For security applications, use cryptographic hash functions with larger output sizes. |
+| Not Cryptographically Secure | CRC is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm. | Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection. |
+| Hash Collisions | CRC-128 has limited output space, making collisions relatively easy to find intentionally. | For security applications, use cryptographic hash functions with larger output sizes. |
 
 ## Documentation
 

@@ -124,8 +124,13 @@
  */
 
   class Poly1305Instance extends IMacInstance {
+    /**
+     * Initialize a Poly1305 instance
+     * @param {Poly1305Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
       this.inputBuffer = [];
     }
@@ -187,6 +192,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 16-byte tag
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -201,10 +212,15 @@
     /**
      * RFC 7539 compliant Poly1305 implementation
      * Simplified for educational clarity
+     * @param {uint8[]} key - 32-byte one-time key (r || s)
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} 16-byte tag
      */
     poly1305(key, message) {
       // Split key into r and s components
-      const rBytes = [...key.slice(0, 16)];
+      /** @type {uint8[]} */
+      const rBytes = key.slice(0, 16);
+      /** @type {uint8[]} */
       const sBytes = key.slice(16, 32);
 
       // Clamp r according to Poly1305 specification
@@ -221,13 +237,16 @@
       const s = this.bytesToNum(sBytes);
 
       // Initialize accumulator
+      /** @type {BigInt} */
       let h = BigInt(0);
-      const p = OpCodes.ShiftLn(BigInt(1), BigInt(130)) - BigInt(5); // 2^130 - 5
+      /** @type {BigInt} */
+      const p = OpCodes.ShiftLn(BigInt(1), 130) - BigInt(5); // 2^130 - 5
 
       // Process message in 16-byte blocks. RFC 8439 iterates over ceil(len/16)
       // blocks, so an empty message contributes no block at all and leaves the
       // accumulator at zero - the tag is then simply s.
-      const msg = [...message];
+      /** @type {uint8[]} */
+      const msg = message.slice();
 
       while (msg.length > 0) {
         // Take up to 16 bytes for this block
@@ -242,9 +261,9 @@
         // Convert block to number and add padding bit
         let n = this.bytesToNum(block);
         if (blockSize === 16) {
-          n += OpCodes.ShiftLn(BigInt(1), BigInt(128)); // Add 2^128
+          n += OpCodes.ShiftLn(BigInt(1), 128); // Add 2^128
         } else {
-          n += OpCodes.ShiftLn(BigInt(1), BigInt(blockSize * 8)); // Add 2^(8*blockSize)
+          n += OpCodes.ShiftLn(BigInt(1), blockSize * 8); // Add 2^(8*blockSize)
         }
 
         // h = ((h + n) * r) mod p
@@ -253,7 +272,7 @@
       }
 
       // Final step: add s
-      h = (h + s) % OpCodes.ShiftLn(BigInt(1), BigInt(128)); // mod 2^128
+      h = (h + s) % OpCodes.ShiftLn(BigInt(1), 128); // mod 2^128
 
       // Convert back to bytes
       return this.numToBytes(h, 16);
@@ -261,23 +280,32 @@
 
     /**
      * Convert bytes to BigInt (little-endian)
+     * @param {uint8[]} bytes - Little-endian bytes
+     * @returns {BigInt} Their value
      */
     bytesToNum(bytes) {
+      /** @type {BigInt} */
       let num = BigInt(0);
       for (let i = bytes.length - 1; i >= 0; i--) {
-        num = OpCodes.ShiftLn(num, BigInt(8)) + BigInt(bytes[i]);
+        num = OpCodes.ShiftLn(num, 8) + BigInt(bytes[i]);
       }
       return num;
     }
 
     /**
      * Convert BigInt to bytes (little-endian)
+     * @param {BigInt} num - Non-negative value
+     * @param {int32} length - Number of bytes to produce
+     * @returns {uint8[]} The low length bytes of num, little-endian
      */
     numToBytes(num, length) {
+      /** @type {uint8[]} */
       const bytes = new Array(length);
       for (let i = 0; i < length; i++) {
-        bytes[i] = Number(num&BigInt(0xff)); // Native BigInt AND (no OpCodes equivalent)
-        num = OpCodes.ShiftRn(num, BigInt(8));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(num, BigInt(0xff)));
+        bytes[i] = b;
+        num = OpCodes.ShiftRn(num, 8);
       }
       return bytes;
     }

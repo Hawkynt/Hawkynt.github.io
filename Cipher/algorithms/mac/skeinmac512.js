@@ -45,37 +45,73 @@
   // ===== THREEFISH-512 CIPHER IMPLEMENTATION =====
 
   // Threefish-512 rotation constants (from Skein 1.3 spec)
-  const ROTATION_0_0 = 46, ROTATION_0_1 = 36, ROTATION_0_2 = 19, ROTATION_0_3 = 37;
-  const ROTATION_1_0 = 33, ROTATION_1_1 = 27, ROTATION_1_2 = 14, ROTATION_1_3 = 42;
-  const ROTATION_2_0 = 17, ROTATION_2_1 = 49, ROTATION_2_2 = 36, ROTATION_2_3 = 39;
-  const ROTATION_3_0 = 44, ROTATION_3_1 = 9, ROTATION_3_2 = 54, ROTATION_3_3 = 56;
-  const ROTATION_4_0 = 39, ROTATION_4_1 = 30, ROTATION_4_2 = 34, ROTATION_4_3 = 24;
-  const ROTATION_5_0 = 13, ROTATION_5_1 = 50, ROTATION_5_2 = 10, ROTATION_5_3 = 17;
-  const ROTATION_6_0 = 25, ROTATION_6_1 = 29, ROTATION_6_2 = 39, ROTATION_6_3 = 43;
-  const ROTATION_7_0 = 8, ROTATION_7_1 = 35, ROTATION_7_2 = 56, ROTATION_7_3 = 22;
+  /** @type {int32} */ const ROTATION_0_0 = 46;
+  /** @type {int32} */ const ROTATION_0_1 = 36;
+  /** @type {int32} */ const ROTATION_0_2 = 19;
+  /** @type {int32} */ const ROTATION_0_3 = 37;
+  /** @type {int32} */ const ROTATION_1_0 = 33;
+  /** @type {int32} */ const ROTATION_1_1 = 27;
+  /** @type {int32} */ const ROTATION_1_2 = 14;
+  /** @type {int32} */ const ROTATION_1_3 = 42;
+  /** @type {int32} */ const ROTATION_2_0 = 17;
+  /** @type {int32} */ const ROTATION_2_1 = 49;
+  /** @type {int32} */ const ROTATION_2_2 = 36;
+  /** @type {int32} */ const ROTATION_2_3 = 39;
+  /** @type {int32} */ const ROTATION_3_0 = 44;
+  /** @type {int32} */ const ROTATION_3_1 = 9;
+  /** @type {int32} */ const ROTATION_3_2 = 54;
+  /** @type {int32} */ const ROTATION_3_3 = 56;
+  /** @type {int32} */ const ROTATION_4_0 = 39;
+  /** @type {int32} */ const ROTATION_4_1 = 30;
+  /** @type {int32} */ const ROTATION_4_2 = 34;
+  /** @type {int32} */ const ROTATION_4_3 = 24;
+  /** @type {int32} */ const ROTATION_5_0 = 13;
+  /** @type {int32} */ const ROTATION_5_1 = 50;
+  /** @type {int32} */ const ROTATION_5_2 = 10;
+  /** @type {int32} */ const ROTATION_5_3 = 17;
+  /** @type {int32} */ const ROTATION_6_0 = 25;
+  /** @type {int32} */ const ROTATION_6_1 = 29;
+  /** @type {int32} */ const ROTATION_6_2 = 39;
+  /** @type {int32} */ const ROTATION_6_3 = 43;
+  /** @type {int32} */ const ROTATION_7_0 = 8;
+  /** @type {int32} */ const ROTATION_7_1 = 35;
+  /** @type {int32} */ const ROTATION_7_2 = 56;
+  /** @type {int32} */ const ROTATION_7_3 = 22;
 
+  /** @type {int32} */
   const ROUNDS_512 = 72;
+  /** @type {BigInt} */
   const C_240 = 0x1BD11BDAA9FC1A22n; // Key schedule parity constant
+  /** @type {BigInt} */
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
-  // Rotate left and XOR for mixing
+  /**
+   * Rotate left and XOR for mixing
+   * @param {BigInt} x - Word to rotate
+   * @param {int32} n - Rotation amount
+   * @param {BigInt} xor - Word to XOR in (reduced to 64 bits)
+   * @returns {BigInt} rotl64(x, n) XOR xor
+   */
   function rotlXor64(x, n, xor) {
-    const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = BigInt(x)&mask;
-    xor = BigInt(xor)&mask;
-    n = OpCodes.And32(Number(n), 63);
-    return OpCodes.XorN(OpCodes.RotL64n(x, n), xor);
+    return OpCodes.XorN(OpCodes.RotL64n(x, n), OpCodes.AndN(xor, MASK64));
   }
 
-  // Threefish-512 encryption
+  /**
+   * Threefish-512 encryption
+   * @param {BigInt[]} key - 8 key words
+   * @param {BigInt[]} tweak - 2 tweak words
+   * @param {BigInt[]} block - 8 plaintext words
+   * @returns {BigInt[]} 8 ciphertext words
+   */
   function threefish512Encrypt(key, tweak, block) {
-    const mask = 0xFFFFFFFFFFFFFFFFn;
-
     // Key schedule (extended key with parity)
+    /** @type {BigInt[]} */
     const kw = new Array(17);
+    /** @type {BigInt} */
     let knw = C_240;
     for (let i = 0; i < 8; i++) {
-      kw[i] = BigInt(key[i])&mask;
-      knw = knw^kw[i];
+      kw[i] = OpCodes.AndN(key[i], MASK64);
+      knw = OpCodes.XorN(knw, kw[i]);
     }
     kw[8] = knw;
     for (let i = 0; i < 8; i++) {
@@ -83,22 +119,23 @@
     }
 
     // Tweak schedule
+    /** @type {BigInt[]} */
     const t = new Array(5);
-    t[0] = BigInt(tweak[0])&mask;
-    t[1] = BigInt(tweak[1])&mask;
-    t[2] = t[0]^t[1];
+    t[0] = OpCodes.AndN(tweak[0], MASK64);
+    t[1] = OpCodes.AndN(tweak[1], MASK64);
+    t[2] = OpCodes.XorN(t[0], t[1]);
     t[3] = t[0];
     t[4] = t[1];
 
     // Load block into state
-    let b0 = BigInt(block[0])&mask;
-    let b1 = BigInt(block[1])&mask;
-    let b2 = BigInt(block[2])&mask;
-    let b3 = BigInt(block[3])&mask;
-    let b4 = BigInt(block[4])&mask;
-    let b5 = BigInt(block[5])&mask;
-    let b6 = BigInt(block[6])&mask;
-    let b7 = BigInt(block[7])&mask;
+    let b0 = OpCodes.AndN(block[0], MASK64);
+    let b1 = OpCodes.AndN(block[1], MASK64);
+    let b2 = OpCodes.AndN(block[2], MASK64);
+    let b3 = OpCodes.AndN(block[3], MASK64);
+    let b4 = OpCodes.AndN(block[4], MASK64);
+    let b5 = OpCodes.AndN(block[5], MASK64);
+    let b6 = OpCodes.AndN(block[6], MASK64);
+    let b7 = OpCodes.AndN(block[7], MASK64);
 
     // Initial subkey injection
     b0 += kw[0];
@@ -179,45 +216,93 @@
     }
 
     // Mask all to 64-bit before returning
-    return [
-      b0&mask, b1&mask, b2&mask, b3&mask,
-      b4&mask, b5&mask, b6&mask, b7&mask
-    ];
+    /** @type {BigInt[]} */
+    const out = new Array(8);
+    out[0] = OpCodes.AndN(b0, MASK64);
+    out[1] = OpCodes.AndN(b1, MASK64);
+    out[2] = OpCodes.AndN(b2, MASK64);
+    out[3] = OpCodes.AndN(b3, MASK64);
+    out[4] = OpCodes.AndN(b4, MASK64);
+    out[5] = OpCodes.AndN(b5, MASK64);
+    out[6] = OpCodes.AndN(b6, MASK64);
+    out[7] = OpCodes.AndN(b7, MASK64);
+    return out;
   }
 
   // ===== SKEIN-512 UBI MODE =====
 
-  const PARAM_TYPE_KEY = 0;
-  const PARAM_TYPE_CONFIG = 4;
-  const PARAM_TYPE_MESSAGE = 48;
-  const PARAM_TYPE_OUTPUT = 63;
+  /**
+   * A zeroed array of 64-bit words
+   * @param {int32} count - Number of words
+   * @returns {BigInt[]} count zero words
+   */
+  function zeroWords64(count) {
+    /** @type {BigInt[]} */
+    const zeros = new Array(count);
+    for (let i = 0; i < count; i++) zeros[i] = 0n;
+    return zeros;
+  }
+
+  /** @type {BigInt} */
+  const PARAM_TYPE_KEY = 0n;
+  /** @type {BigInt} */
+  const PARAM_TYPE_CONFIG = 4n;
+  /** @type {BigInt} */
+  const PARAM_TYPE_MESSAGE = 48n;
+  /** @type {BigInt} */
+  const PARAM_TYPE_OUTPUT = 63n;
 
   // UBI tweak structure
+  /** @type {BigInt} */
   const T1_FINAL = OpCodes.ShiftLn(1n, 63);
+  /** @type {BigInt} */
   const T1_FIRST = OpCodes.ShiftLn(1n, 62);
+  /** @type {BigInt} */
+  const T1_FIRST_CLEAR = 0xBFFFFFFFFFFFFFFFn; // 64-bit complement of T1_FIRST
 
   class SkeinUBI {
+    /**
+     * @param {int32} blockSize - Block size in bytes (64 for Skein-512)
+     */
     constructor(blockSize) {
+      /** @type {int32} */
       this.blockSize = blockSize; // 64 bytes for Skein-512
-      this.currentBlock = new Uint8Array(blockSize);
+      /** @type {uint8[]} */
+      this.currentBlock = OpCodes.CreateArray(blockSize, 0);
+      /** @type {int32} */
       this.currentOffset = 0;
-      this.tweak = [0n, 0n]; // [T0, T1]
-      this.message = new Array(8); // 8 x 64-bit words
+      /** @type {BigInt[]} */
+      this._tweakWords = zeroWords64(2); // [T0, T1]
+      /** @type {BigInt[]} */
+      this._msgWords = zeroWords64(8); // 8 x 64-bit words
     }
 
+    /**
+     * Start a new UBI invocation
+     * @param {BigInt} type - Block type field
+     * @returns {void}
+     */
     reset(type) {
-      this.tweak[0] = 0n;
-      this.tweak[1] = OpCodes.ShiftLn(BigInt(type), 56); // Type in bits 120-125
-      this.tweak[1] |= T1_FIRST; // Set first flag
+      this._tweakWords[0] = 0n;
+      this._tweakWords[1] = OpCodes.ShiftLn(type, 56); // Type in bits 120-125
+      this._tweakWords[1] = OpCodes.OrN(this._tweakWords[1], T1_FIRST); // Set first flag
       this.currentOffset = 0;
     }
 
+    /**
+     * Absorb bytes, processing every block except the last one held
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} offset - Start index in data
+     * @param {int32} length - Number of bytes
+     * @param {BigInt[]} chain - Chaining value (updated in place)
+     * @returns {void}
+     */
     update(data, offset, length, chain) {
       let copied = 0;
       while (copied < length) {
         if (this.currentOffset === this.blockSize) {
           this.processBlock(chain);
-          this.tweak[1] &= ~T1_FIRST; // Clear first flag
+          this._tweakWords[1] = OpCodes.AndN(this._tweakWords[1], T1_FIRST_CLEAR); // Clear first flag
           this.currentOffset = 0;
         }
 
@@ -227,30 +312,41 @@
         }
         copied += toCopy;
         this.currentOffset += toCopy;
-        this.tweak[0] += BigInt(toCopy); // Advance position
+        this._tweakWords[0] += BigInt(toCopy); // Advance position
       }
     }
 
+    /**
+     * Run Threefish over the held block and fold it into the chain
+     * @param {BigInt[]} chain - Chaining value (updated in place)
+     * @returns {void}
+     */
     processBlock(chain) {
       // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
         const offset = i * 8;
-        let word = 0n;
+        /** @type {BigInt} */
+        let w = 0n;
         for (let j = 0; j < 8; j++) {
-          word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(this.currentBlock[offset + j]), j * 8));
+          w = OpCodes.OrN(w, OpCodes.ShiftLn(BigInt(this.currentBlock[offset + j]), j * 8));
         }
-        this.message[i] = word;
+        this._msgWords[i] = w;
       }
 
       // Encrypt message with Threefish using current chain as key
-      const output = threefish512Encrypt(chain, this.tweak, this.message);
+      const output = threefish512Encrypt(chain, this._tweakWords, this._msgWords);
 
       // XOR with message (Davies-Meyer construction)
       for (let i = 0; i < 8; i++) {
-        chain[i] = (output[i]^this.message[i])&0xFFFFFFFFFFFFFFFFn;
+        chain[i] = OpCodes.AndN(OpCodes.XorN(output[i], this._msgWords[i]), MASK64);
       }
     }
 
+    /**
+     * Zero-pad and process the final block
+     * @param {BigInt[]} chain - Chaining value (updated in place)
+     * @returns {void}
+     */
     doFinal(chain) {
       // Pad remaining block with zeros
       for (let i = this.currentOffset; i < this.blockSize; i++) {
@@ -258,7 +354,7 @@
       }
 
       // Set final flag
-      this.tweak[1] |= T1_FINAL;
+      this._tweakWords[1] = OpCodes.OrN(this._tweakWords[1], T1_FINAL);
       this.processBlock(chain);
     }
   }
@@ -266,34 +362,51 @@
   // ===== SKEIN MAC HASHER =====
 
   class SkeinMACHasher {
-    constructor(outputBits) {
-      this.outputBits = outputBits;
+    /**
+     * @param {int32} macBits - MAC length in bits
+     */
+    constructor(macBits) {
+      /** @type {int32} */
+      this._macBits = macBits;
+      /** @type {int32} */
       this.blockSize = 64; // Skein-512 uses 64-byte blocks
-      this.chain = new Array(8); // 8 x 64-bit state
+      /** @type {BigInt[]} */
+      this._chainWords = zeroWords64(8); // 8 x 64-bit state
+      /** @type {SkeinUBI} */
       this.ubi = new SkeinUBI(this.blockSize);
+      /** @type {uint8[]} */
       this.key = null;
 
       // Initialize chain to zeros (will process KEY block first)
       for (let i = 0; i < 8; i++) {
-        this.chain[i] = 0n;
+        this._chainWords[i] = 0n;
       }
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes, or null for none
+     * @returns {void}
+     */
     setKey(keyBytes) {
-      this.key = keyBytes ? [...keyBytes] : null;
+      if (keyBytes) this.key = keyBytes.slice();
+      else this.key = null;
     }
 
+    /**
+     * Process the key and configuration blocks and start the message
+     * @returns {void}
+     */
     init() {
       // Reset chain to zeros
       for (let i = 0; i < 8; i++) {
-        this.chain[i] = 0n;
+        this._chainWords[i] = 0n;
       }
 
       // Process KEY block first (this is what makes it MAC mode)
       if (this.key) {
         this.ubi.reset(PARAM_TYPE_KEY);
-        this.ubi.update(this.key, 0, this.key.length, this.chain);
-        this.ubi.doFinal(this.chain);
+        this.ubi.update(this.key, 0, this.key.length, this._chainWords);
+        this.ubi.doFinal(this._chainWords);
       }
 
       // Process configuration block
@@ -303,9 +416,13 @@
       this.ubi.reset(PARAM_TYPE_MESSAGE);
     }
 
+    /**
+     * Process the configuration block
+     * @returns {void}
+     */
     processConfig() {
       // Configuration block: "SHA3" (4 bytes) + version (2 bytes) + reserved (2 bytes) + output length (8 bytes)
-      const config = new Uint8Array(32);
+      const config = OpCodes.CreateArray(32, 0);
       config[0] = 0x53; // 'S'
       config[1] = 0x48; // 'H'
       config[2] = 0x41; // 'A'
@@ -314,47 +431,53 @@
       config[5] = 0;    // Version (MSB)
 
       // Output length in bits (little-endian 64-bit)
-      const lengthBytes = OpCodes.EncodeMsgLength64LE(this.outputBits);
+      const lengthBytes = OpCodes.EncodeMsgLength64LE(this._macBits);
       for (let i = 0; i < 8; i++) {
         config[8 + i] = lengthBytes[i];
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
-      this.ubi.update(config, 0, 32, this.chain);
-      this.ubi.doFinal(this.chain);
+      this.ubi.update(config, 0, 32, this._chainWords);
+      this.ubi.doFinal(this._chainWords);
     }
 
+    /**
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
     update(data) {
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
-      this.ubi.update(data, 0, data.length, this.chain);
+      this.ubi.update(data, 0, data.length, this._chainWords);
     }
 
+    /**
+     * Finish the message and run the output transformation
+     * @returns {uint8[]} outputBits / 8 MAC bytes
+     */
     finalize() {
       // Finalize message block
-      this.ubi.doFinal(this.chain);
+      this.ubi.doFinal(this._chainWords);
 
       // Output transformation
-      const outputBytes = this.outputBits / 8;
-      const result = new Uint8Array(outputBytes);
+      const outputBytes = this._macBits / 8;
+      const result = OpCodes.CreateArray(outputBytes, 0);
 
-      const counter = new Uint8Array(8);
-      counter[0] = 0; // Output counter starts at 0
+      const counter = OpCodes.CreateArray(8, 0); // Output counter starts at 0
 
       this.ubi.reset(PARAM_TYPE_OUTPUT);
-      this.ubi.update(counter, 0, 8, this.chain);
+      this.ubi.update(counter, 0, 8, this._chainWords);
 
-      const outputWords = [...this.chain]; // Copy chain before final
+      const outputWords = this._chainWords.slice(); // Copy chain before final
       this.ubi.doFinal(outputWords);
 
       // Convert 64-bit words to bytes (little-endian)
       const wordsNeeded = Math.ceil(outputBytes / 8);
       for (let i = 0; i < wordsNeeded; i++) {
-        const word = outputWords[i];
+        const w = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(w, j * 8), 0xFFn));
+          result[i * 8 + j] = b;
         }
       }
 
@@ -379,7 +502,7 @@
       this.country = CountryCode.US;
 
       this.SupportedKeySizes = [new KeySize(1, 256, 1)]; // Variable key size (Skein supports arbitrary key lengths)
-      this.SupportedOutputSizes = [64]; // Default 512 bits, but supports variable
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // Default 512 bits, but supports variable
 
       this.documentation = [
         new LinkItem("The Skein Hash Function Family, Version 1.3", "https://www.schneier.com/wp-content/uploads/2015/01/skein.pdf"),
@@ -463,8 +586,8 @@
 
     /**
    * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
+   * @returns {SkeinMAC512Instance} New MAC instance
    */
 
     CreateInstance(isInverse = false) {
@@ -473,29 +596,34 @@
   }
 
   /**
- * SkeinMAC512 cipher instance implementing Feed/Result pattern
+ * SkeinMAC512 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IMacInstance}
  */
 
   class SkeinMAC512Instance extends IMacInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a Skein-512-MAC instance
+   * @param {SkeinMAC512Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {int32} */
       this._outputSize = 64; // Default 512 bits
+      /** @type {SkeinMACHasher} */
       this.hasher = null;
     }
 
     /**
-   * Set encryption/decryption key
-   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * Set the key
+   * @param {uint8[]} keyBytes - Key or null to clear
    * @throws {Error} If key size is invalid
    */
 
@@ -506,36 +634,45 @@
       }
 
       // Validate against algorithm's SupportedKeySizes
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
-
-      if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      let isValidSize = false;
+      for (let i = 0; i < this._keySizes.length; i++) {
+        const ks = this._keySizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) isValidSize = true;
       }
 
-      this._key = [...keyBytes];
+      if (!isValidSize) {
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
+      }
+
+      this._key = keyBytes.slice();
     }
 
     /**
    * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * @returns {uint8[]} Copy of key bytes or null
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      if (!this._key) return null;
+      return this._key.slice();
     }
 
+    /**
+     * @param {int32} sizeBytes - MAC length in bytes
+     */
     set outputSize(sizeBytes) {
       this._outputSize = sizeBytes;
     }
 
+    /**
+     * @returns {int32} MAC length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed message bytes
    * @param {uint8[]} data - Input data bytes
    * @throws {Error} If key not set
    */
@@ -555,9 +692,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the MAC of everything fed so far
+   * @returns {uint8[]} MAC bytes
+   * @throws {Error} If key not set
    */
 
     Result() {
@@ -570,6 +707,7 @@
         this.hasher.init();
       }
 
+      /** @type {uint8[]} */
       const mac = this.hasher.finalize();
 
       // Reset for next MAC operation
@@ -578,6 +716,12 @@
       return mac;
     }
 
+    /**
+     * One-shot MAC
+     * @param {uint8[]} input - Message bytes
+     * @param {uint8[]} key - Key, or null to keep the current one
+     * @returns {uint8[]} MAC bytes
+     */
     ProcessData(input, key) {
       if (key) this.key = key;
       if (!this._key) throw new Error("Key not set");
@@ -586,12 +730,17 @@
       this.hasher.setKey(this._key);
       this.hasher.init();
       this.hasher.update(input);
+      /** @type {uint8[]} */
       const mac = this.hasher.finalize();
       this.hasher = null;
 
       return mac;
     }
 
+    /**
+     * Drop any partial message
+     * @returns {void}
+     */
     Reset() {
       this.hasher = null;
     }

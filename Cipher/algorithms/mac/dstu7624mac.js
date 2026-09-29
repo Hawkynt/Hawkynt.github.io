@@ -44,28 +44,21 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Get Kalyna algorithm from the registry
-  let KalynaAlgorithm = null;
-
-  function getKalyna() {
-    if (KalynaAlgorithm) return KalynaAlgorithm;
-
-    // Try to get from registry
-    const registry = AlgorithmFramework.GetRegistry ? AlgorithmFramework.GetRegistry() : null;
-    if (registry) {
-      KalynaAlgorithm = registry.find(a => a.name === "Kalyna" || a.name === "DSTU 7624");
-    }
-
-    // Try from module
-    if (!KalynaAlgorithm && KalynaModule && KalynaModule.KalynaAlgorithm) {
-      KalynaAlgorithm = new KalynaModule.KalynaAlgorithm();
-    }
-
-    if (!KalynaAlgorithm) {
+  /**
+   * New Kalyna encryption instance from the registered Kalyna algorithm
+   * (kalyna.js is loaded ahead of this file and registers it)
+   * @returns {IBlockCipherInstance} Kalyna encryption instance
+   * @throws {Error} If Kalyna is not registered
+   */
+  function newKalynaInstance() {
+    /** @type {Algorithm} */
+    const kalyna = AlgorithmFramework.Find('Kalyna');
+    if (!kalyna) {
       throw new Error('Kalyna block cipher dependency is required for DSTU7624Mac');
     }
-
-    return KalynaAlgorithm;
+    /** @type {IBlockCipherInstance} */
+    const instance = kalyna.CreateInstance(false); // Encryption mode
+    return instance;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -150,15 +143,26 @@
  */
 
   class DSTU7624MacInstance extends IMacInstance {
+    /**
+     * Initialize a DSTU 7624 MAC instance
+     * @param {DSTU7624MacAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {int32} */
       this._blockSize = 16; // Default 128-bit blocks
+      /** @type {int32} */
       this._macSize = 16;   // Default 128-bit MAC output
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.c = null;        // Chaining state
+      /** @type {uint8[]} */
       this.cTemp = null;    // Temporary for XOR operations
+      /** @type {uint8[]} */
       this.kDelta = null;   // Delta value for final block
+      /** @type {IBlockCipherInstance} */
       this.kalynaInstance = null;
     }
 
@@ -194,14 +198,13 @@
       this._blockSize = 16;
 
       // Initialize Kalyna cipher instance
-      const kalyna = getKalyna();
-      this.kalynaInstance = kalyna.CreateInstance(false); // Encryption mode
+      this.kalynaInstance = newKalynaInstance();
       this.kalynaInstance.key = this._key;
 
       // Initialize state arrays
-      this.c = new Array(this._blockSize).fill(0);
-      this.cTemp = new Array(this._blockSize).fill(0);
-      this.kDelta = new Array(this._blockSize).fill(0);
+      this.c = OpCodes.CreateArray(this._blockSize, 0);
+      this.cTemp = OpCodes.CreateArray(this._blockSize, 0);
+      this.kDelta = OpCodes.CreateArray(this._blockSize, 0);
 
       // Generate kDelta by encrypting zero block
       this._generateKDelta();
@@ -217,6 +220,11 @@
     }
 
     // Property setter for block size (must match key size for Kalyna)
+    /**
+     * Select the block size
+     * @param {int32} sizeInBytes - Block size in bytes (only 16 is supported; 0 is ignored)
+     * @throws {Error} If the size is not 16
+     */
     set blockSize(sizeInBytes) {
       if (!sizeInBytes) return;
 
@@ -229,9 +237,9 @@
 
       // Re-initialize state arrays if key is already set
       if (this._key) {
-        this.c = new Array(this._blockSize).fill(0);
-        this.cTemp = new Array(this._blockSize).fill(0);
-        this.kDelta = new Array(this._blockSize).fill(0);
+        this.c = OpCodes.CreateArray(this._blockSize, 0);
+        this.cTemp = OpCodes.CreateArray(this._blockSize, 0);
+        this.kDelta = OpCodes.CreateArray(this._blockSize, 0);
 
         if (this.kalynaInstance) {
           this._generateKDelta();
@@ -239,26 +247,43 @@
       }
     }
 
+    /**
+     * Block size in bytes
+     * @returns {int32} Block size in bytes
+     */
     get blockSize() {
       return this._blockSize;
     }
 
     // Property setter for MAC output size
+    /**
+     * Truncate the MAC
+     * @param {int32} sizeInBytes - MAC size in bytes, 1..block size (0 is ignored)
+     * @throws {Error} If the size is out of range
+     */
     set macSize(sizeInBytes) {
       if (!sizeInBytes) return;
 
       if (sizeInBytes < 1 || sizeInBytes > this._blockSize) {
-        throw new Error(`MAC size must be between 1 and ${this._blockSize} bytes`);
+        throw new Error('MAC size must be between 1 and ' + this._blockSize + ' bytes');
       }
 
       this._macSize = sizeInBytes;
     }
 
+    /**
+     * MAC size in bytes
+     * @returns {int32} MAC size in bytes
+     */
     get macSize() {
       return this._macSize;
     }
 
     // Generate kDelta by encrypting zero block
+    /**
+     * kDelta = E_K(0)
+     * @returns {void}
+     */
     _generateKDelta() {
       if (!this.kalynaInstance) {
         throw new Error("Kalyna instance not initialized");
@@ -269,24 +294,43 @@
 
       // Encrypt zero block to get kDelta
       this.kalynaInstance.Feed(this.kDelta);
-      this.kDelta = this.kalynaInstance.Result();
+      /** @type {uint8[]} */
+      const encrypted = this.kalynaInstance.Result();
+      this.kDelta = encrypted;
     }
 
     // XOR two byte arrays
+    /**
+     * result[i] = x[xOff + i] xor y[yOff + i] for one block
+     * @param {uint8[]} x - First operand
+     * @param {int32} xOff - Offset into x
+     * @param {uint8[]} y - Second operand
+     * @param {int32} yOff - Offset into y
+     * @param {uint8[]} result - Receives the block
+     * @returns {void}
+     */
     _xor(x, xOff, y, yOff, result) {
       for (let i = 0; i < this._blockSize; i++) {
-        result[i] = OpCodes.AndN(OpCodes.XorN(x[i + xOff], y[i + yOff]), 0xFF);
+        result[i] = OpCodes.Xor8(x[i + xOff], y[i + yOff]);
       }
     }
 
     // Process a single block
+    /**
+     * CBC step: c = E_K(c xor input block)
+     * @param {uint8[]} input - Message bytes
+     * @param {int32} inOff - Offset of the block in input
+     * @returns {void}
+     */
     _processBlock(input, inOff) {
       // XOR input block with current state
       this._xor(this.c, 0, input, inOff, this.cTemp);
 
       // Encrypt the XOR result
       this.kalynaInstance.Feed(this.cTemp);
-      this.c = this.kalynaInstance.Result();
+      /** @type {uint8[]} */
+      const encrypted = this.kalynaInstance.Result();
+      this.c = encrypted;
     }
 
     // Feed data to the MAC
@@ -334,6 +378,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes (a multiple of the block size)
+     * @returns {uint8[]} MAC bytes
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -344,13 +394,17 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer;
       return result;
     }
 
     // Reset internal state
+    /**
+     * Clear the chaining state and buffer and recompute kDelta
+     * @returns {void}
+     */
     _reset() {
       if (this.c) this.c.fill(0);
       if (this.cTemp) this.cTemp.fill(0);
@@ -363,6 +417,10 @@
     }
 
     // Core MAC computation
+    /**
+     * MAC of the buffered message
+     * @returns {uint8[]} MAC bytes, truncated to macSize
+     */
     _computeMAC() {
       const numBlocks = Math.floor(this.inputBuffer.length / this._blockSize);
 
@@ -370,6 +428,7 @@
         // Empty message - process single zero block with kDelta
         this._xor(this.c, 0, this.kDelta, 0, this.cTemp);
         this.kalynaInstance.Feed(this.cTemp);
+        /** @type {uint8[]} */
         const result = this.kalynaInstance.Result();
         return result.slice(0, this._macSize);
       }
@@ -390,6 +449,7 @@
 
       // Encrypt final state
       this.kalynaInstance.Feed(this.c);
+      /** @type {uint8[]} */
       const result = this.kalynaInstance.Result();
 
       // Truncate to requested MAC size
