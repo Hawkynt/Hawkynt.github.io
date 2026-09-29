@@ -68,28 +68,40 @@
 
   // Simeck-64 box function for sLiSCP-light-320
   // Performs 8 rounds of Simeck-64 with alternating Feistel structure
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @param {uint32} rc
+   * @returns {uint32[]}
+   */
   function simeck64Box(x, y, rc) {
+    /** @type {uint32} */
     let rcBit = rc;
 
     // The simeck64_round macro modifies one value then swaps
     // We alternate which value gets modified: y, x, y, x...
     for (let i = 0; i < 8; ++i) {
-      if (OpCodes.AndN(i, 1) === 0) {
+      if (OpCodes.And32(i, 1) === 0) {
         // Even rounds: modify y
-        y = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y, OpCodes.AndN(OpCodes.RotL32(x, 5), x)), OpCodes.RotL32(x, 1)), 0xFFFFFFFE), OpCodes.AndN(rcBit, 1));
+        y = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.And32(OpCodes.RotL32(x, 5), x)), OpCodes.RotL32(x, 1)), 0xFFFFFFFE), OpCodes.And32(rcBit, 1));
       } else {
         // Odd rounds: modify x
-        x = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x, OpCodes.AndN(OpCodes.RotL32(y, 5), y)), OpCodes.RotL32(y, 1)), 0xFFFFFFFE), OpCodes.AndN(rcBit, 1));
+        x = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.And32(OpCodes.RotL32(y, 5), y)), OpCodes.RotL32(y, 1)), 0xFFFFFFFE), OpCodes.And32(rcBit, 1));
       }
       rcBit = OpCodes.Shr32(rcBit, 1);
     }
 
-    return [x, y];
+    /** @type {uint32[]} */
+    const pair = [x, y];
+    return pair;
   }
 
   // sLiSCP-light-320 permutation
   // State is 320 bits = 10 x 32-bit words
   // Pre-swapped for contiguous rate bytes at positions 0-7
+  /**
+   * @param {uint8[]} state
+   */
   function sliscp320Permute(state) {
     // Load state as 32-bit words (big-endian)
     let x0 = OpCodes.Pack32BE(state[0], state[1], state[2], state[3]);
@@ -106,6 +118,7 @@
     let rcIndex = 0;
     for (let round = 0; round < SLISCP320_ROUNDS; ++round) {
       // Apply Simeck-64 to three 64-bit sub-blocks
+      /** @type {uint32[]} */
       let result = simeck64Box(x0, x1, SLISCP320_RC[rcIndex++]);
       x0 = result[0]; x1 = result[1];
 
@@ -115,20 +128,20 @@
       result = simeck64Box(x8, x9, SLISCP320_RC[rcIndex++]);
       x8 = result[0]; x9 = result[1];
 
-      x6 = OpCodes.XorN(x6, x8);
-      x7 = OpCodes.XorN(x7, x9);
-      x2 = OpCodes.XorN(x2, x4);
-      x3 = OpCodes.XorN(x3, x5);
-      x8 = OpCodes.XorN(x8, x0);
-      x9 = OpCodes.XorN(x9, x1);
+      x6 = OpCodes.Xor32(x6, x8);
+      x7 = OpCodes.Xor32(x7, x9);
+      x2 = OpCodes.Xor32(x2, x4);
+      x3 = OpCodes.Xor32(x3, x5);
+      x8 = OpCodes.Xor32(x8, x0);
+      x9 = OpCodes.Xor32(x9, x1);
 
       // Add step constants
-      x2 = OpCodes.XorN(x2, 0xFFFFFFFF);
-      x3 = OpCodes.XorN(x3, OpCodes.XorN(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
-      x6 = OpCodes.XorN(x6, 0xFFFFFFFF);
-      x7 = OpCodes.XorN(x7, OpCodes.XorN(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
-      x8 = OpCodes.XorN(x8, 0xFFFFFFFF);
-      x9 = OpCodes.XorN(x9, OpCodes.XorN(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
+      x2 = OpCodes.Xor32(x2, 0xFFFFFFFF);
+      x3 = OpCodes.Xor32(x3, OpCodes.Xor32(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
+      x6 = OpCodes.Xor32(x6, 0xFFFFFFFF);
+      x7 = OpCodes.Xor32(x7, OpCodes.Xor32(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
+      x8 = OpCodes.Xor32(x8, 0xFFFFFFFF);
+      x9 = OpCodes.Xor32(x9, OpCodes.Xor32(0xFFFFFF00, SLISCP320_RC[rcIndex++]));
 
       // Rotate sub-blocks
       const t0 = x8, t1 = x9;
@@ -164,9 +177,13 @@
   }
 
   // Swap bytes for contiguous rate access
+  /**
+   * @param {uint8[]} state
+   */
   function sliscp320Swap(state) {
     // Swap bytes 4-7 with bytes 16-19
     for (let i = 0; i < 4; ++i) {
+      /** @type {uint8} */
       const t = state[4 + i];
       state[4 + i] = state[16 + i];
       state[16 + i] = t;
@@ -327,6 +344,7 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
     }
 
@@ -385,7 +403,12 @@
      * @param {uint8[]|null} aadBytes
      */
     set aad(aadBytes) {
-      this._aad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._aad = copy;
     }
 
     /**
@@ -412,8 +435,13 @@
       return this._encrypt();
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
+      /** @type {uint8[]} */
       const state = new Array(ACE_STATE_SIZE);
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
       /** @type {uint8[]} */
       const ciphertext = [];
@@ -426,10 +454,10 @@
       while (ptIndex + ACE_RATE <= plaintext.length) {
         // XOR plaintext with state, update state, output ciphertext
         for (let i = 0; i < ACE_RATE; ++i) {
-          state[i] = OpCodes.XorN(state[i], plaintext[ptIndex + i]);
+          state[i] = OpCodes.Xor32(state[i], plaintext[ptIndex + i]);
           ciphertext.push(state[i]);
         }
-        state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
+        state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
         sliscp320Permute(state);
         ptIndex += ACE_RATE;
       }
@@ -437,14 +465,15 @@
       // Handle remaining plaintext bytes (including padding for complete blocks)
       const remaining = plaintext.length - ptIndex;
       for (let i = 0; i < remaining; ++i) {
-        state[i] = OpCodes.XorN(state[i], plaintext[ptIndex + i]);
+        state[i] = OpCodes.Xor32(state[i], plaintext[ptIndex + i]);
         ciphertext.push(state[i]);
       }
-      state[remaining] = OpCodes.XorN(state[remaining], 0x80); // Padding
-      state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
+      state[remaining] = OpCodes.Xor32(state[remaining], 0x80); // Padding
+      state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
       sliscp320Permute(state);
 
       // Generate authentication tag
+      /** @type {uint8[]} */
       const tag = this._aceFinalize(state);
       for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
@@ -452,13 +481,19 @@
       return ciphertext;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       if (this.inputBuffer.length < ACE_TAG_SIZE) {
         throw new Error("Ciphertext too short (missing authentication tag)");
       }
 
+      /** @type {uint8[]} */
       const state = new Array(ACE_STATE_SIZE);
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer.slice(0, -ACE_TAG_SIZE);
+      /** @type {uint8[]} */
       const receivedTag = this.inputBuffer.slice(-ACE_TAG_SIZE);
       /** @type {uint8[]} */
       const plaintext = [];
@@ -471,11 +506,11 @@
       while (ctIndex + ACE_RATE <= ciphertext.length) {
         // XOR ciphertext with state to produce plaintext
         for (let i = 0; i < ACE_RATE; ++i) {
-          const pt = OpCodes.XorN(state[i], ciphertext[ctIndex + i]);
+          const pt = OpCodes.Xor32(state[i], ciphertext[ctIndex + i]);
           plaintext.push(pt);
           state[i] = ciphertext[ctIndex + i];
         }
-        state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
+        state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
         sliscp320Permute(state);
         ctIndex += ACE_RATE;
       }
@@ -483,21 +518,23 @@
       // Handle remaining ciphertext bytes (including padding for complete blocks)
       const remaining = ciphertext.length - ctIndex;
       for (let i = 0; i < remaining; ++i) {
-        const pt = OpCodes.XorN(state[i], ciphertext[ctIndex + i]);
+        const pt = OpCodes.Xor32(state[i], ciphertext[ctIndex + i]);
         plaintext.push(pt);
         state[i] = ciphertext[ctIndex + i];
       }
-      state[remaining] = OpCodes.XorN(state[remaining], 0x80); // Padding
-      state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
+      state[remaining] = OpCodes.Xor32(state[remaining], 0x80); // Padding
+      state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x02); // Domain separation
       sliscp320Permute(state);
 
       // Verify authentication tag
+      /** @type {uint8[]} */
       const computedTag = this._aceFinalize(state);
 
       // Constant-time tag comparison
+      /** @type {uint32} */
       let tagMatch = 0;
       for (let i = 0; i < ACE_TAG_SIZE; ++i) {
-        tagMatch = OpCodes.OrN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(computedTag[i], receivedTag[i]));
       }
 
       if (tagMatch !== 0) {
@@ -510,6 +547,9 @@
       return plaintext;
     }
 
+    /**
+     * @param {uint8[]} state
+     */
     _aceInit(state) {
       // Initialize state by interleaving key and nonce
       // state[0..7] = key[0..7]
@@ -541,12 +581,12 @@
 
       // Absorb key in two permutation operations
       for (let i = 0; i < 8; ++i) {
-        state[i] = OpCodes.XorN(state[i], this._key[i]);
+        state[i] = OpCodes.Xor32(state[i], this._key[i]);
       }
       sliscp320Permute(state);
 
       for (let i = 0; i < 8; ++i) {
-        state[i] = OpCodes.XorN(state[i], this._key[8 + i]);
+        state[i] = OpCodes.Xor32(state[i], this._key[8 + i]);
       }
       sliscp320Permute(state);
 
@@ -555,9 +595,9 @@
         let adIndex = 0;
         while (adIndex + ACE_RATE <= this._aad.length) {
           for (let i = 0; i < ACE_RATE; ++i) {
-            state[i] = OpCodes.XorN(state[i], this._aad[adIndex + i]);
+            state[i] = OpCodes.Xor32(state[i], this._aad[adIndex + i]);
           }
-          state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x01); // Domain separation
+          state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x01); // Domain separation
           sliscp320Permute(state);
           adIndex += ACE_RATE;
         }
@@ -565,23 +605,27 @@
         // Handle remaining AD bytes (including padding for complete blocks)
         const remaining = this._aad.length - adIndex;
         for (let i = 0; i < remaining; ++i) {
-          state[i] = OpCodes.XorN(state[i], this._aad[adIndex + i]);
+          state[i] = OpCodes.Xor32(state[i], this._aad[adIndex + i]);
         }
-        state[remaining] = OpCodes.XorN(state[remaining], 0x80); // Padding
-        state[ACE_STATE_SIZE - 1] = OpCodes.XorN(state[ACE_STATE_SIZE - 1], 0x01); // Domain separation
+        state[remaining] = OpCodes.Xor32(state[remaining], 0x80); // Padding
+        state[ACE_STATE_SIZE - 1] = OpCodes.Xor32(state[ACE_STATE_SIZE - 1], 0x01); // Domain separation
         sliscp320Permute(state);
       }
     }
 
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     _aceFinalize(state) {
       // Absorb key again
       for (let i = 0; i < 8; ++i) {
-        state[i] = OpCodes.XorN(state[i], this._key[i]);
+        state[i] = OpCodes.Xor32(state[i], this._key[i]);
       }
       sliscp320Permute(state);
 
       for (let i = 0; i < 8; ++i) {
-        state[i] = OpCodes.XorN(state[i], this._key[8 + i]);
+        state[i] = OpCodes.Xor32(state[i], this._key[8 + i]);
       }
       sliscp320Permute(state);
 
@@ -589,6 +633,7 @@
       sliscp320Swap(state);
 
       // Extract authentication tag
+      /** @type {uint8[]} */
       const tag = [];
       for (let i = 0; i < 8; ++i) {
         tag.push(state[i]);

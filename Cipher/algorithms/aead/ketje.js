@@ -51,6 +51,7 @@
    * Keccak-p round constants (subset for reduced-round variants)
    * These are the official round constants from Keccak specification
    */
+  /** @type {bigint[]} */
   const KECCAK_RC = [
     0x0000000000000001n, 0x0000000000008082n, 0x800000000000808An, 0x8000000080008000n,
     0x000000000000808Bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
@@ -63,6 +64,7 @@
   /**
    * Rho rotation offsets for Keccak lanes (standard Keccak-p)
    */
+  /** @type {int32[][]} */
   const RHO_OFFSETS = [
     [  0, 36,  3, 41, 18 ],
     [  1, 44, 10, 45,  2 ],
@@ -74,6 +76,7 @@
   /**
    * Pi permutation indices for Keccak
    */
+  /** @type {int32[][]} */
   const PI_PERMUTATION = [
     [ 0, 0 ], [ 1, 1 ], [ 2, 2 ], [ 3, 3 ], [ 4, 4 ],
     [ 3, 0 ], [ 4, 1 ], [ 0, 2 ], [ 1, 3 ], [ 2, 4 ],
@@ -87,15 +90,24 @@
    * Supports 200-bit (Ketje Jr) and 400-bit (Ketje Sr) states
    */
   class KeccakPermutation {
+    /**
+     * @param {int32} width - State width in bits (200 or 400)
+     */
     constructor(width) {
+      /** @type {int32} */
       this.width = width; // 200 or 400 bits
+      /** @type {int32} */
       this.laneSize = width / 25; // 8 or 16 bits per lane
+      /** @type {boolean} */
       this.useBigInt = width >= 200;
 
       // State as 5x5 array of lanes
+      /** @type {bigint[][]} */
       this.state = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        this.state[i] = new Array(5);
+        /** @type {bigint[]} */
+        const row = new Array(5);
+        this.state[i] = row;
         for (let j = 0; j < 5; ++j) {
           this.state[i][j] = 0n;
         }
@@ -104,9 +116,11 @@
 
     /**
      * Keccak-p round function
+     * @param {bigint} roundConstant
      */
     round(roundConstant) {
       // Theta step
+      /** @type {bigint[]} */
       const C = new Array(5);
       for (let x = 0; x < 5; ++x) {
         C[x] = this.state[x][0];
@@ -115,9 +129,10 @@
         }
       }
 
+      /** @type {bigint[]} */
       const D = new Array(5);
       for (let x = 0; x < 5; ++x) {
-        D[x] = OpCodes.XorN(C[OpCodes.AndN(x + 4, 0xFF) % 5], this._rotl(C[OpCodes.AndN(x + 1, 0xFF) % 5], 1));
+        D[x] = OpCodes.XorN(C[OpCodes.And32(x + 4, 0xFF) % 5], this._rotl(C[OpCodes.And32(x + 1, 0xFF) % 5], 1));
       }
 
       for (let x = 0; x < 5; ++x) {
@@ -127,17 +142,22 @@
       }
 
       // Rho and Pi steps (combined)
+      /** @type {bigint[][]} */
       const B = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        B[i] = new Array(5);
+        /** @type {bigint[]} */
+        const row = new Array(5);
+        B[i] = row;
       }
 
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
+          /** @type {int32} */
           const offset = RHO_OFFSETS[x][y] % this.laneSize;
+          /** @type {bigint} */
           const rotated = this._rotl(this.state[x][y], offset);
-          const newX = OpCodes.AndN(0 * x + 1 * y, 0xFF) % 5;
-          const newY = OpCodes.AndN(2 * x + 3 * y, 0xFF) % 5;
+          const newX = OpCodes.And32(0 * x + 1 * y, 0xFF) % 5;
+          const newY = OpCodes.And32(2 * x + 3 * y, 0xFF) % 5;
           B[newX][newY] = rotated;
         }
       }
@@ -145,7 +165,9 @@
       // Chi step
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          this.state[x][y] = OpCodes.XorN(B[x][y], OpCodes.AndN(~B[OpCodes.AndN(x + 1, 0xFF) % 5][y], B[OpCodes.AndN(x + 2, 0xFF) % 5][y]));
+          /** @type {bigint} */
+          const notNext = OpCodes.XorN(B[OpCodes.And32(x + 1, 0xFF) % 5][y], -1n);
+          this.state[x][y] = OpCodes.XorN(B[x][y], OpCodes.AndN(notNext, B[OpCodes.And32(x + 2, 0xFF) % 5][y]));
           this.state[x][y] = this._maskLane(this.state[x][y]);
         }
       }
@@ -162,9 +184,12 @@
     applyTwist() {
       // Twist: swap lanes to move rate portion to diagonal
       // This is the v2 modification for better security
+      /** @type {bigint[][]} */
       const temp = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        temp[i] = new Array(5);
+        /** @type {bigint[]} */
+        const row = new Array(5);
+        temp[i] = row;
         for (let j = 0; j < 5; ++j) {
           temp[i][j] = this.state[i][j];
         }
@@ -173,7 +198,7 @@
       // Apply coordinate transformation (simplified twist)
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          const tx = OpCodes.AndN(x + y, 0xFF) % 5;
+          const tx = OpCodes.And32(x + y, 0xFF) % 5;
           const ty = y;
           this.state[tx][ty] = temp[x][y];
         }
@@ -184,9 +209,12 @@
      * Inverse twist for extraction
      */
     inverseTwist() {
+      /** @type {bigint[][]} */
       const temp = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        temp[i] = new Array(5);
+        /** @type {bigint[]} */
+        const row = new Array(5);
+        temp[i] = row;
         for (let j = 0; j < 5; ++j) {
           temp[i][j] = this.state[i][j];
         }
@@ -194,7 +222,7 @@
 
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          const tx = OpCodes.AndN(x + 5 - y, 0xFF) % 5;
+          const tx = OpCodes.And32(x + 5 - y, 0xFF) % 5;
           const ty = y;
           this.state[tx][ty] = temp[x][y];
         }
@@ -203,11 +231,14 @@
 
     /**
      * Full permutation with specified number of rounds
+     * @param {int32} numRounds
      */
     permute(numRounds) {
       const startRound = 24 - numRounds;
       for (let i = 0; i < numRounds; ++i) {
+        /** @type {bigint} */
         const rc = KECCAK_RC[startRound + i];
+        /** @type {bigint} */
         const maskedRC = this._maskLane(rc);
         this.round(maskedRC);
       }
@@ -215,25 +246,38 @@
 
     /**
      * Left rotation for lane
+     * @param {bigint} value
+     * @param {int32} positions
+     * @returns {bigint}
      */
     _rotl(value, positions) {
-      if (positions === 0) return value;
+      if (positions === 0) {
+        return value;
+      }
+      /** @type {bigint} */
       const mask = OpCodes.ShiftLn(1n, BigInt(this.laneSize)) - 1n;
       value = OpCodes.AndN(value, mask);
-      const pos = BigInt(OpCodes.AndN(positions, 0xFF) % this.laneSize);
+      /** @type {bigint} */
+      const pos = BigInt(OpCodes.And32(positions, 0xFF) % this.laneSize);
       return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(value, pos), OpCodes.ShiftRn(value, BigInt(this.laneSize) - pos)), mask);
     }
 
     /**
      * Mask lane to correct bit width
+     * @param {bigint} value
+     * @returns {bigint}
      */
     _maskLane(value) {
+      /** @type {bigint} */
       const mask = OpCodes.ShiftLn(1n, BigInt(this.laneSize)) - 1n;
       return OpCodes.AndN(value, mask);
     }
 
     /**
      * Load bytes into state (little-endian)
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @param {int32} length
      */
     loadBytes(bytes, offset, length) {
       let byteIndex = offset;
@@ -241,11 +285,17 @@
 
       for (let y = 0; y < 5; ++y) {
         for (let x = 0; x < 5; ++x) {
-          if (byteIndex >= offset + length) break;
+          if (byteIndex >= offset + length) {
+            break;
+          }
 
+          /** @type {bigint} */
           let lane = 0n;
           for (let b = 0; b < bytesPerLane && byteIndex < offset + length; ++b) {
-            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(bytes[byteIndex++] || 0), BigInt(b * 8)));
+            /** @type {uint8} */
+            const byteValue = byteIndex < bytes.length ? bytes[byteIndex] : 0;
+            byteIndex++;
+            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(byteValue), BigInt(b * 8)));
           }
           this.state[x][y] = lane;
         }
@@ -255,6 +305,8 @@
 
     /**
      * Extract bytes from state (little-endian)
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     extractBytes(length) {
       /** @type {uint8[]} */
@@ -264,9 +316,10 @@
 
       for (let y = 0; y < 5 && extracted < length; ++y) {
         for (let x = 0; x < 5 && extracted < length; ++x) {
+          /** @type {bigint} */
           const lane = this.state[x][y];
           for (let b = 0; b < bytesPerLane && extracted < length; ++b) {
-            result.push(Number(OpCodes.AndN(OpCodes.ShiftRn(lane, BigInt(b * 8)), 0xFFn)));
+            result.push(OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(lane, BigInt(b * 8)), 0xFFn))));
             ++extracted;
           }
         }
@@ -277,6 +330,9 @@
 
     /**
      * XOR bytes into state
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @param {int32} length
      */
     xorBytes(bytes, offset, length) {
       let byteIndex = offset;
@@ -284,11 +340,17 @@
 
       for (let y = 0; y < 5; ++y) {
         for (let x = 0; x < 5; ++x) {
-          if (byteIndex >= offset + length) break;
+          if (byteIndex >= offset + length) {
+            break;
+          }
 
+          /** @type {bigint} */
           let lane = 0n;
           for (let b = 0; b < bytesPerLane && byteIndex < offset + length; ++b) {
-            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(bytes[byteIndex++] || 0), BigInt(b * 8)));
+            /** @type {uint8} */
+            const byteValue = byteIndex < bytes.length ? bytes[byteIndex] : 0;
+            byteIndex++;
+            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(byteValue), BigInt(b * 8)));
           }
           this.state[x][y] = OpCodes.XorN(this.state[x][y], lane);
         }
@@ -314,24 +376,40 @@
    * MonkeyDuplex: duplex sponge construction for Ketje
    */
   class MonkeyDuplex {
+    /**
+     * @param {int32} stateWidth - State width in bits
+     * @param {int32} rate - Rate in bytes
+     * @param {int32} nStart - Initial rounds
+     * @param {int32} nStep - Step rounds
+     * @param {int32} nStride - Stride rounds
+     */
     constructor(stateWidth, rate, nStart, nStep, nStride) {
+      /** @type {int32} */
       this.stateWidth = stateWidth;  // 200 or 400 bits
+      /** @type {int32} */
       this.rate = rate;              // Rate in bytes
+      /** @type {int32} */
       this.nStart = nStart;          // Initial rounds
+      /** @type {int32} */
       this.nStep = nStep;            // Step rounds
+      /** @type {int32} */
       this.nStride = nStride;        // Stride rounds
 
+      /** @type {KeccakPermutation} */
       this.perm = new KeccakPermutation(stateWidth);
     }
 
     /**
      * Initialize duplex with key and nonce (keypack)
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
      */
     initialize(key, nonce) {
       // Clear state
       this.perm.clear();
 
       // Keypack: K || 0x01 || N || 0x01
+      /** @type {uint8[]} */
       const keypack = [...key, 0x01, ...nonce, 0x01];
 
       // Pad to rate
@@ -350,6 +428,9 @@
 
     /**
      * Duplex step: absorb and squeeze
+     * @param {uint8[]} input
+     * @param {int32} outputLength
+     * @returns {uint8[]}
      */
     duplexStep(input, outputLength) {
       // XOR input into state (after twist)
@@ -362,6 +443,7 @@
       this.perm.permute(this.nStep);
 
       // Extract output (before inverse twist)
+      /** @type {uint8[]} */
       const output = this.perm.extractBytes(outputLength);
       this.perm.inverseTwist();
 
@@ -370,6 +452,8 @@
 
     /**
      * Duplex stride: final tag generation
+     * @param {int32} outputLength
+     * @returns {uint8[]}
      */
     duplexStride(outputLength) {
       // Apply twist and permute with nStride rounds
@@ -377,6 +461,7 @@
       this.perm.permute(this.nStride);
 
       // Extract tag
+      /** @type {uint8[]} */
       const tag = this.perm.extractBytes(outputLength);
       this.perm.inverseTwist();
 
@@ -387,8 +472,12 @@
   // ==================== Ketje Algorithm Base Class ====================
 
   class KetjeBase extends AeadAlgorithm {
+    /**
+     * @param {string} variant - 'jr' or 'sr'
+     */
     constructor(variant) {
       super();
+      /** @type {string} */
       this.variant = variant;
 
       this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche, Ronny Van Keer";
@@ -538,22 +627,32 @@
       super(algorithm);
       /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string} */
       this.variant = algorithm.variant;
       /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this._inputBuffer = [];
 
       // Variant-specific parameters
       if (this.variant === 'jr') {
+        /** @type {int32} */
         this.stateWidth = 200;
+        /** @type {int32} */
         this.rate = 16;  // bytes
+        /** @type {int32} */
         this.keybytes = 12;
+        /** @type {int32} */
         this.noncebytes = 11;
+        /** @type {int32} */
         this.nStart = 12;
+        /** @type {int32} */
         this.nStep = 1;
+        /** @type {int32} */
         this.nStride = 6;
       } else if (this.variant === 'sr') {
         this.stateWidth = 400;
@@ -565,6 +664,7 @@
         this.nStride = 6;
       }
 
+      /** @type {int32} */
       this.tagSize = 16; // 128-bit tag
     }
 
@@ -626,7 +726,12 @@
      * @param {uint8[]|null} aadBytes
      */
     set aad(aadBytes) {
-      this._aad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._aad = copy;
     }
 
     /**
@@ -656,9 +761,12 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
+      if (!this._nonce) {
+        throw new Error("Nonce not set");
+      }
 
       // Create MonkeyDuplex instance
+      /** @type {MonkeyDuplex} */
       const duplex = new MonkeyDuplex(
         this.stateWidth,
         this.rate,
@@ -677,15 +785,18 @@
       if (this._aad.length > 0) {
         let aadOffset = 0;
         while (aadOffset < this._aad.length) {
+          /** @type {int32} */
           const blockSize = Math.min(this.rate, this._aad.length - aadOffset);
+          /** @type {uint8[]} */
           const aadBlock = this._aad.slice(aadOffset, aadOffset + blockSize);
 
           // Pad and add framing bit
+          /** @type {uint8[]} */
           const paddedAAD = [...aadBlock];
           while (paddedAAD.length < this.rate) {
             paddedAAD.push(0);
           }
-          paddedAAD[this.rate - 1] = OpCodes.OrN(paddedAAD[this.rate - 1], 0x01); // AAD frame bit
+          paddedAAD[this.rate - 1] = OpCodes.Or32(paddedAAD[this.rate - 1], 0x01); // AAD frame bit
 
           duplex.duplexStep(paddedAAD, 0);
           aadOffset += blockSize;
@@ -700,31 +811,41 @@
           throw new Error("Input too short for tag");
         }
 
+        /** @type {uint8[]} */
+
         const ciphertext = this._inputBuffer.slice(0, tagStart);
+        /** @type {uint8[]} */
         const providedTag = this._inputBuffer.slice(tagStart);
 
         let ctOffset = 0;
         while (ctOffset < ciphertext.length) {
+          /** @type {int32} */
           const blockSize = Math.min(this.rate, ciphertext.length - ctOffset);
+          /** @type {uint8[]} */
           const ctBlock = ciphertext.slice(ctOffset, ctOffset + blockSize);
 
           // Duplex step extracts keystream
-          const keystream = duplex.duplexStep([], blockSize);
+          /** @type {uint8[]} */
+          const noInput = [];
+          /** @type {uint8[]} */
+          const keystream = duplex.duplexStep(noInput, blockSize);
 
           // XOR to decrypt
+          /** @type {uint8[]} */
           const ptBlock = [];
           for (let i = 0; i < blockSize; ++i) {
-            ptBlock.push(OpCodes.XorN(ctBlock[i], keystream[i]));
+            ptBlock.push(OpCodes.Xor32(ctBlock[i], keystream[i]));
           }
           for (let _i = 0; _i < ptBlock.length; _i++) output.push(ptBlock[_i]);
 
           // XOR plaintext into state for authentication (same as encryption)
+          /** @type {uint8[]} */
           const paddedPT = [...ptBlock];
           while (paddedPT.length < this.rate) {
             paddedPT.push(0);
           }
           if (ctOffset + blockSize >= ciphertext.length) {
-            paddedPT[this.rate - 1] = OpCodes.OrN(paddedPT[this.rate - 1], 0x02); // Final block frame bit
+            paddedPT[this.rate - 1] = OpCodes.Or32(paddedPT[this.rate - 1], 0x02); // Final block frame bit
           }
 
           duplex.perm.applyTwist();
@@ -735,6 +856,7 @@
         }
 
         // Generate and verify tag
+        /** @type {uint8[]} */
         const computedTag = duplex.duplexStride(this.tagSize);
 
         // Constant-time comparison
@@ -753,26 +875,33 @@
         // Encrypt
         let ptOffset = 0;
         while (ptOffset < this._inputBuffer.length) {
+          /** @type {int32} */
           const blockSize = Math.min(this.rate, this._inputBuffer.length - ptOffset);
+          /** @type {uint8[]} */
           const ptBlock = this._inputBuffer.slice(ptOffset, ptOffset + blockSize);
 
           // Duplex step extracts keystream
-          const keystream = duplex.duplexStep([], blockSize);
+          /** @type {uint8[]} */
+          const noInput = [];
+          /** @type {uint8[]} */
+          const keystream = duplex.duplexStep(noInput, blockSize);
 
           // XOR to encrypt
+          /** @type {uint8[]} */
           const ctBlock = [];
           for (let i = 0; i < blockSize; ++i) {
-            ctBlock.push(OpCodes.XorN(ptBlock[i], keystream[i]));
+            ctBlock.push(OpCodes.Xor32(ptBlock[i], keystream[i]));
           }
           for (let _i = 0; _i < ctBlock.length; _i++) output.push(ctBlock[_i]);
 
           // XOR plaintext into state
+          /** @type {uint8[]} */
           const paddedPT = [...ptBlock];
           while (paddedPT.length < this.rate) {
             paddedPT.push(0);
           }
           if (ptOffset + blockSize >= this._inputBuffer.length) {
-            paddedPT[this.rate - 1] = OpCodes.OrN(paddedPT[this.rate - 1], 0x02); // Final block frame bit
+            paddedPT[this.rate - 1] = OpCodes.Or32(paddedPT[this.rate - 1], 0x02); // Final block frame bit
           }
 
           duplex.perm.applyTwist();
@@ -783,6 +912,7 @@
         }
 
         // Generate tag
+        /** @type {uint8[]} */
         const tag = duplex.duplexStride(this.tagSize);
         for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
       }
