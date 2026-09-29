@@ -61,21 +61,78 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {int32} */
   const CONTEXT_COUNT = 256;   // one match table per preceding byte value
+  /** @type {int32} */
   const TABLE_SIZE = 64;       // entries per context, a power of two
+  /** @type {int32} */
   const TABLE_MASK = TABLE_SIZE - 1;
+  /** @type {int32} */
   const TABLE_INDEX_BITS = 6;  // log2(TABLE_SIZE)
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_MATCH = MIN_MATCH + 255;
 
+  /** @type {int32} */
   const PROB_BITS = 12;
+  /** @type {int32} */
   const PROB_MAX = OpCodes.Shl32(1, PROB_BITS);
+  /** @type {int32} */
   const PROB_INIT = PROB_MAX / 2;
+  /** @type {int32} */
   const ADAPT_SHIFT = 5;
 
+  /** @type {uint32} */
   const NORMALIZE_LIMIT = OpCodes.Shl32(1, 24);
 
   // ===== BINARY ARITHMETIC CODER =====
+
+  /**
+   * Split point of the coding interval for a bit with the given probability.
+   * range * probability needs up to 44 bits, so the product is formed in
+   * float64 (exact) and only the result is wrapped to 32 bits.
+   * @param {uint32} low - Interval start
+   * @param {uint32} high - Interval end
+   * @param {int32} probability - 12-bit probability of a 0-bit
+   * @returns {uint32} Last value coding a 0-bit
+   */
+  function splitPoint(low, high, probability) {
+    /** @type {uint32} */
+    const range = OpCodes.Add32(OpCodes.Sub32(high, low), 1);
+    /** @type {float64} */
+    const wideRange = range;
+    /** @type {float64} */
+    const scaled = Math.floor(wideRange * probability / PROB_MAX);
+    /** @type {float64} */
+    const rawMid = low + scaled - 1;
+    /** @type {uint32} */
+    let mid = OpCodes.ToUint32(rawMid);
+    if (mid >= high) {
+      mid = OpCodes.Sub32(high, 1);
+    }
+    return mid;
+  }
+
+  /**
+   * Nudge a probability after an observed bit
+   * @param {int32[]} probs - Probabilities
+   * @param {int32} index - Entry to adapt
+   * @param {int32} bit - Observed bit
+   */
+  function adapt(probs, index, bit) {
+    /** @type {int32} */
+    const p = probs[index];
+    if (bit === 0) {
+      /** @type {int32} */
+      const up = OpCodes.Shr32(PROB_MAX - p, ADAPT_SHIFT);
+      probs[index] = p + up;
+    } else {
+      /** @type {int32} */
+      const down = OpCodes.Shr32(p, ADAPT_SHIFT);
+      probs[index] = p - down;
+    }
+  }
 
   /**
    * 32-bit binary arithmetic encoder with 12-bit adaptive probabilities. A
@@ -84,41 +141,56 @@
    * the estimate by 1/32 of the remaining distance to its extreme.
    */
   class ArithmeticEncoder {
+    /**
+     * @param {uint8[]} output - Destination
+     */
     constructor(output) {
+      /** @type {uint8[]} */
       this.output = output;
+      /** @type {uint32} */
       this.low = 0;
+      /** @type {uint32} */
       this.high = 0xFFFFFFFF;
     }
 
+    /**
+     * @param {int32} bit - Bit to code
+     * @param {int32[]} probs - Probabilities
+     * @param {int32} index - Probability used
+     */
     encodeBit(bit, probs, index) {
-      const range = OpCodes.ToUint32(this.high - this.low + 1);
-      let mid = OpCodes.ToUint32(this.low + Math.floor(range * probs[index] / PROB_MAX) - 1);
-      if (mid >= this.high)
-        mid = OpCodes.ToUint32(this.high - 1);
+      /** @type {uint32} */
+      const mid = splitPoint(this.low, this.high, probs[index]);
 
       if (bit === 0) {
         this.high = mid;
-        probs[index] += OpCodes.Shr32(PROB_MAX - probs[index], ADAPT_SHIFT);
       } else {
-        this.low = OpCodes.ToUint32(mid + 1);
-        probs[index] -= OpCodes.Shr32(probs[index], ADAPT_SHIFT);
+        this.low = OpCodes.Add32(mid, 1);
       }
+      adapt(probs, index, bit);
 
       while (OpCodes.Xor32(this.low, this.high) < NORMALIZE_LIMIT) {
-        this.output.push(OpCodes.Shr32(this.high, 24)&0xFF);
+        this.output.push(OpCodes.And32(OpCodes.Shr32(this.high, 24), 0xFF));
         this.low = OpCodes.Shl32(this.low, 8);
         this.high = OpCodes.Or32(OpCodes.Shl32(this.high, 8), 0xFF);
       }
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} bitCount - Number of bits, most significant first
+     * @param {int32[]} probs - One probability per bit position
+     */
     encodeBits(value, bitCount, probs) {
-      for (let b = bitCount - 1; b >= 0; --b)
+      for (let b = bitCount - 1; b >= 0; --b) {
         this.encodeBit(OpCodes.And32(OpCodes.Shr32(value, b), 1), probs, bitCount - 1 - b);
+      }
     }
 
+    /** Output the four bytes of the interval end */
     flush() {
       for (let i = 0; i < 4; ++i) {
-        this.output.push(OpCodes.Shr32(this.high, 24)&0xFF);
+        this.output.push(OpCodes.And32(OpCodes.Shr32(this.high, 24), 0xFF));
         this.high = OpCodes.Shl32(this.high, 8);
       }
     }
@@ -126,39 +198,53 @@
 
   /** Decoder counterpart of ArithmeticEncoder. */
   class ArithmeticDecoder {
+    /**
+     * @param {uint8[]} input - Coded bytes
+     * @param {int32} offset - Position of the first coded byte
+     */
     constructor(input, offset) {
+      /** @type {uint8[]} */
       this.input = input;
+      /** @type {int32} */
       this.pos = offset;
+      /** @type {uint32} */
       this.low = 0;
+      /** @type {uint32} */
       this.high = 0xFFFFFFFF;
+      /** @type {uint32} */
       this.code = 0;
 
       // The priming bytes pad with zero past the end of the stream, whereas
       // the renormalization refill pads with 0xFF.
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint8} */
         const next = this.pos < this.input.length ? this.input[this.pos++] : 0;
         this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), next);
       }
     }
 
+    /**
+     * @param {int32[]} probs - Probabilities
+     * @param {int32} index - Probability used
+     * @returns {int32} Decoded bit
+     */
     decodeBit(probs, index) {
-      const range = OpCodes.ToUint32(this.high - this.low + 1);
-      let mid = OpCodes.ToUint32(this.low + Math.floor(range * probs[index] / PROB_MAX) - 1);
-      if (mid >= this.high)
-        mid = OpCodes.ToUint32(this.high - 1);
+      /** @type {uint32} */
+      const mid = splitPoint(this.low, this.high, probs[index]);
 
-      let bit;
+      /** @type {int32} */
+      let bit = 0;
       if (this.code <= mid) {
         bit = 0;
         this.high = mid;
-        probs[index] += OpCodes.Shr32(PROB_MAX - probs[index], ADAPT_SHIFT);
       } else {
         bit = 1;
-        this.low = OpCodes.ToUint32(mid + 1);
-        probs[index] -= OpCodes.Shr32(probs[index], ADAPT_SHIFT);
+        this.low = OpCodes.Add32(mid, 1);
       }
+      adapt(probs, index, bit);
 
       while (OpCodes.Xor32(this.low, this.high) < NORMALIZE_LIMIT) {
+        /** @type {uint8} */
         const next = this.pos < this.input.length ? this.input[this.pos++] : 0xFF;
         this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), next);
         this.low = OpCodes.Shl32(this.low, 8);
@@ -168,10 +254,19 @@
       return bit;
     }
 
+    /**
+     * @param {int32} bitCount - Number of bits, most significant first
+     * @param {int32[]} probs - One probability per bit position
+     * @returns {uint32} Decoded value
+     */
     decodeBits(bitCount, probs) {
+      /** @type {uint32} */
       let value = 0;
-      for (let b = bitCount - 1; b >= 0; --b)
-        value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.decodeBit(probs, bitCount - 1 - b));
+      for (let b = bitCount - 1; b >= 0; --b) {
+        /** @type {int32} */
+        const bit = this.decodeBit(probs, bitCount - 1 - b);
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bit);
+      }
       return value;
     }
   }
@@ -179,15 +274,26 @@
   /** Adaptive bit probabilities, one positional array per symbol kind. */
   class ProbabilityModel {
     constructor() {
+      /** @type {int32[]} */
       this.isMatch = ProbabilityModel._create(1);
+      /** @type {int32[]} */
       this.slotBits = ProbabilityModel._create(TABLE_INDEX_BITS);
+      /** @type {int32[]} */
       this.lengthBits = ProbabilityModel._create(8);
+      /** @type {int32[]} */
       this.literalBits = ProbabilityModel._create(8);
     }
 
+    /**
+     * @param {int32} count - Number of probabilities
+     * @returns {int32[]} Probabilities at the initial value
+     */
     static _create(count) {
+      /** @type {int32[]} */
       const probs = new Array(count);
-      for (let i = 0; i < count; ++i) probs[i] = PROB_INIT;
+      for (let i = 0; i < count; ++i) {
+        probs[i] = PROB_INIT;
+      }
       return probs;
     }
   }
@@ -273,79 +379,135 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {BALZInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BALZInstance(this, isInverse);
     }
   }
 
+  /**
+   * @returns {int32[][]} One empty (-1 filled) match table per context
+   */
+  function createTables() {
+    /** @type {int32[][]} */
+    const tables = new Array(CONTEXT_COUNT);
+    for (let c = 0; c < CONTEXT_COUNT; ++c) {
+      /** @type {int32[]} */
+      const table = new Int32Array(TABLE_SIZE);
+      table.fill(-1);
+      tables[c] = table;
+    }
+    return tables;
+  }
+
   class BALZInstance extends IAlgorithmInstance {
+    /**
+     * @param {BALZCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // true = decompress, false = compress
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
+      let result;
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0) return [];
-        const result = this.decompress(this.inputBuffer);
-        this.inputBuffer = [];
-        return result;
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        result = this.decompress(this.inputBuffer);
+      } else {
+        // Even empty input yields the fixed 4-byte size header.
+        result = this.compress(this.inputBuffer);
       }
-
-      // Even empty input yields the fixed 4-byte size header.
-      const result = this.compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes (a missing array counts as empty)
+     * @returns {uint8[]} Size header and coded stream
+     */
     compress(data) {
-      const src = data || [];
+      /** @type {uint8[]} */
+      let src = data;
+      if (!src) {
+        src = [];
+      }
+      /** @type {int32} */
       const n = src.length;
+      /** @type {uint8[]} */
       const output = [];
 
-      output.push(n&0xFF);
-      output.push(OpCodes.Shr32(n, 8)&0xFF);
-      output.push(OpCodes.Shr32(n, 16)&0xFF);
-      output.push(OpCodes.Shr32(n, 24)&0xFF);
+      output.push(OpCodes.And32(n, 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(n, 8), 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(n, 16), 0xFF));
+      output.push(OpCodes.And32(OpCodes.Shr32(n, 24), 0xFF));
 
-      if (n === 0)
+      if (n === 0) {
         return output;
-
-      const encoder = new ArithmeticEncoder(output);
-      const model = new ProbabilityModel();
-
-      const tables = new Array(CONTEXT_COUNT);
-      const heads = new Int32Array(CONTEXT_COUNT);
-      for (let c = 0; c < CONTEXT_COUNT; ++c) {
-        const table = new Int32Array(TABLE_SIZE);
-        table.fill(-1);
-        tables[c] = table;
       }
 
+      /** @type {ArithmeticEncoder} */
+      const encoder = new ArithmeticEncoder(output);
+      /** @type {ProbabilityModel} */
+      const model = new ProbabilityModel();
+
+      /** @type {int32[][]} */
+      const tables = createTables();
+      /** @type {int32[]} */
+      const heads = new Int32Array(CONTEXT_COUNT);
+
+      /** @type {uint8} */
       let ctx = 0;
+      /** @type {int32} */
       let i = 0;
       while (i < n) {
+        /** @type {int32[]} */
         const table = tables[ctx];
+        /** @type {int32} */
         let bestLen = 0;
+        /** @type {int32} */
         let bestSlot = 0;
+        /** @type {int32} */
         const maxLen = Math.min(MAX_MATCH, n - i);
 
         for (let slot = 0; slot < TABLE_SIZE; ++slot) {
+          /** @type {int32} */
           const cand = table[slot];
-          if (cand < 0)
+          if (cand < 0) {
             continue;
+          }
 
+          /** @type {int32} */
           let len = 0;
-          while (len < maxLen && src[cand + len] === src[i + len])
+          while (len < maxLen && src[cand + len] === src[i + len]) {
             ++len;
+          }
 
           if (len > bestLen) {
             bestLen = len;
             bestSlot = slot;
-            if (bestLen === maxLen)
+            if (bestLen === maxLen) {
               break;
+            }
           }
         }
 
@@ -370,50 +532,82 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} data - Size header and coded stream (a missing array counts as empty)
+     * @returns {uint8[]} Decoded bytes
+     */
     decompress(data) {
-      const bytes = data || [];
-      if (bytes.length < 4)
-        return [];
-
-      const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      if (originalSize === 0)
-        return [];
-
-      const decoder = new ArithmeticDecoder(bytes, 4);
-      const model = new ProbabilityModel();
-
-      const tables = new Array(CONTEXT_COUNT);
-      const heads = new Int32Array(CONTEXT_COUNT);
-      for (let c = 0; c < CONTEXT_COUNT; ++c) {
-        const table = new Int32Array(TABLE_SIZE);
-        table.fill(-1);
-        tables[c] = table;
+      /** @type {uint8[]} */
+      let bytes = data;
+      if (!bytes) {
+        bytes = [];
+      }
+      if (bytes.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint32} */
+      const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
+      }
+
+      /** @type {ArithmeticDecoder} */
+      const decoder = new ArithmeticDecoder(bytes, 4);
+      /** @type {ProbabilityModel} */
+      const model = new ProbabilityModel();
+
+      /** @type {int32[][]} */
+      const tables = createTables();
+      /** @type {int32[]} */
+      const heads = new Int32Array(CONTEXT_COUNT);
+
+      /** @type {uint8[]} */
       const dst = new Array(originalSize);
+      /** @type {uint8} */
       let ctx = 0;
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < originalSize) {
+        /** @type {int32[]} */
         const table = tables[ctx];
+        /** @type {int32} */
         const isMatch = decoder.decodeBit(model.isMatch, 0);
 
         if (isMatch === 1) {
+          /** @type {uint32} */
           const slot = decoder.decodeBits(TABLE_INDEX_BITS, model.slotBits);
-          const len = decoder.decodeBits(8, model.lengthBits) + MIN_MATCH;
+          /** @type {uint32} */
+          const lengthCode = decoder.decodeBits(8, model.lengthBits);
+          /** @type {int32} */
+          const len = lengthCode + MIN_MATCH;
+          /** @type {int32} */
           const srcPos = table[slot];
-          if (srcPos < 0)
+          if (srcPos < 0) {
             throw new Error('BALZ: empty ROLZ slot ' + slot + ' referenced at position ' + pos);
+          }
 
           table[heads[ctx]] = pos;
           heads[ctx] = OpCodes.And32(heads[ctx] + 1, TABLE_MASK);
 
+          /** @type {uint8} */
           let lastByte = 0;
-          for (let k = 0; k < len && pos < originalSize; ++k, ++pos)
-            lastByte = dst[pos] = dst[srcPos + k];
+          for (let k = 0; k < len && pos < originalSize; ++k) {
+            lastByte = dst[srcPos + k];
+            dst[pos] = lastByte;
+            ++pos;
+          }
           ctx = lastByte;
         } else {
-          const literal = decoder.decodeBits(8, model.literalBits)&0xFF;
+          /** @type {uint32} */
+          const literalCode = decoder.decodeBits(8, model.literalBits);
+          /** @type {uint8} */
+          const literal = OpCodes.And32(literalCode, 0xFF);
           table[heads[ctx]] = pos;
           heads[ctx] = OpCodes.And32(heads[ctx] + 1, TABLE_MASK);
           dst[pos++] = literal;
