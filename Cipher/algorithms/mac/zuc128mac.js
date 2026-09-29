@@ -51,13 +51,18 @@
   // ZUC is resolved at first use rather than at load: the page loads the mac
   // directory before stream/zuc.js, and requiring another directory's module
   // at load would also make that module count towards this directory.
-  let zucModule = null;
-  function getZUC() {
-    if (!zucModule) {
-      zucModule = loadZUC();
-      if (!zucModule) throw new Error('ZUC stream cipher dependency is required');
+  /** @type {boolean} */
+  let zucLoaded = false;
+  /**
+   * Load the ZUC stream cipher module (which registers ZUC) on first use
+   * @returns {void}
+   * @throws {Error} If the module cannot be loaded
+   */
+  function loadZUCOnce() {
+    if (!zucLoaded) {
+      if (!loadZUC()) throw new Error('ZUC stream cipher dependency is required');
+      zucLoaded = true;
     }
-    return zucModule;
   }
 
   // Extract framework components
@@ -165,11 +170,18 @@
  */
 
   class ZUC128MACInstance extends IMacInstance {
+    /**
+     * Initialize a ZUC-128-MAC instance
+     * @param {ZUC128MACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._iv = null;
       this.inputBuffer = [];
+      /** @type {IAlgorithmInstance} */
       this.zucEngine = null;
     }
 
@@ -190,7 +202,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid ZUC-128-MAC key size: ${keyBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error('Invalid ZUC-128-MAC key size: ' + keyBytes.length + ' bytes. Requires exactly 16 bytes (128 bits)');
       }
 
       this._key = [...keyBytes];
@@ -222,7 +234,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`Invalid ZUC-128-MAC IV size: ${ivBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error('Invalid ZUC-128-MAC IV size: ' + ivBytes.length + ' bytes. Requires exactly 16 bytes (128 bits)');
       }
 
       this._iv = [...ivBytes];
@@ -266,13 +278,17 @@
       }
 
       // Initialize ZUC engine
-      const zucAlgo = new (getZUC().ZUCAlgorithm)();
+      loadZUCOnce();
+      /** @type {Algorithm} */
+      const zucAlgo = AlgorithmFramework.Find('ZUC');
       this.zucEngine = zucAlgo.CreateInstance();
       this.zucEngine.key = this._key;
       this.zucEngine.iv = this._iv;
 
       // Initialize MAC and keystream
+      /** @type {uint32} */
       let mac = 0;
+      /** @type {uint32[]} */
       const keyStream = [0, 0];
 
       // Generate initial keystream word at position 0 (BC: lines 100-103)
@@ -295,9 +311,11 @@
 
         // Process bits of the byte (BC: lines 118-128)
         const bitBase = byteIndex * 8;
-        for (let bitMask = 0x80, bitNo = 0; bitMask > 0; bitMask = OpCodes.Shr8(bitMask, 1), bitNo++) {
+        /** @type {uint8} */
+        let bitMask = 0x80;
+        for (let bitNo = 0; bitMask > 0; bitMask = OpCodes.Shr8(bitMask, 1), bitNo++) {
           if (OpCodes.ToByte(inputByte&bitMask) !== 0) {
-            mac ^= this._getKeyStreamWord(keyStream, wordIndex, bitBase + bitNo);
+            mac = OpCodes.Xor32(mac, this._getKeyStreamWord(keyStream, wordIndex, bitBase + bitNo));
           }
         }
       }
@@ -311,9 +329,10 @@
       }
 
       // XOR with keystream at final position (BC: line 219)
-      mac ^= this._getKeyStreamWord(keyStream, wordIndex, byteIndex * 8);
+      mac = OpCodes.Xor32(mac, this._getKeyStreamWord(keyStream, wordIndex, byteIndex * 8));
 
       // Get and XOR final word (BC: getFinalWord() lines 198-206, then line 220)
+      /** @type {uint32} */
       let finalWord;
       if (byteIndex !== 0) {
         finalWord = this._generateKeyStreamWord();
@@ -330,15 +349,27 @@
       return OpCodes.Unpack32BE(OpCodes.ToDWord(mac));
     }
 
+    /**
+     * Next 32-bit ZUC keystream word
+     * @returns {uint32} Keystream word (big-endian)
+     */
     _generateKeyStreamWord() {
       // Generate raw keystream word from ZUC (NOT XORed with input)
       // We need to call the ZUC internal keystream generation directly
       // Since ZUC XORs keystream with input, feeding zeros gives us the raw keystream
-      this.zucEngine.Feed(new Array(4).fill(0));
+      this.zucEngine.Feed(OpCodes.CreateArray(4, 0));
+      /** @type {uint8[]} */
       const bytes = this.zucEngine.Result();
       return OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
     }
 
+    /**
+     * The 32 keystream bits starting bitNo bits into keyStream[wordIndex]
+     * @param {uint32[]} keyStream - Two-word keystream window
+     * @param {int32} wordIndex - Index of the current word (0 or 1)
+     * @param {int32} bitNo - Bit offset into the current word, 0..31
+     * @returns {uint32} Keystream word
+     */
     _getKeyStreamWord(keyStream, wordIndex, bitNo) {
       const first = keyStream[wordIndex];
       if (bitNo === 0) {
@@ -347,9 +378,14 @@
       const second = keyStream[(wordIndex + 1) % 2];
       const leftPart = OpCodes.Shl32(first, bitNo);
       const rightPart = OpCodes.Shr32(second, 32 - bitNo);
-      return OpCodes.ToDWord(leftPart|rightPart);
+      return OpCodes.Or32(leftPart, rightPart);
     }
 
+    /**
+     * Feed data and return the MAC
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 4-byte MAC
+     */
     ComputeMac(data) {
       this.Feed(data);
       return this.Result();

@@ -77,18 +77,11 @@
 
       // KDF-specific properties
       this.SaltRequired = false; // SharedInfo is optional
-      this.SupportedOutputSizes = [1, 8160]; // 1 to 255*hash_len bytes (255*64 for SHA-512)
+      this.SupportedOutputSizes = [new KeySize(1, 8160, 1)]; // 1 to 255*hash_len bytes (255*64 for SHA-512)
 
       // X9.63 KDF constants
       this.DEFAULT_HASH = 'SHA256';
       this.DEFAULT_OUTPUT_LENGTH = 32;
-      this.HASH_FUNCTIONS = {
-        'SHA1': { size: 20, name: 'SHA-1' },
-        'SHA224': { size: 28, name: 'SHA-224' },
-        'SHA256': { size: 32, name: 'SHA-256' },
-        'SHA384': { size: 48, name: 'SHA-384' },
-        'SHA512': { size: 64, name: 'SHA-512' }
-      };
 
       // Documentation and references
       this.documentation = [
@@ -179,7 +172,7 @@
       this.tests[2].hashFunction = 'SHA256';
 
       // Test 3: SHA384 without SharedInfo
-      this.tests[3].sharedInfo = [];
+      this.tests[3].sharedInfo = OpCodes.Hex8ToBytes('');
       this.tests[3].outputSize = 16;
       this.tests[3].hashFunction = 'SHA384';
 
@@ -189,7 +182,7 @@
       this.tests[4].hashFunction = 'SHA384';
 
       // Test 5: SHA512 without SharedInfo
-      this.tests[5].sharedInfo = [];
+      this.tests[5].sharedInfo = OpCodes.Hex8ToBytes('');
       this.tests[5].outputSize = 16;
       this.tests[5].hashFunction = 'SHA512';
 
@@ -200,9 +193,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new X9.63 KDF instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
+   * @returns {X963KDFInstance} New X9.63 KDF instance
    */
 
     CreateInstance(isInverse = false) {
@@ -211,40 +204,54 @@
   }
 
   /**
- * X963KDF cipher instance implementing Feed/Result pattern
+ * X9.63 KDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class X963KDFInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize an X9.63 KDF instance
+   * @param {X963KDFAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default 256-bit output
+      /** @type {uint8[]} */
       this._sharedInfo = [];
+      /** @type {string} */
       this._hashFunction = 'SHA256';
+      /** @type {uint8[]} Shared secret set directly (null uses the fed bytes) */
+      this.sharedSecret = null;
+      /** @type {uint8[]} Fed shared secret (null until the first Feed) */
+      this._inputData = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} SharedInfo */
     get sharedInfo() { return this._sharedInfo; }
-    set sharedInfo(value) { this._sharedInfo = value || []; }
+    /** @param {uint8[]} value - SharedInfo (null clears it) */
+    set sharedInfo(value) {
+      if (value) { this._sharedInfo = value; } else { this._sharedInfo = []; }
+    }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {string} Hash name: SHA1, SHA224, SHA256, SHA384 or SHA512 */
     get hashFunction() { return this._hashFunction; }
+    /** @param {string} value - Hash name: SHA1, SHA224, SHA256, SHA384 or SHA512 */
     set hashFunction(value) { this._hashFunction = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed shared secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -264,9 +271,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no secret was fed or set, the hash is unsupported or the length too large
    */
 
     Result() {
@@ -275,14 +282,63 @@
         throw new Error('X963KDFInstance.Result: Shared secret required - use Feed() method or set sharedSecret directly');
       }
 
-      const sharedSecret = this.sharedSecret || this._inputData;
-      const sharedInfo = this._sharedInfo || [];
-      const outputSize = this.OutputSize || 32;
-      const hashFunc = this._hashFunction || 'SHA256';
+      /** @type {uint8[]} */
+      let sharedSecret = this.sharedSecret;
+      if (!sharedSecret) { sharedSecret = this._inputData; }
+      /** @type {uint8[]} */
+      let sharedInfo = [];
+      if (this._sharedInfo) { sharedInfo = this._sharedInfo; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 32; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA256'; }
 
       return this.deriveKey(sharedSecret, sharedInfo, outputSize, hashFunc);
     }
 
+    /**
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA1, SHA224, SHA256, SHA384 or SHA512
+     * @returns {int32} Digest size in bytes
+     * @throws {Error} If the hash is unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA1': return 20;
+        case 'SHA224': return 28;
+        case 'SHA256': return 32;
+        case 'SHA384': return 48;
+        case 'SHA512': return 64;
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
+
+    /**
+     * Name the framework registers a supported hash under
+     * @param {string} hashName - SHA1, SHA224, SHA256, SHA384 or SHA512
+     * @returns {string} Registered name
+     * @throws {Error} If the hash is unsupported
+     */
+    registeredHashName(hashName) {
+      switch (hashName) {
+        case 'SHA1': return 'SHA-1';
+        case 'SHA224': return 'SHA-224';
+        case 'SHA256': return 'SHA-256';
+        case 'SHA384': return 'SHA-384';
+        case 'SHA512': return 'SHA-512';
+        default: throw new Error('Unsupported hash function: ' + hashName);
+      }
+    }
+
+    /**
+     * ANSI X9.63 KDF: H(Z || counter || SharedInfo) for counter = 1, 2, ...
+     * @param {uint8[]} sharedSecret - Shared secret Z
+     * @param {uint8[]} sharedInfo - SharedInfo (may be empty)
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported or unavailable, or more than 255 blocks are needed
+     */
     deriveKey(sharedSecret, sharedInfo, outputLength, hashFunction) {
       // ANSI X9.63 KDF Algorithm:
       // 1. counter = 1 (32-bit big-endian)
@@ -292,16 +348,8 @@
       //    counter += 1
       // 4. return output[0:length]
 
-      const hashName = Array.isArray(hashFunction)
-        ? String.fromCharCode(...hashFunction)
-        : hashFunction;
-
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
-        throw new Error('Unsupported hash function: ' + hashName);
-      }
-
-      const hashLen = hashInfo.size;
+      const hashName = hashFunction;
+      const hashLen = this.hashSize(hashName);
       const numBlocks = Math.ceil(outputLength / hashLen);
 
       // Check output length constraint (max 255 iterations)
@@ -310,17 +358,19 @@
       }
 
       // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      const hashAlgName = this.registeredHashName(hashName);
+      const hashAlg = AlgorithmFramework.Find(hashAlgName);
       if (!hashAlg) {
-        throw new Error('Hash function not found: ' + hashInfo.name);
+        throw new Error('Hash function not found: ' + hashAlgName);
       }
 
+      /** @type {uint8[]} */
       let output = [];
 
       // Generate each block
       for (let counter = 1; counter <= numBlocks; counter++) {
         // Create block input: shared_secret || counter (32-bit big-endian) || sharedInfo
-        const blockInput = [...sharedSecret];
+        const blockInput = sharedSecret.slice();
 
         // Append counter as 32-bit big-endian using OpCodes
         const counterBytes = OpCodes.Unpack32BE(counter);
@@ -332,8 +382,10 @@
         }
 
         // Hash the block input
+        /** @type {IHashFunctionInstance} */
         const hashInst = hashAlg.CreateInstance();
         hashInst.Feed(blockInput);
+        /** @type {uint8[]} */
         const blockHash = hashInst.Result();
 
         output = output.concat(blockHash);

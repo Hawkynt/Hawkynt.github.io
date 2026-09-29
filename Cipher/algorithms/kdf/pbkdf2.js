@@ -66,7 +66,7 @@
 
       // KDF-specific properties
       this.SaltRequired = true;
-      this.SupportedOutputSizes = [1, 128]; // 1 to 128 bytes
+      this.SupportedOutputSizes = [new KeySize(1, 128, 1)]; // 1 to 128 bytes
 
       // Documentation and references
       this.documentation = [
@@ -116,9 +116,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new PBKDF2 instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: PBKDF2 has no inverse
+   * @returns {PBKDF2Instance} New PBKDF2 instance
    */
 
     CreateInstance(isInverse = false) {
@@ -127,16 +127,16 @@
   }
 
   /**
- * PBKDF2 cipher instance implementing Feed/Result pattern
+ * PBKDF2 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class PBKDF2Instance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a PBKDF2 instance
+   * @param {PBKDF2Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: PBKDF2 has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -144,20 +144,29 @@
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default 256-bit output
       this.Iterations = 100000; // Default secure iteration count
+      /** @type {uint8[]} Salt (null derives with an empty salt) */
       this.salt = null;
+      /** @type {uint8[]} Password set directly (null uses the fed bytes) */
+      this.password = null;
+      /** @type {uint8[]} Fed password bytes (null until the first Feed) */
+      this._inputData = null;
     }
 
     // Property aliases for test vector compatibility
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {int32} Iteration count */
     get iterations() { return this.Iterations; }
+    /** @param {int32} value - Iteration count */
     set iterations(value) { this.Iterations = value; }
 
     /**
-   * Feed data to cipher for processing
+   * Feed password bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -177,9 +186,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If neither a password was set nor data fed
    */
 
     Result() {
@@ -188,19 +197,34 @@
         throw new Error('PBKDF2Instance.Result: Password required - use Feed() method or set password directly');
       }
 
-      const pwd = this.password || this._inputData;
-      const slt = this.salt || [];
-      const iter = this.Iterations || 4096;
-      const outSize = this.OutputSize || 32;
+      /** @type {uint8[]} */
+      let pwd = this.password;
+      if (!pwd) { pwd = this._inputData; }
+      /** @type {uint8[]} */
+      let slt = [];
+      if (this.salt) { slt = this.salt; }
+      let iter = this.Iterations;
+      if (!iter) { iter = 4096; }
+      let outSize = this.OutputSize;
+      if (!outSize) { outSize = 32; }
 
       return this.deriveKey(pwd, slt, iter, outSize);
     }
 
+    /**
+     * PBKDF2-HMAC-SHA1 (RFC 8018 section 5.2)
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} iterations - Iteration count
+     * @param {int32} outputSize - Derived key length in bytes
+     * @returns {uint8[]} Derived key
+     */
     deriveKey(password, salt, iterations, outputSize) {
       const hLen = 20; // SHA1 output size (using HMAC-SHA1 per RFC 6070)
       const l = Math.ceil(outputSize / hLen);
       const r = outputSize - (l - 1) * hLen;
 
+      /** @type {uint8[]} */
       let derivedKey = [];
 
       for (let i = 1; i <= l; i++) {
@@ -217,13 +241,20 @@
       return derivedKey;
     }
 
+    /**
+     * F(P, S, c, i) = U_1 XOR U_2 XOR ... XOR U_c
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} iterations - Iteration count
+     * @param {int32} blockNumber - One-based block index i
+     * @returns {uint8[]} Block T_i
+     */
     F(password, salt, iterations, blockNumber) {
-      // F(P, S, c, i) = U_1 XOR U_2 XOR ... XOR U_c
-
       // U_1 = PRF(P, S || INT(i))
-      const saltPlusI = [...salt, ...this.intToBytes(blockNumber)];
+      /** @type {uint8[]} */
+      const saltPlusI = salt.concat(this.intToBytes(blockNumber));
       let U = this.hmacSha1(password, saltPlusI);
-      let result = [...U];
+      let result = U.slice();
 
       // U_2 through U_c
       for (let j = 2; j <= iterations; j++) {
@@ -234,16 +265,22 @@
       return result;
     }
 
+    /**
+     * HMAC-SHA1 (RFC 2104)
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 20-byte MAC
+     */
     hmacSha1(key, data) {
       // Self-contained HMAC-SHA1 implementation for PBKDF2
-      // HMAC(K, M) = H((K ⊕ opad) || H((K ⊕ ipad) || M))
+      // HMAC(K, M) = H((K xor opad) || H((K xor ipad) || M))
 
       const blockSize = 64; // SHA-1 block size
       const opad = 0x5C;
       const ipad = 0x36;
 
       // If key is longer than block size, hash it
-      let keyBytes = Array.isArray(key) ? [...key] : OpCodes.AnsiToBytes(key.toString());
+      let keyBytes = key.slice();
       if (keyBytes.length > blockSize) {
         keyBytes = this.sha1(keyBytes);
       }
@@ -254,50 +291,57 @@
       }
 
       // Create inner and outer padded keys
-      const innerKey = keyBytes.map(b => OpCodes.XorN(b, ipad));
-      const outerKey = keyBytes.map(b => OpCodes.XorN(b, opad));
+      /** @type {uint8[]} */
+      const innerKey = keyBytes.map(b => OpCodes.Xor8(b, ipad));
+      /** @type {uint8[]} */
+      const outerKey = keyBytes.map(b => OpCodes.Xor8(b, opad));
 
       // HMAC = H(outer_key || H(inner_key || data))
-      const innerHash = this.sha1([...innerKey, ...data]);
-      return this.sha1([...outerKey, ...innerHash]);
+      const innerHash = this.sha1(innerKey.concat(data));
+      return this.sha1(outerKey.concat(innerHash));
     }
 
+    /**
+     * SHA-1 digest, from the registered SHA-1 when available
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 20-byte digest
+     */
     sha1(data) {
       // Try to use framework SHA-1 algorithm first
       const sha1Alg = AlgorithmFramework.Find('SHA-1');
       if (sha1Alg) {
-        const sha1Instance = sha1Alg.CreateInstance();
-        sha1Instance.Feed(data);
-        return sha1Instance.Result();
+        /** @type {IHashFunctionInstance} */
+        const registeredInstance = sha1Alg.CreateInstance();
+        registeredInstance.Feed(data);
+        /** @type {uint8[]} */
+        const digest = registeredInstance.Result();
+        return digest;
       }
 
-      // If SHA-1 not available, try to load it dynamically
-      try {
-        if (typeof require !== 'undefined') {
-          // Try to load SHA-1 algorithm
-          require('../hash/sha1.js');
-          const sha1AlgNow = AlgorithmFramework.Find('SHA-1');
-          if (sha1AlgNow) {
-            const sha1Instance = sha1AlgNow.CreateInstance();
-            sha1Instance.Feed(data);
-            return sha1Instance.Result();
-          }
+      // If SHA-1 is not registered, load it under CommonJS (Node); an AMD or
+      // browser loader cannot require synchronously and uses the fallback below
+      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../hash/sha1.js');
+        const sha1AlgNow = AlgorithmFramework.Find('SHA-1');
+        if (sha1AlgNow) {
+          /** @type {IHashFunctionInstance} */
+          const loadedInstance = sha1AlgNow.CreateInstance();
+          loadedInstance.Feed(data);
+          /** @type {uint8[]} */
+          const loadedDigest = loadedInstance.Result();
+          return loadedDigest;
         }
-      } catch (e) {
-        // Ignore loading errors and fall back
       }
 
       // Self-contained SHA-1 implementation for PBKDF2 as last resort
       // This ensures the algorithm works independently of other framework components
 
-      // Define masks since they're not in OpCodes
-      const MASK32 = 0xFFFFFFFF;
-
       // SHA-1 initial hash values
       const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
 
       // Pre-processing: pad message
-      const paddedData = [...data];
+      /** @type {uint8[]} */
+      const paddedData = data.slice();
       const originalLength = data.length * 8;
 
       paddedData.push(0x80);
@@ -307,11 +351,12 @@
 
       // Append length as 64-bit big-endian
       for (let i = 7; i >= 0; i--) {
-        paddedData.push(OpCodes.AndN(OpCodes.Shr32(originalLength, i * 8), 0xFF));
+        paddedData.push(OpCodes.And32(OpCodes.Shr32(originalLength, i * 8), 0xFF));
       }
 
       // Process message in chunks of 64 bytes
       for (let chunkStart = 0; chunkStart < paddedData.length; chunkStart += 64) {
+        /** @type {uint32[]} */
         const w = new Array(80);
 
         // Break chunk into sixteen 32-bit big-endian words
@@ -326,30 +371,37 @@
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
         for (let i = 16; i < 80; i++) {
-          w[i] = this.leftRotate(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[i-3], w[i-8]), w[i-14]), w[i-16]), 1);
+          w[i] = this.leftRotate(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(w[i-3], w[i-8]), w[i-14]), w[i-16]), 1);
         }
 
         // Initialize hash value for this chunk
-        let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+        let a = h[0];
+        let b = h[1];
+        let c = h[2];
+        let d = h[3];
+        let e = h[4];
 
         // Main loop
         for (let i = 0; i < 80; i++) {
-          let f, k;
+          /** @type {uint32} */
+          let f;
+          /** @type {uint32} */
+          let k;
           if (i < 20) {
-            f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
+            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
             k = OpCodes.Hex32ToDWords('5A827999')[0];
           } else if (i < 40) {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
           } else if (i < 60) {
-            f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
+            f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
             k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
           } else {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
           }
 
-          const temp = OpCodes.AndN(OpCodes.ToUint32(this.leftRotate(a, 5) + f + e + k + w[i]), MASK32);
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(this.leftRotate(a, 5), f), e), k), w[i]);
           e = d;
           d = c;
           c = this.leftRotate(b, 30);
@@ -358,14 +410,15 @@
         }
 
         // Add this chunk's hash to result so far
-        h[0] = OpCodes.AndN(OpCodes.ToUint32(h[0] + a), MASK32);
-        h[1] = OpCodes.AndN(OpCodes.ToUint32(h[1] + b), MASK32);
-        h[2] = OpCodes.AndN(OpCodes.ToUint32(h[2] + c), MASK32);
-        h[3] = OpCodes.AndN(OpCodes.ToUint32(h[3] + d), MASK32);
-        h[4] = OpCodes.AndN(OpCodes.ToUint32(h[4] + e), MASK32);
+        h[0] = OpCodes.Add32(h[0], a);
+        h[1] = OpCodes.Add32(h[1], b);
+        h[2] = OpCodes.Add32(h[2], c);
+        h[3] = OpCodes.Add32(h[3], d);
+        h[4] = OpCodes.Add32(h[4], e);
       }
 
       // Convert to byte array
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 5; i++) {
         const bytes = OpCodes.Unpack32BE(h[i]);
@@ -375,19 +428,40 @@
       return result;
     }
 
+    /**
+     * Rotate a 32-bit word left
+     * @param {uint32} value - Word
+     * @param {int32} amount - Rotation count
+     * @returns {uint32} Rotated word
+     */
     leftRotate(value, amount) {
       return OpCodes.RotL32(value, amount);
     }
 
+    /**
+     * INT(i): four-byte big-endian block index
+     * @param {uint32} value - Block index
+     * @returns {uint8[]} Four bytes
+     */
     intToBytes(value) {
       return OpCodes.Unpack32BE(value);
     }
 
     // Configuration methods
+    /**
+     * Set the salt
+     * @param {uint8[]} salt - Salt bytes
+     * @returns {void}
+     */
     setSalt(salt) {
-      this.salt = Array.isArray(salt) ? salt : OpCodes.AnsiToBytes(salt);
+      this.salt = salt;
     }
 
+    /**
+     * Set the iteration count (warns below 1000)
+     * @param {int32} iterations - Iteration count
+     * @returns {void}
+     */
     setIterations(iterations) {
       if (iterations < 1000) {
         console.warn('PBKDF2: Low iteration count may be insecure');
@@ -395,6 +469,11 @@
       this.Iterations = iterations;
     }
 
+    /**
+     * Set the derived key length (warns below 16)
+     * @param {int32} size - Output size in bytes
+     * @returns {void}
+     */
     setOutputSize(size) {
       if (size < 16) {
         console.warn('PBKDF2: Small output size may be insecure');

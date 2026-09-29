@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * Damm check digit computation
+   * @class
+   * @extends {Algorithm}
+   */
   class DammAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.DE; // Germany
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum Damm algorithm implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/damm.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Uses single quasigroup operation table",
         "Totally anti-symmetric quasigroup of order 10",
@@ -95,9 +106,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {DammInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -107,24 +118,26 @@
   }
 
   /**
- * Damm cipher instance implementing Feed/Result pattern
+ * Damm instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class DammInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a Damm instance
+   * @param {DammAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} Decimal digits fed since the last Result() */
       this.digits = [];
 
       // Quasigroup operation table (totally anti-symmetric)
+      /** @type {uint8[][]} */
       this.table = [
         [0,3,1,7,5,9,8,6,4,2],
         [7,0,9,2,1,5,4,8,6,3],
@@ -140,9 +153,8 @@
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; its decimal digits are collected, everything else is skipped
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -152,24 +164,21 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.digits.push(data[i] - 0x30);
+          /** @type {int32} */
+          const code = data[i];
+          this.digits.push(code - 0x30);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Compute the check digit of the digits fed so far and reset
+   * @returns {uint8[]} One byte: the Damm check digit (0 when no digit was fed)
    */
 
     Result() {
-      if (this.digits.length === 0) {
-        this.digits = [];
-        return [0];
-      }
-
-      // Damm algorithm: process from left to right
+      // Damm algorithm: process from left to right (no digit leaves it at 0)
+      /** @type {uint8} */
       let interim = 0;
 
       for (let i = 0; i < this.digits.length; i++) {

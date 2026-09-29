@@ -106,6 +106,7 @@
   // Each row XORs into the 8-word expanded message when the
   // corresponding input bit is set. Values taken verbatim from the
   // sphlib reference table hamsi_helper.c (SPH_HAMSI_EXPAND_SMALL == 1).
+  /** @type {uint32[][]} */
   const T256 = [
     [0x74951000, 0x5a2b467e, 0x88fd1d2b, 0x1ee68292, 0xcba90000, 0x90273769, 0xbbdcf407, 0xd0f4af61],
     [0xcba90000, 0x90273769, 0xbbdcf407, 0xd0f4af61, 0xbf3c1000, 0xca0c7117, 0x3321e92c, 0xce122df3],
@@ -145,6 +146,7 @@
   // 64 rows: one per (byte index 0..7) x (bit index 0..7, LSB first).
   // Values taken verbatim from the sphlib reference table
   // hamsi_helper.c (SPH_HAMSI_EXPAND_BIG == 1).
+  /** @type {uint32[][]} */
   const T512 = [
     [0xef0b0270, 0x3afd0000, 0x5dae0000, 0x69490000, 0x9b0f3c06, 0x4405b5f9, 0x66140a51, 0x924f5d0a, 0xc96b0030, 0xe7250000, 0x2f840000, 0x264f0000, 0x08695bf9, 0x6dfcf137, 0x509f6984, 0x9e69af68],
     [0xc96b0030, 0xe7250000, 0x2f840000, 0x264f0000, 0x08695bf9, 0x6dfcf137, 0x509f6984, 0x9e69af68, 0x26600240, 0xddd80000, 0x722a0000, 0x4f060000, 0x936667ff, 0x29f944ce, 0x368b63d5, 0x0c26f262],
@@ -216,12 +218,23 @@
   // message block into the expanded word vector (byte order and bit
   // order within a byte are exactly as consumed by sphlib's INPUT_SMALL
   // / INPUT_BIG macros: bytes low to high, bits within a byte LSB first).
+  /**
+   * @param {uint32[][]} table - Expansion code (8 rows per message byte)
+   * @param {int32} byteCount - Message bytes per block
+   * @param {int32} wordCount - Expanded message words
+   * @param {uint8[]} buf - Message bytes
+   * @param {int32} offset - Offset of the block in buf
+   * @returns {uint32[]} Expanded message words
+   */
   function expandMessage(table, byteCount, wordCount, buf, offset) {
+    /** @type {uint32[]} */
     const m = new Uint32Array(wordCount);
     for (let byteIdx = 0; byteIdx < byteCount; ++byteIdx) {
+      /** @type {uint8} */
       const byteVal = buf[offset + byteIdx];
       for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
         if (OpCodes.GetBit(byteVal, bitIdx)) {
+          /** @type {uint32[]} */
           const row = table[byteIdx * 8 + bitIdx];
           for (let w = 0; w < wordCount; ++w) {
             m[w] = OpCodes.Xor32(m[w], row[w]);
@@ -235,8 +248,24 @@
   // S-box transformation (4-bit non-linear substitution layer, the
   // Serpent S-box #2 applied bit-sliced across 4 state words).
   // Transliterated 1:1 from the sphlib SBOX macro.
+  /**
+   * @param {uint32[]} s - State words, updated in place
+   * @param {int32} ia - Index of word a
+   * @param {int32} ib - Index of word b
+   * @param {int32} ic - Index of word c
+   * @param {int32} id - Index of word d
+   * @returns {void}
+   */
   function sbox(s, ia, ib, ic, id) {
-    let a = s[ia], b = s[ib], c = s[ic], d = s[id];
+    /** @type {uint32} */
+    let a = s[ia];
+    /** @type {uint32} */
+    let b = s[ib];
+    /** @type {uint32} */
+    let c = s[ic];
+    /** @type {uint32} */
+    let d = s[id];
+    /** @type {uint32} */
     let t = a;
     a = OpCodes.Xor32(OpCodes.And32(a, c), d);
     c = OpCodes.Xor32(OpCodes.Xor32(c, b), a);
@@ -257,6 +286,14 @@
 
   // Linear diffusion layer (L function): rotations and XOR mixing
   // across 4 state words. Transliterated 1:1 from the sphlib L macro.
+  /**
+   * @param {uint32[]} s - State words, updated in place
+   * @param {int32} ia - Index of word a
+   * @param {int32} ib - Index of word b
+   * @param {int32} ic - Index of word c
+   * @param {int32} id - Index of word d
+   * @returns {void}
+   */
   function linearDiffusion(s, ia, ib, ic, id) {
     s[ia] = OpCodes.RotL32(s[ia], 13);
     s[ic] = OpCodes.RotL32(s[ic], 3);
@@ -271,10 +308,20 @@
   }
 
   // Compression function for small variants (Hamsi-224/256)
+  /**
+   * @param {uint32[]} h - Chaining value (8 words), updated in place
+   * @param {uint8[]} buf - Message bytes
+   * @param {int32} offset - Offset of the 4-byte block in buf
+   * @param {int32} rounds - Number of rounds
+   * @param {uint32[]} alpha - Round constants
+   * @returns {void}
+   */
   function compressSmall(h, buf, offset, rounds, alpha) {
+    /** @type {uint32[]} */
     const m = expandMessage(T256, 4, 8, buf, offset);
 
     // Initialize state: s[0..15] where s[0,1,6,7,8,9,14,15] = m, s[2..5,10..13] = h
+    /** @type {uint32[]} */
     const s = new Uint32Array(16);
     s[0] = m[0];  s[1] = m[1];  s[2] = h[0];  s[3] = h[1];
     s[4] = h[2];  s[5] = h[3];  s[6] = m[2];  s[7] = m[3];
@@ -325,10 +372,20 @@
   }
 
   // Compression function for big variants (Hamsi-384/512)
+  /**
+   * @param {uint32[]} h - Chaining value (16 words), updated in place
+   * @param {uint8[]} buf - Message bytes
+   * @param {int32} offset - Offset of the 8-byte block in buf
+   * @param {int32} rounds - Number of rounds
+   * @param {uint32[]} alpha - Round constants
+   * @returns {void}
+   */
   function compressBig(h, buf, offset, rounds, alpha) {
+    /** @type {uint32[]} */
     const m = expandMessage(T512, 8, 16, buf, offset);
 
     // Initialize state: s[0..31] where some positions = m, others = h
+    /** @type {uint32[]} */
     const s = new Uint32Array(32);
     s[0] = m[0];   s[1] = m[1];   s[2] = h[0];   s[3] = h[1];
     s[4] = m[2];   s[5] = m[3];   s[6] = h[2];   s[7] = h[3];
@@ -392,39 +449,58 @@
 
   // Hamsi-384 uses a non-contiguous truncation of the 16-word big state
   // (see sphlib hamsi_big_close, out_size_w32 == 12 branch).
+  /** @type {int32[]} */
   const HAMSI384_OUTPUT_INDICES = [0, 1, 3, 4, 5, 6, 8, 9, 10, 12, 13, 15];
 
-  // Hamsi instance implementing Feed/Result pattern
   /**
- * Hamsi cipher instance implementing Feed/Result pattern
+ * Hamsi hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class HamsiInstance extends IHashFunctionInstance {
-    constructor(algorithm, variant) {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+     * @param {int32} bitSize - Digest size in bits: 224, 256, 384 or 512
+     */
+    constructor(algorithm, bitSize) {
       super(algorithm);
-      this.variant = variant; // 224, 256, 384, or 512
-      this.isBig = (variant === 384 || variant === 512);
+      /** @type {int32} */
+      this.bitSize = bitSize; // 224, 256, 384, or 512
+      /** @type {boolean} */
+      this.isBig = (bitSize === 384 || bitSize === 512);
+      /** @type {int32} */
       this.blockSize = this.isBig ? 8 : 4;
+      /** @type {int32} */
       this.stateSize = this.isBig ? 16 : 8;
-      this.outputSize = variant / 8;
+      /** @type {int32} Digest size in 32-bit words */
+      this.outputWords = OpCodes.Shr32(bitSize, 5);
 
       // Initialize state with appropriate IV
+      /** @type {uint32[]} */
       this.state = new Uint32Array(this.stateSize);
       this._initialize();
 
       // Buffer for incomplete blocks
+      /** @type {uint8[]} */
       this.buffer = [];
-      this.bitCount = 0; // Track total bits processed
+      // Total message length in bits, as a 64-bit count in two words
+      /** @type {uint32} */
+      this.bitCountLow = 0;
+      /** @type {uint32} */
+      this.bitCountHigh = 0;
     }
 
+    /**
+     * Load the IV of the variant into the chaining state
+     * @returns {void}
+     */
     _initialize() {
-      let iv;
-      if (this.variant === 224) iv = IV224;
-      else if (this.variant === 256) iv = IV256;
-      else if (this.variant === 384) iv = IV384;
-      else iv = IV512;
+      /** @type {uint32[]} */
+      let iv = IV512;
+      if (this.bitSize === 224) iv = IV224;
+      else if (this.bitSize === 256) iv = IV256;
+      else if (this.bitSize === 384) iv = IV384;
 
       for (let i = 0; i < this.stateSize; ++i) {
         this.state[i] = iv[i];
@@ -432,19 +508,19 @@
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Track bit count
-      this.bitCount += data.length * 8;
-
       // Add data to buffer
       for (let i = 0; i < data.length; ++i) {
+        // Track bit count (the low word is a multiple of 8, so it wraps to 0 exactly on a carry)
+        this.bitCountLow = OpCodes.Add32(this.bitCountLow, 8);
+        if (this.bitCountLow === 0) this.bitCountHigh = OpCodes.Add32(this.bitCountHigh, 1);
+
         this.buffer.push(data[i]);
 
         // Process complete blocks
@@ -455,69 +531,65 @@
       }
     }
 
+    /**
+     * Compress the full block held in the buffer
+     * @returns {void}
+     */
     _processBlock() {
-      const block = new Uint8Array(this.buffer);
       if (this.isBig) {
-        compressBig(this.state, block, 0, 6, ALPHA_N);
+        compressBig(this.state, this.buffer, 0, 6, ALPHA_N);
       } else {
-        compressSmall(this.state, block, 0, 3, ALPHA_N);
+        compressSmall(this.state, this.buffer, 0, 3, ALPHA_N);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Finish the hash and reset the instance
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
+      /** @type {int32} */
       const bufLen = this.buffer.length;
 
       // Build the padded final block: buffered bytes + 0x80 marker + zero fill
-      const finalBlock = new Uint8Array(this.blockSize);
+      /** @type {uint8[]} */
+      const finalBlock = OpCodes.CreateArray(this.blockSize, 0);
       for (let i = 0; i < bufLen; ++i) {
         finalBlock[i] = this.buffer[i];
       }
       finalBlock[bufLen] = 0x80;
 
       // Encode total message bit count as a big-endian 64-bit value
-      const countHigh = Math.floor(this.bitCount / 0x100000000);
-      const countLow = OpCodes.ToUint32(this.bitCount);
-      const highBytes = OpCodes.Unpack32BE(countHigh);
-      const lowBytes = OpCodes.Unpack32BE(countLow);
+      /** @type {uint8[]} */
+      const highBytes = OpCodes.Unpack32BE(this.bitCountHigh);
+      /** @type {uint8[]} */
+      const lowBytes = OpCodes.Unpack32BE(this.bitCountLow);
 
       if (this.isBig) {
         // Big variants: one normal-round block (padded partial data),
         // then one final-round block holding the 8-byte bit count.
-        const countBlock = new Uint8Array(8);
-        countBlock.set(highBytes, 0);
-        countBlock.set(lowBytes, 4);
-
         compressBig(this.state, finalBlock, 0, 6, ALPHA_N);
-        compressBig(this.state, countBlock, 0, 12, ALPHA_F);
+        compressBig(this.state, OpCodes.ConcatArrays([highBytes, lowBytes]), 0, 12, ALPHA_F);
       } else {
         // Small variants: padded partial data (normal), count-high word
         // (normal), count-low word (final) - three separate 4-byte blocks.
-        const highBlock = new Uint8Array(4);
-        highBlock.set(highBytes, 0);
-        const lowBlock = new Uint8Array(4);
-        lowBlock.set(lowBytes, 0);
-
         compressSmall(this.state, finalBlock, 0, 3, ALPHA_N);
-        compressSmall(this.state, highBlock, 0, 3, ALPHA_N);
-        compressSmall(this.state, lowBlock, 0, 6, ALPHA_F);
+        compressSmall(this.state, highBytes, 0, 3, ALPHA_N);
+        compressSmall(this.state, lowBytes, 0, 6, ALPHA_F);
       }
 
       // Extract hash output (big-endian encoding)
+      /** @type {uint8[]} */
       const output = [];
-      if (this.variant === 384) {
+      if (this.bitSize === 384) {
         for (let i = 0; i < HAMSI384_OUTPUT_INDICES.length; ++i) {
+          /** @type {uint8[]} */
           const bytes = OpCodes.Unpack32BE(this.state[HAMSI384_OUTPUT_INDICES[i]]);
           output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
         }
       } else {
-        const numWords = this.outputSize / 4;
-        for (let i = 0; i < numWords; ++i) {
+        for (let i = 0; i < this.outputWords; ++i) {
+          /** @type {uint8[]} */
           const bytes = OpCodes.Unpack32BE(this.state[i]);
           output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
         }
@@ -526,7 +598,8 @@
       // Re-initialize for potential reuse
       this._initialize();
       this.buffer = [];
-      this.bitCount = 0;
+      this.bitCountLow = 0;
+      this.bitCountHigh = 0;
 
       return output;
     }
@@ -577,9 +650,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -633,9 +706,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -689,9 +762,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -745,9 +818,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {

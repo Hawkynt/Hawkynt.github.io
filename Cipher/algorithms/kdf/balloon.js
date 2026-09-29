@@ -67,7 +67,7 @@
 
       // KDF-specific properties
       this.SaltRequired = true;
-      this.SupportedOutputSizes = [20, 64]; // SHA-1 (20) to SHA-512 (64) bytes
+      this.SupportedOutputSizes = [new KeySize(20, 64, 1)]; // SHA-1 (20) to SHA-512 (64) bytes
 
       // Documentation and references
       this.documentation = [
@@ -201,7 +201,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BalloonInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -213,16 +213,16 @@
   }
 
   /**
- * Balloon cipher instance implementing Feed/Result pattern
+ * Balloon instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class BalloonInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a Balloon hashing instance with the default parameters
+   * @param {BalloonAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Inverse flag (Feed refuses an inverse instance)
    */
 
     constructor(algorithm, isInverse = false) {
@@ -230,34 +230,51 @@
       this.isInverse = isInverse;
 
       // Default parameters
-      this.sCost = 1024;  // Space cost (memory hardness parameter)
-      this.tCost = 3;     // Time cost (iteration count)
-      this.delta = 3;     // Mixing parameter (default from paper)
-      this.hashAlgorithm = 'SHA-256'; // Default hash function
-      this.outputSize = 32; // Default output size
+      /** @type {int32} Space cost (memory hardness parameter) */
+      this._sCost = 1024;
+      /** @type {int32} Time cost (iteration count) */
+      this._tCost = 3;
+      /** @type {int32} Mixing parameter (default from paper) */
+      this.delta = 3;
+      /** @type {string} Name of the registered hash function */
+      this.hashAlgorithm = 'SHA-256';
+      /** @type {int32} Output size in bytes (informational: the result is one full digest) */
+      this._outputSize = 32;
+      /** @type {uint8[]} */
       this.salt = null;
+      /** @type {uint8[]} */
       this.password = null;
 
+      /** @type {uint8[]} */
       this._inputData = null;
     }
 
     // Property setters for test vector compatibility
+    /** @param {int32} value - Space cost */
     set sCost(value) { this._sCost = value; }
+    /** @returns {int32} Space cost */
     get sCost() { return this._sCost; }
 
+    /** @param {int32} value - Time cost */
     set tCost(value) { this._tCost = value; }
+    /** @returns {int32} Time cost */
     get tCost() { return this._tCost; }
 
+    /** @param {int32} value - Output size in bytes */
     set OutputSize(value) { this._outputSize = value; }
+    /** @returns {int32} Output size in bytes */
     get OutputSize() { return this._outputSize; }
 
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this._outputSize = value; }
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this._outputSize; }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * Append password bytes
+   * @param {uint8[]} data - Password bytes
+   * @returns {void}
+   * @throws {Error} If data is not an array or the instance is an inverse one
    */
 
     Feed(data) {
@@ -278,9 +295,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the Balloon hash of the password
+   * @returns {uint8[]} One digest of the configured hash function
+   * @throws {Error} If no password is set or the hash function is not available
    */
 
     Result() {
@@ -289,126 +306,88 @@
         throw new Error('BalloonInstance.Result: Password required - use Feed() method or set password directly');
       }
 
-      const pwd = this.password || this._inputData;
-      const slt = this.salt || [];
-      const sCost = this.sCost || 1024;
-      const tCost = this.tCost || 3;
-      const delta = this.delta || 3;
+      // Parameters left unset (null, 0, empty name) take their defaults
+      const pwd = this.password ? this.password : this._inputData;
+      /** @type {uint8[]} */
+      let slt = this.salt;
+      if (!slt) slt = [];
+      const sCost = this._sCost ? this._sCost : 1024;
+      const tCost = this._tCost ? this._tCost : 3;
+      const delta = this.delta ? this.delta : 3;
 
       // Get hash function
-      const hashFunc = this._getHashFunction(this.hashAlgorithm || 'SHA-256');
-      if (!hashFunc) {
-        throw new Error(`BalloonInstance.Result: Hash algorithm '${this.hashAlgorithm}' not available`);
+      const hashAlg = this._getHashFunction(this.hashAlgorithm ? this.hashAlgorithm : 'SHA-256');
+      if (!hashAlg) {
+        throw new Error('BalloonInstance.Result: Hash algorithm \'' + this.hashAlgorithm + '\' not available');
       }
 
-      const digestSize = hashFunc.digestSize;
-      const outputSize = this.outputSize || digestSize;
-
       // Execute Balloon hashing algorithm
-      return this._balloon(hashFunc, digestSize, sCost, tCost, delta, pwd, slt);
+      return this._balloon(hashAlg, sCost, tCost, delta, pwd, slt);
     }
 
     /**
-     * Get hash function instance from AlgorithmFramework
+     * Source file of a hash function this KDF can load on demand
+     * @param {string} algorithmName - Hash name
+     * @returns {string} Path relative to this file, or null when unknown
+     */
+    _hashModulePath(algorithmName) {
+      switch (algorithmName) {
+        case 'SHA-1': return '../hash/sha1.js';
+        case 'SHA-256': return '../hash/sha256.js';
+        case 'SHA-384': return '../hash/sha512.js'; // SHA-384 is in sha512.js
+        case 'SHA-512': return '../hash/sha512.js';
+        default: return null;
+      }
+    }
+
+    /**
+     * Find a hash algorithm in the framework, loading it where a synchronous
+     * CommonJS require exists (an AMD loader's require is asynchronous and is
+     * not asked)
      * @param {string} algorithmName - Name of hash algorithm (SHA-256, SHA-512, etc.)
-     * @returns {object} Hash function with init, update, digest methods
+     * @returns {Algorithm} The hash algorithm, or null when it is not available
      */
     _getHashFunction(algorithmName) {
       // Try to find hash algorithm in framework
-      const hashAlg = AlgorithmFramework.Find(algorithmName);
+      /** @type {Algorithm} */
+      let hashAlg = AlgorithmFramework.Find(algorithmName);
 
-      if (!hashAlg) {
+      if (!hashAlg && typeof module === 'object' && typeof require === 'function') {
         // Try to load hash algorithm dynamically
-        try {
-          if (typeof require !== 'undefined') {
-            const algNameMap = {
-              'SHA-1': '../hash/sha1.js',
-              'SHA-256': '../hash/sha256.js',
-              'SHA-384': '../hash/sha512.js', // SHA-384 is in sha512.js
-              'SHA-512': '../hash/sha512.js'
-            };
-
-            const modulePath = algNameMap[algorithmName];
-            if (modulePath) {
-              require(modulePath);
-              const loadedAlg = AlgorithmFramework.Find(algorithmName);
-              if (loadedAlg) {
-                return this._createHashFunctionWrapper(loadedAlg);
-              }
-            }
-          }
-        } catch (e) {
-          // Ignore loading errors
+        const modulePath = this._hashModulePath(algorithmName);
+        if (modulePath) {
+          require(modulePath);
+          hashAlg = AlgorithmFramework.Find(algorithmName);
         }
-        return null;
       }
 
-      return this._createHashFunctionWrapper(hashAlg);
-    }
-
-    /**
-     * Create wrapper for hash function to match Nettle's interface
-     * @param {object} hashAlgorithm - AlgorithmFramework hash algorithm
-     * @returns {object} Wrapper with init, update, digest methods
-     */
-    _createHashFunctionWrapper(hashAlgorithm) {
-      const instance = hashAlgorithm.CreateInstance();
-      let state = null;
-
-      return {
-        digestSize: hashAlgorithm.outputSize || hashAlgorithm.OutputSize || hashAlgorithm.DigestSize || 32,
-
-        init: function() {
-          state = hashAlgorithm.CreateInstance();
-        },
-
-        update: function(data) {
-          if (state) {
-            state.Feed(data);
-          }
-        },
-
-        digest: function() {
-          if (state) {
-            const result = state.Result();
-            state = null; // Reset state
-            return result;
-          }
-          return [];
-        }
-      };
+      return hashAlg;
     }
 
     /**
      * Core Balloon hashing algorithm
      * Reference: GNU Nettle balloon.c
-     * @param {object} hashFunc - Hash function wrapper
-     * @param {number} digestSize - Hash output size in bytes
-     * @param {number} sCost - Space cost (memory blocks)
-     * @param {number} tCost - Time cost (iterations)
-     * @param {number} delta - Mixing parameter
-     * @param {Array} password - Password bytes
-     * @param {Array} salt - Salt bytes
-     * @returns {Array} Derived key bytes
+     * @param {Algorithm} hashAlg - Hash algorithm
+     * @param {int32} sCost - Space cost (memory blocks)
+     * @param {int32} tCost - Time cost (iterations)
+     * @param {int32} delta - Mixing parameter
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - Salt bytes
+     * @returns {uint8[]} Derived key bytes
      */
-    _balloon(hashFunc, digestSize, sCost, tCost, delta, password, salt) {
-      const BS = digestSize;
-
-      // Allocate buffer: buf = s_cost blocks of BS bytes each
+    _balloon(hashAlg, sCost, tCost, delta, password, salt) {
+      // Buffer of s_cost blocks, each one digest; every block is written by
+      // the expansion before the mixing phase reads it
+      /** @type {uint8[][]} */
       const buf = new Array(sCost);
-      for (let i = 0; i < sCost; ++i) {
-        buf[i] = new Array(BS).fill(0);
-      }
-
-      const block = new Array(BS).fill(0); // Temporary block
       let cnt = 0;
 
       // Initial expansion: buf[0] = H(cnt || password || salt)
-      buf[0] = this._hash(hashFunc, cnt++, password, salt);
+      buf[0] = this._hash(hashAlg, cnt++, password, salt);
 
       // buf[1..s_cost-1] = H(cnt || buf[i-1])
       for (let i = 1; i < sCost; ++i) {
-        buf[i] = this._hash(hashFunc, cnt++, buf[i - 1], null);
+        buf[i] = this._hash(hashAlg, cnt++, buf[i - 1], null);
       }
 
       // Main mixing phase
@@ -416,21 +395,21 @@
         for (let j = 0; j < sCost; ++j) {
           // Mix with previous block
           const prevIdx = (j > 0) ? j - 1 : sCost - 1;
-          buf[j] = this._hash(hashFunc, cnt++, buf[prevIdx], buf[j]);
+          buf[j] = this._hash(hashAlg, cnt++, buf[prevIdx], buf[j]);
 
           // Random mixing with delta other blocks
           for (let k = 0; k < delta; ++k) {
             // Compute index: block = H(i || j || k)
-            const indexBlock = this._hashInts(hashFunc, i, j, k);
+            const indexBlock = this._hashInts(hashAlg, i, j, k);
 
             // block = H(salt || block)
-            const saltedBlock = this._hash(hashFunc, cnt++, salt, indexBlock);
+            const saltedBlock = this._hash(hashAlg, cnt++, salt, indexBlock);
 
             // Convert block to index: idx = block_to_int(block, s_cost)
             const idx = this._blockToInt(saltedBlock, sCost);
 
             // buf[j] = H(buf[j] || buf[idx])
-            buf[j] = this._hash(hashFunc, cnt++, buf[j], buf[idx]);
+            buf[j] = this._hash(hashAlg, cnt++, buf[j], buf[idx]);
           }
         }
       }
@@ -440,20 +419,32 @@
     }
 
     /**
-     * Hash function wrapper: H(cnt || a || b)
-     * @param {object} hashFunc - Hash function
-     * @param {number} cnt - Counter value
-     * @param {Array} a - First data array
-     * @param {Array} b - Second data array (optional)
-     * @returns {Array} Hash output
+     * Digest of one message with a fresh instance of the hash algorithm
+     * @param {Algorithm} hashAlg - Hash algorithm
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} Digest
      */
-    _hash(hashFunc, cnt, a, b) {
-      hashFunc.init();
+    _digest(hashAlg, data) {
+      /** @type {IAlgorithmInstance} */
+      const state = hashAlg.CreateInstance();
+      state.Feed(data);
+      /** @type {uint8[]} */
+      const result = state.Result();
+      return result;
+    }
 
+    /**
+     * Hash function wrapper: H(cnt || a || b)
+     * @param {Algorithm} hashAlg - Hash algorithm
+     * @param {int32} cnt - Counter value
+     * @param {uint8[]} a - First data array (null or empty for none)
+     * @param {uint8[]} b - Second data array (null or empty for none)
+     * @returns {uint8[]} Hash output
+     */
+    _hash(hashAlg, cnt, a, b) {
       // Concatenate all data before feeding (workaround for hash implementations
       // that don't properly support incremental updates)
-      const cntBytes = this._uint64ToLE(cnt);
-      let allData = [...cntBytes];
+      let allData = this._uint64ToLE(cnt);
 
       if (a && a.length > 0) {
         allData = allData.concat(a);
@@ -462,69 +453,61 @@
         allData = allData.concat(b);
       }
 
-      hashFunc.update(allData);
-      return hashFunc.digest();
+      return this._digest(hashAlg, allData);
     }
 
     /**
      * Hash three integers: H(i || j || k)
-     * @param {object} hashFunc - Hash function
-     * @param {number} i - First integer
-     * @param {number} j - Second integer
-     * @param {number} k - Third integer
-     * @returns {Array} Hash output
+     * @param {Algorithm} hashAlg - Hash algorithm
+     * @param {int32} i - First integer
+     * @param {int32} j - Second integer
+     * @param {int32} k - Third integer
+     * @returns {uint8[]} Hash output
      */
-    _hashInts(hashFunc, i, j, k) {
-      hashFunc.init();
-
+    _hashInts(hashAlg, i, j, k) {
       // All three integers as little-endian 64-bit, concatenated
       const iBytes = this._uint64ToLE(i);
       const jBytes = this._uint64ToLE(j);
       const kBytes = this._uint64ToLE(k);
 
-      const allData = [...iBytes, ...jBytes, ...kBytes];
-      hashFunc.update(allData);
-
-      return hashFunc.digest();
+      /** @type {uint8[]} */
+      const allData = iBytes.concat(jBytes, kBytes);
+      return this._digest(hashAlg, allData);
     }
 
     /**
      * Convert block bytes to integer modulo mod
      * Treats bytes as little-endian multi-precision integer
-     * @param {Array} block - Byte array
-     * @param {number} mod - Modulus value
-     * @returns {number} Integer in range [0, mod)
+     * @param {uint8[]} block - Byte array
+     * @param {int32} mod - Modulus value
+     * @returns {uint32} Integer in range [0, mod)
      */
     _blockToInt(block, mod) {
+      /** @type {uint32} */
       let r = 0;
-      let i = block.length;
 
       // Process from most significant byte to least (reversed for LE)
-      while (i--) {
-        r = OpCodes.Shl32(r, 8) + block[i];
-        r %= mod;
+      for (let i = block.length - 1; i >= 0; i--) {
+        // Shl32 yields a multiple of 256 below 2^32, so adding a byte never wraps
+        r = OpCodes.Add32(OpCodes.Shl32(r, 8), block[i]) % mod;
       }
 
       return r;
     }
 
     /**
-     * Convert uint64 to little-endian 8-byte array
+     * Convert a counter to a little-endian 8-byte array
      * Note: JavaScript bitwise operators only work reliably on 32-bit values
-     * @param {number} value - 64-bit unsigned integer (limited to 32-bit range for JavaScript safety)
-     * @returns {Array} 8-byte array in little-endian format
+     * @param {int32} value - Counter (32-bit range; the upper four bytes are zero)
+     * @returns {uint8[]} 8-byte array in little-endian format
      */
     _uint64ToLE(value) {
-      // JavaScript bitwise shifts only work on 32 bits reliably
-      // For shifts >= 32, the result wraps around due to 5-bit mask on shift amount
-      // Since Balloon counter values are typically small, explicitly handle 32-bit range
-      return [
-        OpCodes.AndN(OpCodes.Shr32(value, 0), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF),
-        0, 0, 0, 0  // Upper 32 bits (JavaScript numbers are 53-bit safe integers, but bitwise ops are 32-bit)
-      ];
+      // Balloon counter values are small: the low word is the value, the upper
+      // 32 bits are zero
+      /** @type {uint8[]} */
+      const out = OpCodes.Unpack32LE(value);
+      out.push(0, 0, 0, 0);
+      return out;
     }
   }
 

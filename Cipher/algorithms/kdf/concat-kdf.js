@@ -77,13 +77,6 @@
       this.SaltRequired = false; // Concat KDF uses otherinfo, not salt
       this.SupportedOutputSizes = [new KeySize(1, 65535, 1)]; // Flexible output size
 
-      // Hash function configuration
-      this.HASH_FUNCTIONS = {
-        'SHA-1': { size: 20, name: 'SHA-1', blockSize: 64 },
-        'SHA-256': { size: 32, name: 'SHA-256', blockSize: 64 },
-        'SHA-512': { size: 64, name: 'SHA-512', blockSize: 128 }
-      };
-
       // Documentation and references
       this.documentation = [
         new LinkItem("NIST SP 800-56A Rev. 3 - Key Agreement Schemes", "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar3.pdf"),
@@ -153,9 +146,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new Concat KDF (hash) instance
+   * @param {boolean} [isInverse=false] - True returns null: the KDF has no inverse
+   * @returns {ConcatKDFHashInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -167,29 +160,37 @@
   }
 
   /**
- * ConcatKDFHash cipher instance implementing Feed/Result pattern
+ * Concat KDF (hash) instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class ConcatKDFHashInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a Concat KDF (hash) instance
+   * @param {ConcatKDFHashAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default 256-bit output
+      /** @type {uint8[]} */
       this._otherinfo = [];
+      /** @type {string} */
       this._hashFunction = 'SHA-256';
+      /** @type {uint8[]} Fed shared secret (null until the first Feed) */
       this._inputData = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} OtherInfo */
     get otherinfo() { return this._otherinfo; }
+    /**
+     * @param {uint8[]} value - OtherInfo (null clears it)
+     * @throws {Error} If it is neither null nor an array
+     */
     set otherinfo(value) {
       if (value === null || value === undefined) {
         this._otherinfo = [];
@@ -200,7 +201,12 @@
       }
     }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /**
+     * @param {int32} value - Output size in bytes
+     * @throws {Error} If it is not a positive number
+     */
     set outputSize(value) {
       if (typeof value !== 'number' || value < 1) {
         throw new Error('ConcatKDFHashInstance: outputSize must be positive integer');
@@ -208,15 +214,31 @@
       this.OutputSize = value;
     }
 
+    /** @returns {string} Hash name: SHA-1, SHA-256 or SHA-512 */
     get hashFunction() { return this._hashFunction; }
+    /** @param {string} value - Hash name: SHA-1, SHA-256 or SHA-512 */
     set hashFunction(value) {
       this._hashFunction = value;
     }
 
     /**
-   * Feed data to cipher for processing
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512
+     * @returns {int32} Digest size in bytes, 0 when unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA-1': return 20;
+        case 'SHA-256': return 32;
+        case 'SHA-512': return 64;
+        default: return 0;
+      }
+    }
+
+    /**
+   * Feed shared secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -236,9 +258,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If nothing was fed or the hash is unsupported
    */
 
     Result() {
@@ -247,39 +269,53 @@
       }
 
       const sharedSecret = this._inputData;
-      const otherinfo = this._otherinfo || [];
-      const outputSize = this.OutputSize || 32;
-      const hashFunc = this._hashFunction || 'SHA-256';
+      /** @type {uint8[]} */
+      let otherinfo = [];
+      if (this._otherinfo) { otherinfo = this._otherinfo; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 32; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA-256'; }
 
       return this.deriveKey(sharedSecret, otherinfo, outputSize, hashFunc);
     }
 
+    /**
+     * NIST SP 800-56C one-step KDF with a hash: H(counter || Z || OtherInfo)
+     * @param {uint8[]} sharedSecret - Shared secret Z
+     * @param {uint8[]} otherinfo - OtherInfo
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
     deriveKey(sharedSecret, otherinfo, outputLength, hashFunction) {
       // NIST SP 800-56C Single-Step KDF with Concatenation
       // KDF(Z, OtherInfo) = H(counter || Z || OtherInfo) for each counter
 
-      const hashName = Array.isArray(hashFunction) ? String.fromCharCode(...hashFunction) : hashFunction;
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
+      const hashName = hashFunction;
+      const hashLen = this.hashSize(hashName);
+      if (hashLen === 0) {
         throw new Error('ConcatKDFHashInstance: Unsupported hash function: ' + hashName);
       }
 
-      // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      // Get hash algorithm from framework (registered under the same name)
+      const hashAlg = AlgorithmFramework.Find(hashName);
       if (!hashAlg) {
-        throw new Error('ConcatKDFHashInstance: Hash function not found: ' + hashInfo.name);
+        throw new Error('ConcatKDFHashInstance: Hash function not found: ' + hashName);
       }
 
-      const hashLen = hashInfo.size;
       const numBlocks = Math.ceil(outputLength / hashLen);
 
       // NIST SP 800-56C: Check max output length
       // max_H_outputBits = (2^32 - 1) * hashLen
+      /** @type {uint64} */
       const maxOutput = hashLen * 0xFFFFFFFF;
       if (outputLength > maxOutput) {
         throw new Error('ConcatKDFHashInstance: Output length too large for hash function');
       }
 
+      /** @type {uint8[]} */
       let output = [];
       let counter = 1;
 
@@ -293,8 +329,10 @@
         const hashInput = counterBytes.concat(sharedSecret).concat(otherinfo);
 
         // Hash the concatenated input
+        /** @type {IHashFunctionInstance} */
         const hashInst = hashAlg.CreateInstance();
         hashInst.Feed(hashInput);
+        /** @type {uint8[]} */
         const hashResult = hashInst.Result();
 
         // Append to output
@@ -328,13 +366,6 @@
       // KDF-specific properties
       this.SaltRequired = false; // Salt is optional (defaults to zeros)
       this.SupportedOutputSizes = [new KeySize(1, 65535, 1)];
-
-      // Hash function configuration
-      this.HASH_FUNCTIONS = {
-        'SHA-1': { size: 20, name: 'SHA-1', blockSize: 64 },
-        'SHA-256': { size: 32, name: 'SHA-256', blockSize: 64 },
-        'SHA-512': { size: 64, name: 'SHA-512', blockSize: 128 }
-      };
 
       // Documentation and references
       this.documentation = [
@@ -385,7 +416,7 @@
       ];
 
       // Add test parameters - default salt (128 bytes of zeros for SHA-512)
-      this.tests[0].salt = new Array(128).fill(0);
+      this.tests[0].salt = OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
       this.tests[0].otherinfo = OpCodes.Hex8ToBytes("a1b2c3d4e55e600be5f367e0e8a465f4bf2704db00c9325c9fbd216d12b49160b2ae5157650f43415653696421e68e");
       this.tests[0].outputSize = 32;
       this.tests[0].hashFunction = 'SHA-512';
@@ -402,9 +433,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new Concat KDF (HMAC) instance
+   * @param {boolean} [isInverse=false] - True returns null: the KDF has no inverse
+   * @returns {ConcatKDFHMACInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -416,30 +447,39 @@
   }
 
   /**
- * ConcatKDFHMAC cipher instance implementing Feed/Result pattern
+ * Concat KDF (HMAC) instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class ConcatKDFHMACInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a Concat KDF (HMAC) instance
+   * @param {ConcatKDFHMACAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Refused by Feed: the KDF has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // Default 256-bit output
-      this._salt = null; // Will default to zeros of block size
+      /** @type {uint8[]} Salt (null defaults to zeros of the hash block size) */
+      this._salt = null;
+      /** @type {uint8[]} */
       this._otherinfo = [];
+      /** @type {string} */
       this._hashFunction = 'SHA-256';
+      /** @type {uint8[]} Fed shared secret (null until the first Feed) */
       this._inputData = null;
     }
 
     // Property getters and setters
+    /** @returns {uint8[]} Salt (null means the default) */
     get salt() { return this._salt; }
+    /**
+     * @param {uint8[]} value - HMAC salt (null selects zeros of the block size)
+     * @throws {Error} If it is neither null nor an array
+     */
     set salt(value) {
       if (value === null || value === undefined) {
         this._salt = null;
@@ -450,7 +490,12 @@
       }
     }
 
+    /** @returns {uint8[]} OtherInfo */
     get otherinfo() { return this._otherinfo; }
+    /**
+     * @param {uint8[]} value - OtherInfo (null clears it)
+     * @throws {Error} If it is neither null nor an array
+     */
     set otherinfo(value) {
       if (value === null || value === undefined) {
         this._otherinfo = [];
@@ -461,7 +506,12 @@
       }
     }
 
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /**
+     * @param {int32} value - Output size in bytes
+     * @throws {Error} If it is not a positive number
+     */
     set outputSize(value) {
       if (typeof value !== 'number' || value < 1) {
         throw new Error('ConcatKDFHMACInstance: outputSize must be positive integer');
@@ -469,15 +519,31 @@
       this.OutputSize = value;
     }
 
+    /** @returns {string} Hash name: SHA-1, SHA-256 or SHA-512 */
     get hashFunction() { return this._hashFunction; }
+    /** @param {string} value - Hash name: SHA-1, SHA-256 or SHA-512 */
     set hashFunction(value) {
       this._hashFunction = value;
     }
 
     /**
-   * Feed data to cipher for processing
+     * Digest length of a supported hash
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512
+     * @returns {int32} Digest size in bytes, 0 when unsupported
+     */
+    hashSize(hashName) {
+      switch (hashName) {
+        case 'SHA-1': return 20;
+        case 'SHA-256': return 32;
+        case 'SHA-512': return 64;
+        default: return 0;
+      }
+    }
+
+    /**
+   * Feed shared secret bytes
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array or the instance is inverse
    */
 
     Feed(data) {
@@ -497,9 +563,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If nothing was fed or the hash is unsupported
    */
 
     Result() {
@@ -509,42 +575,63 @@
 
       const sharedSecret = this._inputData;
       const salt = this._salt;
-      const otherinfo = this._otherinfo || [];
-      const outputSize = this.OutputSize || 32;
-      const hashFunc = this._hashFunction || 'SHA-256';
+      /** @type {uint8[]} */
+      let otherinfo = [];
+      if (this._otherinfo) { otherinfo = this._otherinfo; }
+      let outputSize = this.OutputSize;
+      if (!outputSize) { outputSize = 32; }
+      let hashFunc = this._hashFunction;
+      if (!hashFunc) { hashFunc = 'SHA-256'; }
 
       return this.deriveKey(sharedSecret, salt, otherinfo, outputSize, hashFunc);
     }
 
+    /**
+     * NIST SP 800-56C one-step KDF with HMAC: HMAC(salt, counter || Z || OtherInfo)
+     * @param {uint8[]} sharedSecret - Shared secret Z
+     * @param {uint8[]} salt - HMAC salt (null selects zeros of the block size)
+     * @param {uint8[]} otherinfo - OtherInfo
+     * @param {int32} outputLength - Output length in bytes
+     * @param {string} hashFunction - Hash name
+     * @returns {uint8[]} Derived key
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
     deriveKey(sharedSecret, salt, otherinfo, outputLength, hashFunction) {
       // NIST SP 800-56C Single-Step KDF with HMAC
       // KDF(Z, OtherInfo) = HMAC(salt, counter || Z || OtherInfo) for each counter
 
-      const hashName = Array.isArray(hashFunction) ? String.fromCharCode(...hashFunction) : hashFunction;
-      const hashInfo = this.algorithm.HASH_FUNCTIONS[hashName];
-      if (!hashInfo) {
+      const hashName = hashFunction;
+      const hashLen = this.hashSize(hashName);
+      if (hashLen === 0) {
         throw new Error('ConcatKDFHMACInstance: Unsupported hash function: ' + hashName);
       }
 
-      // Get hash algorithm from framework
-      const hashAlg = AlgorithmFramework.Find(hashInfo.name);
+      // Get hash algorithm from framework (registered under the same name)
+      const hashAlg = AlgorithmFramework.Find(hashName);
       if (!hashAlg) {
-        throw new Error('ConcatKDFHMACInstance: Hash function not found: ' + hashInfo.name);
+        throw new Error('ConcatKDFHMACInstance: Hash function not found: ' + hashName);
       }
 
-      const hashLen = hashInfo.size;
-      const blockSize = hashInfo.blockSize;
+      let blockSize = 64;
+      if (hashName === 'SHA-512') { blockSize = 128; }
       const numBlocks = Math.ceil(outputLength / hashLen);
 
       // NIST SP 800-56C: Check max output length
+      /** @type {uint64} */
       const maxOutput = hashLen * 0xFFFFFFFF;
       if (outputLength > maxOutput) {
         throw new Error('ConcatKDFHMACInstance: Output length too large for hash function');
       }
 
       // Default salt: zeros of hash block size
-      const actualSalt = salt || new Array(blockSize).fill(0);
+      /** @type {uint8[]} */
+      let actualSalt = salt;
+      if (!actualSalt) {
+        actualSalt = [];
+        for (let i = 0; i < blockSize; i++) actualSalt.push(0);
+      }
 
+      /** @type {uint8[]} */
       let output = [];
       let counter = 1;
 
@@ -558,7 +645,7 @@
         const hmacInput = counterBytes.concat(sharedSecret).concat(otherinfo);
 
         // Compute HMAC
-        const hmacResult = this.calculateHMAC(actualSalt, hmacInput, hashAlg, blockSize);
+        const hmacResult = this.calculateHMAC(actualSalt, hmacInput, hashName, blockSize);
 
         // Append to output
         output = output.concat(hmacResult);
@@ -570,17 +657,29 @@
       return output.slice(0, outputLength);
     }
 
-    calculateHMAC(key, message, hashAlg, blockSize) {
+    /**
+     * HMAC (RFC 2104) over a registered hash
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - Registered hash name (checked by the caller)
+     * @param {int32} blockSize - Hash block size in bytes
+     * @returns {uint8[]} MAC
+     */
+    calculateHMAC(key, message, hashName, blockSize) {
+      const hashAlg = AlgorithmFramework.Find(hashName);
       // Standalone HMAC implementation (RFC 2104)
       // HMAC(K, m) = H((K' XOR opad) || H((K' XOR ipad) || m))
 
       // Prepare key - pad or hash if needed
-      let keyPrime = [...key];
+      let keyPrime = key.slice();
       if (keyPrime.length > blockSize) {
         // If key is longer than block size, hash it first
+        /** @type {IHashFunctionInstance} */
         const hashInst = hashAlg.CreateInstance();
         hashInst.Feed(keyPrime);
-        keyPrime = hashInst.Result();
+        /** @type {uint8[]} */
+        const hashedKey = hashInst.Result();
+        keyPrime = hashedKey;
       }
 
       // Pad key to block size
@@ -593,21 +692,31 @@
       const opad = 0x5c;
 
       // Create constant arrays for XOR
-      const ipadArray = new Array(blockSize).fill(ipad);
-      const opadArray = new Array(blockSize).fill(opad);
+      /** @type {uint8[]} */
+      const ipadArray = [];
+      /** @type {uint8[]} */
+      const opadArray = [];
+      for (let i = 0; i < blockSize; i++) {
+        ipadArray.push(ipad);
+        opadArray.push(opad);
+      }
 
       // Inner hash: H((K' XOR ipad) || message)
       const innerKey = OpCodes.XorArrays(keyPrime, ipadArray);
       const innerInput = innerKey.concat(message);
+      /** @type {IHashFunctionInstance} */
       const innerHashInst = hashAlg.CreateInstance();
       innerHashInst.Feed(innerInput);
+      /** @type {uint8[]} */
       const innerHash = innerHashInst.Result();
 
       // Outer hash: H((K' XOR opad) || innerHash)
       const outerKey = OpCodes.XorArrays(keyPrime, opadArray);
       const outerInput = outerKey.concat(innerHash);
+      /** @type {IHashFunctionInstance} */
       const outerHashInst = hashAlg.CreateInstance();
       outerHashInst.Feed(outerInput);
+      /** @type {uint8[]} */
       const result = outerHashInst.Result();
 
       return result;

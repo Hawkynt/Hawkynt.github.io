@@ -43,8 +43,13 @@
 
   // ===== COMB4P IMPLEMENTATION =====
 
-  // Helper to ensure hash algorithms are loaded
+  /**
+   * Helper to ensure hash algorithms are loaded
+   * @param {string} hashName - registered name of the component hash
+   * @returns {HashFunctionAlgorithm} the component hash algorithm
+   */
   function ensureHashLoaded(hashName) {
+    /** @type {HashFunctionAlgorithm} */
     let algo = Find(hashName);
     if (algo) return algo;
 
@@ -65,7 +70,7 @@
     }
 
     if (!algo) {
-      throw new Error(`COMB4P: Hash function '${hashName}' not found. Please ensure ${hashName} is loaded.`);
+      throw new Error("COMB4P: Hash function '" + hashName + "' not found. Please ensure " + hashName + " is loaded.");
     }
     return algo;
   }
@@ -77,14 +82,23 @@
  */
 
   class COMB4PInstance extends IHashFunctionInstance {
+    /**
+     * @param {COMB4PBase} algorithm - parent algorithm
+     * @param {string} hash1Name - first component hash
+     * @param {string} hash2Name - second component hash
+     */
     constructor(algorithm, hash1Name, hash2Name) {
       super(algorithm);
 
+      /** @type {string} */
       this.hash1Name = hash1Name;
+      /** @type {string} */
       this.hash2Name = hash2Name;
 
       // Load the component hash algorithms (with auto-loading)
+      /** @type {HashFunctionAlgorithm} */
       this.hash1Algo = ensureHashLoaded(hash1Name);
+      /** @type {HashFunctionAlgorithm} */
       this.hash2Algo = ensureHashLoaded(hash2Name);
 
       if (this.hash1Algo.name === this.hash2Algo.name) {
@@ -92,7 +106,9 @@
       }
 
       // Create instances of both hash functions
+      /** @type {IHashFunctionInstance} */
       this.hash1Instance = this.hash1Algo.CreateInstance();
+      /** @type {IHashFunctionInstance} */
       this.hash2Instance = this.hash2Algo.CreateInstance();
 
       if (!this.hash1Instance || !this.hash2Instance) {
@@ -100,32 +116,52 @@
       }
 
       // Get output sizes - COMB4P requires equal-sized hashes
-      const size1 = this.hash1Instance.OutputSize || this._getDefaultHashSize(hash1Name);
-      const size2 = this.hash2Instance.OutputSize || this._getDefaultHashSize(hash2Name);
-
-      if (size1 !== size2) {
-        throw new Error(`COMB4P: Incompatible hashes ${hash1Name} (${size1} bytes) and ${hash2Name} (${size2} bytes) - output sizes must match`);
+      /** @type {int32} */
+      let size1 = this.hash1Instance.OutputSize;
+      if (!size1) {
+        size1 = this._getDefaultHashSize(hash1Name);
+      }
+      /** @type {int32} */
+      let size2 = this.hash2Instance.OutputSize;
+      if (!size2) {
+        size2 = this._getDefaultHashSize(hash2Name);
       }
 
+      if (size1 !== size2) {
+        throw new Error("COMB4P: Incompatible hashes " + hash1Name + " (" + size1 + " bytes) and " + hash2Name + " (" + size2 + " bytes) - output sizes must match");
+      }
+
+      /** @type {int32} */
       this.componentSize = size1;
       this.OutputSize = size1 + size2; // Combined output is h1 || h2
 
+      /** @type {uint8[]} */
+      this.prefix = null;
       this._Reset();
     }
 
+    /**
+     * Default output size of a component hash that does not state one
+     * @param {string} name - component hash name
+     * @returns {int32} output size in bytes (32 when unknown)
+     */
     _getDefaultHashSize(name) {
       // Default hash sizes for common algorithms
-      const sizes = {
-        'MD4': 16,
-        'MD5': 16,
-        'SHA-1': 20,
-        'RIPEMD-160': 20,
-        'SHA-256': 32,
-        'SHA-512': 64
-      };
-      return sizes[name] || 32; // Default to 32 bytes if unknown
+      switch (name) {
+        case 'MD4': return 16;
+        case 'MD5': return 16;
+        case 'SHA-1': return 20;
+        case 'RIPEMD-160': return 20;
+        case 'SHA-256': return 32;
+        case 'SHA-512': return 64;
+        default: return 32; // Default to 32 bytes if unknown
+      }
     }
 
+    /**
+     * Start a new message: round number 0 prefixes the input
+     * @returns {void}
+     */
     _Reset() {
       // COMB4P starts with round number 0 fed to both hashes
       // Store it in a buffer to concatenate with actual data
@@ -133,6 +169,10 @@
       this.inputBuffer = [];
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Initialize() {
       this._Reset();
     }
@@ -144,9 +184,12 @@
    */
 
     Feed(data) {
-      if (!data || data.length === 0) return;
+      if (!data || data.length === 0) {
+        return;
+      }
 
       // Accumulate input data (will be fed all at once in Result())
+      /** @type {uint8[]} */
       const input = Array.isArray(data) ? data : Array.from(data);
       for (let _i = 0; _i < input.length; _i++) this.inputBuffer.push(input[_i]);
     }
@@ -159,7 +202,9 @@
 
     Result() {
       // Create fresh hash instances for the main hashing
+      /** @type {IHashFunctionInstance} */
       const h1Instance = this.hash1Algo.CreateInstance();
+      /** @type {IHashFunctionInstance} */
       const h2Instance = this.hash2Algo.CreateInstance();
 
       // Feed the complete message (0 || input) to both hashes
@@ -168,12 +213,16 @@
       h2Instance.Feed(completeMessage);
 
       // Get initial hash outputs
-      let h1 = Array.from(h1Instance.Result());
-      let h2 = Array.from(h2Instance.Result());
+      /** @type {uint8[]} */
+      const r1 = h1Instance.Result();
+      /** @type {uint8[]} */
+      const r2 = h2Instance.Result();
+      let h1 = Array.from(r1);
+      let h2 = Array.from(r2);
 
       // Ensure outputs are the expected size
       if (h1.length !== this.componentSize || h2.length !== this.componentSize) {
-        throw new Error(`COMB4P: Unexpected hash output sizes (${h1.length}, ${h2.length})`);
+        throw new Error("COMB4P: Unexpected hash output sizes (" + h1.length + ", " + h2.length + ")");
       }
 
       // First round: XOR h2 into h1
@@ -194,21 +243,36 @@
       return output;
     }
 
+    /**
+     * One COMB4P round: out ^= H1(roundNo || input) ^ H2(roundNo || input)
+     * @param {uint8[]} out - modified in place
+     * @param {uint8[]} input - round input
+     * @param {uint8} roundNo - round number byte
+     * @returns {void}
+     */
     _comb4pRound(out, input, roundNo) {
       // Create fresh hash instances for this round
+      /** @type {IHashFunctionInstance} */
       const h1 = this.hash1Algo.CreateInstance();
+      /** @type {IHashFunctionInstance} */
       const h2 = this.hash2Algo.CreateInstance();
 
       // Concatenate round number and input data
-      const roundData = [roundNo].concat(input);
+      /** @type {uint8[]} */
+      const roundNumber = [roundNo];
+      const roundData = roundNumber.concat(input);
 
       // Feed the complete data to both hashes
       h1.Feed(roundData);
       h2.Feed(roundData);
 
       // Get hash outputs
-      const h1Result = Array.from(h1.Result());
-      const h2Result = Array.from(h2.Result());
+      /** @type {uint8[]} */
+      const r1 = h1.Result();
+      /** @type {uint8[]} */
+      const r2 = h2.Result();
+      const h1Result = Array.from(r1);
+      const h2Result = Array.from(r2);
 
       // XOR both results into output
       const temp1 = OpCodes.XorArrays(out, h1Result);
@@ -231,14 +295,20 @@
  */
 
   class COMB4PBase extends HashFunctionAlgorithm {
+    /**
+     * @param {string} hash1Name - first component hash
+     * @param {string} hash2Name - second component hash
+     */
     constructor(hash1Name, hash2Name) {
       super();
+      /** @type {string} */
       this.hash1Name = hash1Name;
+      /** @type {string} */
       this.hash2Name = hash2Name;
 
       // Metadata
-      this.name = `COMB4P(${hash1Name},${hash2Name})`;
-      this.description = `COMB4P hash combiner using ${hash1Name} and ${hash2Name}. Combines two hash functions with a Feistel-like construction to provide security even if one component hash is broken.`;
+      this.name = "COMB4P(" + hash1Name + "," + hash2Name + ")";
+      this.description = "COMB4P hash combiner using " + hash1Name + " and " + hash2Name + ". Combines two hash functions with a Feistel-like construction to provide security even if one component hash is broken.";
       this.inventor = "Anja Lehmann";
       this.year = 2004;
       this.category = CategoryType.HASH;
@@ -260,7 +330,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {COMB4PInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
