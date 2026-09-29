@@ -152,6 +152,15 @@ class Shacal1Instance extends IBlockCipherInstance {
     return this._key ? [...this._key] : null;
   }
 
+  /**
+   * Key byte at an index, zero past the end of the key (zero-bit padding)
+   * @param {int32} index - Byte index
+   * @returns {uint8} Key byte or 0
+   */
+  _keyByte(index) {
+    return index < this._key.length ? this._key[index] : 0;
+  }
+
   _keySchedule() {
     // SHA-1 key schedule (message expansion)
     this.RK = new Uint32Array(80);
@@ -162,10 +171,10 @@ class Shacal1Instance extends IBlockCipherInstance {
     // last 1-3 bytes of, for example, a 17-byte key.
     for (let i = 0; i < 16; ++i) {
       this.RK[i] = OpCodes.Pack32BE(
-        this._key[i * 4] || 0,
-        this._key[i * 4 + 1] || 0,
-        this._key[i * 4 + 2] || 0,
-        this._key[i * 4 + 3] || 0
+        this._keyByte(i * 4),
+        this._keyByte(i * 4 + 1),
+        this._keyByte(i * 4 + 2),
+        this._keyByte(i * 4 + 3)
       );
     }
 
@@ -177,7 +186,14 @@ class Shacal1Instance extends IBlockCipherInstance {
     }
   }
 
-  // SHA-1 round functions
+  /**
+   * SHA-1 round functions
+   * @param {int32} t - Round number
+   * @param {uint32} b - Word b
+   * @param {uint32} c - Word c
+   * @param {uint32} d - Word d
+   * @returns {uint32} Round function value
+   */
   _f(t, b, c, d) {
     if (t < 20) {
       // Ch(b,c,d) = (b AND c) XOR (NOT b AND d)
@@ -209,7 +225,7 @@ class Shacal1Instance extends IBlockCipherInstance {
     // 80 rounds of SHA-1 compression
     for (let t = 0; t < 80; ++t) {
       const rcIndex = Math.floor(t / 20);
-      const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + this._f(t, b, c, d) + e + this.RC[rcIndex] + this.RK[t]);
+      const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), this._f(t, b, c, d)), e), this.RC[rcIndex]), this.RK[t]);
       e = d;
       d = c;
       c = OpCodes.RotL32(b, 30);
@@ -246,7 +262,8 @@ class Shacal1Instance extends IBlockCipherInstance {
       b = OpCodes.RotR32(c, 30);
       c = d;
       d = e;
-      e = OpCodes.ToUint32(temp - OpCodes.RotL32(a, 5) - this._f(t, b, c, d) - this.RC[rcIndex] - this.RK[t]);
+      e = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(temp, OpCodes.RotL32(a, 5)), this._f(t, b, c, d)), this.RC[rcIndex]), this.RK[t]);
+
     }
 
     return [

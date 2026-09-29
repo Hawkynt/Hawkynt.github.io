@@ -62,73 +62,99 @@
   // walk the round back to front while looking up which lane (A/D/C/B) each step touched.
   const LANE = ['A', 'D', 'C', 'B'];
 
+  /**
+   * @param {uint32} x - Word x
+   * @param {uint32} y - Word y
+   * @param {uint32} z - Word z
+   * @returns {uint32} Choose(x, y, z)
+   */
   function F(x, y, z) { return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(~x, z))); }
+  /**
+   * @param {uint32} x - Word x
+   * @param {uint32} y - Word y
+   * @param {uint32} z - Word z
+   * @returns {uint32} Majority(x, y, z)
+   */
   function G(x, y, z) { return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(x, z)), OpCodes.And32(y, z))); }
+  /**
+   * @param {uint32} x - Word x
+   * @param {uint32} y - Word y
+   * @param {uint32} z - Word z
+   * @returns {uint32} Parity(x, y, z)
+   */
   function H(x, y, z) { return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x, y), z)); }
 
   /**
-   * @param {uint8[]} block - Input block
+   * @param {uint32[]} block - Input state words
+   * @param {uint32[]} M - Message schedule (key words)
+   * @returns {uint32[]} Output state words
    */
   function md4Encrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 0; i < 16; i++) {
       const s = S1[i % 4];
       const w = M[i];
-      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.ToUint32(A + F(B, C, D) + w), s);
-      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.ToUint32(D + F(A, B, C) + w), s);
-      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.ToUint32(C + F(D, A, B) + w), s);
-      else B = OpCodes.RotL32(OpCodes.ToUint32(B + F(C, D, A) + w), s);
+      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(A, F(B, C, D)), w), s);
+      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(D, F(A, B, C)), w), s);
+      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(C, F(D, A, B)), w), s);
+      else B = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(B, F(C, D, A)), w), s);
     }
     for (let i = 0; i < 16; i++) {
       const s = S2[i % 4];
       const w = M[R2[i]];
-      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.ToUint32(A + G(B, C, D) + w + K2), s);
-      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.ToUint32(D + G(A, B, C) + w + K2), s);
-      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.ToUint32(C + G(D, A, B) + w + K2), s);
-      else B = OpCodes.RotL32(OpCodes.ToUint32(B + G(C, D, A) + w + K2), s);
+      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(A, G(B, C, D)), w), K2), s);
+      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(D, G(A, B, C)), w), K2), s);
+      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(C, G(D, A, B)), w), K2), s);
+      else B = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(B, G(C, D, A)), w), K2), s);
     }
     for (let i = 0; i < 16; i++) {
       const s = S3[i % 4];
       const w = M[R3[i]];
-      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.ToUint32(A + H(B, C, D) + w + K3), s);
-      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.ToUint32(D + H(A, B, C) + w + K3), s);
-      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.ToUint32(C + H(D, A, B) + w + K3), s);
-      else B = OpCodes.RotL32(OpCodes.ToUint32(B + H(C, D, A) + w + K3), s);
+      if (i % 4 === 0) A = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(A, H(B, C, D)), w), K3), s);
+      else if (i % 4 === 1) D = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(D, H(A, B, C)), w), K3), s);
+      else if (i % 4 === 2) C = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(C, H(D, A, B)), w), K3), s);
+      else B = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(B, H(C, D, A)), w), K3), s);
     }
-    return [A, B, C, D];
+    /** @type {uint32[]} */
+    const out = [A, B, C, D];
+    return out;
   }
 
   // Inverse: replay the 48 steps back to front, undoing each rotate/add in turn.
   /**
-   * @param {uint8[]} block - Input block
+   * @param {uint32[]} block - Input state words
+   * @param {uint32[]} M - Message schedule (key words)
+   * @returns {uint32[]} Output state words
    */
   function md4Decrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 15; i >= 0; i--) {
       const s = S3[i % 4];
       const w = M[R3[i]];
-      if (i % 4 === 0) A = OpCodes.ToUint32(OpCodes.RotR32(A, s) - H(B, C, D) - w - K3);
-      else if (i % 4 === 1) D = OpCodes.ToUint32(OpCodes.RotR32(D, s) - H(A, B, C) - w - K3);
-      else if (i % 4 === 2) C = OpCodes.ToUint32(OpCodes.RotR32(C, s) - H(D, A, B) - w - K3);
-      else B = OpCodes.ToUint32(OpCodes.RotR32(B, s) - H(C, D, A) - w - K3);
+      if (i % 4 === 0) A = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(A, s), H(B, C, D)), w), K3);
+      else if (i % 4 === 1) D = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(D, s), H(A, B, C)), w), K3);
+      else if (i % 4 === 2) C = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(C, s), H(D, A, B)), w), K3);
+      else B = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(B, s), H(C, D, A)), w), K3);
     }
     for (let i = 15; i >= 0; i--) {
       const s = S2[i % 4];
       const w = M[R2[i]];
-      if (i % 4 === 0) A = OpCodes.ToUint32(OpCodes.RotR32(A, s) - G(B, C, D) - w - K2);
-      else if (i % 4 === 1) D = OpCodes.ToUint32(OpCodes.RotR32(D, s) - G(A, B, C) - w - K2);
-      else if (i % 4 === 2) C = OpCodes.ToUint32(OpCodes.RotR32(C, s) - G(D, A, B) - w - K2);
-      else B = OpCodes.ToUint32(OpCodes.RotR32(B, s) - G(C, D, A) - w - K2);
+      if (i % 4 === 0) A = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(A, s), G(B, C, D)), w), K2);
+      else if (i % 4 === 1) D = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(D, s), G(A, B, C)), w), K2);
+      else if (i % 4 === 2) C = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(C, s), G(D, A, B)), w), K2);
+      else B = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(B, s), G(C, D, A)), w), K2);
     }
     for (let i = 15; i >= 0; i--) {
       const s = S1[i % 4];
       const w = M[i];
-      if (i % 4 === 0) A = OpCodes.ToUint32(OpCodes.RotR32(A, s) - F(B, C, D) - w);
-      else if (i % 4 === 1) D = OpCodes.ToUint32(OpCodes.RotR32(D, s) - F(A, B, C) - w);
-      else if (i % 4 === 2) C = OpCodes.ToUint32(OpCodes.RotR32(C, s) - F(D, A, B) - w);
-      else B = OpCodes.ToUint32(OpCodes.RotR32(B, s) - F(C, D, A) - w);
+      if (i % 4 === 0) A = OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(A, s), F(B, C, D)), w);
+      else if (i % 4 === 1) D = OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(D, s), F(A, B, C)), w);
+      else if (i % 4 === 2) C = OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(C, s), F(D, A, B)), w);
+      else B = OpCodes.Sub32(OpCodes.Sub32(OpCodes.RotR32(B, s), F(C, D, A)), w);
     }
-    return [A, B, C, D];
+    /** @type {uint32[]} */
+    const out = [A, B, C, D];
+    return out;
   }
 
   class DarkCryptMD4Algorithm extends BlockCipherAlgorithm {
@@ -191,8 +217,10 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._M = null;
       /** @type {uint8[]} */
+
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -207,9 +235,11 @@
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. MD4-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._M = [];
+      /** @type {uint32[]} */
+      const words = [];
       for (let i = 0; i < 16; i++)
-        this._M.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
+        words.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
+      this._M = words;
     }
 
     /**
@@ -241,16 +271,23 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
      */
     _blockToWords(block) {
-      return [
+      /** @type {uint32[]} */
+      const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
+      return w;
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} Little-endian bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),

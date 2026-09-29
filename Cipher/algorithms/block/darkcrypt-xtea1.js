@@ -170,13 +170,19 @@
       return output;
     }
 
+    /**
+     * Key as four little-endian words
+     * @returns {uint32[]} Key words
+     */
     _keyWords() {
-      return [
+      /** @type {uint32[]} */
+      const k = [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]),
         OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]),
         OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
+      return k;
     }
 
     /**
@@ -191,19 +197,20 @@
       v0 = OpCodes.ToUint32(v0 + k[0]);
       v1 = OpCodes.ToUint32(v1 + k[1]);
 
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < ROUNDS; i++) {
         const idxA = OpCodes.And32(sum, 3);
         const t1 = OpCodes.RotL32(k[idxA], v1);
         const f1 = OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5));
-        v0 = OpCodes.ToUint32(v0 + t1 + f1 + (OpCodes.ToUint32(OpCodes.Xor32(sum, v1))));
+        v0 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v0, t1), f1), OpCodes.Xor32(sum, v1));
 
         sum = OpCodes.ToUint32(sum + DELTA);
 
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const t2 = OpCodes.RotL32(k[idxC], v0);
         const f2 = OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5));
-        v1 = OpCodes.ToUint32(v1 + t2 + f2 + (OpCodes.ToUint32(OpCodes.Xor32(sum, v0))));
+        v1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v1, t2), f2), OpCodes.Xor32(sum, v0));
       }
 
       v0 = OpCodes.Xor32(v0, k[2]);
@@ -229,14 +236,15 @@
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const t2 = OpCodes.RotL32(k[idxC], v0);
         const f2 = OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5));
-        v1 = OpCodes.ToUint32(v1 - t2 - f2 - (OpCodes.ToUint32(OpCodes.Xor32(sum, v0))));
+        v1 = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(v1, t2), f2), OpCodes.Xor32(sum, v0));
 
         sum = OpCodes.ToUint32(sum - DELTA);
 
         const idxA = OpCodes.And32(sum, 3);
         const t1 = OpCodes.RotL32(k[idxA], v1);
         const f1 = OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5));
-        v0 = OpCodes.ToUint32(v0 - t1 - f1 - (OpCodes.ToUint32(OpCodes.Xor32(sum, v1))));
+        v0 = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(v0, t1), f1), OpCodes.Xor32(sum, v1));
+
       }
 
       v0 = OpCodes.ToUint32(v0 - k[0]);
