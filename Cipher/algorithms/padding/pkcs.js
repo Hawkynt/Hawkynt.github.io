@@ -51,21 +51,21 @@
 
   /**
    * Shared logic for PKCS#5/PKCS#7 padding (byte-count padding)
-   * @param {Array} data - Data to pad
-   * @param {number} blockSize - Block size in bytes
-   * @returns {Array} Padded data
+   * @param {uint8[]} data - Data to pad
+   * @param {int32} blockSize - Block size in bytes
+   * @returns {uint8[]} Padded data
    */
   function addByteCountPadding(data, blockSize) {
     const paddingLength = blockSize - (data.length % blockSize);
-    const padding = new Array(paddingLength).fill(paddingLength);
+    const padding = OpCodes.CreateArray(paddingLength, paddingLength);
     return [...data, ...padding];
   }
 
   /**
    * Shared logic for PKCS#5/PKCS#7 unpadding
-   * @param {Array} paddedData - Padded data
-   * @param {number} blockSize - Block size in bytes
-   * @returns {Array} Unpadded data
+   * @param {uint8[]} paddedData - Padded data
+   * @param {int32} blockSize - Block size in bytes
+   * @returns {uint8[]} Unpadded data
    */
   function removeByteCountPadding(paddedData, blockSize) {
     if (paddedData.length === 0) {
@@ -76,6 +76,7 @@
       throw new Error("Padded data length must be multiple of block size");
     }
 
+    /** @type {int32} */
     const paddingLength = paddedData[paddedData.length - 1];
 
     // Validate padding length
@@ -150,10 +151,10 @@
       ];
 
       // Add metadata for tests
-      this.tests.forEach(test => {
-        test.keySize = 2048; // RSA-2048
-        test.paddingType = 'encryption';
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].keySize = 2048; // RSA-2048
+        this.tests[i].paddingType = 'encryption';
+      }
     }
 
     /**
@@ -176,20 +177,30 @@
   class PKCS1Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PKCS1Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._keySize = 2048; // Default RSA key size in bits
+      /** @type {string} */
       this._paddingType = 'encryption'; // 'encryption' or 'signature'
     }
 
-    // Property getters and setters for test framework
+    /**
+     * RSA key size in bits
+     * @returns {int32} Key size
+     */
     get keySize() { return this._keySize; }
+
+    /**
+     * @param {int32} value - RSA key size in bits (512-8192, divisible by 8)
+     */
     set keySize(value) {
       if (value < 512 || value > 8192 || value % 8 !== 0) {
         throw new Error("Key size must be between 512-8192 bits and divisible by 8");
@@ -197,7 +208,15 @@
       this._keySize = value;
     }
 
+    /**
+     * Padding type
+     * @returns {string} 'encryption' or 'signature'
+     */
     get paddingType() { return this._paddingType; }
+
+    /**
+     * @param {string} value - 'encryption' or 'signature'
+     */
     set paddingType(value) {
       if (value !== 'encryption' && value !== 'signature') {
         throw new Error("Padding type must be 'encryption' or 'signature'");
@@ -215,7 +234,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._removePadding();
       } else {
@@ -225,7 +246,7 @@
 
     /**
      * Add PKCS#1 v1.5 padding
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const message = this.inputBuffer;
@@ -234,7 +255,7 @@
       // Check message length
       const maxMessageLength = keyBytes - 11; // Minimum 11 bytes overhead
       if (message.length > maxMessageLength) {
-        throw new Error(`Message too long for key size. Max: ${maxMessageLength} bytes`);
+        throw new Error("Message too long for key size. Max: " + maxMessageLength + " bytes");
       }
 
       // PKCS#1 v1.5 padding format: 0x00 || BT || PS || 0x00 || M
@@ -242,6 +263,7 @@
       const blockType = this._paddingType === 'encryption' ? 0x02 : 0x01;
       const paddingLength = keyBytes - message.length - 3;
 
+      /** @type {uint8[]} */
       const result = [];
       result.push(0x00); // Leading zero
       result.push(blockType); // Block type
@@ -272,14 +294,14 @@
 
     /**
      * Remove PKCS#1 v1.5 padding
-     * @returns {Array} Unpadded message
+     * @returns {uint8[]} Unpadded message
      */
     _removePadding() {
       const paddedData = this.inputBuffer;
       const keyBytes = this._keySize / 8;
 
       if (paddedData.length !== keyBytes) {
-        throw new Error(`Invalid padded data length. Expected: ${keyBytes} bytes`);
+        throw new Error("Invalid padded data length. Expected: " + keyBytes + " bytes");
       }
 
       // Check leading zero
@@ -290,7 +312,9 @@
       // Check block type
       const blockType = paddedData[1];
       if (blockType !== 0x01 && blockType !== 0x02) {
-        throw new Error(`Invalid PKCS#1 block type: 0x${blockType.toString(16)}`);
+        /** @type {string} */
+        const blockTypeHex = blockType.toString(16);
+        throw new Error("Invalid PKCS#1 block type: 0x" + blockTypeHex);
       }
 
       // Find separator (0x00) after padding
@@ -384,9 +408,9 @@
       ];
 
       // All PKCS#5 tests use 8-byte blocks
-      this.tests.forEach(test => {
-        test.blockSize = 8;
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = 8;
+      }
     }
 
     /**
@@ -409,20 +433,22 @@
   class Pkcs5Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Pkcs5Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 8; // PKCS#5 is always 8 bytes
     }
 
     /**
      * Set the block size (must be 8 for PKCS#5)
-     * @param {number} blockSize - Block size in bytes (must be 8)
+     * @param {int32} blockSize - Block size in bytes (must be 8)
      */
     setBlockSize(blockSize) {
       if (blockSize !== 8) {
@@ -441,7 +467,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         const result = removeByteCountPadding(this.inputBuffer, 8);
         OpCodes.ClearArray(this.inputBuffer);
@@ -512,13 +540,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach((test, index) => {
-        if (index === 0 || index === 1) {
-          test.blockSize = 32; // 32-byte blocks for first two tests
-        } else {
-          test.blockSize = 8; // 8-byte block for third test
-        }
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = i < 2 ? 32 : 8; // 32-byte blocks for the first two tests, 8 for the third
+      }
     }
 
     /**
@@ -541,20 +565,22 @@
   class Pkcs7Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Pkcs7Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 16; // Default block size
     }
 
     /**
      * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
+     * @param {int32} blockSize - Block size in bytes (1-255)
      */
     setBlockSize(blockSize) {
       if (!blockSize || blockSize < 1 || blockSize > 255) {
@@ -573,7 +599,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         const result = removeByteCountPadding(this.inputBuffer, this.blockSize);
         OpCodes.ClearArray(this.inputBuffer);
