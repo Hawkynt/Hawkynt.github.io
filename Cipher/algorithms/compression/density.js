@@ -79,10 +79,15 @@
       // DensityConstants exactly (hash table size/bits and multiplier are
       // this implementation's own tuned choice, not values transcribed from
       // Density's own C source; see DensityConstants.cs for provenance).
+      /** @type {int32} */
       this.HASH_BITS = 16;                  // log2 of the prediction dictionary size
+      /** @type {int32} */
       this.HASH_TABLE_SIZE = OpCodes.Shl32(1, this.HASH_BITS); // 65536 entries
+      /** @type {uint32} */
       this.HASH_MULTIPLIER = 2654435761;    // Knuth's 32-bit golden-ratio constant
+      /** @type {int32} */
       this.CHUNK_SIZE = 4;                  // Work on 4-byte chunks
+      /** @type {int32} */
       this.CHUNKS_PER_BLOCK = 32;           // Chunks covered by one signature word
 
       // Documentation and references
@@ -154,7 +159,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DensityInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -167,29 +172,35 @@
   /**
  * Density cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class DensityInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DensityCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
-      // Algorithm parameters
+      // Copy configuration from algorithm
+      /** @type {int32} */
       this.HASH_BITS = algorithm.HASH_BITS;
+      /** @type {int32} */
       this.HASH_TABLE_SIZE = algorithm.HASH_TABLE_SIZE;
+      /** @type {uint32} */
       this.HASH_MULTIPLIER = algorithm.HASH_MULTIPLIER;
+      /** @type {int32} */
       this.CHUNK_SIZE = algorithm.CHUNK_SIZE;
+      /** @type {int32} */
       this.CHUNKS_PER_BLOCK = algorithm.CHUNKS_PER_BLOCK;
     }
-
 
     /**
    * Get cipher result (encrypted or decrypted data)
@@ -198,17 +209,46 @@
    */
 
     Result() {
-      const result = this.isInverse ? this._decompress() : this._compress();
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress();
+      } else {
+        result = this._compress();
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
-    // ===== COMPRESSION =====
+    /**
+     * Append the four little-endian bytes of a 32-bit word
+     * @param {uint8[]} output - Destination
+     * @param {uint32} word - Value
+     */
+    _pushWord(output, word) {
+      /** @type {uint8[]} */
+      const bytes = OpCodes.Unpack32LE(word);
+      output.push(bytes[0]);
+      output.push(bytes[1]);
+      output.push(bytes[2]);
+      output.push(bytes[3]);
+    }
 
+    /**
+     * Compress: 4-byte LE length, then per block of up to 32 chunks a 32-bit
+     * signature (bit set = chunk mispredicted) followed by the mispredicted
+     * chunks.
+     * @returns {uint8[]} Compressed bytes
+     */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {int32} */
       const inputLength = input.length;
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Store the true input length up front - even for empty input, which
@@ -216,33 +256,43 @@
       // below always works in whole 4-byte units and zero-pads a trailing
       // partial chunk, so without recording the real length the decoder
       // cannot tell genuine trailing zero bytes apart from that padding.
-      const lengthBytes = OpCodes.Unpack32LE(inputLength);
-      output.push(lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]);
+      this._pushWord(output, inputLength);
 
-      if (inputLength === 0)
+      if (inputLength === 0) {
         return output;
+      }
 
+      /** @type {int32} */
       const totalChunks = Math.ceil(inputLength / this.CHUNK_SIZE);
+      /** @type {uint32[]} */
       const table = new Uint32Array(this.HASH_TABLE_SIZE); // zero-initialized: an unseen hash bucket predicts chunk 0
 
+      /** @type {uint32} */
       let prevChunk = 0;
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let chunkIndex = 0;
 
       while (chunkIndex < totalChunks) {
+        /** @type {int32} */
         const chunksInBlock = Math.min(this.CHUNKS_PER_BLOCK, totalChunks - chunkIndex);
+        /** @type {uint32} */
         let signature = 0;
+        /** @type {uint8[]} */
         const blockData = [];
 
         for (let i = 0; i < chunksInBlock; ++i) {
+          /** @type {uint32} */
           const chunk = this._readChunkPadded(input, pos);
+          /** @type {uint32} */
           const hash = this._hash(prevChunk);
+          /** @type {uint32} */
           const predicted = table[hash];
 
           if (predicted !== chunk) {
-            signature = OpCodes.SetBit(signature, i, 1);
-            const chunkBytes = OpCodes.Unpack32LE(chunk);
-            blockData.push(chunkBytes[0], chunkBytes[1], chunkBytes[2], chunkBytes[3]);
+            signature = OpCodes.SetBit(signature, i, true);
+            this._pushWord(blockData, chunk);
           }
 
           table[hash] = chunk;
@@ -251,24 +301,33 @@
           ++chunkIndex;
         }
 
-        const signatureBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(signature));
-        output.push(signatureBytes[0], signatureBytes[1], signatureBytes[2], signatureBytes[3]);
+        this._pushWord(output, OpCodes.ToUint32(signature));
 
-        for (let _i = 0; _i < blockData.length; _i++) output.push(blockData[_i]);
+        for (let k = 0; k < blockData.length; k++) {
+          output.push(blockData[k]);
+        }
       }
 
       return output;
     }
 
-    // ===== DECOMPRESSION =====
-
+    /**
+     * Decompress the format written by _compress()
+     * @returns {uint8[]} Original bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {int32} */
       const inputLength = input.length;
 
-      if (inputLength < 4)
-        return [];
+      if (inputLength < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(
         OpCodes.ToByte(input[0]),
         OpCodes.ToByte(input[1]),
@@ -276,22 +335,41 @@
         OpCodes.ToByte(input[3])
       );
 
-      if (originalLength === 0)
-        return [];
+      if (originalLength === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const data = input.slice(4);
+      /** @type {int32} */
       const totalChunks = Math.ceil(originalLength / this.CHUNK_SIZE);
-      const buffer = new Array(totalChunks * this.CHUNK_SIZE).fill(0);
+      /** @type {int32} */
+      const bufferLength = totalChunks * this.CHUNK_SIZE;
+      /** @type {uint8[]} */
+      const buffer = new Array(bufferLength);
+      for (let k = 0; k < bufferLength; k++) {
+        buffer[k] = 0;
+      }
+      /** @type {uint32[]} */
       const table = new Uint32Array(this.HASH_TABLE_SIZE);
 
+      /** @type {uint32} */
       let prevChunk = 0;
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let outPos = 0;
+      /** @type {int32} */
       let chunkIndex = 0;
 
       while (chunkIndex < totalChunks) {
-        if (pos + 4 > data.length) break;
+        if (pos + 4 > data.length) {
+          break;
+        }
 
+        /** @type {uint32} */
         const signature = OpCodes.Pack32LE(
           OpCodes.ToByte(data[pos]),
           OpCodes.ToByte(data[pos + 1]),
@@ -300,13 +378,18 @@
         );
         pos += 4;
 
+        /** @type {int32} */
         const chunksInBlock = Math.min(this.CHUNKS_PER_BLOCK, totalChunks - chunkIndex);
         for (let i = 0; i < chunksInBlock; ++i) {
+          /** @type {uint32} */
           const hash = this._hash(prevChunk);
-          let chunk;
+          /** @type {uint32} */
+          let chunk = 0;
 
           if (OpCodes.GetBit(signature, i)) {
-            if (pos + 4 > data.length) break;
+            if (pos + 4 > data.length) {
+              break;
+            }
 
             chunk = OpCodes.Pack32LE(
               OpCodes.ToByte(data[pos]),
@@ -316,9 +399,11 @@
             );
             pos += 4;
             table[hash] = chunk;
-          } else
+          } else {
             chunk = table[hash];
+          }
 
+          /** @type {uint8[]} */
           const chunkBytes = OpCodes.Unpack32LE(chunk);
           buffer[outPos] = chunkBytes[0];
           buffer[outPos + 1] = chunkBytes[1];
@@ -339,13 +424,19 @@
     /**
      * Reads one 4-byte little-endian chunk starting at pos, zero-padding any
      * bytes past the end of data (a trailing partial chunk).
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Start of the chunk
+     * @returns {uint32} Chunk value
      */
     _readChunkPadded(data, pos) {
+      /** @type {uint32} */
       let chunk = 0;
       for (let i = 0; i < this.CHUNK_SIZE; ++i) {
+        /** @type {int32} */
         const p = pos + i;
-        if (p < data.length)
+        if (p < data.length) {
           chunk = OpCodes.Or32(chunk, OpCodes.Shl32(OpCodes.ToByte(data[p]), 8 * i));
+        }
       }
       return OpCodes.ToUint32(chunk);
     }
@@ -353,8 +444,11 @@
     /**
      * Hash function for 4-byte chunks: multiply by the hash constant modulo
      * 2^32 and take the upper HASH_BITS bits as the table index.
+     * @param {uint32} chunk - Previous chunk
+     * @returns {uint32} Table index
      */
     _hash(chunk) {
+      /** @type {uint32} */
       const product = OpCodes.Mul32(chunk, this.HASH_MULTIPLIER);
       return OpCodes.Shr32(product, 32 - this.HASH_BITS);
     }
