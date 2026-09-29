@@ -54,53 +54,71 @@
   // Bcrypt:   ./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
   const BCRYPT_BASE64_ALPHABET = './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+  /**
+   * Encode bytes with the bcrypt base64 alphabet (a partial final group is
+   * padded with zero bytes and still yields four characters)
+   * @param {uint8[]} bytes - Bytes to encode
+   * @returns {string} Encoded text
+   */
   function bcryptBase64Encode(bytes) {
-    if (!bytes || bytes.length === 0) return '';
+    if (bytes === null || bytes.length === 0) return '';
 
+    /** @type {string} */
     let result = '';
     let i = 0;
 
     while (i < bytes.length) {
-      const b0 = bytes[i++] || 0;
-      const b1 = bytes[i++] || 0;
-      const b2 = bytes[i++] || 0;
+      /** @type {uint8} */
+      const b0 = i < bytes.length ? bytes[i] : 0;
+      /** @type {uint8} */
+      const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+      /** @type {uint8} */
+      const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+      i += 3;
 
       // Pack 3 bytes into 24 bits
-      const bits = OpCodes.OrN(OpCodes.Shl32(b0, 16), OpCodes.OrN(OpCodes.Shl32(b1, 8), b2));
+      const bits = OpCodes.Or32(OpCodes.Shl32(b0, 16), OpCodes.Or32(OpCodes.Shl32(b1, 8), b2));
 
       // Extract 4 6-bit values (base64 chars)
-      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 18), 0x3F));
-      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 12), 0x3F));
-      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 6), 0x3F));
-      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(bits, 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.And32(OpCodes.Shr32(bits, 18), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.And32(OpCodes.Shr32(bits, 12), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.And32(OpCodes.Shr32(bits, 6), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.And32(bits, 0x3F));
     }
 
     return result;
   }
 
+  /**
+   * Decode bcrypt base64 text (a partial final group is completed with '.',
+   * the zero digit, and still yields three bytes)
+   * @param {string} str - Encoded text
+   * @returns {uint8[]} Decoded bytes
+   * @throws {Error} On a character outside the alphabet
+   */
   function bcryptBase64Decode(str) {
-    if (!str) return [];
-
+    /** @type {uint8[]} */
     const result = [];
     let i = 0;
 
     while (i < str.length) {
-      const c0 = BCRYPT_BASE64_ALPHABET.indexOf(str[i++] || '.');
-      const c1 = BCRYPT_BASE64_ALPHABET.indexOf(str[i++] || '.');
-      const c2 = BCRYPT_BASE64_ALPHABET.indexOf(str[i++] || '.');
-      const c3 = BCRYPT_BASE64_ALPHABET.indexOf(str[i++] || '.');
+      const c0 = BCRYPT_BASE64_ALPHABET.indexOf(i < str.length ? str.charAt(i) : '.');
+      const c1 = BCRYPT_BASE64_ALPHABET.indexOf(i + 1 < str.length ? str.charAt(i + 1) : '.');
+      const c2 = BCRYPT_BASE64_ALPHABET.indexOf(i + 2 < str.length ? str.charAt(i + 2) : '.');
+      const c3 = BCRYPT_BASE64_ALPHABET.indexOf(i + 3 < str.length ? str.charAt(i + 3) : '.');
+      i += 4;
 
       if (c0 === -1 || c1 === -1 || c2 === -1 || c3 === -1) {
         throw new Error('Invalid bcrypt base64 encoding');
       }
 
       // Pack 4 6-bit values into 24 bits
-      const bits = OpCodes.OrN(OpCodes.Shl32(c0, 18), OpCodes.OrN(OpCodes.Shl32(c1, 12), OpCodes.OrN(OpCodes.Shl32(c2, 6), c3)));
+      const bits = OpCodes.Or32(OpCodes.Shl32(c0, 18), OpCodes.Or32(OpCodes.Shl32(c1, 12), OpCodes.Or32(OpCodes.Shl32(c2, 6), c3)));
 
       // Extract 3 bytes
-      result.push(OpCodes.AndN(OpCodes.Shr32(bits, 16), 0xFF));
-      result.push(OpCodes.AndN(OpCodes.Shr32(bits, 8), 0xFF));
-      result.push(OpCodes.AndN(bits, 0xFF));
+      result.push(OpCodes.And32(OpCodes.Shr32(bits, 16), 0xFF));
+      result.push(OpCodes.And32(OpCodes.Shr32(bits, 8), 0xFF));
+      result.push(OpCodes.And32(bits, 0xFF));
     }
 
     return result;
@@ -108,14 +126,36 @@
 
   // ===== EKSBLOWFISH (EXPENSIVE KEY SCHEDULE BLOWFISH) =====
 
+  /**
+   * Blowfish with the expensive, salted key schedule of bcrypt
+   * @class
+   */
   class Eksblowfish {
+    /**
+     * Load the initial (pi) tables; the working boxes are set by saltedKeySetup
+     */
     constructor() {
+      /** @type {uint32[]} Working P-box */
+      this.pBox = [];
+      /** @type {uint32[]} Working S-box 1 */
+      this.sBox1 = [];
+      /** @type {uint32[]} Working S-box 2 */
+      this.sBox2 = [];
+      /** @type {uint32[]} Working S-box 3 */
+      this.sBox3 = [];
+      /** @type {uint32[]} Working S-box 4 */
+      this.sBox4 = [];
       // Initialize Blowfish P-box and S-boxes with constants
       this._initConstants();
     }
 
+    /**
+     * Set the initial P-box and S-box tables (hexadecimal digits of pi)
+     * @returns {void}
+     */
     _initConstants() {
       // Initial P-box constants (digits of pi in hexadecimal)
+      /** @type {uint32[]} */
       this.PBOX_INIT = [
         0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0,
         0x082efa98, 0xec4e6c89, 0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c,
@@ -124,6 +164,7 @@
 
       // Initialize Blowfish S-boxes (4 S-boxes, 256 entries each)
       // These are the hexadecimal digits of π
+      /** @type {uint32[]} */
       this.SBOX1_INIT = [
         0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,
         0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16,
@@ -170,6 +211,7 @@
         0x53b02d5d, 0xa99f8fa1, 0x08ba4799, 0x6e85076a
       ];
 
+      /** @type {uint32[]} */
       this.SBOX2_INIT = [
         0x4b7a70e9, 0xb5b32944, 0xdb75092e, 0xc4192623, 0xad6ea6b0, 0x49a7df7d,
         0x9cee60b8, 0x8fedb266, 0xecaa8c71, 0x699a17ff, 0x5664526c, 0xc2b19ee1,
@@ -216,6 +258,7 @@
         0x153e21e7, 0x8fb03d4a, 0xe6e39f2b, 0xdb83adf7
       ];
 
+      /** @type {uint32[]} */
       this.SBOX3_INIT = [
         0xe93d5a68, 0x948140f7, 0xf64c261c, 0x94692934, 0x411520f7, 0x7602d4f7,
         0xbcf46b2e, 0xd4a20068, 0xd4082471, 0x3320f46a, 0x43b7d4b7, 0x500061af,
@@ -262,6 +305,7 @@
         0xd79a3234, 0x92638212, 0x670efa8e, 0x406000e0
       ];
 
+      /** @type {uint32[]} */
       this.SBOX4_INIT = [
         0x3a39ce37, 0xd3faf5cf, 0xabc27737, 0x5ac52d1b, 0x5cb0679e, 0x4fa33742,
         0xd3822740, 0x99bc9bbe, 0xd5118e9d, 0xbf0f7315, 0xd62d1c7e, 0xc700c47b,
@@ -309,14 +353,20 @@
       ];
     }
 
-    // Eksblowfish key schedule: expansive key setup with salt
+    /**
+     * Eksblowfish key schedule: expansive key setup with salt
+     * @param {uint8[]} password - Password bytes (truncated to 72)
+     * @param {uint8[]} salt - 16-byte salt
+     * @param {int32} cost - Log2 of the number of expensive rounds
+     * @returns {void}
+     */
     saltedKeySetup(password, salt, cost) {
       // Copy initial values to working arrays
-      this.pBox = [...this.PBOX_INIT];
-      this.sBox1 = [...this.SBOX1_INIT];
-      this.sBox2 = [...this.SBOX2_INIT];
-      this.sBox3 = [...this.SBOX3_INIT];
-      this.sBox4 = [...this.SBOX4_INIT];
+      this.pBox = this.PBOX_INIT.slice();
+      this.sBox1 = this.SBOX1_INIT.slice();
+      this.sBox2 = this.SBOX2_INIT.slice();
+      this.sBox3 = this.SBOX3_INIT.slice();
+      this.sBox4 = this.SBOX4_INIT.slice();
 
       // Truncate password to 72 bytes (bcrypt limit)
       const truncatedPassword = password.length > 72 ? password.slice(0, 72) : password;
@@ -332,106 +382,141 @@
       }
     }
 
-    // Key expansion: XOR key into P-box, then encrypt zeros to fill P and S boxes
-    // Reference: bcrypt.js _ekskey function
-    _keyExpansion(key, salt) {
-      // Helper to read 4 bytes as a big-endian 32-bit word, cycling through data
-      const streamToWord = (data, offsetRef) => {
-        let word = 0;
-        for (let i = 0; i < 4; i++) {
-          word = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(word, 8), OpCodes.AndN(data[offsetRef.off], 0xff)));
-          offsetRef.off = (offsetRef.off + 1) % data.length;
-        }
-        return word;
-      };
+    /**
+     * Read 4 bytes as a big-endian 32-bit word, cycling through data
+     * @param {uint8[]} data - Key or salt bytes
+     * @param {int32} offset - Index of the first byte (below data.length)
+     * @returns {uint32} The word
+     */
+    _streamToWord(data, offset) {
+      /** @type {uint32} */
+      let word = 0;
+      for (let i = 0; i < 4; i++) {
+        word = OpCodes.Or32(OpCodes.Shl32(word, 8), OpCodes.And32(data[(offset + i) % data.length], 0xff));
+      }
+      return word;
+    }
 
-      // XOR key bytes into P-box (cycling through key)
-      let keyOffset = { off: 0 };
+    /**
+     * Key expansion: XOR key into P-box, then encrypt zeros to fill P and S boxes
+     * Reference: bcrypt.js _ekskey function
+     * @param {uint8[]} key - Key bytes, cycled
+     * @param {uint8[]} salt - Salt bytes, cycled into the encrypted blocks; null for none
+     * @returns {void}
+     */
+    _keyExpansion(key, salt) {
+      // XOR key bytes into P-box (cycling through key); after each word the
+      // offset has advanced by four bytes, wrapping at the key length
+      let keyOffset = 0;
       for (let i = 0; i < 18; i++) {
-        const keyWord = streamToWord(key, keyOffset);
-        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], keyWord));
+        const keyWord = this._streamToWord(key, keyOffset);
+        keyOffset = (keyOffset + 4) % key.length;
+        this.pBox[i] = OpCodes.Xor32(this.pBox[i], keyWord);
       }
 
       // Generate P-box and S-boxes by encrypting zeros (optionally XORed with salt)
-      const hasSalt = salt && salt.length > 0;
-      let saltOffset = { off: 0 };
+      const hasSalt = salt !== null && salt.length > 0;
+      let saltOffset = 0;
+      /** @type {uint32} */
       let L = 0;
+      /** @type {uint32} */
       let R = 0;
 
       // Fill P-box
       for (let i = 0; i < 18; i += 2) {
         if (hasSalt) {
-          L = OpCodes.ToUint32(OpCodes.XorN(L, streamToWord(salt, saltOffset)));
-          R = OpCodes.ToUint32(OpCodes.XorN(R, streamToWord(salt, saltOffset)));
+          L = OpCodes.Xor32(L, this._streamToWord(salt, saltOffset));
+          saltOffset = (saltOffset + 4) % salt.length;
+          R = OpCodes.Xor32(R, this._streamToWord(salt, saltOffset));
+          saltOffset = (saltOffset + 4) % salt.length;
         }
         const result = this._encryptPair(L, R);
-        L = OpCodes.ToUint32(result.left);
-        R = OpCodes.ToUint32(result.right);
+        L = result[0];
+        R = result[1];
         this.pBox[i] = L;
         this.pBox[i + 1] = R;
       }
 
       // Fill S-boxes (combined as single 1024-entry array)
+      /** @type {uint32[][]} */
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
-      for (const sBox of sBoxes) {
+      for (let s = 0; s < 4; s++) {
+        const sBox = sBoxes[s];
         for (let i = 0; i < 256; i += 2) {
           if (hasSalt) {
-            L = OpCodes.ToUint32(OpCodes.XorN(L, streamToWord(salt, saltOffset)));
-            R = OpCodes.ToUint32(OpCodes.XorN(R, streamToWord(salt, saltOffset)));
+            L = OpCodes.Xor32(L, this._streamToWord(salt, saltOffset));
+            saltOffset = (saltOffset + 4) % salt.length;
+            R = OpCodes.Xor32(R, this._streamToWord(salt, saltOffset));
+            saltOffset = (saltOffset + 4) % salt.length;
           }
           const result = this._encryptPair(L, R);
-          L = OpCodes.ToUint32(result.left);
-          R = OpCodes.ToUint32(result.right);
+          L = result[0];
+          R = result[1];
           sBox[i] = L;
           sBox[i + 1] = R;
         }
       }
     }
 
+    /**
+     * Encrypt one 64-bit block given as two words (16 Feistel rounds)
+     * @param {uint32} L - Left word
+     * @param {uint32} R - Right word
+     * @returns {uint32[]} [left, right] of the ciphertext
+     */
     _encryptPair(L, R) {
       // 16 rounds of Feistel network
       // Reference: bcrypt.js _encipher function (unrolled for clarity)
       // Note: Output order matches bcrypt.js: lr[0] = r^P[17], lr[1] = l
 
-      L = OpCodes.ToUint32(OpCodes.XorN(L, this.pBox[0]));
+      L = OpCodes.Xor32(L, this.pBox[0]);
 
       // Unrolled 16 rounds (8 pairs of L/R updates)
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[1])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[2])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[3])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[4])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[5])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[6])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[7])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[8])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[9])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[10])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[11])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[12])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[13])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[14])));
-      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[15])));
-      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[16])));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[1]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[2]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[3]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[4]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[5]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[6]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[7]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[8]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[9]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[10]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[11]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[12]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[13]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[14]));
+      R = OpCodes.Xor32(R, OpCodes.Xor32(this._f(L), this.pBox[15]));
+      L = OpCodes.Xor32(L, OpCodes.Xor32(this._f(R), this.pBox[16]));
 
       // Final output: swap L and R, with R XORed with P[17]
-      const outL = OpCodes.ToUint32(OpCodes.XorN(R, this.pBox[17]));
-      const outR = L;
-
-      return { left: outL, right: outR };
+      /** @type {uint32[]} */
+      const out = [OpCodes.Xor32(R, this.pBox[17]), L];
+      return out;
     }
 
+    /**
+     * Blowfish F-function
+     * @param {uint32} x - Input word
+     * @returns {uint32} ((S1[a] + S2[b]) XOR S3[c]) + S4[d]
+     */
     _f(x) {
       // Blowfish F-function: Split input into 4 bytes, lookup in S-boxes, combine
-      const a = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
-      const b = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
-      const c = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
-      const d = OpCodes.AndN(x, 0xFF);
+      const a = OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF);
+      const b = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF);
+      const c = OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF);
+      const d = OpCodes.And32(x, 0xFF);
 
       // F = ((S1[a] + S2[b]) XOR S3[c]) + S4[d]
-      const result = OpCodes.ToUint32(OpCodes.XorN(OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]), this.sBox3[c]));
-      return OpCodes.ToUint32(result + this.sBox4[d]);
+      const result = OpCodes.Xor32(OpCodes.Add32(this.sBox1[a], this.sBox2[b]), this.sBox3[c]);
+      return OpCodes.Add32(result, this.sBox4[d]);
     }
 
+    /**
+     * Encrypt one 8-byte block
+     * @param {uint8[]} block - 8 plaintext bytes
+     * @returns {uint8[]} 8 ciphertext bytes
+     */
     encrypt(block) {
       // Encrypt 8-byte block
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -439,10 +524,12 @@
 
       const encrypted = this._encryptPair(left, right);
 
-      const leftBytes = OpCodes.Unpack32BE(encrypted.left);
-      const rightBytes = OpCodes.Unpack32BE(encrypted.right);
+      const leftBytes = OpCodes.Unpack32BE(encrypted[0]);
+      const rightBytes = OpCodes.Unpack32BE(encrypted[1]);
 
-      return [...leftBytes, ...rightBytes];
+      /** @type {uint8[]} */
+      const out = leftBytes.concat(rightBytes);
+      return out;
     }
   }
 
@@ -465,7 +552,7 @@
 
       // KDF-specific properties
       this.SaltRequired = true;
-      this.SupportedOutputSizes = [23, 23]; // Fixed 23 bytes (184 bits) raw output before base64
+      this.SupportedOutputSizes = [new KeySize(23, 23, 1)]; // Fixed 23 bytes (184 bits) raw output before base64
 
       // Documentation and references
       this.documentation = [
@@ -623,7 +710,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BcryptInstance} New instance
    */
 
     CreateInstance(isInverse = false) {
@@ -634,35 +721,41 @@
   // ===== BCRYPT INSTANCE CLASS =====
 
   /**
- * Bcrypt cipher instance implementing Feed/Result pattern
+ * Bcrypt instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class BcryptInstance extends IKdfInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a bcrypt instance
+   * @param {BcryptAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Inverse flag (Feed refuses an inverse instance)
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 23; // Fixed: 23 bytes raw hash (before base64 encoding)
+      /** @type {int32} Cost factor (2^cost expensive rounds) */
       this.cost = 10; // Default cost factor (2^10 = 1024 iterations)
+      /** @type {uint8[]} */
       this.salt = null;
+      /** @type {uint8[]} */
       this.password = null;
     }
 
     // Property aliases for test vector compatibility
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * Append password bytes
+   * @param {uint8[]} data - Password bytes
+   * @returns {void}
+   * @throws {Error} If data is not an array or the instance is an inverse one
    */
 
     Feed(data) {
@@ -677,37 +770,45 @@
       // Feed is a streaming interface: successive calls extend the input rather
       // than replace it, so Feed(a); Feed(b) derives from the same octet string
       // as Feed(a || b).
-      if (!this.password) this.password = [];
+      if (this.password === null) this.password = [];
       for (let i = 0; i < data.length; i++) this.password.push(data[i]);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the raw 23-byte bcrypt hash of the fed password
+   * @returns {uint8[]} Hash bytes
+   * @throws {Error} If password or a 16-byte salt is missing, or the cost is out of range
    */
 
     Result() {
       // Bcrypt requires password and salt
-      if (!this.password) {
+      if (this.password === null) {
         throw new Error('BcryptInstance.Result: Password required - use Feed() method or set password directly');
       }
 
-      if (!this.salt || this.salt.length !== 16) {
+      if (this.salt === null || this.salt.length !== 16) {
         throw new Error('BcryptInstance.Result: Salt required - must be exactly 16 bytes');
       }
 
-      // Validate cost factor (4-31 per spec, but 4-18 for performance)
-      const costFactor = this.cost || 10;
+      // Validate cost factor (4-31 per spec, but 4-18 for performance); unset means the default
+      const costFactor = this.cost ? this.cost : 10;
       if (costFactor < 4 || costFactor > 18) {
-        throw new Error(`BcryptInstance.Result: Invalid cost factor ${costFactor}. Must be 4-18.`);
+        throw new Error('BcryptInstance.Result: Invalid cost factor ' + costFactor + '. Must be 4-18.');
       }
 
       return this.bcryptHash(this.password, this.salt, costFactor);
     }
 
+    /**
+     * Raw bcrypt: Eksblowfish setup, then "OrpheanBeholderScryDoubt" encrypted 64 times
+     * @param {uint8[]} password - Password bytes (without the terminating zero)
+     * @param {uint8[]} salt - 16-byte salt
+     * @param {int32} cost - Cost factor
+     * @returns {uint8[]} First 23 bytes of the ciphertext
+     */
     bcryptHash(password, salt, cost) {
       // Bcrypt magic value "OrpheanBeholderScryDoubt" (24 bytes, 3 blocks)
+      /** @type {uint8[]} */
       const BCRYPT_MAGIC = [
         0x4F, 0x72, 0x70, 0x68, 0x65, 0x61, 0x6E, 0x42,  // "OrpheanB"
         0x65, 0x68, 0x6F, 0x6C, 0x64, 0x65, 0x72, 0x53,  // "eholderS"
@@ -715,20 +816,23 @@
       ];
 
       // Bcrypt appends null terminator to password (important!)
-      const passwordWithNull = [...password, 0x00];
+      /** @type {uint8[]} */
+      const passwordWithNull = password.slice();
+      passwordWithNull.push(0x00);
 
       // Initialize Eksblowfish cipher with expensive key schedule
       const cipher = new Eksblowfish();
       cipher.saltedKeySetup(passwordWithNull, salt, cost);
 
       // Encrypt the magic value 64 times
-      let ciphertext = [...BCRYPT_MAGIC];
+      const ciphertext = BCRYPT_MAGIC.slice();
       for (let i = 0; i < 64; i++) {
         // Encrypt 3 blocks (24 bytes total)
         for (let j = 0; j < 3; j++) {
           const block = ciphertext.slice(j * 8, j * 8 + 8);
+          /** @type {uint8[]} */
           const encrypted = cipher.encrypt(block);
-          ciphertext.splice(j * 8, 8, ...encrypted);
+          for (let k = 0; k < 8; k++) ciphertext[j * 8 + k] = encrypted[k];
         }
       }
 
@@ -737,16 +841,23 @@
       return ciphertext.slice(0, 23);
     }
 
-    // Helper method to generate full bcrypt hash string (for validation/testing)
+    /**
+     * Full bcrypt hash string (for validation/testing)
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - 16-byte salt
+     * @param {int32} cost - Cost factor
+     * @returns {string} $2a$<cost>$<salt_base64><hash_base64>
+     */
     generateHashString(password, salt, cost) {
       const hash = this.bcryptHash(password, salt, cost);
 
       // Format: $2a$<cost>$<salt_base64><hash_base64>
-      const costStr = cost < 10 ? '0' + cost : cost.toString();
+      /** @type {string} */
+      const costStr = cost < 10 ? '0' + cost : '' + cost;
       const saltB64 = bcryptBase64Encode(salt).substring(0, 22); // Only first 22 chars
       const hashB64 = bcryptBase64Encode(hash).substring(0, 31); // Only first 31 chars
 
-      return `$2a$${costStr}$${saltB64}${hashB64}`;
+      return '$2a$' + costStr + '$' + saltB64 + hashB64;
     }
   }
 
