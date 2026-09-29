@@ -150,7 +150,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._M = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SHA1-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SHA1-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._M = [];
@@ -170,7 +170,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

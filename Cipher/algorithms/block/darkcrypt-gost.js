@@ -126,11 +126,11 @@
   // f(x,k) = RotL32( T0[byte3(x+k)]<<24 | T1[byte2(x+k)]<<16 | T2[byte1(x+k)]<<8 | T3[byte0(x+k)], 11 )
   function darkCryptGostRound(word, keyWord) {
     const sum = OpCodes.Add32(word, keyWord);
-    const b3 = OpCodes.AndN(OpCodes.Shr32(sum, 24), 0xFF);
-    const b2 = OpCodes.AndN(OpCodes.Shr32(sum, 16), 0xFF);
-    const b1 = OpCodes.AndN(OpCodes.Shr32(sum, 8), 0xFF);
-    const b0 = OpCodes.AndN(sum, 0xFF);
-    const combined = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+    const b3 = OpCodes.And32(OpCodes.Shr32(sum, 24), 0xFF);
+    const b2 = OpCodes.And32(OpCodes.Shr32(sum, 16), 0xFF);
+    const b1 = OpCodes.And32(OpCodes.Shr32(sum, 8), 0xFF);
+    const b0 = OpCodes.And32(sum, 0xFF);
+    const combined = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
       OpCodes.Shl32(DARKCRYPT_GOST_T0[b3], 24),
       OpCodes.Shl32(DARKCRYPT_GOST_T1[b2], 16)),
       OpCodes.Shl32(DARKCRYPT_GOST_T2[b1], 8)),
@@ -209,7 +209,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.subkeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. GOST-28147-89 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. GOST-28147-89 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.subkeys = this._expandKey(this._key);
       this.KeySize = keyBytes.length;
@@ -227,7 +227,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -255,13 +255,13 @@
 
       for (let cycle = 0; cycle < 3; cycle++) {
         for (let i = 0; i < 8; i += 2) {
-          B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptGostRound(A, k[i])));
-          A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptGostRound(B, k[i + 1])));
+          B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptGostRound(A, k[i])));
+          A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptGostRound(B, k[i + 1])));
         }
       }
       for (let i = 7; i >= 0; i -= 2) {
-        B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptGostRound(A, k[i])));
-        A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptGostRound(B, k[i - 1])));
+        B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptGostRound(A, k[i])));
+        A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptGostRound(B, k[i - 1])));
       }
 
       return [...OpCodes.Unpack32LE(B), ...OpCodes.Unpack32LE(A)];
@@ -272,13 +272,13 @@
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
 
       for (let i = 0; i < 8; i += 2) {
-        B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptGostRound(A, k[i])));
-        A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptGostRound(B, k[i + 1])));
+        B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptGostRound(A, k[i])));
+        A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptGostRound(B, k[i + 1])));
       }
       for (let cycle = 0; cycle < 3; cycle++) {
         for (let i = 7; i >= 0; i -= 2) {
-          B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptGostRound(A, k[i])));
-          A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptGostRound(B, k[i - 1])));
+          B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptGostRound(A, k[i])));
+          A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptGostRound(B, k[i - 1])));
         }
       }
 

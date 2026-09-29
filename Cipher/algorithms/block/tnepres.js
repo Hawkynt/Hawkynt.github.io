@@ -233,6 +233,7 @@
       this.PHI = 0x9e3779b9; // Golden ratio constant for key schedule
 
       // Temporary registers for S-box operations
+      /** @type {uint8[]} */
       this.X = [0, 0, 0, 0];
     }
 
@@ -257,7 +258,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -624,6 +625,7 @@
 
       // Apply S-boxes to create working keys (Tnepres order: 3,2,1,0,7,6,5,4...)
       const roundKeys = [];
+      /** @type {uint8[]} */
       const sboxOrder = [3, 2, 1, 0, 7, 6, 5, 4];
 
       for (let i = 0; i < 33; ++i) {

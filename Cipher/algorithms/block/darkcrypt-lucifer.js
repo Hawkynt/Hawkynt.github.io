@@ -60,10 +60,12 @@
 
   // Fixed 8-bit bit-weight mask, MSB first (used both as a bit-test table and,
   // combined with PERM_TABLE, to build the key-schedule bit permutation).
+  /** @type {uint8[]} */
   const BITMASK = [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01];
 
   // Per-key-byte bit permutation used to build the "A" key-schedule buffer:
   // source bit j (weight BITMASK[j]) moves to destination bit PERM_TABLE[j].
+  /** @type {uint8[]} */
   const PERM_TABLE = [3, 5, 0, 4, 2, 1, 7, 6];
 
   // Diffusion table: 8 groups of 8 bytes, group p used for right-half byte
@@ -71,6 +73,7 @@
   // so group[p][k] is always a single bit weight; it selects which single bit
   // of the round-function output for position p lands in left-half byte k
   // (bit weight preserved). This is Lucifer's fixed P-permutation.
+  /** @type {uint8[]} */
   const PBOX = [
     0x04,0x10,0x20,0x02,0x01,0x08,0x40,0x80,0x80,0x04,0x10,0x20,0x02,0x01,0x08,0x40,
     0x40,0x80,0x04,0x10,0x20,0x02,0x01,0x08,0x08,0x40,0x80,0x04,0x10,0x20,0x02,0x01,
@@ -81,6 +84,7 @@
   // Byte-substitution table used when the interchange control bit for a given
   // right-half byte position is CLEAR (combines the two classic 4-bit Lucifer
   // S-boxes applied to the nibbles in one fixed order).
+  /** @type {uint8[]} */
   const SBOX_B = [
     0x57,0x15,0x75,0x36,0x17,0x37,0x14,0x54,0x74,0x76,0x16,0x35,0x55,0x77,0x34,0x56,
     0xDF,0x9D,0xFD,0xBE,0x9F,0xBF,0x9C,0xDC,0xFC,0xFE,0x9E,0xBD,0xDD,0xFF,0xBC,0xDE,
@@ -102,6 +106,7 @@
 
   // Byte-substitution table used when the interchange control bit is SET
   // (same two 4-bit S-boxes, nibble order swapped relative to SBOX_B).
+  /** @type {uint8[]} */
   const SBOX_A = [
     0x57,0xDF,0xCF,0xD3,0xD7,0x5F,0xDB,0x43,0xC3,0xC7,0xCB,0x4B,0x5B,0x47,0x4F,0x53,
     0x15,0x9D,0x8D,0x91,0x95,0x1D,0x99,0x01,0x81,0x85,0x89,0x09,0x19,0x05,0x0D,0x11,
@@ -253,7 +258,7 @@
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Lucifer (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Lucifer (DarkCrypt) requires exactly 16 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -272,7 +277,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

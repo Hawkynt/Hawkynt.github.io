@@ -61,12 +61,15 @@
   // Standard LOKI'91 S-box parameters: 16 rows, each an irreducible-polynomial-like
   // GF(2^8) modulus (Gen) and a fixed exponent (Exp=31), matching the DarkCrypt
   // implementation's S-box generator/exponent table.
+  /** @type {uint16[]} */
   const GEN = [0x177, 0x17b, 0x187, 0x18b, 0x18d, 0x19f, 0x1a3, 0x1a9,
                0x1b1, 0x1bd, 0x1c3, 0x1cf, 0x1d7, 0x1dd, 0x1e7, 0x1f3];
+  /** @type {uint8[]} */
   const EXP = [31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31];
 
   // Standard LOKI'91 32-bit P-permutation table (output bit (31-i) = input bit P_TABLE[i]),
   // matching the DarkCrypt implementation's permutation table.
+  /** @type {uint8[]} */
   const P_TABLE = [31, 23, 15, 7, 30, 22, 14, 6, 29, 21, 13, 5, 28, 20, 12, 4,
                    27, 19, 11, 3, 26, 18, 10, 2, 25, 17, 9, 1, 24, 16, 8, 0];
 
@@ -201,7 +204,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LOKI'91-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LOKI'91-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // The 512-bit key is used directly as 16 raw 32-bit round subkeys (native byte order),
@@ -226,7 +229,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -244,8 +247,8 @@
       let Y = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       for (let i = 0; i < ROUNDS; i += 2) {
-        X = OpCodes.XorN(X, roundF(Y, this.roundKeys[i]));
-        Y = OpCodes.XorN(Y, roundF(X, this.roundKeys[i + 1]));
+        X = OpCodes.Xor32(X, roundF(Y, this.roundKeys[i]));
+        Y = OpCodes.Xor32(Y, roundF(X, this.roundKeys[i + 1]));
       }
 
       return [...OpCodes.Unpack32BE(Y), ...OpCodes.Unpack32BE(X), ...block.slice(8, 16)];
@@ -256,8 +259,8 @@
       let Y = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       for (let i = ROUNDS - 1; i > 0; i -= 2) {
-        X = OpCodes.XorN(X, roundF(Y, this.roundKeys[i]));
-        Y = OpCodes.XorN(Y, roundF(X, this.roundKeys[i - 1]));
+        X = OpCodes.Xor32(X, roundF(Y, this.roundKeys[i]));
+        Y = OpCodes.Xor32(Y, roundF(X, this.roundKeys[i - 1]));
       }
 
       return [...OpCodes.Unpack32BE(Y), ...OpCodes.Unpack32BE(X), ...block.slice(8, 16)];

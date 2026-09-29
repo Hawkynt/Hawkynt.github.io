@@ -204,7 +204,7 @@
       }
 
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (SIMECK-32 requires 8 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (SIMECK-32 requires 8 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -242,8 +242,8 @@
         this.roundKeys[i] = t[0];
 
         // Update constant from sequence
-        constant = OpCodes.AndN(constant, 0xFFFC);
-        constant = OpCodes.OrN(constant, OpCodes.AndN(sequence, 1));
+        constant = OpCodes.And32(constant, 0xFFFC);
+        constant = OpCodes.Or32(constant, OpCodes.And32(sequence, 1));
         sequence = OpCodes.Shr32(sequence, 1);
 
         // Apply round function to key state
@@ -267,7 +267,7 @@
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL16(left, 5)), OpCodes.RotL16(left, 1)), right), key), 0xFFFF);
+      state[leftIdx] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(left, OpCodes.RotL16(left, 5)), OpCodes.RotL16(left, 1)), right), key), 0xFFFF);
       state[rightIdx] = left;
     }
 
@@ -296,7 +296,7 @@
       const output = [];
       const blockSize = 4;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 4-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -500,7 +500,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (SIMECK-64 requires 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (SIMECK-64 requires 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -530,6 +530,7 @@
 
       // Key schedule constants (note: JavaScript can't handle 44-bit integers directly)
       // sequence = 0x938BCA3083F, we'll process bit by bit
+      /** @type {uint8[]} */
       const sequenceBits = [
         1,1,1,1,1,1,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,
         1,0,1,0,0,1,1,1,1,0,1,0,0,0,1,1,1,0,0,1,0,0,1
@@ -541,7 +542,7 @@
         this.roundKeys[i] = t[0];
 
         // Build constant: 0xFFFFFFFC|sequence_bit
-        const constant = OpCodes.ToUint32(OpCodes.OrN(0xFFFFFFFC, sequenceBits[i]));
+        const constant = OpCodes.ToUint32(OpCodes.Or32(0xFFFFFFFC, sequenceBits[i]));
 
         // Apply round function to key state
         this._simeckRound32(constant, t, 1, 0);
@@ -564,7 +565,7 @@
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key));
+      state[leftIdx] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key));
       state[rightIdx] = left;
     }
 
@@ -593,7 +594,7 @@
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 8-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {

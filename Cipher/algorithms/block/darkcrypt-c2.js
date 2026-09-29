@@ -61,6 +61,7 @@
   const ROUNDS = 10;
 
   // DarkCrypt's C2 "SecretConstant" S-box (DarkCrypt's own constant, not the 4C Entity's licensed production S-box).
+  /** @type {uint8[]} */
   const SBOX = [
     0xA3,0xD7,0x09,0x83,0xF8,0x48,0xF6,0xF4,0xB3,0x21,0x15,0x78,0x99,0xB1,0xAF,0xF9,
     0xE7,0x2D,0x4D,0x8A,0xCE,0x4C,0xCA,0x2E,0x52,0x95,0xD9,0x1E,0x4E,0x38,0x44,0x28,
@@ -153,7 +154,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. C2 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. C2 (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = this._scheduleKey(this._key);
@@ -171,7 +172,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

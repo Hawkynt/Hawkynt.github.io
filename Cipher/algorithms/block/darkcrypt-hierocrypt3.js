@@ -89,10 +89,13 @@
     return OpCodes.And32(acc, 0xff);
   }
 
+  /** @type {uint8[]} */
   const MDSL_FWD = [0xC4, 0x65, 0xC8, 0x8B]; // circulant row (spec 3.3.6)
+  /** @type {uint8[]} */
   const MDSL_INV = [0x82, 0xC4, 0x34, 0xF6]; // circulant row, inverse
 
   function mdsLWord(X, matrixRow) {
+    /** @type {uint8[]} */
     const Y = [0, 0, 0, 0];
     for (let r = 0; r < 4; r++) {
       let acc = 0;
@@ -114,6 +117,7 @@
   // GF(2^4) "row op": applies the companion-matrix decomposition of multiply-by-nibble c
   // to a 4-byte lane.
   function gf16RowOp(X, c) {
+    /** @type {uint8[]} */
     const Y = [0, 0, 0, 0];
     if (OpCodes.And32(c, 1)) { Y[0] ^= X[0]; Y[1] ^= X[1]; Y[2] ^= X[2]; Y[3] ^= X[3]; }
     if (OpCodes.And32(c, 2)) { Y[0] ^= X[1]; Y[1] ^= X[2]; Y[2] ^= OpCodes.Xor32(X[3], X[0]); Y[3] ^= X[0]; }
@@ -123,7 +127,9 @@
   }
 
   // Higher-level MDS diffusion, forward and inverse nibble matrices (spec 2.2.3).
+  /** @type {uint8[]} */
   const MDSH_FWD = [5, 5, 10, 14,  14, 5, 5, 10,  10, 14, 5, 5,  5, 10, 14, 5];
+  /** @type {uint8[]} */
   const MDSH_INV = [11, 14, 14, 6,  6, 11, 14, 14,  14, 6, 11, 14,  14, 14, 6, 11];
 
   function MDSH(X16, matrix) {
@@ -166,6 +172,7 @@
 
   // ===== Key scheduling part (spec section 3.2.3-3.2.7) =====
 
+  /** @type {uint32[]} */
   const H = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6]; // binary expansions of small-int square roots
   function u32bytes(v) { return [OpCodes.And32(OpCodes.Shr32(v, 24), 0xff), OpCodes.And32(OpCodes.Shr32(v, 16), 0xff), OpCodes.And32(OpCodes.Shr32(v, 8), 0xff), OpCodes.And32(v, 0xff)]; }
   function G0(i) {
@@ -389,7 +396,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Hierocrypt-3 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Hierocrypt-3 (DarkCrypt) requires exactly 32 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -408,7 +415,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

@@ -66,6 +66,7 @@
       [1, 15, 13, 0, 5, 7, 10, 4, 9, 2, 3, 14, 6, 11, 8, 12]
     ];
 
+    /** @type {uint8[]} */
     const rotation = [11, 19, 27, 3];
     const tables = [
       new Uint32Array(256),
@@ -79,7 +80,7 @@
       const highRow = baseSBoxes[(2 * i) + 1];
       const table = tables[i];
       for (let j = 0; j < 256; j++) {
-        const combined = OpCodes.OrN(lowRow[OpCodes.AndN(j, 0x0f)], OpCodes.Shl32(highRow[OpCodes.Shr32(j, 4)], 4));
+        const combined = OpCodes.Or32(lowRow[OpCodes.And32(j, 0x0f)], OpCodes.Shl32(highRow[OpCodes.Shr32(j, 4)], 4));
         table[j] = OpCodes.RotL32(combined, rotation[i]);
       }
     }
@@ -96,13 +97,13 @@
 
   function gostRound(word, keyWord) {
     const sum = OpCodes.Add32(word, keyWord);
-    const b0 = OpCodes.AndN(sum, 0xFF);
-    const b1 = OpCodes.AndN(OpCodes.Shr32(sum, 8), 0xFF);
-    const b2 = OpCodes.AndN(OpCodes.Shr32(sum, 16), 0xFF);
-    const b3 = OpCodes.AndN(OpCodes.Shr32(sum, 24), 0xFF);
+    const b0 = OpCodes.And32(sum, 0xFF);
+    const b1 = OpCodes.And32(OpCodes.Shr32(sum, 8), 0xFF);
+    const b2 = OpCodes.And32(OpCodes.Shr32(sum, 16), 0xFF);
+    const b3 = OpCodes.And32(OpCodes.Shr32(sum, 24), 0xFF);
     return OpCodes.ToUint32(
-      OpCodes.XorN(
-        OpCodes.XorN(
+      OpCodes.Xor32(
+        OpCodes.Xor32(
           OpCodes.XorN(Gost28147Tables.T0[b0], Gost28147Tables.T1[b1]),
           Gost28147Tables.T2[b2]
         ),
@@ -279,7 +280,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(OpCodes.AndN(data[i], 0xFF));
+        this.inputBuffer.push(OpCodes.And32(data[i], 0xFF));
       }
     }
 
@@ -330,8 +331,8 @@
       const k = this.subkeys;
 
       const applyPair = (firstKey, secondKey) => {
-        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
-        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, firstKey)));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, secondKey)));
       };
 
       for (let cycle = 0; cycle < 3; cycle++) {
@@ -341,14 +342,14 @@
         applyPair(k[6], k[7]);
       }
 
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[7])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[6])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[5])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[4])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[3])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[2])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[1])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[0])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[7])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[6])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[5])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[4])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[3])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[2])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[1])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[0])));
 
       const leftBytes = OpCodes.Unpack32LE(n2);
       const rightBytes = OpCodes.Unpack32LE(n1);
@@ -365,8 +366,8 @@
       const k = this.subkeys;
 
       const applyPair = (firstKey, secondKey) => {
-        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
-        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, firstKey)));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, secondKey)));
       };
 
       applyPair(k[0], k[1]);
@@ -464,6 +465,7 @@
       ];
 
       // GOST R 34.12-2015 S-box (π transformation)
+      /** @type {uint8[]} */
       this.SBOX = [
         0xFC, 0xEE, 0xDD, 0x11, 0xCF, 0x6E, 0x31, 0x16, 0xFB, 0xC4, 0xFA, 0xDA, 0x23, 0xC5, 0x04, 0x4D,
         0xE9, 0x77, 0xF0, 0xDB, 0x93, 0x2E, 0x99, 0xBA, 0x17, 0x36, 0xF1, 0xBB, 0x14, 0xCD, 0x5F, 0xC1,
@@ -484,6 +486,7 @@
       ];
 
       // Inverse S-box (inverse π transformation)
+      /** @type {uint8[]} */
       this.SBOX_INV = [
         0xA5, 0x2D, 0x32, 0x8F, 0x0E, 0x30, 0x38, 0xC0, 0x54, 0xE6, 0x9E, 0x39, 0x55, 0x7E, 0x52, 0x91,
         0x64, 0x03, 0x57, 0x5A, 0x1C, 0x60, 0x07, 0x18, 0x21, 0x72, 0xA8, 0xD1, 0x29, 0xC6, 0xA4, 0x3F,
@@ -504,6 +507,7 @@
       ];
 
       // Linear transformation vector for L transformation (GOST R 34.12-2015)
+      /** @type {uint8[]} */
       this.LINEAR_VECTOR = [
         0x94, 0x20, 0x85, 0x10, 0xc2, 0xc0, 0x01, 0xfb,
         0x01, 0xc0, 0xc2, 0x10, 0x85, 0x20, 0x94, 0x01
@@ -559,7 +563,7 @@
       }
 
       if (keyBytes.length !== KUZNYECHIK_KEY_BYTES) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. GOST R 34.12-2015 requires 32 bytes (256 bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. GOST R 34.12-2015 requires 32 bytes (256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -600,7 +604,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
@@ -671,12 +675,12 @@
       let z = 0;
       while (y !== 0) {
         if (OpCodes.AndN(y, 1)) {
-          z = OpCodes.XorN(z, x);
+          z = OpCodes.Xor32(z, x);
         }
-        x = OpCodes.XorN(OpCodes.Shl32(x, 1), OpCodes.AndN(x, 0x80) ? 0xC3 : 0x00);
+        x = OpCodes.Xor32(OpCodes.Shl32(x, 1), OpCodes.AndN(x, 0x80) ? 0xC3 : 0x00);
         y = OpCodes.Shr32(y, 1);
       }
-      return OpCodes.AndN(z, 0xFF);
+      return OpCodes.And32(z, 0xFF);
     }
 
     _lTransformation(state) {

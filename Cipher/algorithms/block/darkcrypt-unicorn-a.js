@@ -58,6 +58,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ---- Substitution tables (verified against the DarkCrypt implementation's precomputed T0 table) ----
+  /** @type {uint8[]} */
   const S0 = [
     149,111,237,155,21,85,108,76,236,75,193,84,22,138,89,55,
     51,145,13,153,148,163,86,59,204,175,91,117,126,70,144,10,
@@ -77,6 +78,7 @@
     157,31,43,156,113,186,35,101,52,60,11,100,116,245,99,92
   ];
 
+  /** @type {uint8[]} */
   const S1 = [
     174,255,161,109,254,40,95,67,33,124,133,58,224,238,129,56,
     137,57,169,87,221,220,163,84,14,239,171,138,74,192,66,104,
@@ -96,6 +98,7 @@
     89,59,152,215,176,204,243,148,42,158,71,34,222,37,196,53
   ];
 
+  /** @type {uint8[]} */
   const S2 = [
     37,34,162,132,134,220,91,143,41,45,229,247,98,178,68,56,
     212,97,70,15,58,72,216,208,14,96,214,217,133,179,28,154,
@@ -115,6 +118,7 @@
     113,140,138,39,185,228,106,47,252,199,188,92,218,30,236,124
   ];
 
+  /** @type {uint8[]} */
   const S3 = [
     24,252,144,121,17,42,77,127,2,35,173,21,129,58,105,113,
     112,229,185,189,76,204,209,87,5,96,82,99,133,140,66,64,
@@ -289,7 +293,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CIPHERUNICORN-A (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CIPHERUNICORN-A (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._schedule = this._buildKeySchedule(this._key);
@@ -307,7 +311,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

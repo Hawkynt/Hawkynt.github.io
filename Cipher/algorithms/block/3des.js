@@ -233,7 +233,7 @@
 
       // Validate key size (16 or 24 bytes)
       if (keyBytes.length !== 16 && keyBytes.length !== 24) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. 3DES requires 16 bytes (EDE2) or 24 bytes (EDE3)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. 3DES requires 16 bytes (EDE2) or 24 bytes (EDE3)");
       }
 
       this._key = [...keyBytes];
@@ -293,7 +293,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

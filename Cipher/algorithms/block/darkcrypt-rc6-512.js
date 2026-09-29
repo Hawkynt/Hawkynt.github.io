@@ -131,7 +131,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.keySchedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC6-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC6-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._generateKeySchedule();
@@ -149,7 +149,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -182,7 +182,7 @@
 
       for (let k = 0; k < iterations; k++) {
         A = this.keySchedule[i] = rotL(OpCodes.ToUint32(this.keySchedule[i] + A + B), 3);
-        B = L[j] = rotL(OpCodes.ToUint32(L[j] + A + B), OpCodes.AndN(A + B, 31));
+        B = L[j] = rotL(OpCodes.ToUint32(L[j] + A + B), OpCodes.And32(A + B, 31));
 
         i = (i + 1) % TABLE_SIZE;
         j = (j + 1) % c;
@@ -204,10 +204,10 @@
         const t = rotL(Math.imul(B, OpCodes.ToUint32(2 * B + 1)), 5);
         const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
 
-        A = rotL(OpCodes.XorN(A, t), OpCodes.AndN(u, 31));
+        A = rotL(OpCodes.Xor32(A, t), OpCodes.And32(u, 31));
         A = OpCodes.ToUint32(A + this.keySchedule[2 * i]);
 
-        C = rotL(OpCodes.XorN(C, u), OpCodes.AndN(t, 31));
+        C = rotL(OpCodes.Xor32(C, u), OpCodes.And32(t, 31));
         C = OpCodes.ToUint32(C + this.keySchedule[2 * i + 1]);
 
         const tmp = A; A = B; B = C; C = D; D = tmp;
@@ -238,12 +238,12 @@
         const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
 
         C = OpCodes.ToUint32(C - this.keySchedule[2 * i + 1]);
-        C = rotR(C, OpCodes.AndN(t, 31));
-        C = OpCodes.XorN(C, u);
+        C = rotR(C, OpCodes.And32(t, 31));
+        C = OpCodes.Xor32(C, u);
 
         A = OpCodes.ToUint32(A - this.keySchedule[2 * i]);
-        A = rotR(A, OpCodes.AndN(u, 31));
-        A = OpCodes.XorN(A, t);
+        A = rotR(A, OpCodes.And32(u, 31));
+        A = OpCodes.Xor32(A, t);
       }
 
       D = OpCodes.ToUint32(D - this.keySchedule[1]);

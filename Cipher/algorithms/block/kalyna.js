@@ -1247,7 +1247,7 @@
       }
 
       if (keyBytes.length !== 16 && keyBytes.length !== 32) {
-        throw new Error(`Kalyna: Invalid key size ${keyBytes.length} bytes. Must be 16 or 32 bytes.`);
+        throw new Error("Kalyna: Invalid key size " + keyBytes.length + " bytes. Must be 16 or 32 bytes.");
       }
 
       this._key = OpCodes.CopyArray(keyBytes);
@@ -1287,7 +1287,7 @@
       if (this.inputBuffer.length === 0) throw new Error("Kalyna: No data fed");
 
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Kalyna: Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Kalyna: Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

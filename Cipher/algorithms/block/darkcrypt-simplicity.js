@@ -295,7 +295,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Simplicity (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Simplicity (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = buildKeySchedule(this._key);
@@ -313,7 +313,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

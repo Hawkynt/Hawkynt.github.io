@@ -105,7 +105,7 @@ class Shacal2Instance extends IBlockCipherInstance {
     }
 
     if (keyBytes.length < 16 || keyBytes.length > 64) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16-64)`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16-64)");
     }
 
     this._key = [...keyBytes];
@@ -290,7 +290,7 @@ class Shacal2Instance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
     if (this.inputBuffer.length % this.BlockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
     }
 
     const output = [];

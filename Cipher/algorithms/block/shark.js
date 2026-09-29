@@ -243,7 +243,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (SHARK requires 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (SHARK requires 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -332,6 +332,7 @@
 
       // Step 2: Apply CFB encryption to the key buffer
       // CFB: C[i] = P[i] XOR E(IV or C[i-1])
+      /** @type {uint8[]} */
       let feedback = [0, 0]; // IV = 0
 
       for (let block = 0; block < this._rounds + 1; block++) {
@@ -458,6 +459,7 @@
       }
 
       // XOR all 8 C-box lookups (each byte uses its corresponding C-box)
+      /** @type {uint8[]} */
       let result = [0, 0];
       for (let i = 0; i < 8; i++) {
         const cboxEntry = cboxes[i][bytes[i]];
@@ -552,7 +554,7 @@
       }
 
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];

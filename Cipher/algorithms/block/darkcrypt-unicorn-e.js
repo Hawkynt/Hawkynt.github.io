@@ -141,6 +141,7 @@
   // DarkCrypt implementation deviates from the ISO/IEC9979-0019 reference,
   // which uses plain XOR for all four terms).
   function T(x, n, inByte) {
+    /** @type {uint8[]} */
     const wx = [0, 0, 0, 0];
     wx[(n + 1) % 4] = S[0][inByte];
     wx[(n + 2) % 4] = S[1][inByte];
@@ -267,6 +268,7 @@
     for (let i = 0; i < ROUND; i++) { EK.fk[i] = [0, 0]; EK.sk[i] = [0, 0]; }
     for (let i = 0; i <= ROUND / 2; i++) { EK.ik[i] = [0, 0]; }
 
+    /** @type {uint8[]} */
     const x = [0, 0, 0, 0];
     let xl, xr;
     let num = 0, ik = 0, sk = 0, fk = 0;
@@ -451,7 +453,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._EK = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CIPHERUNICORN-E (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CIPHERUNICORN-E (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
@@ -476,7 +478,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

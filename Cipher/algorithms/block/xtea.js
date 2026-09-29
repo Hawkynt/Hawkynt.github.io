@@ -177,7 +177,7 @@
 
       // Validate key size
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16)");
       }
 
       this._key = [...keyBytes];
@@ -197,9 +197,9 @@
       
       let j = 0;
       for (let i = 0; i < this.CYCLES; i++) {
-        this.sum0[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.AndN(j, 3)]);
+        this.sum0[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.And32(j, 3)]);
         j = OpCodes.ToUint32(j + this.DELTA);
-        this.sum1[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.AndN(OpCodes.Shr32(j, 11), 3)]);
+        this.sum1[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.And32(OpCodes.Shr32(j, 11), 3)]);
       }
     }
 
@@ -238,11 +238,11 @@
 
       // XTEA encryption using precomputed sum arrays (Bouncy Castle method)
       for (let i = 0; i < this.CYCLES; i++) {
-        v0 = OpCodes.ToUint32(v0 + OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
+        v0 = OpCodes.ToUint32(v0 + OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
           this.sum0[i]));
-        v1 = OpCodes.ToUint32(v1 + OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
+        v1 = OpCodes.ToUint32(v1 + OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
           this.sum1[i]));
       }
 
@@ -265,11 +265,11 @@
 
       // XTEA decryption using precomputed sum arrays (reverse order)
       for (let i = this.CYCLES - 1; i >= 0; i--) {
-        v1 = OpCodes.ToUint32(v1 - OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
+        v1 = OpCodes.ToUint32(v1 - OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
           this.sum1[i]));
-        v0 = OpCodes.ToUint32(v0 - OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
+        v0 = OpCodes.ToUint32(v0 - OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
           this.sum0[i]));
       }
 

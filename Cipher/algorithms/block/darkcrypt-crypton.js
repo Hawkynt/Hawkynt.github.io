@@ -82,14 +82,17 @@
   const SB = [OpCodes.Hex8ToBytes(SB0_HEX), OpCodes.Hex8ToBytes(SB1_HEX), OpCodes.Hex8ToBytes(SB2_HEX), OpCodes.Hex8ToBytes(SB3_HEX)];
 
   // Masks used by the final-group "phi" key-diffusion step.
+  /** @type {uint32[]} */
   const MB = [0xcffccffc, 0xf33ff33f, 0xfccffccf, 0x3ff33ff3];
 
   // Round constants for the 12 key-schedule diffusion groups (offsets 0x00..0xB0),
   // plus the constant used for the final phi-mixed group (0xC0).
+  /** @type {uint32[]} */
   const GROUP_CONST = [
     0xA54FF53A, 0xE1BEE8AC, 0x1E2DDC1E, 0x5A9CCF90, 0x970BC302, 0xD37AB674,
     0x0FE9A9E6, 0x4C589D58, 0x88C790CA, 0xC536843C, 0x01A577AE, 0x3E146B20
   ];
+  /** @type {uint32[]} */
   const POS_CONST = [0xACACACAC, 0x59595959, 0xB2B2B2B2, 0x65656565];
   const FINAL_GROUP_CONST = 0x7A835E92;
 
@@ -209,7 +212,7 @@
         return;
       }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Crypton v1.0 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Crypton v1.0 (DarkCrypt) requires exactly 32 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -228,7 +231,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       const rk = this.isInverse ? this.decRoundKeys : this.encRoundKeys;
@@ -294,6 +297,7 @@
       }
 
       // Stage 4: final round-key group (48..51) via the phi diffusion step.
+      /** @type {uint8[]} */
       const X = [0, 1, 2, 3].map(i => OpCodes.Xor32(OpCodes.Xor32(seqA[i], FINAL_GROUP_CONST), POS_CONST[i]));
       encRk[48] = phiN(X[0], 2, 1, 0, 3);
       encRk[49] = phiN(X[1], 1, 0, 3, 2);

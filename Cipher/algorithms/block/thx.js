@@ -174,6 +174,7 @@
       };
 
       // Twofish Q0 S-box (original from Twofish specification)
+      /** @type {uint8[]} */
       this.Q0 = [
         0xA9, 0x67, 0xB3, 0xE8, 0x04, 0xFD, 0xA3, 0x76, 0x9A, 0x92, 0x80, 0x78, 0xE4, 0xDD, 0xD1, 0x38,
         0x0D, 0xC6, 0x35, 0x98, 0x18, 0xF7, 0xEC, 0x6C, 0x43, 0x75, 0x37, 0x26, 0xFA, 0x13, 0x94, 0x48,
@@ -194,6 +195,7 @@
       ];
 
       // Twofish Q1 S-box (original from Twofish specification)
+      /** @type {uint8[]} */
       this.Q1 = [
         0x75, 0xF3, 0xC6, 0xF4, 0xDB, 0x7B, 0xFB, 0xC8, 0x4A, 0xD3, 0xE6, 0x6B, 0x45, 0x7D, 0xE8, 0x4B,
         0xD6, 0x32, 0xD8, 0xFD, 0x37, 0x71, 0xF1, 0xE1, 0x30, 0x0F, 0xF8, 0x1B, 0x87, 0xFA, 0x06, 0x3F,
@@ -249,7 +251,7 @@
 
       const keyBits = keyBytes.length * 8;
       if (!this.ROUNDS_CONFIG[keyBits]) {
-        throw new Error(`Invalid THX key size: ${keyBits} bits. Supported: 256, 512, 1024 bits`);
+        throw new Error("Invalid THX key size: " + keyBits + " bits. Supported: 256, 512, 1024 bits");
       }
 
       this._key = [...keyBytes];
@@ -386,6 +388,7 @@
       }
 
       // MDS matrix multiplication
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
@@ -421,6 +424,7 @@
       ];
 
       // MDS matrix multiplication
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {

@@ -46,12 +46,17 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {uint8[]} */
   const S1 = [3, 7, 11, 19];
+  /** @type {uint8[]} */
   const S2 = [3, 5, 9, 13];
+  /** @type {uint8[]} */
   const S3 = [3, 9, 11, 15];
   const K2 = 0x5A827999;
   const K3 = 0x6ED9EBA1;
+  /** @type {uint8[]} */
   const R2 = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15];
+  /** @type {uint8[]} */
   const R3 = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
   // Inverse permutation of R2/R3 (step index -> message-word index) used by decrypt to
   // walk the round back to front while looking up which lane (A/D/C/B) each step touched.
@@ -180,7 +185,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._M = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MD4-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MD4-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._M = [];
@@ -200,7 +205,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

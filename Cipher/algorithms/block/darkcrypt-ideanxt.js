@@ -75,6 +75,7 @@
   const LFSR_POLY = 0x100001b;        // x^24+x^4+x^3+x+1
 
   // sbox: FOX/IDEA-NXT non-linear byte permutation (Lai-Massey of S1/S2/S3), from Appendix B of the SAC 2004 paper.
+  /** @type {uint8[]} */
   const SBOX = [
     0x5d,0xde,0x00,0xb7,0xd3,0xca,0x3c,0x0d,0xc3,0xf8,0xcb,0x8d,0x76,0x89,0xaa,0x12,
     0x88,0x22,0x4f,0xdb,0x6d,0x47,0xe4,0x4c,0x78,0x9a,0x49,0x93,0xc4,0xc0,0x86,0x13,
@@ -413,7 +414,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. IDEA-NXT (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. IDEA-NXT (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this._roundKeys = keySchedule(this._key);
       this.KeySize = keyBytes.length;
@@ -431,7 +432,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

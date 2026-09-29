@@ -123,7 +123,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.expandedKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC5-32/16/64 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC5-32/16/64 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._keyExpansion();
@@ -141,7 +141,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -160,7 +160,7 @@
       const L = new Array(c).fill(0);
 
       for (let i = 0; i < this.KeySize; i++) {
-        const keyByte = OpCodes.AndN(this._key[i], 0xFF);
+        const keyByte = OpCodes.And32(this._key[i], 0xFF);
         const shift = 8 * (i % u);
         const idx = Math.floor(i / u);
         L[idx] = OpCodes.ToUint32(L[idx] + OpCodes.Shl32(keyByte, shift));
@@ -179,7 +179,7 @@
         A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
 
         L[j] = OpCodes.ToUint32(L[j] + A + B);
-        B = L[j] = OpCodes.RotL32(L[j], OpCodes.AndN(A + B, 31));
+        B = L[j] = OpCodes.RotL32(L[j], OpCodes.And32(A + B, 31));
 
         i = (i + 1) % tableSize;
         j = (j + 1) % c;
@@ -197,12 +197,12 @@
       B = OpCodes.ToUint32(B + this.expandedKey[1]);
 
       for (let i = 1; i <= ROUNDS; i++) {
-        A = OpCodes.XorN(A, B);
-        A = OpCodes.RotL32(A, OpCodes.AndN(B, 31));
+        A = OpCodes.Xor32(A, B);
+        A = OpCodes.RotL32(A, OpCodes.And32(B, 31));
         A = OpCodes.ToUint32(A + this.expandedKey[2 * i]);
 
-        B = OpCodes.XorN(B, A);
-        B = OpCodes.RotL32(B, OpCodes.AndN(A, 31));
+        B = OpCodes.Xor32(B, A);
+        B = OpCodes.RotL32(B, OpCodes.And32(A, 31));
         B = OpCodes.ToUint32(B + this.expandedKey[2 * i + 1]);
       }
 
@@ -215,12 +215,12 @@
 
       for (let i = ROUNDS; i >= 1; i--) {
         B = OpCodes.ToUint32(B - this.expandedKey[2 * i + 1]);
-        B = OpCodes.RotR32(B, OpCodes.AndN(A, 31));
-        B = OpCodes.XorN(B, A);
+        B = OpCodes.RotR32(B, OpCodes.And32(A, 31));
+        B = OpCodes.Xor32(B, A);
 
         A = OpCodes.ToUint32(A - this.expandedKey[2 * i]);
-        A = OpCodes.RotR32(A, OpCodes.AndN(B, 31));
-        A = OpCodes.XorN(A, B);
+        A = OpCodes.RotR32(A, OpCodes.And32(B, 31));
+        A = OpCodes.Xor32(A, B);
       }
 
       A = OpCodes.ToUint32(A - this.expandedKey[0]);

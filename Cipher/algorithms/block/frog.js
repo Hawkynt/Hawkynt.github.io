@@ -419,7 +419,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -444,7 +444,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % BLOCK_LEN !== 0)
-        throw new Error(`Input length must be a multiple of ${BLOCK_LEN} bytes`);
+        throw new Error("Input length must be a multiple of " + BLOCK_LEN + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += BLOCK_LEN) {
