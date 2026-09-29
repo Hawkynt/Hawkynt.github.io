@@ -70,8 +70,8 @@
     0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
     0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ];
-  /** @type {uint8[]} */
-  const S = [
+  /** @type {int32[]} */
+  const ROT = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
     5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
     4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
@@ -80,60 +80,132 @@
   /** @type {uint32[]} */
   const MD5_IV = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476];
 
-  function stepFG(i, B, C, D) {
-    if (i < 16) return { f: OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D))), g: i };
-    if (i < 32) return { f: OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C))), g: (5 * i + 1) % 16 };
-    if (i < 48) return { f: OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D)), g: (3 * i + 5) % 16 };
-    return { f: OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D)))), g: (7 * i) % 16 };
+  /**
+   * MD5 boolean function for step i
+   * @param {int32} i - Step 0..63
+   * @param {uint32} B - Word B
+   * @param {uint32} C - Word C
+   * @param {uint32} D - Word D
+   * @returns {uint32} F, G, H or I of (B, C, D)
+   */
+  function stepF(i, B, C, D) {
+    if (i < 16) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D)));
+    if (i < 32) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C)));
+    if (i < 48) return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D));
+    return OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D))));
   }
 
-  // Standard MD5 compression: 4-word state + 64-byte (16-word) message -> new 4-word state
-  // (full Davies-Meyer feedback included, exactly like ordinary MD5 hashing).
+  /**
+   * MD5 message-word index for step i
+   * @param {int32} i - Step 0..63
+   * @returns {int32} Message word index 0..15
+   */
+  function stepG(i) {
+    if (i < 16) return i;
+    if (i < 32) return (5 * i + 1) % 16;
+    if (i < 48) return (3 * i + 5) % 16;
+    return (7 * i) % 16;
+  }
+
+  /**
+   * Standard MD5 compression: 4-word state + 64-byte (16-word) message -> new 4-word state
+   * (full Davies-Meyer feedback included, exactly like ordinary MD5 hashing).
+   * @param {uint32[]} state - Four chaining words
+   * @param {uint32[]} M - Sixteen message words
+   * @returns {uint32[]} New chaining words
+   */
   function md5Compress(state, M) {
-    const [a0, b0, c0, d0] = state;
-    let [A, B, C, D] = state;
+    const a0 = state[0], b0 = state[1], c0 = state[2], d0 = state[3];
+    let A = state[0], B = state[1], C = state[2], D = state[3];
     for (let i = 0; i < 64; i++) {
-      const { f, g } = stepFG(i, B, C, D);
-      const tmp = OpCodes.ToUint32(f + A + T[i] + M[g]);
+      const f = stepF(i, B, C, D);
+      const g = stepG(i);
+      const tmp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(f, A), T[i]), M[g]);
       A = D; D = C; C = B;
-      B = OpCodes.ToUint32(B + OpCodes.RotL32(tmp, S[i]));
+      B = OpCodes.Add32(B, OpCodes.RotL32(tmp, ROT[i]));
     }
-    return [OpCodes.ToUint32(a0 + A), OpCodes.ToUint32(b0 + B), OpCodes.ToUint32(c0 + C), OpCodes.ToUint32(d0 + D)];
+    /** @type {uint32[]} */
+    const out = [OpCodes.ToUint32(a0 + A), OpCodes.ToUint32(b0 + B), OpCodes.ToUint32(c0 + C), OpCodes.ToUint32(d0 + D)];
+    return out;
   }
 
+  /**
+   * @param {uint8[]} bytes - Bytes (a multiple of four)
+   * @returns {uint32[]} Little-endian words
+   */
   function bytesToWords(bytes) {
+    /** @type {uint32[]} */
     const w = [];
     for (let i = 0; i < bytes.length; i += 4)
       w.push(OpCodes.Pack32LE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
     return w;
   }
 
+  /**
+   * @param {uint32[]} words - Words
+   * @returns {uint8[]} Little-endian bytes
+   */
   function wordsToBytes(words) {
+    /** @type {uint8[]} */
     const out = [];
-    for (const w of words) out.push(...OpCodes.Unpack32LE(w));
+    for (let i = 0; i < words.length; i++) out.push(...OpCodes.Unpack32LE(words[i]));
     return out;
   }
 
-  function xorBytes(a, b) { return a.map((x, i) => OpCodes.Xor32(x, b[i])); }
-
-  function mdcKarnEncrypt(P1, P2, K1, K2) {
-    const state1 = md5Compress(MD5_IV, bytesToWords([...P1, ...K1]));
-    const X1 = xorBytes(P2, wordsToBytes(state1));
-    const state2 = md5Compress(MD5_IV, bytesToWords([...X1, ...K2]));
-    const X2 = xorBytes(P1, wordsToBytes(state2));
-    const state3 = md5Compress(MD5_IV, bytesToWords([...X2, ...K1]));
-    const X3 = xorBytes(X1, wordsToBytes(state3));
-    return [...X3, ...X2];
+  /**
+   * @param {uint8[]} a - First operand (sets the length)
+   * @param {uint8[]} b - Second operand
+   * @returns {uint8[]} a xor b
+   */
+  function xorBytes(a, b) {
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < a.length; i++) out.push(OpCodes.Xor32(a[i], b[i]));
+    return out;
   }
 
+  /**
+   * MD5 compression of the IV over the 64-byte message first || second
+   * @param {uint8[]} first - First 16 message bytes
+   * @param {uint8[]} second - Remaining 48 message bytes
+   * @returns {uint8[]} 16 state bytes
+   */
+  function md5Of(first, second) {
+    /** @type {uint8[]} */
+    const message = [...first, ...second];
+    return wordsToBytes(md5Compress(MD5_IV, bytesToWords(message)));
+  }
+
+  /**
+   * @param {uint8[]} P1 - First plaintext half
+   * @param {uint8[]} P2 - Second plaintext half
+   * @param {uint8[]} K1 - First key half
+   * @param {uint8[]} K2 - Second key half
+   * @returns {uint8[]} Ciphertext
+   */
+  function mdcKarnEncrypt(P1, P2, K1, K2) {
+    const X1 = xorBytes(P2, md5Of(P1, K1));
+    const X2 = xorBytes(P1, md5Of(X1, K2));
+    const X3 = xorBytes(X1, md5Of(X2, K1));
+    /** @type {uint8[]} */
+    const out = [...X3, ...X2];
+    return out;
+  }
+
+  /**
+   * @param {uint8[]} C1 - First ciphertext half
+   * @param {uint8[]} C2 - Second ciphertext half
+   * @param {uint8[]} K1 - First key half
+   * @param {uint8[]} K2 - Second key half
+   * @returns {uint8[]} Plaintext
+   */
   function mdcKarnDecrypt(C1, C2, K1, K2) {
-    const state3 = md5Compress(MD5_IV, bytesToWords([...C2, ...K1]));
-    const X1 = xorBytes(C1, wordsToBytes(state3));
-    const state2 = md5Compress(MD5_IV, bytesToWords([...X1, ...K2]));
-    const P1 = xorBytes(C2, wordsToBytes(state2));
-    const state1 = md5Compress(MD5_IV, bytesToWords([...P1, ...K1]));
-    const P2 = xorBytes(X1, wordsToBytes(state1));
-    return [...P1, ...P2];
+    const X1 = xorBytes(C1, md5Of(C2, K1));
+    const P1 = xorBytes(C2, md5Of(X1, K2));
+    const P2 = xorBytes(X1, md5Of(P1, K1));
+    /** @type {uint8[]} */
+    const out = [...P1, ...P2];
+    return out;
   }
 
   class DarkCryptMDCKarnAlgorithm extends BlockCipherAlgorithm {
