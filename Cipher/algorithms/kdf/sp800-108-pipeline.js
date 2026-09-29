@@ -176,9 +176,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new SP 800-108 pipeline-mode KDF instance
+   * @param {boolean} [isInverse=false] - True returns null: the KDF has no inverse
+   * @returns {SP800108PipelineInstance} New instance, or null for isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -191,116 +191,168 @@
 
   // Instance class - handles the actual KDF computation
   /**
- * SP800108Pipeline cipher instance implementing Feed/Result pattern
+ * SP 800-108 pipeline-mode KDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class SP800108PipelineInstance extends IKdfInstance {
+    /**
+     * Initialize an SP 800-108 pipeline-mode KDF instance
+     * @param {SP800108PipelineAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} Input key material KI (null until fed or set) */
       this._keyInput = null;
+      /** @type {uint8[]} Label (null means empty) */
       this._label = null;
+      /** @type {uint8[]} Context (null means empty) */
       this._context = null;
+      /** @type {int32} */
       this._counterBits = 32;  // Default counter bits (8, 16, 24, or 32)
+      /** @type {int32} */
       this._outputLengthBits = 32;  // Default output length field bits (8, 16, 24, or 32)
+      /** @type {int32} */
       this._outputLength = 32;  // Default output length
+      /** @type {string} */
       this._hashAlgorithm = 'SHA-256';  // Default hash function for HMAC
     }
 
-    // Property setter for input key material (KI) - matches test vector 'input' field
-    set input(keyBytes) {
-      if (!keyBytes || !Array.isArray(keyBytes)) {
-        throw new Error("Key input must be a byte array");
-      }
-      this._keyInput = [...keyBytes];
+    // Property accessors for input key material (KI) - matches test vector 'input' field
+    /** @returns {uint8[]} Copy of the input key material, or null */
+    get input() {
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
-    get input() {
-      return this._keyInput ? [...this._keyInput] : null;
+    /**
+     * @param {uint8[]} value - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set input(value) {
+      if (!value || !Array.isArray(value)) {
+        throw new Error("Key input must be a byte array");
+      }
+      this._keyInput = value.slice();
     }
 
     // Alias for compatibility
-    set keyInput(keyBytes) {
-      this.input = keyBytes;
-    }
-
+    /** @returns {uint8[]} Copy of the input key material, or null */
     get keyInput() {
-      return this.input;
+      if (this._keyInput) { return this._keyInput.slice(); }
+      return null;
     }
 
-    // Property setter for label (optional fixed input data)
-    set label(labelBytes) {
-      this._label = labelBytes && Array.isArray(labelBytes) ? [...labelBytes] : [];
+    /**
+     * @param {uint8[]} value - Input key material (copied)
+     * @throws {Error} If it is not a byte array
+     */
+    set keyInput(value) {
+      this.input = value;
     }
 
+    // Label (optional fixed input data)
+    /** @returns {uint8[]} Copy of the label */
     get label() {
-      return this._label ? [...this._label] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._label) { copy = this._label.slice(); }
+      return copy;
     }
 
-    // Property setter for context (optional fixed input data)
-    set context(contextBytes) {
-      this._context = contextBytes && Array.isArray(contextBytes) ? [...contextBytes] : [];
+    /** @param {uint8[]} value - Label (copied; anything but an array clears it) */
+    set label(value) {
+      if (value && Array.isArray(value)) { this._label = value.slice(); } else { this._label = []; }
     }
 
+    // Context (optional fixed input data)
+    /** @returns {uint8[]} Copy of the context */
     get context() {
-      return this._context ? [...this._context] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._context) { copy = this._context.slice(); }
+      return copy;
+    }
+
+    /** @param {uint8[]} value - Context (copied; anything but an array clears it) */
+    set context(value) {
+      if (value && Array.isArray(value)) { this._context = value.slice(); } else { this._context = []; }
     }
 
     // Counter bits (8, 16, 24, or 32)
-    set counterBits(bits) {
-      if (![8, 16, 24, 32].includes(bits)) {
-        throw new Error("Counter bits must be one of: 8, 16, 24, 32");
-      }
-      this._counterBits = bits;
-    }
-
+    /** @returns {int32} Counter width in bits */
     get counterBits() {
       return this._counterBits;
     }
 
-    // Output length field bits (8, 16, 24, or 32)
-    set outputLengthBits(bits) {
-      if (![8, 16, 24, 32].includes(bits)) {
-        throw new Error("Output length bits must be one of: 8, 16, 24, 32");
+    /**
+     * @param {int32} value - Counter width: 8, 16, 24 or 32
+     * @throws {Error} For any other width
+     */
+    set counterBits(value) {
+      if (value !== 8 && value !== 16 && value !== 24 && value !== 32) {
+        throw new Error("Counter bits must be one of: 8, 16, 24, 32");
       }
-      this._outputLengthBits = bits;
+      this._counterBits = value;
     }
 
+    // Output length field bits (8, 16, 24, or 32)
+    /** @returns {int32} Width of the [L] field in bits */
     get outputLengthBits() {
       return this._outputLengthBits;
     }
 
-    // Output length in bytes
-    set outputLength(bytes) {
-      if (!Number.isInteger(bytes) || bytes < 1 || bytes > 65535) {
-        throw new Error("Output length must be between 1 and 65535 bytes");
+    /**
+     * @param {int32} value - [L] field width: 8, 16, 24 or 32
+     * @throws {Error} For any other width
+     */
+    set outputLengthBits(value) {
+      if (value !== 8 && value !== 16 && value !== 24 && value !== 32) {
+        throw new Error("Output length bits must be one of: 8, 16, 24, 32");
       }
-      this._outputLength = bytes;
+      this._outputLengthBits = value;
     }
 
+    // Output length in bytes
+    /** @returns {int32} Output length in bytes */
     get outputLength() {
       return this._outputLength;
     }
 
-    // Hash algorithm used for HMAC (SHA-256, SHA-512, etc.)
-    set hashAlgorithm(algo) {
-      if (!algo || typeof algo !== 'string') {
-        throw new Error("Hash algorithm must be a valid string");
+    /**
+     * @param {int32} value - Output length, 1..65535
+     * @throws {Error} If it is not an integer in range
+     */
+    set outputLength(value) {
+      if (!Number.isInteger(value) || value < 1 || value > 65535) {
+        throw new Error("Output length must be between 1 and 65535 bytes");
       }
-      this._hashAlgorithm = algo.toUpperCase();
+      this._outputLength = value;
     }
 
+    // Hash algorithm used for HMAC (SHA-256, SHA-512, etc.)
+    /** @returns {string} Hash name (upper case) */
     get hashAlgorithm() {
       return this._hashAlgorithm;
+    }
+
+    /**
+     * @param {string} value - SHA-1, SHA-256 or SHA-512 (any case, dash optional)
+     * @throws {Error} If it is not a non-empty string
+     */
+    set hashAlgorithm(value) {
+      if (!value || typeof value !== 'string') {
+        throw new Error("Hash algorithm must be a valid string");
+      }
+      this._hashAlgorithm = value.toUpperCase();
     }
 
     // Main derivation method
     // For KDFs, Feed() is used to provide the input key material
     /**
-   * Feed data to cipher for processing
+   * Feed input key material (anything but an array is ignored)
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -314,9 +366,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no key material was given, or the hash is unsupported or unavailable
    */
 
     Result() {
@@ -328,9 +380,10 @@
         throw new Error("Output length must be at least 1 byte");
       }
 
-      // Get HMAC function for the specified hash algorithm
-      const hmacFunc = this._getHMACFunction();
+      // Reject an unsupported hash before deriving anything
+      this._checkHashAlgorithm();
 
+      /** @type {uint8[]} */
       const output = [];
       const counterBytes = this._counterBits / 8;
       const outputBits = this._outputLength * 8;
@@ -344,45 +397,21 @@
       // A(0) = HMAC(K_I, Label || 0x00 || Context || [L]_L_r)
       // A(i) = HMAC(K_I, A(i-1))
       // K_i = HMAC(K_I, A(i) || [i]_r || Label || 0x00 || Context || [L]_L_r)
-
-      // Helper function to create constant input
-      const createConstantInput = () => {
-        const constantInput = [];
-
-        // Add label
-        if (this._label && this._label.length > 0) {
-          constantInput.push(...this._label);
-        }
-
-        // Add fixed separator (0x00)
-        constantInput.push(0x00);
-
-        // Add context
-        if (this._context && this._context.length > 0) {
-          constantInput.push(...this._context);
-        }
-
-        // Add output length in bits [L]_L_r (L_r bits, big-endian)
-        const outputLengthBytes = this._encodeCounter(outputBits, outputLengthFieldBytes);
-        for (let _i = 0; _i < outputLengthBytes.length; _i++) constantInput.push(outputLengthBytes[_i]);
-
-        return constantInput;
-      };
-
-      const constantInput = createConstantInput();
+      const constantInput = this._constantInput(outputBits, outputLengthFieldBytes);
 
       // Compute A(0) = HMAC(K_I, Label || 0x00 || Context || [L]_L_r)
-      let aPrev = hmacFunc(this._keyInput, constantInput);
+      let aPrev = this._hmacSelected(this._keyInput, constantInput);
 
       // Each block: A(i) = HMAC(K_I, A(i-1))
       //             K_i = HMAC(K_I, A(i) || [i]_r || Label || 0x00 || Context || [L]_L_r)
       for (let i = 1; i <= blocksNeeded; i++) {
         // Compute A(i) = HMAC(K_I, A(i-1)) for i > 0
         if (i > 1) {
-          aPrev = hmacFunc(this._keyInput, aPrev);
+          aPrev = this._hmacSelected(this._keyInput, aPrev);
         }
 
         // Compute K_i = HMAC(K_I, A(i) || [i]_r || Label || 0x00 || Context || [L]_L_r)
+        /** @type {uint8[]} */
         const blockInput = [];
 
         // Add A(i)
@@ -396,7 +425,7 @@
         for (let _i = 0; _i < constantInput.length; _i++) blockInput.push(constantInput[_i]);
 
         // Compute HMAC(K_I, block_input)
-        const blockOutput = hmacFunc(this._keyInput, blockInput);
+        const blockOutput = this._hmacSelected(this._keyInput, blockInput);
         for (let _i = 0; _i < blockOutput.length; _i++) output.push(blockOutput[_i]);
       }
 
@@ -404,38 +433,89 @@
       return output.slice(0, this._outputLength);
     }
 
-    // Encode counter as big-endian bytes
+    /**
+     * The constant input Label || 0x00 || Context || [L]_L_r
+     * @param {int32} outputBits - L, the output length in bits
+     * @param {int32} outputLengthFieldBytes - Width of the [L] field in bytes
+     * @returns {uint8[]} Constant input
+     */
+    _constantInput(outputBits, outputLengthFieldBytes) {
+      /** @type {uint8[]} */
+      const constantInput = [];
+
+      // Add label
+      if (this._label && this._label.length > 0) {
+        for (let _i = 0; _i < this._label.length; _i++) constantInput.push(this._label[_i]);
+      }
+
+      // Add fixed separator (0x00)
+      constantInput.push(0x00);
+
+      // Add context
+      if (this._context && this._context.length > 0) {
+        for (let _i = 0; _i < this._context.length; _i++) constantInput.push(this._context[_i]);
+      }
+
+      // Add output length in bits [L]_L_r (L_r bits, big-endian)
+      const outputLengthBytes = this._encodeCounter(outputBits, outputLengthFieldBytes);
+      for (let _i = 0; _i < outputLengthBytes.length; _i++) constantInput.push(outputLengthBytes[_i]);
+
+      return constantInput;
+    }
+
+    /**
+     * Encode counter as big-endian bytes
+     * @param {int32} counter - Counter value
+     * @param {int32} numBytes - Counter width in bytes
+     * @returns {uint8[]} Encoded counter
+     */
     _encodeCounter(counter, numBytes) {
+      /** @type {uint8[]} */
       const result = [];
       for (let i = numBytes - 1; i >= 0; i--) {
-        result.push(OpCodes.AndN(OpCodes.Shr32(counter, i * 8), 0xFF));
+        result.push(OpCodes.ToByte(OpCodes.Shr32(counter, i * 8)));
       }
       return result;
     }
 
-    // Get HMAC function for the specified hash algorithm
-    _getHMACFunction() {
-      // Determine hash output size and implement basic HMAC
+    /**
+     * Reject a hash algorithm this KDF has no HMAC for
+     * @returns {void}
+     * @throws {Error} Unless the hash is SHA-1, SHA-256 or SHA-512
+     */
+    _checkHashAlgorithm() {
       const hashAlgo = this._hashAlgorithm.toUpperCase();
-
-      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
-        return (key, message) => {
-          return this._hmacSHA256(key, message);
-        };
-      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
-        return (key, message) => {
-          return this._hmacSHA512(key, message);
-        };
-      } else if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
-        return (key, message) => {
-          return this._hmacSHA1(key, message);
-        };
-      } else {
-        throw new Error(`Unsupported hash algorithm: ${this._hashAlgorithm}`);
+      if (hashAlgo !== 'SHA-256' && hashAlgo !== 'SHA256' && hashAlgo !== 'SHA-512' && hashAlgo !== 'SHA512' &&
+          hashAlgo !== 'SHA-1' && hashAlgo !== 'SHA1') {
+        throw new Error('Unsupported hash algorithm: ' + this._hashAlgorithm);
       }
     }
 
-    // Get HMAC output size for the selected hash
+    /**
+     * HMAC with the selected hash
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     * @throws {Error} If the hash is unsupported or unavailable
+     */
+    _hmacSelected(key, message) {
+      const hashAlgo = this._hashAlgorithm.toUpperCase();
+
+      if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
+        return this._hmacSHA256(key, message);
+      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
+        return this._hmacSHA512(key, message);
+      } else if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
+        return this._hmacSHA1(key, message);
+      } else {
+        throw new Error('Unsupported hash algorithm: ' + this._hashAlgorithm);
+      }
+    }
+
+    /**
+     * Get HMAC output size for the selected hash
+     * @returns {int32} Output size in bytes
+     */
     _getHMACOutputSize() {
       const hashAlgo = this._hashAlgorithm.toUpperCase();
       if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') return 32;
@@ -444,60 +524,81 @@
       return 32;  // Default to SHA-256 output size
     }
 
-    // Implementation of HMAC-SHA256 using Web Crypto or fallback
+    /**
+     * HMAC-SHA256
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA256(key, message) {
       return this._hmacCompute(key, message, 'SHA-256', 32);
     }
 
-    // Implementation of HMAC-SHA512 using Web Crypto or fallback
+    /**
+     * HMAC-SHA512
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA512(key, message) {
       return this._hmacCompute(key, message, 'SHA-512', 64);
     }
 
-    // Implementation of HMAC-SHA1 using Web Crypto or fallback
+    /**
+     * HMAC-SHA1
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @returns {uint8[]} MAC
+     */
     _hmacSHA1(key, message) {
       return this._hmacCompute(key, message, 'SHA-1', 20);
     }
 
-    // Generic HMAC computation
+    /**
+     * Generic HMAC computation: Node crypto under CommonJS; elsewhere there is
+     * no synchronous HMAC, so this throws
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - SHA-1, SHA-256 or SHA-512
+     * @param {int32} hashOutputSize - MAC length in bytes (informational)
+     * @returns {uint8[]} MAC
+     * @throws {Error} Outside Node
+     */
     _hmacCompute(key, message, hashName, hashOutputSize) {
-      // Try using Node.js crypto if available
-      if (typeof require !== 'undefined') {
-        try {
-          const crypto = require('crypto');
-          const hmac = crypto.createHmac(
-            hashName.replace('-', '').toLowerCase(),
-            Buffer.from(key)
-          );
-          hmac.update(Buffer.from(message));
-          return Array.from(hmac.digest());
-        } catch (e) {
-          // Fall through to alternate implementation
-        }
+      // Use Node.js crypto if available
+      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
+        const crypto = require('crypto');
+        const hmac = crypto.createHmac(
+          hashName.replace('-', '').toLowerCase(),
+          Buffer.from(key)
+        );
+        hmac.update(Buffer.from(message));
+        return Array.from(hmac.digest());
       }
 
-      // Check if we have HMAC in OpCodes (unlikely but possible)
-      if (OpCodes && OpCodes.HMAC) {
-        return OpCodes.HMAC(key, message, hashName);
-      }
-
-      // Fallback: Simple HMAC-SHA256 using Web Crypto
-      if (typeof crypto !== 'undefined' && crypto.subtle) {
+      // Web Crypto (browser) is async and cannot serve this synchronous KDF
+      if (typeof require === 'undefined' && typeof crypto !== 'undefined' && crypto.subtle) {
         return this._hmacWebCrypto(key, message, hashName);
       }
 
       throw new Error(
-        `Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)`
+        'Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)'
       );
     }
 
-    // HMAC computation using Web Crypto API (async, but we'll handle synchronously if cached)
+    /**
+     * HMAC computation using Web Crypto API: it is async and a KDF must be
+     * synchronous, so this always throws
+     * @param {uint8[]} key - HMAC key
+     * @param {uint8[]} message - Message
+     * @param {string} hashName - Hash name
+     * @returns {uint8[]} Never returns
+     * @throws {Error} Always
+     */
     _hmacWebCrypto(key, message, hashName) {
-      // Web Crypto is async, but for KDF we need sync
-      // This is a limitation we must work around or throw
       throw new Error(
-        `Web Crypto API is async. For SP800-108 Pipeline KDF in browser, ` +
-        `use the async version or provide HMAC via OpCodes.`
+        'Web Crypto API is async. For SP800-108 Pipeline KDF in browser, ' +
+        'use the async version or provide HMAC via OpCodes.'
       );
     }
   }
