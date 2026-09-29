@@ -193,7 +193,7 @@
   function transformX(block, key) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      result[i] = OpCodes.XorN(block[i], key[i]);
+      result[i] = OpCodes.Xor32(block[i], key[i]);
     }
     return result;
   }
