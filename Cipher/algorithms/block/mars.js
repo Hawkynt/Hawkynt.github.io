@@ -51,10 +51,7 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-// Define classes only if AlgorithmFramework is available
-let MARSAlgorithm, MARSInstance;
-
-  MARSAlgorithm = class extends BlockCipherAlgorithm {
+  class MARSAlgorithm extends BlockCipherAlgorithm {
   constructor() {
     super();
     
@@ -166,24 +163,29 @@ let MARSAlgorithm, MARSInstance;
 
   /**
    * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {MARSInstance} New instance
    */
   CreateInstance(isInverse = false) {
     return new MARSInstance(this, isInverse);
   }
-  };
+  }
 
   // Instance class for actual encryption/decryption
-  MARSInstance = class extends IBlockCipherInstance {
+  class MARSInstance extends IBlockCipherInstance {
   /**
+   * @param {MARSAlgorithm} algorithm - Parent algorithm
    * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
    */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
     this.BlockSize = 16;
     this.KeySize = 0;
+    /** @type {uint32[]|null} */
     this.expandedKey = null;
     
     // Initialize MARS S-boxes
@@ -210,23 +212,33 @@ let MARSAlgorithm, MARSInstance;
     this.expandedKey = this._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() {
     return this._key ? [...this._key] : null;
   }
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
-    if (!this.key) throw new Error("Key not set");
+    if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]} Processed output bytes
+   */
   Result() {
-    if (!this.key) throw new Error("Key not set");
+    if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
     if (this.inputBuffer.length % this.BlockSize !== 0) {
       throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
       const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -241,14 +253,29 @@ let MARSAlgorithm, MARSInstance;
   }
 
   // 32-bit arithmetic helper functions (using OpCodes)
+  /**
+   * @param {uint32} a - Addend
+   * @param {uint32} b - Addend
+   * @returns {uint32} Sum modulo 2^32
+   */
   _add32(a, b) {
     return OpCodes.Add32(a, b);
   }
 
+  /**
+   * @param {uint32} a - Minuend
+   * @param {uint32} b - Subtrahend
+   * @returns {uint32} Difference modulo 2^32
+   */
   _sub32(a, b) {
     return OpCodes.Sub32(a, b);
   }
 
+  /**
+   * @param {uint32} a - Factor
+   * @param {uint32} b - Factor
+   * @returns {uint32} Product modulo 2^32
+   */
   _mul32(a, b) {
     return OpCodes.Mul32(a, b);
   }
@@ -323,19 +350,37 @@ let MARSAlgorithm, MARSInstance;
       0x159cf22a, 0xc298d6e2, 0x2b78ef6a, 0x61a94ac0, 0xab561187, 0x14eea0f0, 0xdf0d4164, 0x19af70ee
     ];
 
-    // S-box accessor helpers matching Crypto++ style
-    // S(a) uses full 9-bit index, S0 uses low 8 bits, S1 uses low 8 bits + 256 offset
-    this.S = (a) => this.Sbox[a&0x1FF];
-    this.S0 = (a) => this.Sbox[a&0xFF];
-    this.S1 = (a) => this.Sbox[(a&0xFF) + 256];
   }
+
+  // S-box accessor helpers matching Crypto++ style
+  // S(a) uses full 9-bit index, S0 uses low 8 bits, S1 uses low 8 bits + 256 offset
+  /**
+   * @param {uint32} a - Index source (low 9 bits used)
+   * @returns {uint32} S-box word
+   */
+  S(a) { return this.Sbox[OpCodes.And32(a, 0x1FF)]; }
+
+  /**
+   * @param {uint32} a - Index source (low 8 bits used)
+   * @returns {uint32} S0 word
+   */
+  S0(a) { return this.Sbox[OpCodes.And32(a, 0xFF)]; }
+
+  /**
+   * @param {uint32} a - Index source (low 8 bits used)
+   * @returns {uint32} S1 word
+   */
+  S1(a) { return this.Sbox[OpCodes.Add32(OpCodes.And32(a, 0xFF), 256)]; }
 
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[]} 40 subkey words
    */
   _expandKey(keyBytes) {
     // MARS key expansion - generates 40 32-bit subkeys (following Crypto++ implementation)
+    /** @type {uint32[]} */
     const T = new Array(15); // Temporary key words
+    /** @type {uint32[]} */
     const K = new Array(40); // Expanded key
 
     // Initialize T[] with the key data (Crypto++ GetUserKey equivalent)
@@ -359,7 +404,7 @@ let MARSAlgorithm, MARSInstance;
       // Four rounds of stirring
       for (let k = 0; k < 4; k++) {
         for (let i = 0; i < 15; i++) {
-          T[i] = OpCodes.RotL32(OpCodes.ToUint32(T[i] + this.Sbox[T[(i + 14) % 15] % 512]), 9);
+          T[i] = OpCodes.RotL32(OpCodes.Add32(T[i], this.Sbox[T[(i + 14) % 15] % 512]), 9);
         }
       }
 
@@ -372,16 +417,16 @@ let MARSAlgorithm, MARSInstance;
     // Modify multiplication key-words (Crypto++ key tweak from August 1999)
     for (let i = 5; i < 37; i += 2) {
       const sel = OpCodes.And32(K[i], 3);
-      let w = OpCodes.ToUint32(K[i]|3);
-      let m = OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shl32(w, 1)))&OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shr32(w, 1)))&0x7ffffffe);
-      m = OpCodes.ToUint32(m&OpCodes.Shr32(m, 1));
-      m = OpCodes.ToUint32(m&OpCodes.Shr32(m, 2));
-      m = OpCodes.ToUint32(m&OpCodes.Shr32(m, 4));
-      m = OpCodes.ToUint32(m|OpCodes.Shl32(m, 1));
-      m = OpCodes.ToUint32(m|OpCodes.Shl32(m, 2));
-      m = OpCodes.ToUint32(m|OpCodes.Shl32(m, 4));
-      m = OpCodes.ToUint32(m&0x7ffffffc);
-      w = OpCodes.ToUint32(OpCodes.Xor32(w, OpCodes.ToUint32(OpCodes.RotL32(this.Sbox[265 + sel], K[i - 1])&m)));
+      let w = OpCodes.Or32(K[i], 3);
+      let m = OpCodes.And32(OpCodes.And32(OpCodes.Xor32(OpCodes.Not32(w), OpCodes.Shl32(w, 1)), OpCodes.Xor32(OpCodes.Not32(w), OpCodes.Shr32(w, 1))), 0x7ffffffe);
+      m = OpCodes.And32(m, OpCodes.Shr32(m, 1));
+      m = OpCodes.And32(m, OpCodes.Shr32(m, 2));
+      m = OpCodes.And32(m, OpCodes.Shr32(m, 4));
+      m = OpCodes.Or32(m, OpCodes.Shl32(m, 1));
+      m = OpCodes.Or32(m, OpCodes.Shl32(m, 2));
+      m = OpCodes.Or32(m, OpCodes.Shl32(m, 4));
+      m = OpCodes.And32(m, 0x7ffffffc);
+      w = OpCodes.Xor32(w, OpCodes.And32(OpCodes.RotL32(this.Sbox[OpCodes.Add32(265, sel)], K[i - 1]), m));
       K[i] = w;
     }
 
@@ -408,12 +453,12 @@ let MARSAlgorithm, MARSInstance;
     
     // Forward mixing (8 rounds) - following Crypto++ exactly
     for (let i = 0; i < 8; i++) {
-      b = OpCodes.ToUint32(OpCodes.Xor32(b, this.S0(a))+this.S1(OpCodes.Shr32(a, 8)));
-      c = OpCodes.ToUint32(c+this.S0(OpCodes.Shr32(a, 16)));
+      b = OpCodes.Add32(OpCodes.Xor32(b, this.S0(a)), this.S1(OpCodes.Shr32(a, 8)));
+      c = OpCodes.Add32(c, this.S0(OpCodes.Shr32(a, 16)));
       a = OpCodes.RotR32(a, 24);
       d = OpCodes.ToUint32(OpCodes.Xor32(d, this.S1(a)));
-      a = OpCodes.ToUint32(a+((i % 4 === 0) ? d : 0));
-      a = OpCodes.ToUint32(a+((i % 4 === 1) ? b : 0));
+      if (i % 4 === 0) a = OpCodes.Add32(a, d);
+      if (i % 4 === 1) a = OpCodes.Add32(a, b);
       const t = a; a = b; b = c; c = d; d = t;
     }
     
@@ -421,14 +466,14 @@ let MARSAlgorithm, MARSInstance;
     for (let i = 0; i < 16; i++) {
       const t = OpCodes.RotL32(a, 13);
       const r = OpCodes.RotL32(this._mul32(t, this.expandedKey[2 * i + 5]), 10);
-      const m = OpCodes.ToUint32(a+this.expandedKey[2 * i + 4]);
+      const m = OpCodes.Add32(a, this.expandedKey[2 * i + 4]);
       const l = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S(m), OpCodes.RotR32(r, 5)), r)), OpCodes.ToByte(r));
-      c = OpCodes.ToUint32(c+OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));
+      c = OpCodes.Add32(c, OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));
       if (i < 8) {
-        b = OpCodes.ToUint32(b+l);
+        b = OpCodes.Add32(b, l);
         d = OpCodes.ToUint32(OpCodes.Xor32(d, r));
       } else {
-        d = OpCodes.ToUint32(d+l);
+        d = OpCodes.Add32(d, l);
         b = OpCodes.ToUint32(OpCodes.Xor32(b, r));
       }
       const temp = a; a = b; b = c; c = d; d = t;
@@ -436,12 +481,12 @@ let MARSAlgorithm, MARSInstance;
     
     // Backward mixing (8 rounds) - following Crypto++ exactly
     for (let i = 0; i < 8; i++) {
-      a = OpCodes.ToUint32(a-((i % 4 === 2) ? d : 0));
-      a = OpCodes.ToUint32(a-((i % 4 === 3) ? b : 0));
+      if (i % 4 === 2) a = OpCodes.Sub32(a, d);
+      if (i % 4 === 3) a = OpCodes.Sub32(a, b);
       b = OpCodes.ToUint32(OpCodes.Xor32(b, this.S1(a)));
-      c = OpCodes.ToUint32(c-this.S0(OpCodes.Shr32(a, 24)));
+      c = OpCodes.Sub32(c, this.S0(OpCodes.Shr32(a, 24)));
       const t = OpCodes.RotL32(a, 24);
-      d = OpCodes.ToUint32(OpCodes.Xor32((d-this.S1(OpCodes.Shr32(a, 16))), this.S0(t)));
+      d = OpCodes.Xor32(OpCodes.Sub32(d, this.S1(OpCodes.Shr32(a, 16))), this.S0(t));
       const temp = a; a = b; b = c; c = d; d = t;
     }
     
@@ -452,6 +497,7 @@ let MARSAlgorithm, MARSInstance;
     d = this._sub32(d, this.expandedKey[39]);
     
     // Convert back to bytes
+    /** @type {uint8[]} */
     const result = [];
     result.push(...OpCodes.Unpack32LE(a));
     result.push(...OpCodes.Unpack32LE(b));
@@ -473,19 +519,19 @@ let MARSAlgorithm, MARSInstance;
     let a = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
     // Reverse post-whitening (Crypto++ line 113)
-    d += this.expandedKey[36];
-    c += this.expandedKey[37];
-    b += this.expandedKey[38];
-    a += this.expandedKey[39];
+    d = OpCodes.Add32(d, this.expandedKey[36]);
+    c = OpCodes.Add32(c, this.expandedKey[37]);
+    b = OpCodes.Add32(b, this.expandedKey[38]);
+    a = OpCodes.Add32(a, this.expandedKey[39]);
 
     // Forward mixing (8 rounds) - same structure as encryption (Crypto++ lines 115-124)
     for (let i = 0; i < 8; i++) {
-      b = OpCodes.ToUint32(OpCodes.Xor32(b, this.S0(a))+this.S1(OpCodes.Shr32(a, 8)));
-      c = OpCodes.ToUint32(c+this.S0(OpCodes.Shr32(a, 16)));
+      b = OpCodes.Add32(OpCodes.Xor32(b, this.S0(a)), this.S1(OpCodes.Shr32(a, 8)));
+      c = OpCodes.Add32(c, this.S0(OpCodes.Shr32(a, 16)));
       a = OpCodes.RotR32(a, 24);
       d = OpCodes.ToUint32(OpCodes.Xor32(d, this.S1(a)));
-      a = OpCodes.ToUint32(a+((i % 4 === 0) ? d : 0));
-      a = OpCodes.ToUint32(a+((i % 4 === 1) ? b : 0));
+      if (i % 4 === 0) a = OpCodes.Add32(a, d);
+      if (i % 4 === 1) a = OpCodes.Add32(a, b);
       const t = a; a = b; b = c; c = d; d = t;
     }
 
@@ -493,14 +539,14 @@ let MARSAlgorithm, MARSInstance;
     for (let i = 0; i < 16; i++) {
       const t = OpCodes.RotR32(a, 13);
       const r = OpCodes.RotL32(this._mul32(a, this.expandedKey[35 - 2 * i]), 10);
-      const m = OpCodes.ToUint32(t+this.expandedKey[34 - 2 * i]);
+      const m = OpCodes.Add32(t, this.expandedKey[34 - 2 * i]);
       const l = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S(m), OpCodes.RotR32(r, 5)), r)), OpCodes.ToByte(r));
-      c = OpCodes.ToUint32(c-OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));
+      c = OpCodes.Sub32(c, OpCodes.RotL32(m, OpCodes.ToByte(OpCodes.RotR32(r, 5))));
       if (i < 8) {
-        b = OpCodes.ToUint32(b-l);
+        b = OpCodes.Sub32(b, l);
         d = OpCodes.ToUint32(OpCodes.Xor32(d, r));
       } else {
-        d = OpCodes.ToUint32(d-l);
+        d = OpCodes.Sub32(d, l);
         b = OpCodes.ToUint32(OpCodes.Xor32(b, r));
       }
       const temp = a; a = b; b = c; c = d; d = t;
@@ -508,22 +554,23 @@ let MARSAlgorithm, MARSInstance;
 
     // Backward mixing (8 rounds) - following Crypto++ lines 138-147
     for (let i = 0; i < 8; i++) {
-      a = OpCodes.ToUint32(a-((i % 4 === 2) ? d : 0));
-      a = OpCodes.ToUint32(a-((i % 4 === 3) ? b : 0));
+      if (i % 4 === 2) a = OpCodes.Sub32(a, d);
+      if (i % 4 === 3) a = OpCodes.Sub32(a, b);
       b = OpCodes.ToUint32(OpCodes.Xor32(b, this.S1(a)));
-      c = OpCodes.ToUint32(c-this.S0(OpCodes.Shr32(a, 24)));
+      c = OpCodes.Sub32(c, this.S0(OpCodes.Shr32(a, 24)));
       const t = OpCodes.RotL32(a, 24);
-      d = OpCodes.ToUint32(OpCodes.Xor32((d-this.S1(OpCodes.Shr32(a, 16))), this.S0(t)));
+      d = OpCodes.Xor32(OpCodes.Sub32(d, this.S1(OpCodes.Shr32(a, 16))), this.S0(t));
       const temp = a; a = b; b = c; c = d; d = t;
     }
 
     // Reverse pre-whitening (Crypto++ line 149)
-    d -= this.expandedKey[0];
-    c -= this.expandedKey[1];
-    b -= this.expandedKey[2];
-    a -= this.expandedKey[3];
+    d = OpCodes.Sub32(d, this.expandedKey[0]);
+    c = OpCodes.Sub32(c, this.expandedKey[1]);
+    b = OpCodes.Sub32(b, this.expandedKey[2]);
+    a = OpCodes.Sub32(a, this.expandedKey[3]);
 
     // Convert back to bytes - Crypto++ Block::Put outputs in reverse order (line 151)
+    /** @type {uint8[]} */
     const result = [];
     result.push(...OpCodes.Unpack32LE(d));
     result.push(...OpCodes.Unpack32LE(c));
@@ -533,7 +580,7 @@ let MARSAlgorithm, MARSInstance;
     return result;
   }
 
-  };
+  }
 
   // ===== REGISTRATION =====
 

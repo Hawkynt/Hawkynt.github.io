@@ -142,10 +142,11 @@
     }
 
     /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
      * @returns {NewDESInstance} New instance
      */
-    CreateInstance(isDecryptMode) {
-      return new NewDESInstance(this, isDecryptMode);
+    CreateInstance(isInverse = false) {
+      return new NewDESInstance(this, isInverse);
     }
   }
 
@@ -159,14 +160,18 @@
   class NewDESInstance extends IBlockCipherInstance {
     /**
      * @param {NewDESAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
      */
-    constructor(algorithm, isDecryptMode) {
+    constructor(algorithm, isInverse = false) {
       super(algorithm);
-      this.isDecryptMode = isDecryptMode || false;
+      this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.encryptionKey = null;
+      /** @type {uint8[]|null} */
       this.decryptionKey = null;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.buffer = [];
 
       // NewDES S-box (rotor) - fixed substitution table
@@ -260,7 +265,9 @@
       }
 
       if (this.buffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const nothing = [];
+        return nothing;
       }
 
       // Ensure we have complete 8-byte blocks
@@ -268,14 +275,16 @@
         throw new Error('NewDES requires data to be multiple of 8 bytes');
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process each 8-byte block
       for (let i = 0; i < this.buffer.length; i += 8) {
         const block = this.buffer.slice(i, i + 8);
+        /** @type {uint8[]} */
         let processedBlock;
 
-        if (this.isDecryptMode) {
+        if (this.isInverse) {
           processedBlock = this._decryptBlock(block);
         } else {
           processedBlock = this._encryptBlock(block);
@@ -311,12 +320,13 @@
 
     /**
      * Create encryption key schedule
-     * @param {Array} key - 15-byte user key
-     * @returns {Array} 119-byte unravelled key for encryption (17 rounds * 7 bytes)
+     * @param {uint8[]} key - 15-byte user key
+     * @returns {uint8[]} 60-byte unravelled key for encryption
      */
     _setupEncryptionKey(key) {
       // The 15-byte user key is simply repeated four times to fill the
       // 60-byte unravelled key consumed by one block transformation.
+      /** @type {uint8[]} */
       const unravelledKey = new Array(60);
       for (let i = 0; i < 60; i++) unravelledKey[i] = key[i % 15];
       return unravelledKey;
@@ -324,12 +334,13 @@
 
     /**
      * Create decryption key schedule
-     * @param {Array} key - 15-byte user key
-     * @returns {Array} 119-byte unravelled key for decryption (same as encryption)
+     * @param {uint8[]} key - 15-byte user key
+     * @returns {uint8[]} 60-byte unravelled key for decryption
      */
     _setupDecryptionKey(key) {
       // Decryption reuses the same block transformation, driven by the user key
       // walked in the order that undoes the encryption schedule.
+      /** @type {uint8[]} */
       const unravelledKey = [];
       let idx = 11;
       for (;;) {
@@ -349,7 +360,7 @@
     /**
      * Core NewDES block transformation
      * @param {uint8[]} block - 8-byte block to transform
-     * @param {Array} unravelledKey - 119-byte key schedule (17 rounds * 7 bytes per round)
+     * @param {uint8[]} unravelledKey - 60-byte key schedule
      */
     _newdesBlock(block, unravelledKey) {
       let keyPtr = 0;
@@ -357,27 +368,27 @@
       // Eight full rounds followed by a final half round; the same routine
       // performs decryption when driven by the decryption key schedule.
       for (let round = 0; round < 8; round++) {
-        block[4] = block[4]^this.rotor[block[0]^unravelledKey[keyPtr++]];
-        block[5] = block[5]^this.rotor[block[1]^unravelledKey[keyPtr++]];
-        block[6] = block[6]^this.rotor[block[2]^unravelledKey[keyPtr++]];
-        block[7] = block[7]^this.rotor[block[3]^unravelledKey[keyPtr++]];
+        block[4] = OpCodes.Xor32(block[4], this.rotor[OpCodes.Xor32(block[0], unravelledKey[keyPtr++])]);
+        block[5] = OpCodes.Xor32(block[5], this.rotor[OpCodes.Xor32(block[1], unravelledKey[keyPtr++])]);
+        block[6] = OpCodes.Xor32(block[6], this.rotor[OpCodes.Xor32(block[2], unravelledKey[keyPtr++])]);
+        block[7] = OpCodes.Xor32(block[7], this.rotor[OpCodes.Xor32(block[3], unravelledKey[keyPtr++])]);
 
-        block[1] = block[1]^this.rotor[block[4]^unravelledKey[keyPtr++]];
-        block[2] = block[2]^this.rotor[block[4]^block[5]];
-        block[3] = block[3]^this.rotor[block[6]^unravelledKey[keyPtr++]];
-        block[0] = block[0]^this.rotor[block[7]^unravelledKey[keyPtr++]];
+        block[1] = OpCodes.Xor32(block[1], this.rotor[OpCodes.Xor32(block[4], unravelledKey[keyPtr++])]);
+        block[2] = OpCodes.Xor32(block[2], this.rotor[OpCodes.Xor32(block[4], block[5])]);
+        block[3] = OpCodes.Xor32(block[3], this.rotor[OpCodes.Xor32(block[6], unravelledKey[keyPtr++])]);
+        block[0] = OpCodes.Xor32(block[0], this.rotor[OpCodes.Xor32(block[7], unravelledKey[keyPtr++])]);
       }
 
-      block[4] = block[4]^this.rotor[block[0]^unravelledKey[keyPtr++]];
-      block[5] = block[5]^this.rotor[block[1]^unravelledKey[keyPtr++]];
-      block[6] = block[6]^this.rotor[block[2]^unravelledKey[keyPtr++]];
-      block[7] = block[7]^this.rotor[block[3]^unravelledKey[keyPtr++]];
+      block[4] = OpCodes.Xor32(block[4], this.rotor[OpCodes.Xor32(block[0], unravelledKey[keyPtr++])]);
+      block[5] = OpCodes.Xor32(block[5], this.rotor[OpCodes.Xor32(block[1], unravelledKey[keyPtr++])]);
+      block[6] = OpCodes.Xor32(block[6], this.rotor[OpCodes.Xor32(block[2], unravelledKey[keyPtr++])]);
+      block[7] = OpCodes.Xor32(block[7], this.rotor[OpCodes.Xor32(block[3], unravelledKey[keyPtr++])]);
     }
 
     /**
      * Core NewDES block transformation for decryption
      * @param {uint8[]} block - 8-byte block to transform
-     * @param {Array} unravelledKey - 119-byte key schedule (17 rounds * 7 bytes per round)
+     * @param {uint8[]} unravelledKey - 60-byte key schedule
      */
     _newdesBlockDecrypt(block, unravelledKey) {
       // Decryption is the identical transformation driven by the decryption

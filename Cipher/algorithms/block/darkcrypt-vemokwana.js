@@ -62,7 +62,9 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {uint32} */
   const DELTA = 0x9E3779B9;
+  /** @type {uint32} */
   const PCONST = 0xB7E15163;
   const ROWMASK = 0x1F;   // this cipher only draws from the first 32 rows of the shared S-box
   const SCHED_N = 64;     // round-key schedule size / round count
@@ -154,15 +156,38 @@
     "2f748f40930331c784bbf519e288ffd0e09425a014604a81ac43eacb271ce7621e4d450156b0d661de703e0db7a14b2d3ccc5f7159dc375c82e46bb65a3839f658f09610864ea39a352647d5ed9518060c7bebbaf1914c490452908d229e33dfa55b833d" +
     "7f8ca734c87376f26d8be92bc19d11eeca97c228d89c0030e1adfd20b287bfae6409d1e86cf354027ca22336804f07852192eff93addb1b36672a48a7a507e1baacd440e6a4205a6fcfbc36e8ed30a68f853572abd13c612b9290b67"  );
 
+  /**
+   * @param {uint32} x - Value
+   * @returns {uint32} x reduced to unsigned 32 bits
+   */
   function u32(x) { return OpCodes.ToUint32(x); }
+  /**
+   * @param {uint32} x - Word
+   * @param {uint32} n - Rotation amount (low 5 bits used)
+   * @returns {uint32} x rotated left
+   */
   function rol32(x, n) { return OpCodes.RotL32(u32(x), OpCodes.And32(n, 31)); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} (x shl 6) XOR (x shr 8)
+   */
   function fMix(x) { return u32(OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8))); }
-  function sbLookup(row, col) { return SBOX[OpCodes.And32(row, ROWMASK) * 256 + OpCodes.And32(col, 0xFF)]; }
+  /**
+   * @param {uint32} row - S-box row (masked to ROWMASK)
+   * @param {uint32} col - Column (low 8 bits used)
+   * @returns {uint8} S-box byte
+   */
+  function sbLookup(row, col) { return SBOX[OpCodes.Add32(OpCodes.Mul32(OpCodes.And32(row, ROWMASK), 256), OpCodes.And32(col, 0xFF))]; }
 
   // Multiply-and-reduce modulo 2^32-1 (Park-Miller-style), matching the exact bit pattern
   // used by the DarkCrypt implementation (64-bit product, fold high+low, +1 correction on
   // overflow past 0xFFFFFFFF -- note 0xFFFFFFFF itself is left as-is, a redundant "zero"
   // representation).
+  /**
+   * @param {uint32} a - Factor
+   * @param {uint32} b - Factor
+   * @returns {uint32} a * b folded modulo 2^32 - 1
+   */
   function mulReduceM(a, b) {
     const prod = BigInt(OpCodes.ToUint32(a)) * BigInt(OpCodes.ToUint32(b));
     const lo = OpCodes.AndN(prod, 0xFFFFFFFFn);
@@ -242,6 +267,8 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
+      this._sched = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -287,7 +314,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[]} 16 little-endian key words
+     */
     _keyWords(key) {
+      /** @type {uint32[]} */
       const words = new Array(16);
       for (let i = 0; i < 16; i++)
         words[i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
@@ -295,17 +327,22 @@
     }
 
     // Builds the 64-entry round-key array RK[] and the 8 whitening words W[] from the 512-bit key.
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[][]} [64 round words, 8 whitening words]
+     */
     _buildSchedule(key) {
-      const K = this._keyWords(key);
+      const dwords = this._keyWords(key);
+      /** @type {uint32[]} */
       const RKinit = new Array(SCHED_N);
-      for (let i = 0; i < SCHED_N; i++) RKinit[i] = K[OpCodes.And32(i, 0xF)];
+      for (let i = 0; i < SCHED_N; i++) RKinit[i] = dwords[OpCodes.And32(i, 0xF)];
 
       let A = DELTA;
       let P = PCONST;
       for (let idx = 0; idx < SCHED_N; idx++) {
-        const kw = K[OpCodes.And32(idx, 0xF)];
-        A = u32(A + kw + DELTA);
-        const T = u32(RKinit[idx] + P);
+        const kw = dwords[OpCodes.And32(idx, 0xF)];
+        A = OpCodes.Add32(OpCodes.Add32(A, kw), DELTA);
+        const T = OpCodes.Add32(RKinit[idx], P);
         const rowIdx = OpCodes.And32(idx, ROWMASK);
         const rowP = OpCodes.And32(P, ROWMASK);
         const b0 = sbLookup(rowIdx, OpCodes.Shr32(T, 24));
@@ -316,9 +353,9 @@
         const b3 = sbLookup(rowA, OpCodes.And32(T, 0xFF));
         const mix = u32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)), OpCodes.Shl32(b2, 8)), b3));
         const F1 = rol32(mix, 11);
-        A = u32(A + F1);
-        let U = u32(rol32(F1, 16) + fMix(F1));
-        U = u32(U + kw);
+        A = OpCodes.Add32(A, F1);
+        let U = OpCodes.Add32(rol32(F1, 16), fMix(F1));
+        U = OpCodes.Add32(U, kw);
         const rowA2 = OpCodes.And32(A, ROWMASK);
         const c0 = sbLookup(rowA2, OpCodes.Shr32(U, 24));
         const rowU = OpCodes.And32(U, ROWMASK);
@@ -327,9 +364,9 @@
         const c3 = sbLookup(rowIdx, OpCodes.And32(U, 0xFF));          // reuses the row saved before idx moved on
         const mix2 = u32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(c0, 24), OpCodes.Shl32(c1, 16)), OpCodes.Shl32(c2, 8)), c3));
         const F2 = rol32(mix2, 11);
-        A = u32(A + F2);
+        A = OpCodes.Add32(A, F2);
         RKinit[idx] = F2;
-        P = u32(P + PCONST);
+        P = OpCodes.Add32(P, PCONST);
       }
 
       // RC4-style key schedule over 256 bytes, keyed by RKinit's low 256 bytes.
@@ -343,26 +380,33 @@
       }
       const S = new Uint8Array(256);
       for (let i = 0; i < 256; i++) S[i] = i;
+      /** @type {uint32} */
       let j = 0;
       for (let c = 0; c < 0x300; c++) {
         const i = OpCodes.And32(c, 0xFF);
         const a = S[i];
         const kb = RKbytes[i];
-        j = OpCodes.And32(j + a + kb, 0xFF);
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, a), kb), 0xFF);
         const m = S[j];
         const d = S[m];
         S[i] = d;
         S[m] = a;
         j = m;
       }
-      const RK = new Array(64);
+      /** @type {uint32[]} */
+      const roundWords = new Array(64);
       for (let i = 0; i < 64; i++)
-        RK[i] = OpCodes.Pack32LE(S[i * 4], S[i * 4 + 1], S[i * 4 + 2], S[i * 4 + 3]);
+        roundWords[i] = OpCodes.Pack32LE(S[i * 4], S[i * 4 + 1], S[i * 4 + 2], S[i * 4 + 3]);
 
-      const W = new Array(8);
-      for (let i = 0; i < 8; i++) W[i] = u32(K[i] + K[i + 8]);
+      /** @type {uint32[]} */
+      const whiten = new Array(8);
+      for (let i = 0; i < 8; i++) whiten[i] = OpCodes.Add32(dwords[i], dwords[i + 8]);
 
-      return { RK, W };
+      /** @type {uint32[][]} */
+      const parts = [];
+      parts.push(roundWords);
+      parts.push(whiten);
+      return parts;
     }
 
     /**
@@ -370,17 +414,18 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const { RK, W } = this._sched;
-      let v0 = u32(W[0] + OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
-      let v1 = u32(W[1] + OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
-      let v2 = u32(W[2] + OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
-      let v3 = u32(W[3] + OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
+      const sched = this._sched;
+      const roundWords = sched[0], whiten = sched[1];
+      let v0 = OpCodes.Add32(whiten[0], OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
+      let v1 = OpCodes.Add32(whiten[1], OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
+      let v2 = OpCodes.Add32(whiten[2], OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
+      let v3 = OpCodes.Add32(whiten[3], OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
 
       for (let r = 0; r < SCHED_N; r += 8) {
-        v0 = u32(v0 + fMix(v1) + u32(OpCodes.Xor32(v1, r) + RK[r]));
-        v1 = u32(v1 + fMix(v2) + u32(OpCodes.Xor32(v2, (r + 1)) + RK[r + 1]));
-        v2 = u32(v2 + fMix(v3) + u32(OpCodes.Xor32(v3, (r + 2)) + RK[r + 2]));
-        const D3 = u32(fMix(v0) + v3 + u32(OpCodes.Xor32(v0, (r + 3)) + RK[r + 3])); // v3-update term, uses new v0
+        v0 = OpCodes.Add32(OpCodes.Add32(v0, fMix(v1)), OpCodes.Add32(OpCodes.Xor32(v1, r), roundWords[r]));
+        v1 = OpCodes.Add32(OpCodes.Add32(v1, fMix(v2)), OpCodes.Add32(OpCodes.Xor32(v2, (r + 1)), roundWords[r + 1]));
+        v2 = OpCodes.Add32(OpCodes.Add32(v2, fMix(v3)), OpCodes.Add32(OpCodes.Xor32(v3, (r + 2)), roundWords[r + 2]));
+        const D3 = OpCodes.Add32(OpCodes.Add32(fMix(v0), v3), OpCodes.Add32(OpCodes.Xor32(v0, (r + 3)), roundWords[r + 3])); // v3-update term, uses new v0
 
         const R1raw = mulReduceM(0x025F1CDB, v0);
         const R1 = OpCodes.And32(R1raw, 1) ? u32(OpCodes.Xor32(R1raw, 0x2AAAAAAA)) : R1raw;
@@ -395,19 +440,23 @@
         const nvC = u32(OpCodes.Xor32(R3, Bmix));
         const nvD = u32(OpCodes.Xor32(R4, Amix));
 
-        const NV0 = u32(nvC + RK[r + 4] + u32(OpCodes.Xor32((r + 4), nvD) + fMix(nvD)));
-        const NV1 = u32(OpCodes.Xor32((r + 5), nvA) + RK[r + 5] + u32(fMix(nvA) + nvD));
-        const NV2 = u32(RK[r + 6] + nvA + u32(OpCodes.Xor32((r + 6), nvB) + fMix(nvB)));
-        const NV3 = u32(RK[r + 7] + nvB + u32(OpCodes.Xor32((r + 7), NV0) + fMix(NV0)));
+        const NV0 = OpCodes.Add32(OpCodes.Add32(nvC, roundWords[r + 4]), OpCodes.Add32(OpCodes.Xor32((r + 4), nvD), fMix(nvD)));
+        const NV1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Xor32((r + 5), nvA), roundWords[r + 5]), OpCodes.Add32(fMix(nvA), nvD));
+        const NV2 = OpCodes.Add32(OpCodes.Add32(roundWords[r + 6], nvA), OpCodes.Add32(OpCodes.Xor32((r + 6), nvB), fMix(nvB)));
+        const NV3 = OpCodes.Add32(OpCodes.Add32(roundWords[r + 7], nvB), OpCodes.Add32(OpCodes.Xor32((r + 7), NV0), fMix(NV0)));
 
         v0 = NV3; v1 = NV2; v2 = NV1; v3 = NV0;
       }
 
+      const out0 = u32(OpCodes.Xor32(v0, whiten[4]));
+      const out1 = u32(OpCodes.Xor32(v1, whiten[5]));
+      const out2 = u32(OpCodes.Xor32(v2, whiten[6]));
+      const out3 = u32(OpCodes.Xor32(v3, whiten[7]));
       return [
-        ...OpCodes.Unpack32LE(u32(OpCodes.Xor32(v0, W[4]))),
-        ...OpCodes.Unpack32LE(u32(OpCodes.Xor32(v1, W[5]))),
-        ...OpCodes.Unpack32LE(u32(OpCodes.Xor32(v2, W[6]))),
-        ...OpCodes.Unpack32LE(u32(OpCodes.Xor32(v3, W[7])))
+        ...OpCodes.Unpack32LE(out0),
+        ...OpCodes.Unpack32LE(out1),
+        ...OpCodes.Unpack32LE(out2),
+        ...OpCodes.Unpack32LE(out3)
       ];
     }
 
@@ -416,19 +465,20 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const { RK, W } = this._sched;
-      let A = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), W[4]));
-      let B = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), W[5]));
-      let C = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), W[6]));
-      let D = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[12], block[13], block[14], block[15]), W[7]));
+      const sched = this._sched;
+      const roundWords = sched[0], whiten = sched[1];
+      let A = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), whiten[4]));
+      let B = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), whiten[5]));
+      let C = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), whiten[6]));
+      let D = u32(OpCodes.Xor32(OpCodes.Pack32LE(block[12], block[13], block[14], block[15]), whiten[7]));
 
       let S1 = fMix(D);
       for (let r = SCHED_N - 1; r >= 0; r -= 8) {
-        A = u32(A - S1 - u32(OpCodes.Xor32(D, r) + RK[r]));
-        B = u32(B - u32(fMix(A) + u32(OpCodes.Xor32((r - 1), A) + RK[r - 1])));
-        C = u32(C - u32(fMix(B) + u32(OpCodes.Xor32((r - 2), B) + RK[r - 2])));
-        D = u32(D - u32(fMix(C) + u32(OpCodes.Xor32((r - 3), C) + RK[r - 3])));
-        const rNext = u32(r - 4);
+        A = OpCodes.Sub32(OpCodes.Sub32(A, S1), OpCodes.Add32(OpCodes.Xor32(D, r), roundWords[r]));
+        B = OpCodes.Sub32(B, OpCodes.Add32(fMix(A), OpCodes.Add32(OpCodes.Xor32((r - 1), A), roundWords[r - 1])));
+        C = OpCodes.Sub32(C, OpCodes.Add32(fMix(B), OpCodes.Add32(OpCodes.Xor32((r - 2), B), roundWords[r - 2])));
+        D = OpCodes.Sub32(D, OpCodes.Add32(fMix(C), OpCodes.Add32(OpCodes.Xor32((r - 3), C), roundWords[r - 3])));
+        const rNext = r - 4; // r is at least 7 here, so this never wraps
 
         const Amix = u32(OpCodes.Xor32(B, D));
         const Cmix = u32(OpCodes.Xor32(A, C));
@@ -443,22 +493,26 @@
         const Rc = mulReduceM(0x81B5A8D2, D);
         const Rd = mulReduceM(0x281B5A8D, C);
 
-        const Y = u32(Rd - RK[rNext] - u32(OpCodes.Xor32(Ra, rNext) + fMix(Ra)));
+        const Y = OpCodes.Sub32(OpCodes.Sub32(Rd, roundWords[rNext]), OpCodes.Add32(OpCodes.Xor32(Ra, rNext), fMix(Ra)));
         S1 = fMix(Y);
-        const Rc2 = u32(Rc - RK[rNext - 1]);
-        const Z = u32(Rc2 - u32(OpCodes.Xor32((r - 5), Y) + fMix(Y)));
-        const Rb2 = u32(Rb - RK[rNext - 2]);
-        const Wc = u32(Rb2 - u32(OpCodes.Xor32((r - 6), Z) + fMix(Z)));
-        const Final = u32(u32(Ra - RK[rNext - 3]) - u32(OpCodes.Xor32((r - 7), Wc) + fMix(Wc)));
+        const Rc2 = OpCodes.Sub32(Rc, roundWords[rNext - 1]);
+        const Z = OpCodes.Sub32(Rc2, OpCodes.Add32(OpCodes.Xor32((r - 5), Y), fMix(Y)));
+        const Rb2 = OpCodes.Sub32(Rb, roundWords[rNext - 2]);
+        const Wc = OpCodes.Sub32(Rb2, OpCodes.Add32(OpCodes.Xor32((r - 6), Z), fMix(Z)));
+        const Final = OpCodes.Sub32(OpCodes.Sub32(Ra, roundWords[rNext - 3]), OpCodes.Add32(OpCodes.Xor32((r - 7), Wc), fMix(Wc)));
 
         A = Final; B = Wc; C = Z; D = Y;
       }
 
+      const out0 = OpCodes.Sub32(A, whiten[0]);
+      const out1 = OpCodes.Sub32(B, whiten[1]);
+      const out2 = OpCodes.Sub32(C, whiten[2]);
+      const out3 = OpCodes.Sub32(D, whiten[3]);
       return [
-        ...OpCodes.Unpack32LE(u32(A - W[0])),
-        ...OpCodes.Unpack32LE(u32(B - W[1])),
-        ...OpCodes.Unpack32LE(u32(C - W[2])),
-        ...OpCodes.Unpack32LE(u32(D - W[3]))
+        ...OpCodes.Unpack32LE(out0),
+        ...OpCodes.Unpack32LE(out1),
+        ...OpCodes.Unpack32LE(out2),
+        ...OpCodes.Unpack32LE(out3)
       ];
     }
   }

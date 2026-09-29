@@ -48,16 +48,31 @@
   const TAB_LEN = 256;
 
   // GF(257) exponential/logarithm tables, primitive element 45
-  const EXP_TAB = new Array(TAB_LEN);
-  const LOG_TAB = new Array(TAB_LEN);
-  (function initTables() {
+  /**
+   * @returns {uint8[]} EXP_TAB[i] = 45^i mod 257 (256 stored as 0)
+   */
+  function buildExpTab() {
+    /** @type {uint8[]} */
+    const table = new Array(TAB_LEN);
     let exp = 1;
     for (let i = 0; i < TAB_LEN; i++) {
-      EXP_TAB[i] = OpCodes.And32(exp, 0xFF);
-      LOG_TAB[EXP_TAB[i]] = i;
+      table[i] = OpCodes.And32(exp, 0xFF);
       exp = (exp * 45) % 257;
     }
-  })();
+    return table;
+  }
+  /**
+   * @param {uint8[]} expTab - Exponential table
+   * @returns {uint8[]} The inverse (logarithm) table
+   */
+  function buildLogTab(expTab) {
+    /** @type {uint8[]} */
+    const table = new Array(TAB_LEN);
+    for (let i = 0; i < TAB_LEN; i++) table[expTab[i]] = i;
+    return table;
+  }
+  const EXP_TAB = buildExpTab();
+  const LOG_TAB = buildLogTab(EXP_TAB);
 
   class DarkCryptSaferSK128Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -131,6 +146,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this.expandedKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -183,14 +199,18 @@
     // the round index (offsets 2*i-1 for ka, 2*i for kb, mod BLOCK_LEN+1).
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[]} Round count followed by the subkey bytes
      */
     _expandKey(keyBytes) {
       const keyLen = 1 + BLOCK_LEN * (1 + 2 * ROUNDS);
+      /** @type {uint8[]} */
       const key = new Array(keyLen);
       let keyIndex = 0;
       key[keyIndex++] = ROUNDS;
 
+      /** @type {uint8[]} */
       const ka = new Array(BLOCK_LEN + 1);
+      /** @type {uint8[]} */
       const kb = new Array(BLOCK_LEN + 1);
       ka[BLOCK_LEN] = 0;
       kb[BLOCK_LEN] = 0;
@@ -199,10 +219,10 @@
         const uk1 = keyBytes[j];
         const uk2 = keyBytes[j + 8];
         ka[j] = OpCodes.RotL8(uk1, 5);
-        ka[BLOCK_LEN] ^= ka[j];
+        ka[BLOCK_LEN] = OpCodes.Xor32(ka[BLOCK_LEN], ka[j]);
         kb[j] = uk2;
         key[keyIndex++] = uk2;
-        kb[BLOCK_LEN] ^= kb[j];
+        kb[BLOCK_LEN] = OpCodes.Xor32(kb[BLOCK_LEN], kb[j]);
       }
 
       for (let i = 1; i <= ROUNDS; i++) {
@@ -213,26 +233,36 @@
 
         for (let j = 0; j < BLOCK_LEN; j++) {
           const idx = (j + 2 * i - 1) % (BLOCK_LEN + 1);
-          key[keyIndex++] = OpCodes.And32(ka[idx] + EXP_TAB[EXP_TAB[OpCodes.And32(18 * i + j + 1, 0xFF)]], 0xFF);
+          key[keyIndex++] = OpCodes.And32(OpCodes.Add32(ka[idx], EXP_TAB[EXP_TAB[OpCodes.And32(18 * i + j + 1, 0xFF)]]), 0xFF);
         }
         for (let j = 0; j < BLOCK_LEN; j++) {
           const idx = (j + 2 * i) % (BLOCK_LEN + 1);
-          key[keyIndex++] = OpCodes.And32(kb[idx] + EXP_TAB[EXP_TAB[OpCodes.And32(18 * i + j + 10, 0xFF)]], 0xFF);
+          key[keyIndex++] = OpCodes.And32(OpCodes.Add32(kb[idx], EXP_TAB[EXP_TAB[OpCodes.And32(18 * i + j + 10, 0xFF)]]), 0xFF);
         }
       }
 
       return key;
     }
 
+    /**
+     * @param {uint32} x - First value
+     * @param {uint32} y - Second value
+     * @returns {uint32[]} [2x + y, x + y] modulo 256
+     */
     _pht(x, y) {
-      const newY = OpCodes.And32(y + x, 0xFF);
-      const newX = OpCodes.And32(x + newY, 0xFF);
+      const newY = OpCodes.And32(OpCodes.Add32(y, x), 0xFF);
+      const newX = OpCodes.And32(OpCodes.Add32(x, newY), 0xFF);
       return [newX, newY];
     }
 
+    /**
+     * @param {uint32} x - First value
+     * @param {uint32} y - Second value
+     * @returns {uint32[]} Inverse of _pht
+     */
     _ipht(x, y) {
-      const newX = OpCodes.And32(x - y, 0xFF);
-      const newY = OpCodes.And32(y - newX, 0xFF);
+      const newX = OpCodes.And32(OpCodes.Sub32(x, y), 0xFF);
+      const newY = OpCodes.And32(OpCodes.Sub32(y, newX), 0xFF);
       return [newX, newY];
     }
 
@@ -241,22 +271,37 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      let [a, b, c, d, e, f, g, h] = block;
+      /** @type {uint32} */
+      let a = block[0];
+      /** @type {uint32} */
+      let b = block[1];
+      /** @type {uint32} */
+      let c = block[2];
+      /** @type {uint32} */
+      let d = block[3];
+      /** @type {uint32} */
+      let e = block[4];
+      /** @type {uint32} */
+      let f = block[5];
+      /** @type {uint32} */
+      let g = block[6];
+      /** @type {uint32} */
+      let h = block[7];
       const ek = this.expandedKey;
       let keyIndex = 0;
 
       for (let round = 0; round < ROUNDS; round++) {
-        a ^= ek[++keyIndex]; b = OpCodes.And32(b + ek[++keyIndex], 0xFF); c = OpCodes.And32(c + ek[++keyIndex], 0xFF); d ^= ek[++keyIndex];
-        e ^= ek[++keyIndex]; f = OpCodes.And32(f + ek[++keyIndex], 0xFF); g = OpCodes.And32(g + ek[++keyIndex], 0xFF); h ^= ek[++keyIndex];
+        a = OpCodes.Xor32(a, ek[++keyIndex]); b = OpCodes.And32(OpCodes.Add32(b, ek[++keyIndex]), 0xFF); c = OpCodes.And32(OpCodes.Add32(c, ek[++keyIndex]), 0xFF); d = OpCodes.Xor32(d, ek[++keyIndex]);
+        e = OpCodes.Xor32(e, ek[++keyIndex]); f = OpCodes.And32(OpCodes.Add32(f, ek[++keyIndex]), 0xFF); g = OpCodes.And32(OpCodes.Add32(g, ek[++keyIndex]), 0xFF); h = OpCodes.Xor32(h, ek[++keyIndex]);
 
-        a = OpCodes.And32(EXP_TAB[OpCodes.And32(a, 0xFF)] + ek[++keyIndex], 0xFF);
+        a = OpCodes.And32(OpCodes.Add32(EXP_TAB[OpCodes.And32(a, 0xFF)], ek[++keyIndex]), 0xFF);
         b = OpCodes.Xor32(LOG_TAB[OpCodes.And32(b, 0xFF)], ek[++keyIndex]);
         c = OpCodes.Xor32(LOG_TAB[OpCodes.And32(c, 0xFF)], ek[++keyIndex]);
-        d = OpCodes.And32(EXP_TAB[OpCodes.And32(d, 0xFF)] + ek[++keyIndex], 0xFF);
-        e = OpCodes.And32(EXP_TAB[OpCodes.And32(e, 0xFF)] + ek[++keyIndex], 0xFF);
+        d = OpCodes.And32(OpCodes.Add32(EXP_TAB[OpCodes.And32(d, 0xFF)], ek[++keyIndex]), 0xFF);
+        e = OpCodes.And32(OpCodes.Add32(EXP_TAB[OpCodes.And32(e, 0xFF)], ek[++keyIndex]), 0xFF);
         f = OpCodes.Xor32(LOG_TAB[OpCodes.And32(f, 0xFF)], ek[++keyIndex]);
         g = OpCodes.Xor32(LOG_TAB[OpCodes.And32(g, 0xFF)], ek[++keyIndex]);
-        h = OpCodes.And32(EXP_TAB[OpCodes.And32(h, 0xFF)] + ek[++keyIndex], 0xFF);
+        h = OpCodes.And32(OpCodes.Add32(EXP_TAB[OpCodes.And32(h, 0xFF)], ek[++keyIndex]), 0xFF);
 
         [a, b] = this._pht(a, b); [c, d] = this._pht(c, d);
         [e, f] = this._pht(e, f); [g, h] = this._pht(g, h);
@@ -269,8 +314,8 @@
         t = d; d = f; f = g; g = t;
       }
 
-      a ^= ek[++keyIndex]; b = OpCodes.And32(b + ek[++keyIndex], 0xFF); c = OpCodes.And32(c + ek[++keyIndex], 0xFF); d ^= ek[++keyIndex];
-      e ^= ek[++keyIndex]; f = OpCodes.And32(f + ek[++keyIndex], 0xFF); g = OpCodes.And32(g + ek[++keyIndex], 0xFF); h ^= ek[++keyIndex];
+      a = OpCodes.Xor32(a, ek[++keyIndex]); b = OpCodes.And32(OpCodes.Add32(b, ek[++keyIndex]), 0xFF); c = OpCodes.And32(OpCodes.Add32(c, ek[++keyIndex]), 0xFF); d = OpCodes.Xor32(d, ek[++keyIndex]);
+      e = OpCodes.Xor32(e, ek[++keyIndex]); f = OpCodes.And32(OpCodes.Add32(f, ek[++keyIndex]), 0xFF); g = OpCodes.And32(OpCodes.Add32(g, ek[++keyIndex]), 0xFF); h = OpCodes.Xor32(h, ek[++keyIndex]);
 
       return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF), OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
     }
@@ -280,12 +325,27 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      let [a, b, c, d, e, f, g, h] = block;
+      /** @type {uint32} */
+      let a = block[0];
+      /** @type {uint32} */
+      let b = block[1];
+      /** @type {uint32} */
+      let c = block[2];
+      /** @type {uint32} */
+      let d = block[3];
+      /** @type {uint32} */
+      let e = block[4];
+      /** @type {uint32} */
+      let f = block[5];
+      /** @type {uint32} */
+      let g = block[6];
+      /** @type {uint32} */
+      let h = block[7];
       const ek = this.expandedKey;
       let keyIndex = BLOCK_LEN * (1 + 2 * ROUNDS);
 
-      h ^= ek[keyIndex]; g = OpCodes.And32(g - ek[--keyIndex], 0xFF); f = OpCodes.And32(f - ek[--keyIndex], 0xFF); e ^= ek[--keyIndex];
-      d ^= ek[--keyIndex]; c = OpCodes.And32(c - ek[--keyIndex], 0xFF); b = OpCodes.And32(b - ek[--keyIndex], 0xFF); a ^= ek[--keyIndex];
+      h = OpCodes.Xor32(h, ek[keyIndex]); g = OpCodes.And32(OpCodes.Sub32(g, ek[--keyIndex]), 0xFF); f = OpCodes.And32(OpCodes.Sub32(f, ek[--keyIndex]), 0xFF); e = OpCodes.Xor32(e, ek[--keyIndex]);
+      d = OpCodes.Xor32(d, ek[--keyIndex]); c = OpCodes.And32(OpCodes.Sub32(c, ek[--keyIndex]), 0xFF); b = OpCodes.And32(OpCodes.Sub32(b, ek[--keyIndex]), 0xFF); a = OpCodes.Xor32(a, ek[--keyIndex]);
 
       for (let round = 0; round < ROUNDS; round++) {
         let t = e; e = b; b = c; c = t;
@@ -298,22 +358,22 @@
         [a, b] = this._ipht(a, b); [c, d] = this._ipht(c, d);
         [e, f] = this._ipht(e, f); [g, h] = this._ipht(g, h);
 
-        h = OpCodes.And32(h - ek[--keyIndex], 0xFF);
-        g ^= ek[--keyIndex];
-        f ^= ek[--keyIndex];
-        e = OpCodes.And32(e - ek[--keyIndex], 0xFF);
-        d = OpCodes.And32(d - ek[--keyIndex], 0xFF);
-        c ^= ek[--keyIndex];
-        b ^= ek[--keyIndex];
-        a = OpCodes.And32(a - ek[--keyIndex], 0xFF);
+        h = OpCodes.And32(OpCodes.Sub32(h, ek[--keyIndex]), 0xFF);
+        g = OpCodes.Xor32(g, ek[--keyIndex]);
+        f = OpCodes.Xor32(f, ek[--keyIndex]);
+        e = OpCodes.And32(OpCodes.Sub32(e, ek[--keyIndex]), 0xFF);
+        d = OpCodes.And32(OpCodes.Sub32(d, ek[--keyIndex]), 0xFF);
+        c = OpCodes.Xor32(c, ek[--keyIndex]);
+        b = OpCodes.Xor32(b, ek[--keyIndex]);
+        a = OpCodes.And32(OpCodes.Sub32(a, ek[--keyIndex]), 0xFF);
 
         h = OpCodes.Xor32(LOG_TAB[OpCodes.And32(h, 0xFF)], ek[--keyIndex]);
-        g = OpCodes.And32(EXP_TAB[OpCodes.And32(g, 0xFF)] - ek[--keyIndex], 0xFF);
-        f = OpCodes.And32(EXP_TAB[OpCodes.And32(f, 0xFF)] - ek[--keyIndex], 0xFF);
+        g = OpCodes.And32(OpCodes.Sub32(EXP_TAB[OpCodes.And32(g, 0xFF)], ek[--keyIndex]), 0xFF);
+        f = OpCodes.And32(OpCodes.Sub32(EXP_TAB[OpCodes.And32(f, 0xFF)], ek[--keyIndex]), 0xFF);
         e = OpCodes.Xor32(LOG_TAB[OpCodes.And32(e, 0xFF)], ek[--keyIndex]);
         d = OpCodes.Xor32(LOG_TAB[OpCodes.And32(d, 0xFF)], ek[--keyIndex]);
-        c = OpCodes.And32(EXP_TAB[OpCodes.And32(c, 0xFF)] - ek[--keyIndex], 0xFF);
-        b = OpCodes.And32(EXP_TAB[OpCodes.And32(b, 0xFF)] - ek[--keyIndex], 0xFF);
+        c = OpCodes.And32(OpCodes.Sub32(EXP_TAB[OpCodes.And32(c, 0xFF)], ek[--keyIndex]), 0xFF);
+        b = OpCodes.And32(OpCodes.Sub32(EXP_TAB[OpCodes.And32(b, 0xFF)], ek[--keyIndex]), 0xFF);
         a = OpCodes.Xor32(LOG_TAB[OpCodes.And32(a, 0xFF)], ek[--keyIndex]);
       }
 
