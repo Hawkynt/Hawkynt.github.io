@@ -177,6 +177,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this.roundKeys = null; // NR+1 words of NB*4 bytes each, stored as [round][col][row]
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -228,41 +229,59 @@
     // halfway point of each Nk-word group, per the original Rijndael spec.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[][]} NB * (NR + 1) four-byte key words
      */
     _expandKey(keyBytes) {
       const totalWords = NB * (NR + 1);
+      /** @type {uint8[][]} */
       const w = new Array(totalWords);
       for (let i = 0; i < NK; i++) {
-        w[i] = [keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]];
+        /** @type {uint8[]} */
+        const keyWord = [keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]];
+        w[i] = keyWord;
       }
       let rconIdx = 0;
       for (let i = NK; i < totalWords; i++) {
+        /** @type {uint8[]} */
         let temp = w[i - 1].slice();
         if (i % NK === 0) {
-          temp = [temp[1], temp[2], temp[3], temp[0]];
-          temp = temp.map(b => SBOX[b]);
-          temp[0] ^= RCON[rconIdx++];
+          temp = [SBOX[temp[1]], SBOX[temp[2]], SBOX[temp[3]], SBOX[temp[0]]];
+          temp[0] = OpCodes.Xor32(temp[0], RCON[rconIdx++]);
         } else if (NK > 6 && (i % NK) === 4) {
-          temp = temp.map(b => SBOX[b]);
+          temp = [SBOX[temp[0]], SBOX[temp[1]], SBOX[temp[2]], SBOX[temp[3]]];
         }
         const prev = w[i - NK];
-        w[i] = [OpCodes.Xor32(prev[0], temp[0]), OpCodes.Xor32(prev[1], temp[1]), OpCodes.Xor32(prev[2], temp[2]), OpCodes.Xor32(prev[3], temp[3])];
+        /** @type {uint8[]} */
+        const nextWord = [OpCodes.Xor32(prev[0], temp[0]), OpCodes.Xor32(prev[1], temp[1]), OpCodes.Xor32(prev[2], temp[2]), OpCodes.Xor32(prev[3], temp[3])];
+        w[i] = nextWord;
       }
       return w;
     }
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint8[][]} 4 x NB state bytes
      */
     _stateFromBlock(block) {
-      const state = [[], [], [], []];
+      /** @type {uint8[][]} */
+      const state = [];
+      for (let r = 0; r < 4; r++) {
+        /** @type {uint8[]} */
+        const stateLine = new Array(NB);
+        state.push(stateLine);
+      }
       for (let c = 0; c < NB; c++)
         for (let r = 0; r < 4; r++)
           state[r][c] = block[4 * c + r];
       return state;
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes
+     * @returns {uint8[]} Block bytes
+     */
     _blockFromState(state) {
+      /** @type {uint8[]} */
       const block = new Array(BLOCK_SIZE);
       for (let c = 0; c < NB; c++)
         for (let r = 0; r < 4; r++)
@@ -270,41 +289,62 @@
       return block;
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     * @param {int32} round - Round index
+     */
     _addRoundKey(state, round) {
       for (let c = 0; c < NB; c++) {
         const word = this.roundKeys[round * NB + c];
-        for (let r = 0; r < 4; r++) state[r][c] ^= word[r];
+        for (let r = 0; r < 4; r++) state[r][c] = OpCodes.Xor32(state[r][c], word[r]);
       }
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _subBytes(state) {
       for (let r = 0; r < 4; r++)
         for (let c = 0; c < NB; c++)
           state[r][c] = SBOX[state[r][c]];
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _invSubBytes(state) {
       for (let r = 0; r < 4; r++)
         for (let c = 0; c < NB; c++)
           state[r][c] = INV_SBOX[state[r][c]];
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _shiftRows(state) {
       for (let r = 1; r < 4; r++) {
+        /** @type {int32} */
         const off = SHIFT_OFFSETS[r];
         const row = state[r].slice();
         for (let c = 0; c < NB; c++) state[r][c] = row[(c + off) % NB];
       }
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _invShiftRows(state) {
       for (let r = 1; r < 4; r++) {
+        /** @type {int32} */
         const off = SHIFT_OFFSETS[r];
         const row = state[r].slice();
         for (let c = 0; c < NB; c++) state[r][c] = row[(c - off + NB) % NB];
       }
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _mixColumns(state) {
       for (let c = 0; c < NB; c++) {
         const s0 = state[0][c], s1 = state[1][c], s2 = state[2][c], s3 = state[3][c];
@@ -315,6 +355,9 @@
       }
     }
 
+    /**
+     * @param {uint8[][]} state - 4 x NB state bytes (updated in place)
+     */
     _invMixColumns(state) {
       for (let c = 0; c < NB; c++) {
         const s0 = state[0][c], s1 = state[1][c], s2 = state[2][c], s3 = state[3][c];
