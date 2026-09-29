@@ -1,7 +1,5 @@
-#!/usr/bin/env node
-
 /**
- * Comprehensive Transpiler Test Suite
+ * Code generation tests (the CODEGEN category of tests/TranspilerSuite.js)
  *
  * Tests ALL aspects of the transpiler system:
  * - JavaScript AST node coverage
@@ -13,16 +11,14 @@
  * - Edge cases and error handling
  *
  * Usage:
- *   node TestSuite.js                    # Run all tests
- *   node TestSuite.js --language=python  # Test specific language
- *   node TestSuite.js --verbose          # Verbose output
- *   node TestSuite.js --coverage         # Show coverage report
- *   node TestSuite.js --quick            # Quick smoke test only
+ *   node tests/TranspilerSuite.js --only=codegen                    # every language
+ *   node tests/TranspilerSuite.js --only=codegen --language=python  # one language
+ *   node tests/TranspilerSuite.js --only=codegen --quick            # smoke test only
+ *   node tests/TranspilerSuite.js --only=codegen --verbose
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 // ANSI colors
 const C = {
@@ -31,14 +27,8 @@ const C = {
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m'
 };
 
-// Parse command line arguments
-const args = {
-  verbose: process.argv.includes('--verbose') || process.argv.includes('-v'),
-  coverage: process.argv.includes('--coverage'),
-  quick: process.argv.includes('--quick'),
-  language: process.argv.find(a => a.startsWith('--language='))?.split('=')[1],
-  fix: process.argv.includes('--fix')
-};
+// Options of the current run, set by run()
+const args = { verbose: false, quick: false, language: null };
 
 // ============================================================================
 // ALL JAVASCRIPT AST NODE TYPES (ESTree standard + ES2022+)
@@ -2341,18 +2331,17 @@ class ComprehensiveTestSuite {
 
   // Main run method
   async run() {
-    this.log('\nComprehensive Transpiler Test Suite', 'bright');
     this.log(`Mode: ${args.quick ? 'Quick' : 'Full'} | Verbose: ${args.verbose ? 'Yes' : 'No'}\n`, 'dim');
-
-    const languagesToTest = args.language
-      ? { [args.language]: LANGUAGES[args.language] }
-      : LANGUAGES;
 
     if (args.language && !LANGUAGES[args.language]) {
       this.log(`Unknown language: ${args.language}`, 'red');
       this.log(`Available: ${Object.keys(LANGUAGES).join(', ')}`, 'yellow');
-      process.exit(1);
+      return { passed: 0, failed: 1, detail: `unknown language ${args.language}` };
     }
+
+    const languagesToTest = args.language
+      ? { [args.language]: LANGUAGES[args.language] }
+      : LANGUAGES;
 
     for (const [langName, langConfig] of Object.entries(languagesToTest)) {
       await this.testLanguage(langName, langConfig);
@@ -2360,20 +2349,21 @@ class ComprehensiveTestSuite {
 
     this.generateCoverageReport();
 
-    const exitCode = this.results.stats.failed > 0 ? 1 : 0;
-    this.log(`\nTest suite completed with exit code: ${exitCode}`, exitCode === 0 ? 'green' : 'red');
-    process.exit(exitCode);
+    const { passed, failed } = this.results.stats;
+    return { passed, failed, detail: `${Object.keys(languagesToTest).length} language(s)` };
   }
 }
 
-// Run
-if (require.main === module) {
-  const suite = new ComprehensiveTestSuite();
-  suite.run().catch(e => {
-    console.error(`Test suite crashed: ${e.message}`);
-    console.error(e.stack);
-    process.exit(2);
-  });
+/**
+ * CODEGEN: generate every language and dialect from the shared AST test cases.
+ * @param {object} options - { verbose, quick, language }
+ * @returns {Promise<object>} { passed, failed, detail }
+ */
+async function run(options = {}) {
+  args.verbose = Boolean(options.verbose);
+  args.quick = Boolean(options.quick);
+  args.language = options.language || null;
+  return new ComprehensiveTestSuite().run();
 }
 
-module.exports = ComprehensiveTestSuite;
+module.exports = { run };
