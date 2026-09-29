@@ -63,13 +63,16 @@
 
   // Per-template bitmask (bit0=slot0, bit1=slot1, bit2=slot2) of which slots in a
   // 128-bit bundle hold B-unit (branch) instructions, indexed by the 5-bit template.
+  /** @type {uint8[]} */
   const IA64_BRANCH_SLOT_MASK = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     4, 4, 6, 6, 0, 0, 7, 7, 4, 4, 0, 0, 4, 4, 0, 0
   ];
 
-  const MASK_41_BITS = OpCodes.ShiftLn(1n, 41) - 1n;
-  const MASK_20_BITS = OpCodes.ShiftLn(1n, 20) - 1n;
+  /** @type {BigInt} */
+  const MASK_41_BITS = 0x1FFFFFFFFFFn; // 2^41 - 1
+  /** @type {BigInt} */
+  const MASK_20_BITS = 0xFFFFFn; // 2^20 - 1
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -131,22 +134,40 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjIa64Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjIa64Instance(this, isInverse);
     }
   }
 
   class BcjIa64Instance extends IAlgorithmInstance {
+    /**
+     * @param {BcjIa64} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const output = this._transform(this.inputBuffer, !this.isInverse);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
@@ -154,6 +175,11 @@
     // 128-bit bundle value since instruction slots (41 bits) do not align to
     // byte or 32-bit boundaries. The 5-bit template field is never modified,
     // so encode and decode agree on which bundles/slots carry branches.
+    /**
+     * @param {uint8[]} bytes - Input bytes
+     * @param {boolean} encode - True to encode, false to decode
+     * @returns {uint8[]} Transformed copy
+     */
     _transform(bytes, encode) {
       const data = bytes.slice();
       const n = data.length;
@@ -164,6 +190,7 @@
           bundle = OpCodes.OrN(bundle, OpCodes.ShiftLn(BigInt(data[pos + j]), 8 * j));
         }
 
+        /** @type {int32} */
         const template = Number(OpCodes.AndN(bundle, 0x1Fn));
         const slotMask = IA64_BRANCH_SLOT_MASK[template];
         if (slotMask === 0) continue;
@@ -183,7 +210,7 @@
           // 21-bit signed slot-count target, scaled to a byte offset (x16).
           let target = OpCodes.OrN(OpCodes.ShiftLn(signBit, 20), imm20b);
           if (signBit === 1n) target -= OpCodes.ShiftLn(1n, 21);
-          target = target * 16n;
+          target = OpCodes.ShiftLn(target, 4);
 
           const posValue = BigInt(pos);
           target = encode ? (target + posValue) : (target - posValue);
@@ -199,7 +226,9 @@
         }
 
         for (let j = 0; j < 16; j++) {
-          data[pos + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(bundle, 8 * j), 0xFFn));
+          /** @type {uint8} */
+          const byteValue = Number(OpCodes.AndN(OpCodes.ShiftRn(bundle, 8 * j), 0xFFn));
+          data[pos + j] = byteValue;
         }
       }
 
