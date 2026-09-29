@@ -153,13 +153,17 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Hurricane-specific state
+      /** @type {uint32} */
       this.keyCS = 0; // Key checksum
+      /** @type {int32[][]|null} */
       this.matrix = null; // Forward substitution matrix (256x256)
+      /** @type {int32[][]|null} */
       this.matrix_1 = null; // Inverse substitution matrix (256x256)
     }
 
@@ -237,7 +241,13 @@
       return output;
     }
 
+    /**
+     * Key checksum: sum of the bytes mod 256
+     * @param {uint8[]} bytes - Key bytes
+     * @returns {uint32} Checksum 0..255
+     */
     _calculateChecksum(bytes) {
+      /** @type {uint32} */
       let checksum = 0;
       for (let i = 0; i < bytes.length; ++i) {
         checksum = OpCodes.And32((checksum + bytes[i]), 0xFF); // mod 256
@@ -247,6 +257,7 @@
 
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[]} Key of at least 16 bytes
      */
     _expandKey(keyBytes) {
       const minLength = 16;
@@ -255,6 +266,7 @@
       }
 
       // Expand key to minimum length
+      /** @type {uint8[]} */
       const expanded = new Array(minLength);
       for (let i = 0; i < minLength; ++i) {
         expanded[i] = keyBytes[i % keyBytes.length];
@@ -262,16 +274,22 @@
       return expanded;
     }
 
+    /**
+     * Build the forward and inverse substitution matrices from the key
+     */
     _initializeMatrix() {
       const N = 256;
 
       // Initialize temporary array for matrix generation
+      /** @type {int32[][]} */
       const temp = new Array(N);
       for (let i = 0; i < N; ++i) {
-        temp[i] = new Array(N);
+        /** @type {int32[]} */
+        const sentinelRow = new Array(N);
         for (let j = 0; j < N; ++j) {
-          temp[i][j] = 1024; // Sentinel value
+          sentinelRow[j] = 1024; // Sentinel value
         }
+        temp[i] = sentinelRow;
       }
 
       // Fill first column with key-dependent permutation
@@ -281,34 +299,49 @@
       this._fillMatrix(temp);
 
       // Create forward and inverse matrices
-      this.matrix = new Array(N);
-      this.matrix_1 = new Array(N);
+      /** @type {int32[][]} */
+      const forward = new Array(N);
+      /** @type {int32[][]} */
+      const inverse = new Array(N);
 
       for (let i = 0; i < N; ++i) {
-        this.matrix[i] = new Array(N);
-        this.matrix_1[i] = new Array(N);
+        /** @type {int32[]} */
+        const forwardRow = new Array(N);
+        /** @type {int32[]} */
+        const inverseRow = new Array(N);
+        forward[i] = forwardRow;
+        inverse[i] = inverseRow;
       }
 
       // Copy temp to matrix and build inverse
       for (let i = 0; i < N; ++i) {
         for (let j = 0; j < N; ++j) {
-          this.matrix[i][j] = temp[i][j];
-          this.matrix_1[this.matrix[i][j]][j] = i; // Inverse lookup
+          forward[i][j] = temp[i][j];
+          inverse[forward[i][j]][j] = i; // Inverse lookup
         }
       }
+      this.matrix = forward;
+      this.matrix_1 = inverse;
     }
 
+    /**
+     * Fill column 0 with a key-dependent permutation of 0..255
+     * @param {int32[][]} temp - Matrix under construction
+     */
     _fillFirstColumn(temp) {
       const N = 256;
       const key = this._key;
       const keyLen = key.length;
 
       let x = 11; // Magic constant from original
+      /** @type {uint32} */
       let z = 0;
       let m = 0;
 
-      // Use Set for O(1) collision detection instead of O(N) linear search
-      const used = new Set();
+      // Presence table for O(1) collision detection instead of O(N) linear search
+      /** @type {boolean[]} */
+      const used = new Array(N);
+      for (let i = 0; i < N; ++i) used[i] = false;
 
       for (let i = 0; i < N; ++i) {
         let found = false;
@@ -319,16 +352,16 @@
           // Generate candidate using key
           // IMPORTANT: z accumulates across retries (NOT reset on collision)
           for (let j = keyLen - 1; j >= m; --j) {
-            z = OpCodes.And32((z + key[j] + x), 0xFF); // mod 256
+            z = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(z, key[j]), x), 0xFF); // mod 256
           }
 
           // m increments on every attempt (matching Pascal GOTO KeyLoop behavior)
           m = (m + 1) % keyLen;
 
           // Check if this value already exists in column (O(1) lookup)
-          if (!used.has(z)) {
+          if (!used[z]) {
             temp[i][0] = z;
-            used.add(z);
+            used[z] = true;
             found = true;
           } else {
             // On collision: increment x and retry (z keeps its value)
@@ -342,6 +375,10 @@
       }
     }
 
+    /**
+     * Fill columns 1..255 with key-selected rotations of column 0
+     * @param {int32[][]} temp - Matrix under construction
+     */
     _fillMatrix(temp) {
       const N = 256;
       const key = this._key;
@@ -351,8 +388,12 @@
       let x = 0;
 
       // Track used columns for O(1) lookup instead of checking temp[0][j]
-      const usedColumns = new Set();
-      usedColumns.add(0); // Column 0 is already filled
+      /** @type {boolean[]} */
+      const usedColumns = new Array(N);
+      for (let i = 0; i < N; ++i) usedColumns[i] = false;
+      usedColumns[0] = true; // Column 0 is already filled
+      /** @type {int32} */
+      const keyCS = this.keyCS;
 
       for (let i = 1; i < N; ++i) {
         k = (k + 1) % N;
@@ -360,14 +401,16 @@
 
         while (!found) {
           ++x;
-          const j = ((key[(i + 37 + x) % keyLen] + x + this.keyCS) % 255) + 1;
+          /** @type {int32} */
+          const keyByte = key[(i + 37 + x) % keyLen];
+          const j = ((keyByte + x + keyCS) % 255) + 1;
 
-          if (!usedColumns.has(j)) { // Column not yet filled (O(1) check)
+          if (!usedColumns[j]) { // Column not yet filled (O(1) check)
             // Fill column j by rotating column 0
             for (let l = 0; l < N; ++l) {
               temp[l][j] = temp[(l + k) % N][0];
             }
-            usedColumns.add(j);
+            usedColumns[j] = true;
             found = true;
           }
         }
@@ -379,7 +422,9 @@
      * @returns {uint8[]} Output block
      */
     _encrypt(data) {
-      if (data.length < 1) return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      if (data.length < 1) return empty;
 
       const output = [...data]; // Work on copy
       const len = output.length;
@@ -411,7 +456,9 @@
      * @returns {uint8[]} Output block
      */
     _decrypt(data) {
-      if (data.length < 1) return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      if (data.length < 1) return empty;
 
       const output = [...data]; // Work on copy
       const len = output.length;
