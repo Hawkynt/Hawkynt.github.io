@@ -89,19 +89,31 @@
     "2ef58a0df4e9ee9a8b1ef15a2fcdab61dfbe1c0ab90d17891ed0fe8fa5651b30");
 
   // Core mixing of the 16 selected S-box values into one output byte.
+  // (all operands are bytes, so the masked Add32 sums equal the old masked raw sums)
+  /**
+   * @param {uint8[]} g - The 16 selected S-box bytes
+   * @returns {uint8} Mixed byte
+   */
   function combine(g) {
-    const t = OpCodes.And32((g[4] + g[5]) + OpCodes.Xor32(g[6], g[7]), 0xFF);
-    const w = OpCodes.And32((g[0] | g[1]) + (g[2] | g[3]), 0xFF);
+    const t = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(g[4], g[5]), OpCodes.Xor32(g[6], g[7])), 0xFF);
+    const w = OpCodes.And32(OpCodes.Add32(OpCodes.Or32(g[0], g[1]), OpCodes.Or32(g[2], g[3])), 0xFF);
     const A = OpCodes.Xor32(t, w);
-    const B1 = OpCodes.And32(OpCodes.Xor32(g[14], g[15]) + OpCodes.Xor32(g[12], OpCodes.And32(~g[13], 0xFF)), 0xFF);
-    const B2 = OpCodes.And32(OpCodes.Xor32(g[9], OpCodes.And32(~g[8], 0xFF)) + OpCodes.And32(g[10], OpCodes.And32(~g[11], 0xFF)), 0xFF);
-    return OpCodes.And32(A + OpCodes.Xor32(B1, B2), 0xFF);
+    const B1 = OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(g[14], g[15]), OpCodes.Xor32(g[12], OpCodes.And32(OpCodes.Not32(g[13]), 0xFF))), 0xFF);
+    const B2 = OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(g[9], OpCodes.And32(OpCodes.Not32(g[8]), 0xFF)), OpCodes.And32(g[10], OpCodes.And32(OpCodes.Not32(g[11]), 0xFF))), 0xFF);
+    return OpCodes.And32(OpCodes.Add32(A, OpCodes.Xor32(B1, B2)), 0xFF);
   }
 
   // Round function using the fixed P-table (setup only; no S2 post-mix).
+  /**
+   * @param {uint8[]} SB - Key-dependent S-box
+   * @param {uint8[]} D - 16-byte half block
+   * @returns {uint8[]} 16-byte round output
+   */
   function Ffixed(SB, D) {
+    /** @type {uint8[]} */
     const O = new Array(16);
     for (let j = 0; j < 16; j++) {
+      /** @type {uint8[]} */
       const g = new Array(16);
       for (let col = 0; col < 16; col++) g[col] = SB[D[FIXED_P[j * 16 + col]]];
       O[j] = combine(g);
@@ -110,13 +122,22 @@
   }
 
   // Round function used for actual encryption (key-dependent P-box + S2).
+  /**
+   * @param {uint8[]} SB - Key-dependent S-box
+   * @param {uint8[]} S2 - Key-dependent byte permutation
+   * @param {uint8[]} Pbox - Key-dependent 16x16 nibble permutations
+   * @param {uint8[]} D - 16-byte half block
+   * @returns {uint8[]} 16-byte round output
+   */
   function Ffull(SB, S2, Pbox, D) {
+    /** @type {uint8[]} */
     const O = new Array(16);
     for (let j = 0; j < 16; j++) {
+      /** @type {uint8[]} */
       const g = new Array(16);
       for (let col = 0; col < 16; col++) g[col] = SB[D[Pbox[j * 16 + col]]];
       const m = combine(g);
-      O[j] = OpCodes.And32(S2[j] + m + S2[m], 0xFF);
+      O[j] = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(S2[j], m), S2[m]), 0xFF);
     }
     return O;
   }
@@ -124,10 +145,17 @@
   // Balanced Feistel over a 32-byte block using the fixed-P round function.
   // roundsParam mirrors the reference loop bound (runs roundsParam-1 rounds), output
   // halves are NOT swapped. Returns the 32-byte state.
+  /**
+   * @param {uint8[]} SB - Key-dependent S-box
+   * @param {uint8[]} input32 - 32-byte state
+   * @param {int32} roundsParam - Reference loop bound (runs roundsParam-1 rounds)
+   * @returns {uint8[]} 32-byte state
+   */
   function feistelFixed(SB, input32, roundsParam) {
     let L = input32.slice(0, 16), R = input32.slice(16, 32);
     for (let round = 1; round < roundsParam; round++) {
       const O = Ffixed(SB, R);
+      /** @type {uint8[]} */
       const nR = new Array(16);
       for (let i = 0; i < 16; i++) nR[i] = OpCodes.And32(OpCodes.Xor32(L[i], O[i]), 0xFF);
       L = R; R = nR;
@@ -136,10 +164,18 @@
   }
 
   // Blowfish-style key schedule: derives SB, S2 and Pbox from the key.
+  /**
+   * @param {uint8[]} key - 20-byte key
+   * @returns {uint8[][]} [SB, S2, Pbox] (indexed by SCHED_SB, SCHED_S2, SCHED_PBOX)
+   */
   function keySchedule(key) {
+    /** @type {uint8[]} */
     const SB = new Array(256);
+    /** @type {uint8[]} */
     const S2 = new Array(256);
-    const Pbox = new Array(256).fill(0);
+    /** @type {uint8[]} */
+    const Pbox = new Array(256);
+    Pbox.fill(0);
 
     // Phase A: seed S-box.
     for (let i = 0; i < 256; i++) SB[i] = OpCodes.And32(OpCodes.Xor32(FIXED_S[i], key[i % KEY_LEN]), 0xFF);
@@ -193,19 +229,24 @@
       seed = OUT.slice();
     }
 
-    return { SB, S2, Pbox };
+    return [SB, S2, Pbox];
   }
+
+  // Indices into the schedule returned by keySchedule.
+  const SCHED_SB = 0, SCHED_S2 = 1, SCHED_PBOX = 2;
 
   // 5-round Feistel; because the round function is identical every round and the
   // halves are swapped on output, this is an involution (encrypt === decrypt).
   /**
+   * @param {uint8[][]} sched - Key schedule from keySchedule
    * @param {uint8[]} block - Input block
    * @returns {uint8[]} Output block
    */
   function processBlock(sched, block) {
     let L = block.slice(0, 16), R = block.slice(16, 32);
     for (let round = 0; round < ROUNDS; round++) {
-      const O = Ffull(sched.SB, sched.S2, sched.Pbox, R);
+      const O = Ffull(sched[SCHED_SB], sched[SCHED_S2], sched[SCHED_PBOX], R);
+      /** @type {uint8[]} */
       const nR = new Array(16);
       for (let i = 0; i < 16; i++) nR[i] = OpCodes.And32(OpCodes.Xor32(L[i], O[i]), 0xFF);
       L = R; R = nR;
@@ -284,6 +325,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._sched = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
