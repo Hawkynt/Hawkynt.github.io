@@ -6,6 +6,7 @@
  * Categories, in run order:
  * - CODEGEN: every language plugin and dialect generates code for the shared
  *   AST test cases (CodeGenTests.js)
+ * - INFERENCE: type inference of the shared transpiler AST (TypeInferenceTests.js)
  *
  * Options:
  *   --only=<a,b>          run only these categories (e.g. --only=codegen,csharp)
@@ -13,6 +14,7 @@
  *   --verbose, -v         details
  *   --language=<name>     CODEGEN: one language (e.g. python, csharp)
  *   --quick               CODEGEN: smoke cases only
+ *   --group=<text>        INFERENCE: only the test groups whose name contains it (e.g. literal)
  *
  * Exits non-zero when any check of a selected category fails.
  */
@@ -24,7 +26,8 @@ const Runner = require('./CategoryRunner');
 // Each module is loaded when its category runs: the code generators and the
 // transpiler are large, and a narrowed run should not pay for the others.
 const CATEGORIES = [
-  { key: 'codegen', label: 'CODEGEN', title: 'Code generation for every language and dialect', module: './CodeGenTests' }
+  { key: 'codegen', label: 'CODEGEN', title: 'Code generation for every language and dialect', module: './CodeGenTests' },
+  { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 
@@ -36,7 +39,7 @@ const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 function parseOptions(args) {
   Runner.rejectUnknownOptions(args,
     ['--verbose', '-v', '--quick'],
-    ['only', 'skip', 'language']);
+    ['only', 'skip', 'language', 'group']);
   const positional = args.find(arg => !arg.startsWith('-'));
   if (positional) throw new Error(`unexpected argument ${positional}`);
   const { selected } = Runner.selectCategories(args, CATEGORY_KEYS);
@@ -44,7 +47,8 @@ function parseOptions(args) {
     selected,
     verbose: args.includes('--verbose') || args.includes('-v'),
     quick: args.includes('--quick'),
-    language: Runner.optionValue(args, 'language')
+    language: Runner.optionValue(args, 'language'),
+    group: Runner.optionValue(args, 'group')
   };
 }
 
