@@ -50,44 +50,73 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // Specification section "XXH64 algorithm description".
+  /** @type {BigInt} */
   const PRIME64_1 = 0x9E3779B185EBCA87n;
+  /** @type {BigInt} */
   const PRIME64_2 = 0xC2B2AE3D27D4EB4Fn;
+  /** @type {BigInt} */
   const PRIME64_3 = 0x165667B19E3779F9n;
+  /** @type {BigInt} */
   const PRIME64_4 = 0x85EBCA77C2B2AE63n;
+  /** @type {BigInt} */
   const PRIME64_5 = 0x27D4EB2F165667C5n;
 
+  /** @type {BigInt} */
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   // XXH64 consumes the input in 32-byte stripes of four 8-byte lanes.
   const STRIPE = 32;
   const DIGEST_BYTES = 8;
 
-  /** Wrap a BigInt to 64 bits */
+  /**
+   * Wrap a BigInt to 64 bits
+   * @param {BigInt} value - Any non-negative or negative BigInt
+   * @returns {BigInt} value mod 2^64
+   */
   function u64(value) {
     return OpCodes.AndN(value, MASK64);
   }
 
-  /** Read one little-endian 64-bit lane out of a byte array */
+  /**
+   * Read one little-endian 64-bit lane out of a byte array
+   * @param {uint8[]} data - Source bytes
+   * @param {int32} offset - Index of the first byte
+   * @returns {BigInt} The lane
+   */
   function lane64(data, offset) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 7; i >= 0; i--)
       value = OpCodes.OrN(OpCodes.ShiftLn(value, 8), BigInt(OpCodes.ToByte(data[offset + i])));
     return value;
   }
 
-  /** Read one little-endian 32-bit lane out of a byte array, widened to 64 bits */
+  /**
+   * Read one little-endian 32-bit lane out of a byte array, widened to 64 bits
+   * @param {uint8[]} data - Source bytes
+   * @param {int32} offset - Index of the first byte
+   * @returns {BigInt} The lane
+   */
   function lane32(data, offset) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 3; i >= 0; i--)
       value = OpCodes.OrN(OpCodes.ShiftLn(value, 8), BigInt(OpCodes.ToByte(data[offset + i])));
     return value;
   }
 
-  /** Serialize a 64-bit value most significant byte first, the canonical form */
+  /**
+   * Serialize a 64-bit value most significant byte first, the canonical form
+   * @param {BigInt} value - 64-bit value
+   * @returns {uint8[]} 8 bytes, big-endian
+   */
   function toCanonical(value) {
+    /** @type {uint8[]} */
     const bytes = new Array(DIGEST_BYTES);
     for (let i = DIGEST_BYTES - 1; i >= 0; i--) {
-      bytes[i] = Number(OpCodes.AndN(value, 0xFFn));
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(value, 0xFFn));
+      bytes[i] = b;
       value = OpCodes.ShiftRn(value, 8);
     }
     return bytes;
@@ -114,7 +143,7 @@
       this.country = CountryCode.FR;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [DIGEST_BYTES]; // 64 bits
+      this.SupportedOutputSizes = [new KeySize(DIGEST_BYTES, DIGEST_BYTES, 1)]; // 64 bits
 
       // Performance and technical specifications
       this.blockSize = STRIPE; // 256 bits = 32 bytes
@@ -279,7 +308,7 @@
 
   class XXHash64AlgorithmInstance extends IHashFunctionInstance {
     /**
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XXHash64Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Unused
    */
 
@@ -287,7 +316,22 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = DIGEST_BYTES;
+      /** @type {BigInt} */
       this._seed = 0n;
+      /** @type {BigInt} */
+      this._acc1 = 0n;
+      /** @type {BigInt} */
+      this._acc2 = 0n;
+      /** @type {BigInt} */
+      this._acc3 = 0n;
+      /** @type {BigInt} */
+      this._acc4 = 0n;
+      /** @type {uint8[]} */
+      this._held = [];
+      /** @type {int32} */
+      this._pending = 0;
+      /** @type {int32} */
+      this._length = 0;
       this.Init();
     }
 
@@ -295,6 +339,7 @@
      * Reset the streaming state. XXH64 keeps four accumulators, a 32-byte
      * holdback for the partial stripe and the total length, which is what
      * decides between the long and short finalization paths.
+     * @returns {boolean} Always true
      */
     Init() {
       const seed = u64(this._seed);
@@ -302,7 +347,7 @@
       this._acc2 = u64(seed + PRIME64_2);
       this._acc3 = seed;
       this._acc4 = u64(seed - PRIME64_1);
-      this._held = new Array(STRIPE).fill(0);
+      this._held = OpCodes.CreateArray(STRIPE, 0);
       this._pending = 0;
       this._length = 0;
       return true;
@@ -310,14 +355,11 @@
 
     /**
      * Set the 64-bit seed. Changing the seed restarts the message.
-     * @param {number|BigInt|uint8[]} key - Seed value or 8 little-endian bytes
+     * @param {uint8[]} key - Seed as 8 little-endian bytes (anything shorter selects seed 0)
+     * @returns {boolean} Always true
      */
     KeySetup(key) {
-      if (typeof key === 'bigint') {
-        this._seed = u64(key);
-      } else if (typeof key === 'number') {
-        this._seed = u64(BigInt(Math.trunc(key)));
-      } else if (Array.isArray(key) && key.length >= 8) {
+      if (Array.isArray(key) && key.length >= 8) {
         this._seed = lane64(key, 0);
       } else {
         this._seed = 0n;
@@ -326,21 +368,36 @@
       return true;
     }
 
-    /** Round function, specification step 2 */
+    /**
+     * Round function, specification step 2
+     * @param {BigInt} acc - Accumulator
+     * @param {BigInt} lane - Input lane
+     * @returns {BigInt} New accumulator
+     */
     _round(acc, lane) {
       acc = u64(acc + u64(lane * PRIME64_2));
       acc = OpCodes.RotL64n(acc, 31);
       return u64(acc * PRIME64_1);
     }
 
-    /** Accumulator merge, specification step 3 */
+    /**
+     * Accumulator merge, specification step 3
+     * @param {BigInt} acc - Running hash
+     * @param {BigInt} accN - Accumulator to merge in
+     * @returns {BigInt} New running hash
+     */
     _merge(acc, accN) {
       acc = OpCodes.XorN(acc, this._round(0n, accN));
       acc = u64(acc * PRIME64_1);
       return u64(acc + PRIME64_4);
     }
 
-    /** Consume one full 32-byte stripe into the four accumulators */
+    /**
+     * Consume one full 32-byte stripe into the four accumulators
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} offset - Index of the first byte
+     * @returns {void}
+     */
     _stripe(data, offset) {
       this._acc1 = this._round(this._acc1, lane64(data, offset));
       this._acc2 = this._round(this._acc2, lane64(data, offset + 8));
@@ -390,6 +447,7 @@
      * @returns {uint8[]} 8-byte digest, most significant byte first
      */
     Result() {
+      /** @type {BigInt} */
       let acc;
 
       // The accumulators are only merged when the message reached at least one
@@ -439,7 +497,11 @@
       return toCanonical(acc);
     }
 
-    /** Final mix, specification step 6 */
+    /**
+     * Final mix, specification step 6
+     * @param {BigInt} acc - Value to mix
+     * @returns {BigInt} Mixed value
+     */
     _avalanche(acc) {
       acc = OpCodes.XorN(acc, OpCodes.ShiftRn(acc, 33));
       acc = u64(acc * PRIME64_2);
@@ -460,6 +522,10 @@
       return this.Result();
     }
 
+    /**
+     * Reset the state
+     * @returns {void}
+     */
     ClearData() {
       this.Init();
     }
