@@ -29,18 +29,37 @@ const CHECK_ONLY = process.argv.includes('--check');
 //#region ===== loading =====
 
 // Record which source file registered each algorithm so every page can link to
-// the implementation it documents.
+// the implementation it documents. The file being walked is not necessarily the
+// one registering: a file that require()s another (LION pulling in SHA-1, a
+// cascade pulling in Rijndael) triggers the dependency's registration while it
+// loads. The innermost algorithm module still being evaluated is the one whose
+// top-level code made the call, so that is what gets recorded.
 function loadAlgorithms() {
   const AlgorithmFramework = require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
   const OpCodes = require(path.join(CIPHER_ROOT, 'OpCodes.js'));
   global.AlgorithmFramework = AlgorithmFramework;
   global.OpCodes = OpCodes;
 
+  const Module = require('module');
+  const evaluating = [];
+  const compile = Module.prototype._compile;
+  Module.prototype._compile = function (content, filename) {
+    evaluating.push(filename);
+    try {
+      return compile.apply(this, arguments);
+    } finally {
+      evaluating.pop();
+    }
+  };
+
+  const algorithmPrefix = ALGORITHM_ROOT + path.sep;
   const sources = new Map();
-  let currentFile = null;
   const register = AlgorithmFramework.RegisterAlgorithm;
   AlgorithmFramework.RegisterAlgorithm = function (algorithm) {
-    if (currentFile && !sources.has(algorithm)) sources.set(algorithm, currentFile);
+    const file = [...evaluating].reverse().find(name => name.startsWith(algorithmPrefix));
+    if (file && !sources.has(algorithm)) {
+      sources.set(algorithm, path.relative(CIPHER_ROOT, file).split(path.sep).join('/'));
+    }
     return register.apply(this, arguments);
   };
 
@@ -50,15 +69,14 @@ function loadAlgorithms() {
     if (!fs.statSync(categoryDir).isDirectory()) continue;
     for (const file of fs.readdirSync(categoryDir).sort()) {
       if (!file.endsWith('.js')) continue;
-      currentFile = path.posix.join('algorithms', category, file);
       try {
         require(path.join(categoryDir, file));
       } catch (error) {
-        failures.push(`${currentFile}: ${error.message}`);
+        failures.push(`${path.posix.join('algorithms', category, file)}: ${error.message}`);
       }
     }
   }
-  currentFile = null;
+  Module.prototype._compile = compile;
 
   return { algorithms: AlgorithmFramework.Algorithms || [], sources, failures };
 }
@@ -395,6 +413,15 @@ function main() {
     categoryMap.get(entry.categoryName).entries.push(entry);
   }
   const categories = [...categoryMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Every page links to its implementation; a page that cannot is a defect.
+  const unattributed = entries.filter(entry => !sources.has(entry.algorithm));
+  if (unattributed.length) {
+    console.error('No source file could be attributed to:');
+    unattributed.forEach(entry => console.error(`  ${entry.algorithm.name}`));
+    process.exitCode = 1;
+    return;
+  }
 
   const rendered = new Map();
   for (const entry of entries) {
