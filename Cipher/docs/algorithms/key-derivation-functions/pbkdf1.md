@@ -54,7 +54,7 @@
 
 ## Test vectors
 
-8 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+11 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [OpenSSL Test Vector: password/saltsalt, 1 iteration, SHA-1](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
 
@@ -111,7 +111,40 @@
 | `input` | _(empty)_ |
 | `expected` | `2c2abace4bd8bb19f67113da146dbb8c` |
 
-**Vector 6** — [OpenSSL Test Vector: password/saltsalt, 1 iteration, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
+**Vector 6** — [OpenSSL Test Vector: password/saltsalt, 1 iteration, hash named SHA1](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
+
+| Field | Value |
+| --- | --- |
+| `salt` | `73616c7473616c74` |
+| `iterations` | `1` |
+| `outputSize` | `16` |
+| `hashFunction` | SHA1 |
+| `input` | `70617373776f7264` |
+| `expected` | `cab86dd6261710891e8cb56ee3625691` |
+
+**Vector 7** — [OpenSSL Test Vector: password/saltsalt, 2 iterations, hash named SHA1](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
+
+| Field | Value |
+| --- | --- |
+| `salt` | `73616c7473616c74` |
+| `iterations` | `2` |
+| `outputSize` | `16` |
+| `hashFunction` | SHA1 |
+| `input` | `70617373776f7264` |
+| `expected` | `e3a8dfcf2eea6dc81d2ad154274faae9` |
+
+**Vector 8** — [password/saltsalt, 1000 iterations, full 20-byte output, hash named sha1 (node crypto SHA-1)](https://nodejs.org/api/crypto.html#cryptocreatehashalgorithm-options)
+
+| Field | Value |
+| --- | --- |
+| `salt` | `73616c7473616c74` |
+| `iterations` | `1000` |
+| `outputSize` | `20` |
+| `hashFunction` | sha1 |
+| `input` | `70617373776f7264` |
+| `expected` | `f8833429b112582447bc66f433497f756e1840b5` |
+
+**Vector 9** — [OpenSSL Test Vector: password/saltsalt, 1 iteration, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
 
 | Field | Value |
 | --- | --- |
@@ -122,7 +155,7 @@
 | `input` | `70617373776f7264` |
 | `expected` | `fdbdf3419fff98bdb0241390f62a9db3` |
 
-**Vector 7** — [OpenSSL Test Vector: password/saltsalt, 2 iterations, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
+**Vector 10** — [OpenSSL Test Vector: password/saltsalt, 2 iterations, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
 
 | Field | Value |
 | --- | --- |
@@ -133,7 +166,7 @@
 | `input` | `70617373776f7264` |
 | `expected` | `3d4a8d4fb4c6e8686b21d36142902966` |
 
-**Vector 8** — [OpenSSL Test Vector: password/saltsalt, 4096 iterations, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
+**Vector 11** — [OpenSSL Test Vector: password/saltsalt, 4096 iterations, MD5](https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpkdf_pbkdf1.txt)
 
 | Field | Value |
 | --- | --- |
