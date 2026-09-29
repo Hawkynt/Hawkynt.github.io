@@ -175,27 +175,43 @@
       ];
 
       // SAFER Constants
+      /** @type {int32} */
       this.BLOCK_LEN = 8;
+      /** @type {int32} */
       this.MAX_ROUNDS = 13;
+      /** @type {int32} */
       this.K64_DEFAULT_ROUNDS = 6;
+      /** @type {int32} */
       this.K128_DEFAULT_ROUNDS = 10;
+      /** @type {int32} */
       this.TAB_LEN = 256;
+      /** @type {uint8[]} */
+      this.exp_tab = [];
+      /** @type {uint8[]} */
+      this.log_tab = [];
 
       // Initialize exponential and logarithm tables
       this._initTables();
     }
 
     // Initialize exponential and logarithm lookup tables
+    /**
+     * Build the exponential and logarithm tables of 45 in GF(257)
+     */
     _initTables() {
-      this.exp_tab = new Array(this.TAB_LEN);
-      this.log_tab = new Array(this.TAB_LEN);
+      /** @type {uint8[]} */
+      const expTab = new Array(this.TAB_LEN);
+      /** @type {uint8[]} */
+      const logTab = new Array(this.TAB_LEN);
 
       let exp = 1;
       for (let i = 0; i < this.TAB_LEN; i++) {
-        this.exp_tab[i] = OpCodes.And32(exp, 0xFF);
-        this.log_tab[this.exp_tab[i]] = i;
+        expTab[i] = OpCodes.And32(exp, 0xFF);
+        logTab[expTab[i]] = i;
         exp = (exp * 45) % 257; // GF(257) with primitive element 45
       }
+      this.exp_tab = expTab;
+      this.log_tab = logTab;
     }
 
     /**
@@ -225,9 +241,26 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint8[]|null} */
       this.expandedKey = null;
+      /** @type {int32} */
       this.nofRounds = 0;
+      // Parameters and tables of the parent algorithm
+      /** @type {int32} */
+      this.blockLen = algorithm.BLOCK_LEN;
+      /** @type {int32} */
+      this.maxRounds = algorithm.MAX_ROUNDS;
+      /** @type {int32} */
+      this.k64Rounds = algorithm.K64_DEFAULT_ROUNDS;
+      /** @type {int32} */
+      this.k128Rounds = algorithm.K128_DEFAULT_ROUNDS;
+      /** @type {uint8[]} */
+      this.expTab = algorithm.exp_tab;
+      /** @type {uint8[]} */
+      this.logTab = algorithm.log_tab;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
@@ -260,10 +293,10 @@
 
       // Set rounds and variant based on key size
       if (keyBytes.length === 8) {
-        this.nofRounds = this.algorithm.K64_DEFAULT_ROUNDS;
+        this.nofRounds = this.k64Rounds;
         this.isStrengthened = false;
       } else {
-        this.nofRounds = this.algorithm.K128_DEFAULT_ROUNDS;
+        this.nofRounds = this.k128Rounds;
         this.isStrengthened = true;
       }
       this.expandedKey = this._expandKey(keyBytes, this.isStrengthened);
@@ -288,9 +321,13 @@
       return this.nofRounds;
     }
 
+    /**
+     * @param {int32} value - Round count 1..13
+     */
     set rounds(value) {
-      if (!value || value < 1 || value > this.algorithm.MAX_ROUNDS) {
-        throw new Error("Invalid round count: " + value + " (1.." + this.algorithm.MAX_ROUNDS + ")");
+      const maxRounds = this.maxRounds;
+      if (!value || value < 1 || value > maxRounds) {
+        throw new Error("Invalid round count: " + value + " (1.." + maxRounds + ")");
       }
       this.nofRounds = value;
       if (this._key) this.expandedKey = this._expandKey(this._key);
@@ -369,12 +406,12 @@
 
         // S-box layer
         a = OpCodes.And32((this._EXP(a) + this.expandedKey[++keyIndex]), 0xFF);
-        b = OpCodes.XorN(this._LOG(b), this.expandedKey[++keyIndex]);
-        c = OpCodes.XorN(this._LOG(c), this.expandedKey[++keyIndex]);
+        b = OpCodes.Xor32(this._LOG(b), this.expandedKey[++keyIndex]);
+        c = OpCodes.Xor32(this._LOG(c), this.expandedKey[++keyIndex]);
         d = OpCodes.And32((this._EXP(d) + this.expandedKey[++keyIndex]), 0xFF);
         e = OpCodes.And32((this._EXP(e) + this.expandedKey[++keyIndex]), 0xFF);
-        f = OpCodes.XorN(this._LOG(f), this.expandedKey[++keyIndex]);
-        g = OpCodes.XorN(this._LOG(g), this.expandedKey[++keyIndex]);
+        f = OpCodes.Xor32(this._LOG(f), this.expandedKey[++keyIndex]);
+        g = OpCodes.Xor32(this._LOG(g), this.expandedKey[++keyIndex]);
         h = OpCodes.And32((this._EXP(h) + this.expandedKey[++keyIndex]), 0xFF);
 
         // Pseudo-Hadamard Transform layers
@@ -419,7 +456,8 @@
       let round = this.nofRounds;
 
       // Start from end of key
-      let keyIndex = this.algorithm.BLOCK_LEN * (1 + 2 * round);
+      const blockLen = this.blockLen;
+      let keyIndex = blockLen * (1 + 2 * round);
 
       // Reverse final key addition
       h = OpCodes.Xor32(h, this.expandedKey[keyIndex]);
@@ -456,14 +494,14 @@
         b = OpCodes.Xor32(b, this.expandedKey[--keyIndex]);
         a = OpCodes.And32((a - this.expandedKey[--keyIndex]), 0xFF);
 
-        h = OpCodes.XorN(this._LOG(h), this.expandedKey[--keyIndex]);
+        h = OpCodes.Xor32(this._LOG(h), this.expandedKey[--keyIndex]);
         g = OpCodes.And32((this._EXP(g) - this.expandedKey[--keyIndex]), 0xFF);
         f = OpCodes.And32((this._EXP(f) - this.expandedKey[--keyIndex]), 0xFF);
-        e = OpCodes.XorN(this._LOG(e), this.expandedKey[--keyIndex]);
-        d = OpCodes.XorN(this._LOG(d), this.expandedKey[--keyIndex]);
+        e = OpCodes.Xor32(this._LOG(e), this.expandedKey[--keyIndex]);
+        d = OpCodes.Xor32(this._LOG(d), this.expandedKey[--keyIndex]);
         c = OpCodes.And32((this._EXP(c) - this.expandedKey[--keyIndex]), 0xFF);
         b = OpCodes.And32((this._EXP(b) - this.expandedKey[--keyIndex]), 0xFF);
-        a = OpCodes.XorN(this._LOG(a), this.expandedKey[--keyIndex]);
+        a = OpCodes.Xor32(this._LOG(a), this.expandedKey[--keyIndex]);
       }
 
       return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
@@ -471,16 +509,29 @@
     }
 
     // Exponential S-box lookup
+    /**
+     * @param {uint32} x - Byte (masked)
+     * @returns {uint8} 45^x mod 257 (256 as 0)
+     */
     _EXP(x) {
-      return this.algorithm.exp_tab[OpCodes.And32(x, 0xFF)];
+      return this.expTab[OpCodes.And32(x, 0xFF)];
     }
 
     // Logarithmic S-box lookup
+    /**
+     * @param {uint32} x - Byte (masked)
+     * @returns {uint8} Discrete log of x to base 45
+     */
     _LOG(x) {
-      return this.algorithm.log_tab[OpCodes.And32(x, 0xFF)];
+      return this.logTab[OpCodes.And32(x, 0xFF)];
     }
 
     // Pseudo-Hadamard Transform
+    /**
+     * @param {uint32} x - First byte
+     * @param {uint32} y - Second byte
+     * @returns {uint32[]} [2x + y, x + y] mod 256
+     */
     _PHT(x, y) {
       const new_y = OpCodes.And32((y + x), 0xFF);
       const new_x = OpCodes.And32((x + new_y), 0xFF);
@@ -488,6 +539,11 @@
     }
 
     // Inverse Pseudo-Hadamard Transform
+    /**
+     * @param {uint32} x - First byte
+     * @param {uint32} y - Second byte
+     * @returns {uint32[]} Inverse of _PHT
+     */
     _IPHT(x, y) {
       const new_x = OpCodes.And32((x - y), 0xFF);
       const new_y = OpCodes.And32((y - new_x), 0xFF);
@@ -497,50 +553,59 @@
     // Expand user key to round keys
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[]} Expanded key (round count, then 8 * (1 + 2 * rounds) bytes)
      */
     _expandKey(keyBytes) {
       const nofRounds = this.nofRounds;
-      if (nofRounds > this.algorithm.MAX_ROUNDS) {
+      const maxRounds = this.maxRounds;
+      const blockLen = this.blockLen;
+      if (nofRounds > maxRounds) {
         throw new Error("Too many rounds: " + nofRounds);
       }
 
-      const keyLen = 1 + this.algorithm.BLOCK_LEN * (1 + 2 * nofRounds);
+      const keyLen = 1 + blockLen * (1 + 2 * nofRounds);
+      /** @type {uint8[]} */
       const key = new Array(keyLen);
       let keyIndex = 0;
 
       // Store number of rounds as first byte
       key[keyIndex++] = nofRounds;
 
-      const ka = new Array(this.algorithm.BLOCK_LEN + 1);
-      const kb = new Array(this.algorithm.BLOCK_LEN + 1);
+      /** @type {uint8[]} */
+      const ka = new Array(blockLen + 1);
+      /** @type {uint8[]} */
+      const kb = new Array(blockLen + 1);
 
-      ka[this.algorithm.BLOCK_LEN] = 0;
-      kb[this.algorithm.BLOCK_LEN] = 0;
+      ka[blockLen] = 0;
+      kb[blockLen] = 0;
 
-      // Initialize ka and kb arrays
-      for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
-        const userkey1_j = keyBytes[j] || 0;
-        const userkey2_j = (keyBytes.length > 8) ? (keyBytes[j + 8] || 0) : userkey1_j;
+      // Initialize ka and kb arrays (keyBytes has 8 or 16 bytes, so every read is defined)
+      for (let j = 0; j < blockLen; j++) {
+        const userkey1_j = keyBytes[j];
+        const userkey2_j = (keyBytes.length > 8) ? keyBytes[j + 8] : userkey1_j;
 
-        ka[this.algorithm.BLOCK_LEN] = OpCodes.Xor32(ka[this.algorithm.BLOCK_LEN], ka[j] = OpCodes.RotL8(userkey1_j, 5));
-        kb[this.algorithm.BLOCK_LEN] = OpCodes.XorN(kb[this.algorithm.BLOCK_LEN], kb[j] = key[keyIndex++] = userkey2_j);
+        ka[j] = OpCodes.RotL8(userkey1_j, 5);
+        ka[blockLen] = OpCodes.Xor32(ka[blockLen], ka[j]);
+        key[keyIndex++] = userkey2_j;
+        kb[j] = userkey2_j;
+        kb[blockLen] = OpCodes.Xor32(kb[blockLen], kb[j]);
       }
 
       // Generate round keys
       for (let i = 1; i <= nofRounds; i++) {
         // Rotate ka and kb arrays
-        for (let j = 0; j < this.algorithm.BLOCK_LEN + 1; j++) {
+        for (let j = 0; j < blockLen + 1; j++) {
           ka[j] = OpCodes.RotL8(ka[j], 6);
           kb[j] = OpCodes.RotL8(kb[j], 6);
         }
 
         // Generate first 8 bytes of round key
-        for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
+        for (let j = 0; j < blockLen; j++) {
           key[keyIndex++] = OpCodes.And32((ka[j] + this._EXP(this._EXP(OpCodes.And32((18 * i + j + 1), 0xFF)))), 0xFF);
         }
 
         // Generate second 8 bytes of round key
-        for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
+        for (let j = 0; j < blockLen; j++) {
           key[keyIndex++] = OpCodes.And32((kb[j] + this._EXP(this._EXP(OpCodes.And32((18 * i + j + 10), 0xFF)))), 0xFF);
         }
       }

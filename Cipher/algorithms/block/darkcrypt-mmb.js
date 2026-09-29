@@ -45,7 +45,7 @@
 
   const ROUNDS = 6;
   const ODD_CORRECTION = 0x2AAAAAAA;
-  const MOD_2_32_1 = OpCodes.ShiftLn(1n, 32) - 1n;
+  const MOD_2_32_1 = 0xFFFFFFFFn; // 2^32 - 1
 
   // Per-word multiplication constants (encrypt direction).
   /** @type {uint32[]} */
@@ -55,11 +55,20 @@
   const INV_CONST = [0x0DAD4694, 0x06D6A34A, 0x81B5A8D2, 0x281B5A8D];
 
   // Multiplication modulo 2^32 - 1.
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @returns {uint32} a * b mod (2^32 - 1)
+   */
   function mulModMersenne(a, b) {
     return OpCodes.ToUint32(Number(OpCodes.MulModN(BigInt(OpCodes.ToUint32(a)), BigInt(OpCodes.ToUint32(b)), MOD_2_32_1)));
   }
 
   // "theta" XOR diffusion layer shared by encryption and decryption (it is its own inverse).
+  /**
+   * @param {uint32[]} w - Four words
+   * @returns {uint32[]} Diffused words
+   */
   function diffuse(w) {
     const e = OpCodes.Xor32(w[2], w[0]);
     const a = OpCodes.Xor32(w[1], w[3]);
@@ -73,6 +82,10 @@
   // all-zero block from being a fixed point of the round. Since d = 0x2AAAAAAA
   // is even, the correction never changes the bit it is selected by, so eta is
   // its own inverse and the same function serves both directions.
+  /**
+   * @param {uint32[]} s - Four words (corrected in place)
+   * @returns {uint32[]} The same array
+   */
   function eta(s) {
     if (OpCodes.And32(s[0], 1) !== 0) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
     if (OpCodes.And32(s[3], 1) === 0) s[3] = OpCodes.Xor32(s[3], ODD_CORRECTION);
@@ -80,13 +93,28 @@
   }
 
   // Forward round transform: multiply-by-constant, eta correction, then diffuse.
+  /**
+   * @param {uint32[]} w - Four words
+   * @returns {uint32[]} Round output
+   */
   function roundForward(w) {
-    return diffuse(eta(w.map((x, i) => mulModMersenne(x, FWD_CONST[i]))));
+    /** @type {uint32[]} */
+    const m = [];
+    for (let i = 0; i < w.length; i++) m.push(mulModMersenne(w[i], FWD_CONST[i]));
+    return diffuse(eta(m));
   }
 
   // Inverse round transform: diffuse, eta correction, then multiply by inverse constant.
+  /**
+   * @param {uint32[]} w - Four words
+   * @returns {uint32[]} Round input
+   */
   function roundInverse(w) {
-    return eta(diffuse(w)).map((x, i) => mulModMersenne(x, INV_CONST[i]));
+    const s = eta(diffuse(w));
+    /** @type {uint32[]} */
+    const m = [];
+    for (let i = 0; i < s.length; i++) m.push(mulModMersenne(s[i], INV_CONST[i]));
+    return m;
   }
 
   class DarkCryptMMBAlgorithm extends BlockCipherAlgorithm {
@@ -171,6 +199,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._K = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -224,6 +253,7 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
      */
     _blockToWords(block) {
       return [
@@ -234,6 +264,10 @@
       ];
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} 16 bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -262,7 +296,7 @@
     _decryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const rotations = [2, 1, 0, 3, 2, 1, 0];
       for (let r = 0; r < ROUNDS + 1; r++) {
         for (let j = 0; j < 4; j++) w[j] = OpCodes.Xor32(w[j], K[(rotations[r] + j) % 4]);

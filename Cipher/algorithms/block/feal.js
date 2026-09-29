@@ -252,7 +252,7 @@
      * @returns {uint8} Transformed byte
      */
     _S1(a, b) {
-      return OpCodes.RotL8(OpCodes.And32(a + b + 1, 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(a, b), 1), 0xFF), 2);
     }
 
     /**
@@ -306,6 +306,7 @@
      */
     _generateRoundKeys(keyBytes) {
       const N = 8;
+      /** @type {uint8[]} */
       const subKeys = new Array(2 * (N + 4));
       for (let i = 0; i < subKeys.length; i++) subKeys[i] = 0;
 
