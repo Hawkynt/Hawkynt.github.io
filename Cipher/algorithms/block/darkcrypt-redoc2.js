@@ -57,22 +57,43 @@
   const KEN = 10;   // key table row size
 
   // Borland/Turbo runtime rand()/srand(): seed = seed*0x41C64E6D + 0x3039 (mod 2^32);
-  // rand() returns (seed >> 16) & 0x7FFF.
-  function makeRng() {
-    let seed = 0;
-    return {
-      srand(s) { seed = OpCodes.ToUint32(s); },
-      rand() { seed = OpCodes.ToUint32(Math.imul(seed, 0x41C64E6D) + 0x3039); return OpCodes.And32(OpCodes.Shr32(seed, 16), 0x7FFF); }
-    };
+  // rand() returns bits 16..30 of the seed.
+  class BorlandRng {
+    constructor() {
+      /** @type {uint32} */
+      this.seed = 0;
+    }
+
+    /**
+     * @param {uint32} s - New seed
+     */
+    srand(s) { this.seed = OpCodes.ToUint32(s); }
+
+    /**
+     * @returns {uint32} Next value 0..0x7FFF
+     */
+    rand() {
+      this.seed = OpCodes.Add32(OpCodes.Mul32(this.seed, 0x41C64E6D), 0x3039);
+      return OpCodes.And32(OpCodes.Shr32(this.seed, 16), 0x7FFF);
+    }
   }
 
-  // randy(lo,hi,arr,pos): writes a random permutation of [lo,hi] into arr starting at
-  // pos (rejection sampling for uniqueness), returns the count written.
+  /**
+   * randy(lo,hi,arr,pos): writes a random permutation of [lo,hi] into arr starting at
+   * pos (rejection sampling for uniqueness), returns the count written.
+   * @param {BorlandRng} rng - Generator
+   * @param {int32} lo - Lowest value
+   * @param {int32} hi - Highest value
+   * @param {uint8[]} arr - Destination table
+   * @param {int32} pos - First index written
+   * @returns {int32} Values written (hi - lo + 1)
+   */
   function randy(rng, lo, hi, arr, pos) {
     const fnum = hi - lo + 1;
-    let fcnt = 0, cu = pos;
+    let fcnt = 0;
+    let cu = pos;
     while (fcnt < fnum) {
-      const v = rng.rand() % fnum + lo;
+      const v = OpCodes.ToInt(rng.rand()) % fnum + lo;
       arr[cu] = v;
       if (fcnt > 0) {
         let dup = false;
@@ -83,31 +104,63 @@
     return fnum;
   }
 
+  // The reseed counter "cimp" is threaded through the three generators: each takes the
+  // current value and returns the value after its in-place increments.
+
+  /**
+   * @param {BorlandRng} rng - Generator
+   * @param {int32} num - Number of permutations
+   * @param {uint8[]} arr - Destination table
+   * @param {int32} pen - Permutation size
+   * @param {uint32} cimp - Reseed counter
+   * @returns {uint32} Updated reseed counter
+   */
   function createPermutations(rng, num, arr, pen, cimp) {
     let ccnt = 0;
-    rng.srand(OpCodes.ToUint32(cimp.value));
+    rng.srand(OpCodes.ToUint32(cimp));
     let pos = 0;
     for (let fi = 0; fi < num; fi++) {
       pos += randy(rng, 0, pen - 1, arr, pos);
       ccnt++;
-      if (ccnt === 6) { ccnt = 0; cimp.value = OpCodes.ToUint32(cimp.value + 1); rng.srand(cimp.value); }
+      if (ccnt === 6) { ccnt = 0; cimp = OpCodes.Add32(cimp, 1); rng.srand(cimp); }
     }
+    return cimp;
   }
+  /**
+   * @param {BorlandRng} rng - Generator
+   * @param {int32} num - Number of substitutions
+   * @param {uint8[]} arr - Destination table
+   * @param {int32} sun - Substitution size
+   * @param {uint32} cimp - Reseed counter
+   * @returns {uint32} Updated reseed counter
+   */
   function createSubstitutions(rng, num, arr, sun, cimp) {
-    rng.srand(OpCodes.ToUint32(cimp.value));
+    rng.srand(OpCodes.ToUint32(cimp));
     let pos = 0;
     for (let fi = 0; fi < num; fi++) {
       pos += randy(rng, 0, sun - 1, arr, pos);
-      cimp.value = OpCodes.ToUint32(cimp.value + 1);
-      rng.srand(cimp.value);
+      cimp = OpCodes.Add32(cimp, 1);
+      rng.srand(cimp);
     }
+    return cimp;
   }
+  /**
+   * @param {int32} num - Number of substitutions
+   * @param {uint8[]} esub - Substitution tables
+   * @param {uint8[]} isub - Inverse tables (written)
+   * @param {int32} sun - Substitution size
+   */
   function createInverseSubstitutions(num, esub, isub, sun) {
     for (let fi = 0; fi < num; fi++) {
       const off = fi * sun;
-      for (let i = 0; i < sun; i++) isub[off + esub[off + i]] = i;
+      for (let i = 0; i < sun; i++) isub[OpCodes.Add32(off, esub[off + i])] = i;
     }
   }
+  /**
+   * @param {BorlandRng} rng - Generator
+   * @param {uint8[]} arr - Destination table
+   * @param {int32} pos - First index written
+   */
   function createEnclaveTable(rng, arr, pos) {
     let fg = true;
     while (fg) {
@@ -115,71 +168,151 @@
       for (let fi = 0; fi < 3; fi++) p += randy(rng, 0, 4, arr, p);
       fg = false;
       for (let fi = 0; fi < 5; fi++) {
-        const v0 = arr[pos + fi], v1 = arr[pos + 5 + fi], v2 = arr[pos + 10 + fi];
+        const v0 = arr[pos + fi];
+        const v1 = arr[pos + 5 + fi];
+        const v2 = arr[pos + 10 + fi];
         if (v0 === v1 || v0 === v2 || v1 === v2) fg = true;
       }
     }
   }
+  /**
+   * @param {BorlandRng} rng - Generator
+   * @param {int32} num - Number of enclave tables
+   * @param {uint8[]} arr - Destination table
+   * @param {uint32} cimp - Reseed counter
+   * @returns {uint32} Updated reseed counter
+   */
   function createEnclaves(rng, num, arr, cimp) {
     let ccnt = 0;
-    rng.srand(OpCodes.ToUint32(cimp.value));
+    rng.srand(OpCodes.ToUint32(cimp));
     let pos = 0;
     for (let fi = 0; fi < num; fi++) {
       createEnclaveTable(rng, arr, pos);
       pos += 15;
       ccnt++;
-      if (ccnt === 6) { ccnt = 0; cimp.value = OpCodes.ToUint32(cimp.value + 1); rng.srand(cimp.value); }
+      if (ccnt === 6) { ccnt = 0; cimp = OpCodes.Add32(cimp, 1); rng.srand(cimp); }
     }
+    return cimp;
   }
 
+  /**
+   * @param {uint8[]} permArr - Permutation tables
+   * @param {uint32} permOff - Table offset
+   * @param {uint8[]} dataArr - Bytes (permuted in place)
+   * @param {int32} dataOff - First byte
+   */
   function permutate(permArr, permOff, dataArr, dataOff) {
+    /** @type {uint8[]} */
     const ws = new Uint8Array(10);
-    for (let i = 0; i < 10; i++) ws[permArr[permOff + i]] = dataArr[dataOff + i];
+    for (let i = 0; i < 10; i++) ws[permArr[OpCodes.Add32(permOff, i)]] = dataArr[dataOff + i];
     for (let i = 0; i < 10; i++) dataArr[dataOff + i] = ws[i];
   }
+  /**
+   * @param {uint8[]} permArr - Permutation tables
+   * @param {uint32} permOff - Table offset
+   * @param {uint8[]} dataArr - Bytes (permuted in place)
+   * @param {int32} dataOff - First byte
+   */
   function inversePermutate(permArr, permOff, dataArr, dataOff) {
+    /** @type {uint8[]} */
     const ws = new Uint8Array(10);
-    for (let i = 0; i < 10; i++) ws[i] = dataArr[dataOff + permArr[permOff + i]];
+    for (let i = 0; i < 10; i++) ws[i] = dataArr[OpCodes.Add32(dataOff, permArr[OpCodes.Add32(permOff, i)])];
     for (let i = 0; i < 10; i++) dataArr[dataOff + i] = ws[i];
   }
+  /**
+   * @param {int32} skip - Byte index left untouched (10 = none)
+   * @param {uint8[]} subArr - Substitution tables
+   * @param {uint32} subOff - Table offset
+   * @param {uint8[]} dataArr - Bytes (substituted in place)
+   * @param {int32} dataOff - First byte
+   */
   function substitute(skip, subArr, subOff, dataArr, dataOff) {
-    for (let i = 0; i < 10; i++) if (i !== skip) dataArr[dataOff + i] = subArr[subOff + dataArr[dataOff + i]];
+    for (let i = 0; i < 10; i++) if (i !== skip) dataArr[dataOff + i] = subArr[OpCodes.Add32(subOff, dataArr[dataOff + i])];
   }
+  /**
+   * @param {int32} skip - Byte index left untouched
+   * @param {uint8[]} kArr - Key table
+   * @param {uint32} kOff - Table offset
+   * @param {uint8[]} dataArr - Bytes (XORed in place)
+   * @param {int32} dataOff - First byte
+   */
   function keyXor(skip, kArr, kOff, dataArr, dataOff) {
-    for (let i = 0; i < 10; i++) if (i !== skip) dataArr[dataOff + i] ^= kArr[kOff + i];
+    for (let i = 0; i < 10; i++) if (i !== skip) dataArr[dataOff + i] = OpCodes.Xor32(dataArr[dataOff + i], kArr[OpCodes.Add32(kOff, i)]);
   }
+  /**
+   * @param {uint8[]} enc - Enclave tables
+   * @param {uint32} encOff - Table offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} base - First byte of the half
+   */
   function addClave(enc, encOff, data, base) {
     for (let fi = 0; fi < 5; fi++) {
-      const i1 = enc[encOff + fi], i2 = enc[encOff + 5 + fi], i3 = enc[encOff + 10 + fi];
-      data[base + i1] = (data[base + i1] + data[base + i2] + data[base + i3]) % 256;
+      const i1 = enc[OpCodes.Add32(encOff, fi)];
+      const i2 = enc[OpCodes.Add32(encOff, 5 + fi)];
+      const i3 = enc[OpCodes.Add32(encOff, 10 + fi)];
+      data[OpCodes.Add32(base, i1)] = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(data[OpCodes.Add32(base, i1)], data[OpCodes.Add32(base, i2)]), data[OpCodes.Add32(base, i3)]), 0xFF);
     }
   }
+  /**
+   * @param {uint8[]} enc - Enclave tables
+   * @param {uint32} encOff - Table offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} base - First byte of the half
+   */
   function subClave(enc, encOff, data, base) {
     for (let col = 4; col >= 0; col--) {
-      const i1 = enc[encOff + col], i2 = enc[encOff + 5 + col], i3 = enc[encOff + 10 + col];
-      let diff = (data[base + i1] - data[base + i2] - data[base + i3]) % 256;
-      if (diff < 0) diff += 256;
-      data[base + i1] = diff;
+      const i1 = enc[OpCodes.Add32(encOff, col)];
+      const i2 = enc[OpCodes.Add32(encOff, 5 + col)];
+      const i3 = enc[OpCodes.Add32(encOff, 10 + col)];
+      data[OpCodes.Add32(base, i1)] = OpCodes.And32(OpCodes.Sub32(OpCodes.Sub32(data[OpCodes.Add32(base, i1)], data[OpCodes.Add32(base, i2)]), data[OpCodes.Add32(base, i3)]), 0xFF);
     }
   }
+  /**
+   * @param {uint8[]} enb - Enclave tables
+   * @param {uint32} fOff - First enclave offset
+   * @param {uint32} sOff - Second enclave offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} dataOff - First byte
+   */
   function leftEnclave(enb, fOff, sOff, data, dataOff) {
     addClave(enb, fOff, data, dataOff);
     addClave(enb, sOff, data, dataOff);
-    for (let i = 0; i < 5; i++) data[dataOff + i] ^= data[dataOff + 5 + i];
+    for (let i = 0; i < 5; i++) data[dataOff + i] = OpCodes.Xor32(data[dataOff + i], data[dataOff + 5 + i]);
   }
+  /**
+   * @param {uint8[]} enb - Enclave tables
+   * @param {uint32} fOff - First enclave offset
+   * @param {uint32} sOff - Second enclave offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} dataOff - First byte
+   */
   function inverseLeftEnclave(enb, fOff, sOff, data, dataOff) {
-    for (let i = 0; i < 5; i++) data[dataOff + i] ^= data[dataOff + 5 + i];
+    for (let i = 0; i < 5; i++) data[dataOff + i] = OpCodes.Xor32(data[dataOff + i], data[dataOff + 5 + i]);
     subClave(enb, sOff, data, dataOff);
     subClave(enb, fOff, data, dataOff);
   }
+  /**
+   * @param {uint8[]} enb - Enclave tables
+   * @param {uint32} fOff - First enclave offset
+   * @param {uint32} sOff - Second enclave offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} dataOff - First byte
+   */
   function rightEnclave(enb, fOff, sOff, data, dataOff) {
     const base = dataOff + 5;
     addClave(enb, fOff, data, base);
     addClave(enb, sOff, data, base);
-    for (let i = 0; i < 5; i++) data[dataOff + 5 + i] ^= data[dataOff + i];
+    for (let i = 0; i < 5; i++) data[dataOff + 5 + i] = OpCodes.Xor32(data[dataOff + 5 + i], data[dataOff + i]);
   }
+  /**
+   * @param {uint8[]} enb - Enclave tables
+   * @param {uint32} fOff - First enclave offset
+   * @param {uint32} sOff - Second enclave offset
+   * @param {uint8[]} data - Bytes (modified in place)
+   * @param {int32} dataOff - First byte
+   */
   function inverseRightEnclave(enb, fOff, sOff, data, dataOff) {
-    for (let i = 0; i < 5; i++) data[dataOff + 5 + i] ^= data[dataOff + i];
+    for (let i = 0; i < 5; i++) data[dataOff + 5 + i] = OpCodes.Xor32(data[dataOff + 5 + i], data[dataOff + i]);
     const base = dataOff + 5;
     subClave(enb, sOff, data, base);
     subClave(enb, fOff, data, base);
@@ -188,8 +321,21 @@
   // keystable[fi] ends up holding the chained key-schedule state after fi+1 transform
   // rounds: the "current row" pointer advances through keystable each iteration
   // rather than a single fixed row being snapshotted.
+  /**
+   * @param {uint8[]} kx - First key half
+   * @param {uint8[]} ky - Second key half
+   * @param {uint8[]} keystable - Key table (written)
+   * @param {uint8[]} peb - Permutation tables
+   * @param {uint8[]} sub - Substitution tables
+   * @param {uint8[]} enb - Enclave tables
+   * @param {int32} pen - Permutation size
+   * @param {int32} sun - Substitution size
+   * @param {int32} enn - Enclave entry size
+   */
   function createKeyTable(kx, ky, keystable, peb, sub, enb, pen, sun, enn) {
+    /** @type {uint8[]} */
     const keyxxx = Uint8Array.from(kx);
+    /** @type {uint8[]} */
     const cur = Uint8Array.from(ky);
     for (let fi = 0; fi <= 255; fi++) {
       const a = OpCodes.Xor32(keyxxx[0], cur[0]);
@@ -198,13 +344,13 @@
       const d = OpCodes.Xor32(keyxxx[3], cur[3]);
       const m = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(keyxxx[4], cur[4]), keyxxx[5]), cur[5]), 0xFF);
       const n = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(keyxxx[6], cur[6]), keyxxx[7]), cur[7]), 0xFF);
-      const z = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(keyxxx[8], cur[8]), OpCodes.And32(keyxxx[9] + cur[9], 0xFF)), 0xFF);
+      const z = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(keyxxx[8], cur[8]), OpCodes.And32(OpCodes.Add32(keyxxx[9], cur[9]), 0xFF)), 0xFF);
 
-      permutate(peb, n * pen, cur, 0);
-      substitute(10, sub, (m % 16) * sun, cur, 0);
-      leftEnclave(enb, a * enn, b * enn, cur, 0);
-      rightEnclave(enb, c * enn, d * enn, cur, 0);
-      permutate(peb, z * pen, keyxxx, 0);
+      permutate(peb, OpCodes.Mul32(n, pen), cur, 0);
+      substitute(10, sub, OpCodes.Mul32(OpCodes.And32(m, 15), sun), cur, 0);
+      leftEnclave(enb, OpCodes.Mul32(a, enn), OpCodes.Mul32(b, enn), cur, 0);
+      rightEnclave(enb, OpCodes.Mul32(c, enn), OpCodes.Mul32(d, enn), cur, 0);
+      permutate(peb, OpCodes.Mul32(z, pen), keyxxx, 0);
 
       for (let i = 0; i < 10; i++) keystable[fi * 10 + i] = cur[i];
     }
@@ -214,103 +360,135 @@
   // pass runs 40 bytes past the end of keystable into the first 40 bytes of the
   // enclave table (an out-of-bounds read that is deterministic given the fixed
   // table layout used here, and reproduced intentionally for compatibility).
+  /**
+   * @param {uint8[]} keystable - Key table
+   * @param {uint8[]} encltable - Enclave table
+   * @param {uint8[]} masktable - Mask table (written)
+   */
   function createMaskTable(keystable, encltable, masktable) {
-    masktable.fill(0);
+    for (let i = 0; i < masktable.length; i++) masktable[i] = 0;
     for (let i = 0; i < 2600; i++) {
-      const srcByte = i < 2560 ? keystable[i] : encltable[i - 2560];
-      masktable[i % 100] ^= srcByte;
+      /** @type {uint8} */
+      let srcByte = 0;
+      if (i < 2560) srcByte = keystable[i];
+      else srcByte = encltable[i - 2560];
+      masktable[i % 100] = OpCodes.Xor32(masktable[i % 100], srcByte);
     }
-  }
-
-  function enclaveWZ(round) {
-    const w = ((round - 1) % 5 + 5) % 5;
-    return [w, (w + 1) % 5];
-  }
-
-  function encryptBlock(dataval, keystable, masktable, permtable, esub, encl) {
-    function doRound(round, skip1, skip2, mb) {
-      let table = OpCodes.And32(OpCodes.Xor32(dataval[skip1], masktable[mb]), 15);
-      substitute(skip1, esub, table * SUN, dataval, 0);
-      table = OpCodes.And32(OpCodes.Xor32(dataval[skip2], masktable[mb + 10]), 15);
-      substitute(skip2, esub, table * SUN, dataval, 0);
-      table = OpCodes.Xor32(dataval[skip1], masktable[mb + 20]);
-      keyXor(skip1, keystable, table * KEN, dataval, 0);
-      const [w, z] = enclaveWZ(round);
-      const a = OpCodes.Xor32(dataval[5 + w], masktable[mb + 30]);
-      const b = OpCodes.Xor32(dataval[5 + z], masktable[mb + 40]);
-      leftEnclave(encl, a * ENN, b * ENN, dataval, 0);
-      const c = OpCodes.Xor32(dataval[w], masktable[mb + 50]);
-      const d = OpCodes.Xor32(dataval[z], masktable[mb + 60]);
-      rightEnclave(encl, c * ENN, d * ENN, dataval, 0);
-      table = OpCodes.Xor32(dataval[skip2], masktable[mb + 70]);
-      keyXor(skip2, keystable, table * 10, dataval, 0);
-      let acc = 0;
-      for (let i = 0; i < 10; i++) acc ^= dataval[i];
-      acc ^= masktable[mb + 80];
-      permutate(permtable, acc * PEN, dataval, 0);
-    }
-    for (let round = 0; round <= 8; round++) doRound(round, round, round + 1, round);
-    doRound(9, 9, 0, 9);
-  }
-
-  function decryptBlock(dataval, keystable, masktable, permtable, isub, encl) {
-    function doRoundDecrypt(round, skip1, skip2, mb) {
-      let acc = 0;
-      for (let i = 0; i < 10; i++) acc ^= dataval[i];
-      acc ^= masktable[mb + 80];
-      inversePermutate(permtable, acc * PEN, dataval, 0);
-
-      let table = OpCodes.Xor32(dataval[skip2], masktable[mb + 70]);
-      keyXor(skip2, keystable, table * 10, dataval, 0);
-
-      const [w, z] = enclaveWZ(round);
-      const d = OpCodes.Xor32(dataval[z], masktable[mb + 60]);
-      const c = OpCodes.Xor32(dataval[w], masktable[mb + 50]);
-      inverseRightEnclave(encl, c * ENN, d * ENN, dataval, 0);
-
-      const b = OpCodes.Xor32(dataval[5 + z], masktable[mb + 40]);
-      const a = OpCodes.Xor32(dataval[5 + w], masktable[mb + 30]);
-      inverseLeftEnclave(encl, a * ENN, b * ENN, dataval, 0);
-
-      table = OpCodes.Xor32(dataval[skip1], masktable[mb + 20]);
-      keyXor(skip1, keystable, table * KEN, dataval, 0);
-
-      table = OpCodes.And32(OpCodes.Xor32(dataval[skip2], masktable[mb + 10]), 15);
-      substitute(skip2, isub, table * SUN, dataval, 0);
-
-      table = OpCodes.And32(OpCodes.Xor32(dataval[skip1], masktable[mb]), 15);
-      substitute(skip1, isub, table * SUN, dataval, 0);
-    }
-    doRoundDecrypt(9, 9, 0, 9);
-    for (let round = 8; round >= 0; round--) doRoundDecrypt(round, round, round + 1, round);
   }
 
   /**
-   * @param {uint8[]} keyBytes - Key bytes
+   * First enclave byte index of a round: (round - 1) mod 5
+   * @param {int32} round - Round
+   * @returns {int32} w
    */
-  function buildTables(keyBytes) {
-    const kx = keyBytes.slice(0, 10);
-    const ky = keyBytes.slice(10, 20);
-    const permtable = new Uint8Array(2560); // [256][10]
-    const esub = new Uint8Array(4096);      // [16][256]
-    const isub = new Uint8Array(4096);      // [16][256]
-    const encl = new Uint8Array(3840);      // [256][15]
-    const keystable = new Uint8Array(2560); // [256][10]
-    const masktable = new Uint8Array(100);  // [10][10]
+  function enclaveW(round) {
+    return ((round - 1) % 5 + 5) % 5;
+  }
 
-    const rng = makeRng();
-    // cimp: single running seed integer, starts at 32, threaded across all three
-    // table generator calls in sequence (see file header note).
-    const cimp = { value: 32 };
-    createPermutations(rng, 256, permtable, PEN, cimp);
-    createSubstitutions(rng, 16, esub, SUN, cimp);
-    createInverseSubstitutions(16, esub, isub, SUN);
-    createEnclaves(rng, 256, encl, cimp);
+  /**
+   * One encryption round, in place on dataval
+   * @param {uint8[]} dataval - Block bytes
+   * @param {uint8[]} keystable - Key table
+   * @param {uint8[]} masktable - Mask table
+   * @param {uint8[]} permtable - Permutation tables
+   * @param {uint8[]} esub - Substitution tables
+   * @param {uint8[]} encl - Enclave tables
+   * @param {int32} round - Round
+   * @param {int32} skip1 - First skipped byte
+   * @param {int32} skip2 - Second skipped byte
+   * @param {int32} mb - Mask offset
+   */
+  function encryptRound(dataval, keystable, masktable, permtable, esub, encl, round, skip1, skip2, mb) {
+    let table = OpCodes.And32(OpCodes.Xor32(dataval[skip1], masktable[mb]), 15);
+    substitute(skip1, esub, OpCodes.Mul32(table, SUN), dataval, 0);
+    table = OpCodes.And32(OpCodes.Xor32(dataval[skip2], masktable[mb + 10]), 15);
+    substitute(skip2, esub, OpCodes.Mul32(table, SUN), dataval, 0);
+    table = OpCodes.Xor32(dataval[skip1], masktable[mb + 20]);
+    keyXor(skip1, keystable, OpCodes.Mul32(table, KEN), dataval, 0);
+    const w = enclaveW(round);
+    const z = (w + 1) % 5;
+    const a = OpCodes.Xor32(dataval[5 + w], masktable[mb + 30]);
+    const b = OpCodes.Xor32(dataval[5 + z], masktable[mb + 40]);
+    leftEnclave(encl, OpCodes.Mul32(a, ENN), OpCodes.Mul32(b, ENN), dataval, 0);
+    const c = OpCodes.Xor32(dataval[w], masktable[mb + 50]);
+    const d = OpCodes.Xor32(dataval[z], masktable[mb + 60]);
+    rightEnclave(encl, OpCodes.Mul32(c, ENN), OpCodes.Mul32(d, ENN), dataval, 0);
+    table = OpCodes.Xor32(dataval[skip2], masktable[mb + 70]);
+    keyXor(skip2, keystable, OpCodes.Mul32(table, 10), dataval, 0);
+    /** @type {uint32} */
+    let acc = 0;
+    for (let i = 0; i < 10; i++) acc = OpCodes.Xor32(acc, dataval[i]);
+    acc = OpCodes.Xor32(acc, masktable[mb + 80]);
+    permutate(permtable, OpCodes.Mul32(acc, PEN), dataval, 0);
+  }
 
-    createKeyTable(kx, ky, keystable, permtable, esub, encl, PEN, SUN, ENN);
-    createMaskTable(keystable, encl, masktable);
+  /**
+   * @param {uint8[]} dataval - Block bytes (encrypted in place)
+   * @param {uint8[]} keystable - Key table
+   * @param {uint8[]} masktable - Mask table
+   * @param {uint8[]} permtable - Permutation tables
+   * @param {uint8[]} esub - Substitution tables
+   * @param {uint8[]} encl - Enclave tables
+   */
+  function encryptBlock(dataval, keystable, masktable, permtable, esub, encl) {
+    for (let round = 0; round <= 8; round++) encryptRound(dataval, keystable, masktable, permtable, esub, encl, round, round, round + 1, round);
+    encryptRound(dataval, keystable, masktable, permtable, esub, encl, 9, 9, 0, 9);
+  }
 
-    return { permtable, esub, isub, encl, keystable, masktable };
+  /**
+   * One decryption round, in place on dataval
+   * @param {uint8[]} dataval - Block bytes
+   * @param {uint8[]} keystable - Key table
+   * @param {uint8[]} masktable - Mask table
+   * @param {uint8[]} permtable - Permutation tables
+   * @param {uint8[]} isub - Inverse substitution tables
+   * @param {uint8[]} encl - Enclave tables
+   * @param {int32} round - Round
+   * @param {int32} skip1 - First skipped byte
+   * @param {int32} skip2 - Second skipped byte
+   * @param {int32} mb - Mask offset
+   */
+  function decryptRound(dataval, keystable, masktable, permtable, isub, encl, round, skip1, skip2, mb) {
+    /** @type {uint32} */
+    let acc = 0;
+    for (let i = 0; i < 10; i++) acc = OpCodes.Xor32(acc, dataval[i]);
+    acc = OpCodes.Xor32(acc, masktable[mb + 80]);
+    inversePermutate(permtable, OpCodes.Mul32(acc, PEN), dataval, 0);
+
+    let table = OpCodes.Xor32(dataval[skip2], masktable[mb + 70]);
+    keyXor(skip2, keystable, OpCodes.Mul32(table, 10), dataval, 0);
+
+    const w = enclaveW(round);
+    const z = (w + 1) % 5;
+    const d = OpCodes.Xor32(dataval[z], masktable[mb + 60]);
+    const c = OpCodes.Xor32(dataval[w], masktable[mb + 50]);
+    inverseRightEnclave(encl, OpCodes.Mul32(c, ENN), OpCodes.Mul32(d, ENN), dataval, 0);
+
+    const b = OpCodes.Xor32(dataval[5 + z], masktable[mb + 40]);
+    const a = OpCodes.Xor32(dataval[5 + w], masktable[mb + 30]);
+    inverseLeftEnclave(encl, OpCodes.Mul32(a, ENN), OpCodes.Mul32(b, ENN), dataval, 0);
+
+    table = OpCodes.Xor32(dataval[skip1], masktable[mb + 20]);
+    keyXor(skip1, keystable, OpCodes.Mul32(table, KEN), dataval, 0);
+
+    table = OpCodes.And32(OpCodes.Xor32(dataval[skip2], masktable[mb + 10]), 15);
+    substitute(skip2, isub, OpCodes.Mul32(table, SUN), dataval, 0);
+
+    table = OpCodes.And32(OpCodes.Xor32(dataval[skip1], masktable[mb]), 15);
+    substitute(skip1, isub, OpCodes.Mul32(table, SUN), dataval, 0);
+  }
+
+  /**
+   * @param {uint8[]} dataval - Block bytes (decrypted in place)
+   * @param {uint8[]} keystable - Key table
+   * @param {uint8[]} masktable - Mask table
+   * @param {uint8[]} permtable - Permutation tables
+   * @param {uint8[]} isub - Inverse substitution tables
+   * @param {uint8[]} encl - Enclave tables
+   */
+  function decryptBlock(dataval, keystable, masktable, permtable, isub, encl) {
+    decryptRound(dataval, keystable, masktable, permtable, isub, encl, 9, 9, 0, 9);
+    for (let round = 8; round >= 0; round--) decryptRound(dataval, keystable, masktable, permtable, isub, encl, round, round, round + 1, round);
   }
 
   class DarkCryptREDOC2Algorithm extends BlockCipherAlgorithm {
@@ -388,19 +566,81 @@
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 0;
-      this._tables = null;
+      /** @type {uint8[]|null} */
+      this._permtable = null;
+      /** @type {uint8[]|null} */
+      this._esub = null;
+      /** @type {uint8[]|null} */
+      this._isub = null;
+      /** @type {uint8[]|null} */
+      this._encl = null;
+      /** @type {uint8[]|null} */
+      this._keystable = null;
+      /** @type {uint8[]|null} */
+      this._masktable = null;
+    }
+
+    /**
+     * Build the permutation, substitution, enclave, key and mask tables
+     * @param {uint8[]} keyBytes - 20 key bytes
+     */
+    _buildTables(keyBytes) {
+      const kx = keyBytes.slice(0, 10);
+      const ky = keyBytes.slice(10, 20);
+      /** @type {uint8[]} */
+      const permtable = new Uint8Array(2560); // [256][10]
+      /** @type {uint8[]} */
+      const esub = new Uint8Array(4096);      // [16][256]
+      /** @type {uint8[]} */
+      const isub = new Uint8Array(4096);      // [16][256]
+      /** @type {uint8[]} */
+      const encl = new Uint8Array(3840);      // [256][15]
+      /** @type {uint8[]} */
+      const keystable = new Uint8Array(2560); // [256][10]
+      /** @type {uint8[]} */
+      const masktable = new Uint8Array(100);  // [10][10]
+
+      const rng = new BorlandRng();
+      // cimp: single running seed integer, starts at 32, threaded across all three
+      // table generator calls in sequence (see file header note).
+      /** @type {uint32} */
+      let cimp = 32;
+      cimp = createPermutations(rng, 256, permtable, PEN, cimp);
+      cimp = createSubstitutions(rng, 16, esub, SUN, cimp);
+      createInverseSubstitutions(16, esub, isub, SUN);
+      cimp = createEnclaves(rng, 256, encl, cimp);
+
+      createKeyTable(kx, ky, keystable, permtable, esub, encl, PEN, SUN, ENN);
+      createMaskTable(keystable, encl, masktable);
+
+      this._permtable = permtable;
+      this._esub = esub;
+      this._isub = isub;
+      this._encl = encl;
+      this._keystable = keystable;
+      this._masktable = masktable;
     }
 
     /**
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; return; }
+      if (!keyBytes) {
+        this._key = null;
+        this.KeySize = 0;
+        this._permtable = null;
+        this._esub = null;
+        this._isub = null;
+        this._encl = null;
+        this._keystable = null;
+        this._masktable = null;
+        return;
+      }
       if (keyBytes.length !== 20)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. REDOC II (DarkCrypt) requires exactly 20 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._tables = buildTables(Uint8Array.from(this._key));
+      this._buildTables(Uint8Array.from(this._key));
     }
 
     /**
@@ -422,11 +662,11 @@
 
       /** @type {uint8[]} */
       const output = [];
-      const t = this._tables;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        /** @type {uint8[]} */
         const block = Uint8Array.from(this.inputBuffer.slice(i, i + this.BlockSize));
-        if (this.isInverse) decryptBlock(block, t.keystable, t.masktable, t.permtable, t.isub, t.encl);
-        else encryptBlock(block, t.keystable, t.masktable, t.permtable, t.esub, t.encl);
+        if (this.isInverse) decryptBlock(block, this._keystable, this._masktable, this._permtable, this._isub, this._encl);
+        else encryptBlock(block, this._keystable, this._masktable, this._permtable, this._esub, this._encl);
         for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
       }
       this.inputBuffer = [];
