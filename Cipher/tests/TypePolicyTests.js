@@ -166,6 +166,10 @@ test('tier 2: given a framework method result, when this.Result() is called, the
   const ast = il('class H extends IHashFunctionInstance { m() { const r = this.Result(); return r; } }');
   equal(declOf(ast, 'r').resultType, 'uint8[]');
 });
+test('tier 2 before tier 3: given an override whose JSDoc says {Array}, when it is called, then the framework return type is kept', () => {
+  const ast = il('class R extends IRandomGeneratorInstance {\n /** @returns {Array} */\n NextBytes(n) { return []; }\n m() { const r = this.NextBytes(4); return r; } }');
+  equal(find(ast, n => n.type === 'ThisMethodCall' && n.method === 'NextBytes').resultType, 'uint8[]');
+});
 test('tier 2: given a class two local levels below the framework, when a framework field is read, then it is still typed', () => {
   const ast = il('class A extends IBlockCipherInstance {}\nclass B extends A { m() { const s = this.BlockSize; return s; } }');
   equal(declOf(ast, 's').resultType, 'int32');
