@@ -235,17 +235,25 @@
     0x10000000, 0x20000000, 0x40000000, 0x80000000
   ]);
 
-  const SQUARE_THETA_MATRIX = Object.freeze([
+  /** @type {uint8[][]} */
+  const SQUARE_THETA_MATRIX = [
     [0x02, 0x01, 0x01, 0x03],
     [0x03, 0x02, 0x01, 0x01],
     [0x01, 0x03, 0x02, 0x01],
     [0x01, 0x01, 0x03, 0x02]
-  ]);
+  ];
+  Object.freeze(SQUARE_THETA_MATRIX);
 
   const SQUARE_ROUNDS = 8;
   const SQUARE_GF_MODULUS = 0xF5;
 
+  /**
+   * @param {uint8} a - First factor
+   * @param {uint8} b - Second factor
+   * @returns {uint32} Product in GF(2^8) mod 0x1F5 (0..255)
+   */
   function squareMultiplyGF(a, b) {
+    /** @type {uint32} */
     let result = 0;
     let multiplicand = a&0xFF;
     let multiplier = b&0xFF;
@@ -255,7 +263,7 @@
         result = OpCodes.Xor32(result, multiplicand);
       }
 
-      const highBit = multiplicand&0x80;
+      const highBit = OpCodes.And32(multiplicand, 0x80);
       multiplicand = (OpCodes.Shl32(multiplicand, 1))&0xFF;
       if (highBit) {
         multiplicand = OpCodes.Xor32(multiplicand, SQUARE_GF_MODULUS);
@@ -267,6 +275,10 @@
     return result&0xFF;
   }
 
+  /**
+   * @param {uint32} word - Column word
+   * @returns {uint32} Theta-transformed word
+   */
   function squareThetaWord(word) {
     const bytes = [
       (OpCodes.Shr32(word, 24))&0xFF,
@@ -277,6 +289,7 @@
 
     let transformed = 0;
     for (let column = 0; column < 4; column++) {
+      /** @type {uint32} */
       let acc = 0;
       for (let row = 0; row < 4; row++) {
         acc = OpCodes.Xor32(acc, squareMultiplyGF(bytes[row], SQUARE_THETA_MATRIX[row][column]));
@@ -287,6 +300,10 @@
     return OpCodes.ToUint32(transformed);
   }
 
+  /**
+   * @param {uint32[]} roundKeys - Round-key words, updated in place
+   * @param {int32} roundIndex - Round whose four words are transformed
+   */
   function squareApplyTheta(roundKeys, roundIndex) {
     const offset = roundIndex * 4;
     for (let i = 0; i < 4; i++) {
@@ -296,6 +313,7 @@
 
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[][]} [encryption round keys, decryption round keys]
    */
   function squareGenerateRoundKeys(keyBytes) {
     const totalWords = (SQUARE_ROUNDS + 1) * 4;
@@ -339,10 +357,7 @@
     }
     squareApplyTheta(decRoundKeys, SQUARE_ROUNDS);
 
-    return {
-      enc: encRoundKeys,
-      dec: decRoundKeys
-    };
+    return [encRoundKeys, decRoundKeys];
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -492,8 +507,11 @@
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this._keyBytes = null;
+      /** @type {uint32[]|null} */
       this.encRoundKeys = null;
+      /** @type {uint32[]|null} */
       this.decRoundKeys = null;
     }
 
@@ -518,8 +536,8 @@
 
       const schedule = squareGenerateRoundKeys(keyBytes);
       this._keyBytes = Uint8Array.from(keyBytes);
-      this.encRoundKeys = schedule.enc;
-      this.decRoundKeys = schedule.dec;
+      this.encRoundKeys = schedule[0];
+      this.decRoundKeys = schedule[1];
       this.KeySize = keyBytes.length;
     }
 
@@ -601,10 +619,10 @@
 
       for (let round = 1; round < SQUARE_ROUNDS; round++) {
         const rkOffset = round * 4;
-        const t0 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 24))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 24))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 24))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 24))&0xFF]^roundKeys[rkOffset];
-        const t1 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 16))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 16))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 16))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 16))&0xFF]^roundKeys[rkOffset + 1];
-        const t2 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 8))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 8))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 8))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 8))&0xFF]^roundKeys[rkOffset + 2];
-        const t3 = SQUARE_T_ENC[0][s0&0xFF]^SQUARE_T_ENC[1][s1&0xFF]^SQUARE_T_ENC[2][s2&0xFF]^SQUARE_T_ENC[3][s3&0xFF]^roundKeys[rkOffset + 3];
+        const t0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 24))&0xFF], SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 24))&0xFF]), SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 24))&0xFF]), SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 24))&0xFF]), roundKeys[rkOffset]);
+        const t1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 16))&0xFF], SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 16))&0xFF]), SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 16))&0xFF]), SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 16))&0xFF]), roundKeys[rkOffset + 1]);
+        const t2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 8))&0xFF], SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 8))&0xFF]), SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 8))&0xFF]), SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 8))&0xFF]), roundKeys[rkOffset + 2]);
+        const t3 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_ENC[0][s0&0xFF], SQUARE_T_ENC[1][s1&0xFF]), SQUARE_T_ENC[2][s2&0xFF]), SQUARE_T_ENC[3][s3&0xFF]), roundKeys[rkOffset + 3]);
         s0 = OpCodes.ToUint32(t0);
         s1 = OpCodes.ToUint32(t1);
         s2 = OpCodes.ToUint32(t2);
@@ -671,10 +689,10 @@
 
       for (let round = 1; round < SQUARE_ROUNDS; round++) {
         const rkOffset = round * 4;
-        const t0 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 24))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 24))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 24))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 24))&0xFF]^roundKeys[rkOffset];
-        const t1 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 16))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 16))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 16))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 16))&0xFF]^roundKeys[rkOffset + 1];
-        const t2 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 8))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 8))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 8))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 8))&0xFF]^roundKeys[rkOffset + 2];
-        const t3 = SQUARE_T_DEC[0][s0&0xFF]^SQUARE_T_DEC[1][s1&0xFF]^SQUARE_T_DEC[2][s2&0xFF]^SQUARE_T_DEC[3][s3&0xFF]^roundKeys[rkOffset + 3];
+        const t0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 24))&0xFF], SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 24))&0xFF]), SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 24))&0xFF]), SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 24))&0xFF]), roundKeys[rkOffset]);
+        const t1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 16))&0xFF], SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 16))&0xFF]), SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 16))&0xFF]), SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 16))&0xFF]), roundKeys[rkOffset + 1]);
+        const t2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 8))&0xFF], SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 8))&0xFF]), SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 8))&0xFF]), SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 8))&0xFF]), roundKeys[rkOffset + 2]);
+        const t3 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(SQUARE_T_DEC[0][s0&0xFF], SQUARE_T_DEC[1][s1&0xFF]), SQUARE_T_DEC[2][s2&0xFF]), SQUARE_T_DEC[3][s3&0xFF]), roundKeys[rkOffset + 3]);
         s0 = OpCodes.ToUint32(t0);
         s1 = OpCodes.ToUint32(t1);
         s2 = OpCodes.ToUint32(t2);
