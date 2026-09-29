@@ -55,37 +55,60 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {BigInt} */
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+  /** @type {BigInt} */
   const MASK32 = 0xFFFFFFFFn;
 
   // xxHash primes
+  /** @type {BigInt} */
   const PRIME64_1 = 0x9E3779B185EBCA87n;
+  /** @type {BigInt} */
   const PRIME64_2 = 0xC2B2AE3D27D4EB4Fn;
+  /** @type {BigInt} */
   const PRIME64_3 = 0x165667B19E3779F9n;
+  /** @type {BigInt} */
   const PRIME64_4 = 0x85EBCA77C2B2AE63n;
+  /** @type {BigInt} */
   const PRIME64_5 = 0x27D4EB2F165667C5n;
+  /** @type {BigInt} */
   const PRIME32_1 = 0x9E3779B1n;
+  /** @type {BigInt} */
   const PRIME32_2 = 0x85EBCA77n;
+  /** @type {BigInt} */
   const PRIME32_3 = 0xC2B2AE3Dn;
 
   // xxHash3-specific mixing constants
+  /** @type {BigInt} */
   const PRIME_MX1 = 0x165667919E3779F9n;
+  /** @type {BigInt} */
   const PRIME_MX2 = 0x9FB21C651E98DF25n;
 
   // Layout constants from the reference implementation
+  /** @type {int32} */
   const SECRET_DEFAULT_SIZE = 192;
+  /** @type {int32} */
   const SECRET_SIZE_MIN = 136;
+  /** @type {int32} */
   const MIDSIZE_MAX = 240;
+  /** @type {int32} */
   const MIDSIZE_STARTOFFSET = 3;
+  /** @type {int32} */
   const MIDSIZE_LASTOFFSET = 17;
+  /** @type {int32} */
   const STRIPE_LEN = 64;
+  /** @type {int32} */
   const SECRET_CONSUME_RATE = 8;
+  /** @type {int32} */
   const ACC_NB = 8;
+  /** @type {int32} */
   const SECRET_MERGEACCS_START = 11;
+  /** @type {int32} */
   const SECRET_LASTACC_START = 7;
 
-  // The official 192-byte default secret
-  const K_SECRET = Object.freeze([
+  // The official 192-byte default secret (never written to)
+  /** @type {uint8[]} */
+  const K_SECRET = [
     0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
     0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
     0xcb, 0x79, 0xe6, 0x4e, 0xcc, 0xc0, 0xe5, 0x78, 0x82, 0x5a, 0xd0, 0x7d, 0xcc, 0xff, 0x72, 0x21,
@@ -98,14 +121,45 @@
     0x17, 0x0d, 0xdd, 0x51, 0xb7, 0xf0, 0xda, 0x49, 0xd3, 0x16, 0x55, 0x26, 0x29, 0xd4, 0x68, 0x9e,
     0x2b, 0x16, 0xbe, 0x58, 0x7d, 0x47, 0xa1, 0xfc, 0x8f, 0xf8, 0xb8, 0xd1, 0x7a, 0xd0, 0x31, 0xce,
     0x45, 0xcb, 0x3a, 0x8f, 0x95, 0x16, 0x04, 0x28, 0xaf, 0xd7, 0xfb, 0xca, 0xbb, 0x4b, 0x40, 0x7e
-  ]);
+  ];
 
   // ===== 64-bit helpers (BigInt) =====
+  // 128-bit values (products and the 128-bit hash) are BigInt pairs [lo, hi].
 
-  const m64 = v => OpCodes.AndN(v, MASK64);
-  const m32 = v => OpCodes.AndN(v, MASK32);
-  const mul64 = (a, b) => m64(a * b);
+  /**
+   * Reduce to 64 bits
+   * @param {BigInt} v - Any BigInt
+   * @returns {BigInt} v mod 2^64
+   */
+  function m64(v) {
+    return OpCodes.AndN(v, MASK64);
+  }
 
+  /**
+   * Reduce to 32 bits
+   * @param {BigInt} v - Any BigInt
+   * @returns {BigInt} v mod 2^32
+   */
+  function m32(v) {
+    return OpCodes.AndN(v, MASK32);
+  }
+
+  /**
+   * 64-bit wrapping multiplication
+   * @param {BigInt} a - Factor
+   * @param {BigInt} b - Factor
+   * @returns {BigInt} a * b mod 2^64
+   */
+  function mul64(a, b) {
+    return m64(a * b);
+  }
+
+  /**
+   * Little-endian 32-bit read
+   * @param {uint8[]} arr - Source bytes
+   * @param {int32} off - Index of the first byte
+   * @returns {BigInt} The word
+   */
   function readLE32(arr, off) {
     return OpCodes.OrN(
       OpCodes.OrN(BigInt(arr[off]), OpCodes.ShiftLn(BigInt(arr[off + 1]), 8)),
@@ -113,16 +167,36 @@
     );
   }
 
+  /**
+   * Little-endian 64-bit read
+   * @param {uint8[]} arr - Source bytes
+   * @param {int32} off - Index of the first byte
+   * @returns {BigInt} The word
+   */
   function readLE64(arr, off) {
     return OpCodes.OrN(readLE32(arr, off), OpCodes.ShiftLn(readLE32(arr, off + 4), 32));
   }
 
+  /**
+   * Little-endian 64-bit write
+   * @param {uint8[]} arr - Destination bytes
+   * @param {int32} off - Index of the first byte
+   * @param {BigInt} value - The word
+   * @returns {void}
+   */
   function writeLE64(arr, off, value) {
     for (let i = 0; i < 8; i++) {
-      arr[off + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+      arr[off + i] = b;
     }
   }
 
+  /**
+   * Byte-swap a 32-bit value
+   * @param {BigInt} v - Value (reduced to 32 bits first)
+   * @returns {BigInt} Swapped value
+   */
   function swap32(v) {
     v = m32(v);
     return m32(OpCodes.OrN(
@@ -131,8 +205,14 @@
     ));
   }
 
+  /**
+   * Byte-swap a 64-bit value
+   * @param {BigInt} v - Value (reduced to 64 bits first)
+   * @returns {BigInt} Swapped value
+   */
   function swap64(v) {
     v = m64(v);
+    /** @type {BigInt} */
     let r = 0n;
     for (let i = 0; i < 8; i++) {
       r = OpCodes.OrN(OpCodes.ShiftLn(r, 8), OpCodes.AndN(v, 0xFFn));
@@ -141,26 +221,56 @@
     return r;
   }
 
+  /**
+   * v ^ (v >> shift) on 64 bits
+   * @param {BigInt} v - Value
+   * @param {int32} shift - Shift count
+   * @returns {BigInt} Mixed value
+   */
   function xorshift64(v, shift) {
     v = m64(v);
     return m64(OpCodes.XorN(v, OpCodes.ShiftRn(v, shift)));
   }
 
-  // 64x64 -> 128 multiply, returned as { lo, hi }
+  /**
+   * 64x64 -> 128 multiply
+   * @param {BigInt} a - Factor
+   * @param {BigInt} b - Factor
+   * @returns {BigInt[]} Product as [lo, hi]
+   */
   function mult64to128(a, b) {
     const product = m64(a) * m64(b);
-    return { lo: m64(product), hi: m64(OpCodes.ShiftRn(product, 64)) };
+    /** @type {BigInt[]} */
+    const p = [m64(product), m64(OpCodes.ShiftRn(product, 64))];
+    return p;
   }
 
+  /**
+   * 128-bit product folded to 64 bits
+   * @param {BigInt} a - Factor
+   * @param {BigInt} b - Factor
+   * @returns {BigInt} lo ^ hi of the product
+   */
   function mul128Fold64(a, b) {
     const p = mult64to128(a, b);
-    return m64(OpCodes.XorN(p.lo, p.hi));
+    return m64(OpCodes.XorN(p[0], p[1]));
   }
 
+  /**
+   * 32x32 -> 64 multiply of the low halves
+   * @param {BigInt} a - Factor (low 32 bits used)
+   * @param {BigInt} b - Factor (low 32 bits used)
+   * @returns {BigInt} Product
+   */
   function mult32to64(a, b) {
     return m64(m32(a) * m32(b));
   }
 
+  /**
+   * XXH64 avalanche
+   * @param {BigInt} h - Value
+   * @returns {BigInt} Mixed value
+   */
   function xxh64Avalanche(h) {
     h = m64(h);
     h = m64(OpCodes.XorN(h, OpCodes.ShiftRn(h, 33)));
@@ -171,6 +281,11 @@
     return h;
   }
 
+  /**
+   * XXH3 avalanche
+   * @param {BigInt} h - Value
+   * @returns {BigInt} Mixed value
+   */
   function xxh3Avalanche(h) {
     h = xorshift64(h, 37);
     h = mul64(h, PRIME_MX1);
@@ -178,7 +293,12 @@
     return h;
   }
 
-  // Stronger finalizer for 4..8 byte inputs, inspired by Pelle Evensen's rrmxmx
+  /**
+   * Stronger finalizer for 4..8 byte inputs, inspired by Pelle Evensen's rrmxmx
+   * @param {BigInt} h - Value
+   * @param {int32} len - Input length
+   * @returns {BigInt} Mixed value
+   */
   function rrmxmx(h, len) {
     h = m64(OpCodes.XorN(OpCodes.XorN(h, OpCodes.RotL64n(h, 49)), OpCodes.RotL64n(h, 24)));
     h = mul64(h, PRIME_MX2);
@@ -189,9 +309,20 @@
 
   // ===== 64-bit length-dependent paths =====
 
+  /**
+   * XXH3-64 for 1..3 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len1to3_64(input, off, len, secret, seed) {
+    /** @type {int32} */
+    const half = OpCodes.Shr32(len, 1);
     const c1 = BigInt(input[off]);
-    const c2 = BigInt(input[off + OpCodes.Shr32(len, 1)]);
+    const c2 = BigInt(input[off + half]);
     const c3 = BigInt(input[off + len - 1]);
     const combined = m32(OpCodes.OrN(
       OpCodes.OrN(OpCodes.ShiftLn(c1, 16), OpCodes.ShiftLn(c2, 24)),
@@ -201,6 +332,15 @@
     return xxh64Avalanche(OpCodes.XorN(combined, bitflip));
   }
 
+  /**
+   * XXH3-64 for 4..8 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len4to8_64(input, off, len, secret, seed) {
     seed = m64(OpCodes.XorN(seed, OpCodes.ShiftLn(swap32(m32(seed)), 32)));
     const input1 = readLE32(input, off);
@@ -210,6 +350,15 @@
     return rrmxmx(OpCodes.XorN(input64, bitflip), len);
   }
 
+  /**
+   * XXH3-64 for 9..16 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len9to16_64(input, off, len, secret, seed) {
     const bitflip1 = m64(m64(OpCodes.XorN(readLE64(secret, 24), readLE64(secret, 32))) + seed);
     const bitflip2 = m64(m64(OpCodes.XorN(readLE64(secret, 40), readLE64(secret, 48))) - seed);
@@ -219,6 +368,15 @@
     return xxh3Avalanche(acc);
   }
 
+  /**
+   * XXH3-64 for 0..16 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len0to16_64(input, off, len, secret, seed) {
     if (len > 8) return len9to16_64(input, off, len, secret, seed);
     if (len >= 4) return len4to8_64(input, off, len, secret, seed);
@@ -226,6 +384,15 @@
     return xxh64Avalanche(OpCodes.XorN(seed, m64(OpCodes.XorN(readLE64(secret, 56), readLE64(secret, 64)))));
   }
 
+  /**
+   * Mix 16 input bytes with 16 secret bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} inOff - Input offset
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Mixed value
+   */
   function mix16B(input, inOff, secret, secOff, seed) {
     const inputLo = readLE64(input, inOff);
     const inputHi = readLE64(input, inOff + 8);
@@ -235,6 +402,15 @@
     );
   }
 
+  /**
+   * XXH3-64 for 17..128 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len17to128_64(input, off, len, secret, seed) {
     let acc = mul64(BigInt(len), PRIME64_1);
     if (len > 32) {
@@ -254,6 +430,15 @@
     return xxh3Avalanche(acc);
   }
 
+  /**
+   * XXH3-64 for 129..240 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt} Hash
+   */
   function len129to240_64(input, off, len, secret, seed) {
     let acc = mul64(BigInt(len), PRIME64_1);
     const nbRounds = Math.floor(len / 16);
@@ -270,6 +455,15 @@
 
   // ===== Long-input accumulate / scramble loop =====
 
+  /**
+   * Accumulate one 64-byte stripe
+   * @param {BigInt[]} acc - Eight accumulators, updated in place
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} inOff - Stripe offset
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @returns {void}
+   */
   function accumulate512(acc, input, inOff, secret, secOff) {
     for (let lane = 0; lane < ACC_NB; lane++) {
       const dataVal = readLE64(input, inOff + lane * 8);
@@ -281,12 +475,29 @@
     }
   }
 
+  /**
+   * Accumulate consecutive stripes
+   * @param {BigInt[]} acc - Eight accumulators, updated in place
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} inOff - First stripe offset
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @param {int32} nbStripes - Number of stripes
+   * @returns {void}
+   */
   function accumulate(acc, input, inOff, secret, secOff, nbStripes) {
     for (let n = 0; n < nbStripes; n++) {
       accumulate512(acc, input, inOff + n * STRIPE_LEN, secret, secOff + n * SECRET_CONSUME_RATE);
     }
   }
 
+  /**
+   * Scramble the accumulators
+   * @param {BigInt[]} acc - Eight accumulators, updated in place
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @returns {void}
+   */
   function scrambleAcc(acc, secret, secOff) {
     for (let lane = 0; lane < ACC_NB; lane++) {
       const key64 = readLE64(secret, secOff + lane * 8);
@@ -296,6 +507,15 @@
     }
   }
 
+  /**
+   * Long-input block loop
+   * @param {BigInt[]} acc - Eight accumulators, updated in place
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secretSize - Secret length
+   * @returns {void}
+   */
   function hashLongLoop(acc, input, len, secret, secretSize) {
     const nbStripesPerBlock = Math.floor((secretSize - STRIPE_LEN) / SECRET_CONSUME_RATE);
     const blockLen = STRIPE_LEN * nbStripesPerBlock;
@@ -314,6 +534,14 @@
     accumulate512(acc, input, len - STRIPE_LEN, secret, secretSize - STRIPE_LEN - SECRET_LASTACC_START);
   }
 
+  /**
+   * Mix two accumulators with the secret
+   * @param {BigInt[]} acc - Accumulators
+   * @param {int32} accOff - Index of the first accumulator
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @returns {BigInt} Mixed value
+   */
   function mix2Accs(acc, accOff, secret, secOff) {
     return mul128Fold64(
       OpCodes.XorN(acc[accOff], readLE64(secret, secOff)),
@@ -321,6 +549,14 @@
     );
   }
 
+  /**
+   * Merge the eight accumulators into one 64-bit value
+   * @param {BigInt[]} acc - Accumulators
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @param {BigInt} start - Starting value
+   * @returns {BigInt} Merged hash
+   */
   function mergeAccs(acc, secret, secOff, start) {
     let result = m64(start);
     for (let i = 0; i < 4; i++) {
@@ -329,12 +565,23 @@
     return xxh3Avalanche(result);
   }
 
+  /**
+   * Initial accumulator values
+   * @returns {BigInt[]} Eight accumulators
+   */
   function initAcc() {
-    return [PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3, PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1];
+    /** @type {BigInt[]} */
+    const acc = [PRIME32_3, PRIME64_1, PRIME64_2, PRIME64_3, PRIME64_4, PRIME32_2, PRIME64_5, PRIME32_1];
+    return acc;
   }
 
-  // Seeded long inputs derive their own secret from the default one
+  /**
+   * Seeded long inputs derive their own secret from the default one
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {uint8[]} Derived secret
+   */
   function initCustomSecret(seed) {
+    /** @type {uint8[]} */
     const secret = new Array(SECRET_DEFAULT_SIZE);
     const nbRounds = SECRET_DEFAULT_SIZE / 16;
     for (let i = 0; i < nbRounds; i++) {
@@ -344,27 +591,62 @@
     return secret;
   }
 
+  /**
+   * Secret for the long-input path
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {uint8[]} The default secret for seed 0, otherwise a derived one
+   */
+  function longSecret(seed) {
+    if (seed === 0n) return K_SECRET;
+    return initCustomSecret(seed);
+  }
+
+  /**
+   * XXH3-64 for more than 240 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secretSize - Secret length
+   * @returns {BigInt} Hash
+   */
   function hashLong64(input, len, secret, secretSize) {
     const acc = initAcc();
     hashLongLoop(acc, input, len, secret, secretSize);
     return mergeAccs(acc, secret, SECRET_MERGEACCS_START, mul64(BigInt(len), PRIME64_1));
   }
 
+  /**
+   * XXH3_64bits_withSeed
+   * @param {uint8[]} input - Message bytes
+   * @param {BigInt} seed - Seed
+   * @returns {BigInt} 64-bit hash
+   */
   function xxh3_64bits(input, seed) {
     seed = m64(seed);
     const len = input.length;
     if (len <= 16) return len0to16_64(input, 0, len, K_SECRET, seed);
     if (len <= 128) return len17to128_64(input, 0, len, K_SECRET, seed);
     if (len <= MIDSIZE_MAX) return len129to240_64(input, 0, len, K_SECRET, seed);
-    const secret = seed === 0n ? K_SECRET : initCustomSecret(seed);
-    return hashLong64(input, len, secret, SECRET_DEFAULT_SIZE);
+    return hashLong64(input, len, longSecret(seed), SECRET_DEFAULT_SIZE);
   }
 
   // ===== 128-bit length-dependent paths =====
+  // Every 128-bit result and accumulator is a BigInt pair [lo, hi].
 
+  /**
+   * XXH3-128 for 1..3 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len1to3_128(input, off, len, secret, seed) {
+    /** @type {int32} */
+    const half = OpCodes.Shr32(len, 1);
     const c1 = BigInt(input[off]);
-    const c2 = BigInt(input[off + OpCodes.Shr32(len, 1)]);
+    const c2 = BigInt(input[off + half]);
     const c3 = BigInt(input[off + len - 1]);
     const combinedLo = m32(OpCodes.OrN(
       OpCodes.OrN(OpCodes.ShiftLn(c1, 16), OpCodes.ShiftLn(c2, 24)),
@@ -374,12 +656,23 @@
     const combinedHi = m32(OpCodes.OrN(OpCodes.ShiftLn(swapped, 13), OpCodes.ShiftRn(swapped, 19)));
     const bitflipLo = m64(m64(OpCodes.XorN(readLE32(secret, 0), readLE32(secret, 4))) + seed);
     const bitflipHi = m64(m64(OpCodes.XorN(readLE32(secret, 8), readLE32(secret, 12))) - seed);
-    return {
-      lo: xxh64Avalanche(OpCodes.XorN(combinedLo, bitflipLo)),
-      hi: xxh64Avalanche(OpCodes.XorN(combinedHi, bitflipHi))
-    };
+    /** @type {BigInt[]} */
+    const h = [
+      xxh64Avalanche(OpCodes.XorN(combinedLo, bitflipLo)),
+      xxh64Avalanche(OpCodes.XorN(combinedHi, bitflipHi))
+    ];
+    return h;
   }
 
+  /**
+   * XXH3-128 for 4..8 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len4to8_128(input, off, len, secret, seed) {
     seed = m64(OpCodes.XorN(seed, OpCodes.ShiftLn(swap32(m32(seed)), 32)));
     const inputLo = readLE32(input, off);
@@ -390,15 +683,24 @@
 
     // Shifting len left keeps the multiplier even, which avoids even multiplies
     const m128 = mult64to128(keyed, m64(PRIME64_1 + OpCodes.ShiftLn(BigInt(len), 2)));
-    m128.hi = m64(m128.hi + m64(OpCodes.ShiftLn(m128.lo, 1)));
-    m128.lo = m64(OpCodes.XorN(m128.lo, OpCodes.ShiftRn(m128.hi, 3)));
-    m128.lo = xorshift64(m128.lo, 35);
-    m128.lo = mul64(m128.lo, PRIME_MX2);
-    m128.lo = xorshift64(m128.lo, 28);
-    m128.hi = xxh3Avalanche(m128.hi);
-    return { lo: m128.lo, hi: m128.hi };
+    m128[1] = m64(m128[1] + m64(OpCodes.ShiftLn(m128[0], 1)));
+    m128[0] = m64(OpCodes.XorN(m128[0], OpCodes.ShiftRn(m128[1], 3)));
+    m128[0] = xorshift64(m128[0], 35);
+    m128[0] = mul64(m128[0], PRIME_MX2);
+    m128[0] = xorshift64(m128[0], 28);
+    m128[1] = xxh3Avalanche(m128[1]);
+    return m128;
   }
 
+  /**
+   * XXH3-128 for 9..16 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len9to16_128(input, off, len, secret, seed) {
     const bitflipLo = m64(m64(OpCodes.XorN(readLE64(secret, 32), readLE64(secret, 40))) - seed);
     const bitflipHi = m64(m64(OpCodes.XorN(readLE64(secret, 48), readLE64(secret, 56))) + seed);
@@ -407,46 +709,89 @@
 
     const m128 = mult64to128(OpCodes.XorN(OpCodes.XorN(inputLo, inputHi), bitflipLo), PRIME64_1);
     // Put len in the middle of m128 so it reaches both halves of the 128x64 multiply
-    m128.lo = m64(m128.lo + OpCodes.ShiftLn(BigInt(len - 1), 54));
+    m128[0] = m64(m128[0] + OpCodes.ShiftLn(BigInt(len - 1), 54));
     inputHi = OpCodes.XorN(inputHi, bitflipHi);
-    m128.hi = m64(m128.hi + inputHi + mult32to64(m32(inputHi), PRIME32_2 - 1n));
-    m128.lo = m64(OpCodes.XorN(m128.lo, swap64(m128.hi)));
+    m128[1] = m64(m128[1] + inputHi + mult32to64(m32(inputHi), PRIME32_2 - 1n));
+    m128[0] = m64(OpCodes.XorN(m128[0], swap64(m128[1])));
 
-    const h128 = mult64to128(m128.lo, PRIME64_2);
-    h128.hi = m64(h128.hi + mul64(m128.hi, PRIME64_2));
-    return { lo: xxh3Avalanche(h128.lo), hi: xxh3Avalanche(h128.hi) };
+    const h128 = mult64to128(m128[0], PRIME64_2);
+    h128[1] = m64(h128[1] + mul64(m128[1], PRIME64_2));
+    /** @type {BigInt[]} */
+    const h = [xxh3Avalanche(h128[0]), xxh3Avalanche(h128[1])];
+    return h;
   }
 
+  /**
+   * XXH3-128 for 0..16 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len0to16_128(input, off, len, secret, seed) {
     if (len > 8) return len9to16_128(input, off, len, secret, seed);
     if (len >= 4) return len4to8_128(input, off, len, secret, seed);
     if (len > 0) return len1to3_128(input, off, len, secret, seed);
     const bitflipLo = m64(OpCodes.XorN(readLE64(secret, 64), readLE64(secret, 72)));
     const bitflipHi = m64(OpCodes.XorN(readLE64(secret, 80), readLE64(secret, 88)));
-    return {
-      lo: xxh64Avalanche(OpCodes.XorN(seed, bitflipLo)),
-      hi: xxh64Avalanche(OpCodes.XorN(seed, bitflipHi))
-    };
+    /** @type {BigInt[]} */
+    const h = [
+      xxh64Avalanche(OpCodes.XorN(seed, bitflipLo)),
+      xxh64Avalanche(OpCodes.XorN(seed, bitflipHi))
+    ];
+    return h;
   }
 
+  /**
+   * Mix 32 input bytes into a 128-bit accumulator
+   * @param {BigInt[]} acc - Accumulator [lo, hi], updated in place
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off1 - First 16-byte block
+   * @param {int32} off2 - Second 16-byte block
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secOff - Secret offset
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} The same accumulator
+   */
   function mix32B(acc, input, off1, off2, secret, secOff, seed) {
-    acc.lo = m64(acc.lo + mix16B(input, off1, secret, secOff, seed));
-    acc.lo = m64(OpCodes.XorN(acc.lo, m64(readLE64(input, off2) + readLE64(input, off2 + 8))));
-    acc.hi = m64(acc.hi + mix16B(input, off2, secret, secOff + 16, seed));
-    acc.hi = m64(OpCodes.XorN(acc.hi, m64(readLE64(input, off1) + readLE64(input, off1 + 8))));
+    acc[0] = m64(acc[0] + mix16B(input, off1, secret, secOff, seed));
+    acc[0] = m64(OpCodes.XorN(acc[0], m64(readLE64(input, off2) + readLE64(input, off2 + 8))));
+    acc[1] = m64(acc[1] + mix16B(input, off2, secret, secOff + 16, seed));
+    acc[1] = m64(OpCodes.XorN(acc[1], m64(readLE64(input, off1) + readLE64(input, off1 + 8))));
     return acc;
   }
 
+  /**
+   * Final mix of the mid-size 128-bit paths
+   * @param {BigInt[]} acc - Accumulator [lo, hi]
+   * @param {int32} len - Message length
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function finish128(acc, len, seed) {
-    let lo = m64(acc.lo + acc.hi);
-    let hi = m64(mul64(acc.lo, PRIME64_1) + mul64(acc.hi, PRIME64_4) + mul64(m64(BigInt(len) - seed), PRIME64_2));
+    let lo = m64(acc[0] + acc[1]);
+    let hi = m64(mul64(acc[0], PRIME64_1) + mul64(acc[1], PRIME64_4) + mul64(m64(BigInt(len) - seed), PRIME64_2));
     lo = xxh3Avalanche(lo);
     hi = m64(0n - xxh3Avalanche(hi));
-    return { lo, hi };
+    /** @type {BigInt[]} */
+    const h = [lo, hi];
+    return h;
   }
 
+  /**
+   * XXH3-128 for 17..128 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len17to128_128(input, off, len, secret, seed) {
-    let acc = { lo: mul64(BigInt(len), PRIME64_1), hi: 0n };
+    /** @type {BigInt[]} */
+    let acc = [mul64(BigInt(len), PRIME64_1), 0n];
     if (len > 32) {
       if (len > 64) {
         if (len > 96) acc = mix32B(acc, input, off + 48, off + len - 64, secret, 96, seed);
@@ -458,14 +803,25 @@
     return finish128(acc, len, seed);
   }
 
+  /**
+   * XXH3-128 for 129..240 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} off - Start of the message
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function len129to240_128(input, off, len, secret, seed) {
-    let acc = { lo: mul64(BigInt(len), PRIME64_1), hi: 0n };
+    /** @type {BigInt[]} */
+    let acc = [mul64(BigInt(len), PRIME64_1), 0n];
+    /** @type {int32} */
     let i;
     for (i = 32; i < 160; i += 32) {
       acc = mix32B(acc, input, off + i - 32, off + i - 16, secret, i - 32, seed);
     }
-    acc.lo = xxh3Avalanche(acc.lo);
-    acc.hi = xxh3Avalanche(acc.hi);
+    acc[0] = xxh3Avalanche(acc[0]);
+    acc[1] = xxh3Avalanche(acc[1]);
     // Note: i <= len duplicates the last 32 bytes when len is a multiple of 32.
     // That is required to keep the published results stable.
     for (i = 160; i <= len; i += 32) {
@@ -476,23 +832,38 @@
     return finish128(acc, len, seed);
   }
 
+  /**
+   * XXH3-128 for more than 240 bytes
+   * @param {uint8[]} input - Message bytes
+   * @param {int32} len - Message length
+   * @param {uint8[]} secret - Secret bytes
+   * @param {int32} secretSize - Secret length
+   * @returns {BigInt[]} Hash as [lo, hi]
+   */
   function hashLong128(input, len, secret, secretSize) {
     const acc = initAcc();
     hashLongLoop(acc, input, len, secret, secretSize);
     const lo = mergeAccs(acc, secret, SECRET_MERGEACCS_START, mul64(BigInt(len), PRIME64_1));
     const hi = mergeAccs(acc, secret, secretSize - STRIPE_LEN - SECRET_MERGEACCS_START,
       m64(OpCodes.XorN(mul64(BigInt(len), PRIME64_2), MASK64)));
-    return { lo, hi };
+    /** @type {BigInt[]} */
+    const h = [lo, hi];
+    return h;
   }
 
+  /**
+   * XXH3_128bits_withSeed
+   * @param {uint8[]} input - Message bytes
+   * @param {BigInt} seed - Seed
+   * @returns {BigInt[]} 128-bit hash as [lo, hi]
+   */
   function xxh3_128bits(input, seed) {
     seed = m64(seed);
     const len = input.length;
     if (len <= 16) return len0to16_128(input, 0, len, K_SECRET, seed);
     if (len <= 128) return len17to128_128(input, 0, len, K_SECRET, seed);
     if (len <= MIDSIZE_MAX) return len129to240_128(input, 0, len, K_SECRET, seed);
-    const secret = seed === 0n ? K_SECRET : initCustomSecret(seed);
-    return hashLong128(input, len, secret, SECRET_DEFAULT_SIZE);
+    return hashLong128(input, len, longSecret(seed), SECRET_DEFAULT_SIZE);
   }
 
   /**
@@ -517,7 +888,7 @@
       this.country = CountryCode.MULTI;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [8, 16]; // 64 and 128 bits
+      this.SupportedOutputSizes = [new KeySize(8, 8, 1), new KeySize(16, 16, 1)]; // 64 and 128 bits
 
       // Performance and technical specifications
       this.blockSize = 64;  // 64-byte stripe in the long-input accumulate loop
@@ -537,11 +908,11 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Cryptographic Weakness",
-          text: "Not designed for cryptographic use - vulnerable to deliberate collision attacks",
-          mitigation: "Use only for non-cryptographic applications like hash tables and checksums"
-        }
+        new Vulnerability(
+          "Cryptographic Weakness",
+          "Not designed for cryptographic use - vulnerable to deliberate collision attacks",
+          "Use only for non-cryptographic applications like hash tables and checksums"
+        )
       ];
 
       // Official test vectors from the xxHash sanity test suite.
@@ -558,126 +929,7 @@
       // half, matching the way xxhsum prints XXH128 results.
       const URI = "https://github.com/Cyan4973/xxHash/blob/dev/tests/sanity_test_vectors.h";
 
-      this.tests = VECTORS(URI);
-    }
-
-    /**
-   * Create new hash instance
-   * @param {boolean} [isInverse=false] - Unused; hash functions have no inverse
-   * @returns {Object} New hash instance
-   */
-
-    CreateInstance(isInverse = false) {
-      if (isInverse) return null;
-      return new XXHash3AlgorithmInstance(this, isInverse);
-    }
-  }
-
-  /**
- * XXHash3Algorithm instance implementing the Feed/Result pattern
- * @class
- * @extends {IHashFunctionInstance}
- */
-
-  class XXHash3AlgorithmInstance extends IHashFunctionInstance {
-    /**
-   * Initialize instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Unused
-   */
-
-    constructor(algorithm, isInverse = false) {
-      super(algorithm);
-      this.isInverse = isInverse;
-      this.OutputSize = 8; // Default to 64-bit
-      this.inputBuffer = [];
-      this._seed = 0n;
-    }
-
-    /**
-     * Set the 64-bit seed. Accepts a hex string, a byte array (big-endian),
-     * a Number or a BigInt.
-     */
-    setSeed(seed) {
-      if (seed === null || seed === undefined) {
-        this._seed = 0n;
-      } else if (typeof seed === 'bigint') {
-        this._seed = m64(seed);
-      } else if (typeof seed === 'number') {
-        this._seed = m64(BigInt(Math.trunc(seed)));
-      } else if (typeof seed === 'string') {
-        const clean = seed.replace(/[^0-9a-fA-F]/g, '');
-        this._seed = clean.length === 0 ? 0n : m64(BigInt('0x' + clean));
-      } else if (Array.isArray(seed) || ArrayBuffer.isView(seed)) {
-        let v = 0n;
-        for (let i = 0; i < seed.length; i++) {
-          v = OpCodes.OrN(OpCodes.ShiftLn(v, 8), BigInt(OpCodes.AndN(seed[i], 0xFF)));
-        }
-        this._seed = m64(v);
-      } else {
-        this._seed = 0n;
-      }
-      return true;
-    }
-
-    get seed() { return this._seed; }
-    set seed(value) { this.setSeed(value); }
-
-    SetOutputSize(size) {
-      if (size !== 8 && size !== 16) {
-        throw new Error('xxHash3 supports only 64-bit (8 bytes) or 128-bit (16 bytes) output');
-      }
-      this.OutputSize = size;
-    }
-
-    // Lower-case alias: this is the setter name the test engine looks for when a
-    // vector carries an "outputSize" property.
-    setOutputSize(size) {
-      this.SetOutputSize(size);
-    }
-
-    /**
-     * Hash a complete message in one operation
-     * @param {Array} message - Message to hash as byte array
-     * @returns {Array} Hash digest as byte array
-     */
-    Hash(message) {
-      const data = message || [];
-      const out = [];
-      if (this.OutputSize === 16) {
-        const h = xxh3_128bits(data, this._seed);
-        // high half first, then low half, each big-endian
-        for (let i = 7; i >= 0; i--) out.push(Number(OpCodes.AndN(OpCodes.ShiftRn(h.hi, i * 8), 0xFFn)));
-        for (let i = 7; i >= 0; i--) out.push(Number(OpCodes.AndN(OpCodes.ShiftRn(h.lo, i * 8), 0xFFn)));
-      } else {
-        const h = xxh3_64bits(data, this._seed);
-        for (let i = 7; i >= 0; i--) out.push(Number(OpCodes.AndN(OpCodes.ShiftRn(h, i * 8), 0xFFn)));
-      }
-      return out;
-    }
-
-    /**
-     * Result method required by test suite - returns final hash.
-     * Feed() is inherited from the framework base class and simply appends to
-     * inputBuffer, so Feed(a); Feed(b) hashes the same bytes as Feed(a || b).
-     * @returns {Array} Hash digest as byte array
-     */
-    Result() {
-      const result = this.Hash(this.inputBuffer || []);
-      this.inputBuffer = [];
-      return result;
-    }
-
-    ClearData() {
-      this.inputBuffer = [];
-      this._seed = 0n;
-    }
-  }
-
-  // ===== TEST VECTORS =====
-  // Defined after the classes so the long hex literals do not obscure the code.
-  function VECTORS(URI) {
-    return [
+      this.tests = [
         // ---- XXH3-64, default secret, seed = 0 ----
         {
           text: "XXH3-64 len=0, seed 0",
@@ -1159,7 +1411,152 @@
           outputSize: 16,
           expected: OpCodes.Hex8ToBytes("EC64AFAE6A137582DDA9B0A161D4829A")
         }
-    ];
+      ];
+    }
+
+    /**
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Unused; hash functions have no inverse
+   * @returns {XXHash3AlgorithmInstance} New hash instance
+   */
+
+    CreateInstance(isInverse = false) {
+      if (isInverse) return null;
+      return new XXHash3AlgorithmInstance(this, isInverse);
+    }
+  }
+
+  /**
+ * XXHash3Algorithm instance implementing the Feed/Result pattern
+ * @class
+ * @extends {IHashFunctionInstance}
+ */
+
+  class XXHash3AlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize instance
+   * @param {XXHash3Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused
+   */
+
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.OutputSize = 8; // Default to 64-bit
+      this.inputBuffer = [];
+      /** @type {BigInt} */
+      this._seed = 0n;
+    }
+
+    /**
+     * Set the 64-bit seed from a hex string (non-hex characters are ignored;
+     * null, undefined or an empty string select seed 0).
+     * @param {string} seed - Seed as hex digits, most significant first
+     * @returns {boolean} Always true
+     */
+    setSeed(seed) {
+      if (seed === null || seed === undefined) {
+        this._seed = 0n;
+        return true;
+      }
+      /** @type {string} */
+      const clean = seed.replace(/[^0-9a-fA-F]/g, '');
+      if (clean.length === 0) this._seed = 0n;
+      else this._seed = m64(BigInt('0x' + clean));
+      return true;
+    }
+
+    /**
+     * Current 64-bit seed
+     * @returns {BigInt} The seed
+     */
+    get seed() { return this._seed; }
+
+    /**
+     * Set the seed from a hex string
+     * @param {string} value - Seed as hex digits
+     */
+    set seed(value) { this.setSeed(value); }
+
+    /**
+     * Select the digest size
+     * @param {int32} size - 8 or 16 bytes
+     * @returns {void}
+     */
+    SetOutputSize(size) {
+      if (size !== 8 && size !== 16) {
+        throw new Error('xxHash3 supports only 64-bit (8 bytes) or 128-bit (16 bytes) output');
+      }
+      this.OutputSize = size;
+    }
+
+    /**
+     * Lower-case alias: this is the setter name the test engine looks for when a
+     * vector carries an "outputSize" property.
+     * @param {int32} size - 8 or 16 bytes
+     * @returns {void}
+     */
+    setOutputSize(size) {
+      this.SetOutputSize(size);
+    }
+
+    /**
+     * Append a 64-bit value big-endian
+     * @param {BigInt} value - The value
+     * @param {uint8[]} out - Destination, appended to
+     * @returns {void}
+     */
+    _pushBE64(value, out) {
+      for (let i = 7; i >= 0; i--) {
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+        out.push(b);
+      }
+    }
+
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message to hash as byte array (null hashes the empty message)
+     * @returns {uint8[]} Hash digest as byte array
+     */
+    Hash(message) {
+      /** @type {uint8[]} */
+      const out = [];
+      /** @type {uint8[]} */
+      let data = message;
+      if (!data) data = [];
+      if (this.OutputSize === 16) {
+        const h = xxh3_128bits(data, this._seed);
+        // high half first, then low half, each big-endian
+        this._pushBE64(h[1], out);
+        this._pushBE64(h[0], out);
+      } else {
+        const h = xxh3_64bits(data, this._seed);
+        this._pushBE64(h, out);
+      }
+      return out;
+    }
+
+    /**
+     * Result method required by test suite - returns final hash.
+     * Feed() is inherited from the framework base class and simply appends to
+     * inputBuffer, so Feed(a); Feed(b) hashes the same bytes as Feed(a || b).
+     * @returns {uint8[]} Hash digest as byte array
+     */
+    Result() {
+      const result = this.Hash(this.inputBuffer);
+      this.inputBuffer = [];
+      return result;
+    }
+
+    /**
+     * Drop buffered input and reset the seed
+     * @returns {void}
+     */
+    ClearData() {
+      this.inputBuffer = [];
+      this._seed = 0n;
+    }
   }
 
   // Register the algorithm

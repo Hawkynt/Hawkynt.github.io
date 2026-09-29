@@ -42,72 +42,74 @@
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
 
   // AES S-box for Haraka operations
-  const AES_SBOX = Object.freeze([
-    0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
-    0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
-    0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
-    0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x75,
-    0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84,
-    0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF,
-    0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA8,
-    0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2,
-    0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73,
-    0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xDB,
-    0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79,
-    0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08,
-    0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8A,
-    0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E,
-    0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
-    0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
-  ]);
+  /** @type {uint8[]} */
+  const AES_SBOX = Object.freeze(OpCodes.Hex8ToBytes(
+    "637C777BF26B6FC53001672BFED7AB76CA82C97DFA5947F0ADD4A2AF9CA472C0" +
+    "B7FD9326363FF7CC34A5E5F171D8311504C723C31896059A071280E2EB27B275" +
+    "09832C1A1B6E5AA0523BD6B329E32F8453D100ED20FCB15B6ACBBE394A4C58CF" +
+    "D0EFAAFB434D338545F9027F503C9FA851A3408F929D38F5BCB6DA2110FFF3D2" +
+    "CD0C13EC5F974417C4A77E3D645D197360814FDC222A908846EEB814DE5E0BDB" +
+    "E0323A0A4906245CC2D3AC629195E479E7C8376D8DD54EA96C56F4EA657AAE08" +
+    "BA78252E1CA6B4C6E8DD741F4BBD8B8A703EB5664803F60E613557B986C11D9E" +
+    "E1F8981169D98E949B1E87E9CE5528DF8CA1890DBFE6426841992D0FB054BB16"
+  ));
 
   // Haraka round constants (from reference implementation)
-  const HARAKA_RC = Object.freeze([
-    Object.freeze([0x9D, 0x7B, 0x81, 0x75, 0xF0, 0xFE, 0xC5, 0xB2, 0x0A, 0xC0, 0x20, 0xE6, 0x4C, 0x70, 0x84, 0x06]),
-    Object.freeze([0x17, 0xF7, 0x08, 0x2F, 0xA4, 0x6B, 0x0F, 0x64, 0x6B, 0xA0, 0xF3, 0x88, 0xE1, 0xB4, 0x66, 0x8B]),
-    Object.freeze([0x14, 0x91, 0x02, 0x9F, 0x60, 0x9D, 0x02, 0xCF, 0x98, 0x84, 0xF2, 0x53, 0x2D, 0xDE, 0x02, 0x34]),
-    Object.freeze([0x79, 0x4F, 0x5B, 0xFD, 0xAF, 0xBC, 0xF3, 0xBB, 0x08, 0x4F, 0x7B, 0x2E, 0xE6, 0xEA, 0xD6, 0x0E]),
-    Object.freeze([0x44, 0x70, 0x39, 0xBE, 0x1C, 0xCD, 0xEE, 0x79, 0x8B, 0x44, 0x72, 0x48, 0xCB, 0xB0, 0xCF, 0xCB]),
-    Object.freeze([0x7B, 0x05, 0x8A, 0x2B, 0xED, 0x35, 0x53, 0x8D, 0xB7, 0x32, 0x90, 0x6E, 0xEE, 0xCD, 0xEA, 0x7E]),
-    Object.freeze([0x1B, 0xEF, 0x4F, 0xDA, 0x61, 0x27, 0x41, 0xE2, 0xD0, 0x7C, 0x2E, 0x5E, 0x43, 0x8F, 0xC2, 0x67]),
-    Object.freeze([0x3B, 0x0B, 0xC7, 0x1F, 0xE2, 0xFD, 0x5F, 0x67, 0x07, 0xCC, 0xCA, 0xAF, 0xB0, 0xD9, 0x24, 0x29]),
-    Object.freeze([0xEE, 0x65, 0xD4, 0xB9, 0xCA, 0x8F, 0xDB, 0xEC, 0xE9, 0x7F, 0x86, 0xE6, 0xF1, 0x63, 0x4D, 0xAB]),
-    Object.freeze([0x33, 0x7E, 0x03, 0xAD, 0x4F, 0x40, 0x2A, 0x5B, 0x64, 0xCD, 0xB7, 0xD4, 0x84, 0xBF, 0x30, 0x1C]),
-    Object.freeze([0x00, 0x98, 0xF6, 0x8D, 0x2E, 0x8B, 0x02, 0x69, 0xBF, 0x23, 0x17, 0x94, 0xB9, 0x0B, 0xCC, 0xB2]),
-    Object.freeze([0x8A, 0x2D, 0x9D, 0x5C, 0xC8, 0x9E, 0xAA, 0x4A, 0x72, 0x55, 0x6F, 0xDE, 0xA6, 0x78, 0x04, 0xFA]),
-    Object.freeze([0xD4, 0x9F, 0x12, 0x29, 0x2E, 0x4F, 0xFA, 0x0E, 0x12, 0x2A, 0x77, 0x6B, 0x2B, 0x9F, 0xB4, 0xDF]),
-    Object.freeze([0xEE, 0x12, 0x6A, 0xBB, 0xAE, 0x11, 0xD6, 0x32, 0x36, 0xA2, 0x49, 0xF4, 0x44, 0x03, 0xA1, 0x1E]),
-    Object.freeze([0xA6, 0xEC, 0xA8, 0x9C, 0xC9, 0x00, 0x96, 0x5F, 0x84, 0x00, 0x05, 0x4B, 0x88, 0x49, 0x04, 0xAF]),
-    Object.freeze([0xEC, 0x93, 0xE5, 0x27, 0xE3, 0xC7, 0xA2, 0x78, 0x4F, 0x9C, 0x19, 0x9D, 0xD8, 0x5E, 0x02, 0x21]),
-    Object.freeze([0x73, 0x01, 0xD4, 0x82, 0xCD, 0x2E, 0x28, 0xB9, 0xB7, 0xC9, 0x59, 0xA7, 0xF8, 0xAA, 0x3A, 0xBF]),
-    Object.freeze([0x6B, 0x7D, 0x30, 0x10, 0xD9, 0xEF, 0xF2, 0x37, 0x17, 0xB0, 0x86, 0x61, 0x0D, 0x70, 0x60, 0x62]),
-    Object.freeze([0xC6, 0x9A, 0xFC, 0xF6, 0x53, 0x91, 0xC2, 0x81, 0x43, 0x04, 0x30, 0x21, 0xC2, 0x45, 0xCA, 0x5A]),
-    Object.freeze([0x3A, 0x94, 0xD1, 0x36, 0xE8, 0x92, 0xAF, 0x2C, 0xBB, 0x68, 0x6B, 0x22, 0x3C, 0x97, 0x23, 0x92]),
-    Object.freeze([0xB4, 0x71, 0x10, 0xE5, 0x58, 0xB9, 0xBA, 0x6C, 0xEB, 0x86, 0x58, 0x22, 0x38, 0x92, 0xBF, 0xD3]),
-    Object.freeze([0x8D, 0x12, 0xE1, 0x24, 0xDD, 0xFD, 0x3D, 0x93, 0x77, 0xC6, 0xF0, 0xAE, 0xE5, 0x3C, 0x86, 0xDB]),
-    Object.freeze([0xB1, 0x12, 0x22, 0xCB, 0xE3, 0x8D, 0xE4, 0x83, 0x9C, 0xA0, 0xEB, 0xFF, 0x68, 0x62, 0x60, 0xBB]),
-    Object.freeze([0x7D, 0xF7, 0x2B, 0xC7, 0x4E, 0x1A, 0xB9, 0x2D, 0x9C, 0xD1, 0xE4, 0xE2, 0xDC, 0xD3, 0x4B, 0x73]),
-    Object.freeze([0x4E, 0x92, 0xB3, 0x2C, 0xC4, 0x15, 0x14, 0x4B, 0x43, 0x1B, 0x30, 0x61, 0xC3, 0x47, 0xBB, 0x43]),
-    Object.freeze([0x99, 0x68, 0xEB, 0x16, 0xDD, 0x31, 0xB2, 0x03, 0xF6, 0xEF, 0x07, 0xE7, 0xA8, 0x75, 0xA7, 0xDB]),
-    Object.freeze([0x2C, 0x47, 0xCA, 0x7E, 0x02, 0x23, 0x5E, 0x8E, 0x77, 0x59, 0x75, 0x3C, 0x4B, 0x61, 0xF3, 0x6D]),
-    Object.freeze([0xF9, 0x17, 0x86, 0xB8, 0xB9, 0xE5, 0x1B, 0x6D, 0x77, 0x7D, 0xDE, 0xD6, 0x17, 0x5A, 0xA7, 0xCD]),
-    Object.freeze([0x5D, 0xEE, 0x46, 0xA9, 0x9D, 0x06, 0x6C, 0x9D, 0xAA, 0xE9, 0xA8, 0x6B, 0xF0, 0x43, 0x6B, 0xEC]),
-    Object.freeze([0xC1, 0x27, 0xF3, 0x3B, 0x59, 0x11, 0x53, 0xA2, 0x2B, 0x33, 0x57, 0xF9, 0x50, 0x69, 0x1E, 0xCB]),
-    Object.freeze([0xD9, 0xD0, 0x0E, 0x60, 0x53, 0x03, 0xED, 0xE4, 0x9C, 0x61, 0xDA, 0x00, 0x75, 0x0C, 0xEE, 0x2C]),
-    Object.freeze([0x50, 0xA3, 0xA4, 0x63, 0xBC, 0xBA, 0xBB, 0x80, 0xAB, 0x0C, 0xE9, 0x96, 0xA1, 0xA5, 0xB1, 0xF0]),
-    Object.freeze([0x39, 0xCA, 0x8D, 0x93, 0x30, 0xDE, 0x0D, 0xAB, 0x88, 0x29, 0x96, 0x5E, 0x02, 0xB1, 0x3D, 0xAE]),
-    Object.freeze([0x42, 0xB4, 0x75, 0x2E, 0xA8, 0xF3, 0x14, 0x88, 0x0B, 0xA4, 0x54, 0xD5, 0x38, 0x8F, 0xBB, 0x17]),
-    Object.freeze([0xF6, 0x16, 0x0A, 0x36, 0x79, 0xB7, 0xB6, 0xAE, 0xD7, 0x7F, 0x42, 0x5F, 0x5B, 0x8A, 0xBB, 0x34]),
-    Object.freeze([0xDE, 0xAF, 0xBA, 0xFF, 0x18, 0x59, 0xCE, 0x43, 0x38, 0x54, 0xE5, 0xCB, 0x41, 0x52, 0xF6, 0x26]),
-    Object.freeze([0x78, 0xC9, 0x9E, 0x83, 0xF7, 0x9C, 0xCA, 0xA2, 0x6A, 0x02, 0xF3, 0xB9, 0x54, 0x9A, 0xE9, 0x4C]),
-    Object.freeze([0x35, 0x12, 0x90, 0x22, 0x28, 0x6E, 0xC0, 0x40, 0xBE, 0xF7, 0xDF, 0x1B, 0x1A, 0xA5, 0x51, 0xAE]),
-    Object.freeze([0xCF, 0x59, 0xA6, 0x48, 0x0F, 0xBC, 0x73, 0xC1, 0x2B, 0xD2, 0x7E, 0xBA, 0x3C, 0x61, 0xC1, 0xA0]),
-    Object.freeze([0xA1, 0x9D, 0xC5, 0xE9, 0xFD, 0xBD, 0xD6, 0x4A, 0x88, 0x82, 0x28, 0x02, 0x03, 0xCC, 0x6A, 0x75])
-  ]);
+  /** @type {uint8[][]} */
+  const HARAKA_RC_ROWS = [
+    Object.freeze(OpCodes.Hex8ToBytes("9D7B8175F0FEC5B20AC020E64C708406")),
+    Object.freeze(OpCodes.Hex8ToBytes("17F7082FA46B0F646BA0F388E1B4668B")),
+    Object.freeze(OpCodes.Hex8ToBytes("1491029F609D02CF9884F2532DDE0234")),
+    Object.freeze(OpCodes.Hex8ToBytes("794F5BFDAFBCF3BB084F7B2EE6EAD60E")),
+    Object.freeze(OpCodes.Hex8ToBytes("447039BE1CCDEE798B447248CBB0CFCB")),
+    Object.freeze(OpCodes.Hex8ToBytes("7B058A2BED35538DB732906EEECDEA7E")),
+    Object.freeze(OpCodes.Hex8ToBytes("1BEF4FDA612741E2D07C2E5E438FC267")),
+    Object.freeze(OpCodes.Hex8ToBytes("3B0BC71FE2FD5F6707CCCAAFB0D92429")),
+    Object.freeze(OpCodes.Hex8ToBytes("EE65D4B9CA8FDBECE97F86E6F1634DAB")),
+    Object.freeze(OpCodes.Hex8ToBytes("337E03AD4F402A5B64CDB7D484BF301C")),
+    Object.freeze(OpCodes.Hex8ToBytes("0098F68D2E8B0269BF231794B90BCCB2")),
+    Object.freeze(OpCodes.Hex8ToBytes("8A2D9D5CC89EAA4A72556FDEA67804FA")),
+    Object.freeze(OpCodes.Hex8ToBytes("D49F12292E4FFA0E122A776B2B9FB4DF")),
+    Object.freeze(OpCodes.Hex8ToBytes("EE126ABBAE11D63236A249F44403A11E")),
+    Object.freeze(OpCodes.Hex8ToBytes("A6ECA89CC900965F8400054B884904AF")),
+    Object.freeze(OpCodes.Hex8ToBytes("EC93E527E3C7A2784F9C199DD85E0221")),
+    Object.freeze(OpCodes.Hex8ToBytes("7301D482CD2E28B9B7C959A7F8AA3ABF")),
+    Object.freeze(OpCodes.Hex8ToBytes("6B7D3010D9EFF23717B086610D706062")),
+    Object.freeze(OpCodes.Hex8ToBytes("C69AFCF65391C28143043021C245CA5A")),
+    Object.freeze(OpCodes.Hex8ToBytes("3A94D136E892AF2CBB686B223C972392")),
+    Object.freeze(OpCodes.Hex8ToBytes("B47110E558B9BA6CEB8658223892BFD3")),
+    Object.freeze(OpCodes.Hex8ToBytes("8D12E124DDFD3D9377C6F0AEE53C86DB")),
+    Object.freeze(OpCodes.Hex8ToBytes("B11222CBE38DE4839CA0EBFF686260BB")),
+    Object.freeze(OpCodes.Hex8ToBytes("7DF72BC74E1AB92D9CD1E4E2DCD34B73")),
+    Object.freeze(OpCodes.Hex8ToBytes("4E92B32CC415144B431B3061C347BB43")),
+    Object.freeze(OpCodes.Hex8ToBytes("9968EB16DD31B203F6EF07E7A875A7DB")),
+    Object.freeze(OpCodes.Hex8ToBytes("2C47CA7E02235E8E7759753C4B61F36D")),
+    Object.freeze(OpCodes.Hex8ToBytes("F91786B8B9E51B6D777DDED6175AA7CD")),
+    Object.freeze(OpCodes.Hex8ToBytes("5DEE46A99D066C9DAAE9A86BF0436BEC")),
+    Object.freeze(OpCodes.Hex8ToBytes("C127F33B591153A22B3357F950691ECB")),
+    Object.freeze(OpCodes.Hex8ToBytes("D9D00E605303EDE49C61DA00750CEE2C")),
+    Object.freeze(OpCodes.Hex8ToBytes("50A3A463BCBABB80AB0CE996A1A5B1F0")),
+    Object.freeze(OpCodes.Hex8ToBytes("39CA8D9330DE0DAB8829965E02B13DAE")),
+    Object.freeze(OpCodes.Hex8ToBytes("42B4752EA8F314880BA454D5388FBB17")),
+    Object.freeze(OpCodes.Hex8ToBytes("F6160A3679B7B6AED77F425F5B8ABB34")),
+    Object.freeze(OpCodes.Hex8ToBytes("DEAFBAFF1859CE433854E5CB4152F626")),
+    Object.freeze(OpCodes.Hex8ToBytes("78C99E83F79CCAA26A02F3B9549AE94C")),
+    Object.freeze(OpCodes.Hex8ToBytes("35129022286EC040BEF7DF1B1AA551AE")),
+    Object.freeze(OpCodes.Hex8ToBytes("CF59A6480FBC73C12BD27EBA3C61C1A0")),
+    Object.freeze(OpCodes.Hex8ToBytes("A19DC5E9FDBDD64A8882280203CC6A75"))
+  ];
+  /** @type {uint8[][]} */
+  const HARAKA_RC = Object.freeze(HARAKA_RC_ROWS);
 
   // Helper functions for AES operations using OpCodes
 
+  /**
+   * AES SubBytes
+   * @param {uint8[]} state - 16 bytes
+   * @returns {uint8[]} substituted bytes
+   */
   function aesSubBytes(state) {
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = AES_SBOX[state[i]];
@@ -115,16 +117,39 @@
     return result;
   }
 
+  /**
+   * AES ShiftRows
+   * @param {uint8[]} state - 16 bytes, column-major
+   * @returns {uint8[]} shifted bytes
+   */
   function aesShiftRows(state) {
-    return [
+    /** @type {uint8[]} */
+    const result = [
       state[0], state[5], state[10], state[15],  // Row 0: no shift
       state[4], state[9], state[14], state[3],   // Row 1: left shift 1
       state[8], state[13], state[2], state[7],   // Row 2: left shift 2
       state[12], state[1], state[6], state[11]   // Row 3: left shift 3
     ];
+    return result;
   }
 
+  /**
+   * Galois field multiplication by x in GF(2^8) (AES polynomial)
+   * @param {uint8} p - byte
+   * @returns {uint8} p times x
+   */
+  function mulX(p) {
+    const reduce = OpCodes.Shr8(OpCodes.And8(p, 0x80), 7) === 1 ? 0x1B : 0x00;
+    return OpCodes.Xor8(OpCodes.Shl8(OpCodes.And8(p, 0x7F), 1), reduce);
+  }
+
+  /**
+   * AES MixColumns
+   * @param {uint8[]} state - 16 bytes, column-major
+   * @returns {uint8[]} mixed bytes
+   */
   function aesMixColumns(state) {
+    /** @type {uint8[]} */
     const result = new Array(16);
     let j = 0;
 
@@ -135,20 +160,21 @@
       const c2 = state[4 * i + 2];
       const c3 = state[4 * i + 3];
 
-      // Galois field multiplication in GF(2^8)
-      function mulX(p) {
-        return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), (OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B));
-      }
-
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), mulX(c1)), c1), c2), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, mulX(c1)), mulX(c2)), c2), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), mulX(c2)), mulX(c3)), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), c0), c1), c2), mulX(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mulX(c0), mulX(c1)), c1), c2), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, mulX(c1)), mulX(c2)), c2), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, c1), mulX(c2)), mulX(c3)), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mulX(c0), c0), c1), c2), mulX(c3));
     }
 
     return result;
   }
 
+  /**
+   * One AES encryption round (SubBytes, ShiftRows, MixColumns, AddRoundKey)
+   * @param {uint8[]} state - 16 bytes
+   * @param {uint8[]} roundKey - 16 bytes
+   * @returns {uint8[]} new state
+   */
   function aesEncryptRound(state, roundKey) {
     state = aesSubBytes(state);
     state = aesShiftRows(state);
@@ -180,7 +206,9 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AT; // Austria (TU Graz)
 
+      /** @type {int32} */
       this.inputSize = 32;  // 256 bits
+      /** @type {int32} */
       this.outputSize = 32; // 256 bits
 
       this.documentation = [
@@ -205,9 +233,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {Haraka256Instance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -217,12 +245,15 @@
   }
 
   /**
- * Haraka256 cipher instance implementing Feed/Result pattern
+ * Haraka256 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class Haraka256Instance extends IHashFunctionInstance {
+    /**
+     * @param {Haraka256Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
       this.inputBuffer = [];
@@ -252,21 +283,28 @@
 
     Result() {
       if (this.inputBuffer.length !== 32) {
-        throw new Error(`Invalid input size: expected 32 bytes, got ${this.inputBuffer.length}`);
+        throw new Error('Invalid input size: expected 32 bytes, got ' + this.inputBuffer.length);
       }
 
       return this._haraka256(this.inputBuffer);
     }
 
+    /**
+     * Haraka-256 permutation plus feed-forward
+     * @param {uint8[]} input - 32 bytes
+     * @returns {uint8[]} 32-byte digest
+     */
     _haraka256(input) {
       // Split 32-byte input into two 16-byte blocks
+      /** @type {uint8[][]} */
       const s1 = [
         input.slice(0, 16),    // s1[0]
         input.slice(16, 32)    // s1[1]
       ];
 
-      const s2 = [new Array(16), new Array(16)];
-      const original = [...input]; // Save original for final XOR
+      /** @type {uint8[][]} */
+      const s2 = [OpCodes.CreateArray(16, 0), OpCodes.CreateArray(16, 0)];
+      const original = input.slice(); // Save original for final XOR
 
       // 5 rounds of Haraka-256
       for (let round = 0; round < 5; ++round) {
@@ -280,20 +318,27 @@
         this._mix256(s1, s2);
 
         // Copy s2 back to s1 for next round
-        s1[0] = [...s2[0]];
-        s1[1] = [...s2[1]];
+        s1[0] = s2[0].slice();
+        s1[1] = s2[1].slice();
       }
 
       // Final XOR with original input (Davies-Meyer construction)
+      /** @type {uint8[]} */
       const output = new Array(32);
       for (let i = 0; i < 16; ++i) {
-        output[i] = OpCodes.XorN(s2[0][i], original[i]);
-        output[i + 16] = OpCodes.XorN(s2[1][i], original[i + 16]);
+        output[i] = OpCodes.Xor8(s2[0][i], original[i]);
+        output[i + 16] = OpCodes.Xor8(s2[1][i], original[i + 16]);
       }
 
       return output;
     }
 
+    /**
+     * Haraka-256 mix: interleave the two blocks of s1 into s2
+     * @param {uint8[][]} s1 - two 16-byte blocks
+     * @param {uint8[][]} s2 - two 16-byte blocks, written
+     * @returns {void}
+     */
     _mix256(s1, s2) {
       // Haraka-256 mix operation - specific interleaving pattern
       for (let i = 0; i < 4; ++i) {
@@ -332,7 +377,9 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AT; // Austria (TU Graz)
 
+      /** @type {int32} */
       this.inputSize = 64;  // 512 bits
+      /** @type {int32} */
       this.outputSize = 32; // 256 bits
 
       this.documentation = [
@@ -357,9 +404,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {Haraka512Instance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -369,12 +416,15 @@
   }
 
   /**
- * Haraka512 cipher instance implementing Feed/Result pattern
+ * Haraka512 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class Haraka512Instance extends IHashFunctionInstance {
+    /**
+     * @param {Haraka512Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
       this.inputBuffer = [];
@@ -404,14 +454,20 @@
 
     Result() {
       if (this.inputBuffer.length !== 64) {
-        throw new Error(`Invalid input size: expected 64 bytes, got ${this.inputBuffer.length}`);
+        throw new Error('Invalid input size: expected 64 bytes, got ' + this.inputBuffer.length);
       }
 
       return this._haraka512(this.inputBuffer);
     }
 
+    /**
+     * Haraka-512 permutation, feed-forward and truncation
+     * @param {uint8[]} input - 64 bytes
+     * @returns {uint8[]} 32-byte digest
+     */
     _haraka512(input) {
       // Split 64-byte input into four 16-byte blocks
+      /** @type {uint8[][]} */
       const s1 = [
         input.slice(0, 16),    // s1[0]
         input.slice(16, 32),   // s1[1]
@@ -419,7 +475,8 @@
         input.slice(48, 64)    // s1[3]
       ];
 
-      const s2 = [new Array(16), new Array(16), new Array(16), new Array(16)];
+      /** @type {uint8[][]} */
+      const s2 = [OpCodes.CreateArray(16, 0), OpCodes.CreateArray(16, 0), OpCodes.CreateArray(16, 0), OpCodes.CreateArray(16, 0)];
       let rcIndex = 0; // Round constant index
 
       // 5 rounds of Haraka-512 (following reference implementation exactly)
@@ -440,7 +497,7 @@
 
         // Copy s2 back to s1 for next round
         for (let i = 0; i < 4; ++i) {
-          s1[i] = [...s2[i]];
+          s1[i] = s2[i].slice();
         }
       }
 
@@ -451,6 +508,7 @@
       s1[3] = OpCodes.XorArrays(s2[3], input.slice(48, 64));
 
       // Haraka-512 specific output construction (256-bit output from 512-bit input)
+      /** @type {uint8[]} */
       const output = new Array(32);
 
       // Copy s1[0][8:15] (8 bytes)
@@ -476,6 +534,12 @@
       return output;
     }
 
+    /**
+     * Haraka-512 mix: interleave the four blocks of s1 into s2
+     * @param {uint8[][]} s1 - four 16-byte blocks
+     * @param {uint8[][]} s2 - four 16-byte blocks, written
+     * @returns {void}
+     */
     _mix512(s1, s2) {
       // Haraka-512 mix operation - complex interleaving of four blocks
       for (let i = 0; i < 4; ++i) {

@@ -124,9 +124,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {XCBCInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -145,14 +145,22 @@
  */
 
   class XCBCInstance extends IMacInstance {
+    /**
+     * Initialize an XCBC-MAC instance
+     * @param {XCBCAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
       this.inputBuffer = [];
-      this.iv = new Array(16).fill(0); // CBC-MAC state
+      /** @type {uint8[]} */
+      this.iv = OpCodes.CreateArray(16, 0); // CBC-MAC state
+      /** @type {int32} */
       this.blockSize = 16; // AES block size
 
       // AES-128 S-box
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -173,9 +181,11 @@
       ];
 
       // AES round constants
-      this.RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+      this.RCON = OpCodes.Hex8ToBytes('01020408102040801b36');
 
+      /** @type {uint8[][]} */
       this.k1RoundKeys = null;  // Round keys for K1 (main encryption key)
+      /** @type {uint8[][]} */
       this.K = [null, null, null];  // K[0]=K1, K[1]=K2, K[2]=K3
     }
 
@@ -219,30 +229,22 @@
     // K1 is used for encryption
     // K2 is XORed with last block when message is complete block multiple
     // K3 is XORed with last block when message needs padding
+    /**
+     * Derive K1, K2, K3 = AES_K(0x01..), AES_K(0x02..), AES_K(0x03..) and K1's schedule
+     * @returns {void}
+     */
     _deriveKeys() {
       // Create temporary key schedule for initial key
       const tempRoundKeys = this._expandKey(this._key);
 
       // Generate K1: encrypt block of 0x01 bytes
-      const k1Block = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        k1Block[i] = 0x01;
-      }
-      this.K[0] = this._aesEncryptWithKeys(k1Block, tempRoundKeys);
+      this.K[0] = this._aesEncryptWithKeys(OpCodes.CreateArray(16, 0x01), tempRoundKeys);
 
       // Generate K2: encrypt block of 0x02 bytes
-      const k2Block = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        k2Block[i] = 0x02;
-      }
-      this.K[1] = this._aesEncryptWithKeys(k2Block, tempRoundKeys);
+      this.K[1] = this._aesEncryptWithKeys(OpCodes.CreateArray(16, 0x02), tempRoundKeys);
 
       // Generate K3: encrypt block of 0x03 bytes
-      const k3Block = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        k3Block[i] = 0x03;
-      }
-      this.K[2] = this._aesEncryptWithKeys(k3Block, tempRoundKeys);
+      this.K[2] = this._aesEncryptWithKeys(OpCodes.CreateArray(16, 0x03), tempRoundKeys);
 
       // Now create round keys for K1 (used for actual message encryption)
       this.k1RoundKeys = this._expandKey(this.K[0]);
@@ -282,6 +284,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 16-byte MAC
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -292,29 +300,36 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer; // Restore original buffer
       return result;
     }
 
     // AES key expansion for AES-128
+    /**
+     * AES-128 key schedule
+     * @param {uint8[]} key - 16-byte key
+     * @returns {uint8[][]} Eleven 16-byte round keys
+     */
     _expandKey(key) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const Nk = 4; // Number of 32-bit words in key (128 bits / 32 = 4)
       const Nb = 4; // Number of columns in state (always 4 for AES)
       const Nr = 10; // Number of rounds (10 for AES-128)
 
+      /** @type {uint8[][]} */
       const w = new Array((Nb * (Nr + 1))); // 44 words total
 
       // Copy key into first Nk words
       for (let i = 0; i < Nk; i++) {
-        w[i] = [key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]];
+        w[i] = key.slice(4 * i, 4 * i + 4);
       }
 
       // Generate remaining words
       for (let i = Nk; i < Nb * (Nr + 1); i++) {
-        let temp = [...w[i-1]];
+        const temp = w[i-1].slice();
 
         if (i % Nk === 0) {
           // RotWord: rotate left by one byte
@@ -330,23 +345,20 @@
           }
 
           // XOR with Rcon
-          temp[0] ^= this.RCON[Math.floor(i/Nk) - 1];
+          temp[0] = OpCodes.Xor8(temp[0], this.RCON[Math.floor(i/Nk) - 1]);
         }
 
         // w[i] = w[i-Nk] XOR temp
-        w[i] = [
-          OpCodes.XorN(w[i-Nk][0], temp[0]),
-          OpCodes.XorN(w[i-Nk][1], temp[1]),
-          OpCodes.XorN(w[i-Nk][2], temp[2]),
-          OpCodes.XorN(w[i-Nk][3], temp[3])
-        ];
+        w[i] = OpCodes.XorArrays(w[i-Nk], temp);
       }
 
       // Convert word array to round key array
       for (let round = 0; round <= Nr; round++) {
+        /** @type {uint8[]} */
         const roundKey = [];
         for (let col = 0; col < Nb; col++) {
-          roundKey.push(...w[round * Nb + col]);
+          const word = w[round * Nb + col];
+          for (let j = 0; j < 4; j++) roundKey.push(word[j]);
         }
         roundKeys[round] = roundKey;
       }
@@ -355,8 +367,14 @@
     }
 
     // AES-128 encryption with specific round keys
+    /**
+     * AES-128 encryption of one block
+     * @param {uint8[]} plaintext - 16-byte block (not modified)
+     * @param {uint8[][]} roundKeys - Key schedule
+     * @returns {uint8[]} 16-byte ciphertext (a new array)
+     */
     _aesEncryptWithKeys(plaintext, roundKeys) {
-      let state = [...plaintext];
+      const state = plaintext.slice();
 
       // Initial AddRoundKey
       this._addRoundKey(state, roundKeys[0]);
@@ -378,22 +396,43 @@
     }
 
     // AES-128 encryption with K1 keys
+    /**
+     * AES-128 encryption of one block under K1
+     * @param {uint8[]} plaintext - 16-byte block (not modified)
+     * @returns {uint8[]} 16-byte ciphertext (a new array)
+     */
     _aesEncrypt(plaintext) {
       return this._aesEncryptWithKeys(plaintext, this.k1RoundKeys);
     }
 
+    /**
+     * AddRoundKey, in place
+     * @param {uint8[]} state - 16-byte state
+     * @param {uint8[]} roundKey - 16-byte round key
+     * @returns {void}
+     */
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.Xor8(state[i], roundKey[i]);
       }
     }
 
+    /**
+     * SubBytes, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _subBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.SBOX[state[i]];
       }
     }
 
+    /**
+     * ShiftRows, in place (column-major state)
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _shiftRows(state) {
       // Row 1: shift left by 1
       const temp1 = state[1];
@@ -403,7 +442,8 @@
       state[13] = temp1;
 
       // Row 2: shift left by 2
-      const temp2a = state[2], temp2b = state[6];
+      const temp2a = state[2];
+      const temp2b = state[6];
       state[2] = state[10];
       state[6] = state[14];
       state[10] = temp2a;
@@ -417,6 +457,11 @@
       state[3] = temp3;
     }
 
+    /**
+     * MixColumns, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const c0 = state[col * 4];
@@ -424,14 +469,18 @@
         const c2 = state[col * 4 + 2];
         const c3 = state[col * 4 + 3];
 
-        state[col * 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(c0, 2), OpCodes.GF256Mul(c1, 3)), c2), c3);
-        state[col * 4 + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, OpCodes.GF256Mul(c1, 2)), OpCodes.GF256Mul(c2, 3)), c3);
-        state[col * 4 + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), OpCodes.GF256Mul(c2, 2)), OpCodes.GF256Mul(c3, 3));
-        state[col * 4 + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(c0, 3), c1), c2), OpCodes.GF256Mul(c3, 2));
+        state[col * 4] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(c0, 2), OpCodes.GF256Mul(c1, 3)), c2), c3);
+        state[col * 4 + 1] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, OpCodes.GF256Mul(c1, 2)), OpCodes.GF256Mul(c2, 3)), c3);
+        state[col * 4 + 2] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, c1), OpCodes.GF256Mul(c2, 2)), OpCodes.GF256Mul(c3, 3));
+        state[col * 4 + 3] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(c0, 3), c1), c2), OpCodes.GF256Mul(c3, 2));
       }
     }
 
     // Core XCBC-MAC computation following LibTomCrypt implementation
+    /**
+     * XCBC-MAC of the buffered message (RFC 3566)
+     * @returns {uint8[]} 16-byte MAC
+     */
     _computeXCBC() {
       const msgLen = this.inputBuffer.length;
       let pos = 0;
@@ -440,7 +489,7 @@
       while (pos + this.blockSize < msgLen) {
         // XOR block with IV
         for (let i = 0; i < this.blockSize; i++) {
-          this.iv[i] ^= this.inputBuffer[pos + i];
+          this.iv[i] = OpCodes.Xor8(this.iv[i], this.inputBuffer[pos + i]);
         }
         // Encrypt with K1
         this.iv = this._aesEncrypt(this.iv);
@@ -453,19 +502,19 @@
       if (remainingBytes === this.blockSize) {
         // Complete final block: XOR with K2
         for (let i = 0; i < this.blockSize; i++) {
-          this.iv[i] ^= this.inputBuffer[pos + i];
-          this.iv[i] ^= this.K[1][i];  // K2
+          this.iv[i] = OpCodes.Xor8(this.iv[i], this.inputBuffer[pos + i]);
+          this.iv[i] = OpCodes.Xor8(this.iv[i], this.K[1][i]);  // K2
         }
       } else {
         // Incomplete final block: pad with 0x80 and XOR with K3
         for (let i = 0; i < remainingBytes; i++) {
-          this.iv[i] ^= this.inputBuffer[pos + i];
+          this.iv[i] = OpCodes.Xor8(this.iv[i], this.inputBuffer[pos + i]);
         }
         // Add padding byte
-        this.iv[remainingBytes] ^= 0x80;
+        this.iv[remainingBytes] = OpCodes.Xor8(this.iv[remainingBytes], 0x80);
         // XOR with K3
         for (let i = 0; i < this.blockSize; i++) {
-          this.iv[i] ^= this.K[2][i];  // K3
+          this.iv[i] = OpCodes.Xor8(this.iv[i], this.K[2][i]);  // K3
         }
       }
 

@@ -32,9 +32,10 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Xoodoo round constants
+  /** @type {uint32[]} */
   const RC = [
     0x00000058, 0x00000038, 0x000003C0, 0x000000D0, 0x00000120,
     0x00000014, 0x00000060, 0x0000002C, 0x00000380, 0x000000F0,
@@ -48,7 +49,8 @@
 
   /**
    * Xoodoo permutation function
-   * @param {Array<number>} state - 48-byte state array
+   * @param {uint8[]} state - 48-byte state array
+   * @returns {void}
    */
   function xoodooPermutation(state) {
     // Unpack state into 12 x 32-bit words (little-endian)
@@ -67,15 +69,15 @@
 
     for (let i = 0; i < MAXROUNDS; ++i) {
       // Theta: Column Parity Mixer
-      const p0 = a0^a4^a8;
-      const p1 = a1^a5^a9;
-      const p2 = a2^a6^a10;
-      const p3 = a3^a7^a11;
+      const p0 = OpCodes.Xor32(OpCodes.Xor32(a0, a4), a8);
+      const p1 = OpCodes.Xor32(OpCodes.Xor32(a1, a5), a9);
+      const p2 = OpCodes.Xor32(OpCodes.Xor32(a2, a6), a10);
+      const p3 = OpCodes.Xor32(OpCodes.Xor32(a3, a7), a11);
 
-      const e0 = OpCodes.RotL32(p3, 5)^OpCodes.RotL32(p3, 14);
-      const e1 = OpCodes.RotL32(p0, 5)^OpCodes.RotL32(p0, 14);
-      const e2 = OpCodes.RotL32(p1, 5)^OpCodes.RotL32(p1, 14);
-      const e3 = OpCodes.RotL32(p2, 5)^OpCodes.RotL32(p2, 14);
+      const e0 = OpCodes.Xor32(OpCodes.RotL32(p3, 5), OpCodes.RotL32(p3, 14));
+      const e1 = OpCodes.Xor32(OpCodes.RotL32(p0, 5), OpCodes.RotL32(p0, 14));
+      const e2 = OpCodes.Xor32(OpCodes.RotL32(p1, 5), OpCodes.RotL32(p1, 14));
+      const e3 = OpCodes.Xor32(OpCodes.RotL32(p2, 5), OpCodes.RotL32(p2, 14));
 
       a0 = OpCodes.Xor32(a0, e0);
       a4 = OpCodes.Xor32(a4, e0);
@@ -110,23 +112,23 @@
       let b11 = OpCodes.RotL32(a11, 11);
 
       // Iota: round constant
-      b0 ^= RC[i];
+      b0 = OpCodes.Xor32(b0, RC[i]);
 
       // Chi: non-linear layer
-      a0 = b0^(~b4&b8);
-      a1 = b1^(~b5&b9);
-      a2 = b2^(~b6&b10);
-      a3 = b3^(~b7&b11);
+      a0 = OpCodes.Xor32(b0, OpCodes.And32(OpCodes.Not32(b4), b8));
+      a1 = OpCodes.Xor32(b1, OpCodes.And32(OpCodes.Not32(b5), b9));
+      a2 = OpCodes.Xor32(b2, OpCodes.And32(OpCodes.Not32(b6), b10));
+      a3 = OpCodes.Xor32(b3, OpCodes.And32(OpCodes.Not32(b7), b11));
 
-      a4 = b4^(~b8&b0);
-      a5 = b5^(~b9&b1);
-      a6 = b6^(~b10&b2);
-      a7 = b7^(~b11&b3);
+      a4 = OpCodes.Xor32(b4, OpCodes.And32(OpCodes.Not32(b8), b0));
+      a5 = OpCodes.Xor32(b5, OpCodes.And32(OpCodes.Not32(b9), b1));
+      a6 = OpCodes.Xor32(b6, OpCodes.And32(OpCodes.Not32(b10), b2));
+      a7 = OpCodes.Xor32(b7, OpCodes.And32(OpCodes.Not32(b11), b3));
 
-      b8 ^= (~b0&b4);
-      b9 ^= (~b1&b5);
-      b10 ^= (~b2&b6);
-      b11 ^= (~b3&b7);
+      b8 = OpCodes.Xor32(b8, OpCodes.And32(OpCodes.Not32(b0), b4));
+      b9 = OpCodes.Xor32(b9, OpCodes.And32(OpCodes.Not32(b1), b5));
+      b10 = OpCodes.Xor32(b10, OpCodes.And32(OpCodes.Not32(b2), b6));
+      b11 = OpCodes.Xor32(b11, OpCodes.And32(OpCodes.Not32(b3), b7));
 
       // Rho-east: plane shift
       a4 = OpCodes.RotL32(a4, 1);
@@ -188,7 +190,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -280,7 +282,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XoodyakHashInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -296,19 +298,28 @@
  */
 
   class XoodyakHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a Xoodyak hash instance
+     * @param {XoodyakHash} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // Initialize state: 48 bytes, all zeros
-      this.state = new Array(STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(STATE_SIZE, 0);
 
       // Mode tracking: 0=INIT_ABSORB, 1=ABSORB, 2=SQUEEZE
+      /** @type {int32} */
       this.mode = 0; // INIT_ABSORB
+      /** @type {int32} */
       this.count = 0; // Position in current block
     }
 
     /**
      * Absorb data into the hash state
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -351,6 +362,7 @@
 
     /**
      * Finalize and produce hash output
+     * @returns {uint8[]} 32-byte digest
      */
     Result() {
       // If we were absorbing, terminate the absorb phase
@@ -364,6 +376,7 @@
       }
 
       // Squeeze out 32 bytes (256 bits)
+      /** @type {uint8[]} */
       const output = [];
       let outlen = 32;
 
@@ -385,7 +398,7 @@
       }
 
       // Reset for next operation
-      this.state = new Array(STATE_SIZE).fill(0);
+      this.state = OpCodes.CreateArray(STATE_SIZE, 0);
       this.mode = 0; // INIT_ABSORB
       this.count = 0;
 
