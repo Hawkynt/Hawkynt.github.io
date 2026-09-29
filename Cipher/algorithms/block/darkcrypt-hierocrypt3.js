@@ -53,7 +53,8 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // s-function lower-level S-box (spec section 3.3.4)
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     0x07,0xFC,0x55,0x70,0x98,0x8E,0x84,0x4E,0xBC,0x75,0xCE,0x18,0x02,0xE9,0x5D,0x80,
     0x1C,0x60,0x78,0x42,0x9D,0x2E,0xF5,0xE8,0xC6,0x7A,0x2F,0xA4,0xB2,0x5F,0x19,0x87,
     0x0B,0x9B,0x9C,0xD3,0xC3,0x77,0x3D,0x6F,0xB9,0x2D,0x4D,0xF7,0x8C,0xA7,0xAC,0x17,
@@ -70,21 +71,36 @@
     0x50,0xD2,0x92,0x74,0x93,0xE1,0xDA,0xAE,0xA9,0x53,0xE4,0x40,0xCD,0xBA,0x97,0xA3,
     0x91,0x31,0x25,0x76,0x36,0x32,0x28,0x3A,0x24,0x4C,0xDB,0xD9,0x8D,0xDC,0x62,0x2A,
     0xEA,0x15,0xDD,0xC2,0xA5,0x0C,0x04,0x1D,0x8F,0xCB,0xB4,0x4F,0x16,0xAB,0xAA,0xA0
-  ]);
-  const SBOX_INV = (() => {
+  ];
+  Object.freeze(SBOX);
+  /**
+   * @returns {uint8[]} Inverse of SBOX
+   */
+  function buildInverseSbox() {
+    /** @type {uint8[]} */
     const inv = new Array(256);
     for (let i = 0; i < 256; i++) inv[SBOX[i]] = i;
-    return Object.freeze(inv);
-  })();
+    return inv;
+  }
+  /** @type {uint8[]} */
+  const SBOX_INV = buildInverseSbox();
+  Object.freeze(SBOX_INV);
 
   // GF(2^8) multiplication modulo p(z) = z^8 + z^6 + z^5 + z + 1 (0x163), used by mdsL/mdsL^-1.
+  /**
+   * @param {uint32} a - First factor (low byte used)
+   * @param {uint32} b - Second factor (low byte used)
+   * @returns {uint32} Product byte
+   */
   function gfMul(a, b) {
-    let acc = 0, x = OpCodes.And32(a, 0xff), y = OpCodes.And32(b, 0xff);
+    /** @type {uint32} */
+    let acc = 0;
+    let x = OpCodes.And32(a, 0xff), y = OpCodes.And32(b, 0xff);
     while (y) {
-      if (OpCodes.And32(y, 1)) acc ^= x;
+      if (OpCodes.And32(y, 1)) acc = OpCodes.Xor32(acc, x);
       y = OpCodes.Shr32(y, 1);
       x = OpCodes.Shl32(x, 1);
-      if (OpCodes.And32(x, 0x100)) x ^= 0x163;
+      if (OpCodes.And32(x, 0x100)) x = OpCodes.Xor32(x, 0x163);
     }
     return OpCodes.And32(acc, 0xff);
   }
@@ -94,18 +110,30 @@
   /** @type {uint8[]} */
   const MDSL_INV = [0x82, 0xC4, 0x34, 0xF6]; // circulant row, inverse
 
+  /**
+   * @param {uint8[]} X - Four bytes
+   * @param {uint8[]} matrixRow - Circulant matrix row
+   * @returns {uint8[]} Four bytes
+   */
   function mdsLWord(X, matrixRow) {
     /** @type {uint8[]} */
     const Y = [0, 0, 0, 0];
     for (let r = 0; r < 4; r++) {
+      /** @type {uint32} */
       let acc = 0;
-      for (let c = 0; c < 4; c++) acc ^= gfMul(X[c], matrixRow[(c - r + 4) % 4]);
+      for (let c = 0; c < 4; c++) acc = OpCodes.Xor32(acc, gfMul(X[c], matrixRow[(c - r + 4) % 4]));
       Y[r] = acc;
     }
     return Y;
   }
 
+  /**
+   * @param {uint8[]} X16 - 16 bytes
+   * @param {uint8[]} matrixRow - Circulant matrix row
+   * @returns {uint8[]} 16 bytes
+   */
   function MDSL(X16, matrixRow) {
+    /** @type {uint8[]} */
     const Y = new Array(16);
     for (let w = 0; w < 4; w++) {
       const y = mdsLWord(X16.slice(w * 4, w * 4 + 4), matrixRow);
@@ -116,13 +144,18 @@
 
   // GF(2^4) "row op": applies the companion-matrix decomposition of multiply-by-nibble c
   // to a 4-byte lane.
+  /**
+   * @param {uint8[]} X - Four bytes
+   * @param {uint32} c - Nibble multiplier
+   * @returns {uint8[]} Four bytes
+   */
   function gf16RowOp(X, c) {
     /** @type {uint8[]} */
     const Y = [0, 0, 0, 0];
-    if (OpCodes.And32(c, 1)) { Y[0] ^= X[0]; Y[1] ^= X[1]; Y[2] ^= X[2]; Y[3] ^= X[3]; }
-    if (OpCodes.And32(c, 2)) { Y[0] ^= X[1]; Y[1] ^= X[2]; Y[2] ^= OpCodes.Xor32(X[3], X[0]); Y[3] ^= X[0]; }
-    if (OpCodes.And32(c, 4)) { Y[0] ^= X[2]; Y[1] ^= OpCodes.Xor32(X[3], X[0]); Y[2] ^= OpCodes.Xor32(X[0], X[1]); Y[3] ^= X[1]; }
-    if (OpCodes.And32(c, 8)) { Y[0] ^= OpCodes.Xor32(X[0], X[3]); Y[1] ^= OpCodes.Xor32(X[1], X[0]); Y[2] ^= OpCodes.Xor32(X[2], X[1]); Y[3] ^= X[2]; }
+    if (OpCodes.And32(c, 1)) { Y[0] = OpCodes.Xor32(Y[0], X[0]); Y[1] = OpCodes.Xor32(Y[1], X[1]); Y[2] = OpCodes.Xor32(Y[2], X[2]); Y[3] = OpCodes.Xor32(Y[3], X[3]); }
+    if (OpCodes.And32(c, 2)) { Y[0] = OpCodes.Xor32(Y[0], X[1]); Y[1] = OpCodes.Xor32(Y[1], X[2]); Y[2] = OpCodes.Xor32(Y[2], OpCodes.Xor32(X[3], X[0])); Y[3] = OpCodes.Xor32(Y[3], X[0]); }
+    if (OpCodes.And32(c, 4)) { Y[0] = OpCodes.Xor32(Y[0], X[2]); Y[1] = OpCodes.Xor32(Y[1], OpCodes.Xor32(X[3], X[0])); Y[2] = OpCodes.Xor32(Y[2], OpCodes.Xor32(X[0], X[1])); Y[3] = OpCodes.Xor32(Y[3], X[1]); }
+    if (OpCodes.And32(c, 8)) { Y[0] = OpCodes.Xor32(Y[0], OpCodes.Xor32(X[0], X[3])); Y[1] = OpCodes.Xor32(Y[1], OpCodes.Xor32(X[1], X[0])); Y[2] = OpCodes.Xor32(Y[2], OpCodes.Xor32(X[2], X[1])); Y[3] = OpCodes.Xor32(Y[3], X[2]); }
     return Y;
   }
 
@@ -132,29 +165,76 @@
   /** @type {uint8[]} */
   const MDSH_INV = [11, 14, 14, 6,  6, 11, 14, 14,  14, 6, 11, 14,  14, 14, 6, 11];
 
+  /**
+   * @param {uint8[]} X16 - 16 bytes
+   * @param {uint8[]} matrix - 4x4 nibble matrix
+   * @returns {uint8[]} 16 bytes
+   */
   function MDSH(X16, matrix) {
-    const Y = new Array(16).fill(0);
+    /** @type {uint8[]} */
+    const Y = new Array(16);
+    Y.fill(0);
     for (let row = 0; row < 4; row++) {
       for (let col = 0; col < 4; col++) {
         const coeff = matrix[row * 4 + col];
         const lane = X16.slice(col * 4, col * 4 + 4);
         const t = gf16RowOp(lane, coeff);
-        for (let i = 0; i < 4; i++) Y[row * 4 + i] ^= t[i];
+        for (let i = 0; i < 4; i++) Y[row * 4 + i] = OpCodes.Xor32(Y[row * 4 + i], t[i]);
       }
     }
     return Y;
   }
 
-  function Sfn(X) { return X.map(b => SBOX[b]); }
-  function SfnInv(X) { return X.map(b => SBOX_INV[b]); }
-  function xorArr(a, b) { return a.map((v, i) => OpCodes.Xor32(v, b[i])); }
+  /**
+   * @param {uint8[]} X - Bytes
+   * @returns {uint8[]} Each byte through SBOX
+   */
+  function Sfn(X) {
+    /** @type {uint8[]} */
+    const Y = [];
+    for (let i = 0; i < X.length; i++) Y.push(SBOX[X[i]]);
+    return Y;
+  }
+  /**
+   * @param {uint8[]} X - Bytes
+   * @returns {uint8[]} Each byte through SBOX_INV
+   */
+  function SfnInv(X) {
+    /** @type {uint8[]} */
+    const Y = [];
+    for (let i = 0; i < X.length; i++) Y.push(SBOX_INV[X[i]]);
+    return Y;
+  }
+  /**
+   * @param {uint8[]} a - Bytes
+   * @param {uint8[]} b - Bytes (at least as many as a)
+   * @returns {uint8[]} a xor b, a.length bytes
+   */
+  function xorArr(a, b) {
+    /** @type {uint8[]} */
+    const Y = [];
+    for (let i = 0; i < a.length; i++) Y.push(OpCodes.Xor32(a[i], b[i]));
+    return Y;
+  }
 
+  /**
+   * @param {uint8[]} X16 - 16 bytes
+   * @param {uint8[]} K1_16 - First 16 key bytes
+   * @param {uint8[]} K2_16 - Second 16 key bytes
+   * @returns {uint8[]} 16 bytes
+   */
   function XS(X16, K1_16, K2_16) {
     const t1 = Sfn(xorArr(X16, K1_16));
     const t2 = MDSL(t1, MDSL_FWD);
     const t3 = xorArr(t2, K2_16);
     return Sfn(t3);
   }
+  /**
+   * @param {uint8[]} Y16 - 16 bytes
+   * @param {uint8[]} K1_16 - First 16 key bytes
+   * @param {uint8[]} K2_16 - Second 16 key bytes
+   * @returns {uint8[]} 16 bytes
+   */
   function XSInv(Y16, K1_16, K2_16) {
     const t3 = SfnInv(Y16);
     const t2 = xorArr(t3, K2_16);
@@ -162,9 +242,19 @@
     return xorArr(SfnInv(t1), K1_16);
   }
 
+  /**
+   * @param {uint8[]} X16 - 16 bytes
+   * @param {uint8[]} K32 - 32-byte round key
+   * @returns {uint8[]} 16 bytes
+   */
   function rho(X16, K32) {
     return MDSH(XS(X16, K32.slice(0, 16), K32.slice(16, 32)), MDSH_FWD);
   }
+  /**
+   * @param {uint8[]} Y16 - 16 bytes
+   * @param {uint8[]} K32 - 32-byte round key
+   * @returns {uint8[]} 16 bytes
+   */
   function rhoInv(Y16, K32) {
     const t = MDSH(Y16, MDSH_INV);
     return XSInv(t, K32.slice(0, 16), K32.slice(16, 32));
@@ -174,7 +264,19 @@
 
   /** @type {uint32[]} */
   const H = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6]; // binary expansions of small-int square roots
-  function u32bytes(v) { return [OpCodes.And32(OpCodes.Shr32(v, 24), 0xff), OpCodes.And32(OpCodes.Shr32(v, 16), 0xff), OpCodes.And32(OpCodes.Shr32(v, 8), 0xff), OpCodes.And32(v, 0xff)]; }
+  /**
+   * @param {uint32} v - Word
+   * @returns {uint8[]} Big-endian bytes
+   */
+  function u32bytes(v) {
+    /** @type {uint8[]} */
+    const bytes = [OpCodes.And32(OpCodes.Shr32(v, 24), 0xff), OpCodes.And32(OpCodes.Shr32(v, 16), 0xff), OpCodes.And32(OpCodes.Shr32(v, 8), 0xff), OpCodes.And32(v, 0xff)];
+    return bytes;
+  }
+  /**
+   * @param {int32} i - Constant selector 0..5
+   * @returns {uint8[]} 8 constant bytes
+   */
   function G0(i) {
     switch (i) {
       case 0: return [...u32bytes(H[3]), ...u32bytes(H[0])];
@@ -182,13 +284,18 @@
       case 2: return [...u32bytes(H[1]), ...u32bytes(H[3])];
       case 3: return [...u32bytes(H[0]), ...u32bytes(H[2])];
       case 4: return [...u32bytes(H[2]), ...u32bytes(H[3])];
-      case 5: return [...u32bytes(H[1]), ...u32bytes(H[0])];
+      default: return [...u32bytes(H[1]), ...u32bytes(H[0])]; // 5 (the only other selector used)
     }
   }
 
   // M5E-function (spec 3.3.9): 8-byte input, two independent 4x4 bit matrices per 32-bit half.
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} 8 bytes
+   */
   function M5E(x) {
-    return [
+    /** @type {uint8[]} */
+    const y = [
       OpCodes.Xor32(x[0], x[2]),
       OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]),
       OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[2]),
@@ -198,10 +305,16 @@
       OpCodes.Xor32(x[6], x[7]),
       OpCodes.Xor32(OpCodes.Xor32(x[4], x[5]), x[6])
     ];
+    return y;
   }
   // MB3-function (spec 3.3.10)
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} 8 bytes
+   */
   function MB3(x) {
-    return [
+    /** @type {uint8[]} */
+    const y = [
       OpCodes.Xor32(x[1], x[3]),
       OpCodes.Xor32(x[0], x[2]),
       OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]),
@@ -211,57 +324,93 @@
       OpCodes.Xor32(OpCodes.Xor32(x[4], x[6]), x[7]),
       OpCodes.Xor32(x[4], x[7])
     ];
+    return y;
   }
 
-  function xorGroup(a, b) { return a.map((v, i) => OpCodes.Xor32(v, b[i])); }
   // P(n)-function (spec 3.3.8): linear transform over 4 equal-size groups.
+  /**
+   * @param {uint8[][]} groups - Four equal-size byte groups
+   * @returns {uint8[][]} Four groups
+   */
   function Pn(groups) {
-    const [g1, g2, g3, g4] = groups;
-    return [
-      xorGroup(g1, g3),
-      xorGroup(g2, g4),
-      xorGroup(xorGroup(g2, g3), g4),
-      xorGroup(xorGroup(g1, g3), g4)
+    const g1 = groups[0], g2 = groups[1], g3 = groups[2], g4 = groups[3];
+    /** @type {uint8[][]} */
+    const out = [
+      xorArr(g1, g3),
+      xorArr(g2, g4),
+      xorArr(xorArr(g2, g3), g4),
+      xorArr(xorArr(g1, g3), g4)
     ];
+    return out;
   }
+  /**
+   * @param {uint8[][]} groups - Four equal-size byte groups
+   * @returns {uint8[][]} Four groups
+   */
   function PnInv(groups) {
-    const [g1, g2, g3, g4] = groups;
-    return [
-      xorGroup(xorGroup(g1, g2), g3),
-      xorGroup(xorGroup(g1, g2), g4),
-      xorGroup(g2, g3),
-      xorGroup(g1, g4)
+    const g1 = groups[0], g2 = groups[1], g3 = groups[2], g4 = groups[3];
+    /** @type {uint8[][]} */
+    const out = [
+      xorArr(xorArr(g1, g2), g3),
+      xorArr(xorArr(g1, g2), g4),
+      xorArr(g2, g3),
+      xorArr(g1, g4)
     ];
+    return out;
   }
 
   // F-function (spec 3.3.11): S-box per byte, then P(16) over four 16-bit groups.
+  /**
+   * @param {uint8[]} X8 - 8 bytes
+   * @returns {uint8[]} 8 bytes
+   */
   function Ffn(X8) {
-    const s = X8.map(b => SBOX[b]);
+    const s = Sfn(X8);
+    /** @type {uint8[][]} */
     const groups = [s.slice(0, 2), s.slice(2, 4), s.slice(4, 6), s.slice(6, 8)];
     const out = Pn(groups);
     return [...out[0], ...out[1], ...out[2], ...out[3]];
   }
 
   // P(32): combines Z3(64)||Z4(64) into W1(64)||W2(64) (four 32-bit groups).
+  /**
+   * @param {uint8[]} Z3_8 - 8 bytes
+   * @param {uint8[]} Z4_8 - 8 bytes
+   * @returns {uint8[][]} [W1, W2], 8 bytes each
+   */
   function P32(Z3_8, Z4_8) {
+    /** @type {uint8[][]} */
     const groups = [Z3_8.slice(0, 4), Z3_8.slice(4, 8), Z4_8.slice(0, 4), Z4_8.slice(4, 8)];
     const out = Pn(groups);
-    return [[...out[0], ...out[1]], [...out[2], ...out[3]]];
+    /** @type {uint8[][]} */
+    const halves = [[...out[0], ...out[1]], [...out[2], ...out[3]]];
+    return halves;
   }
+  /**
+   * @param {uint8[]} W1_8 - 8 bytes
+   * @param {uint8[]} W2_8 - 8 bytes
+   * @returns {uint8[][]} [Z3, Z4], 8 bytes each
+   */
   function P32Inv(W1_8, W2_8) {
+    /** @type {uint8[][]} */
     const groups = [W1_8.slice(0, 4), W1_8.slice(4, 8), W2_8.slice(0, 4), W2_8.slice(4, 8)];
     const out = PnInv(groups);
-    return [[...out[0], ...out[1]], [...out[2], ...out[3]]];
+    /** @type {uint8[][]} */
+    const halves = [[...out[0], ...out[1]], [...out[2], ...out[3]]];
+    return halves;
   }
 
   // Key schedule for the fixed 256-bit key configuration (T=8 rounds, tturn=5).
+  /**
+   * @param {uint8[]} key32 - 32 key bytes
+   * @returns {uint8[][]} Round keys K[1..9] (index 0 unused), 32 bytes each
+   */
   function keySchedule256(key32) {
     const Z1 = key32.slice(0, 8), Z2 = key32.slice(8, 16), Z3 = key32.slice(16, 24), Z4 = key32.slice(24, 32);
     const tturn = 5, T = 8;
 
-    const Gc = {};
-    Gc[0] = G0(5); Gc[1] = G0(4); Gc[2] = G0(0); Gc[3] = G0(2); Gc[4] = G0(1); Gc[5] = G0(3);
-    Gc[6] = G0(3); Gc[7] = G0(1); Gc[8] = G0(2); Gc[9] = G0(0);
+    /** @type {uint8[][]} */
+    const Gc = [G0(5), G0(4), G0(0), G0(2), G0(1), G0(3), G0(3), G0(1), G0(2), G0(0)];
 
     // Pre-whitening (Lambda-0-function, spec 3.2.5)
     const Z3_0 = xorArr(M5E(Z3), Gc[0]);
@@ -269,36 +418,52 @@
     const Z1_0 = Z2;
     const Z2_0 = xorArr(Z1, Ffn(xorArr(Z2, Z3_0)));
 
-    const Z = { '-1': [Z1, Z2, Z3, Z4], 0: [Z1_0, Z2_0, Z3_0, Z4_0] };
+    // Z[t + 1] holds the state after step t (t = -1 .. T+1)
+    /** @type {uint8[][][]} */
+    const Z = new Array(T + 3);
+    /** @type {uint8[][]} */
+    const zInitial = [Z1, Z2, Z3, Z4];
+    /** @type {uint8[][]} */
+    const zWhitened = [Z1_0, Z2_0, Z3_0, Z4_0];
+    Z[0] = zInitial;
+    Z[1] = zWhitened;
 
     // Plaintext side (Lambda-function, spec 3.2.6), t = 1..tturn
     for (let t = 1; t <= tturn; t++) {
-      const prev = Z[t - 1];
-      const [W1, W2] = P32(prev[2], prev[3]);
-      const Z3t = xorArr(M5E(W1), Gc[t]);
-      const Z4t = M5E(W2);
+      const prev = Z[t];
+      const w = P32(prev[2], prev[3]);
+      const Z3t = xorArr(M5E(w[0]), Gc[t]);
+      const Z4t = M5E(w[1]);
       const Z1t = prev[1];
       const Z2t = xorArr(prev[0], Ffn(xorArr(prev[1], Z3t)));
-      Z[t] = [Z1t, Z2t, Z3t, Z4t];
+      /** @type {uint8[][]} */
+      const zNext = [Z1t, Z2t, Z3t, Z4t];
+      Z[t + 1] = zNext;
     }
 
     // Ciphertext side (Lambda^-1-function, spec 3.2.6), t = tturn+1..T+1
-    const W = {};
+    /** @type {uint8[][][]} */
+    const W = new Array(T + 2);
     for (let t = tturn + 1; t <= T + 1; t++) {
-      const prev = Z[t - 1];
+      const prev = Z[t];
       const Z1t = xorArr(prev[1], Ffn(xorArr(prev[0], prev[2])));
       const Z2t = prev[0];
       const W1t = MB3(xorArr(prev[2], Gc[t]));
       const W2t = MB3(prev[3]);
-      const [Z3t, Z4t] = P32Inv(W1t, W2t);
-      Z[t] = [Z1t, Z2t, Z3t, Z4t];
-      W[t] = [W1t, W2t];
+      const z34 = P32Inv(W1t, W2t);
+      /** @type {uint8[][]} */
+      const zNext = [Z1t, Z2t, z34[0], z34[1]];
+      Z[t + 1] = zNext;
+      /** @type {uint8[][]} */
+      const wPair = [W1t, W2t];
+      W[t] = wPair;
     }
 
     // Round key generation (spec 3.2.7)
-    const K = {};
+    /** @type {uint8[][]} */
+    const K = new Array(T + 2);
     for (let t = 1; t <= tturn; t++) {
-      const prev = Z[t - 1], cur = Z[t];
+      const prev = Z[t], cur = Z[t + 1];
       const V = Ffn(xorArr(prev[1], cur[2]));
       const K1 = xorArr(prev[0], V);
       const K2 = xorArr(cur[2], V);
@@ -307,7 +472,7 @@
       K[t] = [...K1, ...K2, ...K3, ...K4];
     }
     for (let t = tturn + 1; t <= T + 1; t++) {
-      const prev = Z[t - 1], cur = Z[t];
+      const prev = Z[t], cur = Z[t + 1];
       const V = Ffn(xorArr(prev[0], prev[2]));
       const K1 = xorArr(cur[0], prev[2]);
       const K2 = xorArr(W[t][0], V);
@@ -396,6 +561,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
