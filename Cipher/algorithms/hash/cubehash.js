@@ -50,6 +50,7 @@
 
   // Pre-computed initialization vectors from sph_cubehash reference implementation
   // These are the state after Init({h/8,b,r,0,...}) and 10*r rounds
+  /** @type {uint32[]} */
   const IV256 = new Uint32Array([
     0xEA2BD4B4, 0xCCD6F29F, 0x63117E71, 0x35481EAE,
     0x22512D5B, 0xE5D94E63, 0x7E624131, 0xF4CC12BE,
@@ -61,6 +62,7 @@
     0x15815AEB, 0x4AB6AAD6, 0x9CDAF8AF, 0xD6032C0A
   ]);
 
+  /** @type {uint32[]} */
   const IV512 = new Uint32Array([
     0x2AEA2A61, 0x50F494D4, 0x2D538B8B, 0x4167D83E,
     0x3FEE2313, 0xC701CF8C, 0xCC39968E, 0x50AC5695,
@@ -75,10 +77,15 @@
   // CubeHash state transformation function
   // Following the official spec from Daniel J. Bernstein
   // The state consists of 32 32-bit words (1024 bits total)
+  /**
+   * One CubeHash round on the 32-word state, in place
+   * @param {uint32[]} x - the state
+   * @returns {void}
+   */
   function cubeHashTransform(x) {
     // Step 1: Add x_0jklm into x_1jklm modulo 2^32, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[16 + i] = OpCodes.ToUint32(x[16 + i] + x[i]);
+      x[16 + i] = OpCodes.Add32(x[16 + i], x[i]);
     }
 
     // Step 2: Rotate x_0jklm upwards by 7 bits, for each (j,k,l,m)
@@ -95,7 +102,7 @@
 
     // Step 4: XOR x_1jklm into x_0jklm, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[i] = OpCodes.XorN(x[i], x[16 + i]);
+      x[i] = OpCodes.Xor32(x[i], x[16 + i]);
     }
 
     // Step 5: Swap x_1jk0m with x_1jk1m, for each (j,k,m)
@@ -110,7 +117,7 @@
 
     // Step 6: Add x_0jklm into x_1jklm modulo 2^32, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[16 + i] = OpCodes.ToUint32(x[16 + i] + x[i]);
+      x[16 + i] = OpCodes.Add32(x[16 + i], x[i]);
     }
 
     // Step 7: Rotate x_0jklm upwards by 11 bits, for each (j,k,l,m)
@@ -136,7 +143,7 @@
 
     // Step 9: XOR x_1jklm into x_0jklm, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[i] = OpCodes.XorN(x[i], x[16 + i]);
+      x[i] = OpCodes.Xor32(x[i], x[16 + i]);
     }
 
     // Step 10: Swap x_1jkl0 with x_1jkl1, for each (j,k,l)
@@ -155,23 +162,42 @@
  */
 
   class CubeHashInstance extends IHashFunctionInstance {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - parent algorithm
+     * @param {int32} rounds - rounds per block
+     * @param {int32} blockBytes - bytes per block
+     * @param {int32} hashBytes - digest length in bytes
+     * @param {uint32[]} iv - precomputed initial state
+     */
     constructor(algorithm, rounds, blockBytes, hashBytes, iv) {
       super(algorithm);
+      /** @type {int32} */
       this.rounds = rounds;
+      /** @type {int32} */
       this.blockBytes = blockBytes;
+      /** @type {int32} */
       this.hashBytes = hashBytes;
+      /** @type {int32} */
       this.outputSize = hashBytes;
+      /** @type {uint32[]} */
       this.iv = iv;
 
       // Initialize 1024-bit state (32 words of 32 bits each)
+      /** @type {uint32[]} */
       this.state = new Array(32);
       this._initialize();
 
       // Buffer for incomplete blocks
+      /** @type {uint8[]} */
       this.buffer = [];
+      /** @type {uint64} */
       this.totalLength = 0;
     }
 
+    /**
+     * Load the precomputed IV into the state
+     * @returns {void}
+     */
     _initialize() {
       // Copy pre-computed IV to state
       for (let i = 0; i < 32; ++i) {
@@ -202,12 +228,16 @@
       }
     }
 
+    /**
+     * XOR the buffered block into the state and run the rounds
+     * @returns {void}
+     */
     _processBlock() {
       // XOR block into state (little-endian byte order)
       for (let i = 0; i < this.blockBytes; ++i) {
         const wordIdx = OpCodes.Shr32(i, 2);
-        const byteIdx = OpCodes.AndN(i, 3);
-        this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(this.buffer[i], byteIdx * 8));
+        const byteIdx = OpCodes.And32(i, 3);
+        this.state[wordIdx] = OpCodes.Xor32(this.state[wordIdx], OpCodes.Shl32(this.buffer[i], byteIdx * 8));
       }
 
       // Apply r rounds
@@ -226,17 +256,17 @@
       // Pad with 0x80 at current position
       const padPos = this.buffer.length;
       const wordIdx = OpCodes.Shr32(padPos, 2);
-      const byteIdx = OpCodes.AndN(padPos, 3);
+      const byteIdx = OpCodes.And32(padPos, 3);
 
       // XOR any remaining buffered data
       for (let i = 0; i < this.buffer.length; ++i) {
         const wIdx = OpCodes.Shr32(i, 2);
-        const bIdx = OpCodes.AndN(i, 3);
-        this.state[wIdx] = OpCodes.XorN(this.state[wIdx], OpCodes.Shl32(this.buffer[i], bIdx * 8));
+        const bIdx = OpCodes.And32(i, 3);
+        this.state[wIdx] = OpCodes.Xor32(this.state[wIdx], OpCodes.Shl32(this.buffer[i], bIdx * 8));
       }
 
       // XOR padding byte
-      this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(0x80, byteIdx * 8));
+      this.state[wordIdx] = OpCodes.Xor32(this.state[wordIdx], OpCodes.Shl32(0x80, byteIdx * 8));
 
       // Apply r rounds after padding
       for (let i = 0; i < this.rounds; ++i) {
@@ -244,7 +274,7 @@
       }
 
       // Finalization: XOR 1 into state[31]
-      this.state[31] = OpCodes.XorN(this.state[31], 1);
+      this.state[31] = OpCodes.Xor32(this.state[31], 1);
 
       // Apply 10*r final rounds
       for (let i = 0; i < 10 * this.rounds; ++i) {
@@ -252,11 +282,12 @@
       }
 
       // Extract hash (first h/8 bytes from state, little-endian)
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.hashBytes; ++i) {
         const wordIndex = OpCodes.Shr32(i, 2);
-        const byteIndex = OpCodes.AndN(i, 3);
-        output.push(OpCodes.AndN(OpCodes.Shr32(this.state[wordIndex], byteIndex * 8), 0xFF));
+        const byteIndex = OpCodes.And32(i, 3);
+        output.push(OpCodes.And32(OpCodes.Shr32(this.state[wordIndex], byteIndex * 8), 0xFF));
       }
 
       return output;
@@ -323,7 +354,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CubeHashInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -390,7 +421,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CubeHashInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
