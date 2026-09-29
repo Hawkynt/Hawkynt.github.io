@@ -71,8 +71,20 @@
   const N = 17;         // register size (16-bit words)
   const KEY_LEN = 16;   // fixed key length in bytes (128-bit), as used by the DarkCrypt implementation
 
+  /**
+   * @param {int32} length - Number of words
+   * @returns {uint16[]} Zero-filled word array
+   */
+  function zeroWords(length) {
+    /** @type {uint16[]} */
+    const words = new Array(length);
+    for (let i = 0; i < length; i++) words[i] = 0;
+    return words;
+  }
+
   // Skipjack "F-table" permutation of 8-bit inputs (fixed, unkeyed).
   // Verified byte-for-byte identical to the published SSS specification's reference table.
+  /** @type {uint8[]} */
   const FTABLE = [
     0xa3,0xd7,0x09,0x83,0xf8,0x48,0xf6,0xf4,0xb3,0x21,0x15,0x78,0x99,0xb1,0xaf,0xf9,
     0xe7,0x2d,0x4d,0x8a,0xce,0x4c,0xca,0x2e,0x52,0x95,0xd9,0x1e,0x4e,0x38,0x44,0x28,
@@ -95,6 +107,7 @@
   // "Qbox": fixed nonlinear 8-to-16-bit table (16 independent, highly nonlinear
   // Boolean functions of the input byte). Verified byte-for-byte identical to
   // the published SSS specification's reference table.
+  /** @type {uint16[]} */
   const QBOX = [
     0x1887,0x435c,0xc042,0x6ef4,0xee20,0xfed3,0xc502,0xe8ae,0xe9d9,0x38d4,0x9b5d,0xdf3c,0x4249,0x3963,0x429f,0x2c35,
     0x0325,0xdd70,0x3ded,0xdc5e,0x5b42,0x12bf,0xd78c,0xb26b,0x1b9a,0x8146,0x8ec5,0xc28f,0x5c0f,0x101c,0xb082,0x29e1,
@@ -150,7 +163,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("f79aa3d05adf1648a68b96e4d34b186a4bd71b7133b3df6a06dc6df3955461094d0a0867c0c4f74dd10aefa99606e2a0fdcbad30308babefbd489e586dd599c761f09e61b1b2feb0832b60bd4073df9b9368fef4d28dec2e2308e64a1c17555e697ca390d3f987e02850c73d00b26f17256cfd52d37145d4823df98a20612c1a")
         },
         {
@@ -170,21 +183,36 @@
   }
 
   class DarkCryptSSSInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSSSAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
-      this.R = new Array(N).fill(0);      // 17-word, 16-bit shift register
-      this.sbox = new Array(256).fill(0); // key-dependent 256-entry, 16-bit S-box
+      /** @type {uint16[]} */
+      this.R = zeroWords(N);      // 17-word, 16-bit shift register
+      /** @type {uint16[]} */
+      this.sbox = zeroWords(256); // key-dependent 256-entry, 16-bit S-box
+      /** @type {boolean} */
       this.initialized = false;
 
       // Buffered odd trailing byte support (word-oriented cipher, byte-oriented interface).
+      /** @type {int32} */
       this.pendingByte = -1;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -197,7 +225,7 @@
       }
 
       if (keyBytes.length !== KEY_LEN) {
-        throw new Error(`Invalid SSS key size: ${keyBytes.length} bytes. Key must be 16 bytes (128 bits)`);
+        throw new Error("Invalid SSS key size: " + keyBytes.length + " bytes. Key must be 16 bytes (128 bits)");
       }
 
       this._key = Array.from(keyBytes);
@@ -205,10 +233,16 @@
       this._setupNonce();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -217,7 +251,7 @@
           throw new Error("Invalid IV - must be byte array");
         }
         if (ivData.length !== KEY_LEN) {
-          throw new Error(`Invalid SSS IV size: ${ivData.length} bytes. IV must be 16 bytes (128 bits)`);
+          throw new Error("Invalid SSS IV size: " + ivData.length + " bytes. IV must be 16 bytes (128 bits)");
         }
         this._iv = Array.from(ivData);
       }
@@ -227,18 +261,30 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data) && !(data instanceof Uint8Array)) {
@@ -251,6 +297,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) {
         throw new Error("Key not set");
@@ -262,6 +311,7 @@
         throw new Error("SSS not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const buf = this.inputBuffer;
       let pos = 0;
@@ -291,7 +341,7 @@
         // byte-aligned buffers, since none of this port's test vectors
         // require it beyond a single low-byte XOR).
         const v = this._nlf();
-        output.push(OpCodes.XorN(buf[pos], OpCodes.And32(v, 0xFF)));
+        output.push(OpCodes.Xor32(buf[pos], OpCodes.And32(v, 0xFF)));
       }
 
       this.inputBuffer = [];
@@ -304,7 +354,13 @@
     // the high byte of w through the fixed Skipjack F-table under key control,
     // accumulating rotated Qbox words; see "Primitive Specification for SSS",
     // Section 3.3.
+    /**
+     * @param {uint8[]} key
+     * @param {uint32} w
+     * @returns {uint16}
+     */
     _sboxFunction(key, w) {
+      /** @type {uint32} */
       let t = 0;
       let b = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
 
@@ -324,17 +380,24 @@
     }
 
     // f(a) = SBox[high byte of a] XOR a
+    /**
+     * @param {uint32} a
+     * @returns {uint16}
+     */
     _f(a) {
       return OpCodes.And32(OpCodes.Xor32(this.sbox[OpCodes.And32(OpCodes.Shr32(a, 8), 0xFF)], a), 0xFFFF);
     }
 
     // Nonlinear filter: produces one 16-bit keystream word from the current
     // (pre-shift) register state.
+    /**
+     * @returns {uint16}
+     */
     _nlf() {
       const r0 = this.R[0], r1 = this.R[1], r6 = this.R[6], r13 = this.R[13], r16 = this.R[16];
 
       const inner = this._f(OpCodes.And32(r0 + r16, 0xFFFF));
-      const sum = OpCodes.And32(inner + r1 + r6 + r13, 0xFFFF);
+      const sum = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(inner, r1), r6), r13), 0xFFFF);
       const swapped = OpCodes.RotR16(sum, 8);
       const outer = this._f(swapped);
 
@@ -342,7 +405,11 @@
     }
 
     // Register state transition, given the (already-computed) ciphertext word c.
+    /**
+     * @param {uint32} c
+     */
     _stateTransition(c) {
+      /** @type {uint16[]} */
       const newR = new Array(N);
       for (let i = 0; i < 16; i++) newR[i] = this.R[i + 1];
       newR[16] = OpCodes.And32(c, 0xFFFF);
@@ -357,9 +424,9 @@
     _setupNonce() {
       if (!this._key) return;
 
-      const iv = this._iv || new Array(KEY_LEN).fill(0);
+      const iv = this._iv ? this._iv : OpCodes.CreateArray(KEY_LEN, 0);
 
-      this.R = new Array(N).fill(0);
+      this.R = zeroWords(N);
 
       // Step 2: treat the nonce as received ciphertext -- feed each of its
       // 16-bit (little-endian) words directly into the register.

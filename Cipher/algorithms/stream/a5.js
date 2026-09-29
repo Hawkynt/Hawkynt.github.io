@@ -35,14 +35,24 @@
 
   // ===== SHARED LFSR HELPERS =====
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function parity(x) {
-    return OpCodes.AndN(OpCodes.PopCountFast(x), 1);
+    return OpCodes.And32(OpCodes.PopCountFast(x), 1);
   }
 
+  /**
+   * @param {uint32} reg
+   * @param {uint32} mask
+   * @param {uint32} taps
+   * @returns {uint32}
+   */
   function clockone(reg, mask, taps) {
-    const t = OpCodes.AndN(reg, taps);
-    reg = OpCodes.AndN(OpCodes.Shl32(reg, 1), mask);
-    reg = OpCodes.OrN(reg, parity(t));
+    const t = OpCodes.And32(reg, taps);
+    reg = OpCodes.And32(OpCodes.Shl32(reg, 1), mask);
+    reg = OpCodes.Or32(reg, parity(t));
     return reg;
   }
 
@@ -125,33 +135,55 @@
   class A51Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A51} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32} */
       this._frameNumber = 0;
+      /** @type {uint32} */
       this._lfsr1 = 0;
+      /** @type {uint32} */
       this._lfsr2 = 0;
+      /** @type {uint32} */
       this._lfsr3 = 0;
+      /** @type {boolean} */
       this._initialized = false;
 
       // A5/1 Constants from C reference
+      /** @type {uint32} */
       this.R1MASK = 0x07FFFF;  // 19 bits
+      /** @type {uint32} */
       this.R2MASK = 0x3FFFFF;  // 22 bits
+      /** @type {uint32} */
       this.R3MASK = 0x7FFFFF;  // 23 bits
+      /** @type {uint32} */
       this.R1TAPS = 0x072000;  // bits 18,17,16,13
+      /** @type {uint32} */
       this.R2TAPS = 0x300000;  // bits 21,20
+      /** @type {uint32} */
       this.R3TAPS = 0x700080;  // bits 22,21,20,7
+      /** @type {uint32} */
       this.R1MID = 0x000100;   // bit 8
+      /** @type {uint32} */
       this.R2MID = 0x000400;   // bit 10
+      /** @type {uint32} */
       this.R3MID = 0x000400;   // bit 10
+      /** @type {uint32} */
       this.R1OUT = 0x040000;   // bit 18
+      /** @type {uint32} */
       this.R2OUT = 0x200000;   // bit 21
+      /** @type {uint32} */
       this.R3OUT = 0x400000;   // bit 22
     }
 
@@ -167,12 +199,18 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -186,8 +224,11 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint32} frameNumber
+     */
     set frame(frameNumber) {
-      this._frameNumber = frameNumber || 0;
+      this._frameNumber = frameNumber ? frameNumber : 0;
       if (this._key) {
         this._initialize();
       }
@@ -213,12 +254,15 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -239,10 +283,10 @@
 
         const byteIdx = Math.floor(i / 8);
         const bitIdx = i % 8;
-        if (OpCodes.AndN(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
-          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
-          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
-          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
+        if (OpCodes.And32(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
+          this._lfsr1 = OpCodes.Xor32(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.Xor32(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.Xor32(this._lfsr3, 1);
         }
       }
 
@@ -250,10 +294,10 @@
       for (let i = 0; i < 22; i++) {
         this._clockAllRegisters();
 
-        if (OpCodes.AndN(this._frameNumber, OpCodes.Shl32(1, i))) {
-          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
-          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
-          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
+        if (OpCodes.And32(this._frameNumber, OpCodes.Shl32(1, i))) {
+          this._lfsr1 = OpCodes.Xor32(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.Xor32(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.Xor32(this._lfsr3, 1);
         }
       }
 
@@ -272,10 +316,14 @@
     }
 
     _clockRegisters() {
-      const c1 = OpCodes.AndN(this._lfsr1, this.R1MID) !== 0 ? 1 : 0;
-      const c2 = OpCodes.AndN(this._lfsr2, this.R2MID) !== 0 ? 1 : 0;
-      const c3 = OpCodes.AndN(this._lfsr3, this.R3MID) !== 0 ? 1 : 0;
+      /** @type {int32} */
+      const c1 = OpCodes.And32(this._lfsr1, this.R1MID) !== 0 ? 1 : 0;
+      /** @type {int32} */
+      const c2 = OpCodes.And32(this._lfsr2, this.R2MID) !== 0 ? 1 : 0;
+      /** @type {int32} */
+      const c3 = OpCodes.And32(this._lfsr3, this.R3MID) !== 0 ? 1 : 0;
 
+      /** @type {int32} */
       const maj = (c1 + c2 + c3) >= 2 ? 1 : 0;
 
       if (c1 === maj) {
@@ -289,21 +337,29 @@
       }
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
       this._clockRegisters();
 
-      return OpCodes.XorN(
-        OpCodes.XorN(
-          (OpCodes.AndN(this._lfsr1, this.R1OUT) ? 1 : 0),
-          (OpCodes.AndN(this._lfsr2, this.R2OUT) ? 1 : 0)
+      return OpCodes.Xor32(
+        OpCodes.Xor32(
+          (OpCodes.And32(this._lfsr1, this.R1OUT) ? 1 : 0),
+          (OpCodes.And32(this._lfsr2, this.R2OUT) ? 1 : 0)
         ),
-        (OpCodes.AndN(this._lfsr3, this.R3OUT) ? 1 : 0)
+        (OpCodes.And32(this._lfsr3, this.R3OUT) ? 1 : 0)
       );
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++) {
+        /** @type {uint32} */
         const bit = this._generateKeystreamBit();
         if (bit) {
           byte = OpCodes.SetBit(byte, 7 - i, 1);
@@ -393,33 +449,55 @@
   class A52Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A52} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32} */
       this._frameNumber = 0;
+      /** @type {uint32} */
       this._lfsr1 = 0;
+      /** @type {uint32} */
       this._lfsr2 = 0;
+      /** @type {uint32} */
       this._lfsr3 = 0;
+      /** @type {uint32} */
       this._lfsr4 = 0;
+      /** @type {boolean} */
       this._initialized = false;
 
       // A5/2 Constants
+      /** @type {uint32} */
       this.R1MASK = 0x07FFFF;  // 19 bits
+      /** @type {uint32} */
       this.R2MASK = 0x3FFFFF;  // 22 bits
+      /** @type {uint32} */
       this.R3MASK = 0x7FFFFF;  // 23 bits
+      /** @type {uint32} */
       this.R4MASK = 0x01FFFF;  // 17 bits
+      /** @type {uint32} */
       this.R1TAPS = 0x072000;  // bits 18,17,16,13
+      /** @type {uint32} */
       this.R2TAPS = 0x300000;  // bits 21,20
+      /** @type {uint32} */
       this.R3TAPS = 0x700080;  // bits 22,21,20,7
+      /** @type {uint32} */
       this.R4TAPS = 0x014000;  // bits 16,14
+      /** @type {uint32} */
       this.R1OUT = 0x040000;   // bit 18
+      /** @type {uint32} */
       this.R2OUT = 0x200000;   // bit 21
+      /** @type {uint32} */
       this.R3OUT = 0x400000;   // bit 22
     }
 
@@ -435,12 +513,18 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -454,8 +538,11 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint32} frameNumber
+     */
     set frame(frameNumber) {
-      this._frameNumber = frameNumber || 0;
+      this._frameNumber = frameNumber ? frameNumber : 0;
       if (this._key) {
         this._initialize();
       }
@@ -481,12 +568,15 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -508,11 +598,11 @@
 
         const byteIdx = Math.floor(i / 8);
         const bitIdx = i % 8;
-        if (OpCodes.AndN(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
-          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
-          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
-          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
-          this._lfsr4 = OpCodes.XorN(this._lfsr4, 1);
+        if (OpCodes.And32(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
+          this._lfsr1 = OpCodes.Xor32(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.Xor32(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.Xor32(this._lfsr3, 1);
+          this._lfsr4 = OpCodes.Xor32(this._lfsr4, 1);
         }
       }
 
@@ -520,11 +610,11 @@
       for (let i = 0; i < 22; i++) {
         this._clockAllRegisters();
 
-        if (OpCodes.AndN(this._frameNumber, OpCodes.Shl32(1, i))) {
-          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
-          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
-          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
-          this._lfsr4 = OpCodes.XorN(this._lfsr4, 1);
+        if (OpCodes.And32(this._frameNumber, OpCodes.Shl32(1, i))) {
+          this._lfsr1 = OpCodes.Xor32(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.Xor32(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.Xor32(this._lfsr3, 1);
+          this._lfsr4 = OpCodes.Xor32(this._lfsr4, 1);
         }
       }
 
@@ -545,8 +635,10 @@
 
     _clockRegisters() {
       // A5/2 uses LFSR4 for clocking control
-      const c4_0 = OpCodes.AndN(this._lfsr4, 0x01) !== 0 ? 1 : 0;
-      const c4_1 = OpCodes.AndN(this._lfsr4, 0x02) !== 0 ? 1 : 0;
+      /** @type {int32} */
+      const c4_0 = OpCodes.And32(this._lfsr4, 0x01) !== 0 ? 1 : 0;
+      /** @type {int32} */
+      const c4_1 = OpCodes.And32(this._lfsr4, 0x02) !== 0 ? 1 : 0;
 
       // Clock LFSR4 first
       this._lfsr4 = clockone(this._lfsr4, this.R4MASK, this.R4TAPS);
@@ -568,21 +660,29 @@
       }
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
       this._clockRegisters();
 
-      return OpCodes.XorN(
-        OpCodes.XorN(
-          (OpCodes.AndN(this._lfsr1, this.R1OUT) ? 1 : 0),
-          (OpCodes.AndN(this._lfsr2, this.R2OUT) ? 1 : 0)
+      return OpCodes.Xor32(
+        OpCodes.Xor32(
+          (OpCodes.And32(this._lfsr1, this.R1OUT) ? 1 : 0),
+          (OpCodes.And32(this._lfsr2, this.R2OUT) ? 1 : 0)
         ),
-        (OpCodes.AndN(this._lfsr3, this.R3OUT) ? 1 : 0)
+        (OpCodes.And32(this._lfsr3, this.R3OUT) ? 1 : 0)
       );
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++) {
+        /** @type {uint32} */
         const bit = this._generateKeystreamBit();
         if (bit) {
           byte = OpCodes.SetBit(byte, 7 - i, 1);
@@ -595,7 +695,8 @@
   // ===== A5/3 ALGORITHM =====
 
   // KASUMI S-boxes
-  const S7 = Object.freeze([
+  /** @type {uint8[]} */
+  const S7 = [
     54, 50, 62, 56, 22, 34, 94, 96, 38, 6, 63, 93, 2, 18, 123, 33,
     55, 113, 39, 114, 21, 67, 65, 12, 47, 73, 46, 27, 25, 111, 124, 81,
     53, 9, 121, 79, 52, 60, 58, 48, 101, 127, 40, 120, 104, 70, 71, 43,
@@ -604,9 +705,10 @@
     112, 51, 17, 5, 95, 14, 90, 84, 91, 8, 35, 103, 32, 97, 28, 66,
     102, 31, 26, 45, 75, 4, 85, 92, 37, 74, 80, 49, 68, 29, 115, 44,
     64, 107, 108, 24, 110, 83, 36, 78, 42, 19, 15, 41, 88, 119, 59, 3
-  ]);
+  ];
 
-  const S9 = Object.freeze([
+  /** @type {uint16[]} */
+  const S9 = [
     167, 239, 161, 379, 391, 334, 9, 338, 38, 226, 48, 358, 452, 385, 90, 397,
     183, 253, 147, 331, 415, 340, 51, 362, 306, 500, 262, 82, 216, 159, 356, 177,
     175, 241, 489, 37, 206, 17, 0, 333, 44, 254, 378, 58, 143, 220, 81, 400,
@@ -639,7 +741,7 @@
     125, 343, 224, 127, 461, 100, 463, 196, 469, 347, 75, 298, 476, 477, 255, 264,
     136, 96, 346, 176, 306, 332, 80, 332, 88, 131, 10, 106, 63, 110, 114, 78,
     64, 92, 116, 34, 508, 111, 172, 207, 40, 347, 35, 1, 55, 25, 12, 19
-  ]);
+  ];
 
   /**
  * A53 - Stream cipher implementation
@@ -710,20 +812,31 @@
   class A53Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A53} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.bufferPosition = 0;
+      /** @type {uint32} */
       this.count = 0;
+      /** @type {uint32} */
       this.bearer = 0;
+      /** @type {uint32} */
       this.direction = 0;
+      /** @type {int32} */
       this.MAX_OUTPUT_BITS = 20000;
     }
 
@@ -739,12 +852,18 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -782,84 +901,122 @@
       if (!this._key) throw new Error("Key not set");
 
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
       return output;
     }
 
+    /**
+     * @param {uint32} input
+     * @param {uint32} key
+     * @returns {uint32}
+     */
     _kasumiF1(input, key) {
-      let left = OpCodes.AndN(OpCodes.Shr32(input, 7), 0x1FF);
-      let right = OpCodes.AndN(input, 0x7F);
+      /** @type {uint32} */
+      let left = OpCodes.And32(OpCodes.Shr32(input, 7), 0x1FF);
+      /** @type {uint32} */
+      let right = OpCodes.And32(input, 0x7F);
 
       left = S9[left % S9.length];
       right = S7[right];
 
-      left = OpCodes.XorN(left, OpCodes.AndN(OpCodes.Shr32(key, 7), 0x1FF));
-      right = OpCodes.XorN(right, OpCodes.AndN(key, 0x7F));
+      left = OpCodes.Xor32(left, OpCodes.And32(OpCodes.Shr32(key, 7), 0x1FF));
+      right = OpCodes.Xor32(right, OpCodes.And32(key, 0x7F));
 
-      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(left, 7), right), 0xFFFF);
+      return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(left, 7), right), 0xFFFF);
     }
 
+    /**
+     * @param {uint32} left
+     * @param {uint32} right
+     * @param {uint8[]} roundKey
+     * @returns {uint32[]}
+     */
     _kasumiF0(left, right, roundKey) {
+      /** @type {uint32} */
       const k1 = OpCodes.Pack32BE(roundKey[0], roundKey[1], roundKey[2], roundKey[3]);
+      /** @type {uint32} */
       const k2 = OpCodes.Pack32BE(roundKey[4], roundKey[5], roundKey[6], roundKey[7]);
 
+      /** @type {uint32} */
       let temp = left;
-      let fi1_in = OpCodes.AndN(OpCodes.Shr32(temp, 16), 0xFFFF);
-      fi1_in = this._kasumiF1(fi1_in, OpCodes.AndN(k1, 0xFFFF));
+      /** @type {uint32} */
+      let fi1_in = OpCodes.And32(OpCodes.Shr32(temp, 16), 0xFFFF);
+      fi1_in = this._kasumiF1(fi1_in, OpCodes.And32(k1, 0xFFFF));
 
-      let fi2_in = OpCodes.AndN(temp, 0xFFFF);
-      fi2_in = this._kasumiF1(fi2_in, OpCodes.AndN(OpCodes.Shr32(k1, 16), 0xFFFF));
+      /** @type {uint32} */
+      let fi2_in = OpCodes.And32(temp, 0xFFFF);
+      fi2_in = this._kasumiF1(fi2_in, OpCodes.And32(OpCodes.Shr32(k1, 16), 0xFFFF));
 
-      temp = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(fi1_in, 16), fi2_in), k2);
+      temp = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shl32(fi1_in, 16), fi2_in), k2);
 
-      return { left: right, right: OpCodes.XorN(left, temp) };
+      /** @type {uint32[]} */
+      const halves = [right, OpCodes.Xor32(left, temp)];
+      return halves;
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @returns {uint8[]}
+     */
     _kasumiEncrypt(plaintext) {
+      /** @type {uint32} */
       let left = OpCodes.Pack32BE(plaintext[0], plaintext[1], plaintext[2], plaintext[3]);
+      /** @type {uint32} */
       let right = OpCodes.Pack32BE(plaintext[4], plaintext[5], plaintext[6], plaintext[7]);
 
       for (let round = 0; round < 8; round++) {
+        /** @type {uint8[]} */
         const roundKey = [];
         for (let i = 0; i < 8; i++) {
           roundKey.push(this._key[(round * 2 + i) % 16]);
         }
 
+        /** @type {uint32[]} */
         const result = this._kasumiF0(left, right, roundKey);
-        left = result.left;
-        right = result.right;
+        left = result[0];
+        right = result[1];
       }
 
       const leftBytes = OpCodes.Unpack32BE(left);
       const rightBytes = OpCodes.Unpack32BE(right);
 
-      return [...leftBytes, ...rightBytes];
+      /** @type {uint8[]} */
+      const block = [...leftBytes, ...rightBytes];
+      return block;
     }
 
     _generateKeystreamBlock() {
-      const input = new Array(8).fill(0);
+      const input = OpCodes.CreateArray(8, 0);
+      /** @type {int32} */
       const blockCount = Math.floor(this.keystreamBuffer.length / 8);
 
-      const fullCount = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.count, 0x1F), 27), OpCodes.AndN(blockCount, 0x07FFFFFF)));
-      input[0] = OpCodes.AndN(OpCodes.Shr32(fullCount, 24), 0xFF);
-      input[1] = OpCodes.AndN(OpCodes.Shr32(fullCount, 16), 0xFF);
-      input[2] = OpCodes.AndN(OpCodes.Shr32(fullCount, 8), 0xFF);
-      input[3] = OpCodes.AndN(fullCount, 0xFF);
-      input[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.bearer, 0x1F), 3), OpCodes.Shl32(OpCodes.AndN(this.direction, 1), 2)), 0xFF);
+      const fullCount = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.count, 0x1F), 27), OpCodes.And32(blockCount, 0x07FFFFFF)));
+      input[0] = OpCodes.And32(OpCodes.Shr32(fullCount, 24), 0xFF);
+      input[1] = OpCodes.And32(OpCodes.Shr32(fullCount, 16), 0xFF);
+      input[2] = OpCodes.And32(OpCodes.Shr32(fullCount, 8), 0xFF);
+      input[3] = OpCodes.And32(fullCount, 0xFF);
+      input[4] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.bearer, 0x1F), 3), OpCodes.Shl32(OpCodes.And32(this.direction, 1), 2)), 0xFF);
 
+      /** @type {uint8[]} */
       const keystreamBlock = this._kasumiEncrypt(input);
       for (let _i = 0; _i < keystreamBlock.length; _i++) this.keystreamBuffer.push(keystreamBlock[_i]);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getKeystreamByte() {
       if (this.bufferPosition >= this.keystreamBuffer.length) {
         if (this.keystreamBuffer.length >= (this.MAX_OUTPUT_BITS / 8)) {

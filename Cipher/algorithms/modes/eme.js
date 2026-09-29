@@ -114,16 +114,19 @@
   class EmeModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EmeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.key = null;
+      /** @type {uint8[]|null} */
       this.tweak = null;
     }
 
@@ -140,7 +143,7 @@
 
     /**
      * Set the encryption key
-     * @param {Array} key - Key for block cipher
+     * @param {uint8[]} key - Key for block cipher
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -151,7 +154,7 @@
 
     /**
      * Set the tweak value
-     * @param {Array} tweak - Tweak value for EME mode
+     * @param {uint8[]} tweak - Tweak value for EME mode
      */
     setTweak(tweak) {
       if (!tweak) {
@@ -196,10 +199,11 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for EME mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for EME mode");
       }
 
       // EME: ECB-Mask-ECB construction (simplified educational implementation)
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / blockSize;
 
@@ -207,17 +211,21 @@
         // EME Decryption: reverse the ECB-Mask-ECB process
 
         // Step 1: First ECB decryption layer
+        /** @type {uint8[]} */
         const layer1 = [];
         for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
           const block = this.inputBuffer.slice(i, i + blockSize);
+          /** @type {IBlockCipherInstance} */
           const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
           decryptCipher.key = this.key;
           decryptCipher.Feed(block);
+          /** @type {uint8[]} */
           const decrypted = decryptCipher.Result();
           for (let _i = 0; _i < decrypted.length; _i++) layer1.push(decrypted[_i]);
         }
 
         // Step 2: Remove mask (simplified - real EME uses complex universal hash)
+        /** @type {uint8[]} */
         const unmasked = [];
         for (let i = 0; i < layer1.length; i += blockSize) {
           const block = layer1.slice(i, i + blockSize);
@@ -229,9 +237,11 @@
         // Step 3: Second ECB decryption layer
         for (let i = 0; i < unmasked.length; i += blockSize) {
           const block = unmasked.slice(i, i + blockSize);
+          /** @type {IBlockCipherInstance} */
           const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
           decryptCipher.key = this.key;
           decryptCipher.Feed(block);
+          /** @type {uint8[]} */
           const plainBlock = decryptCipher.Result();
           for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         }
@@ -240,17 +250,21 @@
         // EME Encryption: ECB-Mask-ECB process
 
         // Step 1: First ECB encryption layer
+        /** @type {uint8[]} */
         const layer1 = [];
         for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
           const block = this.inputBuffer.slice(i, i + blockSize);
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.key;
           encryptCipher.Feed(block);
+          /** @type {uint8[]} */
           const encrypted = encryptCipher.Result();
           for (let _i = 0; _i < encrypted.length; _i++) layer1.push(encrypted[_i]);
         }
 
         // Step 2: Apply mask (simplified - real EME uses complex universal hash)
+        /** @type {uint8[]} */
         const masked = [];
         for (let i = 0; i < layer1.length; i += blockSize) {
           const block = layer1.slice(i, i + blockSize);
@@ -262,9 +276,11 @@
         // Step 3: Second ECB encryption layer
         for (let i = 0; i < masked.length; i += blockSize) {
           const block = masked.slice(i, i + blockSize);
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.key;
           encryptCipher.Feed(block);
+          /** @type {uint8[]} */
           const cipherBlock = encryptCipher.Result();
           for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
         }
@@ -280,21 +296,23 @@
     /**
      * Generate mask for EME mode (simplified educational version)
      * Real EME uses sophisticated universal hash functions
-     * @param {number} blockIndex - Current block index
-     * @param {number} totalBlocks - Total number of blocks
-     * @returns {Array} Mask bytes
+     * @param {int32} blockIndex - Current block index
+     * @param {int32} totalBlocks - Total number of blocks
+     * @returns {uint8[]} Mask bytes
      */
     _generateMask(blockIndex, totalBlocks) {
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const mask = new Array(blockSize);
 
       // Simplified mask generation using tweak and block position
       for (let i = 0; i < blockSize; i++) {
+        /** @type {int32} */
         let maskByte = blockIndex + totalBlocks;
         if (this.tweak && i < this.tweak.length) {
-          maskByte = OpCodes.XorN(maskByte, this.tweak[i]);
+          maskByte = OpCodes.Xor32(maskByte, this.tweak[i]);
         }
-        mask[i] = OpCodes.AndN(maskByte + i, 0xFF);
+        mask[i] = OpCodes.And32(maskByte + i, 0xFF);
       }
 
       return mask;

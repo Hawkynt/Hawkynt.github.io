@@ -65,6 +65,7 @@
   const STATE_INBYTES = 32;
 
   // PHOTON permutation round constants
+  /** @type {uint8[]} */
   const RC = [
      1,  0,  2,  6, 14, 15, 13,  9,
      3,  2,  0,  4, 12, 13, 15, 11,
@@ -81,6 +82,7 @@
   ];
 
   // MixColumn matrix for PHOTON permutation
+  /** @type {uint8[][]} */
   const MixColMatrix = [
     [  2,  4,  2, 11,  2,  8,  5,  6 ],
     [ 12,  9,  8, 13,  7,  7,  5,  2 ],
@@ -93,13 +95,18 @@
   ];
 
   // PHOTON S-box
+  /** @type {uint8[]} */
   const sbox = [ 12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2 ];
 
   // PHOTON-256 permutation
+  /**
+   * @param {uint8[]} state
+   * @param {uint8[][]} state_2d
+   */
   function PHOTON_Permutation(state, state_2d) {
     // Convert byte array to 2D nibble array
     for (let i = 0; i < DSquare; ++i) {
-      state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i, Dr)] = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(state[OpCodes.Shr32(i, 1)], 0xFF), 4 * OpCodes.AndN(i, 1)), 0xf);
+      state_2d[OpCodes.Shr32(i, Dq)][OpCodes.And32(i, Dr)] = OpCodes.And32(OpCodes.Shr32(OpCodes.And32(state[OpCodes.Shr32(i, 1)], 0xFF), 4 * OpCodes.And32(i, 1)), 0xf);
     }
 
     // 12 rounds of PHOTON permutation
@@ -107,7 +114,7 @@
       // AddConstant
       const rcOff = round * D;
       for (let i = 0; i < D; ++i) {
-        state_2d[i][0] = OpCodes.XorN(state_2d[i][0], RC[rcOff + i]);
+        state_2d[i][0] = OpCodes.Xor32(state_2d[i][0], RC[rcOff + i]);
       }
 
       // SubCells (S-box layer)
@@ -119,6 +126,7 @@
 
       // ShiftRows
       for (let i = 1; i < D; ++i) {
+        /** @type {uint8[]} */
         const temp = new Array(D);
         for (let j = 0; j < D; ++j) {
           temp[j] = state_2d[i][j];
@@ -129,29 +137,35 @@
       }
 
       // MixColumnSerial
+      /** @type {uint8[]} */
       const tempCol = new Array(D);
       for (let j = 0; j < D; ++j) {
         for (let i = 0; i < D; ++i) {
+          /** @type {uint32} */
           let sum = 0;
           for (let k = 0; k < D; ++k) {
+            /** @type {uint8} */
             const x = MixColMatrix[i][k];
+            /** @type {uint8} */
             const b = state_2d[k][j];
 
             // GF(16) multiplication by expanding b
-            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 1));
-            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 2));
-            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 4));
-            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 8));
+            sum = OpCodes.Xor32(sum, OpCodes.Mul32(x, OpCodes.And32(b, 1)));
+            sum = OpCodes.Xor32(sum, OpCodes.Mul32(x, OpCodes.And32(b, 2)));
+            sum = OpCodes.Xor32(sum, OpCodes.Mul32(x, OpCodes.And32(b, 4)));
+            sum = OpCodes.Xor32(sum, OpCodes.Mul32(x, OpCodes.And32(b, 8)));
           }
 
           // Reduction modulo x^4 + x + 1
+          /** @type {uint32} */
           let t0 = OpCodes.Shr32(sum, 4);
-          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t0), OpCodes.Shl32(t0, 1));
+          sum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(sum, 15), t0), OpCodes.Shl32(t0, 1));
 
+          /** @type {uint32} */
           let t1 = OpCodes.Shr32(sum, 4);
-          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t1), OpCodes.Shl32(t1, 1));
+          sum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(sum, 15), t1), OpCodes.Shl32(t1, 1));
 
-          tempCol[i] = OpCodes.AndN(sum, 0xf);
+          tempCol[i] = OpCodes.And32(sum, 0xf);
         }
         for (let i = 0; i < D; ++i) {
           state_2d[i][j] = tempCol[i];
@@ -161,18 +175,23 @@
 
     // Convert 2D nibble array back to byte array
     for (let i = 0; i < DSquare; i += 2) {
-      state[OpCodes.Shr32(i, 1)] = OpCodes.OrN(OpCodes.AndN(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i, Dr)], 0xf), OpCodes.Shl32(OpCodes.AndN(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i + 1, Dr)], 0xf), 4));
+      state[OpCodes.Shr32(i, 1)] = OpCodes.Or32(OpCodes.And32(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.And32(i, Dr)], 0xf), OpCodes.Shl32(OpCodes.And32(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.And32(i + 1, Dr)], 0xf), 4));
     }
   }
 
   // ===== PHOTONBEETLE AEAD IMPLEMENTATION =====
 
   class PhotonBeetleAEADAlgorithm extends AeadAlgorithm {
+    /**
+     * @param {int32} rate
+     */
     constructor(rate) {
       super();
 
       const is128 = (rate === 128);
+      /** @type {int32} */
       this.rate = rate;
+      /** @type {int32} */
       this.rateInBytes = rate / 8;
 
       // Required metadata
@@ -346,23 +365,33 @@
   class PhotonBeetleAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PhotonBeetleAEADAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // PHOTON-256 state
-      this.state = new Array(STATE_INBYTES).fill(0);
-      this.state_2d = Array.from({ length: D }, () => new Array(D).fill(0));
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(STATE_INBYTES, 0);
+      /** @type {uint8[][]} */
+      this.state_2d = [];
+      for (let r = 0; r < D; ++r) this.state_2d.push(OpCodes.CreateArray(D, 0));
 
+      /** @type {boolean} */
       this.initialized = false;
+      /** @type {int32} */
       this.rate = algorithm.rateInBytes;
     }
 
@@ -385,7 +414,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`PhotonBeetle-AEAD key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("PhotonBeetle-AEAD key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -401,6 +430,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -413,17 +445,23 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`PhotonBeetle-AEAD requires exactly 16 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("PhotonBeetle-AEAD requires exactly 16 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -437,6 +475,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -496,6 +537,7 @@
         actualMsgLen = mLen - 16;
       }
 
+      /** @type {uint8[]} */
       const output = new Array(mLen + 16);  // Message + Tag
 
       // Process associated data
@@ -511,20 +553,25 @@
         if (this.isInverse) {
           // Decryption: extract tag first
           const ctLen = actualMsgLen;
+          /** @type {uint8[]} */
           const ciphertext = this.inputBuffer.slice(0, ctLen);
+          /** @type {uint8[]} */
           const receivedTag = this.inputBuffer.slice(ctLen, mLen);
 
           // Decrypt
+          /** @type {uint8[]} */
           const plaintext = this._processMessage(ciphertext, adLen === 0, false);
 
           // Generate and verify tag
           PHOTON_Permutation(this.state, this.state_2d);
+          /** @type {uint8[]} */
           const computedTag = this.state.slice(0, 16);
 
           // Constant-time tag comparison
+          /** @type {uint32} */
           let tagMatch = 0xFF;
           for (let i = 0; i < 16; ++i) {
-            tagMatch = OpCodes.AndN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]) - 1);
+            tagMatch = OpCodes.And32(tagMatch, OpCodes.Sub32(OpCodes.Xor32(computedTag[i], receivedTag[i]), 1));
           }
 
           if (tagMatch !== 0xFF) {
@@ -536,10 +583,12 @@
           return plaintext;
         } else {
           // Encryption
+          /** @type {uint8[]} */
           const ciphertext = this._processMessage(this.inputBuffer, adLen === 0, true);
 
           // Generate tag
           PHOTON_Permutation(this.state, this.state_2d);
+          /** @type {uint8[]} */
           const tag = this.state.slice(0, 16);
 
           // Return ciphertext || tag
@@ -558,16 +607,19 @@
         // Empty plaintext case
         if (this.isInverse) {
           // Decryption with empty plaintext: verify tag and return empty
+          /** @type {uint8[]} */
           const receivedTag = this.inputBuffer.slice(0, 16);
 
           // Generate expected tag
           PHOTON_Permutation(this.state, this.state_2d);
+          /** @type {uint8[]} */
           const computedTag = this.state.slice(0, 16);
 
           // Constant-time tag comparison
+          /** @type {uint32} */
           let tagMatch = 0xFF;
           for (let i = 0; i < 16; ++i) {
-            tagMatch = OpCodes.AndN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]) - 1);
+            tagMatch = OpCodes.And32(tagMatch, OpCodes.Sub32(OpCodes.Xor32(computedTag[i], receivedTag[i]), 1));
           }
 
           if (tagMatch !== 0xFF) {
@@ -575,10 +627,13 @@
           }
 
           this.inputBuffer = [];
-          return [];  // Return empty plaintext
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;  // Return empty plaintext
         } else {
           // Encryption with empty plaintext: just generate tag
           PHOTON_Permutation(this.state, this.state_2d);
+          /** @type {uint8[]} */
           const tag = this.state.slice(0, 16);
 
           this.inputBuffer = [];
@@ -587,7 +642,11 @@
       }
     }
 
+    /**
+     * @param {boolean} mempty
+     */
     _processAssociatedData(mempty) {
+      /** @type {uint8[]} */
       const ad = this._associatedData;
       const adlen = ad.length;
       let pos = 0;
@@ -596,7 +655,7 @@
       while (pos + this.rate < adlen) {
         PHOTON_Permutation(this.state, this.state_2d);
         for (let i = 0; i < this.rate; ++i) {
-          this.state[i] = OpCodes.XorN(this.state[i], ad[pos + i]);
+          this.state[i] = OpCodes.Xor32(this.state[i], ad[pos + i]);
         }
         pos += this.rate;
       }
@@ -608,7 +667,7 @@
         this.state[i] ^= ad[pos + i];
       }
       if (remaining < this.rate) {
-        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
+        this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);  // ozs padding
       }
 
       // Add domain separation
@@ -623,9 +682,17 @@
       }
     }
 
+    /**
+     * @param {uint8[]} msg
+     * @param {boolean} adempty
+     * @param {boolean} isEncrypt
+     * @returns {uint8[]}
+     */
     _processMessage(msg, adempty, isEncrypt) {
       const mlen = msg.length;
+      /** @type {uint8[]} */
       const output = new Array(mlen);
+      /** @type {uint8[]} */
       const shuffle = new Array(this.rate);
       let pos = 0;
 
@@ -634,6 +701,7 @@
         PHOTON_Permutation(this.state, this.state_2d);
 
         // rhoohr operation: generate keystream from rotated state
+        /** @type {int32} */
         const half = this.rate / 2;
         // Copy second half of state to first half of shuffle
         for (let i = 0; i < half; ++i) {
@@ -641,26 +709,26 @@
         }
         // Rotate first half of state by 1 bit to the right, store in second half of shuffle
         for (let i = 0; i < half - 1; ++i) {
-          shuffle[half + i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
+          shuffle[half + i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
         }
-        shuffle[this.rate - 1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
+        shuffle[this.rate - 1] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
 
         // Update state and generate output
         if (isEncrypt) {
           // Encryption: state ^= plaintext, then ciphertext = plaintext^shuffle
           for (let i = 0; i < this.rate; ++i) {
-            this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
+            this.state[i] = OpCodes.Xor32(this.state[i], msg[pos + i]);
           }
           for (let i = 0; i < this.rate; ++i) {
-            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
+            output[pos + i] = OpCodes.Xor32(msg[pos + i], shuffle[i]);
           }
         } else {
           // Decryption: plaintext = ciphertext^shuffle, then state ^= plaintext
           for (let i = 0; i < this.rate; ++i) {
-            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
+            output[pos + i] = OpCodes.Xor32(msg[pos + i], shuffle[i]);
           }
           for (let i = 0; i < this.rate; ++i) {
-            this.state[i] = OpCodes.XorN(this.state[i], output[pos + i]);
+            this.state[i] = OpCodes.Xor32(this.state[i], output[pos + i]);
           }
         }
 
@@ -672,6 +740,7 @@
       PHOTON_Permutation(this.state, this.state_2d);
 
         // rhoohr operation
+        /** @type {int32} */
         const half = this.rate / 2;
         // Copy second half of state to first half of shuffle
         for (let i = 0; i < half; ++i) {
@@ -679,32 +748,32 @@
         }
         // Rotate first half of state by 1 bit to the right, store in second half of shuffle
         for (let i = 0; i < half - 1; ++i) {
-          shuffle[half + i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
+          shuffle[half + i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
         }
-        shuffle[this.rate - 1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
+        shuffle[this.rate - 1] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
 
         // Update state and generate output for partial block
         if (isEncrypt) {
           // Encryption: state ^= plaintext, then ciphertext = plaintext^shuffle
           for (let i = 0; i < remaining; ++i) {
-            this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
+            this.state[i] = OpCodes.Xor32(this.state[i], msg[pos + i]);
           }
           if (remaining < this.rate) {
-            this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
+            this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);  // ozs padding
           }
           for (let i = 0; i < remaining; ++i) {
-            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
+            output[pos + i] = OpCodes.Xor32(msg[pos + i], shuffle[i]);
           }
         } else {
           // Decryption: plaintext = ciphertext^shuffle, then state ^= plaintext
           for (let i = 0; i < remaining; ++i) {
-            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
+            output[pos + i] = OpCodes.Xor32(msg[pos + i], shuffle[i]);
           }
           for (let i = 0; i < remaining; ++i) {
-            this.state[i] = OpCodes.XorN(this.state[i], output[pos + i]);
+            this.state[i] = OpCodes.Xor32(this.state[i], output[pos + i]);
           }
           if (remaining < this.rate) {
-            this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
+            this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);  // ozs padding
           }
         }
 

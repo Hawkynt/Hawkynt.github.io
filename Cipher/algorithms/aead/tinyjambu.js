@@ -58,24 +58,24 @@
   /**
    * Perform 32 TinyJAMBU steps (one step per bit)
    * This is the core nonlinear feedback function shared by all variants
-   * @param {number} s0 - State word 0
-   * @param {number} s1 - State word 1
-   * @param {number} s2 - State word 2
-   * @param {number} s3 - State word 3
-   * @param {number} kword - Key word
-   * @returns {number} New state word value
+   * @param {uint32} s0 - State word 0
+   * @param {uint32} s1 - State word 1
+   * @param {uint32} s2 - State word 2
+   * @param {uint32} s3 - State word 3
+   * @param {uint32} kword - Key word
+   * @returns {uint32} New state word value
    */
   function steps32(s0, s1, s2, s3, kword) {
     // Compute feedback taps using bitwise shift operations
     // Note: These combine two words via shifts, NOT rotations of a single word
-    const t1 = OpCodes.OrN(OpCodes.Shr32(s1, 15), OpCodes.Shl32(s2, 17));
-    const t2 = OpCodes.OrN(OpCodes.Shr32(s2, 6), OpCodes.Shl32(s3, 26));
-    const t3 = OpCodes.OrN(OpCodes.Shr32(s2, 21), OpCodes.Shl32(s3, 11));
-    const t4 = OpCodes.OrN(OpCodes.Shr32(s2, 27), OpCodes.Shl32(s3, 5));
+    const t1 = OpCodes.Or32(OpCodes.Shr32(s1, 15), OpCodes.Shl32(s2, 17));
+    const t2 = OpCodes.Or32(OpCodes.Shr32(s2, 6), OpCodes.Shl32(s3, 26));
+    const t3 = OpCodes.Or32(OpCodes.Shr32(s2, 21), OpCodes.Shl32(s3, 11));
+    const t4 = OpCodes.Or32(OpCodes.Shr32(s2, 27), OpCodes.Shl32(s3, 5));
 
     // Nonlinear feedback: XOR(t1, NAND(t2,t3), t4, key)
     // NAND(t2,t3) = NOT(AND(t2,t3)) = XOR(AND(t2,t3), 0xFFFFFFFF)
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, t1), OpCodes.Xor32(OpCodes.AndN(t2, t3), 0xFFFFFFFF)), t4), kword));
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, t1), OpCodes.Xor32(OpCodes.And32(t2, t3), 0xFFFFFFFF)), t4), kword));
   }
 
   // ===== ALGORITHM CLASS =====
@@ -97,7 +97,7 @@
       this.permutation = config.permutation;
 
       // Required metadata
-      this.name = `TinyJAMBU-${variant} AEAD`;
+      this.name = "TinyJAMBU-" + variant + " AEAD";
       this.description = config.description;
       this.inventor = "Hongjun Wu, Tao Huang";
       this.year = 2019;
@@ -357,7 +357,7 @@
       };
 
       if (!configs[variant]) {
-        throw new Error(`Unsupported TinyJAMBU variant: ${variant}`);
+        throw new Error("Unsupported TinyJAMBU variant: " + variant);
       }
 
       return configs[variant];
@@ -382,21 +382,29 @@
   class TinyJAMBUInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TinyJAMBUAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Store variant-specific parameters
+      /** @type {int32} */
       this.keySize = algorithm.keySize;
+      /** @type {int32} */
       this.keyWords = algorithm.keyWords;
+      /** @type {int32} */
       this.initRounds = algorithm.initRounds;
     }
 
@@ -413,7 +421,7 @@
       }
 
       if (keyBytes.length !== this.keySize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.keySize})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.keySize + ")");
       }
 
       this._key = [...keyBytes];
@@ -426,6 +434,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -433,14 +444,20 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 12)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 12)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -449,19 +466,28 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
 
 
     /**
-   * Get cipher result (encrypted or decrypted data)
+   * Get cipher result (encrypted or decrypted inWord)
    * @returns {uint8[]} Processed output bytes
    * @throws {Error} If key not set, no data fed, or invalid input length
    */
@@ -486,114 +512,138 @@
 
     /**
      * TinyJAMBU-128 permutation (4-word key schedule)
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @param {int32} rounds
      */
-    _permutation128(state, key, rounds) {
-      let s0 = state[0];
-      let s1 = state[1];
-      let s2 = state[2];
-      let s3 = state[3];
+    _permutation128(st, kw, rounds) {
+      /** @type {uint32} */
+      let s0 = st[0];
+      /** @type {uint32} */
+      let s1 = st[1];
+      /** @type {uint32} */
+      let s2 = st[2];
+      /** @type {uint32} */
+      let s3 = st[3];
 
       for (; rounds > 0; --rounds) {
-        s0 = steps32(s0, s1, s2, s3, key[0]);
-        s1 = steps32(s1, s2, s3, s0, key[1]);
-        s2 = steps32(s2, s3, s0, s1, key[2]);
-        s3 = steps32(s3, s0, s1, s2, key[3]);
+        s0 = steps32(s0, s1, s2, s3, kw[0]);
+        s1 = steps32(s1, s2, s3, s0, kw[1]);
+        s2 = steps32(s2, s3, s0, s1, kw[2]);
+        s3 = steps32(s3, s0, s1, s2, kw[3]);
       }
 
-      state[0] = s0;
-      state[1] = s1;
-      state[2] = s2;
-      state[3] = s3;
+      st[0] = s0;
+      st[1] = s1;
+      st[2] = s2;
+      st[3] = s3;
     }
 
     /**
      * TinyJAMBU-192 permutation (6-word key schedule with rotation)
      * Key schedule pattern: [0,1,2,3], [4,5,0,1], [2,3,4,5]
      * Each round consists of 128 steps (4 x 32-bit operations)
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @param {int32} rounds
      */
-    _permutation192(state, key, rounds) {
-      let s0 = state[0];
-      let s1 = state[1];
-      let s2 = state[2];
-      let s3 = state[3];
+    _permutation192(st, kw, rounds) {
+      /** @type {uint32} */
+      let s0 = st[0];
+      /** @type {uint32} */
+      let s1 = st[1];
+      /** @type {uint32} */
+      let s2 = st[2];
+      /** @type {uint32} */
+      let s3 = st[3];
 
       for (; rounds > 0; --rounds) {
         // First set of 128 steps (key[0,1,2,3])
-        s0 = steps32(s0, s1, s2, s3, key[0]);
-        s1 = steps32(s1, s2, s3, s0, key[1]);
-        s2 = steps32(s2, s3, s0, s1, key[2]);
-        s3 = steps32(s3, s0, s1, s2, key[3]);
+        s0 = steps32(s0, s1, s2, s3, kw[0]);
+        s1 = steps32(s1, s2, s3, s0, kw[1]);
+        s2 = steps32(s2, s3, s0, s1, kw[2]);
+        s3 = steps32(s3, s0, s1, s2, kw[3]);
 
         if ((--rounds) === 0) break;
 
         // Second set of 128 steps (key[4,5,0,1])
-        s0 = steps32(s0, s1, s2, s3, key[4]);
-        s1 = steps32(s1, s2, s3, s0, key[5]);
-        s2 = steps32(s2, s3, s0, s1, key[0]);
-        s3 = steps32(s3, s0, s1, s2, key[1]);
+        s0 = steps32(s0, s1, s2, s3, kw[4]);
+        s1 = steps32(s1, s2, s3, s0, kw[5]);
+        s2 = steps32(s2, s3, s0, s1, kw[0]);
+        s3 = steps32(s3, s0, s1, s2, kw[1]);
 
         if ((--rounds) === 0) break;
 
         // Third set of 128 steps (key[2,3,4,5])
-        s0 = steps32(s0, s1, s2, s3, key[2]);
-        s1 = steps32(s1, s2, s3, s0, key[3]);
-        s2 = steps32(s2, s3, s0, s1, key[4]);
-        s3 = steps32(s3, s0, s1, s2, key[5]);
+        s0 = steps32(s0, s1, s2, s3, kw[2]);
+        s1 = steps32(s1, s2, s3, s0, kw[3]);
+        s2 = steps32(s2, s3, s0, s1, kw[4]);
+        s3 = steps32(s3, s0, s1, s2, kw[5]);
       }
 
-      state[0] = s0;
-      state[1] = s1;
-      state[2] = s2;
-      state[3] = s3;
+      st[0] = s0;
+      st[1] = s1;
+      st[2] = s2;
+      st[3] = s3;
     }
 
     /**
      * TinyJAMBU-256 permutation (8-word key schedule)
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @param {int32} rounds
      */
-    _permutation256(state, key, rounds) {
-      let s0 = state[0];
-      let s1 = state[1];
-      let s2 = state[2];
-      let s3 = state[3];
+    _permutation256(st, kw, rounds) {
+      /** @type {uint32} */
+      let s0 = st[0];
+      /** @type {uint32} */
+      let s1 = st[1];
+      /** @type {uint32} */
+      let s2 = st[2];
+      /** @type {uint32} */
+      let s3 = st[3];
 
       for (; rounds > 0; --rounds) {
         // First set of 128 steps (key[0..3])
-        s0 = steps32(s0, s1, s2, s3, key[0]);
-        s1 = steps32(s1, s2, s3, s0, key[1]);
-        s2 = steps32(s2, s3, s0, s1, key[2]);
-        s3 = steps32(s3, s0, s1, s2, key[3]);
+        s0 = steps32(s0, s1, s2, s3, kw[0]);
+        s1 = steps32(s1, s2, s3, s0, kw[1]);
+        s2 = steps32(s2, s3, s0, s1, kw[2]);
+        s3 = steps32(s3, s0, s1, s2, kw[3]);
 
         if ((--rounds) === 0) break;
 
         // Second set of 128 steps (key[4..7])
-        s0 = steps32(s0, s1, s2, s3, key[4]);
-        s1 = steps32(s1, s2, s3, s0, key[5]);
-        s2 = steps32(s2, s3, s0, s1, key[6]);
-        s3 = steps32(s3, s0, s1, s2, key[7]);
+        s0 = steps32(s0, s1, s2, s3, kw[4]);
+        s1 = steps32(s1, s2, s3, s0, kw[5]);
+        s2 = steps32(s2, s3, s0, s1, kw[6]);
+        s3 = steps32(s3, s0, s1, s2, kw[7]);
       }
 
-      state[0] = s0;
-      state[1] = s1;
-      state[2] = s2;
-      state[3] = s3;
+      st[0] = s0;
+      st[1] = s1;
+      st[2] = s2;
+      st[3] = s3;
     }
 
     /**
      * Call the appropriate permutation based on variant
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @param {int32} rounds
      */
-    _permutation(state, key, rounds) {
+    _permutation(st, kw, rounds) {
       switch (this.keyWords) {
         case 4:
-          this._permutation128(state, key, rounds);
+          this._permutation128(st, kw, rounds);
           break;
         case 6:
-          this._permutation192(state, key, rounds);
+          this._permutation192(st, kw, rounds);
           break;
         case 8:
-          this._permutation256(state, key, rounds);
+          this._permutation256(st, kw, rounds);
           break;
         default:
-          throw new Error(`Unsupported key size: ${this.keyWords} words`);
+          throw new Error("Unsupported key size: " + this.keyWords + " words");
       }
     }
 
@@ -601,77 +651,86 @@
 
     /**
      * Setup TinyJAMBU state with key, nonce, and associated data
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @param {uint8[]} nonce
+     * @param {uint8[]} ad
+     * @param {int32} adlen
      */
-    _setup(state, key, nonce, ad, adlen) {
+    _setup(st, kw, nonce, ad, adlen) {
       // Initialize state to zero
-      state[0] = 0;
-      state[1] = 0;
-      state[2] = 0;
-      state[3] = 0;
+      st[0] = 0;
+      st[1] = 0;
+      st[2] = 0;
+      st[3] = 0;
 
       // Initial permutation with key
-      this._permutation(state, key, this.initRounds);
+      this._permutation(st, kw, this.initRounds);
 
       // Absorb the three 32-bit words of the 96-bit nonce
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x10));
-      this._permutation(state, key, 3);
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], OpCodes.Pack32LE(nonce[0], nonce[1], nonce[2], nonce[3])));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x10));
+      this._permutation(st, kw, 3);
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], OpCodes.Pack32LE(nonce[0], nonce[1], nonce[2], nonce[3])));
 
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x10));
-      this._permutation(state, key, 3);
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], OpCodes.Pack32LE(nonce[4], nonce[5], nonce[6], nonce[7])));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x10));
+      this._permutation(st, kw, 3);
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], OpCodes.Pack32LE(nonce[4], nonce[5], nonce[6], nonce[7])));
 
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x10));
-      this._permutation(state, key, 3);
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], OpCodes.Pack32LE(nonce[8], nonce[9], nonce[10], nonce[11])));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x10));
+      this._permutation(st, kw, 3);
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], OpCodes.Pack32LE(nonce[8], nonce[9], nonce[10], nonce[11])));
 
       // Process as many full 32-bit words of associated data as we can
       let adPos = 0;
       while (adlen >= 4) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x30));
-        this._permutation(state, key, 3);
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], OpCodes.Pack32LE(ad[adPos], ad[adPos + 1], ad[adPos + 2], ad[adPos + 3])));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x30));
+        this._permutation(st, kw, 3);
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], OpCodes.Pack32LE(ad[adPos], ad[adPos + 1], ad[adPos + 2], ad[adPos + 3])));
         adPos += 4;
         adlen -= 4;
       }
 
       // Handle the left-over associated data bytes
       if (adlen === 1) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x30));
-        this._permutation(state, key, 3);
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], ad[adPos]));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x01));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x30));
+        this._permutation(st, kw, 3);
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], ad[adPos]));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x01));
       } else if (adlen === 2) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x30));
-        this._permutation(state, key, 3);
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], OpCodes.Pack16LE(ad[adPos], ad[adPos + 1])));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x02));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x30));
+        this._permutation(st, kw, 3);
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], OpCodes.Pack16LE(ad[adPos], ad[adPos + 1])));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x02));
       } else if (adlen === 3) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x30));
-        this._permutation(state, key, 3);
-        const word = OpCodes.OrN(OpCodes.Pack16LE(ad[adPos], ad[adPos + 1]), OpCodes.Shl32(ad[adPos + 2], 16));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], word));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x03));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x30));
+        this._permutation(st, kw, 3);
+        const word = OpCodes.Or32(OpCodes.Pack16LE(ad[adPos], ad[adPos + 1]), OpCodes.Shl32(ad[adPos + 2], 16));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], word));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x03));
       }
     }
 
     /**
      * Generate authentication tag
+     * @param {uint32[]} st
+     * @param {uint32[]} kw
+     * @returns {uint8[]}
      */
-    _generateTag(state, key) {
+    _generateTag(st, kw) {
+      /** @type {uint8[]} */
       const tag = new Array(8);
 
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x70));
-      this._permutation(state, key, this.initRounds);
-      const tag1 = OpCodes.Unpack32LE(state[2]);
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x70));
+      this._permutation(st, kw, this.initRounds);
+      const tag1 = OpCodes.Unpack32LE(st[2]);
       tag[0] = tag1[0];
       tag[1] = tag1[1];
       tag[2] = tag1[2];
       tag[3] = tag1[3];
 
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x70));
-      this._permutation(state, key, 3);
-      const tag2 = OpCodes.Unpack32LE(state[2]);
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x70));
+      this._permutation(st, kw, 3);
+      const tag2 = OpCodes.Unpack32LE(st[2]);
       tag[4] = tag2[0];
       tag[5] = tag2[1];
       tag[6] = tag2[2];
@@ -682,64 +741,79 @@
 
     // ===== ENCRYPTION / DECRYPTION =====
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
-      const state = [0, 0, 0, 0];
+      /** @type {uint32[]} */
+      const st = [0, 0, 0, 0];
 
       // Unpack key to 32-bit words (little-endian)
-      const key = [];
+      /** @type {uint32[]} */
+      const kw = [];
       for (let i = 0; i < this.keyWords; i++) {
+        /** @type {int32} */
         const offset = i * 4;
-        key.push(OpCodes.Pack32LE(this._key[offset], this._key[offset + 1], this._key[offset + 2], this._key[offset + 3]));
+        kw.push(OpCodes.Pack32LE(this._key[offset], this._key[offset + 1], this._key[offset + 2], this._key[offset + 3]));
       }
 
       // Setup state with key, nonce, and associated data
-      this._setup(state, key, this._nonce, this._aad, this._aad.length);
+      this._setup(st, kw, this._nonce, this._aad, this._aad.length);
 
       // Encrypt plaintext to produce ciphertext
       let mlen = plaintext.length;
       let mPos = 0;
 
       while (mlen >= 4) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const data = OpCodes.Pack32LE(plaintext[mPos], plaintext[mPos + 1], plaintext[mPos + 2], plaintext[mPos + 3]);
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        const ctWord = OpCodes.ToUint32(OpCodes.XorN(data, state[2]));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const inWord = OpCodes.Pack32LE(plaintext[mPos], plaintext[mPos + 1], plaintext[mPos + 2], plaintext[mPos + 3]);
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        const ctWord = OpCodes.ToUint32(OpCodes.Xor32(inWord, st[2]));
         const ctBytes = OpCodes.Unpack32LE(ctWord);
-        output.push(ctBytes[0], ctBytes[1], ctBytes[2], ctBytes[3]);
+        output.push(ctBytes[0]);
+        output.push(ctBytes[1]);
+        output.push(ctBytes[2]);
+        output.push(ctBytes[3]);
         mPos += 4;
         mlen -= 4;
       }
 
       if (mlen === 1) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const data = plaintext[mPos];
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x01));
-        output.push(OpCodes.AndN(OpCodes.XorN(state[2], data), 0xFF));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const inWord = plaintext[mPos];
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x01));
+        output.push(OpCodes.And32(OpCodes.Xor32(st[2], inWord), 0xFF));
       } else if (mlen === 2) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const data = OpCodes.Pack16LE(plaintext[mPos], plaintext[mPos + 1]);
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x02));
-        const ctWord = OpCodes.ToUint32(OpCodes.XorN(data, state[2]));
-        output.push(OpCodes.AndN(ctWord, 0xFF), OpCodes.AndN(OpCodes.Shr32(ctWord, 8), 0xFF));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const inWord = OpCodes.Pack16LE(plaintext[mPos], plaintext[mPos + 1]);
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x02));
+        const ctWord = OpCodes.ToUint32(OpCodes.Xor32(inWord, st[2]));
+        output.push(OpCodes.And32(ctWord, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(ctWord, 8), 0xFF));
       } else if (mlen === 3) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const data = OpCodes.OrN(OpCodes.Pack16LE(plaintext[mPos], plaintext[mPos + 1]), OpCodes.Shl32(plaintext[mPos + 2], 16));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x03));
-        const ctWord = OpCodes.ToUint32(OpCodes.XorN(data, state[2]));
-        output.push(OpCodes.AndN(ctWord, 0xFF), OpCodes.AndN(OpCodes.Shr32(ctWord, 8), 0xFF), OpCodes.AndN(OpCodes.Shr32(ctWord, 16), 0xFF));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const inWord = OpCodes.Or32(OpCodes.Pack16LE(plaintext[mPos], plaintext[mPos + 1]), OpCodes.Shl32(plaintext[mPos + 2], 16));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x03));
+        const ctWord = OpCodes.ToUint32(OpCodes.Xor32(inWord, st[2]));
+        output.push(OpCodes.And32(ctWord, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(ctWord, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(ctWord, 16), 0xFF));
       }
 
       // Generate authentication tag
-      const tag = this._generateTag(state, key);
+      /** @type {uint8[]} */
+      const tag = this._generateTag(st, kw);
       for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
       // Clear input buffer
@@ -748,68 +822,84 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
-      const state = [0, 0, 0, 0];
+      /** @type {uint32[]} */
+      const st = [0, 0, 0, 0];
 
       // Extract tag from end of ciphertext
       const ctLen = ciphertext.length - 8;
+      /** @type {uint8[]} */
       const providedTag = ciphertext.slice(ctLen);
 
       // Unpack key to 32-bit words (little-endian)
-      const key = [];
+      /** @type {uint32[]} */
+      const kw = [];
       for (let i = 0; i < this.keyWords; i++) {
+        /** @type {int32} */
         const offset = i * 4;
-        key.push(OpCodes.Pack32LE(this._key[offset], this._key[offset + 1], this._key[offset + 2], this._key[offset + 3]));
+        kw.push(OpCodes.Pack32LE(this._key[offset], this._key[offset + 1], this._key[offset + 2], this._key[offset + 3]));
       }
 
       // Setup state with key, nonce, and associated data
-      this._setup(state, key, this._nonce, this._aad, this._aad.length);
+      this._setup(st, kw, this._nonce, this._aad, this._aad.length);
 
       // Decrypt ciphertext to produce plaintext
       let clen = ctLen;
       let cPos = 0;
 
       while (clen >= 4) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
         const ctWord = OpCodes.Pack32LE(ciphertext[cPos], ciphertext[cPos + 1], ciphertext[cPos + 2], ciphertext[cPos + 3]);
-        const data = OpCodes.ToUint32(OpCodes.XorN(ctWord, state[2]));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        const ptBytes = OpCodes.Unpack32LE(data);
-        output.push(ptBytes[0], ptBytes[1], ptBytes[2], ptBytes[3]);
+        const inWord = OpCodes.ToUint32(OpCodes.Xor32(ctWord, st[2]));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        const ptBytes = OpCodes.Unpack32LE(inWord);
+        output.push(ptBytes[0]);
+        output.push(ptBytes[1]);
+        output.push(ptBytes[2]);
+        output.push(ptBytes[3]);
         cPos += 4;
         clen -= 4;
       }
 
       if (clen === 1) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const data = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(ciphertext[cPos], state[2]), 0xFF));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x01));
-        output.push(data);
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const inWord = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(ciphertext[cPos], st[2]), 0xFF));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x01));
+        output.push(inWord);
       } else if (clen === 2) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
         const ctWord = OpCodes.Pack16LE(ciphertext[cPos], ciphertext[cPos + 1]);
-        const data = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(ctWord, state[2]), 0xFFFF));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x02));
-        output.push(OpCodes.AndN(data, 0xFF), OpCodes.AndN(OpCodes.Shr32(data, 8), 0xFF));
+        const inWord = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(ctWord, st[2]), 0xFFFF));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x02));
+        output.push(OpCodes.And32(inWord, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(inWord, 8), 0xFF));
       } else if (clen === 3) {
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x50));
-        this._permutation(state, key, this.initRounds);
-        const ctWord = OpCodes.OrN(OpCodes.Pack16LE(ciphertext[cPos], ciphertext[cPos + 1]), OpCodes.Shl32(ciphertext[cPos + 2], 16));
-        const data = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(ctWord, state[2]), 0xFFFFFF));
-        state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], data));
-        state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], 0x03));
-        output.push(OpCodes.AndN(data, 0xFF), OpCodes.AndN(OpCodes.Shr32(data, 8), 0xFF), OpCodes.AndN(OpCodes.Shr32(data, 16), 0xFF));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x50));
+        this._permutation(st, kw, this.initRounds);
+        const ctWord = OpCodes.Or32(OpCodes.Pack16LE(ciphertext[cPos], ciphertext[cPos + 1]), OpCodes.Shl32(ciphertext[cPos + 2], 16));
+        const inWord = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(ctWord, st[2]), 0xFFFFFF));
+        st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], inWord));
+        st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], 0x03));
+        output.push(OpCodes.And32(inWord, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(inWord, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(inWord, 16), 0xFF));
       }
 
       // Generate expected tag
-      const expectedTag = this._generateTag(state, key);
+      /** @type {uint8[]} */
+      const expectedTag = this._generateTag(st, kw);
 
       // Verify tag (constant-time comparison)
       if (!OpCodes.ConstantTimeCompare(expectedTag, providedTag)) {

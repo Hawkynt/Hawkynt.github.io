@@ -68,12 +68,22 @@
   ]);
 
   // Bit permutation helper (bit_permute_step technique)
+  /**
+   * @param {uint32} value
+   * @param {uint32} mask
+   * @param {int32} shift
+   * @returns {uint32}
+   */
   function bitPermuteStep(value, mask, shift) {
-    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift)));
+    const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift)));
   }
 
   // PERM3_INNER - Core permutation
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3Inner(x) {
     x = bitPermuteStep(x, 0x0a0a0a0a, 3);
     x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -83,27 +93,47 @@
   }
 
   // Row permutations PERM0-PERM3
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm0(x) {
     return OpCodes.RotL32(perm3Inner(x), 8);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm1(x) {
     return OpCodes.RotL32(perm3Inner(x), 16);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm2(x) {
     return OpCodes.RotL32(perm3Inner(x), 24);
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3(x) {
     return perm3Inner(x);
   }
 
   // GIFT-128 Key Schedule
   class GIFT128KeySchedule {
+    /**
+     * @param {uint8[]} key - 16-byte key
+     */
     constructor(key) {
       // Mirror the fixslicing word order: 3, 1, 2, 0
       // Load as big-endian 32-bit words
+      /** @type {uint32[]} */
       this.k = new Uint32Array(4);
       this.k[0] = OpCodes.Pack32BE(key[12], key[13], key[14], key[15]);
       this.k[1] = OpCodes.Pack32BE(key[4], key[5], key[6], key[7]);
@@ -113,6 +143,11 @@
   }
 
   // GIFT-128 encryption (bit-sliced, matches reference implementation)
+  /**
+   * @param {GIFT128KeySchedule} ks
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function gift128bEncrypt(ks, output, input) {
     // Load input as big-endian 32-bit words
     let s0 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
@@ -121,21 +156,25 @@
     let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
     // Initialize key schedule words (order for TINY variant)
+    /** @type {uint32} */
     let w0 = ks.k[3];
+    /** @type {uint32} */
     let w1 = ks.k[1];
+    /** @type {uint32} */
     let w2 = ks.k[2];
+    /** @type {uint32} */
     let w3 = ks.k[0];
 
     // Perform all 40 rounds
     for (let round = 0; round < 40; round++) {
       // SubCells - apply the S-box
-      s1 = OpCodes.XorN(s1, OpCodes.AndN(s0, s2));
-      s0 = OpCodes.XorN(s0, OpCodes.AndN(s1, s3));
-      s2 = OpCodes.XorN(s2, OpCodes.OrN(s0, s1));
-      s3 = OpCodes.XorN(s3, s2);
-      s1 = OpCodes.XorN(s1, s3);
-      s3 = OpCodes.XorN(s3, 0xFFFFFFFF);
-      s2 = OpCodes.XorN(s2, OpCodes.AndN(s0, s1));
+      s1 = OpCodes.Xor32(s1, OpCodes.And32(s0, s2));
+      s0 = OpCodes.Xor32(s0, OpCodes.And32(s1, s3));
+      s2 = OpCodes.Xor32(s2, OpCodes.Or32(s0, s1));
+      s3 = OpCodes.Xor32(s3, s2);
+      s1 = OpCodes.Xor32(s1, s3);
+      s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
+      s2 = OpCodes.Xor32(s2, OpCodes.And32(s0, s1));
 
       // Swap s0 and s3
       let temp = s0;
@@ -149,20 +188,20 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR in the key schedule and round constant
-      s2 = OpCodes.XorN(s2, w1);
-      s1 = OpCodes.XorN(s1, w3);
-      s3 = OpCodes.XorN(s3, OpCodes.ToUint32(OpCodes.XorN(0x80000000, GIFT128_RC[round])));
+      s2 = OpCodes.Xor32(s2, w1);
+      s1 = OpCodes.Xor32(s1, w3);
+      s3 = OpCodes.Xor32(s3, OpCodes.ToUint32(OpCodes.Xor32(0x80000000, GIFT128_RC[round])));
 
       // Rotate the key schedule
       temp = w3;
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-            OpCodes.Shr32(OpCodes.AndN(temp, 0xFFFC0000), 2),
-            OpCodes.Shl32(OpCodes.AndN(temp, 0x00030000), 14)),
-            OpCodes.Shl32(OpCodes.AndN(temp, 0x00000FFF), 4)),
-            OpCodes.Shr32(OpCodes.AndN(temp, 0x0000F000), 12)));
+      w0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+            OpCodes.Shr32(OpCodes.And32(temp, 0xFFFC0000), 2),
+            OpCodes.Shl32(OpCodes.And32(temp, 0x00030000), 14)),
+            OpCodes.Shl32(OpCodes.And32(temp, 0x00000FFF), 4)),
+            OpCodes.Shr32(OpCodes.And32(temp, 0x0000F000), 12)));
     }
 
     // Store output as big-endian
@@ -181,6 +220,9 @@
 
   // Multiply a block value by 2 in the special byte field
   // Implements the custom Galois Field multiplication used by SUNDAE
+  /**
+   * @param {uint8[]} B
+   */
   function sundaeMultiply(B) {
     const B0 = B[0];
 
@@ -191,27 +233,44 @@
     B[15] = B0;
 
     // XOR feedback polynomial at positions 10, 12, 14
-    B[10] = OpCodes.XorN(B[10], B0);
-    B[12] = OpCodes.XorN(B[12], B0);
-    B[14] = OpCodes.XorN(B[14], B0);
+    B[10] = OpCodes.Xor32(B[10], B0);
+    B[12] = OpCodes.Xor32(B[12], B0);
+    B[14] = OpCodes.Xor32(B[14], B0);
   }
 
   // XOR block operation
+  /**
+   * @param {uint8[]} dest
+   * @param {uint8[]} src
+   * @param {int32} length
+   */
   function xorBlock(dest, src, length) {
     for (let i = 0; i < length; i++) {
-      dest[i] = OpCodes.XorN(dest[i], src[i]);
+      dest[i] = OpCodes.Xor32(dest[i], src[i]);
     }
   }
 
   // Compute MAC over concatenated data buffers
+  /**
+   * @param {GIFT128KeySchedule} ks
+   * @param {uint8[]} V
+   * @param {uint8[]} data1
+   * @param {int32} data1len
+   * @param {uint8[]} data2
+   * @param {int32} data2len
+   */
   function sundaeGiftAeadMac(ks, V, data1, data1len, data2, data2len) {
     // Nothing to do if input is empty
     if (data1len === 0 && data2len === 0) {
       return;
     }
 
-    let pos1 = 0, pos2 = 0;
-    let len;
+    /** @type {int32} */
+    let pos1 = 0;
+    /** @type {int32} */
+    let pos2 = 0;
+    /** @type {int32} */
+    let len = 0;
 
     // Format the first block (assumes data1len <= 16, which is the nonce).
     // The second buffer fills whatever room is left in this block after the
@@ -238,7 +297,7 @@
 
     // Pad and process the last block
     if (len < 16) {
-      V[len] = OpCodes.XorN(V[len], 0x80);
+      V[len] = OpCodes.Xor32(V[len], 0x80);
       sundaeMultiply(V);
       gift128bEncrypt(ks, V, V);
     } else {
@@ -249,6 +308,17 @@
   }
 
   // SUNDAE-GIFT encryption
+  /**
+   * @param {uint8[]} c
+   * @param {uint8[]} m
+   * @param {int32} mlen
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   * @param {uint8[]} npub
+   * @param {int32} npublen
+   * @param {uint8[]} k
+   * @param {uint8} domainsep
+   */
   function sundaeGiftAeadEncrypt(c, m, mlen, ad, adlen, npub, npublen, k, domainsep) {
     const ks = new GIFT128KeySchedule(k);
     const V = new Uint8Array(16);
@@ -256,9 +326,10 @@
     const P = new Uint8Array(16);
 
     // Format and encrypt the initial domain separation block
+    /** @type {uint8} */
     let domain = domainsep;
-    if (adlen > 0) domain = OpCodes.OrN(domain, 0x80);
-    if (mlen > 0) domain = OpCodes.OrN(domain, 0x40);
+    if (adlen > 0) domain = OpCodes.Or32(domain, 0x80);
+    if (mlen > 0) domain = OpCodes.Or32(domain, 0x40);
     V[0] = domain;
     for (let i = 1; i < 16; i++) V[i] = 0;
     gift128bEncrypt(ks, T, V);
@@ -280,7 +351,7 @@
       gift128bEncrypt(ks, V, V);
       // XOR plaintext with V to get next tag/partial ciphertext
       for (let i = 0; i < 16; i++) {
-        P[i] = OpCodes.XorN(V[i], m[mpos + i]);
+        P[i] = OpCodes.Xor32(V[i], m[mpos + i]);
       }
       // Write previous tag to ciphertext
       c.set(T.slice(0, 16), cpos);
@@ -294,7 +365,7 @@
     if (mlen > 0) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < mlen; i++) {
-        V[i] = OpCodes.XorN(V[i], m[mpos + i]);
+        V[i] = OpCodes.Xor32(V[i], m[mpos + i]);
       }
       c.set(T.slice(0, 16), cpos);
       c.set(V.slice(0, mlen), cpos + 16);
@@ -306,6 +377,18 @@
   }
 
   // SUNDAE-GIFT decryption
+  /**
+   * @param {uint8[]} m
+   * @param {uint8[]} c
+   * @param {int32} clen
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   * @param {uint8[]} npub
+   * @param {int32} npublen
+   * @param {uint8[]} k
+   * @param {uint8} domainsep
+   * @returns {int32}
+   */
   function sundaeGiftAeadDecrypt(m, c, clen, ad, adlen, npub, npublen, k, domainsep) {
     // Bail out if ciphertext is too short (must contain at least the 16-byte tag)
     if (clen < 16) {
@@ -328,7 +411,7 @@
     while (len >= 16) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < 16; i++) {
-        m[mpos + i] = OpCodes.XorN(c[cpos + i], V[i]);
+        m[mpos + i] = OpCodes.Xor32(c[cpos + i], V[i]);
       }
       cpos += 16;
       mpos += 16;
@@ -337,14 +420,15 @@
     if (len > 0) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < len; i++) {
-        m[mpos + i] = OpCodes.XorN(c[cpos + i], V[i]);
+        m[mpos + i] = OpCodes.Xor32(c[cpos + i], V[i]);
       }
     }
 
     // Format and encrypt the initial domain separation block
+    /** @type {uint8} */
     let domain = domainsep;
-    if (adlen > 0) domain = OpCodes.OrN(domain, 0x80);
-    if (mlen > 0) domain = OpCodes.OrN(domain, 0x40);
+    if (adlen > 0) domain = OpCodes.Or32(domain, 0x80);
+    if (mlen > 0) domain = OpCodes.Or32(domain, 0x40);
     V[0] = domain;
     for (let i = 1; i < 16; i++) V[i] = 0;
     gift128bEncrypt(ks, V, V);
@@ -356,9 +440,10 @@
     sundaeGiftAeadMac(ks, V, new Uint8Array(0), 0, m, mlen);
 
     // Check the authentication tag (constant-time comparison)
+    /** @type {uint32} */
     let diff = 0;
     for (let i = 0; i < 16; i++) {
-      diff = OpCodes.OrN(diff, OpCodes.XorN(T[i], V[i]));
+      diff = OpCodes.Or32(diff, OpCodes.Xor32(T[i], V[i]));
     }
 
     // Clear plaintext on authentication failure
@@ -521,16 +606,21 @@
   class SundaeGift128Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SundaeGift128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.tagSize = 16; // Fixed 128-bit tag
     }
 
@@ -565,6 +655,9 @@
     }
 
     // Property setter for nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -579,6 +672,9 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
@@ -605,10 +701,16 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
+      if (!this._nonce) {
+        throw new Error("Nonce not set");
+      }
 
       // Get AAD from aad property (inherited from IAeadInstance)
-      const aad = this.aad || [];
+      /** @type {uint8[]} */
+      let aad = [];
+      if (this.aad) {
+        aad = this.aad;
+      }
 
       if (this.isInverse) {
         // Decryption mode
@@ -619,6 +721,7 @@
         const ciphertext = new Uint8Array(this.inputBuffer);
         const plaintext = new Uint8Array(this.inputBuffer.length - 16);
 
+        /** @type {int32} */
         const result = sundaeGiftAeadDecrypt(
           plaintext,
           ciphertext,

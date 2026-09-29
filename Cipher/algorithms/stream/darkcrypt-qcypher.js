@@ -63,12 +63,19 @@
 
   class QCypherState {
     constructor() {
-      this.sbox = new Array(256).fill(0);
+      /** @type {uint8[]} */
+      this.sbox = OpCodes.CreateArray(256, 0);
+      /** @type {uint8} */
       this.A = 0;
+      /** @type {uint8} */
       this.B = 0;
+      /** @type {uint8} */
       this.C = 0;
     }
 
+    /**
+     * @returns {QCypherState} Independent copy of this state
+     */
     clone() {
       const s = new QCypherState();
       s.sbox = this.sbox.slice();
@@ -81,9 +88,14 @@
 
   // The single-byte "crypt" transform used internally by QCypher.
   // Mutates state in place and returns the transformed byte.
-  function qcTransform(state, P) {
-    const S = state.sbox;
-    const A = state.A, B = state.B, C = state.C;
+  /**
+   * @param {QCypherState} qs - Cipher state (updated in place)
+   * @param {uint8} P - Input byte
+   * @returns {uint8} Transformed byte
+   */
+  function qcTransform(qs, P) {
+    const S = qs.sbox;
+    const A = qs.A, B = qs.B, C = qs.C;
 
     const T3 = S[A];
     const T4 = S[T3];
@@ -107,27 +119,33 @@
     const Cx80 = OpCodes.Xor8(C, 0x80);
     S[Cx80] = OpCodes.Xor8(S[Cx80], T17);
 
-    state.A = OpCodes.ToByte(A + T12 + T6 + 1);
-    state.B = OpCodes.Xor8(B, OpCodes.Xor8(T13, OpCodes.Xor8(T14, T4)));
-    state.C = OpCodes.ToByte(C + 1);
+    qs.A = OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(A, T12), T6), 1));
+    qs.B = OpCodes.Xor8(B, OpCodes.Xor8(T13, OpCodes.Xor8(T14, T4)));
+    qs.C = OpCodes.ToByte(OpCodes.Add32(C, 1));
 
     return T11;
   }
 
+  /**
+   * @param {uint8[]} key - 64-byte key
+   * @returns {QCypherState} Keyed state
+   */
   function qcSetup(key) {
-    const state = new QCypherState();
+    const qs = new QCypherState();
     for (let i = 0; i < KEY_SIZE; i++)
-      state.sbox[i] = OpCodes.Xor8(state.sbox[i], key[i]);
+      qs.sbox[i] = OpCodes.Xor8(qs.sbox[i], key[i]);
 
-    state.A = state.B = state.C = 0;
+    qs.C = 0;
+    qs.B = qs.C;
+    qs.A = qs.B;
 
     for (let i = 0; i < KEY_SIZE; i++)
-      qcTransform(state, key[i]);
+      qcTransform(qs, key[i]);
 
     for (let i = 0; i < 256; i++)
-      qcTransform(state, OpCodes.And32(i, 0xFF));
+      qcTransform(qs, OpCodes.And32(i, 0xFF));
 
-    return state;
+    return qs;
   }
 
   class QCypherAlgorithm extends StreamCipherAlgorithm {
@@ -188,34 +206,57 @@
   }
 
   class QCypherInstance extends IAlgorithmInstance {
+    /**
+     * @param {QCypherAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {QCypherState|null} */
       this._state = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._state = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. QCypher (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. QCypher (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._state = qcSetup(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       if (this.isInverse) {
         for (let i = 0; i < this.inputBuffer.length; i++)
@@ -232,8 +273,13 @@
     // Inverts the per-state bijection: finds the plaintext byte whose forward
     // transform under the current state equals the given ciphertext byte, then
     // commits the real state update using that plaintext byte.
+    /**
+     * @param {uint8} cipherByte
+     * @returns {uint8}
+     */
     _decryptByte(cipherByte) {
       for (let p = 0; p < 256; p++) {
+        /** @type {QCypherState} */
         const probe = this._state.clone();
         if (qcTransform(probe, p) === cipherByte) {
           qcTransform(this._state, p);

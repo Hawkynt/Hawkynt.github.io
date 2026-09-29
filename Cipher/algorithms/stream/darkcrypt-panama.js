@@ -61,18 +61,25 @@
     }
 
     reset() {
+      /** @type {uint32[]} */
       this.a = new Uint32Array(17);
+      /** @type {uint32[][]} */
       this.b = new Array(STAGES);
       for (let i = 0; i < STAGES; i++) this.b[i] = new Uint32Array(STAGE_SIZE);
+      /** @type {int32} */
       this.bstart = 0;
     }
 
+    /**
+     * @param {int32} i - Mill word position
+     * @returns {int32} Index of that word after the gamma permutation
+     */
     _aIndex(i) { return (i * 13 + 16) % 17; }
 
     /**
      * One round of the belt-and-mill machine.
-     * @param {Uint32Array|null} input - 8-word block to push, or null to pull.
-     * @param {number[]|null} output - if given, 32 bytes of keystream are appended.
+     * @param {uint32[]|null} input - 8-word block to push, or null to pull.
+     * @param {uint8[]|null} output - if given, 32 bytes of keystream are appended.
      */
     _iterate(input, output) {
       const c = new Uint32Array(17);
@@ -81,7 +88,10 @@
         for (let i = 0; i < STAGE_SIZE; i++) {
           const word = this.a[this._aIndex(i + 9)];
           const bytes = OpCodes.Unpack32LE(word);
-          output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+          output.push(bytes[0]);
+          output.push(bytes[1]);
+          output.push(bytes[2]);
+          output.push(bytes[3]);
         }
       }
 
@@ -196,63 +206,111 @@
   }
 
   class DarkCryptPanamaInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptPanamaAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {int32} */
       this.IV_SIZE = 32;
 
+      /** @type {PanamaCore|null} */
       this.core = null;
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
-      if (!isValidSize) throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
+      if (!isValidSize) throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length !== this.IV_SIZE) {
-        this._iv = new Array(this.IV_SIZE).fill(0);
+        this._iv = OpCodes.CreateArray(this.IV_SIZE, 0);
       } else {
         this._iv = [...ivBytes];
       }
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
       return output;
     }
 
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint32[]}
+     */
     _wordsFromBytes(bytes) {
+      /** @type {uint32[]} */
       const w = new Uint32Array(STAGE_SIZE);
       for (let i = 0; i < STAGE_SIZE; i++) {
         w[i] = OpCodes.Pack32LE(bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3]);
@@ -276,12 +334,19 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _generateBlock() {
+      /** @type {uint8[]} */
       const keystream = [];
       this.core._iterate(null, keystream);
       return keystream;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._generateBlock();

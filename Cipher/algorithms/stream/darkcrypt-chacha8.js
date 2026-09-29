@@ -81,7 +81,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           nonce: OpCodes.Hex8ToBytes("0000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("4015b28f6e12ab6ad9e8667b31c51233f78f172790b2d94f326b2ed7ffbcbecbff9ead365f89ce3b6f4055bc759d90fd8f831d27c7b0df93b3b9ed8238a256d6761a6e0fc8b2b859f5a9f3ae170a7599b0b023ce79d7659b32ee79373e727289712ff289f30f641fcd822ff8e656ffd8725691f839a7b433a5b61053d99baee0")
         },
         {
@@ -101,18 +101,34 @@
   }
 
   class ChaCha8DarkCryptInstance extends IAlgorithmInstance {
+    /**
+     * @param {ChaCha8DarkCryptAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._nonce = new Array(8).fill(0);
+      /** @type {uint8[]|null} */
+      this._nonce = OpCodes.CreateArray(8, 0);
+      /** @type {uint32} */
       this.counterLo = 0;
+      /** @type {uint32} */
       this.counterHi = 0;
-      this.state = new Array(16);
+      /** @type {uint32[]} */
+      this._matrix = new Array(16);
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
 
+      /** @type {uint32[]} */
       this.CONSTANTS = [
         OpCodes.Pack32LE(0x65, 0x78, 0x70, 0x61), // "expa"
         OpCodes.Pack32LE(0x6e, 0x64, 0x20, 0x33), // "nd 3"
@@ -121,57 +137,90 @@
       ];
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
       this._initializeState();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || nonceBytes.length !== 8) {
-        this._nonce = new Array(8).fill(0);
+        this._nonce = OpCodes.CreateArray(8, 0);
       } else {
         this._nonce = [...nonceBytes];
       }
       this._initializeState();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       this.nonce = ivBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this.nonce; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -183,13 +232,13 @@
 
       // Constants (words 0-3)
       for (let i = 0; i < 4; i++) {
-        this.state[i] = this.CONSTANTS[i];
+        this._matrix[i] = this.CONSTANTS[i];
       }
 
       // Key (words 4-11)
       for (let i = 0; i < 8; i++) {
         const offset = i * 4;
-        this.state[4 + i] = OpCodes.Pack32LE(
+        this._matrix[4 + i] = OpCodes.Pack32LE(
           this._key[offset],
           this._key[offset + 1],
           this._key[offset + 2],
@@ -200,13 +249,13 @@
       // 64-bit block counter (words 12-13), original Bernstein layout
       this.counterLo = 0;
       this.counterHi = 0;
-      this.state[12] = 0;
-      this.state[13] = 0;
+      this._matrix[12] = 0;
+      this._matrix[13] = 0;
 
       // 64-bit nonce (words 14-15)
       for (let i = 0; i < 2; i++) {
         const offset = i * 4;
-        this.state[14 + i] = OpCodes.Pack32LE(
+        this._matrix[14 + i] = OpCodes.Pack32LE(
           this._nonce[offset],
           this._nonce[offset + 1],
           this._nonce[offset + 2],
@@ -218,51 +267,66 @@
       this.keystreamPosition = 0;
     }
 
-    _quarterRound(state, a, b, c, d) {
-      state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.XorN(state[d], state[a]);
-      state[d] = OpCodes.RotL32(state[d], 16);
+    /**
+     * @param {uint32[]} x
+     * @param {int32} a
+     * @param {int32} b
+     * @param {int32} c
+     * @param {int32} d
+     */
+    _quarterRound(x, a, b, c, d) {
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.Xor32(x[d], x[a]);
+      x[d] = OpCodes.RotL32(x[d], 16);
 
-      state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.XorN(state[b], state[c]);
-      state[b] = OpCodes.RotL32(state[b], 12);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.Xor32(x[b], x[c]);
+      x[b] = OpCodes.RotL32(x[b], 12);
 
-      state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.XorN(state[d], state[a]);
-      state[d] = OpCodes.RotL32(state[d], 8);
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.Xor32(x[d], x[a]);
+      x[d] = OpCodes.RotL32(x[d], 8);
 
-      state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.XorN(state[b], state[c]);
-      state[b] = OpCodes.RotL32(state[b], 7);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.Xor32(x[b], x[c]);
+      x[b] = OpCodes.RotL32(x[b], 7);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _generateBlock() {
-      this.state[12] = this.counterLo;
-      this.state[13] = this.counterHi;
+      this._matrix[12] = this.counterLo;
+      this._matrix[13] = this.counterHi;
 
-      const workingState = this.state.slice(0);
+      /** @type {uint32[]} */
+      const x = this._matrix.slice(0);
 
       // 8 rounds (4 double-rounds)
       for (let round = 0; round < 4; round++) {
-        this._quarterRound(workingState, 0, 4, 8, 12);
-        this._quarterRound(workingState, 1, 5, 9, 13);
-        this._quarterRound(workingState, 2, 6, 10, 14);
-        this._quarterRound(workingState, 3, 7, 11, 15);
+        this._quarterRound(x, 0, 4, 8, 12);
+        this._quarterRound(x, 1, 5, 9, 13);
+        this._quarterRound(x, 2, 6, 10, 14);
+        this._quarterRound(x, 3, 7, 11, 15);
 
-        this._quarterRound(workingState, 0, 5, 10, 15);
-        this._quarterRound(workingState, 1, 6, 11, 12);
-        this._quarterRound(workingState, 2, 7, 8, 13);
-        this._quarterRound(workingState, 3, 4, 9, 14);
+        this._quarterRound(x, 0, 5, 10, 15);
+        this._quarterRound(x, 1, 6, 11, 12);
+        this._quarterRound(x, 2, 7, 8, 13);
+        this._quarterRound(x, 3, 4, 9, 14);
       }
 
       for (let i = 0; i < 16; i++) {
-        workingState[i] = OpCodes.Add32(workingState[i], this.state[i]);
+        x[i] = OpCodes.Add32(x[i], this._matrix[i]);
       }
 
+      /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(workingState[i]);
-        keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        const bytes = OpCodes.Unpack32LE(x[i]);
+        keystream.push(bytes[0]);
+        keystream.push(bytes[1]);
+        keystream.push(bytes[2]);
+        keystream.push(bytes[3]);
       }
 
       // Increment 64-bit counter for next block
@@ -274,6 +338,9 @@
       return keystream;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._generateBlock();
