@@ -189,7 +189,9 @@
     _encryptBlock(block) {
       const B = block.slice();
       const Key = this._key;
-      let ex = 0, i = 0;
+      /** @type {uint8} */
+      let ex = 0;
+      let i = 0;
       while (true) {
         B[4] = OpCodes.Xor32(B[4], ROTOR[OpCodes.Xor32(OpCodes.Xor32(B[0], Key[i]), ex)]);
         if (++i === 15) { i = 0; ex = Key[7]; }

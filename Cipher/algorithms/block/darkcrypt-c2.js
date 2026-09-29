@@ -154,6 +154,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -201,6 +202,11 @@
     }
 
     // Round function F(data,key): S-box substitution plus byte/word rotations.
+    /**
+     * @param {uint32} data - Right half
+     * @param {uint32} key - Round key
+     * @returns {uint32} Round function output
+     */
     _f(data, key) {
       const t = OpCodes.ToUint32(data + key);
       const v0 = SBOX[OpCodes.And32(t, 0xFF)];
@@ -212,9 +218,14 @@
     }
 
     // Key schedule: only the first 7 bytes (56 bits) of the 8-byte key are used.
+    /**
+     * @param {uint8[]} key - 8-byte key
+     * @returns {uint32[]} Round keys
+     */
     _scheduleKey(key) {
       let L = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(key[0], 16), OpCodes.Shl32(key[1], 8)), key[2]));
       let R = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(key[3], 24), OpCodes.Shl32(key[4], 16)), OpCodes.Shl32(key[5], 8)), key[6]));
+      /** @type {uint32[]} */
       const rk = new Array(ROUNDS);
       for (let i = 0; i < ROUNDS; i++) {
         L = OpCodes.And32(L, 0xFFFFFF);

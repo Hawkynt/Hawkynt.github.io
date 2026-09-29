@@ -75,7 +75,11 @@
   const PRNG_ATTEMPT_THRESHOLD = 0x61;
 
   // Standard reflected CRC32 table (poly 0xEDB88320), built once and shared.
+  /**
+   * @returns {uint32[]} The 256-entry CRC32 table
+   */
   function buildCrc32Table() {
+    /** @type {uint32[]} */
     const table = new Array(256);
     for (let b = 0; b < 256; b++) {
       let crc = b;
@@ -85,75 +89,117 @@
     }
     return table;
   }
+  /** @type {uint32[]} */
   const CRC32TABLE = buildCrc32Table();
 
   // Key-driven byte generator: cycles through the 16 key bytes, folding them into a
   // running CRC32 accumulator, using rejection sampling (with a fallback subtraction
   // after too many rejects, matching the DarkCrypt implementation) to produce uniform
   // values in [0, limit].
-  function makeKeyPRNG(key) {
-    let crc = OpCodes.ToUint32(0xFFFFFFFF);
-    let pos = 0;
-    return function next(limit) {
-      if (limit === 0) return 0; // returns 0 immediately without consuming state
-      let mask = 0;
-      let t = OpCodes.ToUint32(limit);
-      while (t > 0) { mask = OpCodes.Or32(OpCodes.Shl32(mask, 1), 1); t = OpCodes.Shr32(t, 1); }
-      let attempts = 0, candidate;
-      for (;;) {
-        const kb = key[pos];
-        pos = (pos + 1) % 16;
-        const idx = OpCodes.And8(OpCodes.Xor8(kb, OpCodes.And8(crc, 0xFF)), 0xFF);
-        const savedHigh = OpCodes.Shr32(crc, 8);
-        crc = OpCodes.Xor32(CRC32TABLE[idx], savedHigh);
-        candidate = OpCodes.And32(crc, mask);
-        attempts++;
-        if (attempts > PRNG_ATTEMPT_THRESHOLD && candidate > limit) candidate = OpCodes.ToUint32(candidate - limit);
-        if (candidate <= limit) break;
-      }
-      return candidate;
-    };
+  // The generator state is { crc, pos } held in a two-word array: state[0] is the
+  // running CRC32 accumulator, state[1] the index of the next key byte.
+  /**
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint32[]} state - [crc, pos], updated in place
+   * @param {int32} limit - Largest value to produce
+   * @returns {uint32} Value in [0, limit]
+   */
+  function keyPrngNext(key, state, limit) {
+    // returns 0 immediately without consuming state
+    if (limit === 0) return 0;
+    let mask = OpCodes.ToUint32(0);
+    let t = OpCodes.ToUint32(limit);
+    while (t > 0) { mask = OpCodes.Or32(OpCodes.Shl32(mask, 1), 1); t = OpCodes.Shr32(t, 1); }
+    let attempts = 0;
+    /** @type {uint32} */
+    let candidate = 0;
+    for (;;) {
+      const kb = key[state[1]];
+      state[1] = OpCodes.Add32(state[1], 1) % 16;
+      const idx = OpCodes.And8(OpCodes.Xor8(kb, OpCodes.And8(state[0], 0xFF)), 0xFF);
+      const savedHigh = OpCodes.Shr32(state[0], 8);
+      state[0] = OpCodes.Xor32(CRC32TABLE[idx], savedHigh);
+      candidate = OpCodes.And32(state[0], mask);
+      attempts++;
+      if (attempts > PRNG_ATTEMPT_THRESHOLD && candidate > limit) candidate = OpCodes.ToUint32(candidate - limit);
+      if (candidate <= limit) break;
+    }
+    return candidate;
   }
 
   // Builds the 15 x 16 array of 256-byte substitution tables from the key via a
   // Fisher-Yates shuffle driven by the key PRNG (values placed in descending order 255..0
   // into randomly chosen still-unused slots, matching the DarkCrypt implementation's
   // table generator exactly).
+  /**
+   * @param {uint8[]} key - 16-byte key
+   * @returns {uint8[][][]} ROUNDS x BLOCK_BYTES substitution tables
+   */
   function buildSubstitutionTables(key) {
-    const next = makeKeyPRNG(key);
+    /** @type {uint32[]} */
+    const prngState = [OpCodes.ToUint32(0xFFFFFFFF), 0];
+    /** @type {uint8[][][]} */
     const tables = [];
     for (let r = 0; r < ROUNDS; r++) {
+      /** @type {uint8[][]} */
       const row = [];
       for (let p = 0; p < BLOCK_BYTES; p++) {
-        const pool = [];
-        for (let i = 0; i < 256; i++) pool.push(i);
-        const t = new Array(256);
+        /** @type {uint8[]} */
+        const unused = [];
+        for (let i = 0; i < 256; i++) unused.push(i);
+        /** @type {uint8[]} */
+        const perm = new Array(256);
         for (let v = 255; v >= 0; v--) {
-          const j = next(pool.length - 1);
-          const idx = pool[j];
-          t[idx] = v;
-          pool.splice(j, 1);
+          const j = keyPrngNext(key, prngState, unused.length - 1);
+          const idx = unused[j];
+          perm[idx] = v;
+          unused.splice(j, 1);
         }
-        row.push(t);
+        row.push(perm);
       }
       tables.push(row);
     }
     return tables;
   }
 
+  /**
+   * @param {uint8[]} t - Byte permutation
+   * @returns {uint8[]} Its inverse
+   */
   function invertTable(t) {
+    /** @type {uint8[]} */
     const inv = new Array(256);
     for (let v = 0; v < 256; v++) inv[t[v]] = v;
     return inv;
   }
 
+  /**
+   * @param {uint8[][][]} tables - ROUNDS x BLOCK_BYTES substitution tables
+   * @returns {uint8[][][]} The same layout holding every inverse table
+   */
+  function invertAllTables(tables) {
+    /** @type {uint8[][][]} */
+    const invTables = [];
+    for (let r = 0; r < tables.length; r++) {
+      /** @type {uint8[][]} */
+      const invRow = [];
+      for (let p = 0; p < tables[r].length; p++) invRow.push(invertTable(tables[r][p]));
+      invTables.push(invRow);
+    }
+    return invTables;
+  }
+
   // Fixed bit-diagonal permutation: dest[p].bit[k] = src[(p+k) mod 16].bit[k]
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Permuted block
    */
   function permute(block) {
-    const out = new Array(BLOCK_BYTES).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(BLOCK_BYTES);
+    out.fill(0);
     for (let p = 0; p < BLOCK_BYTES; p++) {
+      /** @type {uint8} */
       let b = 0;
       for (let k = 0; k < 8; k++)
         b = OpCodes.Or8(b, OpCodes.And8(block[(p + k) % BLOCK_BYTES], OpCodes.Shl32(1, k)));
@@ -165,10 +211,14 @@
   // Inverse of permute(): dest[p].bit[k] = src[(p-k) mod 16].bit[k]
   /**
    * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Permuted block
    */
   function inversePermute(block) {
-    const out = new Array(BLOCK_BYTES).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(BLOCK_BYTES);
+    out.fill(0);
     for (let p = 0; p < BLOCK_BYTES; p++) {
+      /** @type {uint8} */
       let b = 0;
       for (let k = 0; k < 8; k++) {
         const src = ((p - k) % BLOCK_BYTES + BLOCK_BYTES) % BLOCK_BYTES;
@@ -181,8 +231,11 @@
 
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint8[][]} tableRow - One substitution table per byte position
+   * @returns {uint8[]} Substituted block
    */
   function substitute(block, tableRow) {
+    /** @type {uint8[]} */
     const out = new Array(BLOCK_BYTES);
     for (let p = 0; p < BLOCK_BYTES; p++) out[p] = tableRow[p][block[p]];
     return out;
@@ -264,7 +317,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][][]|null} */
       this._tables = null;
+      /** @type {uint8[][][]|null} */
       this._invTables = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -282,7 +337,7 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._tables = buildSubstitutionTables(this._key);
-      this._invTables = this._tables.map(row => row.map(invertTable));
+      this._invTables = invertAllTables(this._tables);
     }
 
     /**
