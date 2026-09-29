@@ -104,7 +104,7 @@
   const CTRL_FEEDBACK_ENABLE = 0x01, CTRL_FEEDBACK_RESET = 0x02, CTRL_FEEDBACK_MAC = 0x04,
         CTRL_FEEDBACK_CIPH = 0x08, CTRL_FEEDBACK_OUTPUT = 0x80;
   // hash-matrix selector/odd-nibble-mask control bits
-  const CTRL_HASH_VECTOR_A = 0x01, CTRL_HASH_VECTOR_B = 0x02, CTRL_HASH_VECTOR_C = 0x04,
+  const CTRL_HASH_VECTOR_A = 0x01, CTRL_HASH_VECTOR_B = 0x02, CTRL_HASH_VECTOR_C = 0x04, CTRL_HASH_VECTOR_D = 0x08,
         CTRL_HASH_ODDN_TOP = 0x10, CTRL_HASH_ODDN_MID = 0x20, CTRL_HASH_ODDN_BOT = 0x40, CTRL_HASH_ODDN_4TH = 0x80;
   // top-level clocking control bits
   const CTRL_CLOCKS_LOAD = 0x02, CTRL_PRND_CLOCK = 0x01, CTRL_CLOCKS_SLIP = 0x20;
@@ -375,8 +375,8 @@
       default:
       case 0: st.ctrlTopHashMatrix |= CTRL_HASH_VECTOR_A; st.ctrlBotHashMatrix |= CTRL_HASH_VECTOR_B; break;
       case 1: st.ctrlTopHashMatrix |= CTRL_HASH_VECTOR_B; st.ctrlBotHashMatrix |= CTRL_HASH_VECTOR_C; break;
-      case 2: st.ctrlTopHashMatrix |= CTRL_HASH_VECTOR_C; st.ctrlBotHashMatrix |= 0x08 /* VECTOR_D */; break;
-      case 3: st.ctrlTopHashMatrix |= 0x08 /* VECTOR_D */; st.ctrlBotHashMatrix |= CTRL_HASH_VECTOR_A; break;
+      case 2: st.ctrlTopHashMatrix |= CTRL_HASH_VECTOR_C; st.ctrlBotHashMatrix |= CTRL_HASH_VECTOR_D; break;
+      case 3: st.ctrlTopHashMatrix |= CTRL_HASH_VECTOR_D; st.ctrlBotHashMatrix |= CTRL_HASH_VECTOR_A; break;
     }
   }
 
