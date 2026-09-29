@@ -157,16 +157,26 @@
       return output;
     }
 
+    /**
+     * Key as four little-endian words
+     * @returns {uint32[]} Key words
+     */
     _keyWords() {
-      return [
+      /** @type {uint32[]} */
+      const k = [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]),
         OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]),
         OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
+      return k;
     }
 
-    // f(x) = ((x<<6) ^ (x>>>9)) + x       (DarkCrypt uses shifts 6 and 9)
+    /**
+     * f(x) = (Shl(x, 6) xor Shr(x, 9)) + x   (DarkCrypt uses shifts 6 and 9)
+     * @param {uint32} x - Input word
+     * @returns {uint32} Mixed word
+     */
     _f(x) {
       return OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 9))) + x);
     }
@@ -179,7 +189,9 @@
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
       const k = this._keyWords();
+      /** @type {uint32} */
       let sum = 0;
+
       for (let i = 0; i < ROUNDS; i++) {
         v0 = OpCodes.ToUint32(v0 + OpCodes.Xor32(this._f(v1), OpCodes.ToUint32(sum + k[OpCodes.And32(sum, 3)])));
         sum = OpCodes.ToUint32(sum + DELTA);
