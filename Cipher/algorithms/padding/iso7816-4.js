@@ -103,13 +103,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach((test, index) => {
-        if (index === 0 || index === 1) {
-          test.blockSize = 32; // 32-byte blocks for first two tests
-        } else {
-          test.blockSize = 8; // 8-byte block for third test
-        }
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = i < 2 ? 32 : 8; // 32-byte blocks for the first two tests, 8 for the third
+      }
     }
 
     /**
@@ -132,19 +128,28 @@
   class Iso78164Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Iso78164Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._blockSize = 16; // Default block size
     }
 
-    // Property getter and setter for test framework
+    /**
+     * Block size in bytes
+     * @returns {int32} Block size
+     */
     get blockSize() { return this._blockSize; }
+
+    /**
+     * @param {int32} value - Block size in bytes (1 to 255)
+     */
     set blockSize(value) {
       if (!value || value < 1 || value > 255) {
         throw new Error("Block size must be between 1 and 255 bytes");
@@ -164,7 +169,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._removePadding();
       } else {
@@ -175,13 +182,14 @@
 
     /**
      * Add ISO/IEC 7816-4 padding to data
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const data = this.inputBuffer;
       const paddingLength = this._blockSize - (data.length % this._blockSize);
 
       // Always add padding: 0x80 followed by zeros
+      /** @type {uint8[]} */
       const padding = [0x80];
       for (let i = 1; i < paddingLength; i++) {
         padding.push(0x00);
@@ -207,7 +215,7 @@
 
     /**
      * Remove ISO/IEC 7816-4 padding from data
-     * @returns {Array} Unpadded data
+     * @returns {uint8[]} Unpadded data
      */
     _removePadding() {
       const paddedData = this.inputBuffer;

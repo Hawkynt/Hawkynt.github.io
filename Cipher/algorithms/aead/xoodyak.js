@@ -38,6 +38,7 @@
           AeadAlgorithm, IAeadInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Xoodoo permutation constants
+  /** @type {uint16[]} */
   const RC = [
     0x00000058, 0x00000038, 0x000003C0, 0x000000D0, 0x00000120,
     0x00000014, 0x00000060, 0x0000002C, 0x00000380, 0x000000F0,
@@ -58,7 +59,7 @@
 
   /**
    * Xoodoo permutation function (reused from xoodyak-hash.js)
-   * @param {Array<number>} state - 48-byte state array
+   * @param {uint8[]} state - 48-byte state array
    */
   function xoodooPermutation(state) {
     // Unpack state into 12 x 32-bit words (little-endian)
@@ -77,31 +78,31 @@
 
     for (let i = 0; i < MAXROUNDS; ++i) {
       // Theta: Column Parity Mixer
-      const p0 = OpCodes.XorN(OpCodes.XorN(a0, a4), a8);
-      const p1 = OpCodes.XorN(OpCodes.XorN(a1, a5), a9);
-      const p2 = OpCodes.XorN(OpCodes.XorN(a2, a6), a10);
-      const p3 = OpCodes.XorN(OpCodes.XorN(a3, a7), a11);
+      const p0 = OpCodes.Xor32(OpCodes.Xor32(a0, a4), a8);
+      const p1 = OpCodes.Xor32(OpCodes.Xor32(a1, a5), a9);
+      const p2 = OpCodes.Xor32(OpCodes.Xor32(a2, a6), a10);
+      const p3 = OpCodes.Xor32(OpCodes.Xor32(a3, a7), a11);
 
-      const e0 = OpCodes.XorN(OpCodes.RotL32(p3, 5), OpCodes.RotL32(p3, 14));
-      const e1 = OpCodes.XorN(OpCodes.RotL32(p0, 5), OpCodes.RotL32(p0, 14));
-      const e2 = OpCodes.XorN(OpCodes.RotL32(p1, 5), OpCodes.RotL32(p1, 14));
-      const e3 = OpCodes.XorN(OpCodes.RotL32(p2, 5), OpCodes.RotL32(p2, 14));
+      const e0 = OpCodes.Xor32(OpCodes.RotL32(p3, 5), OpCodes.RotL32(p3, 14));
+      const e1 = OpCodes.Xor32(OpCodes.RotL32(p0, 5), OpCodes.RotL32(p0, 14));
+      const e2 = OpCodes.Xor32(OpCodes.RotL32(p1, 5), OpCodes.RotL32(p1, 14));
+      const e3 = OpCodes.Xor32(OpCodes.RotL32(p2, 5), OpCodes.RotL32(p2, 14));
 
-      a0 = OpCodes.XorN(a0, e0);
-      a4 = OpCodes.XorN(a4, e0);
-      a8 = OpCodes.XorN(a8, e0);
+      a0 = OpCodes.Xor32(a0, e0);
+      a4 = OpCodes.Xor32(a4, e0);
+      a8 = OpCodes.Xor32(a8, e0);
 
-      a1 = OpCodes.XorN(a1, e1);
-      a5 = OpCodes.XorN(a5, e1);
-      a9 = OpCodes.XorN(a9, e1);
+      a1 = OpCodes.Xor32(a1, e1);
+      a5 = OpCodes.Xor32(a5, e1);
+      a9 = OpCodes.Xor32(a9, e1);
 
-      a2 = OpCodes.XorN(a2, e2);
-      a6 = OpCodes.XorN(a6, e2);
-      a10 = OpCodes.XorN(a10, e2);
+      a2 = OpCodes.Xor32(a2, e2);
+      a6 = OpCodes.Xor32(a6, e2);
+      a10 = OpCodes.Xor32(a10, e2);
 
-      a3 = OpCodes.XorN(a3, e3);
-      a7 = OpCodes.XorN(a7, e3);
-      a11 = OpCodes.XorN(a11, e3);
+      a3 = OpCodes.Xor32(a3, e3);
+      a7 = OpCodes.Xor32(a7, e3);
+      a11 = OpCodes.Xor32(a11, e3);
 
       // Rho-west: plane shift
       let b0 = a0;
@@ -120,23 +121,23 @@
       let b11 = OpCodes.RotL32(a11, 11);
 
       // Iota: round constant
-      b0 = OpCodes.XorN(b0, RC[i]);
+      b0 = OpCodes.Xor32(b0, RC[i]);
 
       // Chi: non-linear layer
-      a0 = OpCodes.XorN(b0, OpCodes.AndN(~b4, b8));
-      a1 = OpCodes.XorN(b1, OpCodes.AndN(~b5, b9));
-      a2 = OpCodes.XorN(b2, OpCodes.AndN(~b6, b10));
-      a3 = OpCodes.XorN(b3, OpCodes.AndN(~b7, b11));
+      a0 = OpCodes.Xor32(b0, OpCodes.And32(~b4, b8));
+      a1 = OpCodes.Xor32(b1, OpCodes.And32(~b5, b9));
+      a2 = OpCodes.Xor32(b2, OpCodes.And32(~b6, b10));
+      a3 = OpCodes.Xor32(b3, OpCodes.And32(~b7, b11));
 
-      a4 = OpCodes.XorN(b4, OpCodes.AndN(~b8, b0));
-      a5 = OpCodes.XorN(b5, OpCodes.AndN(~b9, b1));
-      a6 = OpCodes.XorN(b6, OpCodes.AndN(~b10, b2));
-      a7 = OpCodes.XorN(b7, OpCodes.AndN(~b11, b3));
+      a4 = OpCodes.Xor32(b4, OpCodes.And32(~b8, b0));
+      a5 = OpCodes.Xor32(b5, OpCodes.And32(~b9, b1));
+      a6 = OpCodes.Xor32(b6, OpCodes.And32(~b10, b2));
+      a7 = OpCodes.Xor32(b7, OpCodes.And32(~b11, b3));
 
-      b8 = OpCodes.XorN(b8, OpCodes.AndN(~b0, b4));
-      b9 = OpCodes.XorN(b9, OpCodes.AndN(~b1, b5));
-      b10 = OpCodes.XorN(b10, OpCodes.AndN(~b2, b6));
-      b11 = OpCodes.XorN(b11, OpCodes.AndN(~b3, b7));
+      b8 = OpCodes.Xor32(b8, OpCodes.And32(~b0, b4));
+      b9 = OpCodes.Xor32(b9, OpCodes.And32(~b1, b5));
+      b10 = OpCodes.Xor32(b10, OpCodes.And32(~b2, b6));
+      b11 = OpCodes.Xor32(b11, OpCodes.And32(~b3, b7));
 
       // Rho-east: plane shift
       a4 = OpCodes.RotL32(a4, 1);
@@ -295,22 +296,31 @@
   class XoodyakAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XoodyakAEAD} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
 
       // Xoodyak state
-      this.state = new Array(STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(STATE_SIZE, 0);
+      /** @type {int32} */
       this.phase = PHASE_UP;
+      /** @type {boolean} */
       this.encrypted = false;
     }
 
@@ -328,7 +338,7 @@
       }
 
       if (keyBytes.length !== KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + KEY_SIZE + ")");
       }
 
       this._key = [...keyBytes];
@@ -344,6 +354,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -352,21 +365,35 @@
       }
 
       if (nonceBytes.length !== NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + NONCE_SIZE + ")");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this._associatedData = adBytes ? [...adBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = [...adBytes];
+      }
+      this._associatedData = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -404,13 +431,14 @@
 
     /**
      * Absorb data into state with domain separation
-     * @param {Array<number>} X - Data to absorb
-     * @param {number} Xoff - Offset in X
-     * @param {number} XLen - Length of data
-     * @param {number} Cd - Domain separation byte
+     * @param {uint8[]} X - Data to absorb
+     * @param {int32} Xoff - Offset in X
+     * @param {int32} XLen - Length of data
+     * @param {uint8} Cd - Domain separation byte
      */
     _absorbAny(X, Xoff, XLen, Cd) {
-      let splitLen;
+      /** @type {int32} */
+      let splitLen = 0;
 
       do {
         // Check phase and call Up if needed (official Cyclist pattern)
@@ -429,30 +457,30 @@
 
     /**
      * Down operation: XOR data into state with padding and domain separation
-     * @param {Array<number>} Xi - Data to absorb
-     * @param {number} XiOff - Offset in Xi
-     * @param {number} XiLen - Length to absorb
-     * @param {number} Cd - Domain separation byte
+     * @param {uint8[]} Xi - Data to absorb
+     * @param {int32} XiOff - Offset in Xi
+     * @param {int32} XiLen - Length to absorb
+     * @param {uint8} Cd - Domain separation byte
      */
     _down(Xi, XiOff, XiLen, Cd) {
       // XOR data into state
       for (let i = 0; i < XiLen; i++) {
-        this.state[i] = OpCodes.XorN(this.state[i], Xi[XiOff + i]);
+        this.state[i] = OpCodes.Xor32(this.state[i], Xi[XiOff + i]);
       }
 
       // Add padding bit
-      this.state[XiLen] = OpCodes.XorN(this.state[XiLen], 0x01);
+      this.state[XiLen] = OpCodes.Xor32(this.state[XiLen], 0x01);
 
       // Add domain separation at last byte
-      this.state[STATE_SIZE - 1] = OpCodes.XorN(this.state[STATE_SIZE - 1], Cd);
+      this.state[STATE_SIZE - 1] = OpCodes.Xor32(this.state[STATE_SIZE - 1], Cd);
     }
 
     /**
      * Up operation: Apply Xoodoo permutation with domain separation
-     * @param {number} Cu - Domain separation for up phase
+     * @param {uint8} Cu - Domain separation for up phase
      */
     _up(Cu) {
-      this.state[STATE_SIZE - 1] = OpCodes.XorN(this.state[STATE_SIZE - 1], Cu);
+      this.state[STATE_SIZE - 1] = OpCodes.Xor32(this.state[STATE_SIZE - 1], Cu);
       xoodooPermutation(this.state);
       this.phase = PHASE_UP;
     }
@@ -469,12 +497,14 @@
         throw new Error("Key and nonce not set");
       }
 
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
       this.inputBuffer = [];
 
       // Process associated data (even if empty)
       this._absorbAny(this._associatedData, 0, this._associatedData.length, 0x03);
 
+      /** @type {uint8[]} */
       const output = [];
 
       if (this.isInverse) {
@@ -483,7 +513,9 @@
           throw new Error("Input too short for tag");
         }
 
+        /** @type {uint8[]} */
         const ciphertext = input.slice(0, input.length - TAG_SIZE);
+        /** @type {uint8[]} */
         const expectedTag = input.slice(input.length - TAG_SIZE);
 
         // Decrypt ciphertext
@@ -496,12 +528,12 @@
           this._up(domain);
 
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            const plainByte = OpCodes.XorN(this.state[i], ciphertext[pos + i]);
+            const plainByte = OpCodes.Xor32(this.state[i], ciphertext[pos + i]);
             output.push(plainByte);
             this.state[i] = ciphertext[pos + i];
           }
 
-          this.state[SQUEEZE_RATE] = OpCodes.XorN(this.state[SQUEEZE_RATE], 0x01);
+          this.state[SQUEEZE_RATE] = OpCodes.Xor32(this.state[SQUEEZE_RATE], 0x01);
           this.phase = PHASE_DOWN;
           pos += SQUEEZE_RATE;
           clen -= SQUEEZE_RATE;
@@ -512,16 +544,17 @@
         this._up(domain);
 
         for (let i = 0; i < clen; i++) {
-          const plainByte = OpCodes.XorN(this.state[i], ciphertext[pos + i]);
+          const plainByte = OpCodes.Xor32(this.state[i], ciphertext[pos + i]);
           output.push(plainByte);
           this.state[i] = ciphertext[pos + i];
         }
         // Add padding at position 'clen'
-        this.state[clen] = OpCodes.XorN(this.state[clen], 0x01);
+        this.state[clen] = OpCodes.Xor32(this.state[clen], 0x01);
         this.phase = PHASE_DOWN;
 
         // Generate and verify tag
         this._up(0x40);
+        /** @type {uint8[]} */
         const computedTag = this.state.slice(0, TAG_SIZE);
 
         // Constant-time comparison
@@ -547,17 +580,17 @@
           this._up(domain);
 
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            const cipherByte = OpCodes.XorN(this.state[i], input[pos + i]);
+            const cipherByte = OpCodes.Xor32(this.state[i], input[pos + i]);
             output.push(cipherByte);
           }
 
           // Absorb plaintext into state for authentication
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            this.state[i] = OpCodes.XorN(this.state[i], input[pos + i]);
+            this.state[i] = OpCodes.Xor32(this.state[i], input[pos + i]);
           }
 
           // Add padding
-          this.state[SQUEEZE_RATE] = OpCodes.XorN(this.state[SQUEEZE_RATE], 0x01);
+          this.state[SQUEEZE_RATE] = OpCodes.Xor32(this.state[SQUEEZE_RATE], 0x01);
           this.phase = PHASE_DOWN;
           pos += SQUEEZE_RATE;
           mlen -= SQUEEZE_RATE;
@@ -568,17 +601,17 @@
         this._up(domain);
 
         for (let i = 0; i < mlen; i++) {
-          const cipherByte = OpCodes.XorN(this.state[i], input[pos + i]);
+          const cipherByte = OpCodes.Xor32(this.state[i], input[pos + i]);
           output.push(cipherByte);
         }
 
         // Absorb plaintext into state for authentication
         for (let i = 0; i < mlen; i++) {
-          this.state[i] = OpCodes.XorN(this.state[i], input[pos + i]);
+          this.state[i] = OpCodes.Xor32(this.state[i], input[pos + i]);
         }
 
         // Add padding
-        this.state[mlen] = OpCodes.XorN(this.state[mlen], 0x01);
+        this.state[mlen] = OpCodes.Xor32(this.state[mlen], 0x01);
         this.phase = PHASE_DOWN;
 
         // Generate authentication tag

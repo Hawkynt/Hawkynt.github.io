@@ -152,16 +152,20 @@
   class IgeModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {IgeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv1 = null; // Previous ciphertext IV
+      /** @type {uint8[]|null} */
       this.iv2 = null; // Previous plaintext IV
     }
 
@@ -178,18 +182,18 @@
 
     /**
      * Set the initialization vectors for IGE mode
-     * @param {Array} iv1 - First IV for ciphertext feedback chain (must match block size)
-     * @param {Array} iv2 - Second IV for plaintext feedback chain (must match block size)
+     * @param {uint8[]} iv1 - First IV for ciphertext feedback chain (must match block size)
+     * @param {uint8[]} iv2 - Second IV for plaintext feedback chain (must match block size)
      */
     setIVs(iv1, iv2) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before IVs");
       }
       if (!iv1 || iv1.length !== this.blockCipher.BlockSize) {
-        throw new Error(`First IV must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("First IV must be " + this.blockCipher.BlockSize + " bytes");
       }
       if (!iv2 || iv2.length !== this.blockCipher.BlockSize) {
-        throw new Error(`Second IV must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("Second IV must be " + this.blockCipher.BlockSize + " bytes");
       }
       this.iv1 = [...iv1]; // Copy first IV
       this.iv2 = [...iv2]; // Copy second IV
@@ -236,6 +240,7 @@
         throw new Error("IGE requires input length to be multiple of block size");
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._decrypt() : this._encrypt();
 
       // Clear sensitive data
@@ -245,10 +250,15 @@
       return result;
     }
 
+    /**
+     * Encrypt the buffered whole blocks
+     * @returns {uint8[]} Ciphertext
+     */
     _encrypt() {
       const blockSize = this.blockCipher.BlockSize;
       const numBlocks = this.inputBuffer.length / blockSize;
 
+      /** @type {uint8[]} */
       let output = [];
       let prevCiphertext = [...this.iv1]; // Initialize ciphertext chain with first IV
       let prevPlaintext = [...this.iv2];  // Initialize plaintext chain with second IV
@@ -260,9 +270,11 @@
         const xorWithCipher = OpCodes.XorArrays(plaintextBlock, prevCiphertext);
 
         // Encrypt the result
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.blockCipher.key;
         cipher.Feed(xorWithCipher);
+        /** @type {uint8[]} */
         const encryptedBlock = cipher.Result();
 
         // XOR encrypted result with previous plaintext
@@ -278,10 +290,15 @@
       return output;
     }
 
+    /**
+     * Decrypt the buffered whole blocks
+     * @returns {uint8[]} Plaintext
+     */
     _decrypt() {
       const blockSize = this.blockCipher.BlockSize;
       const numBlocks = this.inputBuffer.length / blockSize;
 
+      /** @type {uint8[]} */
       let output = [];
       let prevCiphertext = [...this.iv1]; // Initialize ciphertext chain with first IV
       let prevPlaintext = [...this.iv2];  // Initialize plaintext chain with second IV
@@ -293,9 +310,11 @@
         const xorWithPlain = OpCodes.XorArrays(ciphertextBlock, prevPlaintext);
 
         // Decrypt the result
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(true);
         cipher.key = this.blockCipher.key;
         cipher.Feed(xorWithPlain);
+        /** @type {uint8[]} */
         const decryptedBlock = cipher.Result();
 
         // XOR decrypted result with previous ciphertext

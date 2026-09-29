@@ -88,15 +88,16 @@
      * Initialize cipher with empty state
      */
     Init: function() {
-      this.clockLFSR = new Array(this.CLOCK_LFSR_LENGTH).fill(0);
-      this.dataLFSR = new Array(this.DATA_LFSR_LENGTH).fill(0);
+      this.clockLFSR = OpCodes.CreateArray(this.CLOCK_LFSR_LENGTH, 0);
+      this.dataLFSR = OpCodes.CreateArray(this.DATA_LFSR_LENGTH, 0);
+      /** @type {boolean} */
       this.isInitialized = false;
       return true;
     },
     
     /**
      * Setup key for Beth-Piper generator
-     * @param {Array} key - 128-bit key as byte array (16 bytes)
+     * @param {uint8[]} key - 128-bit key as byte array (16 bytes)
      */
     KeySetup: function(key) {
       if (!key || key.length !== 16) {
@@ -113,7 +114,7 @@
       for (let i = 0; i < this.CLOCK_LFSR_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.clockLFSR[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
+        this.clockLFSR[i] = OpCodes.And32(OpCodes.Shr32(key[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -121,7 +122,7 @@
       for (let i = 0; i < this.DATA_LFSR_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.dataLFSR[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
+        this.dataLFSR[i] = OpCodes.And32(OpCodes.Shr32(key[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -129,13 +130,13 @@
       while (bitIndex < 128) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        const keyBit = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
+        const keyBit = OpCodes.And32(OpCodes.Shr32(key[byteIndex], bitPos), 1);
 
         // XOR with existing LFSR states alternately
         if ((bitIndex % 2) === 0) {
-          this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH] = OpCodes.XorN(this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH], keyBit);
+          this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH] = OpCodes.Xor32(this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH], keyBit);
         } else {
-          this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH] = OpCodes.XorN(this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH], keyBit);
+          this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH] = OpCodes.Xor32(this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH], keyBit);
         }
         bitIndex++;
       }
@@ -148,17 +149,18 @@
         this.dataLFSR[0] = 1;
       }
       
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
     
     /**
      * Update clock LFSR (polynomial: x^19 + x^5 + x^2 + x + 1)
-     * @returns {number} Output bit for clock control
+     * @returns {uint32} Output bit for clock control
      */
     updateClockLFSR: function() {
       const output = this.clockLFSR[0];
-      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.clockLFSR[0], this.clockLFSR[1]), this.clockLFSR[2]), this.clockLFSR[5]);
+      const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.clockLFSR[0], this.clockLFSR[1]), this.clockLFSR[2]), this.clockLFSR[5]);
 
       // Shift register
       for (let i = 0; i < this.CLOCK_LFSR_LENGTH - 1; i++) {
@@ -171,11 +173,11 @@
     
     /**
      * Update data LFSR (polynomial: x^23 + x^18 + 1)
-     * @returns {number} Output bit for keystream
+     * @returns {uint32} Output bit for keystream
      */
     updateDataLFSR: function() {
       const output = this.dataLFSR[0];
-      const feedback = OpCodes.XorN(this.dataLFSR[0], this.dataLFSR[5]); // Taps at positions 0 and 5 (counting from 0)
+      const feedback = OpCodes.Xor32(this.dataLFSR[0], this.dataLFSR[5]); // Taps at positions 0 and 5 (counting from 0)
 
       // Shift register
       for (let i = 0; i < this.DATA_LFSR_LENGTH - 1; i++) {
@@ -188,7 +190,7 @@
     
     /**
      * Generate a single output bit using stop-and-go clocking
-     * @returns {number} Output bit (0 or 1)
+     * @returns {uint32} Output bit (0 or 1)
      */
     generateBit: function() {
       if (!this.isInitialized) {
@@ -213,14 +215,14 @@
     
     /**
      * Generate a byte (8 bits)
-     * @returns {number} Byte value (0-255)
+     * @returns {uint8} Byte value (0-255)
      */
     generateByte: function() {
       let byte = 0;
 
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this.generateBit();
-        byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
+        byte = OpCodes.Or32(byte, OpCodes.Shl32(bitValue, bit));
       }
 
       return byte;
@@ -228,10 +230,11 @@
     
     /**
      * Generate keystream bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
+     * @param {int32} length - Number of bytes to generate
+     * @returns {uint8[]} Array of keystream bytes
      */
     generateKeystream: function(length) {
+      /** @type {uint8[]} */
       const keystream = [];
       
       for (let i = 0; i < length; i++) {
@@ -243,7 +246,7 @@
     
     /**
      * Encrypt block using Beth-Piper generator
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Encrypted data
      */
@@ -267,7 +270,7 @@
     
     /**
      * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Decrypted data
      */
@@ -288,7 +291,7 @@
     
     /**
      * Get statistics about clocking behavior
-     * @param {number} samples - Number of samples to analyze
+     * @param {int32} samples - Number of samples to analyze
      * @returns {Object} Clocking statistics
      */
     getClockingStats: function(samples = 1000) {
@@ -338,6 +341,7 @@
         OpCodes.ClearArray(this.dataLFSR);
         this.dataLFSR = null;
       }
+      /** @type {boolean} */
       this.isInitialized = false;
     },
     

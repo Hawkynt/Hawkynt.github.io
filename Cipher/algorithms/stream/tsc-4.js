@@ -117,12 +117,17 @@
       ];
 
       // TSC-4 constants
+      /** @type {int32} */
       this.LFSR_COUNT = 4;
+      /** @type {int32[]} */
       this.LFSR_LENGTHS = [31, 29, 23, 19];
+      /** @type {int32} */
       this.SBOX_COUNT = 8;
+      /** @type {int32} */
       this.INIT_ROUNDS = 512;
 
       // Multiple S-boxes for complex nonlinear operations
+      /** @type {uint8[]} */
       this.SBOX1 = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -142,6 +147,7 @@
         0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
       ];
 
+      /** @type {uint8[]} */
       this.SBOX2 = [
         0x16, 0xbb, 0x54, 0xb0, 0x0f, 0x2d, 0x99, 0x41, 0x68, 0x42, 0xe6, 0xbf, 0x0d, 0x89, 0xa1, 0x8c,
         0xdf, 0x28, 0x55, 0xce, 0xe9, 0x87, 0x1e, 0x9b, 0x94, 0x8e, 0xd9, 0x69, 0x11, 0x98, 0xf8, 0xe1,
@@ -162,7 +168,9 @@
       ];
 
       // Additional S-boxes (will be initialized as inverses)
+      /** @type {uint8[]} */
       this.SBOX3 = new Array(256);
+      /** @type {uint8[]} */
       this.SBOX4 = new Array(256);
       this.initInverseSBoxes();
     }
@@ -197,26 +205,48 @@
   class TSC4Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TSC4Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {int32} */
+      this.LFSR_COUNT = algorithm.LFSR_COUNT;
+      /** @type {int32[]} */
+      this.LFSR_LENGTHS = algorithm.LFSR_LENGTHS;
+      /** @type {int32} */
+      this.INIT_ROUNDS = algorithm.INIT_ROUNDS;
+      /** @type {uint8[]} */
+      this.SBOX1 = algorithm.SBOX1;
+      /** @type {uint8[]} */
+      this.SBOX2 = algorithm.SBOX2;
+      /** @type {uint8[]} */
+      this.SBOX3 = algorithm.SBOX3;
+      /** @type {uint8[]} */
+      this.SBOX4 = algorithm.SBOX4;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // TSC-4 state
+      /** @type {uint8[][]} */
       this.lfsrs = [];
+      /** @type {uint8[]} */
       this.keyBytes = [];
+      /** @type {uint8[]} */
       this.ivBytes = [];
+      /** @type {boolean} */
       this.initialized = false;
 
       // Initialize LFSRs
-      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
-        this.lfsrs[i] = new Array(this.algorithm.LFSR_LENGTHS[i]).fill(0);
+      for (let i = 0; i < this.LFSR_COUNT; i++) {
+        this.lfsrs[i] = OpCodes.CreateArray(this.LFSR_LENGTHS[i], 0);
       }
     }
 
@@ -238,7 +268,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`TSC-4 requires exactly 128-bit (16-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error("TSC-4 requires exactly 128-bit (16-byte) keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -273,7 +303,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`TSC-4 requires exactly 128-bit (16-byte) IVs, got ${ivBytes.length} bytes`);
+        throw new Error("TSC-4 requires exactly 128-bit (16-byte) IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -290,11 +320,17 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       // For compatibility, treat nonce as IV
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -340,6 +376,7 @@
         throw new Error("TSC-4 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.generateKeystreamByte();
@@ -364,8 +401,9 @@
       let keyIndex = 0;
       let ivIndex = 0;
 
-      for (let lfsr = 0; lfsr < this.algorithm.LFSR_COUNT; lfsr++) {
-        for (let bit = 0; bit < this.algorithm.LFSR_LENGTHS[lfsr]; bit++) {
+      for (let lfsr = 0; lfsr < this.LFSR_COUNT; lfsr++) {
+        for (let bit = 0; bit < this.LFSR_LENGTHS[lfsr]; bit++) {
+          /** @type {uint32} */
           let value = 0;
 
           // Alternate between key and IV bits
@@ -386,7 +424,7 @@
       }
 
       // Extensive initialization rounds with complex mixing
-      for (let round = 0; round < this.algorithm.INIT_ROUNDS; round++) {
+      for (let round = 0; round < this.INIT_ROUNDS; round++) {
         this.complexInitializationRound();
       }
 
@@ -404,17 +442,19 @@
       const mixed = this.tortureCombiner(outputs);
 
       // Feed back into LFSRs for additional mixing
-      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
+      for (let i = 0; i < this.LFSR_COUNT; i++) {
         this.lfsrs[i][0] = OpCodes.Xor32(this.lfsrs[i][0], OpCodes.And32(OpCodes.ToByte(OpCodes.Shr32(mixed, i)), 1));
       }
     }
 
     /**
      * LFSR feedback functions (primitive polynomials)
+     * @param {int32} lfsrIndex
+     * @returns {uint8}
      */
     getLFSRFeedback(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
-      const length = this.algorithm.LFSR_LENGTHS[lfsrIndex];
+      const length = this.LFSR_LENGTHS[lfsrIndex];
 
       // Primitive polynomials for each LFSR length
       switch (length) {
@@ -428,10 +468,12 @@
 
     /**
      * Clock single LFSR
+     * @param {int32} lfsrIndex
+     * @returns {uint8}
      */
     clockLFSR(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
-      const length = this.algorithm.LFSR_LENGTHS[lfsrIndex];
+      const length = this.LFSR_LENGTHS[lfsrIndex];
       const feedback = this.getLFSRFeedback(lfsrIndex);
       const output = lfsr[length - 1];
 
@@ -446,10 +488,12 @@
 
     /**
      * Clock all LFSRs and return output bits
+     * @returns {uint8[]}
      */
     clockAllLFSRs() {
+      /** @type {uint8[]} */
       const outputs = [];
-      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
+      for (let i = 0; i < this.LFSR_COUNT; i++) {
         outputs[i] = this.clockLFSR(i);
       }
       return outputs;
@@ -457,26 +501,33 @@
 
     /**
      * Extremely complex nonlinear combining function (the "torture")
+     * @param {uint8[]} lfsrOutputs
+     * @returns {uint8}
      */
     tortureCombiner(lfsrOutputs) {
       // Extract multiple bits from each LFSR for maximum complexity
+      /** @type {uint8[]} */
       const bits = [];
 
       // Collect bits from specific positions in each LFSR
-      for (let lfsr = 0; lfsr < this.algorithm.LFSR_COUNT; lfsr++) {
+      for (let lfsr = 0; lfsr < this.LFSR_COUNT; lfsr++) {
+        /** @type {int32[]} */
         const positions = [3, 7, 11, 15, 19, 23, 27, 29]; // Multiple tap positions
-        for (let pos of positions) {
-          if (pos < this.algorithm.LFSR_LENGTHS[lfsr]) {
+        for (let p = 0; p < positions.length; p++) {
+          const pos = positions[p];
+          if (pos < this.LFSR_LENGTHS[lfsr]) {
             bits.push(this.lfsrs[lfsr][pos]);
           }
         }
       }
 
       // Apply multiple layers of S-box transformations
+      /** @type {uint32} */
       let result = 0;
 
       // Layer 1: Group bits into bytes and apply S-boxes
       for (let i = 0; i < Math.min(bits.length, 32); i += 8) {
+        /** @type {uint32} */
         let byte = 0;
         for (let j = 0; j < 8 && i + j < bits.length; j++) {
           byte = OpCodes.ToUint32(OpCodes.Or32(byte, OpCodes.Shl32(bits[i + j], j)));
@@ -484,10 +535,10 @@
 
         // Apply different S-boxes based on position
         switch ((i / 8) % 4) {
-          case 0: byte = this.algorithm.SBOX1[byte]; break;
-          case 1: byte = this.algorithm.SBOX2[byte]; break;
-          case 2: byte = this.algorithm.SBOX3[byte]; break;
-          case 3: byte = this.algorithm.SBOX4[byte]; break;
+          case 0: byte = this.SBOX1[byte]; break;
+          case 1: byte = this.SBOX2[byte]; break;
+          case 2: byte = this.SBOX3[byte]; break;
+          case 3: byte = this.SBOX4[byte]; break;
         }
 
         result = OpCodes.Xor32(result, OpCodes.Shl32(byte, 8 * ((i / 8) % 4)));
@@ -500,10 +551,10 @@
       const x4 = OpCodes.ToByte(OpCodes.Shr32(result, 24));
 
       // Apply inverse S-boxes for additional confusion
-      const y1 = this.algorithm.SBOX3[x1];
-      const y2 = this.algorithm.SBOX4[x2];
-      const y3 = this.algorithm.SBOX1[x3];
-      const y4 = this.algorithm.SBOX2[x4];
+      const y1 = this.SBOX3[x1];
+      const y2 = this.SBOX4[x2];
+      const y3 = this.SBOX1[x3];
+      const y4 = this.SBOX2[x4];
 
       // Complex bit mixing with majority functions and XOR
       const maj1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(x1, x2), OpCodes.And32(x1, x3)), OpCodes.And32(x2, x3));
@@ -514,6 +565,7 @@
 
     /**
      * Generate one keystream byte
+     * @returns {uint8}
      */
     generateKeystreamByte() {
       // Clock all LFSRs

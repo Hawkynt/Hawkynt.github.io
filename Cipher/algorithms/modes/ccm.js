@@ -143,17 +143,21 @@
   class CcmModeInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CcmAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.nonce = null;
       this.tagSize = 8; // Default 8-byte tag (M=8)
+      /** @type {int32|null} */
       this.messageLength = null; // Must be pre-specified
       this.aad = []; // Associated authenticated data
     }
@@ -171,7 +175,7 @@
 
     /**
      * Set the nonce
-     * @param {Array} nonce - Nonce (7-13 bytes for AES)
+     * @param {uint8[]} nonce - Nonce (7-13 bytes for AES)
      */
     setNonce(nonce) {
       if (!this.blockCipher) {
@@ -185,6 +189,7 @@
 
     /**
      * Alternative method for compatibility
+     * @param {uint8[]} iv - Nonce (7-13 bytes for AES)
      */
     setIV(iv) {
       this.setNonce(iv);
@@ -192,10 +197,12 @@
 
     /**
      * Set authentication tag size
-     * @param {number} size - Tag size in bytes (4, 6, 8, 10, 12, 14, 16)
+     * @param {int32} size - Tag size in bytes (4, 6, 8, 10, 12, 14, 16)
      */
     setTagSize(size) {
-      if (![4, 6, 8, 10, 12, 14, 16].includes(size)) {
+      /** @type {int32[]} */
+      const validSizes = [4, 6, 8, 10, 12, 14, 16];
+      if (!validSizes.includes(size)) {
         throw new Error("CCM tag size must be 4, 6, 8, 10, 12, 14, or 16 bytes");
       }
       this.tagSize = size;
@@ -203,15 +210,21 @@
 
     /**
      * Set Associated Authenticated Data (AAD)
-     * @param {Array} data - AAD bytes
+     * @param {uint8[]} data - AAD bytes
      */
     setAAD(data) {
-      this.aad = data ? [...data] : [];
+      if (data) {
+        this.aad = [...data];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.aad = empty;
+      }
     }
 
     /**
      * Set the expected message length (required for CCM)
-     * @param {number} length - Message length in bytes
+     * @param {int32} length - Message length in bytes
      */
     setMessageLength(length) {
       if (length < 0) {
@@ -222,15 +235,19 @@
 
     /**
      * Format CCM blocks B_0, B_1, ... for CBC-MAC
+     * @param {int32} messageLength - Message length in bytes
+     * @param {uint8[]} associatedData - Associated data
+     * @returns {uint8[][]} Formatted blocks
      * @private
      */
     _formatBlocks(messageLength, associatedData) {
+      /** @type {uint8[][]} */
       const blocks = [];
       const L = 15 - this.nonce.length; // Length field size
       const M = this.tagSize; // Authentication tag size
 
       // Block B_0: Flags || Nonce || Length
-      const b0 = new Array(16).fill(0);
+      const b0 = OpCodes.CreateArray(16, 0);
 
       // Flags byte: Adata || (M-2)/2 || L-1
       // Construct flags byte using arithmetic instead of bitwise operations
@@ -264,11 +281,15 @@
 
     /**
      * Encode associated data for CCM
+     * @param {uint8[]} aad - Associated data
+     * @returns {uint8[][]} Length-prefixed, zero-padded 16-byte blocks
      * @private
      */
     _encodeAssociatedData(aad) {
+      /** @type {uint8[][]} */
       const blocks = [];
       const aadLen = aad.length;
+      /** @type {uint8[]} */
       let encodedLength;
 
       // Encode length according to CCM specification
@@ -283,7 +304,9 @@
           OpCodes.GetByte(aadLen, 0)
         );
         const lengthBytes = OpCodes.Unpack32BE(lengthWord);
-        encodedLength = [0xFF, 0xFE, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
+        /** @type {uint8[]} */
+        const prefixed = [0xFF, 0xFE, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
+        encodedLength = prefixed;
       } else {
         throw new Error("Associated data too long for CCM");
       }
@@ -304,20 +327,25 @@
 
     /**
      * Compute CBC-MAC over formatted blocks
+     * @param {uint8[][]} blocks - Formatted blocks
+     * @returns {uint8[]} CBC-MAC value
      * @private
      */
     _cbcMac(blocks) {
-      let mac = new Array(16).fill(0);
+      let mac = OpCodes.CreateArray(16, 0);
 
       for (const block of blocks) {
         // XOR with previous MAC value
         mac = OpCodes.XorArrays(mac, block);
 
         // Encrypt with block cipher - create fresh instance for each operation
+        /** @type {IBlockCipherInstance} */
         const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
         encryptCipher.key = this.blockCipher.key;
         encryptCipher.Feed(mac);
-        mac = encryptCipher.Result();
+        /** @type {uint8[]} */
+        const encrypted = encryptCipher.Result();
+        mac = encrypted;
       }
 
       return mac;
@@ -325,11 +353,13 @@
 
     /**
      * Generate counter block for CCM
+     * @param {int32} counter - Counter value
+     * @returns {uint8[]} Counter block A_i
      * @private
      */
     _counterBlock(counter) {
       const L = 15 - this.nonce.length;
-      const block = new Array(16).fill(0);
+      const block = OpCodes.CreateArray(16, 0);
 
       // Flags: 0 || 0 || 0 || L-1
       block[0] = L - 1;
@@ -388,15 +418,18 @@
         const receivedTag = this.inputBuffer.slice(-this.tagSize);
 
         // Decrypt using CTR mode
+        /** @type {uint8[]} */
         const plaintext = [];
         for (let i = 0; i < ciphertext.length; i += 16) {
           const remaining = Math.min(16, ciphertext.length - i);
           const cipherBlock = ciphertext.slice(i, i + remaining);
           const counter = Math.floor(i / 16) + 1;
 
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.blockCipher.key;
           encryptCipher.Feed(this._counterBlock(counter));
+          /** @type {uint8[]} */
           const keystream = encryptCipher.Result();
 
           for (let j = 0; j < remaining; j++) {
@@ -419,9 +452,11 @@
         const computedMac = this._cbcMac(blocks);
 
         // Encrypt with counter 0 and truncate
+        /** @type {IBlockCipherInstance} */
         const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
         encryptCipher.key = this.blockCipher.key;
         encryptCipher.Feed(this._counterBlock(0));
+        /** @type {uint8[]} */
         const s0 = encryptCipher.Result();
 
         const computedTag = OpCodes.XorArrays(computedMac, s0).slice(0, this.tagSize);
@@ -454,15 +489,18 @@
         const mac = this._cbcMac(blocks);
 
         // Encrypt plaintext using CTR mode
+        /** @type {uint8[]} */
         const ciphertext = [];
         for (let i = 0; i < plaintext.length; i += 16) {
           const remaining = Math.min(16, plaintext.length - i);
           const plainBlock = plaintext.slice(i, i + remaining);
           const counter = Math.floor(i / 16) + 1;
 
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.blockCipher.key;
           encryptCipher.Feed(this._counterBlock(counter));
+          /** @type {uint8[]} */
           const keystream = encryptCipher.Result();
 
           for (let j = 0; j < remaining; j++) {
@@ -471,9 +509,11 @@
         }
 
         // Encrypt MAC with counter 0 to get authentication tag
+        /** @type {IBlockCipherInstance} */
         const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
         encryptCipher.key = this.blockCipher.key;
         encryptCipher.Feed(this._counterBlock(0));
+        /** @type {uint8[]} */
         const s0 = encryptCipher.Result();
 
         const tag = OpCodes.XorArrays(mac, s0).slice(0, this.tagSize);

@@ -52,6 +52,7 @@
   const MAX_STREAM_LENGTH = 340;       // bytes generated per turingGen call
 
   // Basic 8-bit permutation S-box for Turing (generated from keyed RC4 of "Alan Turing")
+  /** @type {uint8[]} */
   const THE_SBOX = [
     0x61, 0x51, 0xeb, 0x19, 0xb9, 0x5d, 0x60, 0x38, 0x7c, 0xb2, 0x06, 0x12, 0xc4, 0x5b, 0x16, 0x3b,
     0x2b, 0x18, 0x83, 0xb0, 0x7f, 0x75, 0xfa, 0xa0, 0xe9, 0xdd, 0x6d, 0x7a, 0x6b, 0x68, 0x2d, 0x49,
@@ -72,6 +73,7 @@
   ];
 
   // 8->32 Q-box (Millan et al., Queensland University of Technology)
+  /** @type {uint32[]} */
   const THE_QBOX = [
     0x1faa1887, 0x4e5e435c, 0x9165c042, 0x250e6ef4, 0x5957ee20, 0xd484fed3, 0xa666c502, 0x7e54e8ae,
     0xd12ee9d9, 0xfc1f38d4, 0x49829b5d, 0x1b5cdf3c, 0x74864249, 0xda2e3963, 0x28f4429f, 0xc8432c35,
@@ -108,6 +110,7 @@
   ];
 
   // Multiplication table for the LFSR feedback (GF(2^32) constant 0xD02B4367)
+  /** @type {uint32[]} */
   const THE_MULTAB = [
     0x00000000, 0xd02b4367, 0xed5686ce, 0x3d7dc5a9, 0x97ac41d1, 0x478702b6, 0x7afac71f, 0xaad18478,
     0x631582ef, 0xb33ec188, 0x8e430421, 0x5e684746, 0xf4b9c33e, 0x24928059, 0x19ef45f0, 0xc9c40697,
@@ -143,6 +146,29 @@
     0x78dee220, 0xa8f5a147, 0x958864ee, 0x45a32789, 0xef72a3f1, 0x3f59e096, 0x0224253f, 0xd20f6658
   ];
 
+  /**
+   * @param {int32} n - Word count
+   * @returns {uint32[]} n zero words
+   */
+  function zeroWords(n) {
+    /** @type {uint32[]} */
+    const words = new Array(n);
+    for (let i = 0; i < n; ++i) words[i] = 0;
+    return words;
+  }
+
+  // Keystream round schedule: register offset z and output byte offset per round,
+  // in the reference's out-of-order sequence.
+  /** @type {int32[]} */
+  const ROUND_Z = [0, 5, 10, 15, 3, 8, 13, 1, 6, 11, 16, 4, 9, 14, 2, 7, 12];
+  /** @type {int32[]} */
+  const ROUND_OFFSET = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 320];
+
+  /**
+   * @param {uint32} word
+   * @param {int32} i
+   * @returns {uint32}
+   */
   function getByte(word, i) {
     return OpCodes.And32(OpCodes.Shr32(word, 24 - 8 * i), 0xff);
   }
@@ -205,60 +231,106 @@
   }
 
   class DarkCryptTuringInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptTuringAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {int32} */
       this.keyLength = 0;
-      this.mixedKey = new Array(KEY_WORDS).fill(0);
-      this.shiftRegister = new Array(SHIFT_REGISTER_LENGTH).fill(0);
-      this.s0 = new Array(256).fill(0);
-      this.s1 = new Array(256).fill(0);
-      this.s2 = new Array(256).fill(0);
-      this.s3 = new Array(256).fill(0);
+      /** @type {uint32[]} */
+      this.mixedKey = zeroWords(KEY_WORDS);
+      /** @type {uint32[]} */
+      this.shiftRegister = zeroWords(SHIFT_REGISTER_LENGTH);
+      /** @type {uint32[]} */
+      this.s0 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s1 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s2 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s3 = zeroWords(256);
 
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Turing (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Turing (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length !== 16)
-        throw new Error(`Invalid IV size. Turing (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size. Turing (DarkCrypt) requires exactly 16 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
       }
       this.inputBuffer = [];
       return output;
@@ -275,7 +347,12 @@
 
     // Reversible fixed transform of a word (RC4-derived S-box + Q-box).
     // Reads produced/consumed as native little-endian words (DarkCrypt build).
+    /**
+     * @param {uint32} w
+     * @returns {uint32}
+     */
     _fixedS(w) {
+      /** @type {uint32} */
       let b = THE_SBOX[getByte(w, 0)];
       w = OpCodes.Or32(OpCodes.And32(OpCodes.Xor32(w, THE_QBOX[b]), 0x00ffffff), OpCodes.Shl32(b, 24));
       b = THE_SBOX[getByte(w, 1)];
@@ -288,7 +365,12 @@
     }
 
     // Word-wide n-element Pseudo-Hadamard Transform
+    /**
+     * @param {uint32[]} w
+     * @param {int32} n
+     */
     _mixWords(w, n) {
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < n - 1; i++) sum = OpCodes.Add32(sum, w[i]);
       w[n - 1] = OpCodes.Add32(w[n - 1], sum);
@@ -296,6 +378,9 @@
       for (let i = 0; i < n - 1; i++) w[i] = OpCodes.Add32(w[i], sum);
     }
 
+    /**
+     * @param {uint8[]} key
+     */
     _setKey(key) {
       this.keyLength = 0;
       for (let i = 0; i < key.length; i += 4) {
@@ -308,7 +393,10 @@
 
     _buildSBoxTables() {
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 0), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i));
@@ -316,7 +404,10 @@
         this.s0[j] = OpCodes.Or32(OpCodes.And32(w, 0x00FFFFFF), OpCodes.Shl32(k, 24));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 1), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 8));
@@ -324,7 +415,10 @@
         this.s1[j] = OpCodes.Or32(OpCodes.And32(w, 0xFF00FFFF), OpCodes.Shl32(k, 16));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 2), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 16));
@@ -332,7 +426,10 @@
         this.s2[j] = OpCodes.Or32(OpCodes.And32(w, 0xFFFF00FF), OpCodes.Shl32(k, 8));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 3), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 24));
@@ -341,6 +438,9 @@
       }
     }
 
+    /**
+     * @param {uint8[]} iv
+     */
     _setIV(iv) {
       let i = 0, j = 0;
       for (i = 0, j = 0; j < iv.length; j += 4) {
@@ -359,6 +459,11 @@
     }
 
     // Non-linear keyed transform: XOR of 4 keyed S-box lookups on rotated byte offsets
+    /**
+     * @param {uint32} w
+     * @param {int32} r
+     * @returns {uint32}
+     */
     _s(w, r) {
       return OpCodes.Xor32(
         OpCodes.Xor32(
@@ -372,11 +477,19 @@
       );
     }
 
+    /**
+     * @param {int32} zero
+     * @param {int32} i
+     * @returns {int32}
+     */
     _offset(zero, i) {
       return (zero + i) % SHIFT_REGISTER_LENGTH;
     }
 
     // Step the LFSR using the multiplication-table feedback
+    /**
+     * @param {int32} z
+     */
     _step(z) {
       const idx0 = this._offset(z, 0);
       const w0 = this.shiftRegister[idx0];
@@ -393,8 +506,22 @@
     }
 
     // Generates a 5-word (20-byte) block of output, big-endian word order.
+    /**
+     * @param {int32} z
+     * @param {uint8[]} buf
+     * @param {int32} offset
+     */
     _turingGenRound(z, buf, offset) {
-      let a, b, c, d, e;
+      /** @type {uint32} */
+      let a = 0;
+      /** @type {uint32} */
+      let b = 0;
+      /** @type {uint32} */
+      let c = 0;
+      /** @type {uint32} */
+      let d = 0;
+      /** @type {uint32} */
+      let e = 0;
       this._step(z);
 
       a = this.shiftRegister[this._offset(z + 1, 16)];
@@ -419,6 +546,7 @@
       d = OpCodes.Add32(d, this.shiftRegister[this._offset(z + 4, 1)]);
       e = OpCodes.Add32(e, this.shiftRegister[this._offset(z + 4, 0)]);
 
+      /** @type {uint8[]} */
       let bytes = OpCodes.Unpack32BE(a); buf[offset]   = bytes[0]; buf[offset+1]  = bytes[1]; buf[offset+2]  = bytes[2]; buf[offset+3]  = bytes[3];
       bytes = OpCodes.Unpack32BE(b);     buf[offset+4] = bytes[0]; buf[offset+5]  = bytes[1]; buf[offset+6]  = bytes[2]; buf[offset+7]  = bytes[3];
       bytes = OpCodes.Unpack32BE(c);     buf[offset+8] = bytes[0]; buf[offset+9]  = bytes[1]; buf[offset+10] = bytes[2]; buf[offset+11] = bytes[3];
@@ -430,17 +558,19 @@
 
     // Generates a full 340-byte keystream block (17 rounds of 20 bytes each,
     // in the specific out-of-order round sequence used by the reference).
+    /**
+     * @returns {uint8[]}
+     */
     _turingGen() {
-      const buf = new Array(MAX_STREAM_LENGTH).fill(0);
-      const rounds = [
-        [0, 0], [5, 20], [10, 40], [15, 60], [3, 80], [8, 100], [13, 120],
-        [1, 140], [6, 160], [11, 180], [16, 200], [4, 220], [9, 240],
-        [14, 260], [2, 280], [7, 300], [12, 320]
-      ];
-      for (const [z, offset] of rounds) this._turingGenRound(z, buf, offset);
+      /** @type {uint8[]} */
+      const buf = OpCodes.CreateArray(MAX_STREAM_LENGTH, 0);
+      for (let r = 0; r < ROUND_Z.length; r++) this._turingGenRound(ROUND_Z[r], buf, ROUND_OFFSET[r]);
       return buf;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._turingGen();

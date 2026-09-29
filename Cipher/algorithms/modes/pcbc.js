@@ -127,15 +127,18 @@
   class PcbcModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PcbcAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv = null;
     }
 
@@ -152,14 +155,14 @@
 
     /**
      * Set the initialization vector (IV)
-     * @param {Array} iv - Initialization vector (must match block size)
+     * @param {uint8[]} iv - Initialization vector (must match block size)
      */
     setIV(iv) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before IV");
       }
       if (!iv || iv.length !== this.blockCipher.BlockSize) {
-        throw new Error(`IV must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("IV must be " + this.blockCipher.BlockSize + " bytes");
       }
       this.iv = [...iv]; // Copy IV
     }
@@ -205,6 +208,7 @@
         throw new Error("PCBC requires input length to be multiple of block size");
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._decrypt() : this._encrypt();
 
       // Clear sensitive data
@@ -214,10 +218,15 @@
       return result;
     }
 
+    /**
+     * Encrypt the buffered whole blocks
+     * @returns {uint8[]} Ciphertext
+     */
     _encrypt() {
       const blockSize = this.blockCipher.BlockSize;
       const numBlocks = this.inputBuffer.length / blockSize;
 
+      /** @type {uint8[]} */
       let output = [];
       let previousFeedback = [...this.iv]; // Initialize with IV
 
@@ -228,9 +237,11 @@
         const xorBlock = OpCodes.XorArrays(plaintextBlock, previousFeedback);
 
         // Encrypt the XORed block
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.blockCipher.key;
         cipher.Feed(xorBlock);
+        /** @type {uint8[]} */
         const ciphertextBlock = cipher.Result();
 
         for (let _i = 0; _i < ciphertextBlock.length; _i++) output.push(ciphertextBlock[_i]);
@@ -242,10 +253,15 @@
       return output;
     }
 
+    /**
+     * Decrypt the buffered whole blocks
+     * @returns {uint8[]} Plaintext
+     */
     _decrypt() {
       const blockSize = this.blockCipher.BlockSize;
       const numBlocks = this.inputBuffer.length / blockSize;
 
+      /** @type {uint8[]} */
       let output = [];
       let previousFeedback = [...this.iv]; // Initialize with IV
 
@@ -253,9 +269,11 @@
         const ciphertextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
 
         // Decrypt the ciphertext block
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(true);
         cipher.key = this.blockCipher.key;
         cipher.Feed(ciphertextBlock);
+        /** @type {uint8[]} */
         const decryptedBlock = cipher.Result();
 
         // XOR with previous feedback to get plaintext

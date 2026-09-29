@@ -127,7 +127,9 @@
       ];
 
       // LFSR parameters (use coprime lengths for good period)
+      /** @type {int32} */
       this.LFSR_A_LENGTH = 17;  // Selection LFSR length
+      /** @type {int32} */
       this.LFSR_S_LENGTH = 19;  // Data LFSR length
     }
 
@@ -143,26 +145,50 @@
  */
 
   class ShrinkingGeneratorInstance extends IAlgorithmInstance {
+    /**
+     * @param {ShrinkingGeneratorAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} isInverse - Decryption mode flag (unused: encryption and decryption coincide)
+     */
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse);
 
+      // LFSR lengths of the algorithm
+      /** @type {int32} */
+      this.lengthA = algorithm.LFSR_A_LENGTH;
+      /** @type {int32} */
+      this.lengthS = algorithm.LFSR_S_LENGTH;
+
       // Internal state
-      this.lfsrA = null;          // Selection LFSR (A sequence)  
+      /** @type {uint8[]|null} */
+      this.lfsrA = null;          // Selection LFSR (A sequence)
+      /** @type {uint8[]|null} */
       this.lfsrS = null;          // Data LFSR (S sequence)
+      /** @type {uint8[]} */
       this.outputBuffer = [];     // Buffer for generated bits
+      /** @type {uint8[]} */
       this.inputData = [];        // Input data buffer
+      /** @type {uint8[]|null} */
       this.keyData = null;        // Key storage
+      /** @type {boolean} */
       this.isInitialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyData
+     */
     set key(keyData) {
       if (Array.isArray(keyData) && keyData.length === 16) {
         this.keyData = keyData.slice();
         this.initializeKey();
-      } else if (keyData && keyData.key && Array.isArray(keyData.key)) {
-        this.keyData = keyData.key.slice(0, 16);
-        while (this.keyData.length < 16) this.keyData.push(0);
-        this.initializeKey();
+      } else if (keyData) {
+        // also accepts a { key: [...] } wrapper
+        /** @type {uint8[]} */
+        const nestedKey = keyData.key;
+        if (nestedKey && Array.isArray(nestedKey)) {
+          this.keyData = nestedKey.slice(0, 16);
+          while (this.keyData.length < 16) this.keyData.push(0);
+          this.initializeKey();
+        }
       }
     }
 
@@ -181,26 +207,26 @@
       }
 
       // Initialize LFSRs
-      this.lfsrA = new Array(this.algorithm.LFSR_A_LENGTH).fill(0);
-      this.lfsrS = new Array(this.algorithm.LFSR_S_LENGTH).fill(0);
+      this.lfsrA = OpCodes.CreateArray(this.lengthA, 0);
+      this.lfsrS = OpCodes.CreateArray(this.lengthS, 0);
       this.outputBuffer = [];
 
       // Distribute key bits across the two LFSRs
       let bitIndex = 0;
 
       // Initialize LFSR A (selection)
-      for (let i = 0; i < this.algorithm.LFSR_A_LENGTH && bitIndex < 128; i++) {
+      for (let i = 0; i < this.lengthA && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrA[i] = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
+        this.lfsrA[i] = OpCodes.And32(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
       // Initialize LFSR S (data)
-      for (let i = 0; i < this.algorithm.LFSR_S_LENGTH && bitIndex < 128; i++) {
+      for (let i = 0; i < this.lengthS && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrS[i] = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
+        this.lfsrS[i] = OpCodes.And32(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -208,22 +234,36 @@
       while (bitIndex < 128) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        const keyBit = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
+        const keyBit = OpCodes.And32(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
 
         // XOR with existing LFSR states alternately
         if ((bitIndex % 2) === 0) {
-          this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH] = OpCodes.XorN(this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH], keyBit);
+          this.lfsrA[bitIndex % this.lengthA] = OpCodes.Xor32(this.lfsrA[bitIndex % this.lengthA], keyBit);
         } else {
-          this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH] = OpCodes.XorN(this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH], keyBit);
+          this.lfsrS[bitIndex % this.lengthS] = OpCodes.Xor32(this.lfsrS[bitIndex % this.lengthS], keyBit);
         }
         bitIndex++;
       }
 
       // Ensure no LFSR is all zeros (would create bad periods)
-      if (this.lfsrA.every(bit => bit === 0)) {
+      let lfsrAZero = true;
+      for (let i = 0; i < this.lfsrA.length; i++) {
+        if (this.lfsrA[i] !== 0) {
+          lfsrAZero = false;
+          break;
+        }
+      }
+      if (lfsrAZero) {
         this.lfsrA[0] = 1;
       }
-      if (this.lfsrS.every(bit => bit === 0)) {
+      let lfsrSZero = true;
+      for (let i = 0; i < this.lfsrS.length; i++) {
+        if (this.lfsrS[i] !== 0) {
+          lfsrSZero = false;
+          break;
+        }
+      }
+      if (lfsrSZero) {
         this.lfsrS[0] = 1;
       }
 
@@ -246,38 +286,41 @@
 
     /**
      * Update LFSR A (selection) - polynomial: x^17 + x^3 + 1
+     * @returns {uint8}
      */
     updateLFSRA() {
       const output = this.lfsrA[0];
-      const feedback = OpCodes.XorN(this.lfsrA[0], this.lfsrA[3]);
+      const feedback = OpCodes.Xor32(this.lfsrA[0], this.lfsrA[3]);
 
       // Shift register
-      for (let i = 0; i < this.algorithm.LFSR_A_LENGTH - 1; i++) {
+      for (let i = 0; i < this.lengthA - 1; i++) {
         this.lfsrA[i] = this.lfsrA[i + 1];
       }
-      this.lfsrA[this.algorithm.LFSR_A_LENGTH - 1] = feedback;
+      this.lfsrA[this.lengthA - 1] = feedback;
 
       return output;
     }
 
     /**
      * Update LFSR S (data) - polynomial: x^19 + x^5 + x^2 + x + 1
+     * @returns {uint8}
      */
     updateLFSRS() {
       const output = this.lfsrS[0];
-      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.lfsrS[0], this.lfsrS[1]), this.lfsrS[2]), this.lfsrS[5]);
+      const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.lfsrS[0], this.lfsrS[1]), this.lfsrS[2]), this.lfsrS[5]);
 
       // Shift register
-      for (let i = 0; i < this.algorithm.LFSR_S_LENGTH - 1; i++) {
+      for (let i = 0; i < this.lengthS - 1; i++) {
         this.lfsrS[i] = this.lfsrS[i + 1];
       }
-      this.lfsrS[this.algorithm.LFSR_S_LENGTH - 1] = feedback;
+      this.lfsrS[this.lengthS - 1] = feedback;
 
       return output;
     }
 
     /**
      * Generate a single output bit using shrinking rule
+     * @returns {uint8}
      */
     generateBit() {
       if (!this.isInitialized) {
@@ -300,16 +343,20 @@
 
     /**
      * Generate keystream bytes
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     generateKeystream(length) {
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {
+        /** @type {uint32} */
         let byte = 0;
 
         for (let bit = 0; bit < 8; bit++) {
           const bitValue = this.generateBit();
-          byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
+          byte = OpCodes.Or32(byte, OpCodes.Shl32(bitValue, bit));
         }
 
         keystream.push(byte);
@@ -330,11 +377,12 @@
       }
 
       // For stream cipher, return the keystream XOR with input
+      /** @type {uint8[]} */
       const result = new Array(this.inputData.length);
       const keystream = this.generateKeystream(this.inputData.length);
 
       for (let i = 0; i < this.inputData.length; i++) {
-        result[i] = OpCodes.XorN(this.inputData[i], keystream[i]);
+        result[i] = OpCodes.Xor32(this.inputData[i], keystream[i]);
       }
 
       return result;

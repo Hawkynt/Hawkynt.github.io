@@ -123,14 +123,16 @@
   class EcbModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EcbAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -175,9 +177,10 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for ECB mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for ECB mode");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each block independently
@@ -189,9 +192,11 @@
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
 
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(this.isInverse);
         cipher.key = this.blockCipher.key;
         cipher.Feed(block);
+        /** @type {uint8[]} */
         const processedBlock = cipher.Result();
 
         for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);

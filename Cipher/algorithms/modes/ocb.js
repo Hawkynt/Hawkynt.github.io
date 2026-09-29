@@ -51,23 +51,41 @@
   // ===== SHARED UTILITIES =====
 
   /**
+   * Ciphertext and tag of one OCB encryption
+   */
+  class OcbSealed {
+    /**
+     * @param {uint8[]} ciphertext - Encrypted message
+     * @param {uint8[]} tag - Authentication tag (already truncated)
+     */
+    constructor(ciphertext, tag) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.tag = tag;
+    }
+  }
+
+  /**
    * Shared OCB utilities for both OCB and OCB3
    */
   class OcbSharedUtils {
     /**
      * Double a value in GF(2^128) (multiply by α = x)
-     * @param {Array} value - 128-bit value to double
-     * @returns {Array} Doubled value in GF(2^128)
+     * @param {uint8[]} value - 128-bit value to double
+     * @returns {uint8[]} Doubled value in GF(2^128)
      */
     static gf128Double(value) {
+      /** @type {uint8[]} */
       const result = new Array(16);
+      /** @type {uint32} */
       let carry = 0;
 
       // Shift left by 1 bit (multiply by x). The value is big-endian, so byte 0
       // holds the most significant bits and the carry travels towards it.
       for (let i = 15; i >= 0; i--) {
         const newCarry = OpCodes.Shr32(value[i], 7);
-        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(value[i], 1), carry), 0xFF);
+        result[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(value[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
@@ -75,7 +93,7 @@
       // reduction polynomial lives at the least significant end of a big-endian
       // value, which is the last byte, not the first.
       if (carry) {
-        result[15] = OpCodes.XorN(result[15], 0x87);
+        result[15] = OpCodes.Xor8(result[15], 0x87);
       }
 
       return result;
@@ -83,13 +101,13 @@
 
     /**
      * Number of trailing zeros in binary representation
-     * @param {number} n - Number
-     * @returns {number} Number of trailing zeros
+     * @param {int32} n - Number
+     * @returns {int32} Number of trailing zeros
      */
     static ntz(n) {
       if (n === 0) return 0;
       let count = 0;
-      while (OpCodes.AndN(n, 1) === 0) {
+      while (OpCodes.And32(n, 1) === 0) {
         count++;
         n = OpCodes.Shr32(n, 1);
       }
@@ -98,16 +116,19 @@
 
     /**
      * Generate L value: L = E_K(0^n)
-     * @param {Object} blockCipher - Block cipher instance
-     * @param {Array} key - Encryption key
-     * @returns {Array} L value
+     * @param {IBlockCipherInstance} blockCipher - Block cipher instance
+     * @param {uint8[]} key - Encryption key
+     * @returns {uint8[]} L value
      */
     static generateL(blockCipher, key) {
-      const zero = new Array(16).fill(0);
+      const zero = OpCodes.CreateArray(16, 0);
+      /** @type {IBlockCipherInstance} */
       const cipher = blockCipher.algorithm.CreateInstance(false);
       cipher.key = key;
       cipher.Feed(zero);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const l = cipher.Result();
+      return l;
     }
   }
 
@@ -202,18 +223,24 @@
   class OcbModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {OcbAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.aad = []; // Additional Authenticated Data
+      /** @type {int32} */
       this.tagLength = 16; // Default 128-bit tag
     }
 
@@ -233,7 +260,7 @@
 
     /**
      * Set the encryption key
-     * @param {Array} key - Block cipher key
+     * @param {uint8[]} key - Block cipher key
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -244,7 +271,7 @@
 
     /**
      * Set the nonce (number used once)
-     * @param {Array} nonce - Nonce value (must be unique for each encryption)
+     * @param {uint8[]} nonce - Nonce value (must be unique for each encryption)
      */
     setNonce(nonce) {
       if (!nonce || nonce.length < 12 || nonce.length > 15) {
@@ -255,15 +282,21 @@
 
     /**
      * Set additional authenticated data
-     * @param {Array} aad - Additional authenticated data
+     * @param {uint8[]} aad - Additional authenticated data
      */
     setAAD(aad) {
-      this.aad = aad ? [...aad] : [];
+      if (aad) {
+        this.aad = [...aad];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.aad = empty;
+      }
     }
 
     /**
      * Set the authentication tag length
-     * @param {number} length - Tag length in bytes (8-16)
+     * @param {int32} length - Tag length in bytes (8-16)
      */
     setTagLength(length) {
       if (length < 8 || length > 16) {
@@ -317,23 +350,31 @@
       } else {
         // OCB Encryption and authentication - return concatenated ciphertext+tag for test compatibility
         const result = this._encrypt();
-        return [...result.ciphertext, ...result.tag];
+        /** @type {uint8[]} */
+        const ciphertext = result.ciphertext;
+        /** @type {uint8[]} */
+        const tag = result.tag;
+        /** @type {uint8[]} */
+        const sealed = [...ciphertext, ...tag];
+        return sealed;
       }
     }
 
     /**
      * OCB encryption (simplified educational implementation)
-     * @returns {Object} Object containing ciphertext and authentication tag
+     * @returns {OcbSealed} Object containing ciphertext and authentication tag
      */
     _encrypt() {
       const blockSize = this.blockCipher.BlockSize;
       const plaintext = this.inputBuffer;
 
       // Initialize OCB state
+      /** @type {uint8[]} */
       const L = OcbSharedUtils.generateL(this.blockCipher, this.key);
       const offset = this._processNonce(L);
 
-      let checksum = new Array(blockSize).fill(0);
+      let checksum = OpCodes.CreateArray(blockSize, 0);
+      /** @type {uint8[]} */
       const ciphertext = [];
 
       // Process full blocks
@@ -348,9 +389,11 @@
         // OCB encryption: C_i = E_K(P_i ⊕ Offset_i) ⊕ Offset_i
         const xorInput = OpCodes.XorArrays(block, combinedOffset);
 
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key;
         cipher.Feed(xorInput);
+        /** @type {uint8[]} */
         const encrypted = cipher.Result();
 
         const cipherBlock = OpCodes.XorArrays(encrypted, combinedOffset);
@@ -366,13 +409,15 @@
         const pad = this._generatePad(L, finalBlock.length);
 
         // XOR with pad
+        /** @type {uint8[]} */
         const paddedBlock = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          paddedBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
+          paddedBlock[i] = OpCodes.Xor8(finalBlock[i], pad[i]);
         }
         for (let _i = 0; _i < paddedBlock.length; _i++) ciphertext.push(paddedBlock[_i]);
 
         // Update checksum with padded final block
+        /** @type {uint8[]} */
         const finalChecksum = [...finalBlock];
         finalChecksum.push(0x80); // Padding bit
         while (finalChecksum.length < blockSize) {
@@ -389,15 +434,16 @@
       OpCodes.ClearArray(checksum);
       this.inputBuffer = [];
 
-      return {
-        ciphertext: ciphertext,
-        tag: tag.slice(0, this.tagLength)
-      };
+      const sealed = new OcbSealed(
+        ciphertext,
+        tag.slice(0, this.tagLength)
+      );
+      return sealed;
     }
 
     /**
      * OCB decryption and authentication verification
-     * @returns {Array} Decrypted plaintext
+     * @returns {uint8[]} Decrypted plaintext
      */
     _decrypt() {
       const blockSize = this.blockCipher.BlockSize;
@@ -411,10 +457,12 @@
       const receivedTag = this.inputBuffer.slice(-this.tagLength);
 
       // Initialize OCB state
+      /** @type {uint8[]} */
       const L = OcbSharedUtils.generateL(this.blockCipher, this.key);
       const offset = this._processNonce(L);
 
-      let checksum = new Array(blockSize).fill(0);
+      let checksum = OpCodes.CreateArray(blockSize, 0);
+      /** @type {uint8[]} */
       const plaintext = [];
 
       // Process full blocks
@@ -429,9 +477,11 @@
         // OCB decryption: P_i = D_K(C_i ⊕ Offset_i) ⊕ Offset_i
         const xorInput = OpCodes.XorArrays(block, combinedOffset);
 
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(true);
         cipher.key = this.key;
         cipher.Feed(xorInput);
+        /** @type {uint8[]} */
         const decrypted = cipher.Result();
 
         const plainBlock = OpCodes.XorArrays(decrypted, combinedOffset);
@@ -447,13 +497,15 @@
         const pad = this._generatePad(L, finalBlock.length);
 
         // XOR with pad to get plaintext
+        /** @type {uint8[]} */
         const plaintextBlock = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          plaintextBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
+          plaintextBlock[i] = OpCodes.Xor8(finalBlock[i], pad[i]);
         }
         for (let _i = 0; _i < plaintextBlock.length; _i++) plaintext.push(plaintextBlock[_i]);
 
         // Update checksum with padded final block
+        /** @type {uint8[]} */
         const finalChecksum = [...plaintextBlock];
         finalChecksum.push(0x80); // Padding bit
         while (finalChecksum.length < blockSize) {
@@ -478,8 +530,8 @@
 
     /**
      * Process nonce to generate initial offset
-     * @param {Array} L - L value from block cipher
-     * @returns {Array} Initial offset
+     * @param {uint8[]} L - L value from block cipher
+     * @returns {uint8[]} Initial offset
      */
     _processNonce(L) {
       // Simplified nonce processing (educational)
@@ -488,47 +540,52 @@
         noncePadded.push(0);
       }
 
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(noncePadded);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const offset = cipher.Result();
+      return offset;
     }
 
     /**
      * Calculate offset for block i
-     * @param {Array} L - L value
-     * @param {number} i - Block index
-     * @returns {Array} Offset for block i
+     * @param {uint8[]} L - L value
+     * @param {int32} i - Block index
+     * @returns {uint8[]} Offset for block i
      */
     _getOffset(L, i) {
       // Simplified offset calculation (educational)
       const offset = [...L];
       for (let j = 0; j < 16; j++) {
-        offset[j] = OpCodes.XorN(offset[j], OpCodes.AndN(i + j, 0xFF));
+        offset[j] = OpCodes.Xor8(offset[j], OpCodes.And32(i + j, 0xFF));
       }
       return offset;
     }
 
     /**
      * Generate padding for final partial block
-     * @param {Array} L - L value
-     * @param {number} length - Length of final block
-     * @returns {Array} Padding stream
+     * @param {uint8[]} L - L value
+     * @param {int32} length - Length of final block
+     * @returns {uint8[]} Padding stream
      */
     _generatePad(L, length) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(L);
+      /** @type {uint8[]} */
       const pad = cipher.Result();
       return pad.slice(0, length);
     }
 
     /**
      * Generate authentication tag
-     * @param {Array} L - L value
-     * @param {Array} checksum - Accumulated checksum
-     * @param {Array} aad - Additional authenticated data
-     * @returns {Array} Authentication tag
+     * @param {uint8[]} L - L value
+     * @param {uint8[]} checksum - Accumulated checksum
+     * @param {uint8[]} aad - Additional authenticated data
+     * @returns {uint8[]} Authentication tag
      */
     _generateTag(L, checksum, aad) {
       // Simplified tag generation (educational)
@@ -536,13 +593,16 @@
 
       // Process AAD (simplified)
       for (let i = 0; i < aad.length; i++) {
-        tagInput[i % 16] = OpCodes.XorN(tagInput[i % 16], aad[i]);
+        tagInput[i % 16] = OpCodes.Xor8(tagInput[i % 16], aad[i]);
       }
 
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(tagInput);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const tag = cipher.Result();
+      return tag;
     }
   }
 
@@ -676,23 +736,32 @@
   class Ocb3ModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Ocb3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.aad = []; // Additional Authenticated Data
+      /** @type {int32} */
       this.tagLength = 16; // Default 128-bit tag
 
       // OCB3 state
+      /** @type {uint8[]|null} */
       this.L = null; // L = E_K(0^n)
+      /** @type {uint8[]|null} */
       this.LDollar = null; // L$ = L ⊕ (OpCodes.Shl32(L, 1))
+      /** @type {uint8[][]} */
       this.LTable = []; // L[i] for offset calculations
     }
 
@@ -716,7 +785,7 @@
 
     /**
      * Set the encryption key and precompute OCB3 tables
-     * @param {Array} key - AES key
+     * @param {uint8[]} key - AES key
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -731,7 +800,7 @@
 
     /**
      * Set the nonce (number used once)
-     * @param {Array} nonce - Nonce value (1-15 bytes)
+     * @param {uint8[]} nonce - Nonce value (1-15 bytes)
      */
     setNonce(nonce) {
       if (!nonce || nonce.length < 1 || nonce.length > 15) {
@@ -742,15 +811,21 @@
 
     /**
      * Set additional authenticated data
-     * @param {Array} aad - Additional authenticated data
+     * @param {uint8[]} aad - Additional authenticated data
      */
     setAAD(aad) {
-      this.aad = aad ? [...aad] : [];
+      if (aad) {
+        this.aad = [...aad];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.aad = empty;
+      }
     }
 
     /**
      * Set the authentication tag length
-     * @param {number} length - Tag length in bytes (1-16)
+     * @param {int32} length - Tag length in bytes (1-16)
      */
     setTagLength(length) {
       if (length < 1 || length > 16) {
@@ -805,12 +880,18 @@
         return this._decrypt();
       } else {
         const result = this._encrypt();
-        this.lastTag = result.tag;
+        /** @type {uint8[]} */
+        const ciphertext = result.ciphertext;
+        /** @type {uint8[]} */
+        const tag = result.tag;
+        /** @type {uint8[]} */
+        this.lastTag = tag;
         // RFC 7253 defines the ciphertext as C_1 .. C_* || Tag, so the tag is
         // appended here exactly as GCM and CCM do in this library.
+        /** @type {uint8[]} */
         const combined = [];
-        for (let _i = 0; _i < result.ciphertext.length; _i++) combined.push(result.ciphertext[_i]);
-        for (let _i = 0; _i < result.tag.length; _i++) combined.push(result.tag[_i]);
+        for (let _i = 0; _i < ciphertext.length; _i++) combined.push(ciphertext[_i]);
+        for (let _i = 0; _i < tag.length; _i++) combined.push(tag[_i]);
         return combined;
       }
     }
@@ -818,28 +899,38 @@
     /**
      * Apply the underlying block cipher in the forward direction
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _encipher(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const processed = cipher.Result();
+      return processed;
     }
 
     /**
      * Apply the underlying block cipher in the inverse direction
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _decipher(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(true);
       cipher.key = this.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const processed = cipher.Result();
+      return processed;
     }
 
     /**
      * OCB3 encryption following RFC 7253
-     * @returns {Object} Object containing ciphertext and authentication tag
+     * @returns {OcbSealed} Object containing ciphertext and authentication tag
      */
     _encrypt() {
       const plaintext = this.inputBuffer;
@@ -849,7 +940,8 @@
       let currentOffset = this._processNonce();
 
       // Step 2: Initialize checksum
-      let checksum = new Array(16).fill(0);
+      let checksum = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]} */
       const ciphertext = [];
 
       // Step 3: Process complete blocks
@@ -883,13 +975,15 @@
         const pad = this._encipher(finalOffset);
 
         // C_* = P_* ⊕ Pad[1..len(P_*)]
+        /** @type {uint8[]} */
         const finalCipher = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          finalCipher[i] = OpCodes.XorN(finalBlock[i], pad[i]);
+          finalCipher[i] = OpCodes.Xor8(finalBlock[i], pad[i]);
         }
         for (let _i = 0; _i < finalCipher.length; _i++) ciphertext.push(finalCipher[_i]);
 
         // Update checksum: Checksum = Checksum ⊕ (P_* || 1 || 0^{127-8*len(P_*)})
+        /** @type {uint8[]} */
         const paddedFinal = [...finalBlock];
         paddedFinal.push(0x80); // Append 1 bit
         while (paddedFinal.length < 16) {
@@ -906,15 +1000,16 @@
       OpCodes.ClearArray(checksum);
       this.inputBuffer = [];
 
-      return {
-        ciphertext: ciphertext,
-        tag: tag.slice(0, this.tagLength)
-      };
+      const sealed = new OcbSealed(
+        ciphertext,
+        tag.slice(0, this.tagLength)
+      );
+      return sealed;
     }
 
     /**
      * OCB3 decryption and tag verification following RFC 7253
-     * @returns {Array} Decrypted plaintext
+     * @returns {uint8[]} Decrypted plaintext
      */
     _decrypt() {
       if (this.inputBuffer.length < this.tagLength) {
@@ -929,8 +1024,9 @@
       let currentOffset = this._processNonce();
 
       // Step 2: Initialize output and checksum
+      /** @type {uint8[]} */
       const output = [];
-      let checksum = new Array(16).fill(0);
+      let checksum = OpCodes.CreateArray(16, 0);
 
       // Step 3: Process complete blocks (reverse of encryption)
       for (let i = 1; i <= m; i++) {
@@ -958,12 +1054,14 @@
         finalOffset = OpCodes.XorArrays(currentOffset, this.L);
         const pad = this._encipher(finalOffset);
 
+        /** @type {uint8[]} */
         const finalPlain = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          finalPlain[i] = OpCodes.XorN(finalBlock[i], pad[i]);
+          finalPlain[i] = OpCodes.Xor8(finalBlock[i], pad[i]);
         }
         for (let _i = 0; _i < finalPlain.length; _i++) output.push(finalPlain[_i]);
 
+        /** @type {uint8[]} */
         const paddedFinal = [...finalPlain];
         paddedFinal.push(0x80);
         while (paddedFinal.length < 16) {
@@ -999,55 +1097,65 @@
       this.LDollar = OcbSharedUtils.gf128Double(this.L);
 
       // Precompute L[0], L[1], L[2], ... as needed
-      this.LTable = [];
-      this.LTable[0] = OcbSharedUtils.gf128Double(this.LDollar); // L[0] = double(L$)
+      /** @type {uint8[][]} */
+      const table = [];
+      this.LTable = table;
+      /** @type {uint8[]} */
+      const l0 = OcbSharedUtils.gf128Double(this.LDollar);
+      this.LTable[0] = l0; // L[0] = double(L$)
 
       // Generate more L[i] values as needed (L[i] = double(L[i-1]))
       for (let i = 1; i < 64; i++) { // Precompute enough for practical use
-        this.LTable[i] = OcbSharedUtils.gf128Double(this.LTable[i - 1]);
+        /** @type {uint8[]} */
+        const li = OcbSharedUtils.gf128Double(this.LTable[i - 1]);
+        this.LTable[i] = li;
       }
     }
 
     /**
      * Process nonce to generate initial offset according to RFC 7253
-     * @returns {Array} Initial offset
+     * @returns {uint8[]} Initial offset
      */
     _processNonce() {
+      /** @type {uint8[]} */
       const nonce = [...this.nonce];
       const len = nonce.length;
 
       // RFC 7253: Nonce = num2str(TAGLEN mod 128, 7) || zeros(120-bitlen(N)) || 1 || N
-      const processedNonce = new Array(16).fill(0);
-      processedNonce[0] = OpCodes.AndN(OpCodes.Shl32((this.tagLength * 8) % 128, 1), 0xFF);
-      processedNonce[15 - len] = OpCodes.OrN(processedNonce[15 - len], 1);
+      const processedNonce = OpCodes.CreateArray(16, 0);
+      processedNonce[0] = OpCodes.And32(OpCodes.Shl32((this.tagLength * 8) % 128, 1), 0xFF);
+      processedNonce[15 - len] = OpCodes.Or32(processedNonce[15 - len], 1);
       for (let i = 0; i < len; i++) {
         processedNonce[16 - len + i] = nonce[i];
       }
 
       // bottom = str2num(Nonce[123..128]) - the six least significant bits
-      const bottom = OpCodes.AndN(processedNonce[15], 0x3F);
+      const bottom = OpCodes.And32(processedNonce[15], 0x3F);
 
       // Ktop = ENCIPHER(K, Nonce[1..122] || zeros(6))
+      /** @type {uint8[]} */
       const ktopInput = [...processedNonce];
-      ktopInput[15] = OpCodes.AndN(ktopInput[15], 0xC0);
+      ktopInput[15] = OpCodes.And32(ktopInput[15], 0xC0);
       const ktop = this._encipher(ktopInput);
 
       // Stretch = Ktop || (Ktop[1..64] xor Ktop[9..72])
+      /** @type {uint8[]} */
       const stretch = new Array(24);
       for (let i = 0; i < 16; i++) stretch[i] = ktop[i];
-      for (let i = 0; i < 8; i++) stretch[16 + i] = OpCodes.XorN(ktop[i], ktop[i + 1]);
+      for (let i = 0; i < 8; i++) stretch[16 + i] = OpCodes.Xor8(ktop[i], ktop[i + 1]);
 
       // Offset_0 = Stretch[1+bottom..128+bottom]
       const byteShift = Math.floor(bottom / 8);
       const bitShift = bottom % 8;
+      /** @type {uint8[]} */
       const offset = new Array(16);
       for (let i = 0; i < 16; i++) {
         if (bitShift === 0) {
           offset[i] = stretch[i + byteShift];
         } else {
-          const high = OpCodes.AndN(OpCodes.Shl32(stretch[i + byteShift], bitShift), 0xFF);
+          const high = OpCodes.And32(OpCodes.Shl32(stretch[i + byteShift], bitShift), 0xFF);
           const low = OpCodes.Shr32(stretch[i + byteShift + 1], 8 - bitShift);
-          offset[i] = OpCodes.OrN(high, low);
+          offset[i] = OpCodes.Or32(high, low);
         }
       }
 
@@ -1056,13 +1164,14 @@
 
     /**
      * Get L[i] from precomputed table
-     * @param {number} i - Index
-     * @returns {Array} L[i] value
+     * @param {int32} i - Index
+     * @returns {uint8[]} L[i] value
      */
     _getLi(i) {
       if (i >= this.LTable.length) {
         // Extend table if needed
         while (this.LTable.length <= i) {
+          /** @type {uint8[]} */
           const nextL = OcbSharedUtils.gf128Double(this.LTable[this.LTable.length - 1]);
           this.LTable.push(nextL);
         }
@@ -1072,17 +1181,17 @@
 
     /**
      * Compute authentication tag
-     * @param {Array} checksum - Accumulated checksum
-     * @param {Array} offset - Current offset
-     * @returns {Array} Authentication tag
+     * @param {uint8[]} checksum - Accumulated checksum
+     * @param {uint8[]} offset - Current offset
+     * @returns {uint8[]} Authentication tag
      */
     _computeTag(checksum, offset) {
       // HASH(K, A) per RFC 7253
-      let aadChecksum = new Array(16).fill(0);
+      let aadChecksum = OpCodes.CreateArray(16, 0);
 
       if (this.aad.length > 0) {
         const aadBlocks = Math.floor(this.aad.length / 16);
-        let aadOffset = new Array(16).fill(0);
+        let aadOffset = OpCodes.CreateArray(16, 0);
 
         // Process complete AAD blocks
         for (let i = 1; i <= aadBlocks; i++) {
@@ -1101,6 +1210,7 @@
           const finalAAD = this.aad.slice(aadBlocks * 16);
           const finalOffset = OpCodes.XorArrays(aadOffset, this.L);
 
+          /** @type {uint8[]} */
           const paddedAAD = [...finalAAD];
           paddedAAD.push(0x80);
           while (paddedAAD.length < 16) {

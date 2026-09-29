@@ -71,6 +71,7 @@
   const SPOOK_MU_KEY_SIZE = 32;
 
   // Round constants for Clyde-128 (6 steps, 8 values per step)
+  /** @type {uint8[][]} */
   const RC = [
     [1, 0, 0, 0, 0, 1, 0, 0],
     [0, 0, 1, 0, 0, 0, 0, 1],
@@ -81,6 +82,11 @@
   ];
 
   // Helper: Load 32-bit word from byte array (little-endian)
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @returns {uint32}
+   */
   function loadWord32LE(bytes, offset) {
     return OpCodes.Pack32LE(
       bytes[offset],
@@ -91,6 +97,11 @@
   }
 
   // Helper: Store 32-bit word to byte array (little-endian)
+  /**
+   * @param {uint8[]} bytes
+   * @param {int32} offset
+   * @param {uint32} word
+   */
   function storeWord32LE(bytes, offset, word) {
     const unpacked = OpCodes.Unpack32LE(word);
     bytes[offset] = unpacked[0];
@@ -100,134 +111,164 @@
   }
 
   // Clyde-128 S-box (operates on 4 x 32-bit words)
-  function clyde128Sbox(state) {
-    const s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
-    const c = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(s0, s1), s2));
-    const d = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(s3, s0), s1));
-    state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(c, d), s3));
-    state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(c, s3), s0));
-    state[0] = d;
-    state[1] = c;
+  /**
+   * @param {uint32[]} st
+   */
+  function clyde128Sbox(st) {
+    const s0 = st[0], s1 = st[1], s2 = st[2], s3 = st[3];
+    const c = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(s0, s1), s2));
+    const d = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(s3, s0), s1));
+    st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(c, d), s3));
+    st[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(c, s3), s0));
+    st[0] = d;
+    st[1] = c;
   }
 
   // Clyde-128 inverse S-box
-  function clyde128InvSbox(state) {
-    const s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
-    const d = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(s0, s1), s2));
-    const a = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(s1, d), s3));
-    const b = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(d, a), s0));
-    state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(a, b), s1));
-    state[0] = a;
-    state[1] = b;
-    state[3] = d;
+  /**
+   * @param {uint32[]} st
+   */
+  function clyde128InvSbox(st) {
+    const s0 = st[0], s1 = st[1], s2 = st[2], s3 = st[3];
+    const d = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(s0, s1), s2));
+    const a = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(s1, d), s3));
+    const b = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(d, a), s0));
+    st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(a, b), s1));
+    st[0] = a;
+    st[1] = b;
+    st[3] = d;
   }
 
   // Clyde-128 L-box (operates on pair of 32-bit words)
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @returns {uint32[]}
+   */
   function clyde128Lbox(x, y) {
-    let c = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotR32(x, 12)));
-    let d = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotR32(y, 12)));
-    c = OpCodes.ToUint32(OpCodes.XorN(c, OpCodes.RotR32(c, 3)));
-    d = OpCodes.ToUint32(OpCodes.XorN(d, OpCodes.RotR32(d, 3)));
-    x = OpCodes.ToUint32(OpCodes.XorN(c, OpCodes.RotL32(x, 15)));
-    y = OpCodes.ToUint32(OpCodes.XorN(d, OpCodes.RotL32(y, 15)));
-    c = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(x, 1)));
-    d = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(y, 1)));
-    x = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(d, 6)));
-    y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(c, 7)));
-    x = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotR32(c, 15)));
-    y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotR32(d, 15)));
+    let c = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotR32(x, 12)));
+    let d = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotR32(y, 12)));
+    c = OpCodes.ToUint32(OpCodes.Xor32(c, OpCodes.RotR32(c, 3)));
+    d = OpCodes.ToUint32(OpCodes.Xor32(d, OpCodes.RotR32(d, 3)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(c, OpCodes.RotL32(x, 15)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(d, OpCodes.RotL32(y, 15)));
+    c = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(x, 1)));
+    d = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(y, 1)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(d, 6)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(c, 7)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotR32(c, 15)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotR32(d, 15)));
     return [x, y];
   }
 
   // Clyde-128 inverse L-box
+  /**
+   * @param {uint32} x
+   * @param {uint32} y
+   * @returns {uint32[]}
+   */
   function clyde128InvLbox(x, y) {
-    let a = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(x, 7)));
-    let b = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(y, 7)));
-    x = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(a, 1)));
-    y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(b, 1)));
-    x = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(a, 12)));
-    y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(b, 12)));
-    a = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(x, 1)));
-    b = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(y, 1)));
-    x = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.RotL32(b, 6)));
-    y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.RotL32(a, 7)));
-    a = OpCodes.ToUint32(OpCodes.XorN(a, OpCodes.RotL32(x, 15)));
-    b = OpCodes.ToUint32(OpCodes.XorN(b, OpCodes.RotL32(y, 15)));
+    let a = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(x, 7)));
+    let b = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(y, 7)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(a, 1)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(b, 1)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(a, 12)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(b, 12)));
+    a = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(x, 1)));
+    b = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(y, 1)));
+    x = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.RotL32(b, 6)));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(a, 7)));
+    a = OpCodes.ToUint32(OpCodes.Xor32(a, OpCodes.RotL32(x, 15)));
+    b = OpCodes.ToUint32(OpCodes.Xor32(b, OpCodes.RotL32(y, 15)));
     x = OpCodes.RotR32(a, 16);
     y = OpCodes.RotR32(b, 16);
     return [x, y];
   }
 
   // Clyde-128 encryption (tweakable block cipher)
-  function clyde128Encrypt(key, output, input, tweak) {
+  /**
+   * @param {uint8[]} key
+   * @param {uint32[]} outWords
+   * @param {uint32[]} inWords
+   * @param {uint32[]} tweak
+   */
+  function clyde128Encrypt(key, outWords, inWords, tweak) {
     // Load key
     const k0 = loadWord32LE(key, 0);
     const k1 = loadWord32LE(key, 4);
     const k2 = loadWord32LE(key, 8);
     const k3 = loadWord32LE(key, 12);
 
-    // Copy input and tweak to working arrays
-    const state = [input[0], input[1], input[2], input[3]];
+    // Copy inWords and tweak to working arrays
+    /** @type {uint32[]} */
+    const st = [inWords[0], inWords[1], inWords[2], inWords[3]];
+    /** @type {uint32[]} */
     const t = [tweak[0], tweak[1], tweak[2], tweak[3]];
 
     // Add initial tweakey
-    state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[0], k0), t[0]));
-    state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[1], k1), t[1]));
-    state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[2], k2), t[2]));
-    state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[3], k3), t[3]));
+    st[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[0], k0), t[0]));
+    st[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[1], k1), t[1]));
+    st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[2], k2), t[2]));
+    st[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[3], k3), t[3]));
 
     // Perform all rounds in pairs
     for (let step = 0; step < CLYDE128_STEPS; ++step) {
       // First round of step
-      clyde128Sbox(state);
-      const lbox1 = clyde128Lbox(state[0], state[1]);
-      state[0] = lbox1[0];
-      state[1] = lbox1[1];
-      const lbox2 = clyde128Lbox(state[2], state[3]);
-      state[2] = lbox2[0];
-      state[3] = lbox2[1];
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(state[0], RC[step][0]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], RC[step][1]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(state[2], RC[step][2]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], RC[step][3]));
+      clyde128Sbox(st);
+      const lbox1 = clyde128Lbox(st[0], st[1]);
+      st[0] = lbox1[0];
+      st[1] = lbox1[1];
+      const lbox2 = clyde128Lbox(st[2], st[3]);
+      st[2] = lbox2[0];
+      st[3] = lbox2[1];
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(st[0], RC[step][0]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], RC[step][1]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(st[2], RC[step][2]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], RC[step][3]));
 
       // Second round of step
-      clyde128Sbox(state);
-      const lbox3 = clyde128Lbox(state[0], state[1]);
-      state[0] = lbox3[0];
-      state[1] = lbox3[1];
-      const lbox4 = clyde128Lbox(state[2], state[3]);
-      state[2] = lbox4[0];
-      state[3] = lbox4[1];
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(state[0], RC[step][4]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], RC[step][5]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(state[2], RC[step][6]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], RC[step][7]));
+      clyde128Sbox(st);
+      const lbox3 = clyde128Lbox(st[0], st[1]);
+      st[0] = lbox3[0];
+      st[1] = lbox3[1];
+      const lbox4 = clyde128Lbox(st[2], st[3]);
+      st[2] = lbox4[0];
+      st[3] = lbox4[1];
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(st[0], RC[step][4]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], RC[step][5]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(st[2], RC[step][6]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], RC[step][7]));
 
       // Update tweakey
-      const c = OpCodes.ToUint32(OpCodes.XorN(t[2], t[0]));
-      const d = OpCodes.ToUint32(OpCodes.XorN(t[3], t[1]));
+      const c = OpCodes.ToUint32(OpCodes.Xor32(t[2], t[0]));
+      const d = OpCodes.ToUint32(OpCodes.Xor32(t[3], t[1]));
       t[2] = t[0];
       t[3] = t[1];
       t[0] = c;
       t[1] = d;
 
-      // Add tweakey to state
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[0], k0), t[0]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[1], k1), t[1]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[2], k2), t[2]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[3], k3), t[3]));
+      // Add tweakey to st
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[0], k0), t[0]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[1], k1), t[1]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[2], k2), t[2]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[3], k3), t[3]));
     }
 
     // Store result
-    output[0] = state[0];
-    output[1] = state[1];
-    output[2] = state[2];
-    output[3] = state[3];
+    outWords[0] = st[0];
+    outWords[1] = st[1];
+    outWords[2] = st[2];
+    outWords[3] = st[3];
   }
 
   // Clyde-128 decryption
-  function clyde128Decrypt(key, output, input, tweak) {
+  /**
+   * @param {uint8[]} key
+   * @param {uint32[]} outWords
+   * @param {uint8[]} input
+   * @param {uint32[]} tweak
+   */
+  function clyde128Decrypt(key, outWords, input, tweak) {
     // Load key
     const k0 = loadWord32LE(key, 0);
     const k1 = loadWord32LE(key, 4);
@@ -235,10 +276,12 @@
     const k3 = loadWord32LE(key, 12);
 
     // Copy tweak
+    /** @type {uint32[]} */
     const t = [tweak[0], tweak[1], tweak[2], tweak[3]];
 
     // Load ciphertext
-    const state = [
+    /** @type {uint32[]} */
+    const st = [
       loadWord32LE(input, 0),
       loadWord32LE(input, 4),
       loadWord32LE(input, 8),
@@ -248,65 +291,69 @@
     // Perform all rounds in reverse
     for (let step = CLYDE128_STEPS - 1; step >= 0; --step) {
       // Add tweakey
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[0], k0), t[0]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[1], k1), t[1]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[2], k2), t[2]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[3], k3), t[3]));
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[0], k0), t[0]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[1], k1), t[1]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[2], k2), t[2]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[3], k3), t[3]));
 
       // Update tweakey
-      const a = OpCodes.ToUint32(OpCodes.XorN(t[2], t[0]));
-      const b = OpCodes.ToUint32(OpCodes.XorN(t[3], t[1]));
+      const a = OpCodes.ToUint32(OpCodes.Xor32(t[2], t[0]));
+      const b = OpCodes.ToUint32(OpCodes.Xor32(t[3], t[1]));
       t[0] = t[2];
       t[1] = t[3];
       t[2] = a;
       t[3] = b;
 
       // Inverse second round
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(state[0], RC[step][4]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], RC[step][5]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(state[2], RC[step][6]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], RC[step][7]));
-      const invLbox1 = clyde128InvLbox(state[0], state[1]);
-      state[0] = invLbox1[0];
-      state[1] = invLbox1[1];
-      const invLbox2 = clyde128InvLbox(state[2], state[3]);
-      state[2] = invLbox2[0];
-      state[3] = invLbox2[1];
-      clyde128InvSbox(state);
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(st[0], RC[step][4]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], RC[step][5]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(st[2], RC[step][6]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], RC[step][7]));
+      const invLbox1 = clyde128InvLbox(st[0], st[1]);
+      st[0] = invLbox1[0];
+      st[1] = invLbox1[1];
+      const invLbox2 = clyde128InvLbox(st[2], st[3]);
+      st[2] = invLbox2[0];
+      st[3] = invLbox2[1];
+      clyde128InvSbox(st);
 
       // Inverse first round
-      state[0] = OpCodes.ToUint32(OpCodes.XorN(state[0], RC[step][0]));
-      state[1] = OpCodes.ToUint32(OpCodes.XorN(state[1], RC[step][1]));
-      state[2] = OpCodes.ToUint32(OpCodes.XorN(state[2], RC[step][2]));
-      state[3] = OpCodes.ToUint32(OpCodes.XorN(state[3], RC[step][3]));
-      const invLbox3 = clyde128InvLbox(state[0], state[1]);
-      state[0] = invLbox3[0];
-      state[1] = invLbox3[1];
-      const invLbox4 = clyde128InvLbox(state[2], state[3]);
-      state[2] = invLbox4[0];
-      state[3] = invLbox4[1];
-      clyde128InvSbox(state);
+      st[0] = OpCodes.ToUint32(OpCodes.Xor32(st[0], RC[step][0]));
+      st[1] = OpCodes.ToUint32(OpCodes.Xor32(st[1], RC[step][1]));
+      st[2] = OpCodes.ToUint32(OpCodes.Xor32(st[2], RC[step][2]));
+      st[3] = OpCodes.ToUint32(OpCodes.Xor32(st[3], RC[step][3]));
+      const invLbox3 = clyde128InvLbox(st[0], st[1]);
+      st[0] = invLbox3[0];
+      st[1] = invLbox3[1];
+      const invLbox4 = clyde128InvLbox(st[2], st[3]);
+      st[2] = invLbox4[0];
+      st[3] = invLbox4[1];
+      clyde128InvSbox(st);
     }
 
     // Add final tweakey
-    state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[0], k0), t[0]));
-    state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[1], k1), t[1]));
-    state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[2], k2), t[2]));
-    state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(state[3], k3), t[3]));
+    st[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[0], k0), t[0]));
+    st[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[1], k1), t[1]));
+    st[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[2], k2), t[2]));
+    st[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(st[3], k3), t[3]));
 
     // Store result
-    output[0] = state[0];
-    output[1] = state[1];
-    output[2] = state[2];
-    output[3] = state[3];
+    outWords[0] = st[0];
+    outWords[1] = st[1];
+    outWords[2] = st[2];
+    outWords[3] = st[3];
   }
 
   // Shadow-512 permutation
+  /**
+   * @param {uint8[]} stateBytes
+   */
   function shadow512(stateBytes) {
-    // Load state as 16 x 32-bit words
-    const state = new Array(16);
+    // Load st as 16 x 32-bit words
+    /** @type {uint32[]} */
+    const st = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      state[i] = loadWord32LE(stateBytes, i * 4);
+      st[i] = loadWord32LE(stateBytes, i * 4);
     }
 
     // Perform all rounds in pairs
@@ -314,7 +361,8 @@
       // Apply S-box and L-box to all 4 bundles
       for (let bundle = 0; bundle < 4; ++bundle) {
         const base = bundle * 4;
-        const bundleState = [state[base], state[base + 1], state[base + 2], state[base + 3]];
+        /** @type {uint32[]} */
+        const bundleState = [st[base], st[base + 1], st[base + 2], st[base + 3]];
 
         // First round
         clyde128Sbox(bundleState);
@@ -324,56 +372,60 @@
         const lbox2 = clyde128Lbox(bundleState[2], bundleState[3]);
         bundleState[2] = lbox2[0];
         bundleState[3] = lbox2[1];
-        bundleState[0] = OpCodes.ToUint32(OpCodes.XorN(bundleState[0], OpCodes.Shl32(RC[step][0], bundle)));
-        bundleState[1] = OpCodes.ToUint32(OpCodes.XorN(bundleState[1], OpCodes.Shl32(RC[step][1], bundle)));
-        bundleState[2] = OpCodes.ToUint32(OpCodes.XorN(bundleState[2], OpCodes.Shl32(RC[step][2], bundle)));
-        bundleState[3] = OpCodes.ToUint32(OpCodes.XorN(bundleState[3], OpCodes.Shl32(RC[step][3], bundle)));
+        bundleState[0] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[0], OpCodes.Shl32(RC[step][0], bundle)));
+        bundleState[1] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[1], OpCodes.Shl32(RC[step][1], bundle)));
+        bundleState[2] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[2], OpCodes.Shl32(RC[step][2], bundle)));
+        bundleState[3] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[3], OpCodes.Shl32(RC[step][3], bundle)));
 
         // Second round (S-box only, L-box after diffusion)
         clyde128Sbox(bundleState);
 
-        state[base] = bundleState[0];
-        state[base + 1] = bundleState[1];
-        state[base + 2] = bundleState[2];
-        state[base + 3] = bundleState[3];
+        st[base] = bundleState[0];
+        st[base + 1] = bundleState[1];
+        st[base + 2] = bundleState[2];
+        st[base + 3] = bundleState[3];
       }
 
       // Apply diffusion layer to rows
       for (let row = 0; row < 4; ++row) {
-        const w = state[row];
-        const x = state[row + 4];
-        const y = state[row + 8];
-        const z = state[row + 12];
-        const c = OpCodes.ToUint32(OpCodes.XorN(w, x));
-        const d = OpCodes.ToUint32(OpCodes.XorN(y, z));
-        state[row] = OpCodes.ToUint32(OpCodes.XorN(x, d));
-        state[row + 4] = OpCodes.ToUint32(OpCodes.XorN(w, d));
-        state[row + 8] = OpCodes.ToUint32(OpCodes.XorN(c, z));
-        state[row + 12] = OpCodes.ToUint32(OpCodes.XorN(c, y));
+        const w = st[row];
+        const x = st[row + 4];
+        const y = st[row + 8];
+        const z = st[row + 12];
+        const c = OpCodes.ToUint32(OpCodes.Xor32(w, x));
+        const d = OpCodes.ToUint32(OpCodes.Xor32(y, z));
+        st[row] = OpCodes.ToUint32(OpCodes.Xor32(x, d));
+        st[row + 4] = OpCodes.ToUint32(OpCodes.Xor32(w, d));
+        st[row + 8] = OpCodes.ToUint32(OpCodes.Xor32(c, z));
+        st[row + 12] = OpCodes.ToUint32(OpCodes.Xor32(c, y));
       }
 
       // Add round constants again
       for (let bundle = 0; bundle < 4; ++bundle) {
         const base = bundle * 4;
-        state[base] = OpCodes.ToUint32(OpCodes.XorN(state[base], OpCodes.Shl32(RC[step][4], bundle)));
-        state[base + 1] = OpCodes.ToUint32(OpCodes.XorN(state[base + 1], OpCodes.Shl32(RC[step][5], bundle)));
-        state[base + 2] = OpCodes.ToUint32(OpCodes.XorN(state[base + 2], OpCodes.Shl32(RC[step][6], bundle)));
-        state[base + 3] = OpCodes.ToUint32(OpCodes.XorN(state[base + 3], OpCodes.Shl32(RC[step][7], bundle)));
+        st[base] = OpCodes.ToUint32(OpCodes.Xor32(st[base], OpCodes.Shl32(RC[step][4], bundle)));
+        st[base + 1] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 1], OpCodes.Shl32(RC[step][5], bundle)));
+        st[base + 2] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 2], OpCodes.Shl32(RC[step][6], bundle)));
+        st[base + 3] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 3], OpCodes.Shl32(RC[step][7], bundle)));
       }
     }
 
-    // Store state back
+    // Store st back
     for (let i = 0; i < 16; ++i) {
-      storeWord32LE(stateBytes, i * 4, state[i]);
+      storeWord32LE(stateBytes, i * 4, st[i]);
     }
   }
 
   // Shadow-384 permutation
+  /**
+   * @param {uint8[]} stateBytes
+   */
   function shadow384(stateBytes) {
-    // Load state as 12 x 32-bit words (3 bundles)
-    const state = new Array(12);
+    // Load st as 12 x 32-bit words (3 bundles)
+    /** @type {uint32[]} */
+    const st = new Array(12);
     for (let i = 0; i < 12; ++i) {
-      state[i] = loadWord32LE(stateBytes, i * 4);
+      st[i] = loadWord32LE(stateBytes, i * 4);
     }
 
     // Perform all rounds in pairs
@@ -381,7 +433,8 @@
       // Apply S-box and L-box to all 3 bundles
       for (let bundle = 0; bundle < 3; ++bundle) {
         const base = bundle * 4;
-        const bundleState = [state[base], state[base + 1], state[base + 2], state[base + 3]];
+        /** @type {uint32[]} */
+        const bundleState = [st[base], st[base + 1], st[base + 2], st[base + 3]];
 
         // First round
         clyde128Sbox(bundleState);
@@ -391,56 +444,62 @@
         const lbox2 = clyde128Lbox(bundleState[2], bundleState[3]);
         bundleState[2] = lbox2[0];
         bundleState[3] = lbox2[1];
-        bundleState[0] = OpCodes.ToUint32(OpCodes.XorN(bundleState[0], OpCodes.Shl32(RC[step][0], bundle)));
-        bundleState[1] = OpCodes.ToUint32(OpCodes.XorN(bundleState[1], OpCodes.Shl32(RC[step][1], bundle)));
-        bundleState[2] = OpCodes.ToUint32(OpCodes.XorN(bundleState[2], OpCodes.Shl32(RC[step][2], bundle)));
-        bundleState[3] = OpCodes.ToUint32(OpCodes.XorN(bundleState[3], OpCodes.Shl32(RC[step][3], bundle)));
+        bundleState[0] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[0], OpCodes.Shl32(RC[step][0], bundle)));
+        bundleState[1] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[1], OpCodes.Shl32(RC[step][1], bundle)));
+        bundleState[2] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[2], OpCodes.Shl32(RC[step][2], bundle)));
+        bundleState[3] = OpCodes.ToUint32(OpCodes.Xor32(bundleState[3], OpCodes.Shl32(RC[step][3], bundle)));
 
         // Second round (S-box only, L-box after diffusion)
         clyde128Sbox(bundleState);
 
-        state[base] = bundleState[0];
-        state[base + 1] = bundleState[1];
-        state[base + 2] = bundleState[2];
-        state[base + 3] = bundleState[3];
+        st[base] = bundleState[0];
+        st[base + 1] = bundleState[1];
+        st[base + 2] = bundleState[2];
+        st[base + 3] = bundleState[3];
       }
 
       // Apply diffusion layer to rows (Shadow-384 specific)
       for (let row = 0; row < 4; ++row) {
-        const x = state[row];
-        const y = state[row + 4];
-        const z = state[row + 8];
-        state[row] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, y), z));
-        state[row + 4] = OpCodes.ToUint32(OpCodes.XorN(x, z));
-        state[row + 8] = OpCodes.ToUint32(OpCodes.XorN(x, y));
+        const x = st[row];
+        const y = st[row + 4];
+        const z = st[row + 8];
+        st[row] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(x, y), z));
+        st[row + 4] = OpCodes.ToUint32(OpCodes.Xor32(x, z));
+        st[row + 8] = OpCodes.ToUint32(OpCodes.Xor32(x, y));
       }
 
       // Add round constants again
       for (let bundle = 0; bundle < 3; ++bundle) {
         const base = bundle * 4;
-        state[base] = OpCodes.ToUint32(OpCodes.XorN(state[base], OpCodes.Shl32(RC[step][4], bundle)));
-        state[base + 1] = OpCodes.ToUint32(OpCodes.XorN(state[base + 1], OpCodes.Shl32(RC[step][5], bundle)));
-        state[base + 2] = OpCodes.ToUint32(OpCodes.XorN(state[base + 2], OpCodes.Shl32(RC[step][6], bundle)));
-        state[base + 3] = OpCodes.ToUint32(OpCodes.XorN(state[base + 3], OpCodes.Shl32(RC[step][7], bundle)));
+        st[base] = OpCodes.ToUint32(OpCodes.Xor32(st[base], OpCodes.Shl32(RC[step][4], bundle)));
+        st[base + 1] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 1], OpCodes.Shl32(RC[step][5], bundle)));
+        st[base + 2] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 2], OpCodes.Shl32(RC[step][6], bundle)));
+        st[base + 3] = OpCodes.ToUint32(OpCodes.Xor32(st[base + 3], OpCodes.Shl32(RC[step][7], bundle)));
       }
     }
 
-    // Store state back
+    // Store st back
     for (let i = 0; i < 12; ++i) {
-      storeWord32LE(stateBytes, i * 4, state[i]);
+      storeWord32LE(stateBytes, i * 4, st[i]);
     }
   }
 
   // Base Spook AEAD Algorithm
   class SpookAead extends AeadAlgorithm {
+    /**
+     * @param {string} variant - su (single-user) or mu (multi-user)
+     * @param {int32} shadowSize - 512 or 384
+     */
     constructor(variant, shadowSize) {
       super();
 
+      /** @type {string} */
       this.variant = variant;
+      /** @type {int32} */
       this.shadowSize = shadowSize;
 
-      this.name = `Spook-128-${shadowSize}-${variant}`;
-      this.description = `NIST Lightweight Cryptography candidate providing authenticated encryption with side-channel protection. Uses ${shadowSize === 512 ? 'Shadow-512' : 'Shadow-384'} permutation with Clyde-128 tweakable block cipher. The ${variant === 'su' ? 'single-user' : 'multi-user'} variant offers ${variant === 'su' ? '128-bit' : '256-bit'} key security.`;
+      this.name = "Spook-128-" + shadowSize + "-" + variant;
+      this.description = "NIST Lightweight Cryptography candidate providing authenticated encryption with side-channel protection. Uses " + (shadowSize === 512 ? 'Shadow-512' : 'Shadow-384') + " permutation with Clyde-128 tweakable block cipher. The " + (variant === 'su' ? 'single-user' : 'multi-user') + " variant offers " + (variant === 'su' ? '128-bit' : '256-bit') + " key security.";
       this.inventor = "Davide Bellizia, Francesco Berti, Olivier Bronchain, Gaetan Cassiers, Sebastien Duval, Chun Guo, Gregor Leander, Gaetan Leurent, Itamar Levi, Charles Momin, Olivier Pereira, Thomas Peters, Francois-Xavier Standaert, Friedrich Wiemer";
       this.year = 2019;
       this.category = CategoryType.AEAD;
@@ -532,16 +591,16 @@
         ]
       };
 
-      const variantKey = `${this.shadowSize}-${this.variant}`;
+      const variantKey = this.shadowSize + "-" + this.variant;
       const expected = expectedByVariant[variantKey];
       if (!expected) return [];
 
-      const katUri = `https://github.com/rweather/lightweight-crypto/blob/master/test/kat/${this.name}.txt`;
+      const katUri = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/" + this.name + ".txt";
       const vectors = [];
       for (let i = 0; i < cases.length; ++i) {
         const [count, ptHex, adHex] = cases[i];
         vectors.push({
-          text: `NIST LWC round-2 KAT ${this.name} Count = ${count} (PT ${ptHex.length / 2} bytes, AD ${adHex.length / 2} bytes)`,
+          text: "NIST LWC round-2 KAT " + this.name + " Count = " + count + " (PT " + (ptHex.length / 2) + " bytes, AD " + (adHex.length / 2) + " bytes)",
           uri: katUri,
           input: OpCodes.Hex8ToBytes(ptHex),
           key: OpCodes.Hex8ToBytes(this.variant === 'su' ? suKey : muKey),
@@ -575,17 +634,26 @@
   class SpookAeadInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpookAead} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._ad = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string} */
+      this._variant = algorithm.variant;
+      /** @type {int32} */
+      this._shadowSize = algorithm.shadowSize;
     }
 
     /**
@@ -600,9 +668,9 @@
         return;
       }
 
-      const expectedSize = this.algorithm.variant === 'su' ? SPOOK_SU_KEY_SIZE : SPOOK_MU_KEY_SIZE;
+      const expectedSize = this._variant === 'su' ? SPOOK_SU_KEY_SIZE : SPOOK_MU_KEY_SIZE;
       if (keyBytes.length !== expectedSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${expectedSize})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + expectedSize + ")");
       }
 
       this._key = [...keyBytes];
@@ -617,6 +685,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -624,38 +695,69 @@
       }
 
       if (nonceBytes.length !== SPOOK_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${SPOOK_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + SPOOK_NONCE_SIZE + ")");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Canonical AEAD associated-data property used by the framework.
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
-      this._ad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._ad = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
-      return this._ad ? [...this._ad] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._ad) {
+        copy = [...this._ad];
+      }
+      return copy;
     }
 
     // Aliases kept for callers that use the shorter/longer spellings.
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set ad(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get ad() {
       return this.aad;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -690,11 +792,18 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       const plaintext = this.inputBuffer;
       const key = this._key;
       const nonce = this._nonce;
-      const ad = this._ad || [];
+      /** @type {uint8[]} */
+      let ad = [];
+      if (this._ad) {
+        ad = this._ad;
+      }
 
       // Initialize sponge state
       const state = this._initializeState(key, nonce);
@@ -705,6 +814,7 @@
       }
 
       // Encrypt plaintext
+      /** @type {uint8[]} */
       const ciphertext = [];
       if (plaintext.length > 0) {
         this._encryptData(state, ciphertext, plaintext);
@@ -720,11 +830,18 @@
       return ciphertext.concat(tag);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const ciphertextWithTag = this.inputBuffer;
       const key = this._key;
       const nonce = this._nonce;
-      const ad = this._ad || [];
+      /** @type {uint8[]} */
+      let ad = [];
+      if (this._ad) {
+        ad = this._ad;
+      }
 
       // Validate length
       if (ciphertextWithTag.length < SPOOK_TAG_SIZE) {
@@ -744,6 +861,7 @@
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
       if (ciphertext.length > 0) {
         this._decryptData(state, plaintext, ciphertext);
@@ -753,9 +871,10 @@
       const computedTag = this._computeTag(state, key);
 
       // Constant-time tag comparison
+      /** @type {uint32} */
       let tagMatch = 1;
       for (let i = 0; i < SPOOK_TAG_SIZE; ++i) {
-        tagMatch &= (receivedTag[i] === computedTag[i]) ? 1 : 0;
+        tagMatch = OpCodes.And32(tagMatch, (receivedTag[i] === computedTag[i]) ? 1 : 0);
       }
 
       // Clear input buffer
@@ -768,20 +887,39 @@
       return plaintext;
     }
 
+    /**
+     * Apply the Shadow permutation that matches this variant
+     * @param {uint8[]} state - sponge state bytes
+     */
+    _permute(state) {
+      if (this._shadowSize === 512) {
+        shadow512(state);
+      } else {
+        shadow384(state);
+      }
+    }
+
+    /**
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @returns {uint8[]}
+     */
     _initializeState(key, nonce) {
-      const shadowSize = this.algorithm.shadowSize;
+      /** @type {int32} */
+      const shadowSize = this._shadowSize;
       const stateSize = shadowSize === 512 ? SHADOW512_STATE_SIZE : SHADOW384_STATE_SIZE;
-      const state = new Array(stateSize).fill(0);
+      /** @type {uint8[]} */
+      const state = OpCodes.CreateArray(stateSize, 0);
 
       // Handle multi-user variant
-      if (this.algorithm.variant === 'mu') {
+      if (this._variant === 'mu') {
         // Copy public tweak (second half of key) to first block
         for (let i = 0; i < CLYDE128_BLOCK_SIZE; ++i) {
           state[i] = key[CLYDE128_BLOCK_SIZE + i];
         }
         // Set bit 126 and clear bit 127
-        state[CLYDE128_BLOCK_SIZE - 1] &= 0x7F;
-        state[CLYDE128_BLOCK_SIZE - 1] |= 0x40;
+        state[CLYDE128_BLOCK_SIZE - 1] = OpCodes.And32(state[CLYDE128_BLOCK_SIZE - 1], 0x7F);
+        state[CLYDE128_BLOCK_SIZE - 1] = OpCodes.Or32(state[CLYDE128_BLOCK_SIZE - 1], 0x40);
       }
 
       // Copy nonce to second block
@@ -790,8 +928,11 @@
       }
 
       // Apply Clyde-128 to initialize state
+      /** @type {uint32[]} */
       const tweakWords = new Array(4);
+      /** @type {uint32[]} */
       const inputWords = new Array(4);
+      /** @type {uint32[]} */
       const outputWords = new Array(4);
 
       // Load tweak words (first block, words 0-3)
@@ -823,19 +964,23 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} ad
+     */
     _absorbAD(state, ad) {
-      const shadowSize = this.algorithm.shadowSize;
+      /** @type {int32} */
+      const shadowSize = this._shadowSize;
       const rate = shadowSize === 512 ? SHADOW512_RATE : SHADOW384_RATE;
-      const permute = shadowSize === 512 ? shadow512 : shadow384;
 
       let offset = 0;
 
       // Process full blocks
       while (ad.length - offset >= rate) {
         for (let i = 0; i < rate; ++i) {
-          state[i] = OpCodes.XorN(state[i], ad[offset + i]);
+          state[i] = OpCodes.Xor32(state[i], ad[offset + i]);
         }
-        permute(state);
+        this._permute(state);
         offset += rate;
       }
 
@@ -843,20 +988,25 @@
       if (ad.length > offset) {
         const remaining = ad.length - offset;
         for (let i = 0; i < remaining; ++i) {
-          state[i] = OpCodes.XorN(state[i], ad[offset + i]);
+          state[i] = OpCodes.Xor32(state[i], ad[offset + i]);
         }
-        state[remaining] = OpCodes.XorN(state[remaining], 0x01);
-        state[rate] = OpCodes.XorN(state[rate], 0x02);
-        permute(state);
+        state[remaining] = OpCodes.Xor32(state[remaining], 0x01);
+        state[rate] = OpCodes.Xor32(state[rate], 0x02);
+        this._permute(state);
       }
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} output
+     * @param {uint8[]} plaintext
+     */
     _encryptData(state, output, plaintext) {
-      const shadowSize = this.algorithm.shadowSize;
+      /** @type {int32} */
+      const shadowSize = this._shadowSize;
       const rate = shadowSize === 512 ? SHADOW512_RATE : SHADOW384_RATE;
-      const permute = shadowSize === 512 ? shadow512 : shadow384;
 
-      state[rate] = OpCodes.XorN(state[rate], 0x01);
+      state[rate] = OpCodes.Xor32(state[rate], 0x01);
 
       let offset = 0;
 
@@ -865,11 +1015,11 @@
       // state must be updated in place (state[i] ^= m[i]; c[i] = state[i]).
       while (plaintext.length - offset >= rate) {
         for (let i = 0; i < rate; ++i) {
-          const c = OpCodes.ToByte(OpCodes.XorN(state[i], plaintext[offset + i]));
+          const c = OpCodes.ToByte(OpCodes.Xor32(state[i], plaintext[offset + i]));
           state[i] = c;
           output.push(c);
         }
-        permute(state);
+        this._permute(state);
         offset += rate;
       }
 
@@ -877,33 +1027,38 @@
       if (plaintext.length > offset) {
         const remaining = plaintext.length - offset;
         for (let i = 0; i < remaining; ++i) {
-          const c = OpCodes.ToByte(OpCodes.XorN(state[i], plaintext[offset + i]));
+          const c = OpCodes.ToByte(OpCodes.Xor32(state[i], plaintext[offset + i]));
           state[i] = c;
           output.push(c);
         }
-        state[remaining] = OpCodes.XorN(state[remaining], 0x01);
-        state[rate] = OpCodes.XorN(state[rate], 0x02);
-        permute(state);
+        state[remaining] = OpCodes.Xor32(state[remaining], 0x01);
+        state[rate] = OpCodes.Xor32(state[rate], 0x02);
+        this._permute(state);
       }
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} output
+     * @param {uint8[]} ciphertext
+     */
     _decryptData(state, output, ciphertext) {
-      const shadowSize = this.algorithm.shadowSize;
+      /** @type {int32} */
+      const shadowSize = this._shadowSize;
       const rate = shadowSize === 512 ? SHADOW512_RATE : SHADOW384_RATE;
-      const permute = shadowSize === 512 ? shadow512 : shadow384;
 
-      state[rate] = OpCodes.XorN(state[rate], 0x01);
+      state[rate] = OpCodes.Xor32(state[rate], 0x01);
 
       let offset = 0;
 
       // Process full blocks
       while (ciphertext.length - offset >= rate) {
         for (let i = 0; i < rate; ++i) {
-          const p = OpCodes.AndN(OpCodes.XorN(state[i], ciphertext[offset + i]), 0xFF);
+          const p = OpCodes.And32(OpCodes.Xor32(state[i], ciphertext[offset + i]), 0xFF);
           output.push(p);
           state[i] = ciphertext[offset + i];
         }
-        permute(state);
+        this._permute(state);
         offset += rate;
       }
 
@@ -911,24 +1066,32 @@
       if (ciphertext.length > offset) {
         const remaining = ciphertext.length - offset;
         for (let i = 0; i < remaining; ++i) {
-          const p = OpCodes.AndN(OpCodes.XorN(state[i], ciphertext[offset + i]), 0xFF);
+          const p = OpCodes.And32(OpCodes.Xor32(state[i], ciphertext[offset + i]), 0xFF);
           output.push(p);
           state[i] = ciphertext[offset + i];
         }
-        state[remaining] = OpCodes.XorN(state[remaining], 0x01);
-        state[rate] = OpCodes.XorN(state[rate], 0x02);
-        permute(state);
+        state[remaining] = OpCodes.Xor32(state[remaining], 0x01);
+        state[rate] = OpCodes.Xor32(state[rate], 0x02);
+        this._permute(state);
       }
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} key
+     * @returns {uint8[]}
+     */
     _computeTag(state, key) {
       // Set domain separation bit (byte 31, bit 7)
-      state[CLYDE128_BLOCK_SIZE * 2 - 1] = OpCodes.OrN(state[CLYDE128_BLOCK_SIZE * 2 - 1], 0x80);
+      state[CLYDE128_BLOCK_SIZE * 2 - 1] = OpCodes.Or32(state[CLYDE128_BLOCK_SIZE * 2 - 1], 0x80);
 
       // Extract tag using Clyde-128
       // clyde128_encrypt(key, output=W[0-3], input=W[0-3], tweak=W[4-7])
+      /** @type {uint32[]} */
       const inputWords = new Array(4);
+      /** @type {uint32[]} */
       const tweakWords = new Array(4);
+      /** @type {uint32[]} */
       const outputWords = new Array(4);
 
       // Load input words (first block, words 0-3)
@@ -945,6 +1108,7 @@
       clyde128Encrypt(key, outputWords, inputWords, tweakWords);
 
       // Convert to byte array (first 16 bytes = tag)
+      /** @type {uint8[]} */
       const tag = new Array(SPOOK_TAG_SIZE);
       for (let i = 0; i < 4; ++i) {
         storeWord32LE(tag, i * 4, outputWords[i]);

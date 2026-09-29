@@ -141,20 +141,24 @@
   class Rule30Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Rule30Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Rule30 CA configuration
       this.DEFAULT_SIZE = 127;    // CA array size (odd for central cell)
       this.cells = null;
       this.centerIndex = Math.floor(this.DEFAULT_SIZE / 2);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -178,7 +182,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 1024) {
-        throw new Error(`Invalid Rule30 key size: ${keyLength} bytes. Requires 1-1024 bytes`);
+        throw new Error("Invalid Rule30 key size: " + keyLength + " bytes. Requires 1-1024 bytes");
       }
 
       this._key = [...keyBytes];
@@ -231,12 +235,13 @@
         throw new Error("Rule30 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -250,7 +255,7 @@
       if (!this._key) return;
 
       // Initialize CA cells array
-      this.cells = new Array(this.DEFAULT_SIZE).fill(0);
+      this.cells = OpCodes.CreateArray(this.DEFAULT_SIZE, 0);
 
       // Use key bytes to set initial cell states
       for (let i = 0; i < this.DEFAULT_SIZE; i++) {
@@ -281,6 +286,7 @@
 
     // Evolve cellular automaton one step using Rule 30
     _evolveCA() {
+      /** @type {uint8[]} */
       const newCells = new Array(this.DEFAULT_SIZE);
 
       for (let i = 0; i < this.DEFAULT_SIZE; i++) {
@@ -289,26 +295,33 @@
         const right = this.cells[(i + 1) % this.DEFAULT_SIZE];
 
         // Apply Rule 30: XOR of left neighbor and (center OR right neighbor)
-        newCells[i] = OpCodes.XorN(left, OpCodes.OrN(center, right));
+        newCells[i] = OpCodes.Xor32(left, OpCodes.Or32(center, right));
       }
 
       this.cells = newCells;
     }
 
     // Generate single bit from CA center cell
+    /**
+     * @returns {uint8}
+     */
     _generateBit() {
       this._evolveCA();
       return this.cells[this.centerIndex];
     }
 
     // Generate full byte from 8 CA evolution steps
+    /**
+     * @returns {uint8}
+     */
     _generateByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this._generateBit();
-        byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
+        byte = OpCodes.Or32(byte, OpCodes.Shl32(bitValue, bit));
       }
-      return OpCodes.AndN(byte, 0xFF);
+      return OpCodes.And32(byte, 0xFF);
     }
   }
 
