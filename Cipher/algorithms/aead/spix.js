@@ -43,6 +43,7 @@
           AeadAlgorithm, IAeadInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // sLiSCP-light-256 permutation constants
+  /** @type {uint8[]} */
   const SLISCP_LIGHT256_RC = [
     0x0f, 0x47, 0x08, 0x64, 0x04, 0xb2, 0x86, 0x6b,
     0x43, 0xb5, 0xe2, 0x6f, 0xf1, 0x37, 0x89, 0x2c,
@@ -248,16 +249,20 @@
   class SpixInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Spix} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -274,7 +279,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -287,6 +292,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -294,14 +302,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -310,12 +324,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -429,10 +452,11 @@
     }
 
     _encrypt() {
-      const state = new Array(32).fill(0);
+      const state = OpCodes.CreateArray(32, 0);
       this._init(state);
 
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
       const RATE = 8;
       let offset = 0;
@@ -473,9 +497,10 @@
       const ctLen = ciphertext.length - 16; // Remove tag length
       const receivedTag = ciphertext.slice(ctLen);
 
-      const state = new Array(32).fill(0);
+      const state = OpCodes.CreateArray(32, 0);
       this._init(state);
 
+      /** @type {uint8[]} */
       const output = [];
       const RATE = 8;
       let offset = 0;

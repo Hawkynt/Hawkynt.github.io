@@ -221,7 +221,7 @@
   // GASCON-128 permutation wrapper with byte-oriented interface
   class GasconPermutation {
     constructor() {
-      this.B = new Array(40).fill(0);
+      this.B = OpCodes.CreateArray(40, 0);
     }
 
     getWord32LE(offset) {
@@ -333,6 +333,7 @@
     }
 
     xorAndExtract(data, offset, length) {
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < length; ++i) {
         this.B[offset + i] ^= data[i];
@@ -342,6 +343,7 @@
     }
 
     xorAndReplace(data, offset, length) {
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < length; ++i) {
         const plainByte = OpCodes.XorN(this.B[offset + i], data[i]);
@@ -456,16 +458,20 @@
   class GASCON128Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GASCON128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       this.IV = 0x80400c0600000000;
@@ -488,7 +494,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -501,6 +507,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -508,14 +517,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -524,12 +539,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -602,6 +626,7 @@
 
       this.perm.B[39] ^= 0x01;
 
+      /** @type {uint8[]} */
       const ciphertext = [];
       const plaintext = this.inputBuffer;
       let pos = 0;
@@ -645,6 +670,7 @@
 
       this.perm.B[39] ^= 0x01;
 
+      /** @type {uint8[]} */
       const plaintext = [];
       let pos = 0;
 
@@ -946,16 +972,20 @@
   class DryGASCON128Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DryGASCON128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -972,7 +1002,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -985,6 +1015,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -992,14 +1025,20 @@
       }
 
       if (nonceBytes.length !== DRYGASCON128_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${DRYGASCON128_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + DRYGASCON128_NONCE_SIZE + ")");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -1008,12 +1047,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -1057,7 +1105,7 @@
         state.c.coreRound(0);
         roundCount++;
         if (roundCount >= MAX_ROUNDS) {
-          throw new Error(`DryGASCON128: Failed to generate unique X words after ${MAX_ROUNDS} rounds`);
+          throw new Error("DryGASCON128: Failed to generate unique X words after " + MAX_ROUNDS + " rounds");
         }
 
         const cWords = [
@@ -1134,6 +1182,7 @@
 
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
 
       const state = new DrySponge128State();
@@ -1186,6 +1235,7 @@
         throw new Error("Ciphertext too short (must include tag)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const state = new DrySponge128State();
 

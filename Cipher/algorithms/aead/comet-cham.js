@@ -445,16 +445,21 @@
   class CometChamInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CometChamAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._associatedData = null;
     }
 
@@ -488,6 +493,9 @@
     }
 
     // Nonce property
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -501,11 +509,17 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? new Uint8Array(this._nonce) : null;
     }
 
     // Associated data property
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes || adBytes.length === 0) {
         this._associatedData = new Uint8Array(0);
@@ -515,6 +529,9 @@
       this._associatedData = new Uint8Array(adBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData ? new Uint8Array(this._associatedData) : new Uint8Array(0);
     }

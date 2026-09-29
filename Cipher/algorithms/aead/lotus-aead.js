@@ -47,6 +47,7 @@
 
   // GIFT-64 constants
   const GIFT64_BLOCK_SIZE = 8;
+  /** @type {uint8[]} */
   const GIFT64_RC = [
     0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B,
     0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E,
@@ -686,17 +687,22 @@
   class LotusAeadInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LotusAeadAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.aadBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._aad = null;
     }
 
@@ -726,6 +732,9 @@
       return this._key ? Array.from(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -737,10 +746,16 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = null;
@@ -749,6 +764,9 @@
       this._aad = new Uint8Array(aadBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._aad ? Array.from(this._aad) : null;
     }

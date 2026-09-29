@@ -55,10 +55,11 @@
     [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000]
   ]);
 
-  const RHO_OFFSETS = Object.freeze([
+  /** @type {uint8[]} */
+  const RHO_OFFSETS = [
     0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41,
     45, 15, 21, 8, 18, 2, 61, 56, 14
-  ]);
+  ];
 
   // 64-bit XOR operation
   function xor64(a, b) {
@@ -278,7 +279,7 @@
       this.Pi = pistons.length;
       this.Pistons = pistons;
       this.phase = PHASE_FRESH;
-      this.Et = new Array(this.Pi).fill(0);
+      this.Et = OpCodes.CreateArray(this.Pi, 0);
     }
 
     Crypt(I, O, unwrapFlag) {
@@ -303,7 +304,7 @@
       }
 
       if (this.phase === PHASE_CRYPTED || A.hasMore()) {
-        this._spark(false, new Array(this.Pi).fill(0));
+        this._spark(false, OpCodes.CreateArray(this.Pi, 0));
         this.phase = PHASE_FRESH;
       } else {
         this.phase = PHASE_END_OF_MESSAGE;
@@ -344,7 +345,7 @@
 
       while (Xt[0].hasMore()) {
         for (let i = 0; i < this.Pi; ++i) this.Pistons[i].Inject(Xt[i], false);
-        if (Xt[0].hasMore()) this._spark(false, new Array(this.Pi).fill(0));
+        if (Xt[0].hasMore()) this._spark(false, OpCodes.CreateArray(this.Pi, 0));
       }
 
       this.phase = PHASE_END_OF_MESSAGE;
@@ -407,7 +408,7 @@
     // preceding state cannot be recovered from what follows
     _makeKnot() {
       const intermediate = new ByteStream();
-      this.engine.GetTags(intermediate, new Array(this.Pi).fill(this.cprime / 8));
+      this.engine.GetTags(intermediate, OpCodes.CreateArray(this.Pi, this.cprime / 8));
       intermediate.rewind();
       this.engine.InjectCollective(intermediate, false);
     }
@@ -416,11 +417,11 @@
       const computed = new ByteStream();
 
       if (!tagFlag) {
-        this.engine.GetTags(computed, new Array(this.Pi).fill(0));
+        this.engine.GetTags(computed, OpCodes.CreateArray(this.Pi, 0));
         return true;
       }
 
-      const l = new Array(this.Pi).fill(0);
+      const l = OpCodes.CreateArray(this.Pi, 0);
       l[0] = this.tau / 8;
       this.engine.GetTags(computed, l);
 
@@ -596,19 +597,24 @@
   class LakeKeyakInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LakeKeyak} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.algorithm = algorithm;
 
+      /** @type {uint8[]|null} */
       this._key = null;
       this._nonce = [];
       this._aad = [];
 
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -625,12 +631,18 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -645,20 +657,32 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       // The nonce is appended to the key pack and absorbed as a stream, block by
       // block, so Keyak places no upper bound on its length.
       this._nonce = nonceBytes ? [...nonceBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : [];
     }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return [...this._aad];
     }

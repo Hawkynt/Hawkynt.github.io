@@ -752,15 +752,19 @@
   class HyenaInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HyenaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.aad = [];
     }
@@ -779,7 +783,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -795,6 +799,9 @@
     }
 
     // Nonce property
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -802,21 +809,30 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 12)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 12)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Associated data property
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes ? [...adBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this.aad];
     }

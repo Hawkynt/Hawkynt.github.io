@@ -60,6 +60,7 @@
   const ROUND = 12;
 
   // PHOTON S-box (4-bit)
+  /** @type {uint8[]} */
   const sbox = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2];
 
   // MixColumn matrix for PHOTON permutation
@@ -347,8 +348,11 @@
   class OrangeZestInstance extends IAeadInstance {
     constructor(algorithm, isInverse) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._plaintext = [];
       this._associatedData = [];
@@ -384,6 +388,9 @@
       return this._key ? Array.from(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -397,6 +404,9 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
@@ -413,6 +423,9 @@
       return this._plaintext.slice();
     }
 
+    /**
+     * @param {uint8[]|null} data
+     */
     set associatedData(data) {
       if (!data) {
         this._associatedData = [];
@@ -421,15 +434,24 @@
       this._associatedData = Array.isArray(data) ? data : Array.from(data);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData.slice();
     }
 
     // Canonical AEAD interface property (alias for associatedData)
+    /**
+     * @param {uint8[]|null} data
+     */
     set aad(data) {
       this.associatedData = data;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._associatedData.slice();
     }

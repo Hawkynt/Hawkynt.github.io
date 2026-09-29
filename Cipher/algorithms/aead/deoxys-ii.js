@@ -611,12 +611,18 @@
   class DeoxysIIInstanceBase extends IAeadInstance {
     constructor(algorithm, isInverse, bcEncrypt, precomputeSubkeys) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.bcEncrypt = bcEncrypt;
       this.precomputeSubkeys = precomputeSubkeys;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this.subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -633,12 +639,18 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -654,6 +666,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -661,12 +676,15 @@
       }
 
       if (nonceBytes.length !== 15) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 15)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 15)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }

@@ -133,7 +133,7 @@
 
   class SimP192 {
     constructor() {
-      this.state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      this.state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
     }
 
     loadState(bytes) {
@@ -227,7 +227,7 @@
 
   class SimP256 {
     constructor() {
-      this.state = new Array(SIMP_256_STATE_SIZE).fill(0);
+      this.state = OpCodes.CreateArray(SIMP_256_STATE_SIZE, 0);
     }
 
     loadState(bytes) {
@@ -471,8 +471,11 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
       this._inputBuffer = [];
@@ -489,7 +492,7 @@
         return;
       }
       if (keyBytes.length !== ORIBATIDA_192_KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${ORIBATIDA_192_KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + ORIBATIDA_192_KEY_SIZE + ")");
       }
       this._key = keyBytes.slice();
     }
@@ -502,25 +505,37 @@
       return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== ORIBATIDA_192_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${ORIBATIDA_192_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + ORIBATIDA_192_NONCE_SIZE + ")");
       }
       this._nonce = nonceBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this._aad = adBytes ? adBytes.slice() : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._aad ? this._aad.slice() : [];
     }
@@ -560,7 +575,7 @@
       const domains = getDomains(adlen, mlen, ORIBATIDA_192_RATE);
 
       const simp = new SimP192();
-      const state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      const state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
 
       for (let i = 0; i < ORIBATIDA_192_NONCE_SIZE; ++i) {
         state[i] = this._nonce[i];
@@ -600,6 +615,7 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const ciphertext = [];
       let mPos = 0;
 
@@ -666,7 +682,7 @@
       const domains = getDomains(adlen, clen, ORIBATIDA_192_RATE);
 
       const simp = new SimP192();
-      const state = new Array(SIMP_192_STATE_SIZE).fill(0);
+      const state = OpCodes.CreateArray(SIMP_192_STATE_SIZE, 0);
 
       for (let i = 0; i < ORIBATIDA_192_NONCE_SIZE; ++i) {
         state[i] = this._nonce[i];
@@ -706,6 +722,7 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const plaintext = [];
       let cPos = 0;
 
@@ -914,8 +931,11 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
       this._inputBuffer = [];
@@ -932,7 +952,7 @@
         return;
       }
       if (keyBytes.length !== ORIBATIDA_256_KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${ORIBATIDA_256_KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + ORIBATIDA_256_KEY_SIZE + ")");
       }
       this._key = keyBytes.slice();
     }
@@ -945,25 +965,37 @@
       return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== ORIBATIDA_256_NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${ORIBATIDA_256_NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + ORIBATIDA_256_NONCE_SIZE + ")");
       }
       this._nonce = nonceBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this._aad = adBytes ? adBytes.slice() : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._aad ? this._aad.slice() : [];
     }
@@ -1043,6 +1075,7 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const ciphertext = [];
       let mPos = 0;
 
@@ -1149,6 +1182,7 @@
         simp.permute(4);
       }
 
+      /** @type {uint8[]} */
       const plaintext = [];
       let cPos = 0;
 

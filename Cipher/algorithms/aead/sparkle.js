@@ -61,6 +61,7 @@
   // ===== SPARKLE PERMUTATION (Reused from sparkle-hash.js) =====
 
   // Sparkle round constants
+  /** @type {uint32[]} */
   const RCON = [
     0xB7E15162, 0xBF715880, 0x38B4DA56, 0x324E7738,
     0xBB1185EB, 0x4F7C7B57, 0xCFBFA1C8, 0xC2B3293D
@@ -784,6 +785,7 @@
   class SchwaemmInstance extends IAeadInstance {
     constructor(algorithm, isInverse, variant) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Variant-specific configuration
@@ -832,7 +834,7 @@
 
       const config = variants[variant];
       if (!config) {
-        throw new Error(`Unknown variant: ${variant}`);
+        throw new Error("Unknown variant: " + variant);
       }
 
       // Configuration
@@ -859,10 +861,14 @@
 
       // State
       this.state = new Array(this.STATE_WORDS);
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -885,7 +891,7 @@
       }
 
       if (keyBytes.length !== this.KEY_BYTES) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.KEY_BYTES})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.KEY_BYTES + ")");
       }
 
       this._key = [...keyBytes];
@@ -902,6 +908,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -914,18 +923,24 @@
       }
 
       if (nonceBytes.length !== this.NONCE_BYTES) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${this.NONCE_BYTES})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + this.NONCE_BYTES + ")");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -939,6 +954,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -1074,7 +1092,7 @@
         // Partial block - add padding
         this.state[this.STATE_WORDS - 1] ^= this._A0;
 
-        const buffer = new Array(this.RATE_BYTES).fill(0);
+        const buffer = OpCodes.CreateArray(this.RATE_BYTES, 0);
         for (let i = 0; i < adlen; ++i) {
           buffer[i] = ad[pos + i];
         }
@@ -1157,6 +1175,7 @@
       // Process associated data first
       this._processAAD();
 
+      /** @type {uint8[]} */
       const output = [];
       let mlen = this.inputBuffer.length;
       let pos = 0;
@@ -1222,7 +1241,7 @@
             this.state[this.STATE_WORDS - 1] ^= this._M2;
 
             // Pack ciphertext with state-derived padding into word buffer
-            const buffer = new Array(this.RATE_WORDS).fill(0);
+            const buffer = OpCodes.CreateArray(this.RATE_WORDS, 0);
             for (let i = 0; i < mlen; ++i) {
               buffer[OpCodes.Shr32(i, 2)] |= OpCodes.Shl32(OpCodes.And32(this.inputBuffer[pos + i], 0xFF), OpCodes.Shl32(OpCodes.And32(i, 3), 3));
             }
@@ -1368,7 +1387,7 @@
             this.state[this.STATE_WORDS - 1] ^= this._M2;
 
             // Pack plaintext with padding into word buffer
-            const buffer = new Array(this.RATE_WORDS).fill(0);
+            const buffer = OpCodes.CreateArray(this.RATE_WORDS, 0);
             for (let i = 0; i < mlen; ++i) {
               buffer[OpCodes.Shr32(i, 2)] |= OpCodes.Shl32(this.inputBuffer[pos + i], OpCodes.Shl32(OpCodes.And32(i, 3), 3));
             }

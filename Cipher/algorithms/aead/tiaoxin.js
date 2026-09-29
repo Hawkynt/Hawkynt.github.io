@@ -293,12 +293,13 @@
   class TiaoxinInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TiaoxinAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // State: T3 (3 words), T4 (4 words), T6 (6 words)
@@ -306,7 +307,9 @@
       this.T4 = Array.from({ length: 4 }, () => new Uint8Array(16));
       this.T6 = Array.from({ length: 6 }, () => new Uint8Array(16));
 
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._ad = [];
       this._data = [];
@@ -336,6 +339,9 @@
 
     get key() { return this._key ? Array.from(this._key) : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -347,8 +353,14 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? Array.from(this._nonce) : null; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._ad = [];
@@ -357,6 +369,9 @@
       this._ad = Array.from(adBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() { return [...this._ad]; }
 
     // Tiaoxin round update R(T, M) for a register T of s words:
@@ -518,6 +533,7 @@
         const ciphertext = this._data.slice(0, ctLength);
         const receivedTag = this._data.slice(ctLength);
 
+        /** @type {uint8[]} */
         const plaintext = [];
         const zeroWord = new Uint8Array(16);
 
@@ -573,6 +589,7 @@
       } else {
         // Encryption
         const plaintext = this._data;
+        /** @type {uint8[]} */
         const ciphertext = [];
 
         // Encrypt message blocks. A short final block is zero-padded and still

@@ -204,7 +204,7 @@
     let pos = 0;
 
     const DEBUG = false;  // Set to true to enable debug output
-    if (DEBUG) console.log(`[cofbProcessAD] adlen=${adlen}, mlen=${mlen}`);
+    if (DEBUG) console.log("[cofbProcessAD] adlen=" + adlen + ", mlen=" + mlen);
 
     // Process all complete AD blocks except the last
     while (adlen > 16) {
@@ -234,22 +234,22 @@
     Y[1] = Y[3];
     Y[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(lx, 1), OpCodes.Shr32(ly, 31)));
     Y[3] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ly, 1), OpCodes.Shr32(lx, 31)));
-    if (DEBUG) console.log(`[cofbProcessAD] Y after feedback: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
+    if (DEBUG) console.log("[cofbProcessAD] Y after feedback: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
 
     if (adlen === 16) {
       // Full last block - XOR Y with AD
-      if (DEBUG) console.log(`[cofbProcessAD] Processing full 16-byte AD block at pos=${pos}`);
+      if (DEBUG) console.log("[cofbProcessAD] Processing full 16-byte AD block at pos=" + pos);
       Y[0] = OpCodes.XorN(Y[0], OpCodes.Pack32BE(ad[pos], ad[pos+1], ad[pos+2], ad[pos+3]));
       Y[1] = OpCodes.XorN(Y[1], OpCodes.Pack32BE(ad[pos+4], ad[pos+5], ad[pos+6], ad[pos+7]));
       Y[2] = OpCodes.XorN(Y[2], OpCodes.Pack32BE(ad[pos+8], ad[pos+9], ad[pos+10], ad[pos+11]));
       Y[3] = OpCodes.XorN(Y[3], OpCodes.Pack32BE(ad[pos+12], ad[pos+13], ad[pos+14], ad[pos+15]));
-      if (DEBUG) console.log(`[cofbProcessAD] Y after XOR with AD: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
-      if (DEBUG) console.log(`[cofbProcessAD] Before triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] Y after XOR with AD: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
+      if (DEBUG) console.log("[cofbProcessAD] Before triple: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
       L = cofbTripleL(L);
-      if (DEBUG) console.log(`[cofbProcessAD] After triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] After triple: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
     } else {
       // Partial last block - pad with 0x80
-      if (DEBUG) console.log(`[cofbProcessAD] Processing partial/empty AD block, adlen=${adlen}`);
+      if (DEBUG) console.log("[cofbProcessAD] Processing partial/empty AD block, adlen=" + adlen);
       const padded = new Uint8Array(16);
       padded.set(ad.subarray(pos, pos + adlen));
       padded[adlen] = 0x80;
@@ -259,30 +259,30 @@
       Y[1] = OpCodes.XorN(Y[1], OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]));
       Y[2] = OpCodes.XorN(Y[2], OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]));
       Y[3] = OpCodes.XorN(Y[3], OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]));
-      if (DEBUG) console.log(`[cofbProcessAD] Y after XOR with padded AD: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
-      if (DEBUG) console.log(`[cofbProcessAD] Before double-triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] Y after XOR with padded AD: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
+      if (DEBUG) console.log("[cofbProcessAD] Before double-triple: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
       L = cofbTripleL(cofbTripleL(L));
-      if (DEBUG) console.log(`[cofbProcessAD] After double-triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] After double-triple: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
     }
 
     // If message is empty, triple L two more times
     if (mlen === 0) {
-      if (DEBUG) console.log(`[cofbProcessAD] Message empty, tripling L twice more`);
-      if (DEBUG) console.log(`[cofbProcessAD] Before: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] Message empty, tripling L twice more");
+      if (DEBUG) console.log("[cofbProcessAD] Before: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
       L = cofbTripleL(L);
       L = cofbTripleL(L);
-      if (DEBUG) console.log(`[cofbProcessAD] After: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[cofbProcessAD] After: L={x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
     }
 
     // XOR with L and encrypt in-place
-    if (DEBUG) console.log(`[cofbProcessAD] Final XOR with L and encrypt`);
-    if (DEBUG) console.log(`[cofbProcessAD] Y before final XOR: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
-    if (DEBUG) console.log(`[cofbProcessAD] L for final XOR: {x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+    if (DEBUG) console.log("[cofbProcessAD] Final XOR with L and encrypt");
+    if (DEBUG) console.log("[cofbProcessAD] Y before final XOR: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
+    if (DEBUG) console.log("[cofbProcessAD] L for final XOR: {x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
     Y[0] = OpCodes.XorN(Y[0], L.x);
     Y[1] = OpCodes.XorN(Y[1], L.y);
-    if (DEBUG) console.log(`[cofbProcessAD] Y after final XOR: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
+    if (DEBUG) console.log("[cofbProcessAD] Y after final XOR: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
     gift128bEncryptPreloaded(ks, Y, Y);
-    if (DEBUG) console.log(`[cofbProcessAD] Final Y after encrypt: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
+    if (DEBUG) console.log("[cofbProcessAD] Final Y after encrypt: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
 
     return L;
   }
@@ -425,16 +425,21 @@
   class GiftCofbInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GiftCofbAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._associatedData = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -467,6 +472,9 @@
       return this._key ? new Uint8Array(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -480,14 +488,23 @@
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? new Uint8Array(this._nonce) : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? new Uint8Array(adBytes) : new Uint8Array(0);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData ? new Uint8Array(this._associatedData) : new Uint8Array(0);
     }
@@ -527,13 +544,13 @@
       Y[1] = OpCodes.Pack32BE(this._nonce[4], this._nonce[5], this._nonce[6], this._nonce[7]);
       Y[2] = OpCodes.Pack32BE(this._nonce[8], this._nonce[9], this._nonce[10], this._nonce[11]);
       Y[3] = OpCodes.Pack32BE(this._nonce[12], this._nonce[13], this._nonce[14], this._nonce[15]);
-      if (DEBUG) console.log(`[_encrypt] Y before encrypt: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
+      if (DEBUG) console.log("[_encrypt] Y before encrypt: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
       gift128bEncryptPreloaded(ks, Y, Y);
-      if (DEBUG) console.log(`[_encrypt] Y after encrypt: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
+      if (DEBUG) console.log("[_encrypt] Y after encrypt: [" + (Y[0].toString(16)) + ", " + (Y[1].toString(16)) + ", " + (Y[2].toString(16)) + ", " + (Y[3].toString(16)) + "]");
 
       // Initialize L from first two words of Y
       let L = { x: Y[0], y: Y[1] };
-      if (DEBUG) console.log(`[_encrypt] Initial L: {x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
+      if (DEBUG) console.log("[_encrypt] Initial L: {x:" + (L.x.toString(16)) + ", y:" + (L.y.toString(16)) + "}");
 
       // Process associated data (always, even if empty - matches C reference)
       L = cofbProcessAD(ks, Y, L, ad, mlen);

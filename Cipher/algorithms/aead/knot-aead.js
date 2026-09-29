@@ -61,6 +61,7 @@
   // ===== SHARED KNOT PERMUTATION UTILITIES =====
 
   // Round constants for KNOT-256 permutation (6-bit LFSR)
+  /** @type {uint8[]} */
   const RC6 = [
     0x01, 0x02, 0x04, 0x08, 0x10, 0x21, 0x03, 0x06, 0x0c, 0x18, 0x31, 0x22,
     0x05, 0x0a, 0x14, 0x29, 0x13, 0x27, 0x0f, 0x1e, 0x3d, 0x3a, 0x34, 0x28,
@@ -70,6 +71,7 @@
   ];
 
   // Round constants for KNOT-384 permutation (7-bit LFSR)
+  /** @type {uint8[]} */
   const RC7 = [
     0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x41, 0x03, 0x06, 0x0c, 0x18, 0x30,
     0x61, 0x42, 0x05, 0x0a, 0x14, 0x28, 0x51, 0x23, 0x47, 0x0f, 0x1e, 0x3c,
@@ -87,10 +89,10 @@
    * This is a 4-bit S-box applied in parallel across all bit positions
    * Working with 8-byte arrays to avoid JavaScript 64-bit limitations
    *
-   * @param {Array} a0 - First input word as 8-byte array (little-endian)
-   * @param {Array} a1 - Second input word as 8-byte array
-   * @param {Array} a2 - Third input word as 8-byte array
-   * @param {Array} a3 - Fourth input word as 8-byte array
+   * @param {uint8[]} a0 - First input word as 8-byte array (little-endian)
+   * @param {uint8[]} a1 - Second input word as 8-byte array
+   * @param {uint8[]} a2 - Third input word as 8-byte array
+   * @param {uint8[]} a3 - Fourth input word as 8-byte array
    * @returns {Object} {a0, b1, b2, b3} - Four transformed 8-byte arrays
    */
   function knotSbox64(a0, a1, a2, a3) {
@@ -129,10 +131,10 @@
 
   /**
    * KNOT S-box applied in bit-sliced mode to four 32-bit words (as 4-byte arrays)
-   * @param {Array} a0 - First input word as 4-byte array (little-endian)
-   * @param {Array} a1 - Second input word as 4-byte array
-   * @param {Array} a2 - Third input word as 4-byte array
-   * @param {Array} a3 - Fourth input word as 4-byte array
+   * @param {uint8[]} a0 - First input word as 4-byte array (little-endian)
+   * @param {uint8[]} a1 - Second input word as 4-byte array
+   * @param {uint8[]} a2 - Third input word as 4-byte array
+   * @param {uint8[]} a3 - Fourth input word as 4-byte array
    * @returns {Object} {a0, b1, b2, b3} - Four transformed 4-byte arrays
    */
   function knotSbox32(a0, a1, a2, a3) {
@@ -171,9 +173,9 @@
 
   /**
    * Left rotate 64-bit value (as 8-byte array, little-endian)
-   * @param {Array} bytes - 8-byte array representing 64-bit value
+   * @param {uint8[]} bytes - 8-byte array representing 64-bit value
    * @param {number} positions - Rotation amount (0-63)
-   * @returns {Array} Rotated 8-byte array
+   * @returns {uint8[]} Rotated 8-byte array
    */
   function rotL64(bytes, positions) {
     if (positions === 0) return [...bytes];
@@ -205,9 +207,9 @@
 
   /**
    * Left rotate 32-bit value (as 4-byte array, little-endian)
-   * @param {Array} bytes - 4-byte array representing 32-bit value
+   * @param {uint8[]} bytes - 4-byte array representing 32-bit value
    * @param {number} positions - Rotation amount (0-31)
-   * @returns {Array} Rotated 4-byte array
+   * @returns {uint8[]} Rotated 4-byte array
    */
   function rotL32(bytes, positions) {
     if (positions === 0) return [...bytes];
@@ -241,8 +243,8 @@
    * Left rotate 96-bit value (represented as 64-bit low + 32-bit high)
    * Used for KNOT-384 permutation
    *
-   * @param {Array} low64bytes - 8-byte array (low 64 bits, little-endian)
-   * @param {Array} high32bytes - 4-byte array (high 32 bits, little-endian)
+   * @param {uint8[]} low64bytes - 8-byte array (low 64 bits, little-endian)
+   * @param {uint8[]} high32bytes - 4-byte array (high 32 bits, little-endian)
    * @param {number} bits - Rotation amount (0-95)
    * @returns {Object} {low64, high32} - Rotated byte arrays
    */
@@ -536,17 +538,22 @@
   class KnotAead128256Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KnotAead128256Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -569,7 +576,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`KNOT-AEAD-128-256 key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("KNOT-AEAD-128-256 key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -585,6 +592,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -597,17 +607,23 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`KNOT-AEAD-128-256 requires exactly 16 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("KNOT-AEAD-128-256 requires exactly 16 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -621,6 +637,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -685,6 +704,7 @@
 
     // Encrypt plaintext
     _encrypt(plaintext) {
+      /** @type {uint8[]} */
       const ciphertext = [];
       const rate = this.algorithm.RATE;
       let offset = 0;
@@ -715,6 +735,7 @@
 
     // Decrypt ciphertext
     _decrypt(ciphertext) {
+      /** @type {uint8[]} */
       const plaintext = [];
       const rate = this.algorithm.RATE;
       let offset = 0;
@@ -799,6 +820,7 @@
       // Process associated data
       this._absorbAD();
 
+      /** @type {uint8[]} */
       const result = [];
 
       if (this.isInverse) {
@@ -994,17 +1016,22 @@
   class KnotAead128384Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KnotAead128384Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -1027,7 +1054,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`KNOT-AEAD-128-384 key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("KNOT-AEAD-128-384 key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -1043,6 +1070,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -1055,17 +1085,23 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`KNOT-AEAD-128-384 requires exactly 16 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("KNOT-AEAD-128-384 requires exactly 16 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -1079,6 +1115,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -1155,6 +1194,7 @@
 
     // Encrypt plaintext
     _encrypt(plaintext) {
+      /** @type {uint8[]} */
       const ciphertext = [];
       const rate = this.algorithm.RATE;
       let offset = 0;
@@ -1185,6 +1225,7 @@
 
     // Decrypt ciphertext
     _decrypt(ciphertext) {
+      /** @type {uint8[]} */
       const plaintext = [];
       const rate = this.algorithm.RATE;
       let offset = 0;
@@ -1269,6 +1310,7 @@
       // Process associated data
       this._absorbAD();
 
+      /** @type {uint8[]} */
       const result = [];
 
       if (this.isInverse) {
