@@ -6545,7 +6545,18 @@
       // Return-type propagation: join of JSDoc @returns and every `return <expr>`
       // in the callee's body, written onto the call node so the receiving
       // variable/expression sees it via inferExpressionType's resultType check.
-      const returnType = this._getFunctionReturnType(entry);
+      // A framework interface method's declared return (tier 2) outranks the
+      // overriding method's own JSDoc (tier 3); a type that states no width
+      // never replaces one that does.
+      let returnType = null;
+      if ((node.type === 'ThisMethodCall' || node.type === 'ParentMethodCall') && context && context.className) {
+        const framework = this._frameworkMemberType(context.className, node.method, 'method');
+        const declared = framework ? ilTypeFromJSDoc(framework.returns) : null;
+        if (declared && declared !== 'void') returnType = declared;
+      }
+      if (!returnType) returnType = this._getFunctionReturnType(entry);
+      const statesNoWidth = t => ['Array', 'Object', 'object', 'number', 'any', '*'].includes(t);
+      if (returnType && statesNoWidth(returnType) && node.resultType && !statesNoWidth(node.resultType)) returnType = null;
       if (returnType && node.resultType !== returnType) {
         node.resultType = returnType;
         changes++;
