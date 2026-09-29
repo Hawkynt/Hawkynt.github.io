@@ -41,7 +41,8 @@
   const GF_POLY = 0x163;
 
   // s-function (lower-level S-box)
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     0x07, 0xFC, 0x55, 0x70, 0x98, 0x8E, 0x84, 0x4E, 0xBC, 0x75, 0xCE, 0x18, 0x02, 0xE9, 0x5D, 0x80,
     0x1C, 0x60, 0x78, 0x42, 0x9D, 0x2E, 0xF5, 0xE8, 0xC6, 0x7A, 0x2F, 0xA4, 0xB2, 0x5F, 0x19, 0x87,
     0x0B, 0x9B, 0x9C, 0xD3, 0xC3, 0x77, 0x3D, 0x6F, 0xB9, 0x2D, 0x4D, 0xF7, 0x8C, 0xA7, 0xAC, 0x17,
@@ -58,37 +59,314 @@
     0x50, 0xD2, 0x92, 0x74, 0x93, 0xE1, 0xDA, 0xAE, 0xA9, 0x53, 0xE4, 0x40, 0xCD, 0xBA, 0x97, 0xA3,
     0x91, 0x31, 0x25, 0x76, 0x36, 0x32, 0x28, 0x3A, 0x24, 0x4C, 0xDB, 0xD9, 0x8D, 0xDC, 0x62, 0x2A,
     0xEA, 0x15, 0xDD, 0xC2, 0xA5, 0x0C, 0x04, 0x1D, 0x8F, 0xCB, 0xB4, 0x4F, 0x16, 0xAB, 0xAA, 0xA0
-  ]);
+  ];
+  Object.freeze(SBOX);
 
-  const SBOX_INV = (function () {
+  /**
+   * @returns {uint8[]} Inverse of SBOX
+   */
+  function buildSboxInv() {
+    /** @type {uint8[]} */
     const inv = new Array(256);
     for (let i = 0; i < 256; i++) inv[SBOX[i]] = i;
-    return Object.freeze(inv);
-  })();
+    return inv;
+  }
+  const SBOX_INV = buildSboxInv();
+  Object.freeze(SBOX_INV);
 
   // mdsL: circulant matrix with first row (C4 65 C8 8B) and its inverse
-  const MDSL_ROW = Object.freeze([0xC4, 0x65, 0xC8, 0x8B]);
-  const MDSL_INV_ROW = Object.freeze([0x82, 0xC4, 0x34, 0xF6]);
+  /** @type {uint8[]} */
+  const MDSL_ROW = [0xC4, 0x65, 0xC8, 0x8B];
+  Object.freeze(MDSL_ROW);
+  /** @type {uint8[]} */
+  const MDSL_INV_ROW = [0x82, 0xC4, 0x34, 0xF6];
+  Object.freeze(MDSL_INV_ROW);
 
   // MDS_H: 8x8 binary matrix (one bit-mask per output byte) and its inverse
-  const MDSH_ROWS = Object.freeze([0xAE, 0xDF, 0xE7, 0x5D, 0xD5, 0xEA, 0xFD, 0xAB]);
-  const MDSH_INV_ROWS = Object.freeze([0xBD, 0x5E, 0xAF, 0x6A, 0xA5, 0xDA, 0xED, 0x5B]);
+  /** @type {uint8[]} */
+  const MDSH_ROWS = [0xAE, 0xDF, 0xE7, 0x5D, 0xD5, 0xEA, 0xFD, 0xAB];
+  Object.freeze(MDSH_ROWS);
+  /** @type {uint8[]} */
+  const MDSH_INV_ROWS = [0xBD, 0x5E, 0xAF, 0x6A, 0xA5, 0xDA, 0xED, 0x5B];
+  Object.freeze(MDSH_INV_ROWS);
 
   // Round-dependent constants for the intermediate key generation.
   // H0..H3 are trunc(2^32 * sqrt(n)/4) for n = 2, 3, 5, 10 exactly as printed in
   // the specification. The turning-point constant used at t = 4 and t = 5 is the
   // byte-swapped form of the printed H4 (0xF7DEF58A); the value below is the one
   // that reproduces the official NESSIE test vectors and every published round key.
-  const ROUND_CONSTANTS = Object.freeze([
-    Object.freeze([0x5A, 0x82, 0x79, 0x99]), // t = 0 (pre-whitening), H0
-    Object.freeze([0x6E, 0xD9, 0xEB, 0xA1]), // t = 1, H1
-    Object.freeze([0x8F, 0x1B, 0xBC, 0xDC]), // t = 2, H2
-    Object.freeze([0xCA, 0x62, 0xC1, 0xD6]), // t = 3, H3
-    Object.freeze([0x8A, 0xF5, 0xDE, 0xF7]), // t = 4, H4 (turning point)
-    Object.freeze([0x8A, 0xF5, 0xDE, 0xF7]), // t = 5, H4 (turning point)
-    Object.freeze([0xCA, 0x62, 0xC1, 0xD6]), // t = 6, H3
-    Object.freeze([0x8F, 0x1B, 0xBC, 0xDC])  // t = 7, H2
-  ]);
+  /** @type {uint8[][]} */
+  const ROUND_CONSTANTS = [
+    [0x5A, 0x82, 0x79, 0x99], // t = 0 (pre-whitening), H0
+    [0x6E, 0xD9, 0xEB, 0xA1], // t = 1, H1
+    [0x8F, 0x1B, 0xBC, 0xDC], // t = 2, H2
+    [0xCA, 0x62, 0xC1, 0xD6], // t = 3, H3
+    [0x8A, 0xF5, 0xDE, 0xF7], // t = 4, H4 (turning point)
+    [0x8A, 0xF5, 0xDE, 0xF7], // t = 5, H4 (turning point)
+    [0xCA, 0x62, 0xC1, 0xD6], // t = 6, H3
+    [0x8F, 0x1B, 0xBC, 0xDC]  // t = 7, H2
+  ];
+  for (let t = 0; t < ROUND_CONSTANTS.length; t++) Object.freeze(ROUND_CONSTANTS[t]);
+  Object.freeze(ROUND_CONSTANTS);
+
+  // ---- fundamental operations (spec section 3.3) ----
+  // All values are bytes; Xor32 of two bytes equals their plain XOR.
+
+  /**
+   * @param {uint8[]} a - 4 bytes
+   * @param {uint8[]} b - 4 bytes
+   * @returns {uint8[]} a XOR b
+   */
+  function xor4(a, b) {
+    /** @type {uint8[]} */
+    const r = [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1]), OpCodes.Xor32(a[2], b[2]), OpCodes.Xor32(a[3], b[3])];
+    return r;
+  }
+
+  /**
+   * @param {uint8[]} a - 8 bytes
+   * @param {uint8[]} b - 8 bytes
+   * @returns {uint8[]} a XOR b
+   */
+  function xor8(a, b) {
+    /** @type {uint8[]} */
+    const r = new Array(8);
+    for (let i = 0; i < 8; i++) r[i] = OpCodes.Xor32(a[i], b[i]);
+    return r;
+  }
+
+  // S-function: parallel s-box over 8 bytes
+  /**
+   * @param {uint8[]} x - Bytes
+   * @returns {uint8[]} Substituted bytes
+   */
+  function sLayer(x) {
+    /** @type {uint8[]} */
+    const r = new Array(x.length);
+    for (let i = 0; i < x.length; i++) r[i] = SBOX[x[i]];
+    return r;
+  }
+
+  /**
+   * @param {uint8[]} x - Bytes
+   * @returns {uint8[]} Inversely substituted bytes
+   */
+  function sInvLayer(x) {
+    /** @type {uint8[]} */
+    const r = new Array(x.length);
+    for (let i = 0; i < x.length; i++) r[i] = SBOX_INV[x[i]];
+    return r;
+  }
+
+  // mdsL: circulant 4x4 over GF(2^8), primitive polynomial z^8+z^6+z^5+z+1
+  /**
+   * @param {uint8[]} row - First row of the circulant matrix
+   * @param {uint8[]} x - 4 bytes
+   * @returns {uint8[]} Matrix times x
+   */
+  function circ(row, x) {
+    /** @type {uint8[]} */
+    const y = [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      /** @type {uint8} */
+      let acc = 0;
+      for (let j = 0; j < 4; j++)
+        acc = OpCodes.Xor32(acc, OpCodes.GFMul(x[j], row[(j - i + 4) % 4], GF_POLY, 8));
+      y[i] = acc;
+    }
+    return y;
+  }
+
+  // MDS_L: two parallel mdsL over the 64-bit block
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} MDS_L(x)
+   */
+  function mdsL(x) {
+    /** @type {uint8[]} */
+    const y = [...circ(MDSL_ROW, x.slice(0, 4)), ...circ(MDSL_ROW, x.slice(4, 8))];
+    return y;
+  }
+
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} MDS_L^-1(x)
+   */
+  function mdsLInv(x) {
+    /** @type {uint8[]} */
+    const y = [...circ(MDSL_INV_ROW, x.slice(0, 4)), ...circ(MDSL_INV_ROW, x.slice(4, 8))];
+    return y;
+  }
+
+  // MDS_H: byte-wise XOR network described by an 8x8 binary matrix
+  /**
+   * @param {uint8[]} rows - One bit-mask per output byte
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} Mixed bytes
+   */
+  function binMix(rows, x) {
+    /** @type {uint8[]} */
+    const y = new Array(8);
+    for (let i = 0; i < 8; i++) {
+      /** @type {uint8} */
+      let acc = 0;
+      for (let j = 0; j < 8; j++) {
+        if (OpCodes.And32(OpCodes.Shr32(rows[i], 7 - j), 1)) acc = OpCodes.Xor32(acc, x[j]);
+      }
+      y[i] = acc;
+    }
+    return y;
+  }
+
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} MDS_H(x)
+   */
+  function mdsH(x) { return binMix(MDSH_ROWS, x); }
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} MDS_H^-1(x)
+   */
+  function mdsHInv(x) { return binMix(MDSH_INV_ROWS, x); }
+
+  // P(8): four bytes, rows 1010 / 0101 / 0111 / 1011
+  /**
+   * @param {uint8[]} x - 4 bytes
+   * @returns {uint8[]} P(8)(x)
+   */
+  function p8(x) {
+    /** @type {uint8[]} */
+    const r = [OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(x[1], x[3]), OpCodes.Xor32(OpCodes.Xor32(x[1], x[2]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[2]), x[3])];
+    return r;
+  }
+
+  // P(16): four 16-bit words held as eight bytes
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @returns {uint8[]} P(16)(x)
+   */
+  function p16(x) {
+    /** @type {uint8[]} */
+    const r = [
+      OpCodes.Xor32(x[0], x[4]), OpCodes.Xor32(x[1], x[5]),
+      OpCodes.Xor32(x[2], x[6]), OpCodes.Xor32(x[3], x[7]),
+      OpCodes.Xor32(OpCodes.Xor32(x[2], x[4]), x[6]), OpCodes.Xor32(OpCodes.Xor32(x[3], x[5]), x[7]),
+      OpCodes.Xor32(OpCodes.Xor32(x[0], x[4]), x[6]), OpCodes.Xor32(OpCodes.Xor32(x[1], x[5]), x[7])
+    ];
+    return r;
+  }
+
+  // P(16)^-1: rows 1110 / 1101 / 0110 / 1001
+  /**
+   * @param {uint8[]} y - 8 bytes
+   * @returns {uint8[]} P(16)^-1(y)
+   */
+  function p16Inv(y) {
+    /** @type {uint8[]} */
+    const r = [
+      OpCodes.Xor32(OpCodes.Xor32(y[0], y[2]), y[4]), OpCodes.Xor32(OpCodes.Xor32(y[1], y[3]), y[5]),
+      OpCodes.Xor32(OpCodes.Xor32(y[0], y[2]), y[6]), OpCodes.Xor32(OpCodes.Xor32(y[1], y[3]), y[7]),
+      OpCodes.Xor32(y[2], y[4]), OpCodes.Xor32(y[3], y[5]),
+      OpCodes.Xor32(y[0], y[6]), OpCodes.Xor32(y[1], y[7])
+    ];
+    return r;
+  }
+
+  // M5 and MB are mutually inverse byte-wise linear maps on 32-bit words
+  /**
+   * @param {uint8[]} x - 4 bytes
+   * @returns {uint8[]} M5(x)
+   */
+  function m5(x) {
+    /** @type {uint8[]} */
+    const r = [OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[2]), OpCodes.Xor32(x[1], x[3])];
+    return r;
+  }
+
+  /**
+   * @param {uint8[]} x - 4 bytes
+   * @returns {uint8[]} MB(x)
+   */
+  function mB(x) {
+    /** @type {uint8[]} */
+    const r = [OpCodes.Xor32(x[1], x[3]), OpCodes.Xor32(x[0], x[2]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[1]), x[3]), OpCodes.Xor32(OpCodes.Xor32(x[0], x[2]), x[3])];
+    return r;
+  }
+
+  // F-function: s-boxes followed by P(8)
+  /**
+   * @param {uint8[]} x - 4 bytes
+   * @returns {uint8[]} F(x)
+   */
+  function fFunc(x) {
+    /** @type {uint8[]} */
+    const sx = [SBOX[x[0]], SBOX[x[1]], SBOX[x[2]], SBOX[x[3]]];
+    return p8(sx);
+  }
+
+  // ---- key schedule (spec section 3.2.3 - 3.2.7) ----
+
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[][]} K[1..7], each 16 bytes (four 4-byte words; K[0] unused)
+   */
+  function expandKey(keyBytes) {
+    let z1 = keyBytes.slice(0, 4);
+    let z2 = keyBytes.slice(4, 8);
+    let z3 = keyBytes.slice(8, 12);
+    let z4 = keyBytes.slice(12, 16);
+
+    /** @type {uint8[][]} */
+    const K = new Array(8);
+
+    // Pre-whitening (sigma_0): sigma without the P(16) layer
+    {
+      const g = ROUND_CONSTANTS[0];
+      const n3 = xor4(m5(z3), g);
+      const n4 = mB(z4);
+      const n1 = z2;
+      const n2 = xor4(z1, fFunc(xor4(z2, n3)));
+      z1 = n1; z2 = n2; z3 = n3; z4 = n4;
+    }
+
+    // Plaintext side: t = 1..4
+    for (let t = 1; t <= 4; t++) {
+      const g = ROUND_CONSTANTS[t];
+      /** @type {uint8[]} */
+      const zz = [...z3, ...z4];
+      const p = p16(zz);
+      const w1 = p.slice(0, 4);
+      const w2 = p.slice(4, 8);
+      const n3 = xor4(m5(w1), g);
+      const n4 = mB(w2);
+      const n1 = z2;
+      const v = fFunc(xor4(z2, n3));
+      const n2 = xor4(z1, v);
+      /** @type {uint8[]} */
+      const kt = [...xor4(z1, v), ...xor4(n3, v), ...xor4(n4, v), ...xor4(z2, n4)];
+      K[t] = kt;
+      z1 = n1; z2 = n2; z3 = n3; z4 = n4;
+    }
+
+    // Ciphertext side: t = 5..7 (sigma^-1)
+    for (let t = 5; t <= 7; t++) {
+      const g = ROUND_CONSTANTS[t];
+      const v = fFunc(xor4(z1, z3));
+      const n1 = xor4(z2, v);
+      const n2 = z1;
+      const w1 = mB(xor4(z3, g));
+      const w2 = m5(z4);
+      /** @type {uint8[]} */
+      const ww = [...w1, ...w2];
+      const pi = p16Inv(ww);
+      /** @type {uint8[]} */
+      const kt = [...xor4(n1, z3), ...xor4(w1, v), ...xor4(w2, v), ...xor4(z1, w2)];
+      K[t] = kt;
+      z1 = n1; z2 = n2; z3 = pi.slice(0, 4); z4 = pi.slice(4, 8);
+    }
+
+    return K;
+  }
 
   /**
    * Hierocrypt-L1 - A 64-bit block cipher from Toshiba submitted to NESSIE
@@ -176,6 +454,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     this.inputBuffer = [];
     /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[][]|null} */
     this._roundKeys = null;
     this.BlockSize = 8;
     this.KeySize = 0;
@@ -198,7 +477,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
     this._key = [...keyBytes];
     this.KeySize = keyBytes.length;
-    this._roundKeys = HierocryptL1Instance._expandKey(keyBytes);
+    this._roundKeys = expandKey(keyBytes);
   }
 
   /**
@@ -233,188 +512,29 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     return output;
   }
 
-  // ---- fundamental operations (spec section 3.3) ----
-
-  static _xor4(a, b) {
-    return [a[0]^b[0], a[1]^b[1], a[2]^b[2], a[3]^b[3]];
-  }
-
-  static _xor8(a, b) {
-    const r = new Array(8);
-    for (let i = 0; i < 8; i++) r[i] = a[i]^b[i];
-    return r;
-  }
-
-  // S-function: parallel s-box over 8 bytes
-  static _S(x) {
-    const r = new Array(x.length);
-    for (let i = 0; i < x.length; i++) r[i] = SBOX[x[i]];
-    return r;
-  }
-
-  static _Sinv(x) {
-    const r = new Array(x.length);
-    for (let i = 0; i < x.length; i++) r[i] = SBOX_INV[x[i]];
-    return r;
-  }
-
-  // mdsL: circulant 4x4 over GF(2^8), primitive polynomial z^8+z^6+z^5+z+1
-  static _circ(row, x) {
-    /** @type {uint8[]} */
-    const y = [0, 0, 0, 0];
-    for (let i = 0; i < 4; i++) {
-      let acc = 0;
-      for (let j = 0; j < 4; j++)
-        acc ^= OpCodes.GFMul(x[j], row[(j - i + 4) % 4], GF_POLY, 8);
-      y[i] = acc;
-    }
-    return y;
-  }
-
-  // MDS_L: two parallel mdsL over the 64-bit block
-  static _MDSL(x) {
-    return HierocryptL1Instance._circ(MDSL_ROW, x.slice(0, 4))
-      .concat(HierocryptL1Instance._circ(MDSL_ROW, x.slice(4, 8)));
-  }
-
-  static _MDSLinv(x) {
-    return HierocryptL1Instance._circ(MDSL_INV_ROW, x.slice(0, 4))
-      .concat(HierocryptL1Instance._circ(MDSL_INV_ROW, x.slice(4, 8)));
-  }
-
-  // MDS_H: byte-wise XOR network described by an 8x8 binary matrix
-  static _binMix(rows, x) {
-    const y = new Array(8);
-    for (let i = 0; i < 8; i++) {
-      let acc = 0;
-      for (let j = 0; j < 8; j++) {
-        if (OpCodes.Shr32(rows[i], 7 - j)&1) acc ^= x[j];
-      }
-      y[i] = acc;
-    }
-    return y;
-  }
-
-  static _MDSH(x) { return HierocryptL1Instance._binMix(MDSH_ROWS, x); }
-  static _MDSHinv(x) { return HierocryptL1Instance._binMix(MDSH_INV_ROWS, x); }
-
-  // P(8): four bytes, rows 1010 / 0101 / 0111 / 1011
-  static _P8(x) {
-    return [x[0]^x[2], x[1]^x[3], x[1]^x[2]^x[3], x[0]^x[2]^x[3]];
-  }
-
-  // P(16): four 16-bit words held as eight bytes
-  static _P16(x) {
-    return [
-      x[0]^x[4], x[1]^x[5],
-      x[2]^x[6], x[3]^x[7],
-      x[2]^x[4]^x[6], x[3]^x[5]^x[7],
-      x[0]^x[4]^x[6], x[1]^x[5]^x[7]
-    ];
-  }
-
-  // P(16)^-1: rows 1110 / 1101 / 0110 / 1001
-  static _P16inv(y) {
-    return [
-      y[0]^y[2]^y[4], y[1]^y[3]^y[5],
-      y[0]^y[2]^y[6], y[1]^y[3]^y[7],
-      y[2]^y[4], y[3]^y[5],
-      y[0]^y[6], y[1]^y[7]
-    ];
-  }
-
-  // M5 and MB are mutually inverse byte-wise linear maps on 32-bit words
-  static _M5(x) {
-    return [x[0]^x[2], x[0]^x[1]^x[3], x[0]^x[1]^x[2], x[1]^x[3]];
-  }
-
-  static _MB(x) {
-    return [x[1]^x[3], x[0]^x[2], x[0]^x[1]^x[3], x[0]^x[2]^x[3]];
-  }
-
-  // F-function: s-boxes followed by P(8)
-  static _F(x) {
-    return HierocryptL1Instance._P8([SBOX[x[0]], SBOX[x[1]], SBOX[x[2]], SBOX[x[3]]]);
-  }
-
-  // ---- key schedule (spec section 3.2.3 - 3.2.7) ----
-
-  /**
-   * @param {uint8[]} keyBytes - Key bytes
-   */
-  static _expandKey(keyBytes) {
-    const XOR4 = HierocryptL1Instance._xor4;
-    const M5 = HierocryptL1Instance._M5;
-    const MB = HierocryptL1Instance._MB;
-    const F = HierocryptL1Instance._F;
-    const P16 = HierocryptL1Instance._P16;
-    const P16inv = HierocryptL1Instance._P16inv;
-
-    let z1 = keyBytes.slice(0, 4);
-    let z2 = keyBytes.slice(4, 8);
-    let z3 = keyBytes.slice(8, 12);
-    let z4 = keyBytes.slice(12, 16);
-
-    const K = new Array(8);
-
-    // Pre-whitening (sigma_0): sigma without the P(16) layer
-    {
-      const g = ROUND_CONSTANTS[0];
-      const n3 = XOR4(M5(z3), g);
-      const n4 = MB(z4);
-      const n1 = z2;
-      const n2 = XOR4(z1, F(XOR4(z2, n3)));
-      z1 = n1; z2 = n2; z3 = n3; z4 = n4;
-    }
-
-    // Plaintext side: t = 1..4
-    for (let t = 1; t <= 4; t++) {
-      const g = ROUND_CONSTANTS[t];
-      const p = P16(z3.concat(z4));
-      const w1 = p.slice(0, 4);
-      const w2 = p.slice(4, 8);
-      const n3 = XOR4(M5(w1), g);
-      const n4 = MB(w2);
-      const n1 = z2;
-      const v = F(XOR4(z2, n3));
-      const n2 = XOR4(z1, v);
-      K[t] = [XOR4(z1, v), XOR4(n3, v), XOR4(n4, v), XOR4(z2, n4)];
-      z1 = n1; z2 = n2; z3 = n3; z4 = n4;
-    }
-
-    // Ciphertext side: t = 5..7 (sigma^-1)
-    for (let t = 5; t <= 7; t++) {
-      const g = ROUND_CONSTANTS[t];
-      const v = F(XOR4(z1, z3));
-      const n1 = XOR4(z2, v);
-      const n2 = z1;
-      const w1 = MB(XOR4(z3, g));
-      const w2 = M5(z4);
-      const pi = P16inv(w1.concat(w2));
-      K[t] = [XOR4(n1, z3), XOR4(w1, v), XOR4(w2, v), XOR4(z1, w2)];
-      z1 = n1; z2 = n2; z3 = pi.slice(0, 4); z4 = pi.slice(4, 8);
-    }
-
-    return K;
-  }
-
   // ---- data randomizing part (spec section 3.2.1 - 3.2.2) ----
 
   // XS-function: S -> MDS_L -> key add -> S, wrapped by the leading key add
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @param {uint8[]} k - 16-byte round key
+   * @returns {uint8[]} XS(x)
+   */
   _XS(x, k) {
-    const XOR8 = HierocryptL1Instance._xor8;
-    const S = HierocryptL1Instance._S;
-    const k1 = k[0].concat(k[1]);
-    const k2 = k[2].concat(k[3]);
-    return S(XOR8(HierocryptL1Instance._MDSL(S(XOR8(x, k1))), k2));
+    const k1 = k.slice(0, 8);
+    const k2 = k.slice(8, 16);
+    return sLayer(xor8(mdsL(sLayer(xor8(x, k1))), k2));
   }
 
+  /**
+   * @param {uint8[]} x - 8 bytes
+   * @param {uint8[]} k - 16-byte round key
+   * @returns {uint8[]} XS^-1(x)
+   */
   _XSinv(x, k) {
-    const XOR8 = HierocryptL1Instance._xor8;
-    const Sinv = HierocryptL1Instance._Sinv;
-    const k1 = k[0].concat(k[1]);
-    const k2 = k[2].concat(k[3]);
-    return XOR8(Sinv(HierocryptL1Instance._MDSLinv(XOR8(Sinv(x), k2))), k1);
+    const k1 = k.slice(0, 8);
+    const k2 = k.slice(8, 16);
+    return xor8(sInvLayer(mdsLInv(xor8(sInvLayer(x), k2))), k1);
   }
 
   /**
@@ -424,9 +544,10 @@ class HierocryptL1Instance extends IBlockCipherInstance {
   _encryptBlock(block) {
     const K = this._roundKeys;
     let x = block.slice();
-    for (let t = 1; t <= 5; t++) x = HierocryptL1Instance._MDSH(this._XS(x, K[t]));
+    for (let t = 1; t <= 5; t++) x = mdsH(this._XS(x, K[t]));
     x = this._XS(x, K[6]);
-    return HierocryptL1Instance._xor8(x, K[7][0].concat(K[7][1]));
+    const k7 = K[7].slice(0, 8);
+    return xor8(x, k7);
   }
 
   /**
@@ -435,9 +556,10 @@ class HierocryptL1Instance extends IBlockCipherInstance {
    */
   _decryptBlock(block) {
     const K = this._roundKeys;
-    let x = HierocryptL1Instance._xor8(block, K[7][0].concat(K[7][1]));
+    const k7 = K[7].slice(0, 8);
+    let x = xor8(block, k7);
     x = this._XSinv(x, K[6]);
-    for (let t = 5; t >= 1; t--) x = this._XSinv(HierocryptL1Instance._MDSHinv(x), K[t]);
+    for (let t = 5; t >= 1; t--) x = this._XSinv(mdsHInv(x), K[t]);
     return x;
   }
 }
