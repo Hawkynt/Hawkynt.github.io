@@ -176,6 +176,9 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      // Copied from the typed algorithm (the C# translation cannot reach it through this.algorithm)
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
       this.isInverse = isInverse;
       this.key = null;
       /** @type {uint32[][]|null} */
@@ -217,8 +220,7 @@
       }
 
       // Validate key size
-      /** @type {KeySize[]} */
-      const sizes = this.algorithm.SupportedKeySizes;
+      const sizes = this._keySizes;
       let isValidSize = false;
       for (let i = 0; i < sizes.length; i++) {
         const ks = sizes[i];
@@ -674,7 +676,7 @@
 
       // Generate subkeys using exact libgcrypt EXPAND_KEY4 algorithm
       /** @type {uint32[][]} */
-      const roundKeys = [];
+      const roundWords = [];
       
       for (let round = 0; round < 33; round++) {
         // Each round consumes four consecutive prekey words w[4*round .. 4*round+3];
@@ -705,10 +707,10 @@
         
         /** @type {uint32[]} */
         const subkey = [this.X0, this.X1, this.X2, this.X3];
-        roundKeys[round] = subkey;
+        roundWords.push(subkey); // rounds run 0..32 in order
       }
 
-      return roundKeys;
+      return roundWords;
     }
 
     // Helper method to apply S-box based on index
