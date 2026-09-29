@@ -112,8 +112,8 @@ class CSharpPlugin extends LanguagePlugin {
       const transformer = new CSharpTransformer({
         namespace: mergedOptions.namespace || 'CipherValidation',
         className: mergedOptions.className || 'GeneratedClass',
-        typeKnowledge: mergedOptions.parser?.typeKnowledge || mergedOptions.typeKnowledge ||
-          SharedTypeAwareParser?.sharedTypeKnowledge || null
+        typeKnowledge: this._stubCompatibleKnowledge(mergedOptions.parser?.typeKnowledge || mergedOptions.typeKnowledge ||
+          SharedTypeAwareParser?.sharedTypeKnowledge || null)
       });
 
       // Transform JS AST to C# AST
@@ -382,6 +382,59 @@ class CSharpPlugin extends LanguagePlugin {
     }
 
     return stack.length === 0;  // All delimiters should be matched
+  }
+
+  /**
+   * The framework type knowledge as the C# stubs can honour it. The transformer
+   * treats a framework-declared property as inherited and declares no field for
+   * it, which is only right when the C# base-class stub (see _addFrameworkStubs)
+   * actually has that member - AlgorithmFramework.js declares more (BlockSize,
+   * KeySize, _key on IBlockCipherInstance, ...) than the stubs model, and a
+   * subclass must keep its own field for those.
+   * @private
+   * @param {Object} knowledge - PreciseTypeKnowledge (or null)
+   * @returns {Object} knowledge with framework properties limited to stub members
+   */
+  _stubCompatibleKnowledge(knowledge) {
+    if (!knowledge || !knowledge.frameworkTypes) return knowledge;
+    if (!this._stubMembers) {
+      // class name -> { base, members:Set } parsed from the stub source
+      this._stubMembers = new Map();
+      const stubs = this._addFrameworkStubs('', 'Stub');
+      const classPattern = /class\s+(\w+)(?:\s*:\s*(\w+))?\s*\{/g;
+      let match;
+      while ((match = classPattern.exec(stubs)) !== null) {
+        let depth = 1, pos = match.index + match[0].length;
+        while (pos < stubs.length && depth > 0) {
+          if (stubs[pos] === '{') ++depth;
+          else if (stubs[pos] === '}') --depth;
+          ++pos;
+        }
+        const body = stubs.slice(match.index + match[0].length, pos - 1);
+        const members = new Set();
+        const memberPattern = /public\s+(?:virtual\s+|override\s+|static\s+)*[\w<>\[\],?. ]+?\s+(\w+)\s*(?:\{|=>|=|;|\()/g;
+        let member;
+        while ((member = memberPattern.exec(body)) !== null) members.add(member[1]);
+        this._stubMembers.set(match[1], { base: match[2] || null, members });
+      }
+    }
+    const declares = (className, member) => {
+      for (let name = className, hops = 0; name && this._stubMembers.has(name) && hops < 32; ++hops) {
+        const info = this._stubMembers.get(name);
+        if (info.members.has(member)) return true;
+        name = info.base;
+      }
+      return false;
+    };
+    const pascal = name => name.startsWith('_') ? name : name.charAt(0).toUpperCase() + name.slice(1);
+    const frameworkTypes = {};
+    for (const [className, info] of Object.entries(knowledge.frameworkTypes)) {
+      const properties = {};
+      for (const [prop, type] of Object.entries(info.properties || {}))
+        if (declares(className, pascal(prop))) properties[prop] = type;
+      frameworkTypes[className] = { ...info, properties };
+    }
+    return Object.assign(Object.create(Object.getPrototypeOf(knowledge)), knowledge, { frameworkTypes });
   }
 
   /**
@@ -1522,6 +1575,21 @@ namespace ${namespace}
                 a = temp;
             }
             return a;
+        }
+        public static System.Numerics.BigInteger ModN(System.Numerics.BigInteger a, System.Numerics.BigInteger m) {
+            if (m <= 0) throw new System.ArgumentOutOfRangeException(nameof(m), "ModN requires a positive modulus");
+            var r = a % m;
+            return r < 0 ? r + m : r;
+        }
+        public static System.Numerics.BigInteger ModInverseN(System.Numerics.BigInteger a, System.Numerics.BigInteger m) {
+            System.Numerics.BigInteger oldR = ModN(a, m), r = m, oldS = 1, s = 0;
+            while (r != 0) {
+                var q = System.Numerics.BigInteger.Divide(oldR, r);
+                (oldR, r) = (r, oldR - q * r);
+                (oldS, s) = (s, oldS - q * s);
+            }
+            if (oldR != 1) throw new System.ArgumentException("ModInverseN: value has no inverse modulo m");
+            return ModN(oldS, m);
         }
         public static int BitCountN(System.Numerics.BigInteger value) {
             if (value == 0) return 1;
