@@ -120,6 +120,62 @@
   }
 
   /**
+   * Step chi on one word pair (a, b is a 64-bit window)
+   * @param {uint32} a - Word
+   * @param {uint32} b - Next word (supplies the bits shifted in)
+   * @returns {uint32} chi of the word
+   */
+  function chi(a, b) {
+    const t0 = OpCodes.Or32(OpCodes.Shr32(a, 1), OpCodes.Shl32(b, 31));
+    const t1 = OpCodes.Or32(OpCodes.Shr32(a, 2), OpCodes.Shl32(b, 30));
+    return OpCodes.Xor32(a, OpCodes.And32(OpCodes.Not32(t0), t1));
+  }
+
+  /**
+   * Step theta on one word pair (a, b is a 64-bit window)
+   * @param {uint32} a - Word
+   * @param {uint32} b - Next word (supplies the bits shifted in)
+   * @returns {uint32} theta of the word
+   */
+  function theta(a, b) {
+    const t0 = OpCodes.Or32(OpCodes.Shr32(a, 3), OpCodes.Shl32(b, 29));
+    const t1 = OpCodes.Or32(OpCodes.Shr32(a, 8), OpCodes.Shl32(b, 24));
+    return OpCodes.Xor32(OpCodes.Xor32(a, t0), t1);
+  }
+
+  /**
+   * Bit copy: keep one bit in place
+   * @param {uint32} x - Word
+   * @param {int32} bit - Bit position
+   * @returns {uint32} The bit, kept in place
+   */
+  function BCP(x, bit) {
+    return OpCodes.And32(x, OpCodes.Shl32(1, bit));
+  }
+
+  /**
+   * Bit up: move one bit to a higher position
+   * @param {uint32} x - Word
+   * @param {int32} from - Source bit position
+   * @param {int32} to - Target bit position (above from)
+   * @returns {uint32} The bit, moved up
+   */
+  function BUP(x, from, to) {
+    return OpCodes.And32(OpCodes.Shl32(x, (to - from)), OpCodes.Shl32(1, to));
+  }
+
+  /**
+   * Bit down: move one bit to a lower position
+   * @param {uint32} x - Word
+   * @param {int32} from - Source bit position
+   * @param {int32} to - Target bit position (below from)
+   * @returns {uint32} The bit, moved down
+   */
+  function BDN(x, from, to) {
+    return OpCodes.And32(OpCodes.Shr32(x, (from - to)), OpCodes.Shl32(1, to));
+  }
+
+  /**
    * Subterranean-Hash Instance Class
    *
    * Implements the Feed/Result pattern for incremental hashing.
@@ -127,20 +183,26 @@
    * where x[8] contains only the 257th bit.
    */
   class SubterraneanHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a Subterranean-Hash instance
+     * @param {SubterraneanHash} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // 257-bit state: nine 32-bit words (x[8] holds only 1 bit)
-      this.state = new Array(9).fill(0);
+      /** @type {uint32[]} */
+      this.state = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
       // Input buffer for accumulating data
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
     /**
      * Compute and return the final hash digest
-     * @returns {Array<number>} 256-bit (32-byte) hash digest
+     * @returns {uint8[]} 256-bit (32-byte) hash digest
      */
     Result() {
       // Process each input byte with the duplex construction
@@ -160,7 +222,7 @@
       const output = this._squeeze(32);
 
       // Reset state for next use
-      this.state = new Array(9).fill(0);
+      this.state = [0, 0, 0, 0, 0, 0, 0, 0, 0];
       this.inputBuffer = [];
 
       return output;
@@ -170,6 +232,7 @@
      * Performs the Subterranean round function
      * Implements chi, iota, theta, and pi transformations on the 257-bit state
      * @private
+     * @returns {void}
      */
     _round() {
       let x0 = this.state[0];
@@ -184,12 +247,6 @@
 
       // Step chi: s[i] = s[i] ^ (~(s[i+1])&s[i+2])
       // Apply chi transformation with bit shifts across word boundaries
-      const chi = (a, b) => {
-        const t0 = OpCodes.Or32(OpCodes.Shr32(a, 1), OpCodes.Shl32(b, 31));
-        const t1 = OpCodes.Or32(OpCodes.Shr32(a, 2), OpCodes.Shl32(b, 30));
-        return OpCodes.Xor32(a, OpCodes.And32(OpCodes.Not32(t0), t1));
-      };
-
       x8 = OpCodes.Xor32(x8, OpCodes.Shl32(x0, 1));
       x0 = chi(x0, x1);
       x1 = chi(x1, x2);
@@ -205,12 +262,6 @@
       x0 = OpCodes.Xor32(x0, 1);
 
       // Step theta: s[i] = s[i] ^ s[i+3] ^ s[i+8]
-      const theta = (a, b) => {
-        const t0 = OpCodes.Or32(OpCodes.Shr32(a, 3), OpCodes.Shl32(b, 29));
-        const t1 = OpCodes.Or32(OpCodes.Shr32(a, 8), OpCodes.Shl32(b, 24));
-        return OpCodes.Xor32(OpCodes.Xor32(a, t0), t1);
-      };
-
       x8 = OpCodes.Xor32(OpCodes.And32(x8, 1), OpCodes.Shl32(x0, 1));
       x0 = theta(x0, x1);
       x1 = theta(x1, x2);
@@ -224,10 +275,7 @@
 
       // Step pi: permute bits with rule s[i] = s[(i * 12) % 257]
       // This is the most complex step - each output bit comes from a specific input bit
-      // BCP = bit copy, BUP = move bit up, BDN = move bit down
-      const BCP = (x, bit) => OpCodes.And32(x, OpCodes.Shl32(1, bit));
-      const BUP = (x, from, to) => OpCodes.And32(OpCodes.Shl32(x, (to - from)), OpCodes.Shl32(1, to));
-      const BDN = (x, from, to) => OpCodes.And32(OpCodes.Shr32(x, (from - to)), OpCodes.Shl32(1, to));
+      // BCP = bit copy, BUP = move bit up, BDN = move bit down (module helpers)
 
       // Compute new state values with pi permutation
       this.state[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
@@ -371,8 +419,9 @@
 
     /**
      * Absorbs a single byte into the state with specific bit permutation
-     * @param {number} dataByte - Single byte to absorb
+     * @param {uint8} dataByte - Single byte to absorb
      * @private
+     * @returns {void}
      */
     _absorbByte(dataByte) {
       const x = OpCodes.And32(dataByte, 0xFF);
@@ -389,8 +438,9 @@
 
     /**
      * Duplex operation with a single byte
-     * @param {number} dataByte - Byte to absorb
+     * @param {uint8} dataByte - Byte to absorb
      * @private
+     * @returns {void}
      */
     _duplexByte(dataByte) {
       this._round();
@@ -400,6 +450,7 @@
     /**
      * Duplex operation with zero bytes (padding)
      * @private
+     * @returns {void}
      */
     _duplexZero() {
       this._round();
@@ -409,6 +460,7 @@
     /**
      * Blank operation: 8 rounds with padding
      * @private
+     * @returns {void}
      */
     _blank() {
       for (let round = 0; round < 8; ++round) {
@@ -419,7 +471,7 @@
 
     /**
      * Extracts 32 bits from the state for output
-     * @returns {number} Extracted 32-bit word
+     * @returns {uint32} Extracted 32-bit word
      * @private
      */
     _extract() {
@@ -434,7 +486,10 @@
       const x6 = this.state[6];
       const x7 = this.state[7];
 
-      let x, y;
+      /** @type {uint32} */
+      let x;
+      /** @type {uint32} */
+      let y;
 
       // P0 permutation
       x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
@@ -515,6 +570,10 @@
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x00080748));
 
       // P7 permutation - using helper for rotation
+      /**
+       * @param {uint32} val - Word
+       * @returns {uint32} val rotated left by 27
+       */
       const rotL27 = (val) => OpCodes.RotL32(val, 27);
       x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
         OpCodes.Shr32(OpCodes.And32(x7, 0x02000000), 21),
@@ -534,11 +593,12 @@
 
     /**
      * Squeeze operation: extract output bytes from state
-     * @param {number} length - Number of bytes to extract
-     * @returns {Array<number>} Extracted bytes
+     * @param {int32} length - Number of bytes to extract
+     * @returns {uint8[]} Extracted bytes
      * @private
      */
     _squeeze(length) {
+      /** @type {uint8[]} */
       const output = [];
 
       while (length > 4) {
