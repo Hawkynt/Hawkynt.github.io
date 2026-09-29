@@ -76,6 +76,7 @@
   const BLOCK_LEN = 80;      // bytes of keystream produced per internal round
 
   // Multiplication by alpha in GF(2^32): alpha * x = (x << 8) ^ MUL_A_TABLE[x >>> 24]
+  /** @type {uint32[]} */
   const MUL_A_TABLE = [
     0x00000000,0xE19FCF13,0x6B973726,0x8A08F835,0xD6876E4C,0x3718A15F,0xBD10596A,0x5C8F9679,
     0x05A7DC98,0xE438138B,0x6E30EBBE,0x8FAF24AD,0xD320B2D4,0x32BF7DC7,0xB8B785F2,0x59284AE1,
@@ -112,6 +113,7 @@
   ];
 
   // Multiplication by 1/alpha in GF(2^32): (1/alpha) * x = (x >>> 8) ^ MUL_IA_TABLE[x & 0xFF]
+  /** @type {uint32[]} */
   const MUL_IA_TABLE = [
     0x00000000,0x180F40CD,0x301E8033,0x2811C0FE,0x603CA966,0x7833E9AB,0x50222955,0x482D6998,
     0xC078FBCC,0xD877BB01,0xF0667BFF,0xE8693B32,0xA04452AA,0xB84B1267,0x905AD299,0x88559254,

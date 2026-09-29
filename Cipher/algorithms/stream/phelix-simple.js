@@ -116,6 +116,8 @@ class PhelixInstance extends IAlgorithmInstance {
    */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
     /** @type {boolean} */
     this.isInverse = isInverse;
     /** @type {uint8[]} */
@@ -135,9 +137,15 @@ class PhelixInstance extends IAlgorithmInstance {
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
       throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -184,7 +192,9 @@ class PhelixInstance extends IAlgorithmInstance {
 
     // Handle empty input (valid for stream ciphers)
     if (this.inputBuffer.length === 0) {
-      return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
     }
 
     const output = this._educationalPhelix(this._key, this._nonce || OpCodes.CreateArray(16, 0), this.inputBuffer);

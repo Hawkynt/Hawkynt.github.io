@@ -66,6 +66,7 @@
   const BLOCK_WORDS = 256;  // words of keystream generated per outsideCounter block
   const BLOCK_BYTES = BLOCK_WORDS * 4;
 
+  /** @type {uint32[]} */
   const SHA_K = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
 
   // SHA-0-shaped compression (no message-schedule rotate) used by Gamma().

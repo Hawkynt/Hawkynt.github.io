@@ -59,7 +59,8 @@
 
   // ===== DRAGON S-BOXES (S1, S2) — official values from the Dragon specification =====
 
-  const S1 = Object.freeze([
+  /** @type {uint32[]} */
+  const S1 = [
     0x393BCE6B,0x232BA00D,0x84E18ADA,0x84557BA7,0x56828948,0x166908F3,
     0x414A3437,0x7BB44897,0x2315BE89,0x7A01F224,0x7056AA5D,0x121A3917,
     0xE3F47FA2,0x1F99D0AD,0x9BAD518B,0x99B9E75F,0x8829A7ED,0x2C511CA9,
@@ -103,9 +104,10 @@
     0xFAAC50CE,0xFA1E98AE,0x61498532,0x03678CC0,0x9E85EFD7,0x3069CE1A,
     0xF115D008,0x4553AA9F,0x3194BE09,0xB4A9367D,0x0A9DFEEC,0x7CA002D6,
     0x8E53A875,0x965E8183,0x14D79DAC,0x0192B555
-  ]);
+  ];
 
-  const S2 = Object.freeze([
+  /** @type {uint32[]} */
+  const S2 = [
     0xA94BC384,0xF7A81CAE,0xAB84ECD4,0x00DEF340,0x8E2329B8,0x23AF3A22,
     0x23C241FA,0xAED8729E,0x2E59357F,0xC3ED78AB,0x687724BB,0x7663886F,
     0x1669AA35,0x5966EAC1,0xD574C543,0xDBC3F2FF,0x4DD44303,0xCD4F8D01,
@@ -149,7 +151,7 @@
     0xB7AB85B5,0xA875E314,0x1372F18D,0xFD105270,0xB83F161F,0x5C175260,
     0x44FFD49F,0xD428C4F6,0x2C2002FC,0xF2797BAF,0xA3B20A4E,0xB9BF1A89,
     0xE4ABA5E2,0xC912C58D,0x96516F9A,0x51561E77
-  ]);
+  ];
 
   // Dragon's fixed initial memory constant M = 0x0000447261676F6E (ASCII "Dragon")
   const M_INIT_HI = 0x00004472;
@@ -353,7 +355,9 @@
       if (!this._key) throw new Error("Key not set");
 
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /** @type {uint8[]} */

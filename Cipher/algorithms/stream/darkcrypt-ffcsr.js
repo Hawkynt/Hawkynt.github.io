@@ -50,11 +50,17 @@
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Feedback polynomial / filter mask (words 0..7)
+  /** @type {uint32[]} */
   const D = [0x390002C6, 0xEFB55A6E, 0xBAF08F39, 0x2102F996,
              0xC8C9CEDB, 0x780CAA2E, 0xAD4F7E66, 0xCB5E129F];
 
+  /**
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} o - Offset
+   * @returns {uint32} Big-endian word at o
+   */
   function beDword(bytes, o) {
-    return OpCodes.ToUint32(OpCodes.Shl32(bytes[o], 24) | OpCodes.Shl32(bytes[o + 1], 16) | OpCodes.Shl32(bytes[o + 2], 8) | bytes[o + 3]);
+    return OpCodes.Pack32BE(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
   }
 
   class DarkCryptFFCSRAlgorithm extends StreamCipherAlgorithm {
@@ -125,7 +131,9 @@
       this._iv = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint32[]|null} */
       this.M = null;
+      /** @type {uint32[]|null} */
       this.C = null;
       /** @type {boolean} */
       this.initialized = false;
@@ -164,11 +172,14 @@
     _initIfReady() {
       if (!this._key || !this._iv) return;
       const key = this._key, iv = this._iv;
-      const M = OpCodes.CreateArray(8, 0);
-      const C = OpCodes.CreateArray(8, 0);
+      /** @type {uint32[]} */
+      const M = [0, 0, 0, 0, 0, 0, 0, 0];
+      /** @type {uint32[]} */
+      const C = [0, 0, 0, 0, 0, 0, 0, 0];
 
       // Key load (big-endian words), save key words
       M[3] = beDword(key, 0); M[2] = beDword(key, 4); M[1] = beDword(key, 8); M[0] = beDword(key, 12);
+      /** @type {uint32[]} */
       const K = [M[0], M[1], M[2], M[3]];
 
       // IV load: reload key into low words, IV into high words
@@ -177,9 +188,10 @@
       M[4] = beDword(iv, 12); M[5] = beDword(iv, 8); M[6] = beDword(iv, 4); M[7] = beDword(iv, 0);
 
       // 16 clock/filter steps whose 16-bit outputs re-seed M
+      /** @type {uint16[]} */
       const wbuf = new Array(16);
       for (let k = 0; k < 16; k++) { this._clock(M, C); wbuf[k] = this._filter(M); }
-      for (let i = 0; i < 8; i++) M[i] = OpCodes.ToUint32(OpCodes.Shl32(wbuf[2 * i + 1], 16) | wbuf[2 * i]);
+      for (let i = 0; i < 8; i++) M[i] = OpCodes.Or32(OpCodes.Shl32(wbuf[2 * i + 1], 16), wbuf[2 * i]);
       for (let i = 0; i < 8; i++) C[i] = 0;
 
       // 258 warm-up clocks
@@ -190,10 +202,15 @@
     }
 
     // Galois FCSR transition: shift M right by one bit, add feedback with carry
+    /**
+     * @param {uint32[]} M
+     * @param {uint32[]} C
+     */
     _clock(M, C) {
       const fb = OpCodes.And32(M[0], 1);
+      /** @type {uint32[]} */
       const SM = new Array(8);
-      for (let i = 0; i < 7; i++) SM[i] = OpCodes.ToUint32(OpCodes.Shr32(M[i], 1) | OpCodes.Shl32(OpCodes.And32(M[i + 1], 1), 31));
+      for (let i = 0; i < 7; i++) SM[i] = OpCodes.Or32(OpCodes.Shr32(M[i], 1), OpCodes.Shl32(OpCodes.And32(M[i + 1], 1), 31));
       SM[7] = OpCodes.Shr32(M[7], 1);
       for (let i = 0; i < 8; i++) {
         const t = fb ? D[i] : 0;
@@ -204,7 +221,12 @@
     }
 
     // Filter: fold XOR of (M[i] AND d[i]) from 32 to 16 bits
+    /**
+     * @param {uint32[]} M
+     * @returns {uint16}
+     */
     _filter(M) {
+      /** @type {uint32} */
       let acc = 0;
       for (let i = 0; i < 8; i++) acc = OpCodes.Xor32(acc, OpCodes.And32(M[i], D[i]));
       acc = OpCodes.Xor32(acc, OpCodes.Shr32(acc, 16));
@@ -228,6 +250,7 @@
       if (!this.initialized) throw new Error("F-FCSR (DarkCrypt) not initialized");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const out = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i += 2) {
         this._clock(this.M, this.C);
