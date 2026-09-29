@@ -59,6 +59,7 @@
 
   // 64-entry key-word index table (each value 0..7 selects one of the 8 key words to
   // form the per-round key-schedule word).
+  /** @type {uint8[]} */
   const KEY_INDEX = [
     0,4,1,5,2,6,3,7, 1,0,3,2,5,4,7,6, 0,4,5,1,2,6,7,3, 7,6,5,4,3,2,1,0,
     0,4,3,7,1,5,2,6, 1,3,5,7,4,6,0,2, 1,0,2,3,5,4,6,7, 7,6,5,4,3,2,1,0
@@ -214,7 +215,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundTable = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Phantom (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Phantom (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundTable = this._buildRoundTable(this._key);
@@ -232,7 +233,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

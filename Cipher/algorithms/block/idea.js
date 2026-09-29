@@ -206,7 +206,7 @@
 
       // Validate key size
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16)");
       }
 
       this._key = [...keyBytes];

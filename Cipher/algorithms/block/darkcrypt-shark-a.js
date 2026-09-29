@@ -204,6 +204,7 @@
   // sampling (RK[7] is the plaintext "multiplier" key; RK[8..12] fold into rounds 0..4's
   // diffusion matrices; RK[13] feeds the final round's diffusion-matrix construction).
   function deriveRoundKeys(keyBytes) {
+    /** @type {uint8[]} */
     let feedback = [0, 0];
     const RK = [];
     for (let block = 0; block < 7; ++block) {
@@ -393,7 +394,7 @@
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SHARK-A (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SHARK-A (DarkCrypt) requires exactly 16 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -439,7 +440,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

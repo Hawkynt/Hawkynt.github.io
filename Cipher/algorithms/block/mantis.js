@@ -41,9 +41,11 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Alpha constant for k' derivation (fractional part of pi, PRINCE-style)
+  /** @type {uint8[]} */
   const ALPHA = [0x24, 0x3F, 0x6A, 0x88, 0x85, 0xA3, 0x08, 0xD3];
 
   // S-box (4-bit Midori Sb0 from MANTIS specification - involutory)
+  /** @type {uint8[]} */
   const SBOX = [0xC, 0xA, 0xD, 0x3, 0xE, 0xB, 0xF, 0x7, 0x8, 0x9, 0x1, 0x5, 0x0, 0x2, 0x4, 0x6];
 
   // Inverse S-box
@@ -96,6 +98,7 @@
 
   // ShuffleCells permutation (works on nibble array [16 nibbles])
   function shuffleCells(nibbles) {
+    /** @type {uint8[]} */
     const perm = [0, 11, 6, 13, 10, 1, 12, 7, 5, 14, 3, 8, 15, 4, 9, 2];
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -106,6 +109,7 @@
 
   // h permutation for tweak schedule (works on nibble array [16 nibbles])
   function hPermutation(nibbles) {
+    /** @type {uint8[]} */
     const perm = [6, 5, 14, 15, 0, 1, 2, 3, 7, 12, 13, 4, 8, 9, 10, 11];
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -116,6 +120,7 @@
 
   // Inverse h permutation
   function hInversePermutation(nibbles) {
+    /** @type {uint8[]} */
     const invPerm = [4, 5, 6, 7, 11, 1, 0, 8, 12, 13, 14, 15, 9, 10, 2, 3];
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -126,6 +131,7 @@
 
   // Inverse ShuffleCells
   function invShuffleCells(nibbles) {
+    /** @type {uint8[]} */
     const perm = [0, 11, 6, 13, 10, 1, 12, 7, 5, 14, 3, 8, 15, 4, 9, 2];
     const invPerm = new Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -267,7 +273,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -317,7 +323,7 @@
       }
 
       if (tweakBytes.length !== 8) {
-        throw new Error(`Invalid tweak size: ${tweakBytes.length} bytes (expected 8 bytes)`);
+        throw new Error("Invalid tweak size: " + tweakBytes.length + " bytes (expected 8 bytes)");
       }
 
       this._tweak = [...tweakBytes];
@@ -349,7 +355,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];

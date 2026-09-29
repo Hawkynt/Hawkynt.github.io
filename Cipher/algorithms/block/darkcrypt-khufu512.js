@@ -73,6 +73,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {uint8[]} */
   const ROT = [16, 16, 8, 8, 16, 16, 24, 24];
 
   function makeRng() {
@@ -280,7 +281,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; return; }
       if (keyBytes.length !== 68)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Khufu-512 (DarkCrypt) requires exactly 68 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Khufu-512 (DarkCrypt) requires exactly 68 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._tables = buildTables(Uint8Array.from(this._key));
@@ -298,7 +299,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       const t = this._tables;

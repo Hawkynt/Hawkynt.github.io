@@ -97,6 +97,7 @@
   // Round-key tables Ka..Kf for rounds 1..9 (1-based), sourced directly from
   // consecutive groups of 6 expanded words with no further transformation.
   function buildTables(w) {
+    /** @type {uint8[]} */
     const Ka = [0], Kb = [0], Kc = [0], Ke = [0], Kd = [0], Kf = [0];
     for (let r = 1; r <= 9; r++) {
       const base = (r - 1) * 6;
@@ -170,7 +171,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. PES (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. PES (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._T = buildTables(expandKey(keyBytes));
@@ -188,7 +189,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

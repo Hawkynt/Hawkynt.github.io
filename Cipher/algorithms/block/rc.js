@@ -251,29 +251,29 @@
 
       // Copy key bytes
       for (let i = 0; i < keyLen; i++) {
-        xKey[i] = OpCodes.AndN(keyBytes[i], 0xFF);
+        xKey[i] = OpCodes.And32(keyBytes[i], 0xFF);
       }
 
       // Expand to 128 bytes if needed (RFC 2268 section 2)
       for (let i = keyLen; i < 128; i++) {
-        xKey[i] = OpCodes.AndN(RC2Algorithm.PITABLE[OpCodes.AndN(xKey[i - 1] + xKey[i - keyLen], 0xFF)], 0xFF);
+        xKey[i] = OpCodes.And32(RC2Algorithm.PITABLE[OpCodes.And32(xKey[i - 1] + xKey[i - keyLen], 0xFF)], 0xFF);
       }
 
       // Phase 2: Reduce effective key size to specified bit length
       const T8 = Math.floor((effectiveBits + 7) / 8);
-      const TM = OpCodes.Shr32(0xFF, OpCodes.AndN(7, -effectiveBits));
-      let x = OpCodes.AndN(RC2Algorithm.PITABLE[OpCodes.AndN(xKey[128 - T8], TM)], 0xFF);
+      const TM = OpCodes.Shr32(0xFF, OpCodes.And32(7, -effectiveBits));
+      let x = OpCodes.And32(RC2Algorithm.PITABLE[OpCodes.And32(xKey[128 - T8], TM)], 0xFF);
       xKey[128 - T8] = x;
 
       for (let i = 128 - T8 - 1; i >= 0; i--) {
-        x = OpCodes.AndN(RC2Algorithm.PITABLE[OpCodes.XorN(x, xKey[i + T8])], 0xFF);
+        x = OpCodes.And32(RC2Algorithm.PITABLE[OpCodes.Xor32(x, xKey[i + T8])], 0xFF);
         xKey[i] = x;
       }
 
       // Phase 3: Convert to 16-bit words (little-endian)
       const expandedKey = new Array(64);
       for (let i = 0; i < 64; i++) {
-        expandedKey[i] = OpCodes.AndN(xKey[2 * i] + OpCodes.Shl32(xKey[2 * i + 1], 8), 0xFFFF);
+        expandedKey[i] = OpCodes.And32(xKey[2 * i] + OpCodes.Shl32(xKey[2 * i + 1], 8), 0xFFFF);
       }
 
       return expandedKey;
@@ -338,7 +338,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -387,7 +387,7 @@
       const blockSize = this.BlockSize;
 
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
@@ -406,7 +406,7 @@
 
     _encryptBlock(plainBytes) {
       if (plainBytes.length !== 8) {
-        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+        throw new Error("Invalid block size: " + plainBytes.length + " bytes");
       }
 
       if (!this.expandedKey) {
@@ -420,38 +420,38 @@
 
       // Rounds 0-16 (5 rounds of mixing)
       for (let i = 0; i <= 16; i += 4) {
-        x10 = OpCodes.RotL16(OpCodes.AndN(x10 + OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
-        x32 = OpCodes.RotL16(OpCodes.AndN(x32 + OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
-        x54 = OpCodes.RotL16(OpCodes.AndN(x54 + OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
-        x76 = OpCodes.RotL16(OpCodes.AndN(x76 + OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
+        x10 = OpCodes.RotL16(OpCodes.And32(x10 + OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
+        x32 = OpCodes.RotL16(OpCodes.And32(x32 + OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
+        x54 = OpCodes.RotL16(OpCodes.And32(x54 + OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
+        x76 = OpCodes.RotL16(OpCodes.And32(x76 + OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
       }
 
       // First mash operation
-      x10 = OpCodes.AndN(x10 + this.expandedKey[OpCodes.AndN(x76, 63)], 0xFFFF);
-      x32 = OpCodes.AndN(x32 + this.expandedKey[OpCodes.AndN(x10, 63)], 0xFFFF);
-      x54 = OpCodes.AndN(x54 + this.expandedKey[OpCodes.AndN(x32, 63)], 0xFFFF);
-      x76 = OpCodes.AndN(x76 + this.expandedKey[OpCodes.AndN(x54, 63)], 0xFFFF);
+      x10 = OpCodes.And32(x10 + this.expandedKey[OpCodes.And32(x76, 63)], 0xFFFF);
+      x32 = OpCodes.And32(x32 + this.expandedKey[OpCodes.And32(x10, 63)], 0xFFFF);
+      x54 = OpCodes.And32(x54 + this.expandedKey[OpCodes.And32(x32, 63)], 0xFFFF);
+      x76 = OpCodes.And32(x76 + this.expandedKey[OpCodes.And32(x54, 63)], 0xFFFF);
 
       // Rounds 20-40 (6 rounds of mixing)
       for (let i = 20; i <= 40; i += 4) {
-        x10 = OpCodes.RotL16(OpCodes.AndN(x10 + OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
-        x32 = OpCodes.RotL16(OpCodes.AndN(x32 + OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
-        x54 = OpCodes.RotL16(OpCodes.AndN(x54 + OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
-        x76 = OpCodes.RotL16(OpCodes.AndN(x76 + OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
+        x10 = OpCodes.RotL16(OpCodes.And32(x10 + OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
+        x32 = OpCodes.RotL16(OpCodes.And32(x32 + OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
+        x54 = OpCodes.RotL16(OpCodes.And32(x54 + OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
+        x76 = OpCodes.RotL16(OpCodes.And32(x76 + OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
       }
 
       // Second mash operation
-      x10 = OpCodes.AndN(x10 + this.expandedKey[OpCodes.AndN(x76, 63)], 0xFFFF);
-      x32 = OpCodes.AndN(x32 + this.expandedKey[OpCodes.AndN(x10, 63)], 0xFFFF);
-      x54 = OpCodes.AndN(x54 + this.expandedKey[OpCodes.AndN(x32, 63)], 0xFFFF);
-      x76 = OpCodes.AndN(x76 + this.expandedKey[OpCodes.AndN(x54, 63)], 0xFFFF);
+      x10 = OpCodes.And32(x10 + this.expandedKey[OpCodes.And32(x76, 63)], 0xFFFF);
+      x32 = OpCodes.And32(x32 + this.expandedKey[OpCodes.And32(x10, 63)], 0xFFFF);
+      x54 = OpCodes.And32(x54 + this.expandedKey[OpCodes.And32(x32, 63)], 0xFFFF);
+      x76 = OpCodes.And32(x76 + this.expandedKey[OpCodes.And32(x54, 63)], 0xFFFF);
 
       // Rounds 44-60 (5 rounds of mixing)
       for (let i = 44; i < 64; i += 4) {
-        x10 = OpCodes.RotL16(OpCodes.AndN(x10 + OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
-        x32 = OpCodes.RotL16(OpCodes.AndN(x32 + OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
-        x54 = OpCodes.RotL16(OpCodes.AndN(x54 + OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
-        x76 = OpCodes.RotL16(OpCodes.AndN(x76 + OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
+        x10 = OpCodes.RotL16(OpCodes.And32(x10 + OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i], 0xFFFF), 1);
+        x32 = OpCodes.RotL16(OpCodes.And32(x32 + OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1], 0xFFFF), 2);
+        x54 = OpCodes.RotL16(OpCodes.And32(x54 + OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2], 0xFFFF), 3);
+        x76 = OpCodes.RotL16(OpCodes.And32(x76 + OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3], 0xFFFF), 5);
       }
 
       return [
@@ -464,7 +464,7 @@
 
     _decryptBlock(cipherBytes) {
       if (cipherBytes.length !== 8) {
-        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+        throw new Error("Invalid block size: " + cipherBytes.length + " bytes");
       }
 
       if (!this.expandedKey) {
@@ -478,38 +478,38 @@
 
       // Reverse rounds 44-60
       for (let i = 60; i >= 44; i -= 4) {
-        x76 = OpCodes.AndN(OpCodes.RotL16(x76, 11) - (OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
-        x54 = OpCodes.AndN(OpCodes.RotL16(x54, 13) - (OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
-        x32 = OpCodes.AndN(OpCodes.RotL16(x32, 14) - (OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
-        x10 = OpCodes.AndN(OpCodes.RotL16(x10, 15) - (OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i]), 0xFFFF);
+        x76 = OpCodes.And32(OpCodes.RotL16(x76, 11) - (OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
+        x54 = OpCodes.And32(OpCodes.RotL16(x54, 13) - (OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
+        x32 = OpCodes.And32(OpCodes.RotL16(x32, 14) - (OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
+        x10 = OpCodes.And32(OpCodes.RotL16(x10, 15) - (OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i]), 0xFFFF);
       }
 
       // Reverse second mash
-      x76 = OpCodes.AndN(x76 - this.expandedKey[OpCodes.AndN(x54, 63)], 0xFFFF);
-      x54 = OpCodes.AndN(x54 - this.expandedKey[OpCodes.AndN(x32, 63)], 0xFFFF);
-      x32 = OpCodes.AndN(x32 - this.expandedKey[OpCodes.AndN(x10, 63)], 0xFFFF);
-      x10 = OpCodes.AndN(x10 - this.expandedKey[OpCodes.AndN(x76, 63)], 0xFFFF);
+      x76 = OpCodes.And32(x76 - this.expandedKey[OpCodes.And32(x54, 63)], 0xFFFF);
+      x54 = OpCodes.And32(x54 - this.expandedKey[OpCodes.And32(x32, 63)], 0xFFFF);
+      x32 = OpCodes.And32(x32 - this.expandedKey[OpCodes.And32(x10, 63)], 0xFFFF);
+      x10 = OpCodes.And32(x10 - this.expandedKey[OpCodes.And32(x76, 63)], 0xFFFF);
 
       // Reverse rounds 20-40
       for (let i = 40; i >= 20; i -= 4) {
-        x76 = OpCodes.AndN(OpCodes.RotL16(x76, 11) - (OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
-        x54 = OpCodes.AndN(OpCodes.RotL16(x54, 13) - (OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
-        x32 = OpCodes.AndN(OpCodes.RotL16(x32, 14) - (OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
-        x10 = OpCodes.AndN(OpCodes.RotL16(x10, 15) - (OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i]), 0xFFFF);
+        x76 = OpCodes.And32(OpCodes.RotL16(x76, 11) - (OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
+        x54 = OpCodes.And32(OpCodes.RotL16(x54, 13) - (OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
+        x32 = OpCodes.And32(OpCodes.RotL16(x32, 14) - (OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
+        x10 = OpCodes.And32(OpCodes.RotL16(x10, 15) - (OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i]), 0xFFFF);
       }
 
       // Reverse first mash
-      x76 = OpCodes.AndN(x76 - this.expandedKey[OpCodes.AndN(x54, 63)], 0xFFFF);
-      x54 = OpCodes.AndN(x54 - this.expandedKey[OpCodes.AndN(x32, 63)], 0xFFFF);
-      x32 = OpCodes.AndN(x32 - this.expandedKey[OpCodes.AndN(x10, 63)], 0xFFFF);
-      x10 = OpCodes.AndN(x10 - this.expandedKey[OpCodes.AndN(x76, 63)], 0xFFFF);
+      x76 = OpCodes.And32(x76 - this.expandedKey[OpCodes.And32(x54, 63)], 0xFFFF);
+      x54 = OpCodes.And32(x54 - this.expandedKey[OpCodes.And32(x32, 63)], 0xFFFF);
+      x32 = OpCodes.And32(x32 - this.expandedKey[OpCodes.And32(x10, 63)], 0xFFFF);
+      x10 = OpCodes.And32(x10 - this.expandedKey[OpCodes.And32(x76, 63)], 0xFFFF);
 
       // Reverse rounds 0-16
       for (let i = 16; i >= 0; i -= 4) {
-        x76 = OpCodes.AndN(OpCodes.RotL16(x76, 11) - (OpCodes.AndN(x10, ~x54) + OpCodes.AndN(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
-        x54 = OpCodes.AndN(OpCodes.RotL16(x54, 13) - (OpCodes.AndN(x76, ~x32) + OpCodes.AndN(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
-        x32 = OpCodes.AndN(OpCodes.RotL16(x32, 14) - (OpCodes.AndN(x54, ~x10) + OpCodes.AndN(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
-        x10 = OpCodes.AndN(OpCodes.RotL16(x10, 15) - (OpCodes.AndN(x32, ~x76) + OpCodes.AndN(x54, x76) + this.expandedKey[i]), 0xFFFF);
+        x76 = OpCodes.And32(OpCodes.RotL16(x76, 11) - (OpCodes.And32(x10, ~x54) + OpCodes.And32(x32, x54) + this.expandedKey[i + 3]), 0xFFFF);
+        x54 = OpCodes.And32(OpCodes.RotL16(x54, 13) - (OpCodes.And32(x76, ~x32) + OpCodes.And32(x10, x32) + this.expandedKey[i + 2]), 0xFFFF);
+        x32 = OpCodes.And32(OpCodes.RotL16(x32, 14) - (OpCodes.And32(x54, ~x10) + OpCodes.And32(x76, x10) + this.expandedKey[i + 1]), 0xFFFF);
+        x10 = OpCodes.And32(OpCodes.RotL16(x10, 15) - (OpCodes.And32(x32, ~x76) + OpCodes.And32(x54, x76) + this.expandedKey[i]), 0xFFFF);
       }
 
       return [
@@ -643,7 +643,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -686,7 +686,7 @@
       const blockSize = this.BlockSize;
 
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
@@ -713,7 +713,7 @@
       }
 
       for (let i = 0; i < this.KeySize; i++) {
-        const keyByte = OpCodes.AndN(this._key[i], 0xFF);
+        const keyByte = OpCodes.And32(this._key[i], 0xFF);
         const shift = 8 * (i % u);
         L[Math.floor(i / u)] = OpCodes.ToUint32(L[Math.floor(i / u)] + OpCodes.Shl32(keyByte, shift));
       }
@@ -733,7 +733,7 @@
         A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
 
         L[j] = OpCodes.ToUint32(L[j] + A + B);
-        B = L[j] = OpCodes.RotL32(L[j], OpCodes.AndN(A + B, 31));
+        B = L[j] = OpCodes.RotL32(L[j], OpCodes.And32(A + B, 31));
 
         i = (i + 1) % tableSize;
         j = (j + 1) % c;
@@ -744,7 +744,7 @@
 
     _encryptBlock(plainBytes) {
       if (plainBytes.length !== 8) {
-        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+        throw new Error("Invalid block size: " + plainBytes.length + " bytes");
       }
 
       let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
@@ -754,12 +754,12 @@
       B = OpCodes.ToUint32(B + this.expandedKey[1]);
 
       for (let i = 1; i <= this.rounds; i++) {
-        A = OpCodes.XorN(A, B);
-        A = OpCodes.RotL32(A, OpCodes.AndN(B, 31));
+        A = OpCodes.Xor32(A, B);
+        A = OpCodes.RotL32(A, OpCodes.And32(B, 31));
         A = OpCodes.ToUint32(A + this.expandedKey[2 * i]);
 
-        B = OpCodes.XorN(B, A);
-        B = OpCodes.RotL32(B, OpCodes.AndN(A, 31));
+        B = OpCodes.Xor32(B, A);
+        B = OpCodes.RotL32(B, OpCodes.And32(A, 31));
         B = OpCodes.ToUint32(B + this.expandedKey[2 * i + 1]);
       }
 
@@ -771,7 +771,7 @@
 
     _decryptBlock(cipherBytes) {
       if (cipherBytes.length !== 8) {
-        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+        throw new Error("Invalid block size: " + cipherBytes.length + " bytes");
       }
 
       let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
@@ -779,12 +779,12 @@
 
       for (let i = this.rounds; i >= 1; i--) {
         B = OpCodes.ToUint32(B - this.expandedKey[2 * i + 1]);
-        B = OpCodes.RotR32(B, OpCodes.AndN(A, 31));
-        B = OpCodes.XorN(B, A);
+        B = OpCodes.RotR32(B, OpCodes.And32(A, 31));
+        B = OpCodes.Xor32(B, A);
 
         A = OpCodes.ToUint32(A - this.expandedKey[2 * i]);
-        A = OpCodes.RotR32(A, OpCodes.AndN(B, 31));
-        A = OpCodes.XorN(A, B);
+        A = OpCodes.RotR32(A, OpCodes.And32(B, 31));
+        A = OpCodes.Xor32(A, B);
       }
 
       A = OpCodes.ToUint32(A - this.expandedKey[0]);
@@ -901,7 +901,7 @@
       }
 
       if (![16, 24, 32].includes(keyBytes.length)) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16, 24, or 32 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -941,7 +941,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
@@ -975,7 +975,7 @@
 
       for (let i = keyBytes.length - 1; i >= 0; i--) {
         const wordIndex = Math.floor(i / 4);
-        L[wordIndex] = OpCodes.OrN(OpCodes.Shl32(L[wordIndex], 8) + OpCodes.AndN(keyBytes[i], 0xff), 0)|0;
+        L[wordIndex] = OpCodes.Or32(OpCodes.Shl32(L[wordIndex], 8) + OpCodes.And32(keyBytes[i], 0xff), 0)|0;
       }
 
       let iter;
@@ -989,8 +989,8 @@
       let ii = 0, jj = 0;
 
       for (let k = 0; k < iter; k++) {
-        A = this.keySchedule[ii] = rotLeft32Signed(OpCodes.OrN(this.keySchedule[ii] + A + B, 0)|0, 3);
-        B = L[jj] = rotLeft32Signed(OpCodes.OrN(L[jj] + A + B, 0)|0, OpCodes.AndN(A + B, 31));
+        A = this.keySchedule[ii] = rotLeft32Signed(OpCodes.Or32(this.keySchedule[ii] + A + B, 0)|0, 3);
+        B = L[jj] = rotLeft32Signed(OpCodes.Or32(L[jj] + A + B, 0)|0, OpCodes.And32(A + B, 31));
 
         ii = (ii + 1) % this.keySchedule.length;
         jj = (jj + 1) % L.length;
@@ -1001,7 +1001,7 @@
 
     _encryptBlock(plainBytes) {
       if (plainBytes.length !== 16) {
-        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+        throw new Error("Invalid block size: " + plainBytes.length + " bytes");
       }
 
       let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
@@ -1009,25 +1009,25 @@
       let C = OpCodes.Pack32LE(plainBytes[8], plainBytes[9], plainBytes[10], plainBytes[11]);
       let D = OpCodes.Pack32LE(plainBytes[12], plainBytes[13], plainBytes[14], plainBytes[15]);
 
-      B = OpCodes.OrN(B + this.keySchedule[0], 0)|0;
-      D = OpCodes.OrN(D + this.keySchedule[1], 0)|0;
+      B = OpCodes.Or32(B + this.keySchedule[0], 0)|0;
+      D = OpCodes.Or32(D + this.keySchedule[1], 0)|0;
 
       for (let i = 1; i <= RC6Algorithm.ROUNDS; i++) {
         let t = 0, u = 0;
 
-        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0)|0);
+        t = Math.imul(B, OpCodes.Or32(2 * B + 1, 0)|0);
         t = rotLeft32Signed(t, 5);
 
-        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0)|0);
+        u = Math.imul(D, OpCodes.Or32(2 * D + 1, 0)|0);
         u = rotLeft32Signed(u, 5);
 
-        A = OpCodes.OrN(OpCodes.XorN(A, t), 0)|0;
-        A = rotLeft32Signed(A, OpCodes.AndN(u, 31));
-        A = OpCodes.OrN(A + this.keySchedule[2 * i], 0)|0;
+        A = OpCodes.Or32(OpCodes.Xor32(A, t), 0)|0;
+        A = rotLeft32Signed(A, OpCodes.And32(u, 31));
+        A = OpCodes.Or32(A + this.keySchedule[2 * i], 0)|0;
 
-        C = OpCodes.OrN(OpCodes.XorN(C, u), 0)|0;
-        C = rotLeft32Signed(C, OpCodes.AndN(t, 31));
-        C = OpCodes.OrN(C + this.keySchedule[2 * i + 1], 0)|0;
+        C = OpCodes.Or32(OpCodes.Xor32(C, u), 0)|0;
+        C = rotLeft32Signed(C, OpCodes.And32(t, 31));
+        C = OpCodes.Or32(C + this.keySchedule[2 * i + 1], 0)|0;
 
         const temp = A;
         A = B;
@@ -1036,8 +1036,8 @@
         D = temp;
       }
 
-      A = OpCodes.OrN(A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
-      C = OpCodes.OrN(C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
+      A = OpCodes.Or32(A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
+      C = OpCodes.Or32(C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
 
       return [
         ...OpCodes.Unpack32LE(A),
@@ -1049,7 +1049,7 @@
 
     _decryptBlock(cipherBytes) {
       if (cipherBytes.length !== 16) {
-        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+        throw new Error("Invalid block size: " + cipherBytes.length + " bytes");
       }
 
       let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
@@ -1057,8 +1057,8 @@
       let C = OpCodes.Pack32LE(cipherBytes[8], cipherBytes[9], cipherBytes[10], cipherBytes[11]);
       let D = OpCodes.Pack32LE(cipherBytes[12], cipherBytes[13], cipherBytes[14], cipherBytes[15]);
 
-      C = OpCodes.OrN(C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
-      A = OpCodes.OrN(A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
+      C = OpCodes.Or32(C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
+      A = OpCodes.Or32(A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
 
       for (let i = RC6Algorithm.ROUNDS; i >= 1; i--) {
         let t = 0, u = 0;
@@ -1069,23 +1069,23 @@
         B = A;
         A = temp;
 
-        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0)|0);
+        t = Math.imul(B, OpCodes.Or32(2 * B + 1, 0)|0);
         t = rotLeft32Signed(t, 5);
 
-        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0)|0);
+        u = Math.imul(D, OpCodes.Or32(2 * D + 1, 0)|0);
         u = rotLeft32Signed(u, 5);
 
-        C = OpCodes.OrN(C - this.keySchedule[2 * i + 1], 0)|0;
-        C = rotRight32Signed(C, OpCodes.AndN(t, 31));
-        C = OpCodes.OrN(OpCodes.XorN(C, u), 0)|0;
+        C = OpCodes.Or32(C - this.keySchedule[2 * i + 1], 0)|0;
+        C = rotRight32Signed(C, OpCodes.And32(t, 31));
+        C = OpCodes.Or32(OpCodes.Xor32(C, u), 0)|0;
 
-        A = OpCodes.OrN(A - this.keySchedule[2 * i], 0)|0;
-        A = rotRight32Signed(A, OpCodes.AndN(u, 31));
-        A = OpCodes.OrN(OpCodes.XorN(A, t), 0)|0;
+        A = OpCodes.Or32(A - this.keySchedule[2 * i], 0)|0;
+        A = rotRight32Signed(A, OpCodes.And32(u, 31));
+        A = OpCodes.Or32(OpCodes.Xor32(A, t), 0)|0;
       }
 
-      D = OpCodes.OrN(D - this.keySchedule[1], 0)|0;
-      B = OpCodes.OrN(B - this.keySchedule[0], 0)|0;
+      D = OpCodes.Or32(D - this.keySchedule[1], 0)|0;
+      B = OpCodes.Or32(B - this.keySchedule[0], 0)|0;
 
       return [
         ...OpCodes.Unpack32LE(A),

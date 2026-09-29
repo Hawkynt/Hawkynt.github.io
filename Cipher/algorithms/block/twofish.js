@@ -328,7 +328,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Twofish requires 16, 24, or 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Twofish requires 16, 24, or 32 bytes");
       }
 
       this._key = [...keyBytes];
@@ -427,64 +427,64 @@
     }
 
     EncryptBlock(input) {
-      let x0 = OpCodes.XorN(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[INPUT_WHITEN]);
-      let x1 = OpCodes.XorN(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[INPUT_WHITEN + 1]);
-      let x2 = OpCodes.XorN(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[INPUT_WHITEN + 2]);
-      let x3 = OpCodes.XorN(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[INPUT_WHITEN + 3]);
+      let x0 = OpCodes.Xor32(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[INPUT_WHITEN]);
+      let x1 = OpCodes.Xor32(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[INPUT_WHITEN + 1]);
+      let x2 = OpCodes.Xor32(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[INPUT_WHITEN + 2]);
+      let x3 = OpCodes.Xor32(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[INPUT_WHITEN + 3]);
 
       let k = ROUND_SUBKEYS;
       let t0, t1;
       for (let r = 0; r < ROUNDS; r += 2) {
         t0 = this._Fe32_0(x0);
         t1 = this._Fe32_3(x1);
-        x2 = OpCodes.XorN(x2, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
+        x2 = OpCodes.Xor32(x2, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
         x2 = OpCodes.RotR32(x2, 1);
-        x3 = OpCodes.XorN(OpCodes.RotL32(x3, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
+        x3 = OpCodes.Xor32(OpCodes.RotL32(x3, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
 
         t0 = this._Fe32_0(x2);
         t1 = this._Fe32_3(x3);
-        x0 = OpCodes.XorN(x0, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
+        x0 = OpCodes.Xor32(x0, OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k++]));
         x0 = OpCodes.RotR32(x0, 1);
-        x1 = OpCodes.XorN(OpCodes.RotL32(x1, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
+        x1 = OpCodes.Xor32(OpCodes.RotL32(x1, 1), OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k++]));
       }
 
       const output = [];
-      const out2 = OpCodes.Unpack32LE(OpCodes.XorN(x2, this.gSubKeys[OUTPUT_WHITEN]));
-      const out3 = OpCodes.Unpack32LE(OpCodes.XorN(x3, this.gSubKeys[OUTPUT_WHITEN + 1]));
-      const out0 = OpCodes.Unpack32LE(OpCodes.XorN(x0, this.gSubKeys[OUTPUT_WHITEN + 2]));
-      const out1 = OpCodes.Unpack32LE(OpCodes.XorN(x1, this.gSubKeys[OUTPUT_WHITEN + 3]));
+      const out2 = OpCodes.Unpack32LE(OpCodes.Xor32(x2, this.gSubKeys[OUTPUT_WHITEN]));
+      const out3 = OpCodes.Unpack32LE(OpCodes.Xor32(x3, this.gSubKeys[OUTPUT_WHITEN + 1]));
+      const out0 = OpCodes.Unpack32LE(OpCodes.Xor32(x0, this.gSubKeys[OUTPUT_WHITEN + 2]));
+      const out1 = OpCodes.Unpack32LE(OpCodes.Xor32(x1, this.gSubKeys[OUTPUT_WHITEN + 3]));
       
       output.push(...out2, ...out3, ...out0, ...out1);
       return output;
     }
 
     DecryptBlock(input) {
-      let x2 = OpCodes.XorN(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[OUTPUT_WHITEN]);
-      let x3 = OpCodes.XorN(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[OUTPUT_WHITEN + 1]);
-      let x0 = OpCodes.XorN(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[OUTPUT_WHITEN + 2]);
-      let x1 = OpCodes.XorN(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[OUTPUT_WHITEN + 3]);
+      let x2 = OpCodes.Xor32(OpCodes.Pack32LE(input[0], input[1], input[2], input[3]), this.gSubKeys[OUTPUT_WHITEN]);
+      let x3 = OpCodes.Xor32(OpCodes.Pack32LE(input[4], input[5], input[6], input[7]), this.gSubKeys[OUTPUT_WHITEN + 1]);
+      let x0 = OpCodes.Xor32(OpCodes.Pack32LE(input[8], input[9], input[10], input[11]), this.gSubKeys[OUTPUT_WHITEN + 2]);
+      let x1 = OpCodes.Xor32(OpCodes.Pack32LE(input[12], input[13], input[14], input[15]), this.gSubKeys[OUTPUT_WHITEN + 3]);
 
       let k = ROUND_SUBKEYS + 2 * ROUNDS - 1;
       let t0, t1;
       for (let r = 0; r < ROUNDS; r += 2) {
         t0 = this._Fe32_0(x2);
         t1 = this._Fe32_3(x3);
-        x1 = OpCodes.XorN(x1, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
-        x0 = OpCodes.XorN(OpCodes.RotL32(x0, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
+        x1 = OpCodes.Xor32(x1, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
+        x0 = OpCodes.Xor32(OpCodes.RotL32(x0, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
         x1 = OpCodes.RotR32(x1, 1);
 
         t0 = this._Fe32_0(x0);
         t1 = this._Fe32_3(x1);
-        x3 = OpCodes.XorN(x3, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
-        x2 = OpCodes.XorN(OpCodes.RotL32(x2, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
+        x3 = OpCodes.Xor32(x3, OpCodes.ToUint32(t0 + 2 * t1 + this.gSubKeys[k--]));
+        x2 = OpCodes.Xor32(OpCodes.RotL32(x2, 1), OpCodes.ToUint32(t0 + t1 + this.gSubKeys[k--]));
         x3 = OpCodes.RotR32(x3, 1);
       }
 
       const output = [];
-      const out0 = OpCodes.Unpack32LE(OpCodes.XorN(x0, this.gSubKeys[INPUT_WHITEN]));
-      const out1 = OpCodes.Unpack32LE(OpCodes.XorN(x1, this.gSubKeys[INPUT_WHITEN + 1]));
-      const out2 = OpCodes.Unpack32LE(OpCodes.XorN(x2, this.gSubKeys[INPUT_WHITEN + 2]));
-      const out3 = OpCodes.Unpack32LE(OpCodes.XorN(x3, this.gSubKeys[INPUT_WHITEN + 3]));
+      const out0 = OpCodes.Unpack32LE(OpCodes.Xor32(x0, this.gSubKeys[INPUT_WHITEN]));
+      const out1 = OpCodes.Unpack32LE(OpCodes.Xor32(x1, this.gSubKeys[INPUT_WHITEN + 1]));
+      const out2 = OpCodes.Unpack32LE(OpCodes.Xor32(x2, this.gSubKeys[INPUT_WHITEN + 2]));
+      const out3 = OpCodes.Unpack32LE(OpCodes.Xor32(x3, this.gSubKeys[INPUT_WHITEN + 3]));
       
       output.push(...out0, ...out1, ...out2, ...out3);
       return output;
@@ -518,7 +518,7 @@
           b3 = (P[P_33][b3]&0xff)^this._M_b3(k2);
           // fall through
         case 2: // 128 bits of key
-          result = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+          result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
                   this.algorithm.gMDS0[(P[P_01][(P[P_02][b0]&0xff)^this._M_b0(k1)]&0xff)^this._M_b0(k0)],
                   this.algorithm.gMDS1[(P[P_11][(P[P_12][b1]&0xff)^this._M_b1(k1)]&0xff)^this._M_b1(k0)]),
                   this.algorithm.gMDS2[(P[P_21][(P[P_22][b2]&0xff)^this._M_b2(k1)]&0xff)^this._M_b2(k0)]),
@@ -541,42 +541,42 @@
     }
 
     _RS_rem(x) {
-      const b = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xff);
-      const g2 = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(b, 1), (OpCodes.AndN(b, 0x80) !== 0 ? RS_GF_FDBK : 0)), 0xff);
-      const g3 = OpCodes.XorN(OpCodes.XorN(OpCodes.Shr32(b, 1), (OpCodes.AndN(b, 0x01) !== 0 ? OpCodes.Shr32(RS_GF_FDBK, 1) : 0)), g2);
-      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(x, 8), OpCodes.Shl32(g3, 24)), OpCodes.Shl32(g2, 16)), OpCodes.Shl32(g3, 8)), b));
+      const b = OpCodes.And32(OpCodes.Shr32(x, 24), 0xff);
+      const g2 = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(b, 1), (OpCodes.And32(b, 0x80) !== 0 ? RS_GF_FDBK : 0)), 0xff);
+      const g3 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(b, 1), (OpCodes.And32(b, 0x01) !== 0 ? OpCodes.Shr32(RS_GF_FDBK, 1) : 0)), g2);
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(x, 8), OpCodes.Shl32(g3, 24)), OpCodes.Shl32(g2, 16)), OpCodes.Shl32(g3, 8)), b));
     }
 
     _M_b0(x) {
-      return OpCodes.AndN(x, 0xff);
+      return OpCodes.And32(x, 0xff);
     }
 
     _M_b1(x) {
-      return OpCodes.AndN(OpCodes.Shr32(x, 8), 0xff);
+      return OpCodes.And32(OpCodes.Shr32(x, 8), 0xff);
     }
 
     _M_b2(x) {
-      return OpCodes.AndN(OpCodes.Shr32(x, 16), 0xff);
+      return OpCodes.And32(OpCodes.Shr32(x, 16), 0xff);
     }
 
     _M_b3(x) {
-      return OpCodes.AndN(OpCodes.Shr32(x, 24), 0xff);
+      return OpCodes.And32(OpCodes.Shr32(x, 24), 0xff);
     }
 
     _Fe32_0(x) {
-      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-             this.gSBox[0x000 + 2 * OpCodes.AndN(x, 0xff)],
-             this.gSBox[0x001 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 8), 0xff)]),
-             this.gSBox[0x200 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 16), 0xff)]),
-             this.gSBox[0x201 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 24), 0xff)]);
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
+             this.gSBox[0x000 + 2 * OpCodes.And32(x, 0xff)],
+             this.gSBox[0x001 + 2 * OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)]),
+             this.gSBox[0x200 + 2 * OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)]),
+             this.gSBox[0x201 + 2 * OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)]);
     }
 
     _Fe32_3(x) {
-      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-             this.gSBox[0x000 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 24), 0xff)],
-             this.gSBox[0x001 + 2 * OpCodes.AndN(x, 0xff)]),
-             this.gSBox[0x200 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 8), 0xff)]),
-             this.gSBox[0x201 + 2 * OpCodes.AndN(OpCodes.Shr32(x, 16), 0xff)]);
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(
+             this.gSBox[0x000 + 2 * OpCodes.And32(OpCodes.Shr32(x, 24), 0xff)],
+             this.gSBox[0x001 + 2 * OpCodes.And32(x, 0xff)]),
+             this.gSBox[0x200 + 2 * OpCodes.And32(OpCodes.Shr32(x, 8), 0xff)]),
+             this.gSBox[0x201 + 2 * OpCodes.And32(OpCodes.Shr32(x, 16), 0xff)]);
     }
   }
 

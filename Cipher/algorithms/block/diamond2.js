@@ -63,7 +63,7 @@
       let crc = i;
       for (let j = 0; j < 8; j++) {
         if (OpCodes.AndN(crc, 1)) {
-          crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(crc, 1), polynomial));
+          crc = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(crc, 1), polynomial));
         } else {
           crc = OpCodes.ToUint32(OpCodes.Shr32(crc, 1));
         }
@@ -79,7 +79,7 @@
    * Update CRC-32 accumulator with one byte
    */
   function crc32Update(crc, byte) {
-    return OpCodes.ToUint32(OpCodes.XorN(CRC32_TABLE[OpCodes.AndN(OpCodes.XorN(crc, byte), 0xFF)], OpCodes.Shr32(crc, 8)));
+    return OpCodes.ToUint32(OpCodes.Xor32(CRC32_TABLE[OpCodes.And32(OpCodes.XorN(crc, byte), 0xFF)], OpCodes.Shr32(crc, 8)));
   }
 
   // ===== DIAMOND2 ALGORITHM IMPLEMENTATION =====
@@ -398,7 +398,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -499,7 +499,7 @@
       // Calculate minimum number of bits needed to cover range
       let mask = 0;
       for (let i = maxValue; i > 0; i = OpCodes.Shr32(i, 1)) {
-        mask = OpCodes.OrN(OpCodes.Shl32(mask, 1), 1);
+        mask = OpCodes.Or32(OpCodes.Shl32(mask, 1), 1);
       }
 
       let attempts = 0;
@@ -521,12 +521,12 @@
         if (this._keyIndex >= key.length) {
           this._keyIndex = 0;
           // Mix in key length to add more entropy
-          this._accum = crc32Update(this._accum, OpCodes.AndN(key.length, 0xFF));
-          this._accum = crc32Update(this._accum, OpCodes.AndN(OpCodes.Shr32(key.length, 8), 0xFF));
+          this._accum = crc32Update(this._accum, OpCodes.And32(key.length, 0xFF));
+          this._accum = crc32Update(this._accum, OpCodes.And32(OpCodes.Shr32(key.length, 8), 0xFF));
         }
 
         // Mask to get value in approximate range
-        prandValue = OpCodes.AndN(this._accum, mask);
+        prandValue = OpCodes.And32(this._accum, mask);
 
         // After 97 attempts, introduce negligible bias to prevent infinite loop
         if (++attempts > 97 && prandValue > maxValue) {
@@ -569,24 +569,24 @@
       const output = new Uint8Array(16);
 
       for (let i = 0; i < 16; i++) {
-        output[i] = OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.OrN(
-                OpCodes.OrN(
-                  OpCodes.OrN(
-                    OpCodes.OrN(OpCodes.AndN(input[i], 1), OpCodes.AndN(input[(i + 1) % 16], 2)),
-                    OpCodes.AndN(input[(i + 2) % 16], 4)
+        output[i] = OpCodes.Or32(
+          OpCodes.Or32(
+            OpCodes.Or32(
+              OpCodes.Or32(
+                OpCodes.Or32(
+                  OpCodes.Or32(
+                    OpCodes.Or32(OpCodes.And32(input[i], 1), OpCodes.And32(input[(i + 1) % 16], 2)),
+                    OpCodes.And32(input[(i + 2) % 16], 4)
                   ),
-                  OpCodes.AndN(input[(i + 3) % 16], 8)
+                  OpCodes.And32(input[(i + 3) % 16], 8)
                 ),
-                OpCodes.AndN(input[(i + 4) % 16], 16)
+                OpCodes.And32(input[(i + 4) % 16], 16)
               ),
-              OpCodes.AndN(input[(i + 5) % 16], 32)
+              OpCodes.And32(input[(i + 5) % 16], 32)
             ),
-            OpCodes.AndN(input[(i + 6) % 16], 64)
+            OpCodes.And32(input[(i + 6) % 16], 64)
           ),
-          OpCodes.AndN(input[(i + 7) % 16], 128)
+          OpCodes.And32(input[(i + 7) % 16], 128)
         );
       }
 
@@ -600,24 +600,24 @@
       const output = new Uint8Array(16);
 
       for (let i = 0; i < 16; i++) {
-        output[i] = OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.OrN(
-                OpCodes.OrN(
-                  OpCodes.OrN(
-                    OpCodes.OrN(OpCodes.AndN(input[i], 1), OpCodes.AndN(input[(i + 15) % 16], 2)),
-                    OpCodes.AndN(input[(i + 14) % 16], 4)
+        output[i] = OpCodes.Or32(
+          OpCodes.Or32(
+            OpCodes.Or32(
+              OpCodes.Or32(
+                OpCodes.Or32(
+                  OpCodes.Or32(
+                    OpCodes.Or32(OpCodes.And32(input[i], 1), OpCodes.And32(input[(i + 15) % 16], 2)),
+                    OpCodes.And32(input[(i + 14) % 16], 4)
                   ),
-                  OpCodes.AndN(input[(i + 13) % 16], 8)
+                  OpCodes.And32(input[(i + 13) % 16], 8)
                 ),
-                OpCodes.AndN(input[(i + 12) % 16], 16)
+                OpCodes.And32(input[(i + 12) % 16], 16)
               ),
-              OpCodes.AndN(input[(i + 11) % 16], 32)
+              OpCodes.And32(input[(i + 11) % 16], 32)
             ),
-            OpCodes.AndN(input[(i + 10) % 16], 64)
+            OpCodes.And32(input[(i + 10) % 16], 64)
           ),
-          OpCodes.AndN(input[(i + 9) % 16], 128)
+          OpCodes.And32(input[(i + 9) % 16], 128)
         );
       }
 
@@ -675,7 +675,7 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       // Regenerate S-boxes if rounds changed after key was set

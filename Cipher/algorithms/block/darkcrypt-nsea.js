@@ -56,6 +56,7 @@
   const SBOX_SIZE = 256 * 4;   // bytes per S-box table (1024)
   const BLOCK_SIZE = 16;       // 128-bit block
   const KEY_MATERIAL_LEN = 32; // key bytes actually mixed into the schedule
+  /** @type {uint16[]} */
   const COLUMN_TABLE = [0, 256, 512, 768];
 
   // 16-bit multiplicative LCRNG: x' = (x*23311 + 1) mod 65533
@@ -279,7 +280,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._S1 = null; this._S2 = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 36)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. NSEA (DarkCrypt) requires exactly 36 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. NSEA (DarkCrypt) requires exactly 36 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       const { S1, S2 } = setupSBoxes(this._key);
@@ -299,7 +300,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

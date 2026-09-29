@@ -42,6 +42,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // S-box (4-bit to 4-bit substitution) - involution property
+  /** @type {uint8[]} */
   const SBOX = [0x0, 0x4, 0x8, 0xF, 0x1, 0x5, 0xE, 0x9, 0x2, 0x7, 0xA, 0xC, 0xB, 0xD, 0x6, 0x3];
 
   // P-layer bit permutation: for i in range(16): for j in range(4): P[idx++] = i + j*16
@@ -58,6 +59,7 @@
   }
 
   // Linear layer matrices L0, L1, L2, L3 (16x16 binary matrices)
+  /** @type {uint16[]} */
   const L0 = [
     0b0000100010001000, 0b0000010001000100, 0b0000001000100010, 0b0000000100010001,
     0b1000000010001000, 0b0100000001000100, 0b0010000000100010, 0b0001000000010001,
@@ -65,6 +67,7 @@
     0b1000100010000000, 0b0100010001000000, 0b0010001000100000, 0b0001000100010000
   ];
 
+  /** @type {uint16[]} */
   const L1 = [
     0b1100000000010000, 0b0110000000001000, 0b0011000000000100, 0b0001100000000010,
     0b0000110000000001, 0b0000011010000000, 0b0000001101000000, 0b1000000100100000,
@@ -72,6 +75,7 @@
     0b0000100010000001, 0b0000010011000000, 0b0000001001100000, 0b0000000100110000
   ];
 
+  /** @type {uint16[]} */
   const L2 = [
     0b0000110000000001, 0b0000011010000000, 0b0000001101000000, 0b1000000100100000,
     0b1100000000010000, 0b0110000000001000, 0b0011000000000100, 0b0001100000000010,
@@ -79,6 +83,7 @@
     0b1000000000011000, 0b0100000000001100, 0b0010000000000110, 0b0001000000000011
   ];
 
+  /** @type {uint16[]} */
   const L3 = [
     0b1000100000001000, 0b0100010000000100, 0b0010001000000010, 0b0001000100000001,
     0b1000100010000000, 0b0100010001000000, 0b0010001000100000, 0b0001000100010000,
@@ -88,6 +93,7 @@
 
   // Inverse matrices (L0 and L3 are self-inverse)
   // From pypride reference implementation
+  /** @type {uint16[]} */
   const L1_INV = [
     0b0000001100000010, 0b1000000100000001, 0b1100000010000000, 0b0110000001000000,
     0b0011000000100000, 0b0001100000010000, 0b0000110000001000, 0b0000011000000100,
@@ -95,6 +101,7 @@
     0b0000000110000001, 0b1000000011000000, 0b0100000001100000, 0b0010000000110000
   ];
 
+  /** @type {uint16[]} */
   const L2_INV = [
     0b0011000000100000, 0b0001100000010000, 0b0000110000001000, 0b0000011000000100,
     0b0000001100000010, 0b1000000100000001, 0b1100000010000000, 0b0110000001000000,
@@ -211,6 +218,7 @@
 
   // Key schedule function g
   function g(x, i, j) {
+    /** @type {uint8[]} */
     const m = [193, 165, 81, 197];
     return (x + m[j] * i) % 256;  // Modulo instead of bitwise AND
   }
@@ -367,7 +375,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -405,7 +413,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];

@@ -282,7 +282,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Must be 16, 32, or 48 bytes.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Must be 16, 32, or 48 bytes.");
       }
 
       this._key = [...keyBytes];
@@ -446,7 +446,7 @@
 
       const blockSize = 16;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       const output = [];
 

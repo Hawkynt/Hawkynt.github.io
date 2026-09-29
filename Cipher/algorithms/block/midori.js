@@ -41,9 +41,11 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // S-box Sb0 (4-bit) - used in Midori64
+  /** @type {uint8[]} */
   const SB0 = [0xC, 0xA, 0xD, 0x3, 0xE, 0xB, 0xF, 0x7, 0x8, 0x9, 0x1, 0x5, 0x0, 0x2, 0x4, 0x6];
 
   // S-box Sb1 (4-bit) - used in Midori128
+  /** @type {uint8[]} */
   const SB1 = [0x1, 0x0, 0x5, 0x3, 0xE, 0x2, 0xF, 0x7, 0xD, 0xA, 0x9, 0xB, 0xC, 0x8, 0x4, 0x6];
 
   // Inverse S-boxes
@@ -193,6 +195,7 @@
   // ShuffleCell permutation
   function shuffleCell(state) {
     // Permutation for cell positions [0..15] → P[i]
+    /** @type {uint8[]} */
     const perm = [0, 10, 5, 15, 14, 4, 11, 1, 9, 3, 12, 6, 7, 13, 2, 8];
     const result = new Array(16);
 
@@ -205,6 +208,7 @@
 
   // Inverse ShuffleCell
   function invShuffleCell(state) {
+    /** @type {uint8[]} */
     const perm = [0, 10, 5, 15, 14, 4, 11, 1, 9, 3, 12, 6, 7, 13, 2, 8];
     const invPerm = new Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -407,7 +411,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -445,7 +449,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];
@@ -632,7 +636,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -670,7 +674,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 16 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 16)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
       const output = [];

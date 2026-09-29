@@ -205,32 +205,32 @@
   function darkCryptFcryptExpandKey(keyBytes) {
     let eax = OpCodes.Shr32(keyBytes[0], 1);
     let edx = OpCodes.Shr32(keyBytes[1], 1);
-    eax = OpCodes.OrN(OpCodes.Shl32(eax, 7), edx);
+    eax = OpCodes.Or32(OpCodes.Shl32(eax, 7), edx);
     edx = OpCodes.Shr32(keyBytes[2], 1);
-    eax = OpCodes.OrN(OpCodes.Shl32(eax, 7), edx);
+    eax = OpCodes.Or32(OpCodes.Shl32(eax, 7), edx);
     edx = OpCodes.Shr32(keyBytes[3], 1);
-    eax = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(eax, 7), edx));
+    eax = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(eax, 7), edx));
 
     let savedEdx = eax;
-    eax = OpCodes.AndN(eax, 0x0F);
+    eax = OpCodes.And32(eax, 0x0F);
     let esi = OpCodes.Shr32(keyBytes[4], 1);
-    eax = OpCodes.OrN(OpCodes.Shl32(eax, 7), esi);
+    eax = OpCodes.Or32(OpCodes.Shl32(eax, 7), esi);
     esi = OpCodes.Shr32(keyBytes[5], 1);
-    eax = OpCodes.OrN(OpCodes.Shl32(eax, 7), esi);
+    eax = OpCodes.Or32(OpCodes.Shl32(eax, 7), esi);
     esi = OpCodes.Shr32(keyBytes[6], 1);
-    eax = OpCodes.OrN(OpCodes.Shl32(eax, 7), esi);
+    eax = OpCodes.Or32(OpCodes.Shl32(eax, 7), esi);
     esi = OpCodes.Shr32(keyBytes[7], 1);
-    eax = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(eax, 7), esi));
+    eax = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(eax, 7), esi));
 
     edx = OpCodes.Shr32(savedEdx, 4);
 
     function bswap32(x) {
       return OpCodes.ToUint32(
-        OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(x, 0xFF), 24),
-          OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF), 16)),
-          OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF), 8)),
-          OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF))
+        OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(x, 0xFF), 24),
+          OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF), 16)),
+          OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF), 8)),
+          OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF))
       );
     }
 
@@ -239,19 +239,19 @@
 
     for (let i = 1; i < 16; i++) {
       const oldEax = eax, oldEdx = edx;
-      eax = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(oldEax, 11), OpCodes.Shl32(OpCodes.AndN(oldEdx, 0x7FF), 21)));
-      edx = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(oldEdx, 11), OpCodes.Shl32(OpCodes.AndN(oldEax, 0x7FF), 13)));
+      eax = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEax, 11), OpCodes.Shl32(OpCodes.And32(oldEdx, 0x7FF), 21)));
+      edx = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEdx, 11), OpCodes.Shl32(OpCodes.And32(oldEax, 0x7FF), 13)));
       subkeys[i] = bswap32(eax);
     }
     return subkeys;
   }
 
   function darkCryptFcryptF(t) {
-    const b0 = OpCodes.AndN(t, 0xFF);
-    const b1 = OpCodes.AndN(OpCodes.Shr32(t, 8), 0xFF);
-    const b2 = OpCodes.AndN(OpCodes.Shr32(t, 16), 0xFF);
-    const b3 = OpCodes.AndN(OpCodes.Shr32(t, 24), 0xFF);
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+    const b0 = OpCodes.And32(t, 0xFF);
+    const b1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF);
+    const b2 = OpCodes.And32(OpCodes.Shr32(t, 16), 0xFF);
+    const b3 = OpCodes.And32(OpCodes.Shr32(t, 24), 0xFF);
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
       DARKCRYPT_FCRYPT_T0[b0], DARKCRYPT_FCRYPT_T1[b1]),
       DARKCRYPT_FCRYPT_T2[b2]),
       DARKCRYPT_FCRYPT_T3[b3]));
@@ -263,11 +263,11 @@
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
     for (let i = 0; i < 16; i++) {
       if (OpCodes.And32(i, 1) === 0) {
-        const t = OpCodes.ToUint32(OpCodes.XorN(subkeys[i], B));
-        A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptFcryptF(t)));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(subkeys[i], B));
+        A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptFcryptF(t)));
       } else {
-        const t = OpCodes.ToUint32(OpCodes.XorN(subkeys[i], A));
-        B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptFcryptF(t)));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(subkeys[i], A));
+        B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptFcryptF(t)));
       }
     }
     return [...OpCodes.Unpack32LE(A), ...OpCodes.Unpack32LE(B)];
@@ -278,11 +278,11 @@
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
     for (let i = 15; i >= 0; i--) {
       if (OpCodes.And32(i, 1) === 0) {
-        const t = OpCodes.ToUint32(OpCodes.XorN(subkeys[i], B));
-        A = OpCodes.ToUint32(OpCodes.XorN(A, darkCryptFcryptF(t)));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(subkeys[i], B));
+        A = OpCodes.ToUint32(OpCodes.Xor32(A, darkCryptFcryptF(t)));
       } else {
-        const t = OpCodes.ToUint32(OpCodes.XorN(subkeys[i], A));
-        B = OpCodes.ToUint32(OpCodes.XorN(B, darkCryptFcryptF(t)));
+        const t = OpCodes.ToUint32(OpCodes.Xor32(subkeys[i], A));
+        B = OpCodes.ToUint32(OpCodes.Xor32(B, darkCryptFcryptF(t)));
       }
     }
     return [...OpCodes.Unpack32LE(A), ...OpCodes.Unpack32LE(B)];
@@ -362,7 +362,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.kc = null; this.ka = null; this.kb = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 24)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Fcrypt-EDE (DarkCrypt) requires exactly 24 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Fcrypt-EDE (DarkCrypt) requires exactly 24 bytes");
       this._key = [...keyBytes];
       this.kc = darkCryptFcryptExpandKey(this._key.slice(0, 8));
       this.ka = darkCryptFcryptExpandKey(this._key.slice(8, 16));
@@ -382,7 +382,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

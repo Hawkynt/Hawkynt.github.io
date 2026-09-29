@@ -167,6 +167,7 @@
 
 
 function encBlock(blk, SK, S0, S1, S2, S3){
+  /** @type {uint8[]} */
   const out = [0,0,0,0];
   let eax, ebx, ecx, edx, esi, edi, ebp;
   let st_0, st_4, st_8, st_c, st_10, st_14, st_18, st_1c, st_20, st_24, st_28, st_2c, st_30, st_34, st_38, st_3c, st_40;
@@ -1983,6 +1984,7 @@ function encBlock(blk, SK, S0, S1, S2, S3){
 }
 
 function decBlock(blk, SK, S0, S1, S2, S3){
+  /** @type {uint8[]} */
   const out = [0,0,0,0];
   let eax, ebx, ecx, edx, esi, edi, ebp;
   let st_0, st_4, st_8, st_c, st_10, st_14, st_18, st_1c, st_20, st_24, st_28, st_2c, st_30, st_34, st_38, st_3c, st_40;
@@ -3869,7 +3871,7 @@ function decBlock(blk, SK, S0, S1, S2, S3){
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._SK = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Shogashi (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Shogashi (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this._SK = deriveSubkeys(this._key);
       this.KeySize = keyBytes.length;
@@ -3887,7 +3889,7 @@ function decBlock(blk, SK, S0, S1, S2, S3){
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

@@ -106,7 +106,7 @@
     // Key setup function
     KeySetup: function(key) {
       if (!key || key.length < this.minKeyLength || key.length > this.maxKeyLength) {
-        throw new Error(`Invalid key size: ${key ? key.length : 0} bytes. DEAL requires 16, 24, or 32 bytes`);
+        throw new Error("Invalid key size: " + (key ? key.length : 0) + " bytes. DEAL requires 16, 24, or 32 bytes");
       }
 
       // Set rounds based on key size (256-bit keys use 8 rounds, others use 6)
@@ -210,13 +210,13 @@
         const byte = result[i];
         // Expand each byte with some bits from neighbors
         expanded.push(byte);
-        expanded.push(OpCodes.OrN(OpCodes.Shr32(byte, 4), OpCodes.Shl32(OpCodes.AndN(result[(i + 1) % 8], 0x0F), 4)));
-        expanded.push(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(byte, 0x0F), 4), OpCodes.Shr32(result[(i + 7) % 8], 4)));
+        expanded.push(OpCodes.Or32(OpCodes.Shr32(byte, 4), OpCodes.Shl32(OpCodes.And32(result[(i + 1) % 8], 0x0F), 4)));
+        expanded.push(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(byte, 0x0F), 4), OpCodes.Shr32(result[(i + 7) % 8], 4)));
       }
 
       // Step 2: Apply round key to expanded data
       for (let i = 0; i < Math.min(expanded.length, roundKey.length * 3); i++) {
-        expanded[i] = OpCodes.XorN(expanded[i], roundKey[i % roundKey.length]);
+        expanded[i] = OpCodes.Xor32(expanded[i], roundKey[i % roundKey.length]);
       }
 
       // Step 3: S-box substitution (enhanced with multiple S-boxes)
@@ -232,8 +232,8 @@
       const compressed = new Array(8).fill(0);
       for (let i = 0; i < sboxed.length && i < 24; i++) {
         const targetByte = i % 8;
-        const shift = OpCodes.OrN(i / 8, 0);
-        compressed[targetByte] = OpCodes.XorN(compressed[targetByte], OpCodes.RotL8(sboxed[i], shift));
+        const shift = OpCodes.Or32(i / 8, 0);
+        compressed[targetByte] = OpCodes.Xor32(compressed[targetByte], OpCodes.RotL8(sboxed[i], shift));
       }
 
       // Step 5: Final mixing with additional permutations
@@ -241,7 +241,7 @@
         for (let i = 0; i < 8; i++) {
           const j = (i + 3) % 8;
           const k = (i + 5) % 8;
-          compressed[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(compressed[i], 1), compressed[j]), OpCodes.RotL8(compressed[k], 2));
+          compressed[i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotL8(compressed[i], 1), compressed[j]), OpCodes.RotL8(compressed[k], 2));
         }
       }
 
@@ -276,10 +276,10 @@
       ];
 
       const sTable = sBoxes[sboxIndex % sBoxes.length];
-      const row = OpCodes.Shr32(OpCodes.AndN(input, 0xC0), 6); // Upper 2 bits
-      const col = OpCodes.AndN(input, 0x3F);         // Lower 6 bits
+      const row = OpCodes.Shr32(OpCodes.And32(input, 0xC0), 6); // Upper 2 bits
+      const col = OpCodes.And32(input, 0x3F);         // Lower 6 bits
 
-      return sTable[(row * 16 + OpCodes.AndN(col, 0xF)) % 64];
+      return sTable[(row * 16 + OpCodes.And32(col, 0xF)) % 64];
     },
 
     // CreateInstance method for test framework compatibility

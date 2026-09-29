@@ -193,7 +193,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -226,6 +226,7 @@
 
     _initTables() {
       // Initial Permutation
+      /** @type {uint8[]} */
       this.IP = [
         58, 50, 42, 34, 26, 18, 10, 2,
         60, 52, 44, 36, 28, 20, 12, 4,
@@ -238,6 +239,7 @@
       ];
 
       // Final Permutation (inverse of IP)
+      /** @type {uint8[]} */
       this.FP = [
         40, 8, 48, 16, 56, 24, 64, 32,
         39, 7, 47, 15, 55, 23, 63, 31,
@@ -250,6 +252,7 @@
       ];
 
       // Permuted Choice 1 (64 bits to 56 bits)
+      /** @type {uint8[]} */
       this.PC1 = [
         57, 49, 41, 33, 25, 17, 9,
         1, 58, 50, 42, 34, 26, 18,
@@ -262,6 +265,7 @@
       ];
 
       // Permuted Choice 2 (56 bits to 48 bits)
+      /** @type {uint8[]} */
       this.PC2 = [
         14, 17, 11, 24, 1, 5,
         3, 28, 15, 6, 21, 10,
@@ -274,6 +278,7 @@
       ];
 
       // Expansion table (32 bits to 48 bits)
+      /** @type {uint8[]} */
       this.E = [
         32, 1, 2, 3, 4, 5,
         4, 5, 6, 7, 8, 9,
@@ -286,6 +291,7 @@
       ];
 
       // P-box permutation
+      /** @type {uint8[]} */
       this.P = [
         16, 7, 20, 21,
         29, 12, 28, 17,
@@ -298,6 +304,7 @@
       ];
 
       // Rotation schedule for key generation
+      /** @type {uint8[]} */
       this.SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
 
       // Initialize S-boxes

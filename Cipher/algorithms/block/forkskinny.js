@@ -30,6 +30,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ForkSkinny round constants (7-bit LFSR for 87 rounds)
+  /** @type {uint8[]} */
   const RC = [
     0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7e, 0x7d,
     0x7b, 0x77, 0x6f, 0x5f, 0x3e, 0x7c, 0x79, 0x73,
@@ -491,6 +492,7 @@
   const FORKSKINNY_128_384_ROUNDS_AFTER = 31;
 
   // Branching constants for left fork
+  /** @type {uint32[]} */
   const BRANCH_CONSTANT = [0x08040201, 0x82412010, 0x28140a05, 0x8844a251];
 
   // ForkSkinny-128-256 Algorithm

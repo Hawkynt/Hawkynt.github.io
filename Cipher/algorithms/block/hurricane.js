@@ -179,7 +179,7 @@
 
       // Validate key size (minimum 16 bytes)
       if (keyBytes.length < 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Hurricane requires minimum 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Hurricane requires minimum 16 bytes");
       }
 
       // Expand key if needed
@@ -239,7 +239,7 @@
     _calculateChecksum(bytes) {
       let checksum = 0;
       for (let i = 0; i < bytes.length; ++i) {
-        checksum = OpCodes.AndN((checksum + bytes[i]), 0xFF); // mod 256
+        checksum = OpCodes.And32((checksum + bytes[i]), 0xFF); // mod 256
       }
       return checksum;
     }
@@ -315,7 +315,7 @@
           // Generate candidate using key
           // IMPORTANT: z accumulates across retries (NOT reset on collision)
           for (let j = keyLen - 1; j >= m; --j) {
-            z = OpCodes.AndN((z + key[j] + x), 0xFF); // mod 256
+            z = OpCodes.And32((z + key[j] + x), 0xFF); // mod 256
           }
 
           // m increments on every attempt (matching Pascal GOTO KeyLoop behavior)
@@ -331,7 +331,7 @@
             ++x;
             ++attempts;
             if (attempts > MAX_ATTEMPTS) {
-              throw new Error(`Hurricane matrix generation failed: exceeded ${MAX_ATTEMPTS} attempts at position ${i}`);
+              throw new Error("Hurricane matrix generation failed: exceeded " + MAX_ATTEMPTS + " attempts at position " + i);
             }
           }
         }
@@ -387,7 +387,7 @@
         }
 
         // Pass 3: Backward with KeyCS XOR 0x55
-        output[len - 1] = this.matrix[output[len - 1]][OpCodes.XorN(keyCS, 0x55)];
+        output[len - 1] = this.matrix[output[len - 1]][OpCodes.Xor32(keyCS, 0x55)];
 
         // Pass 4: Backward with next byte
         for (let i = len - 2; i >= 0; --i) {
@@ -417,7 +417,7 @@
       }
 
       // Reverse Pass 3: Backward with KeyCS XOR 0x55
-      output[len - 1] = this.matrix_1[output[len - 1]][OpCodes.XorN(keyCS, 0x55)];
+      output[len - 1] = this.matrix_1[output[len - 1]][OpCodes.Xor32(keyCS, 0x55)];
 
       // Reverse Pass 2: Backward with previous byte
       for (let i = len - 1; i >= 1; --i) {

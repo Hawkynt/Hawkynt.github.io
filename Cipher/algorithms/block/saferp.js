@@ -235,7 +235,7 @@
       }
 
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16, 24, or 32)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16, 24, or 32)");
       }
 
       this._key = [...keyBytes];
@@ -254,7 +254,7 @@
     set rounds(value) {
       // Rounds are determined by key size, but allow override
       if (value !== 8 && value !== 12 && value !== 16) {
-        throw new Error(`Invalid rounds: ${value} (must be 8, 12, or 16)`);
+        throw new Error("Invalid rounds: " + value + " (must be 8, 12, or 16)");
       }
       // Will be set during key schedule
     }
@@ -435,7 +435,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % BLOCK_SIZE !== 0) {
-        throw new Error(`Input must be multiple of ${BLOCK_SIZE} bytes`);
+        throw new Error("Input must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
       const output = [];

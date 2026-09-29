@@ -57,7 +57,7 @@
     if (y === 0) return OpCodes.ToUint16(BASE - x);
 
     const p = x * y;               // at most 0xFFFE0001, safe in a JS double
-    const lo = OpCodes.AndN(p, 0xFFFF);
+    const lo = OpCodes.And32(p, 0xFFFF);
     const hi = OpCodes.Shr32(p, 16);
     let r = lo - hi;
     if (r < 0) r += BASE;
@@ -169,7 +169,7 @@
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. IDEA (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. IDEA (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.encryptKeys = this._expandKey(keyBytes);
@@ -188,7 +188,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

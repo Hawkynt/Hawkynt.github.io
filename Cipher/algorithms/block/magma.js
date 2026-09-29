@@ -61,9 +61,9 @@
   function transformT(input) {
     let output = 0;
     for (let i = 0; i < 8; ++i) {
-      const nibble = OpCodes.AndN(OpCodes.Shr32(input, 4 * i), 0x0F);
+      const nibble = OpCodes.And32(OpCodes.Shr32(input, 4 * i), 0x0F);
       const substituted = SBOX[i][nibble];
-      output = OpCodes.OrN(output, OpCodes.Shl32(substituted, 4 * i));
+      output = OpCodes.Or32(output, OpCodes.Shl32(substituted, 4 * i));
     }
     return OpCodes.Shr32(output, 0);
   }
@@ -231,7 +231,7 @@
       }
 
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 32 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -271,7 +271,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];
@@ -297,11 +297,11 @@
       for (let i = 0; i < 31; ++i) {
         const temp = a1;
         a1 = a0;
-        a0 = OpCodes.XorN(transformG(this._roundKeys[i], a0), temp);
+        a0 = OpCodes.Xor32(transformG(this._roundKeys[i], a0), temp);
       }
 
       // Final round G*[k](a_1, a_0) = (g[k](a_0) XOR a_1, a_0)
-      const finalOutput1 = OpCodes.XorN(transformG(this._roundKeys[31], a0), a1);
+      const finalOutput1 = OpCodes.Xor32(transformG(this._roundKeys[31], a0), a1);
       const finalOutput0 = a0;
 
       // Convert back to bytes (big-endian per RFC 8891): output is (finalOutput1, finalOutput0)

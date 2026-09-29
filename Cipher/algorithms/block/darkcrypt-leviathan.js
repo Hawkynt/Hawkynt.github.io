@@ -74,7 +74,7 @@
         }
       }
     }
-    for (let k = 0; k < 256; ++k) table[k] = OpCodes.XorN(table[k], k);
+    for (let k = 0; k < 256; ++k) table[k] = OpCodes.Xor32(table[k], k);
     return table;
   }
 
@@ -101,12 +101,12 @@
       index++;
 
       edx = OpCodes.RotR32(edx, 8);
-      eax = OpCodes.XorN(eax, table[OpCodes.And32(eax, 0xFF)]);
-      edx = OpCodes.XorN(edx, table[OpCodes.And32(edx, 0xFF)]);
+      eax = OpCodes.Xor32(eax, table[OpCodes.And32(eax, 0xFF)]);
+      edx = OpCodes.Xor32(edx, table[OpCodes.And32(edx, 0xFF)]);
       edx = OpCodes.RotR32(edx, 8);
       eax = OpCodes.RotL32(eax, 8);
-      eax = OpCodes.XorN(eax, table[OpCodes.And32(eax, 0xFF)]);
-      edx = OpCodes.XorN(edx, table[OpCodes.And32(edx, 0xFF)]);
+      eax = OpCodes.Xor32(eax, table[OpCodes.And32(eax, 0xFF)]);
+      edx = OpCodes.Xor32(edx, table[OpCodes.And32(edx, 0xFF)]);
       counter = OpCodes.ToUint32(counter * 2);
       eax = OpCodes.RotL32(eax, 8);
 
@@ -138,12 +138,12 @@
         h1[index] = a; h2[index] = d; h3[index] = c;
 
         d = OpCodes.RotR32(d, 8);
-        a = OpCodes.XorN(a, table[OpCodes.And32(a, 0xFF)]);
-        d = OpCodes.XorN(d, table[OpCodes.And32(d, 0xFF)]);
+        a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
+        d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
         d = OpCodes.RotR32(d, 8);
         a = OpCodes.RotL32(a, 8);
-        a = OpCodes.XorN(a, table[OpCodes.And32(a, 0xFF)]);
-        d = OpCodes.XorN(d, table[OpCodes.And32(d, 0xFF)]);
+        a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
+        d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
         c = OpCodes.ToUint32(c * 2);
         a = OpCodes.RotL32(a, 8);
 
@@ -157,14 +157,14 @@
 
       let a = OpCodes.ToUint32(~h1[index - 1]);
       a = OpCodes.RotR32(a, 8);
-      a = OpCodes.XorN(a, table[OpCodes.And32(a, 0xFF)]);
+      a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
       a = OpCodes.RotR32(a, 8);
-      a = OpCodes.XorN(a, table[OpCodes.And32(a, 0xFF)]);
+      a = OpCodes.Xor32(a, table[OpCodes.And32(a, 0xFF)]);
 
       let d = h2[index - 1];
       d = OpCodes.XorN(d, table[OpCodes.And32(d, 0xFF)]);
       d = OpCodes.RotL32(d, 8);
-      d = OpCodes.XorN(d, table[OpCodes.And32(d, 0xFF)]);
+      d = OpCodes.Xor32(d, table[OpCodes.And32(d, 0xFF)]);
       d = OpCodes.RotL32(d, 8);
 
       const newX3 = OpCodes.ToUint32(2 * h3[index - 1] + 1);
@@ -234,7 +234,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._table = null; this._state = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Leviathan (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Leviathan (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._table = keySchedule(this._key);
@@ -253,7 +253,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -272,7 +272,7 @@
       for (const w of words) ks.push(...OpCodes.Unpack32LE(w));
 
       const out = new Array(this.BlockSize);
-      for (let i = 0; i < this.BlockSize; ++i) out[i] = OpCodes.XorN(block[i], ks[i]);
+      for (let i = 0; i < this.BlockSize; ++i) out[i] = OpCodes.Xor32(block[i], ks[i]);
       return out;
     }
   }

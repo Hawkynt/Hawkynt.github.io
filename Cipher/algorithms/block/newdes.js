@@ -163,6 +163,7 @@
       this.buffer = [];
 
       // NewDES S-box (rotor) - fixed substitution table
+      /** @type {uint8[]} */
       this.rotor = [
         32, 137, 239, 188, 102, 125, 221,  72, 212,  68,  81,  37,  86, 237, 147, 149,
         70, 229,  17, 124, 115, 207,  33,  20, 122, 143,  25, 215,  51, 183, 138, 142,
@@ -208,7 +209,7 @@
 
       // Validate key size
       if (keyBytes.length !== 15) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 15 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 15 bytes)");
       }
 
       // Store the original key

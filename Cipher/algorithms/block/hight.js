@@ -247,7 +247,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (HIGHT requires 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (HIGHT requires 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -277,10 +277,10 @@
       // Generate remaining 128 bytes using DELTA constants
       for (let i = 0; i < 8; i++) {
         for (let j = 0; j < 8; j++) {
-          this.roundKeys[8 + 16 * i + j] = OpCodes.AndN(this._key[OpCodes.AndN(j - i, 7)] + DELTA[16 * i + j], 0xFF);
+          this.roundKeys[8 + 16 * i + j] = OpCodes.And32(this._key[OpCodes.And32(j - i, 7)] + DELTA[16 * i + j], 0xFF);
         }
         for (let j = 0; j < 8; j++) {
-          this.roundKeys[8 + 16 * i + j + 8] = OpCodes.AndN(this._key[OpCodes.AndN(j - i, 7) + 8] + DELTA[16 * i + j + 8], 0xFF);
+          this.roundKeys[8 + 16 * i + j + 8] = OpCodes.And32(this._key[OpCodes.And32(j - i, 7) + 8] + DELTA[16 * i + j + 8], 0xFF);
         }
       }
     }
@@ -291,10 +291,10 @@
      * The macro: HIGHT_ENC(k, i0,i1,i2,i3,i4,i5,i6,i7)
      */
     _encryptRound(xx, k, i0, i1, i2, i3, i4, i5, i6, i7) {
-      xx[i0] = OpCodes.AndN(OpCodes.XorN(xx[i0], F0[xx[i1]] + this.roundKeys[4 * k + 3]), 0xFF);
-      xx[i2] = OpCodes.AndN(xx[i2] + OpCodes.XorN(F1[xx[i3]], this.roundKeys[4 * k + 2]), 0xFF);
-      xx[i4] = OpCodes.AndN(OpCodes.XorN(xx[i4], F0[xx[i5]] + this.roundKeys[4 * k + 1]), 0xFF);
-      xx[i6] = OpCodes.AndN(xx[i6] + OpCodes.XorN(F1[xx[i7]], this.roundKeys[4 * k + 0]), 0xFF);
+      xx[i0] = OpCodes.And32(OpCodes.Xor32(xx[i0], F0[xx[i1]] + this.roundKeys[4 * k + 3]), 0xFF);
+      xx[i2] = OpCodes.And32(xx[i2] + OpCodes.Xor32(F1[xx[i3]], this.roundKeys[4 * k + 2]), 0xFF);
+      xx[i4] = OpCodes.And32(OpCodes.Xor32(xx[i4], F0[xx[i5]] + this.roundKeys[4 * k + 1]), 0xFF);
+      xx[i6] = OpCodes.And32(xx[i6] + OpCodes.Xor32(F1[xx[i7]], this.roundKeys[4 * k + 0]), 0xFF);
     }
 
     /**
@@ -303,10 +303,10 @@
      * The macro: HIGHT_DEC(k, i0,i1,i2,i3,i4,i5,i6,i7)
      */
     _decryptRound(xx, k, i0, i1, i2, i3, i4, i5, i6, i7) {
-      xx[i1] = OpCodes.AndN(xx[i1] - OpCodes.XorN(F1[xx[i2]], this.roundKeys[4 * k + 2]), 0xFF);
-      xx[i3] = OpCodes.AndN(OpCodes.XorN(xx[i3], F0[xx[i4]] + this.roundKeys[4 * k + 1]), 0xFF);
-      xx[i5] = OpCodes.AndN(xx[i5] - OpCodes.XorN(F1[xx[i6]], this.roundKeys[4 * k + 0]), 0xFF);
-      xx[i7] = OpCodes.AndN(OpCodes.XorN(xx[i7], F0[xx[i0]] + this.roundKeys[4 * k + 3]), 0xFF);
+      xx[i1] = OpCodes.And32(xx[i1] - OpCodes.Xor32(F1[xx[i2]], this.roundKeys[4 * k + 2]), 0xFF);
+      xx[i3] = OpCodes.And32(OpCodes.Xor32(xx[i3], F0[xx[i4]] + this.roundKeys[4 * k + 1]), 0xFF);
+      xx[i5] = OpCodes.And32(xx[i5] - OpCodes.Xor32(F1[xx[i6]], this.roundKeys[4 * k + 0]), 0xFF);
+      xx[i7] = OpCodes.And32(OpCodes.Xor32(xx[i7], F0[xx[i0]] + this.roundKeys[4 * k + 3]), 0xFF);
     }
 
     /**
@@ -334,7 +334,7 @@
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 8-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -359,9 +359,9 @@
         xx[6] = block[5];
         xx[0] = block[7];
 
-        xx[1] = OpCodes.AndN(block[0] - this.roundKeys[4], 0xFF);
+        xx[1] = OpCodes.And32(block[0] - this.roundKeys[4], 0xFF);
         xx[3] = OpCodes.XorN(block[2], this.roundKeys[5]);
-        xx[5] = OpCodes.AndN(block[4] - this.roundKeys[6], 0xFF);
+        xx[5] = OpCodes.And32(block[4] - this.roundKeys[6], 0xFF);
         xx[7] = OpCodes.XorN(block[6], this.roundKeys[7]);
 
         // 32 rounds in reverse (lines 237-268)
@@ -400,11 +400,11 @@
 
         // Final transformation (lines 285-294)
         return [
-          OpCodes.AndN(xx[0] - this.roundKeys[0], 0xFF),
+          OpCodes.And32(xx[0] - this.roundKeys[0], 0xFF),
           xx[1],
           OpCodes.XorN(xx[2], this.roundKeys[1]),
           xx[3],
-          OpCodes.AndN(xx[4] - this.roundKeys[2], 0xFF),
+          OpCodes.And32(xx[4] - this.roundKeys[2], 0xFF),
           xx[5],
           OpCodes.XorN(xx[6], this.roundKeys[3]),
           xx[7]
@@ -418,9 +418,9 @@
         xx[5] = block[5];
         xx[7] = block[7];
 
-        xx[0] = OpCodes.AndN(block[0] + this.roundKeys[0], 0xFF);
+        xx[0] = OpCodes.And32(block[0] + this.roundKeys[0], 0xFF);
         xx[2] = OpCodes.XorN(block[2], this.roundKeys[1]);
-        xx[4] = OpCodes.AndN(block[4] + this.roundKeys[2], 0xFF);
+        xx[4] = OpCodes.And32(block[4] + this.roundKeys[2], 0xFF);
         xx[6] = OpCodes.XorN(block[6], this.roundKeys[3]);
 
         // 32 rounds (lines 157-188)
@@ -459,11 +459,11 @@
 
         // Final transformation (lines 205-214)
         return [
-          OpCodes.AndN(xx[1] + this.roundKeys[4], 0xFF),
+          OpCodes.And32(xx[1] + this.roundKeys[4], 0xFF),
           xx[2],
           OpCodes.XorN(xx[3], this.roundKeys[5]),
           xx[4],
-          OpCodes.AndN(xx[5] + this.roundKeys[6], 0xFF),
+          OpCodes.And32(xx[5] + this.roundKeys[6], 0xFF),
           xx[6],
           OpCodes.XorN(xx[7], this.roundKeys[7]),
           xx[0]

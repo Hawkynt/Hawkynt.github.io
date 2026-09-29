@@ -193,7 +193,7 @@ let MARSAlgorithm, MARSInstance;
     }
 
     if (keyBytes.length < 16 || keyBytes.length > 56 || keyBytes.length % 4 !== 0) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16-56, multiple of 4)`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16-56, multiple of 4)");
     }
 
     this._key = [...keyBytes];
@@ -215,7 +215,7 @@ let MARSAlgorithm, MARSInstance;
     if (!this.key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
     if (this.inputBuffer.length % this.BlockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
     }
 
     const output = [];
@@ -246,6 +246,7 @@ let MARSAlgorithm, MARSInstance;
 
   _initializeSBoxes() {
     // Official MARS S-box from Crypto++ implementation (512 entries total)
+    /** @type {uint32[]} */
     this.Sbox = [
       0x09d0c479, 0x28c8ffe0, 0x84aa6c39, 0x9dad7287, 0x7dff9be3, 0xd4268361, 0xc96da1d4, 0x7974cc93,
       0x85d0582e, 0x2a4b5705, 0x1ca16a62, 0xc3bd279d, 0x0f1f25e5, 0x5160372f, 0xc695c1fb, 0x4d7ff1e4,
@@ -358,7 +359,7 @@ let MARSAlgorithm, MARSInstance;
 
     // Modify multiplication key-words (Crypto++ key tweak from August 1999)
     for (let i = 5; i < 37; i += 2) {
-      const sel = OpCodes.AndN(K[i], 3);
+      const sel = OpCodes.And32(K[i], 3);
       let w = OpCodes.ToUint32(K[i]|3);
       let m = OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shl32(w, 1)))&OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(~w), OpCodes.Shr32(w, 1)))&0x7ffffffe);
       m = OpCodes.ToUint32(m&OpCodes.Shr32(m, 1));

@@ -126,6 +126,7 @@
       this.WORDS = 8;              // 8 x 64-bit words
       this.ROUNDS = 72;            // 72 rounds total
       this.SUBKEY_INTERVAL = 4;    // Subkey injection every 4 rounds
+      /** @type {uint32[]} */
       this.KEY_SCHEDULE_CONST = [0xA9FC1A22, 0x1BD11BDA]; // Split 64-bit constant: low, high
 
       // Threefish-512 rotation constants (d=0..7 for round positions, j=0..3 for word pairs)
@@ -631,7 +632,7 @@
         this._tweak = null;
       } else {
         if (tweakBytes.length !== 16) {
-          throw new Error(`Invalid tweak size: ${tweakBytes.length} bytes (must be 16)`);
+          throw new Error("Invalid tweak size: " + tweakBytes.length + " bytes (must be 16)");
         }
         this._tweak = [...tweakBytes];
       }
@@ -668,7 +669,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -712,7 +713,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block

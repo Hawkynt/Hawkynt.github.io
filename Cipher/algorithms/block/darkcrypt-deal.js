@@ -83,6 +83,7 @@
   const SCHEDULE_KEY = OpCodes.Hex8ToBytes('0123456789abcdef');
   // Per-round constant XORed into byte 0 of the corresponding user-key block
   // for rounds 4..7 (256-bit key schedule).
+  /** @type {uint8[]} */
   const ROUND_CONSTANTS = [0, 0, 0, 0, 0x80, 0x40, 0x20, 0x10];
 
   class DarkCryptDEALAlgorithm extends BlockCipherAlgorithm {
@@ -162,7 +163,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._subKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DEAL-256 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DEAL-256 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._subKeys = this._generateSubKeys(this._key);
@@ -180,7 +181,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

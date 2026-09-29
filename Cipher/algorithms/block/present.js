@@ -67,7 +67,7 @@
       const config = this._getVariantConfig(variant);
 
       // Required metadata
-      this.name = `PRESENT-${variant}`;
+      this.name = "PRESENT-" + variant;
       this.description = config.description;
       this.inventor = "Andrey Bogdanov, Lars R. Knudsen, Gregor Leander, Christof Paar, Axel Poschmann, Matthew J.B. Robshaw, Yannick Seurin, C. Vikkelsoe";
       this.year = 2007;
@@ -117,12 +117,14 @@
       this.KEY_SIZE_BITS = config.keySizeBits; // bits
 
       // PRESENT S-Box (4-bit substitution)
+      /** @type {uint8[]} */
       this.SBOX = [
         0xC, 0x5, 0x6, 0xB, 0x9, 0x0, 0xA, 0xD,
         0x3, 0xE, 0xF, 0x8, 0x4, 0x7, 0x1, 0x2
       ];
 
       // PRESENT Inverse S-Box
+      /** @type {uint8[]} */
       this.SBOX_INV = [
         0x5, 0xE, 0xF, 0x8, 0xC, 0x1, 0x2, 0xD,
         0xB, 0x4, 0x6, 0x3, 0x0, 0x7, 0x9, 0xA
@@ -267,7 +269,7 @@
 
       // Validate key size (variant-specific)
       if (keyBytes.length !== this.algorithm.KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. PRESENT-${this.algorithm.KEY_SIZE_BITS} requires ${this.algorithm.KEY_SIZE} bytes (${this.algorithm.KEY_SIZE_BITS} bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. PRESENT-" + this.algorithm.KEY_SIZE_BITS + " requires " + this.algorithm.KEY_SIZE + " bytes (" + this.algorithm.KEY_SIZE_BITS + " bits)");
       }
 
       this._key = [...keyBytes];
@@ -309,7 +311,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

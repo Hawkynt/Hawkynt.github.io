@@ -790,11 +790,11 @@ const rawRoundConstants = [
 
       let keyBytes;
       if (Array.isArray(value)) {
-        keyBytes = Array.from(value, (byte) => OpCodes.AndN(byte, 0xff));
+        keyBytes = Array.from(value, (byte) => OpCodes.And32(byte, 0xff));
       } else if (typeof value === "string") {
         keyBytes = OpCodes.AsciiToBytes(value);
       } else if (ArrayBuffer.isView(value)) {
-        keyBytes = Array.from(value, (byte) => OpCodes.AndN(byte, 0xff));
+        keyBytes = Array.from(value, (byte) => OpCodes.And32(byte, 0xff));
       } else {
         throw new Error("Khazad key must be array-like or string");
       }
@@ -841,7 +841,7 @@ const rawRoundConstants = [
         throw new Error("Feed expects array-like or string data");
       }
 
-      this.inputBuffer.push(...bytes.map((b) => OpCodes.AndN(b, 0xff)));
+      this.inputBuffer.push(...bytes.map((b) => OpCodes.And32(b, 0xff)));
     }
 
     /**
@@ -895,11 +895,11 @@ const rawRoundConstants = [
 
       for (let r = 0; r <= ROUNDS; r++) {
         const bytes = this._extractBytes(k1Hi, k1Lo);
-        let rhoHi = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].hi[bytes[0]], tables[1].hi[bytes[1]]), tables[2].hi[bytes[2]]), tables[3].hi[bytes[3]]), tables[4].hi[bytes[4]]), tables[5].hi[bytes[5]]), tables[6].hi[bytes[6]]), tables[7].hi[bytes[7]]);
-        let rhoLo = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].lo[bytes[0]], tables[1].lo[bytes[1]]), tables[2].lo[bytes[2]]), tables[3].lo[bytes[3]]), tables[4].lo[bytes[4]]), tables[5].lo[bytes[5]]), tables[6].lo[bytes[6]]), tables[7].lo[bytes[7]]);
+        let rhoHi = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].hi[bytes[0]], tables[1].hi[bytes[1]]), tables[2].hi[bytes[2]]), tables[3].hi[bytes[3]]), tables[4].hi[bytes[4]]), tables[5].hi[bytes[5]]), tables[6].hi[bytes[6]]), tables[7].hi[bytes[7]]);
+        let rhoLo = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].lo[bytes[0]], tables[1].lo[bytes[1]]), tables[2].lo[bytes[2]]), tables[3].lo[bytes[3]]), tables[4].lo[bytes[4]]), tables[5].lo[bytes[5]]), tables[6].lo[bytes[6]]), tables[7].lo[bytes[7]]);
 
-        rhoHi = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rhoHi, rcHi[r]), k2Hi));
-        rhoLo = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rhoLo, rcLo[r]), k2Lo));
+        rhoHi = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rhoHi, rcHi[r]), k2Hi));
+        rhoLo = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rhoLo, rcLo[r]), k2Lo));
 
         this.roundKeyEncHi[r] = rhoHi;
         this.roundKeyEncLo[r] = rhoLo;
@@ -920,8 +920,8 @@ const rawRoundConstants = [
         const bytes = this._extractBytes(keyHi, keyLo);
         const mapped = bytes.map((b) => sbox[b]);
 
-        const thetaHi = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].hi[mapped[0]], tables[1].hi[mapped[1]]), tables[2].hi[mapped[2]]), tables[3].hi[mapped[3]]), tables[4].hi[mapped[4]]), tables[5].hi[mapped[5]]), tables[6].hi[mapped[6]]), tables[7].hi[mapped[7]]));
-        const thetaLo = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].lo[mapped[0]], tables[1].lo[mapped[1]]), tables[2].lo[mapped[2]]), tables[3].lo[mapped[3]]), tables[4].lo[mapped[4]]), tables[5].lo[mapped[5]]), tables[6].lo[mapped[6]]), tables[7].lo[mapped[7]]));
+        const thetaHi = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].hi[mapped[0]], tables[1].hi[mapped[1]]), tables[2].hi[mapped[2]]), tables[3].hi[mapped[3]]), tables[4].hi[mapped[4]]), tables[5].hi[mapped[5]]), tables[6].hi[mapped[6]]), tables[7].hi[mapped[7]]));
+        const thetaLo = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].lo[mapped[0]], tables[1].lo[mapped[1]]), tables[2].lo[mapped[2]]), tables[3].lo[mapped[3]]), tables[4].lo[mapped[4]]), tables[5].lo[mapped[5]]), tables[6].lo[mapped[6]]), tables[7].lo[mapped[7]]));
 
         this.roundKeyDecHi[r] = thetaHi;
         this.roundKeyDecLo[r] = thetaLo;
@@ -938,34 +938,34 @@ const rawRoundConstants = [
       }
 
       const tables = this.algorithm.tables;
-      let hi = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), roundKeyHi[0]));
-      let lo = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), roundKeyLo[0]));
+      let hi = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), roundKeyHi[0]));
+      let lo = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), roundKeyLo[0]));
 
       for (let r = 1; r < ROUNDS; r++) {
         const bytes = this._extractBytes(hi, lo);
-        const nextHi = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].hi[bytes[0]], tables[1].hi[bytes[1]]), tables[2].hi[bytes[2]]), tables[3].hi[bytes[3]]), tables[4].hi[bytes[4]]), tables[5].hi[bytes[5]]), tables[6].hi[bytes[6]]), tables[7].hi[bytes[7]]), roundKeyHi[r]));
-        const nextLo = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(tables[0].lo[bytes[0]], tables[1].lo[bytes[1]]), tables[2].lo[bytes[2]]), tables[3].lo[bytes[3]]), tables[4].lo[bytes[4]]), tables[5].lo[bytes[5]]), tables[6].lo[bytes[6]]), tables[7].lo[bytes[7]]), roundKeyLo[r]));
+        const nextHi = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].hi[bytes[0]], tables[1].hi[bytes[1]]), tables[2].hi[bytes[2]]), tables[3].hi[bytes[3]]), tables[4].hi[bytes[4]]), tables[5].hi[bytes[5]]), tables[6].hi[bytes[6]]), tables[7].hi[bytes[7]]), roundKeyHi[r]));
+        const nextLo = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(tables[0].lo[bytes[0]], tables[1].lo[bytes[1]]), tables[2].lo[bytes[2]]), tables[3].lo[bytes[3]]), tables[4].lo[bytes[4]]), tables[5].lo[bytes[5]]), tables[6].lo[bytes[6]]), tables[7].lo[bytes[7]]), roundKeyLo[r]));
         hi = nextHi;
         lo = nextLo;
       }
 
       const finalBytes = this._extractBytes(hi, lo);
-      const finalHi = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(tables[0].hi[finalBytes[0]], 0xff000000), OpCodes.AndN(tables[1].hi[finalBytes[1]], 0x00ff0000)), OpCodes.AndN(tables[2].hi[finalBytes[2]], 0x0000ff00)), OpCodes.AndN(tables[3].hi[finalBytes[3]], 0x000000ff)), roundKeyHi[ROUNDS])));
-      const finalLo = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(tables[4].lo[finalBytes[4]], 0xff000000), OpCodes.AndN(tables[5].lo[finalBytes[5]], 0x00ff0000)), OpCodes.AndN(tables[6].lo[finalBytes[6]], 0x0000ff00)), OpCodes.AndN(tables[7].lo[finalBytes[7]], 0x000000ff)), roundKeyLo[ROUNDS])));
+      const finalHi = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(tables[0].hi[finalBytes[0]], 0xff000000), OpCodes.And32(tables[1].hi[finalBytes[1]], 0x00ff0000)), OpCodes.And32(tables[2].hi[finalBytes[2]], 0x0000ff00)), OpCodes.And32(tables[3].hi[finalBytes[3]], 0x000000ff)), roundKeyHi[ROUNDS])));
+      const finalLo = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(tables[4].lo[finalBytes[4]], 0xff000000), OpCodes.And32(tables[5].lo[finalBytes[5]], 0x00ff0000)), OpCodes.And32(tables[6].lo[finalBytes[6]], 0x0000ff00)), OpCodes.And32(tables[7].lo[finalBytes[7]], 0x000000ff)), roundKeyLo[ROUNDS])));
 
       return OpCodes.Unpack32BE(finalHi).concat(OpCodes.Unpack32BE(finalLo));
     }
 
     _extractBytes(hi, lo) {
       return [
-        OpCodes.AndN(OpCodes.Shr32(hi, 24), 0xff),
-        OpCodes.AndN(OpCodes.Shr32(hi, 16), 0xff),
-        OpCodes.AndN(OpCodes.Shr32(hi, 8), 0xff),
-        OpCodes.AndN(hi, 0xff),
-        OpCodes.AndN(OpCodes.Shr32(lo, 24), 0xff),
-        OpCodes.AndN(OpCodes.Shr32(lo, 16), 0xff),
-        OpCodes.AndN(OpCodes.Shr32(lo, 8), 0xff),
-        OpCodes.AndN(lo, 0xff)
+        OpCodes.And32(OpCodes.Shr32(hi, 24), 0xff),
+        OpCodes.And32(OpCodes.Shr32(hi, 16), 0xff),
+        OpCodes.And32(OpCodes.Shr32(hi, 8), 0xff),
+        OpCodes.And32(hi, 0xff),
+        OpCodes.And32(OpCodes.Shr32(lo, 24), 0xff),
+        OpCodes.And32(OpCodes.Shr32(lo, 16), 0xff),
+        OpCodes.And32(OpCodes.Shr32(lo, 8), 0xff),
+        OpCodes.And32(lo, 0xff)
       ];
     }
   }

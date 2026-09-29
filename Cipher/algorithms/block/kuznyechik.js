@@ -81,16 +81,16 @@
   // GF(OpCodes.Xor32(2, 8)) multiplication with irreducible polynomial 0x1C3 (OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 7) + OpCodes.Xor32(x, 6) + x + 1)
   function gfMul(a, b) {
     let result = 0;
-    let aVal = OpCodes.AndN(a, 0xFF);
-    let bVal = OpCodes.AndN(b, 0xFF);
+    let aVal = OpCodes.And32(a, 0xFF);
+    let bVal = OpCodes.And32(b, 0xFF);
     for (let i = 0; i < 8; ++i) {
-      if (OpCodes.AndN(bVal, 1)) result = OpCodes.XorN(result, aVal);
-      const high_bit_set = OpCodes.AndN(aVal, 0x80);
-      aVal = OpCodes.AndN(OpCodes.Shl32(aVal, 1), 0xFF);
-      if (high_bit_set) aVal = OpCodes.XorN(aVal, 0xC3); // Reduction modulo 0x1C3
+      if (OpCodes.AndN(bVal, 1)) result = OpCodes.Xor32(result, aVal);
+      const high_bit_set = OpCodes.And32(aVal, 0x80);
+      aVal = OpCodes.And32(OpCodes.Shl32(aVal, 1), 0xFF);
+      if (high_bit_set) aVal = OpCodes.Xor32(aVal, 0xC3); // Reduction modulo 0x1C3
       bVal = OpCodes.Shr32(bVal, 1);
     }
-    return OpCodes.AndN(result, 0xFF);
+    return OpCodes.And32(result, 0xFF);
   }
 
   // Single R transformation from RFC 7801:
@@ -102,7 +102,7 @@
     // Calculate l(a) = sum of gfMul(LINEAR[i], a[i]) for i=0..15
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l = OpCodes.XorN(l, gfMul(LINEAR[i], block[i]));
+      l = OpCodes.Xor32(l, gfMul(LINEAR[i], block[i]));
     }
 
     // Shift right and insert l at position 0
@@ -134,10 +134,10 @@
     // Calculate l(a')
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l = OpCodes.XorN(l, gfMul(LINEAR[i], result[i]));
+      l = OpCodes.Xor32(l, gfMul(LINEAR[i], result[i]));
     }
 
-    result[15] = OpCodes.XorN(block[0], l);
+    result[15] = OpCodes.Xor32(block[0], l);
     return result;
   }
 
@@ -349,7 +349,7 @@
       }
 
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 32 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -387,7 +387,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 16 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 16)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
       const output = [];

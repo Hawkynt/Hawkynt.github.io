@@ -204,7 +204,7 @@
 
       // Validate key size
       if (keyBytes.length !== 10) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 10)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 10)");
       }
 
       this._key = [...keyBytes];
@@ -276,30 +276,30 @@
      * The G permutation (following BouncyCastle implementation)
      */
     _G(k, w) {
-      let g1 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
-      let g2 = OpCodes.AndN(w, 0xFF);
+      let g1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      let g2 = OpCodes.And32(w, 0xFF);
 
-      let g3 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g2, this.key0[k])], g1);
-      let g4 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g3, this.key1[k])], g2);
-      let g5 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g4, this.key2[k])], g3);
-      let g6 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(g5, this.key3[k])], g4);
+      let g3 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g2, this.key0[k])], g1);
+      let g4 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g3, this.key1[k])], g2);
+      let g5 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g4, this.key2[k])], g3);
+      let g6 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(g5, this.key3[k])], g4);
       
-      return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(g5, 8), g6));
+      return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(g5, 8), g6));
     }
     
     /**
      * The inverse of the G permutation (H function)
      */
     _H(k, w) {
-      let h1 = OpCodes.AndN(w, 0xFF);
-      let h2 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
+      let h1 = OpCodes.And32(w, 0xFF);
+      let h2 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
 
-      let h3 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h2, this.key3[k])], h1);
-      let h4 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h3, this.key2[k])], h2);
-      let h5 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h4, this.key1[k])], h3);
-      let h6 = OpCodes.XorN(this.FTABLE[OpCodes.XorN(h5, this.key0[k])], h4);
+      let h3 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h2, this.key3[k])], h1);
+      let h4 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h3, this.key2[k])], h2);
+      let h5 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h4, this.key1[k])], h3);
+      let h6 = OpCodes.Xor32(this.FTABLE[OpCodes.Xor32(h5, this.key0[k])], h4);
 
-      return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(h6, 8), h5));
+      return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(h6, 8), h5));
     }
 
     /**
@@ -315,10 +315,10 @@
       }
 
       // Convert plaintext to 4 16-bit words (big-endian)
-      let w1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[0], 8), OpCodes.AndN(block[1], 0xFF)));
-      let w2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[2], 8), OpCodes.AndN(block[3], 0xFF)));
-      let w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[4], 8), OpCodes.AndN(block[5], 0xFF)));
-      let w4 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[6], 8), OpCodes.AndN(block[7], 0xFF)));
+      let w1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[0], 8), OpCodes.And32(block[1], 0xFF)));
+      let w2 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[2], 8), OpCodes.And32(block[3], 0xFF)));
+      let w3 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[4], 8), OpCodes.And32(block[5], 0xFF)));
+      let w4 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[6], 8), OpCodes.And32(block[7], 0xFF)));
 
       let k = 0;
 
@@ -330,7 +330,7 @@
           w4 = w3;
           w3 = w2;
           w2 = this._G(k, w1);
-          w1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w2, tmp), (k + 1)));
+          w1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w2, tmp), (k + 1)));
           k++;
         }
 
@@ -338,7 +338,7 @@
         for (let i = 0; i < 8; i++) {
           const tmp = w4;
           w4 = w3;
-          w3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w1, w2), (k + 1)));
+          w3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w1, w2), (k + 1)));
           w2 = this._G(k, w1);
           w1 = tmp;
           k++;
@@ -347,10 +347,10 @@
 
       // Pack back to bytes
       const cipherBytes = [
-        OpCodes.AndN(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.AndN(w1, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.AndN(w2, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.AndN(w3, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.AndN(w4, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF)
       ];
 
       return cipherBytes;
@@ -370,10 +370,10 @@
 
       // Convert ciphertext to 4 16-bit words (big-endian)
       // Note: BouncyCastle uses different order for decryption input
-      let w2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[0], 8), OpCodes.AndN(block[1], 0xFF)));
-      let w1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[2], 8), OpCodes.AndN(block[3], 0xFF)));
-      let w4 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[4], 8), OpCodes.AndN(block[5], 0xFF)));
-      let w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(block[6], 8), OpCodes.AndN(block[7], 0xFF)));
+      let w2 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[0], 8), OpCodes.And32(block[1], 0xFF)));
+      let w1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[2], 8), OpCodes.And32(block[3], 0xFF)));
+      let w4 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[4], 8), OpCodes.And32(block[5], 0xFF)));
+      let w3 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(block[6], 8), OpCodes.And32(block[7], 0xFF)));
 
       let k = 31;
 
@@ -385,7 +385,7 @@
           w4 = w3;
           w3 = w2;
           w2 = this._H(k, w1);
-          w1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w2, tmp), (k + 1)));
+          w1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w2, tmp), (k + 1)));
           k--;
         }
 
@@ -393,7 +393,7 @@
         for (let i = 0; i < 8; i++) {
           const tmp = w4;
           w4 = w3;
-          w3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(w1, w2), (k + 1)));
+          w3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(w1, w2), (k + 1)));
           w2 = this._H(k, w1);
           w1 = tmp;
           k--;
@@ -402,10 +402,10 @@
 
       // Pack back to bytes (different order for decryption output)
       const plainBytes = [
-        OpCodes.AndN(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.AndN(w2, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.AndN(w1, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.AndN(w4, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.AndN(w3, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(w2, 8), 0xFF), OpCodes.And32(w2, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w1, 8), 0xFF), OpCodes.And32(w1, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w4, 8), 0xFF), OpCodes.And32(w4, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF), OpCodes.And32(w3, 0xFF)
       ];
 
       return plainBytes;

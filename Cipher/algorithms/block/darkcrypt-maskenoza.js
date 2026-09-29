@@ -424,12 +424,14 @@
   // roundShift[r] is the "rol" amount applied to the rolSrc word, and
   // roundTableIndex[r] is which RK[] word that round consumes. Neither
   // sequence is a simple closed-form function of r.
+  /** @type {uint8[]} */
   const ROUND_SHIFT = [
     13,5,14,9,12,6,15,8,11,9,12,7,14,8,13,6,15,7,11,5,
     13,5,14,9,12,6,15,8,11,9,12,7,14,8,13,6,15,7,11,5,
     13,5,14,9,12,6,15,8,11,9,12,7,14,8,13,6,15,7,11,5,
     13,5,14,9,12,6,15,8,11,9,12,7,14,8,13,6,15,7,11,5
   ];
+  /** @type {uint8[]} */
   const ROUND_TABLE_INDEX = [
     79,69,78,68,77,67,76,66,75,65,74,64,73,63,72,62,71,61,70,60,
     59,49,58,48,57,47,56,46,55,45,54,44,53,43,52,42,51,41,50,40,
@@ -437,7 +439,9 @@
     19,9,18,8,17,7,16,6,15,5,14,4,13,3,12,2,11,1,10,0
   ];
 
+  /** @type {uint8[]} */
   const GROUP_ROT = [30, 25, 17, 10];
+  /** @type {uint32[]} */
   const GROUP_CONST = [0x70E44324, 0x9126145F, 0xA57D8667, 0];
 
   function fGroup(g, opA, opRot, opB) {
@@ -518,7 +522,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Maskenoza (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Maskenoza (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = this._buildSchedule(this._key);
@@ -536,7 +540,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

@@ -227,7 +227,7 @@
 
       // Validate key size (must be 24 bytes)
       if (keyBytes.length !== 24) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DES-X requires exactly 24 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DES-X requires exactly 24 bytes");
       }
 
       this._key = [...keyBytes];
@@ -278,7 +278,7 @@
       // Pre-whitening: XOR plaintext with K1
       const preWhitened = [];
       for (let i = 0; i < 8; i++) {
-        preWhitened[i] = OpCodes.XorN(block[i], this.K1[i]);
+        preWhitened[i] = OpCodes.Xor32(block[i], this.K1[i]);
       }
 
       // Apply DES encryption using working DES implementation
@@ -287,7 +287,7 @@
       // Post-whitening: XOR DES output with K2
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result[i] = OpCodes.XorN(desOutput[i], this.K2[i]);
+        result[i] = OpCodes.Xor32(desOutput[i], this.K2[i]);
       }
 
       return result;
@@ -297,7 +297,7 @@
       // Reverse post-whitening: XOR ciphertext with K2
       const postDewhitened = [];
       for (let i = 0; i < 8; i++) {
-        postDewhitened[i] = OpCodes.XorN(block[i], this.K2[i]);
+        postDewhitened[i] = OpCodes.Xor32(block[i], this.K2[i]);
       }
 
       // Apply DES decryption using working DES implementation
@@ -306,7 +306,7 @@
       // Reverse pre-whitening: XOR DES output with K1
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result[i] = OpCodes.XorN(desOutput[i], this.K1[i]);
+        result[i] = OpCodes.Xor32(desOutput[i], this.K1[i]);
       }
 
       return result;

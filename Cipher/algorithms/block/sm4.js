@@ -215,7 +215,7 @@
 
       // Validate key size (SM4 only supports 128-bit keys)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SM4 requires 128-bit (16 byte) keys.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SM4 requires 128-bit (16 byte) keys.");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -264,7 +264,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -287,19 +287,19 @@
       const rk = new Array(32);
 
       // Convert master key to 32-bit words (big-endian)
-      const K0 = OpCodes.XorN(OpCodes.Pack32BE(masterKey[0], masterKey[1], masterKey[2], masterKey[3]), Sm4Constants.FK[0]);
-      const K1 = OpCodes.XorN(OpCodes.Pack32BE(masterKey[4], masterKey[5], masterKey[6], masterKey[7]), Sm4Constants.FK[1]);
-      const K2 = OpCodes.XorN(OpCodes.Pack32BE(masterKey[8], masterKey[9], masterKey[10], masterKey[11]), Sm4Constants.FK[2]);
-      const K3 = OpCodes.XorN(OpCodes.Pack32BE(masterKey[12], masterKey[13], masterKey[14], masterKey[15]), Sm4Constants.FK[3]);
+      const K0 = OpCodes.Xor32(OpCodes.Pack32BE(masterKey[0], masterKey[1], masterKey[2], masterKey[3]), Sm4Constants.FK[0]);
+      const K1 = OpCodes.Xor32(OpCodes.Pack32BE(masterKey[4], masterKey[5], masterKey[6], masterKey[7]), Sm4Constants.FK[1]);
+      const K2 = OpCodes.Xor32(OpCodes.Pack32BE(masterKey[8], masterKey[9], masterKey[10], masterKey[11]), Sm4Constants.FK[2]);
+      const K3 = OpCodes.Xor32(OpCodes.Pack32BE(masterKey[12], masterKey[13], masterKey[14], masterKey[15]), Sm4Constants.FK[3]);
 
       // Generate round keys following C# reference pattern
-      rk[0] = OpCodes.XorN(K0, this._tPrime(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(K1, K2), K3), Sm4Constants.CK[0])));
-      rk[1] = OpCodes.XorN(K1, this._tPrime(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(K2, K3), rk[0]), Sm4Constants.CK[1])));
-      rk[2] = OpCodes.XorN(K2, this._tPrime(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(K3, rk[0]), rk[1]), Sm4Constants.CK[2])));
-      rk[3] = OpCodes.XorN(K3, this._tPrime(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(rk[0], rk[1]), rk[2]), Sm4Constants.CK[3])));
+      rk[0] = OpCodes.Xor32(K0, this._tPrime(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(K1, K2), K3), Sm4Constants.CK[0])));
+      rk[1] = OpCodes.Xor32(K1, this._tPrime(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(K2, K3), rk[0]), Sm4Constants.CK[1])));
+      rk[2] = OpCodes.Xor32(K2, this._tPrime(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(K3, rk[0]), rk[1]), Sm4Constants.CK[2])));
+      rk[3] = OpCodes.Xor32(K3, this._tPrime(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(rk[0], rk[1]), rk[2]), Sm4Constants.CK[3])));
 
       for (let i = 4; i < 32; i++) {
-        rk[i] = OpCodes.XorN(rk[i - 4], this._tPrime(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(rk[i - 3], rk[i - 2]), rk[i - 1]), Sm4Constants.CK[i])));
+        rk[i] = OpCodes.XorN(rk[i - 4], this._tPrime(OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(rk[i - 3], rk[i - 2]), rk[i - 1]), Sm4Constants.CK[i])));
       }
 
       return rk;
@@ -319,12 +319,12 @@
 
     // SM4 linear transformation L for encryption (L function)
     _L(input) {
-      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(input, OpCodes.RotL32(input, 2)), OpCodes.RotL32(input, 10)), OpCodes.RotL32(input, 18)), OpCodes.RotL32(input, 24));
+      return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(input, OpCodes.RotL32(input, 2)), OpCodes.RotL32(input, 10)), OpCodes.RotL32(input, 18)), OpCodes.RotL32(input, 24));
     }
 
     // SM4 linear transformation L' for key expansion (L' function)
     _LPrime(input) {
-      return OpCodes.XorN(OpCodes.XorN(input, OpCodes.RotL32(input, 13)), OpCodes.RotL32(input, 23));
+      return OpCodes.Xor32(OpCodes.Xor32(input, OpCodes.RotL32(input, 13)), OpCodes.RotL32(input, 23));
     }
 
     // SM4 combined transformation T for encryption
@@ -351,10 +351,10 @@
 
       // 32 rounds of SM4 transformation using C# unrolled loop pattern
       for (let i = 0; i < 32; i += 4) {
-        X0 = OpCodes.XorN(X0, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X1, X2), X3), this.roundKeys[i    ])));  // F0
-        X1 = OpCodes.XorN(X1, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X2, X3), X0), this.roundKeys[i + 1])));  // F1
-        X2 = OpCodes.XorN(X2, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X3, X0), X1), this.roundKeys[i + 2])));  // F2
-        X3 = OpCodes.XorN(X3, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X0, X1), X2), this.roundKeys[i + 3])));  // F3
+        X0 = OpCodes.Xor32(X0, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X1, X2), X3), this.roundKeys[i    ])));  // F0
+        X1 = OpCodes.Xor32(X1, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X2, X3), X0), this.roundKeys[i + 1])));  // F1
+        X2 = OpCodes.Xor32(X2, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X3, X0), X1), this.roundKeys[i + 2])));  // F2
+        X3 = OpCodes.Xor32(X3, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X0, X1), X2), this.roundKeys[i + 3])));  // F3
       }
 
       // Output transformation - reverse order (X3, X2, X1, X0)
@@ -384,10 +384,10 @@
 
       // 32 rounds of SM4 transformation using reversed round keys (C# unrolled loop pattern)
       for (let i = 28; i >= 0; i -= 4) {
-        X3 = OpCodes.XorN(X3, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X0, X1), X2), this.roundKeys[i + 3])));  // F3
-        X2 = OpCodes.XorN(X2, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X3, X0), X1), this.roundKeys[i + 2])));  // F2
-        X1 = OpCodes.XorN(X1, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X2, X3), X0), this.roundKeys[i + 1])));  // F1
-        X0 = OpCodes.XorN(X0, this._T(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(X1, X2), X3), this.roundKeys[i    ])));  // F0
+        X3 = OpCodes.Xor32(X3, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X0, X1), X2), this.roundKeys[i + 3])));  // F3
+        X2 = OpCodes.Xor32(X2, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X3, X0), X1), this.roundKeys[i + 2])));  // F2
+        X1 = OpCodes.Xor32(X1, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X2, X3), X0), this.roundKeys[i + 1])));  // F1
+        X0 = OpCodes.Xor32(X0, this._T(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X1, X2), X3), this.roundKeys[i    ])));  // F0
       }
 
       // Convert back to bytes (normal order)

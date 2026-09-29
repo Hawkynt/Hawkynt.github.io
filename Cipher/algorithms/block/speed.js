@@ -273,7 +273,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -285,7 +285,7 @@
 
     set blockSize(width) {
       if (width !== 8 && width !== 16 && width !== 32)
-        throw new Error(`Invalid block size: ${width} bytes. SPEED supports 8, 16 or 32`);
+        throw new Error("Invalid block size: " + width + " bytes. SPEED supports 8, 16 or 32");
       this._widthBytes = width;
       this.BlockSize = width;
       this._roundKeys = null;
@@ -296,7 +296,7 @@
     set rounds(count) {
       if (!count) { this._rounds = 0; this._roundKeys = null; return; }
       if (count < 32 || count % 4 !== 0)
-        throw new Error(`Invalid round count: ${count}. SPEED requires a multiple of 4, at least 32`);
+        throw new Error("Invalid round count: " + count + ". SPEED requires a multiple of 4, at least 32");
       this._rounds = count;
       this._roundKeys = null;
     }
@@ -319,7 +319,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this._widthBytes !== 0)
-        throw new Error(`Input length must be a multiple of ${this._widthBytes} bytes`);
+        throw new Error("Input length must be a multiple of " + this._widthBytes + " bytes");
 
       if (!this._roundKeys) this._roundKeys = this._expandKey();
 
@@ -354,7 +354,7 @@
       const keyBits = this._key.length * 8;
       const ldb = keyBits / 16;                  // key length in 16-bit double-bytes
       const q = Q_CONSTANTS[(keyBits - 48) / 16];
-      if (!q) throw new Error(`No key-schedule constants for a ${keyBits}-bit key`);
+      if (!q) throw new Error("No key-schedule constants for a " + keyBits + "-bit key");
 
       // Number of double-bytes the round keys consume.
       const last = blockBits === 64 ? rounds / 2 : (blockBits === 128 ? rounds : rounds * 2);

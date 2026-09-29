@@ -65,6 +65,7 @@
 
   // "Nothing up my sleeve" constants: fractional part of Euler's number e,
   // as 32-bit big-endian words (from the DFC AES submission specification).
+  /** @type {uint32[]} */
   const E_FRACTION = [
     0xb7e15162, 0x8aed2a6a, 0xbf715880, 0x9cf4f3c7,
     0x62e7160f, 0x38b4da56, 0xa784d904, 0x5190cfef,
@@ -212,7 +213,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._subKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DFC-128/256 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DFC-128/256 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._subKeys = this._generateSubKeys(this._key);
@@ -230,7 +231,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       const subKeys = this.isInverse ? this._subKeys.slice().reverse() : this._subKeys;

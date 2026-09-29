@@ -62,6 +62,7 @@
   // Fixed constant occupying bits 16-31 of the per-key-byte LCG reseed value.
   const SEED_GARBAGE = 0x04F70000;
   // Fixed step table used to walk table indices during key setup (1 followed by the first 34 odd primes).
+  /** @type {uint8[]} */
   const STEP_TABLE = [1, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
                        73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149];
 
@@ -137,7 +138,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._table = null; this._subkey = null; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. REDOC III (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. REDOC III (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._table = this._buildTable(this._key);
@@ -164,9 +165,9 @@
         for (let i = 0; i < TABLE_SIZE; i++) {
           pos = (pos + step) % TABLE_SIZE;
           seed = OpCodes.ToUint32(Math.imul(seed, LCG_MULT) + LCG_INC);
-          const rv = OpCodes.AndN(OpCodes.Shr32(seed, 16), 0x7FFF);
-          const lo = OpCodes.AndN(rv, 0xFF);
-          const hi = OpCodes.AndN(OpCodes.Shr32(rv, 8), 0xFF);
+          const rv = OpCodes.And32(OpCodes.Shr32(seed, 16), 0x7FFF);
+          const lo = OpCodes.And32(rv, 0xFF);
+          const hi = OpCodes.And32(OpCodes.Shr32(rv, 8), 0xFF);
           table[pos] = lo;
           const pos2 = pos + 1;
           if (pos2 === TABLE_SIZE - 1) table[0] = hi;
@@ -196,7 +197,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -212,14 +213,14 @@
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.XorN(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Xor32(subkey[si], data[si]) * TRANSFORMED_BYTES;
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
       }
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.XorN(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Xor32(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
       }
 
       return [...data, block[8], block[9]];
@@ -230,14 +231,14 @@
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.XorN(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Xor32(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
       }
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.XorN(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Xor32(subkey[si], data[si]) * TRANSFORMED_BYTES;
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[idx + di]);
       }
 
       return [...data, block[8], block[9]];

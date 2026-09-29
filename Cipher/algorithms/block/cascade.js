@@ -106,8 +106,8 @@
       this.cipher2Name = cipher2Name;
 
       // Required metadata
-      this.name = `Cascade(${cipher1Name},${cipher2Name})`;
-      this.description = `Sequential chaining of ${cipher1Name} and ${cipher2Name} block ciphers. Encrypts with ${cipher1Name} first, then ${cipher2Name}. Provides increased security margin through cipher diversity.`;
+      this.name = "Cascade(" + cipher1Name + "," + cipher2Name + ")";
+      this.description = "Sequential chaining of " + cipher1Name + " and " + cipher2Name + " block ciphers. Encrypts with " + cipher1Name + " first, then " + cipher2Name + ". Provides increased security margin through cipher diversity.";
       this.inventor = "Jack Lloyd (Botan Library)";
       this.year = 2010;
       this.category = CategoryType.BLOCK;
@@ -198,11 +198,11 @@
       this.cipher2Algorithm = AlgorithmFramework.Find(this.algorithm.cipher2Name);
 
       if (!this.cipher1Algorithm) {
-        throw new Error(`Cipher '${this.algorithm.cipher1Name}' not found in registry. Ensure it is loaded before CASCADE.`);
+        throw new Error("Cipher '" + this.algorithm.cipher1Name + "' not found in registry. Ensure it is loaded before CASCADE.");
       }
 
       if (!this.cipher2Algorithm) {
-        throw new Error(`Cipher '${this.algorithm.cipher2Name}' not found in registry. Ensure it is loaded before CASCADE.`);
+        throw new Error("Cipher '" + this.algorithm.cipher2Name + "' not found in registry. Ensure it is loaded before CASCADE.");
       }
 
       // Get block sizes
@@ -214,7 +214,7 @@
 
       // Verify block sizes are compatible (combined must be multiple of both)
       if (this.combinedBlockSize % this.blockSize1 !== 0 || this.combinedBlockSize % this.blockSize2 !== 0) {
-        throw new Error(`Incompatible block sizes: ${this.blockSize1} and ${this.blockSize2}`);
+        throw new Error("Incompatible block sizes: " + this.blockSize1 + " and " + this.blockSize2);
       }
 
       // Create cipher instances
@@ -248,7 +248,7 @@
       const requiredKeySize = key1Size + key2Size;
 
       if (keyBytes.length < requiredKeySize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${requiredKeySize} bytes = ${key1Size} + ${key2Size})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + requiredKeySize + " bytes = " + key1Size + " + " + key2Size + ")");
       }
 
       // Store full key
@@ -297,7 +297,7 @@
 
       // Validate input length is multiple of combined block size
       if (this.inputBuffer.length % this.combinedBlockSize !== 0) {
-        throw new Error(`Input length ${this.inputBuffer.length} is not a multiple of block size ${this.combinedBlockSize}`);
+        throw new Error("Input length " + this.inputBuffer.length + " is not a multiple of block size " + this.combinedBlockSize);
       }
 
       // Calculate number of CASCADE blocks (in terms of combined block size)
