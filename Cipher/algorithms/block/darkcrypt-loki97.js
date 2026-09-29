@@ -48,70 +48,170 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ---- 32-bit helpers -------------------------------------------------------
-  const u32 = x => OpCodes.ToUint32(x);
-  const SHR = (a, n) => (n &= 31, n === 0 ? u32(a) : OpCodes.Shr32(a, n));
-  const SHL = (a, n) => (n &= 31, OpCodes.Shl32(a, n));
+  /**
+   * @param {uint32} a - Word
+   * @param {int32} n - Shift amount (mod 32)
+   * @returns {uint32} a shifted right by n mod 32
+   */
+  function SHR(a, n) { return OpCodes.Shr32(a, OpCodes.And32(n, 31)); }
+  /**
+   * @param {uint32} a - Word
+   * @param {int32} n - Shift amount (mod 32)
+   * @returns {uint32} a shifted left by n mod 32, as an unsigned word
+   */
+  function SHL(a, n) { return OpCodes.Shl32(a, OpCodes.And32(n, 31)); }
 
   // GF(2^m) cube: value^3 with reduction polynomial `red` once a doubling reaches `thr`.
+  /**
+   * @param {uint32} a - Field element
+   * @param {uint32} b - Field element
+   * @param {uint32} red - Reduction polynomial
+   * @param {uint32} thr - 2^m
+   * @returns {uint32} a * b in GF(2^m)
+   */
   function gfMul(a, b, red, thr) {
-    a = u32(a); b = u32(b); let acc = 0;
+    /** @type {uint32} */
+    let acc = 0;
     while (b !== 0) {
-      if (OpCodes.And32(b, 1)) acc ^= a;
+      if (OpCodes.And32(b, 1) !== 0) acc = OpCodes.Xor32(acc, a);
       a = OpCodes.Shl32(a, 1);
-      if (u32(a) >= thr) a ^= red;
+      if (a >= thr) a = OpCodes.Xor32(a, red);
       b = OpCodes.Shr32(b, 1);
     }
-    return u32(acc);
+    return acc;
   }
+  /**
+   * @param {uint32} x - Field element
+   * @param {uint32} red - Reduction polynomial
+   * @param {uint32} thr - 2^m
+   * @returns {uint32} x^3 in GF(2^m)
+   */
   function cube(x, red, thr) { return gfMul(x, gfMul(x, x, red, thr), red, thr); }
+  /**
+   * @param {uint32} i - 13-bit input
+   * @returns {uint32} S1 output byte
+   */
   function S1(i) { return OpCodes.And32(cube(OpCodes.Xor32(i, 0x1FFF), 0x2911, 0x2000), 0xFF); } // GF(2^13)
+  /**
+   * @param {uint32} i - 11-bit input
+   * @returns {uint32} S2 output byte
+   */
   function S2(i) { return OpCodes.And32(cube(OpCodes.Xor32(i, 0x07FF), 0x0AA7, 0x0800), 0xFF); } // GF(2^11)
 
   // 64-bit rotate-left over the pair [hi, lo].
+  /**
+   * @param {uint32} hi - High word
+   * @param {uint32} lo - Low word
+   * @param {int32} n - Rotation amount
+   * @returns {uint32[]} Rotated [hi, lo]
+   */
   function rol64(hi, lo, n) {
     n = ((n % 64) + 64) % 64;
-    if (n === 0) return [hi, lo];
-    if (n === 32) return [lo, hi];
-    if (n < 32) return [OpCodes.Or32(OpCodes.Shl32(hi, n), OpCodes.Shr32(lo, 32 - n)), OpCodes.Or32(OpCodes.Shl32(lo, n), OpCodes.Shr32(hi, 32 - n))];
+    /** @type {uint32[]} */
+    let out = [hi, lo];
+    if (n === 0) return out;
+    if (n === 32) {
+      /** @type {uint32[]} */
+      const swapped = [lo, hi];
+      return swapped;
+    }
+    if (n < 32) {
+      /** @type {uint32[]} */
+      const low = [OpCodes.Or32(OpCodes.Shl32(hi, n), OpCodes.Shr32(lo, 32 - n)), OpCodes.Or32(OpCodes.Shl32(lo, n), OpCodes.Shr32(hi, 32 - n))];
+      return low;
+    }
     const m = n - 32;
-    return [OpCodes.Or32(OpCodes.Shl32(lo, m), OpCodes.Shr32(hi, 32 - m)), OpCodes.Or32(OpCodes.Shl32(hi, m), OpCodes.Shr32(lo, 32 - m))];
+    /** @type {uint32[]} */
+    const high = [OpCodes.Or32(OpCodes.Shl32(lo, m), OpCodes.Shr32(hi, 32 - m)), OpCodes.Or32(OpCodes.Shl32(hi, m), OpCodes.Shr32(lo, 32 - m))];
+    return high;
   }
 
   // Bit-scatter of a byte's low / high nibble to positions 7,15,23,31 (the P table).
-  function scatterLow(v)  { let o = 0; for (let j = 0; j < 4; j++) o |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(v, 4 + j), 1), 7 + 8 * j); return u32(o); }
-  function scatterHigh(v) { let o = 0; for (let j = 0; j < 4; j++) o |= OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(v, j), 1), 7 + 8 * j); return u32(o); }
+  /**
+   * @param {uint32} v - Byte
+   * @returns {uint32} Bits 4..7 of v at positions 7, 15, 23, 31
+   */
+  function scatterLow(v)  {
+    /** @type {uint32} */
+    let o = 0;
+    for (let j = 0; j < 4; j++) o = OpCodes.Or32(o, OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(v, 4 + j), 1), 7 + 8 * j));
+    return o;
+  }
+  /**
+   * @param {uint32} v - Byte
+   * @returns {uint32} Bits 0..3 of v at positions 7, 15, 23, 31
+   */
+  function scatterHigh(v) {
+    /** @type {uint32} */
+    let o = 0;
+    for (let j = 0; j < 4; j++) o = OpCodes.Or32(o, OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(v, j), 1), 7 + 8 * j));
+    return o;
+  }
 
-  // Sa layer S-box selection and index masks per 8-bit segment.
-  const SA_TABLES = [S1, S2, S1, S2, S2, S1, S2, S1];
+  // Sa layer S-box selection (true = S1, false = S2) and index masks per 8-bit segment.
+  /** @type {boolean[]} */
+  const SA_IS_S1 = [true, false, true, false, false, true, false, true];
   /** @type {uint16[]} */
   const SA_MASKS  = [0x1FFF, 0x7FF, 0x1FFF, 0x7FF, 0x7FF, 0x1FFF, 0x7FF, 0x1FFF];
 
   // 64-bit add / subtract over [hi, lo] pairs.
+  /**
+   * @param {uint32} h1 - High word of the first operand
+   * @param {uint32} l1 - Low word of the first operand
+   * @param {uint32} h2 - High word of the second operand
+   * @param {uint32} l2 - Low word of the second operand
+   * @returns {uint32[]} Sum [hi, lo] mod 2^64
+   */
   function add64(h1, l1, h2, l2) {
-    const lo = u32(l1 + l2);
-    const carry = OpCodes.ToUint32(lo) < OpCodes.ToUint32(l1) ? 1 : 0;
-    return [u32(h1 + h2 + carry), lo];
+    const lo = OpCodes.ToUint32(l1 + l2);
+    const carry = lo < l1 ? 1 : 0;
+    /** @type {uint32[]} */
+    const out = [OpCodes.Add32(OpCodes.Add32(h1, h2), carry), lo];
+    return out;
   }
+  /**
+   * @param {uint32} h1 - High word of the first operand
+   * @param {uint32} l1 - Low word of the first operand
+   * @param {uint32} h2 - High word of the second operand
+   * @param {uint32} l2 - Low word of the second operand
+   * @returns {uint32[]} Difference [hi, lo] mod 2^64
+   */
   function sub64(h1, l1, h2, l2) {
-    const borrow = OpCodes.ToUint32(l1) < OpCodes.ToUint32(l2) ? 1 : 0;
-    return [u32(h1 - h2 - borrow), u32(l1 - l2)];
+    const borrow = l1 < l2 ? 1 : 0;
+    /** @type {uint32[]} */
+    const out = [OpCodes.Sub32(OpCodes.Sub32(h1, h2), borrow), OpCodes.Sub32(l1, l2)];
+    return out;
   }
 
-  const DELTA_HI = 0x9E3779B9, DELTA_LO = 0x7F4A7C15; // DELTA = 0x9E3779B97F4A7C15
+  /** @type {uint32} */
+  const DELTA_HI = 0x9E3779B9; // DELTA = 0x9E3779B97F4A7C15
+  /** @type {uint32} */
+  const DELTA_LO = 0x7F4A7C15;
 
   // The LOKI97 f-function. A = (A1:A2) 64-bit, B = (X:SKr) 64-bit key/tweak word.
+  /**
+   * @param {uint32} A1 - High word of A
+   * @param {uint32} A2 - Low word of A
+   * @param {uint32} X - High word of B
+   * @param {uint32} SKr - Low word of B
+   * @returns {uint32[]} f(A, B) as [hi, lo]
+   */
   function fFunction(A1, A2, X, SKr) {
     // Keyed swap of A controlled by B: KP1/KP2 pick bits from A1/A2 depending on SKr.
-    const KP1 = u32(OpCodes.And32(A1, ~SKr) | OpCodes.And32(A2, SKr));
-    const KP2 = u32(OpCodes.And32(A1, SKr) | OpCodes.And32(A2, ~SKr));
+    const KP1 = OpCodes.Or32(OpCodes.And32(A1, OpCodes.Not32(SKr)), OpCodes.And32(A2, SKr));
+    const KP2 = OpCodes.Or32(OpCodes.And32(A1, SKr), OpCodes.And32(A2, OpCodes.Not32(SKr)));
 
     // Sa layer + P permutation over eight overlapping 8-bit windows of (KP1:KP2).
-    let pLow = 0, pHigh = 0;
+    /** @type {uint32} */
+    let pLow = 0;
+    /** @type {uint32} */
+    let pHigh = 0;
     for (let k = 0; k < 8; k++) {
       const w = rol64(KP1, KP2, 8 * (k + 1));
-      const s = SA_TABLES[k](OpCodes.And32(w[1], SA_MASKS[k]));
-      pLow  = u32(pLow  | SHR(scatterLow(s),  7 - k));
-      pHigh = u32(pHigh | SHR(scatterHigh(s), 7 - k));
+      const idx = OpCodes.And32(w[1], SA_MASKS[k]);
+      const sv = SA_IS_S1[k] ? S1(idx) : S2(idx);
+      pLow  = OpCodes.Or32(pLow, SHR(scatterLow(sv), 7 - k));
+      pHigh = OpCodes.Or32(pHigh, SHR(scatterHigh(sv), 7 - k));
     }
 
     // Sb layer folds the key word X into the permuted value, producing two 32-bit words.
@@ -119,15 +219,17 @@
     const l9  = S2(OpCodes.Or32(OpCodes.And32(SHR(X, 18), 0x700), OpCodes.And32(SHR(pLow, 16), 0xFF)));
     const l10 = S1(OpCodes.Or32(OpCodes.And32(SHR(X, 13), 0x1F00), OpCodes.And32(SHR(pLow, 8), 0xFF)));
     const l11 = S1(OpCodes.Or32(OpCodes.And32(SHR(X, 8), 0x1F00), OpCodes.And32(pLow, 0xFF)));
-    const word0 = u32(SHL(l8, 24) | SHL(l9, 16) | SHL(l10, 8) | l11);
+    const word0 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(SHL(l8, 24), SHL(l9, 16)), SHL(l10, 8)), l11);
 
     const l12 = S2(OpCodes.Or32(OpCodes.And32(SHR(X, 5), 0x700), OpCodes.And32(SHR(pHigh, 24), 0xFF)));
     const l13 = S2(OpCodes.Or32(OpCodes.And32(SHR(X, 2), 0x700), OpCodes.And32(SHR(pHigh, 16), 0xFF)));
     const l14 = S1(OpCodes.Or32(OpCodes.And32(SHL(X, 3), 0x1F00), OpCodes.And32(SHR(pHigh, 8), 0xFF)));
     const l15 = S1(OpCodes.Or32(OpCodes.And32(SHL(X, 8), 0x1F00), OpCodes.And32(pHigh, 0xFF)));
-    const word1 = u32(SHL(l12, 24) | SHL(l13, 16) | SHL(l14, 8) | l15);
+    const word1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(SHL(l12, 24), SHL(l13, 16)), SHL(l14, 8)), l15);
 
-    return [word0, word1];
+    /** @type {uint32[]} */
+    const out = [word0, word1];
+    return out;
   }
 
   class DarkCryptLOKI97Algorithm extends BlockCipherAlgorithm {
@@ -209,7 +311,8 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
-      this._sk = null;
+      /** @type {uint32[][]|null} */
+      this._pairs = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -220,11 +323,11 @@
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._sk = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._pairs = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. LOKI97 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
-      this._sk = this._keySchedule(this._key);
+      this._pairs = this._keySchedule(this._key);
       this.KeySize = keyBytes.length;
     }
 
@@ -255,34 +358,45 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @param {int32} idx - 64-bit word index
+     * @returns {uint32[]} The two little-endian 32-bit lanes of key word idx
+     */
+    _chunkLE(keyBytes, idx) {
+      const o = idx * 8;
+      /** @type {uint32[]} */
+      const lanes = [
+        OpCodes.Pack32LE(keyBytes[o], keyBytes[o + 1], keyBytes[o + 2], keyBytes[o + 3]),
+        OpCodes.Pack32LE(keyBytes[o + 4], keyBytes[o + 5], keyBytes[o + 6], keyBytes[o + 7])
+      ];
+      return lanes;
+    }
+
     // 48 subkeys SK[i] = k4 ^ f(k1 + k3 + i*DELTA, k2), Feistel-shifting the key words.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[][]} 48 subkeys as [hi, lo] pairs
      */
     _keySchedule(keyBytes) {
       // The key loader consumes the 256-bit key as four 64-bit words, each read
       // as two little-endian 32-bit lanes.
-      const chunkLE = idx => {
-        const o = idx * 8;
-        return [
-          OpCodes.Pack32LE(keyBytes[o], keyBytes[o + 1], keyBytes[o + 2], keyBytes[o + 3]),
-          OpCodes.Pack32LE(keyBytes[o + 4], keyBytes[o + 5], keyBytes[o + 6], keyBytes[o + 7])
-        ];
-      };
-      let Q0 = chunkLE(0), Q1 = chunkLE(1), Q2 = chunkLE(2), Q3 = chunkLE(3);
+      let Q0 = this._chunkLE(keyBytes, 0), Q1 = this._chunkLE(keyBytes, 1), Q2 = this._chunkLE(keyBytes, 2), Q3 = this._chunkLE(keyBytes, 3);
       let cstHi = DELTA_HI, cstLo = DELTA_LO;  // iteration i uses i*DELTA
-      const SK = [];
+      /** @type {uint32[][]} */
+      const pairs = [];
       for (let i = 1; i <= 48; i++) {
         const a1 = add64(Q0[0], Q0[1], Q2[0], Q2[1]);
         const a2 = add64(a1[0], a1[1], cstHi, cstLo);
         const f = fFunction(a2[0], a2[1], Q1[0], Q1[1]);
+        /** @type {uint32[]} */
         const SKi = [OpCodes.Xor32(Q3[0], f[0]), OpCodes.Xor32(Q3[1], f[1])];
-        SK.push(SKi);
+        pairs.push(SKi);
         Q3 = Q2; Q2 = Q1; Q1 = Q0; Q0 = SKi;
         const nc = add64(cstHi, cstLo, DELTA_HI, DELTA_LO);
         cstHi = nc[0]; cstLo = nc[1];
       }
-      return SK;
+      return pairs;
     }
 
     /**
@@ -290,16 +404,19 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       let L = [OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
                OpCodes.Pack32BE(block[4], block[5], block[6], block[7])];
+      /** @type {uint32[]} */
       let R = [OpCodes.Pack32BE(block[8], block[9], block[10], block[11]),
                OpCodes.Pack32BE(block[12], block[13], block[14], block[15])];
-      const SK = this._sk;
-      for (let r = 1; r <= 16; r++) {
-        const SKa = SK[3 * r - 3], SKb = SK[3 * r - 2], SKc = SK[3 * r - 1];
+      const pairs = this._pairs;
+      for (let rnd = 1; rnd <= 16; rnd++) {
+        const SKa = pairs[3 * rnd - 3], SKb = pairs[3 * rnd - 2], SKc = pairs[3 * rnd - 1];
         const s1 = add64(R[0], R[1], SKa[0], SKa[1]);
         const fo = fFunction(s1[0], s1[1], SKb[0], SKb[1]);
         const s3 = add64(s1[0], s1[1], SKc[0], SKc[1]);
+        /** @type {uint32[]} */
         const newR = [OpCodes.Xor32(L[0], fo[0]), OpCodes.Xor32(L[1], fo[1])];
         L = s3; R = newR;
       }
@@ -315,16 +432,19 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       let R = [OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
                OpCodes.Pack32BE(block[4], block[5], block[6], block[7])];
+      /** @type {uint32[]} */
       let L = [OpCodes.Pack32BE(block[8], block[9], block[10], block[11]),
                OpCodes.Pack32BE(block[12], block[13], block[14], block[15])];
-      const SK = this._sk;
-      for (let r = 16; r >= 1; r--) {
-        const SKa = SK[3 * r - 3], SKb = SK[3 * r - 2], SKc = SK[3 * r - 1];
+      const pairs = this._pairs;
+      for (let rnd = 16; rnd >= 1; rnd--) {
+        const SKa = pairs[3 * rnd - 3], SKb = pairs[3 * rnd - 2], SKc = pairs[3 * rnd - 1];
         const X = sub64(L[0], L[1], SKc[0], SKc[1]);
         const fo = fFunction(X[0], X[1], SKb[0], SKb[1]);
         const newR = sub64(X[0], X[1], SKa[0], SKa[1]);
+        /** @type {uint32[]} */
         const newL = [OpCodes.Xor32(R[0], fo[0]), OpCodes.Xor32(R[1], fo[1])];
         L = newL; R = newR;
       }
