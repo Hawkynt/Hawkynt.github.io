@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /**
- * Transpiler Validation Suite
+ * Cross-language transpiler validation (the VALIDATION category of tests/TranspilerSuite.js)
  *
  * Comprehensive cross-language testing of the cipher transpiler:
  * 1. Detects available compilers/interpreters
@@ -9,15 +8,16 @@
  * 4. Generates executable test harnesses with embedded test vectors
  * 5. Compiles and runs native code to validate test vectors match
  *
- * Usage:
- *   node TranspilerValidationSuite.js                    # Run all tests
- *   node TranspilerValidationSuite.js --category=block   # Test specific category
- *   node TranspilerValidationSuite.js --language=csharp  # Test specific language only
- *   node TranspilerValidationSuite.js --algorithm=tea    # Test specific algorithm
- *   node TranspilerValidationSuite.js --quick            # Quick test (3 algorithms per category)
- *   node TranspilerValidationSuite.js --compile-only     # Only test compilation (no execution)
- *   node TranspilerValidationSuite.js --verbose          # Verbose output
- *   node TranspilerValidationSuite.js --report           # Generate detailed JSON report
+ * A language passes when every algorithm it transpiled also compiled.
+ *
+ * Usage (it is slow unscoped, so it runs only when named):
+ *   node tests/TranspilerSuite.js --only=validation                    # every algorithm
+ *   node tests/TranspilerSuite.js --only=validation --category=block   # one category directory
+ *   node tests/TranspilerSuite.js --only=validation --language=csharp  # one language
+ *   node tests/TranspilerSuite.js --only=validation --algorithm=tea    # file names containing "tea"
+ *   node tests/TranspilerSuite.js --only=validation --quick            # 3 algorithms per category
+ *   node tests/TranspilerSuite.js --only=validation --compile-only     # no execution
+ *   node tests/TranspilerSuite.js --only=validation --report           # JSON report
  */
 
 const fs = require('fs');
@@ -37,15 +37,10 @@ const C = {
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m'
 };
 
-// Parse arguments
+// Options of the current run, set by run()
 const args = {
-  verbose: process.argv.includes('--verbose') || process.argv.includes('-v'),
-  quick: process.argv.includes('--quick'),
-  report: process.argv.includes('--report'),
-  compileOnly: process.argv.includes('--compile-only'),
-  category: process.argv.find(a => a.startsWith('--category='))?.split('=')[1],
-  language: process.argv.find(a => a.startsWith('--language='))?.split('=')[1],
-  algorithm: process.argv.find(a => a.startsWith('--algorithm='))?.split('=')[1],
+  verbose: false, quick: false, report: false, compileOnly: false,
+  category: null, language: null, algorithm: null,
 };
 
 // ============================================================================
@@ -2515,10 +2510,15 @@ function executeKotlin(outputDir) {
 // MAIN TEST ORCHESTRATION
 // ============================================================================
 
-async function main() {
-  console.log(`${C.bright}╔════════════════════════════════════════════════════════════╗${C.reset}`);
-  console.log(`${C.bright}║       Transpiler Validation Suite                          ║${C.reset}`);
-  console.log(`${C.bright}╚════════════════════════════════════════════════════════════╝${C.reset}\n`);
+/**
+ * VALIDATION: transpile every algorithm to every available language, compile
+ * it and, for the interpreted ones, run its test vectors.
+ * @param {object} options - { verbose, quick, report, compileOnly, category, language, algorithm }
+ * @returns {Promise<object>} { passed, failed, detail } counted in languages
+ */
+async function run(options = {}) {
+  for (const key of Object.keys(args))
+    args[key] = options[key] === undefined ? (typeof args[key] === 'boolean' ? false : null) : options[key];
 
   const startTime = Date.now();
 
@@ -2532,13 +2532,13 @@ async function main() {
       targetLanguages = [args.language];
     } else {
       console.log(`${C.red}Language '${args.language}' not available.${C.reset}`);
-      process.exit(1);
+      return { passed: 0, failed: 1, detail: `language ${args.language} not available` };
     }
   }
 
   if (targetLanguages.length === 0) {
     console.log(`${C.red}No compilers/interpreters found.${C.reset}`);
-    process.exit(1);
+    return { passed: 0, failed: 1, detail: 'no compilers/interpreters found' };
   }
 
   console.log(`${C.cyan}Target languages: ${targetLanguages.map(l => availableCompilers[l].name).join(', ')}${C.reset}\n`);
@@ -2790,16 +2790,20 @@ async function main() {
     }
   }
 
-  const overallSuccess = Object.values(results.byLanguage).every(s =>
-    s.failed === 0 || (s.compiled === s.transpiled)
-  );
+  // A language passes when nothing failed, or when every algorithm it
+  // transpiled also compiled.
+  const languageOk = s => s.failed === 0 || (s.compiled === s.transpiled);
+  const languages = Object.entries(results.byLanguage);
+  const passedLanguages = languages.filter(([, s]) => languageOk(s)).length;
 
-  console.log(`\n${overallSuccess ? C.green : C.yellow}Validation complete.${C.reset}`);
-  process.exit(overallSuccess ? 0 : 1);
+  console.log(`\n${passedLanguages === languages.length ? C.green : C.yellow}Validation complete.${C.reset}`);
+  return {
+    passed: passedLanguages,
+    failed: languages.length - passedLanguages,
+    detail: `${results.jsValidated}/${results.total} algorithms JS-validated; `
+      + languages.map(([lang, s]) => `${lang} compiled ${s.compiled}/${s.transpiled}`
+        + (!args.compileOnly && s.executed > 0 ? `, executed ${s.executed}/${s.compiled}` : '')).join('; ')
+  };
 }
 
-main().catch(e => {
-  console.error(`${C.red}Fatal error: ${e.message}${C.reset}`);
-  if (args.verbose) console.error(e.stack);
-  process.exit(1);
-});
+module.exports = { run };
