@@ -83,9 +83,10 @@
    * Message word permutation schedule (SIGMA).
    * 10 rounds of permutations for mixing message words in the compression function.
    * After round 9, the schedule wraps around (round 10 uses schedule 0, etc.).
-   * @constant {ReadonlyArray<ReadonlyArray<uint8> >}
+   * @constant
+   * @type {uint8[][]}
    */
-  const SIGMA = Object.freeze([
+  const SIGMA = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
     [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -96,7 +97,7 @@
     [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
     [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]
-  ]);
+  ];
 
   /**
    * Performs 64-bit right rotation on a BigInt value.
@@ -129,13 +130,14 @@
    * 3. v[a] = v[a] + v[b] + y; v[d] = (v[d] XOR v[a]) rotated right 16
    * 4. v[c] = v[c] + v[d]; v[b] = (v[b] XOR v[c]) rotated right 63
    *
-   * @param {Array<BigInt>} v - Working vector (16 x 64-bit words), modified in place
+   * @param {BigInt[]} v - Working vector (16 x 64-bit words), modified in place
    * @param {uint8} a - First state word index (0-15)
    * @param {uint8} b - Second state word index (0-15)
    * @param {uint8} c - Third state word index (0-15)
    * @param {uint8} d - Fourth state word index (0-15)
    * @param {BigInt} x - First message word (64-bit)
    * @param {BigInt} y - Second message word (64-bit)
+   * @returns {void}
    */
   function BLAKE2b_G(v, a, b, c, d, x, y) {
     v[a] = OpCodes.AndN((v[a] + v[b] + x), BigInt('0xffffffffffffffff'));
@@ -160,10 +162,11 @@
    * 4. Performs 12 rounds of mixing (8 G-function calls per round)
    * 5. XORs working vector back into hash state
    *
-   * @param {Array<BigInt>} h - Hash state (8 x 64-bit words), modified in place
-   * @param {Array<BigInt>} m - Message block (16 x 64-bit words)
-   * @param {Array<BigInt>} t - Byte counter [low64, high64]
+   * @param {BigInt[]} h - Hash state (8 x 64-bit words), modified in place
+   * @param {BigInt[]} m - Message block (16 x 64-bit words)
+   * @param {BigInt[]} t - Byte counter [low64, high64]
    * @param {boolean} f - Final block flag (true for last block)
+   * @returns {void}
    *
    * @example
    * // Compress a message block into hash state
@@ -173,6 +176,7 @@
    * BLAKE2b_compress(h, m, t, false); // not final block
    */
   function BLAKE2b_compress(h, m, t, f) {
+    /** @type {BigInt[]} */
     const v = new Array(16);
 
     // Initialize working vector
@@ -206,6 +210,28 @@
     for (let i = 0; i < 8; i++) {
       h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
     }
+  }
+
+  /**
+   * Convert a filled 128-byte buffer into 16 little-endian 64-bit words
+   * @param {uint8[]} buf - 128-byte block
+   * @returns {BigInt[]} Message words
+   */
+  function blockWords(buf) {
+    /** @type {BigInt[]} */
+    const words = new Array(16);
+    for (let i = 0; i < 16; i++) {
+      const idx = i * 8;
+      words[i] = OpCodes.OrN(BigInt(buf[idx]),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 1]), 8),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 2]), 16),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 3]), 24),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 4]), 32),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 5]), 40),
+                 OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 6]), 48),
+                             OpCodes.ShiftLn(BigInt(buf[idx + 7]), 56))))))));
+    }
+    return words;
   }
 
   /**
@@ -412,7 +438,7 @@
 
       /**
        * Secret key for MAC generation (1-64 bytes).
-       * @type {Array<uint8>|null}
+       * @type {uint8[]}
        * @private
        */
       this._key = null;
@@ -448,7 +474,7 @@
         throw new Error("Key must be a byte array");
       }
       if (keyBytes.length < 1 || keyBytes.length > BLAKE2B_KEYBYTES) {
-        throw new Error(`Key size must be between 1 and ${BLAKE2B_KEYBYTES} bytes`);
+        throw new Error('Key size must be between 1 and ' + BLAKE2B_KEYBYTES + ' bytes');
       }
       this._key = [...keyBytes];
     }
@@ -475,7 +501,7 @@
      */
     set outputSize(bytes) {
       if (!Number.isInteger(bytes) || bytes < 1 || bytes > BLAKE2B_OUTBYTES) {
-        throw new Error(`Output size must be between 1 and ${BLAKE2B_OUTBYTES} bytes`);
+        throw new Error('Output size must be between 1 and ' + BLAKE2B_OUTBYTES + ' bytes');
       }
       this._outputSize = bytes;
     }
@@ -494,7 +520,7 @@
      * Data is accumulated in an internal buffer until Result() is called.
      * Multiple Feed() calls can be made to process data incrementally.
      *
-     * @param {Array<uint8>|Uint8Array} data - Input bytes to authenticate
+     * @param {uint8[]} data - Input bytes to authenticate
      * @throws {Error} If key has not been set before feeding data
      *
      * @example
@@ -542,6 +568,7 @@
       if (!this._key) throw new Error("Key not set");
 
       // Initialize hash state
+      /** @type {BigInt[]} */
       const h = new Array(8);
       for (let i = 0; i < 8; i++) {
         h[i] = BLAKE2B_IV[i];
@@ -562,23 +589,6 @@
         }
         bufferLen = BLAKE2B_BLOCKBYTES; // Key block is always full
       }
-
-      // Convert a filled 128 byte buffer into 16 little-endian 64-bit words
-      const blockWords = buf => {
-        const words = new Array(16);
-        for (let i = 0; i < 16; i++) {
-          const idx = i * 8;
-          words[i] = OpCodes.OrN(BigInt(buf[idx]),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 1]), 8),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 2]), 16),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 3]), 24),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 4]), 32),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 5]), 40),
-                     OpCodes.OrN(OpCodes.ShiftLn(BigInt(buf[idx + 6]), 48),
-                                 OpCodes.ShiftLn(BigInt(buf[idx + 7]), 56))))))));
-        }
-        return words;
-      };
 
       // Process input data
       const input = this.inputBuffer;
@@ -616,11 +626,14 @@
       BLAKE2b_compress(h, blockWords(buffer), [totalLen, BigInt(0)], true);
 
       // Extract output bytes
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this._outputSize; i++) {
         const wordIndex = Math.floor(i / 8);
         const byteIndex = i % 8;
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(h[wordIndex], byteIndex * 8), BigInt(0xFF))));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(OpCodes.ShiftRn(h[wordIndex], byteIndex * 8), BigInt(0xFF)));
+        output.push(b);
       }
 
       this.inputBuffer = []; // Clear for next operation
