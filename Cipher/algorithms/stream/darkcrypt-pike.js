@@ -216,7 +216,7 @@
         {
           text: "DarkCrypt Pike - 64-byte key keystream",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: (function () { const z = new Array(128).fill(0); return z; })(),
+          input: (function () { const z = OpCodes.CreateArray(128, 0); return z; })(),
           key: (function () { const k = new Array(KEY_SIZE); for (let i = 0; i < KEY_SIZE; i++) k[i] = OpCodes.And32(i, 0xFF); return k; })(),
           expected: OpCodes.Hex8ToBytes("35d6782712939f32ec285eb4bb2d69ca9b40f741c877ada8dcc7f3621c46f25c41ff7dae6fee4983a225f7007beb26fd038138499fbef54e310d899ccbe82193f1cba7645c56cf82fc582a3527662d085d269059929eb783f1953d7dad93ad703e77943c37cb50be8a4aeb3cfacb3365c10e4f6ffe45b7d9ef09aaf4b45ab7da")
         },
@@ -236,31 +236,50 @@
   }
 
   class DarkCryptPikeInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptPikeAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
       this._regs = null;     // [regA, regB, regC]
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Pike (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Pike (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");

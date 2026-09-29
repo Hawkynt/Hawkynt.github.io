@@ -153,19 +153,24 @@
   class TriviumInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TriviumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Trivium state
       this.state = new Array(this.algorithm.TOTAL_STATE_SIZE); // 288-bit state
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -188,7 +193,7 @@
       }
 
       if (keyBytes.length !== 10) {
-        throw new Error(`Invalid Trivium key size: ${keyBytes.length} bytes. Requires exactly 10 bytes (80 bits)`);
+        throw new Error("Invalid Trivium key size: " + keyBytes.length + " bytes. Requires exactly 10 bytes (80 bits)");
       }
 
       this._key = [...keyBytes];
@@ -225,7 +230,7 @@
       }
 
       if (ivBytes.length !== 10) {
-        throw new Error(`Invalid Trivium IV size: ${ivBytes.length} bytes. Requires exactly 10 bytes (80 bits)`);
+        throw new Error("Invalid Trivium IV size: " + ivBytes.length + " bytes. Requires exactly 10 bytes (80 bits)");
       }
 
       this._iv = [...ivBytes];
@@ -286,12 +291,13 @@
         throw new Error("Trivium not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation

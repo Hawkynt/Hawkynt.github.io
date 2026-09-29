@@ -85,14 +85,16 @@
      * Initialize cipher with empty state
      */
     Init: function() {
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {boolean} */
       this.isInitialized = false;
       return true;
     },
 
     /**
      * Setup key for simplified AES-GCM-SIV
-     * @param {Array} key - Key as byte array
+     * @param {uint8[]} key - Key as byte array
      */
     KeySetup: function(key) {
       if (!key || key.length === 0) {
@@ -103,18 +105,19 @@
       this.key = key.slice(0, 16);
       while (this.key.length < 16) this.key.push(0);
 
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
 
     /**
      * Generate synthetic IV (deterministic, not data-dependent)
-     * @param {Array} data - Input data (ignored for reversibility)
-     * @returns {Array} Synthetic IV
+     * @param {uint8[]} data - Input data (ignored for reversibility)
+     * @returns {uint8[]} Synthetic IV
      */
     generateSIV: function(data) {
       // Deterministic IV generation for educational purposes
-      let siv = new Array(16).fill(0);
+      let siv = OpCodes.CreateArray(16, 0);
 
       // Generate IV based only on key (deterministic)
       for (let i = 0; i < 16; i++) {
@@ -128,12 +131,13 @@
 
     /**
      * Generate keystream bytes
-     * @param {Array} data - Input data (used for SIV generation)
+     * @param {uint8[]} data - Input data (used for SIV generation)
      * @param {number} length - Number of bytes to generate
-     * @returns {Array} Keystream bytes
+     * @returns {uint8[]} Keystream bytes
      */
     generateKeystream: function(data, length) {
       const siv = this.generateSIV(data);
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {
@@ -150,8 +154,8 @@
 
     /**
      * Encrypt/Decrypt data using simplified AES-GCM-SIV
-     * @param {Array} data - Input data
-     * @returns {Array} Output data
+     * @param {uint8[]} data - Input data
+     * @returns {uint8[]} Output data
      */
     processData: function(data) {
       if (!this.isInitialized) {
@@ -197,8 +201,10 @@
     ClearData: function() {
       if (this.key) {
         OpCodes.ClearArray(this.key);
+        /** @type {uint8[]|null} */
         this.key = null;
       }
+      /** @type {boolean} */
       this.isInitialized = false;
     },
 

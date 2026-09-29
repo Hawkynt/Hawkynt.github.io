@@ -81,7 +81,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           nonce: OpCodes.Hex8ToBytes("0000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("4015b28f6e12ab6ad9e8667b31c51233f78f172790b2d94f326b2ed7ffbcbecbff9ead365f89ce3b6f4055bc759d90fd8f831d27c7b0df93b3b9ed8238a256d6761a6e0fc8b2b859f5a9f3ae170a7599b0b023ce79d7659b32ee79373e727289712ff289f30f641fcd822ff8e656ffd8725691f839a7b433a5b61053d99baee0")
         },
         {
@@ -101,12 +101,19 @@
   }
 
   class ChaCha8DarkCryptInstance extends IAlgorithmInstance {
+    /**
+     * @param {ChaCha8DarkCryptAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._nonce = new Array(8).fill(0);
+      this._nonce = OpCodes.CreateArray(8, 0);
       this.counterLo = 0;
       this.counterHi = 0;
       this.state = new Array(16);
@@ -121,6 +128,9 @@
       ];
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -132,46 +142,70 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
       this._initializeState();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || nonceBytes.length !== 8) {
-        this._nonce = new Array(8).fill(0);
+        this._nonce = OpCodes.CreateArray(8, 0);
       } else {
         this._nonce = [...nonceBytes];
       }
       this._initializeState();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       this.nonce = ivBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this.nonce; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -259,6 +293,7 @@
         workingState[i] = OpCodes.Add32(workingState[i], this.state[i]);
       }
 
+      /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
         const bytes = OpCodes.Unpack32LE(workingState[i]);

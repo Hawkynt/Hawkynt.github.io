@@ -249,16 +249,21 @@
   class AEGIS128Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AEGIS128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
       this.state = null;
     }
@@ -281,7 +286,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`AEGIS-128 requires exactly 16-byte keys, got ${keyBytes.length} bytes`);
+        throw new Error("AEGIS-128 requires exactly 16-byte keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -315,7 +320,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`AEGIS-128 requires exactly 16-byte IVs, got ${ivBytes.length} bytes`);
+        throw new Error("AEGIS-128 requires exactly 16-byte IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -331,10 +336,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -381,6 +392,7 @@
       }
 
       // Simplified educational stream cipher implementation
+      /** @type {uint8[]} */
       const result = [];
       const inputCopy = [...this.inputBuffer];
 

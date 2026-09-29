@@ -186,10 +186,15 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this._aad = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // ACORN-128 state (293 bits across 6 LFSRs + 4 spare bits)
@@ -221,7 +226,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid ACORN key size: ${keyBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error("Invalid ACORN key size: " + keyBytes.length + " bytes. Requires exactly 16 bytes (128 bits)");
       }
 
       this._key = [...keyBytes];
@@ -251,7 +256,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`Invalid ACORN IV size: ${ivBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error("Invalid ACORN IV size: " + ivBytes.length + " bytes. Requires exactly 16 bytes (128 bits)");
       }
 
       this._iv = [...ivBytes];

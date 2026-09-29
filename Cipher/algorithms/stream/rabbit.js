@@ -121,11 +121,19 @@ class Rabbit extends StreamCipherAlgorithm {
 }
 
 class RabbitInstance extends IAlgorithmInstance {
+  /**
+   * @param {Rabbit} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._iv = null;
     this.X = new Array(8);
     this.C = new Array(8);
@@ -134,6 +142,9 @@ class RabbitInstance extends IAlgorithmInstance {
     this.keystreamPosition = 0;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -145,15 +156,21 @@ class RabbitInstance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._initialize();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     if (!ivBytes) {
       this._iv = null;
@@ -165,24 +182,42 @@ class RabbitInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this._iv ? [...this._iv] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     this.iv = nonceBytes;
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this.iv; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
@@ -305,6 +340,7 @@ class RabbitInstance extends IAlgorithmInstance {
     S[2] = OpCodes.Xor32(OpCodes.Xor32(this.X[4], OpCodes.Shr32(this.X[1], 16)), OpCodes.Shl32(this.X[7], 16));
     S[3] = OpCodes.Xor32(OpCodes.Xor32(this.X[6], OpCodes.Shr32(this.X[3], 16)), OpCodes.Shl32(this.X[1], 16));
 
+    /** @type {uint8[]} */
     const keystream = [];
 
     for (let i = 0; i < 4; i++) {

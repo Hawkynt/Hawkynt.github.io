@@ -141,11 +141,19 @@
   }
 
   class DarkCryptDecimInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptDecimAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
       this._lfsr = null;        // 288-entry bit array (0/1)
@@ -156,33 +164,57 @@
       this._accByte = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DECIM (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DECIM (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 16)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. DECIM (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. DECIM (DarkCrypt) requires exactly 16 bytes");
       this._iv = [...ivBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._lfsr) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._lfsr) throw new Error("Key/IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -195,7 +227,7 @@
     _tryInit() {
       if (!this._key || !this._iv) { this._lfsr = null; return; }
 
-      const lfsr = new Array(LFSR_LEN).fill(0);
+      const lfsr = OpCodes.CreateArray(LFSR_LEN, 0);
 
       // LFSR[0..127] = key bits, LSB-first per byte.
       for (let i = 0; i < 128; i++) {
@@ -214,7 +246,7 @@
 
       this._lfsr = lfsr;
       this._c = 0; this._p = 0; this._n = 0; this._out = 0;
-      this._queue = new Array(QUEUE_LEN).fill(0);
+      this._queue = OpCodes.CreateArray(QUEUE_LEN, 0);
       this._queueCount = 0;
       this._bitCount = 0;
       this._accByte = 0;

@@ -163,21 +163,26 @@
   class E0Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {E0Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // E0 state
       this.lfsr = new Array(4);
       this.c0 = 0;
       this.c_minus_1 = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -200,7 +205,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 16) {
-        throw new Error(`Invalid E0 key size: ${keyLength} bytes. Requires 1-16 bytes`);
+        throw new Error("Invalid E0 key size: " + keyLength + " bytes. Requires 1-16 bytes");
       }
 
       this._key = [...keyBytes];
@@ -216,6 +221,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       // E0 doesn't traditionally use IV, but store for compatibility
       this._iv = ivData;
@@ -230,10 +238,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -273,6 +287,7 @@
         throw new Error("E0 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
@@ -287,7 +302,7 @@
     _initializeE0() {
       // Initialize four LFSRs
       for (let i = 0; i < 4; i++) {
-        this.lfsr[i] = new Array(this.algorithm.LFSR_LENGTHS[i]).fill(0);
+        this.lfsr[i] = OpCodes.CreateArray(this.algorithm.LFSR_LENGTHS[i], 0);
       }
 
       // Load key material into LFSRs

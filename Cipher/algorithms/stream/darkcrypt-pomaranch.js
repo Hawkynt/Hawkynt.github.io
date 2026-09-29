@@ -186,7 +186,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("e5d7f7c09b1f1d3f672216e3e3103fce0619eb25cce07c03a2f8be6925248beb5dd63ea00a03885b02c97b77aab437b9b2642c0d78c5ddc443bc4a28032f7b441cc09ba2992b57b6074a370eee93503efd988c1f2b873780f6afd0c662ee5730648a969b2458be556a4371e1e0cd4b390cb028860b122db7b7116a243d56f448")
         },
         {
@@ -206,28 +206,46 @@
   }
 
   class DarkCryptPomaranchInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptPomaranchAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
-      this.registers = new Array(SECTIONS).fill(0);
-      this.sectionKeys = new Array(KEYMAP_SECTIONS).fill(0);
+      this.registers = OpCodes.CreateArray(SECTIONS, 0);
+      this.sectionKeys = OpCodes.CreateArray(KEYMAP_SECTIONS, 0);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Pomaranch (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Pomaranch (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length === 0)
@@ -236,11 +254,23 @@
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -248,15 +278,21 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("Pomaranch (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("Pomaranch (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
       }
       this.inputBuffer = [];
       return output;

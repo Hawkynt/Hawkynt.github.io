@@ -187,15 +187,19 @@
   class ZUC256Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ZUC256Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // ZUC state
@@ -203,6 +207,7 @@
       this.X = new Array(4);                           // Bit reorganization registers
       this.R1 = 0;                                     // Nonlinear function register 1
       this.R2 = 0;                                     // Nonlinear function register 2
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -225,7 +230,7 @@
       }
 
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid ZUC-256 key size: ${keyBytes.length} bytes. Requires exactly 32 bytes (256 bits)`);
+        throw new Error("Invalid ZUC-256 key size: " + keyBytes.length + " bytes. Requires exactly 32 bytes (256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -262,7 +267,7 @@
       }
 
       if (ivBytes.length !== 25) {
-        throw new Error(`Invalid ZUC-256 IV size: ${ivBytes.length} bytes. Requires exactly 25 bytes (200 bits)`);
+        throw new Error("Invalid ZUC-256 IV size: " + ivBytes.length + " bytes. Requires exactly 25 bytes (200 bits)");
       }
 
       this._iv = [...ivBytes];
@@ -323,6 +328,7 @@
         throw new Error("ZUC-256 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data in 4-byte (32-bit word) chunks

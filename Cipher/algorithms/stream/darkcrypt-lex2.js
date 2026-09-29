@@ -199,11 +199,19 @@
   }
 
   class DarkCryptLex2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptLex2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
       this._rk = null;
       this._state = null;
@@ -211,39 +219,60 @@
       this._keystreamPos = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LEX2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LEX2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
-      if (!ivBytes) { this._iv = new Array(16).fill(0); }
+      if (!ivBytes) { this._iv = OpCodes.CreateArray(16, 0); }
       else {
         if (ivBytes.length !== 16)
-          throw new Error(`Invalid IV size: ${ivBytes.length} bytes. LEX2 (DarkCrypt) requires exactly 16 bytes`);
+          throw new Error("Invalid IV size: " + ivBytes.length + " bytes. LEX2 (DarkCrypt) requires exactly 16 bytes");
         this._iv = [...ivBytes];
       }
       if (this._key) this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -251,7 +280,7 @@
 
     _initialize() {
       this._rk = keyExpansion128(this._key);
-      const iv = this._iv || new Array(16).fill(0);
+      const iv = this._iv || OpCodes.CreateArray(16, 0);
       this._state = aes128Encrypt(iv, this._rk); // S0 = AES_K(IV)
       this._keystreamBuffer = [];
       this._keystreamPos = 0;

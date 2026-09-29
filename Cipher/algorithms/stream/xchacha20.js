@@ -565,8 +565,8 @@
       try {
         // Test 1: Basic encryption/decryption round-trip
         console.log('Testing basic round-trip...');
-        const key = new Array(32).fill(0).map((_, i) => i);
-        const nonce = new Array(24).fill(0).map((_, i) => i + 100);
+        const key = OpCodes.CreateArray(32, 0).map((_, i) => i);
+        const nonce = OpCodes.CreateArray(24, 0).map((_, i) => i + 100);
         const plaintext = 'Hello XChaCha20! This is a test message.';
         
         const encrypted = this.encrypt(this.bytesToString(key), this.bytesToString(nonce), plaintext);
@@ -584,8 +584,8 @@
         
         // Test 2: HChaCha20 subkey derivation
         console.log('Testing HChaCha20 key derivation...');
-        const testKey = new Array(32).fill(0x42);
-        const testNonce = new Array(16).fill(0x24);
+        const testKey = OpCodes.CreateArray(32, 0x42);
+        const testNonce = OpCodes.CreateArray(16, 0x24);
         
         const subkey1 = this.hchacha20(testKey, testNonce);
         const subkey2 = this.hchacha20(testKey, testNonce);
@@ -606,8 +606,8 @@
         
         // Test 3: Different nonces produce different outputs
         console.log('Testing nonce uniqueness...');
-        const nonce1 = new Array(24).fill(1);
-        const nonce2 = new Array(24).fill(2);
+        const nonce1 = OpCodes.CreateArray(24, 1);
+        const nonce2 = OpCodes.CreateArray(24, 2);
         const testMessage = 'Test message for nonce uniqueness';
         
         const cipher1 = this.encrypt(this.bytesToString(key), this.bytesToString(nonce1), testMessage);
@@ -662,7 +662,7 @@
         const totalTests = results.length;
         const passedTests = results.filter(r => r.success).length;
         
-        console.log(`\nXChaCha20 test results: ${passedTests}/${totalTests} passed`);
+        console.log("\nXChaCha20 test results: " + passedTests + "/" + totalTests + " passed");
         
         return {
           algorithm: 'XChaCha20',
@@ -696,8 +696,8 @@
     measurePerformance: function() {
       const iterations = 100;
       const testData = 'Performance test data for XChaCha20 encryption and decryption.'.repeat(5);
-      const key = new Array(32).fill(0x42);
-      const nonce = new Array(24).fill(0x24);
+      const key = OpCodes.CreateArray(32, 0x42);
+      const nonce = OpCodes.CreateArray(24, 0x24);
       
       // Test encryption performance
       const startEnc = Date.now();
@@ -855,10 +855,10 @@
           }
           
           if (!this._key) {
-            this._key = new Array(32).fill(0);
+            this._key = OpCodes.CreateArray(32, 0);
           }
           if (!this._nonce) {
-            this._nonce = new Array(24).fill(0);
+            this._nonce = OpCodes.CreateArray(24, 0);
           }
           
           const keyStr = String.fromCharCode.apply(null, this._key);
@@ -914,15 +914,15 @@ if (typeof require !== 'undefined' && require.main === module) {
   const testResults = XChaCha20.runTestVectors();
   
   console.log('\nTest Results Summary:');
-  console.log(`Total tests: ${testResults.totalTests}`);
-  console.log(`Passed: ${testResults.passed}`);
-  console.log(`Failed: ${testResults.totalTests - testResults.passed}`);
+  console.log("Total tests: " + testResults.totalTests);
+  console.log("Passed: " + testResults.passed);
+  console.log("Failed: " + (testResults.totalTests - testResults.passed));
   
   if (testResults.performance) {
     console.log('\nPerformance Results:');
-    console.log(`Throughput: ${testResults.performance.throughputMBps.toFixed(2)} MB/s`);
-    console.log(`Encryptions/sec: ${testResults.performance.encryptionsPerSecond}`);
-    console.log(`Key derivations/sec: ${testResults.performance.keyDerivationsPerSecond}`);
+    console.log("Throughput: " + (testResults.performance.throughputMBps.toFixed(2)) + " MB/s");
+    console.log("Encryptions/sec: " + testResults.performance.encryptionsPerSecond);
+    console.log("Key derivations/sec: " + testResults.performance.keyDerivationsPerSecond);
   }
   
   if (testResults.passed === testResults.totalTests) {

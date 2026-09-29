@@ -125,10 +125,17 @@
   }
 
   class DarkCryptISAACInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptISAACAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._mm = null;
       this._randrsl = null;
@@ -137,22 +144,34 @@
       this._cc = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== SEED_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. ISAAC (DarkCrypt) requires exactly ${SEED_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. ISAAC (DarkCrypt) requires exactly " + SEED_BYTES + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -165,8 +184,8 @@
     }
 
     _initialize() {
-      this._mm = new Array(STATE_SIZE).fill(0);
-      this._randrsl = new Array(STATE_SIZE).fill(0);
+      this._mm = OpCodes.CreateArray(STATE_SIZE, 0);
+      this._randrsl = OpCodes.CreateArray(STATE_SIZE, 0);
       this._aa = 0;
       this._bb = 0;
       this._cc = 0;
@@ -184,7 +203,7 @@
     }
 
     _randinit() {
-      const x = new Array(8).fill(GOLDEN_RATIO);
+      const x = OpCodes.CreateArray(8, GOLDEN_RATIO);
       for (let i = 0; i < 4; i++) mix(x);
 
       for (let pass = 0; pass < 2; pass++) {

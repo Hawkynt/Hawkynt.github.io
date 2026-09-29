@@ -130,7 +130,7 @@
         {
           text: "DarkCrypt SN3 - 768-byte key keystream",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: (function () { const z = new Array(128).fill(0); return z; })(),
+          input: (function () { const z = OpCodes.CreateArray(128, 0); return z; })(),
           key: (function () { const k = new Array(768); for (let i = 0; i < 768; i++) k[i] = OpCodes.AndN(i, 0xFF); return k; })(),
           expected: OpCodes.Hex8ToBytes("e535f50705d738004bd02561d095ccc79f6561a39435f3324b05369828bc88f8793b9bc88818357515a03a5f8bd1a364be26fe53af37c95956085779487fb868134e4fbcaaa66d45e18cf0ea40b9f561743b6eafec942283b545a7f8cdfcf7112d718c4219361fea128316f1b08934211c1098eb611081e13ef67dfe3514115d")
         },
@@ -150,32 +150,51 @@
   }
 
   class DarkCryptSN3Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSN3Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
       this._v = null;      // 192-word S-box state
       this._idx = null;    // {i, j}
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 768)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SN3 (DarkCrypt) requires exactly 768 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SN3 (DarkCrypt) requires exactly 768 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");

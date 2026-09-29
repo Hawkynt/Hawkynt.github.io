@@ -107,42 +107,65 @@
   }
 
   class DarkCryptRC4DropInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptRC4DropAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
       this.S = new Array(256);
       this.i = 0;
       this.j = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC4-drop[65536] (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC4-drop[65536] (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this.initialized) throw new Error("RC4-drop not properly initialized");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let k = 0; k < this.inputBuffer.length; k++)
-        output.push(OpCodes.XorN(this.inputBuffer[k], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[k], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
