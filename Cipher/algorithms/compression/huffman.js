@@ -109,6 +109,11 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {HuffmanInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new HuffmanInstance(this, isInverse);
       }
@@ -121,36 +126,81 @@
     // DeterministicHuffman follows the same rule, so the two produce the same tree
     // because the algorithm says so and not because either copies the other's heap.
 
+    /**
+     * Node of the MSB-first decode trie
+     */
+    class TrieNode {
+      constructor() {
+        /** @type {int32} */
+        this.symbol = -1;
+        /** @type {TrieNode} */
+        this.zero = null;
+        /** @type {TrieNode} */
+        this.one = null;
+      }
+    }
+
     class HuffmanInstance extends IAlgorithmInstance {
+      /**
+       * @param {HuffmanCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
-          if (this.inputBuffer.length === 0) return [];
-          return this._decompress();
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            return empty;
+          }
+          /** @type {uint8[]} */
+          const decoded = this._decompress();
+          return decoded;
         }
 
         // Even empty input produces a fixed 260-byte header (matches the
         // C# reference, which always writes the length + code-length table).
-        return this._compress();
+        /** @type {uint8[]} */
+        const encoded = this._compress();
+        return encoded;
       }
 
+      /**
+       * @returns {uint8[]} Size, code-length table and packed codes
+       */
       _compress() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
 
         // Build frequency table over all 256 symbols
-        const freqs = new Array(256).fill(0);
-        for (const byte of data)
-          ++freqs[byte];
+        /** @type {int32[]} */
+        const freqs = new Array(256);
+        for (let i = 0; i < 256; ++i) {
+          freqs[i] = 0;
+        }
+        for (let i = 0; i < data.length; ++i) {
+          ++freqs[data[i]];
+        }
 
         // Ensure at least 2 symbols so a tree can be built
+        /** @type {int32} */
         let nonZero = 0;
-        for (const f of freqs) if (f > 0) ++nonZero;
+        for (let i = 0; i < freqs.length; ++i) {
+          if (freqs[i] > 0) {
+            ++nonZero;
+          }
+        }
         if (nonZero < 2) {
           for (let i = 0; i < 256; ++i) {
             if (freqs[i] === 0) {
@@ -160,26 +210,38 @@
           }
         }
 
+        /** @type {int32[]} */
         const codeLengths = HuffmanCodeLengths.buildCodeLengths(freqs, 256);
         this._limitCodeLengths(codeLengths, 15);
-        const table = this._buildCanonicalTable(codeLengths);
-
-        const result = [];
+        /** @type {uint32[]} */
+        const codeOf = this._newCodeTable();
+        /** @type {int32[]} */
+        const lengthOf = this._newLengthTable();
+        this._buildCanonicalTable(codeLengths, codeOf, lengthOf);
 
         // Header: 4-byte LE original size, then 256 bytes of code lengths
-        { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
-        for (let i = 0; i < 256; ++i)
+        /** @type {uint8[]} */
+        const result = OpCodes.Unpack32LE(data.length);
+        for (let i = 0; i < 256; ++i) {
           result.push(codeLengths[i]);
+        }
 
         // Encode symbols, MSB-first, into a growing bit buffer
+        /** @type {uint32} */
         let bitBuffer = 0;
+        /** @type {int32} */
         let bitsInBuffer = 0;
-        for (const byte of data) {
-          const code = table.code[byte];
-          const length = table.length[byte];
+        for (let n = 0; n < data.length; ++n) {
+          /** @type {uint8} */
+          const byte = data[n];
+          /** @type {uint32} */
+          const code = codeOf[byte];
+          /** @type {int32} */
+          const length = lengthOf[byte];
           for (let i = length - 1; i >= 0; --i) {
-            const bit = OpCodes.AndN(OpCodes.Shr32(code, i), 1);
-            bitBuffer = OpCodes.OrN(bitBuffer, OpCodes.Shl32(bit, 7 - bitsInBuffer));
+            /** @type {uint32} */
+            const bit = OpCodes.And32(OpCodes.Shr32(code, i), 1);
+            bitBuffer = OpCodes.Or32(bitBuffer, OpCodes.Shl32(bit, 7 - bitsInBuffer));
             ++bitsInBuffer;
             if (bitsInBuffer === 8) {
               result.push(bitBuffer);
@@ -188,54 +250,88 @@
             }
           }
         }
-        if (bitsInBuffer > 0)
+        if (bitsInBuffer > 0) {
           result.push(bitBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
 
+        /** @type {uint32} */
         const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+        /** @type {int32[]} */
         const codeLengths = new Array(256);
-        for (let i = 0; i < 256; ++i)
+        for (let i = 0; i < 256; ++i) {
           codeLengths[i] = data[4 + i];
+        }
 
-        const table = this._buildCanonicalTable(codeLengths);
-        const maxCodeLength = table.maxCodeLength;
+        /** @type {uint32[]} */
+        const codeOf = this._newCodeTable();
+        /** @type {int32[]} */
+        const lengthOf = this._newLengthTable();
+        this._buildCanonicalTable(codeLengths, codeOf, lengthOf);
 
         // Build a decode trie from the canonical codes (MSB-first)
-        const trieRoot = { symbol: -1, zero: null, one: null };
+        /** @type {TrieNode} */
+        const trieRoot = new TrieNode();
         for (let symbol = 0; symbol < 256; ++symbol) {
+          /** @type {int32} */
           const length = codeLengths[symbol];
-          if (length <= 0) continue;
+          if (length <= 0) {
+            continue;
+          }
+          /** @type {TrieNode} */
           let node = trieRoot;
-          const code = table.code[symbol];
+          /** @type {uint32} */
+          const code = codeOf[symbol];
           for (let i = length - 1; i >= 0; --i) {
-            const bit = OpCodes.AndN(OpCodes.Shr32(code, i), 1);
+            /** @type {uint32} */
+            const bit = OpCodes.And32(OpCodes.Shr32(code, i), 1);
             if (bit === 0) {
-              if (node.zero === null) node.zero = { symbol: -1, zero: null, one: null };
+              if (node.zero === null) {
+                node.zero = new TrieNode();
+              }
               node = node.zero;
             } else {
-              if (node.one === null) node.one = { symbol: -1, zero: null, one: null };
+              if (node.one === null) {
+                node.one = new TrieNode();
+              }
               node = node.one;
             }
           }
           node.symbol = symbol;
         }
 
+        /** @type {int32} */
         let bytePos = 260;
+        /** @type {int32} */
         let bitPos = 0; // next bit index (0 = MSB) within data[bytePos]
 
+        /** @type {uint8[]} */
         const result = [];
         for (let i = 0; i < originalSize; ++i) {
+          /** @type {TrieNode} */
           let node = trieRoot;
           while (node.symbol < 0) {
+            /** @type {uint8} */
             const currentByte = data[bytePos];
-            const bit = OpCodes.AndN(OpCodes.Shr32(currentByte, 7 - bitPos), 1);
-            node = bit === 0 ? node.zero : node.one;
+            /** @type {uint32} */
+            const bit = OpCodes.And32(OpCodes.Shr32(currentByte, 7 - bitPos), 1);
+            if (bit === 0) {
+              node = node.zero;
+            } else {
+              node = node.one;
+            }
             ++bitPos;
             if (bitPos === 8) {
               bitPos = 0;
@@ -245,103 +341,214 @@
           result.push(node.symbol);
         }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // Mirrors HuffmanTree.LimitCodeLengths (package-merge-style redistribution)
+      /**
+       * @param {int32[]} codeLengths - Code lengths, limited in place
+       * @param {int32} maxLength - Largest allowed length
+       */
       _limitCodeLengths(codeLengths, maxLength) {
+        /** @type {boolean} */
         let needsAdjustment = false;
-        for (const len of codeLengths)
-          if (len > maxLength) { needsAdjustment = true; break; }
-        if (!needsAdjustment) return;
+        for (let i = 0; i < codeLengths.length; ++i) {
+          if (codeLengths[i] > maxLength) {
+            needsAdjustment = true;
+            break;
+          }
+        }
+        if (!needsAdjustment) {
+          return;
+        }
 
-        const symbols = [];
-        for (let i = 0; i < codeLengths.length; ++i)
-          if (codeLengths[i] > 0)
-            symbols.push({ symbol: i, length: codeLengths[i] });
+        // The used symbols in ascending order, with their (adjusted) lengths.
+        /** @type {int32[]} */
+        const usedSymbol = [];
+        /** @type {int32[]} */
+        const usedLength = [];
+        for (let i = 0; i < codeLengths.length; ++i) {
+          if (codeLengths[i] > 0) {
+            usedSymbol.push(i);
+            usedLength.push(codeLengths[i]);
+          }
+        }
 
-        for (let i = 0; i < symbols.length; ++i)
-          if (symbols[i].length > maxLength)
-            symbols[i].length = maxLength;
+        for (let i = 0; i < usedLength.length; ++i) {
+          if (usedLength[i] > maxLength) {
+            usedLength[i] = maxLength;
+          }
+        }
 
+        /** @type {uint32} */
         const kraftMax = OpCodes.Shl32(1, maxLength);
         for (;;) {
-          let kraftSum = 0;
-          for (const s of symbols)
-            kraftSum += OpCodes.Shl32(1, maxLength - s.length);
-          if (kraftSum <= kraftMax) break;
+          /** @type {float64} */
+          const kraftSum = this._kraftSum(usedLength, maxLength);
+          if (kraftSum <= kraftMax) {
+            break;
+          }
 
+          /** @type {int32} */
           let shortestIdx = -1;
+          /** @type {float64} */
           let shortestLen = Infinity;
-          for (let i = 0; i < symbols.length; ++i)
-            if (symbols[i].length < maxLength && symbols[i].length < shortestLen) {
-              shortestLen = symbols[i].length;
+          for (let i = 0; i < usedLength.length; ++i) {
+            if (usedLength[i] < maxLength && usedLength[i] < shortestLen) {
+              shortestLen = usedLength[i];
               shortestIdx = i;
             }
-          if (shortestIdx < 0) break;
-          ++symbols[shortestIdx].length;
+          }
+          if (shortestIdx < 0) {
+            break;
+          }
+          ++usedLength[shortestIdx];
         }
 
         for (;;) {
-          let kraftSum = 0;
-          for (const s of symbols)
-            kraftSum += OpCodes.Shl32(1, maxLength - s.length);
+          /** @type {float64} */
+          const kraftSum = this._kraftSum(usedLength, maxLength);
+          /** @type {float64} */
           const excess = kraftMax - kraftSum;
-          if (excess <= 0) break;
+          if (excess <= 0) {
+            break;
+          }
 
+          /** @type {int32} */
           let longestIdx = -1;
+          /** @type {int32} */
           let longestLen = 0;
-          for (let i = 0; i < symbols.length; ++i)
-            if (symbols[i].length > longestLen) {
-              longestLen = symbols[i].length;
+          for (let i = 0; i < usedLength.length; ++i) {
+            if (usedLength[i] > longestLen) {
+              longestLen = usedLength[i];
               longestIdx = i;
             }
-          if (longestIdx < 0 || longestLen <= 1) break;
-
-          const added = OpCodes.Shl32(1, maxLength - longestLen);
-          if (added <= excess)
-            --symbols[longestIdx].length;
-          else
+          }
+          if (longestIdx < 0 || longestLen <= 1) {
             break;
+          }
+
+          /** @type {uint32} */
+          const added = OpCodes.Shl32(1, maxLength - longestLen);
+          if (added <= excess) {
+            --usedLength[longestIdx];
+          } else {
+            break;
+          }
         }
 
-        codeLengths.fill(0);
-        for (const s of symbols)
-          codeLengths[s.symbol] = s.length;
+        for (let i = 0; i < codeLengths.length; ++i) {
+          codeLengths[i] = 0;
+        }
+        for (let i = 0; i < usedSymbol.length; ++i) {
+          codeLengths[usedSymbol[i]] = usedLength[i];
+        }
+      }
+
+      /**
+       * @private
+       * @param {int32[]} usedLength - Code length per used symbol
+       * @param {int32} maxLength - Largest allowed length
+       * @returns {float64} Kraft sum scaled by 2^maxLength
+       */
+      _kraftSum(usedLength, maxLength) {
+        /** @type {float64} */
+        let kraftSum = 0;
+        for (let i = 0; i < usedLength.length; ++i) {
+          /** @type {uint32} */
+          const weight = OpCodes.Shl32(1, maxLength - usedLength[i]);
+          kraftSum += weight;
+        }
+        return kraftSum;
+      }
+
+      /**
+       * @private
+       * @returns {uint32[]} 256 zero codes
+       */
+      _newCodeTable() {
+        /** @type {uint32[]} */
+        const table = new Array(256);
+        for (let i = 0; i < 256; ++i) {
+          table[i] = 0;
+        }
+        return table;
+      }
+
+      /**
+       * @private
+       * @returns {int32[]} 256 zero lengths
+       */
+      _newLengthTable() {
+        /** @type {int32[]} */
+        const table = new Array(256);
+        for (let i = 0; i < 256; ++i) {
+          table[i] = 0;
+        }
+        return table;
       }
 
       // Mirrors CanonicalCodeAssigner.ComputeNextCodes + CanonicalHuffman's code assignment
-      _buildCanonicalTable(codeLengths) {
+      /**
+       * Fill in the canonical code and length of every used symbol
+       * @param {int32[]} codeLengths - Code length per symbol
+       * @param {uint32[]} codeOf - Receives the code per symbol (entries start at 0)
+       * @param {int32[]} lengthOf - Receives the length per symbol (entries start at 0)
+       * @returns {int32} Longest code length
+       */
+      _buildCanonicalTable(codeLengths, codeOf, lengthOf) {
+        /** @type {int32} */
         let maxCodeLength = 0;
-        for (const len of codeLengths)
-          if (len > maxCodeLength) maxCodeLength = len;
+        for (let i = 0; i < codeLengths.length; ++i) {
+          if (codeLengths[i] > maxCodeLength) {
+            maxCodeLength = codeLengths[i];
+          }
+        }
 
-        const code = new Array(256).fill(0);
-        const length = new Array(256).fill(0);
-        if (maxCodeLength === 0)
-          return { code, length, maxCodeLength };
+        if (maxCodeLength === 0) {
+          return maxCodeLength;
+        }
 
-        const blCount = new Array(maxCodeLength + 1).fill(0);
-        for (const len of codeLengths)
-          if (len > 0) ++blCount[len];
+        /** @type {int32[]} */
+        const blCount = new Array(maxCodeLength + 1);
+        /** @type {uint32[]} */
+        const nextCode = new Array(maxCodeLength + 1);
+        for (let i = 0; i <= maxCodeLength; ++i) {
+          blCount[i] = 0;
+          nextCode[i] = 0;
+        }
+        for (let i = 0; i < codeLengths.length; ++i) {
+          /** @type {int32} */
+          const len = codeLengths[i];
+          if (len > 0) {
+            ++blCount[len];
+          }
+        }
 
-        const nextCode = new Array(maxCodeLength + 1).fill(0);
+        /** @type {uint32} */
         let c = 0;
         for (let bits = 1; bits <= maxCodeLength; ++bits) {
-          c = OpCodes.Shl32(c + blCount[bits - 1], 1);
+          /** @type {uint32} */
+          const counted = blCount[bits - 1];
+          c = OpCodes.Shl32(c + counted, 1);
           nextCode[bits] = c;
         }
 
         for (let symbol = 0; symbol < 256; ++symbol) {
+          /** @type {int32} */
           const len = codeLengths[symbol];
-          if (len <= 0) continue;
-          code[symbol] = nextCode[len];
-          length[symbol] = len;
+          if (len <= 0) {
+            continue;
+          }
+          codeOf[symbol] = nextCode[len];
+          lengthOf[symbol] = len;
           ++nextCode[len];
         }
 
-        return { code, length, maxCodeLength };
+        return maxCodeLength;
       }
     }
 
