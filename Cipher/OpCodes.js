@@ -412,9 +412,9 @@
     
     /**
      * 64-bit right rotation (for future 64-bit ciphers)
-     * @param {number} low - Low 32 bits
-     * @param {number} high - High 32 bits
-     * @param {number} positions - Rotation positions (0-63)
+     * @param {uint32} low - Low 32 bits
+     * @param {uint32} high - High 32 bits
+     * @param {int32} positions - Rotation positions (0-63)
      * @returns {(low: uint32, high: uint32)} Rotated 64-bit value
      */
     RotR64: function(low, high, positions) {
@@ -441,7 +441,7 @@
     /**
      * Rotate left (circular left shift) for 128-bit BigInt values
      * @param {BigInt} value - 128-bit BigInt value to rotate
-     * @param {number} positions - Number of positions to rotate (0-127)
+     * @param {int32} positions - Number of positions to rotate (0-127)
      * @returns {BigInt} Rotated 128-bit BigInt value
      */
     RotL128n: function(value, positions) {
@@ -456,7 +456,7 @@
     /**
      * Rotate right (circular right shift) for 128-bit BigInt values
      * @param {BigInt} value - 128-bit BigInt value to rotate
-     * @param {number} positions - Number of positions to rotate (0-127)
+     * @param {int32} positions - Number of positions to rotate (0-127)
      * @returns {BigInt} Rotated 128-bit BigInt value
      */
     RotR128n: function(value, positions) {
@@ -471,7 +471,7 @@
     /**
      * Rotate 128-bit value represented as 16-byte array to the left
      * @param {uint8[]} bytes - 16-byte array representing 128-bit value
-     * @param {number} positions - Number of bits to rotate left
+     * @param {int32} positions - Number of bits to rotate left
      * @returns {uint8[]} Rotated 16-byte array
      */
     RotL128: function(bytes, positions) {
@@ -502,7 +502,7 @@
     /**
      * Rotate 128-bit value represented as 16-byte array to the right
      * @param {uint8[]} bytes - 16-byte array representing 128-bit value
-     * @param {number} positions - Number of bits to rotate right
+     * @param {int32} positions - Number of bits to rotate right
      * @returns {uint8[]} Rotated 16-byte array
      */
     RotR128: function(bytes, positions) {
@@ -573,7 +573,7 @@
 
     /**
      * Unpack 32-bit dword to 4 bytes (big-endian)
-     * @param {uint32} dword - 32-bit dword to unpack
+     * @param {uint32} word - 32-bit dword to unpack
      * @returns {uint8[]} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32BE: function(word) {
@@ -600,7 +600,7 @@
 
     /**
      * Unpack 32-bit dword to 4 bytes (little-endian)
-     * @param {uint32} dword - 32-bit dword to unpack
+     * @param {uint32} word - 32-bit dword to unpack
      * @returns {uint8[]} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32LE: function(word) {
@@ -2685,8 +2685,8 @@
     
     /**
      * Population count (number of 1 bits)
-     * @param {number} value - Input value
-     * @returns {number} Number of 1 bits
+     * @param {uint32} value - Input value
+     * @returns {int32} Number of 1 bits
      */
     PopCount: function(value) {
       let count = 0;
@@ -2699,9 +2699,9 @@
     
     /**
      * Polynomial multiplication in GF(2) (for stream ciphers)
-     * @param {number} a - First polynomial
-     * @param {number} b - Second polynomial
-     * @returns {number} Product polynomial
+     * @param {uint32} a - First polynomial
+     * @param {uint32} b - Second polynomial
+     * @returns {uint32} Product (low 32 bits) polynomial
      */
     GF2PolyMul: function(a, b) {
       let result = 0;
@@ -2717,11 +2717,11 @@
     
     /**
      * Efficient GF(2^n) multiplication for arbitrary fields
-     * @param {number} a - First element
-     * @param {number} b - Second element
-     * @param {number} irreducible - Irreducible polynomial
-     * @param {number} width - Field width in bits
-     * @returns {number} Product in GF(2^n)
+     * @param {uint32} a - First element
+     * @param {uint32} b - Second element
+     * @param {uint32} irreducible - Irreducible polynomial
+     * @param {int32} width - Field width in bits
+     * @returns {uint32} Product in GF(2^n)
      */
     GFMul: function(a, b, irreducible, width) {
       let result = 0;
@@ -2816,7 +2816,7 @@
     /**
      * Batch rotate operations for cipher rounds
      * @param {uint32[]} values - Array of 32-bit values
-     * @param {number} positions - Rotation positions
+     * @param {int32} positions - Rotation positions
      * @returns {uint32[]} Array of rotated values
      */
     BatchRotL32: function(values, positions) {
@@ -3147,8 +3147,8 @@
 
     /**
      * Generate mask for specific bit width
-     * @param {number} bits - Number of bits (1-32)
-     * @returns {number} Bit mask
+     * @param {int32} bits - Number of bits (1-32)
+     * @returns {uint32} Bit mask
      */
     BitMask: function(bits) {
       if (bits >= 32) return 0xFFFFFFFF;
@@ -3174,7 +3174,7 @@
     /**
      * Efficient XOR of array with single byte value
      * @param {uint8[]} array - Byte array to XOR
-     * @param {number} value - Byte value to XOR with each element
+     * @param {uint8} value - Byte value to XOR with each element
      * @returns {uint8[]} New array with XOR applied
      */
     XorArrayWithByte: function(array, value) {
@@ -3188,11 +3188,11 @@
 
     /**
      * Multiply in GF(2^n) with arbitrary irreducible polynomial
-     * @param {number} a - First operand
-     * @param {number} b - Second operand
-     * @param {number} irreducible - Irreducible polynomial
-     * @param {number} fieldSize - Field size (n bits)
-     * @returns {number} Product in GF(2^n)
+     * @param {uint32} a - First operand
+     * @param {uint32} b - Second operand
+     * @param {uint32} irreducible - Irreducible polynomial
+     * @param {int32} fieldSize - Field size (n bits)
+     * @returns {uint32} Product in GF(2^n)
      */
     GFMulGeneric: function(a, b, irreducible, fieldSize) {
       let result = 0;
@@ -3305,9 +3305,9 @@
 
     /**
      * 32-bit unsigned multiplication ensuring proper overflow behavior
-     * @param {number} a - First operand
-     * @param {number} b - Second operand
-     * @returns {number} 32-bit unsigned multiplication result (low 32 bits)
+     * @param {uint32} a - First operand
+     * @param {uint32} b - Second operand
+     * @returns {uint32} 32-bit unsigned multiplication result (low 32 bits)
      */
     Mul32: function(a, b) {
       return Math.imul(a, b) >>> 0;
@@ -3355,9 +3355,9 @@
 
     /**
      * 32-bit unsigned addition ensuring proper overflow behavior
-     * @param {number} a - First operand
-     * @param {number} b - Second operand
-     * @returns {number} 32-bit unsigned addition result
+     * @param {uint32} a - First operand
+     * @param {uint32} b - Second operand
+     * @returns {uint32} 32-bit unsigned addition result
      */
     Add32: function(a, b) {
       return ((a + b) >>> 0);
@@ -3365,9 +3365,9 @@
 
     /**
      * 32-bit unsigned subtraction ensuring proper underflow behavior
-     * @param {number} a - First operand (minuend)
-     * @param {number} b - Second operand (subtrahend)
-     * @returns {number} 32-bit unsigned subtraction result
+     * @param {uint32} a - First operand (minuend)
+     * @param {uint32} b - Second operand (subtrahend)
+     * @returns {uint32} 32-bit unsigned subtraction result
      */
     Sub32: function(a, b) {
       return ((a - b) >>> 0);
@@ -3497,7 +3497,7 @@
 
       /**
        * Write a 32-bit value in big-endian format
-       * @param {number} value - 32-bit value
+       * @param {uint32} value - 32-bit value
        */
       this.writeUint32BE = function(value) {
         value = value >>> 0; // Ensure unsigned
@@ -3509,7 +3509,7 @@
 
       /**
        * Write a 32-bit value in little-endian format
-       * @param {number} value - 32-bit value
+       * @param {uint32} value - 32-bit value
        */
       this.writeUint32LE = function(value) {
         value = value >>> 0; // Ensure unsigned
@@ -3578,7 +3578,7 @@
 
       /**
        * Read multiple bytes from the stream
-       * @param {number} count - Number of bytes to read
+       * @param {int32} count - Number of bytes to read
        * @returns {uint8[]} Array of bytes
        */
       this.readBytes = function(count) {
@@ -3591,8 +3591,8 @@
 
       /**
        * Peek at bits without advancing read position
-       * @param {number} numBits - Number of bits to peek (1-32)
-       * @returns {number} Peeked value
+       * @param {int32} numBits - Number of bits to peek (1-32)
+       * @returns {uint32} Peeked value
        */
       this.peekBits = function(numBits) {
         const savedPosition = this.readPosition;
@@ -3603,7 +3603,7 @@
 
       /**
        * Skip bits in the stream
-       * @param {number} numBits - Number of bits to skip
+       * @param {int32} numBits - Number of bits to skip
        */
       this.skipBits = function(numBits) {
         this.readPosition += numBits;
@@ -3673,7 +3673,7 @@
 
       /**
        * Get length of stream in bits
-       * @returns {number} Total bits written
+       * @returns {int32} Total bits written
        */
       this.getBitLength = function() {
         return this.totalBitsWritten;
@@ -3681,7 +3681,7 @@
 
       /**
        * Get length of stream in bytes (including partial bytes)
-       * @returns {number} Total bytes including incomplete last byte
+       * @returns {int32} Total bytes including incomplete last byte
        */
       this.getByteLength = function() {
         const completeBytesInBuffer = Math.floor(this.bufferBits / 8);
@@ -3732,7 +3732,7 @@
 
       /**
        * Write variable-length integer (varint encoding)
-       * @param {number} value - Value to encode (0 to 2^32-1)
+       * @param {uint32} value - Value to encode (0 to 2^32-1)
        */
       this.writeVarInt = function(value) {
         value = value >>> 0; // Ensure unsigned
@@ -3766,7 +3766,7 @@
 
       /**
        * Write unary encoding (n ones followed by a zero)
-       * @param {number} value - Value to encode
+       * @param {int32} value - Value to encode
        */
       this.writeUnary = function(value) {
         for (let i = 0; i < value; i++) {
@@ -3777,7 +3777,7 @@
 
       /**
        * Read unary encoding
-       * @returns {number} Decoded value
+       * @returns {int32} Decoded value
        */
       this.readUnary = function() {
         let count = 0;
@@ -3847,6 +3847,12 @@
       return z;
     },
 
+    /**
+     * Increment the 32-bit big-endian counter in the last four bytes of a
+     * GCM counter block (NIST SP 800-38D inc32), in place
+     * @param {uint8[]} counter - 16-byte counter block, modified in place
+     * @returns {uint8[]} The same counter array
+     */
     GCMIncrement: function(counter) {
       if (!counter || counter.length !== 16) {
         throw new Error('GCMIncrement requires 16-byte counter');
@@ -3868,10 +3874,10 @@
 
     /**
      * Add two 64-bit values represented as [HIGH, LOW] pairs
-     * @param {number} ah - High 32 bits of first operand
-     * @param {number} al - Low 32 bits of first operand
-     * @param {number} bh - High 32 bits of second operand
-     * @param {number} bl - Low 32 bits of second operand
+     * @param {uint32} ah - High 32 bits of first operand
+     * @param {uint32} al - Low 32 bits of first operand
+     * @param {uint32} bh - High 32 bits of second operand
+     * @param {uint32} bl - Low 32 bits of second operand
      * @returns {(h: uint32, l: uint32)} Result as HIGH and LOW 32-bit words
      */
     Add64_HL: function(ah, al, bh, bl) {
@@ -3882,10 +3888,10 @@
 
     /**
      * Add three 32-bit low words (used for 64-bit 3-operand addition)
-     * @param {number} al - Low word of first operand
-     * @param {number} bl - Low word of second operand
-     * @param {number} cl - Low word of third operand
-     * @returns {number} Sum of low words (may overflow 32 bits)
+     * @param {uint32} al - Low word of first operand
+     * @param {uint32} bl - Low word of second operand
+     * @param {uint32} cl - Low word of third operand
+     * @returns {uint64} Sum of low words (may overflow 32 bits)
      */
     Add3L64: function(al, bl, cl) {
       return (al >>> 0) + (bl >>> 0) + (cl >>> 0);
@@ -3893,11 +3899,11 @@
 
     /**
      * Add three 32-bit high words with carry from low word sum
-     * @param {number} lowSum - Sum of low words (may be > 32 bits)
-     * @param {number} ah - High word of first operand
-     * @param {number} bh - High word of second operand
-     * @param {number} ch - High word of third operand
-     * @returns {number} Sum of high words plus carry
+     * @param {uint64} lowSum - Sum of low words (may be > 32 bits)
+     * @param {uint32} ah - High word of first operand
+     * @param {uint32} bh - High word of second operand
+     * @param {uint32} ch - High word of third operand
+     * @returns {int32} Sum of high words plus carry, as a signed 32-bit word
      */
     Add3H64: function(lowSum, ah, bh, ch) {
       return (ah + bh + ch + ((lowSum / 0x100000000) | 0)) | 0;
@@ -3906,9 +3912,9 @@
     /**
      * Rotate right a 64-bit value represented as [HIGH, LOW] pair
      * Optimized for common rotation amounts used in hash functions
-     * @param {number} high - High 32 bits
-     * @param {number} low - Low 32 bits
-     * @param {number} n - Number of bits to rotate (0-63)
+     * @param {uint32} high - High 32 bits
+     * @param {uint32} low - Low 32 bits
+     * @param {int32} n - Number of bits to rotate (0-63)
      * @returns {(h: uint32, l: uint32)} Rotated HIGH and LOW words
      */
     RotR64_HL: function(high, low, n) {
@@ -3934,9 +3940,9 @@
 
     /**
      * Rotate left a 64-bit value represented as [HIGH, LOW] pair
-     * @param {number} high - High 32 bits
-     * @param {number} low - Low 32 bits
-     * @param {number} n - Number of bits to rotate (0-63)
+     * @param {uint32} high - High 32 bits
+     * @param {uint32} low - Low 32 bits
+     * @param {int32} n - Number of bits to rotate (0-63)
      * @returns {(h: uint32, l: uint32)} Rotated HIGH and LOW words
      */
     RotL64_HL: function(high, low, n) {
@@ -3962,8 +3968,8 @@
 
     /**
      * Swap HIGH and LOW words of a 64-bit value (equivalent to 32-bit rotation)
-     * @param {number} high - High 32 bits
-     * @param {number} low - Low 32 bits
+     * @param {uint32} high - High 32 bits
+     * @param {uint32} low - Low 32 bits
      * @returns {(h: uint32, l: uint32)} Swapped words
      */
     Swap64_HL: function(high, low) {
@@ -3972,10 +3978,10 @@
 
     /**
      * XOR two 64-bit values represented as [HIGH, LOW] pairs
-     * @param {number} ah - First value high 32 bits
-     * @param {number} al - First value low 32 bits
-     * @param {number} bh - Second value high 32 bits
-     * @param {number} bl - Second value low 32 bits
+     * @param {uint32} ah - First value high 32 bits
+     * @param {uint32} al - First value low 32 bits
+     * @param {uint32} bh - Second value high 32 bits
+     * @param {uint32} bl - Second value low 32 bits
      * @returns {(h: uint32, l: uint32)} XOR result
      */
     Xor64_HL: function(ah, al, bh, bl) {
@@ -3984,8 +3990,8 @@
 
     /**
      * Convert a value to unsigned 32-bit integer
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 32-bit integer
+     * @param {int64} value - Integer to reduce modulo 2^32
+     * @returns {uint32} Unsigned 32-bit integer
      */
     ToUint32: function(value) {
       return value >>> 0;
@@ -3993,8 +3999,8 @@
 
     /**
      * Convert a value to unsigned 16-bit integer
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 16-bit integer
+     * @param {int64} value - Integer to reduce modulo 2^16
+     * @returns {uint16} Unsigned 16-bit integer
      */
     ToUint16: function(value) {
       return (value >>> 0) & 0xFFFF;
@@ -4002,8 +4008,8 @@
 
     /**
      * Convert a value to unsigned 8-bit integer
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 8-bit integer
+     * @param {int64} value - Integer to reduce modulo 2^8
+     * @returns {uint8} Unsigned 8-bit integer
      */
     ToUint8: function(value) {
       return (value >>> 0) & 0xFF;
@@ -4104,7 +4110,7 @@
     /**
      * Extract specific bit from BigInt value
      * @param {BigInt} value - Source value
-     * @param {number} bitIndex - Bit position (0 = LSB)
+     * @param {int32} bitIndex - Bit position (0 = LSB)
      * @returns {BigInt} Bit value (0n or 1n)
      */
     GetBitN: function(value, bitIndex) {
@@ -4114,7 +4120,7 @@
     /**
      * Set specific bit in BigInt value
      * @param {BigInt} value - Source value
-     * @param {number} bitIndex - Bit position (0 = LSB)
+     * @param {int32} bitIndex - Bit position (0 = LSB)
      * @param {BigInt} bitValue - New bit value (0n or 1n)
      * @returns {BigInt} Modified value
      */
@@ -4196,7 +4202,7 @@
     /**
      * Count bits in BigInt value
      * @param {BigInt} value - Value to measure
-     * @returns {number} Number of bits required to represent value
+     * @returns {int32} Number of bits required to represent value
      */
     BitCountN: function(value) {
       if (value === 0n) return 1;
