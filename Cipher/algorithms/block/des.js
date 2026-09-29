@@ -162,6 +162,8 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._sizeRules = algorithm.SupportedKeySizes;
       this.key = null;
       /** @type {uint8[][]|null} */
       this.subkeys = null;
@@ -189,8 +191,7 @@
       }
 
       // Validate key size
-      /** @type {KeySize[]} */
-      const sizes = this.algorithm.SupportedKeySizes;
+      const sizes = this._sizeRules;
       let isValidSize = false;
       for (let k = 0; k < sizes.length; k++) {
         const ks = sizes[k];
