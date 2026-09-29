@@ -41,7 +41,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== S-BOXES (Ukrainian National Standard) =====
 
@@ -123,146 +123,177 @@
 
   // ===== SHARED TRANSFORMATION FUNCTIONS =====
 
-  // Conditional swap of two 64-bit BigInt words under a bitmask (bit-parallel permutation step)
-  function swapMask64(a, b, mask) {
-    const d = OpCodes.AndN(OpCodes.XorN(a, b), mask);
-    return [OpCodes.XorN(a, d), OpCodes.XorN(b, d)];
+  /**
+   * Conditional swap of two 64-bit words under a bitmask (bit-parallel permutation step)
+   * @param {BigInt[]} w - Column words, updated in place
+   * @param {int32} i - Index of the first word
+   * @param {int32} j - Index of the second word
+   * @param {BigInt} mask - Bits to exchange
+   * @returns {void}
+   */
+  function swapMask64(w, i, j, mask) {
+    /** @type {BigInt} */
+    const d = OpCodes.AndN(OpCodes.XorN(w[i], w[j]), mask);
+    w[i] = OpCodes.XorN(w[i], d);
+    w[j] = OpCodes.XorN(w[j], d);
   }
 
-  // SubBytes transformation using 4 S-boxes
+  /**
+   * Pack the 8 bytes of a column into a 64-bit word (little-endian)
+   * @param {uint8[]} column - 8 state bytes
+   * @returns {BigInt} Column word
+   */
+  function packColumn(column) {
+    /** @type {BigInt} */
+    let word = 0n;
+    for (let i = 0; i < 8; ++i) {
+      word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(column[i]), i * 8));
+    }
+    return word;
+  }
+
+  /**
+   * Unpack a 64-bit word into the 8 bytes of a column (little-endian)
+   * @param {BigInt} word - Column word
+   * @param {uint8[]} column - 8 state bytes, overwritten
+   * @returns {void}
+   */
+  function unpackColumn(word, column) {
+    for (let i = 0; i < 8; ++i) {
+      column[i] = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn)));
+    }
+  }
+
+  /**
+   * SubBytes transformation using 4 S-boxes
+   * @param {uint8[][]} s - State columns
+   * @param {int32} numColumns - Number of state columns
+   * @returns {void}
+   */
   function subBytes(s, numColumns) {
     for (let col = 0; col < numColumns; ++col) {
-      s[col][0] = S0[OpCodes.AndN(s[col][0], 0xFF)];
-      s[col][1] = S1[OpCodes.AndN(s[col][1], 0xFF)];
-      s[col][2] = S2[OpCodes.AndN(s[col][2], 0xFF)];
-      s[col][3] = S3[OpCodes.AndN(s[col][3], 0xFF)];
-      s[col][4] = S0[OpCodes.AndN(s[col][4], 0xFF)];
-      s[col][5] = S1[OpCodes.AndN(s[col][5], 0xFF)];
-      s[col][6] = S2[OpCodes.AndN(s[col][6], 0xFF)];
-      s[col][7] = S3[OpCodes.AndN(s[col][7], 0xFF)];
+      s[col][0] = S0[s[col][0]];
+      s[col][1] = S1[s[col][1]];
+      s[col][2] = S2[s[col][2]];
+      s[col][3] = S3[s[col][3]];
+      s[col][4] = S0[s[col][4]];
+      s[col][5] = S1[s[col][5]];
+      s[col][6] = S2[s[col][6]];
+      s[col][7] = S3[s[col][7]];
     }
   }
 
-  // ShiftRows transformation for 512-bit state
+  /**
+   * ShiftRows transformation for 512-bit state
+   * @param {uint8[][]} s - State columns (8)
+   * @returns {void}
+   */
   function shiftRows512(s) {
-    // Convert to 64-bit BigInt representation
-    const words = new Array(8);
+    // Convert to 64-bit word representation
+    /** @type {BigInt[]} */
+    const w = new Array(8);
     for (let i = 0; i < 8; ++i) {
-      words[i] = 0n;
-      for (let j = 0; j < 8; ++j) {
-        words[i] = OpCodes.OrN(words[i], OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[i][j], 0xFF)), j * 8));
-      }
+      w[i] = packColumn(s[i]);
     }
-
-    let c0 = words[0], c1 = words[1], c2 = words[2], c3 = words[3];
-    let c4 = words[4], c5 = words[5], c6 = words[6], c7 = words[7];
 
     // Bit-parallel permutation for 512-bit state
-    [c0, c4] = swapMask64(c0, c4, 0xFFFFFFFF00000000n);
-    [c1, c5] = swapMask64(c1, c5, 0x00FFFFFFFF000000n);
-    [c2, c6] = swapMask64(c2, c6, 0x0000FFFFFFFF0000n);
-    [c3, c7] = swapMask64(c3, c7, 0x000000FFFFFFFF00n);
+    swapMask64(w, 0, 4, 0xFFFFFFFF00000000n);
+    swapMask64(w, 1, 5, 0x00FFFFFFFF000000n);
+    swapMask64(w, 2, 6, 0x0000FFFFFFFF0000n);
+    swapMask64(w, 3, 7, 0x000000FFFFFFFF00n);
 
-    [c0, c2] = swapMask64(c0, c2, 0xFFFF0000FFFF0000n);
-    [c1, c3] = swapMask64(c1, c3, 0x00FFFF0000FFFF00n);
-    [c4, c6] = swapMask64(c4, c6, 0xFFFF0000FFFF0000n);
-    [c5, c7] = swapMask64(c5, c7, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 0, 2, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 1, 3, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 4, 6, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 5, 7, 0x00FFFF0000FFFF00n);
 
-    [c0, c1] = swapMask64(c0, c1, 0xFF00FF00FF00FF00n);
-    [c2, c3] = swapMask64(c2, c3, 0xFF00FF00FF00FF00n);
-    [c4, c5] = swapMask64(c4, c5, 0xFF00FF00FF00FF00n);
-    [c6, c7] = swapMask64(c6, c7, 0xFF00FF00FF00FF00n);
-
-    words[0] = c0; words[1] = c1; words[2] = c2; words[3] = c3;
-    words[4] = c4; words[5] = c5; words[6] = c6; words[7] = c7;
+    swapMask64(w, 0, 1, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 2, 3, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 4, 5, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 6, 7, 0xFF00FF00FF00FF00n);
 
     // Convert back to byte representation
     for (let i = 0; i < 8; ++i) {
-      for (let j = 0; j < 8; ++j) {
-        s[i][j] = Number(OpCodes.AndN(OpCodes.ShiftRn(words[i], j * 8), 0xFFn));
-      }
+      unpackColumn(w[i], s[i]);
     }
   }
 
-  // ShiftRows transformation for 1024-bit state
+  /**
+   * ShiftRows transformation for 1024-bit state
+   * @param {uint8[][]} s - State columns (16)
+   * @returns {void}
+   */
   function shiftRows1024(s) {
-    // Convert to 64-bit BigInt representation
-    const words = new Array(16);
+    // Convert to 64-bit word representation
+    /** @type {BigInt[]} */
+    const w = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      words[i] = 0n;
-      for (let j = 0; j < 8; ++j) {
-        words[i] = OpCodes.OrN(words[i], OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[i][j], 0xFF)), j * 8));
-      }
+      w[i] = packColumn(s[i]);
     }
 
-    let c00 = words[0], c01 = words[1], c02 = words[2], c03 = words[3];
-    let c04 = words[4], c05 = words[5], c06 = words[6], c07 = words[7];
-    let c08 = words[8], c09 = words[9], c10 = words[10], c11 = words[11];
-    let c12 = words[12], c13 = words[13], c14 = words[14], c15 = words[15];
-
     // Bit-parallel permutation for 1024-bit state
-    [c00, c08] = swapMask64(c00, c08, 0xFF00000000000000n);
-    [c01, c09] = swapMask64(c01, c09, 0xFF00000000000000n);
-    [c02, c10] = swapMask64(c02, c10, 0xFFFF000000000000n);
-    [c03, c11] = swapMask64(c03, c11, 0xFFFFFF0000000000n);
-    [c04, c12] = swapMask64(c04, c12, 0xFFFFFFFF00000000n);
-    [c05, c13] = swapMask64(c05, c13, 0x00FFFFFFFF000000n);
-    [c06, c14] = swapMask64(c06, c14, 0x00FFFFFFFFFF0000n);
-    [c07, c15] = swapMask64(c07, c15, 0x00FFFFFFFFFFFF00n);
+    swapMask64(w, 0, 8, 0xFF00000000000000n);
+    swapMask64(w, 1, 9, 0xFF00000000000000n);
+    swapMask64(w, 2, 10, 0xFFFF000000000000n);
+    swapMask64(w, 3, 11, 0xFFFFFF0000000000n);
+    swapMask64(w, 4, 12, 0xFFFFFFFF00000000n);
+    swapMask64(w, 5, 13, 0x00FFFFFFFF000000n);
+    swapMask64(w, 6, 14, 0x00FFFFFFFFFF0000n);
+    swapMask64(w, 7, 15, 0x00FFFFFFFFFFFF00n);
 
-    [c00, c04] = swapMask64(c00, c04, 0x00FFFFFF00000000n);
-    [c01, c05] = swapMask64(c01, c05, 0xFFFFFFFFFF000000n);
-    [c02, c06] = swapMask64(c02, c06, 0xFF00FFFFFFFF0000n);
-    [c03, c07] = swapMask64(c03, c07, 0xFF0000FFFFFFFF00n);
-    [c08, c12] = swapMask64(c08, c12, 0x00FFFFFF00000000n);
-    [c09, c13] = swapMask64(c09, c13, 0xFFFFFFFFFF000000n);
-    [c10, c14] = swapMask64(c10, c14, 0xFF00FFFFFFFF0000n);
-    [c11, c15] = swapMask64(c11, c15, 0xFF0000FFFFFFFF00n);
+    swapMask64(w, 0, 4, 0x00FFFFFF00000000n);
+    swapMask64(w, 1, 5, 0xFFFFFFFFFF000000n);
+    swapMask64(w, 2, 6, 0xFF00FFFFFFFF0000n);
+    swapMask64(w, 3, 7, 0xFF0000FFFFFFFF00n);
+    swapMask64(w, 8, 12, 0x00FFFFFF00000000n);
+    swapMask64(w, 9, 13, 0xFFFFFFFFFF000000n);
+    swapMask64(w, 10, 14, 0xFF00FFFFFFFF0000n);
+    swapMask64(w, 11, 15, 0xFF0000FFFFFFFF00n);
 
-    [c00, c02] = swapMask64(c00, c02, 0xFFFF0000FFFF0000n);
-    [c01, c03] = swapMask64(c01, c03, 0x00FFFF0000FFFF00n);
-    [c04, c06] = swapMask64(c04, c06, 0xFFFF0000FFFF0000n);
-    [c05, c07] = swapMask64(c05, c07, 0x00FFFF0000FFFF00n);
-    [c08, c10] = swapMask64(c08, c10, 0xFFFF0000FFFF0000n);
-    [c09, c11] = swapMask64(c09, c11, 0x00FFFF0000FFFF00n);
-    [c12, c14] = swapMask64(c12, c14, 0xFFFF0000FFFF0000n);
-    [c13, c15] = swapMask64(c13, c15, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 0, 2, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 1, 3, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 4, 6, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 5, 7, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 8, 10, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 9, 11, 0x00FFFF0000FFFF00n);
+    swapMask64(w, 12, 14, 0xFFFF0000FFFF0000n);
+    swapMask64(w, 13, 15, 0x00FFFF0000FFFF00n);
 
-    [c00, c01] = swapMask64(c00, c01, 0xFF00FF00FF00FF00n);
-    [c02, c03] = swapMask64(c02, c03, 0xFF00FF00FF00FF00n);
-    [c04, c05] = swapMask64(c04, c05, 0xFF00FF00FF00FF00n);
-    [c06, c07] = swapMask64(c06, c07, 0xFF00FF00FF00FF00n);
-    [c08, c09] = swapMask64(c08, c09, 0xFF00FF00FF00FF00n);
-    [c10, c11] = swapMask64(c10, c11, 0xFF00FF00FF00FF00n);
-    [c12, c13] = swapMask64(c12, c13, 0xFF00FF00FF00FF00n);
-    [c14, c15] = swapMask64(c14, c15, 0xFF00FF00FF00FF00n);
-
-    words[0] = c00; words[1] = c01; words[2] = c02; words[3] = c03;
-    words[4] = c04; words[5] = c05; words[6] = c06; words[7] = c07;
-    words[8] = c08; words[9] = c09; words[10] = c10; words[11] = c11;
-    words[12] = c12; words[13] = c13; words[14] = c14; words[15] = c15;
+    swapMask64(w, 0, 1, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 2, 3, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 4, 5, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 6, 7, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 8, 9, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 10, 11, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 12, 13, 0xFF00FF00FF00FF00n);
+    swapMask64(w, 14, 15, 0xFF00FF00FF00FF00n);
 
     // Convert back to byte representation
     for (let i = 0; i < 16; ++i) {
-      for (let j = 0; j < 8; ++j) {
-        s[i][j] = Number(OpCodes.AndN(OpCodes.ShiftRn(words[i], j * 8), 0xFFn));
-      }
+      unpackColumn(w[i], s[i]);
     }
   }
 
-  // Single column mixing (Galois Field multiplication)
+  /**
+   * Single column mixing (Galois Field multiplication)
+   * @param {BigInt} c - Column word
+   * @returns {BigInt} Mixed column word
+   */
   function mixColumn(c) {
     // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
+    /** @type {BigInt} */
     const x1 = OpCodes.XorN(
       OpCodes.ShiftLn(OpCodes.AndN(c, 0x7F7F7F7F7F7F7F7Fn), 1),
       OpCodes.ShiftRn(OpCodes.AndN(c, 0x8080808080808080n), 7) * 0x1Dn
     );
 
     // Use RIGHT rotation (matches Bouncy Castle's rotate() function)
+    /** @type {BigInt} */
     let u = OpCodes.XorN(OpCodes.RotR64n(c, 8), c);
     u = OpCodes.XorN(u, OpCodes.RotR64n(u, 16));
     u = OpCodes.XorN(u, OpCodes.RotR64n(c, 48));
 
+    /** @type {BigInt} */
     let v = OpCodes.XorN(OpCodes.XorN(u, c), x1);
 
     // Multiply by 'x^2'
@@ -280,76 +311,93 @@
     );
   }
 
-  // MixColumns transformation
+  /**
+   * MixColumns transformation
+   * @param {uint8[][]} s - State columns
+   * @param {int32} numColumns - Number of state columns
+   * @returns {void}
+   */
   function mixColumns(s, numColumns) {
     for (let col = 0; col < numColumns; ++col) {
-      // Pack column into 64-bit BigInt word (little-endian)
-      let c = 0n;
-      for (let i = 0; i < 8; ++i) {
-        c = OpCodes.OrN(c, OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[col][i], 0xFF)), i * 8));
-      }
-
-      // MixColumn operation (circulant matrix in GF(2^8))
-      const mixed = mixColumn(c);
-
-      // Unpack back to bytes
-      for (let i = 0; i < 8; ++i) {
-        s[col][i] = Number(OpCodes.AndN(OpCodes.ShiftRn(mixed, i * 8), 0xFFn));
-      }
+      // Pack column, apply the circulant matrix in GF(2^8), unpack
+      unpackColumn(mixColumn(packColumn(s[col])), s[col]);
     }
   }
 
   // ===== SHARED INSTANCE BASE CLASS =====
 
   class KupynaInstanceBase extends IHashFunctionInstance {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+     * @param {int32} numColumns - State columns (8 or 16)
+     * @param {int32} numRounds - Rounds of P and Q (10 or 14)
+     * @param {int32} blockSize - Block size in bytes (64 or 128)
+     * @param {int32} hashSize - Digest size in bytes (32 or 64)
+     */
     constructor(algorithm, numColumns, numRounds, blockSize, hashSize) {
       super(algorithm);
 
+      /** @type {int32} */
       this.numColumns = numColumns;
+      /** @type {int32} */
       this.numRounds = numRounds;
+      /** @type {int32} */
       this.blockSize = blockSize;
+      /** @type {int32} */
       this.hashSize = hashSize;
 
       // Internal state
+      /** @type {uint8[][]} */
       this.state = null;
+      /** @type {uint8[][]} */
       this.tempState1 = null;
+      /** @type {uint8[][]} */
       this.tempState2 = null;
+      /** @type {int32} */
       this.inputBlocks = 0;
+      /** @type {uint8[]} */
       this.buf = null;
+      /** @type {int32} */
       this.bufOff = 0;
 
       this.reset();
     }
 
+    /**
+     * Reset the chaining state and the message buffer
+     * @returns {void}
+     */
     reset() {
       // Initialize state (array of columns x 64-bit words as byte arrays)
       this.state = new Array(this.numColumns);
-      for (let i = 0; i < this.numColumns; ++i) {
-        this.state[i] = new Array(8).fill(0);
-      }
-      // Set initial value to block size
-      this.state[0][0] = OpCodes.AndN(this.blockSize, 0xFF);
-      this.state[0][1] = OpCodes.AndN(OpCodes.Shr32(this.blockSize, 8), 0xFF);
-
       this.tempState1 = new Array(this.numColumns);
       this.tempState2 = new Array(this.numColumns);
       for (let i = 0; i < this.numColumns; ++i) {
-        this.tempState1[i] = new Array(8);
-        this.tempState2[i] = new Array(8);
+        this.state[i] = OpCodes.CreateArray(8, 0);
+        this.tempState1[i] = OpCodes.CreateArray(8, 0);
+        this.tempState2[i] = OpCodes.CreateArray(8, 0);
       }
+      // Set initial value to block size
+      this.state[0][0] = OpCodes.GetByte(this.blockSize, 0);
+      this.state[0][1] = OpCodes.GetByte(this.blockSize, 1);
 
-      this.buf = new Array(this.blockSize).fill(0);
+      this.buf = OpCodes.CreateArray(this.blockSize, 0);
       this.bufOff = 0;
       this.inputBlocks = 0;
     }
 
-    // P permutation (encryption-like transformation)
+    /**
+     * P permutation (encryption-like transformation)
+     * @param {uint8[][]} s - State columns, permuted in place
+     * @returns {void}
+     */
     P(s) {
       for (let round = 0; round < this.numRounds; ++round) {
         // AddRoundConstants
+        /** @type {int32} */
         let rc = round;
         for (let col = 0; col < this.numColumns; ++col) {
-          s[col][0] = OpCodes.XorN(s[col][0], OpCodes.AndN(rc, 0xFF));
+          s[col][0] = OpCodes.Xor8(s[col][0], OpCodes.ToByte(rc));
           rc += 0x10;
         }
 
@@ -359,26 +407,20 @@
       }
     }
 
-    // Q permutation (decryption-like transformation)
+    /**
+     * Q permutation (decryption-like transformation)
+     * @param {uint8[][]} s - State columns, permuted in place
+     * @returns {void}
+     */
     Q(s) {
       for (let round = 0; round < this.numRounds; ++round) {
         // AddRoundConstantsQ
-        let rc = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.XorN(OpCodes.Shl32(this.numColumns - 1, 4), round)), 56), 0x00F0F0F0F0F0F0F3n);
+        /** @type {BigInt} */
+        let rc = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.Xor32(OpCodes.Shl32(this.numColumns - 1, 4), round)), 56), 0x00F0F0F0F0F0F0F3n);
 
         for (let col = 0; col < this.numColumns; ++col) {
-          // Convert column to 64-bit BigInt
-          let word = 0n;
-          for (let i = 0; i < 8; ++i) {
-            word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(OpCodes.AndN(s[col][i], 0xFF)), i * 8));
-          }
-
-          // Add constant
-          word = OpCodes.AndN(word + rc, 0xFFFFFFFFFFFFFFFFn);
-
-          // Convert back to bytes
-          for (let i = 0; i < 8; ++i) {
-            s[col][i] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn));
-          }
+          // Add constant to the column word
+          unpackColumn(OpCodes.AndN(packColumn(s[col]) + rc, 0xFFFFFFFFFFFFFFFFn), s[col]);
 
           // Decrement constant
           rc = OpCodes.AndN(rc - 0x1000000000000000n, 0xFFFFFFFFFFFFFFFFn);
@@ -390,15 +432,22 @@
       }
     }
 
-    // Process single block
+    /**
+     * Process a single block
+     * @param {uint8[]} input - Source bytes
+     * @param {int32} inOff - Offset of the block in input
+     * @returns {void}
+     */
     processBlock(input, inOff) {
+      /** @type {int32} */
       let pos = inOff;
 
       // Load block and XOR with state for tempState1, copy to tempState2
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          const word = OpCodes.AndN(input[pos++], 0xFF);
-          this.tempState1[col][i] = OpCodes.XorN(this.state[col][i], word);
+          /** @type {uint8} */
+          const word = OpCodes.ToByte(input[pos++]);
+          this.tempState1[col][i] = OpCodes.Xor8(this.state[col][i], word);
           this.tempState2[col][i] = word;
         }
       }
@@ -410,23 +459,22 @@
       // XOR results back into state
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          this.state[col][i] = OpCodes.XorN(this.state[col][i], OpCodes.XorN(this.tempState1[col][i], this.tempState2[col][i]));
-          this.state[col][i] = OpCodes.AndN(this.state[col][i], 0xFF);
+          this.state[col][i] = OpCodes.Xor8(this.state[col][i], OpCodes.Xor8(this.tempState1[col][i], this.tempState2[col][i]));
         }
       }
     }
 
-    // Feed data for hashing
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data for hashing
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
+      /** @type {int32} */
       let inOff = 0;
+      /** @type {int32} */
       let len = data.length;
 
       // Fill buffer first
@@ -456,18 +504,17 @@
       }
     }
 
-    // Compute final hash
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Compute the final hash and reset the instance
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
       // Padding: 0x80 byte followed by zeros, then 96-bit length
+      /** @type {int32} */
       const inputBytes = this.bufOff;
       this.buf[this.bufOff++] = 0x80;
 
+      /** @type {int32} */
       const lenPos = this.blockSize - 12;
       if (this.bufOff > lenPos) {
         while (this.bufOff < this.blockSize) {
@@ -482,11 +529,12 @@
       }
 
       // Append length in bits (little-endian, 96 bits)
+      /** @type {int32} */
       const totalBits = (this.inputBlocks * this.blockSize + inputBytes) * 8;
-      this.buf[this.bufOff++] = OpCodes.AndN(totalBits, 0xFF);
-      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 8), 0xFF);
-      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 16), 0xFF);
-      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 24), 0xFF);
+      this.buf[this.bufOff++] = OpCodes.GetByte(totalBits, 0);
+      this.buf[this.bufOff++] = OpCodes.GetByte(totalBits, 1);
+      this.buf[this.bufOff++] = OpCodes.GetByte(totalBits, 2);
+      this.buf[this.bufOff++] = OpCodes.GetByte(totalBits, 3);
 
       // Upper 64 bits of length (usually 0 for reasonable input sizes)
       for (let i = 0; i < 8; ++i) {
@@ -506,17 +554,18 @@
 
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          this.state[col][i] = OpCodes.XorN(this.state[col][i], this.tempState1[col][i]);
-          this.state[col][i] = OpCodes.AndN(this.state[col][i], 0xFF);
+          this.state[col][i] = OpCodes.Xor8(this.state[col][i], this.tempState1[col][i]);
         }
       }
 
       // Extract hash (last N columns)
+      /** @type {uint8[]} */
       const output = [];
-      const startCol = this.numColumns - OpCodes.Shr32(this.hashSize, 3);
-      for (let col = startCol; col < this.numColumns; ++col) {
+      /** @type {int32} */
+      const hashColumns = OpCodes.Shr32(this.hashSize, 3);
+      for (let col = this.numColumns - hashColumns; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          output.push(OpCodes.AndN(this.state[col][i], 0xFF));
+          output.push(this.state[col][i]);
         }
       }
 
@@ -524,7 +573,11 @@
       return output;
     }
 
-    // Abstract method to be overridden by subclasses
+    /**
+     * ShiftRows of the variant, overridden by subclasses
+     * @param {uint8[][]} s - State columns
+     * @returns {void}
+     */
     shiftRows(s) {
       throw new Error('shiftRows() must be implemented by subclass');
     }
@@ -554,7 +607,7 @@
       this.country = CountryCode.UA;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [32]; // 256 bits
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)]; // 256 bits
       this.blockSize = 64; // 512 bits = 64 bytes
       this.outputSize = 32; // 256 bits = 32 bytes
 
@@ -614,7 +667,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -624,11 +677,18 @@
   }
 
   class Kupyna256AlgorithmInstance extends KupynaInstanceBase {
+    /**
+     * @param {Kupyna256Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       // 256-bit variant: 8 columns, 10 rounds, 64-byte blocks, 32-byte hash
       super(algorithm, 8, 10, 64, 32);
     }
 
+    /**
+     * @param {uint8[][]} s - State columns
+     * @returns {void}
+     */
     shiftRows(s) {
       shiftRows512(s);
     }
@@ -658,7 +718,7 @@
       this.country = CountryCode.UA;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [64]; // 512 bits
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits
       this.blockSize = 128; // 1024 bits = 128 bytes
       this.outputSize = 64; // 512 bits = 64 bytes
 
@@ -718,7 +778,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -728,11 +788,18 @@
   }
 
   class Kupyna512AlgorithmInstance extends KupynaInstanceBase {
+    /**
+     * @param {Kupyna512Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       // 512-bit variant: 16 columns, 14 rounds, 128-byte blocks, 64-byte hash
       super(algorithm, 16, 14, 128, 64);
     }
 
+    /**
+     * @param {uint8[][]} s - State columns
+     * @returns {void}
+     */
     shiftRows(s) {
       shiftRows1024(s);
     }
