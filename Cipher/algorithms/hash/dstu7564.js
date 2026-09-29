@@ -37,6 +37,7 @@
   const OpCodes = global.OpCodes;
 
   // ===== S-BOX TABLES =====
+  /** @type {uint8[]} */
   const S0 = new Uint8Array([
     0xa8, 0x43, 0x5f, 0x06, 0x6b, 0x75, 0x6c, 0x59, 0x71, 0xdf, 0x87, 0x95, 0x17, 0xf0, 0xd8, 0x09,
     0x6d, 0xf3, 0x1d, 0xcb, 0xc9, 0x4d, 0x2c, 0xaf, 0x79, 0xe0, 0x97, 0xfd, 0x6f, 0x4b, 0x45, 0x39,
@@ -56,6 +57,7 @@
     0x81, 0x54, 0xc0, 0xed, 0x4e, 0x44, 0xa7, 0x2a, 0x85, 0x25, 0xe6, 0xca, 0x7c, 0x8b, 0x56, 0x80
   ]);
 
+  /** @type {uint8[]} */
   const S1 = new Uint8Array([
     0xce, 0xbb, 0xeb, 0x92, 0xea, 0xcb, 0x13, 0xc1, 0xe9, 0x3a, 0xd6, 0xb2, 0xd2, 0x90, 0x17, 0xf8,
     0x42, 0x15, 0x56, 0xb4, 0x65, 0x1c, 0x88, 0x43, 0xc5, 0x5c, 0x36, 0xba, 0xf5, 0x57, 0x67, 0x8d,
@@ -75,6 +77,7 @@
     0xb6, 0xc2, 0x01, 0xf0, 0x5a, 0xed, 0xa7, 0x66, 0x21, 0x7f, 0x8a, 0x27, 0xc7, 0xc0, 0x29, 0xd7
   ]);
 
+  /** @type {uint8[]} */
   const S2 = new Uint8Array([
     0x93, 0xd9, 0x9a, 0xb5, 0x98, 0x22, 0x45, 0xfc, 0xba, 0x6a, 0xdf, 0x02, 0x9f, 0xdc, 0x51, 0x59,
     0x4a, 0x17, 0x2b, 0xc2, 0x94, 0xf4, 0xbb, 0xa3, 0x62, 0xe4, 0x71, 0xd4, 0xcd, 0x70, 0x16, 0xe1,
@@ -94,6 +97,7 @@
     0x42, 0x04, 0xa0, 0xdb, 0x39, 0x86, 0x54, 0xaa, 0x8c, 0x34, 0x21, 0x8b, 0xf8, 0x0c, 0x74, 0x67
   ]);
 
+  /** @type {uint8[]} */
   const S3 = new Uint8Array([
     0x68, 0x8d, 0xca, 0x4d, 0x73, 0x4b, 0x4e, 0x2a, 0xd4, 0x52, 0x26, 0xb3, 0x54, 0x1e, 0x19, 0x1f,
     0x22, 0x03, 0x46, 0x3d, 0x2d, 0x4a, 0x53, 0x83, 0x13, 0x8a, 0xb7, 0xd5, 0x25, 0x79, 0xf5, 0xbd,
@@ -115,10 +119,30 @@
 
   // ===== SHARED HELPERS =====
 
-  // Conditional swap of two 64-bit BigInt words under a bitmask (bit-parallel permutation step)
-  function swapMask64(a, b, mask) {
-    const d = OpCodes.AndN(OpCodes.XorN(a, b), mask);
-    return [OpCodes.XorN(a, d), OpCodes.XorN(b, d)];
+  /**
+   * Conditional swap of two 64-bit BigInt words under a bitmask (bit-parallel permutation step)
+   * @param {uint64[]} s - state columns, updated in place
+   * @param {int32} i - first column
+   * @param {int32} j - second column
+   * @param {BigInt} mask - bits to exchange
+   * @returns {void}
+   */
+  function swapMask64(s, i, j, mask) {
+    const d = OpCodes.AndN(OpCodes.XorN(s[i], s[j]), mask);
+    s[i] = OpCodes.XorN(s[i], d);
+    s[j] = OpCodes.XorN(s[j], d);
+  }
+
+  /**
+   * A fresh array of zero 64-bit words
+   * @param {int32} count - number of words
+   * @returns {uint64[]} count zeros
+   */
+  function zeroWords(count) {
+    /** @type {uint64[]} */
+    const words = new Array(count);
+    for (let i = 0; i < count; ++i) words[i] = 0n;
+    return words;
   }
 
   // ===== DSTU7564 ALGORITHM CLASS =====
@@ -286,9 +310,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {DSTU7564Instance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -299,31 +323,48 @@
 
   // ===== DSTU7564 INSTANCE CLASS =====
   /**
- * DSTU7564 cipher instance implementing Feed/Result pattern
+ * DSTU7564 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class DSTU7564Instance extends IHashFunctionInstance {
+    /**
+     * @param {DSTU7564} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {int32} */
       this._outputSize = 32; // Default 256-bit
+      /** @type {int32} */
       this.columns = 8;      // NB_512
+      /** @type {int32} */
       this.rounds = 10;      // NR_512
+      /** @type {int32} */
       this.blockSize = 64;   // columns * 8
 
-      this.state = new Array(this.columns).fill(0n);
+      /** @type {uint64[]} */
+      this.state = zeroWords(this.columns);
       this.state[0] = BigInt(this.blockSize);
 
-      this.tempState1 = new Array(this.columns);
-      this.tempState2 = new Array(this.columns);
+      /** @type {uint64[]} */
+      this.tempState1 = zeroWords(this.columns);
+      /** @type {uint64[]} */
+      this.tempState2 = zeroWords(this.columns);
 
+      /** @type {int32} */
       this.inputBlocks = 0;
+      /** @type {uint8[]} */
       this.buf = [];
+      /** @type {int32} */
       this.bufOff = 0;
     }
 
+    /**
+     * Select the digest size; this also resets the state
+     * @param {int32} size - 32, 48 or 64 bytes
+     */
     set outputSize(size) {
       if (size !== 32 && size !== 48 && size !== 64) {
         throw new Error("Invalid output size. Must be 32, 48, or 64 bytes");
@@ -343,25 +384,28 @@
       this.blockSize = this.columns * 8;
 
       // Reset state
-      this.state = new Array(this.columns).fill(0n);
+      this.state = zeroWords(this.columns);
       this.state[0] = BigInt(this.blockSize);
 
-      this.tempState1 = new Array(this.columns);
-      this.tempState2 = new Array(this.columns);
+      this.tempState1 = zeroWords(this.columns);
+      this.tempState2 = zeroWords(this.columns);
 
       this.inputBlocks = 0;
       this.buf = [];
       this.bufOff = 0;
     }
 
+    /**
+     * Digest size in bytes
+     * @returns {int32} 32, 48 or 64
+     */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the hash
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -379,9 +423,8 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Finish the message and return the digest (the instance then restarts)
+   * @returns {uint8[]} outputSize bytes
    */
 
     Result() {
@@ -403,11 +446,14 @@
       }
 
       // Encode length in bits (96-bit field)
+      /** @type {BigInt} */
       const totalBits = BigInt(this.inputBlocks) * BigInt(this.blockSize) * 8n + BigInt(inputBytes) * 8n;
 
       // Write 96-bit length as little-endian
       for (let i = 0; i < 12; ++i) {
-        this.buf[this.bufOff++] = Number(OpCodes.AndN(OpCodes.ShiftRn(totalBits, i * 8), 0xFFn));
+        /** @type {uint8} */
+        const lengthByte = Number(OpCodes.AndN(OpCodes.ShiftRn(totalBits, i * 8), 0xFFn));
+        this.buf[this.bufOff++] = lengthByte;
       }
 
       this.processBlock(this.buf, 0);
@@ -424,19 +470,23 @@
       }
 
       // Extract output
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {int32} */
       const neededColumns = OpCodes.Shr32(this._outputSize, 3);
 
       for (let col = this.columns - neededColumns; col < this.columns; ++col) {
         const word = this.state[col];
         // Pack as little-endian
         for (let i = 0; i < 8; ++i) {
-          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn)));
+          /** @type {uint8} */
+          const wordByte = Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn));
+          output.push(wordByte);
         }
       }
 
       // Reset for next use
-      this.state = new Array(this.columns).fill(0n);
+      this.state = zeroWords(this.columns);
       this.state[0] = BigInt(this.blockSize);
       this.inputBlocks = 0;
       this.buf = [];
@@ -445,12 +495,18 @@
       return output;
     }
 
-    // Process single block
+    /**
+     * Process single block
+     * @param {uint8[]} input - message bytes
+     * @param {int32} inOff - offset of the block
+     * @returns {void}
+     */
     processBlock(input, inOff) {
       let pos = inOff;
 
       for (let col = 0; col < this.columns; ++col) {
         // Read 8 bytes as little-endian 64-bit word
+        /** @type {BigInt} */
         let word = 0n;
         for (let i = 0; i < 8; ++i) {
           word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(OpCodes.And32(input[pos++], 0xFF)), i * 8));
@@ -468,7 +524,11 @@
       }
     }
 
-    // Permutation P
+    /**
+     * Permutation P
+     * @param {uint64[]} s - state columns, updated in place
+     * @returns {void}
+     */
     P(s) {
       for (let round = 0; round < this.rounds; ++round) {
         // AddRoundConstants
@@ -482,10 +542,15 @@
       }
     }
 
-    // Permutation Q
+    /**
+     * Permutation Q
+     * @param {uint64[]} s - state columns, updated in place
+     * @returns {void}
+     */
     Q(s) {
       for (let round = 0; round < this.rounds; ++round) {
         // AddRoundConstantsQ - matches Bouncy Castle exactly
+        /** @type {BigInt} */
         let rc = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.Xor32(OpCodes.Shl32(this.columns - 1, 4), round)), 56), 0x00F0F0F0F0F0F0F3n);
 
         for (let col = 0; col < this.columns; ++col) {
@@ -499,85 +564,79 @@
       }
     }
 
-    // ShiftRows transformation
+    /**
+     * ShiftRows transformation, as a network of masked column swaps
+     * @param {uint64[]} s - state columns, updated in place
+     * @returns {void}
+     */
     shiftRows(s) {
       if (this.columns === 8) {
         // NB_512 case
-        let c0 = s[0], c1 = s[1], c2 = s[2], c3 = s[3];
-        let c4 = s[4], c5 = s[5], c6 = s[6], c7 = s[7];
+        swapMask64(s, 0, 4, 0xFFFFFFFF00000000n);
+        swapMask64(s, 1, 5, 0x00FFFFFFFF000000n);
+        swapMask64(s, 2, 6, 0x0000FFFFFFFF0000n);
+        swapMask64(s, 3, 7, 0x000000FFFFFFFF00n);
 
-        [c0, c4] = swapMask64(c0, c4, 0xFFFFFFFF00000000n);
-        [c1, c5] = swapMask64(c1, c5, 0x00FFFFFFFF000000n);
-        [c2, c6] = swapMask64(c2, c6, 0x0000FFFFFFFF0000n);
-        [c3, c7] = swapMask64(c3, c7, 0x000000FFFFFFFF00n);
+        swapMask64(s, 0, 2, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 1, 3, 0x00FFFF0000FFFF00n);
+        swapMask64(s, 4, 6, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 5, 7, 0x00FFFF0000FFFF00n);
 
-        [c0, c2] = swapMask64(c0, c2, 0xFFFF0000FFFF0000n);
-        [c1, c3] = swapMask64(c1, c3, 0x00FFFF0000FFFF00n);
-        [c4, c6] = swapMask64(c4, c6, 0xFFFF0000FFFF0000n);
-        [c5, c7] = swapMask64(c5, c7, 0x00FFFF0000FFFF00n);
-
-        [c0, c1] = swapMask64(c0, c1, 0xFF00FF00FF00FF00n);
-        [c2, c3] = swapMask64(c2, c3, 0xFF00FF00FF00FF00n);
-        [c4, c5] = swapMask64(c4, c5, 0xFF00FF00FF00FF00n);
-        [c6, c7] = swapMask64(c6, c7, 0xFF00FF00FF00FF00n);
-
-        s[0] = c0; s[1] = c1; s[2] = c2; s[3] = c3;
-        s[4] = c4; s[5] = c5; s[6] = c6; s[7] = c7;
+        swapMask64(s, 0, 1, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 2, 3, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 4, 5, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 6, 7, 0xFF00FF00FF00FF00n);
       } else {
         // NB_1024 case
-        let c00 = s[0],  c01 = s[1],  c02 = s[2],  c03 = s[3];
-        let c04 = s[4],  c05 = s[5],  c06 = s[6],  c07 = s[7];
-        let c08 = s[8],  c09 = s[9],  c10 = s[10], c11 = s[11];
-        let c12 = s[12], c13 = s[13], c14 = s[14], c15 = s[15];
+        swapMask64(s, 0, 8, 0xFF00000000000000n);
+        swapMask64(s, 1, 9, 0xFF00000000000000n);
+        swapMask64(s, 2, 10, 0xFFFF000000000000n);
+        swapMask64(s, 3, 11, 0xFFFFFF0000000000n);
+        swapMask64(s, 4, 12, 0xFFFFFFFF00000000n);
+        swapMask64(s, 5, 13, 0x00FFFFFFFF000000n);
+        swapMask64(s, 6, 14, 0x00FFFFFFFFFF0000n);
+        swapMask64(s, 7, 15, 0x00FFFFFFFFFFFF00n);
 
-        [c00, c08] = swapMask64(c00, c08, 0xFF00000000000000n);
-        [c01, c09] = swapMask64(c01, c09, 0xFF00000000000000n);
-        [c02, c10] = swapMask64(c02, c10, 0xFFFF000000000000n);
-        [c03, c11] = swapMask64(c03, c11, 0xFFFFFF0000000000n);
-        [c04, c12] = swapMask64(c04, c12, 0xFFFFFFFF00000000n);
-        [c05, c13] = swapMask64(c05, c13, 0x00FFFFFFFF000000n);
-        [c06, c14] = swapMask64(c06, c14, 0x00FFFFFFFFFF0000n);
-        [c07, c15] = swapMask64(c07, c15, 0x00FFFFFFFFFFFF00n);
+        swapMask64(s, 0, 4, 0x00FFFFFF00000000n);
+        swapMask64(s, 1, 5, 0xFFFFFFFFFF000000n);
+        swapMask64(s, 2, 6, 0xFF00FFFFFFFF0000n);
+        swapMask64(s, 3, 7, 0xFF0000FFFFFFFF00n);
+        swapMask64(s, 8, 12, 0x00FFFFFF00000000n);
+        swapMask64(s, 9, 13, 0xFFFFFFFFFF000000n);
+        swapMask64(s, 10, 14, 0xFF00FFFFFFFF0000n);
+        swapMask64(s, 11, 15, 0xFF0000FFFFFFFF00n);
 
-        [c00, c04] = swapMask64(c00, c04, 0x00FFFFFF00000000n);
-        [c01, c05] = swapMask64(c01, c05, 0xFFFFFFFFFF000000n);
-        [c02, c06] = swapMask64(c02, c06, 0xFF00FFFFFFFF0000n);
-        [c03, c07] = swapMask64(c03, c07, 0xFF0000FFFFFFFF00n);
-        [c08, c12] = swapMask64(c08, c12, 0x00FFFFFF00000000n);
-        [c09, c13] = swapMask64(c09, c13, 0xFFFFFFFFFF000000n);
-        [c10, c14] = swapMask64(c10, c14, 0xFF00FFFFFFFF0000n);
-        [c11, c15] = swapMask64(c11, c15, 0xFF0000FFFFFFFF00n);
+        swapMask64(s, 0, 2, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 1, 3, 0x00FFFF0000FFFF00n);
+        swapMask64(s, 4, 6, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 5, 7, 0x00FFFF0000FFFF00n);
+        swapMask64(s, 8, 10, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 9, 11, 0x00FFFF0000FFFF00n);
+        swapMask64(s, 12, 14, 0xFFFF0000FFFF0000n);
+        swapMask64(s, 13, 15, 0x00FFFF0000FFFF00n);
 
-        [c00, c02] = swapMask64(c00, c02, 0xFFFF0000FFFF0000n);
-        [c01, c03] = swapMask64(c01, c03, 0x00FFFF0000FFFF00n);
-        [c04, c06] = swapMask64(c04, c06, 0xFFFF0000FFFF0000n);
-        [c05, c07] = swapMask64(c05, c07, 0x00FFFF0000FFFF00n);
-        [c08, c10] = swapMask64(c08, c10, 0xFFFF0000FFFF0000n);
-        [c09, c11] = swapMask64(c09, c11, 0x00FFFF0000FFFF00n);
-        [c12, c14] = swapMask64(c12, c14, 0xFFFF0000FFFF0000n);
-        [c13, c15] = swapMask64(c13, c15, 0x00FFFF0000FFFF00n);
-
-        [c00, c01] = swapMask64(c00, c01, 0xFF00FF00FF00FF00n);
-        [c02, c03] = swapMask64(c02, c03, 0xFF00FF00FF00FF00n);
-        [c04, c05] = swapMask64(c04, c05, 0xFF00FF00FF00FF00n);
-        [c06, c07] = swapMask64(c06, c07, 0xFF00FF00FF00FF00n);
-        [c08, c09] = swapMask64(c08, c09, 0xFF00FF00FF00FF00n);
-        [c10, c11] = swapMask64(c10, c11, 0xFF00FF00FF00FF00n);
-        [c12, c13] = swapMask64(c12, c13, 0xFF00FF00FF00FF00n);
-        [c14, c15] = swapMask64(c14, c15, 0xFF00FF00FF00FF00n);
-
-        s[0] = c00; s[1] = c01; s[2] = c02; s[3] = c03;
-        s[4] = c04; s[5] = c05; s[6] = c06; s[7] = c07;
-        s[8] = c08; s[9] = c09; s[10] = c10; s[11] = c11;
-        s[12] = c12; s[13] = c13; s[14] = c14; s[15] = c15;
+        swapMask64(s, 0, 1, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 2, 3, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 4, 5, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 6, 7, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 8, 9, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 10, 11, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 12, 13, 0xFF00FF00FF00FF00n);
+        swapMask64(s, 14, 15, 0xFF00FF00FF00FF00n);
       }
     }
 
-    // SubBytes transformation using S-boxes
+    /**
+     * SubBytes transformation using S-boxes
+     * @param {uint64[]} s - state columns, updated in place
+     * @returns {void}
+     */
     subBytes(s) {
       for (let i = 0; i < this.columns; ++i) {
         const u = s[i];
+        /** @type {uint32} */
         const lo = Number(OpCodes.AndN(u, 0xFFFFFFFFn));
+        /** @type {uint32} */
         const hi = Number(OpCodes.AndN(OpCodes.ShiftRn(u, 32), 0xFFFFFFFFn));
 
         // Process low 32 bits
@@ -598,14 +657,22 @@
       }
     }
 
-    // MixColumns transformation
+    /**
+     * MixColumns transformation
+     * @param {uint64[]} s - state columns, updated in place
+     * @returns {void}
+     */
     mixColumns(s) {
       for (let col = 0; col < this.columns; ++col) {
         s[col] = this.mixColumn(s[col]);
       }
     }
 
-    // Mix single column using GF(2^8) arithmetic
+    /**
+     * Mix single column using GF(2^8) arithmetic
+     * @param {BigInt} c - one 64-bit column
+     * @returns {BigInt} mixed column
+     */
     mixColumn(c) {
       // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
       const x1 = OpCodes.XorN(
