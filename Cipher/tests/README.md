@@ -29,7 +29,7 @@ that one load.
 | `roundtrip` | every reversible algorithm decodes its own output over an adversarial corpus, and compressors compress; interoperability with zlib/bzip2 is reported, never gating | `RoundTrip.js` |
 | `chunked` | `Feed(whole)` equals `Feed(part1); Feed(part2); ...` for every split | `ChunkedFeed.js` |
 | `browser` | every script tag of `index.html` evaluates in page order with no `require`, `module` or `global` | `BrowserLoad.js` |
-| `library` | unit tests of the OpCodes helpers and `ByteBuffer` | `OpCodesHelperTests.js`, `ByteBufferTests.js` |
+| `library` | unit tests of the OpCodes helpers, `ByteBuffer` and the runners' category selection and summary | `OpCodesHelperTests.js`, `ByteBufferTests.js`, `RunnerTests.js` |
 
 Hashes, MACs, KDFs, random generators and the algorithms named in
 `round-trip-exemptions.js` have no inverse: `functionality` does not round-trip
