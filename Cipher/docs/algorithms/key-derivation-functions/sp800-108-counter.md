@@ -48,7 +48,7 @@ No vulnerabilities are recorded for this implementation.
 
 ## Test vectors
 
-7 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+10 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [SP800-108-Counter(HMAC(SHA-1)) - 20 bytes, exactly one PRF block](https://github.com/randombit/botan/blob/master/src/tests/data/kdf/sp800_108_ctr.vec)
 
@@ -133,6 +133,42 @@ No vulnerabilities are recorded for this implementation.
 | `hashAlgorithm` | SHA-256 |
 | `input` | `c342730ce2412fcdeb94cdf6b9f23d656f44c9cd0acfa9c6ca6904aaafe19d2a` |
 | `expected` | `99cbbccf79545b8a341637395b034995 5077ef3b3901e06f6507962b4f08b8d5 154b03ad` |
+
+**Vector 8** — [SP800-108-Counter(HMAC(SHA-256)) - 80-byte key, 48 bytes over two blocks (OpenSSL KBKDF)](https://docs.openssl.org/3.5/man7/EVP_KDF-KB/)
+
+| Field | Value |
+| --- | --- |
+| `label` | `4c4142454c` |
+| `context` | `434f4e54455854` |
+| `outputLength` | `48` |
+| `counterBits` | `32` |
+| `hashAlgorithm` | SHA-256 |
+| `input` | `01080f161d242b323940474e555c636a 71787f868d949ba2a9b0b7bec5ccd3da e1e8eff6fd040b121920272e353c434a 51585f666d747b828990979ea5acb3ba c1c8cfd6dde4ebf2f900070e151c232a` |
+| `expected` | `f28a73665986e50ce5d1084bdcf38f9f 77c895daba4e28f099b7a118e01ead39 7831f8dd6a3402ed1339de497275652c` |
+
+**Vector 9** — [SP800-108-Counter(HMAC(SHA-1)) - 65-byte key, 40 bytes over two blocks (OpenSSL KBKDF)](https://docs.openssl.org/3.5/man7/EVP_KDF-KB/)
+
+| Field | Value |
+| --- | --- |
+| `label` | `4c4142454c` |
+| `context` | `434f4e54455854` |
+| `outputLength` | `40` |
+| `counterBits` | `32` |
+| `hashAlgorithm` | SHA-1 |
+| `input` | `030a11181f262d343b424950575e656c 737a81888f969da4abb2b9c0c7ced5dc e3eaf1f8ff060d141b222930373e454c 535a61686f767d848b9299a0a7aeb5bc c3` |
+| `expected` | `ebead2132a5ef912e34faace8bc36deb c5f4fb6ed4d1d07a56d5c07dbdee4477 ee99dcdd8c2be549` |
+
+**Vector 10** — [SP800-108-Counter(HMAC(SHA-512)) - 129-byte key, 80 bytes over two blocks (OpenSSL KBKDF)](https://docs.openssl.org/3.5/man7/EVP_KDF-KB/)
+
+| Field | Value |
+| --- | --- |
+| `label` | `4c4142454c` |
+| `context` | `434f4e54455854` |
+| `outputLength` | `80` |
+| `counterBits` | `32` |
+| `hashAlgorithm` | SHA-512 |
+| `input` | `050c131a21282f363d444b525960676e 757c838a91989fa6adb4bbc2c9d0d7de e5ecf3fa01080f161d242b323940474e 555c636a71787f868d949ba2a9b0b7be c5ccd3dae1e8eff6fd040b121920272e 353c434a51585f666d747b828990979e a5acb3bac1c8cfd6dde4ebf2f900070e 151c232a31383f464d545b626970777e 85` |
+| `expected` | `ddeb839807194f5ab52f2f3f63508597 8a4739a0490ca179ee2b5dd632f868aa 25d466af05a6f673d853ebfcbf01b4ad 1f3da478c3306ee1ffc945f802cc22b2 930adb6a77c745ea0679d8300093ec3b` |
 
 ---
 
