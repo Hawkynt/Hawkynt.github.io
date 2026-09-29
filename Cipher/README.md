@@ -226,7 +226,7 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### Complete Algorithm Coverage
 
-**📚 Algorithm reference** — one markdown page per algorithm covering its parameters, security status, known vulnerabilities, references and test vectors. The pages are derived from the implementations, so they cannot drift: build them locally with `node tools/generate-algorithm-docs.js` (written to `docs/algorithms/`, starting at `docs/algorithms/README.md`), or download the `algorithm-reference` artifact that CI builds on every run. The generated tree is deliberately not checked in.
+**📚 [Algorithm reference](docs/algorithms/)** ([on the live site](https://hawkynt.github.io/Cipher/docs/algorithms/)) — one page per algorithm with its parameters and parameter sets, capabilities, security status, known vulnerabilities, documentation and references, test vectors with their sources, and a link to the implementation. `tools/generate-algorithm-docs.js` renders the pages from the metadata each implementation declares. CI regenerates `docs/algorithms/` and commits it to `main` after every green push, so nobody edits the pages by hand. To preview locally, run `node tools/generate-algorithm-docs.js`; `--check` reports stale pages.
 
 What is implemented, by directory. Each directory's own README lists its algorithms individually.
 
