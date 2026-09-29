@@ -59,35 +59,52 @@
           AeadAlgorithm, IAeadInstance, LinkItem } = AlgorithmFramework;
 
 // Saturnin Round Constants for different domain separators
-const SATURNIN_RC = Object.freeze([
-  // RC_10_1 (Domain 0, 10 rounds)
-  Object.freeze([0x4eb026c2, 0x90595303, 0xaa8fe632, 0xfe928a92, 0x4115a419,
-   0x93539532, 0x5db1cc4e, 0x541515ca, 0xbd1f55a8, 0x5a6e1a0d]),
-  // RC_10_2 (Domain 1, 10 rounds)
-  Object.freeze([0x4e4526b5, 0xa3565ff0, 0x0f8f20d8, 0x0b54bee1, 0x7d1a6c9d,
-   0x17a6280a, 0xaa46c986, 0xc1199062, 0x182c5cde, 0xa00d53fe]),
-  // RC_10_3 (Domain 2, 10 rounds)
-  Object.freeze([0x4e162698, 0xb2535ba1, 0x6c8f9d65, 0x5816ad30, 0x691fd4fa,
-   0x6bf5bcf9, 0xf8eb3525, 0xb21decfa, 0x7b3da417, 0xf62c94b4]),
-  // RC_10_4 (Domain 3, 10 rounds)
-  Object.freeze([0x4faf265b, 0xc5484616, 0x45dcad21, 0xe08bd607, 0x0504fdb8,
-   0x1e1f5257, 0x45fbc216, 0xeb529b1f, 0x52194e32, 0x5498c018]),
-  // RC_10_5 (Domain 4, 10 rounds)
-  Object.freeze([0x4ffc2676, 0xd44d4247, 0x26dc109c, 0xb3c9c5d6, 0x110145df,
-   0x624cc6a4, 0x17563eb5, 0x9856e787, 0x3108b6fb, 0x02b90752]),
-  // RC_10_6 (Domain 5, 10 rounds)
-  Object.freeze([0x4f092601, 0xe7424eb4, 0x83dcd676, 0x460ff1a5, 0x2d0e8d5b,
-   0xe6b97b9c, 0xe0a13b7d, 0x0d5a622f, 0x943bbf8d, 0xf8da4ea1]),
-  // RC_16_7 (Domain 6, 16 rounds)
-  Object.freeze([0x3fba180c, 0x563ab9ab, 0x125ea5ef, 0x859da26c, 0xb8cf779b,
+// RC_10_1 (Domain 0, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_1 = [0x4eb026c2, 0x90595303, 0xaa8fe632, 0xfe928a92, 0x4115a419,
+   0x93539532, 0x5db1cc4e, 0x541515ca, 0xbd1f55a8, 0x5a6e1a0d];
+// RC_10_2 (Domain 1, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_2 = [0x4e4526b5, 0xa3565ff0, 0x0f8f20d8, 0x0b54bee1, 0x7d1a6c9d,
+   0x17a6280a, 0xaa46c986, 0xc1199062, 0x182c5cde, 0xa00d53fe];
+// RC_10_3 (Domain 2, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_3 = [0x4e162698, 0xb2535ba1, 0x6c8f9d65, 0x5816ad30, 0x691fd4fa,
+   0x6bf5bcf9, 0xf8eb3525, 0xb21decfa, 0x7b3da417, 0xf62c94b4];
+// RC_10_4 (Domain 3, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_4 = [0x4faf265b, 0xc5484616, 0x45dcad21, 0xe08bd607, 0x0504fdb8,
+   0x1e1f5257, 0x45fbc216, 0xeb529b1f, 0x52194e32, 0x5498c018];
+// RC_10_5 (Domain 4, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_5 = [0x4ffc2676, 0xd44d4247, 0x26dc109c, 0xb3c9c5d6, 0x110145df,
+   0x624cc6a4, 0x17563eb5, 0x9856e787, 0x3108b6fb, 0x02b90752];
+// RC_10_6 (Domain 5, 10 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_10_6 = [0x4f092601, 0xe7424eb4, 0x83dcd676, 0x460ff1a5, 0x2d0e8d5b,
+   0xe6b97b9c, 0xe0a13b7d, 0x0d5a622f, 0x943bbf8d, 0xf8da4ea1];
+// RC_16_7 (Domain 6, 16 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_16_7 = [0x3fba180c, 0x563ab9ab, 0x125ea5ef, 0x859da26c, 0xb8cf779b,
    0x7d4de793, 0x07efb49f, 0x8d525306, 0x1e08e6ab, 0x41729f87,
    0x8c4aef0a, 0x4aa0c9a7, 0xd93a95ef, 0xbb00d2af, 0xb62c5bf0,
-   0x386d94d8]),
-  // RC_16_8 (Domain 7, 16 rounds)
-  Object.freeze([0x3c9b19a7, 0xa9098694, 0x23f878da, 0xa7b647d3, 0x74fc9d78,
+   0x386d94d8];
+// RC_16_8 (Domain 7, 16 rounds)
+/** @type {uint32[]} */
+const SATURNIN_RC_16_8 = [0x3c9b19a7, 0xa9098694, 0x23f878da, 0xa7b647d3, 0x74fc9d78,
    0xeacaae11, 0x2f31a677, 0x4cc8c054, 0x2f51ca05, 0x5268f195,
    0x4f5b8a2b, 0xf614b4ac, 0xf1d95401, 0x764d2568, 0x6a493611,
-   0x8eef9c3e])
+   0x8eef9c3e];
+/** @type {uint32[][]} */
+const SATURNIN_RC = Object.freeze([
+  Object.freeze(SATURNIN_RC_10_1),
+  Object.freeze(SATURNIN_RC_10_2),
+  Object.freeze(SATURNIN_RC_10_3),
+  Object.freeze(SATURNIN_RC_10_4),
+  Object.freeze(SATURNIN_RC_10_5),
+  Object.freeze(SATURNIN_RC_10_6),
+  Object.freeze(SATURNIN_RC_16_7),
+  Object.freeze(SATURNIN_RC_16_8)
 ]);
 
 // Domain separator constants
@@ -104,11 +121,17 @@ const SATURNIN_DOMAIN_16_8 = 7;
 class SaturninCipher {
   constructor() {
     // Key schedule: 16 32-bit words (8 regular + 8 rotated)
+    /** @type {uint32[]} */
     this.k = new Array(16);
   }
 
   // Load 32-bit word from Saturnin block format
   // Special byte ordering: bytes at positions [0, 1, 16, 17] form a 32-bit word
+  /**
+   * @param {uint8[]} block
+   * @param {int32} offset
+   * @returns {uint32}
+   */
   loadWord32(block, offset) {
     // Using OpCodes for byte packing - note: custom order [0,1,16,17]
     return OpCodes.Pack32LE(
@@ -120,6 +143,11 @@ class SaturninCipher {
   }
 
   // Store 32-bit word to Saturnin block format
+  /**
+   * @param {uint8[]} block
+   * @param {int32} offset
+   * @param {uint32} x
+   */
   storeWord32(block, offset, x) {
     // Using OpCodes for byte unpacking
     const bytes = OpCodes.Unpack32LE(x);
@@ -130,6 +158,9 @@ class SaturninCipher {
   }
 
   // Setup key schedule from 256-bit key
+  /**
+   * @param {uint8[]} key
+   */
   setupKey(key) {
     for (let index = 0; index < 16; index += 2) {
       const temp = this.loadWord32(key, index);
@@ -137,201 +168,345 @@ class SaturninCipher {
       // Rotated key: 5-bit rotation within each 16-bit half
       // Note: Custom bit-sliced operation for Saturnin's key schedule
       // Rotates bits 0-15 and 16-31 independently by 5 positions
-      this.k[8 + (index / 2)] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(temp, 0x001F001F), 11),
-                                OpCodes.AndN(OpCodes.Shr32(temp, 5), 0x07FF07FF)));
+      this.k[8 + (index / 2)] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(temp, 0x001F001F), 11),
+                                OpCodes.And32(OpCodes.Shr32(temp, 5), 0x07FF07FF)));
     }
   }
 
   // Bit-sliced S-box
-  sbox(state, a, b, c, d) {
-    state[a] = OpCodes.XorN(state[a], OpCodes.AndN(state[b], state[c]));
-    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[d]));
-    state[d] = OpCodes.XorN(state[d], OpCodes.OrN(state[b], state[c]));
-    state[c] = OpCodes.XorN(state[c], OpCodes.AndN(state[b], state[d]));
-    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[c]));
-    state[a] = OpCodes.XorN(state[a], OpCodes.OrN(state[b], state[d]));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} a
+   * @param {int32} b
+   * @param {int32} c
+   * @param {int32} d
+   */
+  sbox(w, a, b, c, d) {
+    w[a] = OpCodes.Xor32(w[a], OpCodes.And32(w[b], w[c]));
+    w[b] = OpCodes.Xor32(w[b], OpCodes.Or32(w[a], w[d]));
+    w[d] = OpCodes.Xor32(w[d], OpCodes.Or32(w[b], w[c]));
+    w[c] = OpCodes.Xor32(w[c], OpCodes.And32(w[b], w[d]));
+    w[b] = OpCodes.Xor32(w[b], OpCodes.Or32(w[a], w[c]));
+    w[a] = OpCodes.Xor32(w[a], OpCodes.Or32(w[b], w[d]));
   }
 
   // Inverse bit-sliced S-box
-  sboxInverse(state, a, b, c, d) {
-    state[a] = OpCodes.XorN(state[a], OpCodes.OrN(state[b], state[d]));
-    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[c]));
-    state[c] = OpCodes.XorN(state[c], OpCodes.AndN(state[b], state[d]));
-    state[d] = OpCodes.XorN(state[d], OpCodes.OrN(state[b], state[c]));
-    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[d]));
-    state[a] = OpCodes.XorN(state[a], OpCodes.AndN(state[b], state[c]));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} a
+   * @param {int32} b
+   * @param {int32} c
+   * @param {int32} d
+   */
+  sboxInverse(w, a, b, c, d) {
+    w[a] = OpCodes.Xor32(w[a], OpCodes.Or32(w[b], w[d]));
+    w[b] = OpCodes.Xor32(w[b], OpCodes.Or32(w[a], w[c]));
+    w[c] = OpCodes.Xor32(w[c], OpCodes.And32(w[b], w[d]));
+    w[d] = OpCodes.Xor32(w[d], OpCodes.Or32(w[b], w[c]));
+    w[b] = OpCodes.Xor32(w[b], OpCodes.Or32(w[a], w[d]));
+    w[a] = OpCodes.Xor32(w[a], OpCodes.And32(w[b], w[c]));
   }
 
   // Rotate 4-bit nibbles within 16-bit halves
   // Note: Custom bit-sliced permutation for Saturnin's slice layer
   // Applies independent rotations to low and high 16-bit halves
+  /**
+   * @param {uint32} a
+   * @param {uint32} mask1
+   * @param {int32} bits1
+   * @param {uint32} mask2
+   * @param {int32} bits2
+   * @returns {uint32}
+   */
   leftRotate4N(a, mask1, bits1, mask2, bits2) {
-    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-            OpCodes.Shl32(OpCodes.AndN(a, mask1), bits1),
-            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.XorN(mask1, 0xFFFF)), (4 - bits1))),
-            OpCodes.Shl32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
-            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (4 - bits2))));
+    return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+            OpCodes.Shl32(OpCodes.And32(a, mask1), bits1),
+            OpCodes.Shr32(OpCodes.And32(a, OpCodes.Xor32(mask1, 0xFFFF)), (4 - bits1))),
+            OpCodes.Shl32(OpCodes.And32(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
+            OpCodes.Shr32(OpCodes.And32(a, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (4 - bits2))));
   }
 
   // Rotate 16-bit subwords
   // Note: Custom bit-sliced permutation for Saturnin's sheet layer
   // Applies independent rotations to low and high 16-bit halves
+  /**
+   * @param {uint32} a
+   * @param {uint32} mask1
+   * @param {int32} bits1
+   * @param {uint32} mask2
+   * @param {int32} bits2
+   * @returns {uint32}
+   */
   leftRotate16N(a, mask1, bits1, mask2, bits2) {
-    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-            OpCodes.Shl32(OpCodes.AndN(a, mask1), bits1),
-            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.XorN(mask1, 0xFFFF)), (16 - bits1))),
-            OpCodes.Shl32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
-            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (16 - bits2))));
+    return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+            OpCodes.Shl32(OpCodes.And32(a, mask1), bits1),
+            OpCodes.Shr32(OpCodes.And32(a, OpCodes.Xor32(mask1, 0xFFFF)), (16 - bits1))),
+            OpCodes.Shl32(OpCodes.And32(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
+            OpCodes.Shr32(OpCodes.And32(a, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (16 - bits2))));
   }
 
   // The MDS layer permutes the eight bit-sliced words implicitly: rather than
   // moving the words around, each following layer is told which slot now holds
   // which word. Every layer below therefore takes its eight operands as
-  // explicit state indices instead of assuming the natural 0..7 order.
+  // explicit w indices instead of assuming the natural 0..7 order.
 
   // Slice permutation
-  slice(state, i0, i1, i2, i3, i4, i5, i6, i7) {
-    state[i0] = this.leftRotate4N(state[i0], 0xFFFF, 0, 0x3333, 2);
-    state[i1] = this.leftRotate4N(state[i1], 0xFFFF, 0, 0x3333, 2);
-    state[i2] = this.leftRotate4N(state[i2], 0xFFFF, 0, 0x3333, 2);
-    state[i3] = this.leftRotate4N(state[i3], 0xFFFF, 0, 0x3333, 2);
-    state[i4] = this.leftRotate4N(state[i4], 0x7777, 1, 0x1111, 3);
-    state[i5] = this.leftRotate4N(state[i5], 0x7777, 1, 0x1111, 3);
-    state[i6] = this.leftRotate4N(state[i6], 0x7777, 1, 0x1111, 3);
-    state[i7] = this.leftRotate4N(state[i7], 0x7777, 1, 0x1111, 3);
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  slice(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    w[i0] = this.leftRotate4N(w[i0], 0xFFFF, 0, 0x3333, 2);
+    w[i1] = this.leftRotate4N(w[i1], 0xFFFF, 0, 0x3333, 2);
+    w[i2] = this.leftRotate4N(w[i2], 0xFFFF, 0, 0x3333, 2);
+    w[i3] = this.leftRotate4N(w[i3], 0xFFFF, 0, 0x3333, 2);
+    w[i4] = this.leftRotate4N(w[i4], 0x7777, 1, 0x1111, 3);
+    w[i5] = this.leftRotate4N(w[i5], 0x7777, 1, 0x1111, 3);
+    w[i6] = this.leftRotate4N(w[i6], 0x7777, 1, 0x1111, 3);
+    w[i7] = this.leftRotate4N(w[i7], 0x7777, 1, 0x1111, 3);
   }
 
   // Inverse slice permutation
-  sliceInverse(state, i0, i1, i2, i3, i4, i5, i6, i7) {
-    state[i0] = this.leftRotate4N(state[i0], 0xFFFF, 0, 0x3333, 2);
-    state[i1] = this.leftRotate4N(state[i1], 0xFFFF, 0, 0x3333, 2);
-    state[i2] = this.leftRotate4N(state[i2], 0xFFFF, 0, 0x3333, 2);
-    state[i3] = this.leftRotate4N(state[i3], 0xFFFF, 0, 0x3333, 2);
-    state[i4] = this.leftRotate4N(state[i4], 0x1111, 3, 0x7777, 1);
-    state[i5] = this.leftRotate4N(state[i5], 0x1111, 3, 0x7777, 1);
-    state[i6] = this.leftRotate4N(state[i6], 0x1111, 3, 0x7777, 1);
-    state[i7] = this.leftRotate4N(state[i7], 0x1111, 3, 0x7777, 1);
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  sliceInverse(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    w[i0] = this.leftRotate4N(w[i0], 0xFFFF, 0, 0x3333, 2);
+    w[i1] = this.leftRotate4N(w[i1], 0xFFFF, 0, 0x3333, 2);
+    w[i2] = this.leftRotate4N(w[i2], 0xFFFF, 0, 0x3333, 2);
+    w[i3] = this.leftRotate4N(w[i3], 0xFFFF, 0, 0x3333, 2);
+    w[i4] = this.leftRotate4N(w[i4], 0x1111, 3, 0x7777, 1);
+    w[i5] = this.leftRotate4N(w[i5], 0x1111, 3, 0x7777, 1);
+    w[i6] = this.leftRotate4N(w[i6], 0x1111, 3, 0x7777, 1);
+    w[i7] = this.leftRotate4N(w[i7], 0x1111, 3, 0x7777, 1);
   }
 
   // Sheet permutation
-  sheet(state, i0, i1, i2, i3, i4, i5, i6, i7) {
-    state[i0] = this.leftRotate16N(state[i0], 0xFFFF, 0, 0x00FF, 8);
-    state[i1] = this.leftRotate16N(state[i1], 0xFFFF, 0, 0x00FF, 8);
-    state[i2] = this.leftRotate16N(state[i2], 0xFFFF, 0, 0x00FF, 8);
-    state[i3] = this.leftRotate16N(state[i3], 0xFFFF, 0, 0x00FF, 8);
-    state[i4] = this.leftRotate16N(state[i4], 0x0FFF, 4, 0x000F, 12);
-    state[i5] = this.leftRotate16N(state[i5], 0x0FFF, 4, 0x000F, 12);
-    state[i6] = this.leftRotate16N(state[i6], 0x0FFF, 4, 0x000F, 12);
-    state[i7] = this.leftRotate16N(state[i7], 0x0FFF, 4, 0x000F, 12);
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  sheet(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    w[i0] = this.leftRotate16N(w[i0], 0xFFFF, 0, 0x00FF, 8);
+    w[i1] = this.leftRotate16N(w[i1], 0xFFFF, 0, 0x00FF, 8);
+    w[i2] = this.leftRotate16N(w[i2], 0xFFFF, 0, 0x00FF, 8);
+    w[i3] = this.leftRotate16N(w[i3], 0xFFFF, 0, 0x00FF, 8);
+    w[i4] = this.leftRotate16N(w[i4], 0x0FFF, 4, 0x000F, 12);
+    w[i5] = this.leftRotate16N(w[i5], 0x0FFF, 4, 0x000F, 12);
+    w[i6] = this.leftRotate16N(w[i6], 0x0FFF, 4, 0x000F, 12);
+    w[i7] = this.leftRotate16N(w[i7], 0x0FFF, 4, 0x000F, 12);
   }
 
   // Inverse sheet permutation
-  sheetInverse(state, i0, i1, i2, i3, i4, i5, i6, i7) {
-    state[i0] = this.leftRotate16N(state[i0], 0xFFFF, 0, 0x00FF, 8);
-    state[i1] = this.leftRotate16N(state[i1], 0xFFFF, 0, 0x00FF, 8);
-    state[i2] = this.leftRotate16N(state[i2], 0xFFFF, 0, 0x00FF, 8);
-    state[i3] = this.leftRotate16N(state[i3], 0xFFFF, 0, 0x00FF, 8);
-    state[i4] = this.leftRotate16N(state[i4], 0x000F, 12, 0x0FFF, 4);
-    state[i5] = this.leftRotate16N(state[i5], 0x000F, 12, 0x0FFF, 4);
-    state[i6] = this.leftRotate16N(state[i6], 0x000F, 12, 0x0FFF, 4);
-    state[i7] = this.leftRotate16N(state[i7], 0x000F, 12, 0x0FFF, 4);
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  sheetInverse(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    w[i0] = this.leftRotate16N(w[i0], 0xFFFF, 0, 0x00FF, 8);
+    w[i1] = this.leftRotate16N(w[i1], 0xFFFF, 0, 0x00FF, 8);
+    w[i2] = this.leftRotate16N(w[i2], 0xFFFF, 0, 0x00FF, 8);
+    w[i3] = this.leftRotate16N(w[i3], 0xFFFF, 0, 0x00FF, 8);
+    w[i4] = this.leftRotate16N(w[i4], 0x000F, 12, 0x0FFF, 4);
+    w[i5] = this.leftRotate16N(w[i5], 0x000F, 12, 0x0FFF, 4);
+    w[i6] = this.leftRotate16N(w[i6], 0x000F, 12, 0x0FFF, 4);
+    w[i7] = this.leftRotate16N(w[i7], 0x000F, 12, 0x0FFF, 4);
   }
 
-  // XOR the key into the state. The n-th operand always receives k[n], so the
+  // XOR the key into the w. The n-th operand always receives k[n], so the
   // caller's index order decides which word each key word lands on.
-  xorKey(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  xorKey(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    /** @type {int32[]} */
     const idx = [i0, i1, i2, i3, i4, i5, i6, i7];
     for (let n = 0; n < 8; n++) {
-      state[idx[n]] = OpCodes.ToUint32(OpCodes.XorN(state[idx[n]], this.k[n]));
+      w[idx[n]] = OpCodes.ToUint32(OpCodes.Xor32(w[idx[n]], this.k[n]));
     }
   }
 
-  // XOR the rotated half of the key schedule into the state.
-  xorKeyRotated(state, i0, i1, i2, i3, i4, i5, i6, i7) {
+  // XOR the rotated half of the key schedule into the w.
+  /**
+   * @param {uint32[]} w
+   * @param {int32} i0
+   * @param {int32} i1
+   * @param {int32} i2
+   * @param {int32} i3
+   * @param {int32} i4
+   * @param {int32} i5
+   * @param {int32} i6
+   * @param {int32} i7
+   */
+  xorKeyRotated(w, i0, i1, i2, i3, i4, i5, i6, i7) {
+    /** @type {int32[]} */
     const idx = [i0, i1, i2, i3, i4, i5, i6, i7];
     for (let n = 0; n < 8; n++) {
-      state[idx[n]] = OpCodes.ToUint32(OpCodes.XorN(state[idx[n]], this.k[8 + n]));
+      w[idx[n]] = OpCodes.ToUint32(OpCodes.Xor32(w[idx[n]], this.k[8 + n]));
     }
   }
 
   // MDS matrix helper
-  mul(state, x0, x1, x2, x3) {
-    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x1]));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} x0
+   * @param {int32} x1
+   * @param {int32} x2
+   * @param {int32} x3
+   */
+  mul(w, x0, x1, x2, x3) {
+    w[x0] = OpCodes.ToUint32(OpCodes.Xor32(w[x0], w[x1]));
   }
 
   // Inverse MDS matrix helper
-  mulInv(state, x0, x1, x2, x3) {
-    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x0]));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} x0
+   * @param {int32} x1
+   * @param {int32} x2
+   * @param {int32} x3
+   */
+  mulInv(w, x0, x1, x2, x3) {
+    w[x3] = OpCodes.ToUint32(OpCodes.Xor32(w[x3], w[x0]));
   }
 
   // SWAP helper for MDS - swaps 16-bit halves of 32-bit word
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   swap(x) {
     // Note: Custom cross-word operation not available in OpCodes
-    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(x, 16), OpCodes.Shr32(x, 16)));
+    return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(x, 16), OpCodes.Shr32(x, 16)));
   }
 
   // MDS matrix
-  mds(state, x0, x1, x2, x3, x4, x5, x6, x7) {
-    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x4]));
-    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x5]));
-    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x6]));
-    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x7]));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} x0
+   * @param {int32} x1
+   * @param {int32} x2
+   * @param {int32} x3
+   * @param {int32} x4
+   * @param {int32} x5
+   * @param {int32} x6
+   * @param {int32} x7
+   */
+  mds(w, x0, x1, x2, x3, x4, x5, x6, x7) {
+    w[x0] = OpCodes.ToUint32(OpCodes.Xor32(w[x0], w[x4]));
+    w[x1] = OpCodes.ToUint32(OpCodes.Xor32(w[x1], w[x5]));
+    w[x2] = OpCodes.ToUint32(OpCodes.Xor32(w[x2], w[x6]));
+    w[x3] = OpCodes.ToUint32(OpCodes.Xor32(w[x3], w[x7]));
 
-    this.mul(state, x4, x5, x6, x7);
+    this.mul(w, x4, x5, x6, x7);
 
-    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x0])));
-    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x1])));
-    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x2])));
-    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x3])));
+    w[x5] = OpCodes.ToUint32(OpCodes.Xor32(w[x5], this.swap(w[x0])));
+    w[x6] = OpCodes.ToUint32(OpCodes.Xor32(w[x6], this.swap(w[x1])));
+    w[x7] = OpCodes.ToUint32(OpCodes.Xor32(w[x7], this.swap(w[x2])));
+    w[x4] = OpCodes.ToUint32(OpCodes.Xor32(w[x4], this.swap(w[x3])));
 
-    this.mul(state, x0, x1, x2, x3);
-    this.mul(state, x1, x2, x3, x0);
+    this.mul(w, x0, x1, x2, x3);
+    this.mul(w, x1, x2, x3, x0);
 
-    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x5]));
-    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x6]));
-    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x7]));
-    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x4]));
+    w[x2] = OpCodes.ToUint32(OpCodes.Xor32(w[x2], w[x5]));
+    w[x3] = OpCodes.ToUint32(OpCodes.Xor32(w[x3], w[x6]));
+    w[x0] = OpCodes.ToUint32(OpCodes.Xor32(w[x0], w[x7]));
+    w[x1] = OpCodes.ToUint32(OpCodes.Xor32(w[x1], w[x4]));
 
-    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x2])));
-    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x3])));
-    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x0])));
-    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x1])));
+    w[x5] = OpCodes.ToUint32(OpCodes.Xor32(w[x5], this.swap(w[x2])));
+    w[x6] = OpCodes.ToUint32(OpCodes.Xor32(w[x6], this.swap(w[x3])));
+    w[x7] = OpCodes.ToUint32(OpCodes.Xor32(w[x7], this.swap(w[x0])));
+    w[x4] = OpCodes.ToUint32(OpCodes.Xor32(w[x4], this.swap(w[x1])));
   }
 
   // Inverse MDS matrix
-  mdsInverse(state, x0, x1, x2, x3, x4, x5, x6, x7) {
-    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x2])));
-    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x3])));
-    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x0])));
-    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x1])));
+  /**
+   * @param {uint32[]} w
+   * @param {int32} x0
+   * @param {int32} x1
+   * @param {int32} x2
+   * @param {int32} x3
+   * @param {int32} x4
+   * @param {int32} x5
+   * @param {int32} x6
+   * @param {int32} x7
+   */
+  mdsInverse(w, x0, x1, x2, x3, x4, x5, x6, x7) {
+    w[x6] = OpCodes.ToUint32(OpCodes.Xor32(w[x6], this.swap(w[x2])));
+    w[x7] = OpCodes.ToUint32(OpCodes.Xor32(w[x7], this.swap(w[x3])));
+    w[x4] = OpCodes.ToUint32(OpCodes.Xor32(w[x4], this.swap(w[x0])));
+    w[x5] = OpCodes.ToUint32(OpCodes.Xor32(w[x5], this.swap(w[x1])));
 
-    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x4]));
-    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x5]));
-    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x6]));
-    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x7]));
+    w[x0] = OpCodes.ToUint32(OpCodes.Xor32(w[x0], w[x4]));
+    w[x1] = OpCodes.ToUint32(OpCodes.Xor32(w[x1], w[x5]));
+    w[x2] = OpCodes.ToUint32(OpCodes.Xor32(w[x2], w[x6]));
+    w[x3] = OpCodes.ToUint32(OpCodes.Xor32(w[x3], w[x7]));
 
-    this.mulInv(state, x0, x1, x2, x3);
-    this.mulInv(state, x3, x0, x1, x2);
+    this.mulInv(w, x0, x1, x2, x3);
+    this.mulInv(w, x3, x0, x1, x2);
 
-    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x0])));
-    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x1])));
-    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x2])));
-    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x3])));
+    w[x6] = OpCodes.ToUint32(OpCodes.Xor32(w[x6], this.swap(w[x0])));
+    w[x7] = OpCodes.ToUint32(OpCodes.Xor32(w[x7], this.swap(w[x1])));
+    w[x4] = OpCodes.ToUint32(OpCodes.Xor32(w[x4], this.swap(w[x2])));
+    w[x5] = OpCodes.ToUint32(OpCodes.Xor32(w[x5], this.swap(w[x3])));
 
-    this.mulInv(state, x4, x5, x6, x7);
+    this.mulInv(w, x4, x5, x6, x7);
 
-    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x7]));
-    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x4]));
-    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x5]));
-    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x6]));
+    w[x2] = OpCodes.ToUint32(OpCodes.Xor32(w[x2], w[x7]));
+    w[x3] = OpCodes.ToUint32(OpCodes.Xor32(w[x3], w[x4]));
+    w[x0] = OpCodes.ToUint32(OpCodes.Xor32(w[x0], w[x5]));
+    w[x1] = OpCodes.ToUint32(OpCodes.Xor32(w[x1], w[x6]));
   }
 
   // Encrypt a 256-bit block
+  /**
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   * @param {int32} domain
+   */
   encryptBlock(output, input, domain) {
     const rounds = (domain >= SATURNIN_DOMAIN_16_7) ? 8 : 5;
     const rc = SATURNIN_RC[domain];
 
-    // Load input into bit-sliced state
+    // Load input into bit-sliced w
+    /** @type {uint32[]} */
     const x = new Array(8);
     x[0] = this.loadWord32(input, 0);
     x[1] = this.loadWord32(input, 2);
@@ -342,7 +517,7 @@ class SaturninCipher {
     x[6] = this.loadWord32(input, 12);
     x[7] = this.loadWord32(input, 14);
 
-    // XOR key into state
+    // XOR key into w
     this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
 
     // Perform all encryption rounds (2 rounds per iteration)
@@ -357,7 +532,7 @@ class SaturninCipher {
       this.slice(x, 0, 1, 2, 3, 7, 4, 5, 6);
       this.mds(x, 0, 1, 2, 3, 7, 4, 5, 6);
       this.sliceInverse(x, 2, 3, 0, 1, 4, 5, 6, 7);
-      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx++]));
+      x[2] = OpCodes.ToUint32(OpCodes.Xor32(x[2], rc[rcIdx++]));
       this.xorKeyRotated(x, 2, 3, 0, 1, 4, 5, 6, 7);
 
       // Odd round
@@ -369,7 +544,7 @@ class SaturninCipher {
       this.sheet(x, 2, 3, 0, 1, 7, 4, 5, 6);
       this.mds(x, 2, 3, 0, 1, 7, 4, 5, 6);
       this.sheetInverse(x, 0, 1, 2, 3, 4, 5, 6, 7);
-      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx++]));
+      x[0] = OpCodes.ToUint32(OpCodes.Xor32(x[0], rc[rcIdx++]));
       this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
     }
 
@@ -385,11 +560,17 @@ class SaturninCipher {
   }
 
   // Decrypt a 256-bit block
+  /**
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   * @param {int32} domain
+   */
   decryptBlock(output, input, domain) {
     const rounds = (domain >= SATURNIN_DOMAIN_16_7) ? 8 : 5;
     const rc = SATURNIN_RC[domain];
 
-    // Load input into bit-sliced state
+    // Load input into bit-sliced w
+    /** @type {uint32[]} */
     const x = new Array(8);
     x[0] = this.loadWord32(input, 0);
     x[1] = this.loadWord32(input, 2);
@@ -405,7 +586,7 @@ class SaturninCipher {
     for (let r = 0; r < rounds; r++) {
       // Odd round (reversed)
       this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
-      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx + 1]));
+      x[0] = OpCodes.ToUint32(OpCodes.Xor32(x[0], rc[rcIdx + 1]));
       this.sheet(x, 0, 1, 2, 3, 4, 5, 6, 7);
       this.mdsInverse(x, 0, 1, 2, 3, 4, 5, 6, 7);
       this.sheetInverse(x, 2, 3, 0, 1, 7, 4, 5, 6);
@@ -417,7 +598,7 @@ class SaturninCipher {
 
       // Even round (reversed)
       this.xorKeyRotated(x, 2, 3, 0, 1, 4, 5, 6, 7);
-      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx]));
+      x[2] = OpCodes.ToUint32(OpCodes.Xor32(x[2], rc[rcIdx]));
       this.slice(x, 2, 3, 0, 1, 4, 5, 6, 7);
       this.mdsInverse(x, 2, 3, 0, 1, 4, 5, 6, 7);
       this.sliceInverse(x, 0, 1, 2, 3, 7, 4, 5, 6);
@@ -430,7 +611,7 @@ class SaturninCipher {
       rcIdx -= 2;
     }
 
-    // XOR key into state
+    // XOR key into w
     this.xorKey(x, 0, 1, 2, 3, 4, 5, 6, 7);
 
     // Store output
@@ -446,17 +627,35 @@ class SaturninCipher {
 }
 
 // Helper function: XOR two byte arrays with optional offsets
+/**
+ * @param {uint8[]} dest
+ * @param {uint8[]} src1
+ * @param {uint8[]} src2
+ * @param {int32} len
+ * @param {int32} destOffset
+ * @param {int32} src1Offset
+ * @param {int32} src2Offset
+ */
 function xorBytes(dest, src1, src2, len, destOffset = 0, src1Offset = 0, src2Offset = 0) {
   for (let i = 0; i < len; i++) {
-    dest[destOffset + i] = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(src1[src1Offset + i], src2[src2Offset + i]), 0xFF));
+    dest[destOffset + i] = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(src1[src1Offset + i], src2[src2Offset + i]), 0xFF));
   }
 }
 
 // Helper function: Constant-time tag comparison
+/**
+ * @param {uint8[]} plaintext
+ * @param {int32} plaintextLen
+ * @param {uint8[]} tag1
+ * @param {uint8[]} tag2
+ * @param {int32} tagLen
+ * @returns {int32}
+ */
 function checkTag(plaintext, plaintextLen, tag1, tag2, tagLen) {
+  /** @type {uint32} */
   let diff = 0;
   for (let i = 0; i < tagLen; i++) {
-    diff = OpCodes.OrN(diff, OpCodes.XorN(tag1[i], tag2[i]));
+    diff = OpCodes.Or32(diff, OpCodes.Xor32(tag1[i], tag2[i]));
   }
   if (diff !== 0) {
     // Clear plaintext on auth failure
@@ -479,8 +678,16 @@ function checkTag(plaintext, plaintextLen, tag1, tag2, tagLen) {
 // function of that block alone, so only the final block would be authenticated.
 //
 // If blockOffset is provided, reads from block[blockOffset..blockOffset+31].
+/**
+ * @param {uint8[]} block
+ * @param {uint8[]} tag
+ * @param {int32} domain
+ * @param {int32} blockOffset
+ */
 function saturninBlockEncryptXor(block, tag, domain, blockOffset = 0) {
+  /** @type {uint8[]} */
   const temp = new Array(32);
+  /** @type {uint8[]} */
   const blockData = new Array(32);
 
   // Copy block data to temporary array for encryption
@@ -488,6 +695,7 @@ function saturninBlockEncryptXor(block, tag, domain, blockOffset = 0) {
     blockData[i] = block[blockOffset + i];
   }
 
+  /** @type {SaturninCipher} */
   const cipher = new SaturninCipher();
   cipher.setupKey(tag);
   cipher.encryptBlock(temp, blockData, domain);
@@ -495,6 +703,14 @@ function saturninBlockEncryptXor(block, tag, domain, blockOffset = 0) {
 }
 
 // Authenticate message using cascade construction
+/**
+ * @param {uint8[]} tag
+ * @param {uint8[]} block
+ * @param {uint8[]} message
+ * @param {int32} messageLen
+ * @param {int32} domain1
+ * @param {int32} domain2
+ */
 function saturninAuthenticate(tag, block, message, messageLen, domain1, domain2) {
   let offset = 0;
 
@@ -517,9 +733,18 @@ function saturninAuthenticate(tag, block, message, messageLen, domain1, domain2)
 }
 
 // CTR mode encryption/decryption
+/**
+ * @param {uint8[]} output
+ * @param {uint8[]} input
+ * @param {int32} inputLen
+ * @param {uint8[]} block
+ * @param {SaturninCipher} cipher
+ */
 function saturninCTREncrypt(output, input, inputLen, block, cipher) {
+  /** @type {uint32} */
   let counter = 1;
   let offset = 0;
+  /** @type {uint8[]} */
   const out = new Array(32);
 
   while (inputLen >= 32) {
@@ -643,6 +868,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     super(algorithm);
     /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {SaturninCipher} */
     this.cipher = new SaturninCipher();
     /** @type {uint8[]|null} */
     this._key = null;
@@ -689,13 +915,25 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
    * @param {uint8[]|null} aadBytes
    */
   set aad(aadBytes) {
-    this._aad = aadBytes ? [...aadBytes] : [];
+    /** @type {uint8[]} */
+    let copy = [];
+    if (aadBytes) {
+      copy = [...aadBytes];
+    }
+    this._aad = copy;
   }
 
   /**
    * @returns {uint8[]|null}
    */
-  get aad() { return this._aad ? [...this._aad] : []; }
+  get aad() {
+    /** @type {uint8[]} */
+    let copy = [];
+    if (this._aad) {
+      copy = [...this._aad];
+    }
+    return copy;
+  }
 
 
   /**
@@ -712,13 +950,19 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _encrypt() {
+    /** @type {uint8[]} */
     const aad = this.aad;
     const plaintext = this.inputBuffer;
     const plaintextLen = plaintext.length;
+    /** @type {uint8[]} */
     const ciphertext = new Array(plaintextLen + 32);
 
     // Format nonce block (nonce + 0x80 padding)
+    /** @type {uint8[]} */
     const block = new Array(32);
     for (let i = 0; i < 16; i++) {
       block[i] = this._nonce[i];
@@ -732,6 +976,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     saturninCTREncrypt(ciphertext, plaintext, plaintextLen, block, this.cipher);
 
     // Initialize tag with key
+    /** @type {uint8[]} */
     const tag = [...this._key];
 
     // Reset block padding
@@ -758,17 +1003,22 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     return ciphertext;
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _decrypt() {
     if (this.inputBuffer.length < 32) {
       throw new Error("Ciphertext too short (missing authentication tag)");
     }
 
+    /** @type {uint8[]} */
     const aad = this.aad;
     const ciphertextLen = this.inputBuffer.length - 32;
     const ciphertext = this.inputBuffer.slice(0, ciphertextLen);
     const receivedTag = this.inputBuffer.slice(ciphertextLen);
 
     // Format nonce block
+    /** @type {uint8[]} */
     const block = new Array(32);
     for (let i = 0; i < 16; i++) {
       block[i] = this._nonce[i];
@@ -779,6 +1029,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     }
 
     // Initialize tag with key
+    /** @type {uint8[]} */
     const tag = [...this._key];
 
     // Authenticate nonce
@@ -793,6 +1044,7 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
                          SATURNIN_DOMAIN_10_4, SATURNIN_DOMAIN_10_5);
 
     // Decrypt ciphertext
+    /** @type {uint8[]} */
     const plaintext = new Array(ciphertextLen);
 
     // Reset nonce block for CTR (it was modified by authenticate)
@@ -899,6 +1151,7 @@ class SaturninShortInstance extends IAeadInstance {
     super(algorithm);
     /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {SaturninCipher} */
     this.cipher = new SaturninCipher();
     /** @type {uint8[]|null} */
     this._key = null;
@@ -954,7 +1207,11 @@ class SaturninShortInstance extends IAeadInstance {
   /**
    * @returns {uint8[]|null}
    */
-  get aad() { return []; }
+  get aad() {
+    /** @type {uint8[]} */
+    const none = [];
+    return none;
+  }
 
   /**
    * @param {uint8[]} data
@@ -988,6 +1245,9 @@ class SaturninShortInstance extends IAeadInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _encrypt() {
     const plaintextLen = this.inputBuffer.length;
 
@@ -996,6 +1256,7 @@ class SaturninShortInstance extends IAeadInstance {
     }
 
     // Build input block: nonce (16) + plaintext (≤15) + padding
+    /** @type {uint8[]} */
     const block = new Array(32);
 
     for (let i = 0; i < 16; i++) {
@@ -1012,17 +1273,22 @@ class SaturninShortInstance extends IAeadInstance {
     }
 
     // Encrypt block
+    /** @type {uint8[]} */
     const output = new Array(32);
     this.cipher.encryptBlock(output, block, SATURNIN_DOMAIN_10_6);
 
     return output;
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _decrypt() {
     if (this.inputBuffer.length !== 32) {
       throw new Error("SATURNIN-Short ciphertext must be exactly 32 bytes");
     }
 
+    /** @type {uint8[]} */
     const decrypted = new Array(32);
     this.cipher.decryptBlock(decrypted, this.inputBuffer, SATURNIN_DOMAIN_10_6);
 
@@ -1036,37 +1302,40 @@ class SaturninShortInstance extends IAeadInstance {
     // Both scans run to completion whatever they find, so the work done does
     // not reveal where a difference lies. `failed` accumulates every reason to
     // reject and is non-zero exactly when the block is not well formed.
+    /** @type {uint32} */
     let failed = 0;
 
     // The first half must reproduce the nonce.
     for (let i = 0; i < 16; i++) {
-      failed = OpCodes.OrN(failed, OpCodes.XorN(this._nonce[i], decrypted[i]));
+      failed = OpCodes.Or32(failed, OpCodes.Xor32(this._nonce[i], decrypted[i]));
     }
 
     // The second half must be M || 0x80 || 0*. Scanning downwards locates the
     // last 0x80, which is the padding marker: `searching` stays 0xFF until the
     // marker is met, and while it does every byte seen has to be zero.
+    /** @type {uint32} */
     let searching = 0xFF;
+    /** @type {uint32} */
     let len = 0;
     for (let index = 15; index >= 0; index--) {
       const octet = decrypted[16 + index];
       // notMarker is 1 for any byte other than 0x80 and 0 for 0x80 itself, so
       // notMarker - 1 is an all-ones mask exactly at the marker.
-      const notMarker = OpCodes.Shr32(OpCodes.XorN(octet, 0x80) + 0xFF, 8);
-      const isMarker = OpCodes.AndN(searching, notMarker - 1);
-      len = OpCodes.OrN(len, OpCodes.AndN(isMarker, index));
-      searching = OpCodes.AndN(searching, OpCodes.XorN(isMarker, 0xFF));
-      failed = OpCodes.OrN(failed, OpCodes.AndN(searching, OpCodes.Shr32(octet + 0xFF, 8)));
+      const notMarker = OpCodes.Shr32(OpCodes.Add32(OpCodes.Xor32(octet, 0x80), 0xFF), 8);
+      const isMarker = OpCodes.And32(searching, OpCodes.Sub32(notMarker, 1));
+      len = OpCodes.Or32(len, OpCodes.And32(isMarker, index));
+      searching = OpCodes.And32(searching, OpCodes.Xor32(isMarker, 0xFF));
+      failed = OpCodes.Or32(failed, OpCodes.And32(searching, OpCodes.Shr32(OpCodes.Add32(octet, 0xFF), 8)));
     }
     // Still searching once the scan is done means there was no 0x80 at all.
-    failed = OpCodes.OrN(failed, searching);
+    failed = OpCodes.Or32(failed, searching);
 
     if (failed !== 0) {
       throw new Error("Authentication failed: invalid nonce or padding");
     }
 
     // Extract plaintext
-    const plaintext = decrypted.slice(16, 16 + len);
+    const plaintext = decrypted.slice(16, 16 + OpCodes.ToInt(len));
 
     return plaintext;
   }
