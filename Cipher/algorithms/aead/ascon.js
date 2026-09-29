@@ -360,15 +360,18 @@
   class AsconAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AsconAEADBase} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.variant = algorithm.variant;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
 
@@ -394,6 +397,7 @@
       }
 
       this.perm = new AsconPermutation();
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -410,7 +414,7 @@
       }
 
       if (keyBytes.length !== this.keybytes) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.keybytes})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.keybytes + ")");
       }
 
       this._key = [...keyBytes];
@@ -423,6 +427,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -430,14 +437,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -446,13 +459,22 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
     // Standard AEAD interface property (alias for aad)
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -482,6 +504,7 @@
 
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
 
       // Initialize state following C reference exactly
@@ -706,7 +729,7 @@
       // Process final partial block with padding (C reference style)
       const remaining = aad.length - offset;
       if (remaining > 0) {
-        const padded = new Array(this.rate).fill(0);
+        const padded = OpCodes.CreateArray(this.rate, 0);
         for (let i = 0; i < remaining; ++i) {
           padded[i] = aad[offset + i];
         }
@@ -769,6 +792,7 @@
     }
 
     _processData(data, encrypt) {
+      /** @type {uint8[]} */
       const output = [];
       let offset = 0;
 
@@ -841,7 +865,7 @@
       // Process final partial block with padding
       const remaining = data.length - offset;
       if (remaining > 0) {
-        const padded = new Array(this.rate).fill(0);
+        const padded = OpCodes.CreateArray(this.rate, 0);
         for (let i = 0; i < remaining; ++i) {
           padded[i] = data[offset + i];
         }

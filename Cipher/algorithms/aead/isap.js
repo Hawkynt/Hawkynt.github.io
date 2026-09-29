@@ -316,17 +316,22 @@
   class ISAPA128AInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ISAPA128AAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
 
       // ISAP-A-128A parameters
@@ -361,7 +366,7 @@
       }
 
       if (keyBytes.length !== this.KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -376,6 +381,9 @@
     get key() { return this._key ? [...this._key] : null; }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -384,20 +392,29 @@
       }
 
       if (nonceBytes.length !== this.NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? [...adBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() { return [...this._associatedData]; }
 
     _initializeIfReady() {
@@ -440,6 +457,7 @@
     // Encryption: plaintext -> ciphertext || tag
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
 
       // 1. Encrypt plaintext
@@ -507,6 +525,7 @@
       }
 
       // 3. Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
       const encState = this._isap_rk(this.ISAP_IV3_64, this._nonce);
       // Set nonce in state[3:4]

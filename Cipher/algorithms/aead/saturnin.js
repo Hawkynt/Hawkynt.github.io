@@ -635,16 +635,28 @@ class SaturninCTRCascadeAlgorithm extends AeadAlgorithm {
 }
 
 class SaturninCTRCascadeInstance extends IAeadInstance {
+  /**
+   * @param {SaturninCTRCascadeAlgorithm} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
     this.cipher = new SaturninCipher();
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
+    /** @type {uint8[]|null} */
     this._aad = null;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes || keyBytes.length !== 32) {
       throw new Error("Saturnin-CTR-Cascade requires 256-bit (32-byte) key");
@@ -653,8 +665,14 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     this.cipher.setupKey(this._key);
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 16) {
       throw new Error("Saturnin-CTR-Cascade requires 128-bit (16-byte) nonce");
@@ -662,15 +680,27 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     this._nonce = [...nonceBytes];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]|null} aadBytes
+   */
   set aad(aadBytes) {
     this._aad = aadBytes ? [...aadBytes] : [];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get aad() { return this._aad ? [...this._aad] : []; }
 
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     if (!this._nonce) throw new Error("Nonce not set");
@@ -861,16 +891,28 @@ class SaturninShortAlgorithm extends AeadAlgorithm {
 }
 
 class SaturninShortInstance extends IAeadInstance {
+  /**
+   * @param {SaturninShortAlgorithm} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
     this.cipher = new SaturninCipher();
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
+    /** @type {uint8[]|null} */
     this._aad = null;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes || keyBytes.length !== 32) {
       throw new Error("SATURNIN-Short requires 256-bit (32-byte) key");
@@ -879,8 +921,14 @@ class SaturninShortInstance extends IAeadInstance {
     this.cipher.setupKey(this._key);
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 16) {
       throw new Error("SATURNIN-Short requires 128-bit (16-byte) nonce");
@@ -888,8 +936,14 @@ class SaturninShortInstance extends IAeadInstance {
     this._nonce = [...nonceBytes];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]|null} aadBytes
+   */
   set aad(aadBytes) {
     if (aadBytes && aadBytes.length > 0) {
       throw new Error("SATURNIN-Short does not support associated data");
@@ -897,8 +951,14 @@ class SaturninShortInstance extends IAeadInstance {
     this._aad = [];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get aad() { return []; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
 
@@ -908,12 +968,15 @@ class SaturninShortInstance extends IAeadInstance {
 
     if (this.inputBuffer.length + data.length > maxInputLength) {
       const operation = this.isInverse ? "ciphertext" : "plaintext";
-      throw new Error(`SATURNIN-Short ${operation} length exceeds maximum ${maxInputLength} bytes`);
+      throw new Error("SATURNIN-Short " + operation + " length exceeds maximum " + maxInputLength + " bytes");
     }
 
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     if (!this._nonce) throw new Error("Nonce not set");

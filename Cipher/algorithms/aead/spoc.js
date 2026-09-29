@@ -46,6 +46,7 @@
   // ========================[ sLiSCP-light-256 Permutation ]========================
 
   // Round constants for sLiSCP-light-256 (18 rounds, 4 bytes per round)
+  /** @type {uint8[]} */
   const SLISCP_LIGHT256_RC = [
     0x0f, 0x47, 0x08, 0x64, 0x04, 0xb2, 0x86, 0x6b,
     0x43, 0xb5, 0xe2, 0x6f, 0xf1, 0x37, 0x89, 0x2c,
@@ -142,6 +143,7 @@
   // ========================[ sLiSCP-light-192 Permutation ]========================
 
   // Round constants for sLiSCP-light-192 (18 rounds, 4 bytes per round)
+  /** @type {uint8[]} */
   const SLISCP_LIGHT192_RC = [
     0x07, 0x27, 0x08, 0x29, 0x04, 0x34, 0x0c, 0x1d,
     0x06, 0x2e, 0x0a, 0x33, 0x25, 0x19, 0x2f, 0x2a,
@@ -155,7 +157,9 @@
   ];
 
   // Position mappings for SpoC-64 rate and mask bytes
+  /** @type {uint8[]} */
   const SPOC_64_RATE_POS = [0, 1, 2, 3, 12, 13, 14, 15];
+  /** @type {uint8[]} */
   const SPOC_64_MASK_POS = [6, 7, 8, 9, 18, 19, 20, 21];
 
   // Load 24-bit word (big-endian)
@@ -350,16 +354,21 @@
   class SpoC128Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpoC128} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._associatedData = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -389,6 +398,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -400,23 +412,38 @@
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? [...adBytes] : null;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData ? [...this._associatedData] : null;
     }
 
     // Canonical AEAD interface property (alias for associatedData)
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this.associatedData = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._associatedData ? [...this._associatedData] : [];
     }
@@ -473,6 +500,7 @@
         // Encryption
         const plaintext = this.inputBuffer;
         const mlen = plaintext.length;
+        /** @type {uint8[]} */
         const ciphertext = [];
         let mOffset = 0;
         let remaining = mlen;
@@ -525,6 +553,7 @@
         }
 
         const mlen = clen - 16;
+        /** @type {uint8[]} */
         const plaintext = [];
         let cOffset = 0;
         let remaining = mlen;
@@ -676,16 +705,21 @@
   class SpoC64Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpoC64} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]|null} */
       this._associatedData = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -715,6 +749,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -726,23 +763,38 @@
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this._associatedData = adBytes ? [...adBytes] : null;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData ? [...this._associatedData] : null;
     }
 
     // Canonical AEAD interface property (alias for associatedData)
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this.associatedData = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this._associatedData ? [...this._associatedData] : [];
     }
@@ -836,6 +888,7 @@
         // Encryption
         const plaintext = this.inputBuffer;
         const mlen = plaintext.length;
+        /** @type {uint8[]} */
         const ciphertext = [];
         let mOffset = 0;
         let remaining = mlen;
@@ -904,6 +957,7 @@
         }
 
         const mlen = clen - 8;
+        /** @type {uint8[]} */
         const plaintext = [];
         let cOffset = 0;
         let remaining = mlen;
