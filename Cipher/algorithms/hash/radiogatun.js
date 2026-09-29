@@ -49,242 +49,172 @@
 
   /**
    * RadioGatún[32] implementation based on the correct reference
+   * @class
    */
-  function RadioGatunHasher() {
-    // RadioGatún[32] state arrays - exact C reference sizes
-    this.e = new Uint32Array(42); // mill array
-    this.f = new Uint32Array(42); // belt array
-    this.n = new Uint32Array(45); // temp array for mill transformation
-    this.g = 19; // mill size
-    this.h = 13; // belt width
+  class RadioGatunHasher {
+    constructor() {
+      // RadioGatún[32] state arrays - exact C reference sizes
+      /** @type {uint32[]} */
+      this.e = new Uint32Array(42); // mill array
+      /** @type {uint32[]} */
+      this.f = new Uint32Array(42); // belt array
+      /** @type {uint32[]} */
+      this.n = new Uint32Array(45); // temp array for mill transformation
+      /** @type {int32} */
+      this.g = 19; // mill size
+      /** @type {int32} */
+      this.h = 13; // belt width
 
-    // Arrays are initialized to zero by Uint32Array constructor
+      // Arrays are initialized to zero by Uint32Array constructor
 
-    this.buffer = [];
-    this.inputPhase = true;
-  }
-
-  RadioGatunHasher.prototype.beltmill = function() {
-    // Exact translation of C nanorg32.c beltmill function m()
-    let j = 0;
-
-    // Mill-to-belt feedforward: b(12)f[c+c%3*h]^=e[c+1]
-    for (let c = 0; c < 12; c++) {
-      this.f[c + (c % 3) * this.h] = OpCodes.Xor32(this.f[c + (c % 3) * this.h], this.e[c + 1]);
+      /** @type {uint8[]} */
+      this.buffer = [];
+      /** @type {boolean} */
+      this.inputPhase = true;
     }
 
-    // Mill transformation: b(g){i=c*7%g;k=e[i++];k^=e[i%g]|~e[(i+1)%g];j+=c;n[c]=n[c+g]=k>>j%32|k<<-j%32;}
-    for (let c = 0; c < this.g; c++) {
-      let i = (c * 7) % this.g;
-      let k = this.e[i++];
-      k = OpCodes.ToUint32(OpCodes.Xor32(k, OpCodes.Or32(this.e[i % this.g], OpCodes.Not32(this.e[(i + 1) % this.g]))));
-      j += c;
-      const rot = j % 32;
-      // Use OpCodes for rotation: k>>j%32|k<<-j%32 means rotate right by j%32
-      this.n[c] = this.n[c + this.g] = OpCodes.RotR32(k, rot);
-    }
+    /**
+     * Belt-and-mill round function (nanorg32.c m())
+     * @returns {void}
+     */
+    beltmill() {
+      // Exact translation of C nanorg32.c beltmill function m()
+      let j = 0;
 
-    // Combined belt rotation and theta: for(i=39;i--;f[i+1]=f[i])e[i]=n[i]^n[i+1]^n[i+4]
-    // C loop semantics: init i=39, then loop with i--, check i!=0, body e[i]=..., increment f[i+1]=f[i]
-    // So it processes i=38,37,...,1,0
-    for (let i = 39; i > 0; i--) {
-      const idx = i - 1; // After decrement
-      this.e[idx] = OpCodes.Xor32(OpCodes.Xor32(this.n[idx], this.n[idx + 1]), this.n[idx + 4]);
-      this.f[i] = this.f[idx]; // f[i+1] = f[i] where i is the decremented value
-    }
-
-    // Belt-to-mill feedforward: b(3)e[c+h]^=f[c*h]=f[c*h+h]
-    for (let c = 0; c < 3; c++) {
-      this.f[c * this.h] = this.f[c * this.h + this.h];
-      this.e[c + this.h] = OpCodes.Xor32(this.e[c + this.h], this.f[c * this.h]);
-    }
-
-    // Iota: *e^=1
-    this.e[0] = OpCodes.Xor32(this.e[0], 1);
-  };
-
-  RadioGatunHasher.prototype.update = function(data) {
-    if (!this.inputPhase) {
-      throw new Error('Cannot update after finalization has begun');
-    }
-
-    if (typeof data === 'string') {
-      data = OpCodes.AnsiToBytes(data);
-    }
-
-    // Add data to buffer
-    for (let i = 0; i < data.length; i++) {
-      this.buffer.push(data[i]);
-    }
-  };
-
-  RadioGatunHasher.prototype.finalize = function(outputBytes) {
-    outputBytes = outputBytes || 32; // Default 256 bits
-
-    if (this.inputPhase) {
-      this.processAllInput();
-      this.inputPhase = false;
-    }
-
-    // Generate output exactly like C reference: b(8){j=c;b(4)printf("%02x",(e[1+j%2]>>8*c)&255);c=j;if(c%2)m();}
-    const output = new Uint8Array(outputBytes);
-    let outputOffset = 0;
-
-    // Output generation loop
-    for (let outer = 0; outer < 8 && outputOffset < outputBytes; outer++) {
-      const wordSelect = outer; // saves in j
-      // Extract 4 bytes from alternating words
-      for (let bytePos = 0; bytePos < 4 && outputOffset < outputBytes; bytePos++) {
-        const wordIndex = 1 + (wordSelect % 2); // alternates between e[1] and e[2]
-        const byte = OpCodes.And32(OpCodes.Shr32(this.e[wordIndex], 8 * bytePos), 255);
-        output[outputOffset++] = byte;
+      // Mill-to-belt feedforward: b(12)f[c+c%3*h]^=e[c+1]
+      for (let c = 0; c < 12; c++) {
+        this.f[c + (c % 3) * this.h] = OpCodes.Xor32(this.f[c + (c % 3) * this.h], this.e[c + 1]);
       }
-      // After odd iterations (wordSelect % 2 == 1), run mill
-      if ((wordSelect % 2) === 1) {
+
+      // Mill transformation: b(g){i=c*7%g;k=e[i++];k^=e[i%g]|~e[(i+1)%g];j+=c;n[c]=n[c+g]=k>>j%32|k<<-j%32;}
+      for (let c = 0; c < this.g; c++) {
+        let i = (c * 7) % this.g;
+        let k = this.e[i++];
+        k = OpCodes.ToUint32(OpCodes.Xor32(k, OpCodes.Or32(this.e[i % this.g], OpCodes.Not32(this.e[(i + 1) % this.g]))));
+        j += c;
+        const rot = j % 32;
+        // Use OpCodes for rotation: k>>j%32|k<<-j%32 means rotate right by j%32
+        this.n[c] = this.n[c + this.g] = OpCodes.RotR32(k, rot);
+      }
+
+      // Combined belt rotation and theta: for(i=39;i--;f[i+1]=f[i])e[i]=n[i]^n[i+1]^n[i+4]
+      // C loop semantics: init i=39, then loop with i--, check i!=0, body e[i]=..., increment f[i+1]=f[i]
+      // So it processes i=38,37,...,1,0
+      for (let i = 39; i > 0; i--) {
+        const idx = i - 1; // After decrement
+        this.e[idx] = OpCodes.Xor32(OpCodes.Xor32(this.n[idx], this.n[idx + 1]), this.n[idx + 4]);
+        this.f[i] = this.f[idx]; // f[i+1] = f[i] where i is the decremented value
+      }
+
+      // Belt-to-mill feedforward: b(3)e[c+h]^=f[c*h]=f[c*h+h]
+      for (let c = 0; c < 3; c++) {
+        this.f[c * this.h] = this.f[c * this.h + this.h];
+        this.e[c + this.h] = OpCodes.Xor32(this.e[c + this.h], this.f[c * this.h]);
+      }
+
+      // Iota: *e^=1
+      this.e[0] = OpCodes.Xor32(this.e[0], 1);
+    }
+
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
+    update(data) {
+      if (!this.inputPhase) {
+        throw new Error('Cannot update after finalization has begun');
+      }
+
+      // Add data to buffer
+      for (let i = 0; i < data.length; i++) {
+        this.buffer.push(data[i]);
+      }
+    }
+
+    /**
+     * Absorb the buffered input (once) and squeeze output bytes
+     * @param {int32} outputBytes - Number of output bytes (at most 32)
+     * @returns {uint8[]} Digest bytes (a Uint8Array)
+     */
+    finalize(outputBytes) {
+
+      if (this.inputPhase) {
+        this.processAllInput();
+        this.inputPhase = false;
+      }
+
+      // Generate output exactly like C reference: b(8){j=c;b(4)printf("%02x",(e[1+j%2]>>8*c)&255);c=j;if(c%2)m();}
+      const output = new Uint8Array(outputBytes);
+      let outputOffset = 0;
+
+      // Output generation loop
+      for (let outer = 0; outer < 8 && outputOffset < outputBytes; outer++) {
+        const wordSelect = outer; // saves in j
+        // Extract 4 bytes from alternating words
+        for (let bytePos = 0; bytePos < 4 && outputOffset < outputBytes; bytePos++) {
+          const wordIndex = 1 + (wordSelect % 2); // alternates between e[1] and e[2]
+          const byte = OpCodes.And32(OpCodes.Shr32(this.e[wordIndex], 8 * bytePos), 255);
+          output[outputOffset++] = byte;
+        }
+        // After odd iterations (wordSelect % 2 == 1), run mill
+        if ((wordSelect % 2) === 1) {
+          this.beltmill();
+        }
+      }
+
+      return output;
+    }
+
+    /**
+     * Absorb the whole buffer with the 0x01 padding and 18 blank rounds
+     * @returns {void}
+     */
+    processAllInput() {
+      // C: for(;;m()){b(3){for(j=0;j<4;){f[c*h]^=k=OpCodes.Shl32((*q?255&*q:1), 8)*j++;e[c+16]^=k;if(!*q++){b(18)m();return;}}}}
+      // CRITICAL: for(;;m()) means m() is in INCREMENT section - runs AFTER body, not before!
+
+      let inputPos = 0;
+
+      while (true) {
+        // Process 3 words (12 bytes total)
+        for (let c = 0; c < 3; c++) {
+          // Process 4 bytes per word
+          for (let j = 0; j < 4; j++) {
+            let byte;
+            let hitEnd = false;
+
+            if (inputPos < this.buffer.length) {
+              byte = OpCodes.And32(this.buffer[inputPos], 0xFF);
+            } else {
+              byte = 1; // Padding
+              hitEnd = true;
+            }
+
+            // k = byte << (8*j)
+            let k = OpCodes.Shl32(byte, 8 * j);
+
+            // f[c*h]^=k; e[c+16]^=k;
+            this.f[c * this.h] = OpCodes.Xor32(this.f[c * this.h], k);
+            this.e[c + 16] = OpCodes.Xor32(this.e[c + 16], k);
+
+            // if(!*q++) - if we just read end, do blank rounds and return
+            if (hitEnd) {
+              for (let i = 0; i < 18; i++) {
+                this.beltmill();
+              }
+              return;
+            }
+
+            inputPos++; // Increment after checking end
+          }
+        }
+
+        // Call m() at END of iteration (C for loop increment section)
         this.beltmill();
       }
     }
-
-    return output;
-  };
-
-  RadioGatunHasher.prototype.processAllInput = function() {
-    // C: for(;;m()){b(3){for(j=0;j<4;){f[c*h]^=k=OpCodes.Shl32((*q?255&*q:1), 8)*j++;e[c+16]^=k;if(!*q++){b(18)m();return;}}}}
-    // CRITICAL: for(;;m()) means m() is in INCREMENT section - runs AFTER body, not before!
-
-    let inputPos = 0;
-
-    while (true) {
-      // Process 3 words (12 bytes total)
-      for (let c = 0; c < 3; c++) {
-        // Process 4 bytes per word
-        for (let j = 0; j < 4; j++) {
-          let byte;
-          let hitEnd = false;
-
-          if (inputPos < this.buffer.length) {
-            byte = OpCodes.And32(this.buffer[inputPos], 0xFF);
-          } else {
-            byte = 1; // Padding
-            hitEnd = true;
-          }
-
-          // k = byte << (8*j)
-          let k = OpCodes.Shl32(byte, 8 * j);
-
-          // f[c*h]^=k; e[c+16]^=k;
-          this.f[c * this.h] = OpCodes.Xor32(this.f[c * this.h], k);
-          this.e[c + 16] = OpCodes.Xor32(this.e[c + 16], k);
-
-          // if(!*q++) - if we just read end, do blank rounds and return
-          if (hitEnd) {
-            for (let i = 0; i < 18; i++) {
-              this.beltmill();
-            }
-            return;
-          }
-
-          inputPos++; // Increment after checking end
-        }
-      }
-
-      // Call m() at END of iteration (C for loop increment section)
-      this.beltmill();
-    }
-  };
-
-  // RadioGatún Universal Cipher Interface
-  const RadioGatun = {
-    internalName: 'radiogatun',
-    name: 'RadioGatún',
-    // Algorithm metadata
-    blockSize: 96,          // 12 bytes input block
-    digestSize: 256,        // Default 32 bytes output
-    keySize: 0,
-    rounds: 18,             // Blank rounds
-
-    // Security level
-    securityLevel: 128,
-
-    // Reference links
-    referenceLinks: [
-      {
-        title: "RadioGatún, a belt-and-mill hash function",
-        url: "https://radiogatun.noekeon.org/radiogatun.pdf",
-        type: "specification"
-      },
-      {
-        title: "RadioGatún Official Page",
-        url: "https://keccak.team/radiogatun.html",
-        type: "homepage"
-      },
-      {
-        title: "GitHub Reference Implementation",
-        url: "https://github.com/samboy/rg32hash",
-        type: "implementation"
-      }
-    ],
-
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-
-    // Hash function interface
-    Init: function() {
-      this.hasher = new RadioGatunHasher();
-      this.bKey = false;
-    },
-
-    KeySetup: function(key) {
-      // RadioGatún doesn't use keys in standard mode
-      this.hasher = new RadioGatunHasher();
-      this.bKey = false;
-    },
-
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        return this.hasher.finalize();
-      }
-      return new Uint8Array(0);
-    },
-
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-
-    // Direct hash interface with variable output
-    hash: function(data, outputBytes) {
-      const hasher = new RadioGatunHasher();
-      hasher.update(data);
-      return hasher.finalize(outputBytes || 32);
-    },
-
-    // Stream interface (unlimited output)
-    stream: function(data, outputBytes) {
-      return this.hash(data, outputBytes);
-    },
-
-    ClearData: function() {
-      if (this.hasher) {
-        // Clear state
-        for (let i = 0; i < 39; i++) {
-          this.hasher.belt[i] = 0;
-        }
-        for (let i = 0; i < this.hasher.mill.length; i++) {
-          this.hasher.mill[i] = 0;
-        }
-        this.hasher.buffer = [];
-      }
-      this.bKey = false;
-    }
-  };
+  }
 
   /**
  * RadioGatunAlgorithm - Cryptographic hash function
@@ -340,7 +270,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RadioGatunInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -356,8 +286,12 @@
  */
 
   class RadioGatunInstance extends IHashFunctionInstance {
+    /**
+     * @param {RadioGatunAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {RadioGatunHasher} */
       this.hasher = new RadioGatunHasher();
       this.inputBuffer = [];
     }
@@ -372,6 +306,7 @@
     Result() {
       // Process accumulated input
       this.hasher.update(this.inputBuffer);
+      /** @type {uint8[]} */
       const result = this.hasher.finalize(32); // Default 256-bit output
 
       // Reset for next use
