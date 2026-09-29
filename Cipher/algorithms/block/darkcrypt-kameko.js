@@ -43,7 +43,7 @@
  *     selector streams.
  *   - setup() builds B from the 64-byte key in two stages:
  *     1) A 16-word "local key" (the raw key, packed little-endian) seeds a
- *        64-word working array W (W[i] = localKey[i mod 16]). W is then
+ *        64-word working array W (W[i] = seedWords[i mod 16]). W is then
  *        mixed for 64 rounds with a MARS/RC6-flavoured ARX+S-box round
  *        (two applications of a per-byte table substitution driven by a
  *        second static 8192-byte table MIX — 32 rows of 256 bytes, indexed
@@ -53,7 +53,7 @@
  *        bits and used as MIX[row*256 + byte]) combined with 32-bit
  *        rotations and the classic RC6/RC5 magic constants
  *        P=0xB7E15163, Q=0x9E3779B9. Full per-round detail:
- *          LK = localKey[i & 0xF]
+ *          LK = seedWords[i & 0xF]
  *          Qacc = Qacc + LK + Q                                 (Qacc0 = Q)
  *          t1 = W[i] + A                                        (A0 = P)
  *          comb1 = MIX[(i&31),byte3(t1)]<<24 | MIX[(A&31),byte2(t1)]<<16
@@ -479,31 +479,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKamekoInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKamekoInstance(this, isInverse);
     }
   }
 
   class DarkCryptKamekoInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKamekoAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._B = null;
+      /** @type {uint8[]|null} */
+      this._selectors = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._B = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._selectors = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Kameko (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Kameko (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._B = this._scheduleKey(this._key);
+      this._selectors = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -516,8 +533,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -527,30 +545,47 @@
       return output;
     }
 
-    // One of the four overlapping 256-byte substitution windows (see file header).
+    /**
+     * One of the four overlapping 256-byte substitution windows (see file header).
+     * @param {int32} k - Window number 0..3
+     * @param {uint8} sel - Selector byte
+     * @param {uint8} val - State byte
+     * @returns {uint8} Substituted byte
+     */
     _T(k, sel, val) {
-      return T1234[k * 0x100 + sel + val];
+      return T1234[OpCodes.Add32(OpCodes.Add32(k * 0x100, sel), val)];
     }
 
+    /**
+     * @param {uint32} row5 - Row 0..31
+     * @param {uint32} byteVal - Column byte
+     * @returns {uint8} Mixing-table byte
+     */
     _mix(row5, byteVal) {
-      return MIX[row5 * 256 + byteVal];
+      return MIX[OpCodes.Add32(OpCodes.Shl32(row5, 8), byteVal)];
     }
 
-    // Key schedule: 64-byte key -> 256-byte selector table B (see file header for full derivation).
+    /**
+     * Key schedule: 64-byte key -> 256-byte selector table (see file header for full derivation).
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint8[]} Selector table
+     */
     _scheduleKey(key) {
-      const localKey = new Array(16);
+      /** @type {uint32[]} */
+      const seedWords = new Array(16);
       for (let i = 0; i < 16; i++)
-        localKey[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
+        seedWords[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
 
+      /** @type {uint32[]} */
       const W = new Array(64);
-      for (let i = 0; i < 64; i++) W[i] = localKey[OpCodes.And32(i, 0xF)];
+      for (let i = 0; i < 64; i++) W[i] = seedWords[OpCodes.And32(i, 0xF)];
 
       let A = OpCodes.ToUint32(P_CONST);
       let Qacc = OpCodes.ToUint32(Q_CONST);
 
       for (let i = 0; i < 64; i++) {
-        const LK = localKey[OpCodes.And32(i, 0xF)];
-        Qacc = OpCodes.ToUint32(Qacc + LK + Q_CONST);
+        const LK = seedWords[OpCodes.And32(i, 0xF)];
+        Qacc = OpCodes.Add32(OpCodes.Add32(Qacc, LK), Q_CONST);
 
         const t1 = OpCodes.ToUint32(W[i] + A);
         const rowI = OpCodes.And32(i, 0x1F);
@@ -560,27 +595,27 @@
         const b1a = OpCodes.And32(OpCodes.Shr32(t1, 8), 0xFF), b0a = OpCodes.And32(t1, 0xFF);
         const rowQ1 = OpCodes.And32(Qacc, 0x1F);
 
-        let comb1 = OpCodes.ToUint32(
-          OpCodes.Shl32(this._mix(rowI, b3a), 24) |
-          OpCodes.Shl32(this._mix(rowA, b2a), 16) |
-          OpCodes.Shl32(this._mix(rowT1, b1a), 8) |
+        let comb1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(this._mix(rowI, b3a), 24),
+          OpCodes.Shl32(this._mix(rowA, b2a), 16)),
+          OpCodes.Shl32(this._mix(rowT1, b1a), 8)),
           this._mix(rowQ1, b0a)
         );
         comb1 = OpCodes.RotL32(comb1, 11);
         Qacc = OpCodes.ToUint32(Qacc + comb1);
 
         const mangled = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(comb1, 6), OpCodes.Shr32(comb1, 8)));
-        const t2 = OpCodes.ToUint32(OpCodes.RotL32(comb1, 16) + mangled + LK);
+        const t2 = OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(comb1, 16), mangled), LK);
 
         const rowQ2 = OpCodes.And32(Qacc, 0x1F);
         const rowT2 = OpCodes.And32(t2, 0x1F);
         const b3b = OpCodes.And32(OpCodes.Shr32(t2, 24), 0xFF), b2b = OpCodes.And32(OpCodes.Shr32(t2, 16), 0xFF);
         const b1b = OpCodes.And32(OpCodes.Shr32(t2, 8), 0xFF), b0b = OpCodes.And32(t2, 0xFF);
 
-        let comb2 = OpCodes.ToUint32(
-          OpCodes.Shl32(this._mix(rowQ2, b3b), 24) |
-          OpCodes.Shl32(this._mix(rowT2, b2b), 16) |
-          OpCodes.Shl32(this._mix(rowA, b1b), 8) |
+        let comb2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(this._mix(rowQ2, b3b), 24),
+          OpCodes.Shl32(this._mix(rowT2, b2b), 16)),
+          OpCodes.Shl32(this._mix(rowA, b1b), 8)),
           this._mix(rowI, b0b)
         );
         comb2 = OpCodes.RotL32(comb2, 11);
@@ -590,53 +625,73 @@
         A = OpCodes.ToUint32(A + P_CONST);
       }
 
+      /** @type {uint8[]} */
       const Wbytes = new Array(256);
       for (let i = 0; i < 64; i++) {
         const bytes = OpCodes.Unpack32LE(W[i]);
         Wbytes[i*4] = bytes[0]; Wbytes[i*4+1] = bytes[1]; Wbytes[i*4+2] = bytes[2]; Wbytes[i*4+3] = bytes[3];
       }
 
-      const B = new Array(256);
-      for (let i = 0; i < 256; i++) B[i] = i;
+      /** @type {uint8[]} */
+      const table = new Array(256);
+      for (let i = 0; i < 256; i++) table[i] = i;
 
+      /** @type {uint32} */
       let carry = 0;
       for (let iter = 0; iter < 0x300; iter++) {
         const i = OpCodes.And32(iter, 0xFF);
-        const Si = B[i];
+        const Si = table[i];
         const Ki = Wbytes[i];
-        let j = OpCodes.And32(OpCodes.ToUint32(carry + Si + Ki), 0xFF);
-        const Sj = B[j];
-        const x = B[Sj];
-        B[i] = x;
-        B[Sj] = Si;
+        let j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(carry, Si), Ki), 0xFF);
+        const Sj = table[j];
+        const x = table[Sj];
+        table[i] = x;
+        table[Sj] = Si;
         carry = Sj;
       }
 
-      return B;
+      return table;
     }
 
-    _round(B, state, r) {
-      const sel1 = B[r], sel2 = B[64 + r], sel3 = B[128 + r], sel4 = B[192 + r];
+    /**
+     * One round function value
+     * @param {uint8[]} selectors - Selector table
+     * @param {uint8[]} state - Eight state bytes
+     * @param {int32} r - Round number
+     * @returns {uint32} Round byte
+     */
+    _round(selectors, state, r) {
+      const sel1 = selectors[r], sel2 = selectors[64 + r], sel3 = selectors[128 + r], sel4 = selectors[192 + r];
       const a = state[OpCodes.And32(r + 1, 7)], b = state[OpCodes.And32(r + 2, 7)], c = state[OpCodes.And32(r + 3, 7)], d = state[OpCodes.And32(r + 4, 7)];
       return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this._T(0, sel1, a), this._T(1, sel2, b)), this._T(2, sel3, c)), this._T(3, sel4, d)), 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const B = this._B;
+      const selectors = this._selectors;
+      /** @type {uint8[]} */
       const state = [...block];
       for (let r = 0; r < ROUNDS; r++) {
-        const val = this._round(B, state, r);
-        state[OpCodes.And32(r, 7)] = OpCodes.And32(state[OpCodes.And32(r, 7)] + val, 0xFF);
+        const val = this._round(selectors, state, r);
+        state[OpCodes.And32(r, 7)] = OpCodes.And32(OpCodes.Add32(state[OpCodes.And32(r, 7)], val), 0xFF);
       }
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const B = this._B;
+      const selectors = this._selectors;
+      /** @type {uint8[]} */
       const state = [...block];
       for (let r = ROUNDS - 1; r >= 0; r--) {
-        const val = this._round(B, state, r);
-        state[OpCodes.And32(r, 7)] = OpCodes.And32(state[OpCodes.And32(r, 7)] - val, 0xFF);
+        const val = this._round(selectors, state, r);
+        state[OpCodes.And32(r, 7)] = OpCodes.And32(OpCodes.Sub32(state[OpCodes.And32(r, 7)], val), 0xFF);
       }
       return state;
     }

@@ -49,6 +49,7 @@
   const ROUNDS = 12;
 
   // CS-Cipher S-box (matches the published Stern/Vaudenay S-box exactly).
+  /** @type {uint8[]} */
   const CS_SBOX = [
     0x29,0x0d,0x61,0x40,0x9c,0xeb,0x9e,0x8f,0x1f,0x85,0x5f,0x58,0x5b,0x01,0x39,0x86,
     0x97,0x2e,0xd7,0xd6,0x35,0xae,0x17,0x16,0x21,0xb6,0x69,0x4e,0xa5,0x72,0x87,0x08,
@@ -69,6 +70,7 @@
   ];
 
   // Diffusion lookup tables (precomputed bit-matrix-transposition halves).
+  /** @type {uint8[]} */
   const CS_L0 = [
     0x00,0x01,0x06,0x07,0x04,0x05,0x02,0x03,0x18,0x19,0x1e,0x1f,0x1c,0x1d,0x1a,0x1b,
     0x10,0x11,0x16,0x17,0x14,0x15,0x12,0x13,0x08,0x09,0x0e,0x0f,0x0c,0x0d,0x0a,0x0b,
@@ -88,6 +90,7 @@
     0xb1,0xb0,0xb7,0xb6,0xb5,0xb4,0xb3,0xb2,0xa9,0xa8,0xaf,0xae,0xad,0xac,0xab,0xaa
   ];
 
+  /** @type {uint8[]} */
   const CS_L3 = [
     0x00,0x02,0x04,0x06,0x08,0x0a,0x0c,0x0e,0x10,0x12,0x14,0x16,0x18,0x1a,0x1c,0x1e,
     0x20,0x22,0x24,0x26,0x28,0x2a,0x2c,0x2e,0x30,0x32,0x34,0x36,0x38,0x3a,0x3c,0x3e,
@@ -112,17 +115,51 @@
   const CS_EDIGITS = OpCodes.Hex8ToBytes("b7e151628aed2a6abf7158809cf4f3c7");
 
   // Inverse S-box and the inverse of (L0[x] ^ L3[x]), precomputed once for decryption.
-  const CS_SBOX_INV = new Array(256);
-  for (let i = 0; i < 256; i++) CS_SBOX_INV[CS_SBOX[i]] = i;
+  /**
+   * @returns {uint8[]} Inverse of CS_SBOX
+   */
+  function buildSboxInv() {
+    /** @type {uint8[]} */
+    const inv = new Array(256);
+    for (let i = 0; i < 256; i++) inv[CS_SBOX[i]] = i;
+    return inv;
+  }
 
-  const CS_M_INV = new Array(256);
-  for (let i = 0; i < 256; i++) CS_M_INV[OpCodes.Xor32(CS_L0[i], CS_L3[i])] = i;
+  /**
+   * @returns {uint8[]} Inverse of x -> L0[x] XOR L3[x]
+   */
+  function buildMInv() {
+    /** @type {uint8[]} */
+    const inv = new Array(256);
+    for (let i = 0; i < 256; i++) inv[OpCodes.Xor32(CS_L0[i], CS_L3[i])] = i;
+    return inv;
+  }
+
+  const CS_SBOX_INV = buildSboxInv();
+  const CS_M_INV = buildMInv();
 
   // Elementary nonlinear+diffusion functions used by both key schedule and round function.
+  /**
+   * @param {uint8} a - First byte
+   * @param {uint8} b - Second byte
+   * @returns {uint8} S[L0[a] XOR b]
+   */
   function P(a, b) { return CS_SBOX[OpCodes.Xor32(CS_L0[a], b)]; }
+  /**
+   * @param {uint8} a - First byte
+   * @param {uint8} b - Second byte
+   * @returns {uint8} S[L3[a] XOR b]
+   */
   function Q(a, b) { return CS_SBOX[OpCodes.Xor32(CS_L3[a], b)]; }
 
   // Recovers (a, b) from (u = P(a,b) ^ k1, v = Q(a,b) ^ k2).
+  /**
+   * @param {uint8} u - P output XOR k1
+   * @param {uint8} k1 - First key byte
+   * @param {uint8} v - Q output XOR k2
+   * @param {uint8} k2 - Second key byte
+   * @returns {uint8[]} [a, b]
+   */
   function invertPQ(u, k1, v, k2) {
     const x = CS_SBOX_INV[OpCodes.Xor32(u, k1)];
     const y = CS_SBOX_INV[OpCodes.Xor32(v, k2)];
@@ -133,7 +170,12 @@
 
   // 8x8 bit-matrix transposition (bit i of row j becomes bit j of row i, MSB-first in both
   // dimensions), used by the key-schedule feedback generator.
+  /**
+   * @param {uint8[]} y - Eight bytes (rows)
+   * @returns {uint8[]} Transposed rows
+   */
   function transpose8x8(y) {
+    /** @type {uint8[]} */
     const out = new Array(8);
     for (let i = 0; i < 8; i++) {
       let v = 0;
@@ -205,31 +247,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptCSCipherInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptCSCipherInstance(this, isInverse);
     }
   }
 
   class DarkCryptCSCipherInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptCSCipherAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CS-Cipher (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CS-Cipher (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -242,8 +301,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -255,36 +315,54 @@
 
     // Builds the 200-byte round-key buffer: 8 bytes of whitening, followed by 8 groups of
     // [e-digits low half][e-digits high half][8 key-derived feedback bytes].
+    /**
+     * @param {uint8[]} key - 16 key bytes
+     * @returns {uint8[]} The 200-byte round-key buffer
+     */
     _expandKey(key) {
-      const blocks = [key.slice(8, 16), key.slice(0, 8)]; // Block[-2], Block[-1]
+      /** @type {uint8[][]} */
+      const blocks = [];
+      blocks.push(key.slice(8, 16)); // Block[-2]
+      blocks.push(key.slice(0, 8));  // Block[-1]
       for (let p = 0; p < 9; p++) {
         const prev1 = blocks[blocks.length - 1];
         const prev2 = blocks[blocks.length - 2];
         const c = CS_SBOX.slice(8 * p, 8 * p + 8);
-        const x = prev1.map((b, i) => OpCodes.Xor32(b, c[i]));
-        const y = x.map(v => CS_SBOX[v]);
+        /** @type {uint8[]} */
+        const y = [];
+        for (let i = 0; i < prev1.length; i++) y.push(CS_SBOX[OpCodes.Xor32(prev1[i], c[i])]);
         const t = transpose8x8(y);
-        blocks.push(t.map((b, i) => OpCodes.Xor32(b, prev2[i])));
+        /** @type {uint8[]} */
+        const next = [];
+        for (let i = 0; i < t.length; i++) next.push(OpCodes.Xor32(t[i], prev2[i]));
+        blocks.push(next);
       }
 
-      const generated = blocks.slice(2); // Block[0..8]
-      const rk = generated[0].slice();   // whitening = Block[0]
+      // blocks[2 + n] is Block[n], n = 0..8
+      const rk = blocks[2].slice();   // whitening = Block[0]
       for (let g = 0; g < 8; g++) {
         rk.push(...CS_EDIGITS.slice(0, 8));
         rk.push(...CS_EDIGITS.slice(8, 16));
-        rk.push(...generated[g + 1]);
+        rk.push(...blocks[g + 3]);
       }
       return rk; // 200 bytes
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const rk = this._roundKeys;
-      let s = block.map((b, i) => OpCodes.Xor32(b, rk[i]));
+      /** @type {uint8[]} */
+      let s = [];
+      for (let i = 0; i < block.length; i++) s.push(OpCodes.Xor32(block[i], rk[i]));
 
       for (let r = 0; r < ROUNDS; r++) {
         const base = 8 + r * 16;
         const k = rk.slice(base, base + 16);
 
+        /** @type {uint8[]} */
         const d = new Array(8);
         d[0] = OpCodes.Xor32(P(s[0], s[1]), k[0]);
         d[1] = OpCodes.Xor32(P(s[2], s[3]), k[1]);
@@ -295,6 +373,7 @@
         d[6] = OpCodes.Xor32(Q(s[4], s[5]), k[6]);
         d[7] = OpCodes.Xor32(Q(s[6], s[7]), k[7]);
 
+        /** @type {uint8[]} */
         const ns = new Array(8);
         ns[0] = OpCodes.Xor32(P(d[0], d[1]), k[8]);
         ns[1] = OpCodes.Xor32(P(d[2], d[3]), k[9]);
@@ -310,6 +389,10 @@
       return s;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const rk = this._roundKeys;
       let s = block.slice();
@@ -318,12 +401,14 @@
         const base = 8 + r * 16;
         const k = rk.slice(base, base + 16);
 
+        /** @type {uint8[]} */
         const d = new Array(8);
         let ab = invertPQ(s[0], k[8], s[4], k[12]);  d[0] = ab[0]; d[1] = ab[1];
         ab = invertPQ(s[1], k[9], s[5], k[13]);       d[2] = ab[0]; d[3] = ab[1];
         ab = invertPQ(s[2], k[10], s[6], k[14]);      d[4] = ab[0]; d[5] = ab[1];
         ab = invertPQ(s[3], k[11], s[7], k[15]);      d[6] = ab[0]; d[7] = ab[1];
 
+        /** @type {uint8[]} */
         const ps = new Array(8);
         ab = invertPQ(d[0], k[0], d[4], k[4]);        ps[0] = ab[0]; ps[1] = ab[1];
         ab = invertPQ(d[1], k[1], d[5], k[5]);        ps[2] = ab[0]; ps[3] = ab[1];
@@ -332,7 +417,10 @@
         s = ps;
       }
 
-      return s.map((b, i) => OpCodes.Xor32(b, rk[i]));
+      /** @type {uint8[]} */
+      const out = [];
+      for (let i = 0; i < s.length; i++) out.push(OpCodes.Xor32(s[i], rk[i]));
+      return out;
     }
   }
 

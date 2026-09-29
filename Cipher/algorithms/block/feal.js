@@ -149,6 +149,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // 64-bit blocks
       this.KeySize = 0;   // will be set when key is assigned
@@ -169,7 +170,7 @@
 
       // Validate key size
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 8 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 8 bytes)");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -208,12 +209,13 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -239,7 +241,7 @@
      * @returns {uint8} Transformed byte
      */
     _S0(a, b) {
-      return OpCodes.RotL8(OpCodes.AndN(a + b, 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32(a + b, 0xFF), 2);
     }
 
     /**
@@ -250,7 +252,7 @@
      * @returns {uint8} Transformed byte
      */
     _S1(a, b) {
-      return OpCodes.RotL8(OpCodes.AndN(a + b + 1, 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(a, b), 1), 0xFF), 2);
     }
 
     /**
@@ -264,9 +266,10 @@
       const a = data;
       const b = key;
 
+      /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
-      const T = OpCodes.XorN(OpCodes.XorN(a[3], a[2]), b[1]);
-      ret[1] = this._S1(OpCodes.XorN(OpCodes.XorN(a[0], a[1]), b[0]), T);
+      const T = OpCodes.Xor32(OpCodes.Xor32(a[3], a[2]), b[1]);
+      ret[1] = this._S1(OpCodes.Xor32(OpCodes.Xor32(a[0], a[1]), b[0]), T);
       ret[0] = this._S0(a[0], ret[1]);
       ret[2] = this._S0(T, ret[1]);
       ret[3] = this._S1(ret[2], a[3]);
@@ -282,12 +285,13 @@
      * @returns {uint8[]} 4 bytes
      */
     _Fk(a, b) {
+      /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
 
-      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]));
-      ret[0] = this._S0(a[0], OpCodes.XorN(b[2], ret[1]));
-      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], ret[1]));
-      ret[3] = this._S1(a[3], OpCodes.XorN(b[3], ret[2]));
+      ret[1] = this._S1(OpCodes.Xor32(a[0], a[1]), OpCodes.Xor32(OpCodes.Xor32(b[0], a[2]), a[3]));
+      ret[0] = this._S0(a[0], OpCodes.Xor32(b[2], ret[1]));
+      ret[2] = this._S0(OpCodes.Xor32(a[2], a[3]), OpCodes.Xor32(b[1], ret[1]));
+      ret[3] = this._S1(a[3], OpCodes.Xor32(b[3], ret[2]));
 
       return ret;
     }
@@ -302,11 +306,13 @@
      */
     _generateRoundKeys(keyBytes) {
       const N = 8;
+      /** @type {uint8[]} */
       const subKeys = new Array(2 * (N + 4));
       for (let i = 0; i < subKeys.length; i++) subKeys[i] = 0;
 
       let ACurrent = keyBytes.slice(0, 4);
       let BCurrent = keyBytes.slice(4, 8);
+      /** @type {uint8[]} */
       let XORTemp = [0, 0, 0, 0];
 
       const numIterations = Math.floor(N / 2) + 4;

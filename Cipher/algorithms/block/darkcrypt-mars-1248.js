@@ -55,7 +55,8 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Key-dependent multiplication-keyword tweak constants (official MARS "B" table).
-  const B = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
+  /** @type {uint32[]} */
+  const MASK_B = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
 
   class DarkCryptMARS1248Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -109,21 +110,33 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMARS1248Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMARS1248Instance(this, isInverse);
     }
   }
 
   class DarkCryptMARS1248Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMARS1248Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
+      /** @type {uint32[]|null} */
       this.expandedKey = null;
 
+      /** @type {uint32[]} */
       this.Sbox = [
             0x09d0c479, 0x28c8ffe0, 0x84aa6c39, 0x9dad7287, 0x7dff9be3, 0xd4268361, 0xc96da1d4, 0x7974cc93,
             0x85d0582e, 0x2a4b5705, 0x1ca16a62, 0xc3bd279d, 0x0f1f25e5, 0x5160372f, 0xc695c1fb, 0x4d7ff1e4,
@@ -190,21 +203,41 @@
             0xabb96061, 0x5370f85d, 0xffb07e37, 0xda30d0fb, 0xebc977b6, 0x0b98b40f, 0x3a4d0fe6, 0xdf4fc26b,
             0x159cf22a, 0xc298d6e2, 0x2b78ef6a, 0x61a94ac0, 0xab561187, 0x14eea0f0, 0xdf0d4164, 0x19af70ee
           ];
-
-      this.S = (a) => this.Sbox[OpCodes.And32(a, 0x1FF)];
-      this.S0 = (a) => this.Sbox[OpCodes.And32(a, 0xFF)];
-      this.S1 = (a) => this.Sbox[OpCodes.And32(a, 0xFF) + 256];
     }
 
+    /**
+     * @param {uint32} a - Index word
+     * @returns {uint32} Full 512-entry S-box lookup
+     */
+    S(a) { return this.Sbox[OpCodes.And32(a, 0x1FF)]; }
+
+    /**
+     * @param {uint32} a - Index word
+     * @returns {uint32} S0 lookup (first 256 entries)
+     */
+    S0(a) { return this.Sbox[OpCodes.And32(a, 0xFF)]; }
+
+    /**
+     * @param {uint32} a - Index word
+     * @returns {uint32} S1 lookup (last 256 entries)
+     */
+    S1(a) { return this.Sbox[OpCodes.Add32(OpCodes.And32(a, 0xFF), 256)]; }
+
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this.expandedKey = null; return; }
       if (keyBytes.length !== 156)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MARS-1248 (DarkCrypt) requires exactly 156 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MARS-1248 (DarkCrypt) requires exactly 156 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.expandedKey = this._expandKey(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -217,8 +250,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -232,6 +266,10 @@
     // (excluding the two LSBs) in w and builds a 4-bit-aligned mask covering it,
     // so the later XOR with a rotated B[] constant breaks up long bit runs.
     // Ported unchanged (bit-exact) from the official MARS key-tweak logic.
+    /**
+     * @param {uint32} w - Key word
+     * @returns {uint32} Bit-run mask
+     */
     _maskWord(w) {
       w = OpCodes.ToUint32(w);
       const notw = OpCodes.Not32(w);
@@ -253,13 +291,19 @@
     // indexing so the same stirring/permutation/mask-tweak logic works
     // unmodified for any key length (Nk=8/16/39 for the 256/512/1248-bit
     // variants observed in this DarkCrypt variant family).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} The 40-word expanded key
+     */
     _expandKey(keyBytes) {
       const Nk = keyBytes.length / 4;
+      /** @type {uint32[]} */
       const keyWords = new Array(Nk);
       for (let i = 0; i < Nk; i++)
         keyWords[i] = OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]);
 
       // T[0..6] seeded from the S-box (official MARS IV words); T[46] holds Nk.
+      /** @type {uint32[]} */
       const T = new Array(47);
       for (let i = 0; i < 7; i++) T[i] = this.Sbox[i];
       T[46] = Nk;
@@ -277,7 +321,9 @@
 
       // Redistribute T[7..46] into the 40-word expanded key via a fixed
       // (Nk-independent) stride-7-mod-33 permutation.
-      const K = new Array(40).fill(0);
+      /** @type {uint32[]} */
+      const K = new Array(40);
+      K.fill(0);
       let idx = 0;
       for (let i = 0; i < 40; i++) {
         K[idx] = T[7 + i];
@@ -291,7 +337,7 @@
         if (mask !== 0) {
           const rot = OpCodes.And32(K[i + 3], 0x1F);
           const j = OpCodes.And32(K[i], 3);
-          const p = OpCodes.RotL32(B[j], rot);
+          const p = OpCodes.RotL32(MASK_B[j], rot);
           w = OpCodes.Xor32(w, OpCodes.And32(p, mask));
         }
         K[i] = w;
@@ -300,6 +346,10 @@
       return K;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let a = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let b = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -347,9 +397,13 @@
       c = OpCodes.Sub32(c, this.expandedKey[38]);
       d = OpCodes.Sub32(d, this.expandedKey[39]);
 
-      return [].concat(OpCodes.Unpack32LE(a), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(d));
+      return [...OpCodes.Unpack32LE(a), ...OpCodes.Unpack32LE(b), ...OpCodes.Unpack32LE(c), ...OpCodes.Unpack32LE(d)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let d = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let c = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -397,7 +451,7 @@
       b = OpCodes.Sub32(b, this.expandedKey[2]);
       a = OpCodes.Sub32(a, this.expandedKey[3]);
 
-      return [].concat(OpCodes.Unpack32LE(d), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(a));
+      return [...OpCodes.Unpack32LE(d), ...OpCodes.Unpack32LE(c), ...OpCodes.Unpack32LE(b), ...OpCodes.Unpack32LE(a)];
     }
   }
 

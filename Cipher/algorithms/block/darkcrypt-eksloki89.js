@@ -68,19 +68,28 @@
     "087711be924f24c532369dcff3a6bbac5e6ca9135725b5e3bda83a0105592a46");
 
   // LOKI89 S-box descriptors: {generator (irreducible poly), exponent} per row.
+  /** @type {uint16[][]} */
   const SFN = [
     [375, 31], [379, 31], [391, 31], [395, 31], [397, 31], [415, 31], [419, 31], [425, 31],
     [433, 31], [445, 31], [451, 31], [463, 31], [471, 31], [477, 31], [487, 31], [499, 31]
   ];
 
   // LOKI89 32-bit permutation P: output bit o receives input bit P[o] (MSB first).
+  /** @type {uint8[]} */
   const PERM = [
     31, 23, 15, 7, 30, 22, 14, 6, 29, 21, 13, 5, 28, 20, 12, 4,
     27, 19, 11, 3, 26, 18, 10, 2, 25, 17, 9, 1, 24, 16, 8, 0
   ];
 
   // GF(2^8) multiply modulo generator gen.
+  /**
+   * @param {uint32} a - Multiplicand
+   * @param {uint32} b - Multiplier
+   * @param {uint32} gen - Generator polynomial
+   * @returns {uint32} Product byte
+   */
   function mult8(a, b, gen) {
+    /** @type {uint32} */
     let p = 0;
     while (b) {
       if (OpCodes.And32(b, 1)) p ^= a;
@@ -92,9 +101,17 @@
   }
 
   // GF(2^8) exponentiation: base^exp mod gen.
+  /**
+   * @param {uint32} base - Base byte
+   * @param {uint32} exp - Exponent
+   * @param {uint32} gen - Generator polynomial
+   * @returns {uint32} Power byte
+   */
   function exp8(base, exp, gen) {
     if (base === 0) return 0;
-    let acc = OpCodes.And32(base, 0xff), res = 1;
+    let acc = OpCodes.And32(base, 0xff);
+    /** @type {uint32} */
+    let res = 1;
     while (exp) {
       if (OpCodes.And32(exp, 1)) res = mult8(res, acc, gen);
       exp = OpCodes.Shr32(exp, 1);
@@ -104,22 +121,40 @@
   }
 
   // Precompute the 12-bit -> 8-bit LOKI89 S-box lookup (derived from SFN, DATA).
-  const S12 = new Uint8Array(4096);
-  for (let i = 0; i < 4096; i++) {
-    const row = OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(i, 8), 0xc), OpCodes.And32(i, 3));
-    const col = OpCodes.And32(OpCodes.Shr32(i, 2), 0xff);
-    S12[i] = exp8(OpCodes.And32(OpCodes.Xor32(col, row), 0xff), SFN[row][1], SFN[row][0]);
+  /**
+   * @returns {uint8[]} The 4096-entry 12-bit to 8-bit S-box
+   */
+  function buildS12() {
+    const table = new Uint8Array(4096);
+    for (let i = 0; i < 4096; i++) {
+      const row = OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(i, 8), 0xc), OpCodes.And32(i, 3));
+      const col = OpCodes.And32(OpCodes.Shr32(i, 2), 0xff);
+      table[i] = exp8(OpCodes.And32(OpCodes.Xor32(col, row), 0xff), SFN[row][1], SFN[row][0]);
+    }
+    return table;
   }
+  const S12 = buildS12();
 
   // Precompute per-output-bit shift/index for the P permutation.
   // out bit position (from MSB) o -> takes input bit PERM[o].
-  const S = a => {
+  /**
+   * @param {uint32} a - Input word
+   * @returns {uint32} Word after the four overlapping 12-bit S-box lookups
+   */
+  function sLayer(a) {
     a = OpCodes.ToUint32(a);
     return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(S12[OpCodes.And32(a, 0xfff)], OpCodes.Shl32(S12[OpCodes.And32(OpCodes.Shr32(a, 8), 0xfff)], 8)), OpCodes.Shl32(S12[OpCodes.And32(OpCodes.Shr32(a, 16), 0xfff)], 16)), OpCodes.Shl32(S12[OpCodes.And32(OpCodes.Or32(OpCodes.Shr32(a, 24), OpCodes.Shl32(a, 8)), 0xfff)], 24));
-  };
+  }
 
+  /**
+   * @param {uint32} inp - Input word
+   * @returns {uint32} Permuted word
+   */
   function perm32(inp) {
-    let out = 0, mask = 0x80000000;
+    /** @type {uint32} */
+    let out = 0;
+    /** @type {uint32} */
+    let mask = 0x80000000;
     for (let o = 0; o < 32; o++) {
       if (OpCodes.And32(OpCodes.Shr32(inp, PERM[o]), 1)) out = OpCodes.Or32(out, mask);
       mask = OpCodes.Shr32(mask, 1);
@@ -127,27 +162,49 @@
     return OpCodes.ToUint32(out);
   }
 
-  const SP = a => perm32(S(a));
+  /**
+   * @param {uint32} a - Input word
+   * @returns {uint32} S layer followed by the P permutation
+   */
+  function spLayer(a) {
+    return perm32(sLayer(a));
+  }
 
   // Round-function flavour B: two S/P passes with one S-only pass, mixing Ta, Tb.
+  /**
+   * @param {uint32} x - Half block
+   * @param {uint32} SK - Subkey
+   * @param {uint32} Ta - First tweak word
+   * @param {uint32} Tb - Second tweak word
+   * @returns {uint32} Round output
+   */
   function fB(x, SK, Ta, Tb) {
-    let t = SP(OpCodes.Xor32(x, SK));
+    let t = spLayer(OpCodes.Xor32(x, SK));
     t = OpCodes.Xor32(t, Ta);
-    t = OpCodes.Xor32(S(t), Tb);
-    return SP(t);
+    t = OpCodes.Xor32(sLayer(t), Tb);
+    return spLayer(t);
   }
 
   // Round-function flavour A: as B plus an additional S-only pass mixing U.
+  /**
+   * @param {uint32} x - Half block
+   * @param {uint32} SK - Subkey
+   * @param {uint32} Ta - First tweak word
+   * @param {uint32} Tb - Second tweak word
+   * @param {uint32} U - Extra tweak word
+   * @returns {uint32} Round output
+   */
   function fA(x, SK, Ta, Tb, U) {
-    let t = SP(OpCodes.Xor32(x, SK));
+    let t = spLayer(OpCodes.Xor32(x, SK));
     t = OpCodes.Xor32(t, Ta);
-    t = OpCodes.Xor32(S(t), Tb);
-    t = OpCodes.Xor32(S(t), U);
-    return SP(t);
+    t = OpCodes.Xor32(sLayer(t), Tb);
+    t = OpCodes.Xor32(sLayer(t), U);
+    return spLayer(t);
   }
 
   // Per-round subkey word indices into the 64-word permutation P.
   // [SK, Ta, Tb, (U)]; rounds carrying a 4th index use flavour A.
+  /** @type {uint8[][]} */
   const ROUND_KEYS = [
     [2, 20, 21, 56], [3, 22, 23],     [4, 24, 25],
     [5, 26, 27, 57], [6, 28, 29],     [7, 30, 31],
@@ -157,14 +214,23 @@
     [17, 50, 51, 61], [18, 52, 53],   [19, 54, 55]
   ];
 
+  /**
+   * @param {int32} round - Round number 1..18
+   * @param {uint32} data - Half block
+   * @param {uint32[]} p - 64 subkey words
+   * @returns {uint32} Round output
+   */
   function roundFunction(round, data, p) {
     const e = ROUND_KEYS[round - 1];
-    return (e.length === 4)
-      ? fA(data, p[e[0]], p[e[1]], p[e[2]], p[e[3]])
-      : fB(data, p[e[0]], p[e[1]], p[e[2]]);
+    if (e.length === 4) return fA(data, p[e[0]], p[e[1]], p[e[2]], p[e[3]]);
+    return fB(data, p[e[0]], p[e[1]], p[e[2]]);
   }
 
   // Expand a 32-byte key into 64 little-endian subkey words (the permutation P).
+  /**
+   * @param {uint8[]} key - 32-byte key
+   * @returns {uint32[]} 64 little-endian subkey words
+   */
   function expandKey(key) {
     // table2[k*256 + j] = SBOX1[key[k] ^ j]
     const table2 = new Uint8Array(32 * 256);
@@ -176,22 +242,24 @@
     // Identity permutation, then an RC4-like key-dependent shuffle.
     const P = new Uint8Array(256);
     for (let i = 0; i < 256; i++) P[i] = i;
+    /** @type {uint8} */
     let carry = 0;
     // Counter continues from 0x100 (left over from the identity-fill loop).
     for (let i = 0x100; i < 0xC000; i++) {
       carry = SBOX1[carry];
       const pos1 = OpCodes.And32(i, 0xff);
-      const t = OpCodes.And32(P[pos1] + table2[OpCodes.And32(i, 0x1fff)] + carry, 0xff);
+      const t = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(P[pos1], table2[OpCodes.And32(i, 0x1fff)]), carry), 0xff);
       const t2 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(t, 1), OpCodes.Shr32(t, 7)), 0xff);   // rotate byte left by 1
       const B = P[t2];
       const A = P[pos1], C = P[B];
       P[pos1] = C; P[B] = A;                       // swap P[pos1] and P[B]
       carry = B;
     }
-    const p = new Array(64);
+    /** @type {uint32[]} */
+    const words = new Array(64);
     for (let i = 0; i < 64; i++)
-      p[i] = OpCodes.Pack32LE(P[i * 4], P[i * 4 + 1], P[i * 4 + 2], P[i * 4 + 3]);
-    return p;
+      words[i] = OpCodes.Pack32LE(P[i * 4], P[i * 4 + 1], P[i * 4 + 2], P[i * 4 + 3]);
+    return words;
   }
 
   class DarkCryptEksLOKI89Algorithm extends BlockCipherAlgorithm {
@@ -246,31 +314,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptEksLOKI89Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptEksLOKI89Instance(this, isInverse);
     }
   }
 
   class DarkCryptEksLOKI89Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptEksLOKI89Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._p = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._p = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. EksLOKI-89 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. EksLOKI-89 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this._p = expandKey(this._key);
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -283,8 +368,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -294,6 +380,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const p = this._p;
       const X0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -309,6 +399,10 @@
       return [...OpCodes.Unpack32LE(out0), ...OpCodes.Unpack32LE(out1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const p = this._p;
       const C0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);

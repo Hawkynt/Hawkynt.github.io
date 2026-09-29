@@ -45,7 +45,8 @@
   // ===== S-BOXES FROM DSTU 7624:2014 =====
   // 4 S-boxes cycling through byte positions
 
-  const S = Object.freeze([
+  /** @type {uint8[][]} */
+  const SB = [
     // S-box 0
     new Uint8Array([
       0xa8, 0x43, 0x5f, 0x06, 0x6b, 0x75, 0x6c, 0x59, 0x71, 0xdf, 0x87, 0x95, 0x17, 0xf0, 0xd8, 0x09,
@@ -122,18 +123,11 @@
       0xcb, 0xbb, 0x6b, 0x76, 0xba, 0x5a, 0x7d, 0x78, 0x0b, 0x95, 0xe3, 0xad, 0x74, 0x98, 0x3b, 0x36,
       0x64, 0x6d, 0xdc, 0xf0, 0x59, 0xa9, 0x4c, 0x17, 0x7f, 0x91, 0xb8, 0xc9, 0x57, 0x1b, 0xe0, 0x61
     ])
-  ]);
-
-  // Inverse S-boxes (computed on demand)
-  let IS = null;
-
-  // T-tables and IT-tables (generated from S-boxes and MDS matrix)
-  // Note: These are dynamically initialized at runtime, not frozen
-  const T = [];
-  const IT = [];
+  ];
 
   // MDS matrix for diffusion (8x8 circulant matrix from DSTU 7624:2014)
-  const MDS = Object.freeze([
+  /** @type {uint8[][]} */
+  const MDS = [
     [0x01, 0x01, 0x05, 0x01, 0x08, 0x06, 0x07, 0x04],
     [0x04, 0x01, 0x01, 0x05, 0x01, 0x08, 0x06, 0x07],
     [0x07, 0x04, 0x01, 0x01, 0x05, 0x01, 0x08, 0x06],
@@ -142,10 +136,11 @@
     [0x01, 0x08, 0x06, 0x07, 0x04, 0x01, 0x01, 0x05],
     [0x05, 0x01, 0x08, 0x06, 0x07, 0x04, 0x01, 0x01],
     [0x01, 0x05, 0x01, 0x08, 0x06, 0x07, 0x04, 0x01]
-  ]);
+  ];
 
   // Inverse MDS matrix
-  const IMDS = Object.freeze([
+  /** @type {uint8[][]} */
+  const IMDS = [
     [0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca],
     [0xca, 0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7],
     [0xd7, 0xca, 0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49],
@@ -154,10 +149,28 @@
     [0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad, 0x95, 0x76],
     [0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad, 0x95],
     [0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad]
-  ]);
+  ];
+
+  /**
+   * Byte n of a 64-bit word
+   * @param {uint64} x - Word
+   * @param {int32} shift - Bit offset of the byte (0, 8, .., 56)
+   * @returns {int32} The byte
+   */
+  function byteAt(x, shift) {
+    /** @type {int32} */
+    const b = Number(OpCodes.AndN(OpCodes.ShiftRn(x, shift), 0xFFn));
+    return b;
+  }
 
   // GF(2^8) multiplication using polynomial 0x11d (Kalyna-specific)
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @returns {uint32} Product
+   */
   function KalynaGF256Mul(a, b) {
+    /** @type {uint32} */
     let product = 0;
     for (let i = 0; i < 8; i++) {
       if (OpCodes.And32(b, 1)) product = OpCodes.Xor32(product, a);
@@ -170,40 +183,59 @@
   }
 
   // Initialize T-tables from S-boxes and MDS matrix
-  function initializeTTables() {
-    if (T.length > 0) return;
-
-    // Generate 8 T-tables for encryption
+  /**
+   * The 8 encryption T-tables (S-box followed by the MDS column)
+   * @returns {uint64[][]} Eight 256-entry tables
+   */
+  function buildTTables() {
+    /** @type {uint64[][]} */
+    const tables = [];
     for (let i = 0; i < 8; i++) {
-      T[i] = new Array(256);
+      /** @type {uint64[]} */
+      const tab = [];
       for (let b = 0; b < 256; b++) {
-        const sb = S[i % 4][b];
+        const sb = SB[i % 4][b];
+        /** @type {uint64} */
         let val = 0n;
         for (let j = 0; j < 8; j++) {
           const product = KalynaGF256Mul(MDS[j][i], sb);
-          val |= OpCodes.ShiftLn(BigInt(product), j * 8);
+          val = OpCodes.ToQWord(OpCodes.OrN(val, OpCodes.ShiftLn(BigInt(product), j * 8)));
         }
-        T[i][b] = val;
+        tab.push(val);
       }
+      tables.push(tab);
     }
+    return tables;
+  }
 
-    // Generate inverse S-boxes
-    if (!IS) {
-      IS = [];
-      for (let s = 0; s < 4; s++) {
-        IS[s] = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-          IS[s][S[s][i]] = i;
-        }
+  /**
+   * @returns {uint8[][]} The four inverse S-boxes
+   */
+  function buildInverseSboxes() {
+    /** @type {uint8[][]} */
+    const inv = [];
+    for (let s = 0; s < 4; s++) {
+      const box = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) {
+        box[SB[s][i]] = i;
       }
+      inv.push(box);
     }
+    return inv;
+  }
 
-    // IT tables - Pre-computed from Crypto++ kalynatab.cpp (8 tables x 256 entries)
-    // These are the EXACT inverse T-tables from the official implementation
-    for (let i = 0; i < 8; i++) IT[i] = new Array(256);
+  /**
+   * The 8 decryption IT-tables, pre-computed from Crypto++ kalynatab.cpp
+   * (the EXACT inverse T-tables from the official implementation)
+   * @returns {uint64[][]} Eight 256-entry tables
+   */
+  function buildITTables() {
+    /** @type {uint64[][]} */
+    const tables = [];
 
     // IT[0]
-    const IT0 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT0 = [
       0x7826942b9f5f8a9an, 0x210f43c934970c53n, 0x5f028fdd9d0551b8n, 0x14facd82b494c83bn,
       0x2b72ab886edd68c0n, 0xa6a87e5bff19d9b4n, 0xa29ae571db6443ean, 0x039b2c911be8e5b6n,
       0xd9275dcb5fd32cc6n, 0x10c856a890e95265n, 0x7d96e085b27ab85dn, 0x31c71561a47e5e36n,
@@ -268,11 +300,12 @@
       0x2ec2df2643f85a07n, 0x22946f582f7fe9e5n, 0x366ea2da9beb21den, 0x4a7aaddb20c9311an,
       0xb1c99f485065f439n, 0xb04b70cc593d5ca0n, 0xab7c21a19ac6c2cfn, 0x33ded674b6ce1319n,
       0xce46bcd8f0af014bn, 0xdb3e9ede4d6361e9n, 0x7669e740e1687457n, 0x514dfcb6e332af75n
-    ]);
-    for (let i = 0; i < 256; i++) IT[0][i] = IT0[i];
+    ];
+    tables.push(IT0);
 
     // IT[1]
-    const IT1 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT1 = [
       0x1f4f6fa8bfbefae3n, 0xf0440c6785c0592an, 0x1dc0b235baef42bcn, 0x22978cb85528f7c6n,
       0xcedad22ae6a1b0f1n, 0x180af5d23ceb73a3n, 0x946f582f7fe9e522n, 0xe44b0ddca7d09d56n,
       0x906cff08754b889cn, 0x9f2f363ce247dbbdn, 0xa1b1e87181263266n, 0x21d1b1e5dcdf1338n,
@@ -337,11 +370,12 @@
       0xd5961aa553bd27acn, 0x61e113af7c2d8d17n, 0x100ca69c28b2a9c2n, 0xcf1332ea6a07ec50n,
       0xc856a890e9526510n, 0x2b583f36cdd77106n, 0x932ac255fcbc6c62n, 0x0b406e139dae3e9fn,
       0x832664c9d40ec5a0n, 0x3014f7b978cbe65bn, 0x2c1da54c4e82f846n, 0x986aac46611252fdn
-    ]);
-    for (let i = 0; i < 256; i++) IT[1][i] = IT1[i];
+    ];
+    tables.push(IT1);
 
     // IT[2]
-    const IT2 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT2 = [
       0x679cc74f352b557fn, 0x376719b23e9424bfn, 0xcc14a9925deb7e0dn, 0xb07e6c87b3e20c56n,
       0xa17dbce183b3886an, 0xee12145e3d496b75n, 0x406e139dae3e9f0bn, 0x942b9f5f8a9a7826n,
       0xb24f568b845fd8a5n, 0xdf2643f85a072ec2n, 0x8c7aba0ff3d5e106n, 0x0b63cf3a7ea3c9efn,
@@ -406,11 +440,12 @@
       0x6059945df9215e80n, 0x05f4691efbb7df0cn, 0x5b9811c7751cb82fn, 0x2b5448fa29bc0864n,
       0xba8bbebb5891af4en, 0xf4720b0273bb26a6n, 0xdd1779f46dbafa31n, 0x6ece32797c354863n,
       0x7fcde21f4c64cc5fn, 0x2206bdcc60a21578n, 0x75383023a7176f47n, 0xf3b75810bfb12d59n
-    ]);
-    for (let i = 0; i < 256; i++) IT[2][i] = IT2[i];
+    ];
+    tables.push(IT2);
 
     // IT[3]
-    const IT3 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT3 = [
       0x03d0663051843c11n, 0xbfe91d3fdfeaf98bn, 0xf80e9b3beef5fc41n, 0xe5ad26f6af3045fan,
       0x5a443bc970dabc71n, 0x7b012de3119d1283n, 0x82b494c83b14facdn, 0x750dec03dd4fcad9n,
       0x090a2f90aabbb477n, 0xb6e332af75514dfcn, 0xadfd430296818c65n, 0xfd63316b1d64b872n,
@@ -475,11 +510,12 @@
       0x9cc74f352b557f67n, 0x4d3dcfa4ca208dacn, 0x2b9f5f8a9a782694n, 0xaafbad72f0e8e048n,
       0xc934970c53210f43n, 0xed1c2b76c1f7e582n, 0x01bb2210c47c140fn, 0x0ddca7d09d56e44bn,
       0x2d2293ea386d5eb6n, 0xf7b978cbe65b3014n, 0x6719b23e9424bf37n, 0x2295701a30c392e3n
-    ]);
-    for (let i = 0; i < 256; i++) IT[3][i] = IT3[i];
+    ];
+    tables.push(IT3);
 
     // IT[4]
-    const IT4 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT4 = [
       0x9f5f8a9a7826942bn, 0x34970c53210f43c9n, 0x9d0551b85f028fddn, 0xb494c83b14facd82n,
       0x6edd68c02b72ab88n, 0xff19d9b4a6a87e5bn, 0xdb6443eaa29ae571n, 0x1be8e5b6039b2c91n,
       0x5fd32cc6d9275dcbn, 0x90e9526510c856a8n, 0xb27ab85d7d96e085n, 0xa47e5e3631c71561n,
@@ -544,11 +580,12 @@
       0x43f85a072ec2df26n, 0x2f7fe9e522946f58n, 0x9beb21de366ea2dan, 0x20c9311a4a7aaddbn,
       0x5065f439b1c99f48n, 0x593d5ca0b04b70ccn, 0x9ac6c2cfab7c21a1n, 0xb6ce131933ded674n,
       0xf0af014bce46bcd8n, 0x4d6361e9db3e9eden, 0xe16874577669e740n, 0xe332af75514dfcb6n
-    ]);
-    for (let i = 0; i < 256; i++) IT[4][i] = IT4[i];
+    ];
+    tables.push(IT4);
 
     // IT[5]
-    const IT5 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT5 = [
       0xbfbefae31f4f6fa8n, 0x85c0592af0440c67n, 0xbaef42bc1dc0b235n, 0x5528f7c622978cb8n,
       0xe6a1b0f1cedad22an, 0x3ceb73a3180af5d2n, 0x7fe9e522946f582fn, 0xa7d09d56e44b0ddcn,
       0x754b889c906cff08n, 0xe247dbbd9f2f363cn, 0x81263266a1b1e871n, 0xdcdf133821d1b1e5n,
@@ -613,11 +650,12 @@
       0x53bd27acd5961aa5n, 0x7c2d8d1761e113afn, 0x28b2a9c2100ca69cn, 0x6a07ec50cf1332ean,
       0xe9526510c856a890n, 0xcdd771062b583f36n, 0xfcbc6c62932ac255n, 0x9dae3e9f0b406e13n,
       0xd40ec5a0832664c9n, 0x78cbe65b3014f7b9n, 0x4e82f8462c1da54cn, 0x611252fd986aac46n
-    ]);
-    for (let i = 0; i < 256; i++) IT[5][i] = IT5[i];
+    ];
+    tables.push(IT5);
 
     // IT[6]
-    const IT6 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT6 = [
       0x352b557f679cc74fn, 0x3e9424bf376719b2n, 0x5deb7e0dcc14a992n, 0xb3e20c56b07e6c87n,
       0x83b3886aa17dbce1n, 0x3d496b75ee12145en, 0xae3e9f0b406e139dn, 0x8a9a7826942b9f5fn,
       0x845fd8a5b24f568bn, 0x5a072ec2df2643f8n, 0xf3d5e1068c7aba0fn, 0x7ea3c9ef0b63cf3an,
@@ -682,11 +720,12 @@
       0xf9215e806059945dn, 0xfbb7df0c05f4691en, 0x751cb82f5b9811c7n, 0x29bc08642b5448fan,
       0x5891af4eba8bbebbn, 0x73bb26a6f4720b02n, 0x6dbafa31dd1779f4n, 0x7c3548636ece3279n,
       0x4c64cc5f7fcde21fn, 0x60a215782206bdccn, 0xa7176f4775383023n, 0xbfb12d59f3b75810n
-    ]);
-    for (let i = 0; i < 256; i++) IT[6][i] = IT6[i];
+    ];
+    tables.push(IT6);
 
     // IT[7]
-    const IT7 = Object.freeze([
+    /** @type {uint64[]} */
+    const IT7 = [
       0x51843c1103d06630n, 0xdfeaf98bbfe91d3fn, 0xeef5fc41f80e9b3bn, 0xaf3045fae5ad26f6n,
       0x70dabc715a443bc9n, 0x119d12837b012de3n, 0x3b14facd82b494c8n, 0xdd4fcad9750dec03n,
       0xaabbb477090a2f90n, 0x75514dfcb6e332afn, 0x96818c65adfd4302n, 0x1d64b872fd63316bn,
@@ -751,22 +790,35 @@
       0x2b557f679cc74f35n, 0xca208dac4d3dcfa4n, 0x9a7826942b9f5f8an, 0xf0e8e048aafbad72n,
       0x53210f43c934970cn, 0xc1f7e582ed1c2b76n, 0xc47c140f01bb2210n, 0x9d56e44b0ddca7d0n,
       0x386d5eb62d2293ean, 0xe65b3014f7b978cbn, 0x9424bf376719b23en, 0x30c392e32295701an
-    ]);
-    for (let i = 0; i < 256; i++) IT[7][i] = IT7[i];
+    ];
+    tables.push(IT7);
+    return tables;
   }
 
+  // T-tables, inverse S-boxes and IT-tables, built once at load
+  const T = buildTTables();
+  const IS = buildInverseSboxes();
+  const IT = buildITTables();
+
   // ===== KALYNA HELPER FUNCTIONS (Crypto++ kalyna.cpp) =====
+  // A 128-bit state or round key is a uint64[] of two words.
 
   // MakeOddKey: Rotate key bytes for odd rounds (Crypto++ line 44-85)
   // For NB=2 (128-bit): U=16, V=7
+  /**
+   * @param {uint64[]} evenkey - Even round key
+   * @returns {uint64[]} Odd round key
+   */
   function MakeOddKey(evenkey) {
+    /** @type {int32[]} */
     const evenBytes = new Array(16);
     for (let i = 0; i < 2; i++) {
       for (let j = 0; j < 8; j++) {
-        evenBytes[i * 8 + j] = Number(OpCodes.ShiftRn(evenkey[i], j * 8)&0xFFn);
+        evenBytes[i * 8 + j] = byteAt(evenkey[i], j * 8);
       }
     }
 
+    /** @type {int32[]} */
     const oddBytes = new Array(16);
     for (let i = 0; i < 9; i++) {
       oddBytes[i] = evenBytes[i + 7];
@@ -775,109 +827,381 @@
       oddBytes[i + 9] = evenBytes[i];
     }
 
-    const oddkey = new Array(2);
+    /** @type {uint64[]} */
+    const odd64 = new Array(2);
     for (let i = 0; i < 2; i++) {
+      /** @type {uint64} */
       let word = 0n;
       for (let j = 0; j < 8; j++) {
-        word |= OpCodes.ShiftLn(BigInt(oddBytes[i * 8 + j]), j * 8);
+        word = OpCodes.ToQWord(OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(oddBytes[i * 8 + j]), j * 8)));
       }
-      oddkey[i] = word;
+      odd64[i] = word;
     }
-    return oddkey;
+    return odd64;
   }
 
   // AddKey: Modular addition (Crypto++ line 111-129)
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} x + k word-wise mod 2^64
+   */
   function AddKey(x, k) {
-    const y = new Array(2);
-    y[0] = (x[0] + k[0])&0xFFFFFFFFFFFFFFFFn;
-    y[1] = (x[1] + k[1])&0xFFFFFFFFFFFFFFFFn;
-    return y;
+    return [OpCodes.ToQWord(x[0] + k[0]), OpCodes.ToQWord(x[1] + k[1])];
   }
 
   // SubKey: Modular subtraction (Crypto++ line 132-150)
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} x - k word-wise mod 2^64
+   */
   function SubKey(x, k) {
-    const y = new Array(2);
-    y[0] = (x[0] - k[0])&0xFFFFFFFFFFFFFFFFn;
-    y[1] = (x[1] - k[1])&0xFFFFFFFFFFFFFFFFn;
-    return y;
+    return [OpCodes.ToQWord(x[0] - k[0]), OpCodes.ToQWord(x[1] - k[1])];
   }
 
   // AddConstant: Add constant to all words (Crypto++ line 153-171)
+  /**
+   * @param {uint64[]} src - State
+   * @param {uint64} constant - Constant
+   * @returns {uint64[]} src + constant word-wise mod 2^64
+   */
   function AddConstant(src, constant) {
-    const dst = new Array(2);
-    dst[0] = (src[0] + constant)&0xFFFFFFFFFFFFFFFFn;
-    dst[1] = (src[1] + constant)&0xFFFFFFFFFFFFFFFFn;
-    return dst;
+    return [OpCodes.ToQWord(src[0] + constant), OpCodes.ToQWord(src[1] + constant)];
+  }
+
+  /**
+   * XOR of eight table lookups: tab[j] at byte j of xa (j < 4) or of xb (j >= 4)
+   * @param {uint64[][]} tab - Eight 256-entry tables (T or IT)
+   * @param {uint64} xa - Word supplying bytes 0..3
+   * @param {uint64} xb - Word supplying bytes 4..7
+   * @returns {uint64} The combined word
+   */
+  function lookup8(tab, xa, xb) {
+    let y = tab[0][byteAt(xa, 0)];
+    y = OpCodes.XorN(y, tab[1][byteAt(xa, 8)]);
+    y = OpCodes.XorN(y, tab[2][byteAt(xa, 16)]);
+    y = OpCodes.XorN(y, tab[3][byteAt(xa, 24)]);
+    y = OpCodes.XorN(y, tab[4][byteAt(xb, 32)]);
+    y = OpCodes.XorN(y, tab[5][byteAt(xb, 40)]);
+    y = OpCodes.XorN(y, tab[6][byteAt(xb, 48)]);
+    y = OpCodes.XorN(y, tab[7][byteAt(xb, 56)]);
+    return y;
   }
 
   // G0128: T-table transformation WITHOUT key (Crypto++ line 173-179)
+  /**
+   * @param {uint64[]} x - State
+   * @returns {uint64[]} Transformed state
+   */
   function G0128(x) {
-    const y = new Array(2);
-    y[0] = T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
-
-    y[1] = T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
-
-    return y;
+    return [lookup8(T, x[0], x[1]), lookup8(T, x[1], x[0])];
   }
 
   // G128: T-table transformation with key XOR (Crypto++ line 373-379)
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} Transformed state
+   */
   function G128(x, k) {
-    const y = new Array(2);
-    y[0] = k[0]^T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
-
-    y[1] = k[1]^T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
-
-    return y;
+    return [OpCodes.XorN(k[0], lookup8(T, x[0], x[1])), OpCodes.XorN(k[1], lookup8(T, x[1], x[0]))];
   }
 
   // GL128: T-table transformation with key addition (Crypto++ line 213-219)
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} Transformed state
+   */
   function GL128(x, k) {
-    const y = new Array(2);
-    y[0] = (k[0] + (
-           T[0][Number(x[0]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
-
-    y[1] = (k[1] + (
-           T[0][Number(x[1]&0xFFn)]^T[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^T[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^T[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^T[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^T[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^T[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^T[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
-
-    return y;
+    return [OpCodes.ToQWord(k[0] + lookup8(T, x[0], x[1])), OpCodes.ToQWord(k[1] + lookup8(T, x[1], x[0]))];
   }
 
   // IMC128: Inverse MixColumns (Crypto++ line 253-259)
   // IT tables pre-apply IS, so we pass through S-box here
-  // Result: IT[S[byte]] = IMDS * IS[S[byte]] = IMDS * byte (since IS[S[x]] = x)
-  function IMC128(x) {
-    const y = new Array(2);
-    y[0] = IT[0][S[0][Number(x[0]&0xFFn)]]^IT[1][S[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]]^IT[2][S[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]]^IT[3][S[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]]^IT[4][S[0][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]]^IT[5][S[1][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]]^IT[6][S[2][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]]^IT[7][S[3][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]];
-
-    y[1] = IT[0][S[0][Number(x[1]&0xFFn)]]^IT[1][S[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]]^IT[2][S[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]]^IT[3][S[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]]^IT[4][S[0][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]]^IT[5][S[1][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]]^IT[6][S[2][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]]^IT[7][S[3][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]];
-
+  // Result: IT[SB[byte]] = IMDS * IS[SB[byte]] = IMDS * byte (since IS[SB[x]] = x)
+  /**
+   * @param {uint64} xw - One state word
+   * @returns {uint64} Inverse MixColumns of the word
+   */
+  function imcWord(xw) {
+    let y = IT[0][SB[0][byteAt(xw, 0)]];
+    y = OpCodes.XorN(y, IT[1][SB[1][byteAt(xw, 8)]]);
+    y = OpCodes.XorN(y, IT[2][SB[2][byteAt(xw, 16)]]);
+    y = OpCodes.XorN(y, IT[3][SB[3][byteAt(xw, 24)]]);
+    y = OpCodes.XorN(y, IT[4][SB[0][byteAt(xw, 32)]]);
+    y = OpCodes.XorN(y, IT[5][SB[1][byteAt(xw, 40)]]);
+    y = OpCodes.XorN(y, IT[6][SB[2][byteAt(xw, 48)]]);
+    y = OpCodes.XorN(y, IT[7][SB[3][byteAt(xw, 56)]]);
     return y;
+  }
+  /**
+   * @param {uint64[]} x - State
+   * @returns {uint64[]} Inverse MixColumns of both words
+   */
+  function IMC128(x) {
+    return [imcWord(x[0]), imcWord(x[1])];
   }
 
   // IG128: Inverse G with key XOR (Crypto++ line 293-299)
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} Transformed state
+   */
   function IG128(x, k) {
-    const y = new Array(2);
-    y[0] = k[0]^IT[0][Number(x[0]&0xFFn)]^IT[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]^IT[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]^IT[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]^IT[4][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]^IT[5][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]^IT[6][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]^IT[7][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)];
-
-    y[1] = k[1]^IT[0][Number(x[1]&0xFFn)]^IT[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]^IT[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]^IT[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]^IT[4][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]^IT[5][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]^IT[6][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]^IT[7][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)];
-
-    return y;
+    return [OpCodes.XorN(k[0], lookup8(IT, x[0], x[1])), OpCodes.XorN(k[1], lookup8(IT, x[1], x[0]))];
   }
 
   // IGL128: Inverse GL with key subtraction (Crypto++ line 333-339)
-  // CRITICAL: Use XOR (^) not OR (|) for packing bytes - exact Crypto++ match
-  function IGL128(x, k) {
-    const y = new Array(2);
-
-    // Pack inverse S-box bytes with XOR, then subtract key (Crypto++ line 335-336)
-    // CRITICAL: Parentheses ensure all XORs complete before subtraction
-    y[0] = ((BigInt(IS[0][Number(x[0]&0xFFn)])^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[0], 8)&0xFFn)]), 8)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[0], 16)&0xFFn)]), 16)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[0], 24)&0xFFn)]), 24)^OpCodes.ShiftLn(BigInt(IS[0][Number(OpCodes.ShiftRn(x[1], 32)&0xFFn)]), 32)^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[1], 40)&0xFFn)]), 40)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[1], 48)&0xFFn)]), 48)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[1], 56)&0xFFn)]), 56)) -
-            k[0])&0xFFFFFFFFFFFFFFFFn;
-
-    y[1] = ((BigInt(IS[0][Number(x[1]&0xFFn)])^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[1], 8)&0xFFn)]), 8)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[1], 16)&0xFFn)]), 16)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[1], 24)&0xFFn)]), 24)^OpCodes.ShiftLn(BigInt(IS[0][Number(OpCodes.ShiftRn(x[0], 32)&0xFFn)]), 32)^OpCodes.ShiftLn(BigInt(IS[1][Number(OpCodes.ShiftRn(x[0], 40)&0xFFn)]), 40)^OpCodes.ShiftLn(BigInt(IS[2][Number(OpCodes.ShiftRn(x[0], 48)&0xFFn)]), 48)^OpCodes.ShiftLn(BigInt(IS[3][Number(OpCodes.ShiftRn(x[0], 56)&0xFFn)]), 56)) -
-            k[1])&0xFFFFFFFFFFFFFFFFn;
-
+  // CRITICAL: Use XOR (not OR) for packing bytes - exact Crypto++ match
+  /**
+   * Inverse S-box bytes (bytes 0..3 from xa, 4..7 from xb) packed with XOR
+   * @param {uint64} xa - Word supplying bytes 0..3
+   * @param {uint64} xb - Word supplying bytes 4..7
+   * @returns {uint64} Packed word
+   */
+  function invSubWord(xa, xb) {
+    let y = BigInt(IS[0][byteAt(xa, 0)]);
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[1][byteAt(xa, 8)]), 8));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[2][byteAt(xa, 16)]), 16));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[3][byteAt(xa, 24)]), 24));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[0][byteAt(xb, 32)]), 32));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[1][byteAt(xb, 40)]), 40));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[2][byteAt(xb, 48)]), 48));
+    y = OpCodes.XorN(y, OpCodes.ShiftLn(BigInt(IS[3][byteAt(xb, 56)]), 56));
     return y;
+  }
+  /**
+   * @param {uint64[]} x - State
+   * @param {uint64[]} k - Round key
+   * @returns {uint64[]} Transformed state
+   */
+  function IGL128(x, k) {
+    // Pack inverse S-box bytes with XOR, then subtract key (Crypto++ line 335-336)
+    return [OpCodes.ToQWord(invSubWord(x[0], x[1]) - k[0]), OpCodes.ToQWord(invSubWord(x[1], x[0]) - k[1])];
+  }
+
+  /**
+   * Eight bytes per word, little-endian, to 64-bit words
+   * @param {uint8[]} bytes - Input bytes (a multiple of 8)
+   * @returns {uint64[]} Words
+   */
+  function bytesToWords(bytes) {
+    /** @type {uint64[]} */
+    const lanes = [];
+    for (let i = 0; i < bytes.length / 8; i++) {
+      /** @type {uint64} */
+      let word = 0n;
+      for (let j = 0; j < 8; j++) {
+        word = OpCodes.ToQWord(OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i * 8 + j]), j * 8)));
+      }
+      lanes.push(word);
+    }
+    return lanes;
+  }
+
+  /**
+   * Two 64-bit words to 16 little-endian bytes
+   * @param {uint64[]} words - State
+   * @returns {uint8[]} Bytes
+   */
+  function wordsToBytes(words) {
+    /** @type {uint8[]} */
+    const output = new Array(16);
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 8; j++) {
+        output[i * 8 + j] = byteAt(words[i], j * 8);
+      }
+    }
+    return output;
+  }
+
+  // ===== KEY SCHEDULE =====
+
+  // SetKey_22: Key schedule for 128-bit key (Crypto++ line 419-492)
+  /**
+   * @param {uint64[]} key - Two key words
+   * @param {boolean} isDecryption - Prepare the round keys for decryption
+   * @returns {uint64[]} 22 round-key words (11 round keys)
+   */
+  function setKey22(key, isDecryption) {
+    /** @type {uint64[]} */
+    const t1 = [5n, 0n];
+
+    let temp = AddKey(t1, key);
+    temp = G128(temp, key);
+    temp = GL128(temp, key);
+    const ks = G0128(temp);
+
+    /** @type {uint64[]} */
+    const rw = new Array(22);
+    /** @type {uint64} */
+    let constant = 0x0001000100010001n;
+
+    /** @type {uint64[]} */
+    const k = [key[0], key[1]];
+    /** @type {uint64[]} */
+    const kswapped = [key[1], key[0]];
+
+    for (let round = 0; round <= 10; round += 2) {
+      let kmaterial = k;
+      if ((round / 2) % 2 !== 0) kmaterial = kswapped;
+      const ksc = AddConstant(ks, constant);
+
+      temp = AddKey(kmaterial, ksc);
+      temp = G128(temp, ksc);
+      temp = GL128(temp, ksc);
+
+      rw[round * 2] = temp[0];
+      rw[round * 2 + 1] = temp[1];
+
+      if (round < 10) {
+        const odd64 = MakeOddKey(temp);
+        rw[(round + 1) * 2] = odd64[0];
+        rw[(round + 1) * 2 + 1] = odd64[1];
+      }
+
+      constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
+    }
+
+    // For decryption: apply IMC128 to round keys 2,4,6,8,10,12,14,16,18 (Crypto++ line 486-490)
+    if (isDecryption) {
+      for (let i = 2; i <= 18; i += 2) {
+        rw[i] = imcWord(rw[i]);
+        rw[i + 1] = imcWord(rw[i + 1]);
+      }
+    }
+
+    return rw;
+  }
+
+  // SetKey_24: Key schedule for 256-bit key (Crypto++ line 494+)
+  /**
+   * @param {uint64[]} key - Four key words
+   * @param {boolean} isDecryption - Prepare the round keys for decryption
+   * @returns {uint64[]} 30 round-key words (15 round keys)
+   */
+  function setKey24(key, isDecryption) {
+    /** @type {uint64[]} */
+    const ka = [key[0], key[1]];
+    /** @type {uint64[]} */
+    const ko = [key[2], key[3]];
+
+    /** @type {uint64[]} */
+    const t1 = [7n, 0n];
+
+    let temp = AddKey(t1, ka);
+    temp = G128(temp, ko);
+    temp = GL128(temp, ka);
+    const ks = G0128(temp);
+
+    /** @type {uint64[]} */
+    const rw = new Array(30);
+    /** @type {uint64} */
+    let constant = 0x0001000100010001n;
+
+    // Crypto++ uses k array and SwapBlocks (left rotation)
+    /** @type {uint64[]} */
+    const k = [key[0], key[1], key[2], key[3]];
+
+    for (let round = 0; round <= 14; round += 2) {
+      // Determine which part of k to use (Crypto++ line 512-575)
+      /** @type {uint64[]} */
+      const kmaterial = [k[0], k[1]];
+      if (round % 4 !== 0) {
+        kmaterial[0] = k[2];
+        kmaterial[1] = k[3];
+      }
+
+      const ksc = AddConstant(ks, constant);
+
+      temp = AddKey(kmaterial, ksc);
+      temp = G128(temp, ksc);
+      temp = GL128(temp, ksc);
+
+      rw[round * 2] = temp[0];
+      rw[round * 2 + 1] = temp[1];
+
+      if (round < 14) {
+        const odd64 = MakeOddKey(temp);
+        rw[(round + 1) * 2] = odd64[0];
+        rw[(round + 1) * 2 + 1] = odd64[1];
+      }
+
+      // SwapBlocks at rounds 4, 8, 12 (Crypto++ line 528, 545, 562)
+      if (round === 2 || round === 6 || round === 10) {
+        const t = k[0];
+        k[0] = k[1];
+        k[1] = k[2];
+        k[2] = k[3];
+        k[3] = t;
+      }
+
+      constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
+    }
+
+    // For decryption: apply IMC128 to round keys (for 256-bit)
+    if (isDecryption) {
+      for (let i = 2; i <= 26; i += 2) {
+        rw[i] = imcWord(rw[i]);
+        rw[i + 1] = imcWord(rw[i + 1]);
+      }
+    }
+
+    return rw;
+  }
+
+  // ===== ENCRYPTION/DECRYPTION =====
+
+  /**
+   * Round keys for a raw key
+   * @param {uint8[]} key - 16- or 32-byte key
+   * @param {boolean} isDecryption - Prepare the round keys for decryption
+   * @returns {uint64[]} Round-key words
+   */
+  function kalynaRoundKeys(key, isDecryption) {
+    const keyWords = bytesToWords(key);
+    if (key.length === 16) return setKey22(keyWords, isDecryption);
+    return setKey24(keyWords, isDecryption);
+  }
+
+  // Encrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+  /**
+   * @param {uint8[]} plaintext - Input block
+   * @param {uint8[]} key - 16- or 32-byte key
+   * @returns {uint8[]} Output block
+   */
+  function kalynaEncrypt(plaintext, key) {
+    const msg = bytesToWords(plaintext);
+    const rw = kalynaRoundKeys(key, false);
+    // 10 rounds for a 128-bit key, 14 for a 256-bit key (Crypto++ line 944-956, 991-1005)
+    const last = (key.length === 16) ? 20 : 28;
+
+    let t1 = AddKey(msg, [rw[0], rw[1]]);
+    for (let r = 2; r < last; r += 2) t1 = G128(t1, [rw[r], rw[r + 1]]);
+    t1 = GL128(t1, [rw[last], rw[last + 1]]);
+    return wordsToBytes(t1);
+  }
+
+  // Decrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+  /**
+   * @param {uint8[]} ciphertext - Input block
+   * @param {uint8[]} key - 16- or 32-byte key
+   * @returns {uint8[]} Output block
+   */
+  function kalynaDecrypt(ciphertext, key) {
+    const msg = bytesToWords(ciphertext);
+    const rw = kalynaRoundKeys(key, true);
+    // 10 rounds for a 128-bit key, 14 for a 256-bit key (Crypto++ line 960-971, 1009-1024)
+    const last = (key.length === 16) ? 20 : 28;
+
+    let t1 = SubKey(msg, [rw[last], rw[last + 1]]);
+    t1 = IMC128(t1);
+    for (let r = last - 2; r >= 2; r -= 2) t1 = IG128(t1, [rw[r], rw[r + 1]]);
+    t1 = IGL128(t1, [rw[0], rw[1]]);
+    return wordsToBytes(t1);
   }
 
   // ===== KALYNA CIPHER IMPLEMENTATION =====
@@ -891,8 +1215,6 @@
   class KalynaAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
-
-      initializeTTables();
 
       this.name = "Kalyna";
       this.description = "Ukrainian national encryption standard (DSTU 7624:2014) - exact Crypto++ port with bit-perfect test vector validation.";
@@ -952,261 +1274,49 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KalynaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new KalynaInstance(this, isInverse);
     }
 
-    // ===== KEY SCHEDULE =====
+    // ===== KEY SCHEDULE / ENCRYPTION (module functions below) =====
 
-    // SetKey_22: Key schedule for 128-bit key (Crypto++ line 419-492)
+    /**
+     * @param {uint64[]} key - Two key words
+     * @param {boolean} [isDecryption=false] - Prepare the round keys for decryption
+     * @returns {uint64[]} 22 round-key words
+     */
     SetKey_22(key, isDecryption = false) {
-      const t1 = new Array(2);
-      const t2 = new Array(2);
-
-      t1[0] = 5n;
-      t1[1] = 0n;
-
-      let temp = AddKey(t1, key);
-      temp = G128(temp, key);
-      temp = GL128(temp, key);
-      const ks = G0128(temp);
-
-      const rkeys = new Array(22);
-      let constant = 0x0001000100010001n;
-
-      const k = [key[0], key[1]];
-      const kswapped = [key[1], key[0]];
-
-      for (let round = 0; round <= 10; round += 2) {
-        const kmaterial = (round / 2) % 2 === 0 ? k : kswapped;
-        const ksc = AddConstant(ks, constant);
-
-        temp = AddKey(kmaterial, ksc);
-        temp = G128(temp, ksc);
-        temp = GL128(temp, ksc);
-
-        rkeys[round * 2] = temp[0];
-        rkeys[round * 2 + 1] = temp[1];
-
-        if (round < 10) {
-          const oddkey = MakeOddKey(temp);
-          rkeys[(round + 1) * 2] = oddkey[0];
-          rkeys[(round + 1) * 2 + 1] = oddkey[1];
-        }
-
-        constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
-      }
-
-      // For decryption: apply IMC128 to round keys 2,4,6,8,10,12,14,16,18 (Crypto++ line 486-490)
-      if (isDecryption) {
-        for (let i = 2; i <= 18; i += 2) {
-          const modified = IMC128([rkeys[i], rkeys[i + 1]]);
-          rkeys[i] = modified[0];
-          rkeys[i + 1] = modified[1];
-        }
-      }
-
-      return rkeys;
+      return setKey22(key, isDecryption);
     }
 
-    // SetKey_24: Key schedule for 256-bit key (Crypto++ line 494+)
+    /**
+     * @param {uint64[]} key - Four key words
+     * @param {boolean} [isDecryption=false] - Prepare the round keys for decryption
+     * @returns {uint64[]} 30 round-key words
+     */
     SetKey_24(key, isDecryption = false) {
-      const ka = [key[0], key[1]];
-      const ko = [key[2], key[3]];
-
-      const t1 = new Array(2);
-      t1[0] = 7n;
-      t1[1] = 0n;
-
-      let temp = AddKey(t1, ka);
-      temp = G128(temp, ko);
-      temp = GL128(temp, ka);
-      const ks = G0128(temp);
-
-      const rkeys = new Array(30);
-      let constant = 0x0001000100010001n;
-
-      // Crypto++ uses k array and SwapBlocks (left rotation)
-      const k = [key[0], key[1], key[2], key[3]];
-
-      for (let round = 0; round <= 14; round += 2) {
-        // Determine which part of k to use (Crypto++ line 512-575)
-        const kmaterial = (round % 4 === 0) ? [k[0], k[1]] : [k[2], k[3]];
-
-        const ksc = AddConstant(ks, constant);
-
-        temp = AddKey(kmaterial, ksc);
-        temp = G128(temp, ksc);
-        temp = GL128(temp, ksc);
-
-        rkeys[round * 2] = temp[0];
-        rkeys[round * 2 + 1] = temp[1];
-
-        if (round < 14) {
-          const oddkey = MakeOddKey(temp);
-          rkeys[(round + 1) * 2] = oddkey[0];
-          rkeys[(round + 1) * 2 + 1] = oddkey[1];
-        }
-
-        // SwapBlocks at rounds 4, 8, 12 (Crypto++ line 528, 545, 562)
-        if (round === 2 || round === 6 || round === 10) {
-          const t = k[0];
-          k[0] = k[1];
-          k[1] = k[2];
-          k[2] = k[3];
-          k[3] = t;
-        }
-
-        constant = OpCodes.ShiftLn(constant, 1); // BigInt shift for round constant
-      }
-
-      // For decryption: apply IMC128 to round keys (for 256-bit)
-      if (isDecryption) {
-        for (let i = 2; i <= 26; i += 2) {
-          const modified = IMC128([rkeys[i], rkeys[i + 1]]);
-          rkeys[i] = modified[0];
-          rkeys[i + 1] = modified[1];
-        }
-      }
-
-      return rkeys;
+      return setKey24(key, isDecryption);
     }
 
-    // ===== ENCRYPTION/DECRYPTION =====
-
-    // Encrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+    /**
+     * @param {uint8[]} plaintext - Input block
+     * @param {uint8[]} key - 16- or 32-byte key
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(plaintext, key) {
-      const msg = new Array(2);
-      for (let i = 0; i < 2; i++) {
-        let word = 0n;
-        for (let j = 0; j < 8; j++) {
-          word |= OpCodes.ShiftLn(BigInt(plaintext[i * 8 + j]), j * 8);
-        }
-        msg[i] = word;
-      }
-
-      const keyWords = new Array(key.length / 8);
-      for (let i = 0; i < keyWords.length; i++) {
-        let word = 0n;
-        for (let j = 0; j < 8; j++) {
-          word |= OpCodes.ShiftLn(BigInt(key[i * 8 + j]), j * 8);
-        }
-        keyWords[i] = word;
-      }
-
-      const rkeys = (key.length === 16) ? this.SetKey_22(keyWords, false) : this.SetKey_24(keyWords, false);
-
-      let t1, t2;
-
-      if (key.length === 16) {
-        // 128-bit key: 10 rounds (Crypto++ line 944-956)
-        t1 = AddKey(msg, [rkeys[0], rkeys[1]]);
-        t2 = G128(t1, [rkeys[2], rkeys[3]]);
-        t1 = G128(t2, [rkeys[4], rkeys[5]]);
-        t2 = G128(t1, [rkeys[6], rkeys[7]]);
-        t1 = G128(t2, [rkeys[8], rkeys[9]]);
-        t2 = G128(t1, [rkeys[10], rkeys[11]]);
-        t1 = G128(t2, [rkeys[12], rkeys[13]]);
-        t2 = G128(t1, [rkeys[14], rkeys[15]]);
-        t1 = G128(t2, [rkeys[16], rkeys[17]]);
-        t2 = G128(t1, [rkeys[18], rkeys[19]]);
-        t1 = GL128(t2, [rkeys[20], rkeys[21]]);
-      } else {
-        // 256-bit key: 14 rounds (Crypto++ line 991-1005)
-        t1 = AddKey(msg, [rkeys[0], rkeys[1]]);
-        t2 = G128(t1, [rkeys[2], rkeys[3]]);
-        t1 = G128(t2, [rkeys[4], rkeys[5]]);
-        t2 = G128(t1, [rkeys[6], rkeys[7]]);
-        t1 = G128(t2, [rkeys[8], rkeys[9]]);
-        t2 = G128(t1, [rkeys[10], rkeys[11]]);
-        t1 = G128(t2, [rkeys[12], rkeys[13]]);
-        t2 = G128(t1, [rkeys[14], rkeys[15]]);
-        t1 = G128(t2, [rkeys[16], rkeys[17]]);
-        t2 = G128(t1, [rkeys[18], rkeys[19]]);
-        t1 = G128(t2, [rkeys[20], rkeys[21]]);
-        t2 = G128(t1, [rkeys[22], rkeys[23]]);
-        t1 = G128(t2, [rkeys[24], rkeys[25]]);
-        t2 = G128(t1, [rkeys[26], rkeys[27]]);
-        t1 = GL128(t2, [rkeys[28], rkeys[29]]);
-      }
-
-      const output = new Array(16);
-      for (let i = 0; i < 2; i++) {
-        for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number(OpCodes.ShiftRn(t1[i], j * 8)&0xFFn);
-        }
-      }
-      return output;
+      return kalynaEncrypt(plaintext, key);
     }
 
-    // Decrypt single 128-bit block (Crypto++ ProcessBlock_22 line 935-978)
+    /**
+     * @param {uint8[]} ciphertext - Input block
+     * @param {uint8[]} key - 16- or 32-byte key
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(ciphertext, key) {
-      const msg = new Array(2);
-      for (let i = 0; i < 2; i++) {
-        let word = 0n;
-        for (let j = 0; j < 8; j++) {
-          word |= OpCodes.ShiftLn(BigInt(ciphertext[i * 8 + j]), j * 8);
-        }
-        msg[i] = word;
-      }
-
-      const keyWords = new Array(key.length / 8);
-      for (let i = 0; i < keyWords.length; i++) {
-        let word = 0n;
-        for (let j = 0; j < 8; j++) {
-          word |= OpCodes.ShiftLn(BigInt(key[i * 8 + j]), j * 8);
-        }
-        keyWords[i] = word;
-      }
-
-      const rkeys = (key.length === 16) ? this.SetKey_22(keyWords, true) : this.SetKey_24(keyWords, true);
-
-      let t1, t2;
-
-      if (key.length === 16) {
-        // 128-bit key: 10 rounds (Crypto++ line 960-971)
-        t1 = SubKey(msg, [rkeys[20], rkeys[21]]);
-        t1 = IMC128(t1);
-        t2 = IG128(t1, [rkeys[18], rkeys[19]]);
-        t1 = IG128(t2, [rkeys[16], rkeys[17]]);
-        t2 = IG128(t1, [rkeys[14], rkeys[15]]);
-        t1 = IG128(t2, [rkeys[12], rkeys[13]]);
-        t2 = IG128(t1, [rkeys[10], rkeys[11]]);
-        t1 = IG128(t2, [rkeys[8], rkeys[9]]);
-        t2 = IG128(t1, [rkeys[6], rkeys[7]]);
-        t1 = IG128(t2, [rkeys[4], rkeys[5]]);
-        t2 = IG128(t1, [rkeys[2], rkeys[3]]);
-        t1 = IGL128(t2, [rkeys[0], rkeys[1]]);
-      } else {
-        // 256-bit key: 14 rounds (Crypto++ line 1009-1024)
-        t1 = SubKey(msg, [rkeys[28], rkeys[29]]);
-        t1 = IMC128(t1);
-        t2 = IG128(t1, [rkeys[26], rkeys[27]]);
-        t1 = IG128(t2, [rkeys[24], rkeys[25]]);
-        t2 = IG128(t1, [rkeys[22], rkeys[23]]);
-        t1 = IG128(t2, [rkeys[20], rkeys[21]]);
-        t2 = IG128(t1, [rkeys[18], rkeys[19]]);
-        t1 = IG128(t2, [rkeys[16], rkeys[17]]);
-        t2 = IG128(t1, [rkeys[14], rkeys[15]]);
-        t1 = IG128(t2, [rkeys[12], rkeys[13]]);
-        t2 = IG128(t1, [rkeys[10], rkeys[11]]);
-        t1 = IG128(t2, [rkeys[8], rkeys[9]]);
-        t2 = IG128(t1, [rkeys[6], rkeys[7]]);
-        t1 = IG128(t2, [rkeys[4], rkeys[5]]);
-        t2 = IG128(t1, [rkeys[2], rkeys[3]]);
-        t1 = IGL128(t2, [rkeys[0], rkeys[1]]);
-      }
-
-      const output = new Array(16);
-      for (let i = 0; i < 2; i++) {
-        for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number(OpCodes.ShiftRn(t1[i], j * 8)&0xFFn);
-        }
-      }
-      return output;
+      return kalynaDecrypt(ciphertext, key);
     }
   }
 
@@ -1220,14 +1330,16 @@
   class KalynaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KalynaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -1247,7 +1359,7 @@
       }
 
       if (keyBytes.length !== 16 && keyBytes.length !== 32) {
-        throw new Error(`Kalyna: Invalid key size ${keyBytes.length} bytes. Must be 16 or 32 bytes.`);
+        throw new Error("Kalyna: Invalid key size " + keyBytes.length + " bytes. Must be 16 or 32 bytes.");
       }
 
       this._key = OpCodes.CopyArray(keyBytes);
@@ -1287,16 +1399,22 @@
       if (this.inputBuffer.length === 0) throw new Error("Kalyna: No data fed");
 
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Kalyna: Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Kalyna: Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse
-          ? this.algorithm.decryptBlock(block, this._key)
-          : this.algorithm.encryptBlock(block, this._key);
-        for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
+        if (this.isInverse) {
+          /** @type {uint8[]} */
+          const processedBlock = kalynaDecrypt(block, this._key);
+          for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
+        } else {
+          /** @type {uint8[]} */
+          const processedBlock = kalynaEncrypt(block, this._key);
+          for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
+        }
       }
 
       this.inputBuffer = [];

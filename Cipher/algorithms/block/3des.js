@@ -179,7 +179,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TripleDESInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -193,10 +193,18 @@
  * @extends {IBlockCipherInstance}
  */
 
+  /**
+   * The three DES keys of an EDE pass
+   * @typedef {Object} TripleDESSubKeys
+   * @property {uint8[]} k1 - First encryption key
+   * @property {uint8[]} k2 - Middle (decryption) key
+   * @property {uint8[]} k3 - Last encryption key
+   */
+
   class TripleDESInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TripleDESAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -204,15 +212,18 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
 
       // 3DES-specific state
+      /** @type {TripleDESSubKeys|null} */
       this._subKeys = null;
       this._mode = null; // 'EDE2' or 'EDE3'
 
       // Cache for DES algorithm
+      /** @type {Algorithm|null} */
       this._desAlgorithm = null;
     }
 
@@ -233,7 +244,7 @@
 
       // Validate key size (16 or 24 bytes)
       if (keyBytes.length !== 16 && keyBytes.length !== 24) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. 3DES requires 16 bytes (EDE2) or 24 bytes (EDE3)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. 3DES requires 16 bytes (EDE2) or 24 bytes (EDE3)");
       }
 
       this._key = [...keyBytes];
@@ -243,19 +254,23 @@
       if (keyBytes.length === 16) {
         // EDE2 mode: K1-K2-K1
         this._mode = 'EDE2';
-        this._subKeys = {
+        /** @type {TripleDESSubKeys} */
+        const subKeys = {
           k1: keyBytes.slice(0, 8),
           k2: keyBytes.slice(8, 16),
           k3: keyBytes.slice(0, 8)  // K1 reused
         };
+        this._subKeys = subKeys;
       } else {
         // EDE3 mode: K1-K2-K3
         this._mode = 'EDE3';
-        this._subKeys = {
+        /** @type {TripleDESSubKeys} */
+        const subKeys = {
           k1: keyBytes.slice(0, 8),
           k2: keyBytes.slice(8, 16),
           k3: keyBytes.slice(16, 24)
         };
+        this._subKeys = subKeys;
       }
     }
 
@@ -293,9 +308,10 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -314,6 +330,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("3DES requires exactly 8 bytes per block");
@@ -334,6 +354,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("3DES requires exactly 8 bytes per block");
@@ -355,15 +379,31 @@
     }
 
     // Use real DES algorithm for proper 3DES implementation
+    /**
+     * @param {uint8[]} block - Input block
+     * @param {uint8[]} key - DES key
+     * @returns {uint8[]} Output block
+     */
     _desEncrypt(block, key) {
       return this._callDES(block, key, false);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @param {uint8[]} key - DES key
+     * @returns {uint8[]} Output block
+     */
     _desDecrypt(block, key) {
       return this._callDES(block, key, true);
     }
 
     // Use DES implementation with lazy loading and fallback strategies
+    /**
+     * @param {uint8[]} data - Input block
+     * @param {uint8[]} key - DES key
+     * @param {boolean} [decrypt=false] - Decrypt instead of encrypt
+     * @returns {uint8[]} Output block
+     */
     _callDES(data, key, decrypt = false) {
       if (data.length !== 8 || key.length !== 8) {
         throw new Error("DES requires 8-byte blocks and keys");
@@ -375,6 +415,7 @@
       }
 
       // Create a DES instance
+      /** @type {IBlockCipherInstance} */
       const desInstance = this._desAlgorithm.CreateInstance(decrypt);
 
       // Set the DES key
@@ -382,12 +423,16 @@
 
       // Process the data
       desInstance.Feed(data);
+      /** @type {uint8[]} */
       const result = desInstance.Result();
 
       return result;
     }
 
     // Load DES algorithm (registry-first, plain require fallback)
+    /**
+     * @returns {Algorithm} The registered DES algorithm
+     */
     _loadDESAlgorithm() {
       let des = AlgorithmFramework.Find('DES');
       if (!des && typeof require !== 'undefined') {
