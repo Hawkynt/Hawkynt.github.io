@@ -45,6 +45,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // NewDES rotor S-box (Robert Scott, 1985 / Mark Riordan reference, 1990)
+  /** @type {uint8[]} */
   const ROTOR = [
     32,137,239,188,102,125,221, 72,212, 68, 81, 37, 86,237,147,149,
     70,229, 17,124,115,207, 33, 20,122,143, 25,215, 51,183,138,142,
@@ -136,7 +137,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 15)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. NewDES-120 (DarkCrypt) requires exactly 15 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. NewDES-120 (DarkCrypt) requires exactly 15 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // Original (1985) key schedule: 60-byte "unravelled" key, formed by
@@ -157,7 +158,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

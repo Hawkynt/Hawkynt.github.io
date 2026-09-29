@@ -80,6 +80,7 @@
 
   // Static seed stream: the classic
   // Blowfish pi-digit constants, extended to 3116 words (see file header).
+  /** @type {uint32[]} */
   const CONST_STREAM = [
     0x243F6A88,0x85A308D3,0x13198A2E,0x03707344,0xA4093822,0x299F31D0,0x082EFA98,0xEC4E6C89,
     0x452821E6,0x38D01377,0xBE5466CF,0x34E90C6C,0xC0AC29B7,0xC97C50DD,0x3F84D5B5,0xB5470917,
@@ -562,7 +563,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._tabs = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. COBRA-128-576 (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. COBRA-128-576 (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._tabs = this._scheduleKey(this._key);
@@ -580,7 +581,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -679,6 +680,7 @@
       for (let i = 0; i < SBOX_WORDS; i++) tabs.SBOX[i] = OpCodes.ToUint32(OpCodes.Xor32(tabs.SBOX[i], nextKeyWord()));
 
       const selfEncryptFill = () => {
+        /** @type {uint8[]} */
         let w = [0, 0, 0, 0];
         for (let g = 0; g < SUB_WORDS / 4; g++) {
           this._coreEncrypt(tabs, w);

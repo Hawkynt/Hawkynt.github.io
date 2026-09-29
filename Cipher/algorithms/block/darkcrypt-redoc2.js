@@ -381,7 +381,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; return; }
       if (keyBytes.length !== 20)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. REDOC II (DarkCrypt) requires exactly 20 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. REDOC II (DarkCrypt) requires exactly 20 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._tables = buildTables(Uint8Array.from(this._key));
@@ -399,7 +399,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       const t = this._tables;

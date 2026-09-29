@@ -41,12 +41,15 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // S-box (4-bit to 4-bit substitution) from TWINE specification
+  /** @type {uint8[]} */
   const SBOX = [0xC, 0x0, 0xF, 0xA, 0x2, 0xB, 0x9, 0x5, 0x8, 0x3, 0xD, 0x7, 0x1, 0xE, 0x6, 0x4];
 
   // Permutation for encryption (π function)
+  /** @type {uint8[]} */
   const PERM = [5, 0, 1, 4, 7, 12, 3, 8, 13, 6, 9, 2, 15, 10, 11, 14];
 
   // Round constants for key schedule (6-bit values)
+  /** @type {uint8[]} */
   const CONh = [
     0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x03, 0x06,
     0x0C, 0x18, 0x30, 0x23, 0x05, 0x0A, 0x14, 0x28,
@@ -65,7 +68,7 @@
     for (let i = 0; i < 20; ++i) {
       const byteIdx = Math.floor(i / 2);
       const nibbleShift = ((i % 2) === 0) ? 4 : 0;
-      wk[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIdx], nibbleShift), 0x0F);
+      wk[i] = OpCodes.And32(OpCodes.Shr32(key[byteIdx], nibbleShift), 0x0F);
     }
 
     // Generate round keys RK[1] to RK[36]
@@ -76,12 +79,12 @@
       // Update working key (only for rounds 1-35, not after round 36)
       if (r < 36) {
         // 1. XOR S-box outputs into nibbles
-        wk[1] = OpCodes.XorN(wk[1], SBOX[wk[0]]);
-        wk[4] = OpCodes.XorN(wk[4], SBOX[wk[16]]);
+        wk[1] = OpCodes.Xor32(wk[1], SBOX[wk[0]]);
+        wk[4] = OpCodes.Xor32(wk[4], SBOX[wk[16]]);
 
         // 2. XOR round constants into nibbles
-        wk[7] = OpCodes.XorN(wk[7], OpCodes.AndN(OpCodes.Shr32(CONh[r - 1], 3), 0x07));  // Upper 3 bits
-        wk[19] = OpCodes.XorN(wk[19], OpCodes.AndN(CONh[r - 1], 0x07));                 // Lower 3 bits
+        wk[7] = OpCodes.Xor32(wk[7], OpCodes.And32(OpCodes.Shr32(CONh[r - 1], 3), 0x07));  // Upper 3 bits
+        wk[19] = OpCodes.Xor32(wk[19], OpCodes.And32(CONh[r - 1], 0x07));                 // Lower 3 bits
 
         // 3. Rotate first 4 nibbles: WK[0..3] ← WK[1..3, 0]
         const temp0 = wk[0];
@@ -115,7 +118,7 @@
     for (let i = 0; i < 32; ++i) {
       const byteIdx = Math.floor(i / 2);
       const nibbleShift = ((i % 2) === 0) ? 4 : 0;
-      wk[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIdx], nibbleShift), 0x0F);
+      wk[i] = OpCodes.And32(OpCodes.Shr32(key[byteIdx], nibbleShift), 0x0F);
     }
 
     // Generate round keys RK[1] to RK[36]
@@ -126,13 +129,13 @@
       // Update working key (only for rounds 1-35, not after round 36)
       if (r < 36) {
         // 1. XOR S-box outputs into nibbles
-        wk[1] = OpCodes.XorN(wk[1], SBOX[wk[0]]);
-        wk[4] = OpCodes.XorN(wk[4], SBOX[wk[16]]);
-        wk[23] = OpCodes.XorN(wk[23], SBOX[wk[30]]);
+        wk[1] = OpCodes.Xor32(wk[1], SBOX[wk[0]]);
+        wk[4] = OpCodes.Xor32(wk[4], SBOX[wk[16]]);
+        wk[23] = OpCodes.Xor32(wk[23], SBOX[wk[30]]);
 
         // 2. XOR round constants into nibbles
-        wk[7] = OpCodes.XorN(wk[7], OpCodes.AndN(OpCodes.Shr32(CONh[r - 1], 3), 0x07));  // Upper 3 bits
-        wk[19] = OpCodes.XorN(wk[19], OpCodes.AndN(CONh[r - 1], 0x07));                 // Lower 3 bits
+        wk[7] = OpCodes.Xor32(wk[7], OpCodes.And32(OpCodes.Shr32(CONh[r - 1], 3), 0x07));  // Upper 3 bits
+        wk[19] = OpCodes.Xor32(wk[19], OpCodes.And32(CONh[r - 1], 0x07));                 // Lower 3 bits
 
         // 3. Rotate first 4 nibbles: WK[0..3] ← WK[1..3, 0]
         const temp0 = wk[0];
@@ -168,7 +171,7 @@
     // X[2*j+1] = S(X[2*j] XOR RK[j]) XOR X[2*j+1]
     const tempState = [...state];
     for (let j = 0; j < 8; ++j) {
-      tempState[2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(state[2 * j], roundKey[j])], state[2 * j + 1]);
+      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(state[2 * j], roundKey[j])], state[2 * j + 1]);
     }
 
     // 2. Apply permutation to all 16 nibbles
@@ -191,7 +194,7 @@
     // 2. Apply S-box to even positions, XOR to odd positions (same as encryption)
     // X[2*j+1] = S(X[2*j] XOR RK[j]) XOR X[2*j+1]
     for (let j = 0; j < 8; ++j) {
-      tempState[2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(tempState[2 * j], roundKey[j])], tempState[2 * j + 1]);
+      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(tempState[2 * j], roundKey[j])], tempState[2 * j + 1]);
     }
 
     return tempState;
@@ -296,7 +299,7 @@
       }
 
       if (keyBytes.length !== 10 && keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 10 or 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 10 or 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -340,7 +343,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];
@@ -364,7 +367,7 @@
       for (let i = 0; i < 16; ++i) {
         const byteIdx = Math.floor(i / 2);
         const nibbleShift = ((i % 2) === 0) ? 4 : 0;
-        X[1][i] = OpCodes.AndN(OpCodes.Shr32(block[byteIdx], nibbleShift), 0x0F);
+        X[1][i] = OpCodes.And32(OpCodes.Shr32(block[byteIdx], nibbleShift), 0x0F);
       }
 
       if (this.isInverse) {
@@ -377,7 +380,7 @@
         for (let i = 36; i >= 2; --i) {
           // Apply S-box to even positions, XOR to odd positions (modifies current round i)
           for (let j = 0; j < 8; ++j) {
-            X[i][2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
+            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
           }
 
           // Apply inverse permutation to previous round (Python: X[i-1][INV_PERM[h]] = X[i][h])
@@ -389,13 +392,13 @@
 
         // Round 1: S-box only, no inverse permutation
         for (let j = 0; j < 8; ++j) {
-          X[1][2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(X[1][2 * j], this._roundKeys[1][j])], X[1][2 * j + 1]);
+          X[1][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[1][2 * j], this._roundKeys[1][j])], X[1][2 * j + 1]);
         }
 
         // Convert final state (X[1]) back to bytes
         const result = new Array(8);
         for (let i = 0; i < 8; ++i) {
-          result[i] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(X[1][2 * i], 0x0F), 4), OpCodes.AndN(X[1][2 * i + 1], 0x0F));
+          result[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(X[1][2 * i], 0x0F), 4), OpCodes.And32(X[1][2 * i + 1], 0x0F));
         }
         return result;
 
@@ -404,7 +407,7 @@
         for (let i = 1; i <= 35; ++i) {
           // Apply S-box to even positions, XOR to odd positions (modifies current round)
           for (let j = 0; j < 8; ++j) {
-            X[i][2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
+            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
           }
 
           // Apply permutation to next round (Python: X[i + 1][PERM[h]] = X[i][h])
@@ -416,13 +419,13 @@
 
         // Round 36: S-box only, no permutation
         for (let j = 0; j < 8; ++j) {
-          X[36][2 * j + 1] = OpCodes.XorN(SBOX[OpCodes.XorN(X[36][2 * j], this._roundKeys[36][j])], X[36][2 * j + 1]);
+          X[36][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[36][2 * j], this._roundKeys[36][j])], X[36][2 * j + 1]);
         }
 
         // Convert final state (X[36]) back to bytes
         const result = new Array(8);
         for (let i = 0; i < 8; ++i) {
-          result[i] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(X[36][2 * i], 0x0F), 4), OpCodes.AndN(X[36][2 * i + 1], 0x0F));
+          result[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(X[36][2 * i], 0x0F), 4), OpCodes.And32(X[36][2 * i + 1], 0x0F));
         }
         return result;
       }

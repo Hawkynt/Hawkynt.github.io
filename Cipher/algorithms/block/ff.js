@@ -138,7 +138,7 @@
   class RadixConverter {
     constructor(radix) {
       if (radix < 2 || radix > 65536) {
-        throw new Error(`Invalid radix ${radix}. Must be between 2 and 65536`);
+        throw new Error("Invalid radix " + radix + ". Must be between 2 and 65536");
       }
       this.radix = radix;
       this.bigRadix = BigInt(radix);
@@ -186,7 +186,7 @@
 
         // XOR current block with previous output
         for (let j = 0; j < FF1_CONSTANTS.BLOCK_SIZE; j++) {
-          y[j] = OpCodes.XorN(y[j], data[blockOffset + j]);
+          y[j] = OpCodes.Xor32(y[j], data[blockOffset + j]);
         }
 
         // Encrypt the XOR result
@@ -204,7 +204,7 @@
     // Count trailing zeros (powers of 2 in radix factorization)
     let powersOfTwo = 0;
     let temp = radix;
-    while (OpCodes.AndN(temp, 1) === 0) {  // Bit test for LSB
+    while (OpCodes.And32(temp, 1) === 0) {  // Bit test for LSB
       powersOfTwo++;
       temp = OpCodes.Shr32(temp, 1);  // Unsigned right shift
     }
@@ -398,7 +398,7 @@
 
       // Validate AES key sizes (128, 192, or 256 bits)
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`FF1: Invalid key size ${keyBytes.length} bytes. Must be 16, 24, or 32 bytes for AES`);
+        throw new Error("FF1: Invalid key size " + keyBytes.length + " bytes. Must be 16, 24, or 32 bytes for AES");
       }
 
       this._key = new Uint8Array(keyBytes);
@@ -421,7 +421,7 @@
     // Radix property setter/getter (for test framework)
     set radix(value) {
       if (value < FF1_CONSTANTS.MIN_RADIX || value > FF1_CONSTANTS.MAX_RADIX) {
-        throw new Error(`FF1: Invalid radix ${value}. Must be between ${FF1_CONSTANTS.MIN_RADIX} and ${FF1_CONSTANTS.MAX_RADIX}`);
+        throw new Error("FF1: Invalid radix " + value + ". Must be between " + FF1_CONSTANTS.MIN_RADIX + " and " + FF1_CONSTANTS.MAX_RADIX);
       }
       this._radix = value;
       this.radixConverter = new RadixConverter(value);
@@ -499,7 +499,7 @@
           this.aesInstance.key = this._key;
           this.aesPrf = new AESPRF(this.aesInstance);
         } catch (error) {
-          throw new Error(`FF1: Failed to initialize AES for PRF: ${error.message}`);
+          throw new Error("FF1: Failed to initialize AES for PRF: " + error.message);
         }
       }
 
@@ -513,13 +513,13 @@
 
       // Validate input length per NIST spec
       if (n < FF1_CONSTANTS.MIN_LENGTH || n > FF1_CONSTANTS.MAX_LENGTH) {
-        throw new Error(`FF1: Invalid input length ${n}. Must be between ${FF1_CONSTANTS.MIN_LENGTH} and ${FF1_CONSTANTS.MAX_LENGTH}`);
+        throw new Error("FF1: Invalid input length " + n + ". Must be between " + FF1_CONSTANTS.MIN_LENGTH + " and " + FF1_CONSTANTS.MAX_LENGTH);
       }
 
       // Validate minimum domain size (radix^n >= 10^6)
       const domainSize = Math.pow(this._radix, n);
       if (domainSize < FF1_CONSTANTS.MIN_DOMAIN_SIZE) {
-        throw new Error(`FF1: Domain size too small. radix^n (${domainSize}) must be >= ${FF1_CONSTANTS.MIN_DOMAIN_SIZE}`);
+        throw new Error("FF1: Domain size too small. radix^n (" + domainSize + ") must be >= " + FF1_CONSTANTS.MIN_DOMAIN_SIZE);
       }
 
       // Process with FF1 algorithm
@@ -546,7 +546,7 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
+      const d = OpCodes.And32(b + 7, ~3); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
       const { modU, modV } = calculateModUV(this._radix, u, v);
 
@@ -559,7 +559,7 @@
 
         // Update m
         m = n - m;
-        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
+        const modulus = OpCodes.And32(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(A) + y) mod radix^m
         const numA = this.radixConverter.fromEncoding(A);
@@ -591,7 +591,7 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
+      const d = OpCodes.And32(b + 7, ~3); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
       const { modU, modV } = calculateModUV(this._radix, u, v);
 
@@ -604,7 +604,7 @@
 
         // Update m
         m = n - m;
-        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
+        const modulus = OpCodes.And32(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(B) - y) mod radix^m
         const numB = this.radixConverter.fromEncoding(B);
@@ -630,7 +630,7 @@
       const bytesAB = BigIntegerUtils.toByteArray(numAB);
 
       // Construct Q = T || 0^s || [round] || [NUM(B)]_b
-      const zeroes = OpCodes.AndN(-(t + b + 1), 15); // Padding to make total length multiple of 16
+      const zeroes = OpCodes.And32(-(t + b + 1), 15); // Padding to make total length multiple of 16
       const Q = new Uint8Array(t + zeroes + 1 + b);
 
       // Copy tweak
@@ -716,7 +716,7 @@
 
         // Validate that numeral value is within radix
         if (numeral >= this._radix) {
-          throw new Error(`FF1: Character '${String.fromCharCode(byte)}' (value ${numeral}) not valid for radix ${this._radix}`);
+          throw new Error("FF1: Character '" + (String.fromCharCode(byte)) + "' (value " + numeral + ") not valid for radix " + this._radix);
         }
 
         numerals.push(numeral);
@@ -732,7 +732,7 @@
 
         // Validate numeral is within radix
         if (numeral >= this._radix) {
-          throw new Error(`FF1: Invalid numeral value ${numeral} for radix ${this._radix}`);
+          throw new Error("FF1: Invalid numeral value " + numeral + " for radix " + this._radix);
         }
 
         // Convert numeral back to ASCII character
@@ -910,7 +910,7 @@
 
       // Validate key size (must be 16, 24, or 32 bytes for AES)
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. FF3 requires 16, 24, or 32 byte AES keys`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. FF3 requires 16, 24, or 32 byte AES keys");
       }
 
       this._key = [...keyBytes];
@@ -932,7 +932,7 @@
     // Radix property setter/getter
     set radix(value) {
       if (value < FF3_CONSTANTS.MIN_RADIX || value > FF3_CONSTANTS.MAX_RADIX) {
-        throw new Error(`Invalid radix: ${value}. Must be between ${FF3_CONSTANTS.MIN_RADIX} and ${FF3_CONSTANTS.MAX_RADIX}`);
+        throw new Error("Invalid radix: " + value + ". Must be between " + FF3_CONSTANTS.MIN_RADIX + " and " + FF3_CONSTANTS.MAX_RADIX);
       }
       this._radix = value;
     }
@@ -944,7 +944,7 @@
     // Tweak property setter/getter
     set tweak(value) {
       if (value && value.length !== FF3_CONSTANTS.TWEAK_LENGTH) {
-        throw new Error(`FF3 tweak must be exactly ${FF3_CONSTANTS.TWEAK_LENGTH} bytes (64 bits)`);
+        throw new Error("FF3 tweak must be exactly " + FF3_CONSTANTS.TWEAK_LENGTH + " bytes (64 bits)");
       }
       this._tweak = value ? [...value] : new Array(8).fill(0);
     }
@@ -989,8 +989,8 @@
       // Validate input length against what this radix actually admits
       const { minLength, maxLength } = ff3LengthLimits(this._radix);
       if (n < minLength || n > maxLength) {
-        throw new Error(`Input length ${n} is outside the ${minLength}..${maxLength} `
-          + `characters radix ${this._radix} admits`);
+        throw new Error("Input length " + n + " is outside the " + minLength + ".." + maxLength + " "
+          + "characters radix " + this._radix + " admits");
       }
 
       // Process the numerals with FF3
@@ -1052,7 +1052,7 @@
 
       // Step 4: 8 rounds
       for (let i = 0; i < FF3_CONSTANTS.ROUNDS; i++) {
-        const even = OpCodes.AndN(i, 1) === 0;
+        const even = OpCodes.And32(i, 1) === 0;
         const m = even ? u : v;
         const W = even ? TR : TL;
 
@@ -1083,7 +1083,7 @@
 
       // Rounds run 7 down to 0
       for (let i = FF3_CONSTANTS.ROUNDS - 1; i >= 0; i--) {
-        const even = OpCodes.AndN(i, 1) === 0;
+        const even = OpCodes.And32(i, 1) === 0;
         const m = even ? u : v;
         const W = even ? TR : TL;
 
@@ -1154,11 +1154,11 @@
         } else if (byte >= 65 && byte <= 90) {
           numeral = byte - 65 + 36;   // 'A'-'Z' -> 36..61
         } else {
-          throw new Error(`FF3: byte 0x${byte.toString(16)} is not a symbol of radix ${this._radix}`);
+          throw new Error("FF3: byte 0x" + (byte.toString(16)) + " is not a symbol of radix " + this._radix);
         }
 
         if (numeral >= this._radix) {
-          throw new Error(`FF3: symbol value ${numeral} is not valid for radix ${this._radix}`);
+          throw new Error("FF3: symbol value " + numeral + " is not valid for radix " + this._radix);
         }
         numerals.push(numeral);
       }
@@ -1171,7 +1171,7 @@
       for (let i = 0; i < numerals.length; i++) {
         const numeral = numerals[i];
         if (numeral >= this._radix) {
-          throw new Error(`FF3: numeral ${numeral} is not valid for radix ${this._radix}`);
+          throw new Error("FF3: numeral " + numeral + " is not valid for radix " + this._radix);
         }
 
         if (numeral < 10) {
@@ -1181,7 +1181,7 @@
         } else if (numeral < 62) {
           bytes[i] = numeral - 36 + 65;
         } else {
-          throw new Error(`FF3: radix ${this._radix} needs more than the 62 symbols this encoding carries`);
+          throw new Error("FF3: radix " + this._radix + " needs more than the 62 symbols this encoding carries");
         }
       }
       return bytes;

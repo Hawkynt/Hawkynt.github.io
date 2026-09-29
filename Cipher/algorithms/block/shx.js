@@ -242,7 +242,7 @@
 
       const keyBits = keyBytes.length * 8;
       if (!this.ROUNDS_CONFIG[keyBits]) {
-        throw new Error(`Invalid SHX key size: ${keyBits} bits. Supported: 256, 512, 1024 bits`);
+        throw new Error("Invalid SHX key size: " + keyBits + " bits. Supported: 256, 512, 1024 bits");
       }
 
       this._key = [...keyBytes];

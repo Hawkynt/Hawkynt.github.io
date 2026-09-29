@@ -159,6 +159,7 @@
       ];
 
       // Permutation P (32-bit)
+      /** @type {uint8[]} */
       this.P_TABLE = [
          7, 12, 17, 1, 20, 27, 9, 30,
         18, 14, 5, 22, 8, 25, 3, 26,
@@ -236,7 +237,7 @@
         throw new Error('No data fed');
       }
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
@@ -490,6 +491,7 @@
       ];
 
       // Key schedule constants for LOKI91
+      /** @type {uint32[]} */
       this.KEY_CONSTANTS = [
         0x9E3779B9, 0x7F4A7C15, 0x6A09E667, 0xBB67AE85,
         0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C,
@@ -617,7 +619,7 @@
         throw new Error('No data fed');
       }
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
@@ -970,7 +972,7 @@
         throw new Error('No data fed');
       }
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

@@ -123,12 +123,16 @@
 
   // Byte positions using the E-box (XOR-in, ADD-out) round-key layer vs.
   // the L-box (ADD-in, XOR-out) layer, per the classic SAFER round pattern.
+  /** @type {uint8[]} */
   const EBOX_POS = [0, 3, 4, 7, 8, 11, 12, 15];
+  /** @type {uint8[]} */
   const LBOX_POS = [1, 2, 5, 6, 9, 10, 13, 14];
 
   // Byte-shuffle permutation of the SAFER++ linear transform: out[i] = in[SHUFFLE[i]].
+  /** @type {uint8[]} */
   const SHUFFLE = [8, 5, 2, 15, 0, 13, 10, 7, 4, 1, 14, 11, 12, 9, 6, 3];
   // Inverse of SHUFFLE.
+  /** @type {uint8[]} */
   const ISHUFFLE = [4, 9, 2, 15, 8, 1, 14, 7, 0, 13, 6, 11, 12, 5, 10, 3];
 
   class DarkCryptSaferPlusPlusAlgorithm extends BlockCipherAlgorithm {
@@ -203,7 +207,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SAFER++ (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SAFER++ (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.K = this._scheduleKey(this._key);
@@ -221,7 +225,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

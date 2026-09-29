@@ -70,6 +70,7 @@
   const ROUNDS = 20;
 
   // 256-entry substitution table used by the F function.
+  /** @type {uint8[]} */
   const SBOX = [
     163,215,9,131,248,72,246,244,179,33,21,120,153,177,175,249,231,45,77,138,206,76,202,46,82,149,217,30,78,56,68,40,
     10,223,2,160,23,241,96,104,18,183,122,195,233,250,61,83,150,132,107,186,242,99,154,25,124,174,229,245,247,22,106,162,
@@ -151,7 +152,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Breakme (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Breakme (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K = this._scheduleKey(this._key);
@@ -169,7 +170,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

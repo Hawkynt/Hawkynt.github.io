@@ -200,7 +200,7 @@
 
       // Validate key size (2 to 40 bytes for SHA-1, must be even)
       if (keyBytes.length < 2 || keyBytes.length > 40 || (keyBytes.length % 2) !== 0) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LION requires 2-40 bytes (even numbers).`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LION requires 2-40 bytes (even numbers).");
       }
 
       this._key = [...keyBytes];
@@ -392,7 +392,7 @@
         throw new Error("No data fed");
       }
       if (this.inputBuffer.length % this.blockSize !== 0) {
-        throw new Error(`Input must be multiple of block size (${this.blockSize} bytes)`);
+        throw new Error("Input must be multiple of block size (" + this.blockSize + " bytes)");
       }
 
       const output = [];

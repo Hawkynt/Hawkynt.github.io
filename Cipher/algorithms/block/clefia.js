@@ -91,19 +91,19 @@
   // CLEFIA constant-generation polynomial: reduce with the low 16 bits of the
   // primitive polynomial (0xa831) whenever the constant term is set.
   function gf16DivZ(t) {
-    return OpCodes.AndN(t, 1) ? OpCodes.OrN(OpCodes.Shr16(OpCodes.XorN(t, 0xa831), 1), 0x8000) : OpCodes.Shr16(t, 1);
+    return OpCodes.AndN(t, 1) ? OpCodes.Or32(OpCodes.Shr16(OpCodes.Xor32(t, 0xa831), 1), 0x8000) : OpCodes.Shr16(t, 1);
   }
 
   // Generate `count` pairs of 32-bit CON words from the given 16-bit IV,
   // per RFC 6114 Section 6.6 (Table 4-9 lists the resulting constants).
   function generateCON(iv, count) {
     const con = new Array(count * 2);
-    let t = OpCodes.AndN(iv, 0xFFFF);
+    let t = OpCodes.And32(iv, 0xFFFF);
     for (let i = 0; i < count; i++) {
-      const notT = OpCodes.AndN(OpCodes.XorN(t, 0xFFFF), 0xFFFF);
-      const hi0 = OpCodes.AndN(OpCodes.XorN(t, CON_P16), 0xFFFF);
+      const notT = OpCodes.And32(OpCodes.Xor32(t, 0xFFFF), 0xFFFF);
+      const hi0 = OpCodes.And32(OpCodes.Xor32(t, CON_P16), 0xFFFF);
       const lo0 = OpCodes.RotL16(notT, 1);
-      const hi1 = OpCodes.AndN(OpCodes.XorN(notT, CON_Q16), 0xFFFF);
+      const hi1 = OpCodes.And32(OpCodes.Xor32(notT, CON_Q16), 0xFFFF);
       const lo1 = OpCodes.RotL16(t, 8);
       con[i * 2] = OpCodes.Or32(OpCodes.Shl32(hi0, 16), lo0);
       con[i * 2 + 1] = OpCodes.Or32(OpCodes.Shl32(hi1, 16), lo1);
@@ -128,19 +128,19 @@
 
     for (let i = 0; i < 8; i++) {
       if (OpCodes.AndN(b, 1)) {
-        result = OpCodes.XorN(result, a);
+        result = OpCodes.Xor32(result, a);
       }
 
-      const highBit = OpCodes.AndN(a, 0x80);
-      a = OpCodes.AndN(OpCodes.Shl8(a, 1), 0xFF);
+      const highBit = OpCodes.And32(a, 0x80);
+      a = OpCodes.And32(OpCodes.Shl8(a, 1), 0xFF);
       if (highBit) {
-        a = OpCodes.XorN(a, 0x1D); // CLEFIA polynomial: z^8 + z^4 + z^3 + z^2 + 1
+        a = OpCodes.Xor32(a, 0x1D); // CLEFIA polynomial: z^8 + z^4 + z^3 + z^2 + 1
       }
 
       b = OpCodes.Shr8(b, 1);
     }
 
-    return OpCodes.AndN(result, 0xFF);
+    return OpCodes.And32(result, 0xFF);
   }
 
   /**
@@ -269,7 +269,7 @@
       }
 
       if (![16, 24, 32].includes(keyBytes.length)) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -356,7 +356,7 @@
           const conWord = conWords[conStartIdx + i * 4 + j];
           const conBytes = OpCodes.Unpack32BE(conWord);
           for (let k = 0; k < 4; k++) {
-            temp[j * 4 + k] = OpCodes.XorN(L[j * 4 + k], conBytes[k]);
+            temp[j * 4 + k] = OpCodes.Xor32(L[j * 4 + k], conBytes[k]);
           }
         }
 
@@ -394,8 +394,8 @@
       if (keyLen === 24) {
         // KR <- K4 | K5 | ~K0 | ~K1 (bitwise complement of the first two key words)
         kr = this._key.slice(16, 24)
-          .concat(this._key.slice(0, 4).map(b => OpCodes.AndN(OpCodes.XorN(b, 0xFF), 0xFF)))
-          .concat(this._key.slice(4, 8).map(b => OpCodes.AndN(OpCodes.XorN(b, 0xFF), 0xFF)));
+          .concat(this._key.slice(0, 4).map(b => OpCodes.And32(OpCodes.Xor32(b, 0xFF), 0xFF)))
+          .concat(this._key.slice(4, 8).map(b => OpCodes.And32(OpCodes.Xor32(b, 0xFF), 0xFF)));
       } else {
         kr = this._key.slice(16, 32);
       }
@@ -410,7 +410,7 @@
       for (let i = 0; i < 4; i++) {
         this.wk[i] = [];
         for (let j = 0; j < 4; j++) {
-          this.wk[i][j] = OpCodes.XorN(kl[i * 4 + j], kr[i * 4 + j]);
+          this.wk[i][j] = OpCodes.Xor32(kl[i * 4 + j], kr[i * 4 + j]);
         }
       }
 
@@ -430,7 +430,7 @@
           const conWord = conWords[conStartIdx + i * 4 + j];
           const conBytes = OpCodes.Unpack32BE(conWord);
           for (let k = 0; k < 4; k++) {
-            temp[j * 4 + k] = OpCodes.XorN(L[j * 4 + k], conBytes[k]);
+            temp[j * 4 + k] = OpCodes.Xor32(L[j * 4 + k], conBytes[k]);
           }
         }
 
@@ -460,24 +460,24 @@
       const t = new Array(16);
 
       // First half (bytes 0-7): 7-bit left rotation with crossover
-      t[0] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[0], 7), OpCodes.Shr8(x[1], 1)), 0xFF);
-      t[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[1], 7), OpCodes.Shr8(x[2], 1)), 0xFF);
-      t[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[2], 7), OpCodes.Shr8(x[3], 1)), 0xFF);
-      t[3] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[3], 7), OpCodes.Shr8(x[4], 1)), 0xFF);
-      t[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[4], 7), OpCodes.Shr8(x[5], 1)), 0xFF);
-      t[5] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[5], 7), OpCodes.Shr8(x[6], 1)), 0xFF);
-      t[6] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[6], 7), OpCodes.Shr8(x[7], 1)), 0xFF);
-      t[7] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[7], 7), OpCodes.AndN(x[15], 0x7F)), 0xFF);
+      t[0] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[0], 7), OpCodes.Shr8(x[1], 1)), 0xFF);
+      t[1] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[1], 7), OpCodes.Shr8(x[2], 1)), 0xFF);
+      t[2] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[2], 7), OpCodes.Shr8(x[3], 1)), 0xFF);
+      t[3] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[3], 7), OpCodes.Shr8(x[4], 1)), 0xFF);
+      t[4] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[4], 7), OpCodes.Shr8(x[5], 1)), 0xFF);
+      t[5] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[5], 7), OpCodes.Shr8(x[6], 1)), 0xFF);
+      t[6] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[6], 7), OpCodes.Shr8(x[7], 1)), 0xFF);
+      t[7] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl8(x[7], 7), OpCodes.And32(x[15], 0x7F)), 0xFF);
 
       // Second half (bytes 8-15): 7-bit right rotation with crossover
-      t[8] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[8], 7), OpCodes.AndN(x[0], 0xFE)), 0xFF);
-      t[9] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[9], 7), OpCodes.Shl8(x[8], 1)), 0xFF);
-      t[10] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[10], 7), OpCodes.Shl8(x[9], 1)), 0xFF);
-      t[11] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[11], 7), OpCodes.Shl8(x[10], 1)), 0xFF);
-      t[12] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[12], 7), OpCodes.Shl8(x[11], 1)), 0xFF);
-      t[13] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[13], 7), OpCodes.Shl8(x[12], 1)), 0xFF);
-      t[14] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[14], 7), OpCodes.Shl8(x[13], 1)), 0xFF);
-      t[15] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[15], 7), OpCodes.Shl8(x[14], 1)), 0xFF);
+      t[8] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[8], 7), OpCodes.And32(x[0], 0xFE)), 0xFF);
+      t[9] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[9], 7), OpCodes.Shl8(x[8], 1)), 0xFF);
+      t[10] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[10], 7), OpCodes.Shl8(x[9], 1)), 0xFF);
+      t[11] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[11], 7), OpCodes.Shl8(x[10], 1)), 0xFF);
+      t[12] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[12], 7), OpCodes.Shl8(x[11], 1)), 0xFF);
+      t[13] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[13], 7), OpCodes.Shl8(x[12], 1)), 0xFF);
+      t[14] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[14], 7), OpCodes.Shl8(x[13], 1)), 0xFF);
+      t[15] = OpCodes.And32(OpCodes.Or32(OpCodes.Shr8(x[15], 7), OpCodes.Shl8(x[14], 1)), 0xFF);
 
       // Copy back to input array
       for (let i = 0; i < 16; i++) {
@@ -545,18 +545,18 @@
 
       // S-box substitution: S0,S1,S0,S1
       const y = [
-        S0[OpCodes.XorN(xBytes[0], rk[0])],
-        S1[OpCodes.XorN(xBytes[1], rk[1])],
-        S0[OpCodes.XorN(xBytes[2], rk[2])],
-        S1[OpCodes.XorN(xBytes[3], rk[3])]
+        S0[OpCodes.Xor32(xBytes[0], rk[0])],
+        S1[OpCodes.Xor32(xBytes[1], rk[1])],
+        S0[OpCodes.Xor32(xBytes[2], rk[2])],
+        S1[OpCodes.Xor32(xBytes[3], rk[3])]
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
       const z = [
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)
@@ -571,18 +571,18 @@
 
       // S-box substitution: S1,S0,S1,S0
       const y = [
-        S1[OpCodes.XorN(xBytes[0], rk[0])],
-        S0[OpCodes.XorN(xBytes[1], rk[1])],
-        S1[OpCodes.XorN(xBytes[2], rk[2])],
-        S0[OpCodes.XorN(xBytes[3], rk[3])]
+        S1[OpCodes.Xor32(xBytes[0], rk[0])],
+        S0[OpCodes.Xor32(xBytes[1], rk[1])],
+        S1[OpCodes.Xor32(xBytes[2], rk[2])],
+        S0[OpCodes.Xor32(xBytes[3], rk[3])]
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
       const z = [
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
-        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)

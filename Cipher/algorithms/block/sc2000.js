@@ -78,6 +78,7 @@
   // ===== TABLES (CRYPTREC specification, section 2) =====
 
   // 6x6 S-box, used for the two outer 6-bit fields of S.
+  /** @type {uint8[]} */
   const S6 = [
     47,59,25,42,15,23,28,39,26,38,36,19,60,24,29,56,
     37,63,20,61,55, 2,30,44, 9,10, 6,22,53,48,51,11,
@@ -86,17 +87,21 @@
   ];
 
   // 5x5 S-box, used for the four inner 5-bit fields of S.
+  /** @type {uint8[]} */
   const S5 = [
     20,26, 7,31,19,12,10,15,22,30,13,14, 4,24, 9,18,
     27,11, 1,21, 6,16, 2,28,23, 5, 8, 3, 0,17,29,25
   ];
 
   // 4x4 S-box for B, and its exact functional inverse for B^-1.
+  /** @type {uint8[]} */
   const S4 = [2,5,10,12,7,15,1,11,13,6,0,9,4,8,3,14];
+  /** @type {uint8[]} */
   const S4I = [10,6,0,14,12,1,9,4,13,11,2,7,3,8,15,5];
 
   // 32x32 GF(2) diffusion matrix for M. Row i is XORed into the accumulator
   // when bit i of the input - counting bit 0 as the most significant - is set.
+  /** @type {uint32[]} */
   const MATRIX = [
     0xD0C19225, 0xA5A2240A, 0x1B84D250, 0xB728A4A1,
     0x6A704902, 0x85DDDBE6, 0x766FF4A4, 0xECDFE128,
@@ -323,7 +328,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -345,7 +350,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be a multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be a multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

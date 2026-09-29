@@ -54,42 +54,44 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   const NR = 16;
+  /** @type {uint8[]} */
   const NULL_KEY = [0, 0, 0, 0];
 
   // RC[0..16], generated per spec section 3.7: RC[0]=0x80, LFSR-style doubling in GF(2)/0x1B.
+  /** @type {uint8[]} */
   const ROUND_CONSTANTS = [0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e,
                             0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4];
 
   // Gamma: involutive non-linear mapping (spec section 3.3).
   function gamma(a) {
     const t = a[3];
-    a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-    a[3] = OpCodes.XorN(a[0], OpCodes.AndN(a[2], ~a[1]));
+    a[1] = OpCodes.Xor32(a[1], OpCodes.OrN(a[3], a[2]));
+    a[3] = OpCodes.Xor32(a[0], OpCodes.And32(a[2], ~a[1]));
 
-    a[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(t, ~a[1]), a[2]), a[3]);
+    a[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(t, ~a[1]), a[2]), a[3]);
 
-    a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-    a[0] = OpCodes.XorN(t, OpCodes.AndN(a[2], a[1]));
+    a[1] = OpCodes.Xor32(a[1], OpCodes.OrN(a[3], a[2]));
+    a[0] = OpCodes.Xor32(t, OpCodes.AndN(a[2], a[1]));
   }
 
   // Theta: linear mapping that mixes the Working Key k into state a (spec section 3.4).
   function theta(k, a) {
     let t02 = OpCodes.XorN(a[0], a[2]);
-    t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
+    t02 = OpCodes.Xor32(OpCodes.Xor32(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
     a[0] = OpCodes.XorN(a[0], k[0]);
     a[1] = OpCodes.XorN(a[1], k[1]);
     a[2] = OpCodes.XorN(a[2], k[2]);
     a[3] = OpCodes.XorN(a[3], k[3]);
 
-    a[1] = OpCodes.XorN(a[1], t02);
-    a[3] = OpCodes.XorN(a[3], t02);
+    a[1] = OpCodes.Xor32(a[1], t02);
+    a[3] = OpCodes.Xor32(a[3], t02);
 
     let t13 = OpCodes.XorN(a[1], a[3]);
-    t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
+    t13 = OpCodes.Xor32(OpCodes.Xor32(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-    a[0] = OpCodes.XorN(a[0], t13);
-    a[2] = OpCodes.XorN(a[2], t13);
+    a[0] = OpCodes.Xor32(a[0], t13);
+    a[2] = OpCodes.Xor32(a[2], t13);
   }
 
   // Theta applied with an all-zero Working Key (used both to derive k' for
@@ -119,13 +121,13 @@
   function noekeonForward(key, state) {
     const a = [state[0], state[1], state[2], state[3]];
     for (let i = 0; i < NR; i++) {
-      a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[i]);
+      a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[i]);
       theta(key, a);
       pi1(a);
       gamma(a);
       pi2(a);
     }
-    a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[NR]);
+    a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[NR]);
     theta(key, a);
     return a;
   }
@@ -136,13 +138,13 @@
     const a = [state[0], state[1], state[2], state[3]];
     for (let i = NR; i > 0; i--) {
       theta(keyPrime, a);
-      a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[i]);
+      a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[i]);
       pi1(a);
       gamma(a);
       pi2(a);
     }
     theta(keyPrime, a);
-    a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[0]);
+    a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[0]);
     return a;
   }
 
@@ -223,7 +225,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Noekeon-indirect (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Noekeon-indirect (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
@@ -258,7 +260,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

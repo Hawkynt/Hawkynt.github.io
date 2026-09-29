@@ -191,11 +191,11 @@
   function G(x) {
     const xu = OpCodes.ToUint32(x);
     return OpCodes.ToUint32(
-      OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-        SS0[OpCodes.AndN(xu, 0xff)],
-        SS1[OpCodes.AndN(OpCodes.Shr32(xu, 8), 0xff)]),
-        SS2[OpCodes.AndN(OpCodes.Shr32(xu, 16), 0xff)]),
-        SS3[OpCodes.AndN(OpCodes.Shr32(xu, 24), 0xff)])
+      OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        SS0[OpCodes.And32(xu, 0xff)],
+        SS1[OpCodes.And32(OpCodes.Shr32(xu, 8), 0xff)]),
+        SS2[OpCodes.And32(OpCodes.Shr32(xu, 16), 0xff)]),
+        SS3[OpCodes.And32(OpCodes.Shr32(xu, 24), 0xff)])
     );
   }
 
@@ -204,7 +204,7 @@
     const r0 = OpCodes.ToUint32(OpCodes.XorN(ki0, rHigh));
     const r1 = OpCodes.ToUint32(OpCodes.XorN(ki1, rLow));
 
-    const t0 = G(OpCodes.ToUint32(OpCodes.XorN(r0, r1)));
+    const t0 = G(OpCodes.ToUint32(OpCodes.Xor32(r0, r1)));
     const t1 = G(OpCodes.ToUint32(r0 + t0));
 
     const rd1 = G(OpCodes.ToUint32(t1 + t0));
@@ -291,7 +291,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.workingKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SEED (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SEED (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.workingKey = this._createWorkingKey(keyBytes);
@@ -309,7 +309,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -337,16 +337,16 @@
         key[2 * i + 0] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
         key[2 * i + 1] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
 
-        keyt = OpCodes.OrN(OpCodes.Shr32(key0, 8), OpCodes.Shl32(key1, 24));
-        key1 = OpCodes.OrN(OpCodes.Shr32(key1, 8), OpCodes.Shl32(key0, 24));
+        keyt = OpCodes.Or32(OpCodes.Shr32(key0, 8), OpCodes.Shl32(key1, 24));
+        key1 = OpCodes.Or32(OpCodes.Shr32(key1, 8), OpCodes.Shl32(key0, 24));
         key0 = keyt;
 
         KC_i = KC[i + 1];
         key[2 * i + 2] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
         key[2 * i + 3] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
 
-        keyt = OpCodes.OrN(OpCodes.Shl32(key2, 8), OpCodes.Shr32(key3, 24));
-        key3 = OpCodes.OrN(OpCodes.Shl32(key3, 8), OpCodes.Shr32(key2, 24));
+        keyt = OpCodes.Or32(OpCodes.Shl32(key2, 8), OpCodes.Shr32(key3, 24));
+        key3 = OpCodes.Or32(OpCodes.Shl32(key3, 8), OpCodes.Shr32(key2, 24));
         key2 = keyt;
       }
 
@@ -366,12 +366,12 @@
         const w3 = this.workingKey[i + 3];
 
         const [f1High, f1Low] = F(w0, w1, rHigh, rLow);
-        lHigh = OpCodes.XorN(lHigh, f1High);
-        lLow = OpCodes.XorN(lLow, f1Low);
+        lHigh = OpCodes.Xor32(lHigh, f1High);
+        lLow = OpCodes.Xor32(lLow, f1Low);
 
         const [f2High, f2Low] = F(w2, w3, lHigh, lLow);
-        rHigh = OpCodes.XorN(rHigh, f2High);
-        rLow = OpCodes.XorN(rLow, f2Low);
+        rHigh = OpCodes.Xor32(rHigh, f2High);
+        rLow = OpCodes.Xor32(rLow, f2Low);
       }
 
       return [
@@ -393,12 +393,12 @@
         const w3 = this.workingKey[i + 3];
 
         const [f1High, f1Low] = F(w2, w3, rHigh, rLow);
-        lHigh = OpCodes.XorN(lHigh, f1High);
-        lLow = OpCodes.XorN(lLow, f1Low);
+        lHigh = OpCodes.Xor32(lHigh, f1High);
+        lLow = OpCodes.Xor32(lLow, f1Low);
 
         const [f2High, f2Low] = F(w0, w1, lHigh, lLow);
-        rHigh = OpCodes.XorN(rHigh, f2High);
-        rLow = OpCodes.XorN(rLow, f2Low);
+        rHigh = OpCodes.Xor32(rHigh, f2High);
+        rLow = OpCodes.Xor32(rLow, f2Low);
       }
 
       return [

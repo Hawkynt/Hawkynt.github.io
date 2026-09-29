@@ -190,6 +190,7 @@
 
     _initConstants() {
       // SIGMA constants from Bouncy Castle C# reference
+      /** @type {uint32[]} */
       this.SIGMA = [
         0xA09E667F, 0x3BCC908B, 0xB67AE858, 0x4CAA73B2,
         0xC6EF372F, 0xE94F82BE, 0x54FF53A5, 0xF1D36F1C,
@@ -197,6 +198,7 @@
       ];
 
       // S-box tables from Bouncy Castle C# reference  
+      /** @type {uint32[]} */
       this.SBOX1_1110 = [
         0x70707000, 0x82828200, 0x2c2c2c00, 0xececec00, 0xb3b3b300, 0x27272700,
         0xc0c0c000, 0xe5e5e500, 0xe4e4e400, 0x85858500, 0x57575700, 0x35353500,
@@ -243,6 +245,7 @@
         0x77777700, 0xc7c7c700, 0x80808000, 0x9e9e9e00
       ];
 
+      /** @type {uint32[]} */
       this.SBOX2_0222 = [
         0x00e0e0e0, 0x00050505, 0x00585858, 0x00d9d9d9, 0x00676767, 0x004e4e4e,
         0x00818181, 0x00cbcbcb, 0x00c9c9c9, 0x000b0b0b, 0x00aeaeae, 0x006a6a6a,
@@ -289,6 +292,7 @@
         0x00eeeeee, 0x008f8f8f, 0x00010101, 0x003d3d3d
       ];
 
+      /** @type {uint32[]} */
       this.SBOX3_3033 = [
         0x38003838, 0x41004141, 0x16001616, 0x76007676, 0xd900d9d9, 0x93009393,
         0x60006060, 0xf200f2f2, 0x72007272, 0xc200c2c2, 0xab00abab, 0x9a009a9a,
@@ -335,6 +339,7 @@
         0xbb00bbbb, 0xe300e3e3, 0x40004040, 0x4f004f4f
       ];
 
+      /** @type {uint32[]} */
       this.SBOX4_4404 = [
         0x70700070, 0x2c2c002c, 0xb3b300b3, 0xc0c000c0, 0xe4e400e4, 0x57570057,
         0xeaea00ea, 0xaeae00ae, 0x23230023, 0x6b6b006b, 0x45450045, 0xa5a500a5,
@@ -402,7 +407,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -561,10 +566,10 @@
     }
 
     _roldq(rot, ki, ioff, ko, ooff) {
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
       ki[0 + ioff] = ko[0 + ooff];
       ki[1 + ioff] = ko[1 + ooff];
       ki[2 + ioff] = ko[2 + ooff];
@@ -572,10 +577,10 @@
     }
 
     _decroldq(rot, ki, ioff, ko, ooff) {
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
       ki[0 + ioff] = ko[2 + ooff];
       ki[1 + ioff] = ko[3 + ooff];
       ki[2 + ioff] = ko[0 + ooff];
@@ -585,10 +590,10 @@
     _roldqo32(rot, ki, ioff, ko, ooff) {
       const leftShift = rot - 32;
       const rightShift = 32 - leftShift;
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
       ki[0 + ioff] = ko[0 + ooff];
       ki[1 + ioff] = ko[1 + ooff];
       ki[2 + ioff] = ko[2 + ooff];
@@ -598,10 +603,10 @@
     _decroldqo32(rot, ki, ioff, ko, ooff) {
       const leftShift = rot - 32;
       const rightShift = 32 - leftShift;
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
       ki[0 + ioff] = ko[2 + ooff];
       ki[1 + ioff] = ko[3 + ooff];
       ki[2 + ioff] = ko[0 + ooff];
@@ -612,40 +617,40 @@
       let t1, t2, u, v;
 
       t1 = OpCodes.XorN(s[0], skey[0 + keyoff]);
-      u = this.SBOX4_4404[OpCodes.AndN(t1, 0xff)];
-      u = OpCodes.XorN(u, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t1, 8), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t1, 16), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX1_1110[OpCodes.AndN(OpCodes.Shr32(t1, 24), 0xff)]);
+      u = this.SBOX4_4404[OpCodes.And32(t1, 0xff)];
+      u = OpCodes.Xor32(u, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t1, 8), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t1, 16), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX1_1110[OpCodes.And32(OpCodes.Shr32(t1, 24), 0xff)]);
       t2 = OpCodes.XorN(s[1], skey[1 + keyoff]);
-      v = this.SBOX1_1110[OpCodes.AndN(t2, 0xff)];
-      v = OpCodes.XorN(v, this.SBOX4_4404[OpCodes.AndN(OpCodes.Shr32(t2, 8), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t2, 16), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t2, 24), 0xff)]);
+      v = this.SBOX1_1110[OpCodes.And32(t2, 0xff)];
+      v = OpCodes.Xor32(v, this.SBOX4_4404[OpCodes.And32(OpCodes.Shr32(t2, 8), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t2, 16), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t2, 24), 0xff)]);
 
-      s[2] = OpCodes.XorN(s[2], OpCodes.XorN(u, v));
-      s[3] = OpCodes.XorN(s[3], OpCodes.XorN(OpCodes.XorN(u, v), OpCodes.RotR32(u, 8)));
+      s[2] = OpCodes.Xor32(s[2], OpCodes.Xor32(u, v));
+      s[3] = OpCodes.Xor32(s[3], OpCodes.Xor32(OpCodes.Xor32(u, v), OpCodes.RotR32(u, 8)));
 
       t1 = OpCodes.XorN(s[2], skey[2 + keyoff]);
-      u = this.SBOX4_4404[OpCodes.AndN(t1, 0xff)];
-      u = OpCodes.XorN(u, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t1, 8), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t1, 16), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX1_1110[OpCodes.AndN(OpCodes.Shr32(t1, 24), 0xff)]);
+      u = this.SBOX4_4404[OpCodes.And32(t1, 0xff)];
+      u = OpCodes.Xor32(u, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t1, 8), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t1, 16), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX1_1110[OpCodes.And32(OpCodes.Shr32(t1, 24), 0xff)]);
       t2 = OpCodes.XorN(s[3], skey[3 + keyoff]);
-      v = this.SBOX1_1110[OpCodes.AndN(t2, 0xff)];
-      v = OpCodes.XorN(v, this.SBOX4_4404[OpCodes.AndN(OpCodes.Shr32(t2, 8), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t2, 16), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t2, 24), 0xff)]);
+      v = this.SBOX1_1110[OpCodes.And32(t2, 0xff)];
+      v = OpCodes.Xor32(v, this.SBOX4_4404[OpCodes.And32(OpCodes.Shr32(t2, 8), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t2, 16), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t2, 24), 0xff)]);
 
-      s[0] = OpCodes.XorN(s[0], OpCodes.XorN(u, v));
-      s[1] = OpCodes.XorN(s[1], OpCodes.XorN(OpCodes.XorN(u, v), OpCodes.RotR32(u, 8)));
+      s[0] = OpCodes.Xor32(s[0], OpCodes.Xor32(u, v));
+      s[1] = OpCodes.Xor32(s[1], OpCodes.Xor32(OpCodes.Xor32(u, v), OpCodes.RotR32(u, 8)));
     }
 
     _camelliaFLs(s, fkey, keyoff) {
-      s[1] = OpCodes.XorN(s[1], OpCodes.RotL32(OpCodes.AndN(s[0], fkey[0 + keyoff]), 1));
-      s[0] = OpCodes.XorN(s[0], OpCodes.OrN(fkey[1 + keyoff], s[1]));
+      s[1] = OpCodes.Xor32(s[1], OpCodes.RotL32(OpCodes.AndN(s[0], fkey[0 + keyoff]), 1));
+      s[0] = OpCodes.Xor32(s[0], OpCodes.OrN(fkey[1 + keyoff], s[1]));
 
-      s[2] = OpCodes.XorN(s[2], OpCodes.OrN(fkey[3 + keyoff], s[3]));
-      s[3] = OpCodes.XorN(s[3], OpCodes.RotL32(OpCodes.AndN(fkey[2 + keyoff], s[2]), 1));
+      s[2] = OpCodes.Xor32(s[2], OpCodes.OrN(fkey[3 + keyoff], s[3]));
+      s[3] = OpCodes.Xor32(s[3], OpCodes.RotL32(OpCodes.AndN(fkey[2 + keyoff], s[2]), 1));
     }
 
     _processBlock128(input) {
@@ -653,7 +658,7 @@
       
       // Pack input into 32-bit words
       for (let i = 0; i < 4; i++) {
-        state[i] = OpCodes.XorN(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
+        state[i] = OpCodes.Xor32(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
       }
 
       this._camelliaF2(state, this.subkey, 0);
@@ -693,7 +698,7 @@
       
       // Pack input into 32-bit words
       for (let i = 0; i < 4; i++) {
-        state[i] = OpCodes.XorN(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
+        state[i] = OpCodes.Xor32(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
       }
 
       this._camelliaF2(state, this.subkey, 0);

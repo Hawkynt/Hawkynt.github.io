@@ -118,6 +118,7 @@
       this.ROUNDS = 8;           // Number of rounds
 
       // DFC S-box (8-bit substitution table)
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -144,6 +145,7 @@
       }
 
       // DFC linear transformation constants
+      /** @type {uint8[]} */
       this.RT = [
         0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
         0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A, 0x2F
@@ -187,7 +189,7 @@
 
           // Apply round transformation
           word = OpCodes.RotL32(word, (round * 3 + i) % 32);
-          word = OpCodes.XorN(word, OpCodes.Shl32(this.RT[round % 16], i * 8));
+          word = OpCodes.Xor32(word, OpCodes.Shl32(this.RT[round % 16], i * 8));
 
           // Apply S-box to each byte
           const bytes = OpCodes.Unpack32BE(word);
@@ -235,9 +237,9 @@
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
           const pos = i * 4 + j;
-          state[pos] = OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(temp[pos], OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)])),
+          state[pos] = OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(temp[pos], OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)])),
               OpCodes.GF256Mul(0x03, temp[((i + 1) % 4) * 4 + j])
             ),
             temp[((i + 2) % 4) * 4 + (j + 2) % 4]
@@ -298,7 +300,7 @@
         newState[i] = 0;
         for (let j = 0; j < 16; j++) {
           if (invMatrix[i][j] !== 0) {
-            newState[i] = OpCodes.XorN(newState[i], OpCodes.GF256Mul(invMatrix[i][j], temp[j]));
+            newState[i] = OpCodes.Xor32(newState[i], OpCodes.GF256Mul(invMatrix[i][j], temp[j]));
           }
         }
       }
@@ -365,7 +367,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -414,7 +416,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -443,7 +445,7 @@
 
       // Initial key whitening
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], this.keySchedule[0][i]);
+        state[i] = OpCodes.Xor32(state[i], this.keySchedule[0][i]);
       }
 
       // 8 rounds
@@ -469,7 +471,7 @@
 
       // Final key whitening
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], this.keySchedule[0][i]);
+        state[i] = OpCodes.Xor32(state[i], this.keySchedule[0][i]);
       }
 
       return state;

@@ -87,6 +87,7 @@
   }
   const BOOT = base64ToBytes(BOOT_B64);
 
+  /** @type {uint16[]} */
   const COL = [0x000, 0x900, 0x100, 0x800];
 
   // Build the small key-dependent tables from a 64-byte key half.
@@ -360,7 +361,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._ctx = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 128)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Cartman-2X (DarkCrypt) requires exactly 128 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Cartman-2X (DarkCrypt) requires exactly 128 bytes");
       this._ctx = expandKey(keyBytes);
       this.KeySize = keyBytes.length;
     }
@@ -377,7 +378,7 @@
       if (!this._ctx) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

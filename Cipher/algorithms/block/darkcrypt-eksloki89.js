@@ -74,6 +74,7 @@
   ];
 
   // LOKI89 32-bit permutation P: output bit o receives input bit P[o] (MSB first).
+  /** @type {uint8[]} */
   const PERM = [
     31, 23, 15, 7, 30, 22, 14, 6, 29, 21, 13, 5, 28, 20, 12, 4,
     27, 19, 11, 3, 26, 18, 10, 2, 25, 17, 9, 1, 24, 16, 8, 0
@@ -265,7 +266,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._p = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. EksLOKI-89 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. EksLOKI-89 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this._p = expandKey(this._key);
       this.KeySize = keyBytes.length;
@@ -283,7 +284,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

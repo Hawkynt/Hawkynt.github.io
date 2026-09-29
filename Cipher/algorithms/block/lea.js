@@ -221,9 +221,10 @@
       }
 
       // Validate key size
+      /** @type {uint8[]} */
       const validSizes = [16, 24, 32];
       if (!validSizes.includes(keyBytes.length)) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16, 24, or 32 bytes)");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -283,7 +284,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -354,6 +355,7 @@
         // updates all six and emits them directly as that round's subkey.
         const delta = this.algorithm.DELTA;
         const t = [key[0], key[1], key[2], key[3], key[4], key[5]];
+        /** @type {uint8[]} */
         const amounts = [1, 3, 6, 11, 13, 17];
 
         for (let i = 0; i < 28; i++) {
@@ -369,6 +371,7 @@
         // a rotating window of six is updated and emitted each round.
         const delta = this.algorithm.DELTA;
         const t = [key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7]];
+        /** @type {uint8[]} */
         const amounts = [1, 3, 6, 11, 13, 17];
 
         for (let i = 0; i < 32; i++) {
@@ -462,20 +465,20 @@
         // From X[i+1][0] = ((X[i][0] ⊕ RK[0]) + (X[i][1] ⊕ RK[1])) <<< 9
         // We get: X[i][1] = ((X[i+1][0] >>> 9) - (X[i][0] ⊕ RK[0])) ⊕ RK[1]
         let temp = OpCodes.RotR32(oldX[0], 9); // Inverse left rotation
-        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[0], RK[0])); // Inverse addition
-        X[1] = OpCodes.XorN(temp, RK[1]); // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.Xor32(X[0], RK[0])); // Inverse addition
+        X[1] = OpCodes.Xor32(temp, RK[1]); // Inverse XOR
 
         // From X[i+1][1] = ((X[i][1] ⊕ RK[2]) + (X[i][2] ⊕ RK[3])) >>> 5
         // We get: X[i][2] = ((X[i+1][1] <<< 5) - (X[i][1] ⊕ RK[2])) ⊕ RK[3]
         temp = OpCodes.RotL32(oldX[1], 5); // Inverse right rotation
-        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[1], RK[2])); // Inverse addition
-        X[2] = OpCodes.XorN(temp, RK[3]); // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.Xor32(X[1], RK[2])); // Inverse addition
+        X[2] = OpCodes.Xor32(temp, RK[3]); // Inverse XOR
 
         // From X[i+1][2] = ((X[i][2] ⊕ RK[4]) + (X[i][3] ⊕ RK[5])) >>> 3
         // We get: X[i][3] = ((X[i+1][2] <<< 3) - (X[i][2] ⊕ RK[4])) ⊕ RK[5]
         temp = OpCodes.RotL32(oldX[2], 3); // Inverse right rotation
-        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[2], RK[4])); // Inverse addition
-        X[3] = OpCodes.XorN(temp, RK[5]); // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.Xor32(X[2], RK[4])); // Inverse addition
+        X[3] = OpCodes.Xor32(temp, RK[5]); // Inverse XOR
       }
 
       // Convert back to byte array using OpCodes (little-endian)

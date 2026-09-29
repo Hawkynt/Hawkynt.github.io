@@ -60,20 +60,20 @@
   const SEED_S2 = 0xd76c; // (initial "ecx")
   const SEED_S3 = 0x9bf4; // (initial "esi")
 
-  function u16(x) { return OpCodes.AndN(x, 0xffff); }
+  function u16(x) { return OpCodes.And32(x, 0xffff); }
 
   function rotL16(x, n) {
     x = u16(x);
     n &= 15;
     if (n === 0) return x;
-    return u16(OpCodes.OrN(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 16 - n)));
+    return u16(OpCodes.Or32(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 16 - n)));
   }
 
   function rotR16(x, n) {
     x = u16(x);
     n &= 15;
     if (n === 0) return x;
-    return u16(OpCodes.OrN(OpCodes.Shr32(x, n), OpCodes.Shl32(x, 16 - n)));
+    return u16(OpCodes.Or32(OpCodes.Shr32(x, n), OpCodes.Shl32(x, 16 - n)));
   }
 
   // Four nonlinear Boolean combining functions, one per 16-round group. Each takes
@@ -81,36 +81,36 @@
   // a 16-bit "T" value; q[7] itself never participates here (it is folded in
   // separately as rotL16(q[7], 9)).
   function combineT1(q) {
-    return u16(OpCodes.XorN(OpCodes.XorN(q[0], OpCodes.AndN(q[0], q[1])),
-           OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(q[2], q[4]), OpCodes.AndN(q[3], q[6])), OpCodes.AndN(q[1], q[5]))));
+    return u16(OpCodes.Xor32(OpCodes.Xor32(q[0], OpCodes.AndN(q[0], q[1])),
+           OpCodes.Xor32(OpCodes.Xor32(OpCodes.AndN(q[2], q[4]), OpCodes.AndN(q[3], q[6])), OpCodes.AndN(q[1], q[5]))));
   }
 
   function combineT2(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[1], OpCodes.AndN(q[0], q[3])),
-      OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(q[1], q[4]), OpCodes.AndN(q[2], q[5])), OpCodes.AndN(q[3], q[4])));
-    const triples = OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(q[0], q[3]), q[4]), OpCodes.AndN(OpCodes.AndN(q[0], q[4]), q[6]));
-    return u16(OpCodes.XorN(terms, triples));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[1], OpCodes.AndN(q[0], q[3])),
+      OpCodes.Xor32(OpCodes.Xor32(OpCodes.AndN(q[1], q[4]), OpCodes.AndN(q[2], q[5])), OpCodes.AndN(q[3], q[4])));
+    const triples = OpCodes.Xor32(OpCodes.And32(OpCodes.AndN(q[0], q[3]), q[4]), OpCodes.And32(OpCodes.AndN(q[0], q[4]), q[6]));
+    return u16(OpCodes.Xor32(terms, triples));
   }
 
   function combineT3(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[3], OpCodes.AndN(q[0], q[1])),
-      OpCodes.XorN(OpCodes.AndN(q[0], q[3]), OpCodes.XorN(OpCodes.AndN(q[2], q[5]), OpCodes.AndN(q[4], q[6]))));
-    const triple = OpCodes.AndN(OpCodes.AndN(q[0], q[4]), q[5]);
-    return u16(OpCodes.XorN(terms, triple));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[3], OpCodes.AndN(q[0], q[1])),
+      OpCodes.Xor32(OpCodes.AndN(q[0], q[3]), OpCodes.Xor32(OpCodes.AndN(q[2], q[5]), OpCodes.AndN(q[4], q[6]))));
+    const triple = OpCodes.And32(OpCodes.AndN(q[0], q[4]), q[5]);
+    return u16(OpCodes.Xor32(terms, triple));
   }
 
   function combineT4(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[2], OpCodes.AndN(q[0], q[1])),
-      OpCodes.XorN(OpCodes.AndN(q[2], q[3]), OpCodes.XorN(OpCodes.AndN(q[3], q[4]), OpCodes.AndN(q[5], q[6]))));
-    const quad = OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(q[0], q[2]), q[4]), q[6]);
-    return u16(OpCodes.XorN(terms, quad));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[2], OpCodes.AndN(q[0], q[1])),
+      OpCodes.Xor32(OpCodes.AndN(q[2], q[3]), OpCodes.Xor32(OpCodes.AndN(q[3], q[4]), OpCodes.AndN(q[5], q[6]))));
+    const quad = OpCodes.And32(OpCodes.And32(OpCodes.AndN(q[0], q[2]), q[4]), q[6]);
+    return u16(OpCodes.Xor32(terms, quad));
   }
 
   const COMBINERS = [combineT1, combineT2, combineT3, combineT4];
 
   // Data-dependent rotate amount derived from T itself (RC5/RC6-style).
   function shiftAmount(T) {
-    const mixed = OpCodes.AndN(OpCodes.Add32(OpCodes.Shr32(T, 8), T), 0xff);
+    const mixed = OpCodes.And32(OpCodes.Add32(OpCodes.Shr32(T, 8), T), 0xff);
     return OpCodes.Shr32(mixed, 4);
   }
 
@@ -192,7 +192,7 @@
         return;
       }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SPEED (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SPEED (DarkCrypt) requires exactly 32 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -211,7 +211,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -234,7 +234,7 @@
 
       let s3 = SEED_S3, s1 = SEED_S1, s2 = SEED_S2; // (esi, ebx, ecx) in the DLL's naming
       for (let i = 16; i < 64; i++) {
-        const majority = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(s3, s1), OpCodes.AndN(s1, s2)), OpCodes.AndN(s2, s3));
+        const majority = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(s3, s1), OpCodes.And32(s1, s2)), OpCodes.And32(s2, s3));
         const rotated = rotL16(majority, 5);
         const newWord = u16(OpCodes.Add32(OpCodes.Add32(rotated, s2), rawWords[OpCodes.And32(i, 0xF)]));
         words[i] = newWord;
@@ -245,25 +245,25 @@
 
     _encryptBlock(block) {
       let q = new Array(8);
-      for (let i = 0; i < 8; i++) q[i] = OpCodes.OrN(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
+      for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
 
       for (let round = 0; round < 64; round++) {
         const combine = COMBINERS[Math.floor(round / 16)];
         const T = combine(q);
         const shamt = shiftAmount(T);
-        const rotated = rotR16(OpCodes.AndN(T, 0xffff), shamt);
+        const rotated = rotR16(OpCodes.And32(T, 0xffff), shamt);
         const newHead = u16(OpCodes.Add32(OpCodes.Add32(rotated, rotL16(q[7], 9)), this.expandedKey[round]));
         q = [newHead, q[0], q[1], q[2], q[3], q[4], q[5], q[6]];
       }
 
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(OpCodes.AndN(q[i], 0xff), OpCodes.AndN(OpCodes.Shr32(q[i], 8), 0xff));
+      for (let i = 0; i < 8; i++) out.push(OpCodes.And32(q[i], 0xff), OpCodes.And32(OpCodes.Shr32(q[i], 8), 0xff));
       return out;
     }
 
     _decryptBlock(block) {
       let q = new Array(8);
-      for (let i = 0; i < 8; i++) q[i] = OpCodes.OrN(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
+      for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
 
       for (let round = 63; round >= 0; round--) {
         // q currently holds the post-round state; recover the pre-round state.
@@ -271,14 +271,14 @@
         const combine = COMBINERS[Math.floor(round / 16)];
         const T = combine(oldQ);
         const shamt = shiftAmount(T);
-        const rotated = rotR16(OpCodes.AndN(T, 0xffff), shamt);
+        const rotated = rotR16(OpCodes.And32(T, 0xffff), shamt);
         const rotatedOldTail = u16(OpCodes.Sub32(OpCodes.Sub32(q[0], rotated), this.expandedKey[round]));
         oldQ[7] = rotR16(rotatedOldTail, 9);
         q = oldQ;
       }
 
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(OpCodes.AndN(q[i], 0xff), OpCodes.AndN(OpCodes.Shr32(q[i], 8), 0xff));
+      for (let i = 0; i < 8; i++) out.push(OpCodes.And32(q[i], 0xff), OpCodes.And32(OpCodes.Shr32(q[i], 8), 0xff));
       return out;
     }
   }

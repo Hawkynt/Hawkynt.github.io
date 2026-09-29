@@ -166,7 +166,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -215,7 +215,7 @@
       // correct to do with one - completing it is a padding scheme's job - so it
       // is refused rather than dropped.
       if (this.inputBuffer.length !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       if (this.outputBuffer.length === 0) throw new Error("No data fed");
 
       const result = [...this.outputBuffer];
@@ -246,30 +246,30 @@
       let x3 = OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
       for (let round = 0; round < this.algorithm.ROUNDS; round += 8) {
-        let temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x0, round)), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[0])));
+        let temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x0, round)), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[0])));
         x0 = OpCodes.RotL32(temp, 8);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 1))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[1])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x1, (round + 1))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[1])));
         x1 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 2))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[2])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x2, (round + 2))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[2])));
         x2 = OpCodes.RotL32(temp, 8);
 
         const x0Rot8 = OpCodes.RotL32(x0, 8);
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 3))), OpCodes.ToUint32(OpCodes.XorN(x0Rot8, rk[3])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x3, (round + 3))), OpCodes.ToUint32(OpCodes.Xor32(x0Rot8, rk[3])));
         x3 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x0, (round + 4))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[4])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x0, (round + 4))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[4])));
         x0 = OpCodes.RotL32(temp, 8);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 5))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[5])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x1, (round + 5))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[5])));
         x1 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 6))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[6])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x2, (round + 6))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[6])));
         x2 = OpCodes.RotL32(temp, 8);
 
         const x0Rot8Second = OpCodes.RotL32(x0, 8);
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 7))), OpCodes.ToUint32(OpCodes.XorN(x0Rot8Second, rk[7])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x3, (round + 7))), OpCodes.ToUint32(OpCodes.Xor32(x0Rot8Second, rk[7])));
         x3 = OpCodes.RotL32(temp, 1);
       }
 
@@ -301,37 +301,37 @@
       for (let round = this.algorithm.ROUNDS - 8; round >= 0; round -= 8) {
         const x0Rot8After5 = OpCodes.RotL32(x0, 8);
         let tmp = OpCodes.RotR32(x3, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(x0Rot8After5, rk[7])));
-        x3 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 7)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(x0Rot8After5, rk[7])));
+        x3 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 7)));
 
         tmp = OpCodes.RotR32(x2, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[6])));
-        x2 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 6)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[6])));
+        x2 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 6)));
 
         tmp = OpCodes.RotR32(x1, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[5])));
-        x1 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 5)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[5])));
+        x1 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 5)));
 
         tmp = OpCodes.RotR32(x0, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[4])));
-        x0 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 4)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[4])));
+        x0 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 4)));
 
         const x0Rot8After1 = OpCodes.RotL32(x0, 8);
         tmp = OpCodes.RotR32(x3, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(x0Rot8After1, rk[3])));
-        x3 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 3)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(x0Rot8After1, rk[3])));
+        x3 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 3)));
 
         tmp = OpCodes.RotR32(x2, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[2])));
-        x2 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 2)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[2])));
+        x2 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 2)));
 
         tmp = OpCodes.RotR32(x1, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[1])));
-        x1 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 1)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[1])));
+        x1 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 1)));
 
         tmp = OpCodes.RotR32(x0, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[0])));
-        x0 = OpCodes.ToUint32(OpCodes.XorN(tmp, round));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[0])));
+        x0 = OpCodes.ToUint32(OpCodes.Xor32(tmp, round));
       }
 
       const result = [];
@@ -357,15 +357,15 @@
       rk[2] = OpCodes.ToUint32(words[2]);
       rk[3] = OpCodes.ToUint32(words[3]);
 
-      rk[4] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 11)));
-      rk[5] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 11)));
-      rk[6] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 11)));
-      rk[7] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 11)));
+      rk[4] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 11)));
+      rk[5] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 11)));
+      rk[6] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 11)));
+      rk[7] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 11)));
 
-      rk[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 8)));
-      rk[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 8)));
-      rk[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 8)));
-      rk[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 8)));
+      rk[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 8)));
+      rk[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 8)));
+      rk[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 8)));
+      rk[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 8)));
 
       return rk;
     }

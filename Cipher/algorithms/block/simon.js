@@ -171,7 +171,7 @@
       const rot8 = OpCodes.RotL32(x, 8);
       const rot2 = OpCodes.RotL32(x, 2);
 
-      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(rot1, rot8), rot2));
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(rot1, rot8), rot2));
     }
   }
 
@@ -217,7 +217,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -263,7 +263,7 @@
       // correct to do with one - completing it is a padding scheme's job - so it
       // is refused rather than dropped.
       if (this.inputBuffer.length !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       if (this.outputBuffer.length === 0) throw new Error("No data fed");
 
       const result = [...this.outputBuffer];
@@ -300,7 +300,7 @@
       // Round function: (x, y) -> (y XOR F(x) XOR k_i, x)
       // where F(x) = ((x rotL 1) AND (x rotL 8)) XOR (x rotL 2)
       for (let i = 0; i < this.algorithm.ROUNDS; i++) {
-        const temp = OpCodes.XorN(OpCodes.XorN(y, SimonCipher.roundFunction(x)), this.roundKeys[i]);
+        const temp = OpCodes.Xor32(OpCodes.Xor32(y, SimonCipher.roundFunction(x)), this.roundKeys[i]);
         y = x;
         x = temp;
       }
@@ -333,7 +333,7 @@
       for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
         const temp = x;
         x = y;
-        y = OpCodes.XorN(OpCodes.XorN(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
+        y = OpCodes.Xor32(OpCodes.Xor32(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
       }
 
       // Convert back to bytes (little-endian, lower word first)
@@ -372,11 +372,11 @@
 
       for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {
         let tmp = OpCodes.RotR32(roundKeys[i - 1], 3);
-        tmp = OpCodes.XorN(tmp, roundKeys[i - 3]);
-        tmp = OpCodes.XorN(tmp, OpCodes.RotR32(tmp, 1));
-        tmp = OpCodes.XorN(tmp, roundKeys[i - this.algorithm.m]);
-        tmp = OpCodes.XorN(tmp, c);
-        tmp = OpCodes.XorN(tmp, z3Sequence[i - this.algorithm.m]);
+        tmp = OpCodes.Xor32(tmp, roundKeys[i - 3]);
+        tmp = OpCodes.Xor32(tmp, OpCodes.RotR32(tmp, 1));
+        tmp = OpCodes.Xor32(tmp, roundKeys[i - this.algorithm.m]);
+        tmp = OpCodes.Xor32(tmp, c);
+        tmp = OpCodes.Xor32(tmp, z3Sequence[i - this.algorithm.m]);
 
         roundKeys[i] = OpCodes.ToUint32(tmp);
       }

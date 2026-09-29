@@ -53,6 +53,7 @@
   // Row-shift offsets for the generalized Rijndael ShiftRow step, indexed by
   // Nb (per the original Rijndael proposal's table of shift offsets). AES
   // fixes Nb=4 and only ever uses {0,1,2,3}; Nb=8 uses {0,1,3,4}.
+  /** @type {uint8[]} */
   const SHIFT_OFFSETS = [0, 1, 3, 4];
 
   const SBOX = new Uint8Array([
@@ -176,7 +177,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Rijndael-256 (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Rijndael-256 (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.roundKeys = this._expandKey(this._key);
@@ -194,7 +195,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

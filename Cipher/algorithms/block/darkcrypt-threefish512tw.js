@@ -260,7 +260,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 80)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Threefish-512-TW (DarkCrypt) requires exactly 80 bytes (64-byte key + 16-byte tweak)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Threefish-512-TW (DarkCrypt) requires exactly 80 bytes (64-byte key + 16-byte tweak)");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
@@ -284,7 +284,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
