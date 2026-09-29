@@ -66,9 +66,19 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /**
+   * @typedef {Object} DESModule
+   * @property {function(): BlockCipherAlgorithm} DESAlgorithm - DES algorithm class
+   * @property {function(BlockCipherAlgorithm, boolean): IBlockCipherInstance} DESInstance - DES instance class
+   */
+
   // DES is resolved at first use rather than at load: the page loads this
   // file before des.js, so root.DES does not exist yet when this runs.
+  /** @type {DESModule|null} */
   let desModule = null;
+  /**
+   * @returns {DESModule} The DES module
+   */
   function getDES() {
     if (!desModule) {
       desModule = loadDES();
@@ -158,6 +168,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._subKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -167,6 +178,7 @@
       // Internal helper DES instance/algorithm used as the DEAL round function
       // and for key-schedule expansion. Only ever used in "encrypt" mode: DEAL
       // decryption is achieved purely by reversing the round-key order.
+      /** @type {BlockCipherAlgorithm} */
       this._desAlgorithm = new (getDES().DESAlgorithm)();
     }
 
@@ -214,15 +226,25 @@
     /**
      * @param {uint8[]} keyBytes - Key bytes
      * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
      */
     _desEncrypt(keyBytes, blockBytes) {
+      /** @type {IBlockCipherInstance} */
       const inst = new (getDES().DESInstance)(this._desAlgorithm, false);
       inst.key = keyBytes;
       inst.Feed(blockBytes);
-      return inst.Result();
+      /** @type {uint8[]} */
+      const result = inst.Result();
+      return result;
     }
 
+    /**
+     * @param {uint8[]} a - First 8 bytes
+     * @param {uint8[]} b - Second 8 bytes
+     * @returns {uint8[]} Bytewise XOR
+     */
     _xor8(a, b) {
+      /** @type {uint8[]} */
       const out = new Array(8);
       for (let i = 0; i < 8; i++) out[i] = OpCodes.Xor32(a[i], b[i]);
       return out;
@@ -230,12 +252,16 @@
 
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[][]} Round keys
      */
     _generateSubKeys(keyBytes) {
+      /** @type {uint8[][]} */
       const k = [];
       for (let i = 0; i < KEY_BLOCKS; i++) k.push(keyBytes.slice(i * 8, i * 8 + 8));
 
+      /** @type {uint8[][]} */
       const subKeys = new Array(ROUNDS);
+      /** @type {uint8[]|null} */
       let prev = null;
       for (let r = 0; r < ROUNDS; r++) {
         const block = k[r % KEY_BLOCKS];

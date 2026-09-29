@@ -201,12 +201,20 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {int32} */
+      this._rounds = 0;
+      /** @type {uint8[][]|null} */
+      this._schedule = null;
       this.key = null;
-      this.keySchedule = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this.sbox = null;
     }
 
@@ -220,16 +228,22 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this.keySchedule = null;
+        this._rounds = 0;
+        this._schedule = null;
         this.KeySize = 0;
         return;
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      let isValidSize = false;
+      for (let i = 0; i < this._keySizes.length; i++) {
+        const ks = this._keySizes[i];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -237,7 +251,8 @@
 
       this._key = [...keyBytes]; // Copy the key
       this.KeySize = keyBytes.length;
-      this.keySchedule = this._keySetup(keyBytes);
+      this._rounds = keyBytes.length === 32 ? 8 : 6;
+      this._schedule = this._keySetup(keyBytes);
       this.sbox = this._generateSBox();
     }
 
@@ -259,7 +274,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
@@ -272,7 +287,7 @@
    */
 
     Result() {
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
@@ -301,12 +316,13 @@
     }
 
     // MAGENTA key setup
+    /**
+     * @param {uint8[]} key - 16, 24 or 32 key bytes
+     * @returns {uint8[][]} One 8-byte subkey per round
+     */
     _keySetup(key) {
-      const keySchedule = {
-        key: OpCodes.CopyArray(key),
-        rounds: key.length === 32 ? 8 : 6,
-        subkeys: []
-      };
+      /** @type {uint8[][]} */
+      let perRound = [];
 
       // Subkeys are the 64-bit key words in a palindromic arrangement. This
       // symmetry is intrinsic to the design (and is what Biham et al. attacked).
@@ -314,23 +330,23 @@
         // 128-bit key: K1, K1, K2, K2, K1, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
-        keySchedule.subkeys = [k1, k1, k2, k2, k1, k1];
+        perRound = [k1, k1, k2, k2, k1, k1];
       } else if (key.length === 24) {
         // 192-bit key: K1, K2, K3, K3, K2, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
         const k3 = key.slice(16, 24);
-        keySchedule.subkeys = [k1, k2, k3, k3, k2, k1];
+        perRound = [k1, k2, k3, k3, k2, k1];
       } else {
         // 256-bit key: K1, K2, K3, K4, K4, K3, K2, K1
         const k1 = key.slice(0, 8);
         const k2 = key.slice(8, 16);
         const k3 = key.slice(16, 24);
         const k4 = key.slice(24, 32);
-        keySchedule.subkeys = [k1, k2, k3, k4, k4, k3, k2, k1];
+        perRound = [k1, k2, k3, k4, k4, k3, k2, k1];
       }
 
-      return keySchedule;
+      return perRound;
     }
 
     // Exponentiation table f, Equation (1) of the MAGENTA specification.
@@ -338,8 +354,13 @@
     // x^8 + x^6 + x^5 + x^2 + 1, whose reduction byte is 0x65; f(255) = 0.
     // Built with plain arithmetic so no bitwise shift operators are needed:
     // doubling is multiplication by two and the overflow test is a compare.
+    /**
+     * @returns {uint8[]} The 256-entry exponentiation table
+     */
     _generateSBox() {
+      /** @type {uint8[]} */
       const table = new Array(256);
+      /** @type {uint32} */
       let value = 1;
 
       for (let i = 0; i < 255; i++) {
@@ -356,13 +377,25 @@
     }
 
     // A(x, y) = f(x XOR f(y)) - Equation (2)
+    /**
+     * @param {uint8} x - First byte
+     * @param {uint8} y - Second byte
+     * @param {uint8[]} f - Exponentiation table
+     * @returns {uint8} f(x XOR f(y))
+     */
     _A(x, y, f) {
-      return f[OpCodes.XorN(x, f[y])];
+      return f[OpCodes.Xor32(x, f[y])];
     }
 
     // pi(x0..x15) = (PE(x0,x8), PE(x1,x9), ..., PE(x7,x15)) where
     // PE(x, y) = (A(x,y), A(y,x)) is the pseudo-exponentiation - Equation (3)
+    /**
+     * @param {uint8[]} data - 16 bytes
+     * @param {uint8[]} f - Exponentiation table
+     * @returns {uint8[]} 16 bytes
+     */
     _pi(data, f) {
+      /** @type {uint8[]} */
       const result = new Array(16);
 
       for (let i = 0; i < 8; i++) {
@@ -374,17 +407,27 @@
     }
 
     // T(w) = pi(pi(pi(pi(w)))) - four rounds of the shuffle-exponentiation layer
+    /**
+     * @param {uint8[]} data - 16 bytes
+     * @param {uint8[]} f - Exponentiation table
+     * @returns {uint8[]} 16 bytes
+     */
     _T(data, f) {
       return this._pi(this._pi(this._pi(this._pi(data, f), f), f), f);
     }
 
     // S(x0..x15) = (x0,x2,x4,...,x14, x1,x3,x5,...,x15)
     // The even-indexed bytes followed by the odd-indexed bytes.
+    /**
+     * @param {uint8[]} data - 16 bytes
+     * @returns {uint8[]} Even-indexed bytes followed by odd-indexed bytes
+     */
     _shuffle(data) {
       if (data.length !== 16) {
         throw new Error('Shuffle operation requires exactly 16 bytes');
       }
 
+      /** @type {uint8[]} */
       const result = new Array(16);
 
       for (let i = 0; i < 8; i++) {
@@ -396,6 +439,12 @@
     }
 
     // C(1, w) = T(w);  C(n+1, w) = T(w XOR S(C(n, w)))
+    /**
+     * @param {int32} n - Level
+     * @param {uint8[]} data - 16 bytes
+     * @param {uint8[]} f - Exponentiation table
+     * @returns {uint8[]} 16 bytes
+     */
     _C(n, data, f) {
       let result = this._T(data, f);
 
@@ -407,6 +456,12 @@
     }
 
     // MAGENTA F-function: the first eight bytes of S(C(3, X || SK))
+    /**
+     * @param {uint8[]} right - 8-byte half block
+     * @param {uint8[]} subkey - 8-byte round key
+     * @param {uint8[]} f - Exponentiation table
+     * @returns {uint8[]} 8 bytes
+     */
     _fFunction(right, subkey, f) {
       return this._shuffle(this._C(3, right.concat(subkey), f)).slice(0, 8);
     }
@@ -426,8 +481,8 @@
       let right = data.slice(8, 16);
 
       // Feistel rounds: (L, R) -> (R, L XOR F(R, SK))
-      for (let round = 0; round < this.keySchedule.rounds; round++) {
-        const subkey = this.keySchedule.subkeys[round];
+      for (let round = 0; round < this._rounds; round++) {
+        const subkey = this._schedule[round];
         const newRight = OpCodes.XorArrays(left, this._fFunction(right, subkey, this.sbox));
 
         left = right;
@@ -455,8 +510,8 @@
 
       // Inverse of (L, R) -> (R, L XOR F(R, SK)) is (L, R) -> (R XOR F(L, SK), L),
       // walking the subkeys from the last round back to the first.
-      for (let round = this.keySchedule.rounds - 1; round >= 0; round--) {
-        const subkey = this.keySchedule.subkeys[round];
+      for (let round = this._rounds - 1; round >= 0; round--) {
+        const subkey = this._schedule[round];
         const newLeft = OpCodes.XorArrays(right, this._fFunction(left, subkey, this.sbox));
 
         right = left;

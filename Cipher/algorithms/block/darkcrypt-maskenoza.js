@@ -404,7 +404,20 @@
     "951afedc1bd8536e86fda2b8c5a3aeeae10178c429adcaef20be50775a49bc28ab97a83aecb5d7c671a592224a5f0efbbda939552ceb907a1167988b326d87b7b218d016"
   );
 
-  function sbox(row, col) { return SBOX[OpCodes.And32(row, 0x7F) * 256 + OpCodes.And32(col, 0xFF)]; }
+  /**
+   * @param {uint32} row - Table row (low 7 bits used)
+   * @param {uint32} col - Column (low 8 bits used)
+   * @returns {uint8} S-box byte
+   */
+  function sbox(row, col) { return SBOX[OpCodes.Add32(OpCodes.Mul32(OpCodes.And32(row, 0x7F), 256), OpCodes.And32(col, 0xFF))]; }
+  /**
+   * @param {uint32} w - Input word
+   * @param {uint32} r0 - Row for the top byte
+   * @param {uint32} r1 - Row for byte 2
+   * @param {uint32} r2 - Row for byte 1
+   * @param {uint32} r3 - Row for the low byte
+   * @returns {uint32} Substituted word
+   */
   function sboxMix(w, r0, r1, r2, r3) {
     const b0 = sbox(r0, OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF));
     const b1 = sbox(r1, OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF));
@@ -413,11 +426,17 @@
     return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)), OpCodes.Shl32(b2, 8)), b3);
   }
   // f(x) = (x<<6) ^ (x>>>8)   (no "+x", unlike the related GTEA roundF helper)
+  /**
+   * @param {uint32} x - Input word
+   * @returns {uint32} Mixed word
+   */
   function mixF(x) {
     return OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8));
   }
 
+  /** @type {uint32} */
   const P32 = 0xB7E15163;   // RC5/RC6-style odd((e-2)*2^32)
+  /** @type {uint32} */
   const DELTA = 0x9E3779B9; // TEA-style odd((sqrt(5)-1)/2 * 2^32)
 
   // Per-round table for the decrypt() round function: for round r (0..79),
@@ -444,6 +463,13 @@
   /** @type {uint32[]} */
   const GROUP_CONST = [0x70E44324, 0x9126145F, 0xA57D8667, 0];
 
+  /**
+   * @param {int32} g - Round group 0..3
+   * @param {uint32} opA - First operand word
+   * @param {uint32} opRot - Rotated operand word
+   * @param {uint32} opB - Second operand word
+   * @returns {uint32} Group boolean function value
+   */
   function fGroup(g, opA, opRot, opB) {
     switch (g) {
       case 0: case 2: return OpCodes.Xor32(OpCodes.Xor32(opA, opRot), opB);
@@ -522,6 +548,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._sched = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -568,7 +595,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[]} 16 little-endian key words
+     */
     _keyWords(key) {
+      /** @type {uint32[]} */
       const words = new Array(16);
       for (let i = 0; i < 16; i++)
         words[i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
@@ -576,33 +608,38 @@
     }
 
     // Builds the 80-word round-key table RK[] and the 10-word whitening (Win/Wout) from the 512-bit key.
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[][]} [round words (80), input whitening (5), output whitening (5)]
+     */
     _buildSchedule(key) {
       const K = this._keyWords(key);
 
       // Stage 1: RC5/RC6-style + S-box-mix expansion -> RK128[0..127]
       let edxAcc = DELTA;
       let prevS = P32;
+      /** @type {uint32[]} */
       const RK128 = new Array(128);
       for (let i = 0; i < 128; i++) {
         const kw = K[OpCodes.And32(i, 0xF)];
-        const T = OpCodes.ToUint32(edxAcc + kw + DELTA);
-        const Cv = OpCodes.ToUint32(kw + prevS);
+        const T = OpCodes.Add32(OpCodes.Add32(edxAcc, kw), DELTA);
+        const Cv = OpCodes.Add32(kw, prevS);
         const rowA = OpCodes.And32(i, 0x7F);
         const rowS = OpCodes.And32(prevS, 0x7F);
         const rowCv = OpCodes.And32(Cv, 0x7F);
         const rowT = OpCodes.And32(T, 0x7F);
         let mixed1 = sboxMix(Cv, rowA, rowS, rowCv, rowT);
         mixed1 = OpCodes.RotL32(mixed1, 11);
-        const T2 = OpCodes.ToUint32(T + mixed1);
-        const h = OpCodes.ToUint32(OpCodes.RotL32(mixed1, 16) + mixF(mixed1));
-        const edi2 = OpCodes.ToUint32(h + kw);
+        const T2 = OpCodes.Add32(T, mixed1);
+        const h = OpCodes.Add32(OpCodes.RotL32(mixed1, 16), mixF(mixed1));
+        const edi2 = OpCodes.Add32(h, kw);
         const rowT2 = OpCodes.And32(T2, 0x7F);
         const rowEdi2 = OpCodes.And32(edi2, 0x7F);
         let mixed2 = sboxMix(edi2, rowT2, rowEdi2, rowS, rowA);
         mixed2 = OpCodes.RotL32(mixed2, 11);
         RK128[i] = mixed2;
-        edxAcc = OpCodes.ToUint32(T2 + mixed2);
-        prevS = OpCodes.ToUint32(prevS + P32);
+        edxAcc = OpCodes.Add32(T2, mixed2);
+        prevS = OpCodes.Add32(prevS, P32);
       }
 
       // Stage 2: RC4-KSA-like permutation of two 256-byte windows, seeded by RK128's bytes.
@@ -612,6 +649,7 @@
         RK128bytes[i*4] = b[0]; RK128bytes[i*4+1] = b[1]; RK128bytes[i*4+2] = b[2]; RK128bytes[i*4+3] = b[3];
       }
       const S = new Uint8Array(512);
+      /** @type {uint32} */
       let acc = 0;
       for (let w = 0; w < 2; w++) {
         for (let p = 0; p < 256; p++) S[w*256+p] = p;
@@ -620,19 +658,25 @@
             const idx = w*256 + ii;
             const oldSi = S[idx];
             const keyByte = RK128bytes[idx];
-            const j = OpCodes.And32(acc + oldSi + keyByte, 0xFF);
-            const sj = S[w*256 + j];
-            const ssj = S[w*256 + sj];
+            const j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(acc, oldSi), keyByte), 0xFF);
+            const sj = S[OpCodes.Add32(w*256, j)];
+            const ssj = S[OpCodes.Add32(w*256, sj)];
             S[idx] = ssj;
-            S[w*256 + sj] = oldSi;
+            S[OpCodes.Add32(w*256, sj)] = oldSi;
             acc = sj;
           }
         }
       }
-      const RK = new Array(80);
-      for (let t = 0; t < 80; t++) RK[t] = OpCodes.Pack32LE(S[t*4], S[t*4+1], S[t*4+2], S[t*4+3]);
+      /** @type {uint32[]} */
+      const roundWords = new Array(80);
+      for (let t = 0; t < 80; t++) roundWords[t] = OpCodes.Pack32LE(S[t*4], S[t*4+1], S[t*4+2], S[t*4+3]);
 
-      return { RK, Win: K.slice(0, 5), Wout: K.slice(5, 10) };
+      /** @type {uint32[][]} */
+      const parts = [];
+      parts.push(roundWords);
+      parts.push(K.slice(0, 5));
+      parts.push(K.slice(5, 10));
+      return parts;
     }
 
     /**
@@ -640,24 +684,30 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const { RK, Win, Wout } = this._sched;
-      const W = new Array(5);
+      const sched = this._sched;
+      const roundWords = sched[0], whitenIn = sched[1], whitenOut = sched[2];
+      /** @type {uint32[]} */
+      const words = new Array(5);
       for (let i = 0; i < 5; i++)
-        W[i] = OpCodes.ToUint32(Win[i] + OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]));
+        words[i] = OpCodes.Add32(whitenIn[i], OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]));
 
       for (let r = 79; r >= 0; r--) {
         const dest = r % 5, rolSrc = (r+1)%5, opRot = (r+2)%5, opA = (r+3)%5, opB = (r+4)%5;
         const g = Math.floor(r/20);
-        let val = OpCodes.RotL32(W[rolSrc], ROUND_SHIFT[r]);
-        val = OpCodes.ToUint32(val + RK[ROUND_TABLE_INDEX[r]]);
-        val = OpCodes.ToUint32(val + fGroup(g, W[opA], W[opRot], W[opB]));
-        W[dest] = OpCodes.ToUint32(W[dest] + val - GROUP_CONST[g]);
-        if (r >= 1) W[opRot] = OpCodes.RotL32(W[opRot], GROUP_ROT[Math.floor(r/20)]);
+        let val = OpCodes.RotL32(words[rolSrc], ROUND_SHIFT[r]);
+        val = OpCodes.Add32(val, roundWords[ROUND_TABLE_INDEX[r]]);
+        val = OpCodes.Add32(val, fGroup(g, words[opA], words[opRot], words[opB]));
+        words[dest] = OpCodes.Sub32(OpCodes.Add32(words[dest], val), GROUP_CONST[g]);
+        if (r >= 1) words[opRot] = OpCodes.RotL32(words[opRot], GROUP_ROT[Math.floor(r/20)]);
       }
-      W[2] = OpCodes.RotL32(W[2], GROUP_ROT[0]);
+      words[2] = OpCodes.RotL32(words[2], GROUP_ROT[0]);
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 5; i++) out.push(...OpCodes.Unpack32LE(OpCodes.Xor32(W[i], Wout[i])));
+      for (let i = 0; i < 5; i++) {
+        const outWord = OpCodes.Xor32(words[i], whitenOut[i]);
+        out.push(...OpCodes.Unpack32LE(outWord));
+      }
       return out;
     }
 
@@ -666,25 +716,31 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const { RK, Win, Wout } = this._sched;
-      const W = new Array(5);
+      const sched = this._sched;
+      const roundWords = sched[0], whitenIn = sched[1], whitenOut = sched[2];
+      /** @type {uint32[]} */
+      const words = new Array(5);
       for (let i = 0; i < 5; i++)
-        W[i] = OpCodes.Xor32(Wout[i], OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]));
+        words[i] = OpCodes.Xor32(whitenOut[i], OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]));
 
-      W[2] = OpCodes.RotR32(W[2], GROUP_ROT[0]);
+      words[2] = OpCodes.RotR32(words[2], GROUP_ROT[0]);
       for (let r = 0; r <= 79; r++) {
         const dest = r % 5, rolSrc = (r+1)%5, opRot = (r+2)%5, opA = (r+3)%5, opB = (r+4)%5;
         const g = Math.floor(r/20);
-        let val = OpCodes.RotL32(W[rolSrc], ROUND_SHIFT[r]);
-        val = OpCodes.ToUint32(val + RK[ROUND_TABLE_INDEX[r]]);
-        val = OpCodes.ToUint32(val + fGroup(g, W[opA], W[opRot], W[opB]));
-        W[dest] = OpCodes.ToUint32(W[dest] - val);
-        W[dest] = OpCodes.ToUint32(W[dest] + GROUP_CONST[g]);
-        if (r !== 79) W[opA] = OpCodes.RotR32(W[opA], GROUP_ROT[Math.floor((r+1)/20)]);
+        let val = OpCodes.RotL32(words[rolSrc], ROUND_SHIFT[r]);
+        val = OpCodes.Add32(val, roundWords[ROUND_TABLE_INDEX[r]]);
+        val = OpCodes.Add32(val, fGroup(g, words[opA], words[opRot], words[opB]));
+        words[dest] = OpCodes.Sub32(words[dest], val);
+        words[dest] = OpCodes.Add32(words[dest], GROUP_CONST[g]);
+        if (r !== 79) words[opA] = OpCodes.RotR32(words[opA], GROUP_ROT[Math.floor((r+1)/20)]);
       }
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 5; i++) out.push(...OpCodes.Unpack32LE(OpCodes.ToUint32(W[i] - Win[i])));
+      for (let i = 0; i < 5; i++) {
+        const outWord = OpCodes.Sub32(words[i], whitenIn[i]);
+        out.push(...OpCodes.Unpack32LE(outWord));
+      }
       return out;
     }
   }
