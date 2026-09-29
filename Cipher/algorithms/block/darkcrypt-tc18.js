@@ -135,7 +135,7 @@
   // get 0 replaced by 1); the strictly-upper triangle is zero.
   /**
    * @param {uint8[]} L - Expansion buffer
-   * @param {int32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
+   * @param {uint32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
    * @returns {uint8[]} 8x8 matrix, row-major
    */
   function buildMatrixA(L, cursorRef) {
@@ -166,7 +166,7 @@
   // unmodified; the strictly-lower triangle (excluding row 0) is zero.
   /**
    * @param {uint8[]} L - Expansion buffer
-   * @param {int32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
+   * @param {uint32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
    * @returns {uint8[]} 8x8 matrix, row-major
    */
   function buildMatrixB(L, cursorRef) {
@@ -218,7 +218,7 @@
    */
   function keySchedule(keyBytes) {
     const L = buildL(keyBytes);
-    /** @type {int32[]} */
+    /** @type {uint32[]} */
     const cursor = [32];
     const A = buildMatrixA(L, cursor);
     const B = buildMatrixB(L, cursor);
