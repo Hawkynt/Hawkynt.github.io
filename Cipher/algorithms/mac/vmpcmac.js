@@ -153,22 +153,38 @@
  */
 
   class VMPCMacInstance extends IMacInstance {
+    /**
+     * Initialize a VMPC-MAC instance
+     * @param {VMPCMacAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._iv = null;
       this.inputBuffer = [];
 
       // VMPC-MAC state
+      /** @type {uint8[]} */
       this.P = new Array(256);  // S-box permutation (called P in VMPC spec)
+      /** @type {uint8} */
       this.n = 0;               // PRGA counter n
+      /** @type {uint8} */
       this.s = 0;               // PRGA counter s
+      /** @type {uint8} */
       this.g = 0;               // MAC accumulator index
+      /** @type {uint8} */
       this.x1 = 0;              // Mixing register 1
+      /** @type {uint8} */
       this.x2 = 0;              // Mixing register 2
+      /** @type {uint8} */
       this.x3 = 0;              // Mixing register 3
+      /** @type {uint8} */
       this.x4 = 0;              // Mixing register 4
+      /** @type {uint8[]} */
       this.T = new Array(32);   // Accumulator table (32 bytes)
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -192,7 +208,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 768) {
-        throw new Error(`Invalid VMPC-MAC key size: ${keyLength} bytes. Requires 1-768 bytes`);
+        throw new Error('Invalid VMPC-MAC key size: ' + keyLength + ' bytes. Requires 1-768 bytes');
       }
 
       this._key = [...keyBytes];
@@ -213,6 +229,11 @@
     }
 
     // Property setter for IV/nonce (required for VMPC-MAC)
+    /**
+     * Set the IV (initializes the state once the key is also set)
+     * @param {uint8[]} ivData - 1..768 IV bytes, or null to clear
+     * @throws {Error} If the IV is not a byte array of valid size
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -226,10 +247,10 @@
 
       const ivLength = ivData.length;
       if (ivLength < 1 || ivLength > 768) {
-        throw new Error(`Invalid VMPC-MAC IV size: ${ivLength} bytes. Requires 1-768 bytes`);
+        throw new Error('Invalid VMPC-MAC IV size: ' + ivLength + ' bytes. Requires 1-768 bytes');
       }
 
-      this._iv = [...ivData];
+      this._iv = ivData.slice();
 
       // Initialize if we also have key
       if (this._key) {
@@ -246,10 +267,18 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * Alias of iv
+     * @param {uint8[]} nonceData - IV bytes, or null to clear
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * Alias of iv
+     * @returns {uint8[]} Copy of the IV, or null
+     */
     get nonce() {
       return this.iv;
     }
@@ -312,6 +341,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Feed data and return the MAC
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 20-byte MAC
+     * @throws {Error} If key or IV not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -329,6 +364,10 @@
     }
 
     // Initialize VMPC-MAC with key and IV
+    /**
+     * VMPC key and IV schedule, then reset the MAC registers
+     * @returns {void}
+     */
     _initializeVMPCMac() {
       if (!this._key || !this._iv) return;
 
@@ -344,7 +383,7 @@
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + keyByte)&0xFF];
+        this.s = this.P[this._sum8(this._sum8(this.s, this.P[i]), keyByte)];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -358,7 +397,7 @@
         const ivByte = this._iv[m % this._iv.length];
 
         // s = P[(s + P[i] + iv[m mod ivLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + ivByte)&0xFF];
+        this.s = this.P[this._sum8(this._sum8(this.s, this.P[i]), ivByte)];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -382,64 +421,97 @@
       this.initialized = true;
     }
 
+    /**
+     * Byte addition: (a + b) mod 256
+     * @param {uint32} a - First addend (a byte or a small counter)
+     * @param {uint32} b - Second addend
+     * @returns {uint8} (a + b) mod 256
+     */
+    _sum8(a, b) {
+      return OpCodes.ToByte(OpCodes.Add32(a, b));
+    }
+
+    /**
+     * T index k places after g: (g + k) mod 32
+     * @param {int32} k - Offset 0..3
+     * @returns {uint8} Index into T
+     */
+    _slot(k) {
+      return OpCodes.And8(this._sum8(this.g, k), 0x1F);
+    }
+
+    /**
+     * Mix the four registers into T at g and advance g by 4
+     * @returns {void}
+     */
+    _accumulate() {
+      this.T[this._slot(0)] = OpCodes.Xor8(this.T[this._slot(0)], this.x1);
+      this.T[this._slot(1)] = OpCodes.Xor8(this.T[this._slot(1)], this.x2);
+      this.T[this._slot(2)] = OpCodes.Xor8(this.T[this._slot(2)], this.x3);
+      this.T[this._slot(3)] = OpCodes.Xor8(this.T[this._slot(3)], this.x4);
+      this.g = this._slot(4);
+    }
+
+    /**
+     * Swap P[n] and P[s], then n = (n + 1) mod 256
+     * @returns {void}
+     */
+    _swapAndStep() {
+      const temp = this.P[this.n];
+      this.P[this.n] = this.P[this.s];
+      this.P[this.s] = temp;
+      this.n = this._sum8(this.n, 1);
+    }
+
     // Update MAC with one message byte (BouncyCastle update() method)
+    /**
+     * Absorb one message byte
+     * @param {uint8} inputByte - Message byte
+     * @returns {void}
+     */
     _updateMac(inputByte) {
       // Update s: s = P[(s + P[n]) mod 256]
-      this.s = this.P[(this.s + this.P[this.n&0xFF])&0xFF];
+      this.s = this.P[this._sum8(this.s, this.P[this.n])];
 
       // Generate keystream byte: c = input XOR P[(P[P[s]] + 1) mod 256]
-      const keystreamByte = this.P[(this.P[this.P[this.s&0xFF]&0xFF] + 1)&0xFF];
-      const c = (inputByte^keystreamByte)&0xFF;
+      const keystreamByte = this.P[this._sum8(this.P[this.P[this.s]], 1)];
+      const c = OpCodes.Xor8(inputByte, keystreamByte);
 
       // Update mixing registers (dependencies: x4->x3, x3->x2, x2->x1, x1->s+c)
-      this.x4 = this.P[(this.x4 + this.x3)&0xFF];
-      this.x3 = this.P[(this.x3 + this.x2)&0xFF];
-      this.x2 = this.P[(this.x2 + this.x1)&0xFF];
-      this.x1 = this.P[(this.x1 + this.s + c)&0xFF];
+      this.x4 = this.P[this._sum8(this.x4, this.x3)];
+      this.x3 = this.P[this._sum8(this.x3, this.x2)];
+      this.x2 = this.P[this._sum8(this.x2, this.x1)];
+      this.x1 = this.P[this._sum8(this._sum8(this.x1, this.s), c)];
 
-      // Accumulate into T array (32 bytes, accessed via g&0x1F)
-      this.T[this.g&0x1F] = (this.T[this.g&0x1F]^this.x1)&0xFF;
-      this.T[(this.g + 1)&0x1F] = (this.T[(this.g + 1)&0x1F]^this.x2)&0xFF;
-      this.T[(this.g + 2)&0x1F] = (this.T[(this.g + 2)&0x1F]^this.x3)&0xFF;
-      this.T[(this.g + 3)&0x1F] = (this.T[(this.g + 3)&0x1F]^this.x4)&0xFF;
-      this.g = (this.g + 4)&0x1F;
+      // Accumulate into T array (32 bytes, accessed via g mod 32)
+      this._accumulate();
 
-      // Swap P[n] and P[s]
-      const temp = this.P[this.n&0xFF];
-      this.P[this.n&0xFF] = this.P[this.s&0xFF];
-      this.P[this.s&0xFF] = temp;
-
-      // Increment n
-      this.n = (this.n + 1)&0xFF;
+      // Swap P[n] and P[s], increment n
+      this._swapAndStep();
     }
 
     // Finalize MAC and generate 20-byte output (BouncyCastle doFinal() method)
+    /**
+     * Post-processing and output
+     * @returns {uint8[]} 20-byte MAC
+     */
     _finalizeMac() {
       // Post-Processing Phase: 24 rounds of additional mixing
       for (let r = 1; r < 25; r++) {
         // Update s
-        this.s = this.P[(this.s + this.P[this.n&0xFF])&0xFF];
+        this.s = this.P[this._sum8(this.s, this.P[this.n])];
 
         // Update mixing registers with round number
-        this.x4 = this.P[(this.x4 + this.x3 + r)&0xFF];
-        this.x3 = this.P[(this.x3 + this.x2 + r)&0xFF];
-        this.x2 = this.P[(this.x2 + this.x1 + r)&0xFF];
-        this.x1 = this.P[(this.x1 + this.s + r)&0xFF];
+        this.x4 = this.P[this._sum8(this._sum8(this.x4, this.x3), r)];
+        this.x3 = this.P[this._sum8(this._sum8(this.x3, this.x2), r)];
+        this.x2 = this.P[this._sum8(this._sum8(this.x2, this.x1), r)];
+        this.x1 = this.P[this._sum8(this._sum8(this.x1, this.s), r)];
 
         // Accumulate into T
-        this.T[this.g&0x1F] = (this.T[this.g&0x1F]^this.x1)&0xFF;
-        this.T[(this.g + 1)&0x1F] = (this.T[(this.g + 1)&0x1F]^this.x2)&0xFF;
-        this.T[(this.g + 2)&0x1F] = (this.T[(this.g + 2)&0x1F]^this.x3)&0xFF;
-        this.T[(this.g + 3)&0x1F] = (this.T[(this.g + 3)&0x1F]^this.x4)&0xFF;
-        this.g = (this.g + 4)&0x1F;
+        this._accumulate();
 
-        // Swap P[n] and P[s]
-        const temp = this.P[this.n&0xFF];
-        this.P[this.n&0xFF] = this.P[this.s&0xFF];
-        this.P[this.s&0xFF] = temp;
-
-        // Increment n
-        this.n = (this.n + 1)&0xFF;
+        // Swap P[n] and P[s], increment n
+        this._swapAndStep();
       }
 
       // Input T to the IV-phase of the VMPC KSA (768 rounds)
@@ -448,7 +520,7 @@
         const tByte = this.T[m&0x1F];
 
         // s = P[(s + P[i] + T[m mod 32]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + tByte)&0xFF];
+        this.s = this.P[this._sum8(this._sum8(this.s, this.P[i]), tByte)];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -457,18 +529,19 @@
       }
 
       // Generate 20-byte MAC from final P-box state
+      /** @type {uint8[]} */
       const M = new Array(20);
       for (let i = 0; i < 20; i++) {
         // Update s
-        this.s = this.P[(this.s + this.P[i&0xFF])&0xFF];
+        this.s = this.P[this._sum8(this.s, this.P[i])];
 
         // Generate MAC byte: M[i] = P[(P[P[s]] + 1) mod 256]
-        M[i] = this.P[(this.P[this.P[this.s&0xFF]&0xFF] + 1)&0xFF];
+        M[i] = this.P[this._sum8(this.P[this.P[this.s]], 1)];
 
         // Swap P[i] and P[s]
-        const temp = this.P[i&0xFF];
-        this.P[i&0xFF] = this.P[this.s&0xFF];
-        this.P[this.s&0xFF] = temp;
+        const temp = this.P[i];
+        this.P[i] = this.P[this.s];
+        this.P[this.s] = temp;
       }
 
       return M;
