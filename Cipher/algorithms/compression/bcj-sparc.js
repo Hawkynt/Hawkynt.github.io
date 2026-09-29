@@ -59,6 +59,11 @@
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
   // Sign-extends the low `bits` bits of an unsigned value to a signed 32-bit int.
+  /**
+   * @param {uint32} value - Unsigned value
+   * @param {int32} bits - Width of the signed field
+   * @returns {int32} Sign-extended value
+   */
   function signExtend32(value, bits) {
     const shift = 32 - bits;
     return OpCodes.Shr32Signed(OpCodes.Shl32(value, shift), shift);
@@ -115,28 +120,51 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjSparcInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjSparcInstance(this, isInverse);
     }
   }
 
   class BcjSparcInstance extends IAlgorithmInstance {
+    /**
+     * @param {BcjSparc} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const output = this._transform(this.inputBuffer, !this.isInverse);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
     // Applies the SPARC BCJ filter. Words are big-endian and 4-byte aligned.
     // The format bits (top 2 bits, fixed to 01 for CALL) are preserved by the
     // rewrite, so encode and decode agree on which words are CALL instructions.
+    /**
+     * @param {uint8[]} bytes - Input bytes
+     * @param {boolean} encode - True to encode, false to decode
+     * @returns {uint8[]} Transformed copy
+     */
     _transform(bytes, encode) {
       const data = bytes.slice();
       const n = data.length;
