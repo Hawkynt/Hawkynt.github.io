@@ -29,7 +29,7 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Not designed for cryptographic use - vulnerable to deliberate collision attacks | — | Use only for non-cryptographic applications like hash tables and checksums |
+| Cryptographic Weakness | Not designed for cryptographic use - vulnerable to deliberate collision attacks | Use only for non-cryptographic applications like hash tables and checksums |
 
 ## Documentation
 
