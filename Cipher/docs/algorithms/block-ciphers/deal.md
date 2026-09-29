@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Richard Outerbridge (design by Lars Knudsen) |
 | Year | 1998 |
-| Origin | CA |
+| Origin | 🇨🇦 Canada |
 | Source | [`algorithms/block/deal.js`](../../../algorithms/block/deal.js) |
 
 ## Parameters
