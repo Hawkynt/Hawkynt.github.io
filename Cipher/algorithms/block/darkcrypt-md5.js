@@ -67,23 +67,42 @@
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
   ];
 
-  function stepInfo(i) {
-    let f, g;
-    if (i < 16) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D))); g = i; }
-    else if (i < 32) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C))); g = (5 * i + 1) % 16; }
-    else if (i < 48) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D)); g = (3 * i + 5) % 16; }
-    else { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D)))); g = (7 * i) % 16; }
-    return { f, g };
+  /**
+   * Round function of step i (F, G, H or I)
+   * @param {int32} i - Step 0..63
+   * @param {uint32} B - Word B
+   * @param {uint32} C - Word C
+   * @param {uint32} D - Word D
+   * @returns {uint32} Function value
+   */
+  function stepFunction(i, B, C, D) {
+    if (i < 16) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D)));
+    if (i < 32) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C)));
+    if (i < 48) return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D));
+    return OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D))));
   }
 
   /**
-   * @param {uint8[]} block - Input block
+   * Message word index of step i
+   * @param {int32} i - Step 0..63
+   * @returns {int32} Index 0..15
+   */
+  function stepWordIndex(i) {
+    if (i < 16) return i;
+    if (i < 32) return (5 * i + 1) % 16;
+    if (i < 48) return (3 * i + 5) % 16;
+    return (7 * i) % 16;
+  }
+
+  /**
+   * @param {uint32[]} block - State words A, B, C, D
+   * @param {uint32[]} M - 16 key words
+   * @returns {uint32[]} Output state words
    */
   function md5Encrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 0; i < 64; i++) {
-      const { f, g } = stepInfo(i);
-      const tmp = OpCodes.ToUint32(f(B, C, D) + A + T[i] + M[g]);
+      const tmp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(stepFunction(i, B, C, D), A), T[i]), M[stepWordIndex(i)]);
       A = D; D = C; C = B;
       B = OpCodes.ToUint32(B + OpCodes.RotL32(tmp, S[i]));
     }
@@ -94,16 +113,17 @@
   // (A,B,C,D) -> (D, B+rotl(f+A+T+M,S), B, C); given the post-state we recover B_old = C_new,
   // C_old = D_new, D_old = A_new, and A_old by undoing the rotate/add on B_new.
   /**
-   * @param {uint8[]} block - Input block
+   * @param {uint32[]} block - State words A, B, C, D
+   * @param {uint32[]} M - 16 key words
+   * @returns {uint32[]} Input state words
    */
   function md5Decrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 63; i >= 0; i--) {
-      const { f, g } = stepInfo(i);
       const bOld = C, cOld = D, dOld = A;
       const rotated = OpCodes.ToUint32(B - bOld);
       const tmp = OpCodes.RotR32(rotated, S[i]);
-      const aOld = OpCodes.ToUint32(tmp - f(bOld, cOld, dOld) - T[i] - M[g]);
+      const aOld = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(tmp, stepFunction(i, bOld, cOld, dOld)), T[i]), M[stepWordIndex(i)]);
       A = aOld; B = bOld; C = cOld; D = dOld;
     }
     return [A, B, C, D];
@@ -169,6 +189,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._M = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -219,6 +240,7 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
      */
     _blockToWords(block) {
       return [
@@ -229,6 +251,10 @@
       ];
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} 16 bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),

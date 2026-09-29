@@ -64,39 +64,40 @@
       this.description = "Corrected Block TEA by Needham and Wheeler with variable block sizes and enhanced security over TEA/XTEA. Supports blocks from 8 bytes to 1KB with 128-bit keys and improved diffusion.";
       this.inventor = "Roger Needham, David Wheeler";
       this.year = 1998;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.GB;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.GB;
 
       // Block and key specifications
       this.blockSize = 8; // Minimum block size (variable)
+      /** @type {KeySize[]} */
       this.keySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
+        new KeySize(16, 16, 1) // Fixed 128-bit key
       ];
 
       // AlgorithmFramework compatibility
-      this.SupportedKeySizes = [new AlgorithmFramework.KeySize(16, 16, 1)]; // Fixed 128-bit key
-      this.SupportedBlockSizes = [new AlgorithmFramework.KeySize(8, 1024, 4)]; // Variable block size (8 bytes to 1KB, 4-byte steps)
+      this.SupportedKeySizes = [new KeySize(16, 16, 1)]; // Fixed 128-bit key
+      this.SupportedBlockSizes = [new KeySize(8, 1024, 4)]; // Variable block size (8 bytes to 1KB, 4-byte steps)
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("Block TEA corrections and improvements", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
-        new AlgorithmFramework.LinkItem("Variable block cipher design", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"),
-        new AlgorithmFramework.LinkItem("Cambridge Cryptography Research", "https://www.cl.cam.ac.uk/research/security/")
+        new LinkItem("Block TEA corrections and improvements", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
+        new LinkItem("Variable block cipher design", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"),
+        new LinkItem("Cambridge Cryptography Research", "https://www.cl.cam.ac.uk/research/security/")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Crypto++ XXTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/tea.cpp"),
-        new AlgorithmFramework.LinkItem("Node.js XXTEA Implementation", "https://www.npmjs.com/package/xxtea"),
-        new AlgorithmFramework.LinkItem("Python XXTEA Implementation", "https://pypi.org/project/xxtea/")
+        new LinkItem("Crypto++ XXTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/tea.cpp"),
+        new LinkItem("Node.js XXTEA Implementation", "https://www.npmjs.com/package/xxtea"),
+        new LinkItem("Python XXTEA Implementation", "https://pypi.org/project/xxtea/")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Limited standardization", "Not widely standardized or analyzed compared to modern ciphers", "Use standardized ciphers like AES for production security applications", "https://www.schneier.com/academic/"),
-        new AlgorithmFramework.Vulnerability("Variable block complexity", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications", "https://eprint.iacr.org/")
+        new Vulnerability("Limited standardization", "Not widely standardized or analyzed compared to modern ciphers", "Use standardized ciphers like AES for production security applications", "https://www.schneier.com/academic/"),
+        new Vulnerability("Variable block complexity", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications", "https://eprint.iacr.org/")
       ];
 
       // Test vectors from verified Crypt-XXTEA implementation
@@ -160,6 +161,7 @@
       this.KeySize = 0;
 
       // XXTEA constants
+      /** @type {uint32} */
       this.DELTA = 0x9E3779B9; // Magic constant: OpCodes.Xor32(2, 32) / golden ratio
     }
 
@@ -233,11 +235,16 @@
     }
 
     // Encrypt variable-length data
+    /**
+     * @param {uint8[]} data - Plaintext bytes (multiple of 4, at least 8)
+     * @returns {uint8[]} Ciphertext bytes
+     */
     _encryptData(data) {
       // Convert key to 32-bit words (little-endian for XXTEA)
       const keyWords = this._getKeyWords();
 
       // Convert to 32-bit words using OpCodes (little-endian for XXTEA)
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
         words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
@@ -247,6 +254,7 @@
       const encryptedWords = this._encryptWords(words, keyWords);
 
       // Convert back to bytes using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < encryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(encryptedWords[i]);
@@ -257,11 +265,16 @@
     }
 
     // Decrypt variable-length data
+    /**
+     * @param {uint8[]} data - Ciphertext bytes (multiple of 4, at least 8)
+     * @returns {uint8[]} Plaintext bytes
+     */
     _decryptData(data) {
       // Convert key to 32-bit words (little-endian for XXTEA)
       const keyWords = this._getKeyWords();
 
       // Convert to 32-bit words using OpCodes (little-endian for XXTEA)
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
         words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
@@ -271,6 +284,7 @@
       const decryptedWords = this._decryptWords(words, keyWords);
 
       // Convert back to bytes using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < decryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(decryptedWords[i]);
@@ -281,6 +295,9 @@
     }
 
     // Get key as 32-bit words
+    /**
+     * @returns {uint32[]} The key as four little-endian words
+     */
     _getKeyWords() {
       return [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
@@ -291,6 +308,12 @@
     }
 
     // Internal XXTEA encryption algorithm
+    /**
+     * XXTEA encryption of a word array
+     * @param {uint32[]} v - Data words
+     * @param {uint32[]} k - Four key words
+     * @returns {uint32[]} Result words
+     */
     _encryptWords(v, k) {
       const n = v.length;
       if (n < 2) return v; // Need at least 2 words
@@ -300,17 +323,18 @@
 
       // Calculate number of rounds: 6 + 52/n (minimum 6 rounds)
       const rounds = 6 + Math.floor(52 / n);
+      /** @type {uint32} */
       let sum = 0;
       let z = words[n-1];
 
       for (let round = 0; round < rounds; round++) {
-        sum = OpCodes.Shr32((sum + this.DELTA), 0);
+        sum = OpCodes.Add32(sum, this.DELTA);
         const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
           const mx = this._calculateMX(z, y, sum, k[OpCodes.Xor32(OpCodes.And32(p, 3), e)], p, e);
-          words[p] = OpCodes.Shr32((words[p] + mx), 0);
+          words[p] = OpCodes.Add32(words[p], mx);
           z = words[p];
         }
       }
@@ -319,6 +343,12 @@
     }
 
     // Internal XXTEA decryption algorithm
+    /**
+     * XXTEA decryption of a word array
+     * @param {uint32[]} v - Data words
+     * @param {uint32[]} k - Four key words
+     * @returns {uint32[]} Result words
+     */
     _decryptWords(v, k) {
       const n = v.length;
       if (n < 2) return v; // Need at least 2 words
@@ -328,7 +358,7 @@
 
       // Calculate number of rounds: 6 + 52/n (minimum 6 rounds)
       const rounds = 6 + Math.floor(52 / n);
-      let sum = OpCodes.Shr32((rounds * this.DELTA), 0);
+      let sum = OpCodes.Mul32(rounds, this.DELTA);
       let y = words[0];
 
       for (let round = 0; round < rounds; round++) {
@@ -337,25 +367,35 @@
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
           const mx = this._calculateMX(z, y, sum, k[OpCodes.Xor32(OpCodes.And32(p, 3), e)], p, e);
-          words[p] = OpCodes.Shr32((words[p] - mx), 0);
+          words[p] = OpCodes.Sub32(words[p], mx);
           y = words[p];
         }
 
-        sum = OpCodes.Shr32((sum - this.DELTA), 0);
+        sum = OpCodes.Sub32(sum, this.DELTA);
       }
 
       return words;
     }
 
     // Calculate the MX value for XXTEA round function
+    /**
+     * XXTEA MX mixing value
+     * @param {uint32} z - Previous word
+     * @param {uint32} y - Next word
+     * @param {uint32} sum - Round sum
+     * @param {uint32} key - Selected key word
+     * @param {int32} p - Word index (unused)
+     * @param {uint32} e - Sum-derived key selector (unused)
+     * @returns {uint32} MX value
+     */
     _calculateMX(z, y, sum, key, p, e) {
       // Original XXTEA MX calculation with improved bit operations
       const part1 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
       const part2 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
-      const part3 = OpCodes.Shr32(OpCodes.XorN(sum, y), 0);
-      const part4 = OpCodes.Shr32(OpCodes.XorN(key, z), 0);
+      const part3 = OpCodes.Shr32(OpCodes.Xor32(sum, y), 0);
+      const part4 = OpCodes.Shr32(OpCodes.Xor32(key, z), 0);
 
-      return OpCodes.Shr32(OpCodes.Xor32((part1 + part2), (part3 + part4)), 0);
+      return OpCodes.Xor32(OpCodes.Add32(part1, part2), OpCodes.Add32(part3, part4));
     }
   }
 
