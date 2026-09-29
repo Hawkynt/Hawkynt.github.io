@@ -14,15 +14,24 @@
  * - CSHARP: regressions of systematic C# transpilation faults; compiles and
  *   runs the C# runtime stubs when the .NET SDK is installed
  *   (CSharpTranspileRegressions.js)
+ * - VALIDATION: transpiles every algorithm to every installed language,
+ *   compiles it and runs its vectors where the language is interpreted
+ *   (TranspilerValidation.js). It takes over ten minutes unscoped and depends
+ *   on which toolchains are installed, so it runs only when named:
+ *   --only=validation, or --only=...,validation
  *
  * Options:
  *   --only=<a,b>          run only these categories (e.g. --only=codegen,csharp)
- *   --skip=<a,b>          run everything but these
+ *   --skip=<a,b>          run the default categories but these
  *   --verbose, -v         details
- *   --language=<name>     CODEGEN: one language (e.g. python, csharp)
- *   --quick               CODEGEN: smoke cases only
+ *   --language=<name>     CODEGEN, VALIDATION: one language (e.g. python, csharp)
+ *   --quick               CODEGEN: smoke cases only; VALIDATION: 3 algorithms per category
  *   --group=<text>        INFERENCE: only the test groups whose name contains it (e.g. literal)
  *   --no-dotnet           CSHARP: do not compile and run the C# stubs
+ *   --category=<dir>      VALIDATION: one algorithm category directory
+ *   --algorithm=<text>    VALIDATION: algorithm files whose name contains it
+ *   --compile-only        VALIDATION: compile, do not execute
+ *   --report              VALIDATION: write tests/transpiler-validation-output/validation-report.json
  *
  * Exits non-zero when any check of a selected category fails.
  */
@@ -38,9 +47,11 @@ const CATEGORIES = [
   { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' },
   { key: 'policy', label: 'POLICY', title: 'Type resolution order and untyped-site count', module: './TypePolicyTests' },
   { key: 'jsdoc', label: 'JSDOC', title: 'OpCodes and AlgorithmFramework JSDoc completeness', module: './JSDocTierAudit' },
-  { key: 'csharp', label: 'CSHARP', title: 'C# transpilation regressions', module: './CSharpTranspileRegressions' }
+  { key: 'csharp', label: 'CSHARP', title: 'C# transpilation regressions', module: './CSharpTranspileRegressions' },
+  { key: 'validation', label: 'VALIDATION', title: 'Cross-language transpile, compile and run', module: './TranspilerValidation' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
+const DEFAULT_KEYS = CATEGORY_KEYS.filter(k => k !== 'validation');
 
 /**
  * Read the command line.
@@ -49,18 +60,22 @@ const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
  */
 function parseOptions(args) {
   Runner.rejectUnknownOptions(args,
-    ['--verbose', '-v', '--quick', '--no-dotnet'],
-    ['only', 'skip', 'language', 'group']);
+    ['--verbose', '-v', '--quick', '--no-dotnet', '--compile-only', '--report'],
+    ['only', 'skip', 'language', 'group', 'category', 'algorithm']);
   const positional = args.find(arg => !arg.startsWith('-'));
   if (positional) throw new Error(`unexpected argument ${positional}`);
-  const { selected } = Runner.selectCategories(args, CATEGORY_KEYS);
+  const { selected } = Runner.selectCategories(args, CATEGORY_KEYS, DEFAULT_KEYS);
   return {
     selected,
     verbose: args.includes('--verbose') || args.includes('-v'),
     quick: args.includes('--quick'),
     dotnet: !args.includes('--no-dotnet'),
+    compileOnly: args.includes('--compile-only'),
+    report: args.includes('--report'),
     language: Runner.optionValue(args, 'language'),
-    group: Runner.optionValue(args, 'group')
+    group: Runner.optionValue(args, 'group'),
+    category: Runner.optionValue(args, 'category'),
+    algorithm: Runner.optionValue(args, 'algorithm')
   };
 }
 
