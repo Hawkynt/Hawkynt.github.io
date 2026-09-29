@@ -13,6 +13,18 @@
  * - ISSUES: Tests for unresolved TODO, FIXME, BUG, ISSUE comments
  * - FUNCTIONALITY: Tests algorithm functionality using test vectors
  * - OPTIMIZATION: Tests OpCodes usage for performance optimization
+ * - TYPES: Counts value sites whose type no policy tier supplies (OpCodes JSDoc,
+ *   framework interfaces, local JSDoc - see TypeCoverage.js) and holds each file
+ *   to its budget in type-budgets.json. The budget is a ratchet: a file fails
+ *   when its count rises above it; a budget of 0 means the file is policy-clean.
+ *
+ * Options:
+ *   <file.js>                 test one file
+ *   --category=<dir>          test one category (e.g. --category=hash)
+ *   --algorithm=<name>        test the file(s) with that base name (e.g. --algorithm=murmurhash3)
+ *   --verbose                 details, including every untyped value site
+ *   --update-type-budgets     lower each tested file's TYPES budget to its current count
+ *   --allow-budget-increase   with --update-type-budgets: also raise budgets (and add new files)
  *
  * (c)2006-2025 Hawkynt
  */
@@ -20,6 +32,24 @@
 const fs = require('fs');
 const path = require('path');
 const { TestFile, TestAlgorithm, TestVector } = require('./TestEngine');
+const TypeCoverage = require('./TypeCoverage');
+const JSDocTierAudit = require('./JSDocTierAudit');
+
+const CIPHER_DIR = path.join(__dirname, '..');
+const TYPE_BUDGETS_FILE = path.join(__dirname, 'type-budgets.json');
+
+/**
+ * Budgets of untyped value sites per algorithm file (path relative to Cipher/).
+ * -1 marks a file the transpiler could not parse when the budget was set.
+ * @returns {Object} path -> budget
+ */
+function loadTypeBudgets() {
+  try {
+    return JSON.parse(fs.readFileSync(TYPE_BUDGETS_FILE, 'utf8'));
+  } catch (e) {
+    return {};
+  }
+}
 
 class TestSuite {
   constructor() {
@@ -37,8 +67,13 @@ class TestSuite {
       metadata: { passed: 0, failed: 0, errors: [] },
       issues: { passed: 0, failed: 0, errors: [] },
       functionality: { passed: 0, failed: 0, errors: [] },
-      optimization: { passed: 0, failed: 0, errors: [] }
+      optimization: { passed: 0, failed: 0, errors: [] },
+      types: { passed: 0, failed: 0, errors: [] }
     };
+    this.typeBudgets = loadTypeBudgets();
+    this.typeCounts = {};                                   // path -> count (null: unparsed)
+    this.typeTotals = { sites: 0, opcodes: 0, framework: 0, local: 0, unparsed: 0 };
+    this.typeTimeMs = 0;
   }
 
   // Main entry point - maintains exact same interface
@@ -55,6 +90,12 @@ class TestSuite {
       const args = process.argv.slice(2);
       this.verbose = args.includes('--verbose') || args.includes('-v');
 
+      const option = name => (args.find(arg => arg.startsWith(`--${name}=`)) || '').split('=')[1] || null;
+      this.categoryFilter = option('category');
+      this.algorithmFilter = option('algorithm');
+      this.updateTypeBudgets = args.includes('--update-type-budgets');
+      this.allowBudgetIncrease = args.includes('--allow-budget-increase');
+
       // Filter out flags to get the filename
       const singleFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
 
@@ -67,6 +108,9 @@ class TestSuite {
 
       // Generate final report
       this.generateReport();
+
+      if (this.updateTypeBudgets)
+        this.writeTypeBudgets();
 
     } catch (error) {
       console.error('Fatal error during test execution:', error.message);
@@ -127,8 +171,11 @@ class TestSuite {
   async discoverAlgorithms() {
     const algorithmsDir = path.join(__dirname, '..', 'algorithms');
     const categories = fs.readdirSync(algorithmsDir).filter(item =>
-      fs.statSync(path.join(algorithmsDir, item)).isDirectory()
+      fs.statSync(path.join(algorithmsDir, item)).isDirectory() &&
+      (!this.categoryFilter || item === this.categoryFilter)
     );
+    if (categories.length === 0)
+      throw new Error(`No algorithm category '${this.categoryFilter}'`);
 
     console.log(`Found ${categories.length} algorithm categories:`);
     categories.forEach(cat => console.log(`  - ${cat}`));
@@ -143,8 +190,10 @@ class TestSuite {
   async testCategory(category) {
     const categoryPath = path.join(__dirname, '..', 'algorithms', category);
     const files = fs.readdirSync(categoryPath).filter(file =>
-      file.endsWith('.js') && !file.endsWith('.data.js')
+      file.endsWith('.js') && !file.endsWith('.data.js') &&
+      (!this.algorithmFilter || path.basename(file, '.js') === this.algorithmFilter)
     );
+    if (files.length === 0) return;
 
     console.log(`Testing ${category} algorithms (${files.length} files):`);
 
@@ -202,6 +251,8 @@ class TestSuite {
     const endTime = process.hrtime.bigint();
     const elapsedMs = Number(endTime - startTime) / 1_000_000;
 
+    result.types = this.testTypes(filePath);
+
     // Convert to old format for compatibility
     const algorithmData = {
       name: algorithmName,
@@ -212,7 +263,8 @@ class TestSuite {
         metadata: result.metadata.passed,
         issues: result.issues.passed,
         functionality: result.functionality.passed,
-        optimization: result.optimization.passed
+        optimization: result.optimization.passed,
+        types: result.types.passed
       },
       details: {
         registeredNames: result.interface.algorithms,
@@ -262,12 +314,84 @@ class TestSuite {
     const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
     const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
     const timingInfo = timedOut ? ` (TIMEOUT after ${elapsedMs.toFixed(2)}ms)` : ` (${elapsedMs.toFixed(2)}ms)`;
-    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}${roundTripInfo}${timingInfo}`);
+    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'} Types:${result.types.summary}${registeredInfo}${roundTripInfo}${timingInfo}`);
 
     // Show verbose output if requested (matches original format)
     if (this.verbose && algorithmData.details.testResults) {
       this.showVerboseTestResults(algorithmData);
     }
+    if (this.verbose && result.types.sites.length > 0) {
+      console.log(`    Untyped value sites in ${result.types.file}:`);
+      for (const site of result.types.sites)
+        console.log(`      ${result.types.file}:${site.line} [${site.tier}] ${site.expression} - ${site.reason}`);
+    }
+  }
+
+  /**
+   * TYPES: count the file's untyped value sites and hold it to its budget.
+   * @param {string} filePath - Algorithm file
+   * @returns {Object} { passed, error, summary, sites, file }
+   */
+  testTypes(filePath) {
+    const file = path.relative(CIPHER_DIR, filePath).split(path.sep).join('/');
+    const start = process.hrtime.bigint();
+    const coverage = TypeCoverage.analyzeFile(filePath);
+    this.typeTimeMs += Number(process.hrtime.bigint() - start) / 1_000_000;
+
+    const hasBudget = Object.prototype.hasOwnProperty.call(this.typeBudgets, file);
+    const budget = hasBudget ? this.typeBudgets[file] : 0;
+    this.typeCounts[file] = coverage.count;
+
+    if (coverage.parseError) {
+      ++this.typeTotals.unparsed;
+      // -1: the transpiler could not parse this file when its budget was set either.
+      const passed = budget === -1;
+      return {
+        passed, file, sites: [], summary: 'unparsed',
+        error: passed ? null : `${file}: the transpiler cannot parse it (${coverage.parseError})`
+      };
+    }
+
+    const tiers = TypeCoverage.byTier(coverage.sites);
+    this.typeTotals.sites += coverage.count;
+    for (const tier of Object.keys(tiers)) this.typeTotals[tier] = (this.typeTotals[tier] || 0) + tiers[tier];
+    const passed = budget === -1 || coverage.count <= budget;
+    return {
+      passed, file, sites: coverage.sites,
+      summary: `${coverage.count}/${budget === -1 ? '-' : budget}`,
+      error: passed ? null : `${file}: ${coverage.count} untyped value sites, budget ${budget}` +
+        (hasBudget ? '' : ' (new file: add JSDoc, or record a budget with --update-type-budgets --allow-budget-increase)')
+    };
+  }
+
+  /**
+   * Rewrite type-budgets.json from this run's counts: only ever lower a budget,
+   * unless --allow-budget-increase is given too. Files not tested keep theirs.
+   */
+  writeTypeBudgets() {
+    const budgets = { ...this.typeBudgets };
+    let lowered = 0, raised = 0;
+    for (const [file, count] of Object.entries(this.typeCounts)) {
+      const next = count === null ? -1 : count;        // -1: the transpiler cannot parse the file
+      const has = Object.prototype.hasOwnProperty.call(budgets, file);
+      const current = has ? budgets[file] : null;
+      if (has && current === next) continue;
+      // Stricter: a lower count, or a real count where the file was unparsable.
+      const stricter = has && next !== -1 && (current === -1 || next < current);
+      if (stricter) {
+        budgets[file] = next;
+        ++lowered;
+      } else if (this.allowBudgetIncrease) {
+        budgets[file] = next;
+        ++raised;
+      }
+    }
+    const sorted = {};
+    for (const file of Object.keys(budgets).sort()) sorted[file] = budgets[file];
+    fs.writeFileSync(TYPE_BUDGETS_FILE, JSON.stringify(sorted, null, 1).replace(/^ /gm, '  ') + '\n');
+    console.log(`\nType budgets: ${lowered} lowered, ${raised} raised or added -> ${path.relative(CIPHER_DIR, TYPE_BUDGETS_FILE)}`);
+    if (!this.allowBudgetIncrease)
+      console.log('(budgets only go down; pass --allow-budget-increase as well to raise or add one)');
   }
 
   // Show detailed test results in verbose mode
@@ -324,7 +448,7 @@ class TestSuite {
 
   // Update accumulated test results
   updateResults(result) {
-    const testTypes = ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'];
+    const testTypes = ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization', 'types'];
 
     testTypes.forEach(type => {
       if (result[type].passed) {
@@ -353,7 +477,7 @@ class TestSuite {
       : 0;
 
     // Show errors if any (matches original format)
-    ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'].forEach(testType => {
+    ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization', 'types'].forEach(testType => {
       if (this.results[testType].errors.length > 0) {
         console.log(`\n=== ${testType.toUpperCase()} ERRORS ===`);
         this.results[testType].errors.forEach(error => {
@@ -378,6 +502,20 @@ class TestSuite {
     console.log(`⚠️ ISSUES:        ${this.results.issues.passed}/${this.results.issues.passed + this.results.issues.failed} passed`);
     console.log(`⚡ FUNCTIONALITY: ${this.results.functionality.passed}/${this.results.functionality.passed + this.results.functionality.failed} passed`);
     console.log(`🚀 OPTIMIZATION:  ${this.results.optimization.passed}/${this.results.optimization.passed + this.results.optimization.failed} passed`);
+    const t = this.typeTotals;
+    console.log(`🔠 TYPES:         ${this.results.types.passed}/${this.results.types.passed + this.results.types.failed} passed` +
+      ` (${t.sites} untyped value sites: ${t.opcodes} OpCodes JSDoc, ${t.framework} framework, ${t.local} local source` +
+      `${t.unparsed ? `; ${t.unparsed} file(s) not parsed` : ''}; +${(this.typeTimeMs / 1000).toFixed(1)}s)`);
+
+    // Tiers 1 and 2 are libraries every file relies on: each of their members
+    // must be fully typed by JSDoc, or no algorithm can be.
+    this.tierAuditGaps = 0;
+    for (const [label, audit] of [['OpCodes', JSDocTierAudit.auditOpCodes()], ['AlgorithmFramework', JSDocTierAudit.auditFramework()]]) {
+      const gaps = audit.members.filter(m => m.gaps.length > 0);
+      this.tierAuditGaps += gaps.length;
+      console.log(`📚 ${label} JSDoc: ${audit.typed}/${audit.total} members fully typed`);
+      for (const m of gaps) console.log(`  ✗ ${label}.${m.name}: ${m.gaps.join('; ')}`);
+    }
     console.log('');
 
     console.log('=== OVERALL SCORE ===');
@@ -415,7 +553,7 @@ class TestSuite {
     // Anything above zero has to fail the process, or the suite cannot gate
     // anything: it exited 0 whatever happened, so a broken algorithm - or a file
     // that throws while loading - passed CI unnoticed.
-    this.failedTestCount = failedTests + this.invertibilityFailures.size;
+    this.failedTestCount = failedTests + this.invertibilityFailures.size + this.tierAuditGaps;
   }
 }
 

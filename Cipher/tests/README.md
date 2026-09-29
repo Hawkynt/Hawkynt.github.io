@@ -34,6 +34,13 @@ node tests/TestSuite.js rijndael.js
 
 # Verbose output
 node tests/TestSuite.js --verbose
+
+# One category, or one algorithm by file name
+node tests/TestSuite.js --category=hash
+node tests/TestSuite.js --algorithm=murmurhash3
+
+# Lower the TYPES budgets of the tested files to their current counts
+node tests/TestSuite.js --update-type-budgets
 ```
 
 ### 2. UI Module Usage
@@ -199,7 +206,7 @@ for (let i = 0; i < algorithm.tests.length; i++) {
 
 ## Test Categories
 
-Both interfaces test these 6 categories:
+Both interfaces test the first 6 categories; the CLI suite adds the 7th:
 
 1. **🔧 Compilation** - JavaScript syntax validation
 2. **🔌 Interface** - AlgorithmFramework compatibility
@@ -207,6 +214,27 @@ Both interfaces test these 6 categories:
 4. **⚠️ Issues** - TODO/FIXME comment detection
 5. **⚡ Functionality** - Test vector validation & round-trips
 6. **🚀 Optimization** - OpCodes usage verification
+7. **🔠 Types** - Untyped value sites against the file's budget (see below)
+
+### Types: the type resolution policy
+
+The transpiler types every value from, in this order: **1.** OpCodes JSDoc (every
+OpCodes argument and result), **2.** the AlgorithmFramework interfaces (`Feed`,
+`Result`, `BlockSize`, `OutputSize`, ...), **3.** the algorithm file's own JSDoc
+(`@type` on constants, tables and `this.field` assignments, `@param`/`@returns` on
+helpers and methods). Anything else is a guess: a table typed by its literal
+magnitudes, `data || []`, raw `a + b` on fixed-width values, `OpCodes.XorN` (BigInt)
+applied to numbers, an unannotated parameter.
+
+`TypeCoverage.js` parses a file into the same typed IL AST the language emitters use
+and counts those sites (value positions only; declaration names, keys, callees,
+conditions and test vectors are not values), attributing each to the tier whose gap it
+is. `type-budgets.json` holds each file's budget: TYPES fails when a file's count
+rises above it, a budget of 0 means the file is policy-clean, and
+`--update-type-budgets` only ever lowers budgets (`--allow-budget-increase` must be
+given as well to raise one or add a file). `--verbose` lists every site with file, line,
+expression, tier and reason. The run also checks that every OpCodes and framework
+member is fully typed by JSDoc (`JSDocTierAudit.js`).
 
 ## Advanced Usage
 
@@ -266,6 +294,11 @@ const result = await testAPI.testAlgorithm('./algorithms/block/rijndael.js');
 - **TranspilerValidationSuite.js** - Cross-language transpiler validation
 - **CodeGenTestSuite.js** - Comprehensive transpiler AST coverage tests
 - **TypeInferenceTestSuite.js** - Type inference of the shared transpiler AST
+- **TypeCoverage.js** - Untyped value sites of one algorithm file (the TYPES category)
+- **type-budgets.json** - Per-file TYPES budgets (a ratchet: lower them as files get typed)
+- **JSDocTierAudit.js** - Completeness of the OpCodes (tier 1) and framework (tier 2) JSDoc
+- **TypePolicyTests.js** - Given/when/then tests of the tier order and the untyped-site count
+- **OpCodesHelperTests.js** - Given/when/then tests of OpCodes helpers (ModN, ModInverseN)
 - **CSharpTranspileRegressionSuite.js** - Given/when/then regressions for systematic C# transpilation faults; also compiles and runs the C# runtime stubs when the .NET SDK is present (`--no-dotnet` skips that)
 - **README.md** - This documentation
 

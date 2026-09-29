@@ -87,13 +87,17 @@
       }
 
       // Parse @param tags
-      const paramRegex = /@param\s+\{([^}]+)\}\s+(\w+)(?:\s+-\s+(.*))?/g;
+      // Optional parameters are written `[name]` or `[name=default]`; dotted
+      // names (`options.blockSize`) describe a property of an earlier
+      // parameter, not a parameter of their own, and are skipped.
+      const paramRegex = /@param\s+\{([^}]+)\}\s+\[?([\w$]+)((?:\.[\w$]+)*)(?:=[^\]\n]*)?\]?(?:\s+-\s+(.*))?/g;
       let paramMatch;
       while ((paramMatch = paramRegex.exec(cleaned)) !== null) {
+        if (paramMatch[3]) continue;
         result.params.push({
           type: this.parseType(paramMatch[1]),
           name: paramMatch[2],
-          description: paramMatch[3] || ''
+          description: paramMatch[4] || ''
         });
       }
 
@@ -243,6 +247,55 @@
     }
   }
 
+  /** JSDoc spellings that name an IL type under another word. */
+  const JSDOC_TYPE_ALIASES = {
+    'byte': 'uint8', 'word': 'uint16', 'dword': 'uint32', 'qword': 'uint64',
+    'sbyte': 'int8', 'short': 'int16', 'int': 'int32', 'long': 'int64',
+    'bool': 'boolean', 'Boolean': 'boolean', 'String': 'string',
+    'float': 'float32', 'double': 'float64'
+  };
+
+  /**
+   * Map a JSDoc type - a JSDocParser type object or a raw type string - to the
+   * IL type vocabulary ('uint8', 'uint32[]', 'string', a class name, ...).
+   * A nullable union (`uint8[]|null`) maps to its non-null member; any other
+   * union, generic or tuple has no single IL name and maps to null. `number`
+   * is kept as 'number': it states no width or signedness, and the type
+   * coverage walk counts it as untyped.
+   * @param {Object|string} t - JSDoc type
+   * @returns {string|null} IL type name
+   */
+  function ilTypeFromJSDoc(t) {
+    if (!t) return null;
+    if (typeof t === 'object') {
+      if (t.isTuple) return null;
+      if (t.isUnion) return ilTypeFromJSDoc(t.unionTypes.map(u => u && u.name).filter(Boolean).join('|'));
+      if (t.isArray) {
+        const element = ilTypeFromJSDoc(t.elementType);
+        return element ? element + '[]' : null;
+      }
+      if (t.isGeneric) return null;
+      t = t.name;
+    }
+    if (typeof t !== 'string') return null;
+    t = t.trim().replace(/^[?!]|[?=]$/g, '');
+    if (t.includes('|')) {
+      const members = t.split('|').map(s => s.trim()).filter(s => s !== 'null' && s !== 'undefined');
+      return members.length === 1 ? ilTypeFromJSDoc(members[0]) : null;
+    }
+    if (t.endsWith('[]')) {
+      const element = ilTypeFromJSDoc(t.slice(0, -2));
+      return element ? element + '[]' : null;
+    }
+    const arrayOf = t.match(/^Array<(.+)>$/);
+    if (arrayOf) {
+      const element = ilTypeFromJSDoc(arrayOf[1]);
+      return element ? element + '[]' : null;
+    }
+    if (!/^[A-Za-z_$][\w$.]*$/.test(t)) return null;
+    return JSDOC_TYPE_ALIASES[t] || t;
+  }
+
   /**
    * Precise Type System for Cryptographic Operations
    * Handles specific bit-width types and forward/backward type inference
@@ -263,6 +316,8 @@
       // Framework class types - dynamically loaded from AlgorithmFramework.js JSDoc
       // These are populated by loadTypesFromSource() when available
       this.frameworkTypes = {};
+      this.frameworkEnums = new Set();      // CategoryType, SecurityStatus, ...
+      this.frameworkFunctions = {};         // exported free functions: name -> { params, returns }
 
       // Enhanced cryptographic patterns with precise types
       this.patternTypes = {
@@ -331,6 +386,7 @@
      */
     loadTypesFromSource(sourceCode, targetType = 'opcodes') {
       const jsDocParser = new JSDocParser();
+      const source = String(sourceCode || '').replace(/\r\n?/g, '\n');
 
       // Map JSDoc types to internal type representation
       const normalizeType = (jsDocType) => {
@@ -353,177 +409,135 @@
         return baseType;
       };
 
-      // Find all JSDoc comments followed by function/method definitions
-      const jsDocPattern = /\/\*\*[\s\S]*?\*\/\s*(?:(?:static\s+)?(\w+)\s*\(|(?:get|set)\s+(\w+)\s*\(|class\s+(\w+)(?:\s+extends\s+(\w+))?)/g;
-      const commentBlockPattern = /\/\*\*([\s\S]*?)\*\//g;
+      // The JSDoc block that ends right before `pos` (only whitespace between), or null.
+      const precedingJSDoc = (pos) => {
+        const before = source.slice(0, pos).replace(/\s+$/, '');
+        if (!before.endsWith('*/')) return null;
+        const start = before.lastIndexOf('/**');
+        if (start < 0) return null;
+        const block = before.slice(start);
+        return block.indexOf('*/') === block.length - 2 ? block : null;
+      };
 
+      if (targetType === 'opcodes') {
+        // OpCodes is one object literal: its members sit at 4 spaces, the members
+        // of the nested UInt64/UInt128/UInt256/UInt512 objects at 6. Nested members
+        // are stored qualified ('UInt64.xor') so they never shadow a top-level name.
+        // tests/JSDocTierAudit.js reads the same layout and checks every member.
+        const memberPattern = /^( {4}| {6})([A-Za-z_$][\w$]*)\s*:\s*(function\s*\(|\{)/gm;
+        let match, owner = null;
+        while ((match = memberPattern.exec(source)) !== null) {
+          const indent = match[1].length;
+          const name = match[2];
+          if (indent === 4) owner = null;
+          if (match[3] === '{') {
+            if (indent === 4) owner = name;
+            continue;
+          }
+          if (indent === 6 && !owner) continue;
+          const doc = precedingJSDoc(match.index);
+          if (!doc) continue;
+          const parsed = jsDocParser.parseJSDoc(doc);
+          const params = parsed.params.map(p => normalizeType(p.type));
+          const returns = normalizeType(parsed.returns?.type);
+          if (params.length > 0 || returns) {
+            this.opCodesTypes[indent === 6 ? `${owner}.${name}` : name] = {
+              params,
+              returns: returns || 'void',
+              description: parsed.description || ''
+            };
+          }
+        }
+        return;
+      }
+
+      if (targetType !== 'framework') return;
+
+      // Class ranges by brace counting (innermost class wins for a position).
+      const classPattern = /class\s+(\w+)(?:\s+extends\s+([\w.]+))?\s*\{/g;
+      const classRanges = [];
       let match;
-      let lastComment = null;
-      let lastCommentEnd = 0;
+      while ((match = classPattern.exec(source)) !== null) {
+        const className = match[1];
+        const baseClass = match[2] ? match[2].split('.').pop() : null;
+        const braceStart = match.index + match[0].length - 1;
+        let braceCount = 1;
+        let pos = braceStart + 1;
+        while (pos < source.length && braceCount > 0) {
+          const char = source[pos];
+          if (char === '{') ++braceCount;
+          else if (char === '}') --braceCount;
+          ++pos;
+        }
+        classRanges.push({ name: className, start: braceStart, end: pos });
+        if (!this.frameworkTypes[className])
+          this.frameworkTypes[className] = { properties: {}, methods: {} };
+        if (baseClass)
+          this.frameworkTypes[className].extends = baseClass;
+      }
+      const owningClass = (pos) => {
+        let owner = null;
+        for (const range of classRanges)
+          if (pos > range.start && pos < range.end && (!owner || range.start > owner.start))
+            owner = range;
+        return owner ? owner.name : null;
+      };
 
-      // Extract all comment blocks with their positions
-      const comments = [];
-      while ((match = commentBlockPattern.exec(sourceCode)) !== null) {
-        comments.push({
-          text: match[1],
-          start: match.index,
-          end: match.index + match[0].length
-        });
+      // Fields: `/** @type {T} [description] */ this.name = ...`
+      const fieldPattern = /\/\*\*\s*@type\s+\{([^}]+)\}[^*]*(?:\*(?!\/)[^*]*)*\*\/\s*this\.(\w+)/g;
+      while ((match = fieldPattern.exec(source)) !== null) {
+        const owner = owningClass(match.index);
+        const type = normalizeType(jsDocParser.parseType(match[1].trim()));
+        if (owner && type && !this.frameworkTypes[owner].properties[match[2]])
+          this.frameworkTypes[owner].properties[match[2]] = type;
       }
 
-      // Find declarations and match them with preceding comments
-      // Patterns: method(params){, get/set name(){, class Name{, name: function(params){
-      const declarationPattern = /(?:static\s+)?(\w+)\s*\([^)]*\)\s*\{|(?:get|set)\s+(\w+)\s*\([^)]*\)\s*\{|class\s+(\w+)(?:\s+extends\s+(\w+))?\s*\{|(\w+)\s*:\s*function\s*\([^)]*\)\s*\{/g;
-
-      while ((match = declarationPattern.exec(sourceCode)) !== null) {
-        const methodName = match[1] || match[5]; // match[5] is for "name: function(...)" pattern
-        const accessorName = match[2];
-        const className = match[3];
-        const baseClass = match[4];
-        const declStart = match.index;
-
-        // Find the closest preceding comment
-        const precedingComment = comments.filter(c => c.end <= declStart).pop();
-
-        if (precedingComment && (declStart - precedingComment.end) < 50) {
-          const parsed = jsDocParser.parseJSDoc('/**' + precedingComment.text + '*/');
-
-          if (targetType === 'opcodes' && methodName) {
-            // Extract method signature for OpCodes-style static methods
-            const params = parsed.params.map(p => normalizeType(p.type));
-            const returns = normalizeType(parsed.returns?.type);
-
-            if (params.length > 0 || returns) {
-              this.opCodesTypes[methodName] = {
-                params,
-                returns: returns || 'void',
-                description: parsed.description || ''
-              };
-            }
-          } else if (targetType === 'framework') {
-            if (className) {
-              // Initialize class in framework types
-              if (!this.frameworkTypes[className]) {
-                this.frameworkTypes[className] = {
-                  properties: {},
-                  methods: {}
-                };
-              }
-              if (baseClass) {
-                this.frameworkTypes[className].extends = baseClass;
-              }
-            }
-          }
+      // Methods and accessors with a JSDoc block right in front of them.
+      const memberPattern = /^[ \t]*(?:static\s+)?(?:(get|set)\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/gm;
+      while ((match = memberPattern.exec(source)) !== null) {
+        const kind = match[1];
+        const name = match[2];
+        if (['if', 'for', 'while', 'switch', 'catch', 'function', 'constructor'].includes(name)) continue;
+        const owner = owningClass(match.index);
+        const doc = owner ? precedingJSDoc(match.index) : null;
+        if (!doc) continue;
+        const parsed = jsDocParser.parseJSDoc(doc);
+        const classInfo = this.frameworkTypes[owner];
+        if (kind === 'get' || kind === 'set') {
+          const type = kind === 'get' ? normalizeType(parsed.returns?.type) : normalizeType(parsed.params[0]?.type);
+          if (type && !classInfo.properties[name]) classInfo.properties[name] = type;
+        } else if (parsed.params.length > 0 || parsed.returns) {
+          classInfo.methods[name] = {
+            params: parsed.params.map(p => normalizeType(p.type)),
+            returns: normalizeType(parsed.returns?.type) || 'void'
+          };
         }
       }
 
-      // For framework types, also extract property types from @type annotations
-      if (targetType === 'framework') {
-        const propTypePattern = /\/\*\*\s*@type\s+\{([^}]+)\}\s*\*\/\s*(?:this\.)?(\w+)/g;
-        while ((match = propTypePattern.exec(sourceCode)) !== null) {
-          const propType = normalizeType(match[1]);
-          const propName = match[2];
+      // Exported enums (`const CategoryType = Object.freeze({...})`) and free
+      // functions (`function Find(name)`) are framework members too.
+      const enumPattern = /const\s+([A-Za-z_$][\w$]*)\s*=\s*Object\.freeze\(\s*\{/g;
+      while ((match = enumPattern.exec(source)) !== null) this.frameworkEnums.add(match[1]);
+      const functionPattern = /^[ \t]*function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
+      while ((match = functionPattern.exec(source)) !== null) {
+        const doc = precedingJSDoc(match.index);
+        if (!doc || match[1].startsWith('_')) continue;
+        const parsed = jsDocParser.parseJSDoc(doc);
+        this.frameworkFunctions[match[1]] = {
+          params: parsed.params.map(p => normalizeType(p.type)),
+          returns: normalizeType(parsed.returns?.type) || 'void'
+        };
+      }
 
-          // Find which class this property belongs to by looking for preceding class declaration
-          const beforeProp = sourceCode.substring(0, match.index);
-          const classMatch = beforeProp.match(/class\s+(\w+)(?:\s+extends\s+\w+)?\s*\{[^}]*$/);
-          if (classMatch) {
-            const owningClass = classMatch[1];
-            if (!this.frameworkTypes[owningClass]) {
-              this.frameworkTypes[owningClass] = { properties: {}, methods: {} };
-            }
-            this.frameworkTypes[owningClass].properties[propName] = propType;
-          }
-        }
-
-        // Extract method signatures with JSDoc from the source code
-        // Use brace-counting approach to track class scope
-        const classPattern = /class\s+(\w+)(?:\s+extends\s+(\w+))?\s*\{/g;
-        const classRanges = [];
-
-        // Find all class declarations and compute their ranges using brace counting
-        while ((match = classPattern.exec(sourceCode)) !== null) {
-          const className = match[1];
-          const baseClass = match[2] || null;
-          const classStart = match.index;
-          const braceStart = classStart + match[0].length - 1; // Position of opening brace
-
-          // Count braces to find the end of the class
-          let braceCount = 1;
-          let pos = braceStart + 1;
-          while (pos < sourceCode.length && braceCount > 0) {
-            const char = sourceCode[pos];
-            if (char === '{') ++braceCount;
-            else if (char === '}') --braceCount;
-            ++pos;
-          }
-
-          classRanges.push({
-            name: className,
-            extends: baseClass,
-            start: braceStart,
-            end: pos
-          });
-
-          // Ensure class is in frameworkTypes
-          if (!this.frameworkTypes[className]) {
-            this.frameworkTypes[className] = { properties: {}, methods: {} };
-          }
-          if (baseClass) {
-            this.frameworkTypes[className].extends = baseClass;
-          }
-        }
-
-        // Now find all methods with JSDoc by first extracting all JSDoc blocks
-        // then checking if each is followed by a method definition
-        const jsDocBlockPattern = /\/\*\*([^*]|\*(?!\/))*\*\//g;
-        const jsDocBlocks = [];
-        while ((match = jsDocBlockPattern.exec(sourceCode)) !== null) {
-          jsDocBlocks.push({
-            text: match[0],
-            content: match[0].slice(3, -2), // Remove /** and */
-            start: match.index,
-            end: match.index + match[0].length
-          });
-        }
-
-        // For each JSDoc block, check if it's followed by a method
-        for (const block of jsDocBlocks) {
-          // Get text immediately after this JSDoc block
-          const afterBlock = sourceCode.substring(block.end, block.end + 200);
-          // Check if it starts with whitespace then a method name and opening paren
-          const methodMatch = afterBlock.match(/^\s*(\w+)\s*\([^)]*\)\s*\{/);
-
-          if (methodMatch) {
-            const methodName = methodMatch[1];
-            // Skip if it's a class, function, or constructor keyword
-            if (methodName === 'class' || methodName === 'function' || methodName === 'if' || methodName === 'while' || methodName === 'for') continue;
-
-            const methodPos = block.start;
-
-            // Find which class this method belongs to (innermost class containing this position)
-            let owningClass = null;
-            for (const range of classRanges) {
-              if (methodPos > range.start && methodPos < range.end) {
-                // This method is inside this class - check if it's the innermost
-                if (!owningClass || range.start > classRanges.find(r => r.name === owningClass).start) {
-                  owningClass = range.name;
-                }
-              }
-            }
-
-            if (owningClass) {
-              const parsed = jsDocParser.parseJSDoc(block.text);
-
-              if (parsed.params.length > 0 || parsed.returns) {
-                this.frameworkTypes[owningClass].methods[methodName] = {
-                  params: parsed.params.map(p => normalizeType(p.type)),
-                  returns: normalizeType(parsed.returns?.type) || 'void'
-                };
-              }
-            }
-          }
-        }
+      // Constructors keep their signature too (the old loader recorded them).
+      const ctorPattern = /^[ \t]*constructor\s*\([^)]*\)\s*\{/gm;
+      while ((match = ctorPattern.exec(source)) !== null) {
+        const owner = owningClass(match.index);
+        const doc = owner ? precedingJSDoc(match.index) : null;
+        if (!doc) continue;
+        const parsed = jsDocParser.parseJSDoc(doc);
+        if (parsed.params.length > 0)
+          this.frameworkTypes[owner].methods.constructor = { params: parsed.params.map(p => normalizeType(p.type)), returns: 'void' };
       }
     }
 
@@ -833,6 +847,15 @@
       this.constantTypes = new Map(); // Module-level constant types
       this.classFieldTypes = new Map(); // Maps "ClassName.fieldName" to type
       this.classMethodReturnTypes = new Map(); // Maps "ClassName.methodName" to return type
+      // Declared types, collected before the IL transform so that a read that
+      // precedes the assignment in source order still sees them (see
+      // _collectDeclaredTypes): "ClassName.field" -> JSDoc @type, local class
+      // name -> base class name, and the set of classes this file declares.
+      this.declaredFieldTypes = new Map();
+      this.localSuperClasses = new Map();
+      this.localClassNames = new Set();
+      this.declaredFunctions = new Map(); // local function name -> { params: [IL type], returns: IL type }
+      this.declaredMethodParams = new Map(); // "ClassName.method" -> [IL type] from the method's JSDoc
       // Whole-program function/method signature table for interprocedural type
       // propagation: maps a bare function name, and "ClassName.methodName" for
       // class methods, to { params: [<param AST nodes>], node: <function AST node> }.
@@ -865,10 +888,26 @@
      * @param {string} name - Variable name
      * @param {string} type - Type string (e.g., 'uint32', 'uint8[]', 'string')
      */
-    registerVariableType(name, type) {
+    registerVariableType(name, type, declared = false) {
       if (!name || !type) return;
       const currentScope = this.scopeStack[this.scopeStack.length - 1];
       currentScope.set(name, type);
+      if (declared) (currentScope.declared || (currentScope.declared = new Set())).add(name);
+      else if (currentScope.declared) currentScope.declared.delete(name);
+    }
+
+    /**
+     * Whether the binding a name currently resolves to carries a declared type
+     * (JSDoc @type or @param), which an assignment must not replace.
+     * @param {string} name - Variable name
+     * @returns {boolean} true when declared
+     */
+    isDeclaredVariable(name) {
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (scope.has(name)) return !!(scope.declared && scope.declared.has(name));
+      }
+      return false;
     }
 
     /**
@@ -907,17 +946,92 @@
      */
     registerClassFieldType(className, fieldName, type) {
       if (!className || !fieldName || !type) return;
+      // A declared type (framework interface, then local JSDoc) is fixed; an
+      // assignment elsewhere in the class cannot re-type the field.
+      if (this.lookupDeclaredFieldType(className, fieldName)) return;
       this.classFieldTypes.set(`${className}.${fieldName}`, type);
     }
 
     /**
-     * Look up a class field's type
+     * Look up a class field's type, in policy order: the framework interface the
+     * class derives from (tier 2), the field's own JSDoc @type (tier 3), and only
+     * then the type of whatever was assigned to it.
      * @param {string} className - Class name
      * @param {string} fieldName - Field name
      * @returns {string|null} Type string or null if not found
      */
     lookupClassFieldType(className, fieldName) {
-      return this.classFieldTypes.get(`${className}.${fieldName}`) || null;
+      const declared = this.lookupDeclaredFieldType(className, fieldName);
+      if (declared) return declared;
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const inferred = this.classFieldTypes.get(`${name}.${fieldName}`);
+        if (inferred) return inferred;
+      }
+      return null;
+    }
+
+    /**
+     * The declared type of a class field: framework interface first, then the
+     * field's JSDoc @type in this class or a local base class.
+     * @param {string} className - Class name
+     * @param {string} fieldName - Field name
+     * @returns {string|null} Declared type or null
+     */
+    lookupDeclaredFieldType(className, fieldName) {
+      const framework = this._frameworkMemberType(className, fieldName, 'property');
+      if (framework) return framework;
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const declared = this.declaredFieldTypes.get(`${name}.${fieldName}`);
+        if (declared) return declared;
+      }
+      return null;
+    }
+
+    /**
+     * The AlgorithmFramework class a (local) class derives from, if any.
+     * @param {string} className - Class name
+     * @returns {string|null} Framework class name
+     */
+    _frameworkClassFor(className) {
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      for (let name = className, hops = 0; name && hops < 32; ++hops) {
+        if (framework[name] && !this.localSuperClasses.has(name) && !this.localClassNames.has(name)) return name;
+        name = this.localSuperClasses.get(name) || null;
+      }
+      return null;
+    }
+
+    /**
+     * A member's type as declared by the AlgorithmFramework interface a class
+     * derives from (tier 2).
+     * @param {string} className - Class name
+     * @param {string} member - Member name
+     * @param {string} kind - 'property' or 'method'
+     * @returns {string|Object|null} Property type, method signature, or null
+     */
+    _frameworkMemberType(className, member, kind) {
+      const hit = this._frameworkMember(className, member, kind);
+      if (!hit) return null;
+      return kind === 'property' ? ilTypeFromJSDoc(hit) : hit;
+    }
+
+    /**
+     * The raw framework declaration of a member (property type string or
+     * method signature) along the framework chain of a class, or null when the
+     * framework does not declare the member at all.
+     * @param {string} className - Class name
+     * @param {string} member - Member name
+     * @param {string} kind - 'property' or 'method'
+     * @returns {string|Object|null} Declaration or null
+     */
+    _frameworkMember(className, member, kind) {
+      if (!className || !member || member === 'constructor') return null;
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      for (let name = this._frameworkClassFor(className), hops = 0; name && framework[name] && hops < 32; name = framework[name].extends, ++hops) {
+        const table = kind === 'method' ? framework[name].methods : framework[name].properties;
+        if (table && Object.prototype.hasOwnProperty.call(table, member)) return table[member];
+      }
+      return null;
     }
 
     /**
@@ -932,13 +1046,21 @@
     }
 
     /**
-     * Look up a class method's return type
+     * Look up a class method's return type: the framework interface's declared
+     * return (tier 2) wins over the method's own JSDoc (tier 3).
      * @param {string} className - Class name
      * @param {string} methodName - Method name
      * @returns {string|null} Return type string or null if not found
      */
     lookupClassMethodReturnType(className, methodName) {
-      return this.classMethodReturnTypes.get(`${className}.${methodName}`) || null;
+      const framework = this._frameworkMemberType(className, methodName, 'method');
+      const frameworkReturn = framework ? ilTypeFromJSDoc(framework.returns) : null;
+      if (frameworkReturn && frameworkReturn !== 'void') return frameworkReturn;
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const local = this.classMethodReturnTypes.get(`${name}.${methodName}`);
+        if (local) return local;
+      }
+      return null;
     }
 
     /**
@@ -967,6 +1089,7 @@
         
         let token = this.scanToken(pos, line, column);
         if (token) {
+          token.line = line; // source line of the token's first character (see _attachLocation)
           this.tokens.push(token);
           pos = token.end;
           column += token.value.length;
@@ -1450,6 +1573,11 @@
       // Removes functions that load dependencies via require/import
       ilAst = this.filterModuleLoaderFunctions(ilAst);
 
+      // Step 2.7: Collect declared types (class hierarchy, JSDoc @type on fields)
+      // before any expression is typed, so tier 2 and tier 3 do not depend on
+      // the order in which methods happen to appear in the file.
+      this._collectDeclaredTypes(ilAst);
+
       // Step 3: Normalize JavaScript-specific patterns to IL AST nodes
       // This converts super(), this.x, OpCodes.X(), Math.X(), Array methods, etc.
       ilAst = this.normalizeJSPatterns(ilAst);
@@ -1704,6 +1832,105 @@
      * @param {Object} ast - AST from previous transformation steps
      * @returns {Object} Normalized IL AST
      */
+    /**
+     * The IL type named by a statement's own JSDoc `@type` - the last `/** ... *\/`
+     * block among the comments directly in front of it.
+     * @param {Object} stmt - Statement node (leadingComments attached by the parser)
+     * @returns {string|null} Declared IL type or null
+     */
+    _statementJSDocType(stmt) {
+      const comments = stmt && stmt.leadingComments;
+      if (!comments || comments.length === 0) return null;
+      const last = comments[comments.length - 1];
+      if (!last || last.type !== 'Block' || typeof last.value !== 'string' || !last.value.startsWith('/**')) return null;
+      if (!/@type\s*\{/.test(last.value)) return null;
+      const parsed = this.jsDocParser.parseJSDoc(last.value);
+      return parsed.type ? ilTypeFromJSDoc(parsed.type) : null;
+    }
+
+    /**
+     * Collect, before the IL transform, what later lookups need regardless of
+     * source order: every local class and its base class, and the JSDoc @type
+     * of class fields (`/** @type {T} *\/ this.x = ...;` in any method, or a
+     * `/** @type {T} *\/ x = ...;` class field).
+     * @param {Object} ast - AST after module unwrapping
+     */
+    _collectDeclaredTypes(ast) {
+      this.declaredFieldTypes = new Map();
+      this.localSuperClasses = new Map();
+      this.localClassNames = new Set();
+      this.declaredFunctions = new Map();
+      this.declaredMethodParams = new Map();
+
+      const scanThisAssignments = (node, className) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(n => scanThisAssignments(n, className)); return; }
+        // A plain function has its own `this`; arrows and methods share the instance.
+        if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ClassDeclaration') return;
+        if (node.type === 'ExpressionStatement' && node.expression && node.expression.type === 'AssignmentExpression' &&
+            node.expression.operator === '=' && node.expression.left && node.expression.left.type === 'MemberExpression' &&
+            node.expression.left.object && node.expression.left.object.type === 'ThisExpression' && !node.expression.left.computed) {
+          const field = node.expression.left.property && (node.expression.left.property.name || node.expression.left.property.value);
+          const declared = this._statementJSDocType(node);
+          const key = `${className}.${field}`;
+          if (field && declared && !this.declaredFieldTypes.has(key)) this.declaredFieldTypes.set(key, declared);
+        }
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'leadingComments') continue;
+          const child = node[key];
+          if (child && typeof child === 'object') scanThisAssignments(child, className);
+        }
+      };
+
+      const visit = (node) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id && node.id.name) {
+          const className = node.id.name;
+          this.localClassNames.add(className);
+          const base = node.superClass && (node.superClass.name || (node.superClass.property && node.superClass.property.name));
+          if (base) this.localSuperClasses.set(className, base);
+          for (const member of (node.body && node.body.body) || []) {
+            if (member.type === 'FieldDefinition' && member.key && member.key.name && member.jsDoc && member.jsDoc.type) {
+              const declared = ilTypeFromJSDoc(member.jsDoc.type);
+              if (declared) this.declaredFieldTypes.set(`${className}.${member.key.name}`, declared);
+            } else if (member.type === 'MethodDefinition' && member.value) {
+              const typeInfo = member.value.typeInfo;
+              const returns = ilTypeFromJSDoc(typeInfo && typeInfo.returns);
+              if (returns && member.key && member.key.name)
+                this.registerClassMethodReturnType(className, member.key.name, returns);
+              if (typeInfo && typeInfo.params && member.key && member.key.name)
+                this.declaredMethodParams.set(`${className}.${member.key.name}`, (member.value.params || []).map(p => {
+                  const param = p && p.type === 'AssignmentPattern' ? p.left : p;
+                  return param && param.name ? ilTypeFromJSDoc(typeInfo.params.get(param.name)) : null;
+                }));
+              if (!member.static) scanThisAssignments(member.value.body, className);
+            }
+          }
+        }
+        // Local functions with JSDoc: `function f(...)` and `const f = function (...)`.
+        const fn = node.type === 'FunctionDeclaration' && node.id ? node :
+          node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && node.init &&
+          (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') ? node.init : null;
+        const fnName = fn && (node.type === 'FunctionDeclaration' ? node.id.name : node.id.name);
+        if (fn && fnName && fn.typeInfo && !this.declaredFunctions.has(fnName)) {
+          this.declaredFunctions.set(fnName, {
+            params: (fn.params || []).map(p => {
+              const param = p && p.type === 'AssignmentPattern' ? p.left : p;
+              return param && param.name && fn.typeInfo.params ? ilTypeFromJSDoc(fn.typeInfo.params.get(param.name)) : null;
+            }),
+            returns: ilTypeFromJSDoc(fn.typeInfo.returns)
+          });
+        }
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'leadingComments') continue;
+          const child = node[key];
+          if (child && typeof child === 'object') visit(child);
+        }
+      };
+      visit(ast);
+    }
+
     normalizeJSPatterns(ast) {
       if (!ast) return ast;
       // Reset scope stack for new normalization pass
@@ -1749,9 +1976,17 @@
         this._registerFunctionParameters(node, newContext);
       }
 
-      // Register method return types from JSDoc annotations
+      // Register method return types from JSDoc annotations. A method that
+      // overrides a framework interface method (Feed, Result, EncryptBlock, ...)
+      // takes its parameter types from the framework (tier 2) before its own
+      // JSDoc (tier 3); lookupClassMethodReturnType applies the same order.
       if (node.type === 'MethodDefinition' && context?.className && node.key?.name) {
-        const returnType = node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type;
+        const framework = node.static || node.kind === 'get' || node.kind === 'set' ? null :
+          this._frameworkMemberType(context.className, node.key.name, 'method');
+        if (framework && node.value)
+          newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] } };
+
+        const returnType = ilTypeFromJSDoc(node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type);
         if (returnType)
           this.registerClassMethodReturnType(context.className, node.key.name, returnType);
 
@@ -1760,10 +1995,24 @@
           this._registerFunctionParameters(node.value, newContext);
       }
 
+      // A statement's own JSDoc @type declares the type of what it binds:
+      // `/** @type {T} */ const x = ...;` or `/** @type {T} */ this.x = ...;` (tier 3).
+      if (node.type === 'VariableDeclaration' || node.type === 'ExpressionStatement') {
+        const declaredType = this._statementJSDocType(node);
+        if (declaredType) {
+          if (node.type === 'VariableDeclaration')
+            for (const decl of node.declarations || []) decl.declaredType = declaredType;
+          else if (node.expression && node.expression.type === 'AssignmentExpression')
+            node.expression.declaredType = declaredType;
+        }
+      }
+
       // First, normalize children
       const normalized = {};
       for (const key of Object.keys(node)) {
-        if (key === 'loc' || key === 'range' || key === 'parent') {
+        // typeInfo/jsDoc hold parsed JSDoc (typeInfo.params is a Map): normalizing
+        // them as AST turned the Map into `{}` and every emitter lost the types.
+        if (key === 'loc' || key === 'range' || key === 'parent' || key === 'typeInfo' || key === 'jsDoc') {
           normalized[key] = node[key];
         } else if (Array.isArray(node[key])) {
           normalized[key] = node[key].map(child => this._normalizeNode(child, newContext)).filter(n => n !== null);
@@ -1777,6 +2026,12 @@
       // Now transform the normalized node
       const result = this._transformNode(normalized, newContext);
 
+      // IL nodes built from scratch keep the source location of what they replace.
+      if (result && typeof result === 'object' && !Array.isArray(result) && !result.loc && node.loc) {
+        result.loc = node.loc;
+        result.range = node.range;
+      }
+
       // Pop scope if we pushed one
       if (pushNewScope)
         this.popScope();
@@ -1789,29 +2044,33 @@
      * @private
      */
     _registerFunctionParameters(node, context) {
-      for (const param of (node.params || [])) {
-        if (param.type === 'Identifier' && param.name) {
-          // Get type from JSDoc type annotations only - no name-based fallback
-          let paramType = null;
+      // Framework interface signature of the method this function implements (tier 2)
+      const frameworkParams = context && context.frameworkSignature && context.frameworkSignature.fn === node ?
+        context.frameworkSignature.params : null;
 
-          // Check typeInfo on the function node (from JSDoc parsing)
-          if (node.typeInfo?.params?.has(param.name))
-            paramType = node.typeInfo.params.get(param.name);
+      (node.params || []).forEach((rawParam, index) => {
+        const param = rawParam && rawParam.type === 'AssignmentPattern' ? rawParam.left : rawParam;
+        if (param && param.type === 'Identifier' && param.name) {
+          let paramType = frameworkParams ? ilTypeFromJSDoc(frameworkParams[index]) : null;
+
+          // Then the function's own JSDoc (tier 3) - no name-based fallback
+          if (!paramType && node.typeInfo?.params?.has(param.name))
+            paramType = ilTypeFromJSDoc(node.typeInfo.params.get(param.name));
 
           // Also check the value's typeInfo (for MethodDefinition where typeInfo is on node.value)
           if (!paramType && node.value?.typeInfo?.params?.has(param.name))
-            paramType = node.value.typeInfo.params.get(param.name);
+            paramType = ilTypeFromJSDoc(node.value.typeInfo.params.get(param.name));
 
           // Check typeAnnotations map as fallback
           if (!paramType && this.typeAnnotations.has(param)) {
             const annotation = this.typeAnnotations.get(param);
-            paramType = annotation?.type;
+            paramType = ilTypeFromJSDoc(annotation?.type);
           }
 
           if (paramType)
-            this.registerVariableType(param.name, paramType);
+            this.registerVariableType(param.name, paramType, true);
         }
-      }
+      });
     }
 
     /**
@@ -1819,6 +2078,21 @@
      * @private
      */
     _transformNode(node, context) {
+      const result = this._transformNodeCore(node, context);
+      // A declared context type (see _applyContextualType, _transformOpCodesCall)
+      // and the source location survive re-transformation into a new IL node.
+      if (result && typeof result === 'object' && result !== node && node && typeof node === 'object') {
+        if (node.contextType && !result.contextType) result.contextType = node.contextType;
+        if (node.loc && !result.loc) { result.loc = node.loc; result.range = node.range; }
+      }
+      return result;
+    }
+
+    /**
+     * Transform a single node (dispatch on its type)
+     * @private
+     */
+    _transformNodeCore(node, context) {
       switch (node.type) {
         case 'CallExpression':
           return this._transformCallExpression(node, context);
@@ -1917,6 +2191,9 @@
       } else {
         // Look up variable type from scope - no name-based fallback
         resultType = this.lookupVariableType(name);
+        // A framework enum (CategoryType, ...) is its own type (tier 2).
+        if (!resultType && this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(name))
+          resultType = name;
       }
 
       return {
@@ -1971,23 +2248,41 @@
         }
       }
 
-      // Register variable type if assigning to identifier
-      if (node.left?.type === 'Identifier' && node.left.name && resultType)
-        this.registerVariableType(node.left.name, resultType);
-
-      // Register class field type if assigning to this.field.
       // Note: node.left is normalized to an IL 'ThisPropertyAccess' node by
       // the _transformNode(node.left, ...) call above (assigned to `left`),
       // not left as raw ESTree 'MemberExpression' - check the transformed
       // node's type/property, or a still-raw MemberExpression as a fallback
       // for callers that pre-normalize differently.
-      if (context?.className && resultType) {
-        let fieldName = null;
+      let fieldName = null;
+      if (context?.className) {
         if (left?.type === 'ThisPropertyAccess')
           fieldName = left.property;
         else if (node.left?.type === 'MemberExpression' && node.left.object?.type === 'ThisExpression')
           fieldName = node.left.property?.name || node.left.property?.value;
-        if (fieldName)
+      }
+      const targetName = node.left?.type === 'Identifier' ? node.left.name : null;
+
+      // A target with a declared type (framework interface, JSDoc @type or
+      // @param) keeps it: the assigned value is typed from the target, not the
+      // other way round.
+      let declaredTarget = null;
+      if (op === '=') {
+        if (fieldName) declaredTarget = this.lookupDeclaredFieldType(context.className, fieldName);
+        else if (targetName && this.isDeclaredVariable(targetName)) declaredTarget = this.lookupVariableType(targetName);
+        if (!declaredTarget && node.declaredType) declaredTarget = node.declaredType;
+      }
+      if (declaredTarget) {
+        this._applyContextualType(right, declaredTarget);
+        resultType = declaredTarget;
+      } else {
+        // Register variable type if assigning to identifier
+        if (targetName && resultType && !this.isDeclaredVariable(targetName)) {
+          this._checkLiteralTypedVariable(targetName, resultType);
+          this.registerVariableType(targetName, resultType);
+        }
+
+        // Register class field type if assigning to this.field.
+        if (fieldName && resultType)
           this.registerClassFieldType(context.className, fieldName, resultType);
       }
 
@@ -1998,6 +2293,72 @@
         resultType,
         ilNodeType: 'AssignmentExpression'
       };
+    }
+
+    /**
+     * Type a literal (or array literal) from the declared type of the place it
+     * is stored into - a JSDoc @type, a framework field, a declared parameter.
+     * Only literal shapes are re-typed, since their own type was a guess from
+     * the literal's magnitude; any other expression keeps its type and just
+     * records the context it flows into.
+     * @param {Object} ilNode - Transformed value node
+     * @param {string} type - Declared IL type of the target
+     */
+    _applyContextualType(ilNode, type) {
+      if (!ilNode || typeof ilNode !== 'object' || !type || typeof type !== 'string') return;
+      const isNumericType = t => /^(u?int(8|16|32|64)|float(32|64)|bigint|BigInt)$/.test(t);
+      // Numbers stored where, say, KeySize[] is declared do not match: no
+      // context is recorded, so the guess stays visible.
+      if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]') && !isNumericType(type.slice(0, -2)) &&
+          (ilNode.elements || []).some(e => e && e.type === 'Literal' && typeof e.value === 'number')) return;
+      ilNode.contextType = type;
+      if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
+        ilNode.resultType = type;
+        delete ilNode.typeGuess;
+      } else if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]')) {
+        const elementType = type.slice(0, -2);
+        const numericElements = isNumericType(elementType);
+        const literalsOnly = (ilNode.elements || []).every(e => !e || e.type === 'Literal' || e.ilNodeType === 'ArrayLiteral');
+        if (!literalsOnly) return;
+        for (const element of ilNode.elements || []) {
+          if (!element) continue;
+          if (element.ilNodeType === 'ArrayLiteral') this._applyContextualType(element, elementType);
+          else if (numericElements && typeof element.value === 'number') element.resultType = elementType;
+        }
+        ilNode.elementType = elementType;
+        ilNode.resultType = type;
+        delete ilNode.typeGuess;
+      }
+    }
+
+    /**
+     * Variables of the current scope whose type came only from an integer
+     * literal initializer: name -> the initializer's IL node.
+     * @returns {Map} the map of the innermost scope
+     */
+    _literalTypedVariables() {
+      const scope = this.scopeStack[this.scopeStack.length - 1];
+      return scope.literalTyped || (scope.literalTyped = new Map());
+    }
+
+    /**
+     * A variable typed only by its integer literal initializer (`let h = 0;`)
+     * that is later assigned a value of another integer type (`h = OpCodes.RotL32(...)`)
+     * had its type guessed: mark the initializer, where a JSDoc @type belongs.
+     * @param {string} name - Assigned variable
+     * @param {string} assignedType - Type of the assigned value
+     */
+    _checkLiteralTypedVariable(name, assignedType) {
+      if (typeof assignedType !== 'string' || !/^u?int(8|16|32|64)$|^BigInt$|^bigint$/.test(assignedType)) return;
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (!scope.has(name)) continue;
+        const literal = scope.literalTyped && scope.literalTyped.get(name);
+        if (literal && literal.resultType !== assignedType && !literal.typeGuess) {
+          literal.typeGuess = `integer literal gives '${name}' the type ${literal.resultType}, but it is later assigned ${assignedType}; declare it with a JSDoc @type`;
+        }
+        return;
+      }
     }
 
     /**
@@ -2066,13 +2427,23 @@
       // for type-safe transpilation targets, these are boolean expressions
       const resultType = 'boolean';
 
-      return {
+      const result = {
         ...node,
         left,
         right,
         resultType,
         ilNodeType: 'LogicalExpression'
       };
+      // `a || b` / `a ?? b` whose operand is not a boolean is a value, not a
+      // test: typing it boolean is a guess. (In a condition the boolean reading
+      // is right; the type coverage walk ignores this guess there.)
+      if ((node.operator === '||' || node.operator === '??') &&
+          [left, right].some(o => o && o.resultType !== 'boolean')) {
+        result.typeGuess = `'${node.operator}' on non-boolean operands yields a value the IL types as boolean; ` +
+          'give the operand a declared type and test it explicitly';
+        result.typeGuessKind = 'logical-value';
+      }
+      return result;
     }
 
     /**
@@ -2133,6 +2504,7 @@
         const methodName = callee.property?.name || callee.property?.value;
         const resultType = context?.className ?
           this.lookupClassMethodReturnType(context.className, methodName) : null;
+        this._applyFrameworkArgumentTypes(context, methodName, node.arguments);
         return {
           type: 'ThisMethodCall',
           method: methodName,
@@ -2148,6 +2520,7 @@
         const methodName = callee.property;
         const resultType = context?.className ?
           this.lookupClassMethodReturnType(context.className, methodName) : null;
+        this._applyFrameworkArgumentTypes(context, methodName, node.arguments);
         return {
           type: 'ThisMethodCall',
           method: methodName,
@@ -2299,6 +2672,49 @@
         }
       }
 
+      // AlgorithmFramework.Find(...) / a destructured RegisterAlgorithm(...): the
+      // framework's exported functions are typed by its JSDoc (tier 2).
+      const frameworkFunctions = this.typeKnowledge.frameworkFunctions || {};
+      const frameworkFunction =
+        callee && callee.type === 'MemberExpression' && callee.object?.name === 'AlgorithmFramework' ?
+          frameworkFunctions[callee.property?.name || callee.property?.value] :
+        callee && callee.type === 'Identifier' && !this.declaredFunctions.has(callee.name) && !this.lookupVariableType(callee.name) ?
+          frameworkFunctions[callee.name] : null;
+      if (frameworkFunction && Object.prototype.hasOwnProperty.call(frameworkFunctions, callee.property?.name || callee.property?.value || callee.name)) {
+        (node.arguments || []).forEach((arg, i) => {
+          const declared = ilTypeFromJSDoc(frameworkFunction.params[i]);
+          this._applyContextualType(arg, declared);
+        });
+        const returns = ilTypeFromJSDoc(frameworkFunction.returns);
+        return returns && returns !== 'void' ? { ...node, resultType: returns } : node;
+      }
+
+      // A local function with JSDoc types its arguments and its result (tier 3).
+      if (callee && callee.type === 'Identifier' && this.declaredFunctions.has(callee.name)) {
+        const signature = this.declaredFunctions.get(callee.name);
+        (node.arguments || []).forEach((arg, i) => {
+          this._applyContextualType(arg, signature.params[i]);
+        });
+        if (signature.returns && signature.returns !== 'void' && !node.resultType)
+          return { ...node, resultType: signature.returns };
+      }
+
+      // OpCodes.UInt64.xor(...) and friends: members of OpCodes' nested objects
+      // are typed by their JSDoc under the qualified name (tier 1).
+      if (callee && callee.type === 'MemberExpression' && callee.object?.type === 'MemberExpression' &&
+          callee.object.object?.name === 'OpCodes') {
+        const owner = callee.object.property?.name || callee.object.property?.value;
+        const member = callee.property?.name || callee.property?.value;
+        const signature = this.typeKnowledge.opCodesTypes[`${owner}.${member}`];
+        if (signature) {
+          (node.arguments || []).forEach((arg, i) => {
+            const declared = ilTypeFromJSDoc(signature.params[i]);
+            if (arg && typeof arg === 'object' && declared) arg.contextType = declared;
+          });
+          return { ...node, resultType: ilTypeFromJSDoc(signature.returns) || signature.returns, opCodesMethod: `${owner}.${member}` };
+        }
+      }
+
       return node;
     }
 
@@ -2307,6 +2723,73 @@
      * @private
      */
     _transformOpCodesCall(methodName, rawArgs, context) {
+      // Tier 1: OpCodes' own JSDoc types every argument it receives...
+      const signature = this.typeKnowledge.opCodesTypes[methodName];
+      if (signature) {
+        (rawArgs || []).forEach((arg, i) => {
+          const declared = ilTypeFromJSDoc(signature.params[i]);
+          if (arg && typeof arg === 'object' && declared) arg.contextType = declared;
+        });
+      }
+
+      const result = this._transformOpCodesCallCore(methodName, rawArgs, context);
+      if (!result || typeof result !== 'object') return result;
+      result.opCodesMethod = methodName;
+      // A masked inline form (`(a ^ b) & 0xFFFFFFFF`) carries the helper on both nodes.
+      for (const inner of [result.left, result.argument])
+        if (inner && typeof inner === 'object' && inner.ilNodeType === 'InlinedOpCode') inner.opCodesMethod = methodName;
+
+      // ...and the value it returns. The BigInt helpers (XorN, AndN, ...) are
+      // declared BigInt; applied to fixed-width numbers their result type is
+      // borrowed from an operand instead, which no JSDoc states.
+      if (TypeAwareJSASTParser.BIGINT_ONLY_OPCODES.has(methodName)) {
+        const operands = methodName.startsWith('Shift') ? (rawArgs || []).slice(0, 1) : (rawArgs || []);
+        const narrow = operands.map(a => a && a.resultType).filter(t => typeof t === 'string' && /^u?int(8|16|32)$/.test(t));
+        if (narrow.length > 0) {
+          const fixed = { XorN: 'Xor', AndN: 'And', OrN: 'Or', NotN: 'Not', ShiftLn: 'Shl', ShiftRn: 'Shr' }[methodName];
+          result.typeGuess = `OpCodes.${methodName} is declared BigInt but receives ${narrow.join(', ')}; ` +
+            `use the fixed-width helper (${fixed}32/${fixed}16/${fixed}8) for numbers`;
+          result.typeGuessKind = 'bigint-helper-on-number';
+        }
+      } else if (!signature) {
+        // Every OpCodes member carries a JSDoc signature (tests/JSDocTierAudit.js
+        // enforces it), so a call without one names no OpCodes member at all.
+        result.typeGuess = `OpCodes.${methodName} is not an OpCodes member; its result type is borrowed from an operand`;
+      }
+      return result;
+    }
+
+    /**
+     * Arguments of `this.method(...)` where the method is declared by the
+     * framework interface the class derives from take their types from that
+     * declaration (tier 2), the way OpCodes arguments do from OpCodes (tier 1).
+     * @param {Object} context - Transform context (className)
+     * @param {string} methodName - Called method
+     * @param {Object[]} args - Argument nodes
+     */
+    _applyFrameworkArgumentTypes(context, methodName, args) {
+      if (!context || !context.className || !args) return;
+      const framework = this._frameworkMemberType(context.className, methodName, 'method');
+      let params = framework ? (framework.params || []).map(ilTypeFromJSDoc) : null;
+      // Otherwise the local method's own JSDoc (tier 3), in this class or a local base.
+      for (let name = context.className, hops = 0; !params && name && hops < 32; name = this.localSuperClasses.get(name), ++hops)
+        params = this.declaredMethodParams.get(`${name}.${methodName}`) || null;
+      if (!params) return;
+      args.forEach((arg, i) => {
+        this._applyContextualType(arg, params[i]);
+      });
+    }
+
+    /**
+     * OpCodes helpers that are declared for BigInt operands only.
+     */
+    static BIGINT_ONLY_OPCODES = new Set(['XorN', 'AndN', 'OrN', 'NotN', 'ShiftLn', 'ShiftRn']);
+
+    /**
+     * Build the IL node for an OpCodes call (see _transformOpCodesCall)
+     * @private
+     */
+    _transformOpCodesCallCore(methodName, rawArgs, context) {
       // Transform all arguments first to ensure type information propagates
       const args = rawArgs.map(arg => this._transformNode(arg, context));
 
@@ -3369,6 +3852,16 @@
       if (propertyName === 'length' || propertyName === 'size' || propertyName === 'count')
         resultType = 'int32';
 
+      // A member of a value whose class is known: framework enum values are of
+      // the enum type; fields of local and framework classes are looked up
+      // like `this.field` (framework interface, then JSDoc, then assignment).
+      if (!resultType && typeof objectType === 'string' && /^[A-Za-z_$][\w$]*$/.test(objectType) && propertyName) {
+        if (this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(objectType))
+          resultType = objectType;
+        else if (this.localClassNames.has(objectType) || (this.typeKnowledge.frameworkTypes || {})[objectType])
+          resultType = this.lookupClassFieldType(objectType, propertyName);
+      }
+
       return {
         ...node,
         object: transformedObject,
@@ -3647,14 +4140,26 @@
           let transformedInit = decl.init ? this._transformNode(decl.init, context) : null;
           let varType = transformedInit?.resultType || null;
 
-          // No name-based fallback - types must come from values or JSDoc
+          // No name-based fallback - types must come from values or JSDoc.
+          // A JSDoc @type on the declaration (tier 3) wins over the initializer.
+          const declaredType = decl.declaredType || null;
+          if (declaredType) {
+            varType = declaredType;
+            this._applyContextualType(transformedInit, declaredType);
+          } else if (varName && transformedInit && transformedInit.type === 'Literal' &&
+                     typeof transformedInit.value === 'number' && !isConst) {
+            // An integer literal gives a mutable variable its type only by the
+            // literal's shape; remember it so a later assignment of another
+            // integer type can mark this initializer as a guess.
+            this._literalTypedVariables().set(varName, transformedInit);
+          }
 
           // Register the variable type
           if (varName && varType) {
             if (isModuleLevel && isConst)
               this.registerConstantType(varName, varType);
             else
-              this.registerVariableType(varName, varType);
+              this.registerVariableType(varName, varType, !!declaredType);
           }
 
           // Create transformed declarator with type info
@@ -3805,17 +4310,26 @@
       }
 
       // If no element types found, use int32 as default (consistent with literal default)
+      let typeGuess = null;
       if (!elementType) {
         elementType = 'int32';
+        typeGuess = 'empty array literal defaults to int32[]; declare its element type with a JSDoc @type';
+      } else if (allNonNegativeIntLiterals) {
+        typeGuess = `element type ${elementType} guessed from the literal values; declare it with a JSDoc @type or build it with an OpCodes helper`;
       }
 
-      return {
+      const result = {
         ...node,
         elements,
         elementType,
         resultType: `${elementType}[]`,
         ilNodeType: 'ArrayLiteral'
       };
+      if (typeGuess) {
+        result.typeGuess = typeGuess;
+        result.typeGuessKind = 'literal-array';
+      }
+      return result;
     }
 
     /**
@@ -3975,13 +4489,36 @@
         resultType = left.resultType || right.resultType || 'int32';
       }
 
-      return {
+      const result = {
         ...node,
         left,
         right,
         resultType,
         ilNodeType: 'BinaryExpression'
       };
+
+      // JavaScript numbers have no width: `a + b` on two uint32 can exceed 32
+      // bits, and `a | b` yields a *signed* int32. Where the IL instead borrows
+      // an operand's fixed-width type, that type is a guess. Plain int32
+      // arithmetic (indices, counts) is exact and exempt, as are the exact
+      // idioms matched above (`x & 0xFF`, `x >>> 0`, `x | 0`, ...).
+      const isInteger = t => typeof t === 'string' && /^u?int(8|16|32|64)$/.test(t);
+      const lt = left.resultType, rt = right.resultType;
+      // An inlined OpCodes helper (Xor32, Add32, ...) is typed by its JSDoc, not guessed.
+      if (node.opCodesMethod || node.ilNodeType === 'InlinedOpCode') {
+        // keep whatever _transformOpCodesCall decided
+      } else if (isInteger(lt) && isInteger(rt)) {
+        if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32')) {
+          result.typeGuess = `'${lt} ${op} ${rt}' has no fixed width in JavaScript but is typed ${resultType}; ` +
+            `use OpCodes.${op === '+' ? 'Add32' : op === '-' ? 'Sub32' : 'Mul32'} (or the matching helper) for fixed-width arithmetic`;
+          result.typeGuessKind = 'raw-arithmetic';
+        } else if (['&', '|', '^', '<<', '>>'].includes(op) && resultType !== 'int32' &&
+                   !(op === '&' && [0xff, 0xffff, 0xffffffff].includes(rightValue))) {
+          result.typeGuess = `JavaScript '${op}' yields a signed int32 but is typed ${resultType}; use the OpCodes helper for the width`;
+          result.typeGuessKind = 'raw-bitwise';
+        }
+      }
+      return result;
     }
 
     /**
@@ -4447,6 +4984,13 @@
     _expandIIFEDeclarations(stmt, taken = new Set()) {
       const results = [];
       const kind = stmt.kind;
+      // The rebuilt declarations keep the statement's comments (a JSDoc @type
+      // declares the binding's type) and its source location.
+      const keepComments = (declaration) => {
+        if (stmt.leadingComments) declaration.leadingComments = stmt.leadingComments;
+        if (stmt.loc) { declaration.loc = stmt.loc; declaration.range = stmt.range; }
+        return declaration;
+      };
 
       for (const decl of stmt.declarations || []) {
         // Check if the initializer is an IIFE: (() => { ... })() or (function() { ... })()
@@ -4473,7 +5017,7 @@
 
           // Add the original variable with the return value as its initializer
           if (returnValue) {
-            results.push({
+            results.push(keepComments({
               type: 'VariableDeclaration',
               kind: kind,
               declarations: [{
@@ -4481,15 +5025,15 @@
                 id: decl.id,
                 init: returnValue
               }]
-            });
+            }));
           }
         } else {
           // Not an IIFE, keep as-is
-          results.push({
+          results.push(keepComments({
             type: 'VariableDeclaration',
             kind: kind,
             declarations: [decl]
-          });
+          }));
         }
       }
 
@@ -6003,7 +6547,18 @@
       // Return-type propagation: join of JSDoc @returns and every `return <expr>`
       // in the callee's body, written onto the call node so the receiving
       // variable/expression sees it via inferExpressionType's resultType check.
-      const returnType = this._getFunctionReturnType(entry);
+      // A framework interface method's declared return (tier 2) outranks the
+      // overriding method's own JSDoc (tier 3); a type that states no width
+      // never replaces one that does.
+      let returnType = null;
+      if ((node.type === 'ThisMethodCall' || node.type === 'ParentMethodCall') && context && context.className) {
+        const framework = this._frameworkMemberType(context.className, node.method, 'method');
+        const declared = framework ? ilTypeFromJSDoc(framework.returns) : null;
+        if (declared && declared !== 'void') returnType = declared;
+      }
+      if (!returnType) returnType = this._getFunctionReturnType(entry);
+      const statesNoWidth = t => ['Array', 'Object', 'object', 'number', 'any', '*'].includes(t);
+      if (returnType && statesNoWidth(returnType) && node.resultType && !statesNoWidth(node.resultType)) returnType = null;
       if (returnType && node.resultType !== returnType) {
         node.resultType = returnType;
         changes++;
@@ -6021,7 +6576,11 @@
      */
     _getFunctionReturnType(entry) {
       if (!entry || !entry.node) return null;
-      if (entry.node.typeInfo && entry.node.typeInfo.returns) return this._cleanTypeName(entry.node.typeInfo.returns);
+      if (entry.node.typeInfo && entry.node.typeInfo.returns) {
+        // JSDoc @returns is a parsed type object; a baked return is a string.
+        const declared = this._cleanTypeName(ilTypeFromJSDoc(entry.node.typeInfo.returns));
+        if (declared) return declared;
+      }
       const returnType = this._analyzeReturnType(entry.node);
       return (returnType && returnType !== 'object' && returnType !== 'void') ? this._cleanTypeName(returnType) : null;
     }
@@ -6817,12 +7376,15 @@
         this.nextToken();
       }
       
+      let carried = [];
       while (this.currentToken) {
         // Skip and collect comments at the program level
-        const leadingComments = this.skipComments();
+        const leadingComments = carried.concat(this.skipComments());
+        carried = [];
         if (!this.currentToken) break;
 
         const stmt = this.parseStatement();
+        carried = this._carryComments();
         if (stmt) {
           // Attach leading comments to the statement node
           if (leadingComments && leadingComments.length > 0) {
@@ -6930,6 +7492,7 @@
         }
 
         const member = this.parseClassMember();
+        this._carryComments(); // the next member's JSDoc, never one left over inside this member
         if (member) {
           members.push(member);
         }
@@ -7476,14 +8039,18 @@
       const node = { type: 'BlockStatement', body: [] };
       
       this.consume('PUNCTUATION', '{');
-      
+      // consume() already skipped the comments right after `{`; they lead the first statement.
+      let carried = this._commentsSkippedHere();
+
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
         // Skip and collect comments at block level
-        const leadingComments = this.skipComments();
+        const leadingComments = carried.concat(this.skipComments());
+        carried = [];
 
         // Check again after skipping comments
         if (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
           const stmt = this.parseStatement();
+          carried = this._carryComments();
           if (stmt) {
             // Attach leading comments to the statement node
             if (leadingComments && leadingComments.length > 0) {
@@ -7863,6 +8430,24 @@
     /**
      * Parse call expression
      */
+    /**
+     * Give a member/call chain link the span from its first operand to the
+     * last consumed token (the chain is built inside one parse call, so the
+     * location wrappers only see its outermost link).
+     * @param {Object} node - Chain link just built
+     * @param {Object} start - Its object or callee
+     * @returns {Object} node
+     */
+    _locateChain(node, start) {
+      if (!start || !start.range) return node;
+      let last = this.position - 1;
+      while (last > 0 && this.tokens[last] && (this.tokens[last].type === 'COMMENT_SINGLE' || this.tokens[last].type === 'COMMENT_MULTI')) --last;
+      if (!this.tokens[last]) return node;
+      node.loc = start.loc;
+      node.range = [start.range[0], this.tokens[last].end];
+      return node;
+    }
+
     parseCallExpression() {
       let left = this.parseMemberExpression();
       
@@ -7873,7 +8458,7 @@
           const node = { type: 'CallExpression' };
           node.callee = left;
           node.arguments = this.parseArgumentList();
-          left = node;
+          left = this._locateChain(node, node.callee);
         } else if (this.currentToken.value === '.') {
           // Member access
           const node = { type: 'MemberExpression' };
@@ -7882,7 +8467,7 @@
           this.skipComments(); // Skip comments after the dot
           node.property = this.parsePropertyName(); // Allow keywords as property names
           node.computed = false;
-          left = node;
+          left = this._locateChain(node, node.object);
         } else if (this.currentToken.value === '[') {
           // Computed member access
           const node = { type: 'MemberExpression' };
@@ -7892,7 +8477,7 @@
           node.property = this.parseExpression();
           this.consume('PUNCTUATION', ']');
           node.computed = true;
-          left = node;
+          left = this._locateChain(node, node.object);
         }
       }
       
@@ -7941,7 +8526,7 @@
           node.computed = true;
         }
         
-        left = node;
+        left = this._locateChain(node, node.object);
       }
       
       return left;
@@ -8745,7 +9330,33 @@
       }
       
       this.advance();
-      this.skipComments(); // Skip comments after advancing
+      // Skip comments after advancing, but remember them: when the consumed token
+      // ends a statement (`}`), they lead the next statement (see _commentsSkippedHere).
+      const skipped = this.skipComments();
+      this.lastConsumeSkip = { end: this.position, comments: skipped };
+    }
+
+    /**
+     * Comments that consume() skipped right after its token, provided nothing
+     * has been parsed since - they belong in front of whatever comes next.
+     * @returns {Object[]} comment objects
+     */
+    _commentsSkippedHere() {
+      const skip = this.lastConsumeSkip;
+      return skip && skip.end === this.position ? skip.comments : [];
+    }
+
+    /**
+     * After a statement or class member: the comments skipped behind its last
+     * token lead the next one, and so does the JSDoc among them. A JSDoc block
+     * the finished statement did not consume belongs to it, not to the next one.
+     * @returns {Object[]} comments to attach to the next statement
+     */
+    _carryComments() {
+      const carried = this._commentsSkippedHere();
+      const doc = carried.filter(c => c.type === 'Block' && typeof c.value === 'string' && c.value.startsWith('/**')).pop();
+      this.lastJSDocComment = doc ? doc.value : null;
+      return carried;
     }
 
     /**
@@ -9661,6 +10272,45 @@
     // Include all original parser methods here...
     // [All the tokenize, parse, parseClass, parseMethod, etc. methods from the original parser]
   }
+
+  // Source locations. Every node produced by these parse methods gets
+  // `loc: { line }` and `range: [start, end]` (offsets into normalizedCode),
+  // so a type diagnostic can name the file line and the expression text. The
+  // innermost parse method that built a node sets them; outer methods that
+  // merely pass the same node through leave them alone. Walkers already skip
+  // the `loc`/`range` keys.
+  (function attachLocations(proto) {
+    const isComment = t => t && (t.type === 'COMMENT_SINGLE' || t.type === 'COMMENT_MULTI');
+    const located = [
+      'parseStatement', 'parseVariableDeclaration', 'parseFunction', 'parseFunctionExpression',
+      'parseClass', 'parseClassMember', 'parseAssignmentExpression', 'parseConditionalExpression',
+      'parseLogicalOrExpression', 'parseLogicalAndExpression', 'parseBitwiseOrExpression',
+      'parseBitwiseXorExpression', 'parseBitwiseAndExpression', 'parseEqualityExpression',
+      'parseRelationalExpression', 'parseShiftExpression', 'parseAdditiveExpression',
+      'parseMultiplicativeExpression', 'parseExponentiationExpression', 'parseUnaryExpression',
+      'parsePostfixExpression', 'parseCallExpression', 'parseMemberExpression', 'parsePrimaryExpression',
+      'parseArrayExpression', 'parseObjectExpression', 'parseNewExpression', 'parseTemplateLiteral',
+      'parseIdentifier', 'parseNumber', 'parseString'
+    ];
+    for (const name of located) {
+      const parse = proto[name];
+      if (typeof parse !== 'function') continue;
+      proto[name] = function () {
+        let first = this.position;
+        while (isComment(this.tokens[first])) ++first;
+        const node = parse.apply(this, arguments);
+        if (node && typeof node === 'object' && !node.loc && this.tokens[first]) {
+          let last = this.position - 1;
+          while (last > first && isComment(this.tokens[last])) --last;
+          const startToken = this.tokens[first];
+          const endToken = this.tokens[Math.max(first, last)];
+          node.loc = { line: startToken.line };
+          node.range = [startToken.position, endToken.end];
+        }
+        return node;
+      };
+    }
+  })(TypeAwareJSASTParser.prototype);
 
   /**
    * Enhanced Code Generator with Type Information
