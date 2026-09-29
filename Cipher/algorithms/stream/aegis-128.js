@@ -495,7 +495,6 @@
      */
     updateState(lanes, message) {
       /** @type {uint8[]} */
-      /** @type {uint8[]} */
       const mixed = this.algorithm.aesRound(OpCodes.CopyArray(lanes[0]));
       /** @type {uint8[]} */
       const temp = this.algorithm.xorState(mixed, message);
