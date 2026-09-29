@@ -15,6 +15,12 @@
 | Origin | 🌐 International |
 | Source | [`algorithms/hash/siphash.js`](../../../algorithms/hash/siphash.js) |
 
+## Parameters
+
+| Parameter | Supported values |
+| --- | --- |
+| Output sizes | 8 bytes (64 bits) |
+
 ## Security
 
 **Status:** 🎓 Educational Only
@@ -23,7 +29,7 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Security depends on secret key - key reuse or weak keys reduce security | — | Use strong random 128-bit keys, rotate keys periodically |
+| Key Management | Security depends on secret key - key reuse or weak keys reduce security | Use strong random 128-bit keys, rotate keys periodically |
 
 ## Documentation
 

@@ -35,11 +35,18 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
+  /** @type {int32} */
   const ASCON_HASH_RATE = 8; // 64 bits (8 bytes)
 
-  // 64-bit rotation helper using 32-bit operations
+  /**
+   * 64-bit rotate right of a split word
+   * @param {uint32} low - Low 32 bits
+   * @param {uint32} high - High 32 bits
+   * @param {int32} positions - Rotation amount
+   * @returns {uint32[]} [low, high] of the rotated word
+   */
   function rotr64(low, high, positions) {
     positions %= 64;
     if (positions === 0) return [low, high];
@@ -47,15 +54,15 @@
 
     if (positions < 32) {
       return [
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))),
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)))
+        OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)),
+        OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))
       ];
     }
 
     positions -= 32;
     return [
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))),
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)))
+      OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)),
+      OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))
     ];
   }
 
@@ -63,12 +70,22 @@
   class AsconPermutation {
     constructor() {
       // Ascon state: 5 x 64-bit words (stored as pairs of 32-bit values: [low32, high32])
+      /** @type {uint32[][]} */
       this.S = new Array(5);
       for (let i = 0; i < 5; i++) {
-        this.S[i] = [0, 0];
+        this.S[i] = OpCodes.Hex32ToDWords('0000000000000000');
       }
     }
 
+    /**
+     * Load the five state words
+     * @param {uint32[]} s0 - Word 0 as [low, high]
+     * @param {uint32[]} s1 - Word 1 as [low, high]
+     * @param {uint32[]} s2 - Word 2 as [low, high]
+     * @param {uint32[]} s3 - Word 3 as [low, high]
+     * @param {uint32[]} s4 - Word 4 as [low, high]
+     * @returns {void}
+     */
     setInitialState(s0, s1, s2, s3, s4) {
       this.S[0] = s0.slice();
       this.S[1] = s1.slice();
@@ -77,8 +94,11 @@
       this.S[4] = s4.slice();
     }
 
+    /**
+     * Ascon permutation with 12 rounds (P12)
+     * @returns {void}
+     */
     permute() {
-      // Ascon permutation with 12 rounds (P12)
       // Reference: ascon-hash.c line 33-34, internal-ascon.c
       // Round constants: 0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b
       this._round(0xf0);
@@ -95,82 +115,86 @@
       this._round(0x4b);
     }
 
+    /**
+     * Ascon round function
+     * Reference: internal-ascon.c ascon_permute() function
+     * @param {uint32} c - Round constant
+     * @returns {void}
+     */
     _round(c) {
-      // Ascon round function
-      // Reference: internal-ascon.c ascon_permute() function
+      const S = this.S;
 
       // Addition of constants (to S[2] low word)
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], c));
+      S[2][0] = OpCodes.Xor32(S[2][0], c);
 
       // Substitution layer (S-box)
       // Pre-XOR phase
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]); // x0 ^= x4
-      this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]); // x4 ^= x3
-      this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]); // x2 ^= x1
+      S[0][0] = OpCodes.Xor32(S[0][0], S[4][0]); S[0][1] = OpCodes.Xor32(S[0][1], S[4][1]); // x0 ^= x4
+      S[4][0] = OpCodes.Xor32(S[4][0], S[3][0]); S[4][1] = OpCodes.Xor32(S[4][1], S[3][1]); // x4 ^= x3
+      S[2][0] = OpCodes.Xor32(S[2][0], S[1][0]); S[2][1] = OpCodes.Xor32(S[2][1], S[1][1]); // x2 ^= x1
 
       // Compute temporary values for 5-bit S-box
-      const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
-      const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
-      const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
-      const t1_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][1], this.S[2][1]));
-      const t2_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][0], this.S[3][0]));
-      const t2_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][1], this.S[3][1]));
-      const t3_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][0], this.S[4][0]));
-      const t3_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][1], this.S[4][1]));
-      const t4_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][0], this.S[0][0]));
-      const t4_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][1], this.S[0][1]));
+      /** @type {uint32} */
+      const t0_l = OpCodes.And32(OpCodes.Not32(S[0][0]), S[1][0]);
+      /** @type {uint32} */
+      const t0_h = OpCodes.And32(OpCodes.Not32(S[0][1]), S[1][1]);
+      /** @type {uint32} */
+      const t1_l = OpCodes.And32(OpCodes.Not32(S[1][0]), S[2][0]);
+      /** @type {uint32} */
+      const t1_h = OpCodes.And32(OpCodes.Not32(S[1][1]), S[2][1]);
+      /** @type {uint32} */
+      const t2_l = OpCodes.And32(OpCodes.Not32(S[2][0]), S[3][0]);
+      /** @type {uint32} */
+      const t2_h = OpCodes.And32(OpCodes.Not32(S[2][1]), S[3][1]);
+      /** @type {uint32} */
+      const t3_l = OpCodes.And32(OpCodes.Not32(S[3][0]), S[4][0]);
+      /** @type {uint32} */
+      const t3_h = OpCodes.And32(OpCodes.Not32(S[3][1]), S[4][1]);
+      /** @type {uint32} */
+      const t4_l = OpCodes.And32(OpCodes.Not32(S[4][0]), S[0][0]);
+      /** @type {uint32} */
+      const t4_h = OpCodes.And32(OpCodes.Not32(S[4][1]), S[0][1]);
 
       // Apply S-box
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], t1_l); this.S[0][1] = OpCodes.XorN(this.S[0][1], t1_h);
-      this.S[1][0] = OpCodes.XorN(this.S[1][0], t2_l); this.S[1][1] = OpCodes.XorN(this.S[1][1], t2_h);
-      this.S[2][0] = OpCodes.XorN(this.S[2][0], t3_l); this.S[2][1] = OpCodes.XorN(this.S[2][1], t3_h);
-      this.S[3][0] = OpCodes.XorN(this.S[3][0], t4_l); this.S[3][1] = OpCodes.XorN(this.S[3][1], t4_h);
-      this.S[4][0] = OpCodes.XorN(this.S[4][0], t0_l); this.S[4][1] = OpCodes.XorN(this.S[4][1], t0_h);
+      S[0][0] = OpCodes.Xor32(S[0][0], t1_l); S[0][1] = OpCodes.Xor32(S[0][1], t1_h);
+      S[1][0] = OpCodes.Xor32(S[1][0], t2_l); S[1][1] = OpCodes.Xor32(S[1][1], t2_h);
+      S[2][0] = OpCodes.Xor32(S[2][0], t3_l); S[2][1] = OpCodes.Xor32(S[2][1], t3_h);
+      S[3][0] = OpCodes.Xor32(S[3][0], t4_l); S[3][1] = OpCodes.Xor32(S[3][1], t4_h);
+      S[4][0] = OpCodes.Xor32(S[4][0], t0_l); S[4][1] = OpCodes.Xor32(S[4][1], t0_h);
 
       // Post-XOR phase
-      this.S[1][0] = OpCodes.XorN(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.XorN(this.S[1][1], this.S[0][1]); // x1 ^= x0
-      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]); // x0 ^= x4
-      this.S[3][0] = OpCodes.XorN(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.XorN(this.S[3][1], this.S[2][1]); // x3 ^= x2
-      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);                        // x2 = ~x2
-      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
+      S[1][0] = OpCodes.Xor32(S[1][0], S[0][0]); S[1][1] = OpCodes.Xor32(S[1][1], S[0][1]); // x1 ^= x0
+      S[0][0] = OpCodes.Xor32(S[0][0], S[4][0]); S[0][1] = OpCodes.Xor32(S[0][1], S[4][1]); // x0 ^= x4
+      S[3][0] = OpCodes.Xor32(S[3][0], S[2][0]); S[3][1] = OpCodes.Xor32(S[3][1], S[2][1]); // x3 ^= x2
+      S[2][0] = OpCodes.Not32(S[2][0]);                        // x2 = ~x2
+      S[2][1] = OpCodes.Not32(S[2][1]);
 
       // Linear diffusion layer
-      // Save state before rotations
-      const s0_l = this.S[0][0], s0_h = this.S[0][1];
-      const s1_l = this.S[1][0], s1_h = this.S[1][1];
-      const s2_l = this.S[2][0], s2_h = this.S[2][1];
-      const s3_l = this.S[3][0], s3_h = this.S[3][1];
-      const s4_l = this.S[4][0], s4_h = this.S[4][1];
+      this._diffuse(0, 19, 28);
+      this._diffuse(1, 61, 39);
+      this._diffuse(2, 1, 6);
+      this._diffuse(3, 10, 17);
+      this._diffuse(4, 7, 41);
+    }
 
-      // x0 ^= rotr64(x0, 19)^rotr64(x0, 28)
-      let r0 = rotr64(s0_l, s0_h, 19);
-      let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]));
-
-      // x1 ^= rotr64(x1, 61)^rotr64(x1, 39)
-      r0 = rotr64(s1_l, s1_h, 61);
-      r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]));
-      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]));
-
-      // x2 ^= rotr64(x2, 1)^rotr64(x2, 6)
-      r0 = rotr64(s2_l, s2_h, 1);
-      r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]));
-      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]));
-
-      // x3 ^= rotr64(x3, 10)^rotr64(x3, 17)
-      r0 = rotr64(s3_l, s3_h, 10);
-      r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]));
-      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]));
-
-      // x4 ^= rotr64(x4, 7)^rotr64(x4, 41)
-      r0 = rotr64(s4_l, s4_h, 7);
-      r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]));
-      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_h, r0[1]), r1[1]));
+    /**
+     * Linear diffusion of one word: x ^= rotr64(x, r0) ^ rotr64(x, r1)
+     * @param {int32} i - State word index
+     * @param {int32} n0 - First rotation
+     * @param {int32} n1 - Second rotation
+     * @returns {void}
+     */
+    _diffuse(i, n0, n1) {
+      /** @type {uint32} */
+      const lo = this.S[i][0];
+      /** @type {uint32} */
+      const hi = this.S[i][1];
+      /** @type {uint32[]} */
+      const r0 = rotr64(lo, hi, n0);
+      /** @type {uint32[]} */
+      const r1 = rotr64(lo, hi, n1);
+      this.S[i][0] = OpCodes.Xor32(OpCodes.Xor32(lo, r0[0]), r1[0]);
+      this.S[i][1] = OpCodes.Xor32(OpCodes.Xor32(hi, r0[1]), r1[1]);
     }
   }
 
@@ -198,7 +222,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -266,9 +290,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -301,7 +325,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AUSTRIA;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -371,9 +395,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -407,7 +431,7 @@
       this.country = CountryCode.INTL;
 
       // XOF supports arbitrary output sizes (common range 1-1024 bytes)
-      this.SupportedOutputSizes = [{ minSize: 1, maxSize: 1024, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(1, 1024, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -495,9 +519,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -511,72 +535,93 @@
   // ============================================================================
 
   /**
- * AsconHash cipher instance implementing Feed/Result pattern
+ * AsconHash hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class AsconHashInstance extends IHashFunctionInstance {
+    /**
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+     * @param {string} variant - 'hash', 'hash256' or 'xof'
+     */
     constructor(algorithm, variant) {
       super(algorithm);
+      /** @type {string} */
       this.variant = variant; // 'hash', 'hash256', or 'xof'
+      /** @type {AsconPermutation} */
       this.permutation = new AsconPermutation();
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(ASCON_HASH_RATE);
+      /** @type {int32} */
       this.bufferPos = 0;
+      /** @type {int32} */
       this.mode = 0; // 0 = absorbing, 1 = squeezing (XOF only)
+      /** @type {int32} */
       this._outputSize = null;
       this.Reset();
     }
 
+    /**
+     * Set the digest size in bytes (1..1024 for the XOF, 32 otherwise)
+     * @param {int32} size - Digest size in bytes
+     */
     set outputSize(size) {
       if (this.variant === 'xof') {
         if (size < 1 || size > 1024) {
-          throw new Error(`Invalid output size: ${size} bytes`);
+          throw new Error('Invalid output size: ' + size + ' bytes');
         }
         this._outputSize = size;
       } else {
         if (size !== 32) {
-          throw new Error(`Invalid output size: ${size} bytes (must be 32)`);
+          throw new Error('Invalid output size: ' + size + ' bytes (must be 32)');
         }
         this._outputSize = 32;
       }
     }
 
+    /**
+     * @returns {int32} Digest size in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
+    /**
+     * Load the IV of the variant and clear the buffer
+     * @returns {void}
+     */
     Reset() {
       // Set initial state based on variant
       if (this.variant === 'xof') {
         // ASCON-XOF IV (after P12 transformation)
         // Reference: ascon-xof.c lines 63-69
         this.permutation.setInitialState(
-          [0x814cd416, 0xb57e273b], // 0xb57e273b814cd416
-          [0x62ae2420, 0x2b510425], // 0x2b51042562ae2420
-          [0x8ddf2218, 0x66a3a776], // 0x66a3a7768ddf2218
-          [0x8153650c, 0x5aad0a7a], // 0x5aad0a7a8153650c
-          [0x539493b6, 0x4f3e0e32]  // 0x4f3e0e32539493b6
+          OpCodes.Hex32ToDWords('814cd416b57e273b'), // 0xb57e273b814cd416
+          OpCodes.Hex32ToDWords('62ae24202b510425'), // 0x2b51042562ae2420
+          OpCodes.Hex32ToDWords('8ddf221866a3a776'), // 0x66a3a7768ddf2218
+          OpCodes.Hex32ToDWords('8153650c5aad0a7a'), // 0x5aad0a7a8153650c
+          OpCodes.Hex32ToDWords('539493b64f3e0e32')  // 0x4f3e0e32539493b6
         );
       } else if (this.variant === 'hash256') {
         // Ascon-Hash256 IV (NIST SP 800-232), state after P12 of 0x0000080100cc0002
         // Reference: ascon-c constants.h ASCON_HASH_IV0..ASCON_HASH_IV4
         this.permutation.setInitialState(
-          [0xe934d681, 0x9b1e5494], // 0x9b1e5494e934d681
-          [0x333751d2, 0x4bc3a01e], // 0x4bc3a01e333751d2
-          [0x6b34b81a, 0xae65396c], // 0xae65396c6b34b81a
-          [0xd56a4db3, 0x3c7fd4a4], // 0x3c7fd4a4d56a4db3
-          [0x06c5976d, 0x1a5c4649]  // 0x1a5c464906c5976d
+          OpCodes.Hex32ToDWords('e934d6819b1e5494'), // 0x9b1e5494e934d681
+          OpCodes.Hex32ToDWords('333751d24bc3a01e'), // 0x4bc3a01e333751d2
+          OpCodes.Hex32ToDWords('6b34b81aae65396c'), // 0xae65396c6b34b81a
+          OpCodes.Hex32ToDWords('d56a4db33c7fd4a4'), // 0x3c7fd4a4d56a4db3
+          OpCodes.Hex32ToDWords('06c5976d1a5c4649')  // 0x1a5c464906c5976d
         );
       } else {
         // ASCON-HASH IV (LWC round version, after P12 transformation)
         // Reference: ascon-hash.c lines 81-87
         this.permutation.setInitialState(
-          [0xdb67f03d, 0xee9398aa], // 0xee9398aadb67f03d
-          [0xc60f1002, 0x8bb21831], // 0x8bb21831c60f1002
-          [0x98d5da62, 0xb48a92db], // 0xb48a92db98d5da62
-          [0xb8f8e3e8, 0x43189921], // 0x43189921b8f8e3e8
-          [0xd525e140, 0x348fa5c9]  // 0x348fa5c9d525e140
+          OpCodes.Hex32ToDWords('db67f03dee9398aa'), // 0xee9398aadb67f03d
+          OpCodes.Hex32ToDWords('c60f10028bb21831'), // 0x8bb21831c60f1002
+          OpCodes.Hex32ToDWords('98d5da62b48a92db'), // 0xb48a92db98d5da62
+          OpCodes.Hex32ToDWords('b8f8e3e843189921'), // 0x43189921b8f8e3e8
+          OpCodes.Hex32ToDWords('d525e140348fa5c9')  // 0x348fa5c9d525e140
         );
       }
 
@@ -586,11 +631,10 @@
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -601,6 +645,7 @@
         this.permutation.permute();
       }
 
+      /** @type {int32} */
       let offset = 0;
 
       // Handle partial block from previous Feed
@@ -620,11 +665,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Finish the hash (or squeeze the XOF output) and reset the instance
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
       if (this.variant === 'xof') {
         return this._resultXof();
@@ -635,100 +678,122 @@
       return this._resultHash();
     }
 
-    // NIST SP 800-232 finalisation: little-endian rate word, 0x01 padding byte
-    _resultHash256() {
-      const finalBytes = this.bufferPos;
-
-      // Zero-extend the partial block and append the 0x01 padding byte
-      const padded = new Array(ASCON_HASH_RATE).fill(0);
-      for (let i = 0; i < finalBytes; i++) {
-        padded[i] = this.buffer[i];
-      }
-      padded[finalBytes] = 0x01;
-
-      const low = OpCodes.Pack32LE(padded[0], padded[1], padded[2], padded[3]);
-      const high = OpCodes.Pack32LE(padded[4], padded[5], padded[6], padded[7]);
-      this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], low));
-      this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], high));
-
-      // Squeeze 32 bytes as four little-endian rate words
-      const output = [];
-      for (let block = 0; block < 4; block++) {
-        this.permutation.permute();
-
-        const loBytes = OpCodes.Unpack32LE(this.permutation.S[0][0]);
-        const hiBytes = OpCodes.Unpack32LE(this.permutation.S[0][1]);
-        output.push(
-          loBytes[0], loBytes[1], loBytes[2], loBytes[3],
-          hiBytes[0], hiBytes[1], hiBytes[2], hiBytes[3]
-        );
-      }
-
-      this.Reset();
-      return output;
+    /**
+     * Rate word S[0] as 8 big-endian bytes (high word first)
+     * @returns {uint8[]} 8 bytes
+     */
+    _rateBytesBE() {
+      return OpCodes.Unpack32BE(this.permutation.S[0][1]).concat(OpCodes.Unpack32BE(this.permutation.S[0][0]));
     }
 
-    _resultHash() {
-      // Fixed 256-bit output for ASCON-HASH and ASCON-HASH256
-      const finalBytes = this.bufferPos;
+    /**
+     * XOR the buffered partial block (big-endian, masked to its length) and
+     * the 0x80 padding byte into the rate word
+     * @param {int32} finalBytes - Buffered bytes (0..7)
+     * @returns {void}
+     */
+    _padBE(finalBytes) {
+      const S = this.permutation.S;
 
       // XOR partial block into state if present
       if (finalBytes > 0) {
         // Pack buffer data into 64-bit word (big-endian)
+        /** @type {uint32} */
         const high = OpCodes.Pack32BE(
           this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
         );
+        /** @type {uint32} */
         const low = OpCodes.Pack32BE(
           this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
         );
 
         // Create mask for partial block (big-endian: leftmost bytes count)
-        let maskHigh = 0, maskLow = 0;
+        /** @type {uint32} */
+        let maskHigh = 0xFFFFFFFF;
+        /** @type {uint32} */
+        let maskLow = 0;
         if (finalBytes <= 4) {
-          maskHigh = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (4 - finalBytes)));
-          maskLow = 0;
+          maskHigh = OpCodes.Shl32(0xFFFFFFFF, 8 * (4 - finalBytes));
         } else {
-          maskHigh = 0xFFFFFFFF;
-          maskLow = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (8 - finalBytes)));
+          maskLow = OpCodes.Shl32(0xFFFFFFFF, 8 * (8 - finalBytes));
         }
 
         // XOR masked data into S[0]
-        this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.AndN(low, maskLow)));
-        this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.AndN(high, maskHigh)));
+        S[0][0] = OpCodes.Xor32(S[0][0], OpCodes.And32(low, maskLow));
+        S[0][1] = OpCodes.Xor32(S[0][1], OpCodes.And32(high, maskHigh));
       }
 
       // Apply 0x80 padding byte at position finalBytes
       if (finalBytes < 4) {
         // Padding in high word (bytes 0-3)
-        this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.Shl32(0x80, 8 * (3 - finalBytes))));
+        S[0][1] = OpCodes.Xor32(S[0][1], OpCodes.Shl32(0x80, 8 * (3 - finalBytes)));
       } else {
         // Padding in low word (bytes 4-7)
-        this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.Shl32(0x80, 8 * (7 - finalBytes))));
+        S[0][0] = OpCodes.Xor32(S[0][0], OpCodes.Shl32(0x80, 8 * (7 - finalBytes)));
       }
+    }
 
-      // Squeeze phase: extract 32 bytes (4 blocks of 8 bytes)
-      const output = [];
+    /**
+     * NIST SP 800-232 finalisation: little-endian rate word, 0x01 padding byte
+     * @returns {uint8[]} 32-byte digest
+     */
+    _resultHash256() {
+      /** @type {int32} */
+      const finalBytes = this.bufferPos;
+      const S = this.permutation.S;
+
+      // Zero-extend the partial block and append the 0x01 padding byte
+      /** @type {uint8[]} */
+      const padded = OpCodes.CreateArray(ASCON_HASH_RATE, 0);
+      for (let i = 0; i < finalBytes; i++) {
+        padded[i] = this.buffer[i];
+      }
+      padded[finalBytes] = 0x01;
+
+      /** @type {uint32} */
+      const low = OpCodes.Pack32LE(padded[0], padded[1], padded[2], padded[3]);
+      /** @type {uint32} */
+      const high = OpCodes.Pack32LE(padded[4], padded[5], padded[6], padded[7]);
+      S[0][0] = OpCodes.Xor32(S[0][0], low);
+      S[0][1] = OpCodes.Xor32(S[0][1], high);
+
+      // Squeeze 32 bytes as four little-endian rate words
+      /** @type {uint8[]} */
+      let output = [];
       for (let block = 0; block < 4; block++) {
-        // Apply permutation before extracting each block
         this.permutation.permute();
-
-        // Extract S[0] as big-endian bytes
-        output.push(
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
-        );
+        output = output.concat(OpCodes.Unpack32LE(S[0][0]), OpCodes.Unpack32LE(S[0][1]));
       }
 
       this.Reset();
       return output;
     }
 
+    /**
+     * ASCON-HASH finalisation: big-endian rate word, 0x80 padding byte
+     * @returns {uint8[]} 32-byte digest
+     */
+    _resultHash() {
+      // Fixed 256-bit output for ASCON-HASH
+      this._padBE(this.bufferPos);
+
+      // Squeeze phase: extract 32 bytes (4 blocks of 8 bytes)
+      /** @type {uint8[]} */
+      let output = [];
+      for (let block = 0; block < 4; block++) {
+        // Apply permutation before extracting each block
+        this.permutation.permute();
+        output = output.concat(this._rateBytesBE());
+      }
+
+      this.Reset();
+      return output;
+    }
+
+    /**
+     * ASCON-XOF finalisation and squeeze of outputSize bytes
+     * @returns {uint8[]} XOF output
+     */
     _resultXof() {
       if (!this._outputSize) {
         throw new Error("Output size not set");
@@ -736,49 +801,22 @@
 
       // Pad the final input block if we were still in absorb phase
       if (this.mode === 0) {
-        // XOR partial block into S[0]
-        if (this.bufferPos > 0) {
-          const high = OpCodes.Pack32BE(
-            this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
-          );
-          const low = OpCodes.Pack32BE(
-            this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
-          );
-
-          // Create mask for partial block (big-endian: leftmost bytes count)
-          let maskHigh = 0, maskLow = 0;
-          if (this.bufferPos <= 4) {
-            maskHigh = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (4 - this.bufferPos)));
-            maskLow = 0;
-          } else {
-            maskHigh = 0xFFFFFFFF;
-            maskLow = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (8 - this.bufferPos)));
-          }
-
-          this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.AndN(low, maskLow)));
-          this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.AndN(high, maskHigh)));
-        }
-
-        // Apply 0x80 padding byte at position bufferPos
-        if (this.bufferPos < 4) {
-          // Padding in high word (bytes 0-3)
-          this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.Shl32(0x80, 8 * (3 - this.bufferPos))));
-        } else {
-          // Padding in low word (bytes 4-7)
-          this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.Shl32(0x80, 8 * (7 - this.bufferPos))));
-        }
-
+        this._padBE(this.bufferPos);
         this.bufferPos = 0;
         this.mode = 1; // Switch to squeeze mode
       }
 
       // Squeeze phase: extract requested output bytes
-      const output = [];
+      /** @type {uint8[]} */
+      let output = [];
+      /** @type {int32} */
       let outlen = this._outputSize;
 
       // Handle left-over partial blocks from last time (if Result() called multiple times)
       if (this.bufferPos > 0) {
-        const temp = Math.min(ASCON_HASH_RATE - this.bufferPos, outlen);
+        /** @type {int32} */
+        let temp = ASCON_HASH_RATE - this.bufferPos;
+        if (outlen < temp) temp = outlen;
         for (let i = 0; i < temp; i++) {
           output.push(this.buffer[this.bufferPos++]);
         }
@@ -794,16 +832,7 @@
         this.permutation.permute();
 
         // Extract S[0] as big-endian bytes
-        output.push(
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
-        );
+        output = output.concat(this._rateBytesBE());
         outlen -= ASCON_HASH_RATE;
       }
 
@@ -812,16 +841,8 @@
         this.permutation.permute();
 
         // Extract partial block from S[0]
-        const stateBytes = [
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
-          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
-        ];
+        /** @type {uint8[]} */
+        const stateBytes = this._rateBytesBE();
 
         for (let i = 0; i < outlen; i++) {
           output.push(stateBytes[i]);
@@ -834,33 +855,43 @@
       return output;
     }
 
+    /**
+     * XOR the full buffered block into the rate word and permute
+     * @returns {void}
+     */
     _absorb() {
+      const S = this.permutation.S;
+
       if (this.variant === 'hash256') {
         // NIST SP 800-232 loads message bytes little-endian into the rate word
+        /** @type {uint32} */
         const loWord = OpCodes.Pack32LE(
           this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
         );
+        /** @type {uint32} */
         const hiWord = OpCodes.Pack32LE(
           this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
         );
 
-        this.permutation.S[0][0] = OpCodes.XorN(this.permutation.S[0][0], loWord);
-        this.permutation.S[0][1] = OpCodes.XorN(this.permutation.S[0][1], hiWord);
+        S[0][0] = OpCodes.Xor32(S[0][0], loWord);
+        S[0][1] = OpCodes.Xor32(S[0][1], hiWord);
 
         this.permutation.permute();
         return;
       }
 
       // XOR buffer into S[0] and apply permutation
+      /** @type {uint32} */
       const high = OpCodes.Pack32BE(
         this.buffer[0], this.buffer[1], this.buffer[2], this.buffer[3]
       );
+      /** @type {uint32} */
       const low = OpCodes.Pack32BE(
         this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
       );
 
-      this.permutation.S[0][0] = OpCodes.XorN(this.permutation.S[0][0], low);
-      this.permutation.S[0][1] = OpCodes.XorN(this.permutation.S[0][1], high);
+      S[0][0] = OpCodes.Xor32(S[0][0], low);
+      S[0][1] = OpCodes.Xor32(S[0][1], high);
 
       this.permutation.permute();
     }

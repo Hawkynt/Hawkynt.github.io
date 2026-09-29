@@ -54,16 +54,115 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Parity check, one registered algorithm per variant
+   * @class
+   * @extends {Algorithm}
+   */
   class ParityAlgorithm extends Algorithm {
+    /**
+     * Configure one parity variant
+     * @param {string} [variant='Even'] - 'Even', 'Odd' or 'Longitudinal' (anything else gets the Even metadata)
+     */
     constructor(variant = 'Even') {
       super();
 
-      // Get configuration for this variant
-      this.config = this._getVariantConfig(variant);
+      /** @type {string} What the variant computes */
+      this.variantDescription = '';
+
+      switch (variant) {
+        case 'Odd':
+          this.variantDescription = 'Odd parity check ensuring total number of 1 bits is odd';
+          this.tests = [
+            new TestCase(
+              [],
+              OpCodes.Hex8ToBytes("01"),
+              "Empty data",
+              "Odd parity of empty data is 1"
+            ),
+            new TestCase(
+              [0xFF], // 11111111 (8 bits set) - even count
+              OpCodes.Hex8ToBytes("01"),
+              "Single byte 0xFF",
+              "8 bits set - needs odd parity bit"
+            ),
+            new TestCase(
+              [0x0F], // 00001111 (4 bits set) - even count
+              OpCodes.Hex8ToBytes("01"),
+              "Single byte 0x0F",
+              "4 bits set - needs odd parity bit"
+            ),
+            new TestCase(
+              [0x07], // 00000111 (3 bits set) - odd count
+              OpCodes.Hex8ToBytes("00"),
+              "Single byte 0x07",
+              "3 bits set - already odd"
+            )
+          ];
+          break;
+        case 'Longitudinal':
+          this.variantDescription = 'Longitudinal parity check using XOR of all bytes for multi-byte error detection';
+          this.tests = [
+            new TestCase(
+              [],
+              OpCodes.Hex8ToBytes("00"),
+              "Empty data",
+              "XOR of empty data is 0"
+            ),
+            new TestCase(
+              [0xAA, 0x55], // 10101010 XOR 01010101 = 11111111
+              OpCodes.Hex8ToBytes("ff"),
+              "Bytes 0xAA, 0x55",
+              "XOR result is 0xFF"
+            ),
+            new TestCase(
+              [0x12, 0x34, 0x56], // 0x12 XOR 0x34 XOR 0x56 = 0x70
+              OpCodes.Hex8ToBytes("70"),
+              "Bytes 0x12, 0x34, 0x56",
+              "XOR result is 0x70"
+            ),
+            new TestCase(
+              [0xFF, 0xFF, 0xFF, 0xFF], // All 0xFF XOR together = 0x00
+              OpCodes.Hex8ToBytes("00"),
+              "Four bytes of 0xFF",
+              "Even number of identical bytes XOR to 0"
+            )
+          ];
+          break;
+        default: // 'Even'
+          this.variantDescription = 'Even parity check ensuring total number of 1 bits is even';
+          this.tests = [
+            new TestCase(
+              [],
+              OpCodes.Hex8ToBytes("00"),
+              "Empty data",
+              "Even parity of empty data is 0"
+            ),
+            new TestCase(
+              [0xFF], // 11111111 (8 bits set) - even count
+              OpCodes.Hex8ToBytes("00"),
+              "Single byte 0xFF",
+              "8 bits set - even parity"
+            ),
+            new TestCase(
+              [0x0F], // 00001111 (4 bits set) - even count
+              OpCodes.Hex8ToBytes("00"),
+              "Single byte 0x0F",
+              "4 bits set - even parity"
+            ),
+            new TestCase(
+              [0x07], // 00000111 (3 bits set) - odd count
+              OpCodes.Hex8ToBytes("01"),
+              "Single byte 0x07",
+              "3 bits set - odd parity needs correction"
+            )
+          ];
+          break;
+      }
 
       // Required metadata
-      this.name = `${variant}-Parity`;
-      this.description = `${this.config.description} Fundamental error detection using XOR operations.`;
+      this.name = variant + '-Parity';
+      this.description = this.variantDescription + ' Fundamental error detection using XOR operations.';
       this.inventor = "Richard Hamming";
       this.year = 1950;
       this.category = CategoryType.CHECKSUM;
@@ -99,140 +198,43 @@
           "Poor performance against consecutive bit errors"
         )
       ];
-
-      // Test vectors specific to this variant
-      this.tests = this.config.tests;
-    }
-
-    _getVariantConfig(variant) {
-      const configs = {
-        'Even': {
-          description: 'Even parity check ensuring total number of 1 bits is even',
-          parityType: 'even',
-          tests: [
-            new TestCase(
-              [],
-              OpCodes.Hex8ToBytes("00"),
-              "Empty data",
-              "Even parity of empty data is 0"
-            ),
-            new TestCase(
-              [0xFF], // 11111111 (8 bits set) - even count
-              OpCodes.Hex8ToBytes("00"),
-              "Single byte 0xFF",
-              "8 bits set - even parity"
-            ),
-            new TestCase(
-              [0x0F], // 00001111 (4 bits set) - even count
-              OpCodes.Hex8ToBytes("00"),
-              "Single byte 0x0F",
-              "4 bits set - even parity"
-            ),
-            new TestCase(
-              [0x07], // 00000111 (3 bits set) - odd count
-              OpCodes.Hex8ToBytes("01"),
-              "Single byte 0x07",
-              "3 bits set - odd parity needs correction"
-            )
-          ]
-        },
-        'Odd': {
-          description: 'Odd parity check ensuring total number of 1 bits is odd',
-          parityType: 'odd',
-          tests: [
-            new TestCase(
-              [],
-              OpCodes.Hex8ToBytes("01"),
-              "Empty data",
-              "Odd parity of empty data is 1"
-            ),
-            new TestCase(
-              [0xFF], // 11111111 (8 bits set) - even count
-              OpCodes.Hex8ToBytes("01"),
-              "Single byte 0xFF",
-              "8 bits set - needs odd parity bit"
-            ),
-            new TestCase(
-              [0x0F], // 00001111 (4 bits set) - even count
-              OpCodes.Hex8ToBytes("01"),
-              "Single byte 0x0F",
-              "4 bits set - needs odd parity bit"
-            ),
-            new TestCase(
-              [0x07], // 00000111 (3 bits set) - odd count
-              OpCodes.Hex8ToBytes("00"),
-              "Single byte 0x07",
-              "3 bits set - already odd"
-            )
-          ]
-        },
-        'Longitudinal': {
-          description: 'Longitudinal parity check using XOR of all bytes for multi-byte error detection',
-          parityType: 'longitudinal',
-          tests: [
-            new TestCase(
-              [],
-              OpCodes.Hex8ToBytes("00"),
-              "Empty data",
-              "XOR of empty data is 0"
-            ),
-            new TestCase(
-              [0xAA, 0x55], // 10101010 XOR 01010101 = 11111111
-              OpCodes.Hex8ToBytes("ff"),
-              "Bytes 0xAA, 0x55",
-              "XOR result is 0xFF"
-            ),
-            new TestCase(
-              [0x12, 0x34, 0x56], // 0x12 XOR 0x34 XOR 0x56 = 0x70
-              OpCodes.Hex8ToBytes("70"),
-              "Bytes 0x12, 0x34, 0x56",
-              "XOR result is 0x70"
-            ),
-            new TestCase(
-              [0xFF, 0xFF, 0xFF, 0xFF], // All 0xFF XOR together = 0x00
-              OpCodes.Hex8ToBytes("00"),
-              "Four bytes of 0xFF",
-              "Even number of identical bytes XOR to 0"
-            )
-          ]
-        }
-      };
-
-      return configs[variant] || configs['Even'];
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new parity instance
+   * @param {boolean} [isInverse=false] - Parity checks have no inverse
+   * @returns {ParityInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
-      if (isInverse) {
-        return null; // Parity checks do not support inverse operations
-      }
-      return new ParityInstance(this, this.config);
+      return new ParityInstance(this);
     }
   }
 
   /**
- * Parity cipher instance implementing Feed/Result pattern
+ * Parity instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class ParityInstance extends IAlgorithmInstance {
-    constructor(algorithm, config) {
+    /**
+     * Select the variant's rule
+     * @param {ParityAlgorithm} algorithm - Parent algorithm (the variant)
+     */
+    constructor(algorithm) {
       super(algorithm);
-      this.config = config;
+      /** @type {string} Variant name: 'Even', 'Odd' or 'Longitudinal' */
       this.variant = algorithm.name.split('-')[0]; // Extract 'Even', 'Odd', 'Longitudinal'
+      /** @type {uint8[]} Bytes fed since the last Result() */
+      this.data = [];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the parity check
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array of bytes
    */
 
     Feed(data) {
@@ -241,7 +243,8 @@
       }
 
       // Validate that all elements are valid bytes (0-255)
-      for (let byte of data) {
+      for (let i = 0; i < data.length; i++) {
+        const byte = data[i];
         if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
           throw new Error('ParityInstance.Feed: All elements must be bytes (0-255)');
         }
@@ -250,22 +253,17 @@
       // Feed is a streaming interface: successive calls extend the message
       // rather than replace it. Longitudinal parity is computed column-wise over
       // the whole message, so the bytes are collected for Result().
-      if (!this.data) this.data = [];
       for (let i = 0; i < data.length; i++) this.data.push(data[i]);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the parity of everything fed so far and reset for the next message
+   * @returns {uint8[]} One byte: the parity bit, or the XOR of all bytes (Longitudinal)
    */
 
     Result() {
-      if (!this.data) {
-        this.data = []; // Handle empty case
-      }
-
-      let result;
+      /** @type {uint8[]} */
+      let result = null;
 
       if (this.variant === 'Longitudinal') {
         result = this._calculateLongitudinalParity();
@@ -274,25 +272,31 @@
       }
 
       // Reset for next calculation
-      this.data = null;
+      this.data = [];
 
       return result;
     }
 
+    /**
+     * Even or odd parity bit over all bits fed
+     * @returns {uint8[]} One byte holding the parity bit
+     */
     _calculateBitParity() {
       // Count total number of 1 bits across all bytes
       let totalBits = 0;
 
-      for (let byte of this.data) {
+      for (let i = 0; i < this.data.length; i++) {
         // Count bits in this byte
-        let temp = byte;
+        /** @type {uint32} */
+        let temp = this.data[i];
         while (temp > 0) {
-          totalBits += OpCodes.AndN(temp, 1);
+          if (OpCodes.And32(temp, 1) !== 0) totalBits++;
           temp = OpCodes.Shr32(temp, 1);
         }
       }
 
-      let parityBit;
+      /** @type {uint8} */
+      let parityBit = 0;
       if (this.variant === 'Even') {
         // Even parity: parity bit is 1 if total bits is odd
         parityBit = totalBits % 2;
@@ -301,18 +305,27 @@
         parityBit = (totalBits % 2) === 0 ? 1 : 0;
       }
 
-      return [parityBit];
+      /** @type {uint8[]} */
+      const result = [parityBit];
+      return result;
     }
 
+    /**
+     * XOR of all bytes fed
+     * @returns {uint8[]} One byte holding the XOR
+     */
     _calculateLongitudinalParity() {
       // XOR all bytes together
+      /** @type {uint8} */
       let checksum = 0;
 
-      for (let byte of this.data) {
-        checksum = OpCodes.XorN(checksum, byte);
+      for (let i = 0; i < this.data.length; i++) {
+        checksum = OpCodes.Xor8(checksum, this.data[i]);
       }
 
-      return [checksum];
+      /** @type {uint8[]} */
+      const result = [checksum];
+      return result;
     }
   }
 
@@ -320,11 +333,6 @@
   RegisterAlgorithm(new ParityAlgorithm('Even'));
   RegisterAlgorithm(new ParityAlgorithm('Odd'));
   RegisterAlgorithm(new ParityAlgorithm('Longitudinal'));
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { ParityAlgorithm, ParityInstance };
-  }
 
   // ===== REGISTRATION =====
 

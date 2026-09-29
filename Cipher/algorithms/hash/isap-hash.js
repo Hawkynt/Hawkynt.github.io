@@ -32,28 +32,51 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   const RATE = 8; // 64 bits = 8 bytes
 
-  // 64-bit rotation using OpCodes principles
+  // ISAP Hash IV (Ascon-Hash precomputed initial state), each 64-bit word
+  // as its low 32-bit half followed by its high 32-bit half.
+  // Reference: BouncyCastle ISAPDigest.cs lines 17-21
+  // These are the values after applying P12 to the raw IV
+  /** @type {uint32[]} */
+  const IV_WORDS = OpCodes.Hex32ToDWords(
+    "db67f03dee9398aa" + // 0xee9398aadb67f03d
+    "c60f10028bb21831" + // 0x8bb21831c60f1002
+    "98d5da62b48a92db" + // 0xb48a92db98d5da62
+    "b8f8e3e843189921" + // 0x43189921b8f8e3e8
+    "d525e140348fa5c9"   // 0x348fa5c9d525e140
+  );
+
+  /**
+   * 64-bit right rotation of a split word
+   * @param {uint32} low - low 32 bits
+   * @param {uint32} high - high 32 bits
+   * @param {int32} positions - rotation amount
+   * @returns {uint32[]} [low, high] of the rotated word
+   */
   function rotr64(low, high, positions) {
     positions %= 64;
-    if (positions === 0) return [low, high];
-    if (positions === 32) return [high, low];
+    /** @type {uint32[]} */
+    const out = [low, high];
+    if (positions === 0) return out;
+    if (positions === 32) {
+      out[0] = high;
+      out[1] = low;
+      return out;
+    }
 
     if (positions < 32) {
-      return [
-        OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0),
-        OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0)
-      ];
+      out[0] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0);
+      out[1] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0);
+      return out;
     }
 
     positions -= 32;
-    return [
-      OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0),
-      OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0)
-    ];
+    out[0] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0);
+    out[1] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0);
+    return out;
   }
 
   /**
@@ -76,7 +99,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AUSTRIA;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -144,9 +167,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {ISAPHashInstance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -156,45 +179,46 @@
   }
 
   /**
- * ISAPHash cipher instance implementing Feed/Result pattern
+ * ISAPHash hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class ISAPHashInstance extends IHashFunctionInstance {
+    /**
+     * @param {ISAPHash} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // Ascon state: 5 x 64-bit words (stored as pairs of 32-bit values [low32, high32])
+      /** @type {uint32[][]} */
       this.S = new Array(5);
-      for (let i = 0; i < 5; i++) {
-        this.S[i] = [0, 0];
-      }
 
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(RATE);
+      /** @type {int32} */
       this.bufferPos = 0;
 
       this.Reset();
     }
 
+    /**
+     * Load the IV and empty the buffer
+     * @returns {void}
+     */
     Reset() {
-      // ISAP Hash IV (Ascon-Hash precomputed initial state)
-      // Reference: BouncyCastle ISAPDigest.cs lines 17-21
-      // These are the values after applying P12 to the raw IV
-      this.S[0] = [0xdb67f03d, 0xee9398aa]; // 0xee9398aadb67f03d
-      this.S[1] = [0xc60f1002, 0x8bb21831]; // 0x8bb21831c60f1002
-      this.S[2] = [0x98d5da62, 0xb48a92db]; // 0xb48a92db98d5da62
-      this.S[3] = [0xb8f8e3e8, 0x43189921]; // 0x43189921b8f8e3e8
-      this.S[4] = [0xd525e140, 0x348fa5c9]; // 0x348fa5c9d525e140
+      for (let i = 0; i < 5; i++) {
+        this.S[i] = IV_WORDS.slice(2 * i, 2 * i + 2);
+      }
 
       this.buffer.fill(0);
       this.bufferPos = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the hash
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -219,9 +243,8 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Finish the message and return the digest (the instance then restarts)
+   * @returns {uint8[]} 32-byte digest
    */
 
     Result() {
@@ -244,7 +267,10 @@
       // Create mask: ulong.MaxValue << (56 - finalBits)
       // This preserves the first finalBits and padding bit
       const shiftAmount = 56 - finalBits;
-      let maskHigh, maskLow;
+      /** @type {uint32} */
+      let maskHigh = 0;
+      /** @type {uint32} */
+      let maskLow = 0;
 
       if (shiftAmount >= 32) {
         // Shift is in high word only
@@ -266,6 +292,7 @@
 
       // Squeeze 32 bytes (4 blocks of 8 bytes)
       // Reference: BouncyCastle ISAPDigest.cs DoFinal() lines 124-128
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < 4; i++) {
@@ -275,13 +302,18 @@
         // Pack.UInt64_To_BE(x0, output, offset)
         const bytes = OpCodes.Unpack32BE(this.S[0][1]);
         const bytes2 = OpCodes.Unpack32BE(this.S[0][0]);
-        output.push(...bytes, ...bytes2);
+        for (let j = 0; j < 4; j++) output.push(bytes[j]);
+        for (let j = 0; j < 4; j++) output.push(bytes2[j]);
       }
 
       this.Reset();
       return output;
     }
 
+    /**
+     * XOR the full buffer into the rate and permute
+     * @returns {void}
+     */
     _absorb() {
       // XOR buffer into S[0] (big-endian)
       // Reference: BouncyCastle ISAPDigest.cs line 38, 67, 74
@@ -298,6 +330,10 @@
       this._P12();
     }
 
+    /**
+     * Ascon permutation with 12 rounds
+     * @returns {void}
+     */
     _P12() {
       // 12 rounds with constants 0xf0, 0xe1, ..., 0x4b
       // Reference: BouncyCastle ISAPDigest.cs lines 172-185
@@ -315,6 +351,11 @@
       this._round(0x4b);
     }
 
+    /**
+     * One Ascon round
+     * @param {uint32} c - round constant
+     * @returns {void}
+     */
     _round(c) {
       // Canonical Ascon S-box from reference implementation
       // Reference: internal-ascon.c lines 56-72

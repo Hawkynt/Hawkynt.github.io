@@ -28,7 +28,11 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
@@ -37,6 +41,11 @@
 
   // ===== ONES COMPLEMENT 16-BIT =====
 
+  /**
+   * Internet (one's complement) checksum
+   * @class
+   * @extends {Algorithm}
+   */
   class OnesComplementChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -51,6 +60,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
+      /** @type {int32} */
       this.checksumSize = 16;
 
       this.documentation = [
@@ -63,6 +73,7 @@
         new LinkItem("Linux kernel Internet checksum implementation", "https://github.com/torvalds/linux/blob/master/lib/checksum.c")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: sum 16-bit words, add carry back (end-around carry), then NOT",
         "Used in: IPv4, TCP, UDP, ICMP headers",
@@ -96,9 +107,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {OnesComplementChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -108,28 +119,32 @@
   }
 
   /**
- * OnesComplementChecksum cipher instance implementing Feed/Result pattern
+ * OnesComplementChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class OnesComplementChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {OnesComplementChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running sum, folded to 16 bits after every word */
       this.sum = 0;
+      /** @type {uint8} Odd trailing byte carried into the next Feed */
+      this.pending = 0;
+      /** @type {boolean} Whether pending holds a byte */
+      this.hasPending = false;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -142,13 +157,13 @@
       // Feed(a || b) whenever a had odd length.
       let i = 0;
       if (this.hasPending) {
-        this._addWord(OpCodes.OrN(OpCodes.Shl32(this.pending, 8), data[0]));
+        this._addWord(OpCodes.Or32(OpCodes.Shl32(this.pending, 8), data[0]));
         this.hasPending = false;
         i = 1;
       }
 
       for (; i + 1 < data.length; i += 2) {
-        this._addWord(OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]));
+        this._addWord(OpCodes.Or32(OpCodes.Shl32(data[i], 8), data[i + 1]));
       }
 
       if (i < data.length) {
@@ -159,21 +174,21 @@
 
     /**
      * Add one 16-bit word to the running one's complement sum
-     * @param {number} word - 16-bit word
+     * @param {uint32} word - 16-bit word
+     * @returns {void}
      */
     _addWord(word) {
-      this.sum += word;
+      this.sum = OpCodes.Add32(this.sum, word);
 
       // End-around carry: add carry bits back
       if (this.sum > 0xFFFF) {
-        this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
+        this.sum = OpCodes.Add32(OpCodes.And32(this.sum, 0xFFFF), OpCodes.Shr32(this.sum, 16));
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes, big-endian
    */
 
     Result() {
@@ -185,25 +200,27 @@
 
       // Final end-around carry
       while (this.sum > 0xFFFF) {
-        this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
+        this.sum = OpCodes.Add32(OpCodes.And32(this.sum, 0xFFFF), OpCodes.Shr32(this.sum, 16));
       }
 
       // One's complement (invert all bits)
-      const checksum = OpCodes.AndN(~this.sum, 0xFFFF);
+      const checksum = OpCodes.And32(OpCodes.Not32(this.sum), 0xFFFF);
 
       // Reset state
       this.sum = 0;
 
       // Return as big-endian bytes
-      return [
-        OpCodes.AndN(OpCodes.Shr32(checksum, 8), 0xFF),
-        OpCodes.AndN(checksum, 0xFF)
-      ];
+      return OpCodes.Unpack16BE(checksum);
     }
   }
 
   // ===== TWOS COMPLEMENT 8-BIT =====
 
+  /**
+   * 8-bit two's complement checksum
+   * @class
+   * @extends {Algorithm}
+   */
   class TwosComplement8Algorithm extends Algorithm {
     constructor() {
       super();
@@ -218,6 +235,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8;
 
       this.documentation = [
@@ -230,6 +248,7 @@
         new LinkItem("IntelHex library record checksum implementation", "https://github.com/python-intelhex/intelhex/blob/master/intelhex/__init__.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: sum all bytes, then negate (two's complement)",
         "Two's complement: (~sum + 1) AND 0xFF",
@@ -262,9 +281,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {TwosComplement8Instance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -274,54 +293,58 @@
   }
 
   /**
- * TwosComplement8 cipher instance implementing Feed/Result pattern
+ * TwosComplement8 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class TwosComplement8Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {TwosComplement8Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Byte sum modulo 256 */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.AndN(this.sum + data[i], 0xFF);
+        this.sum = OpCodes.And32(OpCodes.Add32(this.sum, data[i]), 0xFF);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes, big-endian
    */
 
     Result() {
       // Two's complement: negate the sum
-      const checksum = OpCodes.AndN((~this.sum) + 1, 0xFF);
+      const checksum = OpCodes.And32(OpCodes.Add32(OpCodes.Not32(this.sum), 1), 0xFF);
       this.sum = 0;
-      return [checksum];
+      return OpCodes.Unpack16BE(checksum).slice(1);
     }
   }
 
   // ===== TWOS COMPLEMENT 16-BIT =====
 
+  /**
+   * 16-bit two's complement checksum
+   * @class
+   * @extends {Algorithm}
+   */
   class TwosComplement16Algorithm extends Algorithm {
     constructor() {
       super();
@@ -336,6 +359,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 16;
 
       this.documentation = [
@@ -347,6 +371,7 @@
         new LinkItem("IntelHex library record checksum implementation", "https://github.com/python-intelhex/intelhex/blob/master/intelhex/__init__.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: sum all bytes (16-bit), then negate",
         "Verification: (sum + checksum) AND 0xFFFF == 0",
@@ -371,9 +396,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {TwosComplement16Instance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -383,52 +408,48 @@
   }
 
   /**
- * TwosComplement16 cipher instance implementing Feed/Result pattern
+ * TwosComplement16 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class TwosComplement16Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {TwosComplement16Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Byte sum modulo 65536 */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.AndN(this.sum + data[i], 0xFFFF);
+        this.sum = OpCodes.And32(OpCodes.Add32(this.sum, data[i]), 0xFFFF);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes, big-endian
    */
 
     Result() {
       // Two's complement: negate the sum
-      const checksum = OpCodes.AndN((~this.sum) + 1, 0xFFFF);
+      const checksum = OpCodes.And32(OpCodes.Add32(OpCodes.Not32(this.sum), 1), 0xFFFF);
       this.sum = 0;
-      return [
-        OpCodes.AndN(OpCodes.Shr32(checksum, 8), 0xFF),  // High byte
-        OpCodes.AndN(checksum, 0xFF)                      // Low byte
-      ];
+      return OpCodes.Unpack16BE(checksum); // High byte, low byte
     }
   }
 
