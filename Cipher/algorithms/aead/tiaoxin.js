@@ -82,6 +82,9 @@
   ]);
 
   // AES round function: SubBytes + ShiftRows + MixColumns
+  /**
+   * @param {uint8[]} state
+   */
   function aesRound(state) {
     // SubBytes
     for (let i = 0; i < 16; ++i) {
@@ -89,6 +92,7 @@
     }
 
     // ShiftRows
+    /** @type {uint8} */
     let temp = state[1];
     state[1] = state[5];
     state[5] = state[9];
@@ -96,6 +100,7 @@
     state[13] = temp;
 
     temp = state[2];
+    /** @type {uint8} */
     let temp2 = state[6];
     state[2] = state[10];
     state[6] = state[14];
@@ -111,19 +116,27 @@
     // MixColumns (using GF(256) multiplication)
     for (let col = 0; col < 4; ++col) {
       const base = col * 4;
+      /** @type {uint8} */
       const s0 = state[base];
+      /** @type {uint8} */
       const s1 = state[base + 1];
+      /** @type {uint8} */
       const s2 = state[base + 2];
+      /** @type {uint8} */
       const s3 = state[base + 3];
 
-      state[base] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3), 0xff);
-      state[base + 1] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3), 0xff);
-      state[base + 2] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3)), 0xff);
-      state[base + 3] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2)), 0xff);
+      state[base] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3), 0xff);
+      state[base + 1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3), 0xff);
+      state[base + 2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3)), 0xff);
+      state[base + 3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2)), 0xff);
     }
   }
 
   // XOR two 16-byte words
+  /**
+   * @param {uint8[]} dest
+   * @param {uint8[]} src
+   */
   function xorWords(dest, src) {
     for (let i = 0; i < 16; ++i) {
       dest[i] ^= src[i];
@@ -131,6 +144,10 @@
   }
 
   // AND two 16-byte words
+  /**
+   * @param {uint8[]} dest
+   * @param {uint8[]} src
+   */
   function andWords(dest, src) {
     for (let i = 0; i < 16; ++i) {
       dest[i] &= src[i];
@@ -138,6 +155,10 @@
   }
 
   // Copy 16-byte word
+  /**
+   * @param {uint8[]} dest
+   * @param {uint8[]} src
+   */
   function copyWord(dest, src) {
     for (let i = 0; i < 16; ++i) {
       dest[i] = src[i];
@@ -303,15 +324,23 @@
       this.isInverse = isInverse;
 
       // State: T3 (3 words), T4 (4 words), T6 (6 words)
-      this.T3 = Array.from({ length: 3 }, () => new Uint8Array(16));
-      this.T4 = Array.from({ length: 4 }, () => new Uint8Array(16));
-      this.T6 = Array.from({ length: 6 }, () => new Uint8Array(16));
+      /** @type {uint8[][]} */
+      this.T3 = [];
+      for (let i = 0; i < 3; ++i) this.T3.push(new Uint8Array(16));
+      /** @type {uint8[][]} */
+      this.T4 = [];
+      for (let i = 0; i < 4; ++i) this.T4.push(new Uint8Array(16));
+      /** @type {uint8[][]} */
+      this.T6 = [];
+      for (let i = 0; i < 6; ++i) this.T6.push(new Uint8Array(16));
 
       /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._ad = [];
+      /** @type {uint8[]} */
       this._data = [];
     }
 
@@ -391,6 +420,10 @@
     // one word per register - which is why all three of M0, M1 and M2 have to
     // be carried through, and why dropping any of them would leave that part of
     // the message out of the tag.
+    /**
+     * @param {uint8[][]} T
+     * @param {uint8[]} M
+     */
     _round(T, M) {
       const s = T.length;
 
@@ -414,6 +447,11 @@
 
     // Tiaoxin Update transformation: the three registers advance in parallel,
     // each absorbing its own message word.
+    /**
+     * @param {uint8[]} M0
+     * @param {uint8[]} M1
+     * @param {uint8[]} M2
+     */
     _update(M0, M1, M2) {
       this._round(this.T3, M0);
       this._round(this.T4, M1);
@@ -425,6 +463,9 @@
     // already been folded into T3[0], T4[0] and T6[0] by the Update. On
     // decryption the same two expressions are recovered from a zero Update and
     // XORed with the ciphertext to give the plaintext back.
+    /**
+     * @returns {uint8[][]}
+     */
     _extract() {
       const e0 = new Uint8Array(16);
       copyWord(e0, this.T6[3]);
@@ -440,7 +481,9 @@
       xorWords(e1, this.T4[2]);
       xorWords(e1, this.T3[1]);
 
-      return [e0, e1];
+      /** @type {uint8[][]} */
+      const words = [e0, e1];
+      return words;
     }
 
     // Initialize state with key and nonce
@@ -476,6 +519,11 @@
 
     // Split a byte array into the two 128-bit words of the block starting at
     // pos, zero-padding anything past the end of the data.
+    /**
+     * @param {uint8[]} data
+     * @param {int32} pos
+     * @returns {uint8[][]}
+     */
     _blockWords(data, pos) {
       const w0 = new Uint8Array(16);
       const w1 = new Uint8Array(16);
@@ -485,16 +533,24 @@
         const b = pos + 16 + i;
         if (b < data.length) w1[i] = data[b];
       }
-      return [w0, w1];
+      /** @type {uint8[][]} */
+      const words = [w0, w1];
+      return words;
     }
 
     // Process associated data: 32 bytes per Update, zero-padded, with the third
     // message word the XOR of the other two. An empty associated data string is
     // not processed at all.
     _processAD() {
+      /** @type {uint8[]} */
       const ad = this._ad;
       for (let pos = 0; pos < ad.length; pos += 32) {
-        const [A0, A1] = this._blockWords(ad, pos);
+        /** @type {uint8[][]} */
+        const A0A1 = this._blockWords(ad, pos);
+        /** @type {uint8[]} */
+        const A0 = A0A1[0];
+        /** @type {uint8[]} */
+        const A1 = A0A1[1];
         const A2 = new Uint8Array(16);
         copyWord(A2, A0);
         xorWords(A2, A1);
@@ -530,7 +586,9 @@
         }
 
         const ctLength = this._data.length - 16;
+        /** @type {uint8[]} */
         const ciphertext = this._data.slice(0, ctLength);
+        /** @type {uint8[]} */
         const receivedTag = this._data.slice(ctLength);
 
         /** @type {uint8[]} */
@@ -543,11 +601,21 @@
         // into word 0 of each register lands on exactly the state the encryptor
         // reached with Update(M0, M1, M0 XOR M1).
         for (let pos = 0; pos < ciphertext.length; pos += 32) {
-          const [C0, C1] = this._blockWords(ciphertext, pos);
+          /** @type {uint8[][]} */
+          const C0C1 = this._blockWords(ciphertext, pos);
+          /** @type {uint8[]} */
+          const C0 = C0C1[0];
+          /** @type {uint8[]} */
+          const C1 = C0C1[1];
           const remaining = ciphertext.length - pos;
 
           this._update(zeroWord, zeroWord, zeroWord);
-          const [e0, e1] = this._extract();
+          /** @type {uint8[][]} */
+          const e0e1 = this._extract();
+          /** @type {uint8[]} */
+          const e0 = e0e1[0];
+          /** @type {uint8[]} */
+          const e1 = e0e1[1];
 
           const M0 = new Uint8Array(16);
           copyWord(M0, C0);
@@ -576,6 +644,7 @@
         }
 
         // Finalize and verify tag
+        /** @type {uint8[]} */
         const tag = this._finalize(this._ad.length, ciphertext.length);
 
         this._data = [];
@@ -588,6 +657,7 @@
 
       } else {
         // Encryption
+        /** @type {uint8[]} */
         const plaintext = this._data;
         /** @type {uint8[]} */
         const ciphertext = [];
@@ -597,7 +667,12 @@
         // back to the real length. Leaving the tail block out of the state
         // would leave the whole of a sub-block message unauthenticated.
         for (let pos = 0; pos < plaintext.length; pos += 32) {
-          const [M0, M1] = this._blockWords(plaintext, pos);
+          /** @type {uint8[][]} */
+          const M0M1 = this._blockWords(plaintext, pos);
+          /** @type {uint8[]} */
+          const M0 = M0M1[0];
+          /** @type {uint8[]} */
+          const M1 = M0M1[1];
           const M2 = new Uint8Array(16);
           copyWord(M2, M0);
           xorWords(M2, M1);
@@ -606,12 +681,18 @@
 
           // After the update the plaintext is already folded into the state, so
           // the two extracted words are the ciphertext themselves.
-          const [C0, C1] = this._extract();
+          /** @type {uint8[][]} */
+          const C0C1 = this._extract();
+          /** @type {uint8[]} */
+          const C0 = C0C1[0];
+          /** @type {uint8[]} */
+          const C1 = C0C1[1];
           for (let i = 0; i < 16 && pos + i < plaintext.length; ++i) ciphertext.push(C0[i]);
           for (let i = 0; i < 16 && pos + 16 + i < plaintext.length; ++i) ciphertext.push(C1[i]);
         }
 
         // Finalize and generate tag
+        /** @type {uint8[]} */
         const tag = this._finalize(this._ad.length, plaintext.length);
         for (let _i = 0; _i < tag.length; _i++) ciphertext.push(tag[_i]);
 
@@ -624,20 +705,32 @@
     // count of BYTES as a 64-bit big-endian integer. The paper writes |A| and
     // |M| as bit counts, but the reference code and the published test vectors
     // both use byte counts, and only the byte reading reproduces them.
+    /**
+     * @param {int32} count
+     * @returns {uint8[]}
+     */
     _lengthWord(count) {
       const word = new Uint8Array(16);
+      /** @type {int32} */
       let value = count;
       for (let i = 15; i >= 8; --i) {
-        word[i] = OpCodes.AndN(value, 0xff);
+        word[i] = OpCodes.And32(value, 0xff);
         value = Math.floor(value / 256);
       }
       return word;
     }
 
     // Finalization: Generate authentication tag
+    /**
+     * @param {int32} adLen
+     * @param {int32} msgLen
+     * @returns {uint8[]}
+     */
     _finalize(adLen, msgLen) {
       // Absorb the two lengths, then run 20 rounds on the constants
+      /** @type {uint8[]} */
       const lenBlock0 = this._lengthWord(adLen);
+      /** @type {uint8[]} */
       const lenBlock1 = this._lengthWord(msgLen);
       const lenBlock2 = new Uint8Array(16);
       copyWord(lenBlock2, lenBlock0);
