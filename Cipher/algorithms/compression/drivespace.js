@@ -73,24 +73,34 @@
 
   class JmBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {uint32} value - Value (below 2^width)
+     * @param {int32} width - Number of bits
+     */
     writeBits(value, width) {
-      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(value, this.nBits));
       this.nBits += width;
       while (this.nBits >= 8) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = OpCodes.Shr32(this.buf, 8);
         this.nBits -= 8;
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     flush() {
       if (this.nBits > 0) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = 0;
         this.nBits = 0;
       }
@@ -99,21 +109,37 @@
   }
 
   class JmBitReader {
+    /**
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} start - Position of the first bit's byte
+     */
     constructor(bytes, start) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {int32} width - Number of bits
+     * @returns {uint32} Value read
+     */
     readBits(width) {
       while (this.nBits < width) {
-        if (this.pos >= this.bytes.length) throw new Error('DriveSpace: unexpected end of stream');
-        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        if (this.pos >= this.bytes.length) {
+          throw new Error('DriveSpace: unexpected end of stream');
+        }
+        this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits));
         this.nBits += 8;
       }
-      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
-      const value = OpCodes.AndN(this.buf, mask);
+      /** @type {uint32} */
+      const mask = OpCodes.Sub32(OpCodes.Shl32(1, width), 1);
+      /** @type {uint32} */
+      const value = OpCodes.And32(this.buf, mask);
       this.buf = OpCodes.Shr32(this.buf, width);
       this.nBits -= width;
       return value;
@@ -124,29 +150,64 @@
   // Both variants share the same token grammar and MIN_MATCH=2; only the
   // sliding-window search cap differs (DoubleSpace 4KB, DriveSpace 8KB).
 
+  /** @type {int32} */
   const MIN_MATCH = 2;
+  /** @type {int32} */
   const MAX_MATCH = 323;          // 68 base + 255 from the widest length extension
+  /** @type {int32} */
   const HASH_BITS = 14;
+  /** @type {int32} */
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  /** @type {int32} */
   const HASH_MASK = HASH_SIZE - 1;
+  /** @type {int32} */
   const MAX_CHAIN_LENGTH = 128;
 
-  // Distance class layout: {bits, base, max}. A distance is placed in the
+  // Distance class layout (bits, base, max). A distance is placed in the
   // lowest class whose range covers it.
-  const DISTANCE_CLASSES = [
-    { bits: 6, base: 1, max: 64 },
-    { bits: 8, base: 65, max: 320 },
-    { bits: 12, base: 321, max: 4416 },
-    { bits: 13, base: 4417, max: 12608 }
-  ];
+  /** @type {int32[]} */
+  const DISTANCE_CLASS_BITS = [6, 8, 12, 13];
+  /** @type {int32[]} */
+  const DISTANCE_CLASS_BASE = [1, 65, 321, 4417];
+  /** @type {int32[]} */
+  const DISTANCE_CLASS_MAX = [64, 320, 4416, 12608];
 
+  /**
+   * Longest match found at a position
+   */
+  class JmMatch {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} offset - Distance back to the match source
+     */
+    constructor(length, offset) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.offset = offset;
+    }
+  }
+
+  /**
+   * @param {JmBitWriter} writer - Output bits
+   * @param {int32} length - Match length (2..323)
+   */
   function writeLength(writer, length) {
-    // length in [MIN_MATCH, MAX_MATCH]
-    if (length === 2) { writer.writeBits(0, 2); return; }
-    if (length === 3) { writer.writeBits(1, 2); return; }
-    if (length === 4) { writer.writeBits(2, 2); return; }
+    if (length === 2) {
+      writer.writeBits(0, 2);
+      return;
+    }
+    if (length === 3) {
+      writer.writeBits(1, 2);
+      return;
+    }
+    if (length === 4) {
+      writer.writeBits(2, 2);
+      return;
+    }
 
     writer.writeBits(3, 2);
+    /** @type {int32} */
     const extended = length - 5;
     if (extended < 63) {
       writer.writeBits(extended, 6);
@@ -156,98 +217,168 @@
     writer.writeBits(length - 68, 8);
   }
 
+  /**
+   * @param {JmBitReader} reader - Input bits
+   * @returns {int32} Match length
+   */
   function readLength(reader) {
+    /** @type {int32} */
     const code = reader.readBits(2);
-    if (code < 3) return code + 2;
+    if (code < 3) {
+      return code + 2;
+    }
+    /** @type {int32} */
     const extended = reader.readBits(6);
-    if (extended < 63) return 5 + extended;
-    const tail = reader.readBits(8);
-    return 68 + tail;
+    if (extended < 63) {
+      return 5 + extended;
+    }
+    /** @type {int32} */
+    const extra = reader.readBits(8);
+    return 68 + extra;
   }
 
+  /**
+   * @param {JmBitWriter} writer - Output bits
+   * @param {int32} distance - Match distance
+   */
   function writeDistance(writer, distance) {
-    for (let cls = 0; cls < DISTANCE_CLASSES.length; ++cls) {
-      const { bits, base, max } = DISTANCE_CLASSES[cls];
-      if (distance <= max) {
+    for (let cls = 0; cls < DISTANCE_CLASS_MAX.length; ++cls) {
+      if (distance <= DISTANCE_CLASS_MAX[cls]) {
         writer.writeBits(cls, 2);
-        writer.writeBits(distance - base, bits);
+        writer.writeBits(distance - DISTANCE_CLASS_BASE[cls], DISTANCE_CLASS_BITS[cls]);
         return;
       }
     }
     throw new Error('DriveSpace: distance exceeds maximum class range');
   }
 
+  /**
+   * @param {JmBitReader} reader - Input bits
+   * @returns {int32} Match distance
+   */
   function readDistance(reader) {
+    /** @type {int32} */
     const cls = reader.readBits(2);
-    const { bits, base } = DISTANCE_CLASSES[cls];
-    return base + reader.readBits(bits);
+    /** @type {int32} */
+    const offset = reader.readBits(DISTANCE_CLASS_BITS[cls]);
+    return DISTANCE_CLASS_BASE[cls] + offset;
   }
 
+  /**
+   * @param {uint8[]} input - Bytes
+   * @param {int32} pos - Position of the two hashed bytes
+   * @returns {uint32} Bucket
+   */
   function hash2(input, pos) {
-    return OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(input[pos], 6), input[pos + 1]), HASH_MASK);
+    return OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(input[pos], 6), input[pos + 1]), HASH_MASK);
   }
 
+  /**
+   * @param {uint8[]} input - Bytes
+   * @param {int32} pos - Position to match
+   * @param {int32} n - Input length
+   * @param {int32} maxDistance - Largest distance
+   * @param {int32[]} hashHead - Chain heads
+   * @param {int32[]} hashNext - Chain links
+   * @returns {JmMatch} Longest match (length 0 when none)
+   */
   function findBestMatch(input, pos, n, maxDistance, hashHead, hashNext) {
-    if (pos + MIN_MATCH > n) return { length: 0, offset: 0 };
+    if (pos + MIN_MATCH > n) {
+      return new JmMatch(0, 0);
+    }
 
-    let bestLen = 0, bestOff = 0;
+    /** @type {int32} */
+    let bestLen = 0;
+    /** @type {int32} */
+    let bestOff = 0;
+    /** @type {int32} */
     const minPos = Math.max(0, pos - maxDistance);
+    /** @type {int32} */
     let idx = hashNext[pos];
+    /** @type {int32} */
     let chainLen = 0;
+    /** @type {int32} */
     const maxLen = Math.min(n - pos, MAX_MATCH);
 
     while (idx >= minPos && idx < pos && chainLen < MAX_CHAIN_LENGTH) {
       if (input[idx] === input[pos] && input[idx + 1] === input[pos + 1]) {
+        /** @type {int32} */
         let l = 2;
-        while (l < maxLen && input[idx + l] === input[pos + l]) ++l;
+        while (l < maxLen && input[idx + l] === input[pos + l]) {
+          ++l;
+        }
         if (l > bestLen) {
           bestLen = l;
           bestOff = pos - idx;
-          if (bestLen >= maxLen) break;
+          if (bestLen >= maxLen) {
+            break;
+          }
         }
       }
       idx = hashNext[idx];
       ++chainLen;
     }
-    return { length: bestLen, offset: bestOff };
+
+    return new JmMatch(bestLen, bestOff);
   }
 
+  /**
+   * @param {uint8[]} input - Input bytes
+   * @param {int32} maxDistance - Largest distance
+   * @returns {uint8[]} Size header and bitstream
+   */
   function jmCompress(input, maxDistance) {
+    /** @type {int32} */
     const n = input.length;
+    /** @type {uint8[]} */
     const out = [];
+
+    // 4-byte little-endian original-size header.
+    /** @type {uint32} */
     const len32 = OpCodes.ToUint32(n);
-    out.push(OpCodes.AndN(len32, 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+    out.push(OpCodes.And32(len32, 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(len32, 8), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(len32, 16), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(len32, 24), 0xFF));
 
-    if (n === 0) return out;
+    if (n === 0) {
+      return out;
+    }
 
+    /** @type {JmBitWriter} */
     const writer = new JmBitWriter();
-    const hashHead = new Array(HASH_SIZE).fill(-1);
-    const hashNext = new Array(n).fill(-1);
+    /** @type {int32[]} */
+    const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+    /** @type {int32[]} */
+    const hashNext = new Int32Array(n).fill(-1);
 
+    /** @type {int32} */
     let pos = 0;
     while (pos < n) {
+      // Insert the current position before matching, so skipped-over positions
+      // inside a match can be updated with the same operation.
       if (pos + 1 < n) {
+        /** @type {uint32} */
         const h = hash2(input, pos);
         hashNext[pos] = hashHead[h];
         hashHead[h] = pos;
       }
 
-      const { length: bestLen, offset: bestOff } = findBestMatch(input, pos, n, maxDistance, hashHead, hashNext);
+      /** @type {JmMatch} */
+      const best = findBestMatch(input, pos, n, maxDistance, hashHead, hashNext);
 
-      if (bestLen >= MIN_MATCH) {
+      if (best.length >= MIN_MATCH) {
         writer.writeBits(1, 1);
-        writeLength(writer, bestLen);
-        writeDistance(writer, bestOff);
+        writeLength(writer, best.length);
+        writeDistance(writer, best.offset);
 
-        for (let j = 1; j < bestLen && pos + j + 1 < n; ++j) {
+        for (let j = 1; j < best.length && pos + j + 1 < n; ++j) {
+          /** @type {uint32} */
           const h = hash2(input, pos + j);
           hashNext[pos + j] = hashHead[h];
           hashHead[h] = pos + j;
         }
-        pos += bestLen;
+        pos += best.length;
       } else {
         writer.writeBits(0, 1);
         writer.writeBits(input[pos], 8);
@@ -255,35 +386,62 @@
       }
     }
 
+    /** @type {uint8[]} */
     const body = writer.flush();
-    for (let i = 0; i < body.length; ++i) out.push(body[i]);
+    for (let i = 0; i < body.length; ++i) {
+      out.push(body[i]);
+    }
     return out;
   }
 
+  /**
+   * @param {uint8[]} input - Size header and bitstream
+   * @returns {uint8[]} Decoded bytes
+   */
   function jmDecompress(input) {
-    if (input.length < 4) return [];
-    const originalLength = OpCodes.OrN(
-      OpCodes.OrN(OpCodes.OrN(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
-      OpCodes.Shl32(input[3], 24)
-    );
-
+    /** @type {uint8[]} */
     const output = [];
-    if (originalLength === 0) return output;
+    if (input.length < 4) {
+      return output;
+    }
 
+    // The stored size is read as a signed 32-bit value: a set top bit makes it
+    // negative, and nothing is decoded.
+    /** @type {int32} */
+    const originalLength = OpCodes.ToInt(OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Or32(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
+      OpCodes.Shl32(input[3], 24)
+    ));
+
+    if (originalLength === 0) {
+      return output;
+    }
+
+    /** @type {JmBitReader} */
     const reader = new JmBitReader(input, 4);
 
     while (output.length < originalLength) {
+      /** @type {uint32} */
       const flag = reader.readBits(1);
       if (flag === 0) {
-        output.push(reader.readBits(8));
-      } else {
-        const length = readLength(reader);
-        const distance = readDistance(reader);
-        if (distance < 1 || distance > output.length) throw new Error('DriveSpace: invalid back-reference distance');
-        const src = output.length - distance;
-        for (let i = 0; i < length; ++i) {
-          output.push(output[src + i]);
-        }
+        /** @type {uint8} */
+        const literal = reader.readBits(8);
+        output.push(literal);
+        continue;
+      }
+
+      /** @type {int32} */
+      const length = readLength(reader);
+      /** @type {int32} */
+      const distance = readDistance(reader);
+      if (distance < 1 || distance > output.length) {
+        throw new Error('DriveSpace: invalid back-reference distance');
+      }
+
+      /** @type {int32} */
+      const src = output.length - distance;
+      for (let i = 0; i < length; ++i) {
+        output.push(output[src + i]);
       }
     }
 
@@ -292,6 +450,7 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {int32} */
   const JM_MAX_DISTANCE = 8192;
 
   class DriveSpaceCompression extends CompressionAlgorithm {
@@ -352,23 +511,42 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {DriveSpaceInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DriveSpaceInstance(this, isInverse);
     }
   }
 
   class DriveSpaceInstance extends IAlgorithmInstance {
+    /**
+     * @param {DriveSpaceCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
-      if (this.isInverse) return jmDecompress(data);
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      if (this.isInverse) {
+        return jmDecompress(data);
+      }
       return jmCompress(data, JM_MAX_DISTANCE);
     }
   }
