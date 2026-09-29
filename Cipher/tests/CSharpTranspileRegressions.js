@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /**
- * CSharpTranspileRegressionSuite.js - regression tests for systematic C#
+ * CSharpTranspileRegressions.js - regression tests for systematic C#
  * transpilation faults (each case names the fault it pins down).
  *
  * Every case is Given (a JavaScript snippet) / When (transpiled to C#) / Then
@@ -8,7 +7,7 @@
  * additionally compile and run a small C# program against the generated
  * framework stubs when the .NET SDK is installed; they are skipped otherwise.
  *
- * Usage: node tests/CSharpTranspileRegressionSuite.js [--verbose] [--no-dotnet]
+ * The CSHARP category: node tests/TranspilerSuite.js --only=csharp [--verbose] [--no-dotnet]
  */
 
 const fs = require('fs');
@@ -17,8 +16,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const CIPHER_DIR = path.join(__dirname, '..');
-const verbose = process.argv.includes('--verbose');
-const allowDotnet = !process.argv.includes('--no-dotnet');
+// Options of the current run, set by run()
+let verbose = false;
+let allowDotnet = true;
 
 // The transpiler logs progress on console.log; keep the suite output readable.
 const realLog = console.log;
@@ -26,7 +26,11 @@ const quiet = fn => { console.log = () => {}; try { return fn(); } finally { con
 
 const { TypeAwareJSASTParser } = quiet(() => require(path.join(CIPHER_DIR, 'type-aware-transpiler.js')));
 const { LanguagePlugins } = require(path.join(CIPHER_DIR, 'codingplugins', 'LanguagePlugin.js'));
-quiet(() => require(path.join(CIPHER_DIR, 'codingplugins', 'csharp.js')));
+// Loaded afresh: an earlier category in the same process (CODEGEN) clears the
+// plugin registry, so a cached csharp.js would never register again.
+const CSHARP_PLUGIN = require.resolve(path.join(CIPHER_DIR, 'codingplugins', 'csharp.js'));
+delete require.cache[CSHARP_PLUGIN];
+quiet(() => require(CSHARP_PLUGIN));
 const plugin = LanguagePlugins.GetAll().find(p => /c#|csharp/i.test(p.name || '') || p.extension === 'cs');
 
 function transpile(js, withStubs = false) {
@@ -41,26 +45,14 @@ function transpile(js, withStubs = false) {
   });
 }
 
-let passed = 0, failed = 0, skipped = 0;
-function check(name, fn) {
-  try {
-    const outcome = fn();
-    if (outcome === 'skip') { ++skipped; realLog(`  - ${name} (skipped)`); return; }
-    ++passed;
-    if (verbose) realLog(`  ✓ ${name}`);
-  } catch (e) {
-    ++failed;
-    realLog(`  ✗ ${name}\n      ${e.message.split('\n').join('\n      ')}`);
-  }
-}
+const cases = require('./UnitCases.js').createCases();
+const check = cases.case;
 function expectMatch(code, re, what) {
   if (!re.test(code)) throw new Error(`expected ${what} (${re})\n${verbose ? code : ''}`);
 }
 function expectNoMatch(code, re, what) {
   if (re.test(code)) throw new Error(`did not expect ${what} (${re})\n${verbose ? code : ''}`);
 }
-
-realLog('C# transpile regression suite');
 
 // ---------------------------------------------------------------------------
 // Parser: contextual keywords are ordinary identifiers
@@ -282,5 +274,16 @@ namespace RegressionTest {
   }
 });
 
-realLog(`\n${passed} passed, ${failed} failed, ${skipped} skipped`);
-process.exit(failed === 0 ? 0 : 1);
+/**
+ * CSHARP: run every regression case.
+ * @param {object} options - { verbose, dotnet } (dotnet: false skips compiling and running the stubs)
+ * @returns {object} { passed, failed, skipped, detail }
+ */
+function run(options = {}) {
+  verbose = Boolean(options.verbose);
+  allowDotnet = options.dotnet !== false;
+  realLog('C# transpile regression suite');
+  return cases.run({ verbose });
+}
+
+module.exports = { run };

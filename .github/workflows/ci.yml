@@ -51,9 +51,9 @@ jobs:
         continue-on-error: true
         run: npx --yes html-validate "**/*.html" || true
 
-  # Round-trip testing over an adversarial corpus. The per-algorithm vector suite
-  # cannot see this class of defect: an algorithm can pass every committed vector
-  # and still fail to decode its own output on inputs nobody wrote down.
+  # The Cipher tests, in two runners that each fail the build on any failure.
+  # (The job keeps its original id so the publish-docs wiring and any required
+  # check names stay as they were.)
   round-trip:
     runs-on: ubuntu-latest
     steps:
@@ -62,35 +62,39 @@ jobs:
         with:
           node-version: '22'
 
-      # A round-trip failure fails the build. The interoperability results are
-      # printed alongside but do not gate it: several algorithms deliberately do
-      # not claim bitstream compatibility with the format they are named after,
-      # and say so in their description.
-      # The per-vector suite gates on its own exit code now. It used to exit 0
-      # whatever failed, so nothing could act on what it reported.
-      - name: Validate every algorithm against its committed vectors
+      # Every category of every algorithm, each file loaded once:
+      # - the committed vectors, metadata, OpCodes use and type budgets per file
+      # - ROUNDTRIP: an adversarial corpus through every reversible algorithm. An
+      #   algorithm can pass every committed vector and still fail to decode its
+      #   own output on inputs nobody wrote down. The interoperability results
+      #   are printed alongside but do not gate: several algorithms deliberately
+      #   do not claim bitstream compatibility with the format they are named after.
+      # - CHUNKED: Feed(whole) must equal Feed(part1); Feed(part2); ... Every
+      #   committed vector delivers its message in a single call, so 103
+      #   algorithms that mishandled buffering across calls passed everything.
+      # - BROWSER: every script tag of index.html evaluated in page order with no
+      #   require, module or global; twenty files once threw there while passing
+      #   everything else.
+      # - LIBRARY: the OpCodes helper and ByteBuffer unit tests.
+      - name: Test every algorithm (vectors, round trips, chunked feeds, browser load, libraries)
         working-directory: Cipher
         run: node tests/TestSuite.js
 
-      - name: Round-trip every reversible algorithm
-        working-directory: Cipher
-        run: node tests/RoundTripSuite.js --interop
+      # The CSHARP category compiles and runs the generated C# runtime stubs,
+      # which target net10.0.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
-      # Feed(whole) must equal Feed(part1); Feed(part2); ... Every committed
-      # vector delivers its message in a single call, so an algorithm that
-      # mishandled buffering across calls passed everything: 103 of them did,
-      # SHA-256 among them, each silently returning a different answer.
-      - name: Check that feeding in chunks matches feeding whole
+      # Code generation for every language, type inference, the type policy, the
+      # OpCodes/framework JSDoc audit and the C# regressions - a few seconds.
+      # VALIDATION (transpile, compile and run every algorithm in every installed
+      # language) is not run here: it takes over ten minutes unscoped and its
+      # result depends on which toolchains the runner happens to carry. Run it
+      # locally with: node tests/TranspilerSuite.js --only=validation
+      - name: Test the transpiler
         working-directory: Cipher
-        run: node tests/ChunkedFeedSuite.js
-
-      # The suites above require() each file; the site loads them through plain
-      # script tags with no require, module or global. This evaluates every tag
-      # in index.html in page order, so a file that throws or never registers in
-      # the browser fails the build - twenty did while passing everything above.
-      - name: Load every script tag as the browser does
-        working-directory: Cipher
-        run: node tests/BrowserLoadSuite.js
+        run: node tests/TranspilerSuite.js
 
   # The algorithm reference (Cipher/docs/algorithms/) is derived entirely from the
   # implementations. It is committed because GitHub Pages serves main as-is, and

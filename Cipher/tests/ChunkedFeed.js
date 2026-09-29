@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /*
- * Chunked-feed suite
+ * Chunked-feed checks (the CHUNKED category of tests/TestSuite.js)
  * (c)2006-2025 Hawkynt
  *
  * Feed followed by Result is the framework's streaming contract, and it carries
@@ -39,63 +38,20 @@
  * defensible, and that is the only thing this suite fails on.
  *
  * Usage:
- *   node tests/ChunkedFeedSuite.js
- *   node tests/ChunkedFeedSuite.js --category hash
- *   node tests/ChunkedFeedSuite.js --algorithm "SHA-256"
- *   node tests/ChunkedFeedSuite.js --verbose
+ *   node tests/TestSuite.js --only=chunked
+ *   node tests/TestSuite.js --only=chunked --category=hash --verbose
+ *   node tests/TestSuite.js --only=chunked --algorithm=sha256
  *
- * Exits non-zero when any non-exempt algorithm silently differs, so it can gate CI.
+ * The CHUNKED category fails when any non-exempt algorithm silently differs.
  */
 
 'use strict';
 
-const path = require('path');
-const fs = require('fs');
-
-const CIPHER_ROOT = path.resolve(__dirname, '..');
-
-//#region ===== options =====
-
-function parseArgs(argv) {
-  const options = { category: null, algorithm: null, verbose: false, listAll: false };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--verbose') options.verbose = true;
-    else if (arg === '--list') options.listAll = true;
-    else if (arg === '--category') options.category = argv[++i];
-    else if (arg === '--algorithm') options.algorithm = argv[++i];
-    else if (arg.startsWith('--category=')) options.category = arg.slice(11);
-    else if (arg.startsWith('--algorithm=')) options.algorithm = arg.slice(12);
-  }
-  return options;
-}
-
-//#endregion
-
 //#region ===== harness =====
 
-let TestEngine = null;
-
-function loadAlgorithms() {
-  const AlgorithmFramework = require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
-  const OpCodes = require(path.join(CIPHER_ROOT, 'OpCodes.js'));
-  global.AlgorithmFramework = AlgorithmFramework;
-  global.OpCodes = OpCodes;
-  // Configuration has to match TestVector's exactly, so it is taken from the
-  // engine rather than reimplemented.
-  TestEngine = require('./TestEngine.js');
-
-  const algorithmRoot = path.join(CIPHER_ROOT, 'algorithms');
-  for (const category of fs.readdirSync(algorithmRoot).sort()) {
-    const dir = path.join(algorithmRoot, category);
-    if (!fs.statSync(dir).isDirectory()) continue;
-    for (const file of fs.readdirSync(dir).sort()) {
-      if (!file.endsWith('.js')) continue;
-      try { require(path.join(dir, file)); } catch (error) { /* reported by TestSuite */ }
-    }
-  }
-  return AlgorithmFramework.Algorithms || [];
-}
+// Configuration has to match TestVector's exactly, so it is taken from the
+// engine rather than reimplemented.
+const TestEngine = require('./TestEngine.js');
 
 function byteOf(value) {
   return ((Math.trunc(value) % 256) + 256) % 256;
@@ -432,21 +388,17 @@ function sweepAlgorithm(algorithm) {
 
 //#endregion
 
-function selectAlgorithms(algorithms, options) {
-  return algorithms
+/**
+ * CHUNKED: sweep every algorithm in scope.
+ * @param {object} context - { algorithms, verbose }
+ * @returns {object} { passed, failed, detail }
+ */
+function run(context) {
+  const options = { verbose: context.verbose };
+  const selected = context.algorithms
     .filter(a => a.category)
-    .filter(a => !options.category || a.category.name.toLowerCase().includes(options.category.toLowerCase()))
-    .filter(a => !options.algorithm || a.name.toLowerCase().includes(options.algorithm.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
 
-function main() {
-  const options = parseArgs(process.argv.slice(2));
-  const algorithms = loadAlgorithms();
-  const selected = selectAlgorithms(algorithms, options);
-
-  console.log('Chunked-feed suite');
-  console.log('==================\n');
   console.log('Feed(whole) must equal Feed(part1); Feed(part2); ... for any split\n');
   console.log(`${selected.length} registered algorithm(s)\n`);
 
@@ -470,7 +422,7 @@ function main() {
       console.log(`DIFFERS ${algorithm.name} [${algorithm.category.name}] `
         + `${outcome.differing}/${outcome.total} splitting(s)`);
       console.log(`          ${outcome.detail}`);
-    } else if (options.verbose || options.listAll) {
+    } else if (options.verbose) {
       console.log(`${status.padEnd(16)} ${algorithm.name}${outcome.detail ? ` (${outcome.detail})` : ''}`);
     }
   }
@@ -492,7 +444,15 @@ function main() {
     console.log('the second Feed. That is reported as "refuses" and does not fail the run.');
   }
 
-  process.exitCode = differing.length ? 1 : 0;
+  // Only a silent difference fails; every other outcome is reported alongside.
+  const count = status => (buckets.get(status) || []).length;
+  return {
+    passed: count('agrees'),
+    failed: differing.length,
+    detail: [...SEVERITY, 'exempt']
+      .filter(status => status !== 'agrees' && status !== 'differs' && count(status))
+      .map(status => `${count(status)} ${status}`).join(', ')
+  };
 }
 
-main();
+module.exports = { run };
