@@ -179,6 +179,41 @@
           counterBits: 16,
           hashAlgorithm: "SHA-256",
           expected: OpCodes.Hex8ToBytes("99cbbccf79545b8a341637395b0349955077ef3b3901e06f6507962b4f08b8d5154b03ad")
+        },
+        // Keys longer than the hash block, which HMAC first hashes down, over
+        // two or more PRF blocks: every block must see the same key
+        {
+          text: "SP800-108-Counter(HMAC(SHA-256)) - 80-byte key, 48 bytes over two blocks (OpenSSL KBKDF)",
+          uri: "https://docs.openssl.org/3.5/man7/EVP_KDF-KB/",
+          input: OpCodes.Hex8ToBytes("01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a"),
+          label: OpCodes.Hex8ToBytes("4c4142454c"),
+          context: OpCodes.Hex8ToBytes("434f4e54455854"),
+          outputLength: 48,
+          counterBits: 32,
+          hashAlgorithm: "SHA-256",
+          expected: OpCodes.Hex8ToBytes("F28A73665986E50CE5D1084BDCF38F9F77C895DABA4E28F099B7A118E01EAD397831F8DD6A3402ED1339DE497275652C")
+        },
+        {
+          text: "SP800-108-Counter(HMAC(SHA-1)) - 65-byte key, 40 bytes over two blocks (OpenSSL KBKDF)",
+          uri: "https://docs.openssl.org/3.5/man7/EVP_KDF-KB/",
+          input: OpCodes.Hex8ToBytes("030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3"),
+          label: OpCodes.Hex8ToBytes("4c4142454c"),
+          context: OpCodes.Hex8ToBytes("434f4e54455854"),
+          outputLength: 40,
+          counterBits: 32,
+          hashAlgorithm: "SHA-1",
+          expected: OpCodes.Hex8ToBytes("EBEAD2132A5EF912E34FAACE8BC36DEBC5F4FB6ED4D1D07A56D5C07DBDEE4477EE99DCDD8C2BE549")
+        },
+        {
+          text: "SP800-108-Counter(HMAC(SHA-512)) - 129-byte key, 80 bytes over two blocks (OpenSSL KBKDF)",
+          uri: "https://docs.openssl.org/3.5/man7/EVP_KDF-KB/",
+          input: OpCodes.Hex8ToBytes("050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f464d545b626970777e85"),
+          label: OpCodes.Hex8ToBytes("4c4142454c"),
+          context: OpCodes.Hex8ToBytes("434f4e54455854"),
+          outputLength: 80,
+          counterBits: 32,
+          hashAlgorithm: "SHA-512",
+          expected: OpCodes.Hex8ToBytes("DDEB839807194F5AB52F2F3F635085978A4739A0490CA179EE2B5DD632F868AA25D466AF05A6F673D853EBFCBF01B4AD1F3DA478C3306EE1FFC945F802CC22B2930ADB6A77C745EA0679D8300093EC3B")
         }
       ];
     }
@@ -511,216 +546,34 @@
     }
 
     /**
-     * Generic HMAC computation: Node crypto under CommonJS, else a registered
-     * HMAC-<hash> algorithm, else the built-in HMAC-SHA256
-     * @param {uint8[]} key - HMAC key
+     * HMAC with the registered HMAC algorithm. Registry-first: Find() is
+     * checked before require() loads the module (CommonJS only; an AMD or
+     * browser loader cannot require synchronously, and the page loads HMAC).
+     * @param {uint8[]} key - HMAC key (not modified)
      * @param {uint8[]} message - Message
      * @param {string} hashName - SHA-1, SHA-256 or SHA-512
      * @param {int32} hashOutputSize - MAC length in bytes (informational)
      * @returns {uint8[]} MAC
-     * @throws {Error} If no implementation is available
+     * @throws {Error} If HMAC is not registered
      */
     _hmacCompute(key, message, hashName, hashOutputSize) {
-      // Use Node.js crypto if available
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-        const crypto = require('crypto');
-        const hmac = crypto.createHmac(
-          hashName.replace('-', '').toLowerCase(),
-          Buffer.from(key)
-        );
-        hmac.update(Buffer.from(message));
-        return Array.from(hmac.digest());
+      let hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      if (!hmacAlgorithm && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../mac/hmac.js');
+        hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      }
+      if (!hmacAlgorithm) {
+        throw new Error('HMAC algorithm not available - load HMAC before SP800-108-Counter');
       }
 
-      // Try using AlgorithmFramework HMAC implementation
-      const hmacResult = this._hmacWithFramework(key, message, hashName);
-      if (hmacResult) {
-        return hmacResult;
-      }
-
-      // Fallback: use built-in pure JavaScript implementation
-      if (hashName === 'SHA-256' || hashName === 'SHA256') {
-        return this._hmacSha256Pure(key, message);
-      }
-
-      throw new Error(
-        'Cannot compute HMAC: No crypto library available for ' + hashName + '. Ensure HMAC algorithms are loaded before SP800-108-Counter.'
-      );
-    }
-
-    /**
-     * HMAC computation using a registered HMAC-<hash> algorithm
-     * @param {uint8[]} key - HMAC key
-     * @param {uint8[]} message - Message
-     * @param {string} hashName - SHA-1, SHA-256 or SHA-512 (dash optional)
-     * @returns {uint8[]} MAC, or null when no such algorithm is registered
-     */
-    _hmacWithFramework(key, message, hashName) {
-      // Map hash names to HMAC algorithm names in the framework
-      let hmacAlgoName = '';
-      if (hashName === 'SHA-1' || hashName === 'SHA1') { hmacAlgoName = 'HMAC-SHA-1'; }
-      if (hashName === 'SHA-256' || hashName === 'SHA256') { hmacAlgoName = 'HMAC-SHA-256'; }
-      if (hashName === 'SHA-512' || hashName === 'SHA512') { hmacAlgoName = 'HMAC-SHA-512'; }
-      if (!hmacAlgoName) {
-        return null;
-      }
-
-      // Try to find the HMAC algorithm in the framework
-      const hmacAlgo = AlgorithmFramework.Find(hmacAlgoName);
-      if (hmacAlgo) {
-        /** @type {IMacInstance} */
-        const instance = hmacAlgo.CreateInstance(false);
-        if (instance) {
-          instance.key = key;
-          instance.Feed(message);
-          /** @type {uint8[]} */
-          const mac = instance.Result();
-          return mac;
-        }
-      }
-
-      return null;
-    }
-
-    /**
-     * Pure JavaScript HMAC-SHA256 (fallback when no crypto is available).
-     * Pads (and, for a long key, hashes) the key array in place.
-     * @param {uint8[]} key - HMAC key
-     * @param {uint8[]} message - Message
-     * @returns {uint8[]} 32-byte MAC
-     */
-    _hmacSha256Pure(key, message) {
-      const BLOCK_SIZE = 64;
-
-      let keyArr = key;
-      const msgArr = message;
-
-      // If key is longer than block size, hash it
-      if (keyArr.length > BLOCK_SIZE) {
-        keyArr = this._sha256Pure(keyArr);
-      }
-
-      // Pad key to block size
-      while (keyArr.length < BLOCK_SIZE) {
-        keyArr.push(0);
-      }
-
-      // Create inner and outer padding
+      /** @type {IMacInstance} */
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = key;
+      hmacInstance.hashFunction = hashName;
+      hmacInstance.Feed(message);
       /** @type {uint8[]} */
-      const ipad = keyArr.map(b => OpCodes.Xor32(b, 0x36));
-      /** @type {uint8[]} */
-      const opad = keyArr.map(b => OpCodes.Xor32(b, 0x5c));
-
-      // Inner hash: SHA256(ipad || message)
-      const innerInput = ipad.concat(msgArr);
-      const innerHash = this._sha256Pure(innerInput);
-
-      // Outer hash: SHA256(opad || inner_hash)
-      const outerInput = opad.concat(innerHash);
-      return this._sha256Pure(outerInput);
-    }
-
-    /**
-     * Pure JavaScript SHA-256 (pads the message array in place)
-     * @param {uint8[]} message - Message
-     * @returns {uint8[]} 32-byte digest
-     */
-    _sha256Pure(message) {
-      // SHA-256 constants
-      const K = OpCodes.Hex32ToDWords(
-        '428a2f9871374491b5c0fbcfe9b5dba53956c25b59f111f1923f82a4ab1c5ed5' +
-        'd807aa9812835b01243185be550c7dc372be5d7480deb1fe9bdc06a7c19bf174' +
-        'e49b69c1efbe47860fc19dc6240ca1cc2de92c6f4a7484aa5cb0a9dc76f988da' +
-        '983e5152a831c66db00327c8bf597fc7c6e00bf3d5a7914706ca635114292967' +
-        '27b70a852e1b21384d2c6dfc53380d13650a7354766a0abb81c2c92e92722c85' +
-        'a2bfe8a1a81a664bc24b8b70c76c51a3d192e819d6990624f40e3585106aa070' +
-        '19a4c1161e376c082748774c34b0bcb5391c0cb34ed8aa4a5b9cca4f682e6ff3' +
-        '748f82ee78a5636f84c878148cc7020890befffaa4506cebbef9a3f7c67178f2'
-      );
-
-      // Initial hash values
-      const H = OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19');
-
-      // Pre-processing: adding padding bits
-      const msgArr = message;
-      const msgLen = msgArr.length;
-      const bitLen = msgLen * 8;
-
-      // Append '1' bit and padding zeros
-      msgArr.push(0x80);
-      while ((msgArr.length % 64) !== 56) {
-        msgArr.push(0);
-      }
-
-      // Append original length in bits as 64-bit big-endian
-      for (let i = 7; i >= 0; i--) {
-        msgArr.push(OpCodes.ToByte(Math.floor(bitLen / Math.pow(2, i * 8))));
-      }
-
-      // Process each 512-bit block
-      for (let offset = 0; offset < msgArr.length; offset += 64) {
-        /** @type {uint32[]} */
-        const W = new Array(64);
-
-        // Copy block into first 16 words
-        for (let i = 0; i < 16; i++) {
-          W[i] = OpCodes.Pack32BE(msgArr[offset + i * 4], msgArr[offset + i * 4 + 1], msgArr[offset + i * 4 + 2], msgArr[offset + i * 4 + 3]);
-        }
-
-        // Extend the first 16 words into the remaining 48 words
-        for (let i = 16; i < 64; i++) {
-          const g1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(W[i - 2], 17), OpCodes.RotR32(W[i - 2], 19)), OpCodes.Shr32(W[i - 2], 10));
-          const g0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(W[i - 15], 7), OpCodes.RotR32(W[i - 15], 18)), OpCodes.Shr32(W[i - 15], 3));
-          W[i] = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(g1, W[i - 7]), g0), W[i - 16]);
-        }
-
-        // Initialize working variables
-        let a = H[0];
-        let b = H[1];
-        let c = H[2];
-        let d = H[3];
-        let e = H[4];
-        let f = H[5];
-        let g = H[6];
-        let h = H[7];
-
-        // Main loop
-        for (let i = 0; i < 64; i++) {
-          const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
-          const ch = OpCodes.Xor32(OpCodes.And32(e, f), OpCodes.And32(OpCodes.Not32(e), g));
-          const s0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
-          const maj = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(a, b), OpCodes.And32(a, c)), OpCodes.And32(b, c));
-          const T1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(h, s1), ch), K[i]), W[i]);
-          const T2 = OpCodes.Add32(s0, maj);
-          h = g;
-          g = f;
-          f = e;
-          e = OpCodes.Add32(d, T1);
-          d = c;
-          c = b;
-          b = a;
-          a = OpCodes.Add32(T1, T2);
-        }
-
-        // Add compressed chunk to current hash value
-        H[0] = OpCodes.Add32(H[0], a);
-        H[1] = OpCodes.Add32(H[1], b);
-        H[2] = OpCodes.Add32(H[2], c);
-        H[3] = OpCodes.Add32(H[3], d);
-        H[4] = OpCodes.Add32(H[4], e);
-        H[5] = OpCodes.Add32(H[5], f);
-        H[6] = OpCodes.Add32(H[6], g);
-        H[7] = OpCodes.Add32(H[7], h);
-      }
-
-      // Produce the final hash value (big-endian)
-      /** @type {uint8[]} */
-      const result = [];
-      for (let i = 0; i < 8; i++) {
-        const bytes = OpCodes.Unpack32BE(H[i]);
-        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      }
-      return result;
+      const mac = hmacInstance.Result();
+      return mac;
     }
   }
 
