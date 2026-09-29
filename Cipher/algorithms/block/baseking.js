@@ -118,12 +118,16 @@
       ];
 
       // Algorithm constants (from Tim van Dijk's Python reference)
+      /** @type {int32} */
       this.NUM_WORDS = 12;       // 12 words × 16 bits = 192 bits
+      /** @type {int32} */
       this.BLOCK_SIZE = 24;      // 24 bytes = 192 bits
+      /** @type {int32} */
       this.NUM_ROUNDS = 11;      // 11 rounds
       this.MAX_BITS = 16;        // 16-bit words
 
       // Constants from Tim van Dijk's reference implementation
+      /** @type {int32[]} */
       this.ROUND_CONSTANTS_TEMPLATE = [0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0];
       /** @type {uint8[]} */
       this.ROUND_CONSTANTS = [11, 22, 44, 88, 176, 113, 226, 213, 187, 103, 206, 141];
@@ -143,19 +147,33 @@
       return new BaseKingInstance(this, isInverse);
     }
 
-    // Circular rotate left (16-bit) using OpCodes
+    /**
+     * Circular rotate left (16-bit) using OpCodes
+     * @param {uint16} val - Word
+     * @param {int32} [r_bits=1] - Rotation amount
+     * @returns {uint16} Rotated word
+     */
     rol16(val, r_bits = 1) {
       return OpCodes.RotL16(val, r_bits);
     }
 
-    // Circular rotate right (16-bit) using OpCodes
+    /**
+     * Circular rotate right (16-bit) using OpCodes
+     * @param {uint16} val - Word
+     * @param {int32} [r_bits=1] - Rotation amount
+     * @returns {uint16} Rotated word
+     */
     ror16(val, r_bits = 1) {
       return OpCodes.RotR16(val, r_bits);
     }
 
     // Add cipher key and round constant to the state
     /**
-     * @param {uint8[]} block - Input block
+     * @param {string} mode - 'enc' or 'dec'
+     * @param {uint16[]} block - State words
+     * @param {uint16[]} key - Key words
+     * @param {int32} r - Round index
+     * @returns {uint16[]} New state words
      */
     keyAddition(mode, block, key, r) {
       const result = [...block];
@@ -187,13 +205,17 @@
 
     // Transform the words with a linear transformation of high diffusion
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint16[]} block - State words
+     * @returns {uint16[]} Diffused words
      */
     diffusion(block) {
+      /** @type {uint16[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = 0;
-        for (const offset of this.DIFFUSION_CONSTANTS) {
+        for (let j = 0; j < this.DIFFUSION_CONSTANTS.length; j++) {
+          /** @type {int32} */
+          const offset = this.DIFFUSION_CONSTANTS[j];
           result[i] ^= block[(i + offset) % 12];
         }
       }
@@ -202,9 +224,11 @@
 
     // Shift each 16-bit word in the state the amount specified in ROTATION_CONSTANTS to the left
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint16[]} block - State words
+     * @returns {uint16[]} Rotated words
      */
     earlyShift(block) {
+      /** @type {uint16[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = this.rol16(block[i], this.ROTATION_CONSTANTS[i]);
@@ -214,9 +238,11 @@
 
     // Nonlinear transformation of words (the gamma operation)
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint16[]} block - State words
+     * @returns {uint16[]} Substituted words
      */
     sBox(block) {
+      /** @type {uint16[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = OpCodes.Xor32(block[i], OpCodes.Or32(block[(i + 4) % 12], OpCodes.And32(~block[(i + 8) % 12], 0xFFFF)));
@@ -226,9 +252,11 @@
 
     // Shift each word in the state the amount specified in ROTATION_CONSTANTS to the right
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint16[]} block - State words
+     * @returns {uint16[]} Rotated words
      */
     lateShift(block) {
+      /** @type {uint16[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = this.ror16(block[i], this.ROTATION_CONSTANTS[this.NUM_ROUNDS - i]);
@@ -238,7 +266,10 @@
 
     // Core BaseKing algorithm (encrypts if mode is 'enc', decrypts if mode is 'dec')
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint16[]} block - Block words
+     * @param {uint16[]} key - Key words (already inverted for decryption)
+     * @param {string} mode - 'enc' or 'dec'
+     * @returns {uint16[]} Output words
      */
     baseKing(block, key, mode) {
       let state = [...block];
@@ -280,6 +311,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint16[]|null} */
       this.keyWords = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -305,10 +337,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -318,8 +357,10 @@
       this.KeySize = keyBytes.length;
 
       // Convert byte array to 16-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
       this.keyWords = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         this.keyWords[i] = OpCodes.Pack16BE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
       }
 
@@ -393,17 +434,24 @@
      */
     _encryptBlock(block) {
       // Convert bytes to 16-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {uint16[]} */
       const words = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         words[i] = OpCodes.Pack16BE(block[i * 2], block[i * 2 + 1]);
       }
 
       // Apply BaseKing encryption
+      /** @type {uint16[]} */
       const result = this.algorithm.baseKing(words, this.keyWords, 'enc');
 
       // Convert words back to bytes (big-endian) using OpCodes
-      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      /** @type {uint8[]} */
+      const outputBytes = new Array(blockSize);
+      for (let i = 0; i < numWords; i++) {
         const bytes = OpCodes.Unpack16BE(result[i]);
         outputBytes[i * 2] = bytes[0];
         outputBytes[i * 2 + 1] = bytes[1];
@@ -418,17 +466,24 @@
      */
     _decryptBlock(block) {
       // Convert bytes to 16-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {uint16[]} */
       const words = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         words[i] = OpCodes.Pack16BE(block[i * 2], block[i * 2 + 1]);
       }
 
       // Apply BaseKing decryption (using same algorithm with preprocessed key)
+      /** @type {uint16[]} */
       const result = this.algorithm.baseKing(words, this.keyWords, 'dec');
 
       // Convert words back to bytes (big-endian) using OpCodes
-      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      /** @type {uint8[]} */
+      const outputBytes = new Array(blockSize);
+      for (let i = 0; i < numWords; i++) {
         const bytes = OpCodes.Unpack16BE(result[i]);
         outputBytes[i * 2] = bytes[0];
         outputBytes[i * 2 + 1] = bytes[1];
@@ -439,9 +494,8 @@
   }
 
   // Register the algorithm immediately
-  if (AlgorithmFramework && AlgorithmFramework.RegisterAlgorithm) {
-    AlgorithmFramework.RegisterAlgorithm(new BaseKingAlgorithm());
-  }
+  // AlgorithmFramework was checked above, and it always provides RegisterAlgorithm
+  RegisterAlgorithm(new BaseKingAlgorithm());
 
   return BaseKingAlgorithm;
 }));
