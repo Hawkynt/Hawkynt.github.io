@@ -65,35 +65,51 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {int32} */
   const CODE_CONTROL = 256;
+  /** @type {int32} */
   const CTRL_INCREASE_WIDTH = 1;
+  /** @type {int32} */
   const CTRL_PARTIAL_CLEAR = 2;
+  /** @type {int32} */
   const MIN_WIDTH = 9;
+  /** @type {int32} */
   const MAX_WIDTH = 13;
+  /** @type {int32} */
   const MAX_CODE = OpCodes.Shl32(1, MAX_WIDTH); // 8192
 
   // ----- Bit-level stream helpers (LSB-first) -----
 
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {uint32} value - Code
+     * @param {int32} width - Number of bits
+     */
     writeBits(value, width) {
-      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(value, this.nBits));
       this.nBits += width;
       while (this.nBits >= 8) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = OpCodes.Shr32(this.buf, 8);
         this.nBits -= 8;
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes written
+     */
     finish() {
       if (this.nBits > 0) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = 0;
         this.nBits = 0;
       }
@@ -102,22 +118,39 @@
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} bytes - Bytes to read
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
+      /** @type {boolean} */
       this.exhausted = false;
     }
 
+    /**
+     * @param {int32} width - Number of bits
+     * @returns {int32} Code, or -1 (and exhausted set) when the input ran out
+     */
     readBits(width) {
       while (this.nBits < width) {
-        if (this.pos >= this.bytes.length) { this.exhausted = true; return -1; }
-        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        if (this.pos >= this.bytes.length) {
+          this.exhausted = true;
+          return -1;
+        }
+        this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits));
         this.nBits += 8;
       }
-      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
-      const value = OpCodes.AndN(this.buf, mask);
+      /** @type {uint32} */
+      const mask = OpCodes.Sub32(OpCodes.Shl32(1, width), 1);
+      /** @type {int32} */
+      const value = OpCodes.And32(this.buf, mask);
       this.buf = OpCodes.Shr32(this.buf, width);
       this.nBits -= width;
       return value;
@@ -195,62 +228,148 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {ShrinkInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new ShrinkInstance(this, isInverse);
       }
     }
 
+    /**
+     * Encoder dictionary: code -> (parent code, byte) and back. Codes in use
+     * are always >= 257, so 0 marks "no code" in the reverse table, which is
+     * indexed by parent * 256 + byte.
+     */
+    class ShrinkTrie {
+      constructor() {
+        /** @type {int32[]} */
+        this.codeOfKey = new Int32Array(MAX_CODE * 256);
+        /** @type {int32[]} */
+        this.keyOfCode = new Int32Array(MAX_CODE);
+        /** @type {boolean[]} */
+        this.used = new Array(MAX_CODE);
+        for (let i = 0; i < MAX_CODE; i++) {
+          this.used[i] = false;
+        }
+      }
+
+      /**
+       * @param {int32} parent - Parent code (or byte)
+       * @param {uint8} value - Following byte
+       * @returns {int32} The code, or 0 when there is none
+       */
+      find(parent, value) {
+        /** @type {int32} */
+        const key = parent * 256 + value;
+        return this.codeOfKey[key];
+      }
+
+      /**
+       * @param {int32} parent - Parent code (or byte)
+       * @param {uint8} value - Following byte
+       * @param {int32} code - Code for parent + value
+       */
+      add(parent, value, code) {
+        /** @type {int32} */
+        const key = parent * 256 + value;
+        this.codeOfKey[key] = code;
+        this.keyOfCode[code] = key;
+        this.used[code] = true;
+      }
+
+      /**
+       * Free every leaf entry (a code that is no entry's parent)
+       */
+      partialClear() {
+        /** @type {boolean[]} */
+        const referenced = new Array(MAX_CODE);
+        for (let c = 0; c < MAX_CODE; c++) {
+          referenced[c] = false;
+        }
+        for (let c = 257; c < MAX_CODE; c++) {
+          if (this.used[c]) {
+            referenced[Math.floor(this.keyOfCode[c] / 256)] = true;
+          }
+        }
+        for (let c = 257; c < MAX_CODE; c++) {
+          if (this.used[c] && !referenced[c]) {
+            this.codeOfKey[this.keyOfCode[c]] = 0;
+            this.used[c] = false;
+          }
+        }
+      }
+    }
+
     class ShrinkInstance extends IAlgorithmInstance {
+      /**
+       * @param {ShrinkCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
-        return this.isInverse ? this._decompress(data) : this._compress(data);
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        if (this.isInverse) {
+          return this._decompress(data);
+        }
+        return this._compress(data);
       }
 
       // ----- Compression (mirrors CompressionWorkbench's ShrinkEncoder) -----
+      // The dictionary maps (parent code, byte) to a code; a slot is in use
+      // exactly while its code is in the dictionary.
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} LSB-first packed codes
+       */
       _encode(data) {
+        /** @type {BitWriter} */
         const writer = new BitWriter();
-        const trie = new Map(); // "parentCode,byte" -> code
-        const slotUsed = new Array(MAX_CODE).fill(false);
+        /** @type {ShrinkTrie} */
+        const trie = new ShrinkTrie();
 
+        /** @type {int32} */
         let currentBits = MIN_WIDTH;
+        /** @type {int32} */
         let nextCode = 257;
 
-        if (data.length === 0) return writer.finish();
+        if (data.length === 0) {
+          /** @type {uint8[]} */
+          const none = writer.finish();
+          return none;
+        }
 
+        /** @type {int32} */
         let currentCode = data[0];
+        /** @type {int32} */
         let i = 1;
 
-        const advanceNextCode = () => {
-          while (nextCode < MAX_CODE && slotUsed[nextCode]) ++nextCode;
-        };
-
-        const partialClear = () => {
-          const referenced = new Set();
-          for (const key of trie.keys()) referenced.add(Number(key.split(',')[0]));
-          const toRemove = [];
-          for (const [key, code] of trie) {
-            if (code >= 257 && !referenced.has(code)) toRemove.push(key);
-          }
-          for (const key of toRemove) trie.delete(key);
-          slotUsed.fill(false);
-          for (const code of trie.values()) slotUsed[code] = true;
-        };
-
         while (i < data.length) {
+          /** @type {uint8} */
           const nextByte = data[i];
-          const key = currentCode + ',' + nextByte;
+          /** @type {int32} */
+          const known = trie.find(currentCode, nextByte);
 
-          if (trie.has(key)) {
-            currentCode = trie.get(key);
+          if (known !== 0) {
+            currentCode = known;
             ++i;
             continue;
           }
@@ -263,15 +382,18 @@
               writer.writeBits(CTRL_INCREASE_WIDTH, currentBits);
               ++currentBits;
             }
-            trie.set(key, nextCode);
-            slotUsed[nextCode] = true;
-            advanceNextCode();
+            trie.add(currentCode, nextByte, nextCode);
+            while (nextCode < MAX_CODE && trie.used[nextCode]) {
+              ++nextCode;
+            }
           } else {
             writer.writeBits(CODE_CONTROL, currentBits);
             writer.writeBits(CTRL_PARTIAL_CLEAR, currentBits);
-            partialClear();
+            trie.partialClear();
             nextCode = 257;
-            advanceNextCode();
+            while (nextCode < MAX_CODE && trie.used[nextCode]) {
+              ++nextCode;
+            }
           }
 
           currentCode = nextByte;
@@ -279,31 +401,93 @@
         }
 
         writer.writeBits(currentCode, currentBits);
-        return writer.finish();
+        /** @type {uint8[]} */
+        const packed = writer.finish();
+        return packed;
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} 4-byte LE length followed by the code stream
+       */
       _compress(data) {
-        const body = data.length === 0 ? [] : this._encode(data);
-        const output = [];
-        const len32 = OpCodes.ToUint32(data.length);
-        output.push(OpCodes.AndN(len32, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
-        for (let _i = 0; _i < body.length; ++_i) output.push(body[_i]);
+        /** @type {uint8[]} */
+        let body = [];
+        if (data.length !== 0) {
+          body = this._encode(data);
+        }
+        /** @type {uint8[]} */
+        const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
+        for (let k = 0; k < body.length; ++k) {
+          output.push(body[k]);
+        }
         return output;
       }
 
       // ----- Decompression (mirrors CompressionWorkbench's ShrinkDecoder) -----
 
+      /**
+       * @param {int32[]} prefix - Parent of each code
+       * @param {int32[]} suffix - Last byte of each code
+       * @param {int32} start - Code
+       * @returns {int32} First byte of the code's string
+       */
+      _getFirstByte(prefix, suffix, start) {
+        /** @type {int32} */
+        let code = start;
+        while (code >= 257) {
+          code = prefix[code];
+        }
+        return suffix[code];
+      }
+
+      /**
+       * Free every leaf code (one that is no used code's prefix)
+       * @param {int32[]} prefix - Parent of each code
+       * @param {boolean[]} isUsed - Codes in use, updated
+       */
+      _partialClear(prefix, isUsed) {
+        /** @type {boolean[]} */
+        const isReferenced = new Array(MAX_CODE);
+        for (let c = 0; c < MAX_CODE; ++c) {
+          isReferenced[c] = false;
+        }
+        for (let c = 257; c < MAX_CODE; ++c) {
+          if (isUsed[c] && prefix[c] >= 257) {
+            isReferenced[prefix[c]] = true;
+          }
+        }
+        for (let c = 257; c < MAX_CODE; ++c) {
+          if (isUsed[c] && !isReferenced[c]) {
+            isUsed[c] = false;
+          }
+        }
+      }
+
+      /**
+       * @param {uint8[]} compressed - Code stream
+       * @param {int32} originalSize - Number of bytes to decode
+       * @returns {uint8[]} Decoded bytes
+       */
       _decode(compressed, originalSize) {
+        /** @type {BitReader} */
         const reader = new BitReader(compressed);
+        /** @type {uint8[]} */
         const output = new Array(originalSize);
+        /** @type {int32} */
         let outputPos = 0;
 
-        const prefix = new Array(MAX_CODE).fill(-1);
-        const suffix = new Array(MAX_CODE).fill(0);
-        const isUsed = new Array(MAX_CODE).fill(false);
+        /** @type {int32[]} */
+        const prefix = new Array(MAX_CODE);
+        /** @type {int32[]} */
+        const suffix = new Array(MAX_CODE);
+        /** @type {boolean[]} */
+        const isUsed = new Array(MAX_CODE);
+        for (let i = 0; i < MAX_CODE; ++i) {
+          prefix[i] = -1;
+          suffix[i] = 0;
+          isUsed[i] = false;
+        }
 
         for (let i = 0; i < 256; ++i) {
           prefix[i] = -1;
@@ -312,49 +496,50 @@
         }
         isUsed[CODE_CONTROL] = true;
 
+        /** @type {int32} */
         let currentBits = MIN_WIDTH;
+        /** @type {int32} */
         let nextCode = 257;
+        /** @type {int32} */
         let prevCode = -1;
+        /** @type {int32[]} */
         const decodeStack = new Array(MAX_CODE);
 
-        const getFirstByte = (code) => {
-          while (code >= 257) code = prefix[code];
-          return suffix[code];
-        };
-
-        const partialClear = () => {
-          const isReferenced = new Array(MAX_CODE).fill(false);
-          for (let c = 257; c < MAX_CODE; ++c) {
-            if (isUsed[c] && prefix[c] >= 257) isReferenced[prefix[c]] = true;
-          }
-          for (let c = 257; c < MAX_CODE; ++c) {
-            if (isUsed[c] && !isReferenced[c]) isUsed[c] = false;
-          }
-        };
-
         while (outputPos < originalSize) {
-          let code = reader.readBits(currentBits);
-          if (reader.exhausted) break;
+          /** @type {int32} */
+          const code = reader.readBits(currentBits);
+          if (reader.exhausted) {
+            break;
+          }
 
           if (code === CODE_CONTROL) {
+            /** @type {int32} */
             const subCmd = reader.readBits(currentBits);
-            if (reader.exhausted) break;
+            if (reader.exhausted) {
+              break;
+            }
             if (subCmd === CTRL_INCREASE_WIDTH) {
-              if (currentBits < MAX_WIDTH) ++currentBits;
+              if (currentBits < MAX_WIDTH) {
+                ++currentBits;
+              }
             } else if (subCmd === CTRL_PARTIAL_CLEAR) {
-              partialClear();
+              this._partialClear(prefix, isUsed);
               nextCode = 257;
               prevCode = -1;
             }
             continue;
           }
 
+          /** @type {int32} */
           let stackPos = 0;
+          /** @type {int32} */
           let c = code;
 
           if (c >= 257 && !isUsed[c]) {
-            if (prevCode < 0) throw new Error('Shrink: invalid KwKwK with no previous code');
-            decodeStack[stackPos++] = getFirstByte(prevCode);
+            if (prevCode < 0) {
+              throw new Error('Shrink: invalid KwKwK with no previous code');
+            }
+            decodeStack[stackPos++] = this._getFirstByte(prefix, suffix, prevCode);
             c = prevCode;
           }
 
@@ -364,10 +549,14 @@
           }
           decodeStack[stackPos++] = suffix[c];
 
-          for (let i = stackPos - 1; i >= 0 && outputPos < originalSize; --i) output[outputPos++] = decodeStack[i];
+          for (let i = stackPos - 1; i >= 0 && outputPos < originalSize; --i) {
+            output[outputPos++] = decodeStack[i];
+          }
 
           if (prevCode >= 0 && nextCode < MAX_CODE) {
-            while (nextCode < MAX_CODE && isUsed[nextCode]) ++nextCode;
+            while (nextCode < MAX_CODE && isUsed[nextCode]) {
+              ++nextCode;
+            }
             if (nextCode < MAX_CODE) {
               prefix[nextCode] = prevCode;
               suffix[nextCode] = decodeStack[stackPos - 1];
@@ -382,13 +571,25 @@
         return output;
       }
 
+      /**
+       * @param {uint8[]} data - 4-byte LE length followed by the code stream
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 4) throw new Error('Shrink: input smaller than 4-byte header');
-        const size = OpCodes.OrN(
-          OpCodes.OrN(OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
+        if (data.length < 4) {
+          throw new Error('Shrink: input smaller than 4-byte header');
+        }
+        // A size with the top bit set is negative here, as it always was
+        /** @type {int32} */
+        const size = OpCodes.ToInt(OpCodes.Or32(
+          OpCodes.Or32(OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
           OpCodes.Shl32(data[3], 24)
-        );
-        if (size === 0) return [];
+        ));
+        if (size === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decode(data.slice(4), size);
       }
     }
