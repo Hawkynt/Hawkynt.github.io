@@ -80,8 +80,11 @@
   const QUEUE_LEN = 64;
 
   // LFSR-relative tap indices (0-based), as implemented in the DarkCrypt Total Commander plugin.
+  /** @type {uint16[]} */
   const FEEDBACK_TAPS = [0, 3, 4, 41, 84, 103, 134, 163, 164, 165, 206, 253, 270, 283];
+  /** @type {uint16[]} */
   const FILTER_XOR_TAPS = [1, 21, 39, 51, 73, 120, 159, 187, 203, 236, 244, 263, 276, 287];
+  /** @type {uint16[]} */
   const FILTER_SUM_TAPS = [21, 39, 51, 73, 120, 159, 187, 203, 236, 244, 263, 276, 287];
 
   class DarkCryptDecimAlgorithm extends StreamCipherAlgorithm {

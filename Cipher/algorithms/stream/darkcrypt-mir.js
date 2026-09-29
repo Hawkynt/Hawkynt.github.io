@@ -220,7 +220,9 @@
      * @returns {uint8[]}
      */
     Result() {
-      if (!this.initialized) throw new Error("Key/IV not set");
+      if (!this.initialized) {
+        throw new Error("Key/IV not set");
+      }
       /** @type {uint8[]} */
       const out = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i += 8) {

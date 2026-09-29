@@ -52,6 +52,7 @@
   const MAX_STREAM_LENGTH = 340;       // bytes generated per turingGen call
 
   // Basic 8-bit permutation S-box for Turing (generated from keyed RC4 of "Alan Turing")
+  /** @type {uint8[]} */
   const THE_SBOX = [
     0x61, 0x51, 0xeb, 0x19, 0xb9, 0x5d, 0x60, 0x38, 0x7c, 0xb2, 0x06, 0x12, 0xc4, 0x5b, 0x16, 0x3b,
     0x2b, 0x18, 0x83, 0xb0, 0x7f, 0x75, 0xfa, 0xa0, 0xe9, 0xdd, 0x6d, 0x7a, 0x6b, 0x68, 0x2d, 0x49,
@@ -72,6 +73,7 @@
   ];
 
   // 8->32 Q-box (Millan et al., Queensland University of Technology)
+  /** @type {uint32[]} */
   const THE_QBOX = [
     0x1faa1887, 0x4e5e435c, 0x9165c042, 0x250e6ef4, 0x5957ee20, 0xd484fed3, 0xa666c502, 0x7e54e8ae,
     0xd12ee9d9, 0xfc1f38d4, 0x49829b5d, 0x1b5cdf3c, 0x74864249, 0xda2e3963, 0x28f4429f, 0xc8432c35,
@@ -108,6 +110,7 @@
   ];
 
   // Multiplication table for the LFSR feedback (GF(2^32) constant 0xD02B4367)
+  /** @type {uint32[]} */
   const THE_MULTAB = [
     0x00000000, 0xd02b4367, 0xed5686ce, 0x3d7dc5a9, 0x97ac41d1, 0x478702b6, 0x7afac71f, 0xaad18478,
     0x631582ef, 0xb33ec188, 0x8e430421, 0x5e684746, 0xf4b9c33e, 0x24928059, 0x19ef45f0, 0xc9c40697,
@@ -287,7 +290,9 @@
     Result() {
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /** @type {uint8[]} */

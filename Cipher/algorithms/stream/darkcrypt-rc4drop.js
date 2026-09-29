@@ -120,8 +120,11 @@
       /** @type {uint8[]|null} */
       this._key = null;
 
+      /** @type {uint8[]} */
       this.S = new Array(256);
+      /** @type {uint32} */
       this.i = 0;
+      /** @type {uint32} */
       this.j = 0;
       /** @type {boolean} */
       this.initialized = false;
@@ -159,7 +162,9 @@
       if (!this._key) throw new Error("Key not set");
       if (!this.initialized) throw new Error("RC4-drop not properly initialized");
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /** @type {uint8[]} */
@@ -174,9 +179,10 @@
     _initialize() {
       // Key Scheduling Algorithm
       for (let k = 0; k < 256; k++) this.S[k] = k;
+      /** @type {uint32} */
       let j = 0;
       for (let k = 0; k < 256; k++) {
-        j = OpCodes.AndN(j + this.S[k] + this._key[k % this._key.length], 0xFF);
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, this.S[k]), this._key[k % this._key.length]), 0xFF);
         const tmp = this.S[k]; this.S[k] = this.S[j]; this.S[j] = tmp;
       }
       this.i = 0;
@@ -187,15 +193,20 @@
       for (let n = 0; n < DROP_COUNT; n++) this._prgaStep();
     }
 
+    /**
+     */
     _prgaStep() {
-      this.i = OpCodes.AndN(this.i + 1, 0xFF);
-      this.j = OpCodes.AndN(this.j + this.S[this.i], 0xFF);
+      this.i = OpCodes.And32(this.i + 1, 0xFF);
+      this.j = OpCodes.And32(this.j + this.S[this.i], 0xFF);
       const tmp = this.S[this.i]; this.S[this.i] = this.S[this.j]; this.S[this.j] = tmp;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       this._prgaStep();
-      const t = OpCodes.AndN(this.S[this.i] + this.S[this.j], 0xFF);
+      const t = OpCodes.And32(this.S[this.i] + this.S[this.j], 0xFF);
       return this.S[t];
     }
   }

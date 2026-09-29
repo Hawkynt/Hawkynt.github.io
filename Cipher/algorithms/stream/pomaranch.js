@@ -114,13 +114,17 @@ class PomaranchInstance extends IAlgorithmInstance {
    */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
     /** @type {boolean} */
     this.isInverse = isInverse;
     /** @type {uint8[]} */
     this.inputBuffer = [];
     /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._iv = OpCodes.CreateArray(8, 0);
+    /** @type {int32} */
     this.LFSR_COUNT = 9;
   }
 
@@ -133,9 +137,15 @@ class PomaranchInstance extends IAlgorithmInstance {
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
       throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -182,16 +192,25 @@ class PomaranchInstance extends IAlgorithmInstance {
 
     // Handle empty input
     if (this.inputBuffer.length === 0) {
-      return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
     }
 
-    const output = this._educationalPomaranch(this._key, this._iv || OpCodes.CreateArray(8, 0), this.inputBuffer);
+    const output = this._educationalPomaranch(this._key, this._iv ? this._iv : OpCodes.CreateArray(8, 0), this.inputBuffer);
     this.inputBuffer = [];
     return output;
   }
 
+  /**
+   * @param {uint8[]} key
+   * @param {uint8[]} iv
+   * @param {uint8[]} data
+   * @returns {uint8[]}
+   */
   _educationalPomaranch(key, iv, data) {
     // Initialize 9 LFSR states
+    /** @type {uint32[]} */
     const lfsrs = new Array(this.LFSR_COUNT);
 
     // Initialize each LFSR with key and IV material
@@ -238,6 +257,7 @@ class PomaranchInstance extends IAlgorithmInstance {
       }
 
       // Nonlinear combining function (majority + XOR)
+      /** @type {uint32} */
       let keystreamByte = 0;
       for (let bit = 0; bit < 8; bit++) {
         let majority = 0;

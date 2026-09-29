@@ -67,6 +67,7 @@
   const STAGES = 80;          // number of e-transformer pipeline stages
   const KEY_DIGITS = 40;      // two-bit digits carried by the 80-bit key
   const IV_DIGITS = 32;       // two-bit digits carried by the 64-bit IV
+  /** @type {uint8[]} */
   const TAIL_DIGITS = [3, 2, 1, 0, 0, 1, 2, 3]; // fixed padding appended after key+IV digits
 
   // The four fixed 4x4 quasigroups on the alphabet {0,1,2,3} that every
