@@ -175,6 +175,15 @@
 
     // MX(y,z,sum,p,e) = ((z>>>9 ^ y<<2) + (y>>>3 ^ z<<6)) ^ ((sum^y) + (key[(p&3)^e]^z))
     // (DarkCrypt uses shifts 9/2 and 3/6 instead of the textbook 5/2 and 3/4)
+    /**
+     * @param {uint32} y - Next word
+     * @param {uint32} z - Previous word
+     * @param {uint32} sum - Running delta sum
+     * @param {int32} p - Word index
+     * @param {uint32} e - Key-selector bits of sum
+     * @param {uint32[]} k - Key words
+     * @returns {uint32} Mixing term
+     */
     _MX(y, z, sum, p, e, k) {
       const t1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(z, 9), OpCodes.Shl32(y, 2)));
       const t2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 6)));
@@ -185,8 +194,10 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Little-endian words of the block
      */
     _wordsFromBlock(block) {
+      /** @type {uint32[]} */
       const v = new Array(N);
       for (let i = 0; i < N; i++) {
         const o = i * 4;
@@ -195,7 +206,12 @@
       return v;
     }
 
+    /**
+     * @param {uint32[]} v - Block words
+     * @returns {uint8[]} Little-endian bytes of the words
+     */
     _blockFromWords(v) {
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < N; i++) out.push(...OpCodes.Unpack32LE(v[i]));
       return out;
@@ -208,6 +224,7 @@
     _encryptBlock(block) {
       const v = this._wordsFromBlock(block);
       const k = this._keyWords();
+      /** @type {uint32} */
       let sum = 0;
       let z = v[N - 1];
       for (let r = 0; r < ROUNDS; r++) {
