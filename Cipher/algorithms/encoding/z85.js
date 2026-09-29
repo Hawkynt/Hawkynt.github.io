@@ -114,49 +114,67 @@
       ];
 
       // Z85 alphabet (85 characters)
+      /** @type {string} */
       this.alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
 
+      /** @type {int32[]|null} */
       this.decodeTable = null;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Z85Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new Z85Instance(this, isInverse);
     }
 
+    /**
+     * Build the decode lookup table: the digit value of each character code,
+     * or -1 for a character outside the alphabet
+     */
     init() {
-      // Build decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
+      /** @type {int32[]} */
+      const table = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        table[i] = -1;
       }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        table[this.alphabet.charCodeAt(i)] = i;
+      }
+      this.decodeTable = table;
     }
   }
 
   /**
  * Z85 cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Z85Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Z85Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      this.algorithm.init();
+      algorithm.init();
+      /** @type {string} */
+      this.alphabet = algorithm.alphabet;
+      /** @type {int32[]} */
+      this.decodeTable = algorithm.decodeTable;
     }
 
     /**
@@ -175,8 +193,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -189,15 +213,24 @@
       if (!this._feedBuffer) {
         throw new Error('Z85Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode whole 4-byte blocks as Z85 characters
+     * @param {uint8[]} data - Input bytes (length a multiple of 4)
+     * @returns {uint8[]} ASCII Z85 characters
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
       // Z85 (ZeroMQ RFC 32) is only defined for byte strings whose length is
@@ -206,10 +239,11 @@
       // safe stand-in: the padding count is lost and decode() hands back
       // more bytes than were fed in. Reject instead of mangling.
       if (data.length % 4 !== 0) {
-        throw new Error(`Z85Instance.encode: input length ${data.length} is not a multiple of 4 (Z85/RFC 32 requires whole 4-byte blocks)`);
+        throw new Error("Z85Instance.encode: input length " + data.length + " is not a multiple of 4 (Z85/RFC 32 requires whole 4-byte blocks)");
       }
 
-      const result = [];
+      /** @type {uint8[]} */
+      const chars = new Array(5);
 
       for (let i = 0; i < data.length; i += 4) {
         // Pack 4 bytes into 32-bit value (big-endian). Must use the
@@ -218,53 +252,63 @@
         // value's top bit is set, and OrN would hand back a negative
         // Number, sending "temp % 85" into negative-index territory and
         // producing undefined alphabet lookups.
+        /** @type {uint32} */
         const value = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(data[i], 24), OpCodes.Shl32(data[i + 1], 16)), OpCodes.Shl32(data[i + 2], 8)), data[i + 3]);
 
-        // Convert to 5 base-85 characters
+        // Convert to 5 base-85 characters, most significant first
+        /** @type {uint32} */
         let temp = value;
-        const chars = [];
-        for (let j = 0; j < 5; j++) {
-          chars.unshift(this.algorithm.alphabet[temp % 85]);
+        for (let j = 4; j >= 0; j--) {
+          chars[j] = this.alphabet.charCodeAt(temp % 85);
           temp = Math.floor(temp / 85);
         }
 
-        { const _src = chars.map(c => c.charCodeAt(0)); for (let _i = 0; _i < _src.length; _i++) result.push(_src[_i]); }
+        for (let j = 0; j < 5; j++) {
+          result.push(chars[j]);
+        }
       }
 
       return result;
     }
 
+    /**
+     * Decode Z85 characters to bytes
+     * @param {uint8[]} data - ASCII Z85 characters (length a multiple of 5)
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const encoded = OpCodes.BytesToChars(data);
-
       // Z85 requires input length to be multiple of 5 characters
-      if (encoded.length % 5 !== 0) {
+      if (data.length % 5 !== 0) {
         throw new Error('Z85: Invalid encoded length (must be multiple of 5)');
       }
 
-      const result = [];
-
-      for (let i = 0; i < encoded.length; i += 5) {
-        // Convert 5 characters to 32-bit value
+      for (let i = 0; i < data.length; i += 5) {
+        // Convert 5 characters to 32-bit value; only its value modulo 2^32
+        // is used below, so it is accumulated modulo 2^32
+        /** @type {uint32} */
         let value = 0;
         for (let j = 0; j < 5; j++) {
-          const char = encoded[i + j];
-          const charValue = this.algorithm.decodeTable[char];
-          if (charValue === undefined) {
-            throw new Error(`Z85: Invalid character '${char}' in encoded data`);
+          /** @type {int32} */
+          const code = data[i + j];
+          /** @type {int32} */
+          const charValue = code >= 0 && code < 256 ? this.decodeTable[code] : -1;
+          if (charValue < 0) {
+            throw new Error("Z85: Invalid character '" + String.fromCharCode(code) + "' in encoded data");
           }
-          value = value * 85 + charValue;
+          value = OpCodes.Add32(OpCodes.Mul32(value, 85), charValue);
         }
 
         // Unpack 32-bit value to 4 bytes (big-endian)
-        result.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
-        result.push(OpCodes.AndN(value, 0xFF));
+        result.push(OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF));
+        result.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
+        result.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+        result.push(OpCodes.And32(value, 0xFF));
       }
 
       return result;
