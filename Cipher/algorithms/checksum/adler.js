@@ -55,33 +55,136 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
-   * @typedef {Object} AdlerConfig
-   * @property {string} description - Description of the variant
-   * @property {number} sumBits - Number of bits for each sum
-   * @property {number} modulo - Modulo value for checksum calculation
-   * @property {number} base - Starting value for sum1
-   * @property {number} resultBytes - Number of bytes in result
-   * @property {ComplexityType} complexity - Algorithm complexity level
-   * @property {TestCase[]} tests - Test vectors for this variant
+   * Adler checksum, one registered algorithm per sum width
+   * @class
+   * @extends {Algorithm}
    */
-
   class AdlerAlgorithm extends Algorithm {
+    /**
+     * Configure one Adler variant
+     * @param {string} [variant='32'] - '16', '32' or '64' (anything else is configured as Adler-32)
+     */
     constructor(variant = '32') {
       super();
 
-      // Get configuration for this variant
-      /** @type {AdlerConfig} */
-      this.config = this._getVariantConfig(variant);
+      /** @type {string} What the variant is used for */
+      this.variantDescription = '';
+      /** @type {int32} Bits per running sum */
+      this.sumBits = 0;
+      /** @type {uint32} Modulus of both running sums (largest prime below 2^sumBits) */
+      this.modulo = 0;
+      /** @type {uint32} Starting value of sum1 */
+      this.base = 1;
+      /** @type {int32} Bytes in the checksum */
+      this.resultBytes = 0;
+
+      switch (variant) {
+        case '16':
+          this.variantDescription = 'Adler-16 checksum for lightweight error detection in embedded systems';
+          this.sumBits = 8;
+          this.modulo = 251;         // Largest prime less than 2^8
+          this.base = 1;             // Starting value for sum1
+          this.resultBytes = 2;
+          this.complexity = ComplexityType.BEGINNER;
+          this.tests = [
+            new TestCase(
+              [],
+              [0x00, 0x01],
+              "Empty string",
+              "RFC 1950 style - empty gives base value"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("a"),
+              [0x62, 0x62],
+              "Single byte 'a'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abc"),
+              [0x57, 0x2C],
+              "String 'abc'",
+              "Educational test vector"
+            )
+          ];
+          break;
+        case '64':
+          this.variantDescription = 'Adler-64 checksum for high-performance applications and large datasets';
+          this.sumBits = 32;
+          this.modulo = 4294967291;  // Largest prime less than 2^32
+          this.base = 1;             // Starting value for sum1
+          this.resultBytes = 8;
+          this.complexity = ComplexityType.INTERMEDIATE;
+          this.tests = [
+            new TestCase(
+              [],
+              [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
+              "Empty string",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("a"),
+              [0x00, 0x00, 0x00, 0x62, 0x00, 0x00, 0x00, 0x62],
+              "Single byte 'a'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("large data integrity verification"),
+              [0x00, 0x00, 0xD6, 0x56, 0x00, 0x00, 0x0C, 0xE8],
+              "Large data sample",
+              "Educational test vector"
+            )
+          ];
+          break;
+        default: // '32'
+          this.variantDescription = 'Adler-32 checksum used in zlib, gzip and other compression formats';
+          this.sumBits = 16;
+          this.modulo = 65521;       // Largest prime less than 2^16 (65536)
+          this.base = 1;             // Starting value for sum1
+          this.resultBytes = 4;
+          this.complexity = ComplexityType.BEGINNER;
+          this.tests = [
+            new TestCase(
+              [],
+              [0x00, 0x00, 0x00, 0x01],
+              "Empty string",
+              "RFC 1950 - empty string gives 1"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("a"),
+              [0x00, 0x62, 0x00, 0x62],
+              "Single byte 'a'",
+              "RFC 1950 test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abc"),
+              [0x02, 0x4D, 0x01, 0x27],
+              "String 'abc'",
+              "RFC 1950 test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("message digest"),
+              [0x29, 0x75, 0x05, 0x86],
+              "String 'message digest'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+              [0x90, 0x86, 0x0B, 0x20],
+              "Alphabet string",
+              "Educational test vector"
+            )
+          ];
+          break;
+      }
 
       // Required metadata
-      this.name = `Adler-${variant}`;
-      this.description = `${this.config.description} Uses two ${this.config.sumBits}-bit running sums with modulo ${this.config.modulo} for fast error detection.`;
+      this.name = 'Adler-' + variant;
+      this.description = this.variantDescription + ' Uses two ' + this.sumBits + '-bit running sums with modulo ' + this.modulo + ' for fast error detection.';
       this.inventor = "Mark Adler";
       this.year = 1995;
       this.category = CategoryType.CHECKSUM;
       this.subCategory = "Simple Checksum";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = this.config.complexity;
       this.country = CountryCode.US;
 
       // Documentation and references
@@ -111,160 +214,62 @@
           "Sequences of zero bytes can produce predictable patterns"
         )
       ];
-
-      // Test vectors specific to this variant
-      this.tests = this.config.tests;
     }
 
     /**
-     * Get variant-specific configuration
-     * @param {string} variant - Variant identifier ('16', '32', or '64')
-     * @returns {AdlerConfig} Configuration for the specified variant
-     */
-    _getVariantConfig(variant) {
-      /** @type {Object.<string, AdlerConfig>} */
-      const configs = {
-        '16': {
-          description: 'Adler-16 checksum for lightweight error detection in embedded systems',
-          sumBits: 8,
-          modulo: 251,         // Largest prime less than 2^8
-          base: 1,             // Starting value for sum1
-          resultBytes: 2,
-          complexity: ComplexityType.BEGINNER,
-          tests: [
-            new TestCase(
-              /** @type {number[]} */ ([]),
-              [0x00, 0x01],
-              "Empty string",
-              "RFC 1950 style - empty gives base value"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              [0x62, 0x62],
-              "Single byte 'a'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("abc"),
-              [0x57, 0x2C],
-              "String 'abc'",
-              "Educational test vector"
-            )
-          ]
-        },
-        '32': {
-          description: 'Adler-32 checksum used in zlib, gzip and other compression formats',
-          sumBits: 16,
-          modulo: 65521,       // Largest prime less than 2^16 (65536)
-          base: 1,             // Starting value for sum1
-          resultBytes: 4,
-          complexity: ComplexityType.BEGINNER,
-          tests: [
-            new TestCase(
-              /** @type {number[]} */ ([]),
-              [0x00, 0x00, 0x00, 0x01],
-              "Empty string",
-              "RFC 1950 - empty string gives 1"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              [0x00, 0x62, 0x00, 0x62],
-              "Single byte 'a'",
-              "RFC 1950 test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("abc"),
-              [0x02, 0x4D, 0x01, 0x27],
-              "String 'abc'",
-              "RFC 1950 test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("message digest"),
-              [0x29, 0x75, 0x05, 0x86],
-              "String 'message digest'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
-              [0x90, 0x86, 0x0B, 0x20],
-              "Alphabet string",
-              "Educational test vector"
-            )
-          ]
-        },
-        '64': {
-          description: 'Adler-64 checksum for high-performance applications and large datasets',
-          sumBits: 32,
-          modulo: 4294967291,  // Largest prime less than 2^32
-          base: 1,             // Starting value for sum1
-          resultBytes: 8,
-          complexity: ComplexityType.INTERMEDIATE,
-          tests: [
-            new TestCase(
-              /** @type {number[]} */ ([]),
-              [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
-              "Empty string",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              [0x00, 0x00, 0x00, 0x62, 0x00, 0x00, 0x00, 0x62],
-              "Single byte 'a'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("large data integrity verification"),
-              [0x00, 0x00, 0xD6, 0x56, 0x00, 0x00, 0x0C, 0xE8],
-              "Large data sample",
-              "Educational test vector"
-            )
-          ]
-        }
-      };
-
-      return configs[variant] || configs['32'];
-    }
-
-    /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {AdlerInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
-      if (isInverse) {
-        return null; // Checksums do not support inverse operations
-      }
-      return new AdlerInstance(this, this.config);
+      return new AdlerInstance(this);
     }
   }
 
   /**
-   * Adler cipher instance implementing Feed/Result pattern
+   * Adler instance implementing the Feed/Result pattern
    * @class
    * @extends {IAlgorithmInstance}
    */
   class AdlerInstance extends IAlgorithmInstance {
     /**
      * Create a new Adler instance
-     * @param {Algorithm} algorithm - Parent algorithm
-     * @param {AdlerConfig} config - Variant configuration
+     * @param {AdlerAlgorithm} algorithm - Parent algorithm (the variant)
      */
-    constructor(algorithm, config) {
+    constructor(algorithm) {
       super(algorithm);
-      /** @type {AdlerConfig} */
-      this.config = config;
-      /** @type {number} */
-      this.a = config.base;  // sum1 - starts at base value (usually 1)
-      /** @type {number} */
-      this.b = 0;            // sum2 - starts at 0
+      /** @type {uint32} Modulus of both running sums */
+      this.modulo = algorithm.modulo;
+      /** @type {uint32} Starting value of sum1 */
+      this.base = algorithm.base;
+      /** @type {int32} Bytes in the checksum */
+      this.resultBytes = algorithm.resultBytes;
+      /** @type {uint32} */
+      this.a = this.base;  // sum1 - starts at base value (usually 1)
+      /** @type {uint32} */
+      this.b = 0;          // sum2 - starts at 0
     }
 
     /**
-   * Feed data to cipher for processing
+     * (x + y) mod modulo, exact without leaving 32 bits: a sum plus a
+     * byte or another sum (Adler-64) would need 33 bits before it is reduced.
+     * @param {uint32} x - Running sum, below modulo
+     * @param {uint32} y - Value to add
+     * @returns {uint32} Sum reduced below modulo
+     */
+    _addMod(x, y) {
+      const r = y % this.modulo;
+      const room = OpCodes.Sub32(this.modulo, x);
+      if (r >= room) return OpCodes.Sub32(r, room);
+      return OpCodes.Add32(x, r);
+    }
+
+    /**
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array
    */
 
     Feed(data) {
@@ -278,44 +283,41 @@
       // where D1, D2, ..., Dn are the data bytes
 
       for (let i = 0; i < data.length; i++) {
-        this.a = (this.a + data[i]) % this.config.modulo;
-        this.b = (this.b + this.a) % this.config.modulo;
+        this.a = this._addMod(this.a, data[i]);
+        this.b = this._addMod(this.b, this.a);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes, big-endian (sum2 before sum1)
    */
 
     Result() {
-      let result;
+      /** @type {uint8[]} */
+      let result = null;
 
       // Generate result based on variant bit width
-      switch (this.config.resultBytes) {
+      switch (this.resultBytes) {
         case 2: // Adler-16
-          const checksum16 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.b, 8), this.a));
-          result = OpCodes.Unpack16BE(checksum16);
+          result = OpCodes.Unpack16BE(OpCodes.Or32(OpCodes.Shl32(this.b, 8), this.a));
           break;
 
         case 4: // Adler-32
-          result = OpCodes.Unpack32BE(OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.b, 16), this.a)));
+          result = OpCodes.Unpack32BE(OpCodes.Or32(OpCodes.Shl32(this.b, 16), this.a));
           break;
 
         case 8: // Adler-64
           // Handle 64-bit result as two 32-bit parts
-          const high = OpCodes.ToUint32(this.b);
-          const low = OpCodes.ToUint32(this.a);
-          result = [...OpCodes.Unpack32BE(high), ...OpCodes.Unpack32BE(low)];
+          result = OpCodes.Unpack32BE(this.b).concat(OpCodes.Unpack32BE(this.a));
           break;
 
         default:
-          throw new Error(`Unsupported Adler result size: ${this.config.resultBytes} bytes`);
+          throw new Error('Unsupported Adler result size: ' + this.resultBytes + ' bytes');
       }
 
       // Reset for next calculation
-      this.a = this.config.base;
+      this.a = this.base;
       this.b = 0;
 
       return result;
@@ -326,11 +328,6 @@
   RegisterAlgorithm(new AdlerAlgorithm('16'));
   RegisterAlgorithm(new AdlerAlgorithm('32'));
   RegisterAlgorithm(new AdlerAlgorithm('64'));
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { AdlerAlgorithm, AdlerInstance };
-  }
 
   // ===== REGISTRATION =====
 
