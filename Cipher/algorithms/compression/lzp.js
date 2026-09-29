@@ -84,7 +84,9 @@
       this.country = CountryCode.US;
 
       // Configuration parameters (matches CompressionWorkbench's BB_Lzp defaults)
+      /** @type {int32} */
       this.ORDER = 3;                  // Number of preceding bytes used as context
+      /** @type {int32} */
       this.HASH_BITS = 20;             // 20-bit FNV-1a hash table (2^20 entries)
 
       // Documentation and references
