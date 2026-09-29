@@ -100,11 +100,11 @@
       ];
 
       // Add metadata for tests
-      this.tests.forEach(test => {
-        test.keySize = 2048; // RSA-2048
-        test.saltLength = 20; // 20-byte salt (SHA-1 length)
-        test.hashFunction = 'SHA-1';
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].keySize = 2048; // RSA-2048
+        this.tests[i].saltLength = 20; // 20-byte salt (SHA-1 length)
+        this.tests[i].hashFunction = 'SHA-1';
+      }
     }
 
     /**
@@ -127,21 +127,32 @@
   class PSSInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PSSAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._keySize = 2048; // RSA key size in bits
+      /** @type {int32} */
       this._saltLength = 20; // Default salt length (SHA-1 hash size)
+      /** @type {string} */
       this._hashFunction = 'SHA-1'; // Hash function name
     }
 
-    // Property getters and setters for test framework
+    /**
+     * RSA key size in bits
+     * @returns {int32} Key size
+     */
     get keySize() { return this._keySize; }
+
+    /**
+     * @param {int32} value - RSA key size in bits (1024-8192, divisible by 8)
+     */
     set keySize(value) {
       if (value < 1024 || value > 8192 || value % 8 !== 0) {
         throw new Error("Key size must be between 1024-8192 bits and divisible by 8");
@@ -149,7 +160,15 @@
       this._keySize = value;
     }
 
+    /**
+     * Salt length in bytes
+     * @returns {int32} Salt length
+     */
     get saltLength() { return this._saltLength; }
+
+    /**
+     * @param {int32} value - Salt length in bytes (0-255)
+     */
     set saltLength(value) {
       if (value < 0 || value > 255) {
         throw new Error("Salt length must be between 0-255 bytes");
@@ -157,7 +176,15 @@
       this._saltLength = value;
     }
 
+    /**
+     * Hash function name
+     * @returns {string} Hash function name
+     */
     get hashFunction() { return this._hashFunction; }
+
+    /**
+     * @param {string} value - Hash function name (SHA-1, SHA-256, SHA-384, SHA-512)
+     */
     set hashFunction(value) {
       this._hashFunction = value;
     }
@@ -174,7 +201,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._verifyPadding();
       } else {
@@ -185,7 +214,7 @@
 
     /**
      * Add PSS padding to message hash
-     * @returns {Array} PSS-padded data
+     * @returns {uint8[]} PSS-padded data
      */
     _addPadding() {
       const messageHash = this.inputBuffer;
@@ -193,7 +222,11 @@
       const hashLength = this._getHashLength(); // Use fixed hash length, not input length
 
       // Generate salt (simplified: use deterministic salt for test vectors)
-      const salt = new Array(this._saltLength).fill(0).map((_, i) => OpCodes.AndN((i * 37 + 42), 0xFF));
+      /** @type {uint8[]} */
+      const salt = new Array(this._saltLength);
+      for (let i = 0; i < this._saltLength; i++) {
+        salt[i] = OpCodes.And32(i * 37 + 42, 0xFF);
+      }
 
       // Create M' = 0x00 00 00 00 00 00 00 00 || messageHash || salt
       const mPrime = [0, 0, 0, 0, 0, 0, 0, 0, ...messageHash, ...salt];
@@ -203,18 +236,18 @@
 
       // Create DB = PS || 0x01 || salt
       const psLength = keyBytes - this._saltLength - hashLength - 2;
-      const db = [...new Array(psLength).fill(0), 0x01, ...salt];
+      const db = [...OpCodes.CreateArray(psLength, 0), 0x01, ...salt];
 
       // Generate mask using MGF1 (simplified)
       const dbMask = this._mgf1(hash, db.length);
 
       // Mask DB: maskedDB = DB XOR dbMask
-      const maskedDB = db.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
+      const maskedDB = OpCodes.XorArrays(db, dbMask);
 
       // Set leftmost bits to zero (for key size modulo 8)
       const leftmostBits = 8 * keyBytes - this._keySize;
       if (leftmostBits > 0) {
-        maskedDB[0] = OpCodes.AndN(maskedDB[0], OpCodes.Shr32(0xFF, leftmostBits));
+        maskedDB[0] = OpCodes.And32(maskedDB[0], OpCodes.Shr32(0xFF, leftmostBits));
       }
 
       // Create EM = maskedDB || H || 0xbc
@@ -229,7 +262,7 @@
 
     /**
      * Verify PSS padding (simplified verification)
-     * @returns {Array} Original message hash if valid
+     * @returns {uint8[]} Original message hash if valid
      */
     _verifyPadding() {
       const encodedMessage = this.inputBuffer;
@@ -251,17 +284,17 @@
 
       // Check leftmost bits are zero
       const leftmostBits = 8 * keyBytes - this._keySize;
-      if (leftmostBits > 0 && OpCodes.AndN(maskedDB[0], OpCodes.Shl32(0xFF, (8 - leftmostBits))) !== 0) {
+      if (leftmostBits > 0 && OpCodes.And32(maskedDB[0], OpCodes.Shl32(0xFF, (8 - leftmostBits))) !== 0) {
         throw new Error("Invalid PSS padding - leftmost bits not zero");
       }
 
       // Generate mask and recover DB
       const dbMask = this._mgf1(hash, maskedDB.length);
-      const db = maskedDB.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
+      const db = OpCodes.XorArrays(maskedDB, dbMask);
 
       // Set leftmost bits to zero in recovered DB
       if (leftmostBits > 0) {
-        db[0] = OpCodes.AndN(db[0], OpCodes.Shr32(0xFF, leftmostBits));
+        db[0] = OpCodes.And32(db[0], OpCodes.Shr32(0xFF, leftmostBits));
       }
 
       // Find 0x01 separator
@@ -298,7 +331,7 @@
 
     /**
      * Get hash length based on hash function
-     * @returns {number} Hash length in bytes
+     * @returns {int32} Hash length in bytes
      */
     _getHashLength() {
       switch (this._hashFunction) {
@@ -312,23 +345,23 @@
 
     /**
      * Simplified hash function (for educational purposes only)
-     * @param {Array} data - Data to hash
-     * @returns {Array} Hash value
+     * @param {uint8[]} data - Data to hash
+     * @returns {uint8[]} Hash value
      */
     _simpleHash(data) {
       const hashLength = this._getHashLength();
-      const hash = new Array(hashLength).fill(0);
+      const hash = OpCodes.CreateArray(hashLength, 0);
 
       // Simple hash: XOR all bytes with position-dependent transforms
       for (let i = 0; i < data.length; i++) {
         const pos = i % hash.length;
-        hash[pos] = OpCodes.XorN(hash[pos], data[i]);
+        hash[pos] = OpCodes.Xor8(hash[pos], data[i]);
         hash[pos] = OpCodes.RotL8(hash[pos], 1); // Rotate left 1 bit
       }
 
       // Final mixing
       for (let i = 0; i < hash.length; i++) {
-        hash[i] = OpCodes.XorN(hash[i], OpCodes.AndN((i * 17 + 91), 0xFF));
+        hash[i] = OpCodes.Xor8(hash[i], OpCodes.And32(i * 17 + 91, 0xFF));
       }
 
       return hash;
@@ -336,11 +369,12 @@
 
     /**
      * Simplified MGF1 mask generation function
-     * @param {Array} seed - Seed for mask generation
-     * @param {number} length - Desired mask length
-     * @returns {Array} Generated mask
+     * @param {uint8[]} seed - Seed for mask generation
+     * @param {int32} length - Desired mask length
+     * @returns {uint8[]} Generated mask
      */
     _mgf1(seed, length) {
+      /** @type {uint8[]} */
       const mask = [];
       const hashLength = this._getHashLength();
       const iterations = Math.ceil(length / hashLength);

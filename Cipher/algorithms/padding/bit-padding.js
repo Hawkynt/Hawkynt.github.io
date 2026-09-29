@@ -103,13 +103,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach((test, index) => {
-        if (index === 0 || index === 1) {
-          test.blockSize = 32; // 32-byte blocks for first two tests
-        } else {
-          test.blockSize = 8; // 8-byte block for third test
-        }
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = i < 2 ? 32 : 8; // 32-byte blocks for the first two tests, 8 for the third
+      }
     }
 
     /**
@@ -132,20 +128,22 @@
   class BitPaddingInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BitPaddingAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 16; // Default block size
     }
 
     /**
      * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
+     * @param {int32} blockSize - Block size in bytes (1-255)
      */
     setBlockSize(blockSize) {
       if (!blockSize || blockSize < 1 || blockSize > 255) {
@@ -166,7 +164,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._removePadding();
       } else {
@@ -177,13 +177,14 @@
 
     /**
      * Add bit padding to data
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const data = this.inputBuffer;
       const paddingLength = this.blockSize - (data.length % this.blockSize);
 
       // Always add padding: 0x80 followed by zeros
+      /** @type {uint8[]} */
       const padding = [0x80];
       for (let i = 1; i < paddingLength; i++) {
         padding.push(0x00);
@@ -209,7 +210,7 @@
 
     /**
      * Remove bit padding from data
-     * @returns {Array} Unpadded data
+     * @returns {uint8[]} Unpadded data
      */
     _removePadding() {
       const paddedData = this.inputBuffer;
