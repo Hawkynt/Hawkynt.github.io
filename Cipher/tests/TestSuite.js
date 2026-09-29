@@ -194,16 +194,20 @@ class TestSuite {
   }
 
   async run() {
-    console.log('SynthelicZ Cipher Tools - Algorithm Test Suite');
-    console.log('==============================================');
-    console.log(`Categories: ${CATEGORY_KEYS.filter(k => this.selected.has(k)).join(', ')}\n`);
-
-    await TestEngine.LoadDependencies(true, this.verbose);
-
     const runs = sweep => this.selected.has(sweep.key)
       && (sweep.scope === 'algorithms' || !this.narrowed || this.options.explicit.has(sweep.key));
     const collectionSweeps = SWEEPS.filter(s => s.scope === 'collection' && runs(s));
     const algorithmSweeps = SWEEPS.filter(s => s.scope === 'algorithms' && runs(s));
+    const leftOut = SWEEPS.filter(s => this.selected.has(s.key) && !runs(s)).map(s => s.key);
+
+    console.log('SynthelicZ Cipher Tools - Algorithm Test Suite');
+    console.log('==============================================');
+    console.log(`Categories: ${CATEGORY_KEYS.filter(k => this.selected.has(k) && !leftOut.includes(k)).join(', ')}`);
+    if (leftOut.length)
+      console.log(`Left out of a narrowed run: ${leftOut.join(', ')} (name them in --only to run them)`);
+    console.log('');
+
+    await TestEngine.LoadDependencies(true, this.verbose);
 
     for (const sweep of collectionSweeps) await this.runSweep(sweep);
 
