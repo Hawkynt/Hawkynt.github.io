@@ -240,8 +240,11 @@
       this.inputBuffer = [];
 
       // VMPC state
+      /** @type {uint8[]} */
       this.P = new Array(256);  // S-box permutation (called P in VMPC spec)
+      /** @type {uint32} */
       this.n = 0;               // PRGA counter n
+      /** @type {uint8} */
       this.s = 0;               // PRGA counter s
       /** @type {boolean} */
       this.initialized = false;
@@ -413,7 +416,7 @@
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + keyByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), keyByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -427,7 +430,7 @@
         const ivByte = this._iv[m % this._iv.length];
 
         // s = P[(s + P[i] + iv[m mod ivLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + ivByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), ivByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -442,7 +445,7 @@
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + keyByte)];
+        this.s = this.P[OpCodes.ToByte(OpCodes.Add32(OpCodes.Add32(this.s, this.P[i]), keyByte))];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -457,6 +460,9 @@
 
     // Pseudo-Random Generation Algorithm (PRGA) - generate one keystream byte
     // This is IDENTICAL to standard VMPC - only the KSA differs
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
       // Load P[n]
       const pn = this.P[OpCodes.ToByte(this.n)];
