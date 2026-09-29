@@ -34,7 +34,8 @@
  *   context with no require, module or global, as the browser loads it
  *   (BrowserLoad.js)
  * - LIBRARY: unit tests of the shared code the algorithms are built from:
- *   OpCodes helpers (OpCodesHelperTests.js) and ByteBuffer (ByteBufferTests.js)
+ *   OpCodes helpers (OpCodesHelperTests.js) and ByteBuffer (ByteBufferTests.js),
+ *   and of the category selection and summary of the runners (RunnerTests.js)
  *
  * Options:
  *   <file.js>                 test one file
@@ -63,6 +64,7 @@ const ChunkedFeed = require('./ChunkedFeed');
 const BrowserLoad = require('./BrowserLoad');
 const OpCodesHelperTests = require('./OpCodesHelperTests');
 const ByteBufferTests = require('./ByteBufferTests');
+const RunnerTests = require('./RunnerTests');
 const Runner = require('./CategoryRunner');
 
 const CIPHER_DIR = path.join(__dirname, '..');
@@ -84,10 +86,12 @@ const ENGINE_KEYS = FILE_CATEGORIES.slice(0, 6).map(c => c.key);
 // Names on the per-file progress line
 const FILE_LABELS = { compilation: 'Compilation', interface: 'Interface', metadata: 'Metadata', functionality: 'Function', optimization: 'Optimization' };
 
-// LIBRARY: the unit tests of the shared code every algorithm is built from.
+// LIBRARY: the unit tests of the shared code every algorithm is built from,
+// and of the category selection and summary these runners are built from.
 const Library = {
   run(context) {
-    const parts = [['OpCodes helpers', OpCodesHelperTests.run(context)], ['ByteBuffer', ByteBufferTests.run(context)]];
+    const parts = [['OpCodes helpers', OpCodesHelperTests.run(context)], ['ByteBuffer', ByteBufferTests.run(context)],
+      ['test runner', RunnerTests.run(context)]];
     return {
       passed: parts.reduce((sum, [, r]) => sum + r.passed, 0),
       failed: parts.reduce((sum, [, r]) => sum + r.failed, 0),
@@ -105,7 +109,7 @@ const SWEEPS = [
   { key: 'roundtrip', label: 'ROUNDTRIP', title: 'Round trips over an adversarial corpus', module: RoundTrip, scope: 'algorithms' },
   { key: 'chunked', label: 'CHUNKED', title: 'Feeding in chunks matches feeding whole', module: ChunkedFeed, scope: 'algorithms' },
   { key: 'browser', label: 'BROWSER', title: 'Every script tag of index.html loads as the browser loads it', module: BrowserLoad, scope: 'collection' },
-  { key: 'library', label: 'LIBRARY', title: 'Unit tests of OpCodes helpers and ByteBuffer', module: Library, scope: 'collection' }
+  { key: 'library', label: 'LIBRARY', title: 'Unit tests of OpCodes helpers, ByteBuffer and the test runner', module: Library, scope: 'collection' }
 ];
 
 const CATEGORY_KEYS = [...FILE_CATEGORIES.map(c => c.key), ...SWEEPS.map(s => s.key)];
