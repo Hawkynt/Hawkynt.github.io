@@ -391,9 +391,10 @@
         this.buffer.push(0x00);
       }
 
-      // Process final block
-      if (this.buffer.length === 128) {
-        this.processBlock(this.buffer);
+      // Process the final block, or the final two when the message left 118
+      // or more bytes in its last block and the footer spilled into a new one
+      for (let offset = 0; offset < this.buffer.length; offset += 128) {
+        this.processBlock(this.buffer.slice(offset, offset + 128));
       }
 
       // Fold output to desired length
@@ -741,6 +742,57 @@
             expected: OpCodes.Hex8ToBytes("0CA58F140ED92828A27913CE5636611ABCADA220FCCF3AF7"),
             passes: 4,
             hashBits: 192
+          },
+          // Tail lengths around 118 mod 128, where the 10-byte footer stops fitting
+          // behind the padding. No published list reaches these lengths; the values
+          // come from HashLib4CSharp, which reproduces all 45 php-src values above.
+          {
+            text: "117 x 'a' - HAVAL-224/3 (117 bytes, the longest tail the footer still fits behind)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(117, 0x61),
+            expected: OpCodes.Hex8ToBytes("365601A3C875AEAE81F92D0029F1C8AB837148DAE077E28FD0A192EA"),
+            passes: 3,
+            hashBits: 224
+          },
+          {
+            text: "118 x 'a' - HAVAL-128/3 (118 bytes, the shortest tail that pushes the footer into a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(118, 0x61),
+            expected: OpCodes.Hex8ToBytes("1065C6B9296279E1286C9B248BCF3208"),
+            passes: 3,
+            hashBits: 128
+          },
+          {
+            text: "122 x 'a' - HAVAL-192/4 (122 bytes, footer in a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(122, 0x61),
+            expected: OpCodes.Hex8ToBytes("D29CA0A0AED203918DF5F7F1EA47CDAAE598B2E0CF9BC39E"),
+            passes: 4,
+            hashBits: 192
+          },
+          {
+            text: "127 x 'a' - HAVAL-256/5 (127 bytes, the longest tail that needs a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(127, 0x61),
+            expected: OpCodes.Hex8ToBytes("F7EABEEC467C8B56AF40F90E799EA878D8EA7EFF260D49982209364AD0E0C39D"),
+            passes: 5,
+            hashBits: 256
+          },
+          {
+            text: "128 x 'a' - HAVAL-256/5 (128 bytes, one full block and a padding block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(128, 0x61),
+            expected: OpCodes.Hex8ToBytes("93390552A2D23DF530A5918C95D095E3914CF476CD1D95BEDE099C7674B31EFE"),
+            passes: 5,
+            hashBits: 256
+          },
+          {
+            text: "246 x 'a' - HAVAL-160/4 (246 bytes, 118 bytes past a full block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(246, 0x61),
+            expected: OpCodes.Hex8ToBytes("A1CA5BFDF2E7BC4BA833D8F6EC047D801B1D99A2"),
+            passes: 4,
+            hashBits: 160
           }
         ];
 
