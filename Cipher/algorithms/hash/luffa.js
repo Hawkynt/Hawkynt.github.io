@@ -132,7 +132,7 @@
   // bit length via a triangular-number offset - NOT a simple 0,1,2,...
   // counting pattern). Values below are the literal message bytes for
   // bit lengths 0, 8, 16, 24 and 32, extracted from sphlib's utest.c.
-  const NIST_MSG_0 = new Uint8Array([]);
+  const NIST_MSG_0 = OpCodes.Hex8ToBytes("");
   const NIST_MSG_8 = OpCodes.Hex8ToBytes("CC");
   const NIST_MSG_16 = OpCodes.Hex8ToBytes("41FB");
   const NIST_MSG_24 = OpCodes.Hex8ToBytes("1F877C");
@@ -140,6 +140,14 @@
 
   // SUB_CRUMB operation: nonlinear 4-input substitution box.
   // Transliterated 1:1 from the sphlib SUB_CRUMB macro.
+  /**
+   * @param {uint32[]} v - State chain, updated in place
+   * @param {int32} idx0 - Index of word 0
+   * @param {int32} idx1 - Index of word 1
+   * @param {int32} idx2 - Index of word 2
+   * @param {int32} idx3 - Index of word 3
+   * @returns {void}
+   */
   function subCrumb(v, idx0, idx1, idx2, idx3) {
     let tmp = v[idx0];
     v[idx0] = OpCodes.Or32(v[idx0], v[idx1]);
@@ -162,6 +170,12 @@
 
   // MIX_WORD operation: diffusion via rotations and XOR
   // Provides cryptographic diffusion between word pairs
+  /**
+   * @param {uint32[]} v - State chain, updated in place
+   * @param {int32} uIdx - Index of word u
+   * @param {int32} vIdx - Index of word v
+   * @returns {void}
+   */
   function mixWord(v, uIdx, vIdx) {
     v[vIdx] = OpCodes.Xor32(v[vIdx], v[uIdx]);
     v[uIdx] = OpCodes.Xor32(OpCodes.RotL32(v[uIdx], 2), v[vIdx]);
@@ -172,6 +186,12 @@
 
   // TWEAK operation: rotate specific elements in each state chain
   // TWEAK3: rotate V1[4..7] by 1, V2[4..7] by 2
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @returns {void}
+   */
   function tweak3(v0, v1, v2) {
     // V1 chain: rotate elements 4-7 left by 1 bit
     v1[4] = OpCodes.RotL32(v1[4], 1);
@@ -188,6 +208,13 @@
 
   // TWEAK operation for Luffa-4
   // TWEAK4: rotate V1[4..7] by 1, V2[4..7] by 2, V3[4..7] by 3
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @returns {void}
+   */
   function tweak4(v0, v1, v2, v3) {
     // V1 chain: rotate elements 4-7 left by 1 bit
     v1[4] = OpCodes.RotL32(v1[4], 1);
@@ -210,6 +237,14 @@
 
   // TWEAK operation for Luffa-5
   // TWEAK5: rotate V1[4..7] by 1, V2[4..7] by 2, V3[4..7] by 3, V4[4..7] by 4
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @param {uint32[]} v4 - State chain 4, updated in place
+   * @returns {void}
+   */
   function tweak5(v0, v1, v2, v3, v4) {
     // V1 chain: rotate elements 4-7 left by 1 bit
     v1[4] = OpCodes.RotL32(v1[4], 1);
@@ -240,6 +275,13 @@
   // Note the second SUB_CRUMB operates on indices (5,6,7,4), not
   // (4,5,6,7) - this cyclic offset is part of the sphlib specification
   // and is required for bit-exact output.
+  /**
+   * @param {uint32[]} v - State chain, updated in place
+   * @param {uint32[]} rc0 - Round constants for word 0
+   * @param {uint32[]} rc4 - Round constants for word 4
+   * @param {int32} round - Round index
+   * @returns {void}
+   */
   function step(v, rc0, rc4, round) {
     // Apply SUB_CRUMB to all word pairs
     subCrumb(v, 0, 1, 2, 3);
@@ -257,6 +299,12 @@
   }
 
   // Permutation P3 for Luffa-224/256 (3 chains)
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @returns {void}
+   */
   function permutation3(v0, v1, v2) {
     tweak3(v0, v1, v2);
 
@@ -268,6 +316,13 @@
   }
 
   // Permutation P4 for Luffa-384 (4 chains)
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @returns {void}
+   */
   function permutation4(v0, v1, v2, v3) {
     tweak4(v0, v1, v2, v3);
 
@@ -280,6 +335,14 @@
   }
 
   // Permutation P5 for Luffa-512 (5 chains)
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @param {uint32[]} v4 - State chain 4, updated in place
+   * @returns {void}
+   */
   function permutation5(v0, v1, v2, v3, v4) {
     tweak5(v0, v1, v2, v3, v4);
 
@@ -295,6 +358,11 @@
   // M2 linear transformation for message injection
   // M2 performs: d[7]=s[6], d[6]=s[5], d[5]=s[4], d[4]=s[3]^s[7],
   //              d[3]=s[2]^s[7], d[2]=s[1], d[1]=s[0]^s[7], d[0]=s[7]
+  /**
+   * @param {uint32[]} dst - Destination words (may alias src)
+   * @param {uint32[]} src - Source words
+   * @returns {void}
+   */
   function m2(dst, src) {
     const tmp = src[7];
     dst[7] = src[6];
@@ -310,6 +378,13 @@
   // Message injection for Luffa-3
   // MI3: a = V0 XOR V1 XOR V2; M2(a,a); V0 = a XOR V0 XOR M;
   //      M2(M,M); V1 = a XOR V1 XOR M; M2(M,M); V2 = a XOR V2 XOR M
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} msg - Message block words
+   * @returns {void}
+   */
   function messageInjection3(v0, v1, v2, msg) {
     const a = new Uint32Array(8);
     const m = new Uint32Array(msg); // Copy message
@@ -345,6 +420,14 @@
   }
 
   // Message injection for Luffa-4
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @param {uint32[]} msg - Message block words
+   * @returns {void}
+   */
   function messageInjection4(v0, v1, v2, v3, msg) {
     const m = new Uint32Array(msg);
     const a = new Uint32Array(8);
@@ -417,6 +500,15 @@
   }
 
   // Message injection for Luffa-5
+  /**
+   * @param {uint32[]} v0 - State chain 0, updated in place
+   * @param {uint32[]} v1 - State chain 1, updated in place
+   * @param {uint32[]} v2 - State chain 2, updated in place
+   * @param {uint32[]} v3 - State chain 3, updated in place
+   * @param {uint32[]} v4 - State chain 4, updated in place
+   * @param {uint32[]} msg - Message block words
+   * @returns {void}
+   */
   function messageInjection5(v0, v1, v2, v3, v4, msg) {
     const m = new Uint32Array(msg);
     const a = new Uint32Array(8);
@@ -535,10 +627,16 @@
  */
 
   class LuffaBase extends HashFunctionAlgorithm {
-    constructor(outputBits, numChains) {
+    /**
+     * @param {int32} bitSize - Digest size in bits: 224, 256, 384 or 512
+     * @param {int32} chainCount - Number of 256-bit state chains: 3, 4 or 5
+     */
+    constructor(bitSize, chainCount) {
       super();
-      this.outputBits = outputBits;
-      this.numChains = numChains;
+      /** @type {int32} Digest size in bits */
+      this.outputBits = bitSize;
+      /** @type {int32} Number of state chains */
+      this.numChains = chainCount;
       this.category = CategoryType.HASH;
       this.subCategory = "Cryptographic Hash";
       this.securityStatus = SecurityStatus.OBSOLETE;
@@ -560,9 +658,9 @@
     }
 
     /**
-   * Create new cipher instance
+   * Create new hash instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IHashFunctionInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -742,38 +840,64 @@
 
   // Luffa instance implementation
   /**
- * Luffa cipher instance implementing Feed/Result pattern
+ * Luffa hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class LuffaInstance extends IHashFunctionInstance {
-    constructor(algorithm, outputBits, numChains) {
+    /**
+     * @param {LuffaBase} algorithm - Parent algorithm
+     * @param {int32} bitSize - Digest size in bits: 224, 256, 384 or 512
+     * @param {int32} chainCount - Number of 256-bit state chains: 3, 4 or 5
+     */
+    constructor(algorithm, bitSize, chainCount) {
       super(algorithm);
-      this.outputBits = outputBits;
-      this.numChains = numChains;
+      /** @type {int32} Digest size in bits */
+      this.outputBits = bitSize;
+      /** @type {int32} Number of state chains */
+      this.numChains = chainCount;
+      /** @type {int32} */
       this.blockSize = 32; // 256 bits = 32 bytes per block
+
+      // State chains (v3/v4 only for the 4/5-chain variants)
+      /** @type {uint32[]} */
+      this.v0 = null;
+      /** @type {uint32[]} */
+      this.v1 = null;
+      /** @type {uint32[]} */
+      this.v2 = null;
+      /** @type {uint32[]} */
+      this.v3 = null;
+      /** @type {uint32[]} */
+      this.v4 = null;
 
       // Initialize state chains
       this._resetState();
 
+      /** @type {uint8[]} */
       this.buffer = [];
     }
 
+    /**
+     * Load the initial values into the state chains
+     * @returns {void}
+     */
     _resetState() {
       this.v0 = new Uint32Array(V_INIT[0]);
       this.v1 = new Uint32Array(V_INIT[1]);
       this.v2 = new Uint32Array(V_INIT[2]);
-      this.v3 = this.numChains >= 4 ? new Uint32Array(V_INIT[3]) : null;
-      this.v4 = this.numChains >= 5 ? new Uint32Array(V_INIT[4]) : null;
+      this.v3 = null;
+      this.v4 = null;
+      if (this.numChains >= 4) this.v3 = new Uint32Array(V_INIT[3]);
+      if (this.numChains >= 5) this.v4 = new Uint32Array(V_INIT[4]);
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -787,8 +911,13 @@
       }
     }
 
-    // Decode a 32-byte block into 8 big-endian 32-bit words
+    /**
+     * Decode a 32-byte block into 8 big-endian 32-bit words
+     * @param {uint8[]} block - 32 message bytes
+     * @returns {uint32[]} 8 message words
+     */
     _decodeBlock(block) {
+      /** @type {uint32[]} */
       const msg = new Uint32Array(8);
       for (let i = 0; i < 8; ++i) {
         msg[i] = OpCodes.Pack32BE(
@@ -801,8 +930,12 @@
       return msg;
     }
 
-    // Perform one message injection + permutation round for however
-    // many chains this variant uses
+    /**
+     * Perform one message injection + permutation round for however
+     * many chains this variant uses
+     * @param {uint32[]} msg - 8 message words
+     * @returns {void}
+     */
     _injectAndPermute(msg) {
       if (this.numChains === 3) {
         messageInjection3(this.v0, this.v1, this.v2, msg);
@@ -816,10 +949,15 @@
       }
     }
 
-    // XOR-combine the 8 words of every active chain
+    /**
+     * XOR-combine the 8 words of every active chain
+     * @returns {uint32[]} 8 combined words
+     */
     _combineWords() {
+      /** @type {uint32[]} */
       const out = new Uint32Array(8);
       for (let i = 0; i < 8; ++i) {
+        /** @type {uint32} */
         let word = OpCodes.Xor32(this.v0[i], this.v1[i]);
         word = OpCodes.Xor32(word, this.v2[i]);
         if (this.numChains >= 4) word = OpCodes.Xor32(word, this.v3[i]);
@@ -830,30 +968,35 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Finish the hash and reset the instance
+     * @returns {uint8[]} Digest bytes
+     */
     Result() {
       // Padding: buffered bytes + 0x80 marker + zero fill to a full block
+      /** @type {int32} */
       const bufLen = this.buffer.length;
-      const finalBlock = new Uint8Array(this.blockSize);
+      /** @type {uint8[]} */
+      const finalBlock = OpCodes.CreateArray(this.blockSize, 0);
       for (let i = 0; i < bufLen; ++i) {
         finalBlock[i] = this.buffer[i];
       }
       finalBlock[bufLen] = 0x80;
 
+      /** @type {uint32[]} */
       const finalMsg = this._decodeBlock(finalBlock);
+      /** @type {uint32[]} */
       const zeroMsg = new Uint32Array(8);
-      const outputBytes = this.outputBits / 8;
+      /** @type {int32} */
+      const outputBytes = OpCodes.Shr32(this.outputBits, 3);
 
       // Finalization: one message-carrying round, followed by one blank
       // round (3-chain variants) or two blank rounds (4/5-chain
       // variants). The extra blank round on the larger variants squeezes
       // out the additional output words needed beyond a single 32-byte
       // state XOR (sphlib luffa3_close/luffa4_close/luffa5_close).
+      /** @type {int32} */
       const totalRounds = (this.numChains === 3) ? 2 : 3;
+      /** @type {uint32[]} */
       const outWords = [];
 
       for (let round = 0; round < totalRounds; ++round) {
@@ -861,22 +1004,31 @@
 
         if (this.numChains === 3) {
           if (round === totalRounds - 1) {
+            /** @type {uint32[]} */
             const combined = this._combineWords();
-            const wordsNeeded = Math.ceil(outputBytes / 4);
+            // ceil(outputBytes / 4)
+            /** @type {int32} */
+            const wordsNeeded = OpCodes.Shr32(outputBytes + 3, 2);
             for (let w = 0; w < wordsNeeded; ++w) outWords.push(combined[w]);
           }
         } else if (round === 1) {
+          /** @type {uint32[]} */
           const combined = this._combineWords();
           for (let w = 0; w < 8; ++w) outWords.push(combined[w]);
         } else if (round === 2) {
+          /** @type {uint32[]} */
           const combined = this._combineWords();
-          const wordsNeeded = Math.ceil((outputBytes - 32) / 4);
+          // ceil((outputBytes - 32) / 4)
+          /** @type {int32} */
+          const wordsNeeded = OpCodes.Shr32(outputBytes - 32 + 3, 2);
           for (let w = 0; w < wordsNeeded; ++w) outWords.push(combined[w]);
         }
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < outWords.length; ++i) {
+        /** @type {uint8[]} */
         const bytes = OpCodes.Unpack32BE(outWords[i]);
         output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
       }

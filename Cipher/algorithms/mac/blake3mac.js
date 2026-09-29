@@ -43,30 +43,55 @@
 
   // BLAKE3 constants
   // Initial Values (IV) - BLAKE3 specification Section 2.1
-  const IV = new Uint32Array([
+  /** @type {uint32[]} */
+  const IV = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
     0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
-  ]);
+  ];
 
   // Message permutation for rounds - BLAKE3 specification
-  const MSG_PERMUTATION = Object.freeze([
+  /** @type {int32[]} */
+  const MSG_PERMUTATION = [
     2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8
-  ]);
+  ];
 
   // Flag constants - BLAKE3 specification Section 2.3
+  /** @type {uint32} */
   const CHUNK_START = 1;
+  /** @type {uint32} */
   const CHUNK_END = 2;
+  /** @type {uint32} */
   const PARENT = 4;
+  /** @type {uint32} */
   const ROOT = 8;
+  /** @type {uint32} */
   const KEYED_HASH = 16;
+  /** @type {uint32} */
   const DERIVE_KEY_CONTEXT = 32;
+  /** @type {uint32} */
   const DERIVE_KEY_MATERIAL = 64;
 
   // Block and output lengths
+  /** @type {int32} */
   const BLAKE3_BLOCK_LEN = 64;
+  /** @type {int32} */
   const BLAKE3_OUT_LEN = 32;
+  /** @type {int32} */
   const BLAKE3_KEY_LEN = 32;
+  /** @type {int32} */
   const BLAKE3_CHUNK_LEN = 1024;
+
+  /**
+   * The official test vector input: the repeating sequence 0,1,...,249,250,0,1,...
+   * @param {int32} length - Number of bytes
+   * @returns {uint8[]} The input bytes
+   */
+  function blake3TestInput(length) {
+    /** @type {uint8[]} */
+    const bytes = new Array(length);
+    for (let i = 0; i < length; ++i) bytes[i] = i % 251;
+    return bytes;
+  }
 
   class BLAKE3MACAlgorithm extends MacAlgorithm {
     constructor() {
@@ -85,7 +110,7 @@
 
       // MAC-specific metadata
       this.SupportedKeySizes = [new KeySize(32, 32, 1)]; // Exactly 32 bytes (256 bits)
-      this.SupportedOutputSizes = [32]; // Default 32 bytes, but supports variable length
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)]; // Default 32 bytes, but supports variable length
 
       // Documentation and references
       this.documentation = [
@@ -102,12 +127,7 @@
       // Test vectors from official BLAKE3 test suite (keyed mode)
       // Test key: "whats the Elvish word for friend" (33 bytes, first 32 used)
       const testKey = OpCodes.AnsiToBytes("whats the Elvish word for friend").slice(0, 32);
-      // The official vector inputs are the repeating sequence 0,1,...,249,250,0,1,...
-      const blake3TestInput = length => {
-        const bytes = new Array(length);
-        for (let i = 0; i < length; ++i) bytes[i] = i % 251;
-        return bytes;
-      };
+      // The official vector inputs come from blake3TestInput (0,1,...,250,0,1,...)
 
       this.tests = [
         {
@@ -182,8 +202,8 @@
 
     /**
    * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
+   * @returns {BLAKE3MACAlgorithmInstance} New MAC instance
    */
 
     CreateInstance(isInverse = false) {
@@ -191,22 +211,41 @@
     }
   }
 
-  // BLAKE3 G function (quarter round) - BLAKE3 specification Section 2.2
-  function g(state, a, b, c, d, mx, my) {
+  /**
+   * BLAKE3 G function (quarter round) - BLAKE3 specification Section 2.2
+   * @param {uint32[]} state - 16-word state (modified in place)
+   * @param {int32} a - State index
+   * @param {int32} b - State index
+   * @param {int32} c - State index
+   * @param {int32} d - State index
+   * @param {uint32} mx - First message word
+   * @param {uint32} my - Second message word
+   * @returns {void}
+   */
+  function blake3G(state, a, b, c, d, mx, my) {
     state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], mx));
-    state[d] = OpCodes.RotR32(OpCodes.XorN(state[d], state[a]), 16);
+    state[d] = OpCodes.RotR32(OpCodes.Xor32(state[d], state[a]), 16);
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotR32(OpCodes.XorN(state[b], state[c]), 12);
+    state[b] = OpCodes.RotR32(OpCodes.Xor32(state[b], state[c]), 12);
     state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], my));
-    state[d] = OpCodes.RotR32(OpCodes.XorN(state[d], state[a]), 8);
+    state[d] = OpCodes.RotR32(OpCodes.Xor32(state[d], state[a]), 8);
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotR32(OpCodes.XorN(state[b], state[c]), 7);
+    state[b] = OpCodes.RotR32(OpCodes.Xor32(state[b], state[c]), 7);
   }
 
-  // BLAKE3 compression function - BLAKE3 specification Section 2.2
-  function compress(chaining_value, block_words, counter, block_len, flags) {
+  /**
+   * BLAKE3 compression function - BLAKE3 specification Section 2.2
+   * @param {uint32[]} chaining_value - 8-word input chaining value
+   * @param {uint8[]} block_bytes - 64-byte block
+   * @param {int32} counter - Chunk or output block counter
+   * @param {uint32} block_len - Valid bytes in the block
+   * @param {uint32} flags - Domain flags
+   * @returns {uint32[]} 16 output words
+   */
+  function blake3Compress(chaining_value, block_bytes, counter, block_len, flags) {
     // Initialize state
-    const state = new Uint32Array(16);
+    /** @type {uint32[]} */
+    const state = new Array(16);
 
     // Load chaining value
     for (let i = 0; i < 8; i++) {
@@ -219,104 +258,137 @@
     }
 
     // Load counter (64-bit), block_len, flags
-    state[12] = OpCodes.AndN(counter, 0xFFFFFFFF);
-    state[13] = OpCodes.AndN((counter / 0x100000000), 0xFFFFFFFF);
+    state[12] = OpCodes.And32(counter, 0xFFFFFFFF);
+    state[13] = OpCodes.And32(Math.floor(counter / 0x100000000), 0xFFFFFFFF);
     state[14] = block_len;
     state[15] = flags;
 
     // Convert block bytes to 32-bit words (little-endian)
-    let words = new Array(16);
+    /** @type {uint32[]} */
+    let m = new Array(16);
     for (let i = 0; i < 16; i++) {
       const base = i * 4;
-      if (Array.isArray(block_words)) {
-        // Input is byte array
-        words[i] = OpCodes.Pack32LE(
-          block_words[base] || 0,
-          block_words[base + 1] || 0,
-          block_words[base + 2] || 0,
-          block_words[base + 3] || 0
-        );
-      } else {
-        // Input is Uint8Array
-        words[i] = OpCodes.Pack32LE(
-          block_words[base] || 0,
-          block_words[base + 1] || 0,
-          block_words[base + 2] || 0,
-          block_words[base + 3] || 0
-        );
-      }
+      m[i] = OpCodes.Pack32LE(block_bytes[base], block_bytes[base + 1], block_bytes[base + 2], block_bytes[base + 3]);
     }
 
     // 7 rounds of mixing
     for (let round = 0; round < 7; round++) {
       // Column round
-      g(state, 0, 4, 8, 12, words[0], words[1]);
-      g(state, 1, 5, 9, 13, words[2], words[3]);
-      g(state, 2, 6, 10, 14, words[4], words[5]);
-      g(state, 3, 7, 11, 15, words[6], words[7]);
+      blake3G(state, 0, 4, 8, 12, m[0], m[1]);
+      blake3G(state, 1, 5, 9, 13, m[2], m[3]);
+      blake3G(state, 2, 6, 10, 14, m[4], m[5]);
+      blake3G(state, 3, 7, 11, 15, m[6], m[7]);
 
       // Diagonal round
-      g(state, 0, 5, 10, 15, words[8], words[9]);
-      g(state, 1, 6, 11, 12, words[10], words[11]);
-      g(state, 2, 7, 8, 13, words[12], words[13]);
-      g(state, 3, 4, 9, 14, words[14], words[15]);
+      blake3G(state, 0, 5, 10, 15, m[8], m[9]);
+      blake3G(state, 1, 6, 11, 12, m[10], m[11]);
+      blake3G(state, 2, 7, 8, 13, m[12], m[13]);
+      blake3G(state, 3, 4, 9, 14, m[14], m[15]);
 
       // Permute message words for next round (except last round)
       if (round < 6) {
+        /** @type {uint32[]} */
         const permuted = new Array(16);
         for (let i = 0; i < 16; i++) {
-          permuted[i] = words[MSG_PERMUTATION[i]];
+          permuted[i] = m[MSG_PERMUTATION[i]];
         }
-        words = permuted;
+        m = permuted;
       }
     }
 
     // Finalize: the upper half folds in the input chaining value. The second
     // operand is the upper state word, not the lower one - getting that wrong
     // is invisible in a 32 byte tag and corrupts every extended output.
-    const output = new Uint32Array(16);
+    /** @type {uint32[]} */
+    const output = new Array(16);
     for (let i = 0; i < 8; i++) {
-      output[i] = OpCodes.XorN(state[i], state[i + 8]);
-      output[i + 8] = OpCodes.XorN(state[i + 8], chaining_value[i]);
+      output[i] = OpCodes.Xor32(state[i], state[i + 8]);
+      output[i + 8] = OpCodes.Xor32(state[i + 8], chaining_value[i]);
     }
 
     return output;
   }
 
   /**
- * BLAKE3MACAlgorithm cipher instance implementing Feed/Result pattern
+   * Serialize two 8-word chaining values into one 64-byte parent block
+   * @param {uint32[]} leftCv - Left child chaining value
+   * @param {uint32[]} rightCv - Right child chaining value
+   * @returns {uint8[]} leftCv || rightCv, little-endian
+   */
+  function parentBlock(leftCv, rightCv) {
+    /** @type {uint8[]} */
+    const blockData = [];
+    for (let i = 0; i < 8; i++) {
+      const b = OpCodes.Unpack32LE(leftCv[i]);
+      for (let j = 0; j < 4; j++) blockData.push(b[j]);
+    }
+    for (let i = 0; i < 8; i++) {
+      const b = OpCodes.Unpack32LE(rightCv[i]);
+      for (let j = 0; j < 4; j++) blockData.push(b[j]);
+    }
+    return blockData;
+  }
+
+  /**
+   * An empty stack of 8-word subtree chaining values
+   * @returns {uint32[][]} Empty stack
+   */
+  function newCvStack() {
+    /** @type {uint32[][]} */
+    const stack = [];
+    return stack;
+  }
+
+  /**
+ * BLAKE3-MAC instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IMacInstance}
  */
 
   class BLAKE3MACAlgorithmInstance extends IMacInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * Initialize a BLAKE3-MAC instance
+   * @param {BLAKE3MACAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this._outputSize = 32; // Default 256 bits = 32 bytes
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // BLAKE3 state variables
+      /** @type {uint32[]} */
+      this.key_words = null;
+      /** @type {uint32[][]} */
+      this.cvStack = newCvStack();  // chaining values of completed subtrees awaiting a parent
+      /** @type {uint32[]} */
       this.chaining_value = null;
+      /** @type {uint8[]} */
       this.block = null;
+      /** @type {int32} */
       this.block_len = 0;
+      /** @type {int32} */
       this.blocks_compressed = 0;
-      this.chunk_counter = 0;
+      /** @type {int32} */
+      this._chunkIndex = 0;
+      /** @type {uint32} */
       this.flags = 0;
+      /** @type {int32} */
       this.total_length = 0;
+      /** @type {boolean} */
+      this._streamStarted = false;
     }
 
     // Property: key (required, exactly 32 bytes)
     /**
-   * Set encryption/decryption key
-   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * Set the key
+   * @param {uint8[]} keyBytes - 32-byte key or null to clear
    * @throws {Error} If key size is invalid
    */
 
@@ -328,34 +400,42 @@
 
       // Validate key size - must be exactly 32 bytes
       if (keyBytes.length !== 32) {
-        throw new Error(`BLAKE3-MAC requires exactly 32-byte key, got ${keyBytes.length} bytes`);
+        throw new Error("BLAKE3-MAC requires exactly 32-byte key, got " + keyBytes.length + " bytes");
       }
 
-      this._key = [...keyBytes];
+      this._key = keyBytes.slice();
     }
 
     /**
    * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * @returns {uint8[]} Copy of key bytes or null
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      if (!this._key) return null;
+      return this._key.slice();
     }
 
-    // Property: outputSize (variable, default 32 bytes)
+    /**
+     * Property: outputSize (variable, default 32 bytes)
+     * @param {int32} size - MAC length in bytes; non-positive values are ignored
+     */
     set outputSize(size) {
-      if (size && size > 0) {
+      if (size > 0) {
         this._outputSize = size;
       }
     }
 
+    /**
+     * @returns {int32} MAC length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
      * Initialize the MAC state with key
+     * @returns {void}
      */
     Init() {
       if (!this._key) {
@@ -364,83 +444,103 @@
 
       // Keyed mode: the key words are the initial chaining value of every chunk
       // and of every parent node.
-      this.key_words = new Uint32Array(8);
+      /** @type {uint32[]} */
+      const keyWords = new Array(8);
       for (let i = 0; i < 8; i++) {
         const base = i * 4;
-        this.key_words[i] = OpCodes.Pack32LE(
+        keyWords[i] = OpCodes.Pack32LE(
           this._key[base],
           this._key[base + 1],
           this._key[base + 2],
           this._key[base + 3]
         );
       }
+      this.key_words = keyWords;
 
       this.flags = KEYED_HASH;
-      this.cvStack = [];  // chaining values of completed subtrees awaiting a parent
+      this.cvStack = newCvStack();  // chaining values of completed subtrees awaiting a parent
       this.total_length = 0;
       this._startChunk(0);
     }
 
-    // Begin a fresh 1024 byte chunk with the given chunk counter
-    _startChunk(counter) {
-      this.chaining_value = new Uint32Array(this.key_words);
-      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+    /**
+     * Begin a fresh 1024 byte chunk with the given chunk counter
+     * @param {int32} chunkNo - Chunk counter
+     * @returns {void}
+     */
+    _startChunk(chunkNo) {
+      this.chaining_value = this.key_words.slice();
+      this.block = OpCodes.CreateArray(BLAKE3_BLOCK_LEN, 0);
       this.block_len = 0;
       this.blocks_compressed = 0;
-      this.chunk_counter = counter;
+      this._chunkIndex = chunkNo;
     }
 
+    /**
+     * @returns {int32} Bytes absorbed into the current chunk
+     */
     _chunkLength() {
       return this.blocks_compressed * BLAKE3_BLOCK_LEN + this.block_len;
     }
 
+    /**
+     * @returns {uint32} CHUNK_START for the first block of a chunk, else 0
+     */
     _startFlag() {
-      return this.blocks_compressed === 0 ? CHUNK_START : 0;
+      if (this.blocks_compressed === 0) return CHUNK_START;
+      return 0;
     }
 
-    // Chaining value of the chunk currently in progress, treating it as complete
+    /**
+     * Chaining value of the chunk currently in progress, treating it as complete
+     * @returns {uint32[]} 8-word chaining value
+     */
     _chunkChainingValue() {
-      const out = compress(
+      const out = blake3Compress(
         this.chaining_value,
-        Array.from(this.block),
-        this.chunk_counter,
+        this.block.slice(),
+        this._chunkIndex,
         this.block_len,
-        this.flags|this._startFlag()|CHUNK_END
+        OpCodes.Or32(OpCodes.Or32(this.flags, this._startFlag()), CHUNK_END)
       );
       return out.slice(0, 8);
     }
 
-    // Chaining value of the parent node joining two subtrees
+    /**
+     * Chaining value of the parent node joining two subtrees
+     * @param {uint32[]} leftCv - Left child chaining value
+     * @param {uint32[]} rightCv - Right child chaining value
+     * @returns {uint32[]} 8-word chaining value
+     */
     _parentChainingValue(leftCv, rightCv) {
-      const blockData = [];
-      for (let i = 0; i < 8; i++) {
-        const b = OpCodes.Unpack32LE(leftCv[i]);
-        for (let j = 0; j < 4; j++) blockData.push(b[j]);
-      }
-      for (let i = 0; i < 8; i++) {
-        const b = OpCodes.Unpack32LE(rightCv[i]);
-        for (let j = 0; j < 4; j++) blockData.push(b[j]);
-      }
-      const out = compress(this.key_words, blockData, 0, BLAKE3_BLOCK_LEN, this.flags|PARENT);
+      const out = blake3Compress(this.key_words, parentBlock(leftCv, rightCv), 0, BLAKE3_BLOCK_LEN, OpCodes.Or32(this.flags, PARENT));
       return out.slice(0, 8);
     }
 
-    // Merge a completed chunk into the subtree stack. A subtree is complete
-    // whenever the number of chunks finished so far is even, so the loop
-    // collapses one level for each trailing zero bit of that count.
+    /**
+     * Merge a completed chunk into the subtree stack. A subtree is complete
+     * whenever the number of chunks finished so far is even, so the loop
+     * collapses one level for each trailing zero bit of that count.
+     * @param {uint32[]} cv - Chaining value of the completed chunk
+     * @param {int32} totalChunks - Chunks completed so far
+     * @returns {void}
+     */
     _addChunkChainingValue(cv, totalChunks) {
       let remaining = totalChunks;
       let node = cv;
       while (remaining % 2 === 0) {
-        node = this._parentChainingValue(this.cvStack.pop(), node);
-        remaining = remaining / 2;
+        /** @type {uint32[]} */
+        const leftCv = this.cvStack.pop();
+        node = this._parentChainingValue(leftCv, node);
+        remaining = Math.floor(remaining / 2);
       }
       this.cvStack.push(node);
     }
 
     /**
      * Update MAC with data
-     * @param {Array} data - Data to authenticate as byte array
+     * @param {uint8[]} data - Data to authenticate as byte array
+     * @returns {void}
      */
     Update(data) {
       if (!data || data.length === 0) return;
@@ -455,22 +555,22 @@
         // length come out wrong.
         if (this._chunkLength() === BLAKE3_CHUNK_LEN) {
           const cv = this._chunkChainingValue();
-          const nextCounter = this.chunk_counter + 1;
+          const nextCounter = this._chunkIndex + 1;
           this._addChunkChainingValue(cv, nextCounter);
           this._startChunk(nextCounter);
         }
 
         if (this.block_len === BLAKE3_BLOCK_LEN) {
-          const out = compress(
+          const out = blake3Compress(
             this.chaining_value,
-            Array.from(this.block),
-            this.chunk_counter,
+            this.block.slice(),
+            this._chunkIndex,
             BLAKE3_BLOCK_LEN,
-            this.flags|this._startFlag()
+            OpCodes.Or32(this.flags, this._startFlag())
           );
           for (let i = 0; i < 8; i++) this.chaining_value[i] = out[i];
           this.blocks_compressed++;
-          this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+          this.block = OpCodes.CreateArray(BLAKE3_BLOCK_LEN, 0);
           this.block_len = 0;
           continue;
         }
@@ -484,56 +584,50 @@
 
     /**
      * Finalize the MAC calculation and return result as byte array
-     * @param {number} outputLength - Length of output in bytes
-     * @returns {Array} MAC tag as byte array
+     * @param {int32} outputLength - Length of output in bytes (0 or absent: outputSize)
+     * @returns {uint8[]} MAC tag as byte array
      */
     Final(outputLength) {
-      outputLength = outputLength || this._outputSize;
+      /** @type {int32} */
+      let outLen = this._outputSize;
+      if (outputLength) outLen = outputLength;
 
       // The chunk still in progress is the right-most node of the tree. Fold the
       // pending subtree chaining values into it from the right, then emit the
       // root node with the ROOT flag set.
       let cv = this.chaining_value;
-      let blockData = Array.from(this.block);
+      let blockData = this.block.slice();
       let blockLen = this.block_len;
-      let counter = this.chunk_counter;
-      let flags = this.flags|this._startFlag()|CHUNK_END;
+      let nodeIdx = this._chunkIndex;
+      let flags = OpCodes.Or32(OpCodes.Or32(this.flags, this._startFlag()), CHUNK_END);
 
       for (let i = this.cvStack.length - 1; i >= 0; i--) {
-        const rightCv = compress(cv, blockData, counter, blockLen, flags).slice(0, 8);
-        const leftCv = this.cvStack[i];
-        blockData = [];
-        for (let w = 0; w < 8; w++) {
-          const b = OpCodes.Unpack32LE(leftCv[w]);
-          for (let j = 0; j < 4; j++) blockData.push(b[j]);
-        }
-        for (let w = 0; w < 8; w++) {
-          const b = OpCodes.Unpack32LE(rightCv[w]);
-          for (let j = 0; j < 4; j++) blockData.push(b[j]);
-        }
+        const rightCv = blake3Compress(cv, blockData, nodeIdx, blockLen, flags).slice(0, 8);
+        blockData = parentBlock(this.cvStack[i], rightCv);
         cv = this.key_words;
-        counter = 0;
+        nodeIdx = 0;
         blockLen = BLAKE3_BLOCK_LEN;
-        flags = this.flags|PARENT;
+        flags = OpCodes.Or32(this.flags, PARENT);
       }
 
       // Root output is extendable: the output block counter selects the slice.
+      /** @type {uint8[]} */
       const output = [];
-      let outCounter = 0;
-      while (output.length < outputLength) {
-        const words = compress(cv, blockData, outCounter, blockLen, flags|ROOT);
-        for (let i = 0; i < 16 && output.length < outputLength; i++) {
-          const b = OpCodes.Unpack32LE(words[i]);
-          for (let j = 0; j < 4 && output.length < outputLength; j++) output.push(b[j]);
+      let outBlockIdx = 0;
+      while (output.length < outLen) {
+        const outWords = blake3Compress(cv, blockData, outBlockIdx, blockLen, OpCodes.Or32(flags, ROOT));
+        for (let i = 0; i < 16 && output.length < outLen; i++) {
+          const b = OpCodes.Unpack32LE(outWords[i]);
+          for (let j = 0; j < 4 && output.length < outLen; j++) output.push(b[j]);
         }
-        outCounter++;
+        outBlockIdx++;
       }
       return output;
     }
 
     /**
      * Feed method required by test suite - processes input data
-     * @param {Array} data - Input data as byte array
+     * @param {uint8[]} data - Input data as byte array
      */
     Feed(data) {
       // Init() discards the state, so it belongs at the start of the message and
@@ -548,14 +642,15 @@
 
     /**
      * Result method required by test suite - returns final MAC
-     * @returns {Array} MAC tag as byte array
+     * @returns {uint8[]} MAC tag as byte array
      */
     Result() {
-      return this.Final();
+      return this.Final(0);
     }
 
     /**
      * Clear sensitive data
+     * @returns {void}
      */
     ClearData() {
       if (this._key) {

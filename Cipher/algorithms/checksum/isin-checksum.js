@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * ISINChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class ISINChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = null; // International
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum ISIN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/isin.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Format: CC123456789D (2 country + 9 ID + 1 check)",
         "Country codes: ISO 3166-1 alpha-2 (e.g., US, GB, DE)",
@@ -97,9 +108,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {ISINChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -109,28 +120,28 @@
   }
 
   /**
- * ISINChecksum cipher instance implementing Feed/Result pattern
+ * ISINChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class ISINChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {ISINChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {string[]} Upper-cased alphanumeric characters fed so far */
       this.chars = [];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -146,29 +157,26 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Compute the check digit of the characters fed so far and reset
+   * @returns {uint8[]} One byte: the check digit (0 when nothing was fed)
    */
 
     Result() {
-      if (this.chars.length === 0) {
-        this.chars = [];
-        return [0];
-      }
-
-      // Convert to numeric string (letters: A=10, B=11, ..., Z=35)
+      // Convert to numeric string (letters: A=10, B=11, ..., Z=35);
+      // no character leaves the sum and so the check digit at 0
       let numericString = '';
       for (let i = 0; i < this.chars.length; i++) {
         const char = this.chars[i];
         if (char >= '0' && char <= '9') {
           numericString += char;
         } else if (char >= 'A' && char <= 'Z') {
-          numericString += (char.charCodeAt(0) - 'A'.charCodeAt(0) + 10).toString();
+          const value = char.charCodeAt(0) - 0x41 + 10; // 'A' = 10
+          numericString = numericString + value;
         }
       }
 
       // Convert to array of digits
+      /** @type {int32[]} */
       const digits = [];
       for (let i = 0; i < numericString.length; i++) {
         digits.push(numericString.charCodeAt(i) - 0x30);

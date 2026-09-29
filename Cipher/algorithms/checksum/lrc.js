@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * LRC algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class LRCAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8;
 
       this.documentation = [
@@ -60,6 +70,7 @@
         new LinkItem("minimalmodbus Modbus ASCII LRC implementation", "https://github.com/pyhys/minimalmodbus/blob/master/minimalmodbus.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "LRC = ((sum of all bytes) XOR 0xFF) + 1 = two's complement of the 8-bit sum",
         "Verification: (sum of all bytes + LRC) AND 0xFF == 0",
@@ -85,9 +96,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {LRCInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -97,47 +108,46 @@
   }
 
   /**
- * LRC cipher instance implementing Feed/Result pattern
+ * LRC instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LRCInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {LRCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Byte sum modulo 256 */
       this.lrc = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.lrc = OpCodes.AndN(this.lrc + data[i], 0xFF);
+        this.lrc = OpCodes.And32(OpCodes.Add32(this.lrc, data[i]), 0xFF);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
       // Two's complement: flip bits and add 1
-      const result = [OpCodes.AndN((~this.lrc + 1), 0xFF)];
+      const result = [OpCodes.ToUint8(OpCodes.Add32(OpCodes.Not32(this.lrc), 1))];
       this.lrc = 0;
       return result;
     }

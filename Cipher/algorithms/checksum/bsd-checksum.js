@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * BSDChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class BSDChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
+      /** @type {int32} */
       this.checksumSize = 16;
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("GNU coreutils sum.c (bsd_sum_stream)", "https://github.com/coreutils/coreutils/blob/master/src/sum.c")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Algorithm: rotate right, then add byte",
         "Rotation provides better bit mixing than simple sum",
@@ -93,9 +104,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {BSDChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -105,28 +116,28 @@
   }
 
   /**
- * BSDChecksum cipher instance implementing Feed/Result pattern
+ * BSDChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class BSDChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {BSDChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running 16-bit checksum */
       this.checksum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -138,14 +149,13 @@
         this.checksum = OpCodes.RotR16(this.checksum, 1);
 
         // Add byte to rotated checksum and mask to 16 bits
-        this.checksum = OpCodes.AndN(this.checksum + data[i], mask16);
+        this.checksum = OpCodes.And32(OpCodes.Add32(this.checksum, data[i]), mask16);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {

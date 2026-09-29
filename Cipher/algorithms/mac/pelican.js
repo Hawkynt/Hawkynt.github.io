@@ -195,11 +195,19 @@
  */
 
   class PelicanInstance extends IMacInstance {
+    /**
+     * Initialize a Pelican instance
+     * @param {PelicanAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this.state = new Uint8Array(16);
+      /** @type {uint8[]} */
       this.buffer = [];
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint32[]} */
       this.roundKeys = null;
     }
 
@@ -217,7 +225,7 @@
       }
 
       if (keyBytes.length !== KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${KEY_SIZE})`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (expected ' + KEY_SIZE + ')');
       }
 
       this._key = [...keyBytes];
@@ -234,6 +242,10 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * AES-128 key schedule into roundKeys
+     * @returns {void}
+     */
     _expandKey() {
       // AES-128 key expansion (10 rounds)
       this.roundKeys = new Uint32Array(44); // 11 round keys * 4 words
@@ -248,7 +260,7 @@
         );
       }
 
-      const rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+      const rcon = OpCodes.Hex8ToBytes('01020408102040801b36');
 
       for (let i = 4; i < 44; ++i) {
         let temp = this.roundKeys[i - 1];
@@ -272,6 +284,12 @@
       }
     }
 
+    /**
+     * AES-128 encryption of one block
+     * @param {uint8[]} input - 16-byte plaintext block
+     * @param {uint8[]} output - Receives the 16-byte ciphertext (may be input)
+     * @returns {void}
+     */
     _aesEncrypt(input, output) {
       // Load state
       let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(input[0], input[1], input[2], input[3]));
@@ -326,6 +344,10 @@
       }
     }
 
+    /**
+     * Apply four unkeyed AES rounds to the state
+     * @returns {void}
+     */
     _fourRounds() {
       // Apply 4 AES rounds to state (uses T-tables)
       let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(this.state[0], this.state[1], this.state[2], this.state[3]));
@@ -359,6 +381,10 @@
       }
     }
 
+    /**
+     * Reset the state to AES_K(0)
+     * @returns {void}
+     */
     _initialize() {
       // Initialize state by encrypting zero block
       this.state.fill(0);
