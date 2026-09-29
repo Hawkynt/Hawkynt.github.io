@@ -103,11 +103,11 @@
       ];
 
       // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("234829008467be186c3de14aae72d62c"); // AES-128 key
-        test.saltKey = OpCodes.Hex8ToBytes("32f2870d"); // 4-byte salt key
-        test.iv = OpCodes.Hex8ToBytes("006e5cba50681de55c621599d462564a"); // 16-byte IV
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].key = OpCodes.Hex8ToBytes("234829008467be186c3de14aae72d62c"); // AES-128 key
+        this.tests[i].saltKey = OpCodes.Hex8ToBytes("32f2870d"); // 4-byte salt key
+        this.tests[i].iv = OpCodes.Hex8ToBytes("006e5cba50681de55c621599d462564a"); // 16-byte IV
+      }
     }
 
     /**
@@ -130,30 +130,40 @@
   class F8ModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {F8Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // F8 state
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._saltKey = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this.MIV = null; // Modified IV (encrypted with key XOR salt_key)
+      /** @type {uint8[]|null} */
       this.currentIV = null; // Current keystream state
+      /** @type {uint32} */
       this.blockCounter = 0;
+      /** @type {int32} */
       this.padlen = 0; // Position in current keystream block
+      /** @type {uint8[]|null} */
       this.keystreamBlock = null;
     }
 
     /**
      * Set the main encryption key
-     * @param {Array} keyBytes - Main key bytes
+     * @param {uint8[]} keyBytes - Main key bytes
      */
     set key(keyBytes) {
       if (!keyBytes) {
@@ -174,7 +184,7 @@
 
     /**
      * Set the salt key (used for IV derivation)
-     * @param {Array} saltKeyBytes - Salt key bytes
+     * @param {uint8[]} saltKeyBytes - Salt key bytes
      */
     set saltKey(saltKeyBytes) {
       if (!saltKeyBytes) {
@@ -184,13 +194,16 @@
       this._saltKey = [...saltKeyBytes];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the salt key or null
+     */
     get saltKey() {
       return this._saltKey ? [...this._saltKey] : null;
     }
 
     /**
      * Set the initialization vector
-     * @param {Array} ivBytes - IV bytes (must match block size)
+     * @param {uint8[]} ivBytes - IV bytes (must match block size)
      */
     set iv(ivBytes) {
       if (!ivBytes) {
@@ -242,10 +255,11 @@
       const keyLen = this._key.length;
 
       if (this._iv.length !== blockSize) {
-        throw new Error(`IV must be ${blockSize} bytes (got ${this._iv.length})`);
+        throw new Error("IV must be " + blockSize + " bytes (got " + this._iv.length + ")");
       }
 
       // F8 initialization: compute tkey = key XOR salt_key (extended with 0x55)
+      /** @type {uint8[]} */
       const tkey = new Array(keyLen);
 
       // Copy key
@@ -255,19 +269,22 @@
 
       // XOR with salt_key
       for (let i = 0; i < this._saltKey.length && i < keyLen; i++) {
-        tkey[i] = OpCodes.XorN(tkey[i], this._saltKey[i]);
+        tkey[i] = OpCodes.Xor8(tkey[i], this._saltKey[i]);
       }
 
       // XOR remaining bytes with 0x55 if salt_key is shorter than key
       for (let i = this._saltKey.length; i < keyLen; i++) {
-        tkey[i] = OpCodes.XorN(tkey[i], 0x55);
+        tkey[i] = OpCodes.Xor8(tkey[i], 0x55);
       }
 
       // Encrypt IV with tkey to get MIV (Modified IV)
+      /** @type {IBlockCipherInstance} */
       const tempCipher = this.blockCipher.algorithm.CreateInstance(false);
       tempCipher.key = tkey;
       tempCipher.Feed(this._iv);
-      this.MIV = tempCipher.Result();
+      /** @type {uint8[]} */
+      const miv = tempCipher.Result();
+      this.MIV = miv;
 
       // Clear temporary key from memory
       OpCodes.ClearArray(tkey);
@@ -275,10 +292,12 @@
       // RFC 3711 defines S(j) = E(k_e, IV' XOR j XOR S(j-1)) with S(-1) = 0, so
       // the feedback register starts empty. Seeding it with IV' instead cancels
       // IV' out of the very first block and yields E(k_e, 0) as S(0).
-      this.currentIV = new Array(blockSize).fill(0);
+      this.currentIV = OpCodes.CreateArray(blockSize, 0);
       this.blockCounter = 0;
       this.padlen = blockSize; // Force generation of first keystream block
-      this.keystreamBlock = new Array(blockSize);
+      /** @type {uint8[]} */
+      const keystreamBlock = new Array(blockSize);
+      this.keystreamBlock = keystreamBlock;
     }
 
     /**
@@ -289,7 +308,7 @@
       const blockSize = this.blockCipher.BlockSize;
 
       // Create counter block (counter in last 4 bytes, big-endian)
-      const counterBlock = new Array(blockSize).fill(0);
+      const counterBlock = OpCodes.CreateArray(blockSize, 0);
       const counterBytes = OpCodes.Unpack32BE(this.blockCounter);
       counterBlock[blockSize - 4] = counterBytes[0];
       counterBlock[blockSize - 3] = counterBytes[1];
@@ -301,14 +320,17 @@
 
       // XOR: currentIV = currentIV XOR MIV XOR counterBlock
       for (let i = 0; i < blockSize; i++) {
-        this.currentIV[i] = OpCodes.XorN(OpCodes.XorN(this.currentIV[i], this.MIV[i]), counterBlock[i]);
+        this.currentIV[i] = OpCodes.Xor8(OpCodes.Xor8(this.currentIV[i], this.MIV[i]), counterBlock[i]);
       }
 
       // Encrypt to get keystream block
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this._key;
       cipher.Feed(this.currentIV);
-      this.keystreamBlock = cipher.Result();
+      /** @type {uint8[]} */
+      const keystreamBlock = cipher.Result();
+      this.keystreamBlock = keystreamBlock;
 
       // Update currentIV for next iteration (it's the output of encryption)
       this.currentIV = [...this.keystreamBlock];
@@ -348,6 +370,7 @@
       }
 
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const output = [];
 
       // F8 encryption/decryption are identical (stream cipher property)
@@ -358,7 +381,7 @@
         }
 
         // XOR input byte with keystream byte
-        output.push(OpCodes.XorN(this.inputBuffer[i], this.keystreamBlock[this.padlen]));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this.keystreamBlock[this.padlen]));
         this.padlen++;
       }
 

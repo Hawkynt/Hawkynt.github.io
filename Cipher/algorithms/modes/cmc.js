@@ -117,17 +117,22 @@
   class CmcModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CmcAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.key1 = null; // Primary key
+      /** @type {uint8[]|null} */
       this.key2 = null; // Secondary key for CMC
+      /** @type {uint8[]|null} */
       this.tweak = null;
     }
 
@@ -144,7 +149,7 @@
 
     /**
      * Set the primary encryption key
-     * @param {Array} key - Primary key for block cipher
+     * @param {uint8[]} key - Primary key for block cipher
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -155,7 +160,7 @@
 
     /**
      * Set the secondary key for CMC mode
-     * @param {Array} key - Secondary key for CMC construction
+     * @param {uint8[]} key - Secondary key for CMC construction
      */
     setKey2(key) {
       if (!key || key.length === 0) {
@@ -166,7 +171,7 @@
 
     /**
      * Set the tweak value
-     * @param {Array} tweak - Tweak value for tweakable cipher
+     * @param {uint8[]} tweak - Tweak value for tweakable cipher
      */
     setTweak(tweak) {
       if (!tweak) {
@@ -211,11 +216,12 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for CMC mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for CMC mode");
       }
 
       // CMC is complex - this is a simplified educational implementation
       // Real CMC requires sophisticated universal hash functions and careful key derivation
+      /** @type {uint8[]} */
       const output = [];
 
       if (this.isInverse) {
@@ -224,9 +230,11 @@
           const block = this.inputBuffer.slice(i, i + blockSize);
 
           // Step 1: Apply inverse of second encryption with key2
+          /** @type {IBlockCipherInstance} */
           const decrypt2Cipher = this.blockCipher.algorithm.CreateInstance(true);
           decrypt2Cipher.key = this.key2;
           decrypt2Cipher.Feed(block);
+          /** @type {uint8[]} */
           const intermediate = decrypt2Cipher.Result();
 
           // Step 2: Apply tweak-dependent transformation (simplified)
@@ -235,9 +243,11 @@
             intermediate;
 
           // Step 3: Apply inverse of first encryption with key1
+          /** @type {IBlockCipherInstance} */
           const decrypt1Cipher = this.blockCipher.algorithm.CreateInstance(true);
           decrypt1Cipher.key = this.key1;
           decrypt1Cipher.Feed(tweaked);
+          /** @type {uint8[]} */
           const plainBlock = decrypt1Cipher.Result();
 
           for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
@@ -248,9 +258,11 @@
           const block = this.inputBuffer.slice(i, i + blockSize);
 
           // Step 1: Apply first encryption with key1
+          /** @type {IBlockCipherInstance} */
           const encrypt1Cipher = this.blockCipher.algorithm.CreateInstance(false);
           encrypt1Cipher.key = this.key1;
           encrypt1Cipher.Feed(block);
+          /** @type {uint8[]} */
           const intermediate = encrypt1Cipher.Result();
 
           // Step 2: Apply tweak-dependent transformation (simplified)
@@ -259,9 +271,11 @@
             intermediate;
 
           // Step 3: Apply second encryption with key2
+          /** @type {IBlockCipherInstance} */
           const encrypt2Cipher = this.blockCipher.algorithm.CreateInstance(false);
           encrypt2Cipher.key = this.key2;
           encrypt2Cipher.Feed(tweaked);
+          /** @type {uint8[]} */
           const cipherBlock = encrypt2Cipher.Result();
 
           for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);

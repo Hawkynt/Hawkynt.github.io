@@ -116,17 +116,20 @@
   class XexModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XexAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.key = null; // Block cipher key
       this.tweakKey = null; // XEX tweak key
+      /** @type {uint8[]|null} */
       this.tweak = null; // Tweak value
     }
 
@@ -146,7 +149,7 @@
 
     /**
      * Set the block cipher encryption key
-     * @param {Array} key - Block cipher key
+     * @param {uint8[]} key - Block cipher key
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -157,7 +160,7 @@
 
     /**
      * Set the XEX tweak key for mask generation
-     * @param {Array} tweakKey - 128-bit tweak key for generating masks
+     * @param {uint8[]} tweakKey - 128-bit tweak key for generating masks
      */
     setTweakKey(tweakKey) {
       if (!tweakKey || tweakKey.length !== 16) {
@@ -168,7 +171,7 @@
 
     /**
      * Set the tweak value
-     * @param {Array} tweak - Tweak value for this encryption
+     * @param {uint8[]} tweak - Tweak value for this encryption
      */
     setTweak(tweak) {
       if (!tweak || tweak.length !== 16) {
@@ -216,9 +219,10 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for XEX mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for XEX mode");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // XEX construction: C = E_K(P ⊕ Δ) ⊕ Δ
@@ -237,9 +241,11 @@
           const xorInput = OpCodes.XorArrays(block, mask);
 
           // Step 2: Decrypt with block cipher
+          /** @type {IBlockCipherInstance} */
           const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
           decryptCipher.key = this.key;
           decryptCipher.Feed(xorInput);
+          /** @type {uint8[]} */
           const decrypted = decryptCipher.Result();
 
           // Step 3: XOR with mask again
@@ -253,9 +259,11 @@
           const xorInput = OpCodes.XorArrays(block, mask);
 
           // Step 2: Encrypt with block cipher
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.key;
           encryptCipher.Feed(xorInput);
+          /** @type {uint8[]} */
           const encrypted = encryptCipher.Result();
 
           // Step 3: XOR with mask again
@@ -273,8 +281,8 @@
 
     /**
      * Generate XEX mask for block i
-     * @param {number} blockIndex - Block index (0-based)
-     * @returns {Array} 128-bit mask for this block
+     * @param {int32} blockIndex - Block index (0-based)
+     * @returns {uint8[]} 128-bit mask for this block
      */
     _generateMask(blockIndex) {
       // Generate base mask: Δ_0 = E_K2(tweak)
@@ -294,36 +302,41 @@
 
     /**
      * Encrypt the tweak with the tweak key to get base mask
-     * @returns {Array} Base mask Δ_0
+     * @returns {uint8[]} Base mask Δ_0
      */
     _encryptTweak() {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.tweakKey;
       cipher.Feed(this.tweak);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const encryptedTweak = cipher.Result();
+      return encryptedTweak;
     }
 
     /**
      * Double a value in GF(2^128) (multiply by α = x)
      * Uses the reduction polynomial x^128 + x^7 + x^2 + x + 1
-     * @param {Array} value - 128-bit value to double
-     * @returns {Array} Doubled value in GF(2^128)
+     * @param {uint8[]} value - 128-bit value to double
+     * @returns {uint8[]} Doubled value in GF(2^128)
      */
     _gf128Double(value) {
+      /** @type {uint8[]} */
       const result = new Array(16);
+      /** @type {uint32} */
       let carry = 0;
 
       // Shift left by 1 bit (multiply by x)
       for (let i = 15; i >= 0; i--) {
-        const newCarry = OpCodes.AndN(OpCodes.Shr32(value[i], 7), 1);
-        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(value[i], 1), carry), 0xFF);
+        const newCarry = OpCodes.And32(OpCodes.Shr32(value[i], 7), 1);
+        result[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(value[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // If there was a carry, reduce by the polynomial
       // x^128 + x^7 + x^2 + x + 1 = 0x87 in little-endian bit order
       if (carry) {
-        result[0] = OpCodes.XorN(result[0], 0x87);
+        result[0] = OpCodes.Xor32(result[0], 0x87);
       }
 
       return result;

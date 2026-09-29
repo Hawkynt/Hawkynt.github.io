@@ -128,15 +128,18 @@
   class CbcModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CbcAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv = null;
     }
 
@@ -153,14 +156,14 @@
 
     /**
      * Set the initialization vector (IV)
-     * @param {Array} iv - Initialization vector (must match block size)
+     * @param {uint8[]} iv - Initialization vector (must match block size)
      */
     setIV(iv) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before IV");
       }
       if (!iv || iv.length !== this.blockCipher.BlockSize) {
-        throw new Error(`IV must be ${this.blockCipher.BlockSize} bytes`);
+        throw new Error("IV must be " + this.blockCipher.BlockSize + " bytes");
       }
       this.iv = [...iv]; // Copy IV
     }
@@ -201,9 +204,10 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for CBC mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for CBC mode");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let chainBlock = [...this.iv]; // Start with IV for chaining
 
@@ -213,9 +217,11 @@
           const cipherBlock = this.inputBuffer.slice(i, i + blockSize);
 
           // Decrypt the current ciphertext block
+          /** @type {IBlockCipherInstance} */
           const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
           decryptCipher.key = this.blockCipher.key;
           decryptCipher.Feed(cipherBlock);
+          /** @type {uint8[]} */
           const decrypted = decryptCipher.Result();
 
           // XOR with previous ciphertext block (or IV for first block)
@@ -234,9 +240,11 @@
           const xorBlock = OpCodes.XorArrays(plainBlock, chainBlock);
 
           // Encrypt the XORed block
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.blockCipher.key;
           encryptCipher.Feed(xorBlock);
+          /** @type {uint8[]} */
           const cipherBlock = encryptCipher.Result();
 
           for (let _i = 0; _i < cipherBlock.length; _i++) output.push(cipherBlock[_i]);
