@@ -73,7 +73,7 @@
 
   // Fixed padding suffix appended after the message before zero-filling to a
   // multiple of RATE (replaces the standard pad10*1 scheme).
-  const PAD_SUFFIX = Object.freeze([0x01, 0x40, 0x40, 0x01]);
+  const PAD_SUFFIX = Object.freeze(OpCodes.Hex8ToBytes("01404001"));
 
   const OUTPUT_SIZE = 64; // 512-bit digest
 
