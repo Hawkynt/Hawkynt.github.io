@@ -83,8 +83,9 @@
       // Store the block cipher name (default to Rijndael)
       /** @type {string} */
       this.blockCipherName = 'Rijndael (AES)';
-      if (blockCipherName !== null && blockCipherName !== undefined && blockCipherName !== '')
+      if (blockCipherName !== null && blockCipherName !== undefined && blockCipherName !== '') {
         this.blockCipherName = blockCipherName;
+      }
       /** @type {BlockCipherAlgorithm} */
       this.blockCipher = null;
       /** @type {int32} */
@@ -129,8 +130,9 @@
       // Verify block cipher has key size == block size
       /** @type {int32} */
       let blockSize = 16;
-      if (blockCipher.SupportedBlockSizes && blockCipher.SupportedBlockSizes.length > 0)
+      if (blockCipher.SupportedBlockSizes && blockCipher.SupportedBlockSizes.length > 0) {
         blockSize = blockCipher.SupportedBlockSizes[0].minSize;
+      }
 
       /** @type {boolean} */
       let hasMatchingKeySize = false;
