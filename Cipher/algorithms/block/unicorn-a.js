@@ -148,11 +148,11 @@ class UnicornAInstance extends IBlockCipherInstance {
       return;
     }
 
-    /** @type {UnicornA} */
-    const alg = this.algorithm;
+    /** @type {KeySize[]} */
+    const sizes = this.algorithm.SupportedKeySizes;
     let isValidSize = false;
-    for (let s = 0; s < alg.SupportedKeySizes.length; s++) {
-      const ks = alg.SupportedKeySizes[s];
+    for (let s = 0; s < sizes.length; s++) {
+      const ks = sizes[s];
       if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
         isValidSize = true;
         break;
