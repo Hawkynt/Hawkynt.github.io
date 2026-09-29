@@ -68,10 +68,15 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {int32} */
   const TABLE_SIZE = 588;      // 0x24C bytes
+  /** @type {int32} */
   const ROUNDS = 16;
+  /** @type {int32} */
   const ROUND_STRIDE = 36;     // 0x24
+  /** @type {int32} */
   const ROUND_SPAN = 48;       // 0x30 table bytes read per round
+  /** @type {int32} */
   const STATE_BITS = 64;
 
   class DarkCryptMBC2Algorithm extends BlockCipherAlgorithm {
@@ -144,6 +149,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._table = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -191,62 +197,78 @@
     }
 
     // Build the 588-byte key-dependent table from the 128-bit key.
+    /**
+     * @param {uint8[]} key - 16 key bytes
+     * @returns {uint8[]} The 588-byte key-dependent table
+     */
     _scheduleKey(key) {
       // Four "columns" of the 16-byte key viewed as four 32-bit little-endian words:
       // byte-position 3 (MSB), 2, 1, 0 (LSB) of each of the four words.
+      /** @type {uint8[]} */
       const col3 = [key[3], key[7], key[11], key[15]];
+      /** @type {uint8[]} */
       const col2 = [key[2], key[6], key[10], key[14]];
+      /** @type {uint8[]} */
       const col1 = [key[1], key[5], key[9], key[13]];
+      /** @type {uint8[]} */
       const col0 = [key[0], key[4], key[8], key[12]];
 
-      const S = new Array(16);
-      S[0] = OpCodes.Xor32(col3[0], col3[1]); S[1] = OpCodes.Xor32(col3[0], col3[2]); S[2] = OpCodes.Xor32(col3[0], col3[3]);
-      S[3] = OpCodes.Xor32(col3[1], col3[2]); S[4] = OpCodes.Xor32(col3[1], col3[3]); S[5] = OpCodes.Xor32(col3[2], col3[3]);
-      S[6] = col3[0]; S[7] = col3[1]; S[8] = col3[2]; S[9] = col3[3];
-      S[0xA] = OpCodes.Xor32(S[0], col2[0]); S[0xB] = OpCodes.Xor32(S[1], col2[1]); S[0xC] = OpCodes.Xor32(S[2], col2[2]); S[0xD] = OpCodes.Xor32(S[3], col2[3]);
-      S[0xE] = OpCodes.Xor32(col2[0], col2[1]); S[0xF] = OpCodes.Xor32(col2[2], col2[3]);
+      /** @type {uint8[]} */
+      const mix = new Array(16);
+      mix[0] = OpCodes.Xor32(col3[0], col3[1]); mix[1] = OpCodes.Xor32(col3[0], col3[2]); mix[2] = OpCodes.Xor32(col3[0], col3[3]);
+      mix[3] = OpCodes.Xor32(col3[1], col3[2]); mix[4] = OpCodes.Xor32(col3[1], col3[3]); mix[5] = OpCodes.Xor32(col3[2], col3[3]);
+      mix[6] = col3[0]; mix[7] = col3[1]; mix[8] = col3[2]; mix[9] = col3[3];
+      mix[0xA] = OpCodes.Xor32(mix[0], col2[0]); mix[0xB] = OpCodes.Xor32(mix[1], col2[1]); mix[0xC] = OpCodes.Xor32(mix[2], col2[2]); mix[0xD] = OpCodes.Xor32(mix[3], col2[3]);
+      mix[0xE] = OpCodes.Xor32(col2[0], col2[1]); mix[0xF] = OpCodes.Xor32(col2[2], col2[3]);
 
-      let T = [col2[0], col2[1], col2[2], col2[3]];
+      /** @type {uint8[]} */
+      let fb = [col2[0], col2[1], col2[2], col2[3]];
 
-      const table = new Array(TABLE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      const table = new Array(TABLE_SIZE);
+      table.fill(0);
 
       // Pass 1: XOR-combine a mod-256 ramp with a key/table-fed feedback register.
       for (let i = 0; i < TABLE_SIZE; i++) {
-        const s = S[OpCodes.And32(i, 0xF)];
+        const s = mix[OpCodes.And32(i, 0xF)];
         const idx2 = OpCodes.And32(i, 3);
-        const t = T[idx2];
+        const t = fb[idx2];
         const mid = OpCodes.And32(t + s, 0xFF);
         const ramp = OpCodes.And32(i, 0xFF);
         const newval = OpCodes.Xor32(ramp, mid);
         table[i] = newval;
-        T[idx2] = newval;
+        fb[idx2] = newval;
       }
 
       // Re-derive S from the evolved feedback register, then fold in the remaining key columns.
-      S[0] = OpCodes.Xor32(T[0], T[1]); S[1] = OpCodes.Xor32(T[0], T[2]); S[2] = OpCodes.Xor32(T[0], T[3]);
-      S[3] = OpCodes.Xor32(T[1], T[2]); S[4] = OpCodes.Xor32(T[1], T[3]); S[5] = OpCodes.Xor32(T[2], T[3]);
+      mix[0] = OpCodes.Xor32(fb[0], fb[1]); mix[1] = OpCodes.Xor32(fb[0], fb[2]); mix[2] = OpCodes.Xor32(fb[0], fb[3]);
+      mix[3] = OpCodes.Xor32(fb[1], fb[2]); mix[4] = OpCodes.Xor32(fb[1], fb[3]); mix[5] = OpCodes.Xor32(fb[2], fb[3]);
 
-      T = [col1[0], col1[1], col1[2], col1[3]];
-      S[6] = OpCodes.Xor32(col1[0], S[2]); S[7] = OpCodes.Xor32(col1[1], S[3]); S[8] = OpCodes.Xor32(col1[2], S[4]); S[9] = OpCodes.Xor32(col1[3], S[5]);
+      /** @type {uint8[]} */
+      const t1 = [col1[0], col1[1], col1[2], col1[3]];
+      fb = t1;
+      mix[6] = OpCodes.Xor32(col1[0], mix[2]); mix[7] = OpCodes.Xor32(col1[1], mix[3]); mix[8] = OpCodes.Xor32(col1[2], mix[4]); mix[9] = OpCodes.Xor32(col1[3], mix[5]);
 
-      T = [col0[0], col0[1], col0[2], col0[3]];
-      S[0xA] = OpCodes.Xor32(col0[0], S[6]); S[0xB] = OpCodes.Xor32(col0[1], S[7]); S[0xC] = OpCodes.Xor32(col0[2], S[8]); S[0xD] = OpCodes.Xor32(col0[3], S[9]);
-      S[0xE] = OpCodes.Xor32(col0[0], col0[2]); S[0xF] = OpCodes.Xor32(col0[1], col0[3]);
+      /** @type {uint8[]} */
+      const t0 = [col0[0], col0[1], col0[2], col0[3]];
+      fb = t0;
+      mix[0xA] = OpCodes.Xor32(col0[0], mix[6]); mix[0xB] = OpCodes.Xor32(col0[1], mix[7]); mix[0xC] = OpCodes.Xor32(col0[2], mix[8]); mix[0xD] = OpCodes.Xor32(col0[3], mix[9]);
+      mix[0xE] = OpCodes.Xor32(col0[0], col0[2]); mix[0xF] = OpCodes.Xor32(col0[1], col0[3]);
 
-      T[1] = OpCodes.Xor32(T[1], T[0]);
-      T[2] = S[0xE];
-      T[3] = OpCodes.Xor32(T[3], T[0]);
-      // T[0] unchanged (= col0[0])
+      fb[1] = OpCodes.Xor32(fb[1], fb[0]);
+      fb[2] = mix[0xE];
+      fb[3] = OpCodes.Xor32(fb[3], fb[0]);
+      // fb[0] unchanged (= col0[0])
 
       // Pass 2: additive mix of the (now XOR-combined) feedback register into the table.
       for (let i = 0; i < TABLE_SIZE; i++) {
-        const s = S[OpCodes.And32(i, 0xF)];
+        const s = mix[OpCodes.And32(i, 0xF)];
         const idx2 = OpCodes.And32(i, 3);
-        const t = T[idx2];
+        const t = fb[idx2];
         const x = OpCodes.Xor32(t, s);
         const sum = OpCodes.And32(table[i] + x, 0xFF);
         table[i] = sum;
-        T[idx2] = sum;
+        fb[idx2] = sum;
       }
 
       return table;
@@ -255,8 +277,10 @@
     // Unpack an 8-byte block into 64 bits, MSB-first within each little-endian 32-bit word.
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint8[]} 64 bits (0/1)
      */
     _blockToBits(block) {
+      /** @type {uint8[]} */
       const bits = new Array(STATE_BITS);
       const w0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const w1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -267,28 +291,45 @@
       return bits;
     }
 
+    /**
+     * @param {uint8[]} bits - 64 bits (0/1)
+     * @returns {uint8[]} 8 bytes
+     */
     _bitsToBlock(bits) {
-      let w0 = 0, w1 = 0;
+      /** @type {uint32} */
+      let w0 = 0;
+      /** @type {uint32} */
+      let w1 = 0;
       for (let b = 0; b < 32; b++) {
-        w0 = OpCodes.SetBit(w0, 31 - b, bits[b] !== 0);
-        w1 = OpCodes.SetBit(w1, 31 - b, bits[32 + b] !== 0);
+        w0 = OpCodes.Or32(w0, OpCodes.Shl32(bits[b] !== 0 ? 1 : 0, 31 - b));
+        w1 = OpCodes.Or32(w1, OpCodes.Shl32(bits[32 + b] !== 0 ? 1 : 0, 31 - b));
       }
       return [...OpCodes.Unpack32LE(w0), ...OpCodes.Unpack32LE(w1)];
     }
 
-    // Derive the per-round selection array (64 entries) and parity array (48 entries) from the table window.
-    _roundArrays(table, base) {
-      const top6 = new Array(ROUND_SPAN), parity = new Array(ROUND_SPAN);
+    // Derive the per-round selection array (64 entries) and parity array (48 entries) from the
+    // table window, returned as one array: selection at [0..64), parity at [64..112).
+    /**
+     * @param {uint8[]} table - Key-dependent table
+     * @param {int32} winBase - Round window offset
+     * @returns {uint8[]} Selection entries followed by parity bits
+     */
+    _roundArrays(table, winBase) {
+      /** @type {uint8[]} */
+      const top6 = new Array(ROUND_SPAN);
+      /** @type {uint8[]} */
+      const parity = new Array(ROUND_SPAN);
       for (let i = 0; i < ROUND_SPAN; i++) {
-        const tb = table[base + i];
+        const tb = table[winBase + i];
         top6[i] = OpCodes.Shr32(tb, 2);
         const bit1 = OpCodes.Shr32(OpCodes.And32(tb, 2), 1);
         const bit0 = OpCodes.And32(tb, 1);
         parity[i] = OpCodes.Xor32(bit1, bit0);
       }
+      /** @type {uint8[]} */
       const sums = new Array(16);
       for (let i = 0; i < 16; i++) sums[i] = OpCodes.And32(top6[i] + top6[i + 1], 0x3F);
-      return { selection: top6.concat(sums), parity };
+      return top6.concat(sums).concat(parity);
     }
 
     /**
@@ -297,25 +338,26 @@
      */
     _encryptBlock(block) {
       const state = this._blockToBits(block);
-      for (let base = 0; base < ROUNDS * ROUND_STRIDE; base += ROUND_STRIDE) {
-        const { selection, parity } = this._roundArrays(this._table, base);
+      for (let winBase = 0; winBase < ROUNDS * ROUND_STRIDE; winBase += ROUND_STRIDE) {
+        const arrs = this._roundArrays(this._table, winBase);
 
         // Index-driven bit permutation.
         for (let i = 0; i < 64; i++) {
-          const idx = selection[i];
+          const idx = arrs[i];
           const tmp = state[i]; state[i] = state[idx]; state[idx] = tmp;
         }
 
         // Carry-chained XOR cascade over the first 48 state bits.
+        /** @type {uint8} */
         let carry = 0;
         for (let i = 0; i < 48; i++) {
-          const s2 = OpCodes.And32(parity[i] + carry, 1);
+          const s2 = OpCodes.And32(arrs[64 + i] + carry, 1);
           state[i] = OpCodes.Xor32(state[i], s2);
           carry = state[i];
         }
 
         // Diffuse the upper 16 state bits with the lower ones.
-        for (let j = 48; j < 64; j++) state[j] ^= state[j - 36];
+        for (let j = 48; j < 64; j++) state[j] = OpCodes.Xor32(state[j], state[j - 36]);
       }
       return this._bitsToBlock(state);
     }
@@ -326,22 +368,22 @@
      */
     _decryptBlock(block) {
       const state = this._blockToBits(block);
-      for (let base = (ROUNDS - 1) * ROUND_STRIDE; base >= 0; base -= ROUND_STRIDE) {
-        const { selection, parity } = this._roundArrays(this._table, base);
+      for (let winBase = (ROUNDS - 1) * ROUND_STRIDE; winBase >= 0; winBase -= ROUND_STRIDE) {
+        const arrs = this._roundArrays(this._table, winBase);
 
         // Undo the diffusion (self-inverse XOR).
-        for (let j = 48; j < 64; j++) state[j] ^= state[j - 36];
+        for (let j = 48; j < 64; j++) state[j] = OpCodes.Xor32(state[j], state[j - 36]);
 
         // Undo the cascade: process descending, reading the not-yet-updated neighbor as carry.
         for (let i = 47; i >= 0; i--) {
           const carry = (i === 0) ? 0 : state[i - 1];
-          const s2 = OpCodes.And32(parity[i] + carry, 1);
+          const s2 = OpCodes.And32(arrs[64 + i] + carry, 1);
           state[i] = OpCodes.Xor32(state[i], s2);
         }
 
         // Undo the permutation: replay the same swaps in reverse sequence.
         for (let i = 63; i >= 0; i--) {
-          const idx = selection[i];
+          const idx = arrs[i];
           const tmp = state[i]; state[i] = state[idx]; state[idx] = tmp;
         }
       }
