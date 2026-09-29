@@ -81,7 +81,7 @@
           uri: "https://totalcmd.ru/plugring/darkcryptTC.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("a8f7e69b6940a78d136a5c154a157952a6e4235859e30220ea686436bb38ef539c2940556b09ecd7fea2b0ac8307f1696265a3d644281c39c9cd5e1e2f9be4d00d482cb85a874aa55197d99f877c9d91a1489eac8571e85bb7cd2a2d8ff4c183b91f57377310fde711b6ecd2a8e98887e1b3bcfbc0c29134e109c3b92dac44cd")
         },
         {
@@ -97,14 +97,14 @@
           uri: "https://raw.githubusercontent.com/cantora/avr-crypto-lib/master/testvectors/rabbit-verified.test-vectors",
           key: OpCodes.Hex8ToBytes("0F62B5085BAE0154A7FA4DA0F34699EC"),
           iv: OpCodes.Hex8ToBytes("288FF65DC42B92F9"),
-          input: new Array(64).fill(0),
+          input: OpCodes.CreateArray(64, 0),
           expected: OpCodes.Hex8ToBytes("613CB0BA96AFF6CACF2A459A102A7F78CA985CF8FDD1474018758E36AE9923F519D13D718DAF8D7C0C109B79D5749439B7EFA4C4C9C8D29DC5B3888314A6816F")
         },
         {
           text: "Crypto++ / eSTREAM reference rabbit.txt - all-zero key, no IV setup",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/rabbit.txt",
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          input: new Array(32).fill(0),
+          input: OpCodes.CreateArray(32, 0),
           expected: OpCodes.Hex8ToBytes("02F74A1C26456BF5ECD6A536F05457B1A78AC689476C697B390C9CC515D8E888")
         }
       ];
@@ -116,11 +116,19 @@
   }
 
   class DarkCryptRabbitInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptRabbit} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
       this.X = new Array(8);
       this.C = new Array(8);
@@ -129,6 +137,9 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -140,15 +151,21 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) {
         this._iv = null;
@@ -160,24 +177,42 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
@@ -301,6 +336,7 @@
       // NOTE: unlike RFC 4503 (and algorithms/stream/rabbit.js), this variant
       // does NOT apply the byte-swap step here -- it writes each S[i]
       // straight out in little-endian order.
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < 4; i++) {

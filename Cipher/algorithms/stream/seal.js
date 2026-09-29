@@ -86,7 +86,7 @@
           {
             text: "Crypto++ SEAL-3.0-BE Test Vector",
             uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/seal.txt",
-            input: new Array(1024).fill(0x00),
+            input: OpCodes.CreateArray(1024, 0x00),
             key: OpCodes.Hex8ToBytes("67452301efcdab8998badcfe10325476c3d2e1f0"),
             iv: OpCodes.Hex8ToBytes("013577af"),
             expected: OpCodes.Hex8ToBytes(
@@ -141,7 +141,7 @@
           {
             text: "Derived from Crypto++ SEAL-3.0-BE Test Vector via 32-bit word byte-order transform (LE variant shares identical internal computation)",
             uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/seal.txt",
-            input: new Array(1024).fill(0x00),
+            input: OpCodes.CreateArray(1024, 0x00),
             key: OpCodes.Hex8ToBytes("67452301efcdab8998badcfe10325476c3d2e1f0"),
             iv: OpCodes.Hex8ToBytes("013577af"),
             expected: OpCodes.Hex8ToBytes(
@@ -186,7 +186,7 @@
         this.tests.push({
           text: "DarkCrypt Seal3lib KERNEL vector (SEAL 3.0, key=00..13, iv=00000000)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0x00),
+          input: OpCodes.CreateArray(128, 0x00),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"),
           iv: OpCodes.Hex8ToBytes("00000000"),
           expected: OpCodes.Hex8ToBytes(
@@ -218,13 +218,16 @@
     constructor(algorithm, isBigEndian) {
       super(algorithm);
       this.isBigEndian = isBigEndian;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // SEAL tables
-      this.T = new Array(512).fill(0); // 512 32-bit words
-      this.S = new Array(256).fill(0); // 256 32-bit words
+      this.T = OpCodes.CreateArray(512, 0); // 512 32-bit words
+      this.S = OpCodes.CreateArray(256, 0); // 256 32-bit words
       this.R = [];                     // Variable size
 
       // Counters
@@ -314,7 +317,7 @@
         this.gammaZ = [...H];
 
         // Create message block D with D[0] = shaIndex, rest zeros
-        const D = new Array(64).fill(0);
+        const D = OpCodes.CreateArray(64, 0);
         const shaIndexBytes = OpCodes.Unpack32BE(shaIndex);
         D[0] = shaIndexBytes[0];
         D[1] = shaIndexBytes[1];
@@ -493,6 +496,7 @@
       d = OpCodes.RotR32(d, 9);
 
       // Generate 8192 bits (1024 bytes) of keystream
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < 64; i++) {
         p = OpCodes.And32(a, 0x7fc);
@@ -608,6 +612,7 @@
         this._resynchronize();
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();

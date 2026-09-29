@@ -154,10 +154,17 @@
   }
 
   class DarkCryptSeal2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSeal2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
       this.T = null;            // 512 words
@@ -172,22 +179,34 @@
       this._keystreamPos = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SEAL2 (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SEAL2 (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -207,7 +226,7 @@
       const shaIndex = Math.floor(i / 5);
       if (shaIndex !== this._lastGammaIndex || !this._gammaZ) {
         this._gammaZ = [...this._H];
-        const block = new Array(64).fill(0);
+        const block = OpCodes.CreateArray(64, 0);
         const idxBytes = OpCodes.Unpack32BE(OpCodes.ToUint32(shaIndex));
         block[0] = idxBytes[0]; block[1] = idxBytes[1]; block[2] = idxBytes[2]; block[3] = idxBytes[3];
         compress(this._gammaZ, block);

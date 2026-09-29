@@ -111,40 +111,61 @@
   }
 
   class DarkCryptFFCSRInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptFFCSRAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.M = null;
       this.C = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`F-FCSR (DarkCrypt) requires a 16-byte key, got ${keyBytes.length}`);
+        throw new Error("F-FCSR (DarkCrypt) requires a 16-byte key, got " + keyBytes.length);
       this._key = [...keyBytes];
       this._initIfReady();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 16)
-        throw new Error(`F-FCSR (DarkCrypt) requires a 16-byte IV, got ${ivBytes.length}`);
+        throw new Error("F-FCSR (DarkCrypt) requires a 16-byte IV, got " + ivBytes.length);
       this._iv = [...ivBytes];
       this._initIfReady();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
     _initIfReady() {
       if (!this._key || !this._iv) return;
       const key = this._key, iv = this._iv;
-      const M = new Array(8).fill(0);
-      const C = new Array(8).fill(0);
+      const M = OpCodes.CreateArray(8, 0);
+      const C = OpCodes.CreateArray(8, 0);
 
       // Key load (big-endian words), save key words
       M[3] = beDword(key, 0); M[2] = beDword(key, 4); M[1] = beDword(key, 8); M[0] = beDword(key, 12);
@@ -190,6 +211,9 @@
       return OpCodes.And32(acc, 0xFFFF);
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -197,6 +221,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this.initialized) throw new Error("F-FCSR (DarkCrypt) not initialized");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");

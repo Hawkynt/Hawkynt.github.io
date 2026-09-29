@@ -62,6 +62,7 @@
     state: null,
 
     Init: function() {
+      /** @type {uint8[]|null} */
       this.key = null;
       this.state = null;
     },
@@ -78,8 +79,8 @@
     initializeState: function(key) {
       // MUGI-inspired state initialization with 128-bit key
       const state = {
-        buffer: new Array(16).fill(0), // 128-bit buffer (16 bytes)
-        lfsr: new Array(16).fill(0),   // Linear feedback shift register
+        buffer: OpCodes.CreateArray(16, 0), // 128-bit buffer (16 bytes)
+        lfsr: OpCodes.CreateArray(16, 0),   // Linear feedback shift register
         counter: 0,
         round: 0
       };

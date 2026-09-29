@@ -88,15 +88,16 @@
      * Initialize cipher with empty state
      */
     Init: function() {
-      this.clockLFSR = new Array(this.CLOCK_LFSR_LENGTH).fill(0);
-      this.dataLFSR = new Array(this.DATA_LFSR_LENGTH).fill(0);
+      this.clockLFSR = OpCodes.CreateArray(this.CLOCK_LFSR_LENGTH, 0);
+      this.dataLFSR = OpCodes.CreateArray(this.DATA_LFSR_LENGTH, 0);
+      /** @type {boolean} */
       this.isInitialized = false;
       return true;
     },
     
     /**
      * Setup key for Beth-Piper generator
-     * @param {Array} key - 128-bit key as byte array (16 bytes)
+     * @param {uint8[]} key - 128-bit key as byte array (16 bytes)
      */
     KeySetup: function(key) {
       if (!key || key.length !== 16) {
@@ -148,6 +149,7 @@
         this.dataLFSR[0] = 1;
       }
       
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
@@ -229,9 +231,10 @@
     /**
      * Generate keystream bytes
      * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
+     * @returns {uint8[]} Array of keystream bytes
      */
     generateKeystream: function(length) {
+      /** @type {uint8[]} */
       const keystream = [];
       
       for (let i = 0; i < length; i++) {
@@ -338,6 +341,7 @@
         OpCodes.ClearArray(this.dataLFSR);
         this.dataLFSR = null;
       }
+      /** @type {boolean} */
       this.isInitialized = false;
     },
     

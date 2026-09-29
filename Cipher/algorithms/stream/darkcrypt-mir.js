@@ -53,12 +53,17 @@
           StreamCipherAlgorithm, IAlgorithmInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {bigint} */
   const MASK64 = OpCodes.ShiftLn(1n, 64) - 1n;
+  /** @type {bigint} */
   const K0 = 0x1248842112488421n;
+  /** @type {bigint} */
   const K1 = 0x1248124812481248n;
+  /** @type {bigint} */
   const K2 = 0x4812481248124812n;
 
   // Standard AES S-box, used to build Mir's key-dependent substitution table.
+  /** @type {uint8[]} */
   const AES_SBOX = [
     0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
     0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
@@ -78,8 +83,16 @@
     0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
   ];
 
-  const lo = (w) => OpCodes.AndN(w, 0xFFFFFFFFn);
-  const hi = (w) => OpCodes.AndN(OpCodes.ShiftRn(w, 32), 0xFFFFFFFFn);
+  /**
+   * @param {bigint} w - 64-bit word
+   * @returns {bigint} Low 32 bits
+   */
+  function lo(w) { return OpCodes.AndN(w, 0xFFFFFFFFn); }
+  /**
+   * @param {bigint} w - 64-bit word
+   * @returns {bigint} High 32 bits
+   */
+  function hi(w) { return OpCodes.AndN(OpCodes.ShiftRn(w, 32), 0xFFFFFFFFn); }
 
   class DarkCryptMirAlgorithm extends StreamCipherAlgorithm {
     constructor() {
@@ -133,51 +146,87 @@
   }
 
   class DarkCryptMirInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptMirAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {bigint[]} */
       this.W = [0n, 0n, 0n, 0n, 0n, 0n];
+      /** @type {uint8[]} */
       this.S = new Uint8Array(256);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Mir (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Mir (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._init();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 8)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Mir (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Mir (DarkCrypt) requires exactly 8 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._init();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} n
+     */
     set nonce(n) { this.iv = n; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.initialized) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this.initialized) throw new Error("Key/IV not set");
+      /** @type {uint8[]} */
       const out = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i += 8) {
         const w = this._round();
         for (let j = 0; j < 8 && i + j < this.inputBuffer.length; j++) {
-          const ksByte = Number(OpCodes.AndN(OpCodes.ShiftRn(w, j * 8), 0xFFn));
+          const ksByte = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(w, j * 8), 0xFFn)));
           out[i + j] = OpCodes.Xor32(this.inputBuffer[i + j], ksByte);
         }
       }
@@ -185,41 +234,59 @@
       return out;
     }
 
+    /**
+     * @returns {bigint}
+     */
     _round() {
       const W = this.W, S = this.S;
       const W0 = W[0], W1 = W[1], W2 = W[2], W3 = W[3], W4 = W[4], W5 = W[5];
       const A = OpCodes.AndN(OpCodes.ShiftLn(W2, 1), MASK64);
       const B = OpCodes.AndN(OpCodes.ShiftLn(W4, 1), MASK64);
-      const P = W5 | K2;
-      const Q = W3 | K1;
+      const P = OpCodes.OrN(W5, K2);
+      const Q = OpCodes.OrN(W3, K1);
       const M1 = OpCodes.AndN(P * A, MASK64);
       const M2 = OpCodes.AndN(Q * A, MASK64);
       const M3 = OpCodes.AndN(Q * B, MASK64);
       const M4 = OpCodes.AndN(P * B, MASK64);
 
       // W0.byte[i] ^= S[W1.byte[i]]
+      /** @type {bigint} */
       let W0s = 0n;
-      for (let i = 0n; i < 8n; i++) {
-        const shift = i * 8n;
-        const w0byte = Number(OpCodes.AndN(OpCodes.ShiftRn(W0, shift), 0xFFn));
-        const w1byte = Number(OpCodes.AndN(OpCodes.ShiftRn(W1, shift), 0xFFn));
-        W0s |= OpCodes.ShiftLn(BigInt(OpCodes.Xor32(w0byte, S[w1byte])), shift);
+      for (let i = 0; i < 8; i++) {
+        const shift = i * 8;
+        const w0byte = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(W0, shift), 0xFFn)));
+        const w1byte = OpCodes.ToByte(Number(OpCodes.AndN(OpCodes.ShiftRn(W1, shift), 0xFFn)));
+        W0s = OpCodes.OrN(W0s, OpCodes.ShiftLn(BigInt(OpCodes.Xor32(w0byte, S[w1byte])), shift));
       }
 
       const D = OpCodes.AndN(W2, W3);
       const G = OpCodes.AndN(D, W4);
       const H = OpCodes.AndN(G, W5);
-      const R = OpCodes.XorN(H, OpCodes.AndN(H + K0, MASK64));
+      /** @type {bigint} */
+      const hk = H + K0;
+      const R = OpCodes.XorN(H, OpCodes.AndN(hk, MASK64));
 
-      const nW5 = OpCodes.AndN(W5 + M2 + OpCodes.AndN(R, G), MASK64);
-      const nW4 = OpCodes.AndN(W4 + M1 + OpCodes.AndN(D, R), MASK64);
-      const nW3 = OpCodes.AndN(W3 + M4 + OpCodes.AndN(R, W2), MASK64);
-      const nW2 = OpCodes.AndN(W2 + M3 + R, MASK64);
+      /** @type {bigint} */
+      const sum5 = W5 + M2 + OpCodes.AndN(R, G);
+      /** @type {bigint} */
+      const sum4 = W4 + M1 + OpCodes.AndN(D, R);
+      /** @type {bigint} */
+      const sum3 = W3 + M4 + OpCodes.AndN(R, W2);
+      /** @type {bigint} */
+      const sum2 = W2 + M3 + R;
+      const nW5 = OpCodes.AndN(sum5, MASK64);
+      const nW4 = OpCodes.AndN(sum4, MASK64);
+      const nW3 = OpCodes.AndN(sum3, MASK64);
+      const nW2 = OpCodes.AndN(sum2, MASK64);
 
       const ROT = OpCodes.RotL64n(W1, 29);
-      const E = OpCodes.AndN(ROT + hi(nW3), MASK64);
-      const W1new = OpCodes.AndN(OpCodes.XorN(lo(W0s), hi(nW2)) | OpCodes.ShiftLn(OpCodes.XorN(hi(W0s), hi(nW4)), 32), MASK64);
-      const W0new = OpCodes.AndN(E + OpCodes.ShiftLn(hi(nW5), 32) + W1new, MASK64);
+      /** @type {bigint} */
+      const sumE = ROT + hi(nW3);
+      const E = OpCodes.AndN(sumE, MASK64);
+      const W1new = OpCodes.AndN(OpCodes.OrN(OpCodes.XorN(lo(W0s), hi(nW2)), OpCodes.ShiftLn(OpCodes.XorN(hi(W0s), hi(nW4)), 32)), MASK64);
+      /** @type {bigint} */
+      const sum0 = E + OpCodes.ShiftLn(hi(nW5), 32) + W1new;
+      const W0new = OpCodes.AndN(sum0, MASK64);
 
       W[0] = W0new; W[1] = W1new; W[2] = nW2; W[3] = nW3; W[4] = nW4; W[5] = nW5;
       return W1new;
@@ -235,11 +302,12 @@
         this.S[i] = v;
       }
 
+      /** @type {bigint[]} */
       const kd = [];
       for (let i = 0; i < 4; i++)
         kd.push(BigInt(OpCodes.ToUint32(OpCodes.Pack32LE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]))));
-      const keyLo = kd[0] | OpCodes.ShiftLn(kd[1], 32);
-      const keyHi = kd[2] | OpCodes.ShiftLn(kd[3], 32);
+      const keyLo = OpCodes.OrN(kd[0], OpCodes.ShiftLn(kd[1], 32));
+      const keyHi = OpCodes.OrN(kd[2], OpCodes.ShiftLn(kd[3], 32));
       this.W[0] = keyLo;
       this.W[1] = keyHi;
       this.W[2] = K0;
@@ -249,10 +317,8 @@
       for (let r = 0; r < 8; r++) this._round();
 
       // IV mixing: XOR IV-derived S-box values into the low byte of each state dword.
-      const s = (idx) => this.S[iv[idx]];
-      const xb = (wi, half, val) => {
-        this.W[wi] ^= OpCodes.ShiftLn(BigInt(OpCodes.And32(val, 0xFF)), half * 32);
-      };
+      const s = (idx) => this._ivSbox(iv, idx);
+      const xb = (wi, half, val) => { this._xorLowByte(wi, half, val); };
       xb(2, 1, OpCodes.Xor32(OpCodes.Xor32(s(0), s(1)), s(2)));
       xb(3, 1, OpCodes.Xor32(OpCodes.Xor32(s(0), s(3)), s(4)));
       xb(4, 1, OpCodes.Xor32(OpCodes.Xor32(s(2), s(5)), s(7)));
@@ -270,6 +336,25 @@
 
       this.inputBuffer = [];
       this.initialized = true;
+    }
+
+    /**
+     * @param {uint8[]} iv - IV bytes
+     * @param {int32} idx - IV byte index
+     * @returns {uint8} Key-dependent S-box value of that IV byte
+     */
+    _ivSbox(iv, idx) {
+      return this.S[iv[idx]];
+    }
+
+    /**
+     * XOR a byte into the low byte of one 32-bit half of a state word
+     * @param {int32} wi - State word index
+     * @param {int32} half - 0 for the low half, 1 for the high half
+     * @param {uint32} val - Value whose low byte is mixed in
+     */
+    _xorLowByte(wi, half, val) {
+      this.W[wi] = OpCodes.XorN(this.W[wi], OpCodes.ShiftLn(BigInt(OpCodes.And32(val, 0xFF)), half * 32));
     }
   }
 

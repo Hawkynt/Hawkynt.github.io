@@ -161,15 +161,19 @@
   class NorxInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NorxAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.KeySize = 32;
       this.NonceSize = 16;
@@ -190,6 +194,7 @@
 
     set key(keyBytes) {
       if (!keyBytes) {
+        /** @type {uint8[]|null} */
         this._key = null;
         this.KeySize = 0;
         return;
@@ -202,7 +207,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -219,19 +224,26 @@
     }
 
     // Property setter for nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
+        /** @type {uint8[]|null} */
         this._nonce = null;
         return;
       }
 
       if (nonceBytes.length !== this.NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes, expected ${this.NONCE_SIZE}`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes, expected " + this.NONCE_SIZE);
       }
 
       this._nonce = [...nonceBytes]; // Copy the nonce
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null; // Return copy
     }
@@ -262,7 +274,7 @@
       if (this.inputBuffer.length === 0) return [];
 
       // Use provided nonce or generate default
-      const nonce = this.nonce || new Array(this.NONCE_SIZE).fill(0);
+      const nonce = this.nonce || OpCodes.CreateArray(this.NONCE_SIZE, 0);
 
       // Process data using educational NORX
       const result = this._educationalNORX(this.key, nonce, this.inputBuffer);
@@ -306,6 +318,7 @@
       }
 
       // Generate keystream
+      /** @type {uint8[]} */
       const keystream = [];
 
       // Extract keystream
@@ -315,6 +328,7 @@
       }
 
       // Process data (stream cipher mode - no tag)
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < data.length; i++) {
         output.push(OpCodes.XorN(data[i], keystream[i % keystream.length]));

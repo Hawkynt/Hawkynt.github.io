@@ -303,7 +303,7 @@
   // producing 25 subkeys instead of 33.
 
   function sosemanukSchedule(key) {
-    const wbuf = new Array(32).fill(0);
+    const wbuf = OpCodes.CreateArray(32, 0);
     for (let i = 0; i < key.length; i++) wbuf[i] = key[i];
     if (key.length < 32) {
       wbuf[key.length] = 0x01;
@@ -315,7 +315,7 @@
       w[i] = OpCodes.Pack32LE(wbuf[i*4], wbuf[i*4+1], wbuf[i*4+2], wbuf[i*4+3]);
     }
 
-    const sk = new Array(100).fill(0);
+    const sk = OpCodes.CreateArray(100, 0);
     let si = 0;
 
     function WUP(idx, i5, i3, i1, cc) {
@@ -390,7 +390,7 @@
   // from its final output.
 
   function sosemanukInit(sk, iv) {
-    const ivtmp = new Array(16).fill(0);
+    const ivtmp = OpCodes.CreateArray(16, 0);
     for (let i = 0; i < Math.min(16, iv.length); i++) ivtmp[i] = iv[i];
 
     // r is a fixed 5-slot register bank; the i0..i4/o0..o3 index arguments
@@ -488,7 +488,7 @@
   function sosemanukRound(rc) {
     const s = rc.s;
     let r1 = rc.r1, r2 = rc.r2;
-    const out = new Array(BLOCK_LEN).fill(0);
+    const out = OpCodes.CreateArray(BLOCK_LEN, 0);
 
     let k = 0;
     for (let group = 0; group < 5; group++) {
@@ -574,7 +574,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("2ad642926b0f1f68435ebfad013b04defc6d5708210edf21fe5382f04793c68cc604cb9acfd4e93d19820a9030cb024752ace97037d7b5553b8742b68e1f4c5b3846f97de8605a8427c8aac1308508acf0b643ccd9a915651f55235df5f63b0ce3476cd68ac2a99af78141322edf6522f55cc605497c608f734a4ebf1d661ef2")
         },
         {
@@ -594,11 +594,19 @@
   }
 
   class DarkCryptSosemanukInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSosemanukAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       this.rc = null;
@@ -606,6 +614,9 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -618,7 +629,7 @@
       }
 
       if (keyBytes.length !== KEY_LEN) {
-        throw new Error(`Invalid Sosemanuk key size: ${keyBytes.length} bytes. Key must be 32 bytes (256 bits)`);
+        throw new Error("Invalid Sosemanuk key size: " + keyBytes.length + " bytes. Key must be 32 bytes (256 bits)");
       }
 
       this._key = Array.from(keyBytes);
@@ -626,10 +637,16 @@
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -638,7 +655,7 @@
           throw new Error("Invalid IV - must be byte array");
         }
         if (ivData.length !== IV_LEN) {
-          throw new Error(`Invalid Sosemanuk IV size: ${ivData.length} bytes. IV must be 16 bytes (128 bits)`);
+          throw new Error("Invalid Sosemanuk IV size: " + ivData.length + " bytes. IV must be 16 bytes (128 bits)");
         }
         this._iv = Array.from(ivData);
       }
@@ -648,21 +665,30 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
 
     _initialize() {
       if (!this._key) return;
-      const iv = this._iv || new Array(IV_LEN).fill(0);
+      const iv = this._iv || OpCodes.CreateArray(IV_LEN, 0);
       this.rc = sosemanukInit(this._sk, iv);
       this.keystreamBuffer = [];
       this.keystreamPosition = 0;
@@ -676,6 +702,9 @@
       return this.keystreamBuffer[this.keystreamPosition++];
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data) && !(data instanceof Uint8Array)) {
@@ -688,6 +717,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) {
         throw new Error("Key not set");

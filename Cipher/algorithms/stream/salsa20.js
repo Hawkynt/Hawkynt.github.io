@@ -88,12 +88,19 @@ class Salsa20 extends StreamCipherAlgorithm {
 }
 
 class Salsa20Instance extends IAlgorithmInstance {
+  /**
+   * @param {Salsa20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._nonce = new Array(8).fill(0);
+    this._nonce = OpCodes.CreateArray(8, 0);
     this.counter = [0, 0];
     this.state = new Array(16);
     this.keystreamBuffer = [];
@@ -103,6 +110,9 @@ class Salsa20Instance extends IAlgorithmInstance {
     this.CONSTANTS_16 = [0x61707865, 0x3120646e, 0x79622d36, 0x6b206574];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -114,40 +124,58 @@ class Salsa20Instance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._setupState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 8) {
-      this._nonce = new Array(8).fill(0);
+      this._nonce = OpCodes.CreateArray(8, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
     this._setupState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -248,6 +276,7 @@ class Salsa20Instance extends IAlgorithmInstance {
 
     const output = this._salsa20Core(this.state);
 
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
       const bytes = OpCodes.Unpack32LE(output[i]);

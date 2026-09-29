@@ -42,7 +42,7 @@ class HCAlgorithm extends StreamCipherAlgorithm {
     const config = this._getVariantConfig(variant);
 
     this.variant = variant;
-    this.name = `HC-${variant}`;
+    this.name = "HC-" + variant;
     this.description = config.description;
     this.inventor = "Hongjun Wu";
     this.year = 2004;
@@ -56,14 +56,14 @@ class HCAlgorithm extends StreamCipherAlgorithm {
     this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
 
     this.documentation = [
-      new LinkItem(`eSTREAM HC-${variant} Specification`, config.specUrl),
-      new LinkItem(`HC-${variant} Wikipedia`, config.wikiUrl),
+      new LinkItem("eSTREAM HC-" + variant + " Specification", config.specUrl),
+      new LinkItem("HC-" + variant + " Wikipedia", config.wikiUrl),
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
     this.references = [
-      new LinkItem(`Hongjun Wu HC-${variant} Reference Implementation`, config.refUrl),
-      new LinkItem(`Crypto++ HC-${variant} Implementation`, config.refLibUrl)
+      new LinkItem("Hongjun Wu HC-" + variant + " Reference Implementation", config.refUrl),
+      new LinkItem("Crypto++ HC-" + variant + " Implementation", config.refLibUrl)
     ];
 
     this.vulnerabilities = config.vulnerabilities;
@@ -168,11 +168,19 @@ class HCAlgorithm extends StreamCipherAlgorithm {
 }
 
 class HCInstance extends IAlgorithmInstance {
+  /**
+   * @param {HCAlgorithm} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._iv = null;
 
     // HC state
@@ -197,6 +205,9 @@ class HCInstance extends IAlgorithmInstance {
     this.W_SIZE = algorithm.W_SIZE;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -208,7 +219,7 @@ class HCInstance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -217,11 +228,17 @@ class HCInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     if (!ivBytes || ivBytes.length !== this.IV_SIZE) {
-      this._iv = new Array(this.IV_SIZE).fill(0);
+      this._iv = OpCodes.CreateArray(this.IV_SIZE, 0);
     } else {
       this._iv = [...ivBytes];
     }
@@ -231,14 +248,23 @@ class HCInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this._iv ? [...this._iv] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
 
@@ -247,10 +273,11 @@ class HCInstance extends IAlgorithmInstance {
       return [];
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -585,6 +612,7 @@ class HCInstance extends IAlgorithmInstance {
       const keystreamWords = new Array(16);
       this._generateKeystream16(keystreamWords);
 
+      /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
         const bytes = OpCodes.Unpack32LE(keystreamWords[i]);
@@ -594,6 +622,7 @@ class HCInstance extends IAlgorithmInstance {
       return keystream;
     } else {
       // HC-256: Generate 16 bytes (4 words)
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < 4; i++) {

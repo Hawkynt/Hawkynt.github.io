@@ -137,15 +137,19 @@
   class SpritzInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpritzAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Spritz state
@@ -156,6 +160,7 @@
       this.z = 0;                                     // State pointer z
       this.a = 0;                                     // Absorb counter
       this.w = 1;                                     // Whip counter
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -179,7 +184,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid Spritz key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid Spritz key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -213,7 +218,7 @@
       }
 
       if (ivBytes.length > 256) {
-        throw new Error(`Invalid Spritz IV size: ${ivBytes.length} bytes. Maximum 256 bytes`);
+        throw new Error("Invalid Spritz IV size: " + ivBytes.length + " bytes. Maximum 256 bytes");
       }
 
       this._iv = [...ivBytes];
@@ -268,12 +273,13 @@
         throw new Error("Spritz not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._squeeze();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation

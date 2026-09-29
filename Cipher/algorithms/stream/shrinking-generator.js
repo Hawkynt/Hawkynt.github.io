@@ -152,9 +152,13 @@
       this.outputBuffer = [];     // Buffer for generated bits
       this.inputData = [];        // Input data buffer
       this.keyData = null;        // Key storage
+      /** @type {boolean} */
       this.isInitialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyData
+     */
     set key(keyData) {
       if (Array.isArray(keyData) && keyData.length === 16) {
         this.keyData = keyData.slice();
@@ -181,8 +185,8 @@
       }
 
       // Initialize LFSRs
-      this.lfsrA = new Array(this.algorithm.LFSR_A_LENGTH).fill(0);
-      this.lfsrS = new Array(this.algorithm.LFSR_S_LENGTH).fill(0);
+      this.lfsrA = OpCodes.CreateArray(this.algorithm.LFSR_A_LENGTH, 0);
+      this.lfsrS = OpCodes.CreateArray(this.algorithm.LFSR_S_LENGTH, 0);
       this.outputBuffer = [];
 
       // Distribute key bits across the two LFSRs
@@ -302,6 +306,7 @@
      * Generate keystream bytes
      */
     generateKeystream(length) {
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {

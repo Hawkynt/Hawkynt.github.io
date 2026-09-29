@@ -115,11 +115,19 @@ class XSalsa20 extends StreamCipherAlgorithm {
 }
 
 class XSalsa20Instance extends IAlgorithmInstance {
+  /**
+   * @param {XSalsa20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
     this.state = new Array(16);
     this.keystreamBuffer = [];
@@ -130,6 +138,9 @@ class XSalsa20Instance extends IAlgorithmInstance {
     this.SIGMA = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -137,7 +148,7 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
 
     if (keyBytes.length !== 32) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -146,11 +157,17 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 24) {
-      throw new Error(`XSalsa20 requires 24-byte nonce, got ${nonceBytes ? nonceBytes.length : 0} bytes`);
+      throw new Error("XSalsa20 requires 24-byte nonce, got " + (nonceBytes ? nonceBytes.length : 0) + " bytes");
     }
     this._nonce = [...nonceBytes];
     if (this._key) {
@@ -158,8 +175,14 @@ class XSalsa20Instance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
@@ -167,15 +190,21 @@ class XSalsa20Instance extends IAlgorithmInstance {
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     if (!this._nonce) throw new Error("Nonce not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -351,6 +380,7 @@ class XSalsa20Instance extends IAlgorithmInstance {
     const output = this._salsa20Core(this.state);
 
     // Convert to bytes
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
       const bytes = OpCodes.Unpack32LE(output[i]);

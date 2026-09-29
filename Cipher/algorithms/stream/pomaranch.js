@@ -108,15 +108,25 @@ class Pomaranch extends StreamCipherAlgorithm {
 }
 
 class PomaranchInstance extends IAlgorithmInstance {
+  /**
+   * @param {Pomaranch} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._iv = new Array(8).fill(0);
+    this._iv = OpCodes.CreateArray(8, 0);
     this.LFSR_COUNT = 9;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -128,30 +138,45 @@ class PomaranchInstance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     if (!ivBytes || ivBytes.length !== 8) {
-      this._iv = new Array(8).fill(0);
+      this._iv = OpCodes.CreateArray(8, 0);
     } else {
       this._iv = [...ivBytes];
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this._iv ? [...this._iv] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
 
@@ -160,7 +185,7 @@ class PomaranchInstance extends IAlgorithmInstance {
       return [];
     }
 
-    const output = this._educationalPomaranch(this._key, this._iv || new Array(8).fill(0), this.inputBuffer);
+    const output = this._educationalPomaranch(this._key, this._iv || OpCodes.CreateArray(8, 0), this.inputBuffer);
     this.inputBuffer = [];
     return output;
   }
@@ -202,6 +227,7 @@ class PomaranchInstance extends IAlgorithmInstance {
     }
 
     // Generate keystream and encrypt data
+    /** @type {uint8[]} */
     const output = [];
 
     for (let i = 0; i < data.length; i++) {

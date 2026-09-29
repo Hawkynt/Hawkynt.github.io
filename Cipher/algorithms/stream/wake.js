@@ -49,6 +49,10 @@
    * The|0 conversions are intentional for compatibility with the reference.
    */
   class WAKE_Base extends StreamCipherAlgorithm {
+    /**
+     * @param {string} name
+     * @param {boolean} isBigEndian
+     */
     constructor(name, isBigEndian) {
       super();
 
@@ -100,7 +104,7 @@
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/wake.txt",
           key: OpCodes.Hex8ToBytes("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"),
           // Plaintext: 80 zero bytes + 80 0x01 bytes = 160 bytes total
-          input: new Array(80).fill(0x00).concat(new Array(80).fill(0x01)),
+          input: OpCodes.CreateArray(80, 0x00).concat(OpCodes.CreateArray(80, 0x01)),
           expected: OpCodes.Hex8ToBytes("FFEEDDCCDF42B9D4939C351568AB4888BD9264CA66CF7F7885141F6934F3F390F1987B8609B733919DC5F73F7BED93ECDCD4F35FF32828553B8AFAD113DDA6565932553D9143AA886AE859167327F3C260434E6C90A0895FD33E6B6412526521FA0B12F4ECEE3E8F4F96DCF70907AAFB5E29C40FC10EB70A4970736E98DF98C615AC844A46FB8E4AEBBBF599DF7B73930B94776C6C8757BE51B34E71E9B514AE")
         }
       ];
@@ -120,7 +124,7 @@
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/wake.txt",
           key: OpCodes.Hex8ToBytes("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"),
           // Plaintext: 80 zero bytes + 80 0x01 bytes = 160 bytes total
-          input: new Array(80).fill(0x00).concat(new Array(80).fill(0x01)),
+          input: OpCodes.CreateArray(80, 0x00).concat(OpCodes.CreateArray(80, 0x01)),
           expected: OpCodes.Hex8ToBytes("CCDDEEFFD4B942DF15359C938848AB68CA6492BD787FCF66691F148590F3F334867B98F19133B7093FF7C59DEC93ED7B5FF3D4DC552828F3D1FA8A3B56A6DD133D55325988AA43911659E86AC2F327736C4E43605F89A090646B3ED321655212F4120BFA8F3EEEECF7DC964FFBAA07090FC4295E0AB70EC16E737049C698DF984A84AC154A8EFB4699F5BBEB93737BDF6C77940BBE57876C714EB351AE14B5E9")
         }
       ];
@@ -137,14 +141,17 @@
   class WAKEInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {WAKE_Base} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
       // WAKE state: 4 registers + 257-word table
@@ -152,13 +159,15 @@
       this.r4 = 0;
       this.r5 = 0;
       this.r6 = 0;
-      this.t = new Array(257).fill(0);
+      this.t = OpCodes.CreateArray(257, 0);
 
       // Keystream buffer for byte-level output
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
       this.keystreamPosition = 0;
 
       // TT constants from Crypto++ wake.cpp
+      /** @type {uint32[]} */
       this.TT = [
         0x726a8f3b, 0xe69a3b5c, 0xd3c71fe5, 0xab3c73d2,
         0x4d3a8eb3, 0x0396d6e8, 0x3d4c2f7a, 0x9ee27cf3
@@ -202,9 +211,12 @@
      * - Words 4-7: k0, k1, k2, k3 for GenKey()
      */
     _keySetup() {
-      if (!this._key) return;
+      if (!this._key) {
+        return;
+      }
 
       // Read 8 32-bit words from key (big-endian as per Crypto++)
+      /** @type {uint32[]} */
       var words = [];
       for (var i = 0; i < 8; i++) {
         var offset = i * 4;
@@ -359,8 +371,11 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       var output = [];
       for (var i = 0; i < this.inputBuffer.length; i++) {
         var keystreamByte = this._getNextKeystreamByte();

@@ -157,6 +157,7 @@
 
           const output = new Array(this._inputData.length);
           let blockCounter = 0;
+          /** @type {uint8[]} */
           let keystream = [];
           let keystreamPos = 0;
 

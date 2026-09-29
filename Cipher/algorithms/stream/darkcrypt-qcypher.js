@@ -63,7 +63,7 @@
 
   class QCypherState {
     constructor() {
-      this.sbox = new Array(256).fill(0);
+      this.sbox = OpCodes.CreateArray(256, 0);
       this.A = 0;
       this.B = 0;
       this.C = 0;
@@ -188,34 +188,56 @@
   }
 
   class QCypherInstance extends IAlgorithmInstance {
+    /**
+     * @param {QCypherAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._state = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._state = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. QCypher (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. QCypher (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._state = qcSetup(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       if (this.isInverse) {
         for (let i = 0; i < this.inputBuffer.length; i++)
