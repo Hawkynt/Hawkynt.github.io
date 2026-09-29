@@ -103,25 +103,45 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       * @returns {EliasGammaInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new EliasGammaInstance(this, isInverse);
       }
     }
 
     class EliasGammaInstance extends IAlgorithmInstance {
+      /**
+       * @param {EliasGammaAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ?
-          this._decompress(this.inputBuffer) :
-          this._compress(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress(this.inputBuffer);
+        } else {
+          result = this._compress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
@@ -129,23 +149,54 @@
       // block): a 4-byte little-endian original length, followed by the
       // Gamma-coded bitstream (MSB-first, zero-padded to a byte boundary).
       // Elias Gamma cannot encode 0, so byte values are mapped to (value + 1).
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Length header and Gamma codes
+       */
       _compress(data) {
         const bitStream = OpCodes.CreateBitStream();
         bitStream.writeUint32LE(data.length);
-        for (const byte of data) this._encodeGamma(bitStream, byte + 1);
-        return bitStream.toArray();
+        for (let k = 0; k < data.length; k++) {
+          /** @type {int32} */
+          const value = data[k] + 1;
+          this._encodeGamma(bitStream, value);
+        }
+        /** @type {uint8[]} */
+        const bytes = bitStream.toArray();
+        return bytes;
       }
 
+      /**
+       * @param {uint8[]} data - Length header and Gamma codes
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 4) return [];
+        /** @type {uint8[]} */
+        const result = [];
+        if (data.length < 4) {
+          return result;
+        }
 
         const bitStream = OpCodes.CreateBitStream(data);
-        const originalLength = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
-        if (originalLength === 0) return [];
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const originalLength = OpCodes.Pack32LE(c0, c1, c2, c3);
+        if (originalLength === 0) {
+          return result;
+        }
 
-        const result = [];
-        for (let i = 0; i < originalLength; i++)
-          result.push(this._decodeGamma(bitStream) - 1);
+        for (let i = 0; i < originalLength; i++) {
+          /** @type {int32} */
+          const value = this._decodeGamma(bitStream) - 1;
+          result.push(value);
+        }
 
         return result;
       }
@@ -154,13 +205,25 @@
        * Encode a positive integer using Elias Gamma coding: floor(log2(n))
        * zero-bits, then the (floor(log2(n))+1)-bit binary form of n, MSB first.
        * @private
+       * @param {_BitStream} bitStream - Output bit stream
+       * @param {int32} value - Positive integer
        */
       _encodeGamma(bitStream, value) {
-        let n = 0, v = value;
-        while (v > 1) { n++; v = Math.floor(v / 2); }
+        /** @type {int32} */
+        let n = 0;
+        /** @type {int32} */
+        let v = value;
+        while (v > 1) {
+          n++;
+          v = Math.floor(v / 2);
+        }
 
-        for (let i = 0; i < n; i++) bitStream.writeBit(0);
-        for (let i = n; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        for (let i = 0; i < n; i++) {
+          bitStream.writeBit(0);
+        }
+        for (let i = n; i >= 0; i--) {
+          bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        }
       }
 
       /**
@@ -168,13 +231,24 @@
        * terminating 1-bit is consumed but not counted), then read n more
        * bits with an implicit leading 1.
        * @private
+       * @param {_BitStream} bitStream - Input bit stream
+       * @returns {int32} Decoded positive integer
        */
       _decodeGamma(bitStream) {
+        /** @type {int32} */
         let n = 0;
-        while (bitStream.readBit() === 0) n++;
+        /** @type {uint32} */
+        let bit = bitStream.readBit();
+        while (bit === 0) {
+          n++;
+          bit = bitStream.readBit();
+        }
 
+        /** @type {int32} */
         let value = 1;
-        for (let i = 0; i < n; i++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+        for (let i = 0; i < n; i++) {
+          value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+        }
 
         return value;
       }
