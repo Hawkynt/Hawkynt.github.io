@@ -133,6 +133,31 @@ test('PBKDF1: given a page with SHA-1, when a key is derived with the undashed n
   equalHex(pbkdf1(framework, 'SHA1', 2), PBKDF1_OPENSSL_SHA1_2);
 });
 
+function sp800108(framework, hashName, keyHex, outputLength) {
+  const instance = framework.Find('SP800-108-Counter').CreateInstance();
+  instance.hashAlgorithm = hashName;
+  instance.label = Array.from(Buffer.from('LABEL'));
+  instance.context = Array.from(Buffer.from('CONTEXT'));
+  instance.outputLength = outputLength;
+  instance.counterBits = 32;
+  instance.Feed(Array.from(Buffer.from(keyHex, 'hex')));
+  return instance.Result();
+}
+// An 80-byte key, longer than the SHA-256 block: OpenSSL 3.5
+// `openssl kdf -keylen 48 -kdfopt mac:HMAC -kdfopt digest:SHA2-256 -kdfopt hexkey:<key>
+//  -kdfopt hexsalt:4c4142454c -kdfopt hexinfo:434f4e54455854 KBKDF`, and the same from node's createHmac
+const KBKDF_KEY80 = '01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a';
+const KBKDF_SHA256_KEY80_48 = 'f28a73665986e50ce5d1084bdcf38f9f77c895daba4e28f099b7a118e01ead397831f8dd6a3402ed1339de497275652c';
+
+test('SP 800-108 counter: given a page with HMAC and SHA-256 and an 80-byte key, when 48 bytes (two PRF blocks) are derived, then they are the OpenSSL KBKDF bytes', () => {
+  const framework = pageWith('algorithms/hash/sha256.js', 'algorithms/mac/hmac.js', 'algorithms/kdf/sp800-108-counter.js');
+  equalHex(sp800108(framework, 'SHA-256', KBKDF_KEY80, 48), KBKDF_SHA256_KEY80_48);
+});
+test('SP 800-108 counter: given a page without HMAC, when a key is derived, then it is the OpenSSL KBKDF key or a refusal naming HMAC - never a wrong key', () => {
+  const framework = pageWith('algorithms/hash/sha256.js', 'algorithms/kdf/sp800-108-counter.js');
+  correctOrRefused(attempt(() => sp800108(framework, 'SHA-256', KBKDF_KEY80, 48)), KBKDF_SHA256_KEY80_48, 'HMAC');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
