@@ -85,51 +85,96 @@
     0x78d56ced, 0x94640d6e, 0xf0d3d37b, 0xe67008e1,
     0x86d1bf27, 0x5b9b241d, 0xeb64749a, 0x47dfdfb9,
     0x6632c3eb, 0x061b6472, 0xbbf84c26, 0x144e49c2
-  ].map(x => OpCodes.ToUint32(x));
+  ];
 
+  // 64-bit words are [hi, lo] pairs of 32-bit words.
+  /** @type {uint32[]} */
   const RT = E_FRACTION.slice(0, 64);           // confusion table (64 entries)
-  const KD = { hi: E_FRACTION[64], lo: E_FRACTION[65] };
+  /** @type {uint32[]} */
+  const KD = [E_FRACTION[64], E_FRACTION[65]];
   const KC = E_FRACTION[66];
+  /** @type {uint32[][]} */
   const KA = [
-    { hi: E_FRACTION[0], lo: E_FRACTION[1] },
-    { hi: E_FRACTION[2], lo: E_FRACTION[3] },
-    { hi: E_FRACTION[4], lo: E_FRACTION[5] }
+    [E_FRACTION[0], E_FRACTION[1]],
+    [E_FRACTION[2], E_FRACTION[3]],
+    [E_FRACTION[4], E_FRACTION[5]]
   ];
+  /** @type {uint32[][]} */
   const KB = [
-    { hi: E_FRACTION[6], lo: E_FRACTION[7] },
-    { hi: E_FRACTION[8], lo: E_FRACTION[9] },
-    { hi: E_FRACTION[10], lo: E_FRACTION[11] }
+    [E_FRACTION[6], E_FRACTION[7]],
+    [E_FRACTION[8], E_FRACTION[9]],
+    [E_FRACTION[10], E_FRACTION[11]]
   ];
 
+  /** @type {bigint} */
   const PRIME = OpCodes.ShiftLn(1n, 64) + 13n;
+  /** @type {bigint} */
   const MASK32 = 0xffffffffn;
+  /** @type {bigint} */
   const MASK64 = OpCodes.ShiftLn(1n, 64) - 1n;
 
-  function to64(v) { return OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(v.hi)), 32) | BigInt(OpCodes.ToUint32(v.lo)); }
+  /**
+   * @param {uint32[]} v - [hi, lo]
+   * @returns {bigint} The 64-bit value
+   */
+  function to64(v) { return OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(v[0])), 32) | BigInt(OpCodes.ToUint32(v[1])); }
+
+  /**
+   * @param {bigint} b - Value (reduced mod 2^64)
+   * @returns {uint32[]} [hi, lo]
+   */
   function from64(b) {
-    b &= MASK64;
-    return { hi: OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(b, 32), MASK32))), lo: OpCodes.ToUint32(Number(OpCodes.AndN(b, MASK32))) };
+    b = OpCodes.AndN(b, MASK64);
+    /** @type {uint32[]} */
+    const w = [OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(b, 32), MASK32))), OpCodes.ToUint32(Number(OpCodes.AndN(b, MASK32)))];
+    return w;
   }
 
-  function xor64(x, y) { return { hi: OpCodes.Xor32(x.hi, y.hi), lo: OpCodes.Xor32(x.lo, y.lo) }; }
+  /**
+   * @param {uint32[]} x - [hi, lo]
+   * @param {uint32[]} y - [hi, lo]
+   * @returns {uint32[]} x XOR y
+   */
+  function xor64(x, y) {
+    /** @type {uint32[]} */
+    const w = [OpCodes.Xor32(x[0], y[0]), OpCodes.Xor32(x[1], y[1])];
+    return w;
+  }
 
+  /**
+   * @param {uint32[]} x - [hi, lo]
+   * @param {uint32[]} y - [hi, lo]
+   * @returns {uint32[]} (x + y) mod 2^64
+   */
   function add64(x, y) {
     return from64(OpCodes.AndN(to64(x) + to64(y), MASK64));
   }
 
   // Confusion permutation: mixes the low 64 bits of the modular product/sum
   // through a table lookup indexed by the top 6 bits, then adds a constant.
+  /**
+   * @param {uint32[]} y - [hi, lo]
+   * @returns {uint32[]} Confused word
+   */
   function CP(y) {
-    const yl = y.hi, yr = y.lo;
-    const x = {
-      hi: OpCodes.Xor32(yr, RT[OpCodes.Shr32(yl, 26)]),
-      lo: OpCodes.Xor32(yl, KC)
-    };
+    const yl = y[0], yr = y[1];
+    /** @type {uint32[]} */
+    const x = [
+      OpCodes.Xor32(yr, RT[OpCodes.Shr32(yl, 26)]),
+      OpCodes.Xor32(yl, KC)
+    ];
     return add64(x, KD);
   }
 
   // Round function: (a*x + b) mod (2^64+13), reduced mod 2^64, then confused.
+  /**
+   * @param {uint32[]} a - Multiplier key word
+   * @param {uint32[]} b - Additive key word
+   * @param {uint32[]} x - Half block
+   * @returns {uint32[]} Round output
+   */
   function RF(a, b, x) {
+    /** @type {bigint} */
     const rf = (to64(a) * to64(x) + to64(b)) % PRIME;
     return CP(from64(OpCodes.AndN(rf, MASK64)));
   }
@@ -213,7 +258,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
-      this._subKeys = null;
+      // Per round: [a, b], each a [hi, lo] word pair
+      /** @type {uint32[][][]|null} */
+      this._roundPairs = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -224,12 +271,12 @@
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._subKeys = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._roundPairs = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. DFC-128/256 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._subKeys = this._generateSubKeys(this._key);
+      this._roundPairs = this._generateSubKeys(this._key);
     }
 
     /**
@@ -251,40 +298,55 @@
 
       /** @type {uint8[]} */
       const output = [];
-      const subKeys = this.isInverse ? this._subKeys.slice().reverse() : this._subKeys;
+      /** @type {uint32[][][]} */
+      const roundPairs = this.isInverse ? this._roundPairs.slice().reverse() : this._roundPairs;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        output.push(...this._transformBlock(block, subKeys));
+        output.push(...this._transformBlock(block, roundPairs));
       }
       this.inputBuffer = [];
       return output;
     }
 
+    /**
+     * @param {uint8[]} bytes - Block bytes
+     * @param {int32} off - Offset of the big-endian 64-bit word
+     * @returns {uint32[]} [hi, lo]
+     */
     _bytesToWord64(bytes, off) {
-      return {
-        hi: OpCodes.ToUint32(OpCodes.Pack32BE(bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3])),
-        lo: OpCodes.ToUint32(OpCodes.Pack32BE(bytes[off + 4], bytes[off + 5], bytes[off + 6], bytes[off + 7]))
-      };
+      /** @type {uint32[]} */
+      const w = [
+        OpCodes.ToUint32(OpCodes.Pack32BE(bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3])),
+        OpCodes.ToUint32(OpCodes.Pack32BE(bytes[off + 4], bytes[off + 5], bytes[off + 6], bytes[off + 7]))
+      ];
+      return w;
     }
 
+    /**
+     * @param {uint32[]} w - [hi, lo]
+     * @returns {uint8[]} 8 big-endian bytes
+     */
     _word64ToBytes(w) {
-      return [...OpCodes.Unpack32BE(w.hi), ...OpCodes.Unpack32BE(w.lo)];
+      /** @type {uint8[]} */
+      const out = [...OpCodes.Unpack32BE(w[0]), ...OpCodes.Unpack32BE(w[1])];
+      return out;
     }
 
     // Forward Feistel transform. Decryption reuses the same transform with a
     // reversed round-key order (standard Feistel network property).
     /**
      * @param {uint8[]} block - Input block
+     * @param {uint32[][][]} roundPairs - Per round [a, b] key word pairs
      * @returns {uint8[]} Output block
      */
-    _transformBlock(block, subKeys) {
+    _transformBlock(block, roundPairs) {
       let left = this._bytesToWord64(block, 0);
       let right = this._bytesToWord64(block, 8);
 
       for (let i = 0; i < ROUNDS; i++) {
-        const [a, b] = subKeys[i];
+        const a = roundPairs[i][0], b = roundPairs[i][1];
         left = xor64(RF(a, b, right), left);
-        [left, right] = [right, left];
+        const t = left; left = right; right = t;
       }
 
       return [...this._word64ToBytes(right), ...this._word64ToBytes(left)];
@@ -292,19 +354,27 @@
 
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[][][]} Per round [a, b] key word pairs
      */
     _generateSubKeys(keyBytes) {
+      /** @type {uint32[]} */
       const pk = [];
       for (let i = 0; i < 8; i++)
         pk.push(OpCodes.ToUint32(OpCodes.Pack32BE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3])));
 
-      const oap = new Array(SUBKEY_ROUNDS), obp = new Array(SUBKEY_ROUNDS);
-      const eap = new Array(SUBKEY_ROUNDS), ebp = new Array(SUBKEY_ROUNDS);
+      /** @type {uint32[][]} */
+      const oap = new Array(SUBKEY_ROUNDS);
+      /** @type {uint32[][]} */
+      const obp = new Array(SUBKEY_ROUNDS);
+      /** @type {uint32[][]} */
+      const eap = new Array(SUBKEY_ROUNDS);
+      /** @type {uint32[][]} */
+      const ebp = new Array(SUBKEY_ROUNDS);
 
-      oap[0] = { hi: pk[0], lo: pk[7] };
-      obp[0] = { hi: pk[4], lo: pk[3] };
-      eap[0] = { hi: pk[1], lo: pk[6] };
-      ebp[0] = { hi: pk[5], lo: pk[2] };
+      oap[0] = [pk[0], pk[7]];
+      obp[0] = [pk[4], pk[3]];
+      eap[0] = [pk[1], pk[6]];
+      ebp[0] = [pk[5], pk[2]];
 
       for (let i = 1; i < SUBKEY_ROUNDS; i++) {
         oap[i] = xor64(oap[0], KA[i - 1]);
@@ -313,17 +383,28 @@
         ebp[i] = xor64(ebp[0], KB[i - 1]);
       }
 
+      /** @type {uint32[][][]} */
       const keys = new Array(ROUNDS);
-      let left = { hi: 0, lo: 0 }, right = { hi: 0, lo: 0 };
+      /** @type {uint32[]} */
+      let left = [0, 0];
+      /** @type {uint32[]} */
+      let right = [0, 0];
       for (let r = 0; r < ROUNDS; r++) {
         for (let s = 0; s < SUBKEY_ROUNDS; s++) {
-          const a = OpCodes.And32(r, 1) === 0 ? oap[s] : eap[s];
-          const b = OpCodes.And32(r, 1) === 0 ? obp[s] : ebp[s];
+          // r even takes oap/obp, r odd takes eap/ebp
+          let a = eap[s];
+          let b = ebp[s];
+          if (OpCodes.And32(r, 1) === 0) {
+            a = oap[s];
+            b = obp[s];
+          }
           left = xor64(RF(a, b, right), left);
-          [left, right] = [right, left];
+          const t = left; left = right; right = t;
         }
-        [left, right] = [right, left];
-        keys[r] = [left, right];
+        const t = left; left = right; right = t;
+        /** @type {uint32[][]} */
+        const pair = [left, right];
+        keys[r] = pair;
       }
       return keys;
     }
