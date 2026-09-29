@@ -137,10 +137,15 @@ class RabbitInstance extends IAlgorithmInstance {
     this._key = null;
     /** @type {uint8[]|null} */
     this._iv = null;
+    /** @type {uint32[]} */
     this.X = new Array(8);
+    /** @type {uint32[]} */
     this.C = new Array(8);
+    /** @type {uint32} */
     this.b = 0;
+    /** @type {uint8[]} */
     this.keystreamBuffer = [];
+    /** @type {int32} */
     this.keystreamPosition = 0;
   }
 
@@ -237,11 +242,14 @@ class RabbitInstance extends IAlgorithmInstance {
   }
 
   _initialize() {
-    if (!this._key) return;
+    if (!this._key) {
+      return;
+    }
 
     // RFC 4503 hands the key over as an octet string that OS2IP turns into a
     // single 128-bit integer, so the subkey K0 = K[15..0] is built from the LAST
     // two octets and K7 = K[127..112] from the first two.
+    /** @type {uint32[]} */
     const K = new Array(8);
     for (let i = 0; i < 8; i++) {
       K[i] = OpCodes.Or32(OpCodes.Shl32(this._key[14 - i * 2], 8), this._key[15 - i * 2]);
@@ -299,72 +307,89 @@ class RabbitInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @param {uint32} x
+   * @param {uint32} c
+   * @returns {uint32}
+   */
   _gFunction(x, c) {
-    const gx = OpCodes.ToUint32(x + c);
+    const gx = OpCodes.Add32(x, c);
     const ga = OpCodes.And32(gx, 0xffff);
     const gb = OpCodes.Shr32(gx, 16);
-    const gh = OpCodes.Shr32(OpCodes.Shr32(ga * ga, 17) + ga * gb, 15) + gb * gb;
+    /** @type {uint32} */
+    // The products stay below 2^32; gh is only consumed modulo 2^32.
+    const gh = OpCodes.Add32(OpCodes.Shr32(OpCodes.Add32(OpCodes.Shr32(OpCodes.Mul32(ga, ga), 17), OpCodes.Mul32(ga, gb)), 15), OpCodes.Mul32(gb, gb));
+    /** @type {int32} */
     const gl = OpCodes.ToInt(OpCodes.And32(gx, 0xffff0000) * gx) + OpCodes.ToInt(OpCodes.And32(gx, 0x0000ffff) * gx);
     return OpCodes.ToUint32(OpCodes.Xor32(gh, gl));
   }
 
   _nextState() {
+    /** @type {uint32[]} */
     const C_ = new Array(8);
     for (let i = 0; i < 8; i++) {
       C_[i] = this.C[i];
     }
 
-    this.C[0] = OpCodes.ToInt(this.C[0] + 0x4d34d34d + this.b);
-    this.C[1] = OpCodes.ToInt(this.C[1] + 0xd34d34d3 + (OpCodes.ToUint32(this.C[0]) < OpCodes.ToUint32(C_[0]) ? 1 : 0));
-    this.C[2] = OpCodes.ToInt(this.C[2] + 0x34d34d34 + (OpCodes.ToUint32(this.C[1]) < OpCodes.ToUint32(C_[1]) ? 1 : 0));
-    this.C[3] = OpCodes.ToInt(this.C[3] + 0x4d34d34d + (OpCodes.ToUint32(this.C[2]) < OpCodes.ToUint32(C_[2]) ? 1 : 0));
-    this.C[4] = OpCodes.ToInt(this.C[4] + 0xd34d34d3 + (OpCodes.ToUint32(this.C[3]) < OpCodes.ToUint32(C_[3]) ? 1 : 0));
-    this.C[5] = OpCodes.ToInt(this.C[5] + 0x34d34d34 + (OpCodes.ToUint32(this.C[4]) < OpCodes.ToUint32(C_[4]) ? 1 : 0));
-    this.C[6] = OpCodes.ToInt(this.C[6] + 0x4d34d34d + (OpCodes.ToUint32(this.C[5]) < OpCodes.ToUint32(C_[5]) ? 1 : 0));
-    this.C[7] = OpCodes.ToInt(this.C[7] + 0xd34d34d3 + (OpCodes.ToUint32(this.C[6]) < OpCodes.ToUint32(C_[6]) ? 1 : 0));
+    this.C[0] = OpCodes.Add32(OpCodes.Add32(this.C[0], 0x4d34d34d), this.b);
+    this.C[1] = OpCodes.Add32(OpCodes.Add32(this.C[1], 0xd34d34d3), OpCodes.ToUint32(this.C[0]) < OpCodes.ToUint32(C_[0]) ? 1 : 0);
+    this.C[2] = OpCodes.Add32(OpCodes.Add32(this.C[2], 0x34d34d34), OpCodes.ToUint32(this.C[1]) < OpCodes.ToUint32(C_[1]) ? 1 : 0);
+    this.C[3] = OpCodes.Add32(OpCodes.Add32(this.C[3], 0x4d34d34d), OpCodes.ToUint32(this.C[2]) < OpCodes.ToUint32(C_[2]) ? 1 : 0);
+    this.C[4] = OpCodes.Add32(OpCodes.Add32(this.C[4], 0xd34d34d3), OpCodes.ToUint32(this.C[3]) < OpCodes.ToUint32(C_[3]) ? 1 : 0);
+    this.C[5] = OpCodes.Add32(OpCodes.Add32(this.C[5], 0x34d34d34), OpCodes.ToUint32(this.C[4]) < OpCodes.ToUint32(C_[4]) ? 1 : 0);
+    this.C[6] = OpCodes.Add32(OpCodes.Add32(this.C[6], 0x4d34d34d), OpCodes.ToUint32(this.C[5]) < OpCodes.ToUint32(C_[5]) ? 1 : 0);
+    this.C[7] = OpCodes.Add32(OpCodes.Add32(this.C[7], 0xd34d34d3), OpCodes.ToUint32(this.C[6]) < OpCodes.ToUint32(C_[6]) ? 1 : 0);
     this.b = OpCodes.ToUint32(this.C[7]) < OpCodes.ToUint32(C_[7]) ? 1 : 0;
 
+    /** @type {uint32[]} */
     const G = new Array(8);
     for (let i = 0; i < 8; i++) {
       G[i] = this._gFunction(this.X[i], this.C[i]);
     }
 
-    this.X[0] = OpCodes.ToInt(G[0] + OpCodes.RotL32(G[7], 16) + OpCodes.RotL32(G[6], 16));
-    this.X[1] = OpCodes.ToInt(G[1] + OpCodes.RotL32(G[0], 8) + G[7]);
-    this.X[2] = OpCodes.ToInt(G[2] + OpCodes.RotL32(G[1], 16) + OpCodes.RotL32(G[0], 16));
-    this.X[3] = OpCodes.ToInt(G[3] + OpCodes.RotL32(G[2], 8) + G[1]);
-    this.X[4] = OpCodes.ToInt(G[4] + OpCodes.RotL32(G[3], 16) + OpCodes.RotL32(G[2], 16));
-    this.X[5] = OpCodes.ToInt(G[5] + OpCodes.RotL32(G[4], 8) + G[3]);
-    this.X[6] = OpCodes.ToInt(G[6] + OpCodes.RotL32(G[5], 16) + OpCodes.RotL32(G[4], 16));
-    this.X[7] = OpCodes.ToInt(G[7] + OpCodes.RotL32(G[6], 8) + G[5]);
+    this.X[0] = OpCodes.Add32(OpCodes.Add32(G[0], OpCodes.RotL32(G[7], 16)), OpCodes.RotL32(G[6], 16));
+    this.X[1] = OpCodes.Add32(OpCodes.Add32(G[1], OpCodes.RotL32(G[0], 8)), G[7]);
+    this.X[2] = OpCodes.Add32(OpCodes.Add32(G[2], OpCodes.RotL32(G[1], 16)), OpCodes.RotL32(G[0], 16));
+    this.X[3] = OpCodes.Add32(OpCodes.Add32(G[3], OpCodes.RotL32(G[2], 8)), G[1]);
+    this.X[4] = OpCodes.Add32(OpCodes.Add32(G[4], OpCodes.RotL32(G[3], 16)), OpCodes.RotL32(G[2], 16));
+    this.X[5] = OpCodes.Add32(OpCodes.Add32(G[5], OpCodes.RotL32(G[4], 8)), G[3]);
+    this.X[6] = OpCodes.Add32(OpCodes.Add32(G[6], OpCodes.RotL32(G[5], 16)), OpCodes.RotL32(G[4], 16));
+    this.X[7] = OpCodes.Add32(OpCodes.Add32(G[7], OpCodes.RotL32(G[6], 8)), G[5]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _generateBlock() {
     this._nextState();
 
-    const S = new Array(4);
-    S[0] = OpCodes.Xor32(OpCodes.Xor32(this.X[0], OpCodes.Shr32(this.X[5], 16)), OpCodes.Shl32(this.X[3], 16));
-    S[1] = OpCodes.Xor32(OpCodes.Xor32(this.X[2], OpCodes.Shr32(this.X[7], 16)), OpCodes.Shl32(this.X[5], 16));
-    S[2] = OpCodes.Xor32(OpCodes.Xor32(this.X[4], OpCodes.Shr32(this.X[1], 16)), OpCodes.Shl32(this.X[7], 16));
-    S[3] = OpCodes.Xor32(OpCodes.Xor32(this.X[6], OpCodes.Shr32(this.X[3], 16)), OpCodes.Shl32(this.X[1], 16));
+    /** @type {uint32[]} */
+    const sw = new Array(4);
+    sw[0] = OpCodes.Xor32(OpCodes.Xor32(this.X[0], OpCodes.Shr32(this.X[5], 16)), OpCodes.Shl32(this.X[3], 16));
+    sw[1] = OpCodes.Xor32(OpCodes.Xor32(this.X[2], OpCodes.Shr32(this.X[7], 16)), OpCodes.Shl32(this.X[5], 16));
+    sw[2] = OpCodes.Xor32(OpCodes.Xor32(this.X[4], OpCodes.Shr32(this.X[1], 16)), OpCodes.Shl32(this.X[7], 16));
+    sw[3] = OpCodes.Xor32(OpCodes.Xor32(this.X[6], OpCodes.Shr32(this.X[3], 16)), OpCodes.Shl32(this.X[1], 16));
 
     /** @type {uint8[]} */
     const keystream = [];
 
     for (let i = 0; i < 4; i++) {
-      S[i] = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(S[i], 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(S[i], 24), 0xff00ff00));
+      sw[i] = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(sw[i], 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(sw[i], 24), 0xff00ff00));
     }
 
     for (let i = 3; i >= 0; i--) {
-      keystream.push(OpCodes.ToByte(S[i]));
-      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 8)));
-      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 16)));
-      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 24)));
+      keystream.push(OpCodes.ToByte(sw[i]));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(sw[i], 8)));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(sw[i], 16)));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(sw[i], 24)));
     }
 
     return keystream;
   }
 
+  /**
+   * @returns {uint8}
+   */
   _getNextKeystreamByte() {
     if (this.keystreamPosition >= this.keystreamBuffer.length) {
       this.keystreamBuffer = this._generateBlock();
