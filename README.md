@@ -55,6 +55,7 @@ A modern web-based cryptographic toolkit featuring classical and contemporary en
 - Dark-themed responsive interface with legacy browser support
 - A broad range of cipher implementations (Caesar, ROT variants, BASE64, Blowfish, TEA, AES, etc.)
 - Built-in test suite with official test vectors
+- [Algorithm reference](./Cipher/docs/algorithms/), one page per algorithm generated from the sources
 - Hex display for binary data visualization
 - Cross-browser compatibility (IE5 to modern browsers)
 
