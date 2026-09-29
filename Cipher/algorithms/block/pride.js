@@ -46,6 +46,7 @@
   const SBOX = [0x0, 0x4, 0x8, 0xF, 0x1, 0x5, 0xE, 0x9, 0x2, 0x7, 0xA, 0xC, 0xB, 0xD, 0x6, 0x3];
 
   // P-layer bit permutation: for i in range(16): for j in range(4): P[idx++] = i + j*16
+  /** @type {int32[]} */
   const P = [];
   for (let i = 0; i < 16; ++i) {
     for (let j = 0; j < 4; ++j) {
@@ -53,6 +54,7 @@
     }
   }
 
+  /** @type {int32[]} */
   const P_INV = new Array(64);
   for (let i = 0; i < 64; ++i) {
     P_INV[P[i]] = i;
@@ -109,10 +111,20 @@
     0b0001000000011000, 0b0000100000001100, 0b0000010000000110, 0b0000001000000011
   ];
 
+  // The 64-bit state is held as two 32-bit words [high, low]: bit n of the
+  // state (n = 0 is the least significant) is bit n of low for n < 32 and
+  // bit n - 32 of high otherwise.
+
   // Matrix multiplication in GF(2)
   // Matrix is 16x16, input and output are 16-bit values
   // Following pypride: row 0 -> bit 15 (MSB), row 15 -> bit 0 (LSB)
+  /**
+   * @param {uint16[]} matrix - 16 matrix rows
+   * @param {uint32} input - 16-bit input
+   * @returns {uint32} 16-bit output
+   */
   function matrixMult(matrix, input) {
+    /** @type {uint32} */
     let result = 0;
     for (let row = 0; row < 16; ++row) {
       const rowVal = matrix[row];
@@ -122,7 +134,7 @@
       let bitCount = 0;
       let temp = dotProduct;
       while (temp) {
-        temp = OpCodes.And32(temp, temp - 1);  // Clear least significant bit
+        temp = OpCodes.And32(temp, OpCodes.Sub32(temp, 1));  // Clear least significant bit
         ++bitCount;
       }
       if (bitCount % 2 === 1) {
@@ -132,106 +144,150 @@
     return result;
   }
 
-  // Convert byte array to 64-bit BigInt (big-endian)
-  function bytesToInt(bytes) {
-    let result = 0n;
-    for (let i = 0; i < 8; ++i) {
-      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
-    }
-    return result;
+  // Convert byte array to the 64-bit state (big-endian)
+  /**
+   * @param {uint8[]} bytes - 8 bytes
+   * @returns {uint32[]} State [high, low]
+   */
+  function bytesToState(bytes) {
+    return [
+      OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]),
+      OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7])
+    ];
   }
 
-  // Convert 64-bit BigInt to byte array (big-endian)
-  function intToBytes(value) {
-    // Manual unpacking since OpCodes.Unpack64BE doesn't support BigInt
-    const result = new Array(8);
-    for (let i = 7; i >= 0; --i) {
-      result[i] = Number(OpCodes.AndN(value, 0xFFn));
-      value = OpCodes.ShiftRn(value, 8n);
-    }
-    return result;
+  // Convert the 64-bit state to a byte array (big-endian)
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @returns {uint8[]} 8 bytes
+   */
+  function stateToBytes(state) {
+    return OpCodes.Unpack32BE(state[0]).concat(OpCodes.Unpack32BE(state[1]));
   }
 
-  // Apply bit permutation to 64-bit state (as BigInt)
+  /**
+   * @param {uint32[]} a - State [high, low]
+   * @param {uint32[]} b - State [high, low]
+   * @returns {uint32[]} a XOR b
+   */
+  function xorState(a, b) {
+    return [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])];
+  }
+
+  // Apply bit permutation to the 64-bit state
   // Following pypride: state_[p[i]] = state[i]
   // Bit at input position i goes to output position p[i]
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @param {int32[]} perm - Bit permutation
+   * @returns {uint32[]} Permuted state
+   */
   function applyPermutation(state, perm) {
-    let result = 0n;
+    /** @type {uint32} */
+    let high = 0;
+    /** @type {uint32} */
+    let low = 0;
     for (let i = 0; i < 64; ++i) {
-      const bitValue = OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(i)), 1n);
+      const bitValue = (i < 32)
+        ? OpCodes.And32(OpCodes.Shr32(state[1], i), 1)
+        : OpCodes.And32(OpCodes.Shr32(state[0], i - 32), 1);
       const outPos = perm[i];
-      result |= OpCodes.ShiftLn(bitValue, BigInt(outPos));
+      if (outPos < 32) low = OpCodes.Or32(low, OpCodes.Shl32(bitValue, outPos));
+      else high = OpCodes.Or32(high, OpCodes.Shl32(bitValue, outPos - 32));
+    }
+    return [high, low];
+  }
+
+  // Apply S-box to every nibble of a 32-bit half of the state
+  /**
+   * @param {uint32} word - 32-bit half of the state
+   * @returns {uint32} Substituted half
+   */
+  function applySboxWord(word) {
+    /** @type {uint32} */
+    let result = 0;
+    for (let i = 0; i < 8; ++i) {
+      const nibble = OpCodes.And32(OpCodes.Shr32(word, i * 4), 0xF);
+      result = OpCodes.Or32(result, OpCodes.Shl32(SBOX[nibble], i * 4));
     }
     return result;
   }
 
-  // Apply S-box to 64-bit state (as BigInt)
+  // Apply S-box to the 64-bit state
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @returns {uint32[]} Substituted state
+   */
   function applySbox(state) {
-    let result = 0n;
-    for (let i = 0; i < 16; ++i) {
-      const nibble = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(i * 4)), 0xFn));
-      const sboxed = SBOX[nibble];
-      result |= OpCodes.ShiftLn(BigInt(sboxed), BigInt(i * 4));
-    }
-    return result;
+    return [applySboxWord(state[0]), applySboxWord(state[1])];
   }
 
-  // Apply linear layer L to 64-bit state (as BigInt)
+  // Apply one 16x16 matrix per 16-bit segment: segment 0 (bits 0-15) uses
+  // m0, ..., segment 3 (bits 48-63) uses m3
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @param {uint16[]} m0 - Matrix for segment 0 (bits 0-15)
+   * @param {uint16[]} m1 - Matrix for segment 1 (bits 16-31)
+   * @param {uint16[]} m2 - Matrix for segment 2 (bits 32-47)
+   * @param {uint16[]} m3 - Matrix for segment 3 (bits 48-63)
+   * @returns {uint32[]} Transformed state
+   */
+  function applyMatrices(state, m0, m1, m2, m3) {
+    const s0 = matrixMult(m0, OpCodes.And32(state[1], 0xFFFF));
+    const s1 = matrixMult(m1, OpCodes.Shr32(state[1], 16));
+    const s2 = matrixMult(m2, OpCodes.And32(state[0], 0xFFFF));
+    const s3 = matrixMult(m3, OpCodes.Shr32(state[0], 16));
+    return [OpCodes.Or32(OpCodes.Shl32(s3, 16), s2), OpCodes.Or32(OpCodes.Shl32(s1, 16), s0)];
+  }
+
+  // Apply linear layer L to the 64-bit state
   // Following pypride: L = diag(L3, L2, L1, L0) from LSB to MSB
   // Segment 0 (bits 0-15) uses L3, segment 1 uses L2, segment 2 uses L1, segment 3 uses L0
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @returns {uint32[]} Transformed state
+   */
   function linearLayer(state) {
-    let result = 0n;
-    const matrices = [L3, L2, L1, L0];  // pypride order: L3, L2, L1, L0
-
-    for (let seg = 0; seg < 4; ++seg) {
-      // Extract 16-bit segment (4 nibbles)
-      const input = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(seg * 16)), 0xFFFFn));
-
-      // Apply matrix multiplication
-      const output = matrixMult(matrices[seg], input);
-
-      // Pack result back
-      result |= OpCodes.ShiftLn(BigInt(output), BigInt(seg * 16));
-    }
-
-    return result;
+    return applyMatrices(state, L3, L2, L1, L0);  // pypride order: L3, L2, L1, L0
   }
 
-  // Apply inverse linear layer (as BigInt)
+  // Apply inverse linear layer
+  /**
+   * @param {uint32[]} state - State [high, low]
+   * @returns {uint32[]} Transformed state
+   */
   function invLinearLayer(state) {
-    let result = 0n;
-    const invMatrices = [L3, L2_INV, L1_INV, L0];  // pypride order: L3_inv, L2_inv, L1_inv, L0_inv (L0 and L3 are self-inverse)
-
-    for (let seg = 0; seg < 4; ++seg) {
-      // Extract 16-bit segment (4 nibbles)
-      const input = Number(OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(seg * 16)), 0xFFFFn));
-
-      // Apply inverse matrix multiplication
-      const output = matrixMult(invMatrices[seg], input);
-
-      // Pack result back
-      result |= OpCodes.ShiftLn(BigInt(output), BigInt(seg * 16));
-    }
-
-    return result;
+    // pypride order: L3_inv, L2_inv, L1_inv, L0_inv (L0 and L3 are self-inverse)
+    return applyMatrices(state, L3, L2_INV, L1_INV, L0);
   }
 
   // Key schedule function g
+  /**
+   * @param {int32} x - Key byte
+   * @param {int32} i - Round number
+   * @param {int32} j - Constant index
+   * @returns {int32} (x + m[j] * i) mod 256
+   */
   function g(x, i, j) {
-    /** @type {uint8[]} */
+    /** @type {int32[]} */
     const m = [193, 165, 81, 197];
     return (x + m[j] * i) % 256;  // Modulo instead of bitwise AND
   }
 
-  // Generate round keys from 128-bit key
+  // Generate the 20 round keys from the second key half
+  /**
+   * @param {uint8[]} key - 16-byte key
+   * @returns {uint8[][]} 20 round keys of 8 bytes
+   */
   function generateRoundKeys(key) {
-    const k0 = key.slice(0, 8);
     const k1 = key.slice(8, 16);
 
+    /** @type {uint8[][]} */
     const roundKeys = [];
 
     // Generate 20 round keys
     for (let i = 1; i <= 20; ++i) {
+      /** @type {uint8[]} */
       const rk = new Array(8);
       for (let j = 0; j < 8; ++j) {
         if (j % 2 === 0) {
@@ -243,7 +299,7 @@
       roundKeys.push(rk);
     }
 
-    return { k0, k1, roundKeys };
+    return roundKeys;
   }
 
   /**
@@ -360,7 +416,10 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
-      this._keySchedule = null;
+      /** @type {uint8[]|null} */
+      this._k0 = null;
+      /** @type {uint8[][]|null} */
+      this._roundKeys = null;
     }
 
     /**
@@ -372,7 +431,8 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this._keySchedule = null;
+        this._k0 = null;
+        this._roundKeys = null;
         return;
       }
 
@@ -381,7 +441,8 @@
       }
 
       this._key = [...keyBytes];
-      this._keySchedule = generateRoundKeys(new Uint8Array(this._key));
+      this._k0 = this._key.slice(0, 8);
+      this._roundKeys = generateRoundKeys(this._key);
     }
 
     /**
@@ -437,9 +498,9 @@
      * @returns {uint8[]} Output block
      */
     processBlock(block) {
-      // Convert byte array to BigInt (big-endian)
-      let state = bytesToInt(block);
-      const k0 = bytesToInt(this._keySchedule.k0);
+      // Convert byte array to the state (big-endian)
+      let state = bytesToState(block);
+      const k0 = bytesToState(this._k0);
 
       if (this.isInverse) {
         // Decryption: reverse of encryption
@@ -448,7 +509,7 @@
         state = applyPermutation(state, P_INV);
 
         // 2. XOR with k0 (whitening)
-        state ^= k0;
+        state = xorState(state, k0);
 
         // 3. 20 rounds in reverse
         for (let r = 19; r >= 0; --r) {
@@ -456,8 +517,8 @@
           state = applySbox(state);
 
           // Round key XOR (apply P^{-1} to round key before XOR, following pypride)
-          const rk = bytesToInt(this._keySchedule.roundKeys[r]);
-          state ^= applyPermutation(rk, P_INV);
+          const rk = bytesToState(this._roundKeys[r]);
+          state = xorState(state, applyPermutation(rk, P_INV));
 
           // If not last iteration (r > 0), apply P, L^{-1}, P^{-1}
           if (r > 0) {
@@ -468,7 +529,7 @@
         }
 
         // 4. XOR with k0 (whitening)
-        state ^= k0;
+        state = xorState(state, k0);
 
         // 5. Apply P
         state = applyPermutation(state, P);
@@ -480,13 +541,13 @@
         state = applyPermutation(state, P_INV);
 
         // 2. XOR with k0 (whitening)
-        state ^= k0;
+        state = xorState(state, k0);
 
         // 3. 20 rounds
         for (let r = 0; r < 20; ++r) {
           // Round key XOR (apply P^{-1} to round key before XOR, following pypride)
-          const rk = bytesToInt(this._keySchedule.roundKeys[r]);
-          state ^= applyPermutation(rk, P_INV);
+          const rk = bytesToState(this._roundKeys[r]);
+          state = xorState(state, applyPermutation(rk, P_INV));
 
           // S-box
           state = applySbox(state);
@@ -500,14 +561,14 @@
         }
 
         // 4. XOR with k0 (whitening)
-        state ^= k0;
+        state = xorState(state, k0);
 
         // 5. Apply P
         state = applyPermutation(state, P);
       }
 
-      // Convert BigInt back to byte array (big-endian)
-      return intToBytes(state);
+      // Convert the state back to a byte array (big-endian)
+      return stateToBytes(state);
     }
   }
 
