@@ -459,7 +459,7 @@
      */
     mix160_3(x5, x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x5, 0x00000FC0), OpCodes.And32(x6, 0x0007F000)), OpCodes.And32(x7, 0x01F80000));
-      return OpCodes.RotL32(tmp, 6);
+      return OpCodes.Shr32(tmp, 6);
     }
 
     /**
@@ -470,7 +470,7 @@
      */
     mix160_4(x5, x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x5, 0x0007F000), OpCodes.And32(x6, 0x01F80000)), OpCodes.And32(x7, 0xFE000000));
-      return OpCodes.RotL32(tmp, 12);
+      return OpCodes.Shr32(tmp, 12);
     }
 
     /**
@@ -499,7 +499,7 @@
      */
     mix192_2(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x000003E0), OpCodes.And32(x7, 0x0000FC00));
-      return OpCodes.RotL32(tmp, 5);
+      return OpCodes.Shr32(tmp, 5);
     }
 
     /**
@@ -509,7 +509,7 @@
      */
     mix192_3(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x0000FC00), OpCodes.And32(x7, 0x001F0000));
-      return OpCodes.RotL32(tmp, 10);
+      return OpCodes.Shr32(tmp, 10);
     }
 
     /**
@@ -519,7 +519,7 @@
      */
     mix192_4(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x001F0000), OpCodes.And32(x7, 0x03E00000));
-      return OpCodes.RotL32(tmp, 16);
+      return OpCodes.Shr32(tmp, 16);
     }
 
     /**
@@ -529,7 +529,7 @@
      */
     mix192_5(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x03E00000), OpCodes.And32(x7, 0xFC000000));
-      return OpCodes.RotL32(tmp, 21);
+      return OpCodes.Shr32(tmp, 21);
     }
 
     /**
@@ -660,8 +660,90 @@
             expected: OpCodes.Hex8ToBytes("BE417BB4DD5CFB76C7126F4F8EEB1553A449039307B1A3CD451DBFDC0FBBE330"),
             passes: 5,
             hashBits: 256
+          },
+          // The 160 and 192-bit folds, from the published php-src HAVAL values
+          {
+            text: "Empty string - HAVAL-160/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes(""),
+            expected: OpCodes.Hex8ToBytes("D353C3AE22A25401D257643836D7231A9A95F953"),
+            passes: 3,
+            hashBits: 160
+          },
+          {
+            text: "Empty string - HAVAL-192/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes(""),
+            expected: OpCodes.Hex8ToBytes("4839D0626F95935E17EE2FC4509387BBE2CC46CB382FFE85"),
+            passes: 5,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-160/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("B21E876C4D391E2A897661149D83576B5530A089"),
+            passes: 3,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-160/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("77ACA22F5B12CC09010AFC9C0797308638B1CB9B"),
+            passes: 4,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-160/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("AE646B04845E3351F00C5161D138940E1FA0C11C"),
+            passes: 5,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-192/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("A7B14C9EF3092319B0E75E3B20B957D180BF20745629E8DE"),
+            passes: 3,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-192/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("7E29881ED05C915903DD5E24A8E81CDE5D910142AE66207C"),
+            passes: 4,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-192/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("D12091104555B00119A8D07808A3380BF9E60018915B9025"),
+            passes: 5,
+            hashBits: 192
+          },
+          {
+            text: "String 'a..z A..Z 0..9' (61 chars) x3 - HAVAL-160/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789"),
+            expected: OpCodes.Hex8ToBytes("3444E38CC2A132B818B554CED8F7D9592DF28F57"),
+            passes: 4,
+            hashBits: 160
+          },
+          {
+            text: "String 'a..z A..Z 0..9' (61 chars) x3 - HAVAL-192/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789"),
+            expected: OpCodes.Hex8ToBytes("0CA58F140ED92828A27913CE5636611ABCADA220FCCF3AF7"),
+            passes: 4,
+            hashBits: 192
           }
         ];
+
 
         // For test suite compatibility
         /** @type {TestCase[]} */
