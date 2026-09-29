@@ -51,7 +51,8 @@
    */
 
   // DELTA constants for key schedule (128 values)
-  const DELTA = Object.freeze([
+  /** @type {uint8[]} */
+  const DELTA = [
     0x5A,0x6D,0x36,0x1B,0x0D,0x06,0x03,0x41,
     0x60,0x30,0x18,0x4C,0x66,0x33,0x59,0x2C,
     0x56,0x2B,0x15,0x4A,0x65,0x72,0x39,0x1C,
@@ -68,10 +69,12 @@
     0x40,0x20,0x10,0x08,0x44,0x22,0x11,0x48,
     0x64,0x32,0x19,0x0C,0x46,0x23,0x51,0x68,
     0x74,0x3A,0x5D,0x2E,0x57,0x6B,0x35,0x5A
-  ]);
+  ];
+  Object.freeze(DELTA);
 
   // F0 S-box (256 values)
-  const F0 = Object.freeze([
+  /** @type {uint8[]} */
+  const F0 = [
     0x00,0x86,0x0D,0x8B,0x1A,0x9C,0x17,0x91,
     0x34,0xB2,0x39,0xBF,0x2E,0xA8,0x23,0xA5,
     0x68,0xEE,0x65,0xE3,0x72,0xF4,0x7F,0xF9,
@@ -104,10 +107,12 @@
     0x06,0x80,0x0B,0x8D,0x1C,0x9A,0x11,0x97,
     0x5A,0xDC,0x57,0xD1,0x40,0xC6,0x4D,0xCB,
     0x6E,0xE8,0x63,0xE5,0x74,0xF2,0x79,0xFF
-  ]);
+  ];
+  Object.freeze(F0);
 
   // F1 S-box (256 values)
-  const F1 = Object.freeze([
+  /** @type {uint8[]} */
+  const F1 = [
     0x00,0x58,0xB0,0xE8,0x61,0x39,0xD1,0x89,
     0xC2,0x9A,0x72,0x2A,0xA3,0xFB,0x13,0x4B,
     0x85,0xDD,0x35,0x6D,0xE4,0xBC,0x54,0x0C,
@@ -140,7 +145,8 @@
     0xF3,0xAB,0x43,0x1B,0x92,0xCA,0x22,0x7A,
     0xB4,0xEC,0x04,0x5C,0xD5,0x8D,0x65,0x3D,
     0x76,0x2E,0xC6,0x9E,0x17,0x4F,0xA7,0xFF
-  ]);
+  ];
+  Object.freeze(F1);
 
   /**
  * HIGHTAlgorithm - Block cipher implementation
@@ -205,7 +211,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HIGHTInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -222,15 +228,18 @@
   class HIGHTInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HIGHTAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.roundKeys = new Array(136); // 136-byte round key schedule
     }
 
@@ -247,7 +256,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (HIGHT requires 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (HIGHT requires 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -277,10 +286,10 @@
       // Generate remaining 128 bytes using DELTA constants
       for (let i = 0; i < 8; i++) {
         for (let j = 0; j < 8; j++) {
-          this.roundKeys[8 + 16 * i + j] = OpCodes.AndN(this._key[OpCodes.AndN(j - i, 7)] + DELTA[16 * i + j], 0xFF);
+          this.roundKeys[8 + 16 * i + j] = OpCodes.And32(OpCodes.Add32(this._key[OpCodes.And32(j - i, 7)], DELTA[16 * i + j]), 0xFF);
         }
         for (let j = 0; j < 8; j++) {
-          this.roundKeys[8 + 16 * i + j + 8] = OpCodes.AndN(this._key[OpCodes.AndN(j - i, 7) + 8] + DELTA[16 * i + j + 8], 0xFF);
+          this.roundKeys[8 + 16 * i + j + 8] = OpCodes.And32(OpCodes.Add32(this._key[OpCodes.Add32(OpCodes.And32(j - i, 7), 8)], DELTA[16 * i + j + 8]), 0xFF);
         }
       }
     }
@@ -289,24 +298,46 @@
      * HIGHT round function for encryption
      * Implements the macro from hight.cpp lines 150-155
      * The macro: HIGHT_ENC(k, i0,i1,i2,i3,i4,i5,i6,i7)
+    /**
+     * @param {uint8[]} xx - Eight state bytes (updated in place)
+     * @param {int32} k - Round index
+     * @param {int32} i0 - State index 0
+     * @param {int32} i1 - State index 1
+     * @param {int32} i2 - State index 2
+     * @param {int32} i3 - State index 3
+     * @param {int32} i4 - State index 4
+     * @param {int32} i5 - State index 5
+     * @param {int32} i6 - State index 6
+     * @param {int32} i7 - State index 7
      */
     _encryptRound(xx, k, i0, i1, i2, i3, i4, i5, i6, i7) {
-      xx[i0] = OpCodes.AndN(OpCodes.XorN(xx[i0], F0[xx[i1]] + this.roundKeys[4 * k + 3]), 0xFF);
-      xx[i2] = OpCodes.AndN(xx[i2] + OpCodes.XorN(F1[xx[i3]], this.roundKeys[4 * k + 2]), 0xFF);
-      xx[i4] = OpCodes.AndN(OpCodes.XorN(xx[i4], F0[xx[i5]] + this.roundKeys[4 * k + 1]), 0xFF);
-      xx[i6] = OpCodes.AndN(xx[i6] + OpCodes.XorN(F1[xx[i7]], this.roundKeys[4 * k + 0]), 0xFF);
+      xx[i0] = OpCodes.And32(OpCodes.Xor32(xx[i0], OpCodes.Add32(F0[xx[i1]], this.roundKeys[4 * k + 3])), 0xFF);
+      xx[i2] = OpCodes.And32(OpCodes.Add32(xx[i2], OpCodes.Xor32(F1[xx[i3]], this.roundKeys[4 * k + 2])), 0xFF);
+      xx[i4] = OpCodes.And32(OpCodes.Xor32(xx[i4], OpCodes.Add32(F0[xx[i5]], this.roundKeys[4 * k + 1])), 0xFF);
+      xx[i6] = OpCodes.And32(OpCodes.Add32(xx[i6], OpCodes.Xor32(F1[xx[i7]], this.roundKeys[4 * k + 0])), 0xFF);
     }
 
     /**
      * HIGHT round function for decryption
      * Implements the macro from hight.cpp lines 230-235
      * The macro: HIGHT_DEC(k, i0,i1,i2,i3,i4,i5,i6,i7)
+    /**
+     * @param {uint8[]} xx - Eight state bytes (updated in place)
+     * @param {int32} k - Round index
+     * @param {int32} i0 - State index 0
+     * @param {int32} i1 - State index 1
+     * @param {int32} i2 - State index 2
+     * @param {int32} i3 - State index 3
+     * @param {int32} i4 - State index 4
+     * @param {int32} i5 - State index 5
+     * @param {int32} i6 - State index 6
+     * @param {int32} i7 - State index 7
      */
     _decryptRound(xx, k, i0, i1, i2, i3, i4, i5, i6, i7) {
-      xx[i1] = OpCodes.AndN(xx[i1] - OpCodes.XorN(F1[xx[i2]], this.roundKeys[4 * k + 2]), 0xFF);
-      xx[i3] = OpCodes.AndN(OpCodes.XorN(xx[i3], F0[xx[i4]] + this.roundKeys[4 * k + 1]), 0xFF);
-      xx[i5] = OpCodes.AndN(xx[i5] - OpCodes.XorN(F1[xx[i6]], this.roundKeys[4 * k + 0]), 0xFF);
-      xx[i7] = OpCodes.AndN(OpCodes.XorN(xx[i7], F0[xx[i0]] + this.roundKeys[4 * k + 3]), 0xFF);
+      xx[i1] = OpCodes.And32(OpCodes.Sub32(xx[i1], OpCodes.Xor32(F1[xx[i2]], this.roundKeys[4 * k + 2])), 0xFF);
+      xx[i3] = OpCodes.And32(OpCodes.Xor32(xx[i3], OpCodes.Add32(F0[xx[i4]], this.roundKeys[4 * k + 1])), 0xFF);
+      xx[i5] = OpCodes.And32(OpCodes.Sub32(xx[i5], OpCodes.Xor32(F1[xx[i6]], this.roundKeys[4 * k + 0])), 0xFF);
+      xx[i7] = OpCodes.And32(OpCodes.Xor32(xx[i7], OpCodes.Add32(F0[xx[i0]], this.roundKeys[4 * k + 3])), 0xFF);
     }
 
     /**
@@ -331,10 +362,11 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 8-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -347,7 +379,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
+      /** @type {uint8[]} */
       const xx = new Array(8);
 
       if (this.isInverse) {
@@ -359,10 +396,10 @@
         xx[6] = block[5];
         xx[0] = block[7];
 
-        xx[1] = OpCodes.AndN(block[0] - this.roundKeys[4], 0xFF);
-        xx[3] = OpCodes.XorN(block[2], this.roundKeys[5]);
-        xx[5] = OpCodes.AndN(block[4] - this.roundKeys[6], 0xFF);
-        xx[7] = OpCodes.XorN(block[6], this.roundKeys[7]);
+        xx[1] = OpCodes.And32(OpCodes.Sub32(block[0], this.roundKeys[4]), 0xFF);
+        xx[3] = OpCodes.Xor32(block[2], this.roundKeys[5]);
+        xx[5] = OpCodes.And32(OpCodes.Sub32(block[4], this.roundKeys[6]), 0xFF);
+        xx[7] = OpCodes.Xor32(block[6], this.roundKeys[7]);
 
         // 32 rounds in reverse (lines 237-268)
         this._decryptRound(xx, 33, 7,6,5,4,3,2,1,0);
@@ -400,13 +437,13 @@
 
         // Final transformation (lines 285-294)
         return [
-          OpCodes.AndN(xx[0] - this.roundKeys[0], 0xFF),
+          OpCodes.And32(OpCodes.Sub32(xx[0], this.roundKeys[0]), 0xFF),
           xx[1],
-          OpCodes.XorN(xx[2], this.roundKeys[1]),
+          OpCodes.Xor32(xx[2], this.roundKeys[1]),
           xx[3],
-          OpCodes.AndN(xx[4] - this.roundKeys[2], 0xFF),
+          OpCodes.And32(OpCodes.Sub32(xx[4], this.roundKeys[2]), 0xFF),
           xx[5],
-          OpCodes.XorN(xx[6], this.roundKeys[3]),
+          OpCodes.Xor32(xx[6], this.roundKeys[3]),
           xx[7]
         ];
       } else {
@@ -418,10 +455,10 @@
         xx[5] = block[5];
         xx[7] = block[7];
 
-        xx[0] = OpCodes.AndN(block[0] + this.roundKeys[0], 0xFF);
-        xx[2] = OpCodes.XorN(block[2], this.roundKeys[1]);
-        xx[4] = OpCodes.AndN(block[4] + this.roundKeys[2], 0xFF);
-        xx[6] = OpCodes.XorN(block[6], this.roundKeys[3]);
+        xx[0] = OpCodes.And32(OpCodes.Add32(block[0], this.roundKeys[0]), 0xFF);
+        xx[2] = OpCodes.Xor32(block[2], this.roundKeys[1]);
+        xx[4] = OpCodes.And32(OpCodes.Add32(block[4], this.roundKeys[2]), 0xFF);
+        xx[6] = OpCodes.Xor32(block[6], this.roundKeys[3]);
 
         // 32 rounds (lines 157-188)
         this._encryptRound(xx,  2,  7,6,5,4,3,2,1,0);
@@ -459,13 +496,13 @@
 
         // Final transformation (lines 205-214)
         return [
-          OpCodes.AndN(xx[1] + this.roundKeys[4], 0xFF),
+          OpCodes.And32(OpCodes.Add32(xx[1], this.roundKeys[4]), 0xFF),
           xx[2],
-          OpCodes.XorN(xx[3], this.roundKeys[5]),
+          OpCodes.Xor32(xx[3], this.roundKeys[5]),
           xx[4],
-          OpCodes.AndN(xx[5] + this.roundKeys[6], 0xFF),
+          OpCodes.And32(OpCodes.Add32(xx[5], this.roundKeys[6]), 0xFF),
           xx[6],
-          OpCodes.XorN(xx[7], this.roundKeys[7]),
+          OpCodes.Xor32(xx[7], this.roundKeys[7]),
           xx[0]
         ];
       }

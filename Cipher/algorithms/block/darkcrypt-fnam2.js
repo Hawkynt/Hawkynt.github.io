@@ -47,9 +47,19 @@
   const STEPS = 64;
 
   // 32-bit modular multiply (low word).
-  function mul32(a, b) { return OpCodes.ToUint32(Math.imul(a, b)); }
+  /**
+   * @param {uint32} a - Factor
+   * @param {uint32} b - Factor
+   * @returns {uint32} Low 32 bits of the product
+   */
+  function mul32(a, b) { return OpCodes.Mul32(a, b); }
 
   // Round mixing function f(x,S) = S*(~(x<<7)) + ( (x>>>16) ^ ((x<<25) + S) )
+  /**
+   * @param {uint32} x - Input word
+   * @param {uint32} S - Step subkey
+   * @returns {uint32} Mixed word
+   */
   function mix(x, S) {
     const notShift = OpCodes.Not32(OpCodes.Shl32(x, 7));
     const t1 = mul32(S, notShift);
@@ -108,29 +118,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptFNAm2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptFNAm2Instance(this, isInverse);
     }
   }
 
   class DarkCryptFNAm2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptFNAm2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. FNAm2-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. FNAm2-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -143,8 +169,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -156,8 +183,12 @@
 
     // Sixteen 32-bit little-endian key words; index 16 is a per-session counter,
     // which is always 0 for a freshly keyed single block.
+    /**
+     * @returns {uint32[]} Seventeen key words
+     */
     _keyWords() {
       const k = this._key;
+      /** @type {uint32[]} */
       const K = [];
       for (let i = 0; i < 16; i++)
         K.push(OpCodes.Pack32LE(k[i * 4], k[i * 4 + 1], k[i * 4 + 2], k[i * 4 + 3]));
@@ -166,12 +197,22 @@
     }
 
     // Subkey for step r (session counter fixed at 0): S = K[m]*r + K[m+1], m = r & 15
+    /**
+     * @param {uint32[]} K - Key words
+     * @param {int32} r - Step index
+     * @returns {uint32} Step subkey
+     */
     _subkey(K, r) {
+      /** @type {int32} */
       const m = OpCodes.And32(r, 0xF);
       const kNext = (m + 1 <= 15) ? K[m + 1] : 0; // K[16] is the counter (0)
       return OpCodes.ToUint32(mul32(K[m], r) + kNext);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const K = this._keyWords();
       const w = [
@@ -192,6 +233,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const K = this._keyWords();
       const w = [

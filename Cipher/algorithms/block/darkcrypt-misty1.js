@@ -54,7 +54,8 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Standard RFC 2994 S7 table (7-bit in/out) -- matches the DarkCrypt implementation exactly.
-  const S7TABLE = Object.freeze([
+  /** @type {uint8[]} */
+  const S7TABLE = [
     0x1b,0x32,0x33,0x5a,0x3b,0x10,0x17,0x54,0x5b,0x1a,0x72,0x73,0x6b,0x2c,0x66,0x49,
     0x1f,0x24,0x13,0x6c,0x37,0x2e,0x3f,0x4a,0x5d,0x0f,0x40,0x56,0x25,0x51,0x1c,0x04,
     0x0b,0x46,0x20,0x0d,0x7b,0x35,0x44,0x42,0x2b,0x1e,0x41,0x14,0x4b,0x79,0x15,0x6f,
@@ -63,12 +64,14 @@
     0x59,0x48,0x03,0x57,0x7c,0x4f,0x62,0x3c,0x1d,0x21,0x5e,0x27,0x6a,0x70,0x4d,0x3a,
     0x01,0x6d,0x6e,0x63,0x18,0x77,0x23,0x05,0x26,0x76,0x00,0x31,0x2d,0x7a,0x7f,0x61,
     0x50,0x22,0x11,0x06,0x47,0x16,0x52,0x4e,0x71,0x3e,0x69,0x43,0x34,0x5c,0x58,0x7d
-  ]);
+  ];
+  Object.freeze(S7TABLE);
 
   // Non-standard S9 table (9-bit in/out), as used by the DarkCrypt
   // implementation -- roughly 300 of the 512 entries differ from the RFC 2994
   // reference table, so it cannot be reused from a standard implementation.
-  const S9TABLE = Object.freeze([
+  /** @type {uint16[]} */
+  const S9TABLE = [
     0x1c3,0x0cb,0x153,0x19f,0x1e3,0x0e9,0x0fb,0x035,0x181,0x0b9,0x117,0x1eb,0x133,0x009,0x02d,0x0d3,
     0x0c7,0x14a,0x037,0x07e,0x0eb,0x164,0x193,0x1d8,0x0a3,0x11e,0x055,0x02c,0x01d,0x1a2,0x163,0x118,
     0x14b,0x152,0x1d2,0x00f,0x02b,0x030,0x13a,0x0e5,0x111,0x138,0x18e,0x063,0x0e3,0x0c8,0x1f4,0x01b,
@@ -101,14 +104,32 @@
     0x1c0,0x0a9,0x11d,0x1b0,0x1a6,0x0cd,0x0f3,0x05c,0x102,0x05b,0x1d9,0x144,0x1f6,0x0ad,0x0a5,0x03a,
     0x1cb,0x136,0x17f,0x046,0x0e1,0x01e,0x1dd,0x0e6,0x137,0x1fa,0x185,0x08c,0x08f,0x040,0x1b5,0x0be,
     0x078,0x000,0x0ac,0x110,0x15e,0x124,0x002,0x1bc,0x0a2,0x0ea,0x070,0x1fc,0x116,0x15c,0x04c,0x1c2
-  ]);
+  ];
+  Object.freeze(S9TABLE);
 
+  /**
+   * @param {uint32} x - 7-bit input (masked)
+   * @returns {uint8} S7 output
+   */
   function S7(x) { return S7TABLE[OpCodes.And32(x, 0x7F)]; }
+  /**
+   * @param {uint32} x - 9-bit input (masked)
+   * @returns {uint16} S9 output
+   */
   function S9(x) { return S9TABLE[OpCodes.And32(x, 0x1FF)]; }
 
+  /**
+   * @param {int32} x - Value
+   * @returns {int32} x mod 8 in 0..7
+   */
   function mod8(x) { return ((x % 8) + 8) % 8; }
 
   // FI: two-stage S-box lattice (differs from RFC 2994's single-pass form).
+  /**
+   * @param {uint32} fiIn - 16-bit input
+   * @param {uint32} subkey - 16-bit subkey
+   * @returns {uint32} 16-bit output
+   */
   function FI(fiIn, subkey) {
     const D9 = OpCodes.And32(OpCodes.Shr32(fiIn, 7), 0x1FF);
     const D7 = OpCodes.And32(fiIn, 0x7F);
@@ -124,6 +145,12 @@
   }
 
   // FO: 3-stage mix of the two 16-bit halves (mirrored order vs RFC 2994).
+  /**
+   * @param {uint32[]} EK - 16 extended key words
+   * @param {uint32} foIn - 32-bit input
+   * @param {int32} k - Round index
+   * @returns {uint32} 32-bit output
+   */
   function FO(EK, foIn, k) {
     const Thi = OpCodes.And32(OpCodes.Shr32(foIn, 16), 0xFFFF);
     const Tlo = OpCodes.And32(foIn, 0xFFFF);
@@ -141,33 +168,48 @@
   }
 
   // FL: matches RFC 2994's FL definition exactly.
+  /**
+   * @param {uint32[]} EK - 16 extended key words
+   * @param {uint32} flIn - 32-bit input
+   * @param {int32} k - FL index
+   * @returns {uint32} 32-bit output
+   */
   function FL(EK, flIn, k) {
     let dHi = OpCodes.And32(OpCodes.Shr32(flIn, 16), 0xFFFF);
     let dLo = OpCodes.And32(flIn, 0xFFFF);
     if (k % 2 === 0) {
       const n = k / 2;
       dLo = OpCodes.And32(OpCodes.Xor32(dLo, OpCodes.And32(dHi, EK[n])), 0xFFFF);
-      dHi = OpCodes.And32(OpCodes.Xor32(dHi, dLo | EK[8 + mod8(n + 6)]), 0xFFFF);
+      dHi = OpCodes.And32(OpCodes.Xor32(dHi, OpCodes.Or32(dLo, EK[8 + mod8(n + 6)])), 0xFFFF);
     } else {
       const m = (k - 1) / 2;
       dLo = OpCodes.And32(OpCodes.Xor32(dLo, OpCodes.And32(dHi, EK[8 + mod8(m + 2)])), 0xFFFF);
-      dHi = OpCodes.And32(OpCodes.Xor32(dHi, dLo | EK[mod8(m + 4)]), 0xFFFF);
+      dHi = OpCodes.And32(OpCodes.Xor32(dHi, OpCodes.Or32(dLo, EK[mod8(m + 4)])), 0xFFFF);
     }
     return OpCodes.Or32(OpCodes.Shl32(dHi, 16), dLo);
   }
 
   // FL_inv: exact inverse of FL (reverse update order).
+  /**
+   * @param {uint32[]} EK - 16 extended key words
+   * @param {uint32} flOut - 32-bit FL output
+   * @param {int32} k - FL index
+   * @returns {uint32} 32-bit FL input
+   */
   function FL_inv(EK, flOut, k) {
     const dHi2 = OpCodes.And32(OpCodes.Shr32(flOut, 16), 0xFFFF);
     const dLo2 = OpCodes.And32(flOut, 0xFFFF);
-    let dHi, dLo;
+    /** @type {uint32} */
+    let dHi = 0;
+    /** @type {uint32} */
+    let dLo = 0;
     if (k % 2 === 0) {
       const n = k / 2;
-      dHi = OpCodes.And32(OpCodes.Xor32(dHi2, dLo2 | EK[8 + mod8(n + 6)]), 0xFFFF);
+      dHi = OpCodes.And32(OpCodes.Xor32(dHi2, OpCodes.Or32(dLo2, EK[8 + mod8(n + 6)])), 0xFFFF);
       dLo = OpCodes.And32(OpCodes.Xor32(dLo2, OpCodes.And32(dHi, EK[n])), 0xFFFF);
     } else {
       const m = (k - 1) / 2;
-      dHi = OpCodes.And32(OpCodes.Xor32(dHi2, dLo2 | EK[mod8(m + 4)]), 0xFFFF);
+      dHi = OpCodes.And32(OpCodes.Xor32(dHi2, OpCodes.Or32(dLo2, EK[mod8(m + 4)])), 0xFFFF);
       dLo = OpCodes.And32(OpCodes.Xor32(dLo2, OpCodes.And32(dHi, EK[8 + mod8(m + 2)])), 0xFFFF);
     }
     return OpCodes.Or32(OpCodes.Shl32(dHi, 16), dLo);
@@ -176,18 +218,28 @@
   // Key schedule: only the first 16 bytes of the key participate. Each
   // 4-byte group is byte-reversed, then sliced into two big-endian 16-bit
   // words -- i.e. K[2g] = bytes[4g+3]:bytes[4g+2], K[2g+1] = bytes[4g+1]:bytes[4g].
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[]} 16 extended key words
+   */
   function expandKey(keyBytes) {
+    /** @type {uint32[]} */
     const K = new Array(8);
     for (let g = 0; g < 4; g++) {
       K[g * 2]     = OpCodes.Pack16BE(keyBytes[g * 4 + 3], keyBytes[g * 4 + 2]);
       K[g * 2 + 1] = OpCodes.Pack16BE(keyBytes[g * 4 + 1], keyBytes[g * 4 + 0]);
     }
+    /** @type {uint32[]} */
     const EK = new Array(16);
     for (let i = 0; i < 8; i++) EK[i] = K[i];
     for (let i = 0; i < 8; i++) EK[i + 8] = OpCodes.And32(FI(EK[i], EK[mod8(i + 1)]), 0xFFFF);
     return EK;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint32[]} Two little-endian words
+   */
   function blockToDwords(block) {
     return [
       OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
@@ -195,14 +247,25 @@
     ];
   }
 
+  /**
+   * @param {uint32} dwordA - First word
+   * @param {uint32} dwordB - Second word
+   * @returns {uint8[]} 8 bytes
+   */
   function dwordsToBlock(dwordA, dwordB) {
     return [...OpCodes.Unpack32LE(dwordA), ...OpCodes.Unpack32LE(dwordB)];
   }
 
   // 8-round FL/FO network. The final two words are swapped before being
   // written back to the block (block[0..3]=Y, block[4..7]=X).
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint32[]} EK - 16 extended key words
+   * @returns {uint8[]} Output block
+   */
   function encryptBlock(block, EK) {
-    const [A, B] = blockToDwords(block);
+    const words = blockToDwords(block);
+    const A = words[0], B = words[1];
     let X = FL(EK, A, 0);
     let Y = FL(EK, B, 1);
     for (let pair = 0; pair < 4; pair++) {
@@ -215,8 +278,14 @@
     return dwordsToBlock(Y, X);
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint32[]} EK - 16 extended key words
+   * @returns {uint8[]} Output block
+   */
   function decryptBlock(block, EK) {
-    const [dwordA, dwordB] = blockToDwords(block);
+    const words = blockToDwords(block);
+    const dwordA = words[0], dwordB = words[1];
     let Yout = dwordA, Xout = dwordB;
     for (let pair = 3; pair >= 0; pair--) {
       const k = pair * 2;
@@ -290,31 +359,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMisty1Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMisty1Instance(this, isInverse);
     }
   }
 
   class DarkCryptMisty1Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMisty1Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Misty1 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Misty1 (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -327,8 +413,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

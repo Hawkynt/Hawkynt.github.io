@@ -58,6 +58,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ---- Substitution tables (verified against the DarkCrypt implementation's precomputed T0 table) ----
+  /** @type {uint8[]} */
   const S0 = [
     149,111,237,155,21,85,108,76,236,75,193,84,22,138,89,55,
     51,145,13,153,148,163,86,59,204,175,91,117,126,70,144,10,
@@ -77,6 +78,7 @@
     157,31,43,156,113,186,35,101,52,60,11,100,116,245,99,92
   ];
 
+  /** @type {uint8[]} */
   const S1 = [
     174,255,161,109,254,40,95,67,33,124,133,58,224,238,129,56,
     137,57,169,87,221,220,163,84,14,239,171,138,74,192,66,104,
@@ -96,6 +98,7 @@
     89,59,152,215,176,204,243,148,42,158,71,34,222,37,196,53
   ];
 
+  /** @type {uint8[]} */
   const S2 = [
     37,34,162,132,134,220,91,143,41,45,229,247,98,178,68,56,
     212,97,70,15,58,72,216,208,14,96,214,217,133,179,28,154,
@@ -115,6 +118,7 @@
     113,140,138,39,185,228,106,47,252,199,188,92,218,30,236,124
   ];
 
+  /** @type {uint8[]} */
   const S3 = [
     24,252,144,121,17,42,77,127,2,35,173,21,129,58,105,113,
     112,229,185,189,76,204,209,87,5,96,82,99,133,140,66,64,
@@ -134,31 +138,35 @@
     213,53,148,15,55,239,3,191,134,250,193,9,130,118,138,34
   ];
 
-  const SBOXES = [S0, S1, S2, S3];
 
   const CONST0 = 0x7e167289;   // multiplication constant used by the main/temp-key chains
   const CONST1 = 0xfe21464b;   // multiplication constant used by the main/temp-key chains
   const MT_CONST = 0x01010101; // multiplication constant used by the MT key-schedule function
 
-  function U32(x) { return OpCodes.ToUint32(x); }
-  function ADD32(a, b) { return OpCodes.Add32(a, b); }
-  function SUB32(a, b) { return OpCodes.Sub32(a, b); }
-  function XOR32(a, b) { return OpCodes.Xor32(a, b); }
-  function MUL32(a, b) { return OpCodes.Mul32(a, b); }
 
   // Tn function: treats X as four bytes X0..X3 (X0 = most significant byte),
   // selects byte Xn, and expands it via all four substitution tables:
   //   Y = S0(Xn) || S1(Xn) || S2(Xn) || S3(Xn)   (Y0 = most significant byte)
+  /**
+   * @param {int32} n - Byte selector (0 = most significant)
+   * @param {uint32} X - Input word
+   * @returns {uint32} S0(Xn) || S1(Xn) || S2(Xn) || S3(Xn)
+   */
   function Tn(n, X) {
     const shift = 24 - n * 8;
     const b = OpCodes.And32(OpCodes.Shr32(X, shift), 0xFF);
-    return U32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(SBOXES[0][b], 24), OpCodes.Shl32(SBOXES[1][b], 16)), OpCodes.Shl32(SBOXES[2][b], 8)), SBOXES[3][b]));
+    return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(S0[b], 24), OpCodes.Shl32(S1[b], 16)), OpCodes.Shl32(S2[b], 8)), S3[b]);
   }
 
   // A3 function: input/output are a 64-bit value split into (hi,lo) 32-bit words.
   // Specified as Y = (X<<<0) XOR (X<<<23) XOR (X<<<41); the exact bit-level
   // combination implemented by the DarkCrypt reference (and reproduced here)
   // differs from a literal 64-bit rotate-and-XOR by a one-bit correction term.
+  /**
+   * @param {uint32} hi - High word
+   * @param {uint32} lo - Low word
+   * @returns {uint32[]} [hi, lo] of the result
+   */
   function A3(hi, lo) {
     const cf1 = (OpCodes.ToUint32(lo) < 9) ? 1 : 0;
     const cf2 = (OpCodes.ToUint32(lo) < 23) ? 1 : 0;
@@ -170,51 +178,65 @@
   // MT function: key-schedule mixing primitive.
   //   Y0 = X0 * Const (mod 2^32)
   //   Y1 = X1 XOR T0(Y0)
+  /**
+   * @param {uint32} X0 - First word
+   * @param {uint32} X1 - Second word
+   * @returns {uint32[]} [Y0, Y1]
+   */
   function MT(X0, X1) {
-    const Y0 = MUL32(X0, MT_CONST);
-    const Y1 = XOR32(X1, Tn(0, Y0));
+    const Y0 = OpCodes.Mul32(X0, MT_CONST);
+    const Y1 = OpCodes.Xor32(X1, Tn(0, Y0));
     return [Y0, Y1];
   }
 
   // F function (round function): combines a main stream chain (function keys
   // FKa/FKb) and a temporary key generation chain (seed keys SKa/SKb).
+  /**
+   * @param {uint32} Xl - Left input word
+   * @param {uint32} Xr - Right input word
+   * @param {uint32} FKa - Function key a
+   * @param {uint32} SKa - Seed key a
+   * @param {uint32} FKb - Function key b
+   * @param {uint32} SKb - Seed key b
+   * @returns {uint32[]} [Yl, Yr]
+   */
   function Ffunction(Xl, Xr, FKa, SKa, FKb, SKb) {
     // temporary key generation mechanism
-    let WK00 = ADD32(SKa, Xr);
-    let WK01 = ADD32(SKb, Xl);
-    const WK10 = MUL32(WK00, CONST0);
-    const WK11 = XOR32(WK01, Tn(0, WK10));
-    const WK21 = MUL32(WK11, CONST1);
-    const WK20 = XOR32(WK10, Tn(0, WK21));
-    const WK30 = MUL32(WK20, CONST1);
-    const WK31 = XOR32(WK21, Tn(0, WK30));
-    const WK41 = MUL32(WK31, CONST0);
-    const WK40 = XOR32(WK30, Tn(0, WK41));
-    const WK51 = XOR32(WK41, Tn(1, WK40));
-    const WK50 = XOR32(WK40, Tn(1, WK51));
+    let WK00 = OpCodes.Add32(SKa, Xr);
+    let WK01 = OpCodes.Add32(SKb, Xl);
+    const WK10 = OpCodes.Mul32(WK00, CONST0);
+    const WK11 = OpCodes.Xor32(WK01, Tn(0, WK10));
+    const WK21 = OpCodes.Mul32(WK11, CONST1);
+    const WK20 = OpCodes.Xor32(WK10, Tn(0, WK21));
+    const WK30 = OpCodes.Mul32(WK20, CONST1);
+    const WK31 = OpCodes.Xor32(WK21, Tn(0, WK30));
+    const WK41 = OpCodes.Mul32(WK31, CONST0);
+    const WK40 = OpCodes.Xor32(WK30, Tn(0, WK41));
+    const WK51 = OpCodes.Xor32(WK41, Tn(1, WK40));
+    const WK50 = OpCodes.Xor32(WK40, Tn(1, WK51));
 
     // main stream
-    const WX00 = ADD32(FKa, Xl);
-    const WX01 = ADD32(FKb, Xr);
+    const WX00 = OpCodes.Add32(FKa, Xl);
+    const WX01 = OpCodes.Add32(FKb, Xr);
     const a3 = A3(WX00, WX01);
     const WX10 = a3[0], WX11 = a3[1];
-    const WX20 = MUL32(WX10, CONST0);
-    const WX21 = XOR32(WX11, Tn(0, WX20));
-    const WX31 = MUL32(WX21, CONST1);
-    const WX30 = XOR32(WX20, Tn(0, WX31));
-    const WX41 = XOR32(WX31, Tn(1, WX30));
-    const WX40 = XOR32(WX30, Tn(1, WX41));
-    const WX51 = XOR32(WX41, Tn(2, WX40));
-    const WX50 = XOR32(WX40, Tn(2, WX51));
-    const WX61 = XOR32(WX51, Tn(3, WX50));
-    const WX60 = XOR32(WX50, Tn(3, WX61));
+    const WX20 = OpCodes.Mul32(WX10, CONST0);
+    const WX21 = OpCodes.Xor32(WX11, Tn(0, WX20));
+    const WX31 = OpCodes.Mul32(WX21, CONST1);
+    const WX30 = OpCodes.Xor32(WX20, Tn(0, WX31));
+    const WX41 = OpCodes.Xor32(WX31, Tn(1, WX30));
+    const WX40 = OpCodes.Xor32(WX30, Tn(1, WX41));
+    const WX51 = OpCodes.Xor32(WX41, Tn(2, WX40));
+    const WX50 = OpCodes.Xor32(WX40, Tn(2, WX51));
+    const WX61 = OpCodes.Xor32(WX51, Tn(3, WX50));
+    const WX60 = OpCodes.Xor32(WX50, Tn(3, WX61));
     const k1 = OpCodes.And32(OpCodes.Shr32(WK51, 2), 0x3);
-    const WX71 = XOR32(WX61, Tn(k1, WX60));
+    const WX71 = OpCodes.Xor32(WX61, Tn(k1, WX60));
     const k2 = OpCodes.And32(WK51, 0x3);
-    const WX70 = XOR32(WX60, Tn(k2, WX71));
+    const WX70 = OpCodes.Xor32(WX60, Tn(k2, WX71));
 
-    const Yl = XOR32(WX70, WK50);
-    const Yr = XOR32(WX71, WK50);
+    const Yl = OpCodes.Xor32(WX70, WK50);
+    const Yr = OpCodes.Xor32(WX71, WK50);
     return [Yl, Yr];
   }
 
@@ -270,31 +292,56 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptUnicornAInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptUnicornAInstance(this, isInverse);
     }
   }
 
   class DarkCryptUnicornAInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptUnicornAAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._schedule = null;
+      /** @type {uint32[]|null} */
+      this._ik = null;   // IK0..IK7 whitening keys
+      /** @type {uint32[]|null} */
+      this._fka = null;  // per-round function keys a
+      /** @type {uint32[]|null} */
+      this._ska = null;  // per-round seed keys a
+      /** @type {uint32[]|null} */
+      this._fkb = null;  // per-round function keys b
+      /** @type {uint32[]|null} */
+      this._skb = null;  // per-round seed keys b
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._ik = null; this._fka = null; this._ska = null; this._fkb = null; this._skb = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CIPHERUNICORN-A (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CIPHERUNICORN-A (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._schedule = this._buildKeySchedule(this._key);
+      this._buildKeySchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -307,8 +354,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -323,10 +371,15 @@
     // 8-word key state) followed by 9 extraction passes of 16 MT calls each
     // (the first 8 calls per pass are non-extracting, the next 8 extract one
     // word each), then maps WK[] onto IK0..IK7 and FKa/SKa/FKb/SKb per round.
+    /**
+     * Fill _ik, _fka, _ska, _fkb and _skb
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _buildKeySchedule(keyBytes) {
       const LINE = 8;
       const n = 16 + 2; // 18
 
+      /** @type {uint32[]} */
       const W = [];
       for (let i = 0; i < LINE; i++)
         W.push(OpCodes.Pack32BE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
@@ -339,6 +392,7 @@
         }
       }
 
+      /** @type {uint32[]} */
       const WK = new Array(9 * 8);
       let cnt = 0;
       for (let i = 0; i < 9; i++) {
@@ -355,9 +409,17 @@
         }
       }
 
+      /** @type {uint32[]} */
       const IK = [WK[0], WK[n], WK[n * 2], WK[n * 3], WK[n - 1], WK[n * 2 - 1], WK[n * 3 - 1], WK[n * 4 - 1]];
 
-      const FKa = new Array(16), SKa = new Array(16), FKb = new Array(16), SKb = new Array(16);
+      /** @type {uint32[]} */
+      const FKa = new Array(16);
+      /** @type {uint32[]} */
+      const SKa = new Array(16);
+      /** @type {uint32[]} */
+      const FKb = new Array(16);
+      /** @type {uint32[]} */
+      const SKb = new Array(16);
       for (let i = 0; i < 16; i++) {
         FKa[i] = WK[1 + i];
         SKa[i] = WK[n + 1 + i];
@@ -365,56 +427,86 @@
         SKb[i] = WK[n * 3 + 1 + i];
       }
 
-      return { IK, FKa, SKa, FKb, SKb };
+      this._ik = IK;
+      this._fka = FKa;
+      this._ska = SKa;
+      this._fkb = FKb;
+      this._skb = SKb;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const ks = this._schedule;
+      /** @type {uint32[]} */
+      const IK = this._ik;
+      /** @type {uint32[]} */
+      const FKa = this._fka;
+      /** @type {uint32[]} */
+      const SKa = this._ska;
+      /** @type {uint32[]} */
+      const FKb = this._fkb;
+      /** @type {uint32[]} */
+      const SKb = this._skb;
       const P0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const P1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
       const P2 = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
       const P3 = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
 
-      let W0 = ADD32(P0, ks.IK[0]), W1 = ADD32(P1, ks.IK[1]), W2 = ADD32(P2, ks.IK[2]), W3 = ADD32(P3, ks.IK[3]);
+      let W0 = OpCodes.Add32(P0, IK[0]), W1 = OpCodes.Add32(P1, IK[1]), W2 = OpCodes.Add32(P2, IK[2]), W3 = OpCodes.Add32(P3, IK[3]);
 
       for (let i = 0; i < 15; i++) {
-        const f = Ffunction(W2, W3, ks.FKa[i], ks.SKa[i], ks.FKb[i], ks.SKb[i]);
-        const nR0 = XOR32(W0, f[0]), nR1 = XOR32(W1, f[1]);
+        const f = Ffunction(W2, W3, FKa[i], SKa[i], FKb[i], SKb[i]);
+        const nR0 = OpCodes.Xor32(W0, f[0]), nR1 = OpCodes.Xor32(W1, f[1]);
         W0 = W2; W1 = W3; W2 = nR0; W3 = nR1;
       }
-      const f = Ffunction(W2, W3, ks.FKa[15], ks.SKa[15], ks.FKb[15], ks.SKb[15]);
-      const final0 = XOR32(W0, f[0]), final1 = XOR32(W1, f[1]);
+      const f = Ffunction(W2, W3, FKa[15], SKa[15], FKb[15], SKb[15]);
+      const final0 = OpCodes.Xor32(W0, f[0]), final1 = OpCodes.Xor32(W1, f[1]);
 
-      const C0 = SUB32(final0, ks.IK[4]);
-      const C1 = SUB32(final1, ks.IK[5]);
-      const C2 = SUB32(W2, ks.IK[6]);
-      const C3 = SUB32(W3, ks.IK[7]);
+      const C0 = OpCodes.Sub32(final0, IK[4]);
+      const C1 = OpCodes.Sub32(final1, IK[5]);
+      const C2 = OpCodes.Sub32(W2, IK[6]);
+      const C3 = OpCodes.Sub32(W3, IK[7]);
 
       return [...OpCodes.Unpack32BE(C0), ...OpCodes.Unpack32BE(C1), ...OpCodes.Unpack32BE(C2), ...OpCodes.Unpack32BE(C3)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const ks = this._schedule;
+      /** @type {uint32[]} */
+      const IK = this._ik;
+      /** @type {uint32[]} */
+      const FKa = this._fka;
+      /** @type {uint32[]} */
+      const SKa = this._ska;
+      /** @type {uint32[]} */
+      const FKb = this._fkb;
+      /** @type {uint32[]} */
+      const SKb = this._skb;
       const C0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const C1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
       const C2 = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
       const C3 = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
 
-      let W0 = ADD32(C0, ks.IK[4]), W1 = ADD32(C1, ks.IK[5]), W2 = ADD32(C2, ks.IK[6]), W3 = ADD32(C3, ks.IK[7]);
+      let W0 = OpCodes.Add32(C0, IK[4]), W1 = OpCodes.Add32(C1, IK[5]), W2 = OpCodes.Add32(C2, IK[6]), W3 = OpCodes.Add32(C3, IK[7]);
 
       for (let i = 0; i < 15; i++) {
         const r = 15 - i;
-        const f = Ffunction(W2, W3, ks.FKa[r], ks.SKa[r], ks.FKb[r], ks.SKb[r]);
-        const nR0 = XOR32(W0, f[0]), nR1 = XOR32(W1, f[1]);
+        const f = Ffunction(W2, W3, FKa[r], SKa[r], FKb[r], SKb[r]);
+        const nR0 = OpCodes.Xor32(W0, f[0]), nR1 = OpCodes.Xor32(W1, f[1]);
         W0 = W2; W1 = W3; W2 = nR0; W3 = nR1;
       }
-      const f = Ffunction(W2, W3, ks.FKa[0], ks.SKa[0], ks.FKb[0], ks.SKb[0]);
-      const final0 = XOR32(W0, f[0]), final1 = XOR32(W1, f[1]);
+      const f = Ffunction(W2, W3, FKa[0], SKa[0], FKb[0], SKb[0]);
+      const final0 = OpCodes.Xor32(W0, f[0]), final1 = OpCodes.Xor32(W1, f[1]);
 
-      const P0 = SUB32(final0, ks.IK[0]);
-      const P1 = SUB32(final1, ks.IK[1]);
-      const P2 = SUB32(W2, ks.IK[2]);
-      const P3 = SUB32(W3, ks.IK[3]);
+      const P0 = OpCodes.Sub32(final0, IK[0]);
+      const P1 = OpCodes.Sub32(final1, IK[1]);
+      const P2 = OpCodes.Sub32(W2, IK[2]);
+      const P3 = OpCodes.Sub32(W3, IK[3]);
 
       return [...OpCodes.Unpack32BE(P0), ...OpCodes.Unpack32BE(P1), ...OpCodes.Unpack32BE(P2), ...OpCodes.Unpack32BE(P3)];
     }

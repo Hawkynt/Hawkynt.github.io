@@ -42,6 +42,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance, KeySize, LinkItem, Vulnerability } = AlgorithmFramework;
 
   // Load Rijndael/AES dependency for FF1 PRF
+  /** @type {Object|null} */
   let RijndaelModule = null;
   if (typeof require !== 'undefined') {
     try {
@@ -54,98 +55,129 @@
   // ===== SHARED UTILITIES =====
 
   // FF1 Constants from NIST SP 800-38G
-  const FF1_CONSTANTS = {
-    MIN_LENGTH: 2,
-    MAX_LENGTH: 56,
-    MIN_RADIX: 2,
-    MAX_RADIX: 65536,
-    BLOCK_SIZE: 16, // AES block size
-    MIN_DOMAIN_SIZE: 1000000 // radix^n >= 10^6 per NIST spec
-  };
+  const FF1_MIN_LENGTH = 2;
+  const FF1_MAX_LENGTH = 56;
+  const FF1_MIN_RADIX = 2;
+  const FF1_MAX_RADIX = 65536;
+  const FF1_BLOCK_SIZE = 16; // AES block size
+  const FF1_MIN_DOMAIN_SIZE = 1000000; // radix^n >= 10^6 per NIST spec
 
   // FF3 Constants
-  const FF3_CONSTANTS = {
-    MIN_LENGTH: 2,
-    MAX_LENGTH: 56,
-    MIN_RADIX: 2,
-    MAX_RADIX: 65536,
-    TWEAK_LENGTH: 8, // FF3 requires 64-bit (8 byte) tweak
-    ROUNDS: 8,
-    MIN_DOMAIN_SIZE: 100 // radix^minlen >= 100 per NIST SP 800-38G Section 5.2
-  };
+  const FF3_MIN_RADIX = 2;
+  const FF3_MAX_RADIX = 65536;
+  const FF3_TWEAK_LENGTH = 8; // FF3 requires 64-bit (8 byte) tweak
+  const FF3_ROUNDS = 8;
+  const FF3_MIN_DOMAIN_SIZE = 100; // radix^minlen >= 100 per NIST SP 800-38G Section 5.2
 
   // The lengths one radix admits, per NIST SP 800-38G Section 5.2 (FF3
   // requirements): minlen is the smallest n with radix^n >= 100, and maxlen is
   // 2 * floor(log_radix(2^96)). The old code hard-coded 2 and 56, which are the
   // decimal answers, and applied them to every radix.
+  /**
+   * @param {int32} radix - Radix
+   * @returns {int32[]} [minLength, maxLength]
+   */
   function ff3LengthLimits(radix) {
     let minLength = 2;
-    while (Math.pow(radix, minLength) < FF3_CONSTANTS.MIN_DOMAIN_SIZE) minLength++;
+    while (Math.pow(radix, minLength) < FF3_MIN_DOMAIN_SIZE) minLength++;
     const maxLength = 2 * Math.floor(96 * Math.LN2 / Math.log(radix));
-    return { minLength, maxLength };
+    /** @type {int32[]} */
+    const limits = [minLength, maxLength];
+    return limits;
   }
 
   // ===== BIG INTEGER UTILITIES (SHARED) =====
 
   // BigInteger operations using JavaScript BigInt
-  class BigIntegerUtils {
-    static fromByteArray(bytes) {
-      if (bytes.length === 0) return 0n;
-      let result = 0n;
-      for (let i = 0; i < bytes.length; i++) {
-        result = OpCodes.ShiftLn(result, 8) + BigInt(bytes[i]&0xFF);
-      }
-      return result;
+  /**
+   * @param {uint8[]} bytes - Big-endian bytes
+   * @returns {BigInt} Their value
+   */
+  function bigFromBytes(bytes) {
+    if (bytes.length === 0) return 0n;
+    /** @type {BigInt} */
+    let result = 0n;
+    for (let i = 0; i < bytes.length; i++) {
+      result = OpCodes.ShiftLn(result, 8) + BigInt(OpCodes.And32(bytes[i], 0xFF));
+    }
+    return result;
+  }
+
+  /**
+   * @param {BigInt} bigint - Value (its magnitude is encoded)
+   * @param {int32} [minLength=0] - Minimum output length (zero-padded on the left)
+   * @returns {uint8[]} Big-endian bytes
+   */
+  function bigToBytes(bigint, minLength = 0) {
+    if (bigint === 0n) {
+      /** @type {uint8[]} */
+      const zero = new Uint8Array(Math.max(1, minLength));
+      return zero;
     }
 
-    static toByteArray(bigint, minLength = 0) {
-      if (bigint === 0n) {
-        return new Uint8Array(Math.max(1, minLength));
-      }
+    /** @type {uint8[]} */
+    const bytes = [];
+    let value = bigint < 0n ? -bigint : bigint;
 
-      const bytes = [];
-      let value = bigint < 0n ? -bigint : bigint;
-
-      while (value > 0n) {
-        bytes.unshift(Number(value&0xFFn));
-        value = OpCodes.ShiftRn(value, 8);
-      }
-
-      while (bytes.length < minLength) {
-        bytes.unshift(0);
-      }
-
-      return new Uint8Array(bytes);
+    while (value > 0n) {
+      /** @type {uint8} */
+      const low = Number(OpCodes.AndN(value, 0xFFn));
+      bytes.unshift(low);
+      value = OpCodes.ShiftRn(value, 8);
     }
 
-    static pow(base, exponent) {
-      if (typeof base !== 'bigint') base = BigInt(base);
-      if (typeof exponent !== 'bigint') exponent = BigInt(exponent);
-      return base ** exponent;
+    while (bytes.length < minLength) {
+      bytes.unshift(0);
     }
 
-    static mod(a, m) {
-      if (typeof a !== 'bigint') a = BigInt(a);
-      if (typeof m !== 'bigint') m = BigInt(m);
-      const result = a % m;
-      return result < 0n ? result + m : result;
-    }
+    /** @type {uint8[]} */
+    const out = new Uint8Array(bytes);
+    return out;
+  }
+
+  /**
+   * @param {BigInt} base - Base
+   * @param {int32} exponent - Exponent
+   * @returns {BigInt} base ** exponent
+   */
+  function bigPow(base, exponent) {
+    return base ** BigInt(exponent);
+  }
+
+  /**
+   * @param {BigInt} a - Value
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} a mod m in 0..m-1
+   */
+  function bigMod(a, m) {
+    const result = a % m;
+    return result < 0n ? result + m : result;
   }
 
   // ===== RADIX CONVERTER (SHARED) =====
 
   // Converts between numeral arrays and big integers for different radix values
   class RadixConverter {
+    /**
+     * @param {int32} radix - Radix 2..65536
+     */
     constructor(radix) {
       if (radix < 2 || radix > 65536) {
-        throw new Error(`Invalid radix ${radix}. Must be between 2 and 65536`);
+        throw new Error("Invalid radix " + radix + ". Must be between 2 and 65536");
       }
+      /** @type {int32} */
       this.radix = radix;
+      /** @type {BigInt} */
       this.bigRadix = BigInt(radix);
     }
 
     // Convert numeral array to BigInt
+    /**
+     * @param {int32[]} numerals - Numerals, most significant first
+     * @returns {BigInt} Their value
+     */
     fromEncoding(numerals) {
+      /** @type {BigInt} */
       let result = 0n;
       for (let i = 0; i < numerals.length; i++) {
         result = result * this.bigRadix + BigInt(numerals[i]);
@@ -154,44 +186,81 @@
     }
 
     // Convert BigInt to numeral array of specified length
+    /**
+     * @param {BigInt} bigint - Value
+     * @param {int32} length - Number of numerals
+     * @param {int32[]} output - Receives the numerals, most significant first
+     */
     toEncoding(bigint, length, output) {
-      let value = BigIntegerUtils.mod(bigint, BigIntegerUtils.pow(this.bigRadix, length));
+      let value = bigMod(bigint, bigPow(this.bigRadix, length));
 
       for (let i = length - 1; i >= 0; i--) {
-        output[i] = Number(value % this.bigRadix);
+        /** @type {int32} */
+        const digit = Number(value % this.bigRadix);
+        output[i] = digit;
         value = value / this.bigRadix;
       }
     }
+  }
+
+  // Finds the AES block cipher: the directly imported module first (bypasses
+  // the AlgorithmFramework registry), then the registry under its names.
+  /**
+   * @returns {BlockCipherAlgorithm|null} The Rijndael algorithm, or null
+   */
+  function findRijndael() {
+    /** @type {BlockCipherAlgorithm|null} */
+    let found = null;
+    if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
+      /** @type {BlockCipherAlgorithm} */
+      const created = new RijndaelModule.RijndaelAlgorithm();
+      found = created;
+    }
+    if (!found) found = AlgorithmFramework.Find('Rijndael (AES)');
+    if (!found) found = AlgorithmFramework.Find('Rijndael');
+    if (!found) found = AlgorithmFramework.Find('AES');
+    return found;
   }
 
   // ===== FF1-SPECIFIC UTILITIES =====
 
   // AES-based Pseudo-Random Function using CBC-MAC
   class AESPRF {
+    /**
+     * @param {IBlockCipherInstance} aesInstance - Keyed AES encryptor
+     */
     constructor(aesInstance) {
+      /** @type {IBlockCipherInstance} */
       this.aes = aesInstance;
     }
 
     // CBC-MAC implementation following NIST SP 800-38G
+    /**
+     * @param {uint8[]} data - Input, a multiple of 16 bytes
+     * @returns {uint8[]} 16-byte CBC-MAC
+     */
     prf(data) {
-      if (data.length % FF1_CONSTANTS.BLOCK_SIZE !== 0) {
+      if (data.length % FF1_BLOCK_SIZE !== 0) {
         throw new Error('PRF input must be multiple of block size');
       }
 
-      const blocks = data.length / FF1_CONSTANTS.BLOCK_SIZE;
-      let y = new Uint8Array(FF1_CONSTANTS.BLOCK_SIZE);
+      const blocks = data.length / FF1_BLOCK_SIZE;
+      /** @type {uint8[]} */
+      let y = new Uint8Array(FF1_BLOCK_SIZE);
 
       for (let i = 0; i < blocks; i++) {
-        const blockOffset = i * FF1_CONSTANTS.BLOCK_SIZE;
+        const blockOffset = i * FF1_BLOCK_SIZE;
 
         // XOR current block with previous output
-        for (let j = 0; j < FF1_CONSTANTS.BLOCK_SIZE; j++) {
-          y[j] = OpCodes.XorN(y[j], data[blockOffset + j]);
+        for (let j = 0; j < FF1_BLOCK_SIZE; j++) {
+          y[j] = OpCodes.Xor32(y[j], data[blockOffset + j]);
         }
 
         // Encrypt the XOR result
         this.aes.Feed(y);
-        y = this.aes.Result();
+        /** @type {uint8[]} */
+        const encrypted = this.aes.Result();
+        y = encrypted;
       }
 
       return y;
@@ -200,11 +269,17 @@
 
   // Calculate b parameter: ceiling(log_2(radix^v)) / 8
   // Following BouncyCastle SP80038G.java implementation for accuracy
+  /**
+   * @param {int32} radix - Radix
+   * @param {int32} v - Length of the right half
+   * @returns {int32} Bytes needed for radix^v
+   */
   function calculateB_FF1(radix, v) {
     // Count trailing zeros (powers of 2 in radix factorization)
     let powersOfTwo = 0;
+    /** @type {uint32} */
     let temp = radix;
-    while (OpCodes.AndN(temp, 1) === 0) {  // Bit test for LSB
+    while (OpCodes.And32(temp, 1) === 0) {  // Bit test for LSB
       powersOfTwo++;
       temp = OpCodes.Shr32(temp, 1);  // Unsigned right shift
     }
@@ -214,8 +289,8 @@
     const oddPart = OpCodes.Shr32(radix, powersOfTwo);  // Unsigned right shift
 
     if (oddPart !== 1) {
-      // Add bits from odd part: ceil(log2(oddPart^v))
-      const oddPowerBits = BigIntegerUtils.pow(oddPart, v).toString(2).length;
+      // Add bits from odd part: ceil(log2(oddPart^v)), the bit length of the positive oddPart^v
+      const oddPowerBits = OpCodes.BitCountN(bigPow(BigInt(oddPart), v));
       bits += oddPowerBits;
     }
 
@@ -223,8 +298,16 @@
   }
 
   // Calculate P parameter block according to NIST SP 800-38G
+  /**
+   * @param {int32} radix - Radix
+   * @param {int32} u - Length of the left half
+   * @param {int32} n - Message length
+   * @param {int32} t - Tweak length
+   * @returns {uint8[]} The 16-byte P block
+   */
   function calculateP_FF1(radix, u, n, t) {
-    const P = new Uint8Array(FF1_CONSTANTS.BLOCK_SIZE);
+    /** @type {uint8[]} */
+    const P = new Uint8Array(FF1_BLOCK_SIZE);
 
     P[0] = 1;  // Version
     P[1] = 2;  // Method (FF1)
@@ -254,11 +337,17 @@
   }
 
   // Calculate moduli for both halves
+  /**
+   * @param {int32} radix - Radix
+   * @param {int32} u - Length of the left half
+   * @param {int32} v - Length of the right half
+   * @returns {BigInt[]} [radix^u, radix^v]
+   */
   function calculateModUV(radix, u, v) {
     const bigRadix = BigInt(radix);
-    const modU = BigIntegerUtils.pow(bigRadix, u);
-    const modV = BigIntegerUtils.pow(bigRadix, v);
-    return { modU, modV };
+    /** @type {BigInt[]} */
+    const moduli = [bigPow(bigRadix, u), bigPow(bigRadix, v)];
+    return moduli;
   }
 
   // ===== FF1 ALGORITHM IMPLEMENTATION =====
@@ -341,7 +430,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FF1Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -358,25 +447,32 @@
   class FF1Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FF1Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 0; // Variable size for FF1
       this.KeySize = 0;
 
       // FF1 configuration properties (set by test framework)
+      /** @type {int32} */
       this._radix = 10; // Default to decimal
+      /** @type {uint8[]} */
       this._tweak = new Uint8Array(0); // Default empty tweak
 
       // Internal components
+      /** @type {IBlockCipherInstance|null} */
       this.aesInstance = null;
+      /** @type {RadixConverter|null} */
       this.radixConverter = null;
+      /** @type {AESPRF|null} */
       this.aesPrf = null;
     }
 
@@ -398,7 +494,7 @@
 
       // Validate AES key sizes (128, 192, or 256 bits)
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`FF1: Invalid key size ${keyBytes.length} bytes. Must be 16, 24, or 32 bytes for AES`);
+        throw new Error("FF1: Invalid key size " + keyBytes.length + " bytes. Must be 16, 24, or 32 bytes for AES");
       }
 
       this._key = new Uint8Array(keyBytes);
@@ -419,23 +515,35 @@
     }
 
     // Radix property setter/getter (for test framework)
+    /**
+     * @param {int32} value - Radix 2..65536
+     */
     set radix(value) {
-      if (value < FF1_CONSTANTS.MIN_RADIX || value > FF1_CONSTANTS.MAX_RADIX) {
-        throw new Error(`FF1: Invalid radix ${value}. Must be between ${FF1_CONSTANTS.MIN_RADIX} and ${FF1_CONSTANTS.MAX_RADIX}`);
+      if (value < FF1_MIN_RADIX || value > FF1_MAX_RADIX) {
+        throw new Error("FF1: Invalid radix " + value + ". Must be between " + FF1_MIN_RADIX + " and " + FF1_MAX_RADIX);
       }
       this._radix = value;
       this.radixConverter = new RadixConverter(value);
     }
 
+    /**
+     * @returns {int32} Radix
+     */
     get radix() {
       return this._radix;
     }
 
     // Tweak property setter/getter (for test framework)
+    /**
+     * @param {uint8[]|null} value - Tweak bytes (null for none)
+     */
     set tweak(value) {
       this._tweak = value ? new Uint8Array(value) : new Uint8Array(0);
     }
 
+    /**
+     * @returns {uint8[]} Copy of the tweak
+     */
     get tweak() {
       return new Uint8Array(this._tweak);
     }
@@ -473,33 +581,20 @@
       // Lazy initialization of AES for PRF (ensures Rijndael is loaded)
       if (!this.aesPrf) {
         try {
-          let RijndaelAlgorithm = null;
-
-          // First try to use directly imported module (bypasses AlgorithmFramework registry)
-          if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
-            RijndaelAlgorithm = new RijndaelModule.RijndaelAlgorithm();
-          }
-
-          // Fallback to AlgorithmFramework.Find() if module import failed
-          if (!RijndaelAlgorithm) {
-            RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
-            if (!RijndaelAlgorithm) {
-              RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael');
-            }
-            if (!RijndaelAlgorithm) {
-              RijndaelAlgorithm = AlgorithmFramework.Find('AES');
-            }
-          }
+          // The directly imported module first, then the AlgorithmFramework registry
+          const RijndaelAlgorithm = findRijndael();
 
           if (!RijndaelAlgorithm) {
             throw new Error('Rijndael/AES algorithm not found. Ensure rijndael.js is loaded.');
           }
 
-          this.aesInstance = RijndaelAlgorithm.CreateInstance(false); // Encryption mode
-          this.aesInstance.key = this._key;
-          this.aesPrf = new AESPRF(this.aesInstance);
+          /** @type {IBlockCipherInstance} */
+          const aes = RijndaelAlgorithm.CreateInstance(false); // Encryption mode
+          this.aesInstance = aes;
+          aes.key = this._key;
+          this.aesPrf = new AESPRF(aes);
         } catch (error) {
-          throw new Error(`FF1: Failed to initialize AES for PRF: ${error.message}`);
+          throw new Error("FF1: Failed to initialize AES for PRF: " + error.message);
         }
       }
 
@@ -512,14 +607,14 @@
       const n = numerals.length;
 
       // Validate input length per NIST spec
-      if (n < FF1_CONSTANTS.MIN_LENGTH || n > FF1_CONSTANTS.MAX_LENGTH) {
-        throw new Error(`FF1: Invalid input length ${n}. Must be between ${FF1_CONSTANTS.MIN_LENGTH} and ${FF1_CONSTANTS.MAX_LENGTH}`);
+      if (n < FF1_MIN_LENGTH || n > FF1_MAX_LENGTH) {
+        throw new Error("FF1: Invalid input length " + n + ". Must be between " + FF1_MIN_LENGTH + " and " + FF1_MAX_LENGTH);
       }
 
       // Validate minimum domain size (radix^n >= 10^6)
       const domainSize = Math.pow(this._radix, n);
-      if (domainSize < FF1_CONSTANTS.MIN_DOMAIN_SIZE) {
-        throw new Error(`FF1: Domain size too small. radix^n (${domainSize}) must be >= ${FF1_CONSTANTS.MIN_DOMAIN_SIZE}`);
+      if (domainSize < FF1_MIN_DOMAIN_SIZE) {
+        throw new Error("FF1: Domain size too small. radix^n (" + domainSize + ") must be >= " + FF1_MIN_DOMAIN_SIZE);
       }
 
       // Process with FF1 algorithm
@@ -534,6 +629,10 @@
     }
 
     // FF1 Encryption (Algorithm 7 from NIST SP 800-38G)
+    /**
+     * @param {int32[]} numerals - Input numerals
+     * @returns {int32[]} Output numerals
+     */
     _encryptFF1(numerals) {
       const n = numerals.length;
       const u = Math.floor(n / 2);
@@ -546,9 +645,10 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
+      const d = OpCodes.And32(b + 7, 0xFFFFFFFC); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
-      const { modU, modV } = calculateModUV(this._radix, u, v);
+      const moduli = calculateModUV(this._radix, u, v);
+      const modU = moduli[0], modV = moduli[1];
 
       let m = v;
 
@@ -559,13 +659,15 @@
 
         // Update m
         m = n - m;
-        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
+        const modulus = OpCodes.And32(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(A) + y) mod radix^m
+        /** @type {BigInt} */
         const numA = this.radixConverter.fromEncoding(A);
-        const c = BigIntegerUtils.mod(numA + y, modulus);
+        const c = bigMod(numA + y, modulus);
 
         // Convert c back to numeral array
+        /** @type {int32[]} */
         const C = new Array(m);
         this.radixConverter.toEncoding(c, m, C);
 
@@ -579,6 +681,10 @@
     }
 
     // FF1 Decryption (Algorithm 8 from NIST SP 800-38G)
+    /**
+     * @param {int32[]} numerals - Input numerals
+     * @returns {int32[]} Output numerals
+     */
     _decryptFF1(numerals) {
       const n = numerals.length;
       const u = Math.floor(n / 2);
@@ -591,9 +697,10 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
+      const d = OpCodes.And32(b + 7, 0xFFFFFFFC); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
-      const { modU, modV } = calculateModUV(this._radix, u, v);
+      const moduli = calculateModUV(this._radix, u, v);
+      const modU = moduli[0], modV = moduli[1];
 
       let m = u;
 
@@ -604,13 +711,15 @@
 
         // Update m
         m = n - m;
-        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
+        const modulus = OpCodes.And32(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(B) - y) mod radix^m
+        /** @type {BigInt} */
         const numB = this.radixConverter.fromEncoding(B);
-        const c = BigIntegerUtils.mod(numB - y, modulus);
+        const c = bigMod(numB - y, modulus);
 
         // Convert c back to numeral array
+        /** @type {int32[]} */
         const C = new Array(m);
         this.radixConverter.toEncoding(c, m, C);
 
@@ -624,64 +733,80 @@
     }
 
     // Calculate Y using AES-based PRF (follows NIST SP 800-38G exactly)
+    /**
+     * @param {int32} round - Round number
+     * @param {uint8[]} P - The P block
+     * @param {int32[]} numeralArray - Half being fed to the PRF
+     * @param {int32} b - Bytes of NUM(half)
+     * @param {int32} d - Bytes of output
+     * @param {int32} t - Tweak length
+     * @returns {BigInt} y
+     */
     _calculateY_FF1(round, P, numeralArray, b, d, t) {
       // i. Convert numeral array to big integer and then to bytes
+      /** @type {BigInt} */
       const numAB = this.radixConverter.fromEncoding(numeralArray);
-      const bytesAB = BigIntegerUtils.toByteArray(numAB);
+      const bytesAB = bigToBytes(numAB);
 
       // Construct Q = T || 0^s || [round] || [NUM(B)]_b
-      const zeroes = OpCodes.AndN(-(t + b + 1), 15); // Padding to make total length multiple of 16
-      const Q = new Uint8Array(t + zeroes + 1 + b);
+      const zeroes = OpCodes.And32(-(t + b + 1), 15); // Padding to make total length multiple of 16
+      /** @type {uint8[]} */
+      const Q = new Uint8Array(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(t, zeroes), 1), b));
 
       // Copy tweak
       Q.set(this._tweak, 0);
       // Zeroes are already 0 by default
       // Set round number
-      Q[t + zeroes] = round;
+      Q[OpCodes.Add32(t, zeroes)] = round;
       // Copy NUM(B) bytes (right-justified)
       Q.set(bytesAB, Q.length - bytesAB.length);
 
       // ii. R = PRF(P || Q)
+      /** @type {uint8[]} */
       const PQ = new Uint8Array(P.length + Q.length);
       PQ.set(P, 0);
       PQ.set(Q, P.length);
 
-      let R = this.aesPrf.prf(PQ);
+      /** @type {uint8[]} */
+      const R = this.aesPrf.prf(PQ);
 
       // iii. If d > 16, extend R
       let sBlocks = R;
-      if (d > FF1_CONSTANTS.BLOCK_SIZE) {
-        const sBlocksLen = Math.ceil(d / FF1_CONSTANTS.BLOCK_SIZE);
-        sBlocks = new Uint8Array(sBlocksLen * FF1_CONSTANTS.BLOCK_SIZE);
+      if (d > FF1_BLOCK_SIZE) {
+        const sBlocksLen = Math.ceil(d / FF1_BLOCK_SIZE);
+        /** @type {uint8[]} */
+        const extended = new Uint8Array(sBlocksLen * FF1_BLOCK_SIZE);
+        sBlocks = extended;
 
         // Copy initial R
         sBlocks.set(R, 0);
 
         // Extract J from R (last 4 bytes as big-endian int)
         const j0 = OpCodes.Pack32BE(
-          R[FF1_CONSTANTS.BLOCK_SIZE - 4],
-          R[FF1_CONSTANTS.BLOCK_SIZE - 3],
-          R[FF1_CONSTANTS.BLOCK_SIZE - 2],
-          R[FF1_CONSTANTS.BLOCK_SIZE - 1]
+          R[FF1_BLOCK_SIZE - 4],
+          R[FF1_BLOCK_SIZE - 3],
+          R[FF1_BLOCK_SIZE - 2],
+          R[FF1_BLOCK_SIZE - 1]
         );
 
         // Generate additional blocks
         for (let j = 1; j < sBlocksLen; j++) {
-          const sOff = j * FF1_CONSTANTS.BLOCK_SIZE;
+          const sOff = j * FF1_BLOCK_SIZE;
 
           // Copy R[0..11] and set R[12..15] = J XOR j
-          sBlocks.set(R.slice(0, FF1_CONSTANTS.BLOCK_SIZE - 4), sOff);
+          sBlocks.set(R.slice(0, FF1_BLOCK_SIZE - 4), sOff);
 
           // Write (j0 XOR j) as 4 bytes big-endian using OpCodes
           const xorResult = OpCodes.XOR32(j0, j);
-          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 4] = OpCodes.GetByte(xorResult, 3);
-          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 3] = OpCodes.GetByte(xorResult, 2);
-          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 2] = OpCodes.GetByte(xorResult, 1);
-          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 1] = OpCodes.GetByte(xorResult, 0);
+          sBlocks[sOff + FF1_BLOCK_SIZE - 4] = OpCodes.GetByte(xorResult, 3);
+          sBlocks[sOff + FF1_BLOCK_SIZE - 3] = OpCodes.GetByte(xorResult, 2);
+          sBlocks[sOff + FF1_BLOCK_SIZE - 2] = OpCodes.GetByte(xorResult, 1);
+          sBlocks[sOff + FF1_BLOCK_SIZE - 1] = OpCodes.GetByte(xorResult, 0);
 
           // Encrypt this block
-          const block = sBlocks.slice(sOff, sOff + FF1_CONSTANTS.BLOCK_SIZE);
+          const block = sBlocks.slice(sOff, sOff + FF1_BLOCK_SIZE);
           this.aesInstance.Feed(block);
+          /** @type {uint8[]} */
           const encryptedBlock = this.aesInstance.Result();
           sBlocks.set(encryptedBlock, sOff);
         }
@@ -689,15 +814,21 @@
 
       // iv. Return first d bytes as big integer
       const yBytes = sBlocks.slice(0, d);
-      return BigIntegerUtils.fromByteArray(yBytes);
+      return bigFromBytes(yBytes);
     }
 
     // Convert bytes to numeral array based on radix
+    /**
+     * @param {uint8[]} bytes - Characters
+     * @returns {int32[]} Numerals
+     */
     _bytesToNumerals(bytes) {
+      /** @type {int32[]} */
       const numerals = [];
       for (let i = 0; i < bytes.length; i++) {
         const byte = bytes[i];
-        let numeral;
+        /** @type {int32} */
+        let numeral = 0;
 
         // Convert ASCII characters to numeric values
         if (byte >= 48 && byte <= 57) {
@@ -705,10 +836,10 @@
           numeral = byte - 48;
         } else if (byte >= 97 && byte <= 122) {
           // ASCII lowercase 'a'-'z' (10-35)
-          numeral = byte - 97 + 10;
+          numeral = byte - 87; // byte - 97 + 10
         } else if (byte >= 65 && byte <= 90) {
           // ASCII uppercase 'A'-'Z' (36-61 for radix > 36)
-          numeral = byte - 65 + 36;
+          numeral = byte - 29; // byte - 65 + 36
         } else {
           // For non-ASCII or direct byte values, use as-is
           numeral = byte;
@@ -716,7 +847,7 @@
 
         // Validate that numeral value is within radix
         if (numeral >= this._radix) {
-          throw new Error(`FF1: Character '${String.fromCharCode(byte)}' (value ${numeral}) not valid for radix ${this._radix}`);
+          throw new Error("FF1: Character '" + (String.fromCharCode(byte)) + "' (value " + numeral + ") not valid for radix " + this._radix);
         }
 
         numerals.push(numeral);
@@ -725,18 +856,24 @@
     }
 
     // Convert numeral array to bytes (ASCII characters)
+    /**
+     * @param {int32[]} numerals - Numerals
+     * @returns {uint8[]} Characters
+     */
     _numeralsToBytes(numerals) {
+      /** @type {uint8[]} */
       const bytes = new Uint8Array(numerals.length);
       for (let i = 0; i < numerals.length; i++) {
         const numeral = numerals[i];
 
         // Validate numeral is within radix
         if (numeral >= this._radix) {
-          throw new Error(`FF1: Invalid numeral value ${numeral} for radix ${this._radix}`);
+          throw new Error("FF1: Invalid numeral value " + numeral + " for radix " + this._radix);
         }
 
         // Convert numeral back to ASCII character
-        let byte;
+        /** @type {int32} */
+        let byte = 0;
         if (numeral < 10) {
           // 0-9 -> ASCII '0'-'9'
           byte = numeral + 48;
@@ -758,6 +895,16 @@
   }
 
   // ===== FF3 ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * @returns {uint8[]} An all-zero 8-byte tweak
+   */
+  function zeroTweak() {
+    /** @type {uint8[]} */
+    const tweak = new Array(FF3_TWEAK_LENGTH);
+    tweak.fill(0);
+    return tweak;
+  }
 
   /**
  * FF3Algorithm - Block cipher implementation
@@ -855,7 +1002,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FF3Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -872,21 +1019,30 @@
   class FF3Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FF3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]|null} */
+      this.keyReversed = null;
+      /** @type {IBlockCipherInstance|null} */
+      this.aesInstance = null;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 0; // Variable size for FF3
       this.KeySize = 0;
 
       // FF3 configuration
+      /** @type {int32} */
       this._radix = 10; // Default to decimal
-      this._tweak = new Array(8).fill(0); // Tweak data (8 bytes for FF3)
+      /** @type {uint8[]} */
+      this._tweak = zeroTweak(); // Tweak data (8 bytes for FF3)
 
       // AES instance for the round function, created lazily under REVB(K)
       this.aesInstance = null;
@@ -910,7 +1066,7 @@
 
       // Validate key size (must be 16, 24, or 32 bytes for AES)
       if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. FF3 requires 16, 24, or 32 byte AES keys`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. FF3 requires 16, 24, or 32 byte AES keys");
       }
 
       this._key = [...keyBytes];
@@ -930,27 +1086,39 @@
     }
 
     // Radix property setter/getter
+    /**
+     * @param {int32} value - Radix 2..65536
+     */
     set radix(value) {
-      if (value < FF3_CONSTANTS.MIN_RADIX || value > FF3_CONSTANTS.MAX_RADIX) {
-        throw new Error(`Invalid radix: ${value}. Must be between ${FF3_CONSTANTS.MIN_RADIX} and ${FF3_CONSTANTS.MAX_RADIX}`);
+      if (value < FF3_MIN_RADIX || value > FF3_MAX_RADIX) {
+        throw new Error("Invalid radix: " + value + ". Must be between " + FF3_MIN_RADIX + " and " + FF3_MAX_RADIX);
       }
       this._radix = value;
     }
 
+    /**
+     * @returns {int32} Radix (the constructor sets 10 and the setter never stores less than 2)
+     */
     get radix() {
-      return this._radix || 10;
+      return this._radix;
     }
 
     // Tweak property setter/getter
+    /**
+     * @param {uint8[]|null} value - 8-byte tweak (null for zeros)
+     */
     set tweak(value) {
-      if (value && value.length !== FF3_CONSTANTS.TWEAK_LENGTH) {
-        throw new Error(`FF3 tweak must be exactly ${FF3_CONSTANTS.TWEAK_LENGTH} bytes (64 bits)`);
+      if (value && value.length !== FF3_TWEAK_LENGTH) {
+        throw new Error("FF3 tweak must be exactly " + FF3_TWEAK_LENGTH + " bytes (64 bits)");
       }
-      this._tweak = value ? [...value] : new Array(8).fill(0);
+      this._tweak = value ? [...value] : zeroTweak();
     }
 
+    /**
+     * @returns {uint8[]} The tweak (the constructor and setter always store one)
+     */
     get tweak() {
-      return this._tweak || new Array(8).fill(0);
+      return this._tweak;
     }
 
     /**
@@ -961,11 +1129,15 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
       // For FF3, we expect string data that represents numerals
       if (typeof data === 'string') {
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data.charCodeAt(_i));
+        for (let _i = 0; _i < data.length; _i++) {
+          /** @type {uint16} */
+          const code = data.charCodeAt(_i);
+          this.inputBuffer.push(code);
+        }
       } else {
         for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
@@ -978,7 +1150,7 @@
    */
 
     Result() {
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Decode to numerals first: a byte that is not a symbol of this radix has
@@ -987,10 +1159,11 @@
       const n = X.length;
 
       // Validate input length against what this radix actually admits
-      const { minLength, maxLength } = ff3LengthLimits(this._radix);
+      const limits = ff3LengthLimits(this._radix);
+      const minLength = limits[0], maxLength = limits[1];
       if (n < minLength || n > maxLength) {
-        throw new Error(`Input length ${n} is outside the ${minLength}..${maxLength} `
-          + `characters radix ${this._radix} admits`);
+        throw new Error("Input length " + n + " is outside the " + minLength + ".." + maxLength + " "
+          + "characters radix " + this._radix + " admits");
       }
 
       // Process the numerals with FF3
@@ -1004,7 +1177,12 @@
 
     // REV: reverse the order of the characters (numerals) of a string,
     // SP 800-38G Section 4.2.
+    /**
+     * @param {int32[]} numerals - Numerals
+     * @returns {int32[]} Reversed copy
+     */
     _rev(numerals) {
+      /** @type {int32[]} */
       const out = new Array(numerals.length);
       for (let i = 0; i < numerals.length; i++) out[i] = numerals[numerals.length - 1 - i];
       return out;
@@ -1012,7 +1190,12 @@
 
     // REVB: reverse the order of the bytes of a byte string,
     // SP 800-38G Section 4.2.
+    /**
+     * @param {uint8[]} bytes - Bytes
+     * @returns {uint8[]} Reversed copy
+     */
     _revb(bytes) {
+      /** @type {uint8[]} */
       const out = new Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) out[i] = bytes[bytes.length - 1 - i];
       return out;
@@ -1021,22 +1204,33 @@
     // One FF3 round: the P block of Algorithm 9 step 4b and the S block of
     // step 4c, returning y = NUM(S) as a BigInt.
     // W is the 4-byte tweak half, N is NUM_radix(REV(half)).
+    /**
+     * @param {uint8[]} W - 4-byte tweak half
+     * @param {int32} roundIndex - Round number
+     * @param {BigInt} N - NUM_radix(REV(half))
+     * @returns {BigInt} y
+     */
     _roundY(W, roundIndex, N) {
+      /** @type {uint8[]} */
       const P = new Array(16);
       for (let j = 0; j < 4; j++) P[j] = W[j];
-      P[3] = OpCodes.XorN(P[3], roundIndex); // W XOR [i]^4
+      P[3] = OpCodes.Xor32(P[3], roundIndex); // W XOR [i]^4
 
       // [NUM_radix(REV(half))]^12 - 12 bytes, big-endian
-      const numBytes = BigIntegerUtils.toByteArray(N, 12);
+      const numBytes = bigToBytes(N, 12);
       const offset = numBytes.length - 12;
       for (let j = 0; j < 12; j++) P[4 + j] = numBytes[offset + j];
 
       // S = REVB(CIPH_REVB(K)(REVB(P)))
       const S = this._revb(this._aesEncrypt(this._revb(P)));
-      return BigIntegerUtils.fromByteArray(S);
+      return bigFromBytes(S);
     }
 
     // FF3 encryption - NIST SP 800-38G Algorithm 9
+    /**
+     * @param {int32[]} X - Plaintext numerals
+     * @returns {int32[]} Ciphertext numerals
+     */
     _encrypt(X) {
       const n = X.length;
 
@@ -1051,8 +1245,8 @@
       const TR = this._tweak.slice(4, 8);
 
       // Step 4: 8 rounds
-      for (let i = 0; i < FF3_CONSTANTS.ROUNDS; i++) {
-        const even = OpCodes.AndN(i, 1) === 0;
+      for (let i = 0; i < FF3_ROUNDS; i++) {
+        const even = OpCodes.And32(i, 1) === 0;
         const m = even ? u : v;
         const W = even ? TR : TL;
 
@@ -1070,6 +1264,10 @@
     }
 
     // FF3 decryption - NIST SP 800-38G Algorithm 10
+    /**
+     * @param {int32[]} Y - Ciphertext numerals
+     * @returns {int32[]} Plaintext numerals
+     */
     _decrypt(Y) {
       const n = Y.length;
 
@@ -1082,8 +1280,8 @@
       const TR = this._tweak.slice(4, 8);
 
       // Rounds run 7 down to 0
-      for (let i = FF3_CONSTANTS.ROUNDS - 1; i >= 0; i--) {
-        const even = OpCodes.AndN(i, 1) === 0;
+      for (let i = FF3_ROUNDS - 1; i >= 0; i--) {
+        const even = OpCodes.And32(i, 1) === 0;
         const m = even ? u : v;
         const W = even ? TR : TL;
 
@@ -1102,33 +1300,32 @@
 
     // CIPH_REVB(K): AES-ECB encryption of one block under the byte-reversed
     // key, as SP 800-38G Algorithm 9 step 4c requires.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Encrypted block
+     */
     _aesEncrypt(block) {
       if (!this._key || this._key.length === 0) {
         throw new Error("AES key not set for FF3 encryption");
       }
 
       if (!this.aesInstance) {
-        let RijndaelAlgorithm = null;
-
         // Prefer the directly imported module, fall back to the registry
-        if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
-          RijndaelAlgorithm = new RijndaelModule.RijndaelAlgorithm();
-        }
-        if (!RijndaelAlgorithm) {
-          RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael (AES)')
-            || AlgorithmFramework.Find('Rijndael')
-            || AlgorithmFramework.Find('AES');
-        }
+        const RijndaelAlgorithm = findRijndael();
         if (!RijndaelAlgorithm) {
           throw new Error('FF3: Rijndael/AES algorithm not found. Ensure rijndael.js is loaded.');
         }
 
-        this.aesInstance = RijndaelAlgorithm.CreateInstance(false);
-        this.aesInstance.key = this.keyReversed; // REVB(K)
+        /** @type {IBlockCipherInstance} */
+        const aes = RijndaelAlgorithm.CreateInstance(false);
+        this.aesInstance = aes;
+        aes.key = this.keyReversed; // REVB(K)
       }
 
       this.aesInstance.Feed(block);
-      return this.aesInstance.Result();
+      /** @type {uint8[]} */
+      const encrypted = this.aesInstance.Result();
+      return encrypted;
     }
 
     // Decode input bytes to a numeral array.
@@ -1141,24 +1338,32 @@
     // "ABCDEFGHIJKLMNOP" decrypted to "abcdefghijklmnop". The 62-symbol map
     // below is injective, matching the one FF1 in this same file already uses,
     // and a byte outside it is refused rather than folded into range.
+    /**
+     * @param {uint8[]} bytes - Characters
+     * @returns {int32[]} Numerals
+     */
     _bytesToNumerals(bytes) {
+      /** @type {int32[]} */
       const numerals = [];
       for (let i = 0; i < bytes.length; i++) {
         const byte = bytes[i];
-        let numeral;
+        /** @type {int32} */
+        let numeral = 0;
 
         if (byte >= 48 && byte <= 57) {
           numeral = byte - 48;        // '0'-'9' -> 0..9
         } else if (byte >= 97 && byte <= 122) {
-          numeral = byte - 97 + 10;   // 'a'-'z' -> 10..35
+          numeral = byte - 87;        // 'a'-'z' -> 10..35 (byte - 97 + 10)
         } else if (byte >= 65 && byte <= 90) {
-          numeral = byte - 65 + 36;   // 'A'-'Z' -> 36..61
+          numeral = byte - 29;        // 'A'-'Z' -> 36..61 (byte - 65 + 36)
         } else {
-          throw new Error(`FF3: byte 0x${byte.toString(16)} is not a symbol of radix ${this._radix}`);
+          /** @type {string} */
+          const hex = byte.toString(16);
+          throw new Error("FF3: byte 0x" + hex + " is not a symbol of radix " + this._radix);
         }
 
         if (numeral >= this._radix) {
-          throw new Error(`FF3: symbol value ${numeral} is not valid for radix ${this._radix}`);
+          throw new Error("FF3: symbol value " + numeral + " is not valid for radix " + this._radix);
         }
         numerals.push(numeral);
       }
@@ -1166,12 +1371,17 @@
     }
 
     // Encode a numeral array back to bytes, inverting _bytesToNumerals exactly.
+    /**
+     * @param {int32[]} numerals - Numerals
+     * @returns {uint8[]} Characters
+     */
     _numeralsToBytes(numerals) {
+      /** @type {uint8[]} */
       const bytes = new Uint8Array(numerals.length);
       for (let i = 0; i < numerals.length; i++) {
         const numeral = numerals[i];
         if (numeral >= this._radix) {
-          throw new Error(`FF3: numeral ${numeral} is not valid for radix ${this._radix}`);
+          throw new Error("FF3: numeral " + numeral + " is not valid for radix " + this._radix);
         }
 
         if (numeral < 10) {
@@ -1181,14 +1391,19 @@
         } else if (numeral < 62) {
           bytes[i] = numeral - 36 + 65;
         } else {
-          throw new Error(`FF3: radix ${this._radix} needs more than the 62 symbols this encoding carries`);
+          throw new Error("FF3: radix " + this._radix + " needs more than the 62 symbols this encoding carries");
         }
       }
       return bytes;
     }
 
     // Convert numeral array to big integer (using string arithmetic for precision)
+    /**
+     * @param {int32[]} numerals - Numerals, most significant first
+     * @returns {BigInt} Their value
+     */
     _numeralArrayToBigInt(numerals) {
+      /** @type {BigInt} */
       let result = 0n;
       const radix = BigInt(this._radix);
       for (let i = 0; i < numerals.length; i++) {
@@ -1198,41 +1413,74 @@
     }
 
     // Convert big integer to numeral array
+    /**
+     * @param {BigInt} value - Value
+     * @param {int32} length - Number of numerals
+     * @returns {int32[]} Numerals, most significant first
+     */
     _bigIntToNumeralArray(value, length) {
+      /** @type {int32[]} */
       const numerals = [];
       const radix = BigInt(this._radix);
       let bigValue = BigInt(value);
 
       for (let i = 0; i < length; i++) {
-        numerals.unshift(Number(bigValue % radix));
+        /** @type {int32} */
+        const digit = Number(bigValue % radix);
+        numerals.unshift(digit);
         bigValue = bigValue / radix;
       }
       return numerals;
     }
 
     // Convert big integer to byte array (little-endian)
+    /**
+     * @param {BigInt} value - Value
+     * @param {int32} length - Number of bytes
+     * @returns {uint8[]} Little-endian bytes
+     */
     _bigIntToBytes(value, length) {
+      /** @type {uint8[]} */
       const bytes = new Array(length);
       let bigValue = BigInt(value);
 
       for (let i = 0; i < length; i++) {
-        bytes[i] = Number(bigValue&0xFFn);
+        /** @type {uint8} */
+        const low = Number(OpCodes.AndN(bigValue, 0xFFn));
+        bytes[i] = low;
         bigValue = OpCodes.ShiftRn(bigValue, 8);
       }
       return bytes;
     }
 
     // Big integer power function
+    /**
+     * @param {int32} base - Base
+     * @param {int32} exponent - Exponent
+     * @returns {BigInt} base ** exponent
+     */
     _pow(base, exponent) {
       return BigInt(base) ** BigInt(exponent);
     }
 
     // Modular addition for big integers
+    /**
+     * @param {BigInt} a - Addend
+     * @param {BigInt} b - Addend
+     * @param {BigInt} mod - Modulus
+     * @returns {BigInt} (a + b) mod m
+     */
     _addMod(a, b, mod) {
       return (BigInt(a) + BigInt(b)) % BigInt(mod);
     }
 
     // Modular subtraction for big integers
+    /**
+     * @param {BigInt} a - Minuend
+     * @param {BigInt} b - Subtrahend
+     * @param {BigInt} mod - Modulus
+     * @returns {BigInt} (a - b) mod m in 0..m-1
+     */
     _subMod(a, b, mod) {
       const result = (BigInt(a) - BigInt(b)) % BigInt(mod);
       return result < 0n ? result + BigInt(mod) : result;

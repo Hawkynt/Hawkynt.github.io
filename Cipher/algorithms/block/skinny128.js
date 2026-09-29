@@ -14,23 +14,31 @@
  * Used in NIST lightweight cryptography finalist Romulus.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Load AlgorithmFramework
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-  }
-
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
-  }
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
-
-  const OpCodes = global.OpCodes;
 
   // ============================================================================
   // SKINNY-128 S-box and Helper Functions
@@ -39,49 +47,55 @@
   /**
    * Apply SKINNY-128 S-box to all bytes in a 32-bit word
    * This is a highly optimized bit-sliced implementation
+   * @param {uint32} x - Word of four state bytes
+   * @returns {uint32} Substituted word
    */
   function skinny128_sbox(x) {
     x = OpCodes.ToUint32(x);
+    /** @type {uint32} */
     let y;
 
     // Mix the bits (bit-sliced S-box operations)
-    x = ~x;
-    x = OpCodes.Xor32(x, (((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x11111111));
-    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 4)))&0x40404040), y));
-    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shl32(x, 1)))&0x02020202), y));
-    y = (((OpCodes.Shr32(x, 5))&(OpCodes.Shl32(x, 1)))&0x04040404);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
-    x = ~x;
+    x = OpCodes.Not32(x);
+    x = OpCodes.Xor32(x, OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 4)), 0x40404040), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shl32(x, 1)), 0x02020202), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 5), OpCodes.Shl32(x, 1)), 0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    x = OpCodes.Not32(x);
 
     // Final permutation [2 7 6 1 3 0 4 5]
-    x = (OpCodes.Shl32((x&0x08080808), 1)|OpCodes.Shl32((x&0x32323232), 2)|OpCodes.Shl32((x&0x01010101), 5)|OpCodes.Shr32((x&0x80808080), 6)|OpCodes.Shr32((x&0x40404040), 4)|OpCodes.Shr32((x&0x04040404), 2));
+    x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1), OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2)), OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5)), OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6)), OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4)), OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2));
 
     return x;
   }
 
   /**
    * Apply inverse SKINNY-128 S-box to all bytes in a 32-bit word
+   * @param {uint32} x - Word of four state bytes
+   * @returns {uint32} Substituted word
    */
   function skinny128_inv_sbox(x) {
     x = OpCodes.ToUint32(x);
+    /** @type {uint32} */
     let y;
 
     // Mix the bits (inverse bit-sliced S-box operations)
-    x = ~x;
-    y = (((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 3)))&0x01010101);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x10101010), y));
-    y = (((OpCodes.Shr32(x, 6))&(OpCodes.Shr32(x, 1)))&0x02020202);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
-    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shl32(x, 2)))&0x04040404), y));
-    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
-    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 4))&(OpCodes.Shl32(x, 5)))&0x40404040), y));
-    x = ~x;
+    x = OpCodes.Not32(x);
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 3)), 0x01010101);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x10101010), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 6), OpCodes.Shr32(x, 1)), 0x02020202);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shl32(x, 2)), 0x04040404), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 4), OpCodes.Shl32(x, 5)), 0x40404040), y));
+    x = OpCodes.Not32(x);
 
     // Final permutation [5 3 0 4 6 7 2 1]
-    x = (OpCodes.Shl32((x&0x01010101), 2)|OpCodes.Shl32((x&0x04040404), 4)|OpCodes.Shl32((x&0x02020202), 6)|OpCodes.Shr32((x&0x20202020), 5)|OpCodes.Shr32((x&0xC8C8C8C8), 2)|OpCodes.Shr32((x&0x10101010), 1));
+    x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 2), OpCodes.Shl32(OpCodes.And32(x, 0x04040404), 4)), OpCodes.Shl32(OpCodes.And32(x, 0x02020202), 6)), OpCodes.Shr32(OpCodes.And32(x, 0x20202020), 5)), OpCodes.Shr32(OpCodes.And32(x, 0xC8C8C8C8), 2)), OpCodes.Shr32(OpCodes.And32(x, 0x10101010), 1));
 
     return x;
   }
@@ -89,22 +103,26 @@
   /**
    * LFSR2 - Linear feedback shift register for TK2 update
    * Applied to each byte independently
+   * @param {uint32} x - Word of four tweakey bytes
+   * @returns {uint32} Updated word
    */
   function skinny128_LFSR2(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = (OpCodes.Shl32(x, 1))&0xFEFEFEFE;
-    const feedback = OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5))&0x01010101;
+    const shifted = OpCodes.And32(OpCodes.Shl32(x, 1), 0xFEFEFEFE);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01010101);
     return OpCodes.Xor32(shifted, feedback);
   }
 
   /**
    * LFSR3 - Linear feedback shift register for TK3 update
    * Applied to each byte independently (inverse of LFSR2)
+   * @param {uint32} x - Word of four tweakey bytes
+   * @returns {uint32} Updated word
    */
   function skinny128_LFSR3(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = (OpCodes.Shr32(x, 1))&0x7F7F7F7F;
-    const feedback = OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1))&0x80808080;
+    const shifted = OpCodes.And32(OpCodes.Shr32(x, 1), 0x7F7F7F7F);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80808080);
     return OpCodes.Xor32(shifted, feedback);
   }
 
@@ -112,33 +130,38 @@
    * Permute half of the tweakey state in-place
    * PT = [9, 15, 8, 13, 10, 14, 12, 11, 0, 1, 2, 3, 4, 5, 6, 7]
    * This modifies the array in-place at the specified index
+   * @param {uint32[]} tk - Tweakey words (modified in place)
+   * @param {int32} idx - First word of the half
    */
   function skinny128_permute_tk_half(tk, idx) {
     const row2 = tk[idx];
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
 
-    tk[idx] = (((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00));
+    tk[idx] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000)), OpCodes.And32(row3_rotated, 0xFF00FF00));
 
-    tk[idx + 1] = (((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000));
+    tk[idx + 1] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF), OpCodes.And32(row2, 0xFF000000)), OpCodes.And32(OpCodes.Shl32(row3_rotated, 8), 0x0000FF00)), OpCodes.And32(row3_rotated, 0x00FF0000));
   }
 
   /**
    * Inverse permute half of the tweakey state
    * PT' = [8, 9, 10, 11, 12, 13, 14, 15, 2, 0, 4, 7, 6, 3, 5, 1]
+   * @param {uint32[]} tk - Tweakey words (modified in place)
+   * @param {int32} idx - First word of the half
    */
   function skinny128_inv_permute_tk_half(tk, idx) {
     const row0 = tk[idx];
     const row1 = tk[idx + 1];
 
-    tk[idx] = (((OpCodes.Shr32(row0, 16))&0x000000FF)|((OpCodes.Shl32(row0, 8))&0x0000FF00)|((OpCodes.Shl32(row1, 16))&0x00FF0000)|(row1&0xFF000000));
+    tk[idx] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row0, 16), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row0, 8), 0x0000FF00)), OpCodes.And32(OpCodes.Shl32(row1, 16), 0x00FF0000)), OpCodes.And32(row1, 0xFF000000));
 
-    tk[idx + 1] = (((OpCodes.Shr32(row0, 16))&0x0000FF00)|((OpCodes.Shl32(row0, 16))&0xFF000000)|((OpCodes.Shr32(row1, 16))&0x000000FF)|((OpCodes.Shl32(row1, 8))&0x00FF0000));
+    tk[idx + 1] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row0, 16), 0x0000FF00), OpCodes.And32(OpCodes.Shl32(row0, 16), 0xFF000000)), OpCodes.And32(OpCodes.Shr32(row1, 16), 0x000000FF)), OpCodes.And32(OpCodes.Shl32(row1, 8), 0x00FF0000));
   }
 
   /**
    * Fast-forward TK1 to the end of the key schedule for decryption
    * Applies permutation 8 times (for 40 and 56 round variants)
+   * @param {uint32[]} tk - Tweakey words (modified in place)
    */
   function skinny128_fast_forward_tk(tk) {
     const row0 = tk[0];
@@ -146,13 +169,13 @@
     const row2 = tk[2];
     const row3 = tk[3];
 
-    tk[0] = (((OpCodes.Shr32(row1, 8))&0x0000FFFF)|((OpCodes.Shr32(row0, 8))&0x00FF0000)|((OpCodes.Shl32(row0, 8))&0xFF000000));
+    tk[0] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row1, 8), 0x0000FFFF), OpCodes.And32(OpCodes.Shr32(row0, 8), 0x00FF0000)), OpCodes.And32(OpCodes.Shl32(row0, 8), 0xFF000000));
 
-    tk[1] = (((OpCodes.Shr32(row1, 24))&0x000000FF)|((OpCodes.Shl32(row0, 8))&0x00FFFF00)|((OpCodes.Shl32(row1, 24))&0xFF000000));
+    tk[1] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row1, 24), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row0, 8), 0x00FFFF00)), OpCodes.And32(OpCodes.Shl32(row1, 24), 0xFF000000));
 
-    tk[2] = (((OpCodes.Shr32(row3, 8))&0x0000FFFF)|((OpCodes.Shr32(row2, 8))&0x00FF0000)|((OpCodes.Shl32(row2, 8))&0xFF000000));
+    tk[2] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row3, 8), 0x0000FFFF), OpCodes.And32(OpCodes.Shr32(row2, 8), 0x00FF0000)), OpCodes.And32(OpCodes.Shl32(row2, 8), 0xFF000000));
 
-    tk[3] = (((OpCodes.Shr32(row3, 24))&0x000000FF)|((OpCodes.Shl32(row2, 8))&0x00FFFF00)|((OpCodes.Shl32(row3, 24))&0xFF000000));
+    tk[3] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row3, 24), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row2, 8), 0x00FFFF00)), OpCodes.And32(OpCodes.Shl32(row3, 24), 0xFF000000));
   }
 
   // ============================================================================
@@ -230,7 +253,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SKINNY128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -251,16 +274,27 @@
   class SKINNY128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SKINNY128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this.keySchedule = null;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {int32} */
+      this._rounds = 0;
+      /** @type {uint32[]} */
+      this._tk1 = [];
+      /** @type {uint32[]} */
+      this._rkTk0 = [];
+      /** @type {uint32[]} */
+      this._rkTk1 = [];
     }
 
     /**
@@ -272,21 +306,29 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this.keySchedule = null;
+        this._rounds = 0;
+        this._tk1 = [];
+        this._rkTk0 = [];
+        this._rkTk1 = [];
         return;
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this._keySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        if (keyBytes.length >= sizes[i].minSize && keyBytes.length <= sizes[i].maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Must be 16, 32, or 48 bytes.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Must be 16, 32, or 48 bytes.");
       }
 
       this._key = [...keyBytes];
-      this.keySchedule = this._expandKey(keyBytes);
+      this._expandKey(keyBytes);
     }
 
     /**
@@ -300,9 +342,11 @@
 
     /**
      * Expand key into round keys (key schedule)
+     * @param {uint8[]} keyBytes - Key bytes
      */
     _expandKey(keyBytes) {
       const keySize = keyBytes.length;
+      /** @type {int32} */
       let rounds;
 
       if (keySize === 16) {
@@ -313,34 +357,35 @@
         rounds = 56;  // SKINNY-128-384
       }
 
-      const schedule = {
-        rounds: rounds,
-        TK1: new Array(4),
-        roundKeys: []
-      };
+      /** @type {uint32[]} */
+      const tk1Words = new Array(4);
+      /** @type {uint32[]} */
+      const rkTk0 = [];
+      /** @type {uint32[]} */
+      const rkTk1 = [];
 
       // Load TK1 (first 16 bytes)
-      schedule.TK1[0] = OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
-      schedule.TK1[1] = OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
-      schedule.TK1[2] = OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]);
-      schedule.TK1[3] = OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
+      tk1Words[0] = OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
+      tk1Words[1] = OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
+      tk1Words[2] = OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]);
+      tk1Words[3] = OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
 
       if (keySize === 16) {
         // SKINNY-128-128 has no TK2/TK3, but the round constants still have to
         // be added to the first two rows of every round. Carry them in the same
         // round-key slots the larger variants use so the round code is shared.
+        /** @type {uint32} */
         let rc = 0;
         for (let round = 0; round < rounds; ++round) {
-          rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
-          schedule.roundKeys.push({
-            tk0: rc&0x0F,
-            tk1: OpCodes.Shr32(rc, 4)
-          });
+          rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+          rkTk0.push(OpCodes.And32(rc, 0x0F));
+          rkTk1.push(OpCodes.Shr32(rc, 4));
         }
       }
 
       if (keySize >= 32) {
         // Pre-compute TK2 schedule for SKINNY-128-256 and SKINNY-128-384
+        /** @type {uint32[]} */
         const TK2 = new Array(4);
         TK2[0] = OpCodes.Pack32LE(keyBytes[16], keyBytes[17], keyBytes[18], keyBytes[19]);
         TK2[1] = OpCodes.Pack32LE(keyBytes[20], keyBytes[21], keyBytes[22], keyBytes[23]);
@@ -349,6 +394,7 @@
 
         if (keySize === 48) {
           // Pre-compute TK3 schedule for SKINNY-128-384
+          /** @type {uint32[]} */
           const TK3 = new Array(4);
           TK3[0] = OpCodes.Pack32LE(keyBytes[32], keyBytes[33], keyBytes[34], keyBytes[35]);
           TK3[1] = OpCodes.Pack32LE(keyBytes[36], keyBytes[37], keyBytes[38], keyBytes[39]);
@@ -356,14 +402,13 @@
           TK3[3] = OpCodes.Pack32LE(keyBytes[44], keyBytes[45], keyBytes[46], keyBytes[47]);
 
           // Generate round keys for SKINNY-128-384
+          /** @type {uint32} */
           let rc = 0;
           for (let round = 0; round < rounds; round += 2) {
             // Round 1
-            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
-            schedule.roundKeys.push({
-              tk0: OpCodes.Xor32(OpCodes.Xor32(TK2[0], TK3[0]), (rc&0x0F)),
-              tk1: OpCodes.Xor32(OpCodes.Xor32(TK2[1], TK3[1]), OpCodes.Shr32(rc, 4))
-            });
+            rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+            rkTk0.push(OpCodes.Xor32(OpCodes.Xor32(TK2[0], TK3[0]), (rc&0x0F)));
+            rkTk1.push(OpCodes.Xor32(OpCodes.Xor32(TK2[1], TK3[1]), OpCodes.Shr32(rc, 4)));
 
             // Permute bottom half and apply LFSR
             skinny128_permute_tk_half(TK2, 2);
@@ -374,11 +419,9 @@
             TK3[3] = skinny128_LFSR3(TK3[3]);
 
             // Round 2
-            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
-            schedule.roundKeys.push({
-              tk0: OpCodes.Xor32(OpCodes.Xor32(TK2[2], TK3[2]), (rc&0x0F)),
-              tk1: OpCodes.Xor32(OpCodes.Xor32(TK2[3], TK3[3]), OpCodes.Shr32(rc, 4))
-            });
+            rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+            rkTk0.push(OpCodes.Xor32(OpCodes.Xor32(TK2[2], TK3[2]), (rc&0x0F)));
+            rkTk1.push(OpCodes.Xor32(OpCodes.Xor32(TK2[3], TK3[3]), OpCodes.Shr32(rc, 4)));
 
             // Permute top half and apply LFSR
             skinny128_permute_tk_half(TK2, 0);
@@ -390,14 +433,13 @@
           }
         } else {
           // Generate round keys for SKINNY-128-256
+          /** @type {uint32} */
           let rc = 0;
           for (let round = 0; round < rounds; round += 2) {
             // Round 1
-            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
-            schedule.roundKeys.push({
-              tk0: OpCodes.Xor32(TK2[0], (rc&0x0F)),
-              tk1: OpCodes.Xor32(TK2[1], OpCodes.Shr32(rc, 4))
-            });
+            rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+            rkTk0.push(OpCodes.Xor32(TK2[0], (rc&0x0F)));
+            rkTk1.push(OpCodes.Xor32(TK2[1], OpCodes.Shr32(rc, 4)));
 
             // Permute bottom half and apply LFSR
             skinny128_permute_tk_half(TK2, 2);
@@ -405,11 +447,9 @@
             TK2[3] = skinny128_LFSR2(TK2[3]);
 
             // Round 2
-            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
-            schedule.roundKeys.push({
-              tk0: OpCodes.Xor32(TK2[2], (rc&0x0F)),
-              tk1: OpCodes.Xor32(TK2[3], OpCodes.Shr32(rc, 4))
-            });
+            rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+            rkTk0.push(OpCodes.Xor32(TK2[2], (rc&0x0F)));
+            rkTk1.push(OpCodes.Xor32(TK2[3], OpCodes.Shr32(rc, 4)));
 
             // Permute top half and apply LFSR
             skinny128_permute_tk_half(TK2, 0);
@@ -419,7 +459,10 @@
         }
       }
 
-      return schedule;
+      this._rounds = rounds;
+      this._tk1 = tk1Words;
+      this._rkTk0 = rkTk0;
+      this._rkTk1 = rkTk1;
     }
 
     /**
@@ -446,8 +489,9 @@
 
       const blockSize = 16;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process complete blocks
@@ -464,6 +508,8 @@
 
     /**
      * Encrypt a single 16-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
       // Load state
@@ -473,9 +519,10 @@
       let s3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // Make a local copy of TK1
-      const TK1 = [...this.keySchedule.TK1];
-      const rounds = this.keySchedule.rounds;
-      const hasRoundKeys = this.keySchedule.roundKeys.length > 0;
+      /** @type {uint32[]} */
+      const TK1 = [...this._tk1];
+      const rounds = this._rounds;
+      const hasRoundKeys = this._rkTk0.length > 0;
 
       // Perform all encryption rounds (4 at a time due to word rotation pattern)
       for (let round = 0; round < rounds; round += 4) {
@@ -486,9 +533,8 @@
         s3 = skinny128_sbox(s3);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round];
-          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk0), TK1[0]);
-          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk1), TK1[1]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, this._rkTk0[round]), TK1[0]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, this._rkTk1[round]), TK1[1]);
         } else {
           s0 = OpCodes.Xor32(s0, TK1[0]);
           s1 = OpCodes.Xor32(s1, TK1[1]);
@@ -512,9 +558,8 @@
         s2 = skinny128_sbox(s2);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round + 1];
-          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk0), TK1[2]);
-          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk1), TK1[3]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, this._rkTk0[round + 1]), TK1[2]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, this._rkTk1[round + 1]), TK1[3]);
         } else {
           s3 = OpCodes.Xor32(s3, TK1[2]);
           s0 = OpCodes.Xor32(s0, TK1[3]);
@@ -538,9 +583,8 @@
         s1 = skinny128_sbox(s1);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round + 2];
-          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk0), TK1[0]);
-          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk1), TK1[1]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, this._rkTk0[round + 2]), TK1[0]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, this._rkTk1[round + 2]), TK1[1]);
         } else {
           s2 = OpCodes.Xor32(s2, TK1[0]);
           s3 = OpCodes.Xor32(s3, TK1[1]);
@@ -564,9 +608,8 @@
         s0 = skinny128_sbox(s0);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round + 3];
-          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk0), TK1[2]);
-          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk1), TK1[3]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, this._rkTk0[round + 3]), TK1[2]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, this._rkTk1[round + 3]), TK1[3]);
         } else {
           s1 = OpCodes.Xor32(s1, TK1[2]);
           s2 = OpCodes.Xor32(s2, TK1[3]);
@@ -585,6 +628,7 @@
       }
 
       // Pack result
+      /** @type {uint8[]} */
       const result = new Array(16);
       const s0_bytes = OpCodes.Unpack32LE(s0);
       const s1_bytes = OpCodes.Unpack32LE(s1);
@@ -606,6 +650,8 @@
     /**
      * Decrypt a single 16-byte block
      * Following the exact C reference implementation pattern
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
       // Load state
@@ -615,9 +661,10 @@
       let s3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // Make a local copy of TK1 and fast-forward to end for decryption
-      const TK1 = [...this.keySchedule.TK1];
-      const rounds = this.keySchedule.rounds;
-      const hasRoundKeys = this.keySchedule.roundKeys.length > 0;
+      /** @type {uint32[]} */
+      const TK1 = [...this._tk1];
+      const rounds = this._rounds;
+      const hasRoundKeys = this._rkTk0.length > 0;
 
       // Fast-forward TK1 for decryption (only needed for 40 and 56 round variants)
       if (rounds !== 48) {
@@ -650,9 +697,8 @@
 
         // Remove round tweakey
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round];
-          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk0), TK1[2]);
-          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk1), TK1[3]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, this._rkTk0[round]), TK1[2]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, this._rkTk1[round]), TK1[3]);
         } else {
           s1 = OpCodes.Xor32(s1, TK1[2]);
           s2 = OpCodes.Xor32(s2, TK1[3]);
@@ -677,9 +723,8 @@
         s1 = OpCodes.RotL32(s1, 8);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round - 1];
-          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk0), TK1[0]);
-          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk1), TK1[1]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, this._rkTk0[round - 1]), TK1[0]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, this._rkTk1[round - 1]), TK1[1]);
         } else {
           s2 = OpCodes.Xor32(s2, TK1[0]);
           s3 = OpCodes.Xor32(s3, TK1[1]);
@@ -703,9 +748,8 @@
         s2 = OpCodes.RotL32(s2, 8);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round - 2];
-          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk0), TK1[2]);
-          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk1), TK1[3]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, this._rkTk0[round - 2]), TK1[2]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, this._rkTk1[round - 2]), TK1[3]);
         } else {
           s3 = OpCodes.Xor32(s3, TK1[2]);
           s0 = OpCodes.Xor32(s0, TK1[3]);
@@ -729,9 +773,8 @@
         s3 = OpCodes.RotL32(s3, 8);
 
         if (hasRoundKeys) {
-          const rk = this.keySchedule.roundKeys[round - 3];
-          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk0), TK1[0]);
-          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk1), TK1[1]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, this._rkTk0[round - 3]), TK1[0]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, this._rkTk1[round - 3]), TK1[1]);
         } else {
           s0 = OpCodes.Xor32(s0, TK1[0]);
           s1 = OpCodes.Xor32(s1, TK1[1]);
@@ -745,6 +788,7 @@
       }
 
       // Pack result
+      /** @type {uint8[]} */
       const result = new Array(16);
       const s0_bytes = OpCodes.Unpack32LE(s0);
       const s1_bytes = OpCodes.Unpack32LE(s1);
@@ -767,12 +811,5 @@
   // Register algorithm
   RegisterAlgorithm(new SKINNY128Algorithm());
 
-  // Export for Node.js/CommonJS
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SKINNY128Algorithm, SKINNY128Instance };
-  }
-
-})(typeof globalThis !== 'undefined' ? globalThis :
-   typeof window !== 'undefined' ? window :
-   typeof global !== 'undefined' ? global :
-   typeof self !== 'undefined' ? self : this);
+  return { SKINNY128Algorithm, SKINNY128Instance };
+}));

@@ -169,7 +169,8 @@
   );
 
   // Standard FIPS-180-2 SHA-256 round constants (matched byte-for-byte in the disasm).
-  const SHA256_K = Object.freeze([
+  /** @type {uint32[]} */
+  const SHA256_K = [
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
     0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
     0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
@@ -178,23 +179,64 @@
     0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
     0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
-  ]);
+  ];
 
   const P_CONST = 0xB7E15163; // RC5/RC6 "P32" magic constant
   const Q_CONST = 0x9E3779B9; // RC5/RC6 "Q32" magic constant / TEA delta
 
+  /**
+   * @param {uint32} row - S-box row (low 5 bits used)
+   * @param {uint32} byteVal - Column (low 8 bits used)
+   * @returns {uint8} S-box entry
+   */
   function sbLookup(row, byteVal) {
-    return SBOX[OpCodes.And32(row, 0x1F) * 256 + OpCodes.And32(byteVal, 0xFF)];
+    return SBOX[OpCodes.Add32(OpCodes.Mul32(OpCodes.And32(row, 0x1F), 256), OpCodes.And32(byteVal, 0xFF))];
   }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Top byte
+   */
   function byte3(x) { return OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Byte 2
+   */
   function byte2(x) { return OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Byte 1
+   */
   function byte1(x) { return OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Low byte
+   */
   function byte0(x) { return OpCodes.And32(x, 0xFF); }
 
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} SHA-256 Sigma0
+   */
   function Sigma0(x) { return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x,2), OpCodes.RotR32(x,13)), OpCodes.RotR32(x,22))); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} SHA-256 Sigma1
+   */
   function Sigma1(x) { return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x,6), OpCodes.RotR32(x,11)), OpCodes.RotR32(x,25))); }
+  /**
+   * @param {uint32} x - Selector
+   * @param {uint32} y - First choice
+   * @param {uint32} z - Second choice
+   * @returns {uint32} SHA-256 Ch
+   */
   function Ch(x,y,z)  { return OpCodes.ToUint32(OpCodes.Xor32(z, OpCodes.And32(x, OpCodes.Xor32(y, z)))); }
-  function Maj(x,y,z) { return OpCodes.ToUint32(OpCodes.And32(x, y) | OpCodes.And32(x | y, z)); }
+  /**
+   * @param {uint32} x - First word
+   * @param {uint32} y - Second word
+   * @param {uint32} z - Third word
+   * @returns {uint32} SHA-256 Maj
+   */
+  function Maj(x,y,z) { return OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(OpCodes.Or32(x, y), z)); }
 
   class DarkCryptDagindaAlgorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -248,31 +290,50 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptDagindaInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptDagindaInstance(this, isInverse);
     }
   }
 
   class DarkCryptDagindaInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptDagindaAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 32;
       this.KeySize = 0;
-      this._sched = null;
+      /** @type {uint32[]|null} */
+      this._K = null;   // 16 key words (pre/post-whitening)
+      /** @type {uint32[]|null} */
+      this._W = null;   // 64 round words
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._sched = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._K = null; this._W = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DAGINDA (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DAGINDA (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._sched = this._scheduleKey(this._key);
+      this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -285,8 +346,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -297,11 +359,17 @@
     }
 
     // Bespoke 64-round ARX/S-box key schedule + RC4-style permutation (see file header).
+    /**
+     * Fill _K and _W
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _scheduleKey(keyBytes) {
+      /** @type {uint32[]} */
       const K = new Array(16);
       for (let i = 0; i < 16; i++)
         K[i] = OpCodes.Pack32LE(keyBytes[i*4], keyBytes[i*4+1], keyBytes[i*4+2], keyBytes[i*4+3]);
 
+      /** @type {uint32[]} */
       const RK = new Array(64);
       for (let i = 0; i < 64; i++) RK[i] = K[OpCodes.And32(i, 0xF)];
 
@@ -309,30 +377,30 @@
       let Qacc = Q_CONST;
       for (let i = 0; i < 64; i++) {
         const ebx = OpCodes.And32(i, 0xF);
-        Qacc = OpCodes.ToUint32(Qacc + K[ebx] + Q_CONST);
+        Qacc = OpCodes.Add32(OpCodes.Add32(Qacc, K[ebx]), Q_CONST);
         const in1 = OpCodes.ToUint32(RK[i] + Pcur);
         const xA = OpCodes.And32(i, 0x1F);
         const xB = OpCodes.And32(Pcur, 0x1F);
 
-        let F1 = OpCodes.ToUint32(
-          OpCodes.Shl32(sbLookup(xA, byte3(in1)), 24) |
-          OpCodes.Shl32(sbLookup(xB, byte2(in1)), 16) |
-          OpCodes.Shl32(sbLookup(OpCodes.And32(in1, 0x1F), byte1(in1)), 8) |
+        let F1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(sbLookup(xA, byte3(in1)), 24),
+          OpCodes.Shl32(sbLookup(xB, byte2(in1)), 16)),
+          OpCodes.Shl32(sbLookup(OpCodes.And32(in1, 0x1F), byte1(in1)), 8)),
           sbLookup(OpCodes.And32(Qacc, 0x1F), byte0(in1))
         );
         F1 = OpCodes.RotL32(F1, 11);
         Qacc = OpCodes.ToUint32(Qacc + F1);
 
-        const in2 = OpCodes.ToUint32(
-          OpCodes.RotL32(F1, 16) +
-          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(F1, 6), OpCodes.Shr32(F1, 8))) +
+        const in2 = OpCodes.Add32(OpCodes.Add32(
+          OpCodes.RotL32(F1, 16),
+          OpCodes.Xor32(OpCodes.Shl32(F1, 6), OpCodes.Shr32(F1, 8))),
           K[ebx]
         );
 
-        let F2 = OpCodes.ToUint32(
-          OpCodes.Shl32(sbLookup(OpCodes.And32(Qacc, 0x1F), byte3(in2)), 24) |
-          OpCodes.Shl32(sbLookup(OpCodes.And32(in2, 0x1F), byte2(in2)), 16) |
-          OpCodes.Shl32(sbLookup(xB, byte1(in2)), 8) |
+        let F2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(sbLookup(OpCodes.And32(Qacc, 0x1F), byte3(in2)), 24),
+          OpCodes.Shl32(sbLookup(OpCodes.And32(in2, 0x1F), byte2(in2)), 16)),
+          OpCodes.Shl32(sbLookup(xB, byte1(in2)), 8)),
           sbLookup(xA, byte0(in2))
         );
         F2 = OpCodes.RotL32(F2, 11);
@@ -352,12 +420,13 @@
       const T = new Uint8Array(256);
       for (let i = 0; i < 256; i++) T[i] = i;
 
+      /** @type {uint8} */
       let carry = 0;
       for (let n = 0; n < 768; n++) {
         const idx = OpCodes.And32(n, 0xFF);
         const Si = T[idx];
         const Ki = RKbytes[idx];
-        const jval = OpCodes.And32(carry + Si + Ki, 0xFF);
+        const jval = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(carry, Si), Ki), 0xFF);
         const v = T[jval];
         const w = T[v];
         T[idx] = w;
@@ -366,15 +435,22 @@
       }
 
       // W[0..63] = T[] reinterpreted as 64 little-endian dwords.
+      /** @type {uint32[]} */
       const W = new Array(64);
       for (let i = 0; i < 64; i++)
         W[i] = OpCodes.Pack32LE(T[i*4], T[i*4+1], T[i*4+2], T[i*4+3]);
 
-      return { K, W };
+      this._K = K;
+      this._W = W;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const K = this._sched.K, W = this._sched.W;
+      const K = this._K, W = this._W;
+      /** @type {uint32[]} */
       const p = new Array(8);
       for (let i = 0; i < 8; i++)
         p[i] = OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]);
@@ -389,21 +465,27 @@
       let h = OpCodes.ToUint32(K[7] + p[7]);
 
       for (let t = 0; t < 64; t++) {
-        const T1 = OpCodes.ToUint32(h + Sigma1(e) + Ch(e,f,g) + SHA256_K[t] + W[t]);
+        const T1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(h, Sigma1(e)), Ch(e,f,g)), SHA256_K[t]), W[t]);
         const T2 = OpCodes.ToUint32(Sigma0(a) + Maj(a,b,c));
         h = g; g = f; f = e; e = OpCodes.ToUint32(d + T1);
         d = c; c = b; b = a; a = OpCodes.ToUint32(T1 + T2);
       }
 
       const st = [a,b,c,d,e,f,g,h];
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++)
         out.push(...OpCodes.Unpack32LE(OpCodes.ToUint32(OpCodes.Xor32(st[i], K[8+i]))));
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const K = this._sched.K, W = this._sched.W;
+      const K = this._K, W = this._W;
+      /** @type {uint32[]} */
       const c0 = new Array(8);
       for (let i = 0; i < 8; i++)
         c0[i] = OpCodes.Pack32LE(block[i*4], block[i*4+1], block[i*4+2], block[i*4+3]);
@@ -423,11 +505,12 @@
         const T2 = OpCodes.ToUint32(Sigma0(na) + Maj(na,nb,nc));
         const T1 = OpCodes.ToUint32(a2 - T2);
         const nd = OpCodes.ToUint32(e2 - T1);
-        const nh = OpCodes.ToUint32(T1 - Sigma1(ne) - Ch(ne,nf,ng) - SHA256_K[t] - W[t]);
+        const nh = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(T1, Sigma1(ne)), Ch(ne,nf,ng)), SHA256_K[t]), W[t]);
         a=na; b=nb; c=nc; d=nd; e=ne; f=nf; g=ng; h=nh;
       }
 
       const st = [a,b,c,d,e,f,g,h];
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++)
         out.push(...OpCodes.Unpack32LE(OpCodes.ToUint32(st[i] - K[i])));
