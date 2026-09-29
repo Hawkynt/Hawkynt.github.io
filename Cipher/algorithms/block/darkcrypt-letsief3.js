@@ -79,19 +79,41 @@
   const KEY_MULT = 0x2F8E6D85;
 
   // Fixed 16-entry generator table driving the S-box map.
-  const GEN = Object.freeze([
+  /** @type {uint32[]} */
+  const GEN = [
     0x2f8e6d85, 0x8d3c228d, 0xd6ad0dd8, 0x8ab56e61,
     0x23e99c57, 0xc4e1db7e, 0x17177161, 0x01b9ff46,
     0x7dbb8245, 0x32d8cd28, 0x82027dfe, 0x70009000,
     0x82007e00, 0x80087ff8, 0x7f808080, 0x00010000
-  ]);
+  ];
+  Object.freeze(GEN);
 
   // 16-bit-limb modular multiply used throughout the cipher.
+  // Every partial sum below stays under 2^32 (16x16-bit products plus 16-bit
+  // carries), so Add32 equals the plain sum.
+  /**
+   * @param {uint32} A - First factor
+   * @param {uint32} B - Second factor
+   * @returns {uint32} Product
+   */
   function mul(A, B) {
     A = OpCodes.ToUint32(A); B = OpCodes.ToUint32(B);
     const a0 = OpCodes.And32(A, 0xFFFF), a1 = OpCodes.And32(OpCodes.Shr32(A, 16), 0xFFFF);
     const b0 = OpCodes.And32(B, 0xFFFF), b1 = OpCodes.And32(OpCodes.Shr32(B, 16), 0xFFFF);
-    let eax, ebx, ecx, edx, esi, rLo, rHi;
+    /** @type {uint32} */
+    let eax = 0;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = 0;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let rLo = 0;
+    /** @type {uint32} */
+    let rHi = 0;
     ecx = a0;
     ebx = b0;
     edx = OpCodes.ToUint32(ecx * ebx);
@@ -100,7 +122,7 @@
     eax = OpCodes.ToUint32(esi * ebx);
     rLo = OpCodes.And32(edx, 0xFFFF);
     edx = OpCodes.Shr32(edx, 16);
-    eax = eax + edx;
+    eax = OpCodes.Add32(eax, edx);
     edx = b1;
     ecx = OpCodes.ToUint32(ecx * edx);
     esi = OpCodes.ToUint32(esi * edx);
@@ -108,45 +130,73 @@
     ebx = eax;
     eax = OpCodes.And32(eax, 0xFFFF);
     ebx = OpCodes.Shr32(ebx, 16);
-    eax = eax + ecx;
+    eax = OpCodes.Add32(eax, ecx);
     edx = OpCodes.And32(ebx, 0xFFFF);
     rHi = OpCodes.And32(eax, 0xFFFF);
-    edx = edx + esi;
+    edx = OpCodes.Add32(edx, esi);
     eax = OpCodes.Shr32(eax, 16);
-    eax = eax + edx;
+    eax = OpCodes.Add32(eax, edx);
     edx = rLo;
     ecx = eax;
     eax = OpCodes.And32(eax, 0xFFFF);
     ebx = rHi;
-    eax = eax + edx;
+    eax = OpCodes.Add32(eax, edx);
     ecx = OpCodes.Shr32(ecx, 16);
     rLo = OpCodes.And32(eax, 0xFFFF);
     edx = OpCodes.And32(ecx, 0xFFFF);
     eax = OpCodes.Shr32(eax, 16);
-    edx = edx + ebx;
-    eax = eax + edx;
+    edx = OpCodes.Add32(edx, ebx);
+    eax = OpCodes.Add32(eax, edx);
     rHi = OpCodes.And32(eax, 0xFFFF);
     eax = OpCodes.Shr32(eax, 16);
-    eax = OpCodes.ToUint32(eax + (OpCodes.Shl32(rHi, 16) + rLo));
+    eax = OpCodes.Add32(eax, OpCodes.Add32(OpCodes.Shl32(rHi, 16), rLo));
     return OpCodes.ToUint32(eax);
   }
 
   // Map a 16-bit value to a pair of table entries.
+  /**
+   * @param {uint32} V - Value (low 16 bits used)
+   * @returns {uint32[]} The pair of table entries [p0, p1]
+   */
   function expMap(V) {
-    V &= 0xFFFF;
+    V = OpCodes.And32(V, 0xFFFF);
     let esi = V;
-    if (OpCodes.And32(V, 0x7FFF) === 0) esi = OpCodes.And32(esi + 0xDAE, 0xFFFF);
-    let p0 = 1, p1 = 1;
+    if (OpCodes.And32(V, 0x7FFF) === 0) esi = OpCodes.And32(OpCodes.Add32(esi, 0xDAE), 0xFFFF);
+    let p0 = OpCodes.ToUint32(1);
+    /** @type {uint32} */
+    let p1 = 1;
     for (let bit = 0; bit < 16; bit++) {
       if (OpCodes.And32(esi, 1) === 1) p0 = mul(p0, GEN[bit]);
       else p1 = mul(p1, GEN[bit]);
       esi = OpCodes.Shr32(OpCodes.And32(esi, 0xFFFF), 1);
     }
     p1 = mul(p1, GEN[0]);
-    return [p0, p1];
+    /** @type {uint32[]} */
+    const pair = [p0, p1];
+    return pair;
   }
 
-  const byteOf = (word, n) => OpCodes.And32(OpCodes.Shr32(word, 8 * n), 0xFF);
+  /**
+   * @param {uint32} word - Word
+   * @param {int32} n - Byte index, 0 = least significant
+   * @returns {uint32} The byte
+   */
+  function byteOf(word, n) { return OpCodes.And32(OpCodes.Shr32(word, 8 * n), 0xFF); }
+
+  /**
+   * Replace four key bytes, read as a big-endian word, by their product with KEY_MULT
+   * @param {uint8[]} K - Key buffer, updated in place
+   * @param {int32} p0 - Index of the most significant byte
+   * @param {int32} p1 - Index of the second byte
+   * @param {int32} p2 - Index of the third byte
+   * @param {int32} p3 - Index of the least significant byte
+   */
+  function transformWindow(K, p0, p1, p2, p3) {
+    const W = OpCodes.Pack32BE(K[p0], K[p1], K[p2], K[p3]);
+    const R = mul(W, KEY_MULT);
+    const bytes = OpCodes.Unpack32BE(R);
+    K[p0] = bytes[0]; K[p1] = bytes[1]; K[p2] = bytes[2]; K[p3] = bytes[3];
+  }
 
   class DarkCryptLetsief3Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -249,6 +299,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._schedule = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -296,74 +347,94 @@
     }
 
     // Rolling sliding-window key premix producing subkeys and the two S-boxes.
+    /**
+     * @param {uint8[]} key - 64-byte key
+     * @returns {uint32[][]} [round words (16), sbox1 (256), sbox2 (256)]
+     */
     _buildSchedule(key) {
       const K = key.slice(0, 64);
 
-      const transform = (p0, p1, p2, p3) => {
-        const W = OpCodes.Pack32BE(K[p0], K[p1], K[p2], K[p3]);
-        const R = mul(W, KEY_MULT);
-        const bytes = OpCodes.Unpack32BE(R);
-        K[p0] = bytes[0]; K[p1] = bytes[1]; K[p2] = bytes[2]; K[p3] = bytes[3];
-      };
-
       // Pass 1: 32 in-place window transforms.
       for (let k = 0; k < 32; k++)
-        transform(OpCodes.And32(2*k, 63), OpCodes.And32(2*k+1, 63), OpCodes.And32(2*k+2, 63), OpCodes.And32(2*k+3, 63));
+        transformWindow(K, OpCodes.And32(2*k, 63), OpCodes.And32(2*k+1, 63), OpCodes.And32(2*k+2, 63), OpCodes.And32(2*k+3, 63));
 
       // Pass 2: 288 transforms, snapshotting two bytes per step into a 576-byte stream.
+      /** @type {uint8[]} */
       const buf = new Array(576);
       for (let j = 0; j < 288; j++) {
         const i0 = OpCodes.And32(2*j, 63), i1 = OpCodes.And32(2*j+1, 63), i2 = OpCodes.And32(2*j+2, 63), i3 = OpCodes.And32(2*j+3, 63);
-        transform(i0, i1, i2, i3);
+        transformWindow(K, i0, i1, i2, i3);
         buf[2*j] = K[i0];
         buf[2*j+1] = K[i1];
       }
 
-      const subkey = new Array(16);
+      /** @type {uint32[]} */
+      const roundWords = new Array(16);
       for (let w = 0; w < 16; w++)
-        subkey[w] = OpCodes.Pack32BE(buf[4*w], buf[4*w+1], buf[4*w+2], buf[4*w+3]);
+        roundWords[w] = OpCodes.Pack32BE(buf[4*w], buf[4*w+1], buf[4*w+2], buf[4*w+3]);
 
-      const S1 = new Array(256), S2 = new Array(256);
+      /** @type {uint32[]} */
+      const sbox1 = new Array(256);
+      /** @type {uint32[]} */
+      const sbox2 = new Array(256);
       for (let t = 0; t < 128; t++) {
-        const v1 = OpCodes.And32(OpCodes.Shl32(buf[0x40 + 2*t], 8) | buf[0x40 + 2*t + 1], 0xFFFF);
-        const [a, b] = expMap(v1);
-        S1[2*t] = a; S1[2*t+1] = b;
-        const v2 = OpCodes.And32(OpCodes.Shl32(buf[0x140 + 2*t], 8) | buf[0x140 + 2*t + 1], 0xFFFF);
-        const [c, d] = expMap(v2);
-        S2[2*t] = c; S2[2*t+1] = d;
+        const v1 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(buf[0x40 + 2*t], 8), buf[0x40 + 2*t + 1]), 0xFFFF);
+        const ab = expMap(v1);
+        sbox1[2*t] = ab[0]; sbox1[2*t+1] = ab[1];
+        const v2 = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(buf[0x140 + 2*t], 8), buf[0x140 + 2*t + 1]), 0xFFFF);
+        const cd = expMap(v2);
+        sbox2[2*t] = cd[0]; sbox2[2*t+1] = cd[1];
       }
 
-      return { subkey, S1, S2 };
+      /** @type {uint32[][]} */
+      const schedule = [roundWords, sbox1, sbox2];
+      return schedule;
     }
 
+    /**
+     * @param {uint32} v0 - Left half
+     * @param {uint32} v1 - Right half
+     * @param {int32} r - Round 1..6
+     * @returns {uint32[]} New halves
+     */
     _encryptRound(v0, v1, r) {
-      const { subkey, S1, S2 } = this._schedule;
-      const i1 = OpCodes.And32(byteOf(v1, 1) + byteOf(v1, 0), 0xFF);
+      const roundWords = this._schedule[0], S1 = this._schedule[1], S2 = this._schedule[2];
+      const i1 = OpCodes.And32(OpCodes.Add32(byteOf(v1, 1), byteOf(v1, 0)), 0xFF);
       let t = mul(v0, S1[i1]);
-      const i2 = OpCodes.And32(byteOf(v1, 3) + byteOf(v1, 2), 0xFF);
+      const i2 = OpCodes.And32(OpCodes.Add32(byteOf(v1, 3), byteOf(v1, 2)), 0xFF);
       t = mul(t, S2[i2]);
-      const nv0 = OpCodes.Xor32(t, subkey[2*r]);
-      const i3 = OpCodes.And32(byteOf(nv0, 1) + byteOf(nv0, 0), 0xFF);
+      const nv0 = OpCodes.Xor32(t, roundWords[2*r]);
+      const i3 = OpCodes.And32(OpCodes.Add32(byteOf(nv0, 1), byteOf(nv0, 0)), 0xFF);
       let u = mul(v1, S1[i3]);
-      const i4 = OpCodes.And32(byteOf(nv0, 3) + byteOf(nv0, 2), 0xFF);
+      const i4 = OpCodes.And32(OpCodes.Add32(byteOf(nv0, 3), byteOf(nv0, 2)), 0xFF);
       u = mul(u, S2[i4]);
-      const nv1 = OpCodes.Xor32(u, subkey[2*r+1]);
-      return [nv0, nv1];
+      const nv1 = OpCodes.Xor32(u, roundWords[2*r+1]);
+      /** @type {uint32[]} */
+      const out = [nv0, nv1];
+      return out;
     }
 
+    /**
+     * @param {uint32} a - Left half
+     * @param {uint32} b - Right half
+     * @param {int32} r - Round 1..6
+     * @returns {uint32[]} New halves
+     */
     _decryptRound(a, b, r) {
-      const { subkey, S1, S2 } = this._schedule;
-      let nb = OpCodes.Xor32(b, subkey[2*r+1]);
-      const i1 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(byteOf(a, 0) + byteOf(a, 1), 0xFF), 1), 0xFF);
+      const roundWords = this._schedule[0], S1 = this._schedule[1], S2 = this._schedule[2];
+      let nb = OpCodes.Xor32(b, roundWords[2*r+1]);
+      const i1 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(OpCodes.Add32(byteOf(a, 0), byteOf(a, 1)), 0xFF), 1), 0xFF);
       nb = mul(nb, S1[i1]);
-      const i2 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(byteOf(a, 2) + byteOf(a, 3), 0xFF), 1), 0xFF);
+      const i2 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(OpCodes.Add32(byteOf(a, 2), byteOf(a, 3)), 0xFF), 1), 0xFF);
       nb = mul(nb, S2[i2]);
-      let na = OpCodes.Xor32(a, subkey[2*r]);
-      const i3 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(byteOf(nb, 0) + byteOf(nb, 1), 0xFF), 1), 0xFF);
+      let na = OpCodes.Xor32(a, roundWords[2*r]);
+      const i3 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(OpCodes.Add32(byteOf(nb, 0), byteOf(nb, 1)), 0xFF), 1), 0xFF);
       na = mul(na, S1[i3]);
-      const i4 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(byteOf(nb, 2) + byteOf(nb, 3), 0xFF), 1), 0xFF);
+      const i4 = OpCodes.And32(OpCodes.Xor32(OpCodes.And32(OpCodes.Add32(byteOf(nb, 2), byteOf(nb, 3)), 0xFF), 1), 0xFF);
       na = mul(na, S2[i4]);
-      return [na, nb];
+      /** @type {uint32[]} */
+      const out = [na, nb];
+      return out;
     }
 
     /**
@@ -371,15 +442,15 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const { subkey } = this._schedule;
-      let v0 = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), subkey[0]);
-      let v1 = OpCodes.Xor32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), subkey[1]);
+      const roundWords = this._schedule[0];
+      let v0 = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), roundWords[0]);
+      let v1 = OpCodes.Xor32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), roundWords[1]);
       for (let r = 1; r <= ROUNDS; r++) {
         const nx = this._encryptRound(v0, v1, r);
         v0 = nx[0]; v1 = nx[1];
       }
-      v0 = OpCodes.Xor32(v0, subkey[14]);
-      v1 = OpCodes.Xor32(v1, subkey[15]);
+      v0 = OpCodes.Xor32(v0, roundWords[14]);
+      v1 = OpCodes.Xor32(v1, roundWords[15]);
       return [...OpCodes.Unpack32BE(v0), ...OpCodes.Unpack32BE(v1)];
     }
 
@@ -388,15 +459,15 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const { subkey } = this._schedule;
-      let a = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), subkey[14]);
-      let b = OpCodes.Xor32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), subkey[15]);
+      const roundWords = this._schedule[0];
+      let a = OpCodes.Xor32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]), roundWords[14]);
+      let b = OpCodes.Xor32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]), roundWords[15]);
       for (let r = ROUNDS; r >= 1; r--) {
         const nx = this._decryptRound(a, b, r);
         a = nx[0]; b = nx[1];
       }
-      a = OpCodes.Xor32(a, subkey[0]);
-      b = OpCodes.Xor32(b, subkey[1]);
+      a = OpCodes.Xor32(a, roundWords[0]);
+      b = OpCodes.Xor32(b, roundWords[1]);
       return [...OpCodes.Unpack32BE(a), ...OpCodes.Unpack32BE(b)];
     }
   }
