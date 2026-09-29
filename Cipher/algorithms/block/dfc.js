@@ -114,7 +114,9 @@
       ];
 
       // Algorithm parameters
+      /** @type {int32} */
       this.BLOCK_SIZE = 16;      // 128 bits = 16 bytes
+      /** @type {int32} */
       this.ROUNDS = 8;           // Number of rounds
 
       // DFC S-box (8-bit substitution table)
@@ -139,6 +141,7 @@
       ];
 
       // DFC inverse S-box - generated in constructor
+      /** @type {uint8[]} */
       this.SBOX_INV = new Array(256);
       for (let i = 0; i < 256; i++) {
         this.SBOX_INV[this.SBOX[i]] = i;
@@ -165,15 +168,17 @@
 
     /**
      * Generate round keys for DFC
-     * @param {Array} key - master key
-     * @returns {Array} Array of round keys
+     * @param {uint8[]} key - master key (16, 24 or 32 bytes)
+     * @returns {uint8[][]} Array of round keys
      */
     generateRoundKeys(key) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const keySize = key.length;
       const wordCount = keySize / 4;
 
       // Convert key to 32-bit words
+      /** @type {uint32[]} */
       const keyWords = [];
       for (let i = 0; i < wordCount; i++) {
         keyWords[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
@@ -181,6 +186,7 @@
 
       // DFC key schedule
       for (let round = 0; round <= this.ROUNDS; round++) {
+        /** @type {uint8[]} */
         const roundKey = new Array(16);
 
         // Generate 4 words for this round
@@ -216,13 +222,13 @@
 
     /**
      * DFC round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
+     * @param {uint8[]} state - 16-byte state array (updated in place)
+     * @param {uint8[]} roundKey - 16-byte round key
      */
     dfcRound(state, roundKey) {
       // Add round key
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
 
       // S-box substitution
@@ -256,8 +262,8 @@
 
     /**
      * DFC inverse round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
+     * @param {uint8[]} state - 16-byte state array (updated in place)
+     * @param {uint8[]} roundKey - 16-byte round key
      */
     dfcInvRound(state, roundKey) {
       // Reverse operations in exact reverse order of dfcRound
@@ -273,9 +279,11 @@
       // 3. Inverse linear transformation
       // Apply the mathematically computed inverse matrix
       const temp = state.slice();
+      /** @type {uint8[]} */
       const newState = new Array(16);
 
       // Precomputed inverse matrix coefficients (16x16 matrix)
+      /** @type {uint8[][]} */
       const invMatrix = [
         [0x00, 0x00, 0x01, 0x08, 0x00, 0x00, 0x0c, 0x00, 0x01, 0x0a, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00],
         [0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x01, 0x0a, 0x00, 0x00, 0x0f, 0x00, 0x00],
@@ -316,7 +324,7 @@
 
       // 1. Subtract round key (XOR again)
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
     }
   }
@@ -338,7 +346,10 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint8[][]|null} */
       this.keySchedule = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -362,10 +373,14 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if ((keyBytes.length - ks.minSize) % ks.stepSize === 0) { isValidSize = true; break; }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -373,7 +388,9 @@
 
       this._key = [...keyBytes]; // Copy the key
       this.KeySize = keyBytes.length;
-      this.keySchedule = this.algorithm.generateRoundKeys(keyBytes);
+      /** @type {uint8[][]} */
+      const schedule = this.algorithm.generateRoundKeys(keyBytes);
+      this.keySchedule = schedule;
     }
 
     /**
@@ -442,7 +459,11 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {int32} */
+      const rounds = this.algorithm.ROUNDS;
+      if (!this.keySchedule || !block || block.length !== blockSize) {
         throw new Error("Invalid block or key schedule not initialized");
       }
 
@@ -455,7 +476,7 @@
       }
 
       // 8 rounds
-      for (let round = 1; round <= this.algorithm.ROUNDS; round++) {
+      for (let round = 1; round <= rounds; round++) {
         this.algorithm.dfcRound(state, this.keySchedule[round]);
       }
 
@@ -467,7 +488,11 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {int32} */
+      const rounds = this.algorithm.ROUNDS;
+      if (!this.keySchedule || !block || block.length !== blockSize) {
         throw new Error("Invalid block or key schedule not initialized");
       }
 
@@ -475,7 +500,7 @@
       const state = block.slice();
 
       // 8 inverse rounds
-      for (let round = this.algorithm.ROUNDS; round >= 1; round--) {
+      for (let round = rounds; round >= 1; round--) {
         this.algorithm.dfcInvRound(state, this.keySchedule[round]);
       }
 
