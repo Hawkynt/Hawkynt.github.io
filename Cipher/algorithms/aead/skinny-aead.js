@@ -50,25 +50,29 @@
   // ==========================================================================
 
   // SKINNY-128 S-box (bit-sliced)
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function skinny128_sbox(x) {
     x = OpCodes.ToUint32(x);
     let y;
-    x = ~x;
-    x = OpCodes.XorN(x, OpCodes.AndN(OpCodes.AndN(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
-    y = OpCodes.AndN(OpCodes.AndN(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
-    x = OpCodes.XorN(x, OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 4)), 0x40404040), y));
-    y = OpCodes.AndN(OpCodes.AndN(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
-    x = OpCodes.XorN(x, OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(OpCodes.Shr32(x, 2), OpCodes.Shl32(x, 1)), 0x02020202), y));
-    y = OpCodes.AndN(OpCodes.AndN(OpCodes.Shr32(x, 5), OpCodes.Shl32(x, 1)), 0x04040404);
-    x = OpCodes.XorN(x, OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
-    x = ~x;
-    x = OpCodes.ToUint32(OpCodes.OrN(
-         OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x08080808), 1),
-         OpCodes.Shl32(OpCodes.AndN(x, 0x32323232), 2)),
-         OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x01010101), 5),
-         OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(x, 0x80808080), 6),
-         OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(x, 0x40404040), 4),
-         OpCodes.Shr32(OpCodes.AndN(x, 0x04040404), 2))))));
+    x = OpCodes.Not32(x);
+    x = OpCodes.Xor32(x, OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shr32(x, 3)), 0x11111111));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 1)), 0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 5), OpCodes.Shl32(x, 4)), 0x40404040), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shl32(x, 2), OpCodes.Shl32(x, 1)), 0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 2), OpCodes.Shl32(x, 1)), 0x02020202), y));
+    y = OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 5), OpCodes.Shl32(x, 1)), 0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.And32(OpCodes.And32(OpCodes.Shr32(x, 1), OpCodes.Shr32(x, 2)), 0x08080808), y));
+    x = OpCodes.Not32(x);
+    x = OpCodes.ToUint32(OpCodes.Or32(
+         OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1),
+         OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2)),
+         OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5),
+         OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6),
+         OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4),
+         OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2))))));
     return x;
   }
 
@@ -76,13 +80,23 @@
   // it is the published SKINNY-128 8-bit S-box applied four times over. That
   // makes its inverse a plain byte table, derived here from the forward
   // function so the two can never drift apart.
-  const SKINNY128_SBOX_INV = (function buildInverse() {
+  /**
+   * @returns {uint8[]} inverse S-box table
+   */
+  function buildSboxInverse() {
+    /** @type {uint8[]} */
     const inverse = new Array(256);
-    for (let b = 0; b < 256; ++b) inverse[OpCodes.AndN(skinny128_sbox(b * 0x01010101), 0xFF)] = b;
+    for (let b = 0; b < 256; ++b) inverse[OpCodes.And32(skinny128_sbox(OpCodes.Mul32(b, 0x01010101)), 0xFF)] = b;
     return inverse;
-  })();
+  }
+  /** @type {uint8[]} */
+  const SKINNY128_SBOX_INV = buildSboxInverse();
 
   // Inverse of skinny128_sbox, byte by byte.
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function skinny128_sbox_inv(x) {
     const bytes = OpCodes.Unpack32LE(OpCodes.ToUint32(x));
     return OpCodes.Pack32LE(
@@ -94,38 +108,55 @@
   }
 
   // LFSR2 for TK2
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function skinny128_LFSR2(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = OpCodes.AndN(OpCodes.Shl32(x, 1), 0xFEFEFEFE);
-    const feedback = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01010101);
-    return OpCodes.ToUint32(OpCodes.XorN(shifted, feedback));
+    const shifted = OpCodes.And32(OpCodes.Shl32(x, 1), 0xFEFEFEFE);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01010101);
+    return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   // LFSR3 for TK3
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function skinny128_LFSR3(x) {
     x = OpCodes.ToUint32(x);
-    const shifted = OpCodes.AndN(OpCodes.Shr32(x, 1), 0x7F7F7F7F);
-    const feedback = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80808080);
-    return OpCodes.ToUint32(OpCodes.XorN(shifted, feedback));
+    const shifted = OpCodes.And32(OpCodes.Shr32(x, 1), 0x7F7F7F7F);
+    const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80808080);
+    return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   // Permute half of tweakey
+  /**
+   * @param {uint32[]} tk
+   * @param {int32} idx
+   */
   function skinny128_permute_tk_half(tk, idx) {
     const row2 = tk[idx];
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
-    tk[idx] = OpCodes.ToUint32(OpCodes.OrN(
-               OpCodes.OrN(OpCodes.AndN(OpCodes.Shr32(row2, 8), 0x000000FF),
-               OpCodes.AndN(OpCodes.Shl32(row2, 16), 0x00FF0000)),
-               OpCodes.AndN(row3_rotated, 0xFF00FF00)));
-    tk[idx + 1] = OpCodes.ToUint32(OpCodes.OrN(
-                   OpCodes.OrN(OpCodes.AndN(OpCodes.Shr32(row2, 16), 0x000000FF),
-                   OpCodes.AndN(row2, 0xFF000000)),
-                   OpCodes.OrN(OpCodes.AndN(OpCodes.Shl32(row3_rotated, 8), 0x0000FF00),
-                   OpCodes.AndN(row3_rotated, 0x00FF0000))));
+    tk[idx] = OpCodes.ToUint32(OpCodes.Or32(
+               OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF),
+               OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000)),
+               OpCodes.And32(row3_rotated, 0xFF00FF00)));
+    tk[idx + 1] = OpCodes.ToUint32(OpCodes.Or32(
+                   OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF),
+                   OpCodes.And32(row2, 0xFF000000)),
+                   OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(row3_rotated, 8), 0x0000FF00),
+                   OpCodes.And32(row3_rotated, 0x00FF0000))));
   }
 
   // SKINNY-128-384 encryption with full tweakey
+  /**
+   * @param {uint8[]} tweakey
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function skinny_128_384_encrypt_tk_full(tweakey, output, input) {
     // Load state
     let s0 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
@@ -134,18 +165,21 @@
     let s3 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
     // Load tweakey (TK1, TK2, TK3)
+    /** @type {uint32[]} */
     const TK1 = [
       OpCodes.Pack32LE(tweakey[0], tweakey[1], tweakey[2], tweakey[3]),
       OpCodes.Pack32LE(tweakey[4], tweakey[5], tweakey[6], tweakey[7]),
       OpCodes.Pack32LE(tweakey[8], tweakey[9], tweakey[10], tweakey[11]),
       OpCodes.Pack32LE(tweakey[12], tweakey[13], tweakey[14], tweakey[15])
     ];
+    /** @type {uint32[]} */
     const TK2 = [
       OpCodes.Pack32LE(tweakey[16], tweakey[17], tweakey[18], tweakey[19]),
       OpCodes.Pack32LE(tweakey[20], tweakey[21], tweakey[22], tweakey[23]),
       OpCodes.Pack32LE(tweakey[24], tweakey[25], tweakey[26], tweakey[27]),
       OpCodes.Pack32LE(tweakey[28], tweakey[29], tweakey[30], tweakey[31])
     ];
+    /** @type {uint32[]} */
     const TK3 = [
       OpCodes.Pack32LE(tweakey[32], tweakey[33], tweakey[34], tweakey[35]),
       OpCodes.Pack32LE(tweakey[36], tweakey[37], tweakey[38], tweakey[39]),
@@ -154,6 +188,7 @@
     ];
 
     // 56 rounds, 4 at a time
+    /** @type {uint32} */
     let rc = 0;
     for (let round = 0; round < 56; round += 4) {
       // Round 1
@@ -162,18 +197,18 @@
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, TK1[0]), TK2[0]), TK3[0]), OpCodes.AndN(rc, 0x0F)));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s1, TK1[1]), TK2[1]), TK3[1]), OpCodes.Shr32(rc, 4)));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), OpCodes.And32(rc, 0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), TK3[1]), OpCodes.Shr32(rc, 4)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
 
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
       s3 = OpCodes.RotL32(s3, 24);
 
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s2));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s0));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
 
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
@@ -189,18 +224,18 @@
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s3, TK1[2]), TK2[2]), TK3[2]), OpCodes.AndN(rc, 0x0F)));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, TK1[3]), TK2[3]), TK3[3]), OpCodes.Shr32(rc, 4)));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), OpCodes.And32(rc, 0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), TK3[3]), OpCodes.Shr32(rc, 4)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
 
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
       s2 = OpCodes.RotL32(s2, 24);
 
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s3));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
 
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
@@ -216,18 +251,18 @@
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s2 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s2, TK1[0]), TK2[0]), TK3[0]), OpCodes.AndN(rc, 0x0F)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s3, TK1[1]), TK2[1]), TK3[1]), OpCodes.Shr32(rc, 4)));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), OpCodes.And32(rc, 0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), TK3[1]), OpCodes.Shr32(rc, 4)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
 
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
       s1 = OpCodes.RotL32(s1, 24);
 
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s0));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s2));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
 
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
@@ -243,18 +278,18 @@
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s1, TK1[2]), TK2[2]), TK3[2]), OpCodes.AndN(rc, 0x0F)));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s2, TK1[3]), TK2[3]), TK3[3]), OpCodes.Shr32(rc, 4)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), OpCodes.And32(rc, 0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), TK3[3]), OpCodes.Shr32(rc, 4)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
 
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
       s0 = OpCodes.RotL32(s0, 24);
 
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s3));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s1));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
 
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
@@ -280,6 +315,11 @@
   }
 
   // SKINNY-128-256 encryption with full tweakey
+  /**
+   * @param {uint8[]} tweakey
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function skinny_128_256_encrypt_tk_full(tweakey, output, input) {
     // Load state
     let s0 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
@@ -288,12 +328,14 @@
     let s3 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
     // Load tweakey (TK1, TK2)
+    /** @type {uint32[]} */
     const TK1 = [
       OpCodes.Pack32LE(tweakey[0], tweakey[1], tweakey[2], tweakey[3]),
       OpCodes.Pack32LE(tweakey[4], tweakey[5], tweakey[6], tweakey[7]),
       OpCodes.Pack32LE(tweakey[8], tweakey[9], tweakey[10], tweakey[11]),
       OpCodes.Pack32LE(tweakey[12], tweakey[13], tweakey[14], tweakey[15])
     ];
+    /** @type {uint32[]} */
     const TK2 = [
       OpCodes.Pack32LE(tweakey[16], tweakey[17], tweakey[18], tweakey[19]),
       OpCodes.Pack32LE(tweakey[20], tweakey[21], tweakey[22], tweakey[23]),
@@ -302,6 +344,7 @@
     ];
 
     // 48 rounds, 4 at a time
+    /** @type {uint32} */
     let rc = 0;
     for (let round = 0; round < 48; round += 4) {
       // Round 1
@@ -310,18 +353,18 @@
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, TK1[0]), TK2[0]), OpCodes.AndN(rc, 0x0F)));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s1, TK1[1]), TK2[1]), OpCodes.Shr32(rc, 4)));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), OpCodes.And32(rc, 0x0F)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), OpCodes.Shr32(rc, 4)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
 
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
       s3 = OpCodes.RotL32(s3, 24);
 
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s2));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s0));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
 
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
@@ -334,18 +377,18 @@
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s3, TK1[2]), TK2[2]), OpCodes.AndN(rc, 0x0F)));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, TK1[3]), TK2[3]), OpCodes.Shr32(rc, 4)));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), OpCodes.And32(rc, 0x0F)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), OpCodes.Shr32(rc, 4)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
 
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
       s2 = OpCodes.RotL32(s2, 24);
 
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s3));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
 
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
@@ -358,18 +401,18 @@
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s2 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s2, TK1[0]), TK2[0]), OpCodes.AndN(rc, 0x0F)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s3, TK1[1]), TK2[1]), OpCodes.Shr32(rc, 4)));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), OpCodes.And32(rc, 0x0F)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), OpCodes.Shr32(rc, 4)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
 
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
       s1 = OpCodes.RotL32(s1, 24);
 
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s0));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s2));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
 
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
@@ -382,18 +425,18 @@
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
 
-      rc = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
-      s1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s1, TK1[2]), TK2[2]), OpCodes.AndN(rc, 0x0F)));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s2, TK1[3]), TK2[3]), OpCodes.Shr32(rc, 4)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, 0x02));
+      rc = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01), 0x3F);
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), OpCodes.And32(rc, 0x0F)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), OpCodes.Shr32(rc, 4)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
 
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
       s0 = OpCodes.RotL32(s0, 24);
 
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s3));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s1));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
 
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
@@ -432,16 +475,42 @@
   // tweakey schedule only runs forwards, then consumed in reverse.
   // ==========================================================================
 
-  /** @type {uint8[]} */
+  /** @type {int32[]} */
   const ROUND_ANCHOR = [0, 3, 2, 1];
 
+  // Round tweakeys and constants of one full SKINNY schedule
+  class SkinnyRoundKeys {
+    constructor() {
+      /** @type {uint32[]} */
+      this.keyA = [];
+      /** @type {uint32[]} */
+      this.keyB = [];
+      /** @type {uint32[]} */
+      this.constants = [];
+    }
+  }
+
+  // Output and tag of one SKINNY-AEAD pass
+  class SkinnyAeadResult {
+    constructor() {
+      /** @type {uint8[]} */
+      this.data = [];
+      /** @type {uint8[]} */
+      this.tag = [];
+    }
+  }
+
   // One step of the 6-bit round-constant LFSR, identical to the encryptors'.
+  /**
+   * @param {uint32} rc
+   * @returns {uint32}
+   */
   function skinny_next_rc(rc) {
-    return OpCodes.AndN(
-      OpCodes.XorN(
-        OpCodes.XorN(
-          OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)),
-          OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)),
+    return OpCodes.And32(
+      OpCodes.Xor32(
+        OpCodes.Xor32(
+          OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)),
+          OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)),
         0x01),
       0x3F);
   }
@@ -449,11 +518,12 @@
   /**
    * Replay the tweakey schedule and record what each round consumes.
    * @param {uint8[]} tweakey - 16 bytes per tweakey word (32 for TK1|TK2, 48 for TK1|TK2|TK3)
-   * @param {number} tweakeyCount - 2 for SKINNY-128-256, 3 for SKINNY-128-384
-   * @param {number} rounds - 48 or 56
-   * @returns {{keyA: number[], keyB: number[], constants: number[]}}
+   * @param {int32} tweakeyCount - 2 for SKINNY-128-256, 3 for SKINNY-128-384
+   * @param {int32} rounds - 48 or 56
+   * @returns {SkinnyRoundKeys}
    */
   function skinny_round_keys(tweakey, tweakeyCount, rounds) {
+    /** @type {uint32[][]} */
     const TK = [];
     for (let j = 0; j < tweakeyCount; ++j) {
       const base = j * 16;
@@ -465,9 +535,13 @@
       ]);
     }
 
+    /** @type {uint32[]} */
     const keyA = new Array(rounds);
+    /** @type {uint32[]} */
     const keyB = new Array(rounds);
+    /** @type {uint32[]} */
     const constants = new Array(rounds);
+    /** @type {uint32} */
     let rc = 0;
 
     for (let r = 0; r < rounds; ++r) {
@@ -476,11 +550,13 @@
 
       // Even rounds consume the first tweakey half, odd rounds the second.
       const pair = (r % 2 === 0) ? 0 : 2;
+      /** @type {uint32} */
       let a = 0;
+      /** @type {uint32} */
       let b = 0;
       for (let j = 0; j < tweakeyCount; ++j) {
-        a = OpCodes.XorN(a, TK[j][pair]);
-        b = OpCodes.XorN(b, TK[j][pair + 1]);
+        a = OpCodes.Xor32(a, TK[j][pair]);
+        b = OpCodes.Xor32(b, TK[j][pair + 1]);
       }
       keyA[r] = OpCodes.ToUint32(a);
       keyB[r] = OpCodes.ToUint32(b);
@@ -498,7 +574,11 @@
       }
     }
 
-    return { keyA, keyB, constants };
+    const schedule = new SkinnyRoundKeys();
+    schedule.keyA = keyA;
+    schedule.keyB = keyB;
+    schedule.constants = constants;
+    return schedule;
   }
 
   /**
@@ -507,12 +587,13 @@
    * @param {uint8[]} tweakey - 32 or 48 bytes
    * @param {uint8[]} output - 16-byte destination
    * @param {uint8[]} input - 16-byte ciphertext block
-   * @param {number} tweakeyCount - 2 or 3
-   * @param {number} rounds - 48 or 56
+   * @param {int32} tweakeyCount - 2 or 3
+   * @param {int32} rounds - 48 or 56
    */
   function skinny_decrypt_tk_full(tweakey, output, input, tweakeyCount, rounds) {
     const schedule = skinny_round_keys(tweakey, tweakeyCount, rounds);
 
+    /** @type {uint32[]} */
     const s = [
       OpCodes.Pack32LE(input[0], input[1], input[2], input[3]),
       OpCodes.Pack32LE(input[4], input[5], input[6], input[7]),
@@ -528,9 +609,9 @@
 
       // Undo the mixing, innermost assignment first: the forward direction did
       // b ^= c, then c ^= a, then d ^= the UPDATED c.
-      s[d] = OpCodes.ToUint32(OpCodes.XorN(s[d], s[c]));
-      s[c] = OpCodes.ToUint32(OpCodes.XorN(s[c], s[a]));
-      s[b] = OpCodes.ToUint32(OpCodes.XorN(s[b], s[c]));
+      s[d] = OpCodes.ToUint32(OpCodes.Xor32(s[d], s[c]));
+      s[c] = OpCodes.ToUint32(OpCodes.Xor32(s[c], s[a]));
+      s[b] = OpCodes.ToUint32(OpCodes.Xor32(s[b], s[c]));
 
       // Undo the row rotations.
       s[b] = OpCodes.RotL32(s[b], 24);
@@ -538,9 +619,9 @@
       s[d] = OpCodes.RotL32(s[d], 8);
 
       // Undo the round tweakey and constants.
-      s[a] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[a], schedule.keyA[r]), OpCodes.AndN(schedule.constants[r], 0x0F)));
-      s[b] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[b], schedule.keyB[r]), OpCodes.Shr32(schedule.constants[r], 4)));
-      s[c] = OpCodes.ToUint32(OpCodes.XorN(s[c], 0x02));
+      s[a] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[a], schedule.keyA[r]), OpCodes.And32(schedule.constants[r], 0x0F)));
+      s[b] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[b], schedule.keyB[r]), OpCodes.Shr32(schedule.constants[r], 4)));
+      s[c] = OpCodes.ToUint32(OpCodes.Xor32(s[c], 0x02));
 
       // Undo the substitution.
       for (let i = 0; i < 4; ++i) s[i] = skinny128_sbox_inv(s[i]);
@@ -553,11 +634,21 @@
   }
 
   // SKINNY-128-384 decryption with full tweakey
+  /**
+   * @param {uint8[]} tweakey
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function skinny_128_384_decrypt_tk_full(tweakey, output, input) {
     skinny_decrypt_tk_full(tweakey, output, input, 3, 56);
   }
 
   // SKINNY-128-256 decryption with full tweakey
+  /**
+   * @param {uint8[]} tweakey
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function skinny_128_256_decrypt_tk_full(tweakey, output, input) {
     skinny_decrypt_tk_full(tweakey, output, input, 2, 48);
   }
@@ -567,24 +658,37 @@
   // ==========================================================================
 
   class SkinnyAeadAlgorithm extends AeadAlgorithm {
+    /**
+     * @param {int32} variant - member number 1 to 6
+     * @param {int32} nonce_size - nonce bytes
+     * @param {int32} tag_size - tag bytes
+     * @param {boolean} uses_256 - SKINNY-128-256 instead of SKINNY-128-384
+     */
     constructor(variant, nonce_size, tag_size, uses_256) {
       super();
 
+      /** @type {int32} */
       this.variant = variant;
+      /** @type {int32} */
       this.nonce_size = nonce_size;
+      /** @type {int32} */
       this.tag_size = tag_size;
+      /** @type {boolean} */
       this.uses_256 = uses_256;
 
       this.name = "SKINNY-AEAD-M" + variant;
 
-      const descriptions = {
-        1: 'Primary SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 128-bit nonce, and 128-bit tag. NIST LWC Round 2 candidate.',
-        2: 'SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 96-bit nonce, and 128-bit tag. Optimized for shorter nonces.',
-        3: 'SKINNY-AEAD PAEF mode using SKINNY-128-384 with 128-bit key, 128-bit nonce, and 64-bit tag. Shorter authentication tag.',
-        4: 'SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 96-bit nonce, and 64-bit tag. Compact nonce and tag.',
-        5: 'SKINNY-AEAD variant using SKINNY-128-256 with 128-bit key, 96-bit nonce, and 128-bit tag. Faster than 384-bit variants.',
-        6: 'SKINNY-AEAD variant using SKINNY-128-256 with 128-bit key, 96-bit nonce, and 64-bit tag. Most compact configuration.'
-      };
+      // indexed by member number; slot 0 is unused
+      /** @type {string[]} */
+      const descriptions = [
+        '',
+        'Primary SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 128-bit nonce, and 128-bit tag. NIST LWC Round 2 candidate.',
+        'SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 96-bit nonce, and 128-bit tag. Optimized for shorter nonces.',
+        'SKINNY-AEAD PAEF mode using SKINNY-128-384 with 128-bit key, 128-bit nonce, and 64-bit tag. Shorter authentication tag.',
+        'SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 96-bit nonce, and 64-bit tag. Compact nonce and tag.',
+        'SKINNY-AEAD variant using SKINNY-128-256 with 128-bit key, 96-bit nonce, and 128-bit tag. Faster than 384-bit variants.',
+        'SKINNY-AEAD variant using SKINNY-128-256 with 128-bit key, 96-bit nonce, and 64-bit tag. Most compact configuration.'
+      ];
 
       this.description = descriptions[variant];
       this.inventor = 'Beierle, Jean, Kölbl, Leander, Moradi, Peyrin, Sasaki, Sasdrich, Sim';
@@ -648,7 +752,16 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {int32} */
+      this._variant = algorithm.variant;
+      /** @type {int32} */
+      this._nonceSize = algorithm.nonce_size;
+      /** @type {int32} */
+      this._tagSize = algorithm.tag_size;
+      /** @type {boolean} */
+      this._uses256 = algorithm.uses_256;
     }
 
     /**
@@ -683,7 +796,7 @@
         this._nonce = null;
         return;
       }
-      const expectedSize = this.algorithm.nonce_size;
+      const expectedSize = this._nonceSize;
       if (nonceBytes.length !== expectedSize) {
         throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes. Must be " + expectedSize + " bytes.");
       }
@@ -699,7 +812,12 @@
      * @param {uint8[]|null} aadBytes
      */
     set aad(aadBytes) {
-      this._aad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._aad = copy;
     }
 
     /**
@@ -730,7 +848,7 @@
       if (!this._key) throw new Error('Key not set');
       if (!this._nonce) throw new Error('Nonce not set');
 
-      const tagSize = this.algorithm.tag_size;
+      const tagSize = this._tagSize;
 
       if (this.isInverse) {
         if (this.inputBuffer.length < tagSize) {
@@ -740,7 +858,8 @@
         const ciphertext = this.inputBuffer.slice(0, -tagSize);
         const receivedTag = this.inputBuffer.slice(-tagSize);
 
-        const result = this.algorithm.uses_256
+        /** @type {SkinnyAeadResult} */
+        const result = this._uses256
           ? this._process256(ciphertext, true)
           : this._process384(ciphertext, true);
 
@@ -756,25 +875,34 @@
         return plaintext;
       } else {
         const plaintext = this.inputBuffer;
-        const result = this.algorithm.uses_256
+        /** @type {SkinnyAeadResult} */
+        const result = this._uses256
           ? this._process256(plaintext, false)
           : this._process384(plaintext, false);
 
         this.inputBuffer = [];
         this._aad = [];
 
-        return [...result.data, ...result.tag];
+        return result.data.concat(result.tag);
       }
     }
 
+    /**
+     * @param {uint8[]} message
+     * @param {boolean} isDecrypt
+     * @returns {SkinnyAeadResult}
+     */
     _process384(message, isDecrypt) {
-      const variant = this.algorithm.variant;
-      const prefix = [DOMAIN_SEP_M1, DOMAIN_SEP_M2, DOMAIN_SEP_M3, DOMAIN_SEP_M4][variant - 1];
-      const tagSize = this.algorithm.tag_size;
+      const variant = this._variant;
+      /** @type {uint8[]} */
+      const prefixes = [DOMAIN_SEP_M1, DOMAIN_SEP_M2, DOMAIN_SEP_M3, DOMAIN_SEP_M4];
+      const prefix = prefixes[variant - 1];
+      const tagSize = this._tagSize;
 
       // Initialize tweakey: [TK1(16)|TK2(16)|TK3(16)]
       // TK1 = [zeros(16)|nonce(padded)|key(16)] - wait this is wrong
       // From C: TK1[0-15]=0, TK2[16-31]=nonce(padded), TK3[32-47]=key
+      /** @type {uint8[]} */
       const tweakey = new Array(48);
 
       // TK1: first 16 bytes are zeros initially (will be modified for LFSR/domain)
@@ -795,6 +923,7 @@
       }
 
       // Process message
+      /** @type {uint8[]} */
       const sum = OpCodes.CreateArray(16, 0);
       /** @type {uint8[]} */
       const output = [];
@@ -802,11 +931,12 @@
       let offset = 0;
 
       // 64-bit LFSR stored as bytes in little-endian
+      /** @type {uint8[]} */
       const lfsr_bytes = OpCodes.CreateArray(8, 0);
       lfsr_bytes[0] = 1; // Start with 1
 
       // Set domain for message processing
-      tweakey[15] = OpCodes.OrN(prefix, 0);
+      tweakey[15] = OpCodes.Or32(prefix, 0);
 
       // Process complete blocks
       while (mlen >= 16) {
@@ -816,6 +946,7 @@
         }
 
         const block = message.slice(offset, offset + 16);
+        /** @type {uint8[]} */
         const result_block = new Array(16);
 
         if (isDecrypt) {
@@ -825,13 +956,13 @@
           // that garbage rather than over the message.
           skinny_128_384_decrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], result_block[i]));
             output.push(result_block[i]);
           }
         } else {
           // Encrypt block
           for (let i = 0; i < 16; i++) {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], block[i]));
           }
           skinny_128_384_encrypt_tk_full(tweakey, result_block, block);
           for (let _i = 0; _i < result_block.length; _i++) output.push(result_block[_i]);
@@ -841,11 +972,11 @@
         mlen -= 16;
 
         // Update 64-bit LFSR
-        const feedback = OpCodes.AndN(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
+        const feedback = OpCodes.And32(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
         for (let i = 7; i > 0; i--) {
-          lfsr_bytes[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
+          lfsr_bytes[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
         }
-        lfsr_bytes[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
+        lfsr_bytes[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
       }
 
       // Process final partial block
@@ -854,40 +985,43 @@
       }
 
       if (mlen > 0) {
-        tweakey[15] = OpCodes.OrN(prefix, 1);
+        tweakey[15] = OpCodes.Or32(prefix, 1);
 
+        /** @type {uint8[]} */
         const zero_block = OpCodes.CreateArray(16, 0);
+        /** @type {uint8[]} */
         const keystream = new Array(16);
         skinny_128_384_encrypt_tk_full(tweakey, keystream, zero_block);
 
         const partial = message.slice(offset);
         for (let i = 0; i < mlen; i++) {
           if (isDecrypt) {
-            const p = OpCodes.XorN(partial[i], keystream[i]);
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], p));
+            const p = OpCodes.Xor32(partial[i], keystream[i]);
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], p));
             output.push(p);
           } else {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], partial[i]));
-            output.push(OpCodes.XorN(partial[i], keystream[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], partial[i]));
+            output.push(OpCodes.Xor32(partial[i], keystream[i]));
           }
         }
-        sum[mlen] = OpCodes.ToByte(OpCodes.XorN(sum[mlen], 0x80));
+        sum[mlen] = OpCodes.ToByte(OpCodes.Xor32(sum[mlen], 0x80));
 
         // Update LFSR
-        const feedback = OpCodes.AndN(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
+        const feedback = OpCodes.And32(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
         for (let i = 7; i > 0; i--) {
-          lfsr_bytes[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
+          lfsr_bytes[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
         }
-        lfsr_bytes[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
+        lfsr_bytes[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
         for (let i = 0; i < 8; i++) {
           tweakey[i] = lfsr_bytes[i];
         }
-        tweakey[15] = OpCodes.OrN(prefix, 5);
+        tweakey[15] = OpCodes.Or32(prefix, 5);
       } else {
-        tweakey[15] = OpCodes.OrN(prefix, 4);
+        tweakey[15] = OpCodes.Or32(prefix, 4);
       }
 
       // Finalize sum
+      /** @type {uint8[]} */
       const finalSum = new Array(16);
       skinny_128_384_encrypt_tk_full(tweakey, finalSum, sum);
 
@@ -896,20 +1030,27 @@
         this._authenticate384(tweakey, prefix, finalSum, this._aad);
       }
 
-      return {
-        data: output,
-        tag: finalSum.slice(0, tagSize)
-      };
+      const result = new SkinnyAeadResult();
+      result.data = output;
+      result.tag = finalSum.slice(0, tagSize);
+      return result;
     }
 
+    /**
+     * @param {uint8[]} tweakey
+     * @param {uint8} prefix
+     * @param {uint8[]} tag
+     * @param {uint8[]} ad
+     */
     _authenticate384(tweakey, prefix, tag, ad) {
       let adlen = ad.length;
       let offset = 0;
 
+      /** @type {uint8[]} */
       const lfsr_bytes = OpCodes.CreateArray(8, 0);
       lfsr_bytes[0] = 1;
 
-      tweakey[15] = OpCodes.OrN(prefix, 2);
+      tweakey[15] = OpCodes.Or32(prefix, 2);
 
       // Process complete blocks
       while (adlen >= 16) {
@@ -918,21 +1059,22 @@
         }
 
         const block = ad.slice(offset, offset + 16);
+        /** @type {uint8[]} */
         const encrypted = new Array(16);
         skinny_128_384_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
+          tag[i] = OpCodes.ToByte(OpCodes.Xor32(tag[i], encrypted[i]));
         }
 
         offset += 16;
         adlen -= 16;
 
-        const feedback = OpCodes.AndN(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
+        const feedback = OpCodes.And32(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
         for (let i = 7; i > 0; i--) {
-          lfsr_bytes[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
+          lfsr_bytes[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(lfsr_bytes[i], 1), OpCodes.Shr32(lfsr_bytes[i - 1], 7)), 0xFF);
         }
-        lfsr_bytes[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
+        lfsr_bytes[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr_bytes[0], 1), feedback), 0xFF);
       }
 
       // Process final partial block
@@ -940,31 +1082,41 @@
         for (let i = 0; i < 8; i++) {
           tweakey[i] = lfsr_bytes[i];
         }
-        tweakey[15] = OpCodes.OrN(prefix, 3);
+        tweakey[15] = OpCodes.Or32(prefix, 3);
 
+        /** @type {uint8[]} */
         const block = OpCodes.CreateArray(16, 0);
         for (let i = 0; i < adlen; i++) {
           block[i] = ad[offset + i];
         }
         block[adlen] = 0x80;
 
+        /** @type {uint8[]} */
         const encrypted = new Array(16);
         skinny_128_384_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
+          tag[i] = OpCodes.ToByte(OpCodes.Xor32(tag[i], encrypted[i]));
         }
       }
     }
 
+    /**
+     * @param {uint8[]} message
+     * @param {boolean} isDecrypt
+     * @returns {SkinnyAeadResult}
+     */
     _process256(message, isDecrypt) {
-      const variant = this.algorithm.variant;
-      const prefix = [DOMAIN_SEP_M5, DOMAIN_SEP_M6][variant - 5];
-      const tagSize = this.algorithm.tag_size;
+      const variant = this._variant;
+      /** @type {uint8[]} */
+      const prefixes = [DOMAIN_SEP_M5, DOMAIN_SEP_M6];
+      const prefix = prefixes[variant - 5];
+      const tagSize = this._tagSize;
 
       // Initialize tweakey: [TK1(16)|TK2(16)]
       // TK1 = nonce(right-aligned with zero padding) + domain byte
       // TK2 = key
+      /** @type {uint8[]} */
       const tweakey = new Array(32);
 
       const nonceLen = this._nonce.length;
@@ -980,6 +1132,7 @@
       }
 
       // Process message
+      /** @type {uint8[]} */
       const sum = OpCodes.CreateArray(16, 0);
       /** @type {uint8[]} */
       const output = [];
@@ -987,19 +1140,21 @@
       let offset = 0;
 
       // 24-bit LFSR
+      /** @type {uint32} */
       let lfsr = 1;
 
       // Set domain for message processing
-      tweakey[3] = OpCodes.OrN(prefix, 0);
+      tweakey[3] = OpCodes.Or32(prefix, 0);
 
       // Process complete blocks
       while (mlen >= 16) {
         // Set LFSR in TK1
-        tweakey[0] = OpCodes.AndN(lfsr, 0xFF);
-        tweakey[1] = OpCodes.AndN(OpCodes.Shr32(lfsr, 8), 0xFF);
-        tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
+        tweakey[0] = OpCodes.And32(lfsr, 0xFF);
+        tweakey[1] = OpCodes.And32(OpCodes.Shr32(lfsr, 8), 0xFF);
+        tweakey[2] = OpCodes.And32(OpCodes.Shr32(lfsr, 16), 0xFF);
 
         const block = message.slice(offset, offset + 16);
+        /** @type {uint8[]} */
         const result_block = new Array(16);
 
         if (isDecrypt) {
@@ -1007,12 +1162,12 @@
           // not the forward one.
           skinny_128_256_decrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], result_block[i]));
             output.push(result_block[i]);
           }
         } else {
           for (let i = 0; i < 16; i++) {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], block[i]));
           }
           skinny_128_256_encrypt_tk_full(tweakey, result_block, block);
           for (let _i = 0; _i < result_block.length; _i++) output.push(result_block[_i]);
@@ -1022,46 +1177,49 @@
         mlen -= 16;
 
         // Update 24-bit LFSR
-        const feedback = OpCodes.AndN(lfsr, 0x800000) ? 0x1B : 0x00;
-        lfsr = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
+        const feedback = OpCodes.And32(lfsr, 0x800000) ? 0x1B : 0x00;
+        lfsr = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
       }
 
       // Process final partial block
-      tweakey[0] = OpCodes.AndN(lfsr, 0xFF);
-      tweakey[1] = OpCodes.AndN(OpCodes.Shr32(lfsr, 8), 0xFF);
-      tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
+      tweakey[0] = OpCodes.And32(lfsr, 0xFF);
+      tweakey[1] = OpCodes.And32(OpCodes.Shr32(lfsr, 8), 0xFF);
+      tweakey[2] = OpCodes.And32(OpCodes.Shr32(lfsr, 16), 0xFF);
 
       if (mlen > 0) {
-        tweakey[3] = OpCodes.OrN(prefix, 1);
+        tweakey[3] = OpCodes.Or32(prefix, 1);
 
+        /** @type {uint8[]} */
         const zero_block = OpCodes.CreateArray(16, 0);
+        /** @type {uint8[]} */
         const keystream = new Array(16);
         skinny_128_256_encrypt_tk_full(tweakey, keystream, zero_block);
 
         const partial = message.slice(offset);
         for (let i = 0; i < mlen; i++) {
           if (isDecrypt) {
-            const p = OpCodes.XorN(partial[i], keystream[i]);
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], p));
+            const p = OpCodes.Xor32(partial[i], keystream[i]);
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], p));
             output.push(p);
           } else {
-            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], partial[i]));
-            output.push(OpCodes.XorN(partial[i], keystream[i]));
+            sum[i] = OpCodes.ToByte(OpCodes.Xor32(sum[i], partial[i]));
+            output.push(OpCodes.Xor32(partial[i], keystream[i]));
           }
         }
-        sum[mlen] = OpCodes.ToByte(OpCodes.XorN(sum[mlen], 0x80));
+        sum[mlen] = OpCodes.ToByte(OpCodes.Xor32(sum[mlen], 0x80));
 
-        const feedback = OpCodes.AndN(lfsr, 0x800000) ? 0x1B : 0x00;
-        lfsr = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
-        tweakey[0] = OpCodes.AndN(lfsr, 0xFF);
-        tweakey[1] = OpCodes.AndN(OpCodes.Shr32(lfsr, 8), 0xFF);
-        tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
-        tweakey[3] = OpCodes.OrN(prefix, 5);
+        const feedback = OpCodes.And32(lfsr, 0x800000) ? 0x1B : 0x00;
+        lfsr = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
+        tweakey[0] = OpCodes.And32(lfsr, 0xFF);
+        tweakey[1] = OpCodes.And32(OpCodes.Shr32(lfsr, 8), 0xFF);
+        tweakey[2] = OpCodes.And32(OpCodes.Shr32(lfsr, 16), 0xFF);
+        tweakey[3] = OpCodes.Or32(prefix, 5);
       } else {
-        tweakey[3] = OpCodes.OrN(prefix, 4);
+        tweakey[3] = OpCodes.Or32(prefix, 4);
       }
 
       // Finalize sum
+      /** @type {uint8[]} */
       const finalSum = new Array(16);
       skinny_128_256_encrypt_tk_full(tweakey, finalSum, sum);
 
@@ -1070,58 +1228,68 @@
         this._authenticate256(tweakey, prefix, finalSum, this._aad);
       }
 
-      return {
-        data: output,
-        tag: finalSum.slice(0, tagSize)
-      };
+      const result = new SkinnyAeadResult();
+      result.data = output;
+      result.tag = finalSum.slice(0, tagSize);
+      return result;
     }
 
+    /**
+     * @param {uint8[]} tweakey
+     * @param {uint8} prefix
+     * @param {uint8[]} tag
+     * @param {uint8[]} ad
+     */
     _authenticate256(tweakey, prefix, tag, ad) {
       let adlen = ad.length;
       let offset = 0;
+      /** @type {uint32} */
       let lfsr = 1;
 
-      tweakey[3] = OpCodes.OrN(prefix, 2);
+      tweakey[3] = OpCodes.Or32(prefix, 2);
 
       // Process complete blocks
       while (adlen >= 16) {
-        tweakey[0] = OpCodes.AndN(lfsr, 0xFF);
-        tweakey[1] = OpCodes.AndN(OpCodes.Shr32(lfsr, 8), 0xFF);
-        tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
+        tweakey[0] = OpCodes.And32(lfsr, 0xFF);
+        tweakey[1] = OpCodes.And32(OpCodes.Shr32(lfsr, 8), 0xFF);
+        tweakey[2] = OpCodes.And32(OpCodes.Shr32(lfsr, 16), 0xFF);
 
         const block = ad.slice(offset, offset + 16);
+        /** @type {uint8[]} */
         const encrypted = new Array(16);
         skinny_128_256_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
+          tag[i] = OpCodes.ToByte(OpCodes.Xor32(tag[i], encrypted[i]));
         }
 
         offset += 16;
         adlen -= 16;
 
-        const feedback = OpCodes.AndN(lfsr, 0x800000) ? 0x1B : 0x00;
-        lfsr = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
+        const feedback = OpCodes.And32(lfsr, 0x800000) ? 0x1B : 0x00;
+        lfsr = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
       }
 
       // Process final partial block
       if (adlen > 0) {
-        tweakey[0] = OpCodes.AndN(lfsr, 0xFF);
-        tweakey[1] = OpCodes.AndN(OpCodes.Shr32(lfsr, 8), 0xFF);
-        tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
-        tweakey[3] = OpCodes.OrN(prefix, 3);
+        tweakey[0] = OpCodes.And32(lfsr, 0xFF);
+        tweakey[1] = OpCodes.And32(OpCodes.Shr32(lfsr, 8), 0xFF);
+        tweakey[2] = OpCodes.And32(OpCodes.Shr32(lfsr, 16), 0xFF);
+        tweakey[3] = OpCodes.Or32(prefix, 3);
 
+        /** @type {uint8[]} */
         const block = OpCodes.CreateArray(16, 0);
         for (let i = 0; i < adlen; i++) {
           block[i] = ad[offset + i];
         }
         block[adlen] = 0x80;
 
+        /** @type {uint8[]} */
         const encrypted = new Array(16);
         skinny_128_256_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
+          tag[i] = OpCodes.ToByte(OpCodes.Xor32(tag[i], encrypted[i]));
         }
       }
     }
