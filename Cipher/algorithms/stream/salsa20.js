@@ -94,6 +94,8 @@ class Salsa20Instance extends IAlgorithmInstance {
    */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
     /** @type {boolean} */
     this.isInverse = isInverse;
     /** @type {uint8[]} */
@@ -119,9 +121,15 @@ class Salsa20Instance extends IAlgorithmInstance {
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
       throw new Error("Invalid key size: " + keyBytes.length + " bytes");

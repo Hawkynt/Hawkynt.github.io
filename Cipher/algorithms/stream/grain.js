@@ -825,7 +825,9 @@
       }
 
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // XOR input with keystream

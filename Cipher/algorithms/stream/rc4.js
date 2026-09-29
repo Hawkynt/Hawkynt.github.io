@@ -176,8 +176,11 @@
       this.inputBuffer = [];
 
       // RC4 state
+      /** @type {uint8[]} */
       this.S = new Array(256);  // S-box permutation
+      /** @type {uint32} */
       this.i = 0;               // PRGA counter i
+      /** @type {uint32} */
       this.j = 0;               // PRGA counter j
       /** @type {boolean} */
       this.initialized = false;
@@ -312,9 +315,10 @@
       }
 
       // Step 2: Use key to scramble S-box (KSA)
+      /** @type {uint32} */
       let j = 0;
       for (let i = 0; i < 256; i++) {
-        j = OpCodes.AndN((j + this.S[i] + this._key[i % this._key.length]), 0xFF);
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, this.S[i]), this._key[i % this._key.length]), 0xFF);
 
         // Swap S[i] and S[j]
         const temp = this.S[i];
@@ -329,12 +333,15 @@
     }
 
     // Pseudo-Random Generation Algorithm (PRGA) - generate one keystream byte
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
       // Increment i
-      this.i = OpCodes.AndN((this.i + 1), 0xFF);
+      this.i = OpCodes.And32((this.i + 1), 0xFF);
 
       // Update j
-      this.j = OpCodes.AndN((this.j + this.S[this.i]), 0xFF);
+      this.j = OpCodes.And32((this.j + this.S[this.i]), 0xFF);
 
       // Swap S[i] and S[j]
       const temp = this.S[this.i];
@@ -342,7 +349,7 @@
       this.S[this.j] = temp;
 
       // Calculate and return keystream byte
-      const t = OpCodes.AndN((this.S[this.i] + this.S[this.j]), 0xFF);
+      const t = OpCodes.And32((this.S[this.i] + this.S[this.j]), 0xFF);
       return this.S[t];
     }
   }

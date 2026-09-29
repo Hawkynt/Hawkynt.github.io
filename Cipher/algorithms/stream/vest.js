@@ -121,15 +121,21 @@
       ];
 
       // VEST constants
+      /** @type {int32} */
       this.LFSR_COUNT = 4;
+      /** @type {int32[]} */
       this.DEFAULT_LFSR_SIZES = [25, 31, 33, 39];
+      /** @type {int32} */
       this.MAX_WORD_SIZE = 32;
+      /** @type {int32} */
       this.INIT_ROUNDS = 256;
 
       // VEST S-boxes for nonlinear function
+      /** @type {uint8[]} */
       this.SBOX1 = [
         0x7, 0x4, 0xa, 0x2, 0x1, 0xc, 0xe, 0x5, 0x8, 0x6, 0x0, 0xf, 0x3, 0xd, 0x9, 0xb
       ];
+      /** @type {uint8[]} */
       this.SBOX2 = [
         0x2, 0x8, 0xb, 0xd, 0xf, 0x7, 0x6, 0xe, 0x3, 0x1, 0x9, 0x4, 0x0, 0xa, 0xc, 0x5
       ];
@@ -170,11 +176,26 @@
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
+      // Algorithm constants
+      /** @type {int32} */
+      this.lfsrCount = algorithm.LFSR_COUNT;
+      /** @type {int32} */
+      this.initRounds = algorithm.INIT_ROUNDS;
+      /** @type {uint8[]} */
+      this.sbox1 = algorithm.SBOX1;
+      /** @type {uint8[]} */
+      this.sbox2 = algorithm.SBOX2;
+
       // VEST state
+      /** @type {uint8[]} */
       this.keyBytes = [];
+      /** @type {uint8[]} */
       this.ivBytes = [];
+      /** @type {uint8[][]} */
       this.lfsrs = [];
+      /** @type {int32[]} */
       this.lfsrSizes = [];
+      /** @type {int32} */
       this.wordSize = 8; // Default to 8-bit mode
       /** @type {boolean} */
       this.initialized = false;
@@ -360,7 +381,7 @@
 
       // Initialize LFSRs
       this.lfsrs = [];
-      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
+      for (let i = 0; i < this.lfsrCount; i++) {
         this.lfsrs[i] = OpCodes.CreateArray(this.lfsrSizes[i], 0);
       }
     }
@@ -373,8 +394,9 @@
       let keyIndex = 0;
       let ivIndex = 0;
 
-      for (let lfsr = 0; lfsr < this.algorithm.LFSR_COUNT; lfsr++) {
+      for (let lfsr = 0; lfsr < this.lfsrCount; lfsr++) {
         for (let bit = 0; bit < this.lfsrSizes[lfsr]; bit++) {
+          /** @type {uint32} */
           let value = 0;
 
           // Alternate between key and IV bits
@@ -395,7 +417,7 @@
       }
 
       // Initialization rounds
-      for (let round = 0; round < this.algorithm.INIT_ROUNDS; round++) {
+      for (let round = 0; round < this.initRounds; round++) {
         this.clockAllLFSRs();
       }
 
@@ -404,6 +426,8 @@
 
     /**
      * LFSR feedback polynomials (primitive polynomials)
+     * @param {int32} lfsrIndex
+     * @returns {uint8}
      */
     getLFSRFeedback(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
@@ -427,6 +451,8 @@
 
     /**
      * Clock single LFSR
+     * @param {int32} lfsrIndex
+     * @returns {uint8}
      */
     clockLFSR(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
@@ -444,10 +470,12 @@
 
     /**
      * Clock all LFSRs and return output bits
+     * @returns {uint8[]}
      */
     clockAllLFSRs() {
+      /** @type {uint8[]} */
       const outputs = [];
-      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
+      for (let i = 0; i < this.lfsrCount; i++) {
         outputs[i] = this.clockLFSR(i);
       }
       return outputs;
@@ -455,6 +483,7 @@
 
     /**
      * Nonlinear filter function
+     * @returns {uint8}
      */
     nonlinearFilter() {
       // Extract bits from LFSRs at specific positions
@@ -465,7 +494,7 @@
 
       // Apply S-boxes
       const s1_input = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(x0, 3), OpCodes.Shl32(x1, 2)), OpCodes.Shl32(x2, 1)), x3));
-      const s1_output = this.algorithm.SBOX1[OpCodes.ToByte(s1_input)];
+      const s1_output = this.sbox1[OpCodes.ToByte(s1_input)];
 
       const y0 = OpCodes.Xor32(this.lfsrs[1][5], this.lfsrs[2][7]);
       const y1 = OpCodes.Xor32(this.lfsrs[2][11], this.lfsrs[3][13]);
@@ -473,7 +502,7 @@
       const y3 = OpCodes.Xor32(this.lfsrs[0][23 % this.lfsrSizes[0]], this.lfsrs[1][29 % this.lfsrSizes[1]]);
 
       const s2_input = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(y0, 3), OpCodes.Shl32(y1, 2)), OpCodes.Shl32(y2, 1)), y3));
-      const s2_output = this.algorithm.SBOX2[OpCodes.ToByte(s2_input)];
+      const s2_output = this.sbox2[OpCodes.ToByte(s2_input)];
 
       // Combine S-box outputs with linear terms
       return OpCodes.ToByte(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1_output, s2_output), this.lfsrs[0][3]), this.lfsrs[1][5]), this.lfsrs[2][7]), this.lfsrs[3][11 % this.lfsrSizes[3]]), 0));
@@ -481,8 +510,10 @@
 
     /**
      * Generate one keystream byte
+     * @returns {uint8}
      */
     generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
 
       for (let bit = 0; bit < 8; bit++) {

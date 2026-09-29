@@ -49,12 +49,20 @@
   const INITKONST = 0x6996c53a;
   const KEYP = 13;                     // where key/MAC words are folded in
 
+  /**
+   * @param {uint32} w
+   * @returns {uint32}
+   */
   function sbox1(w) {
     w = OpCodes.Xor32(w, OpCodes.Or32(OpCodes.RotL32(w, 5), OpCodes.RotL32(w, 7)));
     w = OpCodes.Xor32(w, OpCodes.Or32(OpCodes.RotL32(w, 19), OpCodes.RotL32(w, 22)));
     return w;
   }
 
+  /**
+   * @param {uint32} w
+   * @returns {uint32}
+   */
   function sbox2(w) {
     w = OpCodes.Xor32(w, OpCodes.Or32(OpCodes.RotL32(w, 7), OpCodes.RotL32(w, 22)));
     w = OpCodes.Xor32(w, OpCodes.Or32(OpCodes.RotL32(w, 5), OpCodes.RotL32(w, 19)));
@@ -196,7 +204,11 @@
      */
     Result() {
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
       const buf = [...this.inputBuffer];
       this._stream(buf);
@@ -231,9 +243,15 @@
     _saveState() { for (let i = 0; i < N; i++) this.initR[i] = this.R[i]; }
     _reloadState() { for (let i = 0; i < N; i++) this.R[i] = this.initR[i]; }
     _genKonst() { this.konst = this.R[0]; }
+    /**
+     * @param {uint32} k
+     */
     _addKey(k) { this.R[KEYP] = OpCodes.Xor32(this.R[KEYP], k); }
     _diffuse() { for (let i = 0; i < FOLD; i++) this._cycle(); }
 
+    /**
+     * @param {uint8[]} key
+     */
     _loadKey(key) {
       const keylen = key.length;
       let i = 0;
@@ -243,6 +261,7 @@
         this._cycle();
       }
       if (i < keylen) {
+        /** @type {uint8[]} */
         const xtra = [0, 0, 0, 0];
         let j = 0;
         for (; i < keylen; i++) xtra[j++] = key[i];
@@ -258,6 +277,9 @@
       for (let ii = 0; ii < N; ii++) this.R[ii] = OpCodes.Xor32(this.R[ii], this.CRC[ii]);
     }
 
+    /**
+     * @param {uint8[]} keyBytes
+     */
     _key_setup(keyBytes) {
       this._initState();
       this._loadKey(keyBytes);
@@ -266,6 +288,9 @@
       this.nbuf = 0;
     }
 
+    /**
+     * @param {uint8[]} nonceBytes
+     */
     _nonce_setup(nonceBytes) {
       this._reloadState();
       this.konst = INITKONST;
@@ -275,26 +300,30 @@
     }
 
     // XOR pseudo-random bytes into buf, in place.
+    /**
+     * @param {uint8[]} buf
+     */
     _stream(buf) {
       let pos = 0;
       let nbytes = buf.length;
 
       while (this.nbuf !== 0 && nbytes !== 0) {
-        buf[pos] = OpCodes.XorN(buf[pos], OpCodes.And32(this.sbuf, 0xff));
+        buf[pos] = OpCodes.Xor8(buf[pos], OpCodes.And32(this.sbuf, 0xff));
         this.sbuf = OpCodes.Shr32(this.sbuf, 8);
         this.nbuf -= 8;
         pos++; nbytes--;
       }
 
       const wholeWords = OpCodes.And32(nbytes, ~0x3);
+      /** @type {int32} */
       const endPos = pos + wholeWords;
       while (pos < endPos) {
         this._cycle();
         const b = OpCodes.Unpack32LE(this.sbuf);
-        buf[pos]     = OpCodes.XorN(buf[pos], b[0]);
-        buf[pos + 1] = OpCodes.XorN(buf[pos + 1], b[1]);
-        buf[pos + 2] = OpCodes.XorN(buf[pos + 2], b[2]);
-        buf[pos + 3] = OpCodes.XorN(buf[pos + 3], b[3]);
+        buf[pos]     = OpCodes.Xor8(buf[pos], b[0]);
+        buf[pos + 1] = OpCodes.Xor8(buf[pos + 1], b[1]);
+        buf[pos + 2] = OpCodes.Xor8(buf[pos + 2], b[2]);
+        buf[pos + 3] = OpCodes.Xor8(buf[pos + 3], b[3]);
         pos += 4;
       }
 
@@ -303,7 +332,7 @@
         this._cycle();
         this.nbuf = 32;
         while (this.nbuf !== 0 && nbytes !== 0) {
-          buf[pos] = OpCodes.XorN(buf[pos], OpCodes.And32(this.sbuf, 0xff));
+          buf[pos] = OpCodes.Xor8(buf[pos], OpCodes.And32(this.sbuf, 0xff));
           this.sbuf = OpCodes.Shr32(this.sbuf, 8);
           this.nbuf -= 8;
           pos++; nbytes--;

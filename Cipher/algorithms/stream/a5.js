@@ -131,6 +131,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -171,9 +173,15 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -406,6 +414,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -446,9 +456,15 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -609,7 +625,8 @@
   // ===== A5/3 ALGORITHM =====
 
   // KASUMI S-boxes
-  const S7 = Object.freeze([
+  /** @type {uint8[]} */
+  const S7 = [
     54, 50, 62, 56, 22, 34, 94, 96, 38, 6, 63, 93, 2, 18, 123, 33,
     55, 113, 39, 114, 21, 67, 65, 12, 47, 73, 46, 27, 25, 111, 124, 81,
     53, 9, 121, 79, 52, 60, 58, 48, 101, 127, 40, 120, 104, 70, 71, 43,
@@ -618,9 +635,10 @@
     112, 51, 17, 5, 95, 14, 90, 84, 91, 8, 35, 103, 32, 97, 28, 66,
     102, 31, 26, 45, 75, 4, 85, 92, 37, 74, 80, 49, 68, 29, 115, 44,
     64, 107, 108, 24, 110, 83, 36, 78, 42, 19, 15, 41, 88, 119, 59, 3
-  ]);
+  ];
 
-  const S9 = Object.freeze([
+  /** @type {uint16[]} */
+  const S9 = [
     167, 239, 161, 379, 391, 334, 9, 338, 38, 226, 48, 358, 452, 385, 90, 397,
     183, 253, 147, 331, 415, 340, 51, 362, 306, 500, 262, 82, 216, 159, 356, 177,
     175, 241, 489, 37, 206, 17, 0, 333, 44, 254, 378, 58, 143, 220, 81, 400,
@@ -653,7 +671,7 @@
     125, 343, 224, 127, 461, 100, 463, 196, 469, 347, 75, 298, 476, 477, 255, 264,
     136, 96, 346, 176, 306, 332, 80, 332, 88, 131, 10, 106, 63, 110, 114, 78,
     64, 92, 116, 34, 508, 111, 172, 207, 40, 347, 35, 1, 55, 25, 12, 19
-  ]);
+  ];
 
   /**
  * A53 - Stream cipher implementation
@@ -730,6 +748,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -756,9 +776,15 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -799,7 +825,9 @@
       if (!this._key) throw new Error("Key not set");
 
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /** @type {uint8[]} */
