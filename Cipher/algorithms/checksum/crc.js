@@ -40,339 +40,376 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+          Algorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
-  // ===== SHARED CRC CONFIGURATION DATABASE =====
+  // ===== SHARED CRC VARIANT LIST =====
 
-  const CRC_VARIANTS = {
-    // CRC-8 Variants
-    'CRC-8-SMBUS': {
-      bitWidth: 8,
-      description: '8-bit CRC used in System Management Bus (SMBus) specification for I2C communications',
-      polynomial: 0x07,
-      initialValue: 0x00,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x00,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("20"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("f4"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-8-MAXIM': {
-      bitWidth: 8,
-      description: '8-bit CRC used in Maxim/Dallas 1-Wire device registration numbers',
-      polynomial: 0x31,
-      initialValue: 0x00,
-      inputReflected: true,
-      resultReflected: true,
-      finalXor: 0x00,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("3b"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("a1"), "Catalogue check value for CRC-8/MAXIM-DOW", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow")
-      ]
-    },
-    'CRC-8-AUTOSAR': {
-      bitWidth: 8,
-      description: '8-bit CRC used in AUTOSAR Classic Platform for automotive applications',
-      polynomial: 0x2F,
-      initialValue: 0xFF,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0xFF,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("07"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("df"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-8-CDMA2000': {
-      bitWidth: 8,
-      description: '8-bit CRC used in CDMA2000 mobile telecommunications standard',
-      polynomial: 0x9B,
-      initialValue: 0xFF,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x00,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("4c"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("da"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-
-    // CRC-16 Variants
-    'CRC-16-CCITT': {
-      bitWidth: 16,
-      description: '16-bit CRC used in CCITT/ITU-T standards, telecommunications, and X.25 protocol',
-      polynomial: 0x1021,
-      initialValue: 0x0000,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x0000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
-        new TestCase(OpCodes.AnsiToBytes('A'), OpCodes.Hex8ToBytes('58E5'), 'Single byte A', 'https://reveng.sourceforge.io/crc-catalogue/'),
-        new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('31C3'), 'String 123456789', 'https://reveng.sourceforge.io/crc-catalogue/')
-      ]
-    },
-    'CRC-16-ARC': {
-      bitWidth: 16,
-      description: '16-bit CRC used in ARC archiver and reflected algorithms (LSB first processing)',
-      polynomial: 0x8005,
-      initialValue: 0x0000,
-      inputReflected: true,
-      resultReflected: true,
-      finalXor: 0x0000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
-        new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('BB3D'), 'Standard test string', 'https://reveng.sourceforge.io/crc-catalogue/')
-      ]
-    },
-    'CRC-16-IBM': {
-      bitWidth: 16,
-      description: '16-bit CRC used by IBM in SDLC and USB standards',
-      polynomial: 0x8005,
-      initialValue: 0x0000,
-      inputReflected: true,
-      resultReflected: true,
-      finalXor: 0x0000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8c1"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("9738"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-16-ANSI': {
-      bitWidth: 16,
-      description: '16-bit CRC used in ANSI standards and some protocols',
-      polynomial: 0x8005,
-      initialValue: 0xFFFF,
-      inputReflected: true,
-      resultReflected: true,
-      finalXor: 0x0000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("a87e"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("5749"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-16-XMODEM': {
-      bitWidth: 16,
-      description: '16-bit CRC used in XMODEM protocol with different initial value',
-      polynomial: 0x1021,
-      initialValue: 0x0000,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x0000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("A"), OpCodes.Hex8ToBytes("58e5"), "Single byte 'A'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("31c3"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-
-    // CRC-24 Variants
-    'CRC-24-OPENPGP': {
-      bitWidth: 24,
-      description: '24-bit CRC used in OpenPGP ASCII armor for message integrity checking',
-      polynomial: 0x1864CFB,
-      initialValue: 0xB704CE,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x000000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("b704ce"), "Empty string", "https://tools.ietf.org/html/rfc4880"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("f25713"), "Single byte 'a'", "https://tools.ietf.org/html/rfc4880"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("21cf02"), "String '123456789'", "https://tools.ietf.org/html/rfc4880")
-      ]
-    },
-    'CRC-24-FLEXRAY': {
-      bitWidth: 24,
-      description: '24-bit CRC used in FlexRay automotive communication protocol',
-      polynomial: 0x5D6DCB,
-      initialValue: 0xFEDCBA,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0x000000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("fedcba"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("8fe324"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("7979bd"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-24-INTERLAKEN': {
-      bitWidth: 24,
-      description: '24-bit CRC used in Interlaken protocol for high-speed chip-to-chip communication',
-      polynomial: 0x328B63,
-      initialValue: 0xFFFFFF,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0xFFFFFF,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("d80156"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("b4f3e6"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-
-    // CRC-32 Variants
-    'CRC-32-IEEE': {
-      bitWidth: 32,
-      description: 'CRC-32 (IEEE 802.3) standard used in Ethernet, zip files, and many protocols',
-      polynomial: 0x04C11DB7,
-      initialValue: 0xFFFFFFFF,
-      inputReflected: true,
-      resultReflected: true,
-      finalXor: 0xFFFFFFFF,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8b7be43"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("352441c2"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("cbf43926"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-32-POSIX': {
-      bitWidth: 32,
-      description: 'CRC-32/POSIX (also known as CKSUM) - base algorithm without length appending',
-      polynomial: 0x04C11DB7,
-      initialValue: 0x00000000,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0xFFFFFFFF,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "Check value '123456789'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum")
-      ]
-    },
-    'CRC-32-BZIP2': {
-      bitWidth: 32,
-      description: 'CRC-32 used in BZIP2 compression format',
-      polynomial: 0x04C11DB7,
-      initialValue: 0xFFFFFFFF,
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: 0xFFFFFFFF,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("19939b6b"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("fc891918"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-
-    // CRC-64 Variants
-    'CRC-64-XZ': {
-      bitWidth: 64,
-      description: 'CRC-64 used in XZ compression format and file integrity verification',
-      polynomial: 0x42F0E1EBA9EA3693, // Normal form polynomial (will be reflected for table generation)
-      polynomialHigh: 0x42f0e1eb,
-      polynomialLow: 0xa9ea3693,
-      initialValueHigh: 0xffffffff,
-      initialValueLow: 0xffffffff,
-      inputReflected: true,
-      resultReflected: true,
-      finalXorHigh: 0xffffffff,
-      finalXorLow: 0xffffffff,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("330284772e652b05"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("995dc9bbdf1939fa"), "Catalogue check value for CRC-64/XZ", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz")
-      ]
-    },
-    'CRC-64-ECMA182': {
-      bitWidth: 64,
-      description: 'CRC-64 ECMA-182 standard used in DLT-1 tape cartridges',
-      polynomialHigh: 0x42f0e1eb,
-      polynomialLow: 0xa9ea3693,
-      initialValueHigh: 0x00000000,
-      initialValueLow: 0x00000000,
-      inputReflected: false,
-      resultReflected: false,
-      finalXorHigh: 0x00000000,
-      finalXorLow: 0x00000000,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("548f120162451c62"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("6c40df5f0b497347"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-    'CRC-64-WE': {
-      bitWidth: 64,
-      description: 'CRC-64/WE variant used in some applications with different initialization',
-      polynomialHigh: 0x42f0e1eb,
-      polynomialLow: 0xa9ea3693,
-      initialValueHigh: 0xffffffff,
-      initialValueLow: 0xffffffff,
-      inputReflected: false,
-      resultReflected: false,
-      finalXorHigh: 0xffffffff,
-      finalXorLow: 0xffffffff,
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("ce73f427acc0a99a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("62ec59e3f1a4f00a"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-      ]
-    },
-
-    // CRC-128 Variants
-    'CRC-128-STANDARD': {
-      bitWidth: 128,
-      description: 'Standard 128-bit CRC used in high-performance computing and large data integrity verification',
-      polynomial: [0x00000000, 0x00000000, 0x00000000, 0x00000087],
-      initialValue: [0x00000000, 0x00000000, 0x00000000, 0x00000000],
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: [0x00000000, 0x00000000, 0x00000000, 0x00000000],
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "Educational test vector"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("000000000000000000000000000031a7"), "Single byte 'a'", "Educational test vector"),
-        new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("000000000000180e870396109919b42f"), "String '123456789'", "Educational test vector")
-      ]
-    },
-    'CRC-128-HPC': {
-      bitWidth: 128,
-      description: 'High-Performance Computing variant optimized for scientific computing and parallel processing',
-      polynomial: [0xE0000000, 0x02008000, 0x00800000, 0x000000AB],
-      initialValue: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF],
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF],
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "HPC test vector"),
-        new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("80000001b86e00006e000000000072fb"), "Single byte 'a'", "HPC test vector")
-      ]
-    },
-    'CRC-128-BIGDATA': {
-      bitWidth: 128,
-      description: 'Big Data variant designed for distributed storage systems and massive dataset integrity',
-      polynomial: [0x00000001, 0x01010100, 0x00010001, 0x00010103],
-      initialValue: [0x00000000, 0x00000000, 0x00000000, 0x00000000],
-      inputReflected: false,
-      resultReflected: false,
-      finalXor: [0x00000000, 0x00000000, 0x00000000, 0x00000000],
-      tests: [
-        new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "BigData test vector"),
-        new TestCase(OpCodes.AnsiToBytes("big data integrity test"), OpCodes.Hex8ToBytes("a9d63dcd9e4b92530cb8861b98fdcef8"), "Big data sample", "BigData test vector")
-      ]
-    }
-  };
+  /** @type {string[]} Names of all registered CRC variants, in registration order */
+  const CRC_VARIANT_NAMES = [
+    'CRC-8-SMBUS', 'CRC-8-MAXIM', 'CRC-8-AUTOSAR', 'CRC-8-CDMA2000',
+    'CRC-16-CCITT', 'CRC-16-ARC', 'CRC-16-IBM', 'CRC-16-ANSI',
+    'CRC-16-XMODEM', 'CRC-24-OPENPGP', 'CRC-24-FLEXRAY', 'CRC-24-INTERLAKEN',
+    'CRC-32-IEEE', 'CRC-32-POSIX', 'CRC-32-BZIP2', 'CRC-64-XZ',
+    'CRC-64-ECMA182', 'CRC-64-WE', 'CRC-128-STANDARD', 'CRC-128-HPC',
+    'CRC-128-BIGDATA'
+  ];
 
   // ===== UNIFIED CRC ALGORITHM CLASS =====
 
+  /**
+   * CRC parameter set (bit width, polynomial, initial value, reflection, final XOR)
+   * @class
+   * @extends {Algorithm}
+   */
   class CRCAlgorithm extends Algorithm {
-    constructor(variantKey) {
+    /**
+     * Configure one CRC variant from the catalogue
+     * @param {string} variantName - One of CRC_VARIANT_NAMES
+     */
+    constructor(variantName) {
       super();
 
-      this.config = CRC_VARIANTS[variantKey];
-      if (!this.config) {
-        throw new Error(`Unknown CRC variant: ${variantKey}`);
+      /** @type {int32} Register width in bits (8, 16, 24, 32, 64 or 128) */
+      this.bitWidth = 0;
+      /** @type {boolean} Input bytes are processed LSB first */
+      this.inputReflected = false;
+      /** @type {boolean} The register is reflected before the final XOR */
+      this.resultReflected = false;
+      /** @type {uint32} Polynomial (widths up to 32) */
+      this.polynomial = 0;
+      /** @type {uint32} Initial register value (widths up to 32) */
+      this.initialValue = 0;
+      /** @type {uint32} Final XOR value (widths up to 32) */
+      this.finalXor = 0;
+      /** @type {uint32} Polynomial, high word (64-bit width) */
+      this.polynomialHigh = 0;
+      /** @type {uint32} Polynomial, low word (64-bit width) */
+      this.polynomialLow = 0;
+      /** @type {uint32} Initial register value, high word (64-bit width) */
+      this.initialValueHigh = 0;
+      /** @type {uint32} Initial register value, low word (64-bit width) */
+      this.initialValueLow = 0;
+      /** @type {uint32} Final XOR value, high word (64-bit width) */
+      this.finalXorHigh = 0;
+      /** @type {uint32} Final XOR value, low word (64-bit width) */
+      this.finalXorLow = 0;
+      /** @type {uint32[]} Polynomial, most significant word first (128-bit width) */
+      this.polynomial128 = new Array(0);
+      /** @type {uint32[]} Initial register value, most significant word first (128-bit width) */
+      this.initialValue128 = new Array(0);
+      /** @type {uint32[]} Final XOR value, most significant word first (128-bit width) */
+      this.finalXor128 = new Array(0);
+      /** @type {string} What the variant is used for */
+      this.variantDescription = '';
+
+      switch (variantName) {
+        case 'CRC-8-SMBUS':
+          this.variantDescription = '8-bit CRC used in System Management Bus (SMBus) specification for I2C communications';
+          this.bitWidth = 8;
+          this.polynomial = 0x07;
+          this.initialValue = 0x00;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x00;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("20"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("f4"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-8-MAXIM':
+          this.variantDescription = '8-bit CRC used in Maxim/Dallas 1-Wire device registration numbers';
+          this.bitWidth = 8;
+          this.polynomial = 0x31;
+          this.initialValue = 0x00;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXor = 0x00;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("3b"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("a1"), "Catalogue check value for CRC-8/MAXIM-DOW", "https://reveng.sourceforge.io/crc-catalogue/all.htm#crc.cat.crc-8-maxim-dow")
+          ];
+          break;
+        case 'CRC-8-AUTOSAR':
+          this.variantDescription = '8-bit CRC used in AUTOSAR Classic Platform for automotive applications';
+          this.bitWidth = 8;
+          this.polynomial = 0x2F;
+          this.initialValue = 0xFF;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0xFF;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("07"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("df"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-8-CDMA2000':
+          this.variantDescription = '8-bit CRC used in CDMA2000 mobile telecommunications standard';
+          this.bitWidth = 8;
+          this.polynomial = 0x9B;
+          this.initialValue = 0xFF;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x00;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("4c"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("da"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-16-CCITT':
+          this.variantDescription = '16-bit CRC used in CCITT/ITU-T standards, telecommunications, and X.25 protocol';
+          this.bitWidth = 16;
+          this.polynomial = 0x1021;
+          this.initialValue = 0x0000;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x0000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
+            new TestCase(OpCodes.AnsiToBytes('A'), OpCodes.Hex8ToBytes('58E5'), 'Single byte A', 'https://reveng.sourceforge.io/crc-catalogue/'),
+            new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('31C3'), 'String 123456789', 'https://reveng.sourceforge.io/crc-catalogue/')
+          ];
+          break;
+        case 'CRC-16-ARC':
+          this.variantDescription = '16-bit CRC used in ARC archiver and reflected algorithms (LSB first processing)';
+          this.bitWidth = 16;
+          this.polynomial = 0x8005;
+          this.initialValue = 0x0000;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXor = 0x0000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
+            new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('BB3D'), 'Standard test string', 'https://reveng.sourceforge.io/crc-catalogue/')
+          ];
+          break;
+        case 'CRC-16-IBM':
+          this.variantDescription = '16-bit CRC used by IBM in SDLC and USB standards';
+          this.bitWidth = 16;
+          this.polynomial = 0x8005;
+          this.initialValue = 0x0000;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXor = 0x0000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8c1"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("9738"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-16-ANSI':
+          this.variantDescription = '16-bit CRC used in ANSI standards and some protocols';
+          this.bitWidth = 16;
+          this.polynomial = 0x8005;
+          this.initialValue = 0xFFFF;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXor = 0x0000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("a87e"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("5749"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-16-XMODEM':
+          this.variantDescription = '16-bit CRC used in XMODEM protocol with different initial value';
+          this.bitWidth = 16;
+          this.polynomial = 0x1021;
+          this.initialValue = 0x0000;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x0000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("A"), OpCodes.Hex8ToBytes("58e5"), "Single byte 'A'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("31c3"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-24-OPENPGP':
+          this.variantDescription = '24-bit CRC used in OpenPGP ASCII armor for message integrity checking';
+          this.bitWidth = 24;
+          this.polynomial = 0x1864CFB;
+          this.initialValue = 0xB704CE;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x000000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("b704ce"), "Empty string", "https://tools.ietf.org/html/rfc4880"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("f25713"), "Single byte 'a'", "https://tools.ietf.org/html/rfc4880"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("21cf02"), "String '123456789'", "https://tools.ietf.org/html/rfc4880")
+          ];
+          break;
+        case 'CRC-24-FLEXRAY':
+          this.variantDescription = '24-bit CRC used in FlexRay automotive communication protocol';
+          this.bitWidth = 24;
+          this.polynomial = 0x5D6DCB;
+          this.initialValue = 0xFEDCBA;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0x000000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("fedcba"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("8fe324"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("7979bd"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-24-INTERLAKEN':
+          this.variantDescription = '24-bit CRC used in Interlaken protocol for high-speed chip-to-chip communication';
+          this.bitWidth = 24;
+          this.polynomial = 0x328B63;
+          this.initialValue = 0xFFFFFF;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0xFFFFFF;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("d80156"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("b4f3e6"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-32-IEEE':
+          this.variantDescription = 'CRC-32 (IEEE 802.3) standard used in Ethernet, zip files, and many protocols';
+          this.bitWidth = 32;
+          this.polynomial = 0x04C11DB7;
+          this.initialValue = 0xFFFFFFFF;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXor = 0xFFFFFFFF;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8b7be43"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("352441c2"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("cbf43926"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-32-POSIX':
+          this.variantDescription = 'CRC-32/POSIX (also known as CKSUM) - base algorithm without length appending';
+          this.bitWidth = 32;
+          this.polynomial = 0x04C11DB7;
+          this.initialValue = 0x00000000;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0xFFFFFFFF;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "Check value '123456789'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum")
+          ];
+          break;
+        case 'CRC-32-BZIP2':
+          this.variantDescription = 'CRC-32 used in BZIP2 compression format';
+          this.bitWidth = 32;
+          this.polynomial = 0x04C11DB7;
+          this.initialValue = 0xFFFFFFFF;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor = 0xFFFFFFFF;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("19939b6b"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("fc891918"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-64-XZ':
+          this.variantDescription = 'CRC-64 used in XZ compression format and file integrity verification';
+          this.bitWidth = 64;
+          this.polynomialHigh = 0x42f0e1eb;
+          this.polynomialLow = 0xa9ea3693;
+          this.initialValueHigh = 0xffffffff;
+          this.initialValueLow = 0xffffffff;
+          this.inputReflected = true;
+          this.resultReflected = true;
+          this.finalXorHigh = 0xffffffff;
+          this.finalXorLow = 0xffffffff;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("330284772e652b05"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("995dc9bbdf1939fa"), "Catalogue check value for CRC-64/XZ", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-64-xz")
+          ];
+          break;
+        case 'CRC-64-ECMA182':
+          this.variantDescription = 'CRC-64 ECMA-182 standard used in DLT-1 tape cartridges';
+          this.bitWidth = 64;
+          this.polynomialHigh = 0x42f0e1eb;
+          this.polynomialLow = 0xa9ea3693;
+          this.initialValueHigh = 0x00000000;
+          this.initialValueLow = 0x00000000;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXorHigh = 0x00000000;
+          this.finalXorLow = 0x00000000;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("548f120162451c62"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("6c40df5f0b497347"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-64-WE':
+          this.variantDescription = 'CRC-64/WE variant used in some applications with different initialization';
+          this.bitWidth = 64;
+          this.polynomialHigh = 0x42f0e1eb;
+          this.polynomialLow = 0xa9ea3693;
+          this.initialValueHigh = 0xffffffff;
+          this.initialValueLow = 0xffffffff;
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXorHigh = 0xffffffff;
+          this.finalXorLow = 0xffffffff;
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("ce73f427acc0a99a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("62ec59e3f1a4f00a"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ];
+          break;
+        case 'CRC-128-STANDARD':
+          this.variantDescription = 'Standard 128-bit CRC used in high-performance computing and large data integrity verification';
+          this.bitWidth = 128;
+          this.polynomial128 = [0x00000000, 0x00000000, 0x00000000, 0x00000087];
+          this.initialValue128 = [0x00000000, 0x00000000, 0x00000000, 0x00000000];
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor128 = [0x00000000, 0x00000000, 0x00000000, 0x00000000];
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "Educational test vector"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("000000000000000000000000000031a7"), "Single byte 'a'", "Educational test vector"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("000000000000180e870396109919b42f"), "String '123456789'", "Educational test vector")
+          ];
+          break;
+        case 'CRC-128-HPC':
+          this.variantDescription = 'High-Performance Computing variant optimized for scientific computing and parallel processing';
+          this.bitWidth = 128;
+          this.polynomial128 = [0xE0000000, 0x02008000, 0x00800000, 0x000000AB];
+          this.initialValue128 = [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF];
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor128 = [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF];
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "HPC test vector"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("80000001b86e00006e000000000072fb"), "Single byte 'a'", "HPC test vector")
+          ];
+          break;
+        case 'CRC-128-BIGDATA':
+          this.variantDescription = 'Big Data variant designed for distributed storage systems and massive dataset integrity';
+          this.bitWidth = 128;
+          this.polynomial128 = [0x00000001, 0x01010100, 0x00010001, 0x00010103];
+          this.initialValue128 = [0x00000000, 0x00000000, 0x00000000, 0x00000000];
+          this.inputReflected = false;
+          this.resultReflected = false;
+          this.finalXor128 = [0x00000000, 0x00000000, 0x00000000, 0x00000000];
+          this.tests = [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000000000000000000000000000"), "Empty string", "BigData test vector"),
+            new TestCase(OpCodes.AnsiToBytes("big data integrity test"), OpCodes.Hex8ToBytes("a9d63dcd9e4b92530cb8861b98fdcef8"), "Big data sample", "BigData test vector")
+          ];
+          break;
+        default:
+          throw new Error('Unknown CRC variant: ' + variantName);
       }
 
       // Required metadata
-      this.name = variantKey;
-      this.description = `${this.config.description} Uses ${this.config.bitWidth}-bit polynomial with ${this.config.inputReflected ? 'reflected' : 'normal'} input processing.`;
+      this.name = variantName;
+      this.description = this.variantDescription + ' Uses ' + this.bitWidth + '-bit polynomial with ' + (this.inputReflected ? 'reflected' : 'normal') + ' input processing.';
       this.inventor = "W. Wesley Peterson";
       this.year = 1961;
       this.category = CategoryType.CHECKSUM;
@@ -380,9 +417,9 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
 
       // Complexity based on bit width
-      if (this.config.bitWidth <= 16) {
+      if (this.bitWidth <= 16) {
         this.complexity = ComplexityType.BEGINNER;
-      } else if (this.config.bitWidth <= 32) {
+      } else if (this.bitWidth <= 32) {
         this.complexity = ComplexityType.INTERMEDIATE;
       } else {
         this.complexity = ComplexityType.ADVANCED;
@@ -403,68 +440,116 @@
       ];
 
       // Known vulnerabilities (for CRC-32 and larger)
-      if (this.config.bitWidth >= 32) {
+      if (this.bitWidth >= 32) {
         this.knownVulnerabilities = [
-          {
-            type: "Not Cryptographically Secure",
-            text: "CRC is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm.",
-            mitigation: "Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection."
-          },
-          {
-            type: "Hash Collisions",
-            text: `CRC-${this.config.bitWidth} has limited output space, making collisions relatively easy to find intentionally.`,
-            mitigation: "For security applications, use cryptographic hash functions with larger output sizes."
-          }
+          new Vulnerability(
+            "Not Cryptographically Secure",
+            "CRC is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm.",
+            "Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection."
+          ),
+          new Vulnerability(
+            "Hash Collisions",
+            "CRC-" + this.bitWidth + " has limited output space, making collisions relatively easy to find intentionally.",
+            "For security applications, use cryptographic hash functions with larger output sizes."
+          )
         ];
       }
-
-      // Test vectors specific to this variant
-      this.tests = this.config.tests;
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {CRCInstance} New checksum instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
-      return new CRCInstance(this, this.config);
+      return new CRCInstance(this);
     }
   }
 
   // ===== UNIFIED CRC INSTANCE CLASS =====
 
   /**
- * CRC cipher instance implementing Feed/Result pattern
+ * CRC instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class CRCInstance extends IAlgorithmInstance {
-    constructor(algorithm, config) {
+    /**
+     * Copy the variant parameters and build the lookup table
+     * @param {CRCAlgorithm} algorithm - Parent algorithm (the variant)
+     */
+    constructor(algorithm) {
       super(algorithm);
-      this.config = config;
 
-      // Initialize CRC state based on bit width
-      if (config.bitWidth <= 32) {
-        this.crc = config.initialValue;
-      } else if (config.bitWidth === 64) {
-        this.crcHigh = config.initialValueHigh;
-        this.crcLow = config.initialValueLow;
-      } else if (config.bitWidth === 128) {
-        this.crc = [...config.initialValue];
+      /** @type {int32} */
+      this.bitWidth = algorithm.bitWidth;
+      /** @type {boolean} */
+      this.inputReflected = algorithm.inputReflected;
+      /** @type {boolean} */
+      this.resultReflected = algorithm.resultReflected;
+      /** @type {uint32} */
+      this.polynomial = algorithm.polynomial;
+      /** @type {uint32} */
+      this.initialValue = algorithm.initialValue;
+      /** @type {uint32} */
+      this.finalXor = algorithm.finalXor;
+      /** @type {uint32} */
+      this.polynomialHigh = algorithm.polynomialHigh;
+      /** @type {uint32} */
+      this.polynomialLow = algorithm.polynomialLow;
+      /** @type {uint32} */
+      this.initialValueHigh = algorithm.initialValueHigh;
+      /** @type {uint32} */
+      this.initialValueLow = algorithm.initialValueLow;
+      /** @type {uint32} */
+      this.finalXorHigh = algorithm.finalXorHigh;
+      /** @type {uint32} */
+      this.finalXorLow = algorithm.finalXorLow;
+      /** @type {uint32[]} */
+      this.polynomial128 = algorithm.polynomial128;
+      /** @type {uint32[]} */
+      this.initialValue128 = algorithm.initialValue128;
+      /** @type {uint32[]} */
+      this.finalXor128 = algorithm.finalXor128;
+
+      // CRC state: one word for widths up to 32, a high/low pair for 64,
+      // four words (most significant first) for 128
+      /** @type {uint32} */
+      this.crc = 0;
+      /** @type {uint32} */
+      this.crcHigh = 0;
+      /** @type {uint32} */
+      this.crcLow = 0;
+      /** @type {uint32[]} */
+      this.crc128 = new Array(0);
+
+      // Pre-computed lookup tables (only the one matching the width is filled)
+      /** @type {uint32[]} */
+      this.crcTable = new Array(0);
+      /** @type {uint32[]} */
+      this.crcTableHigh = new Array(0);
+      /** @type {uint32[]} */
+      this.crcTableLow = new Array(0);
+      /** @type {uint32[]} 256 entries of four words each, most significant word first */
+      this.crcTable128 = new Array(0);
+
+      this._reset();
+
+      if (this.bitWidth <= 32) {
+        this.crcTable = this._generateTable32();
+      } else if (this.bitWidth === 64) {
+        this._generateTable64();
+      } else if (this.bitWidth === 128) {
+        this.crcTable128 = this._generateTable128();
       }
-
-      // Pre-computed lookup table
-      this.crcTable = this._generateTable();
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -477,14 +562,14 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} CRC value, big-endian
    */
 
     Result() {
-      const bitWidth = this.config.bitWidth;
-      let result;
+      const bitWidth = this.bitWidth;
+      /** @type {uint8[]} */
+      let result = null;
 
       if (bitWidth <= 32) {
         result = this._result32();
@@ -500,8 +585,13 @@
       return result;
     }
 
+    /**
+     * Process one input byte
+     * @param {uint8} byte - Input byte
+     * @returns {void}
+     */
     _updateCRC(byte) {
-      const bitWidth = this.config.bitWidth;
+      const bitWidth = this.bitWidth;
 
       if (bitWidth <= 32) {
         this._updateCRC32(byte);
@@ -512,100 +602,110 @@
       }
     }
 
+    /**
+     * Process one input byte for widths up to 32
+     * @param {uint8} byte - Input byte
+     * @returns {void}
+     */
     _updateCRC32(byte) {
-      const bitWidth = this.config.bitWidth;
+      const bitWidth = this.bitWidth;
       // The reflected table is built from the reflected polynomial and consumed
       // LSB-first, which already accounts for inputReflected. Reflecting the
       // incoming byte on top of that would apply the reflection twice.
       const inputByte = byte;
 
-      if (this.config.inputReflected) {
+      if (this.inputReflected) {
         // Reflected algorithm (LSB first)
-        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc, inputByte), 0xFF);
+        const tblIdx = OpCodes.And32(OpCodes.Xor32(this.crc, inputByte), 0xFF);
         if (bitWidth === 8) {
-          this.crc = OpCodes.AndN(this.crcTable[tblIdx], 0xFF);
+          this.crc = OpCodes.And32(this.crcTable[tblIdx], 0xFF);
         } else if (bitWidth === 16) {
-          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
+          this.crc = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
         } else if (bitWidth === 24) {
-          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
+          this.crc = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
         } else if (bitWidth === 32) {
-          this.crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]));
+          this.crc = OpCodes.Xor32(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]);
         }
       } else {
         // Normal algorithm (MSB first)
         if (bitWidth === 8) {
-          const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc, inputByte), 0xFF);
-          this.crc = OpCodes.AndN(this.crcTable[tblIdx], 0xFF);
+          const tblIdx = OpCodes.And32(OpCodes.Xor32(this.crc, inputByte), 0xFF);
+          this.crc = OpCodes.And32(this.crcTable[tblIdx], 0xFF);
         } else if (bitWidth === 16) {
-          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), inputByte), 0xFF);
-          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
+          const tblIdx = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crc, 8), inputByte), 0xFF);
+          this.crc = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
         } else if (bitWidth === 24) {
-          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 16), inputByte), 0xFF);
-          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
+          const tblIdx = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crc, 16), inputByte), 0xFF);
+          this.crc = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
         } else if (bitWidth === 32) {
-          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 24), inputByte), 0xFF);
-          this.crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]));
+          const tblIdx = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crc, 24), inputByte), 0xFF);
+          this.crc = OpCodes.Xor32(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]);
         }
       }
     }
 
+    /**
+     * Process one input byte for the 64-bit width
+     * @param {uint8} byte - Input byte
+     * @returns {void}
+     */
     _updateCRC64(byte) {
-      if (this.config.inputReflected) {
+      if (this.inputReflected) {
         // Reflected algorithm (LSB first)
-        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crcLow, byte), 0xFF);
-        const tableEntry = this.crcTable[tblIdx];
+        const tblIdx = OpCodes.And32(OpCodes.Xor32(this.crcLow, byte), 0xFF);
 
-        this.crcLow = OpCodes.ToUint32(OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crcLow, 8), OpCodes.Shl32(OpCodes.AndN(this.crcHigh, 0xFF), 24)), tableEntry.low));
-        this.crcHigh = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(this.crcHigh, 8), tableEntry.high));
-      } else{
-        // Normal algorithm (MSB first)
-        const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crcHigh, 24), byte), 0xFF);
-        const tableEntry = this.crcTable[tblIdx];
-
-        this.crcHigh = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crcHigh, 8), OpCodes.AndN(OpCodes.Shr32(this.crcLow, 24), 0xFF)), tableEntry.high);
-        this.crcLow = OpCodes.XorN(OpCodes.Shl32(this.crcLow, 8), tableEntry.low);
-
-        this.crcHigh = OpCodes.ToUint32(this.crcHigh);
-        this.crcLow = OpCodes.ToUint32(this.crcLow);
-      }
-    }
-
-    _updateCRC128(byte) {
-      if (this.config.inputReflected) {
-        // Reflected algorithm (LSB first)
-        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc[3], byte), 0xFF);
-        const tableEntry = this.crcTable[tblIdx];
-
-        this.crc[3] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[3], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[2], 0xFF), 24)), tableEntry[3]);
-        this.crc[2] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[2], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[1], 0xFF), 24)), tableEntry[2]);
-        this.crc[1] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[1], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[0], 0xFF), 24)), tableEntry[1]);
-        this.crc[0] = OpCodes.XorN(OpCodes.Shr32(this.crc[0], 8), tableEntry[0]);
+        this.crcLow = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shr32(this.crcLow, 8), OpCodes.Shl32(OpCodes.And32(this.crcHigh, 0xFF), 24)), this.crcTableLow[tblIdx]);
+        this.crcHigh = OpCodes.Xor32(OpCodes.Shr32(this.crcHigh, 8), this.crcTableHigh[tblIdx]);
       } else {
         // Normal algorithm (MSB first)
-        const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc[0], 24), byte), 0xFF);
-        const tableEntry = this.crcTable[tblIdx];
+        const tblIdx = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.crcHigh, 24), byte), 0xFF);
 
-        this.crc[0] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[0], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[1], 24), 0xFF)), tableEntry[0]);
-        this.crc[1] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[1], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[2], 24), 0xFF)), tableEntry[1]);
-        this.crc[2] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[2], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[3], 24), 0xFF)), tableEntry[2]);
-        this.crc[3] = OpCodes.XorN(OpCodes.Shl32(this.crc[3], 8), tableEntry[3]);
-
-        this.crc[0] = OpCodes.ToUint32(this.crc[0]);
-        this.crc[1] = OpCodes.ToUint32(this.crc[1]);
-        this.crc[2] = OpCodes.ToUint32(this.crc[2]);
-        this.crc[3] = OpCodes.ToUint32(this.crc[3]);
+        this.crcHigh = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shl32(this.crcHigh, 8), OpCodes.And32(OpCodes.Shr32(this.crcLow, 24), 0xFF)), this.crcTableHigh[tblIdx]);
+        this.crcLow = OpCodes.Xor32(OpCodes.Shl32(this.crcLow, 8), this.crcTableLow[tblIdx]);
       }
     }
 
+    /**
+     * Process one input byte for the 128-bit width
+     * @param {uint8} byte - Input byte
+     * @returns {void}
+     */
+    _updateCRC128(byte) {
+      const crc = this.crc128;
+      if (this.inputReflected) {
+        // Reflected algorithm (LSB first)
+        /** @type {int32} */
+        const entry = OpCodes.And32(OpCodes.Xor32(crc[3], byte), 0xFF) * 4;
+
+        crc[3] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shr32(crc[3], 8), OpCodes.Shl32(OpCodes.And32(crc[2], 0xFF), 24)), this.crcTable128[entry + 3]);
+        crc[2] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shr32(crc[2], 8), OpCodes.Shl32(OpCodes.And32(crc[1], 0xFF), 24)), this.crcTable128[entry + 2]);
+        crc[1] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shr32(crc[1], 8), OpCodes.Shl32(OpCodes.And32(crc[0], 0xFF), 24)), this.crcTable128[entry + 1]);
+        crc[0] = OpCodes.Xor32(OpCodes.Shr32(crc[0], 8), this.crcTable128[entry + 0]);
+      } else {
+        // Normal algorithm (MSB first)
+        /** @type {int32} */
+        const entry = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(crc[0], 24), byte), 0xFF) * 4;
+
+        crc[0] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shl32(crc[0], 8), OpCodes.And32(OpCodes.Shr32(crc[1], 24), 0xFF)), this.crcTable128[entry + 0]);
+        crc[1] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shl32(crc[1], 8), OpCodes.And32(OpCodes.Shr32(crc[2], 24), 0xFF)), this.crcTable128[entry + 1]);
+        crc[2] = OpCodes.Xor32(OpCodes.Or32(OpCodes.Shl32(crc[2], 8), OpCodes.And32(OpCodes.Shr32(crc[3], 24), 0xFF)), this.crcTable128[entry + 2]);
+        crc[3] = OpCodes.Xor32(OpCodes.Shl32(crc[3], 8), this.crcTable128[entry + 3]);
+      }
+    }
+
+    /**
+     * Finish a CRC of at most 32 bits
+     * @returns {uint8[]} CRC value, big-endian, bitWidth / 8 bytes
+     */
     _result32() {
-      const bitWidth = this.config.bitWidth;
+      const bitWidth = this.bitWidth;
       let finalCrc = this.crc;
 
       // Result reflection. Running the reflected table already leaves the
       // register in reflected form, so a further reflection is only needed when
       // inputReflected and resultReflected disagree. This rule is uniform over
       // every width.
-      if (this.config.inputReflected !== this.config.resultReflected) {
+      if (this.inputReflected !== this.resultReflected) {
         if (bitWidth === 8) {
           finalCrc = this._reflect8(finalCrc);
         } else if (bitWidth === 16) {
@@ -618,114 +718,104 @@
       }
 
       // Apply final XOR
-      finalCrc = OpCodes.XorN(finalCrc, this.config.finalXor);
+      finalCrc = OpCodes.Xor32(finalCrc, this.finalXor);
 
-      // Convert to byte array (big-endian)
-      if (bitWidth === 8) {
-        return [OpCodes.AndN(finalCrc, 0xFF)];
-      } else if (bitWidth === 16) {
-        return OpCodes.Unpack16BE(finalCrc);
-      } else if (bitWidth === 24) {
-        return [
-          OpCodes.AndN(OpCodes.Shr32(finalCrc, 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(finalCrc, 8), 0xFF),
-          OpCodes.AndN(finalCrc, 0xFF)
-        ];
-      } else if (bitWidth === 32) {
-        return OpCodes.Unpack32BE(finalCrc);
-      }
+      // Convert to byte array (big-endian): the last bitWidth / 8 bytes of the word
+      const bytes = OpCodes.Unpack32BE(finalCrc);
+      return bytes.slice(4 - bitWidth / 8);
     }
 
+    /**
+     * Finish a 64-bit CRC
+     * @returns {uint8[]} CRC value, big-endian, 8 bytes
+     */
     _result64() {
       let finalCrcHigh = this.crcHigh;
       let finalCrcLow = this.crcLow;
 
       // Same rule as the narrower widths: the reflected table leaves the
       // register reflected already, so reflect again only on disagreement.
-      if (this.config.inputReflected !== this.config.resultReflected) {
-        const temp = this._reflect64(finalCrcHigh, finalCrcLow);
-        finalCrcHigh = temp.high;
-        finalCrcLow = temp.low;
+      // Reflecting 64 bits swaps the words and reflects each.
+      if (this.inputReflected !== this.resultReflected) {
+        const oldHigh = finalCrcHigh;
+        finalCrcHigh = this._reflect32(finalCrcLow);
+        finalCrcLow = this._reflect32(oldHigh);
       }
 
       // Apply final XOR after reflection
-      finalCrcHigh = OpCodes.ToUint32(OpCodes.XorN(finalCrcHigh, this.config.finalXorHigh));
-      finalCrcLow = OpCodes.ToUint32(OpCodes.XorN(finalCrcLow, this.config.finalXorLow));
+      finalCrcHigh = OpCodes.Xor32(finalCrcHigh, this.finalXorHigh);
+      finalCrcLow = OpCodes.Xor32(finalCrcLow, this.finalXorLow);
 
       // Return CRC as 8-byte array (big-endian)
-      return [
-        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 24), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 8), 0xFF),
-        OpCodes.AndN(finalCrcHigh, 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 24), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 8), 0xFF),
-        OpCodes.AndN(finalCrcLow, 0xFF)
-      ];
+      return OpCodes.Unpack32BE(finalCrcHigh).concat(OpCodes.Unpack32BE(finalCrcLow));
     }
 
+    /**
+     * Finish a 128-bit CRC
+     * @returns {uint8[]} CRC value, big-endian, 16 bytes
+     */
     _result128() {
-      const finalCrc = [
-        OpCodes.ToUint32(OpCodes.XorN(this.crc[0], this.config.finalXor[0])),
-        OpCodes.ToUint32(OpCodes.XorN(this.crc[1], this.config.finalXor[1])),
-        OpCodes.ToUint32(OpCodes.XorN(this.crc[2], this.config.finalXor[2])),
-        OpCodes.ToUint32(OpCodes.XorN(this.crc[3], this.config.finalXor[3]))
-      ];
+      /** @type {uint32[]} */
+      const finalCrc = [];
+      for (let i = 0; i < 4; ++i) {
+        finalCrc.push(OpCodes.Xor32(this.crc128[i], this.finalXor128[i]));
+      }
 
       // Return CRC as 16-byte array (big-endian)
-      return [
-        OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 8), 0xFF), OpCodes.AndN(finalCrc[0], 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 8), 0xFF), OpCodes.AndN(finalCrc[1], 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 8), 0xFF), OpCodes.AndN(finalCrc[2], 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 8), 0xFF), OpCodes.AndN(finalCrc[3], 0xFF)
-      ];
+      return OpCodes.Words32ToBytesBE(finalCrc);
     }
 
+    /**
+     * Load the initial register value
+     * @returns {void}
+     */
     _reset() {
-      if (this.config.bitWidth <= 32) {
-        this.crc = this.config.initialValue;
-      } else if (this.config.bitWidth === 64) {
-        this.crcHigh = this.config.initialValueHigh;
-        this.crcLow = this.config.initialValueLow;
-      } else if (this.config.bitWidth === 128) {
-        this.crc = [...this.config.initialValue];
+      if (this.bitWidth <= 32) {
+        this.crc = this.initialValue;
+      } else if (this.bitWidth === 64) {
+        this.crcHigh = this.initialValueHigh;
+        this.crcLow = this.initialValueLow;
+      } else if (this.bitWidth === 128) {
+        this.crc128 = this.initialValue128.slice();
       }
     }
 
-    _generateTable() {
-      const bitWidth = this.config.bitWidth;
-
-      if (bitWidth <= 32) {
-        return this._generateTable32();
-      } else if (bitWidth === 64) {
-        return this._generateTable64();
-      } else if (bitWidth === 128) {
-        return this._generateTable128();
-      }
+    /**
+     * Reflect the polynomial over the register width (widths up to 32)
+     * @returns {uint32} Reflected polynomial
+     */
+    _reflectedPolynomial32() {
+      if (this.bitWidth === 8) return this._reflect8(this.polynomial);
+      if (this.bitWidth === 16) return this._reflect16(this.polynomial);
+      if (this.bitWidth === 24) return this._reflect24(this.polynomial);
+      return this._reflect32(this.polynomial);
     }
 
+    /**
+     * Build the byte-indexed lookup table for widths up to 32
+     * @returns {uint32[]} 256 table entries
+     */
     _generateTable32() {
+      /** @type {uint32[]} */
       const table = new Array(256);
-      const bitWidth = this.config.bitWidth;
+      const bitWidth = this.bitWidth;
+      /** @type {uint32} */
       const mask = bitWidth === 8 ? 0xFF : bitWidth === 16 ? 0xFFFF : bitWidth === 24 ? 0xFFFFFF : 0xFFFFFFFF;
+      /** @type {uint32} */
       const msbBit = bitWidth === 8 ? 0x80 : bitWidth === 16 ? 0x8000 : bitWidth === 24 ? 0x800000 : 0x80000000;
 
       for (let i = 0; i < 256; i++) {
-        let crc;
+        /** @type {uint32} */
+        let crc = 0;
 
-        if (this.config.inputReflected) {
+        if (this.inputReflected) {
           // Generate reflected table
-          // Pre-compute reflected polynomial once
-          const reflectedPoly = bitWidth === 8 ? this._reflect8(this.config.polynomial) :
-                                bitWidth === 16 ? this._reflect16(this.config.polynomial) :
-                                bitWidth === 24 ? this._reflect24(this.config.polynomial) :
-                                this._reflect32(this.config.polynomial);
+          const reflectedPoly = this._reflectedPolynomial32();
 
           crc = i;
           for (let j = 0; j < 8; j++) {
-            if (OpCodes.AndN(crc, 1)) {
-              crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(crc, 1), reflectedPoly));
+            if (OpCodes.And32(crc, 1) !== 0) {
+              crc = OpCodes.Xor32(OpCodes.Shr32(crc, 1), reflectedPoly);
             } else {
               crc = OpCodes.Shr32(crc, 1);
             }
@@ -734,47 +824,57 @@
           // Generate normal table
           crc = bitWidth === 8 ? i : OpCodes.Shl32(i, bitWidth - 8);
           for (let j = 0; j < 8; j++) {
-            if (OpCodes.AndN(crc, msbBit)) {
-              crc = OpCodes.XorN(OpCodes.Shl32(crc, 1), this.config.polynomial);
+            if (OpCodes.And32(crc, msbBit) !== 0) {
+              crc = OpCodes.Xor32(OpCodes.Shl32(crc, 1), this.polynomial);
             } else {
               crc = OpCodes.Shl32(crc, 1);
             }
           }
         }
 
-        table[i] = OpCodes.AndN(crc, mask);
+        table[i] = OpCodes.And32(crc, mask);
       }
 
       return table;
     }
 
+    /**
+     * Build the byte-indexed lookup table for the 64-bit width into
+     * crcTableHigh / crcTableLow
+     * @returns {void}
+     */
     _generateTable64() {
-      const table = new Array(256);
+      /** @type {uint32[]} */
+      const tableHigh = new Array(256);
+      /** @type {uint32[]} */
+      const tableLow = new Array(256);
 
       // For reflected CRCs, reflect the polynomial once
-      let polyHigh = this.config.polynomialHigh;
-      let polyLow = this.config.polynomialLow;
-      if (this.config.inputReflected) {
-        const reflected = this._reflect64(polyHigh, polyLow);
-        polyHigh = reflected.high;
-        polyLow = reflected.low;
+      let polyHigh = this.polynomialHigh;
+      let polyLow = this.polynomialLow;
+      if (this.inputReflected) {
+        polyHigh = this._reflect32(this.polynomialLow);
+        polyLow = this._reflect32(this.polynomialHigh);
       }
 
       for (let i = 0; i < 256; i++) {
-        let crcHigh, crcLow;
+        /** @type {uint32} */
+        let crcHigh = 0;
+        /** @type {uint32} */
+        let crcLow = 0;
 
-        if (this.config.inputReflected) {
+        if (this.inputReflected) {
           // Generate reflected table
           crcLow = i;
           crcHigh = 0;
           for (let j = 0; j < 8; j++) {
-            const carry = OpCodes.AndN(crcLow, 1);
-            crcLow = OpCodes.OrN(OpCodes.Shr32(crcLow, 1), OpCodes.Shl32(OpCodes.AndN(crcHigh, 1), 31));
+            const carry = OpCodes.And32(crcLow, 1);
+            crcLow = OpCodes.Or32(OpCodes.Shr32(crcLow, 1), OpCodes.Shl32(OpCodes.And32(crcHigh, 1), 31));
             crcHigh = OpCodes.Shr32(crcHigh, 1);
 
-            if (carry) {
-              crcHigh = OpCodes.ToUint32(OpCodes.XorN(crcHigh, polyHigh));
-              crcLow = OpCodes.ToUint32(OpCodes.XorN(crcLow, polyLow));
+            if (carry !== 0) {
+              crcHigh = OpCodes.Xor32(crcHigh, polyHigh);
+              crcLow = OpCodes.Xor32(crcLow, polyLow);
             }
           }
         } else {
@@ -782,104 +882,132 @@
           crcHigh = OpCodes.Shl32(i, 24);
           crcLow = 0;
           for (let j = 0; j < 8; j++) {
-            const carry = OpCodes.AndN(crcHigh, 0x80000000);
-            crcHigh = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crcHigh, 1), OpCodes.AndN(OpCodes.Shr32(crcLow, 31), 1)));
-            crcLow = OpCodes.ToUint32(OpCodes.Shl32(crcLow, 1));
+            const carry = OpCodes.And32(crcHigh, 0x80000000);
+            crcHigh = OpCodes.Or32(OpCodes.Shl32(crcHigh, 1), OpCodes.And32(OpCodes.Shr32(crcLow, 31), 1));
+            crcLow = OpCodes.Shl32(crcLow, 1);
 
-            if (carry) {
-              crcHigh = OpCodes.XorN(crcHigh, this.config.polynomialHigh);
-              crcLow = OpCodes.XorN(crcLow, this.config.polynomialLow);
+            if (carry !== 0) {
+              crcHigh = OpCodes.Xor32(crcHigh, this.polynomialHigh);
+              crcLow = OpCodes.Xor32(crcLow, this.polynomialLow);
             }
           }
         }
 
-        table[i] = { high: OpCodes.ToUint32(crcHigh), low: OpCodes.ToUint32(crcLow) };
+        tableHigh[i] = OpCodes.ToUint32(crcHigh);
+        tableLow[i] = OpCodes.ToUint32(crcLow);
       }
 
-      return table;
+      this.crcTableHigh = tableHigh;
+      this.crcTableLow = tableLow;
     }
 
+    /**
+     * Build the byte-indexed lookup table for the 128-bit width
+     * @returns {uint32[]} 256 entries of four words each, most significant word first
+     */
     _generateTable128() {
-      const table = new Array(256);
+      /** @type {uint32[]} */
+      const table = new Array(1024);
 
       for (let i = 0; i < 256; i++) {
-        let crc = [OpCodes.Shl32(i, 24), 0, 0, 0];
+        /** @type {uint32[]} */
+        const crc = [OpCodes.Shl32(i, 24), 0, 0, 0];
 
         // Process 8 bits
         for (let j = 0; j < 8; j++) {
-          const carry = OpCodes.AndN(crc[0], 0x80000000);
+          const carry = OpCodes.And32(crc[0], 0x80000000);
 
           // Shift left across all 128 bits
-          crc[0] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[0], 1), OpCodes.AndN(OpCodes.Shr32(crc[1], 31), 1)));
-          crc[1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[1], 1), OpCodes.AndN(OpCodes.Shr32(crc[2], 31), 1)));
-          crc[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[2], 1), OpCodes.AndN(OpCodes.Shr32(crc[3], 31), 1)));
+          crc[0] = OpCodes.Or32(OpCodes.Shl32(crc[0], 1), OpCodes.And32(OpCodes.Shr32(crc[1], 31), 1));
+          crc[1] = OpCodes.Or32(OpCodes.Shl32(crc[1], 1), OpCodes.And32(OpCodes.Shr32(crc[2], 31), 1));
+          crc[2] = OpCodes.Or32(OpCodes.Shl32(crc[2], 1), OpCodes.And32(OpCodes.Shr32(crc[3], 31), 1));
           crc[3] = OpCodes.ToUint32(OpCodes.Shl32(crc[3], 1));
 
           // XOR with polynomial if there was a carry
-          if (carry) {
-            crc[0] = OpCodes.XorN(crc[0], this.config.polynomial[0]);
-            crc[1] = OpCodes.XorN(crc[1], this.config.polynomial[1]);
-            crc[2] = OpCodes.XorN(crc[2], this.config.polynomial[2]);
-            crc[3] = OpCodes.XorN(crc[3], this.config.polynomial[3]);
+          if (carry !== 0) {
+            crc[0] = OpCodes.Xor32(crc[0], this.polynomial128[0]);
+            crc[1] = OpCodes.Xor32(crc[1], this.polynomial128[1]);
+            crc[2] = OpCodes.Xor32(crc[2], this.polynomial128[2]);
+            crc[3] = OpCodes.Xor32(crc[3], this.polynomial128[3]);
           }
         }
 
-        table[i] = [OpCodes.ToUint32(crc[0]), OpCodes.ToUint32(crc[1]), OpCodes.ToUint32(crc[2]), OpCodes.ToUint32(crc[3])];
+        for (let k = 0; k < 4; k++) {
+          table[i * 4 + k] = crc[k];
+        }
       }
 
       return table;
     }
 
+    /**
+     * Reverse the low 8 bits
+     * @param {uint32} value - Value to reflect
+     * @returns {uint32} Reflected value
+     */
     _reflect8(value) {
+      /** @type {uint32} */
       let reflected = 0;
       for (let i = 0; i < 8; i++) {
-        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        reflected = OpCodes.Or32(OpCodes.Shl32(reflected, 1), OpCodes.And32(value, 1));
         value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
 
+    /**
+     * Reverse the low 16 bits
+     * @param {uint32} value - Value to reflect
+     * @returns {uint32} Reflected value
+     */
     _reflect16(value) {
+      /** @type {uint32} */
       let reflected = 0;
       for (let i = 0; i < 16; i++) {
-        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        reflected = OpCodes.Or32(OpCodes.Shl32(reflected, 1), OpCodes.And32(value, 1));
         value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
 
+    /**
+     * Reverse the low 24 bits
+     * @param {uint32} value - Value to reflect
+     * @returns {uint32} Reflected value
+     */
     _reflect24(value) {
+      /** @type {uint32} */
       let reflected = 0;
       for (let i = 0; i < 24; i++) {
-        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        reflected = OpCodes.Or32(OpCodes.Shl32(reflected, 1), OpCodes.And32(value, 1));
         value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
 
+    /**
+     * Reverse all 32 bits
+     * @param {uint32} value - Value to reflect
+     * @returns {uint32} Reflected value
+     */
     _reflect32(value) {
+      /** @type {uint32} */
       let reflected = 0;
       for (let i = 0; i < 32; i++) {
-        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        reflected = OpCodes.Or32(OpCodes.Shl32(reflected, 1), OpCodes.And32(value, 1));
         value = OpCodes.Shr32(value, 1);
       }
-      return OpCodes.ToUint32(reflected);
-    }
-
-    _reflect64(high, low) {
-      const reflectedHigh = this._reflect32(low);
-      const reflectedLow = this._reflect32(high);
-      return { high: reflectedHigh, low: reflectedLow };
+      return reflected;
     }
   }
 
   // ===== REGISTER ALL VARIANTS =====
 
-  Object.keys(CRC_VARIANTS).forEach(variantKey => {
-    RegisterAlgorithm(new CRCAlgorithm(variantKey));
-  });
+  for (let i = 0; i < CRC_VARIANT_NAMES.length; ++i) {
+    RegisterAlgorithm(new CRCAlgorithm(CRC_VARIANT_NAMES[i]));
+  }
 
   // ===== EXPORTS =====
 
-  return { CRCAlgorithm, CRCInstance, CRC_VARIANTS };
+  return { CRCAlgorithm, CRCInstance, CRC_VARIANT_NAMES };
 }));

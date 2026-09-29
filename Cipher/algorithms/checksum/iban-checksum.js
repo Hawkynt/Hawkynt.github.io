@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * IBANChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class IBANChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = null; // International
 
+      /** @type {int32} */
       this.checksumSize = 16; // 2 check digits
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum IBAN implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/iban.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Format: CC12BBBBSSSSAAAA... (Country, Check, Bank, Branch, Account)",
         "Algorithm: Move first 4 chars to end, replace letters with numbers (A=10...Z=35)",
@@ -96,9 +107,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {IBANChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -108,28 +119,28 @@
   }
 
   /**
- * IBANChecksum cipher instance implementing Feed/Result pattern
+ * IBANChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class IBANChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {IBANChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {string} Upper-cased text fed so far */
       this.data = '';
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -143,15 +154,14 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the IBAN mod-97 remainder of everything fed so far and reset
+   * @returns {uint8[]} Remainder as 2 bytes, big-endian (0 for fewer than 4 characters)
    */
 
     Result() {
       if (this.data.length < 4) {
         this.data = '';
-        return [0, 0];
+        return OpCodes.Unpack16BE(0);
       }
 
       // IBAN algorithm: move first 4 characters to end
@@ -160,18 +170,19 @@
       // Convert letters to numbers (A=10, B=11, ..., Z=35)
       let numericString = '';
       for (let i = 0; i < rearranged.length; i++) {
-        const char = rearranged[i];
-        if (char >= 'A' && char <= 'Z') {
-          numericString += (char.charCodeAt(0) - 'A'.charCodeAt(0) + 10).toString();
-        } else if (char >= '0' && char <= '9') {
-          numericString += char;
+        const code = rearranged.charCodeAt(i);
+        if (code >= 0x41 && code <= 0x5A) {        // 'A'..'Z'
+          const value = code - 0x41 + 10;
+          numericString = numericString + value;
+        } else if (code >= 0x30 && code <= 0x39) { // '0'..'9'
+          numericString = numericString + rearranged.charAt(i);
         }
       }
 
       // Calculate mod 97 using sequential processing to avoid overflow
       let remainder = 0;
       for (let i = 0; i < numericString.length; i++) {
-        remainder = (remainder * 10 + parseInt(numericString[i], 10)) % 97;
+        remainder = (remainder * 10 + (numericString.charCodeAt(i) - 0x30)) % 97;
       }
 
       this.data = '';
