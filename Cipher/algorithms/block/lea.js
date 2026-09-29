@@ -123,6 +123,7 @@
       // LEA Constants - Key schedule constants δ[i]
       // These are the 8 base delta values from Crypto++ reference implementation
       // Each delta[i] contains 36 rotations for key schedule
+      /** @type {uint32[][]} */
       this.DELTA = [
         [0xc3efe9db, 0x87dfd3b7, 0x0fbfa76f, 0x1f7f4ede, 0x3efe9dbc, 0x7dfd3b78, 0xfbfa76f0, 0xf7f4ede1,
          0xefe9dbc3, 0xdfd3b787, 0xbfa76f0f, 0x7f4ede1f, 0xfe9dbc3e, 0xfd3b787d, 0xfa76f0fb, 0xf4ede1f7,
@@ -197,6 +198,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
       this.rounds = 0;
       /** @type {uint8[]} */
@@ -306,14 +308,17 @@
 
     // Generate round keys based on key length - following Crypto++ reference exactly
     _generateRoundKeys() {
-      this.roundKeys = [];
+      /** @type {uint32[][]} */
+      const roundKeys = [];
+      this.roundKeys = roundKeys;
       const keyWords = this.KeySize / 4;
 
       // Convert key bytes to 32-bit words (little-endian for LEA)
-      const key = [];
+      /** @type {uint32[]} */
+      const kw = [];
       for (let i = 0; i < keyWords; i++) {
         const offset = i * 4;
-        key[i] = OpCodes.Pack32LE(
+        kw[i] = OpCodes.Pack32LE(
           this._key[offset],
           this._key[offset + 1],
           this._key[offset + 2],
@@ -322,32 +327,34 @@
       }
 
       // Create flat round key array (6 words per round)
+      /** @type {uint32[]} */
       const rkey = new Array(this.rounds * 6);
 
       if (keyWords === 4) { // 128-bit key - LEA-128
         // Following Crypto++ SetKey128 exactly
+        /** @type {uint32[][]} */
         const delta = this.algorithm.DELTA;
 
         // Generate rkey[0], rkey[6], rkey[12], ... (indices 0, 6, 12, 18, ...)
-        rkey[0] = OpCodes.RotL32(OpCodes.ToUint32(key[0] + delta[0][0]), 1);
+        rkey[0] = OpCodes.RotL32(OpCodes.ToUint32(kw[0] + delta[0][0]), 1);
         for (let i = 1; i < 24; i++) {
           rkey[i * 6] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6] + delta[i % 4][i]), 1);
         }
 
         // Generate rkey[1], rkey[3], rkey[5], rkey[7], ... (tripled values)
-        rkey[1] = rkey[3] = rkey[5] = OpCodes.RotL32(OpCodes.ToUint32(key[1] + delta[0][1]), 3);
+        rkey[1] = rkey[3] = rkey[5] = OpCodes.RotL32(OpCodes.ToUint32(kw[1] + delta[0][1]), 3);
         for (let i = 1; i < 24; i++) {
           rkey[i * 6 + 1] = rkey[i * 6 + 3] = rkey[i * 6 + 5] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 1] + delta[i % 4][i + 1]), 3);
         }
 
         // Generate rkey[2], rkey[8], rkey[14], ... (indices 2, 8, 14, 20, ...)
-        rkey[2] = OpCodes.RotL32(OpCodes.ToUint32(key[2] + delta[0][2]), 6);
+        rkey[2] = OpCodes.RotL32(OpCodes.ToUint32(kw[2] + delta[0][2]), 6);
         for (let i = 1; i < 24; i++) {
           rkey[i * 6 + 2] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 2] + delta[i % 4][i + 2]), 6);
         }
 
         // Generate rkey[4], rkey[10], rkey[16], ... (indices 4, 10, 16, 22, ...)
-        rkey[4] = OpCodes.RotL32(OpCodes.ToUint32(key[3] + delta[0][3]), 11);
+        rkey[4] = OpCodes.RotL32(OpCodes.ToUint32(kw[3] + delta[0][3]), 11);
         for (let i = 1; i < 24; i++) {
           rkey[i * 6 + 4] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 4] + delta[i % 4][i + 3]), 11);
         }
@@ -355,8 +362,9 @@
       } else if (keyWords === 6) { // 192-bit key - LEA-192
         // KS X 3246 key schedule for a 192-bit key: six state words, each round
         // updates all six and emits them directly as that round's subkey.
+        /** @type {uint32[][]} */
         const delta = this.algorithm.DELTA;
-        const t = [key[0], key[1], key[2], key[3], key[4], key[5]];
+        const t = [kw[0], kw[1], kw[2], kw[3], kw[4], kw[5]];
         /** @type {uint8[]} */
         const amounts = [1, 3, 6, 11, 13, 17];
 
@@ -371,8 +379,9 @@
       } else if (keyWords === 8) { // 256-bit key - LEA-256
         // KS X 3246 key schedule for a 256-bit key: eight state words, of which
         // a rotating window of six is updated and emitted each round.
+        /** @type {uint32[][]} */
         const delta = this.algorithm.DELTA;
-        const t = [key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7]];
+        const t = [kw[0], kw[1], kw[2], kw[3], kw[4], kw[5], kw[6], kw[7]];
         /** @type {uint8[]} */
         const amounts = [1, 3, 6, 11, 13, 17];
 
@@ -388,7 +397,7 @@
 
       // Convert flat array to round key structure
       for (let i = 0; i < this.rounds; i++) {
-        this.roundKeys[i] = [
+        roundKeys[i] = [
           rkey[i * 6],
           rkey[i * 6 + 1],
           rkey[i * 6 + 2],
@@ -426,13 +435,14 @@
         const oldX = [...X];
 
         // Apply LEA round function according to specification
-        X[0] = OpCodes.RotL32(OpCodes.ToUint32((OpCodes.XorN(oldX[0], RK[0]) + OpCodes.XorN(oldX[1], RK[1]))), 9);
-        X[1] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.XorN(oldX[1], RK[2]) + OpCodes.XorN(oldX[2], RK[3]))), 5);
-        X[2] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.XorN(oldX[2], RK[4]) + OpCodes.XorN(oldX[3], RK[5]))), 3);
+        X[0] = OpCodes.RotL32(OpCodes.ToUint32((OpCodes.Xor32(oldX[0], RK[0]) + OpCodes.Xor32(oldX[1], RK[1]))), 9);
+        X[1] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.Xor32(oldX[1], RK[2]) + OpCodes.Xor32(oldX[2], RK[3]))), 5);
+        X[2] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.Xor32(oldX[2], RK[4]) + OpCodes.Xor32(oldX[3], RK[5]))), 3);
         X[3] = oldX[0]; // Circular shift
       }
 
       // Convert back to byte array using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 4; i++) {
         const wordBytes = OpCodes.Unpack32LE(X[i]);
@@ -492,6 +502,7 @@
       }
 
       // Convert back to byte array using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 4; i++) {
         const wordBytes = OpCodes.Unpack32LE(X[i]);

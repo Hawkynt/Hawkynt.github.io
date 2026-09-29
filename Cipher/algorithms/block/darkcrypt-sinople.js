@@ -205,6 +205,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._KS = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -254,6 +255,11 @@
     // Round function F: keys the last word (word3); the new word0 is a rotate of the
     // old word3, and three S-box-derived taps (non-byte-aligned rotate offsets 2/12/22)
     // feed words 0,1,2 into the new words 1,2,3.
+    /**
+     * @param {uint32[]} state - Four state words
+     * @param {uint32} K - Round key
+     * @returns {uint32[]} New state
+     */
     _F(state, K) {
       const w0 = state[0], w1 = state[1], w2 = state[2], w3 = state[3];
       const x = OpCodes.Xor32(w3, K);
@@ -272,6 +278,11 @@
     }
 
     // Algebraic inverse of _F.
+    /**
+     * @param {uint32[]} state - Four state words
+     * @param {uint32} K - Round key
+     * @returns {uint32[]} Previous state
+     */
     _invF(state, K) {
       const o0 = state[0], o1 = state[1], o2 = state[2], o3 = state[3];
       const w3 = OpCodes.RotL32(o0, 8);
@@ -292,6 +303,12 @@
 
     // Single chained-accumulator step used by G/invG: standard little-endian byte
     // decomposition of (w XOR K), two S0 taps and two S1 taps, mixed with a seed.
+    /**
+     * @param {uint32} w - State word
+     * @param {uint32} K - Round key
+     * @param {uint32} seed - Accumulator input
+     * @returns {uint32} Accumulator output
+     */
     _step(w, K, seed) {
       const x = OpCodes.Xor32(w, K);
       const b0 = OpCodes.And32(x, 0xFF);
@@ -308,6 +325,12 @@
       return OpCodes.Add32(t0, OpCodes.Xor32(t1, OpCodes.Add32(OpCodes.Xor32(t3, seed), t2)));
     }
 
+    /**
+     * @param {uint32} w - State word
+     * @param {uint32} K - Round key
+     * @param {uint32} out - Accumulator output
+     * @returns {uint32} Accumulator input
+     */
     _unstep(w, K, out) {
       const x = OpCodes.Xor32(w, K);
       const b0 = OpCodes.And32(x, 0xFF);
@@ -326,6 +349,11 @@
 
     // Round function G: a 3-step chained accumulator over words 0,1,2 (seeded by word3)
     // becomes the new word0; words 0,1,2 rotate down (with an 8-bit rotate) into 1,2,3.
+    /**
+     * @param {uint32[]} state - Four state words
+     * @param {uint32} K - Round key
+     * @returns {uint32[]} New state
+     */
     _G(state, K) {
       const w0 = state[0], w1 = state[1], w2 = state[2], w3 = state[3];
       let acc = this._step(w0, K, w3);
@@ -335,6 +363,11 @@
     }
 
     // Algebraic inverse of _G.
+    /**
+     * @param {uint32[]} state - Four state words
+     * @param {uint32} K - Round key
+     * @returns {uint32[]} Previous state
+     */
     _invG(state, K) {
       const o0 = state[0], o1 = state[1], o2 = state[2], o3 = state[3];
       const w0 = OpCodes.RotL32(o1, 8);
@@ -351,6 +384,7 @@
     // state into a flat 64-word subkey array after each batch of 16 self-applications.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} The 64 round keys
      */
     _buildSchedule(keyBytes) {
       let state = [
@@ -359,7 +393,9 @@
         OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
         OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
       ];
+      /** @type {uint32[]} */
       const KS = new Array(ROUNDS);
+
       let idx = 0;
       for (let i = 0; i < 16; i++) {
         for (let j = 0; j < 16; j++) state = this._F(state, i);
