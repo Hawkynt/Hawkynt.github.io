@@ -42,7 +42,8 @@
 
   // BLAKE Constants and Permutation Table
   // SIGMA permutation for rounds (extended for BLAKE1)
-  const BSIGMA = new Uint8Array([
+  /** @type {int32[]} */
+  const BSIGMA = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3,
     11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4,
@@ -60,160 +61,79 @@
     7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8,
     9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13,
     2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9
-  ]);
+  ];
 
   // BLAKE constants (derived from fractional parts of pi)
   // For 32-bit BLAKE
-  const B32C = new Uint32Array([
-    0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89,
-    0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c, 0xc0ac29b7, 0xc97c50dd, 0x3f84d5b5, 0xb5470917
-  ]);
+  const B32C = OpCodes.Hex32ToDWords(
+    '243f6a88' + '85a308d3' + '13198a2e' + '03707344' + 'a4093822' + '299f31d0' + '082efa98' + 'ec4e6c89' +
+    '452821e6' + '38d01377' + 'be5466cf' + '34e90c6c' + 'c0ac29b7' + 'c97c50dd' + '3f84d5b5' + 'b5470917'
+  );
 
   // For 64-bit BLAKE (stored as [HIGH, LOW] pairs matching noble-hashes B64C format)
-  const B64C = new Uint32Array([
-    0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89,
-    0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c, 0xc0ac29b7, 0xc97c50dd, 0x3f84d5b5, 0xb5470917,
-    0x9216d5d9, 0x8979fb1b, 0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,
-    0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16, 0x636920d8, 0x71574e69
-  ]);
+  const B64C = OpCodes.Hex32ToDWords(
+    '243f6a88' + '85a308d3' + '13198a2e' + '03707344' + 'a4093822' + '299f31d0' + '082efa98' + 'ec4e6c89' +
+    '452821e6' + '38d01377' + 'be5466cf' + '34e90c6c' + 'c0ac29b7' + 'c97c50dd' + '3f84d5b5' + 'b5470917' +
+    '9216d5d9' + '8979fb1b' + 'd1310ba6' + '98dfb5ac' + '2ffd72db' + 'd01adfb7' + 'b8e1afed' + '6a267e96' +
+    'ba7c9045' + 'f12c7f99' + '24a19947' + 'b3916cf7' + '0801f2e2' + '858efc16' + '636920d8' + '71574e69'
+  );
 
   // Initial values (borrowed from SHA-2)
-  const SHA224_IV = new Uint32Array([0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]);
-  const SHA256_IV = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  const SHA224_IV = OpCodes.Hex32ToDWords('c1059ed8367cd5073070dd17f70e5939ffc00b316858151164f98fa7befa4fa4');
+  const SHA256_IV = OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19');
   // SHA-2 IVs for BLAKE-384 and BLAKE-512
   // CRITICAL: Stored as [HIGH, LOW] pairs matching noble-hashes format!
   // noble-hashes uses BACKWARD variable naming: v0l=IV[0] (HIGH), v0h=IV[1] (LOW)
-  const SHA384_IV = new Uint32Array([
-    0xcbbb9d5d, 0xc1059ed8, 0x629a292a, 0x367cd507, 0x9159015a, 0x3070dd17, 0x152fecd8, 0xf70e5939,
-    0x67332667, 0xffc00b31, 0x8eb44a87, 0x68581511, 0xdb0c2e0d, 0x64f98fa7, 0x47b5481d, 0xbefa4fa4
-  ]);
-  const SHA512_IV = new Uint32Array([
-    0x6a09e667, 0xf3bcc908, 0xbb67ae85, 0x84caa73b, 0x3c6ef372, 0xfe94f82b, 0xa54ff53a, 0x5f1d36f1,
-    0x510e527f, 0xade682d1, 0x9b05688c, 0x2b3e6c1f, 0x1f83d9ab, 0xfb41bd6b, 0x5be0cd19, 0x137e2179
-  ]);
+  const SHA384_IV = OpCodes.Hex32ToDWords(
+    'cbbb9d5d' + 'c1059ed8' + '629a292a' + '367cd507' + '9159015a' + '3070dd17' + '152fecd8' + 'f70e5939' +
+    '67332667' + 'ffc00b31' + '8eb44a87' + '68581511' + 'db0c2e0d' + '64f98fa7' + '47b5481d' + 'befa4fa4'
+  );
+  const SHA512_IV = OpCodes.Hex32ToDWords(
+    '6a09e667' + 'f3bcc908' + 'bb67ae85' + '84caa73b' + '3c6ef372' + 'fe94f82b' + 'a54ff53a' + '5f1d36f1' +
+    '510e527f' + 'ade682d1' + '9b05688c' + '2b3e6c1f' + '1f83d9ab' + 'fb41bd6b' + '5be0cd19' + '137e2179'
+  );
 
-  // Mixing function G for 32-bit versions
-  function G1s_32(a, b, c, d, x) {
-    a = OpCodes.ToUint32(a + b + x);
-    d = OpCodes.RotR32(OpCodes.XorN(d, a), 16);
-    c = OpCodes.ToUint32(c + d);
-    b = OpCodes.RotR32(OpCodes.XorN(b, c), 12);
-    return { a, b, c, d };
+  /**
+   * First half of the 32-bit mixing function G, applied to v in place
+   * @param {uint32[]} v - Working state (16 words)
+   * @param {int32} a - Index of word a
+   * @param {int32} b - Index of word b
+   * @param {int32} c - Index of word c
+   * @param {int32} d - Index of word d
+   * @param {uint32} x - Message word XOR round constant
+   * @returns {void}
+   */
+  function G1s_32(v, a, b, c, d, x) {
+    v[a] = OpCodes.Add32(OpCodes.Add32(v[a], v[b]), x);
+    v[d] = OpCodes.RotR32(OpCodes.Xor32(v[d], v[a]), 16);
+    v[c] = OpCodes.Add32(v[c], v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.Xor32(v[b], v[c]), 12);
   }
 
-  function G2s_32(a, b, c, d, x) {
-    a = OpCodes.ToUint32(a + b + x);
-    d = OpCodes.RotR32(OpCodes.XorN(d, a), 8);
-    c = OpCodes.ToUint32(c + d);
-    b = OpCodes.RotR32(OpCodes.XorN(b, c), 7);
-    return { a, b, c, d };
+  /**
+   * Second half of the 32-bit mixing function G, applied to v in place
+   * @param {uint32[]} v - Working state (16 words)
+   * @param {int32} a - Index of word a
+   * @param {int32} b - Index of word b
+   * @param {int32} c - Index of word c
+   * @param {int32} d - Index of word d
+   * @param {uint32} x - Message word XOR round constant
+   * @returns {void}
+   */
+  function G2s_32(v, a, b, c, d, x) {
+    v[a] = OpCodes.Add32(OpCodes.Add32(v[a], v[b]), x);
+    v[d] = OpCodes.RotR32(OpCodes.Xor32(v[d], v[a]), 8);
+    v[c] = OpCodes.Add32(v[c], v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.Xor32(v[b], v[c]), 7);
   }
 
-  // G1b function matching noble-hashes (first half of mixing function)
-  // CRITICAL: noble-hashes uses BACKWARD variable naming!
-  //   Variables ending in 'l' actually contain HIGH 32 bits
-  //   Variables ending in 'h' actually contain LOW 32 bits
-  // Storage: v[i*2] = HIGH, v[i*2+1] = LOW
-  // So: Al = v[2*a+1] = LOW word, Ah = v[2*a] = HIGH word
-  function G1b_64(v, a, b, c, d, msg, k, TBL) {
-    const Xpos = 2 * BSIGMA[k];
-    const Xl = OpCodes.XorN(msg[Xpos + 1], TBL[k * 2 + 1]);  // LOW XOR LOW
-    const Xh = OpCodes.XorN(msg[Xpos], TBL[k * 2]);          // HIGH XOR HIGH
-
-    // Load values: Al gets v[2*a+1] (LOW), Ah gets v[2*a] (HIGH)
-    let Al = v[2 * a + 1], Ah = v[2 * a];
-    let Bl = v[2 * b + 1], Bh = v[2 * b];
-    let Cl = v[2 * c + 1], Ch = v[2 * c];
-    let Dl = v[2 * d + 1], Dh = v[2 * d];
-
-    // v[a] = v[a] + v[b] + x
-    let ll = OpCodes.Add3L64(Al, Bl, Xl);
-    Ah = OpCodes.ToUint32(OpCodes.Add3H64(ll, Ah, Bh, Xh));
-    Al = OpCodes.ToUint32(ll);
-
-    // v[d] = rotr(v[d] XOR v[a], 32) - swaps high/low
-    const xorD1 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
-    Dh = xorD1.h;
-    Dl = xorD1.l;
-    const swap = OpCodes.Swap64_HL(Dh, Dl);
-    Dh = swap.h;
-    Dl = swap.l;
-
-    // v[c] = v[c] + v[d]
-    const addCD = OpCodes.Add64_HL(Ch, Cl, Dh, Dl);
-    Ch = addCD.h;
-    Cl = addCD.l;
-
-    // v[b] = rotr(v[b] XOR v[c], 25)
-    const xorB1 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
-    Bh = xorB1.h;
-    Bl = xorB1.l;
-    const rotB = OpCodes.RotR64_HL(Bh, Bl, 25);
-    Bh = rotB.h;
-    Bl = rotB.l;
-
-    // Write back
-    v[2 * a] = Ah;
-    v[2 * a + 1] = Al;
-    v[2 * b] = Bh;
-    v[2 * b + 1] = Bl;
-    v[2 * c] = Ch;
-    v[2 * c + 1] = Cl;
-    v[2 * d] = Dh;
-    v[2 * d + 1] = Dl;
-  }
-
-  // G2b function matching noble-hashes (second half of mixing function)
-  function G2b_64(v, a, b, c, d, msg, k, TBL) {
-    const Xpos = 2 * BSIGMA[k];
-    const Xl = OpCodes.XorN(msg[Xpos + 1], TBL[k * 2 + 1]);  // LOW XOR LOW
-    const Xh = OpCodes.XorN(msg[Xpos], TBL[k * 2]);          // HIGH XOR HIGH
-
-    // Load values: Al=LOW, Ah=HIGH (backwards naming!)
-    let Al = v[2 * a + 1], Ah = v[2 * a];
-    let Bl = v[2 * b + 1], Bh = v[2 * b];
-    let Cl = v[2 * c + 1], Ch = v[2 * c];
-    let Dl = v[2 * d + 1], Dh = v[2 * d];
-
-    // v[a] = v[a] + v[b] + x
-    let ll = OpCodes.Add3L64(Al, Bl, Xl);
-    Ah = OpCodes.ToUint32(OpCodes.Add3H64(ll, Ah, Bh, Xh));
-    Al = OpCodes.ToUint32(ll);
-
-    // v[d] = rotr(v[d] XOR v[a], 16)
-    const xorD2 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
-    Dh = xorD2.h;
-    Dl = xorD2.l;
-    const rotD = OpCodes.RotR64_HL(Dh, Dl, 16);
-    Dh = rotD.h;
-    Dl = rotD.l;
-
-    // v[c] = v[c] + v[d]
-    const addCD = OpCodes.Add64_HL(Ch, Cl, Dh, Dl);
-    Ch = addCD.h;
-    Cl = addCD.l;
-
-    // v[b] = rotr(v[b] XOR v[c], 11)
-    const xorB2 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
-    Bh = xorB2.h;
-    Bl = xorB2.l;
-    const rotB = OpCodes.RotR64_HL(Bh, Bl, 11);
-    Bh = rotB.h;
-    Bl = rotB.l;
-
-    // Write back
-    v[2 * a] = Ah;
-    v[2 * a + 1] = Al;
-    v[2 * b] = Bh;
-    v[2 * b + 1] = Bl;
-    v[2 * c] = Ch;
-    v[2 * c + 1] = Cl;
-    v[2 * d] = Dh;
-    v[2 * d + 1] = Dl;
-  }
-
-  // Generate TBL512 matching noble-hashes pattern
+  /**
+   * Round constants of the 64-bit variants in the order the rounds consume
+   * them, matching the noble-hashes TBL512 layout
+   * @returns {uint32[]} Flattened [HIGH, LOW] constant pairs
+   */
   function generateTBL512() {
+    /** @type {uint32[]} */
     const TBL = [];
     for (let r = 0, k = 0; r < 16; r++, k += 16) {
       for (let offset = 1; offset < 16; offset += 2) {
@@ -226,72 +146,182 @@
     return TBL;
   }
 
+  /** @type {uint32[]} */
   const TBL512 = generateTBL512();
+
+  /**
+   * Round constants of the 32-bit variants in the order the rounds consume them
+   * @returns {uint32[]} Constant per G application, 16 per round for 14 rounds
+   */
+  function generateTBL256() {
+    /** @type {uint32[]} */
+    const TBL = [];
+    for (let r = 0; r < 14; r++) {
+      for (let j = 1; j < 16; j += 2) {
+        TBL.push(B32C[BSIGMA[r * 16 + j]]);
+        TBL.push(B32C[BSIGMA[r * 16 + j - 1]]);
+      }
+    }
+    return TBL;
+  }
+
+  /** @type {uint32[]} */
+  const TBL256 = generateTBL256();
+
+  /**
+   * Rotate the 64-bit word i of v, stored as v[2*i] (HIGH) and v[2*i+1] (LOW),
+   * right by n bits after XORing it with word j, in place
+   * @param {uint32[]} v - Working state as [HIGH, LOW] pairs
+   * @param {int32} i - Index of the 64-bit word to update
+   * @param {int32} j - Index of the 64-bit word XORed in
+   * @param {int32} n - Rotation (11, 16, 25 or 32)
+   * @returns {void}
+   */
+  function xorRotR64(v, i, j, n) {
+    const hi = OpCodes.Xor32(v[2 * i], v[2 * j]);
+    const lo = OpCodes.Xor32(v[2 * i + 1], v[2 * j + 1]);
+    if (n === 32) {
+      v[2 * i] = lo;
+      v[2 * i + 1] = hi;
+    } else {
+      v[2 * i] = OpCodes.Or32(OpCodes.Shr32(hi, n), OpCodes.Shl32(lo, 32 - n));
+      v[2 * i + 1] = OpCodes.Or32(OpCodes.Shr32(lo, n), OpCodes.Shl32(hi, 32 - n));
+    }
+  }
+
+  /**
+   * One half of the 64-bit mixing function G on [HIGH, LOW] word pairs, in place.
+   * v[2*i] holds the HIGH and v[2*i+1] the LOW 32 bits of 64-bit word i.
+   * @param {uint32[]} v - Working state (16 64-bit words as 32 32-bit words)
+   * @param {int32} a - Index of 64-bit word a
+   * @param {int32} b - Index of 64-bit word b
+   * @param {int32} c - Index of 64-bit word c
+   * @param {int32} d - Index of 64-bit word d
+   * @param {uint32[]} msg - Message block (16 64-bit words as 32 32-bit words)
+   * @param {int32} k - Position in the flattened SIGMA schedule
+   * @param {int32} rotD - Right rotation of d (32 for the first half, 16 for the second)
+   * @param {int32} rotB - Right rotation of b (25 for the first half, 11 for the second)
+   * @returns {void}
+   */
+  function Gb_64(v, a, b, c, d, msg, k, rotD, rotB) {
+    const Xpos = 2 * BSIGMA[k];
+    const Xl = OpCodes.Xor32(msg[Xpos + 1], TBL512[k * 2 + 1]);  // LOW XOR LOW
+    const Xh = OpCodes.Xor32(msg[Xpos], TBL512[k * 2]);          // HIGH XOR HIGH
+
+    // v[a] = v[a] + v[b] + x
+    const ll = OpCodes.Add3L64(v[2 * a + 1], v[2 * b + 1], Xl);
+    v[2 * a] = OpCodes.ToUint32(OpCodes.Add3H64(ll, v[2 * a], v[2 * b], Xh));
+    v[2 * a + 1] = OpCodes.ToUint32(ll);
+
+    // v[d] = rotr(v[d] XOR v[a], rotD)
+    xorRotR64(v, d, a, rotD);
+
+    // v[c] = v[c] + v[d]
+    const cl = OpCodes.Add32(v[2 * c + 1], v[2 * d + 1]);
+    const carry = cl < v[2 * d + 1] ? 1 : 0;
+    v[2 * c] = OpCodes.Add32(OpCodes.Add32(v[2 * c], v[2 * d]), carry);
+    v[2 * c + 1] = cl;
+
+    // v[b] = rotr(v[b] XOR v[c], rotB)
+    xorRotR64(v, b, c, rotB);
+  }
 
   // Base BLAKE instance for all variants
   /**
- * Blake cipher instance implementing Feed/Result pattern
+ * BLAKE hash instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class BlakeInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a BLAKE instance
+     * @param {HashFunctionAlgorithm} algorithm - Parent algorithm instance
+     * @param {int32} outputSize - Digest size in bytes
+     * @param {int32} blockSize - Block size in bytes (64 or 128)
+     * @param {uint32[]} iv - Initial chaining value (8 words, or 16 words as [HIGH, LOW] pairs)
+     * @param {uint8} lengthFlag - Byte merged in front of the length field (0x00 or 0x01)
+     * @param {int32} rounds - Number of rounds (14 or 16)
+     * @param {boolean} [is64bit=false] - True for BLAKE-384/512
+     */
     constructor(algorithm, outputSize, blockSize, iv, lengthFlag, rounds, is64bit = false) {
       super(algorithm);
+      /** @type {int32} */
       this.outputSize = outputSize;
+      /** @type {int32} */
       this.blockSize = blockSize;
+      /** @type {uint8} */
       this.lengthFlag = lengthFlag;
+      /** @type {int32} */
       this.rounds = rounds;
+      /** @type {boolean} */
       this.is64bit = is64bit;
-      this.buffer = new Array(blockSize).fill(0);
+      /** @type {uint8[]} */
+      this.buffer = OpCodes.CreateArray(blockSize, 0);
+      /** @type {int32} */
       this.bufferLength = 0;
-      this.length = 0;
+      // Message length counted in bits as a 64-bit [HIGH, LOW] pair
+      /** @type {uint32} */
+      this.lengthHigh = 0;
+      /** @type {uint32} */
+      this.lengthLow = 0;
       // Salt: 4 32-bit words for 32-bit, 8 32-bit words for 64-bit (representing 4 64-bit values)
-      this.salt = new Array(is64bit ? 8 : 4).fill(0);
-      this.constants = (is64bit ? B64C.slice() : B32C.slice());
+      /** @type {uint32[]} */
+      this.salt = [];
+      for (let i = 0; i < (is64bit ? 8 : 4); i++) {
+        this.salt.push(0);
+      }
+      /** @type {uint32[]} */
+      this.constants = is64bit ? B64C.slice() : B32C.slice();
 
-      // Initialize state with IV
-      if (is64bit) {
-        this.state = new Array(16);
-        for (let i = 0; i < 16; i++) {
-          this.state[i] = OpCodes.ToUint32(iv[i]);
-        }
-      } else {
-        this.state = new Array(8);
-        for (let i = 0; i < 8; i++) {
-          this.state[i] = OpCodes.ToUint32(iv[i]);
-        }
+      // Initialize state with IV (16 words for 64-bit variants, 8 otherwise)
+      /** @type {uint32[]} */
+      this.state = iv.slice(0, is64bit ? 16 : 8);
+    }
+
+    /**
+     * Add a byte count to the 64-bit message bit length
+     * @param {int32} bytes - Number of bytes (at most one block)
+     * @returns {void}
+     */
+    _addLength(bytes) {
+      const bits = OpCodes.Shl32(bytes, 3);
+      this.lengthLow = OpCodes.Add32(this.lengthLow, bits);
+      if (this.lengthLow < bits) {
+        this.lengthHigh = OpCodes.Add32(this.lengthHigh, 1);
       }
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
         this.buffer[this.bufferLength++] = data[i];
         if (this.bufferLength === this.blockSize) {
-          this.length += this.blockSize;
-          this.compress();
+          this._addLength(this.blockSize);
+          this.compress(true);
           this.bufferLength = 0;
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Pad, compress the last block(s) and return the digest
+     * @returns {uint8[]} Hash digest
+     */
     Result() {
       // Padding
-      const totalLength = this.length + this.bufferLength;
+      // Total length in bits, including the bytes still in the buffer
+      let totalLow = OpCodes.Add32(this.lengthLow, OpCodes.Shl32(this.bufferLength, 3));
+      let totalHigh = this.lengthHigh;
+      if (totalLow < this.lengthLow) {
+        totalHigh = OpCodes.Add32(totalHigh, 1);
+      }
       // Length encoding size: 8 bytes for 32-bit variants, 16 bytes for 64-bit variants
       const lengthFieldSize = this.is64bit ? 16 : 8;
       const paddingLength = this.blockSize - lengthFieldSize - 1; // Space for length flag and length
@@ -306,8 +336,8 @@
 
       // Check if we need an extra block
       if (this.bufferLength > paddingLength) {
-        this.length += this.bufferLength;
-        this.compress();
+        this._addLength(this.bufferLength);
+        this.compress(true);
         // Clear buffer for final block
         for (let i = 0; i < this.blockSize; i++) {
           this.buffer[i] = 0;
@@ -323,78 +353,47 @@
       // marker at every length congruent to 55 mod 64, and to 111 mod 128 for
       // the 64-bit variants. At every other length the byte is still zero, so
       // merging leaves the result exactly as it was.
-      this.buffer[paddingLength] = OpCodes.OrN(this.buffer[paddingLength], this.lengthFlag);
+      this.buffer[paddingLength] = OpCodes.Or8(this.buffer[paddingLength], this.lengthFlag);
 
-      // Add total length in bits (big-endian)
-      const totalBits = totalLength * 8;
-
+      // Add total length in bits (big-endian); the 64-bit variants use a
+      // 128-bit field whose upper 64 bits stay zero
+      const highBytes = OpCodes.Unpack32BE(totalHigh);
+      const lowBytes = OpCodes.Unpack32BE(totalLow);
+      for (let i = 0; i < 4; i++) {
+        this.buffer[this.blockSize - 8 + i] = highBytes[i];
+        this.buffer[this.blockSize - 4 + i] = lowBytes[i];
+      }
       if (this.is64bit) {
-        // 128-bit length encoding for BLAKE-384/512
-        const view = new DataView(new ArrayBuffer(16));
-        // For JavaScript, we can only handle up to 53-bit integers safely
-        // Store as 128-bit: [0, 0, 0, 0, high32, low32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        // Actually: upper 64 bits are 0, lower 64 bits contain the actual length
-        view.setUint32(8, Math.floor(totalBits / 0x100000000), false);  // High 32 bits of lower 64-bit
-        view.setUint32(12, OpCodes.ToUint32(totalBits), false);                      // Low 32 bits of lower 64-bit
-
-        for (let i = 0; i < 16; i++) {
-          this.buffer[this.blockSize - 16 + i] = view.getUint8(i);
-        }
-      } else {
-        // 64-bit length encoding for BLAKE-224/256
-        const view = new DataView(new ArrayBuffer(8));
-        view.setUint32(0, Math.floor(totalBits / 0x100000000), false); // High 32 bits
-        view.setUint32(4, OpCodes.ToUint32(totalBits), false);                      // Low 32 bits
-
         for (let i = 0; i < 8; i++) {
-          this.buffer[this.blockSize - 8 + i] = view.getUint8(i);
+          this.buffer[this.blockSize - 16 + i] = 0;
         }
       }
 
       // Noble-hashes pattern: withLength is based on bufferLength BEFORE adding to length
       const withLength = this.bufferLength !== 0;
-      this.length += this.bufferLength;
+      this._addLength(this.bufferLength);
       this.compress(withLength);
 
-      // Extract output
-      const output = new Array(this.outputSize);
-
-      if (this.is64bit) {
-        // For 64-bit: state is stored as [HIGH, LOW] pairs
-        // Output in big-endian order: HIGH word first, then LOW word
-        const num64BitWords = this.outputSize / 8;
-        for (let i = 0; i < num64BitWords; i++) {
-          const high = this.state[i * 2];      // HIGH word at even index
-          const low = this.state[i * 2 + 1];   // LOW word at odd index
-          // Write HIGH word first (big-endian)
-          const highBytes = OpCodes.Unpack32BE(high);
-          output[i * 8] = highBytes[0];
-          output[i * 8 + 1] = highBytes[1];
-          output[i * 8 + 2] = highBytes[2];
-          output[i * 8 + 3] = highBytes[3];
-          // Write LOW word
-          const lowBytes = OpCodes.Unpack32BE(low);
-          output[i * 8 + 4] = lowBytes[0];
-          output[i * 8 + 5] = lowBytes[1];
-          output[i * 8 + 6] = lowBytes[2];
-          output[i * 8 + 7] = lowBytes[3];
-        }
-      } else {
-        // For 32-bit: state is directly 32-bit words
-        const outputWords = this.outputSize / 4;
-        for (let i = 0; i < outputWords; i++) {
-          const word = this.state[i];
-          const bytes = OpCodes.Unpack32BE(word);
-          output[i * 4] = bytes[0];
-          output[i * 4 + 1] = bytes[1];
-          output[i * 4 + 2] = bytes[2];
-          output[i * 4 + 3] = bytes[3];
+      // Extract output: state words big-endian ([HIGH, LOW] pairs for 64-bit
+      // variants already sit HIGH first)
+      /** @type {uint8[]} */
+      const output = [];
+      const outputWords = this.outputSize / 4;
+      for (let i = 0; i < outputWords; i++) {
+        const bytes = OpCodes.Unpack32BE(this.state[i]);
+        for (let j = 0; j < 4; j++) {
+          output.push(bytes[j]);
         }
       }
 
       return output;
     }
 
+    /**
+     * Compress the buffered block
+     * @param {boolean} [withLength=true] - Whether the length counter enters the state
+     * @returns {void}
+     */
     compress(withLength = true) {
       if (this.is64bit) {
         this.compress64(withLength);
@@ -403,185 +402,157 @@
       }
     }
 
+    /**
+     * Compression function of BLAKE-224/256
+     * @param {boolean} [withLength=true] - Whether the length counter enters the state
+     * @returns {void}
+     */
     compress32(withLength = true) {
       // Prepare message schedule
-      const W = new Array(16);
+      /** @type {uint32[]} */
+      const W = [];
       for (let i = 0; i < 16; i++) {
-        W[i] = OpCodes.Pack32BE(
+        W.push(OpCodes.Pack32BE(
           this.buffer[i * 4],
           this.buffer[i * 4 + 1],
           this.buffer[i * 4 + 2],
           this.buffer[i * 4 + 3]
-        );
+        ));
       }
 
       // Initialize working variables
-      let v = new Array(16);
+      /** @type {uint32[]} */
+      const v = [];
       for (let i = 0; i < 8; i++) {
-        v[i] = this.state[i];
+        v.push(this.state[i]);
       }
       for (let i = 0; i < 4; i++) {
-        v[8 + i] = OpCodes.XorN(this.constants[i], this.salt[i]);
+        v.push(OpCodes.Xor32(this.constants[i], this.salt[i]));
       }
 
       // Add length counter to v[12..15] for BLAKE1
+      /** @type {uint32} */
+      let lengthLow = 0;
+      /** @type {uint32} */
+      let lengthHigh = 0;
       if (withLength) {
-        const lengthBits = this.length * 8;
-        const lengthLow = OpCodes.ToUint32(lengthBits);
-        const lengthHigh = OpCodes.ToUint32(Math.floor(lengthBits / 0x100000000));
-        v[12] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[4], lengthLow), this.salt[0]));
-        v[13] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[5], lengthLow), this.salt[1]));
-        v[14] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[6], lengthHigh), this.salt[2]));
-        v[15] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[7], lengthHigh), this.salt[3]));
-      } else {
-        v[12] = OpCodes.ToUint32(OpCodes.XorN(this.constants[4], this.salt[0]));
-        v[13] = OpCodes.ToUint32(OpCodes.XorN(this.constants[5], this.salt[1]));
-        v[14] = OpCodes.ToUint32(OpCodes.XorN(this.constants[6], this.salt[2]));
-        v[15] = OpCodes.ToUint32(OpCodes.XorN(this.constants[7], this.salt[3]));
+        lengthLow = this.lengthLow;
+        lengthHigh = this.lengthHigh;
       }
-
-      // Precompute TBL for constants
-      const TBL = new Array(this.rounds * 16);
-      for (let r = 0, idx = 0; r < this.rounds; r++) {
-        for (let j = 1; j < 16; j += 2, idx += 2) {
-          const sigmaIdx = r * 16;
-          TBL[idx] = B32C[BSIGMA[sigmaIdx + j]];
-          TBL[idx + 1] = B32C[BSIGMA[sigmaIdx + j - 1]];
-        }
-      }
+      v.push(OpCodes.Xor32(OpCodes.Xor32(this.constants[4], lengthLow), this.salt[0]));
+      v.push(OpCodes.Xor32(OpCodes.Xor32(this.constants[5], lengthLow), this.salt[1]));
+      v.push(OpCodes.Xor32(OpCodes.Xor32(this.constants[6], lengthHigh), this.salt[2]));
+      v.push(OpCodes.Xor32(OpCodes.Xor32(this.constants[7], lengthHigh), this.salt[3]));
 
       // Compression rounds
-      for (let r = 0, k = 0, j = 0; r < this.rounds; r++) {
+      for (let r = 0, k = 0; r < this.rounds; r++, k += 16) {
         // Column step
-        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G1s_32(v[0], v[4], v[8], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G2s_32(v[0], v[4], v[8], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G1s_32(v[1], v[5], v[9], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G2s_32(v[1], v[5], v[9], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G1s_32(v[2], v[6], v[10], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G2s_32(v[2], v[6], v[10], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G1s_32(v[3], v[7], v[11], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G2s_32(v[3], v[7], v[11], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        G1s_32(v, 0, 4, 8, 12, OpCodes.Xor32(W[BSIGMA[k]], TBL256[k]));
+        G2s_32(v, 0, 4, 8, 12, OpCodes.Xor32(W[BSIGMA[k + 1]], TBL256[k + 1]));
+        G1s_32(v, 1, 5, 9, 13, OpCodes.Xor32(W[BSIGMA[k + 2]], TBL256[k + 2]));
+        G2s_32(v, 1, 5, 9, 13, OpCodes.Xor32(W[BSIGMA[k + 3]], TBL256[k + 3]));
+        G1s_32(v, 2, 6, 10, 14, OpCodes.Xor32(W[BSIGMA[k + 4]], TBL256[k + 4]));
+        G2s_32(v, 2, 6, 10, 14, OpCodes.Xor32(W[BSIGMA[k + 5]], TBL256[k + 5]));
+        G1s_32(v, 3, 7, 11, 15, OpCodes.Xor32(W[BSIGMA[k + 6]], TBL256[k + 6]));
+        G2s_32(v, 3, 7, 11, 15, OpCodes.Xor32(W[BSIGMA[k + 7]], TBL256[k + 7]));
 
         // Diagonal step
-        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G1s_32(v[0], v[5], v[10], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G2s_32(v[0], v[5], v[10], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G1s_32(v[1], v[6], v[11], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G2s_32(v[1], v[6], v[11], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G1s_32(v[2], v[7], v[8], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G2s_32(v[2], v[7], v[8], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G1s_32(v[3], v[4], v[9], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
-        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G2s_32(v[3], v[4], v[9], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        G1s_32(v, 0, 5, 10, 15, OpCodes.Xor32(W[BSIGMA[k + 8]], TBL256[k + 8]));
+        G2s_32(v, 0, 5, 10, 15, OpCodes.Xor32(W[BSIGMA[k + 9]], TBL256[k + 9]));
+        G1s_32(v, 1, 6, 11, 12, OpCodes.Xor32(W[BSIGMA[k + 10]], TBL256[k + 10]));
+        G2s_32(v, 1, 6, 11, 12, OpCodes.Xor32(W[BSIGMA[k + 11]], TBL256[k + 11]));
+        G1s_32(v, 2, 7, 8, 13, OpCodes.Xor32(W[BSIGMA[k + 12]], TBL256[k + 12]));
+        G2s_32(v, 2, 7, 8, 13, OpCodes.Xor32(W[BSIGMA[k + 13]], TBL256[k + 13]));
+        G1s_32(v, 3, 4, 9, 14, OpCodes.Xor32(W[BSIGMA[k + 14]], TBL256[k + 14]));
+        G2s_32(v, 3, 4, 9, 14, OpCodes.Xor32(W[BSIGMA[k + 15]], TBL256[k + 15]));
       }
 
       // Finalize state (XOR with salt)
-      this.state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[0], v[0]), v[8]), this.salt[0]));
-      this.state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[1], v[1]), v[9]), this.salt[1]));
-      this.state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[2], v[2]), v[10]), this.salt[2]));
-      this.state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[3], v[3]), v[11]), this.salt[3]));
-      this.state[4] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[4], v[4]), v[12]), this.salt[0]));
-      this.state[5] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[5], v[5]), v[13]), this.salt[1]));
-      this.state[6] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[6], v[6]), v[14]), this.salt[2]));
-      this.state[7] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[7], v[7]), v[15]), this.salt[3]));
+      for (let i = 0; i < 8; i++) {
+        this.state[i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.state[i], v[i]), v[i + 8]), this.salt[i % 4]);
+      }
     }
 
+    /**
+     * Compression function of BLAKE-384/512 on [HIGH, LOW] word pairs
+     * @param {boolean} [withLength=true] - Whether the length counter enters the state
+     * @returns {void}
+     */
     compress64(withLength = true) {
       // Prepare message schedule (16 64-bit words as 32 32-bit words)
       // CRITICAL: Storage format [HIGH, LOW] matching noble-hashes!
       // M[i*2] = HIGH word (bytes 0-3), M[i*2+1] = LOW word (bytes 4-7)
-      const M = new Array(32);
-      for (let i = 0; i < 16; i++) {
+      /** @type {uint32[]} */
+      const M = [];
+      for (let i = 0; i < 32; i++) {
         // Big-endian reading
-        const high = OpCodes.Pack32BE(
-          this.buffer[i * 8],
-          this.buffer[i * 8 + 1],
-          this.buffer[i * 8 + 2],
-          this.buffer[i * 8 + 3]
-        );
-        const low = OpCodes.Pack32BE(
-          this.buffer[i * 8 + 4],
-          this.buffer[i * 8 + 5],
-          this.buffer[i * 8 + 6],
-          this.buffer[i * 8 + 7]
-        );
-        M[i * 2] = high;      // Store HIGH first (matching line 447 of noble-hashes)
-        M[i * 2 + 1] = low;   // Store LOW second
+        M.push(OpCodes.Pack32BE(
+          this.buffer[i * 4],
+          this.buffer[i * 4 + 1],
+          this.buffer[i * 4 + 2],
+          this.buffer[i * 4 + 3]
+        ));
       }
 
       // Initialize working variables BBUF (16 64-bit as 32 32-bit)
       // CRITICAL: BBUF[i*2] = HIGH, BBUF[i*2+1] = LOW (matching noble-hashes line 449)
-      const v = new Array(32);
+      /** @type {uint32[]} */
+      const v = [];
       // Copy state (first 8 64-bit values = 16 32-bit words)
       for (let i = 0; i < 16; i++) {
-        v[i] = this.state[i];
+        v.push(this.state[i]);
       }
 
       // v[8..15] = first 8 constants (16 words from constants array)
       for (let i = 0; i < 16; i++) {
-        v[16 + i] = this.constants[i];
+        v.push(this.constants[i]);
       }
 
       // XOR salt into v[8..11] (indices 16..23 in flat array)
       for (let i = 0; i < 8; i++) {
-        v[16 + i] = OpCodes.XorN(v[16 + i], this.salt[i]);
+        v[16 + i] = OpCodes.Xor32(v[16 + i], this.salt[i]);
       }
 
       // XOR length counter into v[12..13] if withLength (noble-hashes line 451-457)
       // BBUF naming: v12l is stored at BBUF[24] and contains HIGH word
       //              v12h is stored at BBUF[25] and contains LOW word
       if (withLength) {
-        const lengthBits = this.length * 8;
-        const lengthHigh = OpCodes.ToUint32(Math.floor(lengthBits / 0x100000000));
-        const lengthLow = OpCodes.ToUint32(lengthBits);
-
         // v[24] = v12l (contains HIGH word), v[25] = v12h (contains LOW word)
-        v[24] = OpCodes.ToUint32(OpCodes.XorN(v[24], lengthHigh));  // HIGH word XOR HIGH bits
-        v[25] = OpCodes.ToUint32(OpCodes.XorN(v[25], lengthLow));   // LOW word XOR LOW bits
+        v[24] = OpCodes.Xor32(v[24], this.lengthHigh);  // HIGH word XOR HIGH bits
+        v[25] = OpCodes.Xor32(v[25], this.lengthLow);   // LOW word XOR LOW bits
         // v[26] = v13l (contains HIGH word), v[27] = v13h (contains LOW word)
-        v[26] = OpCodes.ToUint32(OpCodes.XorN(v[26], lengthHigh));  // HIGH word XOR HIGH bits
-        v[27] = OpCodes.ToUint32(OpCodes.XorN(v[27], lengthLow));   // LOW word XOR LOW bits
+        v[26] = OpCodes.Xor32(v[26], this.lengthHigh);  // HIGH word XOR HIGH bits
+        v[27] = OpCodes.Xor32(v[27], this.lengthLow);   // LOW word XOR LOW bits
       }
 
       // 16 rounds of compression (matching noble-hashes lines 458-476)
-      for (let i = 0, k = 0; i < this.rounds; i++) {
+      for (let i = 0, k = 0; i < this.rounds; i++, k += 16) {
         // Column step
-        G1b_64(v, 0, 4, 8, 12, M, k++, TBL512);
-        G2b_64(v, 0, 4, 8, 12, M, k++, TBL512);
-        G1b_64(v, 1, 5, 9, 13, M, k++, TBL512);
-        G2b_64(v, 1, 5, 9, 13, M, k++, TBL512);
-        G1b_64(v, 2, 6, 10, 14, M, k++, TBL512);
-        G2b_64(v, 2, 6, 10, 14, M, k++, TBL512);
-        G1b_64(v, 3, 7, 11, 15, M, k++, TBL512);
-        G2b_64(v, 3, 7, 11, 15, M, k++, TBL512);
+        Gb_64(v, 0, 4, 8, 12, M, k, 32, 25);
+        Gb_64(v, 0, 4, 8, 12, M, k + 1, 16, 11);
+        Gb_64(v, 1, 5, 9, 13, M, k + 2, 32, 25);
+        Gb_64(v, 1, 5, 9, 13, M, k + 3, 16, 11);
+        Gb_64(v, 2, 6, 10, 14, M, k + 4, 32, 25);
+        Gb_64(v, 2, 6, 10, 14, M, k + 5, 16, 11);
+        Gb_64(v, 3, 7, 11, 15, M, k + 6, 32, 25);
+        Gb_64(v, 3, 7, 11, 15, M, k + 7, 16, 11);
 
         // Diagonal step
-        G1b_64(v, 0, 5, 10, 15, M, k++, TBL512);
-        G2b_64(v, 0, 5, 10, 15, M, k++, TBL512);
-        G1b_64(v, 1, 6, 11, 12, M, k++, TBL512);
-        G2b_64(v, 1, 6, 11, 12, M, k++, TBL512);
-        G1b_64(v, 2, 7, 8, 13, M, k++, TBL512);
-        G2b_64(v, 2, 7, 8, 13, M, k++, TBL512);
-        G1b_64(v, 3, 4, 9, 14, M, k++, TBL512);
-        G2b_64(v, 3, 4, 9, 14, M, k++, TBL512);
+        Gb_64(v, 0, 5, 10, 15, M, k + 8, 32, 25);
+        Gb_64(v, 0, 5, 10, 15, M, k + 9, 16, 11);
+        Gb_64(v, 1, 6, 11, 12, M, k + 10, 32, 25);
+        Gb_64(v, 1, 6, 11, 12, M, k + 11, 16, 11);
+        Gb_64(v, 2, 7, 8, 13, M, k + 12, 32, 25);
+        Gb_64(v, 2, 7, 8, 13, M, k + 13, 16, 11);
+        Gb_64(v, 3, 4, 9, 14, M, k + 14, 32, 25);
+        Gb_64(v, 3, 4, 9, 14, M, k + 15, 16, 11);
       }
 
       // Finalize state (matching noble-hashes lines 477-492)
-      // Pattern: this.v0l XOR BBUF[0] XOR BBUF[16] XOR this.salt[0]
-      this.state[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[0], v[0]), v[16]), this.salt[0]);   // v0l
-      this.state[1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[1], v[1]), v[17]), this.salt[1]);   // v0h
-      this.state[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[2], v[2]), v[18]), this.salt[2]);   // v1l
-      this.state[3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[3], v[3]), v[19]), this.salt[3]);   // v1h
-      this.state[4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[4], v[4]), v[20]), this.salt[4]);   // v2l
-      this.state[5] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[5], v[5]), v[21]), this.salt[5]);   // v2h
-      this.state[6] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[6], v[6]), v[22]), this.salt[6]);   // v3l
-      this.state[7] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[7], v[7]), v[23]), this.salt[7]);   // v3h
-      this.state[8] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[8], v[8]), v[24]), this.salt[0]);   // v4l (salt repeats)
-      this.state[9] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[9], v[9]), v[25]), this.salt[1]);   // v4h
-      this.state[10] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[10], v[10]), v[26]), this.salt[2]); // v5l
-      this.state[11] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[11], v[11]), v[27]), this.salt[3]); // v5h
-      this.state[12] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[12], v[12]), v[28]), this.salt[4]); // v6l
-      this.state[13] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[13], v[13]), v[29]), this.salt[5]); // v6h
-      this.state[14] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[14], v[14]), v[30]), this.salt[6]); // v7l
-      this.state[15] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[15], v[15]), v[31]), this.salt[7]); // v7h
+      // Pattern: this.v0l XOR BBUF[0] XOR BBUF[16] XOR this.salt[0]; the salt repeats
+      for (let i = 0; i < 16; i++) {
+        this.state[i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.state[i], v[i]), v[i + 16]), this.salt[i % 8]);
+      }
     }
   }
 
