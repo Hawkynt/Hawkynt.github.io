@@ -126,7 +126,12 @@
     0x56,0xDE,0xCE,0xD2,0xD6,0x5E,0xDA,0x42,0xC2,0xC6,0xCA,0x4A,0x5A,0x46,0x4E,0x52
   ];
 
+  /**
+   * @param {uint8} byte - Key byte
+   * @returns {uint8} Bit-permuted byte
+   */
   function bitPermuteByte(byte) {
+    /** @type {uint8} */
     let out = 0;
     for (let j = 0; j < 8; j++)
       if (OpCodes.And32(byte, BITMASK[j])) out |= BITMASK[PERM_TABLE[j]];
@@ -135,43 +140,61 @@
 
   // Builds both the encryption (mode=1) and decryption (mode=0) round schedules
   // (16 x 8-byte subkeys, 16 selector bytes) from the 16-byte master key.
+  /**
+   * @param {uint8[]} key16 - 16-byte master key
+   * @returns {uint8[][]} Schedules indexed by mode (0 decrypt, 1 encrypt)
+   */
   function buildSchedules(key16) {
     const rawBuf = key16.slice();
-    const permBuf = key16.map(bitPermuteByte);
+    /** @type {uint8[]} */
+    const permBuf = [];
+    for (let i = 0; i < key16.length; i++) permBuf.push(bitPermuteByte(key16[i]));
 
-    const schedules = {};
-    for (const mode of [1, 0]) {
-      let idx = (mode === 1) ? 8 : 0;
-      const subkeys = [];
-      const selectors = [];
-      for (let r = 0; r < 16; r++) {
-        if (mode === 1) idx = OpCodes.And32(idx + 1, 0xF);
-        selectors.push(rawBuf[idx === 0 ? 15 : idx - 1]);
-        const roundKey = new Array(8);
-        for (let j = 0; j < 8; j++) {
-          roundKey[j] = permBuf[idx];
-          if (j < 7) idx = OpCodes.And32(idx + 1, 0xF);
-        }
-        subkeys.push(roundKey);
-        if (mode === 1) idx = OpCodes.And32(idx + 1, 0xF);
-      }
-      schedules[mode] = { subkeys, selectors };
-    }
-    return schedules;
+    return [buildSchedule(rawBuf, permBuf, 0), buildSchedule(rawBuf, permBuf, 1)];
   }
 
+  /**
+   * Round schedule for one direction: per round r, byte 9r is the
+   * interchange-control selector and bytes 9r+1 .. 9r+8 are the subkey.
+   * @param {uint8[]} rawBuf - Master key bytes
+   * @param {uint8[]} permBuf - Bit-permuted master key bytes
+   * @param {int32} mode - 1 for encryption, 0 for decryption
+   * @returns {uint8[]} 16 x 9 schedule bytes
+   */
+  function buildSchedule(rawBuf, permBuf, mode) {
+    /** @type {uint32} */
+    let idx = (mode === 1) ? 8 : 0;
+    /** @type {uint8[]} */
+    const schedule = [];
+    for (let r = 0; r < 16; r++) {
+      if (mode === 1) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+      schedule.push(rawBuf[idx === 0 ? 15 : OpCodes.Sub32(idx, 1)]);
+      for (let j = 0; j < 8; j++) {
+        schedule.push(permBuf[idx]);
+        if (j < 7) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+      }
+      if (mode === 1) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+    }
+    return schedule;
+  }
+
+  /**
+   * @param {uint8[]} block16 - 16-byte block
+   * @param {uint8[]} schedule - Round schedule (see buildSchedule)
+   * @returns {uint8[]} Transformed block
+   */
   function cryptCore(block16, schedule) {
     const blk = block16.slice();
     let leftOff = 0, rightOff = 8;
 
     for (let r = 0; r < 16; r++) {
       const right = blk.slice(rightOff, rightOff + 8);
-      let t = schedule.selectors[r];
+      let t = schedule[r * 9];
       for (let i = 0; i < 8; i++) t ^= right[i];
 
       for (let p = 0; p < 8; p++) {
         const table = OpCodes.And32(t, BITMASK[p]) ? SBOX_A : SBOX_B;
-        const combined = OpCodes.And32(OpCodes.Xor32(table[right[p]], schedule.subkeys[r][p]), 0xFF);
+        const combined = OpCodes.And32(OpCodes.Xor32(table[right[p]], schedule[r * 9 + 1 + p]), 0xFF);
         const group = p * 8;
         for (let k = 0; k < 8; k++)
           blk[leftOff + k] ^= OpCodes.And32(PBOX[group + k], combined);
@@ -180,6 +203,7 @@
       const tmp = leftOff; leftOff = rightOff; rightOff = tmp;
     }
 
+    /** @type {uint8[]} */
     const out = new Array(16);
     for (let i = 0; i < 8; i++) { out[i] = blk[8 + i]; out[8 + i] = blk[i]; }
     return out;
@@ -256,6 +280,8 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
+      this._schedules = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -299,6 +325,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        /** @type {uint8[]} */
         const schedule = this._schedules[this.isInverse ? 0 : 1];
         output.push(...cryptCore(block, schedule));
       }
