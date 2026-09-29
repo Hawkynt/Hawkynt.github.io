@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /*
- * Browser load suite
+ * Browser load check (the BROWSER category of tests/TestSuite.js)
  * (c)2006-2025 Hawkynt
  *
  * The collection is served as a static site: index.html loads every algorithm
@@ -20,6 +19,9 @@
  * lists them, in a context that has no require, no module and no global - only
  * the browser's own builtins. A file that throws here is broken for every user
  * of the site.
+ *
+ * It is a check of the page rather than of one algorithm: it runs whenever the
+ * whole collection is tested, or when named (node tests/TestSuite.js --only=browser).
  */
 
 'use strict';
@@ -57,12 +59,17 @@ function scriptTags() {
   return [...html.matchAll(/<script src="\.\/([^"]+\.js)"><\/script>/g)].map(m => m[1]);
 }
 
-function main() {
+/**
+ * BROWSER: evaluate every script tag of index.html in page order.
+ * @param {object} context - { readSource(file) -> text }
+ * @returns {object} { passed, failed, detail }
+ */
+function run(context) {
+  const readSource = (context && context.readSource) || (file => fs.readFileSync(file, 'utf8'));
   const tags = scriptTags();
   if (!tags.length) {
-    console.error('index.html carries no script tags - nothing was checked.');
-    process.exitCode = 2;
-    return;
+    console.log('index.html carries no script tags - nothing was checked.');
+    return { passed: 0, failed: 1, detail: 'index.html carries no script tags' };
   }
 
   const sandbox = browserContext();
@@ -73,7 +80,7 @@ function main() {
     const file = path.join(CIPHER_ROOT, rel);
     if (!fs.existsSync(file)) { failures.push({ rel, reason: 'file named by index.html does not exist' }); continue; }
     try {
-      vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: rel });
+      vm.runInContext(readSource(file), sandbox, { filename: rel });
       loaded++;
     } catch (error) {
       failures.push({ rel, reason: String(error.message).slice(0, 100) });
@@ -90,13 +97,16 @@ function main() {
   const registered = framework && framework.Algorithms ? framework.Algorithms.length : 0;
   if (!registered) {
     console.log('\nAlgorithmFramework never reached the page global - the site would load nothing.');
-    process.exitCode = 1;
-    return;
+    return { passed: loaded, failed: unexpected.length + 1, detail: 'AlgorithmFramework never reached the page global' };
   }
 
   console.log(`\n${loaded}/${tags.length} script(s) evaluated, ${registered} algorithm(s) registered, `
     + `${unexpected.length} failed, ${excused.length} exempt`);
-  process.exitCode = unexpected.length ? 1 : 0;
+  return {
+    passed: loaded,
+    failed: unexpected.length,
+    detail: `${tags.length} script tags, ${registered} algorithm(s) registered, ${excused.length} exempt`
+  };
 }
 
-main();
+module.exports = { run };
