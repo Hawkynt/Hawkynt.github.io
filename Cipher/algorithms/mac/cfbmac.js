@@ -57,17 +57,31 @@
   // NOTE: This embedded implementation uses direct bit operations for performance and clarity.
   // This is intentional and necessary for the self-contained DES cipher used by CFB-MAC.
   class EmbeddedDES {
+    /**
+     * Build the DES tables
+     */
     constructor() {
       this._initTables();
     }
 
+    /**
+     * DES-encrypt one block
+     * @param {uint8[]} key - 8-byte key
+     * @param {uint8[]} plaintext - 8-byte block
+     * @returns {uint8[]} 8-byte ciphertext
+     */
     encrypt(key, plaintext) {
       const subkeys = this._generateSubkeys(key);
       return this._crypt(plaintext, subkeys, false);
     }
 
+    /**
+     * Fill the permutation, shift and S-box tables
+     * @returns {void}
+     */
     _initTables() {
       // Initial Permutation
+      /** @type {int32[]} */
       this.IP = [
         58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
         62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
@@ -76,6 +90,7 @@
       ];
 
       // Final Permutation
+      /** @type {int32[]} */
       this.FP = [
         40, 8, 48, 16, 56, 24, 64, 32, 39, 7, 47, 15, 55, 23, 63, 31,
         38, 6, 46, 14, 54, 22, 62, 30, 37, 5, 45, 13, 53, 21, 61, 29,
@@ -84,6 +99,7 @@
       ];
 
       // Permuted Choice 1
+      /** @type {int32[]} */
       this.PC1 = [
         57, 49, 41, 33, 25, 17, 9, 1, 58, 50, 42, 34, 26, 18,
         10, 2, 59, 51, 43, 35, 27, 19, 11, 3, 60, 52, 44, 36,
@@ -92,6 +108,7 @@
       ];
 
       // Permuted Choice 2
+      /** @type {int32[]} */
       this.PC2 = [
         14, 17, 11, 24, 1, 5, 3, 28, 15, 6, 21, 10,
         23, 19, 12, 4, 26, 8, 16, 7, 27, 20, 13, 2,
@@ -100,6 +117,7 @@
       ];
 
       // Expansion table
+      /** @type {int32[]} */
       this.E = [
         32, 1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 9,
         8, 9, 10, 11, 12, 13, 12, 13, 14, 15, 16, 17,
@@ -108,6 +126,7 @@
       ];
 
       // P-box permutation
+      /** @type {int32[]} */
       this.P = [
         16, 7, 20, 21, 29, 12, 28, 17, 1, 15, 23, 26,
         5, 18, 31, 10, 2, 8, 24, 14, 32, 27, 3, 9,
@@ -115,9 +134,11 @@
       ];
 
       // Rotation schedule
+      /** @type {int32[]} */
       this.SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
 
       // S-boxes
+      /** @type {uint8[][][]} */
       this.SBOX = [
         [[14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7], [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8], [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0], [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13]],
         [[15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10], [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5], [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15], [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9]],
@@ -130,6 +151,11 @@
       ];
     }
 
+    /**
+     * DES key schedule
+     * @param {uint8[]} key - 8-byte key
+     * @returns {uint8[][]} Sixteen 48-bit subkeys, one bit per element
+     */
     _generateSubkeys(key) {
       let keyBits = this._bytesToBits(key);
       keyBits = this._permute(keyBits, this.PC1);
@@ -137,6 +163,7 @@
       let c = keyBits.slice(0, 28);
       let d = keyBits.slice(28, 56);
 
+      /** @type {uint8[][]} */
       const subkeys = [];
 
       for (let i = 0; i < 16; ++i) {
@@ -149,6 +176,13 @@
       return subkeys;
     }
 
+    /**
+     * DES on one block
+     * @param {uint8[]} input - 8-byte block
+     * @param {uint8[][]} subkeys - Key schedule
+     * @param {boolean} isDecrypt - Apply the subkeys in reverse order
+     * @returns {uint8[]} 8-byte result
+     */
     _crypt(input, subkeys, isDecrypt) {
       let bits = this._bytesToBits(input);
       bits = this._permute(bits, this.IP);
@@ -158,7 +192,7 @@
 
       for (let i = 0; i < 16; ++i) {
         const temp = right.slice();
-        const key = isDecrypt ? subkeys[15 - i] : subkeys[i];
+        const key = subkeys[isDecrypt ? 15 - i : i];
         right = OpCodes.XorArrays(left, this._feistelFunction(right, key));
         left = temp;
       }
@@ -168,6 +202,12 @@
       return this._bitsToBytes(finalBits);
     }
 
+    /**
+     * DES round function
+     * @param {uint8[]} right - 32 bits
+     * @param {uint8[]} key - 48-bit subkey
+     * @returns {uint8[]} 32 bits
+     */
     _feistelFunction(right, key) {
       const expanded = this._permute(right, this.E);
       const xored = OpCodes.XorArrays(expanded, key);
@@ -175,24 +215,39 @@
       return this._permute(substituted, this.P);
     }
 
+    /**
+     * S-box layer: 48 bits in, 32 bits out
+     * @param {uint8[]} input - 48 bits
+     * @returns {uint8[]} 32 bits
+     */
     _sboxSubstitution(input) {
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < 8; ++i) {
         const block = input.slice(i * 6, (i + 1) * 6);
-        const row = OpCodes.OrN(OpCodes.Shl32(block[0], 1), block[5]);
-        const col = OpCodes.OrN(OpCodes.Shl32(block[1], 3), OpCodes.OrN(OpCodes.Shl32(block[2], 2), OpCodes.OrN(OpCodes.Shl32(block[3], 1), block[4])));
+        const row = OpCodes.Or32(OpCodes.Shl32(block[0], 1), block[5]);
+        const col = OpCodes.Or32(OpCodes.Shl32(block[1], 3), OpCodes.Or32(OpCodes.Shl32(block[2], 2), OpCodes.Or32(OpCodes.Shl32(block[3], 1), block[4])));
         const val = this.SBOX[i][row][col];
 
         for (let j = 3; j >= 0; --j) {
-          output.push(OpCodes.AndN(OpCodes.Shr32(val, j), 1));
+          /** @type {uint8} */
+          const bit = OpCodes.And32(OpCodes.Shr32(val, j), 1);
+          output.push(bit);
         }
       }
 
       return output;
     }
 
+    /**
+     * Bit permutation (1-based table)
+     * @param {uint8[]} input - Bits
+     * @param {int32[]} table - Source position (1-based) of each output bit
+     * @returns {uint8[]} Permuted bits
+     */
     _permute(input, table) {
+      /** @type {uint8[]} */
       const output = new Array(table.length);
       for (let i = 0; i < table.length; ++i) {
         output[i] = input[table[i] - 1];
@@ -200,26 +255,47 @@
       return output;
     }
 
+    /**
+     * Rotate a bit array left
+     * @param {uint8[]} input - Bits
+     * @param {int32} n - Rotation
+     * @returns {uint8[]} Rotated bits
+     */
     _leftShift(input, n) {
       return input.slice(n).concat(input.slice(0, n));
     }
 
+    /**
+     * Bytes to bits, most significant bit first
+     * @param {uint8[]} bytes - Bytes
+     * @returns {uint8[]} Bits (0 or 1)
+     */
     _bytesToBits(bytes) {
+      /** @type {uint8[]} */
       const bits = [];
       for (let i = 0; i < bytes.length; ++i) {
         for (let j = 7; j >= 0; --j) {
-          bits.push(OpCodes.AndN(OpCodes.Shr32(bytes[i], j), 1));
+          /** @type {uint8} */
+          const bit = OpCodes.And32(OpCodes.Shr32(bytes[i], j), 1);
+          bits.push(bit);
         }
       }
       return bits;
     }
 
+    /**
+     * Bits to bytes, most significant bit first
+     * @param {uint8[]} bits - Bits (0 or 1), a multiple of 8
+     * @returns {uint8[]} Bytes
+     */
     _bitsToBytes(bits) {
+      /** @type {uint8[]} */
       const bytes = [];
       for (let i = 0; i < bits.length; i += 8) {
+        /** @type {uint8} */
         let byte = 0;
         for (let j = 0; j < 8; ++j) {
-          byte = OpCodes.OrN(OpCodes.Shl32(byte, 1), bits[i + j]);
+          byte = OpCodes.Or8(OpCodes.Shl8(byte, 1), bits[i + j]);
         }
         bytes.push(byte);
       }
@@ -299,9 +375,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {CFBMACInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -320,30 +396,46 @@
  */
 
   class CFBMACInstance extends IMacInstance {
+    /**
+     * Initialize a CFB-MAC instance
+     * @param {CFBMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._iv = null;
+      /** @type {int32} */
       this._macSize = 4; // Default: 4 bytes (32 bits)
+      /** @type {int32} */
       this._cfbBitSize = 8; // Default: 8-bit CFB mode
       this.inputBuffer = [];
 
       // Use embedded DES for encryption
+      /** @type {EmbeddedDES} */
       this.desEngine = new EmbeddedDES();
+      /** @type {int32} */
       this.blockSize = 8; // DES block size
 
       // CFB state vectors
-      this.cfbV = new Array(this.blockSize).fill(0);      // Current feedback register
-      this.cfbOutV = new Array(this.blockSize).fill(0);   // Encrypted feedback register
-      this.IV = new Array(this.blockSize).fill(0);        // Initialization vector
+      /** @type {uint8[]} */
+      this.cfbV = OpCodes.CreateArray(this.blockSize, 0);      // Current feedback register
+      /** @type {uint8[]} */
+      this.cfbOutV = OpCodes.CreateArray(this.blockSize, 0);   // Encrypted feedback register
+      /** @type {uint8[]} */
+      this.IV = OpCodes.CreateArray(this.blockSize, 0);        // Initialization vector
 
       // Buffer for accumulating input blocks
-      this.buf = new Array(this.blockSize).fill(0);
+      /** @type {uint8[]} */
+      this.buf = OpCodes.CreateArray(this.blockSize, 0);
+      /** @type {int32} */
       this.bufOff = 0;
 
       // MAC output buffer
-      this.mac = new Array(this.blockSize).fill(0);
+      /** @type {uint8[]} */
+      this.mac = OpCodes.CreateArray(this.blockSize, 0);
     }
 
     // Property setter for key
@@ -398,7 +490,7 @@
       }
 
       if (ivBytes.length !== this.blockSize) {
-        throw new Error(`IV must be ${this.blockSize} bytes`);
+        throw new Error('IV must be ' + this.blockSize + ' bytes');
       }
 
       this._iv = [...ivBytes];
@@ -419,18 +511,31 @@
     }
 
     // Property setter for MAC size
+    /**
+     * Truncate the MAC
+     * @param {int32} size - MAC size in bytes, 1..block size
+     * @throws {Error} If size is not a number in range
+     */
     set macSize(size) {
       if (typeof size !== 'number' || size < 1 || size > this.blockSize) {
-        throw new Error(`MAC size must be between 1 and ${this.blockSize} bytes`);
+        throw new Error('MAC size must be between 1 and ' + this.blockSize + ' bytes');
       }
       this._macSize = size;
     }
 
+    /**
+     * MAC size in bytes
+     * @returns {int32} MAC size in bytes
+     */
     get macSize() {
       return this._macSize;
     }
 
     // Reset the MAC state
+    /**
+     * Clear the buffer and load the IV into the feedback register
+     * @returns {void}
+     */
     _reset() {
       // Clear buffer
       OpCodes.ClearArray(this.buf);
@@ -483,6 +588,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} MAC bytes
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -493,26 +604,36 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer; // Restore original buffer
       return result;
     }
 
     // Process one CFB block
+    /**
+     * One CFB step: out = in xor E_K(cfbV), then shift out into cfbV
+     * @param {uint8[]} inData - Input bytes
+     * @param {int32} inOff - Offset into inData
+     * @param {uint8[]} outData - Receives the output bytes
+     * @param {int32} outOff - Offset into outData
+     * @returns {int32} Bytes processed (the CFB segment size)
+     */
     _processBlock(inData, inOff, outData, outOff) {
       // Encrypt the feedback register using embedded DES
+      /** @type {uint8[]} */
       const encrypted = this.desEngine.encrypt(this._key, this.cfbV);
       for (let i = 0; i < this.blockSize; ++i) {
         this.cfbOutV[i] = encrypted[i];
       }
 
       // Calculate CFB block size in bytes
+      /** @type {int32} */
       const cfbBlockSize = this._cfbBitSize / 8;
 
       // XOR the cfbOutV with the plaintext producing the ciphertext
       for (let i = 0; i < cfbBlockSize; ++i) {
-        outData[outOff + i] = OpCodes.XorN(this.cfbOutV[i], inData[inOff + i]);
+        outData[outOff + i] = OpCodes.Xor8(this.cfbOutV[i], inData[inOff + i]);
       }
 
       // Shift feedback register and insert new ciphertext
@@ -528,7 +649,13 @@
     }
 
     // Get final MAC block by encrypting current feedback register
+    /**
+     * mac = E_K(cfbV)
+     * @param {uint8[]} mac - Receives the block
+     * @returns {void}
+     */
     _getMacBlock(mac) {
+      /** @type {uint8[]} */
       const encrypted = this.desEngine.encrypt(this._key, this.cfbV);
       for (let i = 0; i < this.blockSize; ++i) {
         mac[i] = encrypted[i];
@@ -536,6 +663,10 @@
     }
 
     // Core CFB-MAC computation
+    /**
+     * CFB-MAC of the buffered message
+     * @returns {uint8[]} MAC bytes, truncated to macSize
+     */
     _computeCFBMAC() {
       // Reset state
       this._reset();
@@ -543,6 +674,7 @@
       const msgLen = this.inputBuffer.length;
       let pos = 0;
 
+      /** @type {int32} */
       const cfbBlockSize = this._cfbBitSize / 8;
 
       // Process message in CFB blocks
@@ -572,6 +704,7 @@
       this._getMacBlock(this.mac);
 
       // Return truncated MAC
+      /** @type {uint8[]} */
       const result = new Array(this._macSize);
       for (let i = 0; i < this._macSize; ++i) {
         result[i] = this.mac[i];
