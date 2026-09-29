@@ -73,35 +73,28 @@
   }
 
   // RFC 6986 section 6.2 - nonlinear bijection Pi'
-  const PI = Object.freeze([
-    252, 238, 221,  17, 207, 110,  49,  22, 251, 196, 250, 218,  35, 197,   4,  77,
-    233, 119, 240, 219, 147,  46, 153, 186,  23,  54, 241, 187,  20, 205,  95, 193,
-    249,  24, 101,  90, 226,  92, 239,  33, 129,  28,  60,  66, 139,   1, 142,  79,
-      5, 132,   2, 174, 227, 106, 143, 160,   6,  11, 237, 152, 127, 212, 211,  31,
-    235,  52,  44,  81, 234, 200,  72, 171, 242,  42, 104, 162, 253,  58, 206, 204,
-    181, 112,  14,  86,   8,  12, 118,  18, 191, 114,  19,  71, 156, 183,  93, 135,
-     21, 161, 150,  41,  16, 123, 154, 199, 243, 145, 120, 111, 157, 158, 178, 177,
-     50, 117,  25,  61, 255,  53, 138, 126, 109,  84, 198, 128, 195, 189,  13,  87,
-    223, 245,  36, 169,  62, 168,  67, 201, 215, 121, 214, 246, 124,  34, 185,   3,
-    224,  15, 236, 222, 122, 148, 176, 188, 220, 232,  40,  80,  78,  51,  10,  74,
-    167, 151,  96, 115,  30,   0,  98,  68,  26, 184,  56, 130, 100, 159,  38,  65,
-    173,  69,  70, 146,  39,  94,  85,  47, 140, 163, 165, 125, 105, 213, 149,  59,
-      7,  88, 179,  64, 134, 172,  29, 247,  48,  55, 107, 228, 136, 217, 231, 137,
-    225,  27, 131,  73,  76,  63, 248, 254, 141,  83, 170, 144, 202, 216, 133,  97,
-     32, 113, 103, 164,  45,  43,   9,  91, 203, 155,  37, 208, 190, 229, 108,  82,
-     89, 166, 116, 210, 230, 244, 180, 192, 209, 102, 175, 194,  57,  75,  99, 182
-  ]);
+  /** @type {uint8[]} */
+  const PI = Object.freeze(OpCodes.Hex8ToBytes(
+    "fceedd11cf6e3116fbc4fada23c5044de977f0db932e99ba1736f1bb14cd5fc1" +
+    "f918655ae25cef21811c3c428b018e4f058402aee36a8fa0060bed987fd4d31f" +
+    "eb342c51eac848abf22a68a2fd3aceccb5700e56080c7612bf7213479cb75d87" +
+    "15a19629107b9ac7f391786f9d9eb2b13275193dff358a7e6d54c680c3bd0d57" +
+    "dff524a93ea843c9d779d6f67c22b903e00fecde7a94b0bcdce828504e330a4a" +
+    "a79760731e0062441ab83882649f2641ad454692275e552f8ca3a57d69d5953b" +
+    "0758b34086ac1df730376be488d9e789e11b83494c3ff8fe8d53aa90cad88561" +
+    "207167a42d2b095bcb9b25d0bee56c5259a674d2e6f4b4c0d166afc2394b63b6"
+  ));
 
   // RFC 6986 section 6.3 - byte permutation Tau
-  const TAU = Object.freeze([
-     0,  8, 16, 24, 32, 40, 48, 56,  1,  9, 17, 25, 33, 41, 49, 57,
-     2, 10, 18, 26, 34, 42, 50, 58,  3, 11, 19, 27, 35, 43, 51, 59,
-     4, 12, 20, 28, 36, 44, 52, 60,  5, 13, 21, 29, 37, 45, 53, 61,
-     6, 14, 22, 30, 38, 46, 54, 62,  7, 15, 23, 31, 39, 47, 55, 63
-  ]);
+  /** @type {uint8[]} */
+  const TAU = Object.freeze(OpCodes.Hex8ToBytes(
+    "00081018202830380109111921293139020a121a222a323a030b131b232b333b" +
+    "040c141c242c343c050d151d252d353d060e161e262e363e070f171f272f373f"
+  ));
 
   // RFC 6986 section 6.4 - rows of the matrix A, row 0 first.
   // Row j is selected by bit 63 - j of the 64-bit subvector being transformed.
+  /** @type {BigInt[]} */
   const A_MATRIX = Object.freeze([
     0x8e20faa72ba0b470n, 0x47107ddd9b505a38n, 0xad08b0e0c3282d1cn, 0xd8045870ef14980en,
     0x6c022c38f90a4c07n, 0x3601161cf205268dn, 0x1b8e0b0e798c13c8n, 0x83478b07b2468764n,
@@ -122,6 +115,7 @@
   ]);
 
   // RFC 6986 section 6.5 - iteration constants C[1] through C[12]
+  /** @type {uint8[][]} */
   const C = Object.freeze([
     // C[1]
     PrintedToState(
@@ -215,16 +209,19 @@
    * Which input byte feeds each output byte of P(S(a)).
    * SOURCE[g][j] is the state index whose substituted value becomes byte j of
    * output group g, read straight out of the published Tau.
+   * @returns {uint8[][]} 8 groups of 8 state indices
    */
-  const SOURCE = Object.freeze((function () {
+  function BuildSource() {
+    /** @type {uint8[][]} */
     const map = new Array(8);
     for (let g = 0; g < 8; g++) {
+      /** @type {uint8[]} */
       const row = new Array(8);
       for (let j = 0; j < 8; j++) row[j] = TAU[g * 8 + j];
       map[g] = Object.freeze(row);
     }
     return map;
-  })());
+  }
 
   /**
    * The linear transformation l, split by byte position.
@@ -233,15 +230,19 @@
    * applied to each of its bytes in isolation. AX[j][b] is l of the value that
    * has byte b at position j and zeros elsewhere; byte j bit t of a subvector
    * is bit 8j + t of it, which selects matrix row 63 - 8j - t.
+   * @returns {uint64[][]} 8 tables of 256 64-bit words
    */
-  const AX = Object.freeze((function () {
+  function BuildAX() {
+    /** @type {uint64[][]} */
     const table = new Array(8);
     for (let j = 0; j < 8; j++) {
+      /** @type {BigInt[]} */
       const row = new Array(256);
       for (let b = 0; b < 256; b++) {
+        /** @type {BigInt} */
         let acc = 0n;
         for (let t = 0; t < 8; t++) {
-          if (OpCodes.AndN(OpCodes.ShiftRn(BigInt(b), t), 1n) === 1n)
+          if (OpCodes.GetBit(b, t))
             acc = OpCodes.XorN(acc, A_MATRIX[63 - j * 8 - t]);
         }
         row[b] = acc;
@@ -249,7 +250,12 @@
       table[j] = Object.freeze(row);
     }
     return table;
-  })());
+  }
+
+  /** @type {uint8[][]} */
+  const SOURCE = Object.freeze(BuildSource());
+  /** @type {uint64[][]} */
+  const AX = Object.freeze(BuildAX());
 
   // ===== 512-BIT PRIMITIVES =====
 
@@ -260,8 +266,9 @@
    * @returns {uint8[]} a xor b
    */
   function Xor512(a, b) {
+    /** @type {uint8[]} */
     const out = new Array(STATE_SIZE);
-    for (let i = 0; i < STATE_SIZE; i++) out[i] = OpCodes.XorN(a[i], b[i]);
+    for (let i = 0; i < STATE_SIZE; i++) out[i] = OpCodes.Xor8(a[i], b[i]);
     return out;
   }
 
@@ -272,10 +279,12 @@
    * @returns {uint8[]} a plus b
    */
   function Add512(a, b) {
+    /** @type {uint8[]} */
     const out = new Array(STATE_SIZE);
+    /** @type {uint32} */
     let carry = 0;
     for (let i = 0; i < STATE_SIZE; i++) {
-      const sum = a[i] + b[i] + carry;
+      const sum = OpCodes.Add32(OpCodes.Add32(a[i], b[i]), carry);
       out[i] = OpCodes.ToByte(sum);
       carry = sum > 255 ? 1 : 0;
     }
@@ -284,15 +293,17 @@
 
   /**
    * A 512-bit vector holding a small non-negative integer.
-   * @param {number} value
-   * @returns {uint8[]}
+   * @param {int32} value - 0 .. 2^32 - 1
+   * @returns {uint8[]} 64 bytes, index 0 least significant
    */
   function Vec512(value) {
-    const out = new Array(STATE_SIZE).fill(0);
+    /** @type {uint8[]} */
+    const out = OpCodes.CreateArray(STATE_SIZE, 0);
+    /** @type {uint32} */
     let rest = value;
     for (let i = 0; i < STATE_SIZE && rest > 0; i++) {
-      out[i] = rest % 256;
-      rest = Math.floor(rest / 256);
+      out[i] = OpCodes.ToByte(rest);
+      rest = OpCodes.Shr32(rest, 8);
     }
     return out;
   }
@@ -303,13 +314,18 @@
    * @returns {uint8[]} 64 bytes
    */
   function LPS(state) {
+    /** @type {uint8[]} */
     const out = new Array(STATE_SIZE);
     for (let g = 0; g < 8; g++) {
+      /** @type {BigInt} */
       let word = 0n;
       for (let j = 0; j < 8; j++)
         word = OpCodes.XorN(word, AX[j][PI[state[SOURCE[g][j]]]]);
-      for (let j = 0; j < 8; j++)
-        out[g * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
+      for (let j = 0; j < 8; j++) {
+        /** @type {uint8} */
+        const lane = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
+        out[g * 8 + j] = lane;
+      }
     }
     return out;
   }
@@ -332,118 +348,10 @@
     return Xor512(Xor512(state, h), m);
   }
 
+  /** @type {uint8[]} */
   const BLOCK_BITS = Vec512(BLOCK_SIZE * 8);
-  const ZERO512 = Object.freeze(new Array(STATE_SIZE).fill(0));
-
-  // ===== PUBLISHED TEST VECTORS =====
-
-  /**
-   * Published vectors for one digest size.
-   * @param {int} digestSize - 32 or 64 bytes
-   * @returns {object[]} test cases
-   */
-  function BuildTests(digestSize) {
-    if (digestSize === 32) return [
-      {
-        text: "RFC 6986 example 1 - M1, 63 bytes",
-        uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
-        input: OpCodes.Hex8ToBytes("303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132"),
-        expected: OpCodes.Hex8ToBytes("9d151eefd8590b89daa6ba6cb74af9275dd051026bb149a452fd84e5e57b5500")
-      },
-      {
-        text: "RFC 6986 example 2 - M2, 72 bytes spanning two blocks",
-        uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
-        input: OpCodes.Hex8ToBytes("d1e520e2e5f2f0e82c20d1f2f0e8e1eee6e820e2edf3f6e82c20e2e5fef2fa20f120eceef0ff20f1f2f0e5ebe0ece820ede020f5f0e0e1f0fbff20efebfaeafb20c8e3eef0e5e2fb"),
-        expected: OpCodes.Hex8ToBytes("9dd2fe4e90409e5da87f53976d7405b0c0cac628fc669a741d50063c557e8f50")
-      },
-      {
-        text: "Botan streebog.vec - empty message",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: [],
-        expected: OpCodes.Hex8ToBytes("3f539a213e97c802cc229d474c6aa32a825a360b2a933a949fd925208d9ce1bb")
-      },
-      {
-        text: "Botan streebog.vec - one byte",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("c6"),
-        expected: OpCodes.Hex8ToBytes("d907b672d09f48d27ad06c26647921c9e25d063c038eaaefac81e749dc1d98b5")
-      },
-      {
-        text: "Botan streebog.vec - 64 bytes, exactly the block size, forcing an all-padding block",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("00b7d1c42da82cc055affead5924db662e5a080081697f8287c687fe91d32b4254fbb961725559a32c43c3f8114e05c2991108228ed83edc476fb9a62874fab1"),
-        expected: OpCodes.Hex8ToBytes("68367c34ad8441a48ac7fc65657ac73aa51e1a36c5346c0bf011945bcb9ef773")
-      },
-      {
-        text: "Botan streebog.vec - 65 bytes, one over the block size",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("89e8a4ccd6285add12b0c46506e91c09a3c2dd30951eb72818b58187f1a608edebf569fa81254970ad7f04ae9a25827fa6482829fdc0797a5cff6f7446d14576d2"),
-        expected: OpCodes.Hex8ToBytes("64f56da108ea18571aacb6852b5be57999ec5de82a7d1f719fcddfc7ec1b0ad1")
-      },
-      {
-        text: "Botan streebog.vec - 127 bytes, one under two blocks",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("c1c065c63b1b848430326ded0cd23cffc644296813df0f968275492026737fd8d26f8690f19512e5a7c936050fc6b011d0538a6d5c1e75f839af3b0237d4a1accb497de6733f9717326260401a77a564e7bca93ae9fe7d257060e44ea08c350c9f64a78ce095fe29a7d1fc23de9350a47b71eda31514d134d84b5180930e29"),
-        expected: OpCodes.Hex8ToBytes("1ef768f7ae820c2966b7c60b0cf208ab89c1f7b60f9b2cab61253c38d1f2c987")
-      },
-      {
-        text: "Botan streebog.vec - 128 bytes, an exact multiple of the block size",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("290f597702e009d86f49d5362346309e26919eacbcb86165be4906056d43f95a1e181b2b0c12785c929f17a3d25943f5313641c915bf5dd38882d587da1da65d6658f89764e28ee13a24ac9349e6803579baa17d6ca571793c13f7a0fe46043deeed08922fb2e2353d8718c5f1c7f1fba2df54e9cbbad54a750da656863d2843"),
-        expected: OpCodes.Hex8ToBytes("c9c82e740ccc34fc0c14c61ab4eb037542d77ffda00d484aff97c1144346704f")
-      }
-    ];
-    return [
-      {
-        text: "RFC 6986 example 1 - M1, 63 bytes",
-        uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
-        input: OpCodes.Hex8ToBytes("303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132"),
-        expected: OpCodes.Hex8ToBytes("1b54d01a4af5b9d5cc3d86d68d285462b19abc2475222f35c085122be4ba1ffa00ad30f8767b3a82384c6574f024c311e2a481332b08ef7f41797891c1646f48")
-      },
-      {
-        text: "RFC 6986 example 2 - M2, 72 bytes spanning two blocks",
-        uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
-        input: OpCodes.Hex8ToBytes("d1e520e2e5f2f0e82c20d1f2f0e8e1eee6e820e2edf3f6e82c20e2e5fef2fa20f120eceef0ff20f1f2f0e5ebe0ece820ede020f5f0e0e1f0fbff20efebfaeafb20c8e3eef0e5e2fb"),
-        expected: OpCodes.Hex8ToBytes("1e88e62226bfca6f9994f1f2d51569e0daf8475a3b0fe61a5300eee46d961376035fe83549ada2b8620fcd7c496ce5b33f0cb9dddc2b6460143b03dabac9fb28")
-      },
-      {
-        text: "Botan streebog.vec - empty message",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: [],
-        expected: OpCodes.Hex8ToBytes("8e945da209aa869f0455928529bcae4679e9873ab707b55315f56ceb98bef0a7362f715528356ee83cda5f2aac4c6ad2ba3a715c1bcd81cb8e9f90bf4c1c1a8a")
-      },
-      {
-        text: "Botan streebog.vec - one byte",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("3b"),
-        expected: OpCodes.Hex8ToBytes("18ff357b3d82838113a6f34d5bedd966990959e215d6793bcaf09a007dcbcc40b141b268ec3356117914ce9da1278f824d6192ff497f7394592f5c01ec64907a")
-      },
-      {
-        text: "Botan streebog.vec - 64 bytes, exactly the block size, forcing an all-padding block",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("6277ed0cbcd95d4f45f94ac9525effda8b823da886942c662eaa25ac8cfefbc826046c5d017d96d0cbc3fa28e5f46c466432ad3b7e204eb181cba531f4f289c2"),
-        expected: OpCodes.Hex8ToBytes("04a8f7eb4feccf00281bca12576779aaa0fd81307679a76366b6ad726f4cbf0a9e16f03d435b561a25338c931750ab812cac1bfc4716de0a408fe132a7d5c9cf")
-      },
-      {
-        text: "Botan streebog.vec - 65 bytes, one over the block size",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("44d2459c2ed212173625fc921fdd05a0f2d6593515944bfc5ca37ef9b75ae3e66234d124722ba75feb698ffe11c319e53726456d9417e396928d8519a3e6898195"),
-        expected: OpCodes.Hex8ToBytes("0cbfeaf77ca3c157be6a367b0fda771ba5aa465f27c4a446fa5e23356006aa43cf2a0d1aa8803a2b85a34298ecb99936d8e4e986dce6fd698dbb097b7e3ed8ab")
-      },
-      {
-        text: "Botan streebog.vec - 127 bytes, one under two blocks",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("0079ce89a3bb7209563a1fab751a5b80e6c424b2996d241d601e255d601b81943eb05b44523f1c1b0cde018fe08dca199ab809c05b03ed281d7f4cfb16b978047695a98e7a01ff35c498c7214b9f6c401342d356fd2818036f786236d85211acdeeb7bbe7d669f168737f437d004d9783d4203213c52d178f1787efeb2ee3c"),
-        expected: OpCodes.Hex8ToBytes("a7bcd688131c97b57dedc7aebd845e0042ea9f8d3a425f11f57ddfef8eaec040e93d9219b68ab919ac4c5c5c1522ed9cbb50951bace6499e2cd0db13ff57e136")
-      },
-      {
-        text: "Botan streebog.vec - 128 bytes, an exact multiple of the block size",
-        uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
-        input: OpCodes.Hex8ToBytes("25894e39aef06148d682f48a34f100ea694e446bbf79caa7806c7c6f3f8a60a94b9c8b2877c617fead17ac576d8dafd3f8514e49825d54dc9a8916330dc560204bd795d0ce00a49ba3c25c7921381c057bc6a1abb362db79497c878321c2a71793f2bfb7ad211700fecd486241cc6197a50075560147b20b9cbe2f992f516c61"),
-        expected: OpCodes.Hex8ToBytes("b4ce87a416b83be3417ccbd7000d658acce2a5c3b57c92aa8ca3d912f20580748c2534a157b4ead16059499b9b11ae8ff07cca94a2a5a314b4ac4faaddcb0162")
-      }
-    ];
-  }
+  /** @type {uint8[]} */
+  const ZERO512 = Object.freeze(OpCodes.CreateArray(STATE_SIZE, 0));
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -454,12 +362,13 @@
    */
   class StreebogAlgorithm extends HashFunctionAlgorithm {
     /**
-     * @param {int} digestSize - 32 for Streebog-256, 64 for Streebog-512
+     * @param {int32} digestSize - 32 for Streebog-256, 64 for Streebog-512
      */
     constructor(digestSize) {
       super();
 
       const bits = digestSize * 8;
+      /** @type {int32} */
       this.digestSize = digestSize;
 
       this.name = "Streebog-" + bits;
@@ -472,7 +381,8 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.RU;
 
-      this.SupportedOutputSizes = [digestSize];
+      this.SupportedOutputSizes = [new KeySize(digestSize, digestSize, 1)];
+      /** @type {KeySize[]} */
       this.SupportedHashSizes = [new KeySize(digestSize, digestSize, 1)];
       this.BlockSize = BLOCK_SIZE;
       this.blockSize = BLOCK_SIZE;
@@ -492,13 +402,115 @@
         new Vulnerability("Unexplained S-box", "The origin of the substitution Pi has never been published, which has drawn academic criticism even though no attack on the full function is known.")
       ];
 
-      this.tests = BuildTests(digestSize);
+      if (digestSize === 32) {
+        this.tests = [
+          {
+            text: "RFC 6986 example 1 - M1, 63 bytes",
+            uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
+            input: OpCodes.Hex8ToBytes("303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132"),
+            expected: OpCodes.Hex8ToBytes("9d151eefd8590b89daa6ba6cb74af9275dd051026bb149a452fd84e5e57b5500")
+          },
+          {
+            text: "RFC 6986 example 2 - M2, 72 bytes spanning two blocks",
+            uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
+            input: OpCodes.Hex8ToBytes("d1e520e2e5f2f0e82c20d1f2f0e8e1eee6e820e2edf3f6e82c20e2e5fef2fa20f120eceef0ff20f1f2f0e5ebe0ece820ede020f5f0e0e1f0fbff20efebfaeafb20c8e3eef0e5e2fb"),
+            expected: OpCodes.Hex8ToBytes("9dd2fe4e90409e5da87f53976d7405b0c0cac628fc669a741d50063c557e8f50")
+          },
+          {
+            text: "Botan streebog.vec - empty message",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: [],
+            expected: OpCodes.Hex8ToBytes("3f539a213e97c802cc229d474c6aa32a825a360b2a933a949fd925208d9ce1bb")
+          },
+          {
+            text: "Botan streebog.vec - one byte",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("c6"),
+            expected: OpCodes.Hex8ToBytes("d907b672d09f48d27ad06c26647921c9e25d063c038eaaefac81e749dc1d98b5")
+          },
+          {
+            text: "Botan streebog.vec - 64 bytes, exactly the block size, forcing an all-padding block",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("00b7d1c42da82cc055affead5924db662e5a080081697f8287c687fe91d32b4254fbb961725559a32c43c3f8114e05c2991108228ed83edc476fb9a62874fab1"),
+            expected: OpCodes.Hex8ToBytes("68367c34ad8441a48ac7fc65657ac73aa51e1a36c5346c0bf011945bcb9ef773")
+          },
+          {
+            text: "Botan streebog.vec - 65 bytes, one over the block size",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("89e8a4ccd6285add12b0c46506e91c09a3c2dd30951eb72818b58187f1a608edebf569fa81254970ad7f04ae9a25827fa6482829fdc0797a5cff6f7446d14576d2"),
+            expected: OpCodes.Hex8ToBytes("64f56da108ea18571aacb6852b5be57999ec5de82a7d1f719fcddfc7ec1b0ad1")
+          },
+          {
+            text: "Botan streebog.vec - 127 bytes, one under two blocks",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("c1c065c63b1b848430326ded0cd23cffc644296813df0f968275492026737fd8d26f8690f19512e5a7c936050fc6b011d0538a6d5c1e75f839af3b0237d4a1accb497de6733f9717326260401a77a564e7bca93ae9fe7d257060e44ea08c350c9f64a78ce095fe29a7d1fc23de9350a47b71eda31514d134d84b5180930e29"),
+            expected: OpCodes.Hex8ToBytes("1ef768f7ae820c2966b7c60b0cf208ab89c1f7b60f9b2cab61253c38d1f2c987")
+          },
+          {
+            text: "Botan streebog.vec - 128 bytes, an exact multiple of the block size",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("290f597702e009d86f49d5362346309e26919eacbcb86165be4906056d43f95a1e181b2b0c12785c929f17a3d25943f5313641c915bf5dd38882d587da1da65d6658f89764e28ee13a24ac9349e6803579baa17d6ca571793c13f7a0fe46043deeed08922fb2e2353d8718c5f1c7f1fba2df54e9cbbad54a750da656863d2843"),
+            expected: OpCodes.Hex8ToBytes("c9c82e740ccc34fc0c14c61ab4eb037542d77ffda00d484aff97c1144346704f")
+          }
+        ];
+      } else {
+        this.tests = [
+          {
+            text: "RFC 6986 example 1 - M1, 63 bytes",
+            uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
+            input: OpCodes.Hex8ToBytes("303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132"),
+            expected: OpCodes.Hex8ToBytes("1b54d01a4af5b9d5cc3d86d68d285462b19abc2475222f35c085122be4ba1ffa00ad30f8767b3a82384c6574f024c311e2a481332b08ef7f41797891c1646f48")
+          },
+          {
+            text: "RFC 6986 example 2 - M2, 72 bytes spanning two blocks",
+            uri: "https://www.rfc-editor.org/rfc/rfc6986.txt",
+            input: OpCodes.Hex8ToBytes("d1e520e2e5f2f0e82c20d1f2f0e8e1eee6e820e2edf3f6e82c20e2e5fef2fa20f120eceef0ff20f1f2f0e5ebe0ece820ede020f5f0e0e1f0fbff20efebfaeafb20c8e3eef0e5e2fb"),
+            expected: OpCodes.Hex8ToBytes("1e88e62226bfca6f9994f1f2d51569e0daf8475a3b0fe61a5300eee46d961376035fe83549ada2b8620fcd7c496ce5b33f0cb9dddc2b6460143b03dabac9fb28")
+          },
+          {
+            text: "Botan streebog.vec - empty message",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: [],
+            expected: OpCodes.Hex8ToBytes("8e945da209aa869f0455928529bcae4679e9873ab707b55315f56ceb98bef0a7362f715528356ee83cda5f2aac4c6ad2ba3a715c1bcd81cb8e9f90bf4c1c1a8a")
+          },
+          {
+            text: "Botan streebog.vec - one byte",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("3b"),
+            expected: OpCodes.Hex8ToBytes("18ff357b3d82838113a6f34d5bedd966990959e215d6793bcaf09a007dcbcc40b141b268ec3356117914ce9da1278f824d6192ff497f7394592f5c01ec64907a")
+          },
+          {
+            text: "Botan streebog.vec - 64 bytes, exactly the block size, forcing an all-padding block",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("6277ed0cbcd95d4f45f94ac9525effda8b823da886942c662eaa25ac8cfefbc826046c5d017d96d0cbc3fa28e5f46c466432ad3b7e204eb181cba531f4f289c2"),
+            expected: OpCodes.Hex8ToBytes("04a8f7eb4feccf00281bca12576779aaa0fd81307679a76366b6ad726f4cbf0a9e16f03d435b561a25338c931750ab812cac1bfc4716de0a408fe132a7d5c9cf")
+          },
+          {
+            text: "Botan streebog.vec - 65 bytes, one over the block size",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("44d2459c2ed212173625fc921fdd05a0f2d6593515944bfc5ca37ef9b75ae3e66234d124722ba75feb698ffe11c319e53726456d9417e396928d8519a3e6898195"),
+            expected: OpCodes.Hex8ToBytes("0cbfeaf77ca3c157be6a367b0fda771ba5aa465f27c4a446fa5e23356006aa43cf2a0d1aa8803a2b85a34298ecb99936d8e4e986dce6fd698dbb097b7e3ed8ab")
+          },
+          {
+            text: "Botan streebog.vec - 127 bytes, one under two blocks",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("0079ce89a3bb7209563a1fab751a5b80e6c424b2996d241d601e255d601b81943eb05b44523f1c1b0cde018fe08dca199ab809c05b03ed281d7f4cfb16b978047695a98e7a01ff35c498c7214b9f6c401342d356fd2818036f786236d85211acdeeb7bbe7d669f168737f437d004d9783d4203213c52d178f1787efeb2ee3c"),
+            expected: OpCodes.Hex8ToBytes("a7bcd688131c97b57dedc7aebd845e0042ea9f8d3a425f11f57ddfef8eaec040e93d9219b68ab919ac4c5c5c1522ed9cbb50951bace6499e2cd0db13ff57e136")
+          },
+          {
+            text: "Botan streebog.vec - 128 bytes, an exact multiple of the block size",
+            uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/streebog.vec",
+            input: OpCodes.Hex8ToBytes("25894e39aef06148d682f48a34f100ea694e446bbf79caa7806c7c6f3f8a60a94b9c8b2877c617fead17ac576d8dafd3f8514e49825d54dc9a8916330dc560204bd795d0ce00a49ba3c25c7921381c057bc6a1abb362db79497c878321c2a71793f2bfb7ad211700fecd486241cc6197a50075560147b20b9cbe2f992f516c61"),
+            expected: OpCodes.Hex8ToBytes("b4ce87a416b83be3417ccbd7000d658acce2a5c3b57c92aa8ca3d912f20580748c2534a157b4ead16059499b9b11ae8ff07cca94a2a5a314b4ac4faaddcb0162")
+          }
+        ];
+      }
     }
 
     /**
      * Create new hash instance
      * @param {boolean} [isInverse=false] - unused, hashes have no inverse
-     * @returns {Object} New hash instance
+     * @returns {StreebogAlgorithmInstance} New hash instance, null when isInverse
      */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
@@ -513,20 +525,25 @@
    */
   class StreebogAlgorithmInstance extends IHashFunctionInstance {
     /**
-     * @param {Object} algorithm - parent algorithm
-     * @param {int} digestSize - 32 or 64 bytes
+     * @param {StreebogAlgorithm} algorithm - parent algorithm
+     * @param {int32} digestSize - 32 or 64 bytes
      */
     constructor(algorithm, digestSize) {
       super(algorithm);
+      /** @type {int32} */
       this.digestSize = digestSize;
       this.OutputSize = digestSize;
 
       // RFC 6986 section 9 step 1.1: the 512-bit variant starts from zero, the
       // 256-bit variant from a vector of 0x01 bytes.
-      this._h = new Array(STATE_SIZE).fill(digestSize === 32 ? 0x01 : 0x00);
-      this._N = new Array(STATE_SIZE).fill(0);
-      this._sigma = new Array(STATE_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this._h = OpCodes.CreateArray(STATE_SIZE, digestSize === 32 ? 0x01 : 0x00);
+      /** @type {uint8[]} */
+      this._N = OpCodes.CreateArray(STATE_SIZE, 0);
+      /** @type {uint8[]} */
+      this._sigma = OpCodes.CreateArray(STATE_SIZE, 0);
 
+      /** @type {BlockAbsorber} */
       this._absorber = new BlockAbsorber(BLOCK_SIZE, block => this._absorb(block));
     }
 
@@ -536,10 +553,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!Array.isArray(data) && !ArrayBuffer.isView(data)) {
-        throw new Error("Invalid input data - must be byte array");
-      }
-      this._absorber.Absorb(Array.from(data));
+      this._absorber.Absorb(data);
     }
 
     /**
@@ -550,54 +564,69 @@
       // Result() stays repeatable: Finish hands out a copy of the held bytes
       // without advancing the absorber, so restoring the three state vectors
       // afterwards undoes the finalization entirely.
-      const saved = [this._h, this._N, this._sigma];
+      const savedH = this._h;
+      const savedN = this._N;
+      const savedSigma = this._sigma;
       this._h = this._h.slice();
       this._N = this._N.slice();
       this._sigma = this._sigma.slice();
 
-      this._absorber.Finish((held, pending) => {
-        let rest = held;
-        let count = pending;
-
-        // A held block that is already full is an ordinary block: the absorber
-        // only keeps it back in case more data followed. Streebog then still
-        // owes a final block that is nothing but padding, which is what makes
-        // an exact multiple of the block size cost one compression more.
-        if (count === BLOCK_SIZE) {
-          this._absorb(held);
-          rest = [];
-          count = 0;
-        }
-
-        // RFC 6986 section 9 step 3.1: m = 0...0 || 1 || M
-        const m = new Array(BLOCK_SIZE).fill(0);
-        for (let i = 0; i < count; i++) m[i] = OpCodes.ToByte(rest[i]);
-        m[count] = 0x01;
-
-        this._h = RoundFunction(this._N, this._h, m);
-        this._N = Add512(this._N, Vec512(count * 8));
-        this._sigma = Add512(this._sigma, m);
-
-        // Steps 3.5 and 3.6 fold in the total length and the checksum
-        this._h = RoundFunction(ZERO512, this._h, this._N);
-        this._h = RoundFunction(ZERO512, this._h, this._sigma);
-      });
+      this._absorber.Finish((held, pending) => this._finish(held, pending));
 
       // The 256-bit variant keeps the most significant half of the state,
       // which is the upper end of the index range in this byte order.
       const digest = this._h.slice(STATE_SIZE - this.digestSize, STATE_SIZE);
 
-      this._h = saved[0];
-      this._N = saved[1];
-      this._sigma = saved[2];
+      this._h = savedH;
+      this._N = savedN;
+      this._sigma = savedSigma;
       return digest;
+    }
+
+    /**
+     * Pad the held bytes and fold in the length and the checksum.
+     * @param {uint8[]} held - bytes held back by the absorber
+     * @param {int32} pending - how many of them are valid
+     * @returns {void}
+     */
+    _finish(held, pending) {
+      /** @type {uint8[]} */
+      let rest = held;
+      /** @type {int32} */
+      let count = pending;
+
+      // A held block that is already full is an ordinary block: the absorber
+      // only keeps it back in case more data followed. Streebog then still
+      // owes a final block that is nothing but padding, which is what makes
+      // an exact multiple of the block size cost one compression more.
+      if (count === BLOCK_SIZE) {
+        this._absorb(held);
+        rest = [];
+        count = 0;
+      }
+
+      // RFC 6986 section 9 step 3.1: m = 0...0 || 1 || M
+      /** @type {uint8[]} */
+      const m = OpCodes.CreateArray(BLOCK_SIZE, 0);
+      for (let i = 0; i < count; i++) m[i] = OpCodes.ToByte(rest[i]);
+      m[count] = 0x01;
+
+      this._h = RoundFunction(this._N, this._h, m);
+      this._N = Add512(this._N, Vec512(count * 8));
+      this._sigma = Add512(this._sigma, m);
+
+      // Steps 3.5 and 3.6 fold in the total length and the checksum
+      this._h = RoundFunction(ZERO512, this._h, this._N);
+      this._h = RoundFunction(ZERO512, this._h, this._sigma);
     }
 
     /**
      * Absorb one full 512-bit message block.
      * @param {uint8[]} block - exactly 64 bytes
+     * @returns {void}
      */
     _absorb(block) {
+      /** @type {uint8[]} */
       const m = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) m[i] = OpCodes.ToByte(block[i]);
       this._h = RoundFunction(this._N, this._h, m);

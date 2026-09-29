@@ -40,43 +40,61 @@
           HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, Vulnerability } = AlgorithmFramework;
 
   // GOST 28147-89 D-A S-box (used for hash function)
+  /** @type {uint8[][]} */
   const GOST_SBOX_DA = [
-    [0xA,0x4,0x5,0x6,0x8,0x1,0x3,0x7,0xD,0xC,0xE,0x0,0x9,0x2,0xB,0xF],
-    [0x5,0xF,0x4,0x0,0x2,0xD,0xB,0x9,0x1,0x7,0x6,0x3,0xC,0xE,0xA,0x8],
-    [0x7,0xF,0xC,0xE,0x9,0x4,0x1,0x0,0x3,0xB,0x5,0x2,0x6,0xA,0x8,0xD],
-    [0x4,0xA,0x7,0xC,0x0,0xF,0x2,0x8,0xE,0x1,0x6,0x5,0xD,0xB,0x9,0x3],
-    [0x7,0x6,0x4,0xB,0x9,0xC,0x2,0xA,0x1,0x8,0x0,0xE,0xF,0xD,0x3,0x5],
-    [0x7,0x6,0x2,0x4,0xD,0x9,0xF,0x0,0xA,0x1,0x5,0xB,0x8,0xE,0xC,0x3],
-    [0xD,0xE,0x4,0x1,0x7,0x0,0x5,0xA,0x3,0xC,0x8,0xF,0x6,0x2,0x9,0xB],
-    [0x1,0x3,0xA,0x9,0x5,0xB,0x4,0xF,0x8,0x6,0x7,0xE,0xD,0x0,0x2,0xC]
+    OpCodes.Hex8ToBytes("0A040506080103070D0C0E0009020B0F"),
+    OpCodes.Hex8ToBytes("050F0400020D0B09010706030C0E0A08"),
+    OpCodes.Hex8ToBytes("070F0C0E09040100030B0502060A080D"),
+    OpCodes.Hex8ToBytes("040A070C000F02080E0106050D0B0903"),
+    OpCodes.Hex8ToBytes("0706040B090C020A0108000E0F0D0305"),
+    OpCodes.Hex8ToBytes("070602040D090F000A01050B080E0C03"),
+    OpCodes.Hex8ToBytes("0D0E04010700050A030C080F0602090B"),
+    OpCodes.Hex8ToBytes("01030A09050B040F0806070E0D00020C")
   ];
 
   // Constant C[2] from GOST R 34.11-94 specification
-  const C2 = [
-    0x00,0xFF,0x00,0xFF,0x00,0xFF,0x00,0xFF,
-    0xFF,0x00,0xFF,0x00,0xFF,0x00,0xFF,0x00,
-    0x00,0xFF,0xFF,0x00,0xFF,0x00,0x00,0xFF,
-    0xFF,0x00,0x00,0x00,0xFF,0xFF,0x00,0xFF
-  ];
+  /** @type {uint8[]} */
+  const C2 = OpCodes.Hex8ToBytes(
+    "00FF00FF00FF00FF" +
+    "FF00FF00FF00FF00" +
+    "00FFFF00FF0000FF" +
+    "FF000000FFFF00FF"
+  );
 
-  // GOST 28147-89 round function with D-A S-box
+  /**
+   * GOST 28147-89 round function with D-A S-box
+   * @param {uint32} data - right half
+   * @param {uint32} key - subkey
+   * @param {uint8[][]} sBox - eight 16-entry nibble S-boxes
+   * @returns {uint32} f(data, key)
+   */
   function gostRound(data, key, sBox) {
     const sum = OpCodes.Add32(data, key);
 
     // Unpack into bytes
-    const [b0, b1, b2, b3] = OpCodes.Unpack32LE(sum);
+    const bytes = OpCodes.Unpack32LE(sum);
+    const b0 = bytes[0];
+    const b1 = bytes[1];
+    const b2 = bytes[2];
+    const b3 = bytes[3];
 
     // S-box substitution (split each byte into nibbles)
-    const s0 = sBox[0][b0&0x0F]|OpCodes.Shl32(sBox[1][OpCodes.Shr32(b0, 4)], 4);
-    const s1 = sBox[2][b1&0x0F]|OpCodes.Shl32(sBox[3][OpCodes.Shr32(b1, 4)], 4);
-    const s2 = sBox[4][b2&0x0F]|OpCodes.Shl32(sBox[5][OpCodes.Shr32(b2, 4)], 4);
-    const s3 = sBox[6][b3&0x0F]|OpCodes.Shl32(sBox[7][OpCodes.Shr32(b3, 4)], 4);
+    const s0 = OpCodes.Or8(sBox[0][OpCodes.And8(b0, 0x0F)], OpCodes.Shl8(sBox[1][OpCodes.Shr8(b0, 4)], 4));
+    const s1 = OpCodes.Or8(sBox[2][OpCodes.And8(b1, 0x0F)], OpCodes.Shl8(sBox[3][OpCodes.Shr8(b1, 4)], 4));
+    const s2 = OpCodes.Or8(sBox[4][OpCodes.And8(b2, 0x0F)], OpCodes.Shl8(sBox[5][OpCodes.Shr8(b2, 4)], 4));
+    const s3 = OpCodes.Or8(sBox[6][OpCodes.And8(b3, 0x0F)], OpCodes.Shl8(sBox[7][OpCodes.Shr8(b3, 4)], 4));
 
     const result = OpCodes.Pack32LE(s0, s1, s2, s3);
     return OpCodes.RotL32(result, 11);
   }
 
-  // GOST 28147-89 encryption (ECB mode, single block)
+  /**
+   * GOST 28147-89 encryption (ECB mode, single block)
+   * @param {uint32[]} key - eight subkeys
+   * @param {uint8[]} input - 8-byte block
+   * @param {uint8[][]} sBox - eight 16-entry nibble S-boxes
+   * @returns {uint8[]} 8-byte ciphertext
+   */
   function gostEncrypt(key, input, sBox) {
     let n1 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
     let n2 = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
@@ -97,6 +115,7 @@
       n2 = temp;
     }
 
+    /** @type {uint8[]} */
     const output = new Array(8);
     const bytes1 = OpCodes.Unpack32LE(n2);
     const bytes2 = OpCodes.Unpack32LE(n1);
@@ -126,6 +145,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.RU;
 
+      /** @type {int32[]} */
       this.SupportedHashSizes = [32]; // 256 bits
 
       this.documentation = [
@@ -182,9 +202,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Hashes have no inverse
+   * @returns {GOST3411Instance} New hash instance, null when isInverse
    */
 
     CreateInstance(isInverse = false) {
@@ -197,59 +217,76 @@
   }
 
   /**
- * GOST3411 cipher instance implementing Feed/Result pattern
+ * GOST3411 hash instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class GOST3411Instance extends IHashFunctionInstance {
+    /**
+     * @param {GOST3411Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
       this.OutputSize = 32; // 256 bits
+
+      /** @type {uint8[]} Hash state */
+      this.H = [];
+      /** @type {uint8[]} Length */
+      this.L = [];
+      /** @type {uint8[]} Message block */
+      this.M = [];
+      /** @type {uint8[]} Sum of all message blocks */
+      this.Sum = [];
+      /** @type {uint8[][]} Constants C[0], C[1], C[2], C[3] */
+      this.C = null;
+      /** @type {uint8[]} */
+      this.xBuf = [];
+      /** @type {int32} */
+      this.xBufOff = 0;
+      /** @type {int32} */
+      this.byteCount = 0;
+
       this._Reset();
     }
 
+    /**
+     * Zero the state and reload the constants
+     * @returns {void}
+     */
     _Reset() {
       // State variables
-      this.H = new Array(32);   // Hash state
-      this.L = new Array(32);   // Length
-      this.M = new Array(32);   // Message block
-      this.Sum = new Array(32); // Sum of all message blocks
+      this.H = OpCodes.CreateArray(32, 0);
+      this.L = OpCodes.CreateArray(32, 0);
+      this.M = OpCodes.CreateArray(32, 0);
+      this.Sum = OpCodes.CreateArray(32, 0);
 
-      // Constants C[0], C[1], C[2], C[3]
-      this.C = [
-        new Array(32), // C[0] - all zeros
-        new Array(32), // C[1] - all zeros
-        new Array(32), // C[2] - defined constant
-        new Array(32)  // C[3] - all zeros
+      // Constants C[0], C[1], C[3] are all zeros, C[2] is the defined constant
+      /** @type {uint8[][]} */
+      const constants = [
+        OpCodes.CreateArray(32, 0),
+        OpCodes.CreateArray(32, 0),
+        C2.slice(),
+        OpCodes.CreateArray(32, 0)
       ];
+      this.C = constants;
 
-      this.xBuf = new Array(32);
+      this.xBuf = OpCodes.CreateArray(32, 0);
       this.xBufOff = 0;
       this.byteCount = 0;
-
-      // Initialize all arrays to zero
-      for (let i = 0; i < 32; ++i) {
-        this.H[i] = 0;
-        this.L[i] = 0;
-        this.M[i] = 0;
-        this.Sum[i] = 0;
-        this.C[0][i] = 0;
-        this.C[1][i] = 0;
-        this.C[2][i] = C2[i];
-        this.C[3][i] = 0;
-        this.xBuf[i] = 0;
-      }
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Initialize() {
       this._Reset();
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the hash
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -269,9 +306,8 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Finish the message and return the digest (the instance then restarts)
+   * @returns {uint8[]} 32-byte digest
    */
 
     Result() {
@@ -287,8 +323,13 @@
       return result;
     }
 
-    // Permutation function P
+    /**
+     * Permutation function P
+     * @param {uint8[]} input - 32 bytes
+     * @returns {uint8[]} 32 bytes
+     */
     _P(input) {
+      /** @type {uint8[]} */
       const K = new Array(32);
       for (let k = 0; k < 8; ++k) {
         K[4*k]     = input[k];
@@ -299,14 +340,19 @@
       return K;
     }
 
-    // Transformation function A
+    /**
+     * Transformation function A, in place
+     * @param {uint8[]} input - 32 bytes, updated
+     * @returns {uint8[]} input
+     */
     _A(input) {
+      /** @type {uint8[]} */
       const a = new Array(8);
       for (let j = 0; j < 8; ++j) {
-        a[j] = OpCodes.ToByte(input[j]^input[j+8]);
+        a[j] = OpCodes.Xor8(input[j], input[j+8]);
       }
 
-      // Shift: x0||x1||x2||x3 -> x1||x2||x3||(x0^x1)
+      // Shift: x0||x1||x2||x3 -> x1||x2||x3||(x0 xor x1)
       for (let i = 0; i < 24; ++i) {
         input[i] = input[i+8];
       }
@@ -317,9 +363,18 @@
       return input;
     }
 
-    // Encryption function E (GOST 28147-89 with D-A S-box)
+    /**
+     * Encryption function E (GOST 28147-89 with D-A S-box)
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint8[]} s - output buffer
+     * @param {int32} sOff - output offset
+     * @param {uint8[]} h - input buffer
+     * @param {int32} hOff - input offset
+     * @returns {void}
+     */
     _E(key, s, sOff, h, hOff) {
       // Expand key to 8 subkeys (32-bit words)
+      /** @type {uint32[]} */
       const subkeys = new Array(8);
       for (let i = 0; i < 8; ++i) {
         const offset = i * 4;
@@ -327,6 +382,7 @@
       }
 
       // Prepare input block
+      /** @type {uint8[]} */
       const inputBlock = new Array(8);
       for (let i = 0; i < 8; ++i) {
         inputBlock[i] = h[hOff + i];
@@ -341,22 +397,28 @@
       }
     }
 
-    // Mixing function fw (16-bit word transformation)
+    /**
+     * Mixing function fw (16-bit word transformation), in place
+     * @param {uint8[]} input - 32 bytes, updated
+     * @returns {void}
+     */
     _fw(input) {
       // Convert bytes to 16-bit words (little-endian)
+      /** @type {uint16[]} */
       const wS = new Array(16);
       for (let i = 0; i < 16; ++i) {
         wS[i] = OpCodes.Pack16LE(input[i*2], input[i*2+1]);
       }
 
-      // Apply transformation: w[15] = w[0]^w[1]^w[2]^w[3]^w[12]^w[15]
+      // Apply transformation: w[15] = w[0] xor w[1] xor w[2] xor w[3] xor w[12] xor w[15]
+      /** @type {uint16[]} */
       const w_S = new Array(16);
-      const xor1 = wS[0]^wS[1];
-      const xor2 = xor1^wS[2];
-      const xor3 = xor2^wS[3];
-      const xor4 = xor3^wS[12];
-      const xor5 = xor4^wS[15];
-      w_S[15] = xor5&0xFFFF;
+      const xor1 = OpCodes.Xor16(wS[0], wS[1]);
+      const xor2 = OpCodes.Xor16(xor1, wS[2]);
+      const xor3 = OpCodes.Xor16(xor2, wS[3]);
+      const xor4 = OpCodes.Xor16(xor3, wS[12]);
+      const xor5 = OpCodes.Xor16(xor4, wS[15]);
+      w_S[15] = xor5;
 
       // Shift: w[i] = w[i+1] for i=0..14
       for (let i = 0; i < 15; ++i) {
@@ -371,7 +433,12 @@
       }
     }
 
-    // Block processing (core hash compression function)
+    /**
+     * Block processing (core hash compression function)
+     * @param {uint8[]} input - message bytes
+     * @param {int32} inOff - offset of the 32-byte block
+     * @returns {void}
+     */
     _processBlock(input, inOff) {
       // Copy message block
       for (let i = 0; i < 32; ++i) {
@@ -379,9 +446,13 @@
       }
 
       // Working variables
+      /** @type {uint8[]} */
       const U = new Array(32);
+      /** @type {uint8[]} */
       const V = new Array(32);
+      /** @type {uint8[]} */
       const W = new Array(32);
+      /** @type {uint8[]} */
       const S = new Array(32);
 
       // Initialize U = H, V = M
@@ -394,7 +465,7 @@
       for (let i = 0; i < 4; ++i) {
         // W = U XOR V
         for (let j = 0; j < 32; ++j) {
-          W[j] = OpCodes.ToByte(U[j]^V[j]);
+          W[j] = OpCodes.Xor8(U[j], V[j]);
         }
 
         // K = P(W)
@@ -407,7 +478,7 @@
           // U = A(U) XOR C[i+1]
           this._A(U);
           for (let j = 0; j < 32; ++j) {
-            U[j] = OpCodes.ToByte(U[j]^this.C[i+1][j]);
+            U[j] = OpCodes.Xor8(U[j], this.C[i+1][j]);
           }
 
           // V = A(A(V))
@@ -425,7 +496,7 @@
 
       // S = S XOR M
       for (let n = 0; n < 32; ++n) {
-        S[n] = OpCodes.ToByte(S[n]^this.M[n]);
+        S[n] = OpCodes.Xor8(S[n], this.M[n]);
       }
 
       // Apply y to S
@@ -433,7 +504,7 @@
 
       // S = H XOR S
       for (let n = 0; n < 32; ++n) {
-        S[n] = OpCodes.ToByte(this.H[n]^S[n]);
+        S[n] = OpCodes.Xor8(this.H[n], S[n]);
       }
 
       // Apply y^61 to S
@@ -447,21 +518,30 @@
       }
     }
 
-    // 256-bit modular addition
+    /**
+     * 256-bit modular addition into Sum
+     * @param {uint8[]} input - 32 bytes
+     * @returns {void}
+     */
     _sumByteArray(input) {
+      /** @type {uint32} */
       let carry = 0;
       for (let i = 0; i < 32; ++i) {
-        const sum = OpCodes.ToByte(this.Sum[i]) + OpCodes.ToByte(input[i]) + carry;
+        const sum = OpCodes.Add32(OpCodes.Add32(OpCodes.ToByte(this.Sum[i]), OpCodes.ToByte(input[i])), carry);
         this.Sum[i] = OpCodes.ToByte(sum);
         // Extract carry (upper byte of 9-bit sum)
-        carry = Math.floor(sum / 256);
+        carry = OpCodes.Shr32(sum, 8);
       }
     }
 
-    // Finalization
+    /**
+     * Finalization: pad, then fold in the length and the checksum
+     * @returns {void}
+     */
     _finish() {
-      // Encode length as 256-bit little-endian
-      const bitCount = this.byteCount * 8;
+      // Encode length as 256-bit little-endian; the bit count is kept to its
+      // low 32 bits, exactly as Unpack32LE reduced it before
+      const bitCount = OpCodes.Shl32(this.byteCount, 3);
 
       // Store bit count in L (little-endian, 64-bit is enough for practical purposes)
       for (let i = 0; i < 32; ++i) {
