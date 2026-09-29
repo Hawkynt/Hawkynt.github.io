@@ -47,9 +47,19 @@
   const STEPS = 64;
 
   // 32-bit modular multiply (low word).
-  function mul32(a, b) { return OpCodes.ToUint32(Math.imul(a, b)); }
+  /**
+   * @param {uint32} a - Factor
+   * @param {uint32} b - Factor
+   * @returns {uint32} Low 32 bits of the product
+   */
+  function mul32(a, b) { return OpCodes.Mul32(a, b); }
 
   // Round mixing function f(x,S) = S*(~(x<<7)) + ( (x>>>16) ^ ((x<<25) + S) )
+  /**
+   * @param {uint32} x - Input word
+   * @param {uint32} S - Step subkey
+   * @returns {uint32} Mixed word
+   */
   function mix(x, S) {
     const notShift = OpCodes.Not32(OpCodes.Shl32(x, 7));
     const t1 = mul32(S, notShift);
@@ -173,8 +183,12 @@
 
     // Sixteen 32-bit little-endian key words; index 16 is a per-session counter,
     // which is always 0 for a freshly keyed single block.
+    /**
+     * @returns {uint32[]} Seventeen key words
+     */
     _keyWords() {
       const k = this._key;
+      /** @type {uint32[]} */
       const K = [];
       for (let i = 0; i < 16; i++)
         K.push(OpCodes.Pack32LE(k[i * 4], k[i * 4 + 1], k[i * 4 + 2], k[i * 4 + 3]));
@@ -183,7 +197,13 @@
     }
 
     // Subkey for step r (session counter fixed at 0): S = K[m]*r + K[m+1], m = r & 15
+    /**
+     * @param {uint32[]} K - Key words
+     * @param {int32} r - Step index
+     * @returns {uint32} Step subkey
+     */
     _subkey(K, r) {
+      /** @type {int32} */
       const m = OpCodes.And32(r, 0xF);
       const kNext = (m + 1 <= 15) ? K[m + 1] : 0; // K[16] is the counter (0)
       return OpCodes.ToUint32(mul32(K[m], r) + kNext);
