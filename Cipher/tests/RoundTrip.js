@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /*
- * Round-trip test suite
+ * Round-trip checks (the ROUNDTRIP category of tests/TestSuite.js)
  * (c)2006-2025 Hawkynt
  *
  * TestSuite.js validates each algorithm against its own committed vectors. Those
@@ -28,19 +27,21 @@
  * fail, so throwing unconditionally cannot be used to pass.
  *
  * Tiers:
- *   (default)   adversarial corpus, small inputs, every algorithm
- *   --large     additionally push 1 MB through each algorithm
- *   --interop   additionally check the formats that have a reference
- *               implementation available (node zlib, bzip2) in BOTH directions
+ *   (always)      adversarial corpus, small inputs, every algorithm in scope
+ *   (always)      interoperability: the formats that have a reference
+ *                 implementation available (node zlib, bzip2) are checked in
+ *                 BOTH directions; reported, never failing the run
+ *   --large       additionally push 1 MB through each algorithm
+ *   --large-size  the same with another size (e.g. --large-size=8M)
+ *   --budget=ms   time per algorithm for the small corpus (default 5000)
  *
  * Usage:
- *   node tests/RoundTripSuite.js
- *   node tests/RoundTripSuite.js --category compression
- *   node tests/RoundTripSuite.js --algorithm "LZ77"
- *   node tests/RoundTripSuite.js --large --interop
- *   node tests/RoundTripSuite.js --budget 5000      # ms per algorithm
+ *   node tests/TestSuite.js --only=roundtrip
+ *   node tests/TestSuite.js --only=roundtrip --category=compression
+ *   node tests/TestSuite.js --only=roundtrip --large
  *
- * Exits non-zero when any algorithm fails, so it can gate CI.
+ * Run from TestSuite, which loads each algorithm file once for all categories.
+ * Run directly, this file is only the child process of the large tier.
  */
 
 'use strict';
@@ -74,24 +75,7 @@ function parseSize(text) {
   return size;
 }
 
-function parseArgs(argv) {
-  const options = { category: null, algorithm: null, large: false, largeSize: DEFAULT_LARGE_SIZE, interop: false, budget: 5000, verbose: false };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--large') options.large = true;
-    else if (arg === '--large-size') { options.large = true; options.largeSize = parseSize(argv[++i]); }
-    else if (arg.startsWith('--large-size=')) { options.large = true; options.largeSize = parseSize(arg.slice(13)); }
-    else if (arg === '--interop') options.interop = true;
-    else if (arg === '--verbose') options.verbose = true;
-    else if (arg === '--category') options.category = argv[++i];
-    else if (arg === '--algorithm') options.algorithm = argv[++i];
-    else if (arg === '--budget') options.budget = Number(argv[++i]);
-    else if (arg.startsWith('--category=')) options.category = arg.slice(11);
-    else if (arg.startsWith('--algorithm=')) options.algorithm = arg.slice(12);
-    else if (arg.startsWith('--budget=')) options.budget = Number(arg.slice(9));
-  }
-  return options;
-}
+const DEFAULT_BUDGET_MS = 5000;
 
 //#endregion
 
@@ -233,18 +217,18 @@ function describeSize(bytes) {
 
 //#region ===== harness =====
 
-let TestEngine = null;
+// Configuration has to match TestVector's exactly, so it is taken from the
+// engine rather than reimplemented. A cipher mode with no block cipher, or XTS
+// with no tweak, refuses everything, and a sweep that configured them itself
+// reported 18 of 27 working modes as broken.
+const TestEngine = require('./TestEngine.js');
 
+/** Child process of the large tier only: load the whole collection itself. */
 function loadAlgorithms() {
   const AlgorithmFramework = require(path.join(CIPHER_ROOT, 'AlgorithmFramework.js'));
   const OpCodes = require(path.join(CIPHER_ROOT, 'OpCodes.js'));
   global.AlgorithmFramework = AlgorithmFramework;
   global.OpCodes = OpCodes;
-  // Configuration has to match TestVector's exactly, so it is taken from the
-  // engine rather than reimplemented. A cipher mode with no block cipher, or XTS
-  // with no tweak, refuses everything, and a sweep that configured them itself
-  // reported 18 of 27 working modes as broken.
-  TestEngine = require('./TestEngine.js');
 
   const algorithmRoot = path.join(CIPHER_ROOT, 'algorithms');
   for (const category of fs.readdirSync(algorithmRoot).sort()) {
@@ -279,7 +263,7 @@ function firstVector(algorithm) {
  */
 function makeInstance(algorithm, inverse, vector, dataLength) {
   const instance = algorithm.CreateInstance(inverse);
-  if (TestEngine) TestEngine.ConfigureInstance(algorithm, instance, vector);
+  TestEngine.ConfigureInstance(algorithm, instance, vector);
   // Random padding is explicit that it stores no length and cannot be removed
   // without being told the original one. Supplying it is what a caller has to do,
   // not a concession: withholding it only tests that it complains.
@@ -585,11 +569,9 @@ function checkCompression(algorithm, samples) {
 
 //#endregion
 
-function selectAlgorithms(algorithms, options) {
+function selectAlgorithms(algorithms) {
   return algorithms
     .filter(a => a.category && REVERSIBLE_CATEGORIES.has(a.category.name))
-    .filter(a => !options.category || (a.category.name.toLowerCase().includes(options.category.toLowerCase())))
-    .filter(a => !options.algorithm || a.name.toLowerCase().includes(options.algorithm.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -636,7 +618,7 @@ function interopTargets() {
   return targets.filter(t => t.available);
 }
 
-function runInterop(algorithms, options) {
+function runInterop(algorithms) {
   const samples = [
     ['text', [...Buffer.from('the quick brown fox jumps over the lazy dog. '.repeat(8))]],
     ['repeated', new Array(512).fill(0x61)],
@@ -672,23 +654,19 @@ function runInterop(algorithms, options) {
 
 //#endregion
 
-function main() {
-  // Child mode for the large tier: one algorithm, one process, then exit. The size
-  // is passed rather than shared, because the child rebuilds the corpus itself.
-  if (process.argv[2] === '--large-one') {
-    process.exitCode = runLargeOne(loadAlgorithms(), process.argv[3], Number(process.argv[4]) || DEFAULT_LARGE_SIZE);
-    return;
-  }
+/**
+ * ROUNDTRIP: drive every reversible algorithm in scope through the corpus.
+ * @param {object} context - { algorithms, verbose, options: { large, largeSize, budget } }
+ * @returns {object} { passed, failed, detail }
+ */
+function run(context) {
+  const options = Object.assign({ large: false, largeSize: DEFAULT_LARGE_SIZE, budget: DEFAULT_BUDGET_MS },
+    context.options, { verbose: context.verbose });
+  const algorithms = context.algorithms;
+  const selected = selectAlgorithms(algorithms);
 
-  const options = parseArgs(process.argv.slice(2));
-  const algorithms = loadAlgorithms();
-  const selected = selectAlgorithms(algorithms, options);
-
-  console.log('Round-trip suite');
-  console.log('================\n');
   console.log(`${selected.length} reversible algorithm(s); budget ${options.budget}ms each`
-    + `${options.large ? `; +${describeSize(options.largeSize)} tier` : ''}`
-    + `${options.interop ? '; +interoperability tier' : ''}\n`);
+    + `${options.large ? `; +${describeSize(options.largeSize)} tier` : ''}; +interoperability tier\n`);
 
   const corpus = buildCorpus();
 
@@ -784,17 +762,22 @@ function main() {
     console.log(`\n${largeFailures} algorithm(s) failed at ${describeSize(options.largeSize)}`);
   }
 
-  let interopFailures = 0;
-  if (options.interop) {
+  // Interoperability is reported but never fails the run: several algorithms
+  // deliberately do not claim bitstream compatibility with the format they are
+  // named after, and say so in their description.
+  let interopChecked = 0, interopFailures = 0;
+  const interop = runInterop(algorithms);
+  if (interop.some(result => result.status !== 'absent')) {
     console.log('\nInteroperability with reference implementations');
     console.log('----------------------------------------------');
-    for (const result of runInterop(algorithms, options)) {
+    for (const result of interop) {
       if (result.status === 'absent') { console.log(`  skip           ${result.algorithm} (not registered)`); continue; }
       const label = result.status === 'interoperable' ? 'interoperable'
         : result.status === 'partial' ? 'partial      ' : 'incompatible ';
       console.log(`  ${label}  ${result.algorithm}  [${result.reference}]`
         + `  decode-theirs ${result.readsReference}/${result.total}, they-decode-ours ${result.referenceReadsOurs}/${result.total}`);
       result.notes.slice(0, 2).forEach(n => console.log(`        ${n}`));
+      interopChecked++;
       if (result.status !== 'interoperable') interopFailures++;
     }
   }
@@ -807,9 +790,22 @@ function main() {
     console.log('\nAn algorithm that round-trips but never shrinks redundant input is not');
     console.log('implementing its algorithm - it is storing the input and passing the test.');
     console.log('If it genuinely is a transform or a code for a narrow domain, declare that');
-    console.log('by adding it to RUN_EXEMPT or PATTERN_EXEMPT above, with the reason.');
+    console.log('by adding it to RUN_EXEMPT or PATTERN_EXEMPT in tests/RoundTrip.js, with the reason.');
   }
-  process.exitCode = (failed.length || notCompressing.length || largeFailures) ? 1 : 0;
+
+  return {
+    passed,
+    failed: failed.length + notCompressing.length + largeFailures,
+    detail: `${failed.length} corrupt, ${notCompressing.length} not compressing, ${slow.length} too slow to finish, `
+      + `${restricted.length} restricted domain, ${exempt.length} exempt`
+      + (options.large ? `; ${largeFailures} failed at ${describeSize(options.largeSize)}` : '')
+      + (interopChecked ? `; interop ${interopChecked - interopFailures}/${interopChecked} interoperable` : '')
+  };
 }
 
-main();
+// Child process of the large tier: one algorithm, one process, then exit. The
+// size is passed rather than shared, because the child rebuilds the corpus itself.
+if (require.main === module && process.argv[2] === '--large-one')
+  process.exitCode = runLargeOne(loadAlgorithms(), process.argv[3], Number(process.argv[4]) || DEFAULT_LARGE_SIZE);
+
+module.exports = { run, parseSize, DEFAULT_LARGE_SIZE, DEFAULT_BUDGET_MS };
