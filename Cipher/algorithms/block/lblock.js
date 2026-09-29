@@ -40,6 +40,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // 10 S-boxes (4-bit to 4-bit substitution) from LBlock specification
+  /** @type {uint8[][]} */
   const SBOX = [
     [14, 9, 15, 0, 13, 4, 10, 11, 1, 2, 8, 3, 7, 6, 12, 5],     // S0
     [4, 11, 14, 9, 15, 13, 0, 10, 7, 12, 5, 6, 2, 8, 1, 3],     // S1
@@ -54,8 +55,14 @@
   ];
 
   // Key schedule - matches kmarquet/bloc C implementation
+  /**
+   * @param {uint8[]} key - 10-byte key register, least significant byte first
+   * @returns {uint8[][]} 32 round keys of 4 bytes
+   */
   function keySchedule(key) {
+    /** @type {uint8[][]} */
     const roundKeys = [];
+    /** @type {uint8[]} */
     const k = new Array(10); // 10 bytes (80 bits)
 
     // Copy initial key
@@ -97,16 +104,22 @@
   }
 
   // F function for round transformation
+  /**
+   * @param {uint8[]} rightHalf - 4 bytes
+   * @param {uint8[]} roundKey - 4 bytes
+   * @returns {uint8[]} 4 bytes
+   */
   function fFunction(rightHalf, roundKey) {
     // rightHalf is 4 bytes (32 bits)
     // roundKey is 4 bytes (32 bits)
 
     // Step 1: Key addition - XOR with round key
+    /** @type {uint8[]} */
     const tmp = new Array(4);
-    tmp[0] = OpCodes.XorN(rightHalf[0], roundKey[0]);
-    tmp[1] = OpCodes.XorN(rightHalf[1], roundKey[1]);
-    tmp[2] = OpCodes.XorN(rightHalf[2], roundKey[2]);
-    tmp[3] = OpCodes.XorN(rightHalf[3], roundKey[3]);
+    tmp[0] = OpCodes.Xor32(rightHalf[0], roundKey[0]);
+    tmp[1] = OpCodes.Xor32(rightHalf[1], roundKey[1]);
+    tmp[2] = OpCodes.Xor32(rightHalf[2], roundKey[2]);
+    tmp[3] = OpCodes.Xor32(rightHalf[3], roundKey[3]);
 
     // Step 2: S-box substitution (2 S-boxes per byte)
     // Each byte: high nibble uses odd S-box, low nibble uses even S-box
@@ -116,6 +129,7 @@
     tmp[3] = OpCodes.Xor32(OpCodes.Shl8(SBOX[7][OpCodes.And32(OpCodes.Shr8(tmp[3], 4), 0x0F)], 4), SBOX[6][OpCodes.And32(tmp[3], 0x0F)]);
 
     // Step 3: P-layer permutation (inline nibble swapping and XOR)
+    /** @type {uint8[]} */
     const t = new Array(4);
     t[0] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr8(tmp[0], 4), 0x0F), OpCodes.And32(tmp[1], 0xF0));
     t[1] = OpCodes.Xor32(OpCodes.And32(tmp[0], 0x0F), OpCodes.Shl8(OpCodes.And32(tmp[1], 0x0F), 4));
@@ -208,6 +222,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 
@@ -315,6 +330,10 @@
       return x.reverse();
     }
 
+    /**
+     * @param {uint8[]} x - 8-byte state, updated in place
+     * @param {uint8[]} k - 4-byte round key
+     */
     oneRound(x, k) {
       // Apply F function to right half (x[4..7])
       const t = fFunction([x[4], x[5], x[6], x[7]], k);
@@ -322,10 +341,10 @@
       // XOR with left half with LEFT rotation
       // Left half rotation: x[0],x[1],x[2],x[3] → x[3],x[0],x[1],x[2]
       const tmp = [
-        OpCodes.XorN(x[3], t[0]),
-        OpCodes.XorN(x[0], t[1]),
-        OpCodes.XorN(x[1], t[2]),
-        OpCodes.XorN(x[2], t[3])
+        OpCodes.Xor32(x[3], t[0]),
+        OpCodes.Xor32(x[0], t[1]),
+        OpCodes.Xor32(x[1], t[2]),
+        OpCodes.Xor32(x[2], t[3])
       ];
 
       // Update left half
@@ -335,16 +354,20 @@
       x[3] = tmp[3];
     }
 
+    /**
+     * @param {uint8[]} x - 8-byte state, updated in place
+     * @param {uint8[]} k - 4-byte round key
+     */
     oneRoundInv(x, k) {
       // Apply F function to right half (x[4..7])
       const t = fFunction([x[4], x[5], x[6], x[7]], k);
 
       // XOR with left half (no rotation in decrypt)
       const tmp = [
-        OpCodes.XorN(x[0], t[0]),
-        OpCodes.XorN(x[1], t[1]),
-        OpCodes.XorN(x[2], t[2]),
-        OpCodes.XorN(x[3], t[3])
+        OpCodes.Xor32(x[0], t[0]),
+        OpCodes.Xor32(x[1], t[1]),
+        OpCodes.Xor32(x[2], t[2]),
+        OpCodes.Xor32(x[3], t[3])
       ];
 
       // Update left half with RIGHT rotation
@@ -355,6 +378,9 @@
       x[3] = tmp[0];
     }
 
+    /**
+     * @param {uint8[]} x - 8-byte state, halves swapped in place
+     */
     swap(x) {
       // Swap left and right halves
       const tmp = [x[0], x[1], x[2], x[3]];
