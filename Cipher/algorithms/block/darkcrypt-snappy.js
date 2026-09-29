@@ -93,6 +93,10 @@
   // Computes the byte XORed into block[i] during round r; reads every other byte of block.
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - 16-byte key
+   * @param {int32} r - Round index (0..15)
+   * @param {int32} i - Byte position (0..7)
+   * @returns {uint8} Byte to XOR into block[i]
    */
   function mix(block, key, r, i) {
     let ah = SBOX[r * 8 + i];
