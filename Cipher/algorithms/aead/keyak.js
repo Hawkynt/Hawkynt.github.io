@@ -46,14 +46,17 @@
           AeadAlgorithm, IAeadInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Keccak-p round constants (for rounds 12-23, used in 12-round variant)
-  const RC = Object.freeze([
+  /** @type {uint32[][]} */
+  const RC_ROWS = [
     [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
     [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
     [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x8000000a, 0x00000000],
     [0x8000808b, 0x00000000], [0x0000008b, 0x80000000], [0x00008089, 0x80000000], [0x00008003, 0x80000000],
     [0x00008002, 0x80000000], [0x00000080, 0x80000000], [0x0000800a, 0x00000000], [0x8000000a, 0x80000000],
     [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000]
-  ]);
+  ];
+  /** @type {uint32[][]} */
+  const RC = Object.freeze(RC_ROWS);
 
   /** @type {uint8[]} */
   const RHO_OFFSETS = [
@@ -62,48 +65,76 @@
   ];
 
   // 64-bit XOR operation
+  /**
+   * @param {uint32[]} a
+   * @param {uint32[]} b
+   * @returns {uint32[]}
+   */
   function xor64(a, b) {
-    return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])];
+    /** @type {uint32[]} */
+    const lane = [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])];
+    return lane;
   }
 
   // 64-bit rotation (left)
+  /**
+   * @param {uint32[]} val
+   * @param {int32} positions
+   * @returns {uint32[]}
+   */
   function rotl64(val, positions) {
-    const [low, high] = val;
+    /** @type {uint32} */
+    const low = val[0];
+    /** @type {uint32} */
+    const high = val[1];
     positions %= 64;
-    if (positions === 0) return [low, high];
-    if (positions === 32) return [high, low];
+    /** @type {uint32[]} */
+    let lane = [low, high];
+    if (positions === 0) return lane;
+    lane = [high, low];
+    if (positions === 32) return lane;
 
     if (positions < 32) {
-      return [
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))),
-        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)))
+      lane = [
+        OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))),
+        OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)))
       ];
+      return lane;
     }
 
     positions -= 32;
-    return [
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))),
-      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)))
+    lane = [
+      OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))),
+      OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)))
     ];
+    return lane;
   }
 
   // Keccak-p[1600, nr] permutation - parameterized rounds
+  /**
+   * @param {uint32[][]} state
+   * @param {int32} rounds
+   */
   function keccakP(state, rounds) {
     const startRound = 24 - rounds;
 
     for (let round = startRound; round < 24; ++round) {
       // Theta
+      /** @type {uint32[][]} */
       const C = new Array(5);
       for (let x = 0; x < 5; ++x) {
-        C[x] = [0, 0];
+        /** @type {uint32[]} */
+        const zero = [0, 0];
+        C[x] = zero;
         for (let y = 0; y < 5; ++y) {
           C[x] = xor64(C[x], state[x + 5 * y]);
         }
       }
 
+      /** @type {uint32[][]} */
       const D = new Array(5);
       for (let x = 0; x < 5; ++x) {
-        D[x] = xor64(C[OpCodes.AndN(x + 4, 0xFF) % 5], rotl64(C[OpCodes.AndN(x + 1, 0xFF) % 5], 1));
+        D[x] = xor64(C[OpCodes.And32(x + 4, 0xFF) % 5], rotl64(C[OpCodes.And32(x + 1, 0xFF) % 5], 1));
       }
 
       for (let x = 0; x < 5; ++x) {
@@ -118,25 +149,35 @@
       }
 
       // Pi
+      /** @type {uint32[][]} */
       const temp = new Array(25);
       for (let i = 0; i < 25; ++i) {
-        temp[i] = [state[i][0], state[i][1]];
+        /** @type {uint32[]} */
+        const copy = [state[i][0], state[i][1]];
+        temp[i] = copy;
       }
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          state[y + 5 * (OpCodes.AndN(2 * x + 3 * y, 0xFF) % 5)] = temp[x + 5 * y];
+          /** @type {int32} */
+          const target = y + 5 * ((2 * x + 3 * y) % 5);
+          state[target] = temp[x + 5 * y];
         }
       }
 
       // Chi
       for (let y = 0; y < 5; ++y) {
+        /** @type {uint32[][]} */
         const row = new Array(5);
         for (let x = 0; x < 5; ++x) {
-          row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
+          /** @type {uint32[]} */
+          const copy = [state[x + 5 * y][0], state[x + 5 * y][1]];
+          row[x] = copy;
         }
         for (let x = 0; x < 5; ++x) {
-          const notNext = [~row[OpCodes.AndN(x + 1, 0xFF) % 5][0], ~row[OpCodes.AndN(x + 1, 0xFF) % 5][1]];
-          const andResult = [OpCodes.AndN(notNext[0], row[OpCodes.AndN(x + 2, 0xFF) % 5][0]), OpCodes.AndN(notNext[1], row[OpCodes.AndN(x + 2, 0xFF) % 5][1])];
+          /** @type {uint32[]} */
+          const notNext = [OpCodes.Not32(row[OpCodes.And32(x + 1, 0xFF) % 5][0]), OpCodes.Not32(row[OpCodes.And32(x + 1, 0xFF) % 5][1])];
+          /** @type {uint32[]} */
+          const andResult = [OpCodes.And32(notNext[0], row[OpCodes.And32(x + 2, 0xFF) % 5][0]), OpCodes.And32(notNext[1], row[OpCodes.And32(x + 2, 0xFF) % 5][1])];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }
@@ -150,21 +191,40 @@
   // at a time and stops as soon as a rate boundary is reached, so every input is
   // modelled as a cursor over a byte array rather than as a whole buffer.
   class ByteStream {
+    /**
+     * @param {uint8[]} [data] - Initial bytes (copied)
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = [];
       if (data) {
         for (let i = 0; i < data.length; ++i) this.data.push(data[i]);
       }
+      /** @type {int32} */
       this.pos = 0;
     }
 
+    /**
+     * @returns {boolean} true while unread bytes remain
+     */
     hasMore() { return this.pos < this.data.length; }
 
+    /**
+     * @returns {uint8} the next byte
+     */
     get() { return this.data[this.pos++]; }
 
+    /**
+     * @param {uint32} b - Byte to append (low 8 bits)
+     */
     put(b) { this.data.push(OpCodes.ToByte(b)); }
 
-    erase() { this.data = []; this.pos = 0; }
+    erase() {
+      /** @type {uint8[]} */
+      const empty = [];
+      this.data = empty;
+      this.pos = 0;
+    }
 
     rewind() { this.pos = 0; }
   }
@@ -179,79 +239,134 @@
   //   InjectStart = Ra + 2 offset at which metadata injection started
   //   InjectEnd   = Ra + 3 offset at which metadata injection ended
   class Piston {
+    /**
+     * @param {int32} rounds - Keccak-p rounds
+     * @param {int32} Rs - Crypting rate in bytes
+     * @param {int32} Ra - Injecting rate in bytes
+     */
     constructor(rounds, Rs, Ra) {
+      /** @type {int32} */
       this.rounds = rounds;
+      /** @type {int32} */
       this.Rs = Rs;
+      /** @type {int32} */
       this.Ra = Ra;
+      /** @type {int32} */
       this.EOM = Ra;
+      /** @type {int32} */
       this.CryptEnd = Ra + 1;
+      /** @type {int32} */
       this.InjectStart = Ra + 2;
+      /** @type {int32} */
       this.InjectEnd = Ra + 3;
 
       // State: 25 x 64-bit words (1600 bits total), each a [low32, high32] pair
+      /** @type {uint32[][]} */
       this.state = new Array(25);
-      for (let i = 0; i < 25; ++i) this.state[i] = [0, 0];
+      for (let i = 0; i < 25; ++i) {
+        /** @type {uint32[]} */
+        const lane = [0, 0];
+        this.state[i] = lane;
+      }
     }
 
     // XOR a single byte into the state at a byte position (lanes are little-endian)
+    /**
+     * @param {int32} position
+     * @param {uint32} value
+     */
     xorByte(position, value) {
+      /** @type {int32} */
       const lane = Math.floor(position / 8);
+      /** @type {int32} */
       const byteInLane = position % 8;
       const v = OpCodes.ToByte(value);
       if (byteInLane < 4) {
-        this.state[lane][0] = OpCodes.ToUint32(OpCodes.XorN(this.state[lane][0], OpCodes.Shl32(v, byteInLane * 8)));
+        this.state[lane][0] = OpCodes.ToUint32(OpCodes.Xor32(this.state[lane][0], OpCodes.Shl32(v, byteInLane * 8)));
       } else {
-        this.state[lane][1] = OpCodes.ToUint32(OpCodes.XorN(this.state[lane][1], OpCodes.Shl32(v, (byteInLane - 4) * 8)));
+        this.state[lane][1] = OpCodes.ToUint32(OpCodes.Xor32(this.state[lane][1], OpCodes.Shl32(v, (byteInLane - 4) * 8)));
       }
     }
 
     // Read a single byte of the state at a byte position
+    /**
+     * @param {int32} position
+     * @returns {uint32}
+     */
     getByte(position) {
+      /** @type {int32} */
       const lane = Math.floor(position / 8);
+      /** @type {int32} */
       const byteInLane = position % 8;
       if (byteInLane < 4) {
-        return OpCodes.AndN(OpCodes.Shr32(this.state[lane][0], byteInLane * 8), 0xFF);
+        return OpCodes.And32(OpCodes.Shr32(this.state[lane][0], byteInLane * 8), 0xFF);
       }
-      return OpCodes.AndN(OpCodes.Shr32(this.state[lane][1], (byteInLane - 4) * 8), 0xFF);
+      return OpCodes.And32(OpCodes.Shr32(this.state[lane][1], (byteInLane - 4) * 8), 0xFF);
     }
 
     // Overwrite a single byte of the state (used when unwrapping)
+    /**
+     * @param {int32} position
+     * @param {uint32} value
+     */
     setByte(position, value) {
-      this.xorByte(position, OpCodes.XorN(this.getByte(position), OpCodes.ToByte(value)));
+      this.xorByte(position, OpCodes.Xor32(this.getByte(position), OpCodes.ToByte(value)));
     }
 
     // Crypt consumes body bytes from I starting at offset omega and stops at Rs.
     // When wrapping, the plaintext is XORed into the state; when unwrapping, the
     // ciphertext replaces the corresponding state bytes.
+    /**
+     * @param {ByteStream} I
+     * @param {ByteStream} O
+     * @param {int32} omega
+     * @param {boolean} unwrapFlag
+     */
     Crypt(I, O, omega, unwrapFlag) {
-      while (I.hasMore() && omega < this.Rs) {
+      /** @type {boolean} */
+      let more = I.hasMore();
+      while (more && omega < this.Rs) {
+        /** @type {uint8} */
         const x = I.get();
-        O.put(OpCodes.XorN(this.getByte(omega), x));
+        O.put(OpCodes.Xor32(this.getByte(omega), x));
         if (unwrapFlag) {
           this.setByte(omega, x);
         } else {
           this.xorByte(omega, x);
         }
         ++omega;
+        more = I.hasMore();
       }
       this.xorByte(this.CryptEnd, omega);
     }
 
     // Inject absorbs metadata. When the block already carries body bytes the
     // metadata starts at Rs, otherwise at 0; either way it stops at Ra.
+    /**
+     * @param {ByteStream} X
+     * @param {boolean} cryptingFlag
+     */
     Inject(X, cryptingFlag) {
+      /** @type {int32} */
       let omega = cryptingFlag ? this.Rs : 0;
       this.xorByte(this.InjectStart, omega);
 
-      while (X.hasMore() && omega < this.Ra) {
+      /** @type {boolean} */
+      let more = X.hasMore();
+      while (more && omega < this.Ra) {
         this.xorByte(omega, X.get());
         ++omega;
+        more = X.hasMore();
       }
 
       this.xorByte(this.InjectEnd, omega);
     }
 
     // Spark frames the block and applies the permutation
+    /**
+     * @param {boolean} eomFlag
+     * @param {int32} l
+     */
     Spark(eomFlag, l) {
       if (eomFlag) {
         this.xorByte(this.EOM, l === 0 ? 255 : l);
@@ -261,6 +376,10 @@
       keccakP(this.state, this.rounds);
     }
 
+    /**
+     * @param {ByteStream} T
+     * @param {int32} l
+     */
     GetTag(T, l) {
       if (l > this.Rs) throw new Error("The requested tag is too long");
       for (let i = 0; i < l; ++i) T.put(this.getByte(i));
@@ -275,13 +394,25 @@
 
   // Engine: drives Pi parallel Pistons. Lake Keyak uses Pi = 1.
   class Engine {
+    /**
+     * @param {Piston[]} pistons - The parallel Pistons
+     */
     constructor(pistons) {
+      /** @type {int32} */
       this.Pi = pistons.length;
+      /** @type {Piston[]} */
       this.Pistons = pistons;
+      /** @type {int32} */
       this.phase = PHASE_FRESH;
+      /** @type {int32[]} */
       this.Et = OpCodes.CreateArray(this.Pi, 0);
     }
 
+    /**
+     * @param {ByteStream} I
+     * @param {ByteStream} O
+     * @param {boolean} unwrapFlag
+     */
     Crypt(I, O, unwrapFlag) {
       if (this.phase !== PHASE_FRESH) throw new Error("Engine.Crypt requires the fresh phase");
 
@@ -292,6 +423,9 @@
       this.phase = I.hasMore() ? PHASE_CRYPTED : PHASE_END_OF_CRYPT;
     }
 
+    /**
+     * @param {ByteStream} A
+     */
     Inject(A) {
       if (this.phase !== PHASE_FRESH && this.phase !== PHASE_CRYPTED && this.phase !== PHASE_END_OF_CRYPT) {
         throw new Error("Engine.Inject requires the fresh, crypted or endOfCrypt phase");
@@ -303,7 +437,9 @@
         this.Pistons[i].Inject(A, cryptingFlag);
       }
 
-      if (this.phase === PHASE_CRYPTED || A.hasMore()) {
+      /** @type {boolean} */
+      const more = A.hasMore();
+      if (this.phase === PHASE_CRYPTED || more) {
         this._spark(false, OpCodes.CreateArray(this.Pi, 0));
         this.phase = PHASE_FRESH;
       } else {
@@ -311,6 +447,10 @@
       }
     }
 
+    /**
+     * @param {ByteStream} T
+     * @param {int32[]} l
+     */
     GetTags(T, l) {
       if (this.phase !== PHASE_END_OF_MESSAGE) throw new Error("Engine.GetTags requires the endOfMessage phase");
       this._spark(true, l);
@@ -323,13 +463,21 @@
     }
 
     // Inject the same string into every Piston, optionally diversified per Piston
+    /**
+     * @param {ByteStream} X
+     * @param {boolean} diversifyFlag
+     */
     InjectCollective(X, diversifyFlag) {
-      if (this.phase !== PHASE_FRESH) throw new Error("Engine.InjectCollective requires the fresh phase");
+      if (this.phase !== PHASE_FRESH) {
+        throw new Error("Engine.InjectCollective requires the fresh phase");
+      }
 
+      /** @type {ByteStream[]} */
       const Xt = new Array(this.Pi);
       for (let i = 0; i < this.Pi; ++i) Xt[i] = new ByteStream();
 
       while (X.hasMore()) {
+        /** @type {uint8} */
         const x = X.get();
         for (let i = 0; i < this.Pi; ++i) Xt[i].put(x);
       }
@@ -351,6 +499,10 @@
       this.phase = PHASE_END_OF_MESSAGE;
     }
 
+    /**
+     * @param {boolean} eomFlag
+     * @param {int32[]} l
+     */
     _spark(eomFlag, l) {
       for (let i = 0; i < this.Pi; ++i) this.Pistons[i].Spark(eomFlag, l[i]);
       this.Et = l;
@@ -359,36 +511,78 @@
 
   // Motorist: the Keyak mode of operation on top of the Engine
   class Motorist {
+    /**
+     * @param {int32} rounds - Keccak-p rounds
+     * @param {int32} b - Permutation width in bits
+     * @param {int32} Pi - Number of Pistons
+     * @param {int32} W - Lane size in bits
+     * @param {int32} c - Capacity in bits
+     * @param {int32} tau - Tag length in bits
+     */
     constructor(rounds, b, Pi, W, c, tau) {
+      /** @type {int32} */
       this.Pi = Pi;
+      /** @type {int32} */
       this.W = W;
+      /** @type {int32} */
       this.c = c;
+      /** @type {int32} */
       this.tau = tau;
 
       // Rates from the Keyak v2 specification. For Lake Keyak (b=1600, W=64,
       // c=256) this gives Rs = 168 and Ra = 192.
+      /** @type {int32} */
       const Rs = Math.floor(W / 8) * Math.floor((b - Math.max(c, 32)) / W);
+      /** @type {int32} */
       const Ra = Math.floor(W / 8) * Math.floor((b - 32) / W);
-      if (Rs > Ra) throw new Error("Rs is larger than Ra");
+      if (Rs > Ra) {
+        throw new Error("Rs is larger than Ra");
+      }
+      /** @type {int32} */
       this.Rs = Rs;
+      /** @type {int32} */
       this.Ra = Ra;
 
+      /** @type {Piston[]} */
       const pistons = new Array(Pi);
       for (let i = 0; i < Pi; ++i) pistons[i] = new Piston(rounds, Rs, Ra);
+      /** @type {Engine} */
       this.engine = new Engine(pistons);
 
       // Capacity rounded up to a whole number of lanes, in bits
+      /** @type {int32} */
       this.cprime = W * Math.floor((c + W - 1) / W);
     }
 
+    /**
+     * @param {ByteStream} SUV
+     * @param {boolean} tagFlag
+     * @param {ByteStream} T
+     * @param {boolean} unwrapFlag
+     * @param {boolean} forgetFlag
+     * @returns {boolean}
+     */
     StartEngine(SUV, tagFlag, T, unwrapFlag, forgetFlag) {
       this.engine.InjectCollective(SUV, true);
       if (forgetFlag) this._makeKnot();
       return this._handleTag(tagFlag, T, unwrapFlag);
     }
 
+    /**
+     * @param {ByteStream} I
+     * @param {ByteStream} O
+     * @param {ByteStream} A
+     * @param {ByteStream} T
+     * @param {boolean} unwrapFlag
+     * @param {boolean} forgetFlag
+     * @returns {boolean}
+     */
     Wrap(I, O, A, T, unwrapFlag, forgetFlag) {
-      if (!I.hasMore() && !A.hasMore()) this.engine.Inject(A);
+      /** @type {boolean} */
+      const bodyLeft = I.hasMore();
+      /** @type {boolean} */
+      const metadataLeft = A.hasMore();
+      if (!bodyLeft && !metadataLeft) this.engine.Inject(A);
 
       while (I.hasMore()) {
         this.engine.Crypt(I, O, unwrapFlag);
@@ -399,6 +593,7 @@
 
       if (this.Pi > 1 || forgetFlag) this._makeKnot();
 
+      /** @type {boolean} */
       const ok = this._handleTag(true, T, unwrapFlag);
       if (!ok) O.erase();
       return ok;
@@ -413,6 +608,12 @@
       this.engine.InjectCollective(intermediate, false);
     }
 
+    /**
+     * @param {boolean} tagFlag
+     * @param {ByteStream} T
+     * @param {boolean} unwrapFlag
+     * @returns {boolean}
+     */
     _handleTag(tagFlag, T, unwrapFlag) {
       const computed = new ByteStream();
 
@@ -421,6 +622,7 @@
         return true;
       }
 
+      /** @type {int32[]} */
       const l = OpCodes.CreateArray(this.Pi, 0);
       l[0] = this.tau / 8;
       this.engine.GetTags(computed, l);
@@ -431,10 +633,13 @@
         return true;
       }
 
-      if (computed.data.length !== T.data.length) return false;
+      if (computed.data.length !== T.data.length) {
+        return false;
+      }
+      /** @type {uint32} */
       let diff = 0;
       for (let i = 0; i < computed.data.length; ++i) {
-        diff = OpCodes.OrN(diff, OpCodes.XorN(computed.data[i], T.data[i]));
+        diff = OpCodes.Or32(diff, OpCodes.Xor32(computed.data[i], T.data[i]));
       }
       return diff === 0;
     }
@@ -442,33 +647,79 @@
 
   // Keyak: wraps the Motorist with the key pack that forms the start-up value
   class Keyak {
+    /**
+     * @param {int32} b - Permutation width in bits
+     * @param {int32} rounds - Keccak-p rounds
+     * @param {int32} Pi - Number of Pistons
+     * @param {int32} c - Capacity in bits
+     * @param {int32} tau - Tag length in bits
+     */
     constructor(b, rounds, Pi, c, tau) {
+      /** @type {int32} */
       this.b = b;
+      /** @type {int32} */
       this.rounds = rounds;
+      /** @type {int32} */
       this.Pi = Pi;
+      /** @type {int32} */
       this.c = c;
+      /** @type {int32} */
       this.tau = tau;
+      /** @type {int32} */
       this.W = Math.max(Math.floor(b / 25), 8);
+      /** @type {Motorist} */
       this.motorist = new Motorist(rounds, b, Pi, this.W, c, tau);
     }
 
     // The start-up value is keypack(K) followed by the nonce. It is absorbed as
     // a stream, so the nonce may be of any length.
+    /**
+     * @param {uint8[]} K
+     * @param {uint8[]} N
+     * @param {boolean} tagFlag
+     * @param {ByteStream} T
+     * @param {boolean} unwrapFlag
+     * @param {boolean} forgetFlag
+     * @returns {boolean}
+     */
     StartEngine(K, N, tagFlag, T, unwrapFlag, forgetFlag) {
+      /** @type {int32} */
       const lk = Math.floor(this.W / 8) * Math.floor((this.c + 9 + this.W - 1) / this.W);
+      /** @type {uint8[]} */
       const suv = this._keyPack(K, lk);
       for (let i = 0; i < N.length; ++i) suv.push(N[i]);
-      return this.motorist.StartEngine(new ByteStream(suv), tagFlag, T, unwrapFlag, forgetFlag);
+      /** @type {boolean} */
+      const ok = this.motorist.StartEngine(new ByteStream(suv), tagFlag, T, unwrapFlag, forgetFlag);
+      return ok;
     }
 
+    /**
+     * @param {ByteStream} I
+     * @param {ByteStream} O
+     * @param {ByteStream} A
+     * @param {ByteStream} T
+     * @param {boolean} unwrapFlag
+     * @param {boolean} forgetFlag
+     * @returns {boolean}
+     */
     Wrap(I, O, A, T, unwrapFlag, forgetFlag) {
-      return this.motorist.Wrap(I, O, A, T, unwrapFlag, forgetFlag);
+      /** @type {boolean} */
+      const ok = this.motorist.Wrap(I, O, A, T, unwrapFlag, forgetFlag);
+      return ok;
     }
 
     // keypack(K, l) = enc8(l) || K || 0x01 || zero padding up to l bytes
+    /**
+     * @param {uint8[]} K
+     * @param {int32} l
+     * @returns {uint8[]}
+     */
     _keyPack(K, l) {
-      if (K.length + 2 > l) throw new Error("The key does not fit in the key pack");
+      if (K.length + 2 > l) {
+        throw new Error("The key does not fit in the key pack");
+      }
 
+      /** @type {uint8[]} */
       const result = [l];
       for (let i = 0; i < K.length; ++i) result.push(K[i]);
       result.push(0x01);
@@ -493,10 +744,15 @@
       this.country = CountryCode.BE;
 
       // Lake Keyak parameters: Keyak[b=1600, nr=12, Pi=1, c=256, tau=128]
+      /** @type {int32} */
       this.width = 1600;
+      /** @type {int32} */
       this.rounds = 12;
+      /** @type {int32} */
       this.parallelism = 1;
+      /** @type {int32} */
       this.capacity = 256;  // bits
+      /** @type {int32} */
       this.tagBits = 128;
 
       // keypack holds enc8(l) || K || 0x01 within 40 bytes, so keys of up to 38
@@ -611,7 +867,9 @@
 
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this._nonce = [];
+      /** @type {uint8[]} */
       this._aad = [];
 
       /** @type {uint8[]} */
@@ -663,21 +921,36 @@
     set nonce(nonceBytes) {
       // The nonce is appended to the key pack and absorbed as a stream, block by
       // block, so Keyak places no upper bound on its length.
-      this._nonce = nonceBytes ? [...nonceBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (nonceBytes) {
+        copy = [...nonceBytes];
+      }
+      this._nonce = copy;
     }
 
     /**
      * @returns {uint8[]|null}
      */
     get nonce() {
-      return this._nonce ? [...this._nonce] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._nonce) {
+        copy = [...this._nonce];
+      }
+      return copy;
     }
 
     /**
      * @param {uint8[]|null} aadBytes
      */
     set aad(aadBytes) {
-      this._aad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._aad = copy;
     }
 
     /**
@@ -704,15 +977,29 @@
       // still has to verify. A decrypt call with nothing at all is caught below
       // by the tag-length check instead.
 
+      /** @type {LakeKeyak} */
       const alg = this.algorithm;
+      /** @type {int32} */
       const tagSize = alg.tagBits / 8;
 
+      /** @type {Keyak} */
       const keyak = new Keyak(alg.width, alg.rounds, alg.parallelism, alg.capacity, alg.tagBits);
       const tag = new ByteStream();
-      keyak.StartEngine(this._key, this._nonce || [], false, tag, false, false);
+      /** @type {uint8[]} */
+      let nonce = [];
+      if (this._nonce) {
+        nonce = this._nonce;
+      }
+      keyak.StartEngine(this._key, nonce, false, tag, false, false);
 
-      const metadata = new ByteStream(this._aad || []);
+      /** @type {uint8[]} */
+      let aad = [];
+      if (this._aad) {
+        aad = this._aad;
+      }
+      const metadata = new ByteStream(aad);
       const output = new ByteStream();
+      /** @type {uint8[]} */
       let result;
 
       if (this.isInverse) {
@@ -720,9 +1007,11 @@
           throw new Error("Input too short for tag");
         }
 
+        /** @type {uint8[]} */
         const ciphertext = this.inputBuffer.slice(0, this.inputBuffer.length - tagSize);
         const receivedTag = new ByteStream(this.inputBuffer.slice(this.inputBuffer.length - tagSize));
 
+        /** @type {boolean} */
         const ok = keyak.Wrap(new ByteStream(ciphertext), output, metadata, receivedTag, true, false);
         if (!ok) {
           this.inputBuffer = [];
