@@ -68,38 +68,38 @@
       this.description = "Declassified NSA block cipher from 1998, originally designed for the Clipper chip. Uses unbalanced Feistel network with 32 rounds, 64-bit blocks, and 80-bit keys. Historical significance only.";
       this.inventor = "NSA (National Security Agency)";
       this.year = 1987;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.BROKEN;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(10, 10, 1) // Fixed 80-bit key
+        new KeySize(10, 10, 1) // Fixed 80-bit key
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // Fixed 64-bit blocks
+        new KeySize(8, 8, 1) // Fixed 64-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("Skipjack and KEA Algorithm Specifications", "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/skipjack/skipjack.pdf"),
-        new AlgorithmFramework.LinkItem("NIST Special Publication 800-17", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
-        new AlgorithmFramework.LinkItem("Declassification of SkipJack", "https://www.nsa.gov/news-features/declassified-documents/")
+        new LinkItem("Skipjack and KEA Algorithm Specifications", "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/skipjack/skipjack.pdf"),
+        new LinkItem("NIST Special Publication 800-17", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
+        new LinkItem("Declassification of SkipJack", "https://www.nsa.gov/news-features/declassified-documents/")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original NSA Reference Implementation", "https://github.com/coruus/nist-testvectors"),
-        new AlgorithmFramework.LinkItem("Cryptanalysis of SkipJack", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
-        new AlgorithmFramework.LinkItem("SkipJack Cryptanalysis Papers", "https://eprint.iacr.org/")
+        new LinkItem("Original NSA Reference Implementation", "https://github.com/coruus/nist-testvectors"),
+        new LinkItem("Cryptanalysis of SkipJack", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
+        new LinkItem("SkipJack Cryptanalysis Papers", "https://eprint.iacr.org/")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("NIST Withdrawal", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
-        new AlgorithmFramework.Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "Weak key schedule allows related-key attacks", "Historical and educational interest only", "https://eprint.iacr.org/")
+        new Vulnerability("NIST Withdrawal", "NIST approval withdrawn in 2015. Not approved for new cryptographic protection", "Use modern standardized ciphers like AES", "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"),
+        new Vulnerability("Differential Cryptanalysis", "Vulnerable to differential attacks with reduced complexity", "Algorithm is deprecated - do not use for any security applications", "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"),
+        new Vulnerability("Related-key attacks", "Weak key schedule allows related-key attacks", "Historical and educational interest only", "https://eprint.iacr.org/")
       ];
 
       // Test vectors verified with BouncyCastle reference implementation
@@ -176,9 +176,13 @@
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this.key0 = null;
+      /** @type {uint8[]|null} */
       this.key1 = null;
+      /** @type {uint8[]|null} */
       this.key2 = null;
+      /** @type {uint8[]|null} */
       this.key3 = null;
 
       // Initialize F-table (S-box) - Official from NSA specification
@@ -213,10 +217,10 @@
       this.KeySize = keyBytes.length;
 
       // Expand the key to 128 bytes in 4 parts (following BouncyCastle)
-      this.key0 = new Array(32);
-      this.key1 = new Array(32);
-      this.key2 = new Array(32);
-      this.key3 = new Array(32);
+      this.key0 = OpCodes.CreateArray(32, 0);
+      this.key1 = OpCodes.CreateArray(32, 0);
+      this.key2 = OpCodes.CreateArray(32, 0);
+      this.key3 = OpCodes.CreateArray(32, 0);
       
       for (let i = 0; i < 32; i++) {
         this.key0[i] = keyBytes[(i * 4 + 0) % 10];
@@ -275,6 +279,9 @@
 
     /**
      * The G permutation (following BouncyCastle implementation)
+     * @param {int32} k - Round counter (0..31)
+     * @param {uint32} w - 16-bit input word
+     * @returns {uint32} 16-bit output word
      */
     _G(k, w) {
       let g1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
@@ -290,6 +297,9 @@
     
     /**
      * The inverse of the G permutation (H function)
+     * @param {int32} k - Round counter (0..31)
+     * @param {uint32} w - 16-bit input word
+     * @returns {uint32} 16-bit output word
      */
     _H(k, w) {
       let h1 = OpCodes.And32(w, 0xFF);
