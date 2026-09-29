@@ -181,17 +181,20 @@
   class LrwModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LrwAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.key = null; // Block cipher key
       this.tweakKey = null; // LRW tweak key for GF multiplication
+      /** @type {uint8[]|null} */
       this.tweak = null; // Sector/block identifier
     }
 
@@ -211,7 +214,7 @@
 
     /**
      * Set the block cipher encryption key
-     * @param {Array} key - Block cipher key
+     * @param {uint8[]} key - Block cipher key
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -222,7 +225,7 @@
 
     /**
      * Set the LRW tweak key for Galois field operations
-     * @param {Array} tweakKey - 128-bit tweak key for GF(2^128) multiplication
+     * @param {uint8[]} tweakKey - 128-bit tweak key for GF(2^128) multiplication
      */
     setTweakKey(tweakKey) {
       if (!tweakKey || tweakKey.length !== 16) {
@@ -233,7 +236,7 @@
 
     /**
      * Set the tweak value (sector/block identifier)
-     * @param {Array} tweak - Tweak value for this block
+     * @param {uint8[]} tweak - Tweak value for this block
      */
     setTweak(tweak) {
       if (!tweak || tweak.length !== 16) {
@@ -281,9 +284,10 @@
 
       const blockSize = this.blockCipher.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes for LRW mode`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes for LRW mode");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // LRW construction: C = E_K(P XOR T) XOR T with T = K2 (*) I, where I is
@@ -295,9 +299,11 @@
         const inputBlock = this.inputBuffer.slice(i, i + blockSize);
         const offset = this._gf128Multiply(this.tweakKey, blockIndex);
 
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(this.isInverse);
         cipher.key = this.key;
         cipher.Feed(OpCodes.XorArrays(inputBlock, offset));
+        /** @type {uint8[]} */
         const processed = cipher.Result();
 
         const outputBlock = OpCodes.XorArrays(processed, offset);
@@ -315,12 +321,15 @@
 
     /**
      * Add one to a big-endian 128-bit block index
+     * @param {uint8[]} index - Block index bytes
+     * @returns {uint8[]} Incremented index
      * @private
      */
     _incrementIndex(index) {
+      /** @type {uint8[]} */
       const result = [...index];
       for (let i = result.length - 1; i >= 0; i--) {
-        result[i] = (result[i] + 1) % 256;
+        result[i] = OpCodes.And32(result[i] + 1, 0xFF);
         if (result[i] !== 0) break;
       }
       return result;
@@ -330,18 +339,21 @@
      * Multiply a 128-bit value by x in GF(2^128)
      * The value is a plain big-endian integer, so bit 0 of the last byte is the
      * coefficient of x^0 and the reduction folds into that same byte.
+     * @param {uint8[]} value - 128-bit value
+     * @returns {uint8[]} value * x
      * @private
      */
     _gf128MulX(value) {
+      /** @type {uint8[]} */
       const result = new Array(16);
-      const overflow = OpCodes.AndN(OpCodes.Shr32(value[0], 7), 1);
+      const overflow = OpCodes.And32(OpCodes.Shr32(value[0], 7), 1);
       for (let i = 0; i < 15; i++) {
-        const low = OpCodes.AndN(OpCodes.Shl32(value[i], 1), 0xFF);
-        const high = OpCodes.AndN(OpCodes.Shr32(value[i + 1], 7), 1);
-        result[i] = OpCodes.OrN(low, high);
+        const low = OpCodes.And32(OpCodes.Shl32(value[i], 1), 0xFF);
+        const high = OpCodes.And32(OpCodes.Shr32(value[i + 1], 7), 1);
+        result[i] = OpCodes.Or32(low, high);
       }
-      result[15] = OpCodes.AndN(OpCodes.Shl32(value[15], 1), 0xFF);
-      if (overflow) result[15] = OpCodes.XorN(result[15], 0x87);
+      result[15] = OpCodes.And32(OpCodes.Shl32(value[15], 1), 0xFF);
+      if (overflow) result[15] = OpCodes.Xor32(result[15], 0x87);
       return result;
     }
 
@@ -351,12 +363,12 @@
      * big-endian byte / big-endian bit convention of the IEEE P1619 LRW
      * vectors: byte 0 bit 7 is the coefficient of x^127 and byte 15 bit 0 is
      * the coefficient of x^0.
-     * @param {Array} a - First 128-bit operand
-     * @param {Array} b - Second 128-bit operand
-     * @returns {Array} Product in GF(2^128)
+     * @param {uint8[]} a - First 128-bit operand
+     * @param {uint8[]} b - Second 128-bit operand
+     * @returns {uint8[]} Product in GF(2^128)
      */
     _gf128Multiply(a, b) {
-      let result = new Array(16).fill(0);
+      let result = OpCodes.CreateArray(16, 0);
       let v = [...a];
 
       // Walk the exponents of b from x^0 upwards, doubling a each step.
@@ -364,7 +376,7 @@
         const byteIndex = 15 - Math.floor(exponent / 8);
         const bitIndex = exponent % 8;
 
-        if (OpCodes.AndN(OpCodes.Shr32(b[byteIndex], bitIndex), 1)) {
+        if (OpCodes.And32(OpCodes.Shr32(b[byteIndex], bitIndex), 1)) {
           result = OpCodes.XorArrays(result, v);
         }
 

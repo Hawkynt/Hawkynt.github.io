@@ -58,67 +58,122 @@
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // ---- Standard AES-128 primitives (SBox built at load time from the GF(2^8) affine construction) ----
-  const SBOX = (function () {
+  /**
+   * @param {uint32} v - Byte value
+   * @param {int32} n - Rotation (1..7)
+   * @returns {uint32} v rotated left by n within 8 bits
+   */
+  function rotByte(v, n) {
+    return OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(v, n), 0xFF), OpCodes.Shr32(v, 8 - n));
+  }
+
+  /**
+   * @returns {uint8[]} AES S-box
+   */
+  function buildSbox() {
+    /** @type {uint8[]} */
     const s = new Array(256);
-    let p = 1, q = 1;
+    /** @type {uint32} */
+    let p = 1;
+    /** @type {uint32} */
+    let q = 1;
     do {
-      p = OpCodes.XorN(OpCodes.XorN(p, OpCodes.And32(OpCodes.Shl32(p, 1), 0xFF)), OpCodes.And32(p, 0x80) ? 0x1B : 0);
-      q = OpCodes.AndN(q, 0xFF);
-      q = OpCodes.XorN(q, OpCodes.And32(OpCodes.Shl32(q, 1), 0xFF));
-      q = OpCodes.XorN(q, OpCodes.And32(OpCodes.Shl32(q, 2), 0xFF));
-      q = OpCodes.XorN(q, OpCodes.And32(OpCodes.Shl32(q, 4), 0xFF));
-      if (OpCodes.And32(q, 0x80)) q = OpCodes.XorN(q, 0x09);
-      q = OpCodes.AndN(q, 0xFF);
-      const rot = (v, n) => OpCodes.OrN(OpCodes.AndN(OpCodes.Shl32(v, n), 0xFF), OpCodes.Shr32(v, 8 - n));
-      const xf = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(q, rot(q, 1)), rot(q, 2)), rot(q, 3)), rot(q, 4));
-      s[p] = OpCodes.XorN(xf, 0x63);
+      p = OpCodes.Xor32(OpCodes.Xor32(p, OpCodes.And32(OpCodes.Shl32(p, 1), 0xFF)), OpCodes.And32(p, 0x80) ? 0x1B : 0);
+      q = OpCodes.And32(q, 0xFF);
+      q = OpCodes.Xor32(q, OpCodes.And32(OpCodes.Shl32(q, 1), 0xFF));
+      q = OpCodes.Xor32(q, OpCodes.And32(OpCodes.Shl32(q, 2), 0xFF));
+      q = OpCodes.Xor32(q, OpCodes.And32(OpCodes.Shl32(q, 4), 0xFF));
+      if (OpCodes.And32(q, 0x80)) q = OpCodes.Xor32(q, 0x09);
+      q = OpCodes.And32(q, 0xFF);
+      /** @type {uint32} */
+      const xf = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(q, rotByte(q, 1)), rotByte(q, 2)), rotByte(q, 3)), rotByte(q, 4));
+      s[p] = OpCodes.Xor32(xf, 0x63);
     } while (p !== 1);
     s[0] = 0x63;
     return s;
-  })();
+  }
 
+  /** @type {uint8[]} */
+  const SBOX = buildSbox();
+
+  /** @type {uint8[]} */
   const RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36];
 
+  /**
+   * @param {uint8[]} key
+   * @returns {uint8[]}
+   */
   function keyExpansion128(key) {
+    /** @type {uint8[]} */
     const rk = key.slice();
     for (let i = 16; i < 176; i += 4) {
+      /** @type {uint8[]} */
       let t = [rk[i - 4], rk[i - 3], rk[i - 2], rk[i - 1]];
       if (i % 16 === 0) {
-        t = [t[1], t[2], t[3], t[0]].map(x => SBOX[x]);
-        t[0] = OpCodes.XorN(t[0], RCON[i / 16 - 1]);
+        t = [SBOX[t[1]], SBOX[t[2]], SBOX[t[3]], SBOX[t[0]]];
+        t[0] = OpCodes.Xor8(t[0], RCON[i / 16 - 1]);
       }
-      for (let j = 0; j < 4; j++) rk[i + j] = OpCodes.XorN(rk[i - 16 + j], t[j]);
+      for (let j = 0; j < 4; j++) rk[i + j] = OpCodes.Xor8(rk[i - 16 + j], t[j]);
     }
     return rk;
   }
 
+  /**
+   * @param {uint8[]} state
+   * @param {uint8[]} rk
+   * @param {int32} offset
+   */
   function addRoundKey(state, rk, offset) {
-    for (let i = 0; i < 16; i++) state[i] = OpCodes.XorN(state[i], rk[offset + i]);
+    for (let i = 0; i < 16; i++) state[i] = OpCodes.Xor8(state[i], rk[offset + i]);
   }
 
+  /**
+   * @param {uint8[]} state
+   */
   function subBytes(state) {
     for (let i = 0; i < 16; i++) state[i] = SBOX[state[i]];
   }
 
+  /**
+   * @param {uint8[]} state
+   */
   function shiftRows(state) {
+    /** @type {uint8[]} */
     const t = state.slice();
     for (let r = 0; r < 4; r++)
       for (let c = 0; c < 4; c++)
         state[r + 4 * c] = t[r + 4 * ((c + r) % 4)];
   }
 
+  /**
+   * @param {uint8[]} state
+   */
   function mixColumns(state) {
     for (let c = 0; c < 4; c++) {
-      const i = 4 * c, a0 = state[i], a1 = state[i + 1], a2 = state[i + 2], a3 = state[i + 3];
-      state[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(a0, 2), OpCodes.GF256Mul(a1, 3)), a2), a3);
-      state[i + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a0, OpCodes.GF256Mul(a1, 2)), OpCodes.GF256Mul(a2, 3)), a3);
-      state[i + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a0, a1), OpCodes.GF256Mul(a2, 2)), OpCodes.GF256Mul(a3, 3));
-      state[i + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(a0, 3), a1), a2), OpCodes.GF256Mul(a3, 2));
+      const i = 4 * c;
+      /** @type {uint8} */
+      const a0 = state[i];
+      /** @type {uint8} */
+      const a1 = state[i + 1];
+      /** @type {uint8} */
+      const a2 = state[i + 2];
+      /** @type {uint8} */
+      const a3 = state[i + 3];
+      state[i] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(a0, 2), OpCodes.GF256Mul(a1, 3)), a2), a3);
+      state[i + 1] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(a0, OpCodes.GF256Mul(a1, 2)), OpCodes.GF256Mul(a2, 3)), a3);
+      state[i + 2] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(a0, a1), OpCodes.GF256Mul(a2, 2)), OpCodes.GF256Mul(a3, 3));
+      state[i + 3] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(a0, 3), a1), a2), OpCodes.GF256Mul(a3, 2));
     }
   }
 
   // Standard, textbook AES-128 block encryption (round 10 has no MixColumns): used only to derive S0 = AES_K(IV).
+  /**
+   * @param {uint8[]} block
+   * @param {uint8[]} rk
+   * @returns {uint8[]}
+   */
   function aes128Encrypt(block, rk) {
+    /** @type {uint8[]} */
     const s = block.slice();
     addRoundKey(s, rk, 0);
     for (let r = 1; r <= 9; r++) {
@@ -129,21 +184,42 @@
   }
 
   // reverse the 4 bytes of a 32-bit word (AES' internal little-endian word packing vs. this byte-array convention)
-  function rev4(word) { return [word[3], word[2], word[1], word[0]]; }
+  /**
+   * @param {uint8[]} word - 4 bytes
+   * @returns {uint8[]} the bytes in reverse order
+   */
+  function rev4(word) {
+    /** @type {uint8[]} */
+    const reversed = [word[3], word[2], word[1], word[0]];
+    return reversed;
+  }
 
   // Run one 40-byte "leaking" burst: 10 rounds, EVERY round including round 10 has MixColumns.
-  // Returns { leak: 40 bytes, newState: 16 bytes }.
+  // Advances the 16-byte state in place and returns the 40 leaked bytes.
+  /**
+   * @param {uint8[]} state - 16-byte cipher state (advanced in place)
+   * @param {uint8[]} rk - Expanded round keys
+   * @returns {uint8[]} 40 leaked keystream bytes
+   */
   function generateBurst(state, rk) {
-    const cur = state.slice();
+    /** @type {uint8[]} */
+    const cur = state;
+    /** @type {uint8[]} */
     const leak = [];
     for (let r = 1; r <= 10; r++) {
       subBytes(cur); shiftRows(cur); mixColumns(cur); addRoundKey(cur, rk, 16 * r);
+      /** @type {uint8[]} */
       const a = rev4(cur.slice(0, 4));
+      /** @type {uint8[]} */
       const c = rev4(cur.slice(8, 12));
+      /** @type {uint8[]} */
       const word = (r % 2 === 1) ? [c[1], a[1], c[3], a[3]] : [c[0], a[0], c[2], a[2]];
-      leak.push(word[0], word[1], word[2], word[3]);
+      leak.push(word[0]);
+      leak.push(word[1]);
+      leak.push(word[2]);
+      leak.push(word[3]);
     }
-    return { leak: leak, newState: cur };
+    return leak;
   }
 
   class DarkCryptLex2Algorithm extends StreamCipherAlgorithm {
@@ -199,51 +275,84 @@
   }
 
   class DarkCryptLex2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptLex2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this._rk = null;
+      /** @type {uint8[]|null} */
       this._state = null;
+      /** @type {uint8[]} */
       this._keystreamBuffer = [];
+      /** @type {int32} */
       this._keystreamPos = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LEX2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LEX2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
-      if (!ivBytes) { this._iv = new Array(16).fill(0); }
+      if (!ivBytes) { this._iv = OpCodes.CreateArray(16, 0); }
       else {
         if (ivBytes.length !== 16)
-          throw new Error(`Invalid IV size: ${ivBytes.length} bytes. LEX2 (DarkCrypt) requires exactly 16 bytes`);
+          throw new Error("Invalid IV size: " + ivBytes.length + " bytes. LEX2 (DarkCrypt) requires exactly 16 bytes");
         this._iv = [...ivBytes];
       }
       if (this._key) this._initialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -251,17 +360,19 @@
 
     _initialize() {
       this._rk = keyExpansion128(this._key);
-      const iv = this._iv || new Array(16).fill(0);
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : OpCodes.CreateArray(16, 0);
       this._state = aes128Encrypt(iv, this._rk); // S0 = AES_K(IV)
       this._keystreamBuffer = [];
       this._keystreamPos = 0;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this._keystreamPos >= this._keystreamBuffer.length) {
-        const { leak, newState } = generateBurst(this._state, this._rk);
-        this._state = newState;
-        this._keystreamBuffer = leak;
+        this._keystreamBuffer = generateBurst(this._state, this._rk);
         this._keystreamPos = 0;
       }
       return this._keystreamBuffer[this._keystreamPos++];

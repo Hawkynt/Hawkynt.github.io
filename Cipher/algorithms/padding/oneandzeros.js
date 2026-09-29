@@ -184,14 +184,14 @@
 
       /**
        * Block size in bytes for padding calculations
-       * @type {uint16}
+       * @type {int32}
        * @private
        */
       this._blockSize = 16;  // Default block size
 
       /**
        * Accumulator buffer for input data
-       * @type {Uint8Array}
+       * @type {uint8[]}
        * @private
        */
       this.inputBuffer = [];
@@ -200,7 +200,7 @@
     /**
      * Sets the block size for padding calculations.
      *
-     * @param {uint16} size - The block size in bytes (must be a positive integer)
+     * @param {int32} size - The block size in bytes (must be a positive integer)
      * @throws {Error} If size is not a positive integer
      *
      * @example
@@ -217,7 +217,7 @@
     /**
      * Gets the current block size.
      *
-     * @returns {uint16} The block size in bytes
+     * @returns {int32} The block size in bytes
      */
     get blockSize() {
       return this._blockSize;
@@ -229,7 +229,7 @@
      * The operation performed depends on the isInverse flag set during construction.
      * After calling Result(), the input buffer is cleared.
      *
-     * @returns {Uint8Array} The processed data (padded if isInverse=false, unpadded if isInverse=true)
+     * @returns {uint8[]} The processed data (padded if isInverse=false, unpadded if isInverse=true)
      * @throws {Error} If unpadding fails due to invalid padding format
      *
      * @example
@@ -259,8 +259,8 @@
      * Adds One and Zeros padding to the input data.
      * Appends 0x80 byte followed by 0x00 bytes to fill the block.
      *
-     * @param {Uint8Array} data - Input data to be padded
-     * @returns {Uint8Array} Data with One and Zeros padding appended
+     * @param {uint8[]} data - Input data to be padded
+     * @returns {uint8[]} Data with One and Zeros padding appended
      * @private
      *
      * @example
@@ -292,8 +292,8 @@
      * Removes One and Zeros padding from the input data.
      * Searches backward for the 0x80 marker byte and validates the padding format.
      *
-     * @param {Uint8Array} data - Padded data to be unpadded
-     * @returns {Uint8Array} Original data with padding removed
+     * @param {uint8[]} data - Padded data to be unpadded
+     * @returns {uint8[]} Original data with padding removed
      * @throws {Error} If data is empty
      * @throws {Error} If no 0x80 marker byte is found
      * @throws {Error} If padding format is invalid (non-zero bytes found after 0x80 or before reaching it)

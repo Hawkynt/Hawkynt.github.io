@@ -103,13 +103,9 @@
       ];
 
       // Add block sizes for tests
-      this.tests.forEach((test, index) => {
-        if (index === 0 || index === 1) {
-          test.blockSize = 32; // 32-byte blocks for first two tests
-        } else {
-          test.blockSize = 64; // 64-byte block for third test
-        }
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = i < 2 ? 32 : 64; // 32-byte blocks for the first two tests, 64 for the third
+      }
     }
 
     /**
@@ -132,19 +128,28 @@
   class AnsiX923Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AnsiX923Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._blockSize = 16; // Default block size
     }
 
-    // Property getter and setter for test framework
+    /**
+     * Block size in bytes
+     * @returns {int32} Block size
+     */
     get blockSize() { return this._blockSize; }
+
+    /**
+     * @param {int32} value - Block size in bytes (1 to 255)
+     */
     set blockSize(value) {
       if (!value || value < 1 || value > 255) {
         throw new Error("Block size must be between 1 and 255 bytes");
@@ -164,7 +169,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._removePadding();
       } else {
@@ -175,14 +182,14 @@
 
     /**
      * Add ANSI X9.23 padding to data
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const data = this.inputBuffer;
       const paddingLength = this._blockSize - (data.length % this._blockSize);
 
       // Create padding: zeros followed by length byte
-      const padding = new Array(paddingLength - 1).fill(0);
+      const padding = OpCodes.CreateArray(paddingLength - 1, 0);
       padding.push(paddingLength);
 
       const result = [...data, ...padding];
@@ -196,7 +203,7 @@
 
     /**
      * Remove ANSI X9.23 padding from data
-     * @returns {Array} Unpadded data
+     * @returns {uint8[]} Unpadded data
      */
     _removePadding() {
       const paddedData = this.inputBuffer;
@@ -209,6 +216,7 @@
         throw new Error("Padded data length must be multiple of block size");
       }
 
+      /** @type {int32} */
       const paddingLength = paddedData[paddedData.length - 1];
 
       // Validate padding length

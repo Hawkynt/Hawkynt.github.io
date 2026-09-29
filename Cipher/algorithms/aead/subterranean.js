@@ -49,11 +49,68 @@
   // ========================[ SUBTERRANEAN PERMUTATION ]========================
 
   /**
+   * Chi step on one word, fed by the next word
+   * @param {uint32} a - word being updated
+   * @param {uint32} b - following word
+   * @returns {uint32}
+   */
+  function subterraneanChi(a, b) {
+    const t0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(a, 1), OpCodes.Shl32(b, 31)));
+    const t1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(a, 2), OpCodes.Shl32(b, 30)));
+    return OpCodes.Xor32(a, OpCodes.And32(OpCodes.Not32(t0), t1));
+  }
+
+  /**
+   * Theta step on one word, fed by the next word
+   * @param {uint32} a - word being updated
+   * @param {uint32} b - following word
+   * @returns {uint32}
+   */
+  function subterraneanTheta(a, b) {
+    const t0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(a, 3), OpCodes.Shl32(b, 29)));
+    const t1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(a, 8), OpCodes.Shl32(b, 24)));
+    return OpCodes.Xor32(OpCodes.Xor32(a, t0), t1);
+  }
+
+  /**
+   * Pi step: copy one bit in place
+   * @param {uint32} x - source word
+   * @param {int32} bit - bit position
+   * @returns {uint32}
+   */
+  function BCP(x, bit) {
+    return OpCodes.ToUint32(OpCodes.And32(x, OpCodes.Shl32(1, bit)));
+  }
+
+  /**
+   * Pi step: move one bit up
+   * @param {uint32} x - source word
+   * @param {int32} from - source bit
+   * @param {int32} to - destination bit
+   * @returns {uint32}
+   */
+  function BUP(x, from, to) {
+    return OpCodes.ToUint32(OpCodes.And32(OpCodes.Shl32(x, (to - from)), OpCodes.Shl32(1, to)));
+  }
+
+  /**
+   * Pi step: move one bit down
+   * @param {uint32} x - source word
+   * @param {int32} from - source bit
+   * @param {int32} to - destination bit
+   * @returns {uint32}
+   */
+  function BDN(x, from, to) {
+    return OpCodes.ToUint32(OpCodes.And32(OpCodes.Shr32(x, (from - to)), OpCodes.Shl32(1, to)));
+  }
+
+  /**
    * Subterranean 257-bit state
    * State is represented as 9 x 32-bit words (x[0-7] full, x[8] has 1 bit)
    */
   class SubterraneanState {
     constructor() {
+      /** @type {uint32[]} */
       this.x = new Array(9);
       for (let i = 0; i < 9; ++i) {
         this.x[i] = 0;
@@ -68,63 +125,46 @@
       let x0 = this.x[0], x1 = this.x[1], x2 = this.x[2], x3 = this.x[3];
       let x4 = this.x[4], x5 = this.x[5], x6 = this.x[6], x7 = this.x[7];
       let x8 = this.x[8];
-      let t0, t1;
 
       // Step chi: s[i] = s[i]^(~(s[i+1])&s[i+2])
       x8 = OpCodes.Xor32(x8, OpCodes.Shl32(x0, 1));
 
-      // CHI macro for each word
-      const chi = (a, b) => {
-        t0 = OpCodes.ToUint32(OpCodes.Shr32(a, 1)|OpCodes.Shl32(b, 31));
-        t1 = OpCodes.ToUint32(OpCodes.Shr32(a, 2)|OpCodes.Shl32(b, 30));
-        return OpCodes.Xor32(a, ((~t0)&t1));
-      };
-
-      x0 = chi(x0, x1); x1 = chi(x1, x2);
-      x2 = chi(x2, x3); x3 = chi(x3, x4);
-      x4 = chi(x4, x5); x5 = chi(x5, x6);
-      x6 = chi(x6, x7); x7 = chi(x7, x8);
-      x8 = OpCodes.Xor32(x8, ((~OpCodes.Shr32(x8, 1))&OpCodes.Shr32(x8, 2)));
+      x0 = subterraneanChi(x0, x1); x1 = subterraneanChi(x1, x2);
+      x2 = subterraneanChi(x2, x3); x3 = subterraneanChi(x3, x4);
+      x4 = subterraneanChi(x4, x5); x5 = subterraneanChi(x5, x6);
+      x6 = subterraneanChi(x6, x7); x7 = subterraneanChi(x7, x8);
+      x8 = OpCodes.Xor32(x8, OpCodes.And32(OpCodes.Not32(OpCodes.Shr32(x8, 1)), OpCodes.Shr32(x8, 2)));
 
       // Step iota: invert s[0]
       x0 = OpCodes.Xor32(x0, 1);
 
       // Step theta: s[i] = s[i]^s[i + 3]^s[i + 8]
-      x8 = OpCodes.Xor32((x8&1), OpCodes.Shl32(x0, 1));
+      x8 = OpCodes.Xor32(OpCodes.And32(x8, 1), OpCodes.Shl32(x0, 1));
 
-      const theta = (a, b) => {
-        t0 = OpCodes.ToUint32(OpCodes.Shr32(a, 3)|OpCodes.Shl32(b, 29));
-        t1 = OpCodes.ToUint32(OpCodes.Shr32(a, 8)|OpCodes.Shl32(b, 24));
-        return OpCodes.Xor32(OpCodes.Xor32(a, t0), t1);
-      };
-
-      x0 = theta(x0, x1); x1 = theta(x1, x2);
-      x2 = theta(x2, x3); x3 = theta(x3, x4);
-      x4 = theta(x4, x5); x5 = theta(x5, x6);
-      x6 = theta(x6, x7); x7 = theta(x7, x8);
+      x0 = subterraneanTheta(x0, x1); x1 = subterraneanTheta(x1, x2);
+      x2 = subterraneanTheta(x2, x3); x3 = subterraneanTheta(x3, x4);
+      x4 = subterraneanTheta(x4, x5); x5 = subterraneanTheta(x5, x6);
+      x6 = subterraneanTheta(x6, x7); x7 = subterraneanTheta(x7, x8);
       x8 = OpCodes.Xor32(OpCodes.Xor32(x8, OpCodes.Shr32(x8, 3)), OpCodes.Shr32(x8, 8));
 
       // Step pi: permute bits with rule s[i] = s[(i * 12) % 257]
       // BCP = bit copy, BUP = move bit up, BDN = move bit down
-      const BCP = (x, bit) => OpCodes.ToUint32(x&OpCodes.Shl32(1, bit));
-      const BUP = (x, from, to) => OpCodes.ToUint32(OpCodes.Shl32(x, (to - from))&OpCodes.Shl32(1, to));
-      const BDN = (x, from, to) => OpCodes.ToUint32(OpCodes.Shr32(x, (from - to))&OpCodes.Shl32(1, to));
 
-      this.x[0] = BCP(x0, 0)^BDN(x0, 12,  1)^BDN(x0, 24,  2)^BDN(x1,  4,  3)^BDN(x1, 16,  4)^BDN(x1, 28,  5)^BDN(x2,  8,  6)^BDN(x2, 20,  7)^BUP(x3,  0,  8)^BDN(x3, 12,  9)^BDN(x3, 24, 10)^BUP(x4,  4, 11)^BDN(x4, 16, 12)^BDN(x4, 28, 13)^BUP(x5,  8, 14)^BDN(x5, 20, 15)^BUP(x6,  0, 16)^BUP(x6, 12, 17)^BDN(x6, 24, 18)^BUP(x7,  4, 19)^BUP(x7, 16, 20)^BDN(x7, 28, 21)^BUP(x0,  7, 22)^BUP(x0, 19, 23)^BDN(x0, 31, 24)^BUP(x1, 11, 25)^BUP(x1, 23, 26)^BUP(x2,  3, 27)^BUP(x2, 15, 28)^BUP(x2, 27, 29)^BUP(x3,  7, 30)^BUP(x3, 19, 31);
+      this.x[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BCP(x0, 0), BDN(x0, 12, 1)), BDN(x0, 24, 2)), BDN(x1, 4, 3)), BDN(x1, 16, 4)), BDN(x1, 28, 5)), BDN(x2, 8, 6)), BDN(x2, 20, 7)), BUP(x3, 0, 8)), BDN(x3, 12, 9)), BDN(x3, 24, 10)), BUP(x4, 4, 11)), BDN(x4, 16, 12)), BDN(x4, 28, 13)), BUP(x5, 8, 14)), BDN(x5, 20, 15)), BUP(x6, 0, 16)), BUP(x6, 12, 17)), BDN(x6, 24, 18)), BUP(x7, 4, 19)), BUP(x7, 16, 20)), BDN(x7, 28, 21)), BUP(x0, 7, 22)), BUP(x0, 19, 23)), BDN(x0, 31, 24)), BUP(x1, 11, 25)), BUP(x1, 23, 26)), BUP(x2, 3, 27)), BUP(x2, 15, 28)), BUP(x2, 27, 29)), BUP(x3, 7, 30)), BUP(x3, 19, 31));
 
-      this.x[1] = BDN(x3, 31,  0)^BDN(x4, 11,  1)^BDN(x4, 23,  2)^BCP(x5,  3)^BDN(x5, 15,  4)^BDN(x5, 27,  5)^BDN(x6,  7,  6)^BDN(x6, 19,  7)^BDN(x6, 31,  8)^BDN(x7, 11,  9)^BDN(x7, 23, 10)^BUP(x0,  2, 11)^BDN(x0, 14, 12)^BDN(x0, 26, 13)^BUP(x1,  6, 14)^BDN(x1, 18, 15)^BDN(x1, 30, 16)^BUP(x2, 10, 17)^BDN(x2, 22, 18)^BUP(x3,  2, 19)^BUP(x3, 14, 20)^BDN(x3, 26, 21)^BUP(x4,  6, 22)^BUP(x4, 18, 23)^BDN(x4, 30, 24)^BUP(x5, 10, 25)^BUP(x5, 22, 26)^BUP(x6,  2, 27)^BUP(x6, 14, 28)^BUP(x6, 26, 29)^BUP(x7,  6, 30)^BUP(x7, 18, 31);
+      this.x[1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x3, 31, 0), BDN(x4, 11, 1)), BDN(x4, 23, 2)), BCP(x5, 3)), BDN(x5, 15, 4)), BDN(x5, 27, 5)), BDN(x6, 7, 6)), BDN(x6, 19, 7)), BDN(x6, 31, 8)), BDN(x7, 11, 9)), BDN(x7, 23, 10)), BUP(x0, 2, 11)), BDN(x0, 14, 12)), BDN(x0, 26, 13)), BUP(x1, 6, 14)), BDN(x1, 18, 15)), BDN(x1, 30, 16)), BUP(x2, 10, 17)), BDN(x2, 22, 18)), BUP(x3, 2, 19)), BUP(x3, 14, 20)), BDN(x3, 26, 21)), BUP(x4, 6, 22)), BUP(x4, 18, 23)), BDN(x4, 30, 24)), BUP(x5, 10, 25)), BUP(x5, 22, 26)), BUP(x6, 2, 27)), BUP(x6, 14, 28)), BUP(x6, 26, 29)), BUP(x7, 6, 30)), BUP(x7, 18, 31));
 
-      this.x[2] = BDN(x7, 30,  0)^BDN(x0,  9,  1)^BDN(x0, 21,  2)^BUP(x1,  1,  3)^BDN(x1, 13,  4)^BDN(x1, 25,  5)^BUP(x2,  5,  6)^BDN(x2, 17,  7)^BDN(x2, 29,  8)^BCP(x3,  9)^BDN(x3, 21, 10)^BUP(x4,  1, 11)^BDN(x4, 13, 12)^BDN(x4, 25, 13)^BUP(x5,  5, 14)^BDN(x5, 17, 15)^BDN(x5, 29, 16)^BUP(x6,  9, 17)^BDN(x6, 21, 18)^BUP(x7,  1, 19)^BUP(x7, 13, 20)^BDN(x7, 25, 21)^BUP(x0,  4, 22)^BUP(x0, 16, 23)^BDN(x0, 28, 24)^BUP(x1,  8, 25)^BUP(x1, 20, 26)^BUP(x2,  0, 27)^BUP(x2, 12, 28)^BUP(x2, 24, 29)^BUP(x3,  4, 30)^BUP(x3, 16, 31);
+      this.x[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x7, 30, 0), BDN(x0, 9, 1)), BDN(x0, 21, 2)), BUP(x1, 1, 3)), BDN(x1, 13, 4)), BDN(x1, 25, 5)), BUP(x2, 5, 6)), BDN(x2, 17, 7)), BDN(x2, 29, 8)), BCP(x3, 9)), BDN(x3, 21, 10)), BUP(x4, 1, 11)), BDN(x4, 13, 12)), BDN(x4, 25, 13)), BUP(x5, 5, 14)), BDN(x5, 17, 15)), BDN(x5, 29, 16)), BUP(x6, 9, 17)), BDN(x6, 21, 18)), BUP(x7, 1, 19)), BUP(x7, 13, 20)), BDN(x7, 25, 21)), BUP(x0, 4, 22)), BUP(x0, 16, 23)), BDN(x0, 28, 24)), BUP(x1, 8, 25)), BUP(x1, 20, 26)), BUP(x2, 0, 27)), BUP(x2, 12, 28)), BUP(x2, 24, 29)), BUP(x3, 4, 30)), BUP(x3, 16, 31));
 
-      this.x[3] = BDN(x3, 28,  0)^BDN(x4,  8,  1)^BDN(x4, 20,  2)^BUP(x5,  0,  3)^BDN(x5, 12,  4)^BDN(x5, 24,  5)^BUP(x6,  4,  6)^BDN(x6, 16,  7)^BDN(x6, 28,  8)^BUP(x7,  8,  9)^BDN(x7, 20, 10)^BUP(x8,  0, 11)^BUP(x0, 11, 12)^BDN(x0, 23, 13)^BUP(x1,  3, 14)^BCP(x1, 15)^BDN(x1, 27, 16)^BUP(x2,  7, 17)^BDN(x2, 19, 18)^BDN(x2, 31, 19)^BUP(x3, 11, 20)^BDN(x3, 23, 21)^BUP(x4,  3, 22)^BUP(x4, 15, 23)^BDN(x4, 27, 24)^BUP(x5,  7, 25)^BUP(x5, 19, 26)^BDN(x5, 31, 27)^BUP(x6, 11, 28)^BUP(x6, 23, 29)^BUP(x7,  3, 30)^BUP(x7, 15, 31);
+      this.x[3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x3, 28, 0), BDN(x4, 8, 1)), BDN(x4, 20, 2)), BUP(x5, 0, 3)), BDN(x5, 12, 4)), BDN(x5, 24, 5)), BUP(x6, 4, 6)), BDN(x6, 16, 7)), BDN(x6, 28, 8)), BUP(x7, 8, 9)), BDN(x7, 20, 10)), BUP(x8, 0, 11)), BUP(x0, 11, 12)), BDN(x0, 23, 13)), BUP(x1, 3, 14)), BCP(x1, 15)), BDN(x1, 27, 16)), BUP(x2, 7, 17)), BDN(x2, 19, 18)), BDN(x2, 31, 19)), BUP(x3, 11, 20)), BDN(x3, 23, 21)), BUP(x4, 3, 22)), BUP(x4, 15, 23)), BDN(x4, 27, 24)), BUP(x5, 7, 25)), BUP(x5, 19, 26)), BDN(x5, 31, 27)), BUP(x6, 11, 28)), BUP(x6, 23, 29)), BUP(x7, 3, 30)), BUP(x7, 15, 31));
 
-      this.x[4] = BDN(x7, 27,  0)^BDN(x0,  6,  1)^BDN(x0, 18,  2)^BDN(x0, 30,  3)^BDN(x1, 10,  4)^BDN(x1, 22,  5)^BUP(x2,  2,  6)^BDN(x2, 14,  7)^BDN(x2, 26,  8)^BUP(x3,  6,  9)^BDN(x3, 18, 10)^BDN(x3, 30, 11)^BUP(x4, 10, 12)^BDN(x4, 22, 13)^BUP(x5,  2, 14)^BUP(x5, 14, 15)^BDN(x5, 26, 16)^BUP(x6,  6, 17)^BCP(x6, 18)^BDN(x6, 30, 19)^BUP(x7, 10, 20)^BDN(x7, 22, 21)^BUP(x0,  1, 22)^BUP(x0, 13, 23)^BDN(x0, 25, 24)^BUP(x1,  5, 25)^BUP(x1, 17, 26)^BDN(x1, 29, 27)^BUP(x2,  9, 28)^BUP(x2, 21, 29)^BUP(x3,  1, 30)^BUP(x3, 13, 31);
+      this.x[4] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x7, 27, 0), BDN(x0, 6, 1)), BDN(x0, 18, 2)), BDN(x0, 30, 3)), BDN(x1, 10, 4)), BDN(x1, 22, 5)), BUP(x2, 2, 6)), BDN(x2, 14, 7)), BDN(x2, 26, 8)), BUP(x3, 6, 9)), BDN(x3, 18, 10)), BDN(x3, 30, 11)), BUP(x4, 10, 12)), BDN(x4, 22, 13)), BUP(x5, 2, 14)), BUP(x5, 14, 15)), BDN(x5, 26, 16)), BUP(x6, 6, 17)), BCP(x6, 18)), BDN(x6, 30, 19)), BUP(x7, 10, 20)), BDN(x7, 22, 21)), BUP(x0, 1, 22)), BUP(x0, 13, 23)), BDN(x0, 25, 24)), BUP(x1, 5, 25)), BUP(x1, 17, 26)), BDN(x1, 29, 27)), BUP(x2, 9, 28)), BUP(x2, 21, 29)), BUP(x3, 1, 30)), BUP(x3, 13, 31));
 
-      this.x[5] = BDN(x3, 25,  0)^BDN(x4,  5,  1)^BDN(x4, 17,  2)^BDN(x4, 29,  3)^BDN(x5,  9,  4)^BDN(x5, 21,  5)^BUP(x6,  1,  6)^BDN(x6, 13,  7)^BDN(x6, 25,  8)^BUP(x7,  5,  9)^BDN(x7, 17, 10)^BDN(x7, 29, 11)^BUP(x0,  8, 12)^BDN(x0, 20, 13)^BUP(x1,  0, 14)^BUP(x1, 12, 15)^BDN(x1, 24, 16)^BUP(x2,  4, 17)^BUP(x2, 16, 18)^BDN(x2, 28, 19)^BUP(x3,  8, 20)^BUP(x3, 20, 21)^BUP(x4,  0, 22)^BUP(x4, 12, 23)^BCP(x4, 24)^BUP(x5,  4, 25)^BUP(x5, 16, 26)^BDN(x5, 28, 27)^BUP(x6,  8, 28)^BUP(x6, 20, 29)^BUP(x7,  0, 30)^BUP(x7, 12, 31);
+      this.x[5] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x3, 25, 0), BDN(x4, 5, 1)), BDN(x4, 17, 2)), BDN(x4, 29, 3)), BDN(x5, 9, 4)), BDN(x5, 21, 5)), BUP(x6, 1, 6)), BDN(x6, 13, 7)), BDN(x6, 25, 8)), BUP(x7, 5, 9)), BDN(x7, 17, 10)), BDN(x7, 29, 11)), BUP(x0, 8, 12)), BDN(x0, 20, 13)), BUP(x1, 0, 14)), BUP(x1, 12, 15)), BDN(x1, 24, 16)), BUP(x2, 4, 17)), BUP(x2, 16, 18)), BDN(x2, 28, 19)), BUP(x3, 8, 20)), BUP(x3, 20, 21)), BUP(x4, 0, 22)), BUP(x4, 12, 23)), BCP(x4, 24)), BUP(x5, 4, 25)), BUP(x5, 16, 26)), BDN(x5, 28, 27)), BUP(x6, 8, 28)), BUP(x6, 20, 29)), BUP(x7, 0, 30)), BUP(x7, 12, 31));
 
-      this.x[6] = BDN(x7, 24,  0)^BDN(x0,  3,  1)^BDN(x0, 15,  2)^BDN(x0, 27,  3)^BDN(x1,  7,  4)^BDN(x1, 19,  5)^BDN(x1, 31,  6)^BDN(x2, 11,  7)^BDN(x2, 23,  8)^BUP(x3,  3,  9)^BDN(x3, 15, 10)^BDN(x3, 27, 11)^BUP(x4,  7, 12)^BDN(x4, 19, 13)^BDN(x4, 31, 14)^BUP(x5, 11, 15)^BDN(x5, 23, 16)^BUP(x6,  3, 17)^BUP(x6, 15, 18)^BDN(x6, 27, 19)^BUP(x7,  7, 20)^BUP(x7, 19, 21)^BDN(x7, 31, 22)^BUP(x0, 10, 23)^BUP(x0, 22, 24)^BUP(x1,  2, 25)^BUP(x1, 14, 26)^BUP(x1, 26, 27)^BUP(x2,  6, 28)^BUP(x2, 18, 29)^BCP(x2, 30)^BUP(x3, 10, 31);
+      this.x[6] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x7, 24, 0), BDN(x0, 3, 1)), BDN(x0, 15, 2)), BDN(x0, 27, 3)), BDN(x1, 7, 4)), BDN(x1, 19, 5)), BDN(x1, 31, 6)), BDN(x2, 11, 7)), BDN(x2, 23, 8)), BUP(x3, 3, 9)), BDN(x3, 15, 10)), BDN(x3, 27, 11)), BUP(x4, 7, 12)), BDN(x4, 19, 13)), BDN(x4, 31, 14)), BUP(x5, 11, 15)), BDN(x5, 23, 16)), BUP(x6, 3, 17)), BUP(x6, 15, 18)), BDN(x6, 27, 19)), BUP(x7, 7, 20)), BUP(x7, 19, 21)), BDN(x7, 31, 22)), BUP(x0, 10, 23)), BUP(x0, 22, 24)), BUP(x1, 2, 25)), BUP(x1, 14, 26)), BUP(x1, 26, 27)), BUP(x2, 6, 28)), BUP(x2, 18, 29)), BCP(x2, 30)), BUP(x3, 10, 31));
 
-      this.x[7] = BDN(x3, 22,  0)^BDN(x4,  2,  1)^BDN(x4, 14,  2)^BDN(x4, 26,  3)^BDN(x5,  6,  4)^BDN(x5, 18,  5)^BDN(x5, 30,  6)^BDN(x6, 10,  7)^BDN(x6, 22,  8)^BUP(x7,  2,  9)^BDN(x7, 14, 10)^BDN(x7, 26, 11)^BUP(x0,  5, 12)^BDN(x0, 17, 13)^BDN(x0, 29, 14)^BUP(x1,  9, 15)^BDN(x1, 21, 16)^BUP(x2,  1, 17)^BUP(x2, 13, 18)^BDN(x2, 25, 19)^BUP(x3,  5, 20)^BUP(x3, 17, 21)^BDN(x3, 29, 22)^BUP(x4,  9, 23)^BUP(x4, 21, 24)^BUP(x5,  1, 25)^BUP(x5, 13, 26)^BUP(x5, 25, 27)^BUP(x6,  5, 28)^BUP(x6, 17, 29)^BUP(x6, 29, 30)^BUP(x7,  9, 31);
+      this.x[7] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(BDN(x3, 22, 0), BDN(x4, 2, 1)), BDN(x4, 14, 2)), BDN(x4, 26, 3)), BDN(x5, 6, 4)), BDN(x5, 18, 5)), BDN(x5, 30, 6)), BDN(x6, 10, 7)), BDN(x6, 22, 8)), BUP(x7, 2, 9)), BDN(x7, 14, 10)), BDN(x7, 26, 11)), BUP(x0, 5, 12)), BDN(x0, 17, 13)), BDN(x0, 29, 14)), BUP(x1, 9, 15)), BDN(x1, 21, 16)), BUP(x2, 1, 17)), BUP(x2, 13, 18)), BDN(x2, 25, 19)), BUP(x3, 5, 20)), BUP(x3, 17, 21)), BDN(x3, 29, 22)), BUP(x4, 9, 23)), BUP(x4, 21, 24)), BUP(x5, 1, 25)), BUP(x5, 13, 26)), BUP(x5, 25, 27)), BUP(x6, 5, 28)), BUP(x6, 17, 29)), BUP(x6, 29, 30)), BUP(x7, 9, 31));
 
       this.x[8] = BDN(x7, 21, 0);
     }
@@ -132,9 +172,10 @@
     /**
      * Absorbs a single byte into the state
      * Bits are rearranged according to the permutation pattern
+     * @param {uint8} data
      */
     absorb1(data) {
-      const x = data&0xFF;
+      const x = OpCodes.And32(data, 0xFF);
 
       // Rearrange bits and absorb into state (from C reference)
       this.x[0] = OpCodes.Xor32(this.x[0], OpCodes.And32(OpCodes.Shl32(x, 1), 0x00000002));
@@ -149,20 +190,17 @@
     /**
      * Absorbs a 32-bit word into the state
      * Implements complex bit permutation from C reference
+     * @param {uint32} word
      */
     absorbWord(word) {
       let x = OpCodes.ToUint32(word);
       let y;
 
       // Permutation P1
-      const leftRotate5 = (v) => OpCodes.RotL32(v, 5);
-      const leftRotate6 = (v) => OpCodes.RotL32(v, 6);
-      const leftRotate12 = (v) => OpCodes.RotL32(v, 12);
-
-      y = (x&0x00080008)|OpCodes.Shl32((x&0x00004001), 1)|OpCodes.Shl32((x&0x00000080), 3)|OpCodes.Shl32((x&0x04000000), 4)|leftRotate6(x&0x80000004)|OpCodes.Shl32((x&0x00400000), 7)|leftRotate12(x&0x01000200)|OpCodes.Shl32((x&0x00000800), 13)|OpCodes.Shl32((x&0x00000002), 15)|OpCodes.Shr32((x&0x08000000), 15)|OpCodes.Shl32((x&0x00002000), 18)|OpCodes.Shr32((x&0x40000000), 13)|OpCodes.Shl32((x&0x00000010), 21)|OpCodes.Shr32((x&0x00001000), 10)|OpCodes.Shr32((x&0x00048000), 9)|OpCodes.Shr32((x&0x00000100), 8)|OpCodes.Shr32((x&0x20000000), 7)|OpCodes.Shr32((x&0x00020000), 6);
+      y = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, 0x00080008), OpCodes.Shl32(OpCodes.And32(x, 0x00004001), 1)), OpCodes.Shl32(OpCodes.And32(x, 0x00000080), 3)), OpCodes.Shl32(OpCodes.And32(x, 0x04000000), 4)), OpCodes.RotL32(OpCodes.And32(x, 0x80000004), 6)), OpCodes.Shl32(OpCodes.And32(x, 0x00400000), 7)), OpCodes.RotL32(OpCodes.And32(x, 0x01000200), 12)), OpCodes.Shl32(OpCodes.And32(x, 0x00000800), 13)), OpCodes.Shl32(OpCodes.And32(x, 0x00000002), 15)), OpCodes.Shr32(OpCodes.And32(x, 0x08000000), 15)), OpCodes.Shl32(OpCodes.And32(x, 0x00002000), 18)), OpCodes.Shr32(OpCodes.And32(x, 0x40000000), 13)), OpCodes.Shl32(OpCodes.And32(x, 0x00000010), 21)), OpCodes.Shr32(OpCodes.And32(x, 0x00001000), 10)), OpCodes.Shr32(OpCodes.And32(x, 0x00048000), 9)), OpCodes.Shr32(OpCodes.And32(x, 0x00000100), 8)), OpCodes.Shr32(OpCodes.And32(x, 0x20000000), 7)), OpCodes.Shr32(OpCodes.And32(x, 0x00020000), 6));
 
       // Permutation P2
-      x = OpCodes.Shl32((x&0x00010020), 1)|leftRotate5(x&0x12000000)|OpCodes.Shr32((x&0x00100000), 20)|OpCodes.Shr32((x&0x00200000), 12)|OpCodes.Shl32((x&0x00000400), 21)|OpCodes.Shr32((x&0x00800000), 8)|OpCodes.Shr32((x&0x00000040), 1);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x00010020), 1), OpCodes.RotL32(OpCodes.And32(x, 0x12000000), 5)), OpCodes.Shr32(OpCodes.And32(x, 0x00100000), 20)), OpCodes.Shr32(OpCodes.And32(x, 0x00200000), 12)), OpCodes.Shl32(OpCodes.And32(x, 0x00000400), 21)), OpCodes.Shr32(OpCodes.And32(x, 0x00800000), 8)), OpCodes.Shr32(OpCodes.And32(x, 0x00000040), 1));
 
       // Integrate rearranged bits into state
       this.x[0] = OpCodes.Xor32(this.x[0], OpCodes.And32(y, 0x40428816));
@@ -177,52 +215,52 @@
 
     /**
      * Extracts 32 bits of output from the state
+     * @returns {uint32}
      */
     extract() {
       let x, y;
 
       // Extract and permute bits from state (from C reference)
-      const leftRotate27 = (v) => OpCodes.RotL32(v, 27);
 
       // P0
       x = this.x[0];
-      x = (x&0x00010000)|OpCodes.Shl32((x&0x00000800), 6)|OpCodes.Shl32((x&0x00400000), 7)|OpCodes.Shl32((x&0x00000004), 10)|OpCodes.Shl32((x&0x00020000), 13)|OpCodes.Shr32((x&0x00800000), 16)|OpCodes.Shl32((x&0x00000010), 20)|OpCodes.Shr32((x&0x40000100), 4)|OpCodes.Shr32((x&0x00008002), 1);
-      y = x&0x65035091;
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, 0x00010000), OpCodes.Shl32(OpCodes.And32(x, 0x00000800), 6)), OpCodes.Shl32(OpCodes.And32(x, 0x00400000), 7)), OpCodes.Shl32(OpCodes.And32(x, 0x00000004), 10)), OpCodes.Shl32(OpCodes.And32(x, 0x00020000), 13)), OpCodes.Shr32(OpCodes.And32(x, 0x00800000), 16)), OpCodes.Shl32(OpCodes.And32(x, 0x00000010), 20)), OpCodes.Shr32(OpCodes.And32(x, 0x40000100), 4)), OpCodes.Shr32(OpCodes.And32(x, 0x00008002), 1));
+      y = OpCodes.And32(x, 0x65035091);
 
       // P1
       x = this.x[1];
-      x = (x&0x00000008)|OpCodes.Shl32((x&0x00004000), 5)|OpCodes.Shl32((x&0x00000004), 8)|OpCodes.Shr32((x&0x10000000), 22)|OpCodes.Shl32((x&0x00000001), 28)|OpCodes.Shr32((x&0x00001000), 3);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, 0x00000008), OpCodes.Shl32(OpCodes.And32(x, 0x00004000), 5)), OpCodes.Shl32(OpCodes.And32(x, 0x00000004), 8)), OpCodes.Shr32(OpCodes.And32(x, 0x10000000), 22)), OpCodes.Shl32(OpCodes.And32(x, 0x00000001), 28)), OpCodes.Shr32(OpCodes.And32(x, 0x00001000), 3));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x10080648));
 
       // P2
       x = this.x[2];
-      x = OpCodes.Shl32((x&0x00000200), 2)|OpCodes.Shl32((x&0x10000000), 3)|OpCodes.Shl32((x&0x00000001), 8)|OpCodes.Shl32((x&0x00000040), 9)|OpCodes.Shr32((x&0x80000000), 18)|OpCodes.Shr32((x&0x00020000), 16)|OpCodes.Shl32((x&0x00000010), 18)|OpCodes.Shl32((x&0x00000008), 22)|OpCodes.Shr32((x&0x01000000), 3);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x00000200), 2), OpCodes.Shl32(OpCodes.And32(x, 0x10000000), 3)), OpCodes.Shl32(OpCodes.And32(x, 0x00000001), 8)), OpCodes.Shl32(OpCodes.And32(x, 0x00000040), 9)), OpCodes.Shr32(OpCodes.And32(x, 0x80000000), 18)), OpCodes.Shr32(OpCodes.And32(x, 0x00020000), 16)), OpCodes.Shl32(OpCodes.And32(x, 0x00000010), 18)), OpCodes.Shl32(OpCodes.And32(x, 0x00000008), 22)), OpCodes.Shr32(OpCodes.And32(x, 0x01000000), 3));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x8260a902));
 
       // P3
       x = this.x[3];
-      x = OpCodes.Shl32((x&0x00200000), 6)|OpCodes.Shl32((x&0x00008000), 8)|OpCodes.Shr32((x&0x02000000), 23)|OpCodes.Shr32((x&0x08000000), 22)|OpCodes.Shr32((x&0x01000000), 6);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x00200000), 6), OpCodes.Shl32(OpCodes.And32(x, 0x00008000), 8)), OpCodes.Shr32(OpCodes.And32(x, 0x02000000), 23)), OpCodes.Shr32(OpCodes.And32(x, 0x08000000), 22)), OpCodes.Shr32(OpCodes.And32(x, 0x01000000), 6));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x08840024));
 
       // P4 (with duplicated bit 20)
       x = this.x[4];
       y = OpCodes.Xor32(y, OpCodes.And32(OpCodes.Shl32(x, 20), 0x00100000));
-      x = OpCodes.Shl32((x&0x00040000), 5)|OpCodes.Shl32((x&0x00000200), 9)|OpCodes.Shl32((x&0x00001000), 15)|OpCodes.Shl32((x&0x00000002), 19)|OpCodes.Shr32((x&0x00000100), 6)|OpCodes.Shr32((x&0x00000040), 1);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x00040000), 5), OpCodes.Shl32(OpCodes.And32(x, 0x00000200), 9)), OpCodes.Shl32(OpCodes.And32(x, 0x00001000), 15)), OpCodes.Shl32(OpCodes.And32(x, 0x00000002), 19)), OpCodes.Shr32(OpCodes.And32(x, 0x00000100), 6)), OpCodes.Shr32(OpCodes.And32(x, 0x00000040), 1));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x08940024));
 
       // P5
       x = this.x[5];
-      x = OpCodes.Shl32((x&0x00000004), 11)|OpCodes.Shl32((x&0x00000200), 12)|OpCodes.Shr32((x&0x00010000), 15)|OpCodes.Shr32((x&0x01000000), 13)|OpCodes.Shr32((x&0x08000000), 12)|OpCodes.Shr32((x&0x20000000), 7)|OpCodes.Shl32((x&0x00000020), 26)|OpCodes.Shr32((x&0x40000000), 5);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x00000004), 11), OpCodes.Shl32(OpCodes.And32(x, 0x00000200), 12)), OpCodes.Shr32(OpCodes.And32(x, 0x00010000), 15)), OpCodes.Shr32(OpCodes.And32(x, 0x01000000), 13)), OpCodes.Shr32(OpCodes.And32(x, 0x08000000), 12)), OpCodes.Shr32(OpCodes.And32(x, 0x20000000), 7)), OpCodes.Shl32(OpCodes.And32(x, 0x00000020), 26)), OpCodes.Shr32(OpCodes.And32(x, 0x40000000), 5));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x8260a802));
 
       // P6
       x = this.x[6];
-      x = (x&0x00080000)|OpCodes.Shl32((x&0x00000020), 1)|OpCodes.Shr32((x&0x40000000), 27)|OpCodes.Shl32((x&0x00000002), 7)|OpCodes.Shr32((x&0x80000000), 21)|OpCodes.Shr32((x&0x00200000), 12);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, 0x00080000), OpCodes.Shl32(OpCodes.And32(x, 0x00000020), 1)), OpCodes.Shr32(OpCodes.And32(x, 0x40000000), 27)), OpCodes.Shl32(OpCodes.And32(x, 0x00000002), 7)), OpCodes.Shr32(OpCodes.And32(x, 0x80000000), 21)), OpCodes.Shr32(OpCodes.And32(x, 0x00200000), 12));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x00080748));
 
       // P7
       x = this.x[7];
-      x = OpCodes.Shr32((x&0x02000000), 21)|OpCodes.Shr32((x&0x80000000), 19)|OpCodes.Shl32((x&0x00010000), 14)|OpCodes.Shl32((x&0x00000800), 18)|OpCodes.Shl32((x&0x00000008), 23)|leftRotate27(x&0x20400002)|OpCodes.Shr32((x&0x00040000), 4)|OpCodes.Shr32((x&0x00000400), 3)|OpCodes.Shr32((x&0x00020000), 1);
+      x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(x, 0x02000000), 21), OpCodes.Shr32(OpCodes.And32(x, 0x80000000), 19)), OpCodes.Shl32(OpCodes.And32(x, 0x00010000), 14)), OpCodes.Shl32(OpCodes.And32(x, 0x00000800), 18)), OpCodes.Shl32(OpCodes.And32(x, 0x00000008), 23)), OpCodes.RotL32(OpCodes.And32(x, 0x20400002), 27)), OpCodes.Shr32(OpCodes.And32(x, 0x00040000), 4)), OpCodes.Shr32(OpCodes.And32(x, 0x00000400), 3)), OpCodes.Shr32(OpCodes.And32(x, 0x00020000), 1));
       y = OpCodes.Xor32(y, OpCodes.And32(x, 0x75035090));
 
       // XOR with bit 8
@@ -249,6 +287,7 @@
 
     /**
      * Duplex operation: round + absorb 1 byte
+     * @param {uint8} data
      */
     duplex1(data) {
       this.round();
@@ -257,6 +296,7 @@
 
     /**
      * Duplex operation: round + absorb 4 bytes
+     * @param {uint32} word
      */
     duplex4(word) {
       this.round();
@@ -266,6 +306,8 @@
 
     /**
      * Duplex operation: round + absorb n bytes (0-4)
+     * @param {uint8[]} data
+     * @param {int32} len
      */
     duplexN(data, len) {
       this.round();
@@ -275,10 +317,10 @@
       } else if (len === 1) {
         this.absorb1(data[0]);
       } else if (len === 2) {
-        const word = OpCodes.Pack32LE(data[0], data[1], 0, 0)|0x10000;
+        const word = OpCodes.Or32(OpCodes.Pack32LE(data[0], data[1], 0, 0), 0x10000);
         this.absorbWord(word);
       } else if (len === 3) {
-        const word = OpCodes.Pack32LE(data[0], data[1], data[2], 0)|0x01000000;
+        const word = OpCodes.Or32(OpCodes.Pack32LE(data[0], data[1], data[2], 0), 0x01000000);
         this.absorbWord(word);
       } else {
         const word = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
@@ -289,6 +331,7 @@
 
     /**
      * Absorbs arbitrary length data, 4 bytes at a time
+     * @param {uint8[]} data
      */
     absorb(data) {
       let offset = 0;
@@ -309,22 +352,31 @@
 
     /**
      * Squeezes output bytes from the state
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     squeeze(length) {
+      /** @type {uint8[]} */
       const output = [];
 
       while (length > 4) {
         const word = this.extract();
         this.duplex0();
         const bytes = OpCodes.Unpack32LE(word);
-        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        output.push(bytes[0]);
+        output.push(bytes[1]);
+        output.push(bytes[2]);
+        output.push(bytes[3]);
         length -= 4;
       }
 
       if (length === 4) {
         const word = this.extract();
         const bytes = OpCodes.Unpack32LE(word);
-        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        output.push(bytes[0]);
+        output.push(bytes[1]);
+        output.push(bytes[2]);
+        output.push(bytes[3]);
       } else if (length > 0) {
         const word = this.extract();
         const bytes = OpCodes.Unpack32LE(word);
@@ -460,16 +512,21 @@
   class SubterraneanAEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SubterraneanAEAD} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -486,7 +543,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16)");
       }
 
       this._key = [...keyBytes];
@@ -499,6 +556,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -506,14 +566,20 @@
       }
 
       if (nonceBytes.length !== 16) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 16)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 16)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -522,12 +588,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -550,9 +625,14 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {SubterraneanState} */
       const state = new SubterraneanState();
+      /** @type {uint8[]} */
       const output = [];
 
       // Initialize state and absorb key and nonce
@@ -570,23 +650,28 @@
           plaintext[offset], plaintext[offset + 1],
           plaintext[offset + 2], plaintext[offset + 3]
         );
+        /** @type {uint32} */
         const extracted = state.extract();
         const cipherWord = OpCodes.Xor32(extracted, word);
         state.duplex4(word);
 
         const cipherBytes = OpCodes.Unpack32LE(cipherWord);
-        output.push(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
+        output.push(cipherBytes[0]);
+        output.push(cipherBytes[1]);
+        output.push(cipherBytes[2]);
+        output.push(cipherBytes[3]);
         offset += 4;
       }
 
       // Handle remaining bytes
       const remaining = plaintext.length - offset;
       if (remaining > 0) {
+        /** @type {uint32} */
         const extracted = state.extract();
         const extractedBytes = OpCodes.Unpack32LE(extracted);
 
         for (let i = 0; i < remaining; ++i) {
-          output.push((extractedBytes[i]^plaintext[offset + i])&0xFF);
+          output.push(OpCodes.And32(OpCodes.Xor32(extractedBytes[i], plaintext[offset + i]), 0xFF));
         }
 
         state.duplexN(plaintext.slice(offset), remaining);
@@ -596,6 +681,7 @@
 
       // Generate authentication tag
       state.blank();
+      /** @type {uint8[]} */
       const tag = state.squeeze(16);
       for (let _i = 0; _i < tag.length; _i++) output.push(tag[_i]);
 
@@ -605,6 +691,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       if (this.inputBuffer.length < 16) {
         throw new Error("Ciphertext too short (must include 16-byte tag)");
@@ -612,7 +701,9 @@
 
       const ciphertext = this.inputBuffer.slice(0, -16);
       const receivedTag = this.inputBuffer.slice(-16);
+      /** @type {SubterraneanState} */
       const state = new SubterraneanState();
+      /** @type {uint8[]} */
       const output = [];
 
       // Initialize state and absorb key and nonce
@@ -630,24 +721,30 @@
           ciphertext[offset], ciphertext[offset + 1],
           ciphertext[offset + 2], ciphertext[offset + 3]
         );
+        /** @type {uint32} */
         const extracted = state.extract();
         const plainWord = OpCodes.Xor32(extracted, cipherWord);
         state.duplex4(plainWord);
 
         const plainBytes = OpCodes.Unpack32LE(plainWord);
-        output.push(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
+        output.push(plainBytes[0]);
+        output.push(plainBytes[1]);
+        output.push(plainBytes[2]);
+        output.push(plainBytes[3]);
         offset += 4;
       }
 
       // Handle remaining bytes
       const remaining = ciphertext.length - offset;
       if (remaining > 0) {
+        /** @type {uint32} */
         const extracted = state.extract();
         const extractedBytes = OpCodes.Unpack32LE(extracted);
+        /** @type {uint8[]} */
         const plainBytes = [];
 
         for (let i = 0; i < remaining; ++i) {
-          const plainByte = (extractedBytes[i]^ciphertext[offset + i])&0xFF;
+          const plainByte = OpCodes.And32(OpCodes.Xor32(extractedBytes[i], ciphertext[offset + i]), 0xFF);
           output.push(plainByte);
           plainBytes.push(plainByte);
         }
@@ -659,6 +756,7 @@
 
       // Verify authentication tag
       state.blank();
+      /** @type {uint8[]} */
       const computedTag = state.squeeze(16);
 
       // Constant-time tag comparison

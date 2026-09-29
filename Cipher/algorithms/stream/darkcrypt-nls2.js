@@ -165,7 +165,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("f68ab7b995e75e768cc1b62082ea3117a78d8d5bd0081ba01daeedd165c22813ca93b50e5991c57484bd8bc1bff7098282e68b572c2bfb7ad3803ff2581344f5c66e2ae44dea01fb7b04b0c1c38f39e1837c506f8d20a322241af75b7a9ba05e79c89c8d9a5b21e0b5931fc148178ebe7c1124908b8cb3121150d4c286a27d9c")
         },
         {
@@ -185,11 +185,19 @@
   }
 
   class DarkCryptNLS2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptNLS2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       this.R = new Uint32Array(N);
@@ -197,9 +205,13 @@
       this.konst = 0;
       this.sbuf = 0;
       this.nbuf = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -212,17 +224,23 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid NLS2 key size: ${keyBytes.length} bytes. Key must be 16 bytes (128 bits)`);
+        throw new Error("Invalid NLS2 key size: " + keyBytes.length + " bytes. Key must be 16 bytes (128 bits)");
       }
 
       this._key = Array.from(keyBytes);
       this._setupKey();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -234,7 +252,7 @@
       }
 
       if (ivData.length !== 16) {
-        throw new Error(`Invalid NLS2 IV size: ${ivData.length} bytes. IV must be 16 bytes (128 bits)`);
+        throw new Error("Invalid NLS2 IV size: " + ivData.length + " bytes. IV must be 16 bytes (128 bits)");
       }
 
       this._iv = Array.from(ivData);
@@ -244,18 +262,30 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data) && !(data instanceof Uint8Array)) {
@@ -268,6 +298,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) {
         throw new Error("Key not set");
@@ -279,6 +312,7 @@
         throw new Error("NLS2 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let inlen = this.inputBuffer.length;
       let inpos = 0;
@@ -368,6 +402,9 @@
       this.konst = OpCodes.ToUint32(INITKONST);
     }
 
+    /**
+     * @param {uint8[]} bytes
+     */
     _loadKeyMaterial(bytes) {
       let i = 0;
       for (; i + 4 <= bytes.length; i += 4) {
@@ -378,6 +415,7 @@
       }
 
       if (i < bytes.length) {
+        /** @type {uint8[]} */
         const xtra = [0, 0, 0, 0];
         let j = 0;
         for (; i < bytes.length; ++i) xtra[j++] = bytes[i];
@@ -392,6 +430,11 @@
       this._diffuse();
     }
 
+    /**
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @returns {uint32}
+     */
     _byte2word(bytes, offset) {
       return OpCodes.Pack32LE(
         bytes[offset],
@@ -403,9 +446,7 @@
 
     // NLSv2 nonlinear feedback: rotate-based combination, single S-box lookup.
     _cycle() {
-      let t = OpCodes.ToUint32(
-        OpCodes.RotL32(this.R[0], 19) + OpCodes.RotL32(this.R[15], 9) + this.konst
-      );
+      let t = OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(this.R[0], 19), OpCodes.RotL32(this.R[15], 9)), this.konst);
       t = OpCodes.Xor32(t, Sbox[OpCodes.GetByte(t, 3)]);
       t = OpCodes.Xor32(t, this.R[4]);
 

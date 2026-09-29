@@ -63,6 +63,7 @@
   const TAG_SIZE = 16;          // 128-bit tag
 
   // Round constants RC0 and RC1 (interleaved, 222 bytes total)
+  /** @type {uint8[]} */
   const WAGE_RC = [
     0x7f, 0x3f, 0x1f, 0x0f, 0x07, 0x03, 0x01, 0x40, 0x20, 0x10, 0x08, 0x04,
     0x02, 0x41, 0x60, 0x30, 0x18, 0x0c, 0x06, 0x43, 0x21, 0x50, 0x28, 0x14,
@@ -86,6 +87,7 @@
   ];
 
   // WGP S-box (7-bit permutation, 128 entries)
+  /** @type {uint8[]} */
   const WAGE_WGP = [
     0x00, 0x12, 0x0a, 0x4b, 0x66, 0x0c, 0x48, 0x73, 0x79, 0x3e, 0x61, 0x51,
     0x01, 0x15, 0x17, 0x0e, 0x7e, 0x33, 0x68, 0x36, 0x42, 0x35, 0x37, 0x5e,
@@ -106,14 +108,18 @@
    * omega(x) function: conditional XOR based on LSB
    * If low bit is 0: OpCodes.Shr32(x, 1)
    * If low bit is 1: (OpCodes.Shr32(x, 1))^0x78
+   * @param {uint32} x
+   * @returns {uint32}
    */
   function omega(x) {
-    return (OpCodes.Xor32(OpCodes.Shr32(x, 1), (0x78&(-(x&0x01)))))&0x7F;
+    return OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(x, 1), OpCodes.And32(0x78, OpCodes.Sub32(0, OpCodes.And32(x, 0x01)))), 0x7F);
   }
 
   /**
    * Bit-sliced S-box evaluation for 3 components in parallel
    * Packs three 7-bit values into bits 0, 8, 16 of a 32-bit word
+   * @param {uint32} x6
+   * @returns {uint32}
    */
   function wagesSboxParallel3(x6) {
     var x0 = OpCodes.Shr32(x6, 6);
@@ -123,19 +129,45 @@
     var x4 = OpCodes.Shr32(x6, 2);
     var x5 = OpCodes.Shr32(x6, 1);
 
-    x0 = OpCodes.Xor32(x0, (x2&x3)); x3 = ~x3; x3 = OpCodes.Xor32(x3, (x5&x6)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x2&x4));
-    x6 = OpCodes.Xor32(x6, (x0&x4)); x4 = ~x4; x4 = OpCodes.Xor32(x4, (x5&x1)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x0&x2));
-    x1 = OpCodes.Xor32(x1, (x6&x2)); x2 = ~x2; x2 = OpCodes.Xor32(x2, (x5&x3)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x6&x0));
-    x3 = OpCodes.Xor32(x3, (x1&x0)); x0 = ~x0; x0 = OpCodes.Xor32(x0, (x5&x4)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x1&x6));
-    x4 = OpCodes.Xor32(x4, (x3&x6)); x6 = ~x6; x6 = OpCodes.Xor32(x6, (x5&x2)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x3&x1));
-    x2 = OpCodes.Xor32(x2, (x4&x1)); x1 = ~x1; x1 = OpCodes.Xor32(x1, (x5&x0)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x4&x3));
-    x2 = ~x2; x4 = ~x4;
+    x0 = OpCodes.Xor32(x0, OpCodes.And32(x2, x3));
+    x3 = OpCodes.Not32(x3);
+    x3 = OpCodes.Xor32(x3, OpCodes.And32(x5, x6));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x2, x4));
+    x6 = OpCodes.Xor32(x6, OpCodes.And32(x0, x4));
+    x4 = OpCodes.Not32(x4);
+    x4 = OpCodes.Xor32(x4, OpCodes.And32(x5, x1));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x0, x2));
+    x1 = OpCodes.Xor32(x1, OpCodes.And32(x6, x2));
+    x2 = OpCodes.Not32(x2);
+    x2 = OpCodes.Xor32(x2, OpCodes.And32(x5, x3));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x6, x0));
+    x3 = OpCodes.Xor32(x3, OpCodes.And32(x1, x0));
+    x0 = OpCodes.Not32(x0);
+    x0 = OpCodes.Xor32(x0, OpCodes.And32(x5, x4));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x1, x6));
+    x4 = OpCodes.Xor32(x4, OpCodes.And32(x3, x6));
+    x6 = OpCodes.Not32(x6);
+    x6 = OpCodes.Xor32(x6, OpCodes.And32(x5, x2));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x3, x1));
+    x2 = OpCodes.Xor32(x2, OpCodes.And32(x4, x1));
+    x1 = OpCodes.Not32(x1);
+    x1 = OpCodes.Xor32(x1, OpCodes.And32(x5, x0));
+    x5 = OpCodes.Not32(x5);
+    x5 = OpCodes.Xor32(x5, OpCodes.And32(x4, x3));
+    x2 = OpCodes.Not32(x2);
+    x4 = OpCodes.Not32(x4);
 
-    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32((x2&0x00010101), 6), OpCodes.Shl32((x6&0x00010101), 5)), OpCodes.Shl32((x4&0x00010101), 4)), OpCodes.Shl32((x1&0x00010101), 3)), OpCodes.Shl32((x3&0x00010101), 2)), OpCodes.Shl32((x5&0x00010101), 1)), (x0&0x00010101)));
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(x2, 0x00010101), 6), OpCodes.Shl32(OpCodes.And32(x6, 0x00010101), 5)), OpCodes.Shl32(OpCodes.And32(x4, 0x00010101), 4)), OpCodes.Shl32(OpCodes.And32(x1, 0x00010101), 3)), OpCodes.Shl32(OpCodes.And32(x3, 0x00010101), 2)), OpCodes.Shl32(OpCodes.And32(x5, 0x00010101), 1)), OpCodes.And32(x0, 0x00010101)));
   }
 
   /**
    * WAGE permutation - 111 rounds, 3 at a time (37 iterations)
+   * @param {uint8[]} s
    */
   function wagePermute(s) {
     var rcIndex = 0;
@@ -162,34 +194,34 @@
       fb2 = OpCodes.Xor32(fb2, WAGE_WGP[fb1]);
 
       // Apply S-box to specific components
-      temp = (s[8]|OpCodes.Shl32(s[9], 8))|OpCodes.Shl32(s[10], 16);
+      temp = OpCodes.Or32(OpCodes.Or32(s[8], OpCodes.Shl32(s[9], 8)), OpCodes.Shl32(s[10], 16));
       temp = wagesSboxParallel3(temp);
-      s[5] = OpCodes.Xor32(s[5], (temp&0x7F));
-      s[6] = OpCodes.Xor32(s[6], (OpCodes.Shr32(temp, 8)&0x7F));
-      s[7] = OpCodes.Xor32(s[7], (OpCodes.Shr32(temp, 16)&0x7F));
+      s[5] = OpCodes.Xor32(s[5], OpCodes.And32(temp, 0x7F));
+      s[6] = OpCodes.Xor32(s[6], OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F));
+      s[7] = OpCodes.Xor32(s[7], OpCodes.And32(OpCodes.Shr32(temp, 16), 0x7F));
 
-      temp = (s[15]|OpCodes.Shl32(s[16], 8))|OpCodes.Shl32(s[17], 16);
+      temp = OpCodes.Or32(OpCodes.Or32(s[15], OpCodes.Shl32(s[16], 8)), OpCodes.Shl32(s[17], 16));
       temp = wagesSboxParallel3(temp);
-      s[11] = OpCodes.Xor32(s[11], (temp&0x7F));
-      s[12] = OpCodes.Xor32(s[12], (OpCodes.Shr32(temp, 8)&0x7F));
-      s[13] = OpCodes.Xor32(s[13], (OpCodes.Shr32(temp, 16)&0x7F));
+      s[11] = OpCodes.Xor32(s[11], OpCodes.And32(temp, 0x7F));
+      s[12] = OpCodes.Xor32(s[12], OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F));
+      s[13] = OpCodes.Xor32(s[13], OpCodes.And32(OpCodes.Shr32(temp, 16), 0x7F));
 
       // Apply WGP to s[18], s[19], s[20] with RC0
       s[19] = OpCodes.Xor32(s[19], OpCodes.Xor32(WAGE_WGP[s[18]], WAGE_RC[rcIndex + 0]));
       s[20] = OpCodes.Xor32(s[20], OpCodes.Xor32(WAGE_WGP[s[19]], WAGE_RC[rcIndex + 2]));
       s[21] = OpCodes.Xor32(s[21], OpCodes.Xor32(WAGE_WGP[s[20]], WAGE_RC[rcIndex + 4]));
 
-      temp = (s[27]|OpCodes.Shl32(s[28], 8))|OpCodes.Shl32(s[29], 16);
+      temp = OpCodes.Or32(OpCodes.Or32(s[27], OpCodes.Shl32(s[28], 8)), OpCodes.Shl32(s[29], 16));
       temp = wagesSboxParallel3(temp);
-      s[24] = OpCodes.Xor32(s[24], (temp&0x7F));
-      s[25] = OpCodes.Xor32(s[25], (OpCodes.Shr32(temp, 8)&0x7F));
-      s[26] = OpCodes.Xor32(s[26], (OpCodes.Shr32(temp, 16)&0x7F));
+      s[24] = OpCodes.Xor32(s[24], OpCodes.And32(temp, 0x7F));
+      s[25] = OpCodes.Xor32(s[25], OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F));
+      s[26] = OpCodes.Xor32(s[26], OpCodes.And32(OpCodes.Shr32(temp, 16), 0x7F));
 
-      temp = (s[34]|OpCodes.Shl32(s[35], 8))|OpCodes.Shl32(s[36], 16);
+      temp = OpCodes.Or32(OpCodes.Or32(s[34], OpCodes.Shl32(s[35], 8)), OpCodes.Shl32(s[36], 16));
       temp = wagesSboxParallel3(temp);
-      s[30] = OpCodes.Xor32(s[30], (temp&0x7F));
-      s[31] = OpCodes.Xor32(s[31], (OpCodes.Shr32(temp, 8)&0x7F));
-      s[32] = OpCodes.Xor32(s[32], (OpCodes.Shr32(temp, 16)&0x7F));
+      s[30] = OpCodes.Xor32(s[30], OpCodes.And32(temp, 0x7F));
+      s[31] = OpCodes.Xor32(s[31], OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F));
+      s[32] = OpCodes.Xor32(s[32], OpCodes.And32(OpCodes.Shr32(temp, 16), 0x7F));
 
       // Rotate state by 3 positions
       for (var i = 0; i < STATE_SIZE - 3; ++i) {
@@ -204,40 +236,43 @@
   /**
    * Convert 128-bit value to 19 7-bit components
    * Maps 128 bits (16 bytes) to 19 components with specific bit positions
+   * @param {uint8[]} input
+   * @returns {uint8[]}
    */
   function wage128bitToComponents(input) {
+    /** @type {uint8[]} */
     var out = new Array(19);
     var temp;
 
     temp = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
-    out[0] = OpCodes.Shr32(temp, 25)&0x7F;
-    out[1] = OpCodes.Shr32(temp, 18)&0x7F;
-    out[2] = OpCodes.Shr32(temp, 11)&0x7F;
-    out[3] = OpCodes.Shr32(temp, 4)&0x7F;
-    out[4] = OpCodes.Shl32(temp, 3)&0x7F;
+    out[0] = OpCodes.And32(OpCodes.Shr32(temp, 25), 0x7F);
+    out[1] = OpCodes.And32(OpCodes.Shr32(temp, 18), 0x7F);
+    out[2] = OpCodes.And32(OpCodes.Shr32(temp, 11), 0x7F);
+    out[3] = OpCodes.And32(OpCodes.Shr32(temp, 4), 0x7F);
+    out[4] = OpCodes.And32(OpCodes.Shl32(temp, 3), 0x7F);
 
     temp = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
-    out[4] ^= OpCodes.Shr32(temp, 29)&0x7F;
-    out[5] = OpCodes.Shr32(temp, 22)&0x7F;
-    out[6] = OpCodes.Shr32(temp, 15)&0x7F;
-    out[7] = OpCodes.Shr32(temp, 8)&0x7F;
-    out[8] = OpCodes.Shr32(temp, 1)&0x7F;
-    out[18] = OpCodes.Shl32(temp, 6)&0x7F;
+    out[4] = OpCodes.Xor32(out[4], OpCodes.And32(OpCodes.Shr32(temp, 29), 0x7F));
+    out[5] = OpCodes.And32(OpCodes.Shr32(temp, 22), 0x7F);
+    out[6] = OpCodes.And32(OpCodes.Shr32(temp, 15), 0x7F);
+    out[7] = OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F);
+    out[8] = OpCodes.And32(OpCodes.Shr32(temp, 1), 0x7F);
+    out[18] = OpCodes.And32(OpCodes.Shl32(temp, 6), 0x7F);
 
     temp = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]);
-    out[9] = OpCodes.Shr32(temp, 25)&0x7F;
-    out[10] = OpCodes.Shr32(temp, 18)&0x7F;
-    out[11] = OpCodes.Shr32(temp, 11)&0x7F;
-    out[12] = OpCodes.Shr32(temp, 4)&0x7F;
-    out[13] = OpCodes.Shl32(temp, 3)&0x7F;
+    out[9] = OpCodes.And32(OpCodes.Shr32(temp, 25), 0x7F);
+    out[10] = OpCodes.And32(OpCodes.Shr32(temp, 18), 0x7F);
+    out[11] = OpCodes.And32(OpCodes.Shr32(temp, 11), 0x7F);
+    out[12] = OpCodes.And32(OpCodes.Shr32(temp, 4), 0x7F);
+    out[13] = OpCodes.And32(OpCodes.Shl32(temp, 3), 0x7F);
 
     temp = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
-    out[13] ^= OpCodes.Shr32(temp, 29)&0x7F;
-    out[14] = OpCodes.Shr32(temp, 22)&0x7F;
-    out[15] = OpCodes.Shr32(temp, 15)&0x7F;
-    out[16] = OpCodes.Shr32(temp, 8)&0x7F;
-    out[17] = OpCodes.Shr32(temp, 1)&0x7F;
-    out[18] ^= OpCodes.Shl32(temp, 5)&0x20;
+    out[13] = OpCodes.Xor32(out[13], OpCodes.And32(OpCodes.Shr32(temp, 29), 0x7F));
+    out[14] = OpCodes.And32(OpCodes.Shr32(temp, 22), 0x7F);
+    out[15] = OpCodes.And32(OpCodes.Shr32(temp, 15), 0x7F);
+    out[16] = OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F);
+    out[17] = OpCodes.And32(OpCodes.Shr32(temp, 1), 0x7F);
+    out[18] = OpCodes.Xor32(out[18], OpCodes.And32(OpCodes.Shl32(temp, 5), 0x20));
 
     return out;
   }
@@ -245,39 +280,44 @@
   /**
    * Absorb 8 bytes into WAGE state
    * Rate components: s[8], s[9], s[15], s[16], s[18], s[27], s[28], s[34], s[35], s[36]
+   * @param {uint8[]} s
+   * @param {uint8[]} data
    */
   function wageAbsorb(s, data) {
     var temp = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-    s[8] ^= OpCodes.Shr32(temp, 25)&0x7F;
-    s[9] ^= OpCodes.Shr32(temp, 18)&0x7F;
-    s[15] ^= OpCodes.Shr32(temp, 11)&0x7F;
-    s[16] ^= OpCodes.Shr32(temp, 4)&0x7F;
-    s[18] ^= OpCodes.Shl32(temp, 3)&0x7F;
+    s[8] = OpCodes.Xor32(s[8], OpCodes.And32(OpCodes.Shr32(temp, 25), 0x7F));
+    s[9] = OpCodes.Xor32(s[9], OpCodes.And32(OpCodes.Shr32(temp, 18), 0x7F));
+    s[15] = OpCodes.Xor32(s[15], OpCodes.And32(OpCodes.Shr32(temp, 11), 0x7F));
+    s[16] = OpCodes.Xor32(s[16], OpCodes.And32(OpCodes.Shr32(temp, 4), 0x7F));
+    s[18] = OpCodes.Xor32(s[18], OpCodes.And32(OpCodes.Shl32(temp, 3), 0x7F));
 
     temp = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-    s[18] ^= OpCodes.Shr32(temp, 29)&0x7F;
-    s[27] ^= OpCodes.Shr32(temp, 22)&0x7F;
-    s[28] ^= OpCodes.Shr32(temp, 15)&0x7F;
-    s[34] ^= OpCodes.Shr32(temp, 8)&0x7F;
-    s[35] ^= OpCodes.Shr32(temp, 1)&0x7F;
-    s[36] ^= OpCodes.Shl32(temp, 6)&0x7F;
+    s[18] = OpCodes.Xor32(s[18], OpCodes.And32(OpCodes.Shr32(temp, 29), 0x7F));
+    s[27] = OpCodes.Xor32(s[27], OpCodes.And32(OpCodes.Shr32(temp, 22), 0x7F));
+    s[28] = OpCodes.Xor32(s[28], OpCodes.And32(OpCodes.Shr32(temp, 15), 0x7F));
+    s[34] = OpCodes.Xor32(s[34], OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F));
+    s[35] = OpCodes.Xor32(s[35], OpCodes.And32(OpCodes.Shr32(temp, 1), 0x7F));
+    s[36] = OpCodes.Xor32(s[36], OpCodes.And32(OpCodes.Shl32(temp, 6), 0x7F));
   }
 
   /**
    * Get 8 bytes from WAGE rate
+   * @param {uint8[]} s
+   * @returns {uint8[]}
    */
   function wageGetRate(s) {
+    /** @type {uint8[]} */
     var data = new Array(8);
     var temp;
 
-    temp = (OpCodes.Shl32(s[8], 25))|(OpCodes.Shl32(s[9], 18))|(OpCodes.Shl32(s[15], 11))|(OpCodes.Shl32(s[16], 4))|(OpCodes.Shr32(s[18], 3));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(s[8], 25), OpCodes.Shl32(s[9], 18)), OpCodes.Shl32(s[15], 11)), OpCodes.Shl32(s[16], 4)), OpCodes.Shr32(s[18], 3));
     var bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     data[0] = bytes[0];
     data[1] = bytes[1];
     data[2] = bytes[2];
     data[3] = bytes[3];
 
-    temp = (OpCodes.Shl32(s[18], 29))|(OpCodes.Shl32(s[27], 22))|(OpCodes.Shl32(s[28], 15))|(OpCodes.Shl32(s[34], 8))|(OpCodes.Shl32(s[35], 1))|(OpCodes.Shr32(s[36], 6));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(s[18], 29), OpCodes.Shl32(s[27], 22)), OpCodes.Shl32(s[28], 15)), OpCodes.Shl32(s[34], 8)), OpCodes.Shl32(s[35], 1)), OpCodes.Shr32(s[36], 6));
     bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     data[4] = bytes[0];
     data[5] = bytes[1];
@@ -289,63 +329,74 @@
 
   /**
    * Set 8 bytes into WAGE rate
+   * @param {uint8[]} s
+   * @param {uint8[]} data
    */
   function wageSetRate(s, data) {
     var temp = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-    s[8] = OpCodes.Shr32(temp, 25)&0x7F;
-    s[9] = OpCodes.Shr32(temp, 18)&0x7F;
-    s[15] = OpCodes.Shr32(temp, 11)&0x7F;
-    s[16] = OpCodes.Shr32(temp, 4)&0x7F;
-    s[18] = OpCodes.Shl32(temp, 3)&0x7F;
+    s[8] = OpCodes.And32(OpCodes.Shr32(temp, 25), 0x7F);
+    s[9] = OpCodes.And32(OpCodes.Shr32(temp, 18), 0x7F);
+    s[15] = OpCodes.And32(OpCodes.Shr32(temp, 11), 0x7F);
+    s[16] = OpCodes.And32(OpCodes.Shr32(temp, 4), 0x7F);
+    s[18] = OpCodes.And32(OpCodes.Shl32(temp, 3), 0x7F);
 
     temp = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-    s[18] ^= OpCodes.Shr32(temp, 29)&0x7F;
-    s[27] = OpCodes.Shr32(temp, 22)&0x7F;
-    s[28] = OpCodes.Shr32(temp, 15)&0x7F;
-    s[34] = OpCodes.Shr32(temp, 8)&0x7F;
-    s[35] = OpCodes.Shr32(temp, 1)&0x7F;
-    s[36] = OpCodes.Xor32((OpCodes.Shl32(temp, 6)&0x40), (s[36]&0x3F));
+    s[18] = OpCodes.Xor32(s[18], OpCodes.And32(OpCodes.Shr32(temp, 29), 0x7F));
+    s[27] = OpCodes.And32(OpCodes.Shr32(temp, 22), 0x7F);
+    s[28] = OpCodes.And32(OpCodes.Shr32(temp, 15), 0x7F);
+    s[34] = OpCodes.And32(OpCodes.Shr32(temp, 8), 0x7F);
+    s[35] = OpCodes.And32(OpCodes.Shr32(temp, 1), 0x7F);
+    s[36] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl32(temp, 6), 0x40), OpCodes.And32(s[36], 0x3F));
   }
 
   /**
    * Absorb 16-byte key into state (called twice during initialization)
+   * @param {uint8[]} s
+   * @param {uint8[]} key
    */
   function wageAbsorbKey(s, key) {
+    /** @type {uint8[]} */
     var components = wage128bitToComponents(key);
 
     // First absorption
-    s[8] ^= components[0];
-    s[9] ^= components[1];
-    s[15] ^= components[2];
-    s[16] ^= components[3];
-    s[18] ^= components[4];
-    s[27] ^= components[5];
-    s[28] ^= components[6];
-    s[34] ^= components[7];
-    s[35] ^= components[8];
-    s[36] ^= components[18]&0x40;
+    s[8] = OpCodes.Xor32(s[8], components[0]);
+    s[9] = OpCodes.Xor32(s[9], components[1]);
+    s[15] = OpCodes.Xor32(s[15], components[2]);
+    s[16] = OpCodes.Xor32(s[16], components[3]);
+    s[18] = OpCodes.Xor32(s[18], components[4]);
+    s[27] = OpCodes.Xor32(s[27], components[5]);
+    s[28] = OpCodes.Xor32(s[28], components[6]);
+    s[34] = OpCodes.Xor32(s[34], components[7]);
+    s[35] = OpCodes.Xor32(s[35], components[8]);
+    s[36] = OpCodes.Xor32(s[36], OpCodes.And32(components[18], 0x40));
     wagePermute(s);
 
     // Second absorption
-    s[8] ^= components[9];
-    s[9] ^= components[10];
-    s[15] ^= components[11];
-    s[16] ^= components[12];
-    s[18] ^= components[13];
-    s[27] ^= components[14];
-    s[28] ^= components[15];
-    s[34] ^= components[16];
-    s[35] ^= components[17];
-    s[36] ^= (OpCodes.Shl32(components[18], 1))&0x40;
+    s[8] = OpCodes.Xor32(s[8], components[9]);
+    s[9] = OpCodes.Xor32(s[9], components[10]);
+    s[15] = OpCodes.Xor32(s[15], components[11]);
+    s[16] = OpCodes.Xor32(s[16], components[12]);
+    s[18] = OpCodes.Xor32(s[18], components[13]);
+    s[27] = OpCodes.Xor32(s[27], components[14]);
+    s[28] = OpCodes.Xor32(s[28], components[15]);
+    s[34] = OpCodes.Xor32(s[34], components[16]);
+    s[35] = OpCodes.Xor32(s[35], components[17]);
+    s[36] = OpCodes.Xor32(s[36], OpCodes.And32(OpCodes.Shl32(components[18], 1), 0x40));
     wagePermute(s);
   }
 
   /**
    * Initialize WAGE state with key and nonce
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @returns {uint8[]}
    */
   function wageInit(key, nonce) {
+    /** @type {uint8[]} */
     var s = new Array(STATE_SIZE);
+    /** @type {uint8[]} */
     var keyComponents = wage128bitToComponents(key);
+    /** @type {uint8[]} */
     var nonceComponents = wage128bitToComponents(nonce);
 
     // Initialize state with key
@@ -379,7 +430,7 @@
     s[15] = nonceComponents[13];
     s[16] = nonceComponents[17];
     s[17] = nonceComponents[15];
-    s[18] ^= OpCodes.Shr32(nonceComponents[18], 2)&0x1F;
+    s[18] = OpCodes.Xor32(s[18], OpCodes.And32(OpCodes.Shr32(nonceComponents[18], 2), 0x1F));
     s[28] = nonceComponents[0];
     s[29] = nonceComponents[2];
     s[30] = nonceComponents[4];
@@ -401,9 +452,13 @@
 
   /**
    * Extract 128-bit tag from state
+   * @param {uint8[]} s
+   * @returns {uint8[]}
    */
   function wageExtractTag(s) {
+    /** @type {uint8[]} */
     var components = new Array(19);
+    /** @type {uint8[]} */
     var tag = new Array(16);
     var temp;
 
@@ -412,31 +467,31 @@
       components[i * 2] = s[28 + i];
       components[i * 2 + 1] = s[9 + i];
     }
-    components[18] = (OpCodes.Shl32(s[18], 2))&0x60;
+    components[18] = OpCodes.And32(OpCodes.Shl32(s[18], 2), 0x60);
 
     // Convert components to bytes
-    temp = (OpCodes.Shl32(components[0], 25))|(OpCodes.Shl32(components[1], 18))|(OpCodes.Shl32(components[2], 11))|(OpCodes.Shl32(components[3], 4))|(OpCodes.Shr32(components[4], 3));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(components[0], 25), OpCodes.Shl32(components[1], 18)), OpCodes.Shl32(components[2], 11)), OpCodes.Shl32(components[3], 4)), OpCodes.Shr32(components[4], 3));
     var bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[0] = bytes[0];
     tag[1] = bytes[1];
     tag[2] = bytes[2];
     tag[3] = bytes[3];
 
-    temp = (OpCodes.Shl32(components[4], 29))|(OpCodes.Shl32(components[5], 22))|(OpCodes.Shl32(components[6], 15))|(OpCodes.Shl32(components[7], 8))|(OpCodes.Shl32(components[8], 1))|(OpCodes.Shr32(components[9], 6));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(components[4], 29), OpCodes.Shl32(components[5], 22)), OpCodes.Shl32(components[6], 15)), OpCodes.Shl32(components[7], 8)), OpCodes.Shl32(components[8], 1)), OpCodes.Shr32(components[9], 6));
     bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[4] = bytes[0];
     tag[5] = bytes[1];
     tag[6] = bytes[2];
     tag[7] = bytes[3];
 
-    temp = (OpCodes.Shl32(components[9], 26))|(OpCodes.Shl32(components[10], 19))|(OpCodes.Shl32(components[11], 12))|(OpCodes.Shl32(components[12], 5))|(OpCodes.Shr32(components[13], 2));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(components[9], 26), OpCodes.Shl32(components[10], 19)), OpCodes.Shl32(components[11], 12)), OpCodes.Shl32(components[12], 5)), OpCodes.Shr32(components[13], 2));
     bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[8] = bytes[0];
     tag[9] = bytes[1];
     tag[10] = bytes[2];
     tag[11] = bytes[3];
 
-    temp = (OpCodes.Shl32(components[13], 30))|(OpCodes.Shl32(components[14], 23))|(OpCodes.Shl32(components[15], 16))|(OpCodes.Shl32(components[16], 9))|(OpCodes.Shl32(components[17], 2))|(OpCodes.Shr32(components[18], 5));
+    temp = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(components[13], 30), OpCodes.Shl32(components[14], 23)), OpCodes.Shl32(components[15], 16)), OpCodes.Shl32(components[16], 9)), OpCodes.Shl32(components[17], 2)), OpCodes.Shr32(components[18], 5));
     bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[12] = bytes[0];
     tag[13] = bytes[1];
@@ -581,18 +636,25 @@
   class WAGEInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {WAGEAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.state = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -632,6 +694,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -651,11 +716,17 @@
       this.initialized = false;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -669,6 +740,9 @@
       this._associatedData = adBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData.slice();
     }
@@ -693,6 +767,7 @@
       var ad = this._associatedData;
       var adlen = ad.length;
       var offset = 0;
+      /** @type {uint8[]} */
       var pad = new Array(RATE_SIZE);
 
       // Process full blocks
@@ -749,11 +824,17 @@
     }
 
     // Encrypt plaintext
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
+      /** @type {uint8[]} */
       var output = [];
       var mlen = this.inputBuffer.length;
       var offset = 0;
+      /** @type {uint8[]} */
       var block = new Array(RATE_SIZE);
+      /** @type {uint8[]} */
       var rate;
 
       // Process full blocks
@@ -788,6 +869,7 @@
 
       // Generate tag
       wageAbsorbKey(this.state, this._key);
+      /** @type {uint8[]} */
       var tag = wageExtractTag(this.state);
       output.push.apply(output, tag);
 
@@ -799,16 +881,23 @@
     }
 
     // Decrypt ciphertext
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       if (this.inputBuffer.length < TAG_SIZE) {
         throw new Error("Ciphertext too short - must include 16-byte tag");
       }
 
+      /** @type {uint8[]} */
       var output = [];
       var clen = this.inputBuffer.length - TAG_SIZE;
       var offset = 0;
+      /** @type {uint8[]} */
       var block = new Array(RATE_SIZE);
+      /** @type {uint8[]} */
       var block2 = new Array(RATE_SIZE);
+      /** @type {uint8[]} */
       var rate;
 
       // Process full blocks
@@ -844,6 +933,7 @@
 
       // Verify tag
       wageAbsorbKey(this.state, this._key);
+      /** @type {uint8[]} */
       var computedTag = wageExtractTag(this.state);
       var receivedTag = this.inputBuffer.slice(this.inputBuffer.length - TAG_SIZE);
 

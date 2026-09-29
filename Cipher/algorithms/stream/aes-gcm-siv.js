@@ -85,14 +85,16 @@
      * Initialize cipher with empty state
      */
     Init: function() {
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {boolean} */
       this.isInitialized = false;
       return true;
     },
 
     /**
      * Setup key for simplified AES-GCM-SIV
-     * @param {Array} key - Key as byte array
+     * @param {uint8[]} key - Key as byte array
      */
     KeySetup: function(key) {
       if (!key || key.length === 0) {
@@ -103,24 +105,26 @@
       this.key = key.slice(0, 16);
       while (this.key.length < 16) this.key.push(0);
 
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
 
     /**
      * Generate synthetic IV (deterministic, not data-dependent)
-     * @param {Array} data - Input data (ignored for reversibility)
-     * @returns {Array} Synthetic IV
+     * @param {uint8[]} data - Input data (ignored for reversibility)
+     * @returns {uint8[]} Synthetic IV
      */
     generateSIV: function(data) {
       // Deterministic IV generation for educational purposes
-      let siv = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      const siv = OpCodes.CreateArray(16, 0);
 
       // Generate IV based only on key (deterministic)
       for (let i = 0; i < 16; i++) {
         siv[i] = this.key[i];
-        siv[i] = OpCodes.XorN(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
-        siv[i] = OpCodes.XorN(siv[i], OpCodes.AndN(i * 17, 0xFF)); // Add position-based entropy
+        siv[i] = OpCodes.Xor8(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
+        siv[i] = OpCodes.Xor8(siv[i], OpCodes.ToByte(i * 17)); // Add position-based entropy
       }
 
       return siv;
@@ -128,19 +132,22 @@
 
     /**
      * Generate keystream bytes
-     * @param {Array} data - Input data (used for SIV generation)
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Keystream bytes
+     * @param {uint8[]} data - Input data (used for SIV generation)
+     * @param {int32} length - Number of bytes to generate
+     * @returns {uint8[]} Keystream bytes
      */
     generateKeystream: function(data, length) {
+      /** @type {uint8[]} */
       const siv = this.generateSIV(data);
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {
         // Simple keystream generation using SIV and key
+        /** @type {uint8} */
         let byte = siv[i % 16];
-        byte = OpCodes.XorN(byte, this.key[i % 16]);
-        byte = OpCodes.XorN(byte, OpCodes.AndN(i, 0xFF));
+        byte = OpCodes.Xor8(byte, this.key[i % 16]);
+        byte = OpCodes.Xor8(byte, OpCodes.ToByte(i));
         byte = OpCodes.RotL8(byte, (i % 8) + 1);
         keystream.push(byte);
       }
@@ -150,8 +157,8 @@
 
     /**
      * Encrypt/Decrypt data using simplified AES-GCM-SIV
-     * @param {Array} data - Input data
-     * @returns {Array} Output data
+     * @param {uint8[]} data - Input data
+     * @returns {uint8[]} Output data
      */
     processData: function(data) {
       if (!this.isInitialized) {
@@ -159,13 +166,16 @@
       }
 
       // Generate keystream based only on key, not input data (for reversibility)
-      const keystream = this.generateKeystream([], data.length);
+      /** @type {uint8[]} */
+      const noData = [];
+      /** @type {uint8[]} */
+      const keystream = this.generateKeystream(noData, data.length);
       return OpCodes.XorArrays(data, keystream);
     },
 
     /**
      * Encrypt block using AES-GCM-SIV
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Encrypted data
      */
@@ -183,7 +193,7 @@
 
     /**
      * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Decrypted data
      */
@@ -197,8 +207,10 @@
     ClearData: function() {
       if (this.key) {
         OpCodes.ClearArray(this.key);
+        /** @type {uint8[]|null} */
         this.key = null;
       }
+      /** @type {boolean} */
       this.isInitialized = false;
     },
 

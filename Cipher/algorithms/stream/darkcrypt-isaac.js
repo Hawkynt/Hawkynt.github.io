@@ -50,19 +50,35 @@
 
   const STATE_SIZE = 256;          // words
   const SEED_BYTES = 1024;         // 256 * 4
+  /** @type {uint32} */
   const GOLDEN_RATIO = 0x9e3779b9;
   const SETUP_DISCARD_ROUNDS = 256; // DarkCrypt-specific extra warm-up
 
+  /**
+   * @param {int32} n - Word count
+   * @param {uint32} value - Fill value
+   * @returns {uint32[]} n words set to value
+   */
+  function filledWords(n, value) {
+    /** @type {uint32[]} */
+    const words = new Array(n);
+    for (let i = 0; i < n; ++i) words[i] = value;
+    return words;
+  }
+
   // Bob Jenkins's mix() macro, applied to an 8-word accumulator.
+  /**
+   * @param {uint32[]} x
+   */
   function mix(x) {
-    x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], OpCodes.Shl32(x[1], 11))); x[3] = OpCodes.ToUint32(x[3] + x[0]); x[1] = OpCodes.ToUint32(x[1] + x[2]);
-    x[1] = OpCodes.ToUint32(OpCodes.XorN(x[1], OpCodes.Shr32(x[2], 2)));  x[4] = OpCodes.ToUint32(x[4] + x[1]); x[2] = OpCodes.ToUint32(x[2] + x[3]);
-    x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], OpCodes.Shl32(x[3], 8)));  x[5] = OpCodes.ToUint32(x[5] + x[2]); x[3] = OpCodes.ToUint32(x[3] + x[4]);
-    x[3] = OpCodes.ToUint32(OpCodes.XorN(x[3], OpCodes.Shr32(x[4], 16))); x[6] = OpCodes.ToUint32(x[6] + x[3]); x[4] = OpCodes.ToUint32(x[4] + x[5]);
-    x[4] = OpCodes.ToUint32(OpCodes.XorN(x[4], OpCodes.Shl32(x[5], 10))); x[7] = OpCodes.ToUint32(x[7] + x[4]); x[5] = OpCodes.ToUint32(x[5] + x[6]);
-    x[5] = OpCodes.ToUint32(OpCodes.XorN(x[5], OpCodes.Shr32(x[6], 4)));  x[0] = OpCodes.ToUint32(x[0] + x[5]); x[6] = OpCodes.ToUint32(x[6] + x[7]);
-    x[6] = OpCodes.ToUint32(OpCodes.XorN(x[6], OpCodes.Shl32(x[7], 8)));  x[1] = OpCodes.ToUint32(x[1] + x[6]); x[7] = OpCodes.ToUint32(x[7] + x[0]);
-    x[7] = OpCodes.ToUint32(OpCodes.XorN(x[7], OpCodes.Shr32(x[0], 9)));  x[2] = OpCodes.ToUint32(x[2] + x[7]); x[0] = OpCodes.ToUint32(x[0] + x[1]);
+    x[0] = OpCodes.Xor32(x[0], OpCodes.Shl32(x[1], 11)); x[3] = OpCodes.Add32(x[3], x[0]); x[1] = OpCodes.Add32(x[1], x[2]);
+    x[1] = OpCodes.Xor32(x[1], OpCodes.Shr32(x[2], 2));  x[4] = OpCodes.Add32(x[4], x[1]); x[2] = OpCodes.Add32(x[2], x[3]);
+    x[2] = OpCodes.Xor32(x[2], OpCodes.Shl32(x[3], 8));  x[5] = OpCodes.Add32(x[5], x[2]); x[3] = OpCodes.Add32(x[3], x[4]);
+    x[3] = OpCodes.Xor32(x[3], OpCodes.Shr32(x[4], 16)); x[6] = OpCodes.Add32(x[6], x[3]); x[4] = OpCodes.Add32(x[4], x[5]);
+    x[4] = OpCodes.Xor32(x[4], OpCodes.Shl32(x[5], 10)); x[7] = OpCodes.Add32(x[7], x[4]); x[5] = OpCodes.Add32(x[5], x[6]);
+    x[5] = OpCodes.Xor32(x[5], OpCodes.Shr32(x[6], 4));  x[0] = OpCodes.Add32(x[0], x[5]); x[6] = OpCodes.Add32(x[6], x[7]);
+    x[6] = OpCodes.Xor32(x[6], OpCodes.Shl32(x[7], 8));  x[1] = OpCodes.Add32(x[1], x[6]); x[7] = OpCodes.Add32(x[7], x[0]);
+    x[7] = OpCodes.Xor32(x[7], OpCodes.Shr32(x[0], 9));  x[2] = OpCodes.Add32(x[2], x[7]); x[0] = OpCodes.Add32(x[0], x[1]);
   }
 
   class DarkCryptISAACAlgorithm extends StreamCipherAlgorithm {
@@ -125,48 +141,75 @@
   }
 
   class DarkCryptISAACInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptISAACAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._mm = null;
+      /** @type {uint32[]|null} */
       this._randrsl = null;
+      /** @type {uint32} */
       this._aa = 0;
+      /** @type {uint32} */
       this._bb = 0;
+      /** @type {uint32} */
       this._cc = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== SEED_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. ISAAC (DarkCrypt) requires exactly ${SEED_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. ISAAC (DarkCrypt) requires exactly " + SEED_BYTES + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const keystream = this._crypt(this.inputBuffer.length);
-      const output = this.inputBuffer.map((b, i) => OpCodes.XorN(b, keystream[i]));
+      /** @type {uint8[]} */
+      const output = [];
+      for (let i = 0; i < this.inputBuffer.length; i++) output.push(OpCodes.Xor32(this.inputBuffer[i], keystream[i]));
 
       this.inputBuffer = [];
       return output;
     }
 
     _initialize() {
-      this._mm = new Array(STATE_SIZE).fill(0);
-      this._randrsl = new Array(STATE_SIZE).fill(0);
+      this._mm = filledWords(STATE_SIZE, 0);
+      this._randrsl = filledWords(STATE_SIZE, 0);
       this._aa = 0;
       this._bb = 0;
       this._cc = 0;
@@ -184,13 +227,15 @@
     }
 
     _randinit() {
-      const x = new Array(8).fill(GOLDEN_RATIO);
+      /** @type {uint32[]} */
+      const x = filledWords(8, GOLDEN_RATIO);
       for (let i = 0; i < 4; i++) mix(x);
 
       for (let pass = 0; pass < 2; pass++) {
+        /** @type {uint32[]} */
         const source = pass === 0 ? this._randrsl : this._mm;
         for (let j = 0; j < STATE_SIZE; j += 8) {
-          for (let k = 0; k < 8; k++) x[k] = OpCodes.ToUint32(x[k] + source[j + k]);
+          for (let k = 0; k < 8; k++) x[k] = OpCodes.Add32(x[k], source[j + k]);
           mix(x);
           for (let k = 0; k < 8; k++) this._mm[j + k] = x[k];
         }
@@ -201,33 +246,40 @@
     }
 
     _isaac() {
-      this._cc = OpCodes.ToUint32(this._cc + 1);
-      this._bb = OpCodes.ToUint32(this._bb + this._cc);
+      this._cc = OpCodes.Add32(this._cc, 1);
+      this._bb = OpCodes.Add32(this._bb, this._cc);
 
       for (let i = 0; i < STATE_SIZE; i++) {
+        /** @type {uint32} */
         const x = this._mm[i];
 
-        switch (OpCodes.AndN(i, 3)) {
-          case 0: this._aa = OpCodes.ToUint32(OpCodes.XorN(this._aa, OpCodes.Shl32(this._aa, 13))); break;
-          case 1: this._aa = OpCodes.ToUint32(OpCodes.XorN(this._aa, OpCodes.Shr32(this._aa, 6))); break;
-          case 2: this._aa = OpCodes.ToUint32(OpCodes.XorN(this._aa, OpCodes.Shl32(this._aa, 2))); break;
-          case 3: this._aa = OpCodes.ToUint32(OpCodes.XorN(this._aa, OpCodes.Shr32(this._aa, 16))); break;
+        switch (OpCodes.And32(i, 3)) {
+          case 0: this._aa = OpCodes.Xor32(this._aa, OpCodes.Shl32(this._aa, 13)); break;
+          case 1: this._aa = OpCodes.Xor32(this._aa, OpCodes.Shr32(this._aa, 6)); break;
+          case 2: this._aa = OpCodes.Xor32(this._aa, OpCodes.Shl32(this._aa, 2)); break;
+          case 3: this._aa = OpCodes.Xor32(this._aa, OpCodes.Shr32(this._aa, 16)); break;
         }
 
-        this._aa = OpCodes.ToUint32(this._aa + this._mm[OpCodes.AndN(i + 128, 0xFF)]);
-        const y = OpCodes.ToUint32(this._mm[OpCodes.AndN(OpCodes.Shr32(x, 2), 0xFF)] + this._aa + this._bb);
+        this._aa = OpCodes.Add32(this._aa, this._mm[OpCodes.And32(i + 128, 0xFF)]);
+        const y = OpCodes.Add32(OpCodes.Add32(this._mm[OpCodes.And32(OpCodes.Shr32(x, 2), 0xFF)], this._aa), this._bb);
         this._mm[i] = y;
-        this._bb = OpCodes.ToUint32(this._mm[OpCodes.AndN(OpCodes.Shr32(y, 10), 0xFF)] + x);
+        this._bb = OpCodes.Add32(this._mm[OpCodes.And32(OpCodes.Shr32(y, 10), 0xFF)], x);
         this._randrsl[i] = this._bb;
       }
     }
 
+    /**
+     * @param {int32} len
+     * @returns {uint8[]}
+     */
     _crypt(len) {
       this._isaac();
+      /** @type {uint8[]} */
       const out = new Array(len);
       for (let i = 0; i < len; i++) {
+        /** @type {uint32} */
         const word = this._randrsl[OpCodes.Shr32(i, 2)];
-        out[i] = OpCodes.AndN(OpCodes.Shr32(word, OpCodes.Shl32(OpCodes.AndN(i, 3), 3)), 0xFF);
+        out[i] = OpCodes.And32(OpCodes.Shr32(word, OpCodes.Shl32(OpCodes.And32(i, 3), 3)), 0xFF);
       }
       return out;
     }

@@ -103,8 +103,8 @@
 
   /**
    * SKINNY-128-384 encryption (40 rounds)
-   * @param {Uint8Array} state - 16-byte state (modified in place)
-   * @param {Uint8Array} tweakey - 48-byte tweakey (TK1 || TK2 || TK3)
+   * @param {uint8[]} state - 16-byte state (modified in place)
+   * @param {uint8[]} tweakey - 48-byte tweakey (TK1 || TK2 || TK3)
    */
   function skinny128_384_encrypt(state, tweakey) {
     // Initialize state as 4x4 matrix
@@ -126,6 +126,7 @@
 
     // 56 rounds for SKINNY-128-384 (per C reference implementation)
     // Note: BouncyCastle uses 40, but C reference uses 56
+    /** @type {uint32} */
     let rc = 0;  // Round constant LFSR state
     for (let round = 0; round < 56; ++round) {
       // SubCells: Apply S-box
@@ -134,21 +135,22 @@
       }
 
       // Generate round constant using LFSR
-      rc = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01);
-      rc = OpCodes.AndN(rc, 0x3F);
+      rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), OpCodes.And32(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.And32(OpCodes.Shr32(rc, 4), 0x01)), 0x01);
+      rc = OpCodes.And32(rc, 0x3F);
 
       // AddConstants
-      s[0] ^= OpCodes.AndN(rc, 0x0f);
-      s[4] ^= OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x03);
+      s[0] ^= OpCodes.And32(rc, 0x0f);
+      s[4] ^= OpCodes.And32(OpCodes.Shr32(rc, 4), 0x03);
       s[8] ^= 0x02;
 
       // AddRoundTweakey: XOR first two rows with tweakey
       for (let i = 0; i < 8; ++i) {
-        s[i] ^= OpCodes.XorN(OpCodes.XorN(tk1[i], tk2[i]), tk3[i]);
+        s[i] ^= OpCodes.Xor32(OpCodes.Xor32(tk1[i], tk2[i]), tk3[i]);
       }
 
       // ShiftRows: Row 1 right by 1, row 2 by 2 (swap pairs), row 3 left by 1
       // Row 1: [4,5,6,7] → [7,4,5,6] (right by 1)
+      /** @type {uint8} */
       let tmp = s[7];
       s[7] = s[6]; s[6] = s[5]; s[5] = s[4]; s[4] = tmp;
 
@@ -162,15 +164,19 @@
 
       // MixColumns
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint8} */
         const c0 = s[i];
+        /** @type {uint8} */
         const c1 = s[4 + i];
+        /** @type {uint8} */
         const c2 = s[8 + i];
+        /** @type {uint8} */
         const c3 = s[12 + i];
 
-        s[i] = OpCodes.XorN(OpCodes.XorN(c0, c2), c3);
+        s[i] = OpCodes.Xor32(OpCodes.Xor32(c0, c2), c3);
         s[4 + i] = c0;
-        s[8 + i] = OpCodes.XorN(c1, c2);
-        s[12 + i] = OpCodes.XorN(c0, c2);
+        s[8 + i] = OpCodes.Xor32(c1, c2);
+        s[12 + i] = OpCodes.Xor32(c0, c2);
       }
 
       // Update tweakey: apply permutation and LFSR
@@ -187,11 +193,13 @@
 
       // Apply LFSR to first two rows of TK2 and TK3
       for (let i = 0; i < 8; ++i) {
+        /** @type {uint8} */
         const x2 = tk2_new[i];
+        /** @type {uint8} */
         const x3 = tk3_new[i];
 
-        tk2[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(x2, 1), OpCodes.AndN(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.AndN(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
-        tk3[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shr32(x3, 1), OpCodes.AndN(OpCodes.Shl32(x3, 7), 0x80)), OpCodes.AndN(OpCodes.Shl32(x3, 1), 0x80)), 0xFF);
+        tk2[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(x2, 1), OpCodes.And32(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.And32(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
+        tk3[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(x3, 1), OpCodes.And32(OpCodes.Shl32(x3, 7), 0x80)), OpCodes.And32(OpCodes.Shl32(x3, 1), 0x80)), 0xFF);
       }
 
       // Copy lower rows without LFSR
@@ -215,8 +223,8 @@
 
   /**
    * SKINNY-128-256 encryption (48 rounds)
-   * @param {Uint8Array} state - 16-byte state (modified in place)
-   * @param {Uint8Array} tweakey - 32-byte tweakey (TK1 || TK2)
+   * @param {uint8[]} state - 16-byte state (modified in place)
+   * @param {uint8[]} tweakey - 32-byte tweakey (TK1 || TK2)
    */
   function skinny128_256_encrypt(state, tweakey) {
     const s = new Uint8Array(16);
@@ -240,17 +248,18 @@
       }
 
       // AddConstants
-      s[0] ^= OpCodes.AndN(SKINNY_RC[round], 0x0f);
-      s[4] ^= OpCodes.AndN(OpCodes.Shr32(SKINNY_RC[round], 4), 0x03);
+      s[0] ^= OpCodes.And32(SKINNY_RC[round], 0x0f);
+      s[4] ^= OpCodes.And32(OpCodes.Shr32(SKINNY_RC[round], 4), 0x03);
       s[8] ^= 0x02;
 
       // AddRoundTweakey
       for (let i = 0; i < 8; ++i) {
-        s[i] ^= OpCodes.XorN(tk1[i], tk2[i]);
+        s[i] ^= OpCodes.Xor32(tk1[i], tk2[i]);
       }
 
       // ShiftRows: Row 1 right by 1, row 2 by 2 (swap pairs), row 3 left by 1
       // Row 1: [4,5,6,7] → [7,4,5,6] (right by 1)
+      /** @type {uint8} */
       let tmp = s[7];
       s[7] = s[6]; s[6] = s[5]; s[5] = s[4]; s[4] = tmp;
 
@@ -264,15 +273,19 @@
 
       // MixColumns
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint8} */
         const c0 = s[i];
+        /** @type {uint8} */
         const c1 = s[4 + i];
+        /** @type {uint8} */
         const c2 = s[8 + i];
+        /** @type {uint8} */
         const c3 = s[12 + i];
 
-        s[i] = OpCodes.XorN(OpCodes.XorN(c0, c2), c3);
+        s[i] = OpCodes.Xor32(OpCodes.Xor32(c0, c2), c3);
         s[4 + i] = c0;
-        s[8 + i] = OpCodes.XorN(c1, c2);
-        s[12 + i] = OpCodes.XorN(c0, c2);
+        s[8 + i] = OpCodes.Xor32(c1, c2);
+        s[12 + i] = OpCodes.Xor32(c0, c2);
       }
 
       // Update tweakey
@@ -287,8 +300,9 @@
 
       // Apply LFSR to first two rows of TK2
       for (let i = 0; i < 8; ++i) {
+        /** @type {uint8} */
         const x2 = tk2_new[i];
-        tk2[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(x2, 1), OpCodes.AndN(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.AndN(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
+        tk2[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(x2, 1), OpCodes.And32(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.And32(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
       }
 
       for (let i = 8; i < 16; ++i) {
@@ -311,65 +325,85 @@
   /**
    * LFSR update for 56-bit counter (used in Romulus-N1/M1)
    * Updates CNT' = 2 * CNT mod GF(2^56) with polynomial x^56 + x^7 + x^4 + x^2 + 1
+   * @param {uint8[]} cnt
    */
   function lfsr_gf56(cnt) {
-    const fb = OpCodes.AndN(OpCodes.Shr32(cnt[6], 7), 0x01);
-    cnt[6] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[6], 1), OpCodes.Shr32(cnt[5], 7)), 0xFF);
-    cnt[5] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[5], 1), OpCodes.Shr32(cnt[4], 7)), 0xFF);
-    cnt[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[4], 1), OpCodes.Shr32(cnt[3], 7)), 0xFF);
-    cnt[3] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[3], 1), OpCodes.Shr32(cnt[2], 7)), 0xFF);
-    cnt[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
-    cnt[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
-    cnt[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x95 : 0x00)), 0xFF);
+    const fb = OpCodes.And32(OpCodes.Shr32(cnt[6], 7), 0x01);
+    cnt[6] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[6], 1), OpCodes.Shr32(cnt[5], 7)), 0xFF);
+    cnt[5] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[5], 1), OpCodes.Shr32(cnt[4], 7)), 0xFF);
+    cnt[4] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[4], 1), OpCodes.Shr32(cnt[3], 7)), 0xFF);
+    cnt[3] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[3], 1), OpCodes.Shr32(cnt[2], 7)), 0xFF);
+    cnt[2] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
+    cnt[1] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
+    cnt[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x95 : 0x00)), 0xFF);
   }
 
   /**
    * LFSR update for 24-bit counter (used in Romulus-N2/M2/N3/M3)
    * Updates CNT' = 2 * CNT mod GF(2^24) with polynomial x^24 + x^4 + x^3 + x + 1
+   * @param {uint8[]} cnt
    */
   function lfsr_gf24(cnt) {
-    const fb = OpCodes.AndN(OpCodes.Shr32(cnt[2], 7), 0x01);
-    cnt[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
-    cnt[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
-    cnt[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x1B : 0x00)), 0xFF);
+    const fb = OpCodes.And32(OpCodes.Shr32(cnt[2], 7), 0x01);
+    cnt[2] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
+    cnt[1] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
+    cnt[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x1B : 0x00)), 0xFF);
   }
 
   /**
    * G function: generates keystream/tag material by applying linear transformation
    * G(S) = S right-shift 1 XOR S[7] XOR S left-shift 7
+   * @param {uint8[]} input
+   * @param {uint8[]} output
+   * @param {int32} offset
+   * @param {int32} length
    */
   function g_function(input, output, offset, length) {
     for (let i = 0; i < length; ++i) {
+      /** @type {uint8} */
       const s = input[i];
-      output[offset + i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shr32(s, 1), OpCodes.AndN(s, 0x80)), OpCodes.AndN(OpCodes.Shl32(s, 7), 0x80)), 0xFF);
+      output[offset + i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(s, 1), OpCodes.And32(s, 0x80)), OpCodes.And32(OpCodes.Shl32(s, 7), 0x80)), 0xFF);
     }
   }
 
   /**
    * Rho function: encryption mode transformation
    * S' = S XOR M, C = M XOR G(S)
+   * @param {uint8[]} state
+   * @param {uint8[]} plaintext
+   * @param {uint8[]} ciphertext
+   * @param {int32} ptOff
+   * @param {int32} ctOff
+   * @param {int32} length
    */
   function rho_encrypt(state, plaintext, ciphertext, ptOff, ctOff, length) {
     const gout = new Uint8Array(16);
     g_function(state, gout, 0, 16);
 
     for (let i = 0; i < length; ++i) {
+      /** @type {uint8} */
       const m = plaintext[ptOff + i];
       state[i] ^= m;
-      ciphertext[ctOff + i] = OpCodes.XorN(m, gout[i]);
+      ciphertext[ctOff + i] = OpCodes.Xor32(m, gout[i]);
     }
   }
 
   /**
    * Rho inverse function: decryption mode transformation
    * M = C XOR G(S), S' = S XOR M
+   * @param {uint8[]} state
+   * @param {uint8[]} ciphertext
+   * @param {uint8[]} plaintext
+   * @param {int32} ctOff
+   * @param {int32} ptOff
+   * @param {int32} length
    */
   function rho_decrypt(state, ciphertext, plaintext, ctOff, ptOff, length) {
     const gout = new Uint8Array(16);
     g_function(state, gout, 0, 16);
 
     for (let i = 0; i < length; ++i) {
-      const m = OpCodes.XorN(ciphertext[ctOff + i], gout[i]);
+      const m = OpCodes.Xor32(ciphertext[ctOff + i], gout[i]);
       plaintext[ptOff + i] = m;
       state[i] ^= m;
     }
@@ -377,6 +411,10 @@
 
   /**
    * Pad partial block (used for AD and message processing)
+   * @param {uint8[]} input
+   * @param {int32} inOff
+   * @param {uint8[]} output
+   * @param {int32} length
    */
   function pad_block(input, inOff, output, length) {
     for (let i = 0; i < 16; ++i) {
@@ -385,7 +423,7 @@
     for (let i = 0; i < length; ++i) {
       output[i] = input[inOff + i];
     }
-    output[15] = OpCodes.AndN(length, 0x0F);
+    output[15] = OpCodes.And32(length, 0x0F);
   }
 
   // ===== ROMULUS-N IMPLEMENTATION =====
@@ -397,27 +435,50 @@
  */
 
   class RomulusNInstance extends IAeadInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {int32} variant - Romulus-N variant 1, 2 or 3
+     */
     constructor(algorithm, variant) {
       super(algorithm);
+      /** @type {int32} */
       this.variant = variant;  // 1, 2, or 3
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this.aad = [];
+      /** @type {uint8[]} */
       this.message = [];
+      /** @type {int32} */
       this.tagSize = 16;
+      /** @type {boolean} */
       this.isEncrypting = true;
+      /** @type {uint8[]|null} */
+      this._cnt2 = null;
 
       // Initialize based on variant
       if (variant === 1) {
+        /** @type {int32} */
         this.nonceSize = 16;
+        /** @type {boolean} */
         this.useSkinny384 = true;
+        /** @type {uint8} */
         this.domain_ad_full = 0x08;
+        /** @type {uint8} */
         this.domain_ad_final_full = 0x18;
+        /** @type {uint8} */
         this.domain_ad_final_partial = 0x1A;
+        /** @type {uint8} */
         this.domain_ad_empty = 0x1A;
+        /** @type {uint8} */
         this.domain_msg_full = 0x04;
+        /** @type {uint8} */
         this.domain_msg_final_full = 0x14;
+        /** @type {uint8} */
         this.domain_msg_final_partial = 0x15;
+        /** @type {uint8} */
         this.domain_msg_empty = 0x15;
       } else if (variant === 2) {
         this.nonceSize = 12;
@@ -466,19 +527,33 @@
       return this._key ? Array.from(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || nonceBytes.length !== this.nonceSize) {
-        throw new Error(`Nonce must be ${this.nonceSize} bytes`);
+        throw new Error("Nonce must be " + this.nonceSize + " bytes");
       }
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this.aad = adBytes ? Array.from(adBytes) : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = Array.from(adBytes);
+      }
+      this.aad = copy;
     }
 
     /**
@@ -509,12 +584,16 @@
       }
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       const pt = new Uint8Array(this.message);
       const ct = new Uint8Array(pt.length + 16);
 
       // Initialize state
       const state = new Uint8Array(16);
+      /** @type {uint8[]} */
       let cnt = this._newCounter();
 
       // Process associated data
@@ -567,6 +646,9 @@
       return Array.from(ct);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       if (this.message.length < 16) {
         throw new Error("Ciphertext too short (must include 16-byte tag)");
@@ -576,6 +658,7 @@
       const pt = new Uint8Array(ct.length - 16);
 
       const state = new Uint8Array(16);
+      /** @type {uint8[]} */
       let cnt = this._newCounter();
 
       // Process associated data
@@ -631,6 +714,10 @@
       return Array.from(pt);
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} cnt
+     */
     _processAD(state, cnt) {
       const ad = new Uint8Array(this.aad);
 
@@ -700,6 +787,10 @@
    * - N2 (SKINNY-128-384, dual 24-bit counters): TK1 = CNT1(3)||D||T(12), TK2 = Key(16), TK3 = CNT2(3)||zero(13)
    * - N3 (SKINNY-128-256, single 24-bit counter): TK1 = CNT(3)||D||T(12), TK2 = Key(16)
    * where T is either the nonce (nonce_encryption) or the AD's even-block continuation bytes.
+   * @param {uint8[]} cnt
+   * @param {uint8} domain
+   * @param {uint8[]} tData
+   * @returns {uint8[]}
    */
     _buildTweakey(cnt, domain, tData) {
       const tweakey = new Uint8Array(this.useSkinny384 ? 48 : 32);
@@ -755,7 +846,13 @@
       return tweakey;
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} cnt
+     * @param {uint8} domain
+     */
     _skinny_encrypt(state, cnt, domain) {
+      /** @type {uint8[]} */
       const tweakey = this._buildTweakey(cnt, domain, this._nonce);
 
       if (this.useSkinny384) {
@@ -765,7 +862,14 @@
       }
     }
 
+    /**
+     * @param {uint8[]} state
+     * @param {uint8[]} cnt
+     * @param {uint8[]} tk2Data
+     * @param {uint8} domain
+     */
     _skinny_encrypt_with_tk2(state, cnt, tk2Data, domain) {
+      /** @type {uint8[]} */
       const tweakey = this._buildTweakey(cnt, domain, tk2Data);
 
       if (this.useSkinny384) {
@@ -780,7 +884,7 @@
    * N1 uses a single 56-bit (7-byte) LFSR counter.
    * N2 uses dual 24-bit (3-byte) LFSR counters (CNT2 advances only when CNT1 wraps).
    * N3 uses a single 24-bit (3-byte) LFSR counter.
-   * @returns {Uint8Array} Freshly reset primary counter
+   * @returns {uint8[]} Freshly reset primary counter
    */
 
     _newCounter() {
@@ -801,6 +905,9 @@
       return cnt;
     }
 
+    /**
+     * @param {uint8[]} cnt
+     */
     _lfsr_update(cnt) {
       if (this.variant === 1) {
         lfsr_gf56(cnt);
