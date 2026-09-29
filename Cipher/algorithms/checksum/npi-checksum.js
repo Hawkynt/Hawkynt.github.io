@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * NPIChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class NPIChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum US NPI implementation", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/us/npi.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Format: 10 digits (9 data + 1 check)",
         "All NPIs: First digit is always '1' or '2'",
@@ -97,9 +108,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {NPIChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -109,29 +120,30 @@
   }
 
   /**
- * NPIChecksum cipher instance implementing Feed/Result pattern
+ * NPIChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class NPIChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {NPIChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32[]} Decimal digits fed since the last Result() */
       this.digits = [];
+      /** @type {string} */
       this.prefix = '80840'; // NPI constant prefix for Luhn
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -141,48 +153,51 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.digits.push(data[i] - 0x30);
+          /** @type {int32} */
+          const code = data[i];
+          this.digits.push(code - 0x30);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Compute the Luhn check digit of the prefixed digits fed so far and reset
+   * @returns {uint8[]} One byte: the check digit (0 when no digit was fed)
    */
 
     Result() {
-      if (this.digits.length === 0) {
-        this.digits = [];
-        return [0];
-      }
+      /** @type {int32} */
+      let checkDigit = 0;
 
-      // Prepend constant prefix '80840' to NPI digits
-      const fullNumber = [];
-      for (let i = 0; i < this.prefix.length; i++) {
-        fullNumber.push(this.prefix.charCodeAt(i) - 0x30);
-      }
-      fullNumber.push(...this.digits);
+      if (this.digits.length > 0) {
+        // Prepend constant prefix '80840' to NPI digits
+        /** @type {int32[]} */
+        let fullNumber = [];
+        for (let i = 0; i < this.prefix.length; i++) {
+          fullNumber.push(this.prefix.charCodeAt(i) - 0x30);
+        }
+        fullNumber = fullNumber.concat(this.digits);
 
-      // Apply Luhn algorithm to full number (double at odd positions from right)
-      let sum = 0;
+        // Apply Luhn algorithm to full number (double at odd positions from right)
+        let sum = 0;
 
-      for (let i = 0; i < fullNumber.length; i++) {
-        let digit = fullNumber[fullNumber.length - 1 - i];
+        for (let i = 0; i < fullNumber.length; i++) {
+          let digit = fullNumber[fullNumber.length - 1 - i];
 
-        // Double at odd positions (1,3,5... from right)
-        if ((i + 1) % 2 === 1) {
-          digit *= 2;
-          if (digit > 9) {
-            digit -= 9;
+          // Double at odd positions (1,3,5... from right)
+          if ((i + 1) % 2 === 1) {
+            digit *= 2;
+            if (digit > 9) {
+              digit -= 9;
+            }
           }
+
+          sum += digit;
         }
 
-        sum += digit;
+        checkDigit = (10 - (sum % 10)) % 10;
       }
 
-      const checkDigit = (10 - (sum % 10)) % 10;
       this.digits = [];
       return [checkDigit];
     }
