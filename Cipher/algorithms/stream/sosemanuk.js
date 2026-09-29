@@ -55,6 +55,19 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Serpent S-boxes
+  /** @type {uint8[][]} */
+  const SERPENT_SBOX = [
+    [3, 8, 15, 1, 10, 6, 5, 11, 14, 13, 4, 2, 7, 0, 9, 12],
+    [15, 12, 2, 7, 9, 0, 5, 10, 1, 11, 14, 8, 6, 13, 3, 4],
+    [8, 6, 7, 9, 3, 12, 10, 15, 13, 1, 14, 4, 0, 11, 5, 2],
+    [0, 15, 11, 8, 12, 9, 6, 3, 13, 1, 2, 4, 10, 7, 5, 14],
+    [1, 15, 8, 3, 12, 0, 11, 6, 2, 5, 4, 10, 9, 14, 7, 13],
+    [15, 5, 2, 11, 4, 10, 9, 12, 0, 3, 14, 8, 13, 6, 7, 1],
+    [7, 2, 12, 5, 8, 4, 6, 11, 14, 9, 1, 15, 13, 3, 10, 0],
+    [1, 13, 15, 0, 14, 8, 2, 11, 7, 4, 12, 10, 9, 3, 5, 6]
+  ];
+
   /**
  * SOSEMANUKAlgorithm - Stream cipher implementation
  * @class
@@ -132,24 +145,36 @@
   class SOSEMANUKInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SOSEMANUKAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // SOSEMANUK state
+      /** @type {int32} */
       this.LFSR_SIZE = 10;
-      this.lfsr = new Array(this.LFSR_SIZE).fill(0);  // 10 32-bit words
+      /** @type {uint32[]} */
+      this.lfsr = new Array(this.LFSR_SIZE);           // 10 32-bit words
+      for (let i = 0; i < this.LFSR_SIZE; i++) this.lfsr[i] = 0;
+      /** @type {uint32} */
       this.R1 = 0;                                     // FSM register 1
+      /** @type {uint32} */
       this.R2 = 0;                                     // FSM register 2
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];                       // Buffer for keystream
+      /** @type {int32} */
       this.keystreamPosition = 0;                      // Position in buffer
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -173,7 +198,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 16 || keyLength > 32) {
-        throw new Error(`Invalid SOSEMANUK key size: ${keyLength} bytes. Requires 16-32 bytes (128-256 bits)`);
+        throw new Error("Invalid SOSEMANUK key size: " + keyLength + " bytes. Requires 16-32 bytes (128-256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -210,7 +235,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`Invalid SOSEMANUK IV size: ${ivBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error("Invalid SOSEMANUK IV size: " + ivBytes.length + " bytes. Requires exactly 16 bytes (128 bits)");
       }
 
       this._iv = [...ivBytes];
@@ -271,12 +296,13 @@
         throw new Error("SOSEMANUK not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -297,9 +323,10 @@
       // Load key into LFSR (first 10 words)
       let keyIndex = 0;
       for (let i = 0; i < this.LFSR_SIZE && keyIndex < this._key.length; i++) {
+        /** @type {uint32} */
         let word = 0;
         for (let j = 0; j < 4 && keyIndex < this._key.length; j++) {
-          word = OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex++], j * 8));
+          word = OpCodes.Or32(word, OpCodes.Shl32(this._key[keyIndex++], j * 8));
         }
         this.lfsr[i] = OpCodes.ToUint32(word); // Ensure unsigned 32-bit
       }
@@ -310,11 +337,12 @@
 
       // Load IV (XOR with first 4 LFSR words)
       for (let i = 0; i < 4 && i < this.LFSR_SIZE; i++) {
+        /** @type {uint32} */
         let word = 0;
         for (let j = 0; j < 4; j++) {
-          word = OpCodes.OrN(word, OpCodes.Shl32(this._iv[i * 4 + j], j * 8));
+          word = OpCodes.Or32(word, OpCodes.Shl32(this._iv[i * 4 + j], j * 8));
         }
-        this.lfsr[i] = OpCodes.XorN(this.lfsr[i], OpCodes.ToUint32(word));
+        this.lfsr[i] = OpCodes.Xor32(this.lfsr[i], OpCodes.ToUint32(word));
       }
 
       // Run initialization phase (10 rounds)
@@ -331,7 +359,7 @@
     // Clock the LFSR (Linear Feedback Shift Register)
     _clockLFSR() {
       // SOSEMANUK uses a SNOW-like LFSR with specific feedback
-      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.lfsr[0], this.lfsr[3]), this.lfsr[5]), this.lfsr[9]);
+      const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.lfsr[0], this.lfsr[3]), this.lfsr[5]), this.lfsr[9]);
 
       // Shift LFSR
       for (let i = 0; i < this.LFSR_SIZE - 1; i++) {
@@ -349,24 +377,33 @@
       // Update FSM registers with ARX operations
       const temp = this.R1;
       this.R1 = OpCodes.ToUint32(this.R2 + v);
-      this.R2 = OpCodes.XorN(OpCodes.RotL32(temp, 8), u);
+      this.R2 = OpCodes.Xor32(OpCodes.RotL32(temp, 8), u);
     }
 
     // Apply Serpent S-box transformation
+    /**
+     * @param {uint32} input
+     * @param {int32} sboxIndex
+     * @returns {uint32}
+     */
     _applySBox(input, sboxIndex) {
+      /** @type {uint32} */
       let output = 0;
-      const sbox = SOSEMANUKAlgorithm.SBOX[sboxIndex % 8];
+      const sbox = SERPENT_SBOX[sboxIndex % 8];
 
       // Apply S-box to each 4-bit nibble
       for (let i = 0; i < 8; i++) {
-        const nibble = OpCodes.AndN(OpCodes.Shr32(input, i * 4), 0xF);
-        output = OpCodes.OrN(output, OpCodes.Shl32(sbox[nibble], i * 4));
+        const nibble = OpCodes.And32(OpCodes.Shr32(input, i * 4), 0xF);
+        output = OpCodes.Or32(output, OpCodes.Shl32(sbox[nibble], i * 4));
       }
 
       return OpCodes.ToUint32(output);
     }
 
     // Generate a 32-bit keystream word
+    /**
+     * @returns {uint32}
+     */
     _generateWord() {
       // Clock both LFSR and FSM
       this._clockLFSR();
@@ -374,30 +411,40 @@
 
       // Combine LFSR and FSM outputs
       const lfsrOut = this.lfsr[0];
-      const fsmOut = OpCodes.XorN(this.R1, this.R2);
+      const fsmOut = OpCodes.Xor32(this.R1, this.R2);
 
       // Apply nonlinear transformation
-      const combined = OpCodes.XorN(lfsrOut, fsmOut);
+      const combined = OpCodes.Xor32(lfsrOut, fsmOut);
       const sboxed = this._applySBox(combined, 0);
 
       return sboxed;
     }
 
     // Generate a block of keystream (16 bytes)
+    /**
+     * @returns {uint8[]}
+     */
     _generateBlock() {
+      /** @type {uint8[]} */
       const keystream = [];
 
       // Generate 4 32-bit words (16 bytes total)
       for (let i = 0; i < 4; i++) {
         const word = this._generateWord();
         const bytes = OpCodes.Unpack32LE(word);
-        keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        keystream.push(bytes[0]);
+        keystream.push(bytes[1]);
+        keystream.push(bytes[2]);
+        keystream.push(bytes[3]);
       }
 
       return keystream;
     }
 
     // Get the next keystream byte
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       // Check if we need to generate a new block
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
@@ -410,16 +457,7 @@
   }
 
   // Serpent S-box (from Serpent cipher)
-  SOSEMANUKAlgorithm.SBOX = [
-    [3, 8, 15, 1, 10, 6, 5, 11, 14, 13, 4, 2, 7, 0, 9, 12],
-    [15, 12, 2, 7, 9, 0, 5, 10, 1, 11, 14, 8, 6, 13, 3, 4],
-    [8, 6, 7, 9, 3, 12, 10, 15, 13, 1, 14, 4, 0, 11, 5, 2],
-    [0, 15, 11, 8, 12, 9, 6, 3, 13, 1, 2, 4, 10, 7, 5, 14],
-    [1, 15, 8, 3, 12, 0, 11, 6, 2, 5, 4, 10, 9, 14, 7, 13],
-    [15, 5, 2, 11, 4, 10, 9, 12, 0, 3, 14, 8, 13, 6, 7, 1],
-    [7, 2, 12, 5, 8, 4, 6, 11, 14, 9, 1, 15, 13, 3, 10, 0],
-    [1, 13, 15, 0, 14, 8, 2, 11, 7, 4, 12, 10, 9, 3, 5, 6]
-  ];
+  SOSEMANUKAlgorithm.SBOX = SERPENT_SBOX;
 
   // Register the algorithm
   const algorithmInstance = new SOSEMANUKAlgorithm();

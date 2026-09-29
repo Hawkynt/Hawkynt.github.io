@@ -168,11 +168,11 @@
     const ivA = packWordLE(iv8, 0), ivB = packWordLE(iv8, 4);
     const state = [ivA, ivB, ivA, ivB];
 
-    const scratch = new Array(SCRATCH_SIZE).fill(0);
+    const scratch = OpCodes.CreateArray(SCRATCH_SIZE, 0);
     scratch[0] = 0x00; scratch[1] = 0x40; // 16-bit big-endian length header (64)
     for (let i = 0; i < KEY_SIZE; i++) scratch[2 + i] = key64[i];
 
-    const msg = new Array(KEY_SIZE).fill(0); // message stays all-zero through the warm-up
+    const msg = OpCodes.CreateArray(KEY_SIZE, 0); // message stays all-zero through the warm-up
 
     for (let round = 0; round < WARMUP_ROUNDS; round++) {
       cfbEncryptInPlace(scratch, SCRATCH_SIZE, state, msg, K);
@@ -239,38 +239,63 @@
   }
 
   class MDCInstance extends IAlgorithmInstance {
+    /**
+     * @param {MDCAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._iv = new Array(IV_SIZE).fill(0);
+      this._iv = OpCodes.CreateArray(IV_SIZE, 0);
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MDC (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MDC (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
-      if (!ivBytes) { this._iv = new Array(IV_SIZE).fill(0); return; }
+      if (!ivBytes) { this._iv = OpCodes.CreateArray(IV_SIZE, 0); return; }
       if (ivBytes.length !== IV_SIZE)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. MDC (DarkCrypt) requires exactly ${IV_SIZE} bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. MDC (DarkCrypt) requires exactly " + IV_SIZE + " bytes");
       this._iv = [...ivBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");

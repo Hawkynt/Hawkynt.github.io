@@ -174,38 +174,64 @@
   }
 
   class DarkCryptCryptMT3Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptCryptMT3Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this._tryInitialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 64)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes");
       this._iv = [...ivBytes];
       this._tryInitialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._state) throw new Error("Key and IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._state) throw new Error("Key and IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -217,7 +243,7 @@
       const count = Math.floor((plain.length + 7) / 8);
       const p = keyAreaLength - 2;
       booterAm(lung, sfmt, psfmtOff, sfmt, psfmtOff + p, count);
-      const cipher = new Array(plain.length).fill(0);
+      const cipher = OpCodes.CreateArray(plain.length, 0);
       filter16Bytes(sfmt, psfmtOff, accum, cipher, plain, Math.floor(plain.length / 16));
 
       this.inputBuffer = [];

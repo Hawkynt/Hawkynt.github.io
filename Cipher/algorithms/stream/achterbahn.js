@@ -146,15 +146,19 @@
   class AchterbahnInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AchterbahnAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Achterbahn configuration
@@ -177,6 +181,7 @@
 
       this.nlfsr = null;
       this.numNLFSRs = 0;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -201,7 +206,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 10 || keyLength > 16) {
-        throw new Error(`Invalid Achterbahn key size: ${keyLength} bytes. Requires 10-16 bytes (80-128 bits)`);
+        throw new Error("Invalid Achterbahn key size: " + keyLength + " bytes. Requires 10-16 bytes (80-128 bits)");
       }
 
       this._key = [...keyBytes];
@@ -236,7 +241,7 @@
       }
 
       if (ivBytes.length > 16) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Maximum 16 bytes (128 bits)`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Maximum 16 bytes (128 bits)");
       }
 
       this._iv = [...ivBytes];
@@ -291,12 +296,13 @@
         throw new Error("Cipher not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -312,7 +318,7 @@
       // Initialize NLFSR array
       this.nlfsr = new Array(this.numNLFSRs);
       for (let i = 0; i < this.numNLFSRs; i++) {
-        this.nlfsr[i] = new Array(this.NLFSR_SIZES[i]).fill(0);
+        this.nlfsr[i] = OpCodes.CreateArray(this.NLFSR_SIZES[i], 0);
       }
 
       // Load key material into NLFSRs

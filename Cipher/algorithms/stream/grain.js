@@ -133,20 +133,25 @@
   class GrainV1Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GrainV1Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Internal state
-      this.lfsr = new Array(80).fill(0);    // 80-bit LFSR state
-      this.nfsr = new Array(80).fill(0);    // 80-bit NFSR state
+      this.lfsr = OpCodes.CreateArray(80, 0);    // 80-bit LFSR state
+      this.nfsr = OpCodes.CreateArray(80, 0);    // 80-bit NFSR state
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -168,7 +173,7 @@
       }
 
       if (keyBytes.length !== 10) {
-        throw new Error(`Grain v1 requires exactly 80-bit (10-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error("Grain v1 requires exactly 80-bit (10-byte) keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -202,7 +207,7 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`Grain v1 requires exactly 64-bit (8-byte) IVs, got ${ivBytes.length} bytes`);
+        throw new Error("Grain v1 requires exactly 64-bit (8-byte) IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -218,11 +223,17 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       // For compatibility, treat nonce as IV
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -268,6 +279,7 @@
         throw new Error("Grain v1 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; ++i) {
         const keystreamByte = this._generateKeystreamByte();
@@ -398,7 +410,7 @@
 
     /**
      * Shift register left and insert new bit at position 0
-     * @param {Array} register - Register to shift
+     * @param {uint8[]} register - Register to shift
      * @param {number} newBit - New bit to insert
      */
     _shiftRegister(register, newBit) {
@@ -496,7 +508,7 @@
         {
           text: "DarkCrypt Grain - 128-byte keystream (key=00..0F, IV=0)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("969eae24e41b22689ea73c99e83b78ecd9d37afeb4c2ab9ff760f75865b971d0d5d096bc45717cf6087ad03125823dc9c9e4225cfe6ccb648a04b13062503e2bbc0fbb260a7d7e25a8638b20cca5500779b0597d61339f693ddb29c970d43c03fe48a4e1f1ef2c43466a7189713981bf510c7c113c58752076ae9f15323a589a")
@@ -537,23 +549,28 @@
   class Grain128Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Grain128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Internal state - using 32-bit words like Bouncy Castle
       // 4 words of 32 bits = 128 bits total
-      this.lfsr = new Array(4).fill(0);  // LFSR state (4 x 32-bit words = 128 bits)
-      this.nfsr = new Array(4).fill(0);  // NFSR state (4 x 32-bit words = 128 bits)
-      this.out = new Array(4).fill(0);   // Output buffer (32 bits per round)
+      this.lfsr = OpCodes.CreateArray(4, 0);  // LFSR state (4 x 32-bit words = 128 bits)
+      this.nfsr = OpCodes.CreateArray(4, 0);  // NFSR state (4 x 32-bit words = 128 bits)
+      this.out = OpCodes.CreateArray(4, 0);   // Output buffer (32 bits per round)
       this.index = 4;                     // Output byte index (4 = need new round)
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -575,7 +592,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Grain-128 requires exactly 128-bit (16-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error("Grain-128 requires exactly 128-bit (16-byte) keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -609,7 +626,7 @@
       }
 
       if (ivBytes.length !== 12) {
-        throw new Error(`Grain-128 requires exactly 96-bit (12-byte) IVs, got ${ivBytes.length} bytes`);
+        throw new Error("Grain-128 requires exactly 96-bit (12-byte) IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -812,9 +829,10 @@
       }
 
       // XOR input with keystream
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; ++i) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._getKeyStream()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._getKeyStream()));
       }
 
       this.inputBuffer = [];

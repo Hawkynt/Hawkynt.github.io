@@ -59,14 +59,17 @@
 
   // Fibonacci LFSR feedback taps (weight-17 polynomial, offset 0 counted separately in the
   // published recursion s[t+256] = s[t+212] ^ ... ^ s[t+14] ^ s[t]).
+  /** @type {int32[]} */
   const FEEDBACK_TAPS = [212, 194, 192, 187, 163, 151, 125, 115, 107, 85, 66, 64, 52, 48, 14, 0];
 
   // 17-tap nonlinear filter: 16 bits (x1..x16, LSB..MSB) feed the GF(2^16) inversion S-box;
   // the 17th tap (offset 0) is XORed directly into the filter output separately (linmask).
+  /** @type {int32[]} */
   const FILTER_TAPS = [1, 6, 9, 19, 21, 44, 58, 74, 98, 105, 134, 161, 193, 227, 244, 255];
 
   // 16 resynchronization feedback positions, in the exact bit0..bit15 extraction order used
   // by both the reference implementation and the DarkCrypt port.
+  /** @type {int32[]} */
   const DIFFUSION_POS = [80, 17, 66, 179, 52, 213, 118, 247, 232, 41, 154, 11, 204, 173, 142, 111];
 
   const GF_FIELD_SIZE = 0xFFFF;       // |GF(2^16)*|
@@ -74,22 +77,40 @@
 
   // Precompute the GF(2^16) multiplicative-inverse table modulo x^16+x^5+x^3+x^2+1 once, shared
   // by every instance (matches the one-time table build performed in setup()).
-  const GF_EXP = new Uint16Array(GF_FIELD_SIZE);
-  const GF_LOG = new Uint16Array(0x10000);
-  (function buildGfTables() {
+  /**
+   * Build the GF(2^16) exponent and logarithm tables
+   * @returns {uint16[][]} [exponent table, logarithm table]
+   */
+  function buildGfTables() {
+    /** @type {uint16[]} */
+    const exp = new Uint16Array(GF_FIELD_SIZE);
+    /** @type {uint16[]} */
+    const log = new Uint16Array(0x10000);
+    /** @type {uint32} */
     let x = 1;
     for (let n = 0; n < GF_FIELD_SIZE; n++) {
-      GF_EXP[n] = x;
-      GF_LOG[x] = n;
+      exp[n] = x;
+      log[x] = n;
       x = OpCodes.Shl32(x, 1);
-      if (OpCodes.AndN(x, 0x10000)) x = OpCodes.XorN(x, GF_REDUCTION);
+      if (OpCodes.And32(x, 0x10000)) x = OpCodes.Xor32(x, GF_REDUCTION);
       x &= 0xFFFF;
     }
-  })();
+    return [exp, log];
+  }
+  const GF_TABLES = buildGfTables();
+  /** @type {uint16[]} */
+  const GF_EXP = GF_TABLES[0];
+  /** @type {uint16[]} */
+  const GF_LOG = GF_TABLES[1];
+
+  /**
+   * @param {uint16} v - Field element
+   * @returns {uint16} Its multiplicative inverse (0 for 0)
+   */
   function gfInverse(v) {
     if (v === 0) return 0;
     const n = GF_LOG[v];
-    const invN = (GF_FIELD_SIZE - n) % GF_FIELD_SIZE;
+    const invN = OpCodes.Sub32(GF_FIELD_SIZE, n) % GF_FIELD_SIZE;
     return GF_EXP[invN];
   }
 
@@ -149,51 +170,89 @@
   }
 
   class DarkCryptSfinksInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptSfinksAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this._lfsr = null;    // 256-entry bit array (0/1)
+      /** @type {uint16[]|null} */
       this._pipeY = null;   // 7-entry delay line carrying past filter (INV) outputs (16-bit words)
+      /** @type {uint8[]|null} */
       this._pipeX0 = null;  // 7-entry delay line carrying past raw LFSR bit-0 values (0/1)
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 10)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Sfinks (DarkCrypt) requires exactly 10 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Sfinks (DarkCrypt) requires exactly 10 bytes");
       this._key = [...keyBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 10)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Sfinks (DarkCrypt) requires exactly 10 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Sfinks (DarkCrypt) requires exactly 10 bytes");
       this._iv = [...ivBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._lfsr) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._lfsr) throw new Error("Key/IV not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -202,18 +261,21 @@
     _tryInit() {
       if (!this._key || !this._iv) { this._lfsr = null; return; }
 
-      const s = new Array(LFSR_BITS).fill(0);
+      const s = OpCodes.CreateArray(LFSR_BITS, 0);
       // Key occupies bits 96..175, IV occupies bits 176..255, both LSB-first per byte;
       // bit 95 is fixed to 1 (domain separator), matching the published resync setup.
       for (let b = 0; b < 80; b++) {
-        s[96 + b] = OpCodes.AndN(OpCodes.Shr32(this._key[OpCodes.Shr32(b, 3)], OpCodes.And32(b, 7)), 1);
-        s[176 + b] = OpCodes.AndN(OpCodes.Shr32(this._iv[OpCodes.Shr32(b, 3)], OpCodes.And32(b, 7)), 1);
+        s[96 + b] = OpCodes.And32(OpCodes.Shr32(this._key[OpCodes.Shr32(b, 3)], OpCodes.And32(b, 7)), 1);
+        s[176 + b] = OpCodes.And32(OpCodes.Shr32(this._iv[OpCodes.Shr32(b, 3)], OpCodes.And32(b, 7)), 1);
       }
       s[95] = 1;
 
       this._lfsr = s;
-      this._pipeY = new Array(PIPE_DEPTH).fill(0);
-      this._pipeX0 = new Array(PIPE_DEPTH).fill(0);
+      /** @type {uint16[]} */
+      const pipeY = new Array(PIPE_DEPTH);
+      for (let i = 0; i < PIPE_DEPTH; i++) pipeY[i] = 0;
+      this._pipeY = pipeY;
+      this._pipeX0 = OpCodes.CreateArray(PIPE_DEPTH, 0);
 
       for (let t = 0; t < RESYNC_ROUNDS; t++) this._resyncRound();
     }
@@ -221,18 +283,23 @@
     // Standard Fibonacci LFSR clock: 256-bit shift with weight-17 feedback into bit 255.
     _clockLfsr() {
       const s = this._lfsr;
+      /** @type {uint32} */
       let fb = 0;
-      for (const p of FEEDBACK_TAPS) fb = OpCodes.XorN(fb, s[p]);
+      for (let t = 0; t < FEEDBACK_TAPS.length; t++) fb = OpCodes.Xor32(fb, s[FEEDBACK_TAPS[t]]);
       for (let i = 0; i < LFSR_BITS - 1; i++) s[i] = s[i + 1];
       s[LFSR_BITS - 1] = fb;
     }
 
     // 17-tap nonlinear filter: builds the 16-bit inversion input from the LFSR taps and
     // returns the GF(2^16) inverse (the 17th tap, offset 0, is read separately as "x0").
+    /**
+     * @returns {uint16}
+     */
     _computeFilterY() {
       const s = this._lfsr;
+      /** @type {uint32} */
       let v = 0;
-      for (let i = 0; i < 16; i++) v = OpCodes.OrN(v, OpCodes.Shl32(s[FILTER_TAPS[i]], i));
+      for (let i = 0; i < 16; i++) v = OpCodes.Or32(v, OpCodes.Shl32(s[FILTER_TAPS[i]], i));
       return gfInverse(v);
     }
 
@@ -252,24 +319,31 @@
       this._clockLfsr();
       const yFront = this._pipeY[0];
       for (let k = 0; k < 16; k++)
-        this._lfsr[DIFFUSION_POS[k]] = OpCodes.XorN(this._lfsr[DIFFUSION_POS[k]], OpCodes.AndN(OpCodes.Shr32(yFront, k), 1));
+        this._lfsr[DIFFUSION_POS[k]] = OpCodes.Xor32(this._lfsr[DIFFUSION_POS[k]], OpCodes.And32(OpCodes.Shr32(yFront, k), 1));
       this._shiftPipes();
     }
 
     // One keystream-generation round: clock the LFSR, advance the delay lines FIRST, then
     // combine the (now one-step-fresher) oldest entries of both delay lines into one bit.
+    /**
+     * @returns {uint32}
+     */
     _cryptRoundBit() {
       this._clockLfsr();
       this._shiftPipes();
-      const yBit = OpCodes.AndN(this._pipeY[0], 1);
-      const x0Bit = OpCodes.AndN(this._pipeX0[0], 1);
-      return OpCodes.XorN(yBit, x0Bit);
+      const yBit = OpCodes.And32(this._pipeY[0], 1);
+      const x0Bit = OpCodes.And32(this._pipeX0[0], 1);
+      return OpCodes.Xor32(yBit, x0Bit);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++)
-        byte = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl32(byte, 1), 0xFF), this._cryptRoundBit());
+        byte = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl32(byte, 1), 0xFF), this._cryptRoundBit());
       return byte;
     }
   }

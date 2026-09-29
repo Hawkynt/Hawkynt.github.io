@@ -44,9 +44,9 @@
   const MICKEYCommon = {
     /**
      * Clock register with LFSR-style feedback
-     * @param {Array} register - Register array
+     * @param {uint8[]} register - Register array
      * @param {number} size - Register size
-     * @param {Array} tapPositions - Tap positions for feedback polynomial
+     * @param {uint8[]} tapPositions - Tap positions for feedback polynomial
      * @returns {number} Feedback bit
      */
     clockLFSR: function(register, size, tapPositions) {
@@ -65,7 +65,7 @@
 
     /**
      * Simplified nonlinear function for register operations
-     * @param {Array} register - Register array
+     * @param {uint8[]} register - Register array
      * @returns {number} Nonlinear feedback bit
      */
     nonlinearFunction: function(register) {
@@ -80,8 +80,8 @@
 
     /**
      * Initialize register from key bytes
-     * @param {Array} register - Register to initialize
-     * @param {Array} keyBytes - Key bytes
+     * @param {uint8[]} register - Register to initialize
+     * @param {uint8[]} keyBytes - Key bytes
      * @param {number} startBit - Starting bit position in key
      * @param {number} size - Register size
      */
@@ -156,15 +156,16 @@
      * Initialize cipher with empty state
      */
     Init: function() {
-      this.registerR = new Array(this.REGISTER_SIZE).fill(0);
-      this.registerS = new Array(this.REGISTER_SIZE).fill(0);
+      this.registerR = OpCodes.CreateArray(this.REGISTER_SIZE, 0);
+      this.registerS = OpCodes.CreateArray(this.REGISTER_SIZE, 0);
+      /** @type {boolean} */
       this.isInitialized = false;
       return true;
     },
 
     /**
      * Setup key for MICKEY cipher
-     * @param {Array} key - 80-bit key as byte array (10 bytes), will use first 16 bytes if longer
+     * @param {uint8[]} key - 80-bit key as byte array (10 bytes), will use first 16 bytes if longer
      */
     KeySetup: function(key) {
       if (!key || key.length < 8) {
@@ -189,6 +190,7 @@
         this.clockRegisters();
       }
 
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
@@ -255,9 +257,10 @@
     /**
      * Generate keystream bytes
      * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
+     * @returns {uint8[]} Array of keystream bytes
      */
     generateKeystream: function(length) {
+      /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {
@@ -324,6 +327,7 @@
         OpCodes.ClearArray(this.registerS);
         this.registerS = null;
       }
+      /** @type {boolean} */
       this.isInitialized = false;
     },
 
@@ -436,6 +440,7 @@
     state: null,
 
     Init: function() {
+      /** @type {uint8[]|null} */
       this.key = null;
       this.state = null;
     },
@@ -452,8 +457,8 @@
     initializeState: function(key) {
       // Simplified MICKEY-128-inspired state initialization
       const state = {
-        registerR: new Array(32).fill(0), // Simplified R register
-        registerS: new Array(32).fill(0), // Simplified S register
+        registerR: OpCodes.CreateArray(32, 0), // Simplified R register
+        registerS: OpCodes.CreateArray(32, 0), // Simplified S register
         counter: 0,
         pos: 0
       };

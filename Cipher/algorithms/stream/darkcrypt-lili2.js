@@ -188,51 +188,85 @@
   }
 
   class DarkCryptLili2Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptLili2Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._iv = new Array(16).fill(0);
+      this._iv = OpCodes.CreateArray(16, 0);
       this._c = null; // LFSRc: 16 bytes
       this._d = null; // LFSRd: 16 bytes
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
-      this._iv = ivBytes ? [...ivBytes] : new Array(16).fill(0);
+      this._iv = ivBytes ? [...ivBytes] : OpCodes.CreateArray(16, 0);
       if (this._iv.length !== 16)
-        throw new Error(`Invalid IV size: ${this._iv.length} bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size: " + this._iv.length + " bytes. LILI-2 (DarkCrypt) requires exactly 16 bytes");
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return [...this._iv]; }
 
+    /**
+     * @param {uint8[]|null} n
+     */
     set nonce(n) { this.iv = n; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._generateKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._generateKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -318,7 +352,7 @@
     // for the 255-bit compression rounds).
     _generateBits(nbits) {
       const nbytes = Math.ceil(nbits / 8);
-      const out = new Array(nbytes).fill(0);
+      const out = OpCodes.CreateArray(nbytes, 0);
       let bitPos = 0;
       for (let n = 0; n < nbits; n++) {
         const bytePos = OpCodes.Shr32(bitPos, 3);

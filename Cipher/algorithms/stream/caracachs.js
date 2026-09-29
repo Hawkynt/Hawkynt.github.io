@@ -135,7 +135,7 @@
         {
           text: "DarkCrypt Caracachs: keystream from 128 zero bytes, 32-byte incrementing key",
           uri: "https://totalcmd.net/plugring/darkcryptTC.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           expected: OpCodes.Hex8ToBytes("dff1188b8eb116c923c9ef6207d49e1b830697daf9feaff1b7a2c2371a603fe443932d7dd18728c632ab9c93e7fb242db329afff9fb0c08fcda7b420f9da6aa9a1c1c4cbf751b2f598e8f8ffcc9994ad6feccfa9fce199958e0d9a1740e81a5567bdf9e896d152ff64ebeac2c2d34472e3f37f8890001667fe8e595fc3e1409b")
         },
@@ -170,14 +170,17 @@
   class CARACAHSInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CARACAHSAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // Stream ciphers are symmetric
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // CARACACHS internal state
@@ -185,6 +188,7 @@
       this.a = 0x015a4e35;          // Multiplier constant
       this.r = 0;                   // Accumulator (16-bit unsigned)
       this.cle = 0;                 // Key-derived array size
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -208,7 +212,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid CARACACHS key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid CARACACHS key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -258,6 +262,7 @@
         throw new Error("No data fed");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each byte through the stream cipher

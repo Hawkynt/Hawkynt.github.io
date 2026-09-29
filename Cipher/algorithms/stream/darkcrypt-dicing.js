@@ -108,12 +108,14 @@
   }
 
   function wordsToBytes(words) {
+    /** @type {uint8[]} */
     const out = [];
     for (let i = 0; i < words.length; i++) out.push(...OpCodes.Unpack32LE(words[i]));
     return out;
   }
 
   function bytesToWords(bytes) {
+    /** @type {uint8[]} */
     const out = [];
     for (let i = 0; i < bytes.length; i += 4) out.push(readU32LE(bytes, i));
     return out;
@@ -154,7 +156,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("93fc3b3d41dbbf5ac6f39b58e5cd45febe7487679dc56971147ddd4a7d9945ed1a79d36d84a5854b2b5a4149bb18ad3160656058e648cad582d9122c145ce3f8a73abff437ac0e8c466561c11bb55dfc1337bc358a4fa22054a0363ab1f13ab7df4e599232df73d02ba40d6b5c91dd2adfdfe562e956b891d39eddaa873b19f6")
         },
         {
@@ -174,38 +176,68 @@
   }
 
   class DarkCryptDicingInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptDicingAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DICING (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DICING (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 32)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. DICING (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. DICING (DarkCrypt) requires exactly 32 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -213,12 +245,18 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("DICING (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("DICING (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       let idx = 0;
       const len = this.inputBuffer.length;
@@ -237,20 +275,20 @@
     _initialize() {
       if (!this._key || !this._iv) return;
 
-      this.keyWords = new Array(8).fill(0);
+      this.keyWords = OpCodes.CreateArray(8, 0);
       for (let i = 0; i < 8; i++) this.keyWords[i] = readU32LE(this._key, i * 4);
 
-      this.ckey1 = new Array(4).fill(0);
-      this.ckey2 = new Array(4).fill(0);
-      this.ch = new Array(4).fill(0);
-      this.var1 = new Array(4).fill(0);
-      this.var2 = new Array(4).fill(0);
-      this.skey1 = new Array(80).fill(0);
-      this.skey2 = new Array(80).fill(0);
-      this.sbox0 = new Array(256).fill(0);
-      this.sbox1 = new Array(256).fill(0);
-      this.sbox2 = new Array(256).fill(0);
-      this.sbox3 = new Array(256).fill(0);
+      this.ckey1 = OpCodes.CreateArray(4, 0);
+      this.ckey2 = OpCodes.CreateArray(4, 0);
+      this.ch = OpCodes.CreateArray(4, 0);
+      this.var1 = OpCodes.CreateArray(4, 0);
+      this.var2 = OpCodes.CreateArray(4, 0);
+      this.skey1 = OpCodes.CreateArray(80, 0);
+      this.skey2 = OpCodes.CreateArray(80, 0);
+      this.sbox0 = OpCodes.CreateArray(256, 0);
+      this.sbox1 = OpCodes.CreateArray(256, 0);
+      this.sbox2 = OpCodes.CreateArray(256, 0);
+      this.sbox3 = OpCodes.CreateArray(256, 0);
       this.cyl = 0;
 
       this._keysetup();
@@ -262,20 +300,20 @@
     // Fold the 256-bit key into a 128-bit seed (mkey) and expand it into the
     // four 32x8 combiner tables sbox0..sbox3.
     _keysetup() {
-      const mkey = new Array(4).fill(0);
+      const mkey = OpCodes.CreateArray(4, 0);
       for (let j = 0; j < 4; j++) mkey[j] = OpCodes.Xor32(this.keyWords[j], this.keyWords[4 + j]);
       this._extendsbox(mkey);
     }
 
     _extendsbox(mkeyWords) {
-      const mkey = new Array(16).fill(0);
+      const mkey = OpCodes.CreateArray(16, 0);
       for (let i = 0; i < 4; i++) {
         const b = OpCodes.Unpack32LE(mkeyWords[i]);
         mkey[i * 4] = b[0]; mkey[i * 4 + 1] = b[1]; mkey[i * 4 + 2] = b[2]; mkey[i * 4 + 3] = b[3];
       }
 
-      const w = new Array(16).fill(0);
-      const y = new Array(16).fill(0);
+      const w = OpCodes.CreateArray(16, 0);
+      const y = OpCodes.CreateArray(16, 0);
 
       let x = 1, z = 254;
       for (let i = 0; i < 8; i++) {
@@ -307,7 +345,7 @@
       c2 = OpCodes.And32(OpCodes.Xor32(c2, c1), 0xFF);
       c1 = OpCodes.And32(OpCodes.Xor32(c1, x), 0xFF);
 
-      const tabl = new Array(256).fill(0);
+      const tabl = OpCodes.CreateArray(256, 0);
       tabl[0] = OpCodes.Or32(OpCodes.Or32(c2, OpCodes.Shl32(c2, 16)), OpCodes.Shl32(c2, 24));
 
       let n = 1;
@@ -359,7 +397,7 @@
       this.cyl = 64;
       for (let i = 0; i < 64; i++) { this.skey1[i] = 0; this.skey2[i] = 0; }
 
-      const x = new Array(8).fill(0);
+      const x = OpCodes.CreateArray(8, 0);
       for (let i = 0; i < 4; i++) {
         x[i] = OpCodes.ToUint32(~this.keyWords[4 + i]);
         x[4 + i] = OpCodes.ToUint32(~this.keyWords[i]);
