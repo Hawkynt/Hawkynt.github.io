@@ -49,12 +49,22 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const { CBOX_ENC, CBOX_DEC } = SharkCBoxes;
+  // C-boxes: 8 boxes x 256 entries of one 64-bit word as [high32, low32]
+  /** @type {uint32[][][]} */
+  const CBOX_ENC = SharkCBoxes.CBOX_ENC;
+  /** @type {uint32[][][]} */
+  const CBOX_DEC = SharkCBoxes.CBOX_DEC;
 
+  /**
+   * @param {uint8} a - First factor
+   * @param {uint8} b - Second factor
+   * @returns {uint8} Product in GF(2^8) mod 0x1F5
+   */
   function gfMul(a, b) { return OpCodes.GFMul(a, b, 0x1F5, 8); }
 
   // ===== Encryption/decryption S-boxes (identical to the classic SHARK S-box) =====
-  const SBOX_ENC = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX_ENC = [
     177,206,195,149, 90,173,231,  2, 77, 68,251,145, 12,135,161, 80,
     203,103, 84,221, 70,143,225, 78,240,253,252,235,249,196, 26,110,
      94,245,204,141, 28, 86, 67,254,  7, 97,248,117, 89,255,  3, 34,
@@ -71,16 +81,24 @@
     191,186,111,100,217,243, 62,180,170,220,213,  6,192,126,246,102,
     108,132,113, 56,185, 29,127,157, 72,139, 42,218,165, 51,130, 57,
     214,120,134,250,228, 43,169, 30,137, 96,107,234, 85, 76,247,226
-  ]);
+  ];
+  Object.freeze(SBOX_ENC);
 
-  const SBOX_DEC = Object.freeze((function () {
+  /**
+   * @returns {uint8[]} Inverse of SBOX_ENC
+   */
+  function buildSboxDec() {
+    /** @type {uint8[]} */
     const t = new Array(256);
     for (let i = 0; i < 256; ++i) t[SBOX_ENC[i]] = i;
     return t;
-  })());
+  }
+  const SBOX_DEC = buildSboxDec();
+  Object.freeze(SBOX_DEC);
 
   // Inverse of the classic SHARK MDS matrix G (used to finish the key schedule's final round key).
-  const MATRIX_IG = Object.freeze([
+  /** @type {uint8[][]} */
+  const MATRIX_IG = [
     [231, 48,144,133,208, 75,145, 65],
     [ 83,149,155,165,150,188,161,104],
     [  2, 69,247,101, 92, 31,182, 82],
@@ -89,10 +107,13 @@
     [ 36, 69,162,207, 47, 34,193, 14],
     [161,241,113, 64,145, 39, 24,165],
     [ 86,244,175, 50,210,164,220,113]
-  ].map(row => Object.freeze(row)));
+  ];
+  for (let r = 0; r < MATRIX_IG.length; ++r) Object.freeze(MATRIX_IG[r]);
+  Object.freeze(MATRIX_IG);
 
   // Fixed CFB "seed" keys for the key-schedule bootstrap cipher (cbox[0][0..6] of the classic SHARK
   // C-boxes; the 7th is later transformed by MATRIX_IG).
+  /** @type {uint32[][]} */
   const INIT_KEYS_RAW = [
     [0x060d838f, 0x16f3a365],
     [0xa68857ee, 0x5cae56f6],
@@ -103,10 +124,39 @@
     [0x88d9e104, 0xa237b530]
   ];
 
-  function xorBytes(a, b) { return a.map((x, i) => OpCodes.Xor32(x, b[i])); }
+  /**
+   * @param {uint8[]} a - First bytes
+   * @param {uint8[]} b - Second bytes (at least as long as a)
+   * @returns {uint8[]} Byte-wise XOR, as long as a
+   */
+  function xorBytes(a, b) {
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < a.length; ++i) out.push(OpCodes.Xor32(a[i], b[i]));
+    return out;
+  }
 
+  /**
+   * @param {uint8[]} state - Bytes to substitute
+   * @param {uint8[]} sbox - 256-entry S-box
+   * @returns {uint8[]} Substituted bytes
+   */
+  function subBytes(state, sbox) {
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < state.length; ++i) out.push(sbox[state[i]]);
+    return out;
+  }
+
+  /**
+   * @param {uint8[]} bytesBE - 8 bytes, MSB first
+   * @param {uint8[][]} matrix - 8x8 GF(2^8) matrix
+   * @returns {uint8[]} Matrix times bytes
+   */
   function transformWord8(bytesBE, matrix) {
-    const out = new Array(8).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(8);
+    out.fill(0);
     for (let i = 0; i < 8; ++i)
       for (let j = 0; j < 8; ++j)
         out[i] ^= gfMul(matrix[i][j], bytesBE[j]);
@@ -115,6 +165,11 @@
 
   // Classic SHARK C-box round: 8 independent table lookups XORed together (S-box substitution
   // fused with an MDS matrix multiply). `bytes` and the result are 8-byte arrays, MSB-first.
+  /**
+   * @param {uint8[]} bytes - 8 state bytes, MSB first
+   * @param {uint32[][][]} cboxes - CBOX_ENC or CBOX_DEC
+   * @returns {uint8[]} 8 output bytes
+   */
   function cboxRoundBytes(bytes, cboxes) {
     let hi = 0, lo = 0;
     for (let i = 0; i < 8; ++i) {
@@ -124,26 +179,45 @@
     return [...OpCodes.Unpack32BE(hi), ...OpCodes.Unpack32BE(lo)];
   }
 
-  const BOOTSTRAP_INIT_KEYS = (function () {
-    const keys = INIT_KEYS_RAW.map(w => [...OpCodes.Unpack32BE(w[0]), ...OpCodes.Unpack32BE(w[1])]);
+  /**
+   * @returns {uint8[][]} The seven bootstrap round keys
+   */
+  function buildBootstrapInitKeys() {
+    /** @type {uint8[][]} */
+    const keys = [];
+    for (let i = 0; i < INIT_KEYS_RAW.length; ++i) {
+      const w = INIT_KEYS_RAW[i];
+      keys.push([...OpCodes.Unpack32BE(w[0]), ...OpCodes.Unpack32BE(w[1])]);
+    }
     keys[6] = transformWord8(keys[6], MATRIX_IG);
     return keys;
-  })();
+  }
+  const BOOTSTRAP_INIT_KEYS = buildBootstrapInitKeys();
 
   // Fixed 6-round classic SHARK cipher used purely to stretch/whiten key material during the
   // DarkCrypt key schedule (identical in structure to the main cipher below).
+  /**
+   * @param {uint8[]} feedbackBytes - 8 feedback bytes
+   * @returns {uint8[]} 8 encrypted bytes
+   */
   function bootstrapEncrypt(feedbackBytes) {
     let state = xorBytes(feedbackBytes, BOOTSTRAP_INIT_KEYS[0]);
     for (let round = 1; round < 6; ++round) {
       const c = cboxRoundBytes(state, CBOX_ENC);
       state = xorBytes(c, BOOTSTRAP_INIT_KEYS[round]);
     }
-    const sboxed = state.map(b => SBOX_ENC[b]);
+    const sboxed = subBytes(state, SBOX_ENC);
     return xorBytes(sboxed, BOOTSTRAP_INIT_KEYS[6]);
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} blockIndex - Index of the 8-byte block of the cycled key
+   * @returns {uint8[]} 8 key bytes
+   */
   function keyBufBlock(keyBytes, blockIndex) {
     const n = keyBytes.length;
+    /** @type {uint8[]} */
     const bytes = [];
     let idx = (blockIndex * 8) % n;
     for (let i = 0; i < 8; ++i) { bytes.push(keyBytes[idx]); idx = (idx + 1) % n; }
@@ -152,8 +226,15 @@
 
   // Plain CFB round-key schedule: RK[0]=E(0), RK[i]=keyMaterial[i] XOR E(RK[i-1]) for i=1..6.
   // The final round key is additionally passed through SHARK's inverse-MDS matrix.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[][]} Seven 8-byte encryption round keys
+   */
   function deriveEncryptRoundKeys(keyBytes) {
-    let feedback = new Array(8).fill(0);
+    /** @type {uint8[]} */
+    let feedback = new Array(8);
+    feedback.fill(0);
+    /** @type {uint8[][]} */
     const RK = [];
     for (let block = 0; block < 7; ++block) {
       const enc = bootstrapEncrypt(feedback);
@@ -167,7 +248,12 @@
 
   // Decryption round keys: reversed order, with the (now) middle keys re-transformed by the
   // inverse-MDS matrix so that CBOX_DEC lookups correctly invert the encryption C-box rounds.
+  /**
+   * @param {uint8[][]} encryptRK - Encryption round keys
+   * @returns {uint8[][]} Decryption round keys
+   */
   function deriveDecryptRoundKeys(encryptRK) {
+    /** @type {uint8[][]} */
     const dRK = new Array(7);
     dRK[0] = encryptRK[6];
     dRK[6] = encryptRK[0];
@@ -227,24 +313,39 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SharkEDarkCryptInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SharkEDarkCryptInstance(this, isInverse);
     }
   }
 
   class SharkEDarkCryptInstance extends IBlockCipherInstance {
+    /**
+     * @param {SharkEDarkCryptAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
 
+      /** @type {uint8[][]|null} */
       this._encryptRK = null;
+      /** @type {uint8[][]|null} */
       this._decryptRK = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0;
@@ -252,7 +353,7 @@
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SHARK-E (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SHARK-E (DarkCrypt) requires exactly 16 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -260,6 +361,9 @@
       this._decryptRK = deriveDecryptRoundKeys(this._encryptRK);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -272,8 +376,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -284,6 +389,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const RK = this._encryptRK;
       let state = block.slice().reverse();
@@ -292,11 +401,15 @@
         const c = cboxRoundBytes(state, CBOX_ENC);
         state = xorBytes(c, RK[round]);
       }
-      const sboxed = state.map(b => SBOX_ENC[b]);
+      const sboxed = subBytes(state, SBOX_ENC);
       state = xorBytes(sboxed, RK[6]);
       return state.reverse();
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const dRK = this._decryptRK;
       let state = block.slice().reverse();
@@ -305,7 +418,7 @@
         const c = cboxRoundBytes(state, CBOX_DEC);
         state = xorBytes(c, dRK[round]);
       }
-      const sboxed = state.map(b => SBOX_DEC[b]);
+      const sboxed = subBytes(state, SBOX_DEC);
       state = xorBytes(sboxed, dRK[6]);
       return state.reverse();
     }

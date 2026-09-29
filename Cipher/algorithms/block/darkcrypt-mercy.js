@@ -64,56 +64,84 @@
   // ---- key-dependent table generation ----
 
   // AES multiplicative-inverse table in GF(2^8) with reduction poly 0x11B; generator 3.
+  /**
+   * @returns {uint8[]} inv[a] = a^-1 in GF(2^8) (inv[0] = 0)
+   */
   function buildInverseTable() {
-    const exp = new Array(256), log = new Array(256);
+    /** @type {uint8[]} */
+    const exp = new Array(256);
+    /** @type {uint8[]} */
+    const log = new Array(256);
+    /** @type {uint32} */
     let pow = 1;
     for (let i = 0; i < 256; i++) {
       exp[i] = pow;
       log[pow] = i;
       let x = OpCodes.Shl32(pow, 1);
-      if (OpCodes.And32(pow, 0x80)) x ^= 0x11B;
-      x &= 0xFF;
+      if (OpCodes.And32(pow, 0x80) !== 0) x = OpCodes.Xor32(x, 0x11B);
+      x = OpCodes.And32(x, 0xFF);
       pow = OpCodes.And32(OpCodes.Xor32(x, pow), 0xFF); // pow *= 3
     }
-    const inv = new Array(256).fill(0);
-    for (let a = 1; a < 256; a++) inv[a] = exp[OpCodes.And32(255 - log[a], 0xFF)];
+    /** @type {uint8[]} */
+    const inv = new Array(256);
+    inv.fill(0);
+    for (let a = 1; a < 256; a++) inv[a] = exp[OpCodes.And32(OpCodes.Sub32(255, log[a]), 0xFF)];
     return inv;
   }
 
   // DarkCrypt's modified RC4: the PRGA advances j by the index i (not by S[i]).
-  function rc4Prga(st) {
-    st.i = OpCodes.And32(st.i + 1, 0xFF);
-    const a = st.S[st.i];
-    st.j = OpCodes.And32(st.j + st.i, 0xFF);
-    const b = st.S[st.j];
-    st.S[st.i] = b;
-    st.S[st.j] = a;
-    return st.S[OpCodes.And32(a + b, 0xFF)];
-  }
-
-  function rc4Init(keyBytes16) {
-    const S = new Array(256);
-    for (let i = 0; i < 256; i++) S[i] = i;
-    let j = 0;
-    for (let i = 0; i < 256; i++) {
-      j = OpCodes.And32(j + S[i] + keyBytes16[i % keyBytes16.length], 0xFF);
-      const t = S[i]; S[i] = S[j]; S[j] = t;
+  class MercyRc4 {
+    /**
+     * Key the generator and drop the first 256 outputs
+     * @param {uint8[]} keyBytes16 - RC4 key bytes
+     */
+    constructor(keyBytes16) {
+      /** @type {uint8[]} */
+      this.S = new Array(256);
+      /** @type {uint32} */
+      this.i = 0;
+      /** @type {uint32} */
+      this.j = 0;
+      for (let i = 0; i < 256; i++) this.S[i] = i;
+      /** @type {uint32} */
+      let j = 0;
+      for (let i = 0; i < 256; i++) {
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, this.S[i]), keyBytes16[i % keyBytes16.length]), 0xFF);
+        const t = this.S[i]; this.S[i] = this.S[j]; this.S[j] = t;
+      }
+      for (let k = 0; k < 256; k++) this.next(); // drop 256
     }
-    const st = { S, i: 0, j: 0 };
-    for (let k = 0; k < 256; k++) rc4Prga(st); // drop 256
-    return st;
+
+    /**
+     * @returns {uint8} Next keystream byte
+     */
+    next() {
+      this.i = OpCodes.And32(OpCodes.Add32(this.i, 1), 0xFF);
+      const a = this.S[this.i];
+      this.j = OpCodes.And32(OpCodes.Add32(this.j, this.i), 0xFF);
+      const b = this.S[this.j];
+      this.S[this.i] = b;
+      this.S[this.j] = a;
+      return this.S[OpCodes.And32(OpCodes.Add32(a, b), 0xFF)];
+    }
   }
 
   // Generate a key-dependent affine permutation of 0..255 by XOR-doubling with
   // fresh (non-duplicate) random basis elements drawn from the RC4 stream.
+  /**
+   * @param {MercyRc4} st - Keystream generator
+   * @returns {uint8[]} Permutation of 0..255
+   */
   function genPermutation(st) {
+    /** @type {uint8[]} */
     const out = new Array(256);
-    out[0] = rc4Prga(st);
+    out[0] = OpCodes.And32(st.next(), 0xFF);
     let n = 1;
     while (n < 256) {
-      let c;
+      /** @type {uint8} */
+      let c = 0;
       for (;;) {
-        c = rc4Prga(st);
+        c = st.next();
         let dup = false;
         for (let k = 0; k < n; k++) if (out[k] === c) { dup = true; break; }
         if (!dup) break;
@@ -126,87 +154,74 @@
   }
 
   // Fill `count` little-endian 32-bit words from the RC4 stream.
+  /**
+   * @param {MercyRc4} st - Keystream generator
+   * @param {int32} count - Number of words
+   * @returns {uint32[]} The words
+   */
   function genWords(st, count) {
+    /** @type {uint32[]} */
     const w = new Array(count);
     for (let p = 0; p < count; p++) {
+      /** @type {uint32} */
       let word = 0;
-      for (let s = 0; s < 32; s += 8) word = OpCodes.ToUint32(word + OpCodes.Shl32(rc4Prga(st), s));
-      w[p] = OpCodes.ToUint32(word);
+      for (let s = 0; s < 32; s += 8) word = OpCodes.Add32(word, OpCodes.Shl32(st.next(), s));
+      w[p] = word;
     }
     return w;
-  }
-
-  function keySchedule(keyBytes) {
-    const inv = buildInverseTable();
-    const st = rc4Init(keyBytes.slice(0, 16));
-
-    // 256-entry, 32-bit T-box: each byte lane is D_lane[ inv( C_lane[i] ) ].
-    const T = new Array(256).fill(0);
-    for (let lane = 0; lane < 4; lane++) {
-      const C = genPermutation(st);
-      const D = genPermutation(st);
-      const shift = 8 * lane;
-      for (let i = 0; i < 256; i++) {
-        const d = D[inv[C[i]]];
-        T[i] = OpCodes.ToUint32(T[i] | OpCodes.Shl32(d, shift));
-      }
-    }
-
-    const constants = genWords(st, 24);  // tweak-schedule constants
-    const whitenPost = genWords(st, 64); // 0x40A070
-    const whitenPre = genWords(st, 64);  // 0x40A170
-
-    // Fixed 128-bit tweak = key[16..31] as 4 little-endian words.
-    const tweak = [];
-    for (let k = 0; k < 4; k++) {
-      const o = 16 + 4 * k;
-      tweak.push(OpCodes.ToUint32(keyBytes[o] | OpCodes.Shl32(keyBytes[o + 1], 8) | OpCodes.Shl32(keyBytes[o + 2], 16) | OpCodes.Shl32(keyBytes[o + 3], 24)));
-    }
-
-    return { T, constants, whitenPost, whitenPre, tweak };
   }
 
   // ---- core transform ----
 
   // T-box mixing step: v -> (v<<8) ^ T[v>>>24]
+  /**
+   * @param {uint32} v - Word
+   * @param {uint32[]} T - 256-entry T-box
+   * @returns {uint32} Mixed word
+   */
   function tmix(v, T) {
     return OpCodes.Xor32(OpCodes.Shl32(v, 8), T[OpCodes.And32(OpCodes.Shr32(v, 24), 0xFF)]);
   }
 
   // Four-register T-function state machine. For step i:
   //   x = input[i] + r[(i-1)&3];  y = tmix(x) + r[(i+1)&3];  r[i&3] ^= y.
-  function runMachine(inputs, rInit, T) {
-    const r = rInit.slice();
+  // r is updated in place (callers pass a fresh 4-word array).
+  /**
+   * @param {uint32[]} inputs - Input words
+   * @param {uint32[]} r - The four registers, updated in place
+   * @param {uint32[]} T - 256-entry T-box
+   * @returns {uint32[]} One output word per input word
+   */
+  function runMachine(inputs, r, T) {
+    /** @type {uint32[]} */
     const ys = new Array(inputs.length);
     for (let i = 0; i < inputs.length; i++) {
-      const x = OpCodes.ToUint32(inputs[i] + r[OpCodes.And32(i - 1, 3)]);
-      const y = OpCodes.ToUint32(tmix(x, T) + r[OpCodes.And32(i + 1, 3)]);
+      const x = OpCodes.Add32(inputs[i], r[OpCodes.And32(i - 1, 3)]);
+      const y = OpCodes.Add32(tmix(x, T), r[OpCodes.And32(i + 1, 3)]);
       r[OpCodes.And32(i, 3)] = OpCodes.Xor32(r[OpCodes.And32(i, 3)], y);
       ys[i] = y;
     }
-    return { ys, r };
-  }
-
-  // Expand the 128-bit tweak into 24 words (six 4-word round tweaks).
-  function tweakSchedule(ks) {
-    const C = ks.constants, tw = ks.tweak, T = ks.T;
-    const inputs = [tw[0], tw[1], tw[2], tw[3], C[16], C[17], C[18], C[19]];
-    for (let k = 0; k < 16; k++) inputs.push(C[k]);
-    inputs.push(C[16], C[17], C[18], C[19]);
-    const { ys, r } = runMachine(inputs, [C[23], C[22], C[21], C[20]], T);
-    const out = new Array(24);
-    for (let k = 0; k < 20; k++) out[k] = ys[8 + k];
-    out[20] = r[3]; out[21] = r[2]; out[22] = r[1]; out[23] = r[0];
-    return out;
+    return ys;
   }
 
   // Feistel round function: words[loOff .. loOff+63] ^= F(R, roundTweak),
-  // where R = words[hiOff .. hiOff+63] and roundTweak is 4 words.
-  function fApply(words, loOff, hiOff, tw, T) {
-    const R = (k) => words[hiOff + k];
-    const inputs = [tw[0], tw[1], tw[2], tw[3], R(56), R(57), R(58), R(59)];
-    for (let k = 0; k < 60; k++) inputs.push(R(k)); // R[0..59]
-    const { ys, r } = runMachine(inputs, [R(63), R(62), R(61), R(60)], T);
+  // where R = words[hiOff .. hiOff+63] and the round tweak is tw[tOff .. tOff+3].
+  /**
+   * @param {uint32[]} words - Block words, updated in place
+   * @param {int32} loOff - Offset of the half that is modified
+   * @param {int32} hiOff - Offset of the half that feeds F
+   * @param {uint32[]} tw - The 24 tweak words
+   * @param {int32} tOff - Offset of this round's four tweak words in tw
+   * @param {uint32[]} T - 256-entry T-box
+   */
+  function fApply(words, loOff, hiOff, tw, tOff, T) {
+    /** @type {uint32[]} */
+    const inputs = [tw[tOff], tw[tOff + 1], tw[tOff + 2], tw[tOff + 3],
+      words[hiOff + 56], words[hiOff + 57], words[hiOff + 58], words[hiOff + 59]];
+    for (let k = 0; k < 60; k++) inputs.push(words[hiOff + k]); // R[0..59]
+    /** @type {uint32[]} */
+    const r = [words[hiOff + 63], words[hiOff + 62], words[hiOff + 61], words[hiOff + 60]];
+    const ys = runMachine(inputs, r, T);
     for (let i = 8; i < 68; i++) {
       const o = loOff + (i - 8);
       words[o] = OpCodes.Xor32(words[o], ys[i]);
@@ -217,16 +232,26 @@
     words[loOff + 63] = OpCodes.Xor32(words[loOff + 63], r[0]);
   }
 
+  /**
+   * @param {uint8[]} b - Bytes (length a multiple of 4)
+   * @returns {uint32[]} Little-endian words
+   */
   function bytesToWords(b) {
+    /** @type {uint32[]} */
     const w = new Array(OpCodes.Shr32(b.length, 2));
     for (let i = 0; i < w.length; i++) {
       const o = i * 4;
-      w[i] = OpCodes.ToUint32(b[o] | OpCodes.Shl32(b[o + 1], 8) | OpCodes.Shl32(b[o + 2], 16) | OpCodes.Shl32(b[o + 3], 24));
+      w[i] = OpCodes.Pack32LE(b[o], b[o + 1], b[o + 2], b[o + 3]);
     }
     return w;
   }
 
+  /**
+   * @param {uint32[]} w - Words
+   * @returns {uint8[]} Little-endian bytes
+   */
   function wordsToBytes(w) {
+    /** @type {uint8[]} */
     const b = new Array(w.length * 4);
     for (let i = 0; i < w.length; i++) {
       const o = i * 4, v = w[i];
@@ -235,34 +260,16 @@
     return b;
   }
 
-  function encryptBlock(ks, blockBytes) {
-    const words = bytesToWords(blockBytes);
-    const T = ks.T;
-    const tw = tweakSchedule(ks);
-    for (let k = 0; k < HALF_WORDS; k++) words[64 + k] = OpCodes.Xor32(words[64 + k], ks.whitenPre[k]);
-    let lo = 0, hi = 64;
-    for (let round = 0; round < ROUNDS; round++) {
-      const t = 20 - 4 * round;
-      fApply(words, lo, hi, [tw[t], tw[t + 1], tw[t + 2], tw[t + 3]], T);
-      const s = lo; lo = hi; hi = s;
-    }
-    for (let k = 0; k < HALF_WORDS; k++) words[lo + k] = OpCodes.Xor32(words[lo + k], ks.whitenPost[k]);
-    return wordsToBytes(words);
-  }
-
-  function decryptBlock(ks, blockBytes) {
-    const words = bytesToWords(blockBytes);
-    const T = ks.T;
-    const tw = tweakSchedule(ks);
-    for (let k = 0; k < HALF_WORDS; k++) words[k] = OpCodes.Xor32(words[k], ks.whitenPost[k]);
-    let lo = 64, hi = 0;
-    for (let round = 0; round < ROUNDS; round++) {
-      const t = 4 * round;
-      fApply(words, lo, hi, [tw[t], tw[t + 1], tw[t + 2], tw[t + 3]], T);
-      const s = lo; lo = hi; hi = s;
-    }
-    for (let k = 0; k < HALF_WORDS; k++) words[lo + k] = OpCodes.Xor32(words[lo + k], ks.whitenPre[k]);
-    return wordsToBytes(words);
+  /**
+   * Test-vector plaintext: byte i is (i + offset) mod 256
+   * @param {int32} offset - Value of the first byte
+   * @returns {uint8[]} One block of ramp bytes
+   */
+  function rampBlock(offset) {
+    /** @type {uint8[]} */
+    const out = new Array(BLOCK_BYTES);
+    for (let i = 0; i < BLOCK_BYTES; i++) out[i] = OpCodes.And32(i + offset, 0xFF);
+    return out;
   }
 
   // ---- algorithm registration ----
@@ -301,7 +308,7 @@
           text: "DarkCrypt Mercy - zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-          input: new Array(BLOCK_BYTES).fill(0),
+          input: OpCodes.CreateArray(BLOCK_BYTES, 0),
           expected: OpCodes.Hex8ToBytes(
             "83c9ceaede3dbe73aae4423eebb42efe268f3033d5d45a7fcd9b308532e7fe0c" +
             "fc66a401f35755fee980d6669835da9662169d5423947a488d11735099c6568f" +
@@ -324,7 +331,7 @@
           text: "DarkCrypt Mercy - incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          input: Array.from({ length: BLOCK_BYTES }, (_, i) => OpCodes.And32(i, 0xFF)),
+          input: rampBlock(0),
           expected: OpCodes.Hex8ToBytes(
             "7f06feb5db0790abc131d40d5f1be2953e080cfcd7d09317abff3ada8bf753e4" +
             "f716ea9be2a39258489818a288f9d5e097d04e86a7f97424c87be629e970c75f" +
@@ -347,7 +354,7 @@
           text: "DarkCrypt Mercy - shifted incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-          input: Array.from({ length: BLOCK_BYTES }, (_, i) => OpCodes.And32(i + 16, 0xFF)),
+          input: rampBlock(16),
           expected: OpCodes.Hex8ToBytes(
             "546cf3cfdac444e440cb54741ce79be3f972c330dd2ecbe0c44fbcde08eb99ae" +
             "ff9a80d6b1ed52b57473a7e56b1e1b77f1c1db8f158973aee7e1b899d4f3e150" +
@@ -369,47 +376,179 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMercyInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMercyInstance(this, isInverse);
     }
   }
 
   class DarkCryptMercyInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMercyAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this._ks = null;
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint32[]|null} */
+      this._T = null;
+      /** @type {uint32[]|null} */
+      this._constants = null;
+      /** @type {uint32[]|null} */
+      this._whitenPost = null;
+      /** @type {uint32[]|null} */
+      this._whitenPre = null;
+      /** @type {uint32[]|null} */
+      this._tweak = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._ks = null; this.KeySize = 0; return; }
+      if (!keyBytes) {
+        this._key = null; this._T = null; this._constants = null;
+        this._whitenPost = null; this._whitenPre = null; this._tweak = null;
+        this.KeySize = 0;
+        return;
+      }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Mercy-6 (DarkCrypt) requires exactly 32 bytes`);
-      this._ks = keySchedule(keyBytes);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Mercy-6 (DarkCrypt) requires exactly 32 bytes");
+      this._keySchedule(keyBytes);
+      this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
-    get key() { return this._ks ? this._ks : null; }
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
+    get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * Derive the T-box, tweak-schedule constants, whitening words and tweak
+     * @param {uint8[]} keyBytes - 32 key bytes
+     */
+    _keySchedule(keyBytes) {
+      const inv = buildInverseTable();
+      const st = new MercyRc4(keyBytes.slice(0, 16));
+
+      // 256-entry, 32-bit T-box: each byte lane is D_lane[ inv( C_lane[i] ) ].
+      /** @type {uint32[]} */
+      const T = new Array(256);
+      T.fill(0);
+      for (let lane = 0; lane < 4; lane++) {
+        const C = genPermutation(st);
+        const D = genPermutation(st);
+        const shift = 8 * lane;
+        for (let i = 0; i < 256; i++) {
+          const d = D[inv[C[i]]];
+          T[i] = OpCodes.Or32(T[i], OpCodes.Shl32(d, shift));
+        }
+      }
+      this._T = T;
+
+      this._constants = genWords(st, 24);  // tweak-schedule constants
+      this._whitenPost = genWords(st, 64); // 0x40A070
+      this._whitenPre = genWords(st, 64);  // 0x40A170
+
+      // Fixed 128-bit tweak = key[16..31] as 4 little-endian words.
+      /** @type {uint32[]} */
+      const tweak = [];
+      for (let k = 0; k < 4; k++) {
+        const o = 16 + 4 * k;
+        tweak.push(OpCodes.Pack32LE(keyBytes[o], keyBytes[o + 1], keyBytes[o + 2], keyBytes[o + 3]));
+      }
+      this._tweak = tweak;
+    }
+
+    // Expand the 128-bit tweak into 24 words (six 4-word round tweaks).
+    /**
+     * @returns {uint32[]} The 24 round-tweak words
+     */
+    _tweakSchedule() {
+      const C = this._constants, tw = this._tweak;
+      /** @type {uint32[]} */
+      const inputs = [tw[0], tw[1], tw[2], tw[3], C[16], C[17], C[18], C[19]];
+      for (let k = 0; k < 16; k++) inputs.push(C[k]);
+      for (let k = 16; k < 20; k++) inputs.push(C[k]);
+      /** @type {uint32[]} */
+      const r = [C[23], C[22], C[21], C[20]];
+      const ys = runMachine(inputs, r, this._T);
+      /** @type {uint32[]} */
+      const out = new Array(24);
+      for (let k = 0; k < 20; k++) out[k] = ys[8 + k];
+      out[20] = r[3]; out[21] = r[2]; out[22] = r[1]; out[23] = r[0];
+      return out;
+    }
+
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
+    _encryptBlock(blockBytes) {
+      const words = bytesToWords(blockBytes);
+      const T = this._T;
+      const tw = this._tweakSchedule();
+      for (let k = 0; k < HALF_WORDS; k++) words[64 + k] = OpCodes.Xor32(words[64 + k], this._whitenPre[k]);
+      let lo = 0, hi = 64;
+      for (let round = 0; round < ROUNDS; round++) {
+        fApply(words, lo, hi, tw, 20 - 4 * round, T);
+        const s = lo; lo = hi; hi = s;
+      }
+      for (let k = 0; k < HALF_WORDS; k++) words[lo + k] = OpCodes.Xor32(words[lo + k], this._whitenPost[k]);
+      return wordsToBytes(words);
+    }
+
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
+    _decryptBlock(blockBytes) {
+      const words = bytesToWords(blockBytes);
+      const T = this._T;
+      const tw = this._tweakSchedule();
+      for (let k = 0; k < HALF_WORDS; k++) words[k] = OpCodes.Xor32(words[k], this._whitenPost[k]);
+      let lo = 64, hi = 0;
+      for (let round = 0; round < ROUNDS; round++) {
+        fApply(words, lo, hi, tw, 4 * round, T);
+        const s = lo; lo = hi; hi = s;
+      }
+      for (let k = 0; k < HALF_WORDS; k++) words[lo + k] = OpCodes.Xor32(words[lo + k], this._whitenPre[k]);
+      return wordsToBytes(words);
+    }
+
+    /**
+     * @param {uint8[]} data - Input bytes
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this._ks) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]} Encrypted or decrypted blocks
+     */
     Result() {
-      if (!this._ks) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        output.push(...(this.isInverse ? decryptBlock(this._ks, block) : encryptBlock(this._ks, block)));
+        output.push(...(this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block)));
       }
       this.inputBuffer = [];
       return output;

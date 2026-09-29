@@ -54,59 +54,79 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   const NR = 16;
+  /** @type {uint32[]} */
   const NULL_KEY = [0, 0, 0, 0];
 
   // RC[0..16], generated per spec section 3.7: RC[0]=0x80, LFSR-style doubling in GF(2)/0x1B.
+  /** @type {uint8[]} */
   const ROUND_CONSTANTS = [0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e,
                             0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4];
 
   // Gamma: involutive non-linear mapping (spec section 3.3).
+  /**
+   * @param {uint32[]} a - State words, updated in place
+   */
   function gamma(a) {
     const t = a[3];
-    a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-    a[3] = OpCodes.XorN(a[0], OpCodes.AndN(a[2], ~a[1]));
+    a[1] = OpCodes.Xor32(a[1], OpCodes.Or32(a[3], a[2]));
+    a[3] = OpCodes.Xor32(a[0], OpCodes.And32(a[2], OpCodes.Not32(a[1])));
 
-    a[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(t, ~a[1]), a[2]), a[3]);
+    a[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(t, OpCodes.Not32(a[1])), a[2]), a[3]);
 
-    a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-    a[0] = OpCodes.XorN(t, OpCodes.AndN(a[2], a[1]));
+    a[1] = OpCodes.Xor32(a[1], OpCodes.Or32(a[3], a[2]));
+    a[0] = OpCodes.Xor32(t, OpCodes.And32(a[2], a[1]));
   }
 
   // Theta: linear mapping that mixes the Working Key k into state a (spec section 3.4).
+  /**
+   * @param {uint32[]} k - Working key words
+   * @param {uint32[]} a - State words, updated in place
+   */
   function theta(k, a) {
-    let t02 = OpCodes.XorN(a[0], a[2]);
-    t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
+    let t02 = OpCodes.Xor32(a[0], a[2]);
+    t02 = OpCodes.Xor32(OpCodes.Xor32(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-    a[0] = OpCodes.XorN(a[0], k[0]);
-    a[1] = OpCodes.XorN(a[1], k[1]);
-    a[2] = OpCodes.XorN(a[2], k[2]);
-    a[3] = OpCodes.XorN(a[3], k[3]);
+    a[0] = OpCodes.Xor32(a[0], k[0]);
+    a[1] = OpCodes.Xor32(a[1], k[1]);
+    a[2] = OpCodes.Xor32(a[2], k[2]);
+    a[3] = OpCodes.Xor32(a[3], k[3]);
 
-    a[1] = OpCodes.XorN(a[1], t02);
-    a[3] = OpCodes.XorN(a[3], t02);
+    a[1] = OpCodes.Xor32(a[1], t02);
+    a[3] = OpCodes.Xor32(a[3], t02);
 
-    let t13 = OpCodes.XorN(a[1], a[3]);
-    t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
+    let t13 = OpCodes.Xor32(a[1], a[3]);
+    t13 = OpCodes.Xor32(OpCodes.Xor32(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-    a[0] = OpCodes.XorN(a[0], t13);
-    a[2] = OpCodes.XorN(a[2], t13);
+    a[0] = OpCodes.Xor32(a[0], t13);
+    a[2] = OpCodes.Xor32(a[2], t13);
   }
 
   // Theta applied with an all-zero Working Key (used both to derive k' for
   // decryption and, per the spec's Theta-inverse identity, is its own inverse
   // building block). Matches spec section 3.4's "Theta(NullVector, k)".
+  /**
+   * @param {uint32[]} a - Four words
+   * @returns {uint32[]} Theta(NullVector, a) as a new array
+   */
   function thetaNullKey(a) {
+    /** @type {uint32[]} */
     const state = [a[0], a[1], a[2], a[3]];
     theta(NULL_KEY, state);
     return state;
   }
 
+  /**
+   * @param {uint32[]} a - State words, updated in place
+   */
   function pi1(a) {
     a[1] = OpCodes.RotL32(a[1], 1);
     a[2] = OpCodes.RotL32(a[2], 5);
     a[3] = OpCodes.RotL32(a[3], 2);
   }
 
+  /**
+   * @param {uint32[]} a - State words, updated in place
+   */
   function pi2(a) {
     a[1] = OpCodes.RotL32(a[1], 31);
     a[2] = OpCodes.RotL32(a[2], 27);
@@ -116,33 +136,45 @@
   // Noekeon(WorkingKey, State): the forward cipher function per spec section 3.6.
   // Nr rounds of [State[0]^=RC[i]; Theta(k,State); Pi1; Gamma; Pi2], followed by
   // a final State[0]^=RC[Nr]; Theta(k,State).
-  function noekeonForward(key, state) {
+  /**
+   * @param {uint32[]} workWords - Working key words
+   * @param {uint32[]} state - Input words
+   * @returns {uint32[]} Output words
+   */
+  function noekeonForward(workWords, state) {
+    /** @type {uint32[]} */
     const a = [state[0], state[1], state[2], state[3]];
     for (let i = 0; i < NR; i++) {
-      a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[i]);
-      theta(key, a);
+      a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[i]);
+      theta(workWords, a);
       pi1(a);
       gamma(a);
       pi2(a);
     }
-    a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[NR]);
-    theta(key, a);
+    a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[NR]);
+    theta(workWords, a);
     return a;
   }
 
   // InverseNoekeon(WorkingKey, State): per spec section 3.6. The caller must
   // pass the already Theta(NullVector,.)-transformed key (k').
-  function noekeonInverse(keyPrime, state) {
+  /**
+   * @param {uint32[]} primeWords - Theta(NullVector, working key) words
+   * @param {uint32[]} state - Input words
+   * @returns {uint32[]} Output words
+   */
+  function noekeonInverse(primeWords, state) {
+    /** @type {uint32[]} */
     const a = [state[0], state[1], state[2], state[3]];
     for (let i = NR; i > 0; i--) {
-      theta(keyPrime, a);
-      a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[i]);
+      theta(primeWords, a);
+      a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[i]);
       pi1(a);
       gamma(a);
       pi2(a);
     }
-    theta(keyPrime, a);
-    a[0] = OpCodes.XorN(a[0], ROUND_CONSTANTS[0]);
+    theta(primeWords, a);
+    a[0] = OpCodes.Xor32(a[0], ROUND_CONSTANTS[0]);
     return a;
   }
 
@@ -205,30 +237,46 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptNoekeonIndirectInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptNoekeonIndirectInstance(this, isInverse);
     }
   }
 
   class DarkCryptNoekeonIndirectInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptNoekeonIndirectAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
+      this._roundWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._roundKey = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._roundWords = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Noekeon-indirect (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Noekeon-indirect (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
       // Cipher key -> 32-bit words (big-endian, per NOEKEON spec)
-      const cipherKey = [
+      /** @type {uint32[]} */
+      const cipherWords = [
         OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
         OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
         OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
@@ -236,16 +284,19 @@
       ];
 
       // Indirect key mode (spec 3.6/3.7): WorkingKey = Noekeon(NullVector, CipherKey)
-      const workingKey = noekeonForward(NULL_KEY, cipherKey);
+      const workingWords = noekeonForward(NULL_KEY, cipherWords);
 
       if (!this.isInverse) {
-        this._roundKey = workingKey;
+        this._roundWords = workingWords;
       } else {
         // InverseNoekeon first replaces the Working Key with Theta(NullVector, WorkingKey).
-        this._roundKey = thetaNullKey(workingKey);
+        this._roundWords = thetaNullKey(workingWords);
       }
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -258,8 +309,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -269,15 +321,25 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint32[]} Four big-endian words
+     */
     _toWords(blockBytes) {
-      return [
+      /** @type {uint32[]} */
+      const words = [
         OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]),
         OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]),
         OpCodes.Pack32BE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]),
         OpCodes.Pack32BE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15])
       ];
+      return words;
     }
 
+    /**
+     * @param {uint32[]} words - Four words
+     * @returns {uint8[]} 16 big-endian bytes
+     */
     _toBytes(words) {
       return [
         ...OpCodes.Unpack32BE(words[0]), ...OpCodes.Unpack32BE(words[1]),
@@ -285,13 +347,21 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
-      const result = noekeonForward(this._roundKey, this._toWords(blockBytes));
+      const result = noekeonForward(this._roundWords, this._toWords(blockBytes));
       return this._toBytes(result);
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
-      const result = noekeonInverse(this._roundKey, this._toWords(blockBytes));
+      const result = noekeonInverse(this._roundWords, this._toWords(blockBytes));
       return this._toBytes(result);
     }
   }

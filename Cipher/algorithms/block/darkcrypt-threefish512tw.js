@@ -50,44 +50,101 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const MASK64 = OpCodes.ShiftLn(1n, 64) - 1n;
+  /** @type {uint64} */
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn; // 2^64 - 1
   // DarkCrypt's non-standard key-schedule parity constant (standard Skein uses C240 = 0x1BD11BDA1BD11BD1).
+  /** @type {uint64} */
   const PARITY = 0x5555555555555555n;
 
+  /**
+   * @param {uint64} x - Word
+   * @param {int32} r - Rotation
+   * @returns {uint64} Rotated word
+   */
   function rotl(x, r) { return OpCodes.RotL64n(x, r); }
+  /**
+   * @param {uint64} x - Word
+   * @param {int32} r - Rotation
+   * @returns {uint64} Rotated word
+   */
   function rotr(x, r) { return OpCodes.RotR64n(x, r); }
+  /**
+   * @param {uint64} a - First word
+   * @param {uint64} b - Second word
+   * @returns {uint64} (a + b) mod 2^64
+   */
   function add(a, b) { return OpCodes.AndN(a + b, MASK64); }
+  /**
+   * @param {uint64} a - First word
+   * @param {uint64} b - Second word
+   * @returns {uint64} (a - b) mod 2^64
+   */
   function sub(a, b) { return OpCodes.AndN(a - b, MASK64); }
 
+  /**
+   * @param {uint8[]} bytes - Bytes
+   * @param {int32} n - Number of 64-bit words
+   * @returns {uint64[]} Little-endian words
+   */
   function bytesToWords64LE(bytes, n) {
+    /** @type {uint64[]} */
     const w = [];
     for (let i = 0; i < n; i++) {
+      /** @type {uint64} */
       let v = 0n;
-      for (let j = 7; j >= 0; j--) v = OpCodes.ShiftLn(v, 8) | BigInt(bytes[i * 8 + j]);
+      for (let j = 7; j >= 0; j--) v = OpCodes.OrN(OpCodes.ShiftLn(v, 8), BigInt(bytes[i * 8 + j]));
       w.push(v);
     }
     return w;
   }
 
+  /**
+   * @param {uint64[]} words - Words
+   * @returns {uint8[]} Little-endian bytes
+   */
   function words64ToBytesLE(words) {
+    /** @type {uint8[]} */
     const out = [];
-    for (const w of words) {
-      let v = w;
-      for (let j = 0; j < 8; j++) { out.push(Number(OpCodes.AndN(v, 0xffn))); v = OpCodes.ShiftRn(v, 8); }
+    for (let i = 0; i < words.length; i++) {
+      let v = words[i];
+      for (let j = 0; j < 8; j++) {
+        /** @type {uint8} */
+        const byteVal = Number(OpCodes.AndN(v, 0xffn));
+        out.push(byteVal);
+        v = OpCodes.ShiftRn(v, 8);
+      }
     }
     return out;
   }
 
+  /**
+   * @param {uint64[]} keyWords - Eight key words
+   * @returns {uint64[]} Nine words: the key words and their parity word
+   */
   function keySchedule(keyWords) {
     let x = PARITY;
-    for (let i = 0; i < 8; i++) x ^= keyWords[i];
-    return [...keyWords, x];
+    for (let i = 0; i < 8; i++) x = OpCodes.XorN(x, keyWords[i]);
+    /** @type {uint64[]} */
+    const out = [...keyWords, x];
+    return out;
   }
+
+  // Threefish-512 rotation constants for even and odd rounds
+  /** @type {int32[]} */
+  const ROT_EVEN = [46, 36, 19, 37, 33, 27, 14, 42, 17, 49, 36, 39, 44, 9, 54, 56];
+  /** @type {int32[]} */
+  const ROT_ODD = [39, 30, 34, 24, 13, 50, 10, 17, 25, 29, 39, 43, 8, 35, 56, 22];
 
   // Encrypt512: standard Threefish-512 definition (rotation table and permutation both
   // match the published spec exactly; only the key-schedule parity constant is custom).
+  /**
+   * @param {uint64[]} block - Eight state words
+   * @param {uint64[]} K - Nine key-schedule words
+   * @param {uint64[]} T - Three tweak words
+   * @returns {uint64[]} Eight state words
+   */
   function encrypt512(block, K, T) {
-    let [b0, b1, b2, b3, b4, b5, b6, b7] = block;
+    let b0 = block[0], b1 = block[1], b2 = block[2], b3 = block[3], b4 = block[4], b5 = block[5], b6 = block[6], b7 = block[7];
     for (let r = 0; r < 18; r++) {
       b0 = add(b0, K[r % 9]);
       b1 = add(b1, K[(r + 1) % 9]);
@@ -98,8 +155,7 @@
       b6 = add(add(b6, K[(r + 6) % 9]), T[(r + 1) % 3]);
       b7 = add(add(b7, K[(r + 7) % 9]), BigInt(r));
 
-      const rots = (r % 2 === 0) ? [46, 36, 19, 37, 33, 27, 14, 42, 17, 49, 36, 39, 44, 9, 54, 56]
-                                  : [39, 30, 34, 24, 13, 50, 10, 17, 25, 29, 39, 43, 8, 35, 56, 22];
+      const rots = (r % 2 === 0) ? ROT_EVEN : ROT_ODD;
       b0 = add(b0, b1); b1 = OpCodes.XorN(rotl(b1, rots[0]), b0);
       b2 = add(b2, b3); b3 = OpCodes.XorN(rotl(b3, rots[1]), b2);
       b4 = add(b4, b5); b5 = OpCodes.XorN(rotl(b5, rots[2]), b4);
@@ -128,11 +184,20 @@
     b5 = add(add(b5, K[5]), T[0]);
     b6 = add(add(b6, K[6]), T[1]);
     b7 = add(add(b7, K[7]), 18n);
-    return [b0, b1, b2, b3, b4, b5, b6, b7];
+    /** @type {uint64[]} */
+    const out = [b0, b1, b2, b3, b4, b5, b6, b7];
+    return out;
   }
 
+  /**
+   * @param {uint64[]} block - Eight state words
+   * @param {uint64[]} K - Nine key-schedule words
+   * @param {uint64[]} T - Three tweak words
+   * @returns {uint64[]} Eight state words
+   */
   function decrypt512(block, K, T) {
-    let [b0, b1, b2, b3, b4, b5, b6, b7] = block;
+    let b0 = block[0], b1 = block[1], b2 = block[2], b3 = block[3], b4 = block[4], b5 = block[5], b6 = block[6], b7 = block[7];
+    /** @type {uint64} */
     let tmp;
     for (let r = 18; r > 1; r--) {
       b0 = sub(b0, K[r % 9]); b1 = sub(b1, K[(r + 1) % 9]); b2 = sub(b2, K[(r + 2) % 9]); b3 = sub(b3, K[(r + 3) % 9]);
@@ -185,7 +250,9 @@
     }
     b0 = sub(b0, K[0]); b1 = sub(b1, K[1]); b2 = sub(b2, K[2]); b3 = sub(b3, K[3]);
     b4 = sub(b4, K[4]); b5 = sub(sub(b5, K[5]), T[0]); b6 = sub(sub(b6, K[6]), T[1]); b7 = sub(b7, K[7]);
-    return [b0, b1, b2, b3, b4, b5, b6, b7];
+    /** @type {uint64[]} */
+    const out = [b0, b1, b2, b3, b4, b5, b6, b7];
+    return out;
   }
 
   class DarkCryptThreefish512TWAlgorithm extends BlockCipherAlgorithm {
@@ -240,27 +307,42 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptThreefish512TWInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptThreefish512TWInstance(this, isInverse);
     }
   }
 
   class DarkCryptThreefish512TWInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptThreefish512TWAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint64[]|null} */
       this._K = null;
+      /** @type {uint64[]|null} */
       this._T = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 64;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 80)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Threefish-512-TW (DarkCrypt) requires exactly 80 bytes (64-byte key + 16-byte tweak)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Threefish-512-TW (DarkCrypt) requires exactly 80 bytes (64-byte key + 16-byte tweak)");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
@@ -272,6 +354,9 @@
       this._T = twWords;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -284,8 +369,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -295,12 +381,20 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const words = bytesToWords64LE(block, 8);
       const out = encrypt512(words, this._K, this._T);
       return words64ToBytesLE(out);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const words = bytesToWords64LE(block, 8);
       const out = decrypt512(words, this._K, this._T);

@@ -70,6 +70,7 @@
   const ROUNDS = 20;
 
   // 256-entry substitution table used by the F function.
+  /** @type {uint8[]} */
   const SBOX = [
     163,215,9,131,248,72,246,244,179,33,21,120,153,177,175,249,231,45,77,138,206,76,202,46,82,149,217,30,78,56,68,40,
     10,223,2,160,23,241,96,104,18,183,122,195,233,250,61,83,150,132,107,186,242,99,154,25,124,174,229,245,247,22,106,162,
@@ -132,31 +133,47 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptBreakmeInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptBreakmeInstance(this, isInverse);
     }
   }
 
   class DarkCryptBreakmeInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptBreakmeAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._K = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Breakme (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Breakme (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -169,8 +186,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -181,21 +199,31 @@
     }
 
     // Nested S-box network: see file header for the exact bit-level derivation.
+    /**
+     * @param {uint32} x - Round input
+     * @returns {uint32} Round output
+     */
     _f(x) {
       const b3 = OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF);
       const b2 = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF);
       const b1 = OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF);
       const b0 = OpCodes.And32(x, 0xFF);
-      let v1 = OpCodes.And32(OpCodes.Shl32(SBOX[b3], 4), 0xFF) | SBOX[b2];
-      let v0 = SBOX[b0] | OpCodes.And32(OpCodes.Shl32(SBOX[b1], 4), 0xFF);
-      let v2 = OpCodes.And32(OpCodes.Shl32(SBOX[v1], 4), 0xFF) | SBOX[v0];
-      let v3 = OpCodes.And32(OpCodes.Shl32(SBOX[v0], 4), 0xFF) | SBOX[v2];
-      return OpCodes.ToUint32(OpCodes.Shl32(v1, 24) | OpCodes.Shl32(v0, 16) | OpCodes.Shl32(v2, 8) | v3);
+      let v1 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[b3], 4), 0xFF), SBOX[b2]);
+      let v0 = OpCodes.Or32(SBOX[b0], OpCodes.And32(OpCodes.Shl32(SBOX[b1], 4), 0xFF));
+      let v2 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[v1], 4), 0xFF), SBOX[v0]);
+      let v3 = OpCodes.Or32(OpCodes.And32(OpCodes.Shl32(SBOX[v0], 4), 0xFF), SBOX[v2]);
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(v1, 24), OpCodes.Shl32(v0, 16)), OpCodes.Shl32(v2, 8)), v3);
     }
 
     // Round-key schedule: 8 key words expanded to 24 round-key words.
+    /**
+     * @param {uint8[]} key - 32-byte key
+     * @returns {uint32[]} 24 round-key words
+     */
     _scheduleKey(key) {
-      const buf = new Array(25).fill(0);
+      /** @type {uint32[]} */
+      const buf = new Array(25);
+      buf.fill(0);
       for (let i = 0; i < 8; i++)
         buf[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
 
@@ -211,6 +239,10 @@
       return buf.slice(0, 24);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const K = this._K;
       let L = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), K[0]));
@@ -227,6 +259,10 @@
       return [...OpCodes.Unpack32LE(ct0), ...OpCodes.Unpack32LE(ct1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const K = this._K;
       let A = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), K[23]));

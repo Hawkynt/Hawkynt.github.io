@@ -47,6 +47,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Standard MD5 per-step additive constants, K[i] = floor(abs(sin(i+1)) * 2^32) (RFC 1321).
+  /** @type {uint32[]} */
   const T = [
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
     0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
@@ -58,6 +59,7 @@
     0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ];
 
+  /** @type {uint8[]} */
   const S = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
     5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
@@ -65,20 +67,42 @@
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
   ];
 
-  function stepInfo(i) {
-    let f, g;
-    if (i < 16) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D))); g = i; }
-    else if (i < 32) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C))); g = (5 * i + 1) % 16; }
-    else if (i < 48) { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D)); g = (3 * i + 5) % 16; }
-    else { f = (B, C, D) => OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D)))); g = (7 * i) % 16; }
-    return { f, g };
+  /**
+   * Round function of step i (F, G, H or I)
+   * @param {int32} i - Step 0..63
+   * @param {uint32} B - Word B
+   * @param {uint32} C - Word C
+   * @param {uint32} D - Word D
+   * @returns {uint32} Function value
+   */
+  function stepFunction(i, B, C, D) {
+    if (i < 16) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(B, C), OpCodes.And32(~B, D)));
+    if (i < 32) return OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(D, B), OpCodes.And32(~D, C)));
+    if (i < 48) return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(B, C), D));
+    return OpCodes.ToUint32(OpCodes.Xor32(C, OpCodes.Or32(B, OpCodes.ToUint32(~D))));
   }
 
+  /**
+   * Message word index of step i
+   * @param {int32} i - Step 0..63
+   * @returns {int32} Index 0..15
+   */
+  function stepWordIndex(i) {
+    if (i < 16) return i;
+    if (i < 32) return (5 * i + 1) % 16;
+    if (i < 48) return (3 * i + 5) % 16;
+    return (7 * i) % 16;
+  }
+
+  /**
+   * @param {uint32[]} block - State words A, B, C, D
+   * @param {uint32[]} M - 16 key words
+   * @returns {uint32[]} Output state words
+   */
   function md5Encrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 0; i < 64; i++) {
-      const { f, g } = stepInfo(i);
-      const tmp = OpCodes.ToUint32(f(B, C, D) + A + T[i] + M[g]);
+      const tmp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(stepFunction(i, B, C, D), A), T[i]), M[stepWordIndex(i)]);
       A = D; D = C; C = B;
       B = OpCodes.ToUint32(B + OpCodes.RotL32(tmp, S[i]));
     }
@@ -88,14 +112,18 @@
   // Inverse: replay the 64 steps back to front. At step i the forward transform was
   // (A,B,C,D) -> (D, B+rotl(f+A+T+M,S), B, C); given the post-state we recover B_old = C_new,
   // C_old = D_new, D_old = A_new, and A_old by undoing the rotate/add on B_new.
+  /**
+   * @param {uint32[]} block - State words A, B, C, D
+   * @param {uint32[]} M - 16 key words
+   * @returns {uint32[]} Input state words
+   */
   function md5Decrypt(block, M) {
-    let [A, B, C, D] = block;
+    let A = block[0], B = block[1], C = block[2], D = block[3];
     for (let i = 63; i >= 0; i--) {
-      const { f, g } = stepInfo(i);
       const bOld = C, cOld = D, dOld = A;
       const rotated = OpCodes.ToUint32(B - bOld);
       const tmp = OpCodes.RotR32(rotated, S[i]);
-      const aOld = OpCodes.ToUint32(tmp - f(bOld, cOld, dOld) - T[i] - M[g]);
+      const aOld = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(tmp, stepFunction(i, bOld, cOld, dOld)), T[i]), M[stepWordIndex(i)]);
       A = aOld; B = bOld; C = cOld; D = dOld;
     }
     return [A, B, C, D];
@@ -144,24 +172,38 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMD5Instance} New instance
+     */
     CreateInstance(isInverse = false) { return new DarkCryptMD5Instance(this, isInverse); }
   }
 
   class DarkCryptMD5Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMD5Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._M = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._M = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MD5-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MD5-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._M = [];
@@ -169,6 +211,9 @@
         this._M.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -181,8 +226,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -192,6 +238,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
+     */
     _blockToWords(block) {
       return [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
@@ -201,6 +251,10 @@
       ];
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} 16 bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -208,11 +262,19 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const out = md5Encrypt(this._blockToWords(block), this._M);
       return this._wordsToBlock(out);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const out = md5Decrypt(this._blockToWords(block), this._M);
       return this._wordsToBlock(out);

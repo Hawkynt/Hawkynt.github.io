@@ -42,50 +42,87 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /**
+   * @param {uint16} x - Word
+   * @param {int32} n - Rotation 1..15
+   * @returns {uint16} Word rotated left
+   */
   function rotl16(x, n) {
     x = OpCodes.ToUint16(x);
-    return OpCodes.ToUint16(OpCodes.Shl16(x, n) | OpCodes.Shr16(x, 16 - n));
+    return OpCodes.ToUint16(OpCodes.Or16(OpCodes.Shl16(x, n), OpCodes.Shr16(x, 16 - n)));
   }
+  /**
+   * @param {uint16} x - Word
+   * @param {int32} n - Rotation 1..15
+   * @returns {uint16} Word rotated right
+   */
   function rotr16(x, n) {
     x = OpCodes.ToUint16(x);
-    return OpCodes.ToUint16(OpCodes.Shr16(x, n) | OpCodes.Shl16(x, 16 - n));
+    return OpCodes.ToUint16(OpCodes.Or16(OpCodes.Shr16(x, n), OpCodes.Shl16(x, 16 - n)));
   }
 
   // Build the 64-word subkey table directly from the raw 128-byte key (no
   // PITABLE key schedule: key setup is a plain copy).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint16[]} 64 little-endian subkey words
+   */
   function buildSubkeys(keyBytes) {
+    /** @type {uint16[]} */
     const K = new Array(64);
     for (let i = 0; i < 64; i++)
       K[i] = OpCodes.Pack16LE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
     return K;
   }
 
+  /**
+   * RC2 MIX round (DarkCrypt register wiring)
+   * @param {uint32[]} R - Four 16-bit state words, updated in place
+   * @param {uint16[]} K - 64 subkey words
+   * @param {int32} j - Index of the first subkey word used
+   */
   function mix(R, K, j) {
-    R[0] = rotl16(OpCodes.ToUint16(R[0] + K[j] + OpCodes.And32(R[2], R[3]) + OpCodes.And32(~R[3], R[1])), 1);
-    R[1] = rotl16(OpCodes.ToUint16(R[1] + K[j+1] + OpCodes.And32(R[0], R[3]) + OpCodes.And32(~R[0], R[2])), 2);
-    R[2] = rotl16(OpCodes.ToUint16(R[2] + K[j+2] + OpCodes.And32(R[0], R[1]) + OpCodes.And32(~R[1], R[3])), 3);
-    R[3] = rotl16(OpCodes.ToUint16(R[3] + K[j+3] + OpCodes.And32(R[1], R[2]) + OpCodes.And32(~R[2], R[0])), 5);
+    R[0] = rotl16(OpCodes.ToUint16(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(R[0], K[j]), OpCodes.And32(R[2], R[3])), OpCodes.And32(~R[3], R[1]))), 1);
+    R[1] = rotl16(OpCodes.ToUint16(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(R[1], K[j+1]), OpCodes.And32(R[0], R[3])), OpCodes.And32(~R[0], R[2]))), 2);
+    R[2] = rotl16(OpCodes.ToUint16(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(R[2], K[j+2]), OpCodes.And32(R[0], R[1])), OpCodes.And32(~R[1], R[3]))), 3);
+    R[3] = rotl16(OpCodes.ToUint16(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(R[3], K[j+3]), OpCodes.And32(R[1], R[2])), OpCodes.And32(~R[2], R[0]))), 5);
   }
 
+  /**
+   * Inverse of mix
+   * @param {uint32[]} R - Four 16-bit state words, updated in place
+   * @param {uint16[]} K - 64 subkey words
+   * @param {int32} j - Index of the first subkey word used
+   */
   function unmix(R, K, j) {
-    R[3] = OpCodes.ToUint16(rotr16(R[3], 5) - K[j+3] - OpCodes.And32(R[1], R[2]) - OpCodes.And32(~R[2], R[0]));
-    R[2] = OpCodes.ToUint16(rotr16(R[2], 3) - K[j+2] - OpCodes.And32(R[0], R[1]) - OpCodes.And32(~R[1], R[3]));
-    R[1] = OpCodes.ToUint16(rotr16(R[1], 2) - K[j+1] - OpCodes.And32(R[0], R[3]) - OpCodes.And32(~R[0], R[2]));
-    R[0] = OpCodes.ToUint16(rotr16(R[0], 1) - K[j]   - OpCodes.And32(R[2], R[3]) - OpCodes.And32(~R[3], R[1]));
+    R[3] = OpCodes.ToUint16(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(rotr16(R[3], 5), K[j+3]), OpCodes.And32(R[1], R[2])), OpCodes.And32(~R[2], R[0])));
+    R[2] = OpCodes.ToUint16(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(rotr16(R[2], 3), K[j+2]), OpCodes.And32(R[0], R[1])), OpCodes.And32(~R[1], R[3])));
+    R[1] = OpCodes.ToUint16(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(rotr16(R[1], 2), K[j+1]), OpCodes.And32(R[0], R[3])), OpCodes.And32(~R[0], R[2])));
+    R[0] = OpCodes.ToUint16(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(rotr16(R[0], 1), K[j]), OpCodes.And32(R[2], R[3])), OpCodes.And32(~R[3], R[1])));
   }
 
+  /**
+   * RC2 MASH round
+   * @param {uint32[]} R - Four 16-bit state words, updated in place
+   * @param {uint16[]} K - 64 subkey words
+   */
   function mash(R, K) {
-    R[0] = OpCodes.ToUint16(R[0] + K[OpCodes.And32(R[3], 63)]);
-    R[1] = OpCodes.ToUint16(R[1] + K[OpCodes.And32(R[0], 63)]);
-    R[2] = OpCodes.ToUint16(R[2] + K[OpCodes.And32(R[1], 63)]);
-    R[3] = OpCodes.ToUint16(R[3] + K[OpCodes.And32(R[2], 63)]);
+    R[0] = OpCodes.ToUint16(OpCodes.Add32(R[0], K[OpCodes.And32(R[3], 63)]));
+    R[1] = OpCodes.ToUint16(OpCodes.Add32(R[1], K[OpCodes.And32(R[0], 63)]));
+    R[2] = OpCodes.ToUint16(OpCodes.Add32(R[2], K[OpCodes.And32(R[1], 63)]));
+    R[3] = OpCodes.ToUint16(OpCodes.Add32(R[3], K[OpCodes.And32(R[2], 63)]));
   }
 
+  /**
+   * Inverse of mash
+   * @param {uint32[]} R - Four 16-bit state words, updated in place
+   * @param {uint16[]} K - 64 subkey words
+   */
   function unmash(R, K) {
-    R[3] = OpCodes.ToUint16(R[3] - K[OpCodes.And32(R[2], 63)]);
-    R[2] = OpCodes.ToUint16(R[2] - K[OpCodes.And32(R[1], 63)]);
-    R[1] = OpCodes.ToUint16(R[1] - K[OpCodes.And32(R[0], 63)]);
-    R[0] = OpCodes.ToUint16(R[0] - K[OpCodes.And32(R[3], 63)]);
+    R[3] = OpCodes.ToUint16(OpCodes.Sub32(R[3], K[OpCodes.And32(R[2], 63)]));
+    R[2] = OpCodes.ToUint16(OpCodes.Sub32(R[2], K[OpCodes.And32(R[1], 63)]));
+    R[1] = OpCodes.ToUint16(OpCodes.Sub32(R[1], K[OpCodes.And32(R[0], 63)]));
+    R[0] = OpCodes.ToUint16(OpCodes.Sub32(R[0], K[OpCodes.And32(R[3], 63)]));
   }
 
   class DarkCryptRC2Algorithm extends BlockCipherAlgorithm {
@@ -133,31 +170,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRC2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRC2Instance(this, isInverse);
     }
   }
 
   class DarkCryptRC2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRC2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._K = null;
+      /** @type {uint16[]|null} */
+      this._wordTable = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._wordTable = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 128)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC2 (DarkCrypt) requires exactly 128 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC2 (DarkCrypt) requires exactly 128 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._K = buildSubkeys(keyBytes);
+      this._wordTable = buildSubkeys(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -170,8 +224,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -181,14 +236,19 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       const R = [
         OpCodes.Pack16LE(block[0], block[1]),
         OpCodes.Pack16LE(block[2], block[3]),
         OpCodes.Pack16LE(block[4], block[5]),
         OpCodes.Pack16LE(block[6], block[7])
       ];
-      const K = this._K;
+      const K = this._wordTable;
       let j = 0;
       for (let i = 0; i < 5; i++) { mix(R, K, j); j += 4; }
       mash(R, K);
@@ -196,20 +256,27 @@
       mash(R, K);
       for (let i = 0; i < 5; i++) { mix(R, K, j); j += 4; }
 
-      return [
+      /** @type {uint8[]} */
+      const out = [
         ...OpCodes.Unpack16LE(R[0]), ...OpCodes.Unpack16LE(R[1]),
         ...OpCodes.Unpack16LE(R[2]), ...OpCodes.Unpack16LE(R[3])
       ];
+      return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       const R = [
         OpCodes.Pack16LE(block[0], block[1]),
         OpCodes.Pack16LE(block[2], block[3]),
         OpCodes.Pack16LE(block[4], block[5]),
         OpCodes.Pack16LE(block[6], block[7])
       ];
-      const K = this._K;
+      const K = this._wordTable;
       let j = 60;
       for (let i = 0; i < 5; i++) { unmix(R, K, j); j -= 4; }
       unmash(R, K);
@@ -217,10 +284,12 @@
       unmash(R, K);
       for (let i = 0; i < 5; i++) { unmix(R, K, j); j -= 4; }
 
-      return [
+      /** @type {uint8[]} */
+      const out = [
         ...OpCodes.Unpack16LE(R[0]), ...OpCodes.Unpack16LE(R[1]),
         ...OpCodes.Unpack16LE(R[2]), ...OpCodes.Unpack16LE(R[3])
       ];
+      return out;
     }
   }
 

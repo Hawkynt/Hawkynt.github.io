@@ -119,13 +119,24 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Gift128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new Gift128Instance(this, isInverse);
     }
   }
+
+  // Round constants for GIFT-128 (6-bit values)
+  /** @type {uint32[]} */
+  const GIFT128_RC = [
+    0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B,
+    0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E,
+    0x1D, 0x3A, 0x35, 0x2B, 0x16, 0x2C, 0x18, 0x30,
+    0x21, 0x02, 0x05, 0x0B, 0x17, 0x2E, 0x1C, 0x38,
+    0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A
+  ];
+  Object.freeze(GIFT128_RC);
 
   /**
  * Gift128 cipher instance implementing Feed/Result pattern
@@ -136,26 +147,19 @@
   class Gift128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Gift128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
     }
-
-    // Round constants for GIFT-128 (6-bit values)
-    static RC = Object.freeze([
-      0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B,
-      0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E,
-      0x1D, 0x3A, 0x35, 0x2B, 0x16, 0x2C, 0x18, 0x30,
-      0x21, 0x02, 0x05, 0x0B, 0x17, 0x2E, 0x1C, 0x38,
-      0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A
-    ]);
 
     // Property setter for key
     /**
@@ -188,12 +192,22 @@
     }
 
     // Bit permutation helper using bit_permute_step technique
+    /**
+     * @param {uint32} value - Word
+     * @param {uint32} mask - Swap mask
+     * @param {int32} shift - Swap distance
+     * @returns {uint32} Permuted word
+     */
     bitPermuteStep(value, mask, shift) {
-      const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
-      return OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift));
+      const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
+      return OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift));
     }
 
     // PERM3_INNER - Core permutation used by all PERM functions
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     perm3Inner(x) {
       x = this.bitPermuteStep(x, 0x0a0a0a0a, 3);
       x = this.bitPermuteStep(x, 0x00cc00cc, 6);
@@ -203,29 +217,49 @@
     }
 
     // PERM0 - Permutation with 8-bit left rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     perm0(x) {
       const permuted = this.perm3Inner(x);
       return OpCodes.RotL32(permuted, 8);
     }
 
     // PERM1 - Permutation with 16-bit left rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     perm1(x) {
       const permuted = this.perm3Inner(x);
       return OpCodes.RotL32(permuted, 16);
     }
 
     // PERM2 - Permutation with 24-bit left rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     perm2(x) {
       const permuted = this.perm3Inner(x);
       return OpCodes.RotL32(permuted, 24);
     }
 
     // PERM3 - Permutation without rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     perm3(x) {
       return this.perm3Inner(x);
     }
 
     // INV_PERM3_INNER - Inverse of core permutation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     invPerm3Inner(x) {
       x = this.bitPermuteStep(x, 0x00550055, 9);
       x = this.bitPermuteStep(x, 0x00003333, 18);
@@ -235,49 +269,75 @@
     }
 
     // INV_PERM0 - Inverse permutation with 8-bit right rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     invPerm0(x) {
       const rotated = OpCodes.RotR32(x, 8);
       return this.invPerm3Inner(rotated);
     }
 
     // INV_PERM1 - Inverse permutation with 16-bit right rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     invPerm1(x) {
       const rotated = OpCodes.RotR32(x, 16);
       return this.invPerm3Inner(rotated);
     }
 
     // INV_PERM2 - Inverse permutation with 24-bit right rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     invPerm2(x) {
       const rotated = OpCodes.RotR32(x, 24);
       return this.invPerm3Inner(rotated);
     }
 
     // INV_PERM3 - Inverse permutation without rotation
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Permuted word
+     */
     invPerm3(x) {
       return this.invPerm3Inner(x);
     }
 
     // GIFT-128 S-box (SubCells operation)
+    /**
+     * @param {uint32[]} state - Four state words
+     * @returns {uint32[]} Four new state words
+     */
     sbox(state) {
       let s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
 
-      s1 = OpCodes.Xor32(s1, (s0&s2));
-      s0 = OpCodes.Xor32(s0, (s1&s3));
-      s2 = OpCodes.Xor32(s2, (s0|s1));
+      s1 = OpCodes.Xor32(s1, OpCodes.And32(s0, s2));
+      s0 = OpCodes.Xor32(s0, OpCodes.And32(s1, s3));
+      s2 = OpCodes.Xor32(s2, OpCodes.Or32(s0, s1));
       s3 = OpCodes.Xor32(s3, s2);
       s1 = OpCodes.Xor32(s1, s3);
       s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
-      s2 = OpCodes.Xor32(s2, (s0&s1));
+      s2 = OpCodes.Xor32(s2, OpCodes.And32(s0, s1));
 
       // Swap s0 and s3
       const temp = s0;
       s0 = s3;
       s3 = temp;
 
-      return [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
+      /** @type {uint32[]} */
+      const out = [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
+      return out;
     }
 
     // Inverse GIFT-128 S-box
+    /**
+     * @param {uint32[]} state - Four state words
+     * @returns {uint32[]} Four new state words
+     */
     invSbox(state) {
       let s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
 
@@ -286,62 +346,92 @@
       s0 = s3;
       s3 = temp;
 
-      s2 = OpCodes.Xor32(s2, (s0&s1));
+      s2 = OpCodes.Xor32(s2, OpCodes.And32(s0, s1));
       s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
       s1 = OpCodes.Xor32(s1, s3);
       s3 = OpCodes.Xor32(s3, s2);
-      s2 = OpCodes.Xor32(s2, (s0|s1));
-      s0 = OpCodes.Xor32(s0, (s1&s3));
-      s1 = OpCodes.Xor32(s1, (s0&s2));
+      s2 = OpCodes.Xor32(s2, OpCodes.Or32(s0, s1));
+      s0 = OpCodes.Xor32(s0, OpCodes.And32(s1, s3));
+      s1 = OpCodes.Xor32(s1, OpCodes.And32(s0, s2));
 
-      return [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
+      /** @type {uint32[]} */
+      const out = [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
+      return out;
     }
 
     // Apply bit permutation to state
+    /**
+     * @param {uint32[]} state - Four state words
+     * @returns {uint32[]} Four new state words
+     */
     applyPermutation(state) {
-      return [
+      /** @type {uint32[]} */
+      const out = [
         this.perm0(state[0]),
         this.perm1(state[1]),
         this.perm2(state[2]),
         this.perm3(state[3])
       ];
+      return out;
     }
 
     // Apply inverse bit permutation to state
+    /**
+     * @param {uint32[]} state - Four state words
+     * @returns {uint32[]} Four new state words
+     */
     applyInvPermutation(state) {
-      return [
+      /** @type {uint32[]} */
+      const out = [
         this.invPerm0(state[0]),
         this.invPerm1(state[1]),
         this.invPerm2(state[2]),
         this.invPerm3(state[3])
       ];
+      return out;
     }
 
     // Rotate key schedule forward (used in encryption)
+    /**
+     * @param {uint32[]} keyState - Four key words
+     * @returns {uint32[]} Rotated key words
+     */
     rotateKeyForward(keyState) {
       const temp = keyState[3];
-      const p1 = OpCodes.Shr32(temp&0xFFFC0000, 2);
-      const p2 = OpCodes.Shl32(temp&0x00030000, 14);
-      const p3 = OpCodes.Shl32(temp&0x00000FFF, 4);
-      const p4 = OpCodes.Shr32(temp&0x0000F000, 12);
-      const newW0 = p1|p2|p3|p4;
+      const p1 = OpCodes.Shr32(OpCodes.And32(temp, 0xFFFC0000), 2);
+      const p2 = OpCodes.Shl32(OpCodes.And32(temp, 0x00030000), 14);
+      const p3 = OpCodes.Shl32(OpCodes.And32(temp, 0x00000FFF), 4);
+      const p4 = OpCodes.Shr32(OpCodes.And32(temp, 0x0000F000), 12);
+      const newW0 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(p1, p2), p3), p4);
 
-      return [OpCodes.ToUint32(newW0), keyState[0], keyState[1], keyState[2]];
+      /** @type {uint32[]} */
+      const out = [OpCodes.ToUint32(newW0), keyState[0], keyState[1], keyState[2]];
+      return out;
     }
 
     // Rotate key schedule backward (used in decryption)
+    /**
+     * @param {uint32[]} keyState - Four key words
+     * @returns {uint32[]} Rotated key words
+     */
     rotateKeyBackward(keyState) {
       const temp = keyState[0];
-      const p1 = OpCodes.Shl32(temp&0x3FFF0000, 2);
-      const p2 = OpCodes.Shr32(temp&0xC0000000, 14);
-      const p3 = OpCodes.Shr32(temp&0x0000FFF0, 4);
-      const p4 = OpCodes.Shl32(temp&0x0000000F, 12);
-      const newW3 = p1|p2|p3|p4;
+      const p1 = OpCodes.Shl32(OpCodes.And32(temp, 0x3FFF0000), 2);
+      const p2 = OpCodes.Shr32(OpCodes.And32(temp, 0xC0000000), 14);
+      const p3 = OpCodes.Shr32(OpCodes.And32(temp, 0x0000FFF0), 4);
+      const p4 = OpCodes.Shl32(OpCodes.And32(temp, 0x0000000F), 12);
+      const newW3 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(p1, p2), p3), p4);
 
-      return [keyState[1], keyState[2], keyState[3], OpCodes.ToUint32(newW3)];
+      /** @type {uint32[]} */
+      const out = [keyState[1], keyState[2], keyState[3], OpCodes.ToUint32(newW3)];
+      return out;
     }
 
     // Encrypt a single 16-byte block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -354,6 +444,7 @@
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
       // Load key (big-endian, in ascending word order W0..W3)
+      /** @type {uint32[]} */
       const keyWords = [
         OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]),
@@ -361,7 +452,9 @@
         OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
 
+      /** @type {uint32[]} */
       let state = [s0, s1, s2, s3];
+      /** @type {uint32[]} */
       let keyState = [...keyWords];
 
       // Perform 40 rounds
@@ -375,26 +468,28 @@
         // AddRoundKey
         state[2] = OpCodes.Xor32(state[2], keyState[1]);
         state[1] = OpCodes.Xor32(state[1], keyState[3]);
-        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
+        state[3] = OpCodes.Xor32(state[3], OpCodes.Xor32(0x80000000, GIFT128_RC[round]));
 
         // Ensure all values are unsigned 32-bit
-        state = state.map(x => OpCodes.ToUint32(x));
+        for (let i = 0; i < 4; i++) state[i] = OpCodes.ToUint32(state[i]);
 
         // Rotate key schedule
         keyState = this.rotateKeyForward(keyState);
       }
 
       // Pack state into output (big-endian)
+      /** @type {uint8[]} */
       const output = [];
-      for (let i = 0; i < 4; i++) {
-        const bytes = OpCodes.Unpack32BE(state[i]);
-        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
-      }
+      for (let i = 0; i < 4; i++) output.push(...OpCodes.Unpack32BE(state[i]));
 
       return output;
     }
 
     // Decrypt a single 16-byte block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -407,6 +502,7 @@
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
       // Load key (big-endian, in ascending word order W0..W3)
+      /** @type {uint32[]} */
       const keyWords = [
         OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]),
         OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]),
@@ -414,7 +510,9 @@
         OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15])
       ];
 
+      /** @type {uint32[]} */
       let state = [s0, s1, s2, s3];
+      /** @type {uint32[]} */
       let keyState = [...keyWords];
 
       // Fast-forward key schedule to end of round 40
@@ -422,11 +520,11 @@
       // Equivalent to applying the rotation transformation 10 times to each word
       for (let i = 0; i < 4; i++) {
         let w = keyState[i];
-        const p1 = OpCodes.Shr32(w&0xFFF00000, 4);
-        const p2 = OpCodes.Shl32(w&0x000F0000, 12);
-        const p3 = OpCodes.Shl32(w&0x000000FF, 8);
-        const p4 = OpCodes.Shr32(w&0x0000FF00, 8);
-        w = p1|p2|p3|p4;
+        const p1 = OpCodes.Shr32(OpCodes.And32(w, 0xFFF00000), 4);
+        const p2 = OpCodes.Shl32(OpCodes.And32(w, 0x000F0000), 12);
+        const p3 = OpCodes.Shl32(OpCodes.And32(w, 0x000000FF), 8);
+        const p4 = OpCodes.Shr32(OpCodes.And32(w, 0x0000FF00), 8);
+        w = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(p1, p2), p3), p4);
         keyState[i] = OpCodes.ToUint32(w);
       }
 
@@ -438,10 +536,10 @@
         // AddRoundKey (same as encryption, XOR is self-inverse)
         state[2] = OpCodes.Xor32(state[2], keyState[1]);
         state[1] = OpCodes.Xor32(state[1], keyState[3]);
-        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
+        state[3] = OpCodes.Xor32(state[3], OpCodes.Xor32(0x80000000, GIFT128_RC[round]));
 
         // Ensure all values are unsigned 32-bit
-        state = state.map(x => OpCodes.ToUint32(x));
+        for (let i = 0; i < 4; i++) state[i] = OpCodes.ToUint32(state[i]);
 
         // InvPermBits (inverse bit permutation)
         state = this.applyInvPermutation(state);
@@ -451,11 +549,9 @@
       }
 
       // Pack state into output (big-endian)
+      /** @type {uint8[]} */
       const output = [];
-      for (let i = 0; i < 4; i++) {
-        const bytes = OpCodes.Unpack32BE(state[i]);
-        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
-      }
+      for (let i = 0; i < 4; i++) output.push(...OpCodes.Unpack32BE(state[i]));
 
       return output;
     }
@@ -488,6 +584,7 @@
         throw new Error("Invalid block size: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 16-byte block

@@ -55,7 +55,7 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  class EnRUPTAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class EnRUPTAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -64,41 +64,42 @@
       this.description = "Cryptographic primitive based on XXTEA using unbalanced Feistel network. Submitted to SHA-3 competition but broken by multiple practical attacks including collision, preimage, and chosen plaintext vulnerabilities.";
       this.inventor = "Sean O'Neil, Karsten Nohl, Luca Henzen";
       this.year = 2008;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.BROKEN;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
 
       // Block and key specifications
       this.blockSize = 8; // Minimum block size (2 words = 64 bits)
+      /** @type {KeySize[]} */
       this.keySizes = [
-        new AlgorithmFramework.KeySize(4, 64, 4) // Variable key: 4-64 bytes (1-16 words)
+        new KeySize(4, 64, 4) // Variable key: 4-64 bytes (1-16 words)
       ];
 
       // AlgorithmFramework compatibility
-      this.SupportedKeySizes = [new AlgorithmFramework.KeySize(4, 64, 4)]; // Variable key size
-      this.SupportedBlockSizes = [new AlgorithmFramework.KeySize(8, 1024, 4)]; // Variable block size (8 bytes to 1KB, 4-byte steps)
+      this.SupportedKeySizes = [new KeySize(4, 64, 4)]; // Variable key size
+      this.SupportedBlockSizes = [new KeySize(8, 1024, 4)]; // Variable block size (8 bytes to 1KB, 4-byte steps)
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("EnRUPT SHA-3 Submission", "https://en.wikipedia.org/wiki/EnRUPT"),
-        new AlgorithmFramework.LinkItem("Cryptanalysis of EnRUPT (IACR ePrint 2008/467)", "https://eprint.iacr.org/2008/467"),
-        new AlgorithmFramework.LinkItem("Practical Collisions for EnRUPT", "https://link.springer.com/article/10.1007/s00145-010-9058-x")
+        new LinkItem("EnRUPT SHA-3 Submission", "https://en.wikipedia.org/wiki/EnRUPT"),
+        new LinkItem("Cryptanalysis of EnRUPT (IACR ePrint 2008/467)", "https://eprint.iacr.org/2008/467"),
+        new LinkItem("Practical Collisions for EnRUPT", "https://link.springer.com/article/10.1007/s00145-010-9058-x")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Cryptanalysis of block EnRUPT (IACR ePrint 2010/517)", "https://eprint.iacr.org/2010/517"),
-        new AlgorithmFramework.LinkItem("XXTEA (Base Algorithm)", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
-        new AlgorithmFramework.LinkItem("SHA-3 Competition Archive", "https://ehash.isec.tugraz.at/uploads/9/9b/Enrupt.pdf")
+        new LinkItem("Cryptanalysis of block EnRUPT (IACR ePrint 2010/517)", "https://eprint.iacr.org/2010/517"),
+        new LinkItem("XXTEA (Base Algorithm)", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
+        new LinkItem("SHA-3 Competition Archive", "https://ehash.isec.tugraz.at/uploads/9/9b/Enrupt.pdf")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Collision Attack", "Practical collision attack with 2^40 time complexity", "DO NOT USE - Algorithm is cryptographically broken", "https://link.springer.com/article/10.1007/s00145-010-9058-x"),
-        new AlgorithmFramework.Vulnerability("Preimage Attack", "Meet-in-the-middle preimage attack with 2^480 complexity against EnRUPT-512 hash", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2008/467"),
-        new AlgorithmFramework.Vulnerability("Chosen Plaintext Attack", "Related-key chosen plaintext attack with 2^15 queries against block cipher", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2010/517"),
-        new AlgorithmFramework.Vulnerability("Related-Key Attacks", "Fast related-key attacks stemming from weak key schedule properties", "DO NOT USE - Severe key schedule vulnerabilities", "https://eprint.iacr.org/2010/517")
+        new Vulnerability("Collision Attack", "Practical collision attack with 2^40 time complexity", "DO NOT USE - Algorithm is cryptographically broken", "https://link.springer.com/article/10.1007/s00145-010-9058-x"),
+        new Vulnerability("Preimage Attack", "Meet-in-the-middle preimage attack with 2^480 complexity against EnRUPT-512 hash", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2008/467"),
+        new Vulnerability("Chosen Plaintext Attack", "Related-key chosen plaintext attack with 2^15 queries against block cipher", "DO NOT USE - Algorithm is cryptographically broken", "https://eprint.iacr.org/2010/517"),
+        new Vulnerability("Related-Key Attacks", "Fast related-key attacks stemming from weak key schedule properties", "DO NOT USE - Severe key schedule vulnerabilities", "https://eprint.iacr.org/2010/517")
       ];
 
       // Test vectors - Since EnRUPT is broken and no official test vectors exist,
@@ -137,7 +138,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {EnRUPTInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,19 +155,22 @@
   class EnRUPTInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EnRUPTAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // Minimum block size
       this.KeySize = 0;
 
       // EnRUPT constants (derived from XXTEA)
+      /** @type {uint32} */
       this.DELTA = 0x9E3779B9; // Magic constant: OpCodes.Xor32(2, 32) / golden ratio
     }
 
@@ -185,7 +189,7 @@
 
       // Validate key size (4-64 bytes, multiple of 4)
       if (keyBytes.length < 4 || keyBytes.length > 64 || keyBytes.length % 4 !== 0) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. EnRUPT requires 4-64 bytes in 4-byte increments`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. EnRUPT requires 4-64 bytes in 4-byte increments");
       }
 
       this._key = [...keyBytes];
@@ -226,9 +230,10 @@
 
       // Validate input length (must be multiple of 4 bytes and at least 8 bytes)
       if (this.inputBuffer.length < 8 || this.inputBuffer.length % 4 !== 0) {
-        throw new Error(`Input length must be at least 8 bytes and multiple of 4 bytes. Got ${this.inputBuffer.length} bytes`);
+        throw new Error("Input length must be at least 8 bytes and multiple of 4 bytes. Got " + this.inputBuffer.length + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = this.isInverse
         ? this._decryptData(this.inputBuffer)
         : this._encryptData(this.inputBuffer);
@@ -240,11 +245,16 @@
     }
 
     // Encrypt variable-length data
+    /**
+     * @param {uint8[]} data - Plaintext bytes
+     * @returns {uint8[]} Ciphertext bytes
+     */
     _encryptData(data) {
       // Convert key to 32-bit words (little-endian)
       const keyWords = this._getKeyWords();
 
       // Convert to 32-bit words using OpCodes (little-endian)
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
         words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
@@ -254,6 +264,7 @@
       const encryptedWords = this._encryptWords(words, keyWords);
 
       // Convert back to bytes using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < encryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(encryptedWords[i]);
@@ -264,11 +275,16 @@
     }
 
     // Decrypt variable-length data
+    /**
+     * @param {uint8[]} data - Ciphertext bytes
+     * @returns {uint8[]} Plaintext bytes
+     */
     _decryptData(data) {
       // Convert key to 32-bit words (little-endian)
       const keyWords = this._getKeyWords();
 
       // Convert to 32-bit words using OpCodes (little-endian)
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
         words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
@@ -278,6 +294,7 @@
       const decryptedWords = this._decryptWords(words, keyWords);
 
       // Convert back to bytes using OpCodes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < decryptedWords.length; i++) {
         const bytes = OpCodes.Unpack32LE(decryptedWords[i]);
@@ -288,14 +305,19 @@
     }
 
     // Get key as 32-bit words
+    /**
+     * @returns {uint32[]} Little-endian key words
+     */
     _getKeyWords() {
+      /** @type {uint32[]} */
       const keyWords = [];
+      // The key setter admits only multiples of 4 bytes, so all four bytes exist
       for (let i = 0; i < this._key.length; i += 4) {
         keyWords.push(OpCodes.Pack32LE(
           this._key[i],
-          this._key[i+1] || 0,
-          this._key[i+2] || 0,
-          this._key[i+3] || 0
+          this._key[i+1],
+          this._key[i+2],
+          this._key[i+3]
         ));
       }
       return keyWords;
@@ -303,6 +325,11 @@
 
     // Internal EnRUPT encryption algorithm
     // Based on XXTEA but with modified round count: 8 * plaintext_words + 4 * key_words
+    /**
+     * @param {uint32[]} v - Data words
+     * @param {uint32[]} k - Key words
+     * @returns {uint32[]} Encrypted words
+     */
     _encryptWords(v, k) {
       const n = v.length; // plaintext words
       const keyLen = k.length; // key words
@@ -313,19 +340,20 @@
 
       // EnRUPT round calculation: 8 * plaintext_words + 4 * key_words
       const rounds = 8 * n + 4 * keyLen;
+      /** @type {uint32} */
       let sum = 0;
       let z = words[n-1];
 
       // Unbalanced Feistel network structure
       for (let round = 0; round < rounds; round++) {
-        sum = OpCodes.Shr32((sum + this.DELTA), 0);
-        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
+        sum = OpCodes.Add32(sum, this.DELTA);
+        const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
           // EnRUPT uses modified MX calculation with unbalanced Feistel
           const mx = this._calculateEnRUPT_MX(z, y, sum, k[p % keyLen], p, e);
-          words[p] = OpCodes.Shr32((words[p] + mx), 0);
+          words[p] = OpCodes.Add32(words[p], mx);
           z = words[p];
         }
       }
@@ -334,6 +362,11 @@
     }
 
     // Internal EnRUPT decryption algorithm
+    /**
+     * @param {uint32[]} v - Data words
+     * @param {uint32[]} k - Key words
+     * @returns {uint32[]} Decrypted words
+     */
     _decryptWords(v, k) {
       const n = v.length; // plaintext words
       const keyLen = k.length; // key words
@@ -349,17 +382,17 @@
 
       // Reverse unbalanced Feistel network
       for (let round = 0; round < rounds; round++) {
-        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
+        const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
           // EnRUPT uses modified MX calculation with unbalanced Feistel
           const mx = this._calculateEnRUPT_MX(z, y, sum, k[p % keyLen], p, e);
-          words[p] = OpCodes.Shr32((words[p] - mx), 0);
+          words[p] = OpCodes.Sub32(words[p], mx);
           y = words[p];
         }
 
-        sum = OpCodes.Shr32((sum - this.DELTA), 0);
+        sum = OpCodes.Sub32(sum, this.DELTA);
       }
 
       return words;
@@ -367,6 +400,15 @@
 
     // Calculate the MX value for EnRUPT round function
     // EnRUPT uses unbalanced Feistel with ADD-XOR-ROL operations
+    /**
+     * @param {uint32} z - Previous word
+     * @param {uint32} y - Next word
+     * @param {uint32} sum - Round sum
+     * @param {uint32} key - Key word
+     * @param {int32} p - Word index
+     * @param {uint32} e - Sum-derived selector
+     * @returns {uint32} Round-function value
+     */
     _calculateEnRUPT_MX(z, y, sum, key, p, e) {
       // EnRUPT unbalanced Feistel round function
       // Based on XXTEA but with modified bit operations for unbalanced structure
@@ -375,20 +417,20 @@
       // operations like rotations, packing, and array operations.
 
       // Part 1: Rotation-based diffusion (unbalanced left shift dominance)
-      const part1 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
-      const part2 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
+      const part1 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
+      const part2 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
 
       // Part 2: Sum and key mixing with ADD operations
-      const part3 = OpCodes.Shr32(OpCodes.XorN(sum, y), 0);
-      const part4 = OpCodes.Shr32(OpCodes.XorN(key, z), 0);
+      const part3 = OpCodes.Xor32(sum, y);
+      const part4 = OpCodes.Xor32(key, z);
 
       // EnRUPT combines with ADD instead of pure XOR for unbalanced Feistel
       // This creates the "unbalanced" nature compared to XXTEA
-      const combined1 = OpCodes.Shr32((part1 + part2), 0);
-      const combined2 = OpCodes.Shr32((part3 + part4), 0);
+      const combined1 = OpCodes.Add32(part1, part2);
+      const combined2 = OpCodes.Add32(part3, part4);
 
       // Final mixing with XOR
-      return OpCodes.Shr32(OpCodes.XorN(combined1, combined2), 0);
+      return OpCodes.Shr32(OpCodes.Xor32(combined1, combined2), 0);
     }
   }
 

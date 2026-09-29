@@ -69,6 +69,9 @@
 
   /**
    * Calculate Greatest Common Divisor (GCD) using Euclidean algorithm
+   * @param {int32} a - First value
+   * @param {int32} b - Second value
+   * @returns {int32} Greatest common divisor
    */
   function gcd(a, b) {
     while (b !== 0) {
@@ -81,6 +84,9 @@
 
   /**
    * Calculate Least Common Multiple (LCM)
+   * @param {int32} a - First value
+   * @param {int32} b - Second value
+   * @returns {int32} Least common multiple
    */
   function lcm(a, b) {
     return (a * b) / gcd(a, b);
@@ -99,15 +105,21 @@
    * and the key is split between the two ciphers.
    */
   class CascadeAlgorithm extends BlockCipherAlgorithm {
+    /**
+     * @param {string} cipher1Name - Registered name of the first (inner) cipher
+     * @param {string} cipher2Name - Registered name of the second (outer) cipher
+     */
     constructor(cipher1Name, cipher2Name) {
       super();
 
+      /** @type {string} */
       this.cipher1Name = cipher1Name;
+      /** @type {string} */
       this.cipher2Name = cipher2Name;
 
       // Required metadata
-      this.name = `Cascade(${cipher1Name},${cipher2Name})`;
-      this.description = `Sequential chaining of ${cipher1Name} and ${cipher2Name} block ciphers. Encrypts with ${cipher1Name} first, then ${cipher2Name}. Provides increased security margin through cipher diversity.`;
+      this.name = "Cascade(" + cipher1Name + "," + cipher2Name + ")";
+      this.description = "Sequential chaining of " + cipher1Name + " and " + cipher2Name + " block ciphers. Encrypts with " + cipher1Name + " first, then " + cipher2Name + ". Provides increased security margin through cipher diversity.";
       this.inventor = "Jack Lloyd (Botan Library)";
       this.year = 2010;
       this.category = CategoryType.BLOCK;
@@ -142,7 +154,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CascadeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -159,30 +171,58 @@
   class CascadeInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CascadeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Cipher instances
+      /** @type {IBlockCipherInstance} */
       this.cipher1 = null;
+      /** @type {IBlockCipherInstance} */
       this.cipher2 = null;
+      /** @type {BlockCipherAlgorithm} */
       this.cipher1Algorithm = null;
+      /** @type {BlockCipherAlgorithm} */
       this.cipher2Algorithm = null;
 
+
       // Key management
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this.key1 = null;
+      /** @type {uint8[]|null} */
       this.key2 = null;
 
       // Block size management
+      /** @type {int32} */
       this.blockSize1 = 0;
+      /** @type {int32} */
       this.blockSize2 = 0;
+      /** @type {int32} */
       this.combinedBlockSize = 0;
+    }
+
+    /**
+     * Largest key length a cipher accepts. A cipher may advertise several
+     * disjoint KeySize entries (e.g. Twofish lists 16, 24 and 32 separately),
+     * so the maximum must span all of them.
+     * @param {BlockCipherAlgorithm} alg - Cipher algorithm
+     * @returns {int32} Maximum key length in bytes (0 when none is advertised)
+     */
+    _maxKeyLength(alg) {
+      const sizes = alg.SupportedKeySizes;
+      /** @type {int32} */
+      let m = 0;
+      for (let i = 0; i < sizes.length; i++)
+        m = Math.max(m, sizes[i].maxSize);
+      return m;
     }
 
     /**
@@ -194,15 +234,17 @@
       }
 
       // Look up cipher algorithms from registry
-      this.cipher1Algorithm = AlgorithmFramework.Find(this.algorithm.cipher1Name);
-      this.cipher2Algorithm = AlgorithmFramework.Find(this.algorithm.cipher2Name);
+      /** @type {CascadeAlgorithm} */
+      const alg = this.algorithm;
+      this.cipher1Algorithm = AlgorithmFramework.Find(alg.cipher1Name);
+      this.cipher2Algorithm = AlgorithmFramework.Find(alg.cipher2Name);
 
       if (!this.cipher1Algorithm) {
-        throw new Error(`Cipher '${this.algorithm.cipher1Name}' not found in registry. Ensure it is loaded before CASCADE.`);
+        throw new Error("Cipher '" + alg.cipher1Name + "' not found in registry. Ensure it is loaded before CASCADE.");
       }
 
       if (!this.cipher2Algorithm) {
-        throw new Error(`Cipher '${this.algorithm.cipher2Name}' not found in registry. Ensure it is loaded before CASCADE.`);
+        throw new Error("Cipher '" + alg.cipher2Name + "' not found in registry. Ensure it is loaded before CASCADE.");
       }
 
       // Get block sizes
@@ -214,7 +256,7 @@
 
       // Verify block sizes are compatible (combined must be multiple of both)
       if (this.combinedBlockSize % this.blockSize1 !== 0 || this.combinedBlockSize % this.blockSize2 !== 0) {
-        throw new Error(`Incompatible block sizes: ${this.blockSize1} and ${this.blockSize2}`);
+        throw new Error("Incompatible block sizes: " + this.blockSize1 + " and " + this.blockSize2);
       }
 
       // Create cipher instances
@@ -240,15 +282,12 @@
       this._initializeCiphers();
 
       // Get maximum key sizes for both ciphers.
-      // A cipher may advertise several disjoint KeySize entries (e.g. Twofish lists
-      // 16, 24 and 32 separately), so the maximum must span all of them.
-      const maxKeyLength = alg => alg.SupportedKeySizes.reduce((m, ks) => Math.max(m, ks.maxSize), 0);
-      const key1Size = maxKeyLength(this.cipher1Algorithm);
-      const key2Size = maxKeyLength(this.cipher2Algorithm);
+      const key1Size = this._maxKeyLength(this.cipher1Algorithm);
+      const key2Size = this._maxKeyLength(this.cipher2Algorithm);
       const requiredKeySize = key1Size + key2Size;
 
       if (keyBytes.length < requiredKeySize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${requiredKeySize} bytes = ${key1Size} + ${key2Size})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + requiredKeySize + " bytes = " + key1Size + " + " + key2Size + ")");
       }
 
       // Store full key
@@ -297,7 +336,7 @@
 
       // Validate input length is multiple of combined block size
       if (this.inputBuffer.length % this.combinedBlockSize !== 0) {
-        throw new Error(`Input length ${this.inputBuffer.length} is not a multiple of block size ${this.combinedBlockSize}`);
+        throw new Error("Input length " + this.inputBuffer.length + " is not a multiple of block size " + this.combinedBlockSize);
       }
 
       // Calculate number of CASCADE blocks (in terms of combined block size)
@@ -313,17 +352,21 @@
         // Process in reverse order
 
         // Create inverse cipher instances
+        /** @type {IBlockCipherInstance} */
         const cipher2Inv = this.cipher2Algorithm.CreateInstance(true);
+        /** @type {IBlockCipherInstance} */
         const cipher1Inv = this.cipher1Algorithm.CreateInstance(true);
         cipher2Inv.key = this.key2;
         cipher1Inv.key = this.key1;
 
         // First decrypt with cipher2 - all blocks at once
         cipher2Inv.Feed(this.inputBuffer);
+        /** @type {uint8[]} */
         let intermediate = cipher2Inv.Result();
 
         // Then decrypt with cipher1 - all blocks at once
         cipher1Inv.Feed(intermediate);
+        /** @type {uint8[]} */
         const output = cipher1Inv.Result();
 
         this.inputBuffer = []; // Clear for next operation
@@ -334,11 +377,14 @@
 
         // First encrypt with cipher1 - all blocks at once
         this.cipher1.Feed(this.inputBuffer);
+        /** @type {uint8[]} */
         let intermediate = this.cipher1.Result();
 
         // Then encrypt with cipher2 - all blocks at once
         this.cipher2.Feed(intermediate);
+        /** @type {uint8[]} */
         const output = this.cipher2.Result();
+
 
         this.inputBuffer = []; // Clear for next operation
         return output;
@@ -353,32 +399,43 @@
   // reference definition of this construction.
   const BOTAN_CASCADE_VEC = 'https://github.com/randombit/botan/blob/master/src/tests/data/block/cascade.vec';
 
+  /**
+   * Build one Botan cascade.vec known-answer test
+   * @param {string} text - Test description
+   * @param {uint8[]} input - Plaintext
+   * @param {uint8[]} key - Combined key (first cipher's key, then the second's)
+   * @param {uint8[]} expected - Ciphertext
+   * @returns {TestCase} Test vector
+   */
+  function botanVector(text, input, key, expected) {
+    const test = new TestCase(input, expected, text, BOTAN_CASCADE_VEC);
+    test.key = key;
+    return test;
+  }
+
   // Cascade(Serpent, Twofish)
   const cascadeSerpentTwofish = new CascadeAlgorithm("Serpent", "Twofish");
   cascadeSerpentTwofish.SupportedKeySizes = [new KeySize(64, 64, 0)]; // 32 + 32 bytes
   cascadeSerpentTwofish.SupportedBlockSizes = [new KeySize(16, 16, 0)]; // 128-bit (LCM of 16,16)
   cascadeSerpentTwofish.tests = [
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,Twofish) vector 1',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
-      key: OpCodes.Hex8ToBytes('B50638F695AFA16F9378D43374CA8568600135ECD1E513838722366346BC4B2101422291558FAA30A3196CBEB42E67F4C075882482897F72A8A30AE9B3AD426D'),
-      expected: OpCodes.Hex8ToBytes('E78516D21D23DA501939C24C48BCC79DE78516D21D23DA501939C24C48BCC79D')
-    },
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,Twofish) vector 2',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('47CB8147C5290D6F94FBF3351777087FA731610A3F66E3CCFA6D9B18F980E687'),
-      key: OpCodes.Hex8ToBytes('9E8F6BC09768AED8F533FA4FC35FF6FEB8020FFBC8350DDFD20ACA7ECF1889CFBFCD78E261B9A3CD825401AFA7ADCDFA88DBA8230FB92D4B942C25EE92F27A02'),
-      expected: OpCodes.Hex8ToBytes('F234E056923B3DB26AABC8F604F0CE2C1A7F4C35B0B74958014D791668FF6BF4')
-    },
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,Twofish) vector 3',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('B9A28D32734EF678BACD5539FF9FF951AF81F44AFE223256E5D8898FB862A767B90BD2D95E17E4411D02D49481CCE4191EE2C7AE8EBDF6312BDC66317AD42140'),
-      key: OpCodes.Hex8ToBytes('1EF34E47005028F2D95120052855C6001225200A333CA4D7D5A356B5554EE2AE7EBC9BA57BADA0DAFC84C2187C51CB3CCB5EEE40F27C00537FFFCA2851DD8BD8'),
-      expected: OpCodes.Hex8ToBytes('065E390C4FD10E9929F30D89A67E0D4CFA3AF90BEF46B2B435B53CBE0B7DD1B612D4C5E2D03028B488000C06517434FC70F7B62C273CA5DEBD9CA7034D853087')
-    }
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,Twofish) vector 1',
+      OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+      OpCodes.Hex8ToBytes('B50638F695AFA16F9378D43374CA8568600135ECD1E513838722366346BC4B2101422291558FAA30A3196CBEB42E67F4C075882482897F72A8A30AE9B3AD426D'),
+      OpCodes.Hex8ToBytes('E78516D21D23DA501939C24C48BCC79DE78516D21D23DA501939C24C48BCC79D')
+    ),
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,Twofish) vector 2',
+      OpCodes.Hex8ToBytes('47CB8147C5290D6F94FBF3351777087FA731610A3F66E3CCFA6D9B18F980E687'),
+      OpCodes.Hex8ToBytes('9E8F6BC09768AED8F533FA4FC35FF6FEB8020FFBC8350DDFD20ACA7ECF1889CFBFCD78E261B9A3CD825401AFA7ADCDFA88DBA8230FB92D4B942C25EE92F27A02'),
+      OpCodes.Hex8ToBytes('F234E056923B3DB26AABC8F604F0CE2C1A7F4C35B0B74958014D791668FF6BF4')
+    ),
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,Twofish) vector 3',
+      OpCodes.Hex8ToBytes('B9A28D32734EF678BACD5539FF9FF951AF81F44AFE223256E5D8898FB862A767B90BD2D95E17E4411D02D49481CCE4191EE2C7AE8EBDF6312BDC66317AD42140'),
+      OpCodes.Hex8ToBytes('1EF34E47005028F2D95120052855C6001225200A333CA4D7D5A356B5554EE2AE7EBC9BA57BADA0DAFC84C2187C51CB3CCB5EEE40F27C00537FFFCA2851DD8BD8'),
+      OpCodes.Hex8ToBytes('065E390C4FD10E9929F30D89A67E0D4CFA3AF90BEF46B2B435B53CBE0B7DD1B612D4C5E2D03028B488000C06517434FC70F7B62C273CA5DEBD9CA7034D853087')
+    )
   ];
 
   // Cascade(Serpent, AES-256) - using Rijndael as AES
@@ -387,20 +444,18 @@
   cascadeSerpentAES.SupportedKeySizes = [new KeySize(64, 64, 0)]; // 32 + 32 bytes
   cascadeSerpentAES.SupportedBlockSizes = [new KeySize(16, 16, 0)]; // 128-bit
   cascadeSerpentAES.tests = [
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,AES-256) vector 1',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('06CEB2B4FD2F0A27B3C90D77D2E9BBD3665A8DCAC9187B1EE9F6A60D39042A9D3719883B3E87845B9D4A8BE258379959775969CBF5768A359797B2FA19FC2FCC'),
-      key: OpCodes.Hex8ToBytes('EE426051D1ADCE09AC02E2023331F273BB1B2C4C5905DEDA3E1032CCD0DB56115B011F05688F781E3F790364968E06DC6E7BD5FA38DB068CBD34A85B6B3A9458'),
-      expected: OpCodes.Hex8ToBytes('05FFBF6E8097FC746FFAD8C3306E6DB668148796180F26CA5DE06AE76DE16D078A0E72B259982423ED96FF95719DEB160CEFE7697752B0CFA984A18DDCEF2EC0')
-    },
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,AES-256) vector 2',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('FBAF0DE6C09D10EB31F21A7C784BF453F82F51EFFA8B363EE6B33DF15204F43445170DED1E39AB922548ED82AAADED6BF470A5226B69D025FE3D532AADDA069C464D2C8A65E1A18698BD521AFB3053229C1539626392031F8C36229FF3178A7F5C716E30DBEFDDD4AC2113071977B795A8B29DA7F467471A996FB63136387C28'),
-      key: OpCodes.Hex8ToBytes('CDCD23F5518DB5DAE8C69B56EB352D4F3C4A64A5FFC8E5BC2511B8310993C48EFA30A0F9E2B98A0FB1FE64173E6A8038047AEBAE22E17392FE32CF1D0DE3BB76'),
-      expected: OpCodes.Hex8ToBytes('7ED1F730EED52DFB63E073A40EAE404E443ACEB9A3B55132E740ACE1EEDF99D0F22B3F2326E2E124594E75ED1915C8D155F24269254B22B6E8C53E9F64E70552D5E3004782C6C47341EBF8716B59DAB49B512B6DF7F9D7FB914FFA56F7F89B561B6A5DFE9334B7561144B25FE0F57BEBB4058EC7D9EEA57AB62825A86312BBC3')
-    }
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,AES-256) vector 1',
+      OpCodes.Hex8ToBytes('06CEB2B4FD2F0A27B3C90D77D2E9BBD3665A8DCAC9187B1EE9F6A60D39042A9D3719883B3E87845B9D4A8BE258379959775969CBF5768A359797B2FA19FC2FCC'),
+      OpCodes.Hex8ToBytes('EE426051D1ADCE09AC02E2023331F273BB1B2C4C5905DEDA3E1032CCD0DB56115B011F05688F781E3F790364968E06DC6E7BD5FA38DB068CBD34A85B6B3A9458'),
+      OpCodes.Hex8ToBytes('05FFBF6E8097FC746FFAD8C3306E6DB668148796180F26CA5DE06AE76DE16D078A0E72B259982423ED96FF95719DEB160CEFE7697752B0CFA984A18DDCEF2EC0')
+    ),
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,AES-256) vector 2',
+      OpCodes.Hex8ToBytes('FBAF0DE6C09D10EB31F21A7C784BF453F82F51EFFA8B363EE6B33DF15204F43445170DED1E39AB922548ED82AAADED6BF470A5226B69D025FE3D532AADDA069C464D2C8A65E1A18698BD521AFB3053229C1539626392031F8C36229FF3178A7F5C716E30DBEFDDD4AC2113071977B795A8B29DA7F467471A996FB63136387C28'),
+      OpCodes.Hex8ToBytes('CDCD23F5518DB5DAE8C69B56EB352D4F3C4A64A5FFC8E5BC2511B8310993C48EFA30A0F9E2B98A0FB1FE64173E6A8038047AEBAE22E17392FE32CF1D0DE3BB76'),
+      OpCodes.Hex8ToBytes('7ED1F730EED52DFB63E073A40EAE404E443ACEB9A3B55132E740ACE1EEDF99D0F22B3F2326E2E124594E75ED1915C8D155F24269254B22B6E8C53E9F64E70552D5E3004782C6C47341EBF8716B59DAB49B512B6DF7F9D7FB914FFA56F7F89B561B6A5DFE9334B7561144B25FE0F57BEBB4058EC7D9EEA57AB62825A86312BBC3')
+    )
   ];
 
   // Cascade(Serpent, CAST-128)
@@ -408,14 +463,14 @@
   cascadeSerpentCAST.SupportedKeySizes = [new KeySize(48, 48, 0)]; // 32 + 16 bytes
   cascadeSerpentCAST.SupportedBlockSizes = [new KeySize(16, 16, 0)]; // 128-bit (LCM of 16,8)
   cascadeSerpentCAST.tests = [
-    {
-      text: 'Botan cascade.vec - Cascade(Serpent,CAST-128) vector 1',
-      uri: BOTAN_CASCADE_VEC,
-      input: OpCodes.Hex8ToBytes('27EDE4B2A3784A33898FA330167317BF7354072672D49DD03D13D3F0856CF3D9C17C1237565E7320BDD23C03BDE195A4FE58623A983DB9C308D5A976D92CD6A2'),
-      key: OpCodes.Hex8ToBytes('EFA9CC5F3E245AB463CC60A5015CB0F663676760832CEE6C633A518112E518D45DD4B627E9507CDB03A1ADD870E28362'),
-      expected: OpCodes.Hex8ToBytes('2D7096A03BAB4DBDABEDB9F069FE68C3E12ED65ACCE43ECF7F6D810B5EEC36A522B605715BE12003E324436652BEA06BD289DBE886A5DE9E51CFF6C065A21F2B')
-    }
+    botanVector(
+      'Botan cascade.vec - Cascade(Serpent,CAST-128) vector 1',
+      OpCodes.Hex8ToBytes('27EDE4B2A3784A33898FA330167317BF7354072672D49DD03D13D3F0856CF3D9C17C1237565E7320BDD23C03BDE195A4FE58623A983DB9C308D5A976D92CD6A2'),
+      OpCodes.Hex8ToBytes('EFA9CC5F3E245AB463CC60A5015CB0F663676760832CEE6C633A518112E518D45DD4B627E9507CDB03A1ADD870E28362'),
+      OpCodes.Hex8ToBytes('2D7096A03BAB4DBDABEDB9F069FE68C3E12ED65ACCE43ECF7F6D810B5EEC36A522B605715BE12003E324436652BEA06BD289DBE886A5DE9E51CFF6C065A21F2B')
+    )
   ];
+
 
   // Register all CASCADE combinations
   RegisterAlgorithm(cascadeSerpentTwofish);

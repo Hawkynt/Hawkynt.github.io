@@ -162,7 +162,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SIMECK32Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -179,16 +179,19 @@
   class SIMECK32Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SIMECK32Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this.roundKeys = new Array(32); // 32 rounds for SIMECK-32
+      /** @type {uint32[]} */
+      this.roundWords = new Array(32); // 32 rounds for SIMECK-32
     }
 
     /**
@@ -204,7 +207,7 @@
       }
 
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (SIMECK-32 requires 8 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (SIMECK-32 requires 8 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -223,9 +226,10 @@
      * Generates 32 round keys using LFSR-based schedule
      */
     _keySetup() {
-      if (!this._key) return;
+      if (!this._key) { return; }
 
       // Load 4 words of 16-bit (big-endian) from 8-byte key
+      /** @type {uint32[]} */
       const t = new Array(5);
       t[3] = OpCodes.Pack16BE(this._key[0], this._key[1]);
       t[2] = OpCodes.Pack16BE(this._key[2], this._key[3]);
@@ -233,17 +237,19 @@
       t[0] = OpCodes.Pack16BE(this._key[6], this._key[7]);
 
       // Key schedule constants
+      /** @type {uint32} */
       let constant = 0xFFFC;
+      /** @type {uint32} */
       let sequence = 0x9A42BB1F;
 
       // Generate 32 round keys
       for (let i = 0; i < 32; i++) {
         // Save current t[0] as round key
-        this.roundKeys[i] = t[0];
+        this.roundWords[i] = t[0];
 
         // Update constant from sequence
-        constant = OpCodes.AndN(constant, 0xFFFC);
-        constant = OpCodes.OrN(constant, OpCodes.AndN(sequence, 1));
+        constant = OpCodes.And32(constant, 0xFFFC);
+        constant = OpCodes.Or32(constant, OpCodes.And32(sequence, 1));
         sequence = OpCodes.Shr32(sequence, 1);
 
         // Apply round function to key state
@@ -263,11 +269,17 @@
      * left_new = AND(left, ROL(left,5)) XOR ROL(left,1) XOR right XOR key
      * right_new = left_old
      */
-    _simeckRound16(key, state, leftIdx, rightIdx) {
+    /**
+     * @param {uint32} rk - Round key
+     * @param {uint32[]} state - Word state, updated in place
+     * @param {int32} leftIdx - Index of the left word
+     * @param {int32} rightIdx - Index of the right word
+     */
+    _simeckRound16(rk, state, leftIdx, rightIdx) {
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL16(left, 5)), OpCodes.RotL16(left, 1)), right), key), 0xFFFF);
+      state[leftIdx] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(left, OpCodes.RotL16(left, 5)), OpCodes.RotL16(left, 1)), right), rk), 0xFFFF);
       state[rightIdx] = left;
     }
 
@@ -293,10 +305,11 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 4;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 4-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -309,7 +322,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
+      /** @type {uint32[]} */
       const state = new Array(2);
 
       if (this.isInverse) {
@@ -319,7 +337,7 @@
 
         // Apply rounds in reverse with swapped left/right indices
         for (let i = 31; i >= 0; i--) {
-          this._simeckRound16(this.roundKeys[i], state, 1, 0);
+          this._simeckRound16(this.roundWords[i], state, 1, 0);
         }
 
         // Output with swapped order (Crypto++ simeck.cpp line 91)
@@ -333,7 +351,7 @@
 
         // Apply 32 rounds
         for (let i = 0; i < 32; i++) {
-          this._simeckRound16(this.roundKeys[i], state, 1, 0);
+          this._simeckRound16(this.roundWords[i], state, 1, 0);
         }
 
         // Output normally
@@ -458,7 +476,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SIMECK64Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -475,16 +493,19 @@
   class SIMECK64Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SIMECK64Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this.roundKeys = new Array(44); // 44 rounds for SIMECK-64
+      /** @type {uint32[]} */
+      this.roundWords = new Array(44); // 44 rounds for SIMECK-64
     }
 
     /**
@@ -500,7 +521,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (SIMECK-64 requires 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (SIMECK-64 requires 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -519,9 +540,10 @@
      * Generates 44 round keys using LFSR-based schedule
      */
     _keySetup() {
-      if (!this._key) return;
+      if (!this._key) { return; }
 
       // Load 4 words of 32-bit (big-endian) from 16-byte key
+      /** @type {uint32[]} */
       const t = new Array(5);
       t[3] = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
       t[2] = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
@@ -530,6 +552,7 @@
 
       // Key schedule constants (note: JavaScript can't handle 44-bit integers directly)
       // sequence = 0x938BCA3083F, we'll process bit by bit
+      /** @type {uint8[]} */
       const sequenceBits = [
         1,1,1,1,1,1,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,
         1,0,1,0,0,1,1,1,1,0,1,0,0,0,1,1,1,0,0,1,0,0,1
@@ -538,10 +561,10 @@
       // Generate 44 round keys
       for (let i = 0; i < 44; i++) {
         // Save current t[0] as round key
-        this.roundKeys[i] = t[0];
+        this.roundWords[i] = t[0];
 
         // Build constant: 0xFFFFFFFC|sequence_bit
-        const constant = OpCodes.ToUint32(OpCodes.OrN(0xFFFFFFFC, sequenceBits[i]));
+        const constant = OpCodes.ToUint32(OpCodes.Or32(0xFFFFFFFC, sequenceBits[i]));
 
         // Apply round function to key state
         this._simeckRound32(constant, t, 1, 0);
@@ -560,11 +583,17 @@
      * left_new = AND(left, ROL(left,5)) XOR ROL(left,1) XOR right XOR key
      * right_new = left_old
      */
-    _simeckRound32(key, state, leftIdx, rightIdx) {
+    /**
+     * @param {uint32} rk - Round key
+     * @param {uint32[]} state - Word state, updated in place
+     * @param {int32} leftIdx - Index of the left word
+     * @param {int32} rightIdx - Index of the right word
+     */
+    _simeckRound32(rk, state, leftIdx, rightIdx) {
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key));
+      state[leftIdx] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), rk));
       state[rightIdx] = left;
     }
 
@@ -590,10 +619,11 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete 8-byte blocks
       for (let i = 0; i + blockSize <= this.inputBuffer.length; i += blockSize) {
@@ -606,7 +636,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
+      /** @type {uint32[]} */
       const state = new Array(2);
 
       if (this.isInverse) {
@@ -616,7 +651,7 @@
 
         // Apply rounds in reverse with swapped left/right indices
         for (let i = 43; i >= 0; i--) {
-          this._simeckRound32(this.roundKeys[i], state, 1, 0);
+          this._simeckRound32(this.roundWords[i], state, 1, 0);
         }
 
         // Output with swapped order (Crypto++ simeck.cpp line 150)
@@ -631,7 +666,7 @@
 
         // Apply 44 rounds
         for (let i = 0; i < 44; i++) {
-          this._simeckRound32(this.roundKeys[i], state, 1, 0);
+          this._simeckRound32(this.roundWords[i], state, 1, 0);
         }
 
         // Output normally

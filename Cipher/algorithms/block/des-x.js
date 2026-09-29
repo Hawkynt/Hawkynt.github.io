@@ -57,6 +57,142 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // DES tables used by the inline DES core
+  // Initial Permutation
+  /** @type {int32[]} */
+  const DESX_IP = [
+    58, 50, 42, 34, 26, 18, 10, 2,
+    60, 52, 44, 36, 28, 20, 12, 4,
+    62, 54, 46, 38, 30, 22, 14, 6,
+    64, 56, 48, 40, 32, 24, 16, 8,
+    57, 49, 41, 33, 25, 17, 9, 1,
+    59, 51, 43, 35, 27, 19, 11, 3,
+    61, 53, 45, 37, 29, 21, 13, 5,
+    63, 55, 47, 39, 31, 23, 15, 7
+  ];
+
+  // Final Permutation (inverse of IP)
+  /** @type {int32[]} */
+  const DESX_FP = [
+    40, 8, 48, 16, 56, 24, 64, 32,
+    39, 7, 47, 15, 55, 23, 63, 31,
+    38, 6, 46, 14, 54, 22, 62, 30,
+    37, 5, 45, 13, 53, 21, 61, 29,
+    36, 4, 44, 12, 52, 20, 60, 28,
+    35, 3, 43, 11, 51, 19, 59, 27,
+    34, 2, 42, 10, 50, 18, 58, 26,
+    33, 1, 41, 9, 49, 17, 57, 25
+  ];
+
+  // Permuted Choice 1 (64 bits to 56 bits)
+  /** @type {int32[]} */
+  const DESX_PC1 = [
+    57, 49, 41, 33, 25, 17, 9,
+    1, 58, 50, 42, 34, 26, 18,
+    10, 2, 59, 51, 43, 35, 27,
+    19, 11, 3, 60, 52, 44, 36,
+    63, 55, 47, 39, 31, 23, 15,
+    7, 62, 54, 46, 38, 30, 22,
+    14, 6, 61, 53, 45, 37, 29,
+    21, 13, 5, 28, 20, 12, 4
+  ];
+
+  // Permuted Choice 2 (56 bits to 48 bits)
+  /** @type {int32[]} */
+  const DESX_PC2 = [
+    14, 17, 11, 24, 1, 5,
+    3, 28, 15, 6, 21, 10,
+    23, 19, 12, 4, 26, 8,
+    16, 7, 27, 20, 13, 2,
+    41, 52, 31, 37, 47, 55,
+    30, 40, 51, 45, 33, 48,
+    44, 49, 39, 56, 34, 53,
+    46, 42, 50, 36, 29, 32
+  ];
+
+  // Expansion table (32 bits to 48 bits)
+  /** @type {int32[]} */
+  const DESX_E = [
+    32, 1, 2, 3, 4, 5,
+    4, 5, 6, 7, 8, 9,
+    8, 9, 10, 11, 12, 13,
+    12, 13, 14, 15, 16, 17,
+    16, 17, 18, 19, 20, 21,
+    20, 21, 22, 23, 24, 25,
+    24, 25, 26, 27, 28, 29,
+    28, 29, 30, 31, 32, 1
+  ];
+
+  // P-box permutation
+  /** @type {int32[]} */
+  const DESX_P = [
+    16, 7, 20, 21,
+    29, 12, 28, 17,
+    1, 15, 23, 26,
+    5, 18, 31, 10,
+    2, 8, 24, 14,
+    32, 27, 3, 9,
+    19, 13, 30, 6,
+    22, 11, 4, 25
+  ];
+
+  // Rotation schedule for key generation
+  /** @type {uint8[]} */
+  const DESX_SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
+
+  // S-boxes as [box][row][column]
+  /** @type {uint8[][][]} */
+  const DESX_SBOX = [
+    [
+      [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
+      [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
+      [4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0],
+      [15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13]
+    ],
+    [
+      [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10],
+      [3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5],
+      [0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15],
+      [13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9]
+    ],
+    [
+      [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8],
+      [13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1],
+      [13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7],
+      [1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12]
+    ],
+    [
+      [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15],
+      [13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9],
+      [10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4],
+      [3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14]
+    ],
+    [
+      [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9],
+      [14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6],
+      [4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14],
+      [11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3]
+    ],
+    [
+      [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11],
+      [10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8],
+      [9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6],
+      [4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13]
+    ],
+    [
+      [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1],
+      [13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6],
+      [1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2],
+      [6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12]
+    ],
+    [
+      [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7],
+      [1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2],
+      [7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8],
+      [2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
+    ]
+  ];
+
   /**
  * DESXAlgorithm - Block cipher implementation
  * @class
@@ -171,7 +307,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DESXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -188,7 +324,7 @@
   class DESXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DESXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -196,14 +332,20 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
 
       // DES-X key components
+      /** @type {uint8[]|null} */
       this.K1 = null; // Pre-whitening key (8 bytes)
+      /** @type {uint8[]|null} */
       this.K2 = null; // Post-whitening key (8 bytes)
+      /** @type {uint8[]|null} */
       this.desKey = null; // DES key (7 bytes, padded to 8)
+      /** @type {uint8[]|null} */
+      this.desKeyPadded = null;
 
       // Cache for DES algorithm
       this._desAlgorithm = null;
@@ -227,7 +369,7 @@
 
       // Validate key size (must be 24 bytes)
       if (keyBytes.length !== 24) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DES-X requires exactly 24 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DES-X requires exactly 24 bytes");
       }
 
       this._key = [...keyBytes];
@@ -274,195 +416,115 @@
     }
 
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       // Pre-whitening: XOR plaintext with K1
+      /** @type {uint8[]} */
       const preWhitened = [];
       for (let i = 0; i < 8; i++) {
-        preWhitened[i] = OpCodes.XorN(block[i], this.K1[i]);
+        preWhitened[i] = OpCodes.Xor32(block[i], this.K1[i]);
       }
 
       // Apply DES encryption using working DES implementation
       const desOutput = this._callDES(preWhitened, this.desKeyPadded, false);
 
       // Post-whitening: XOR DES output with K2
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result[i] = OpCodes.XorN(desOutput[i], this.K2[i]);
+        result[i] = OpCodes.Xor32(desOutput[i], this.K2[i]);
       }
 
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       // Reverse post-whitening: XOR ciphertext with K2
+      /** @type {uint8[]} */
       const postDewhitened = [];
       for (let i = 0; i < 8; i++) {
-        postDewhitened[i] = OpCodes.XorN(block[i], this.K2[i]);
+        postDewhitened[i] = OpCodes.Xor32(block[i], this.K2[i]);
       }
 
       // Apply DES decryption using working DES implementation
       const desOutput = this._callDES(postDewhitened, this.desKeyPadded, true);
 
       // Reverse pre-whitening: XOR DES output with K1
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result[i] = OpCodes.XorN(desOutput[i], this.K1[i]);
+        result[i] = OpCodes.Xor32(desOutput[i], this.K1[i]);
       }
 
       return result;
     }
 
     // Inline DES implementation for DES-X
+    /**
+     * @param {uint8[]} data - 8-byte block
+     * @param {uint8[]} key - 8-byte DES key
+     * @param {boolean} [decrypt=false] - Decrypt instead of encrypt
+     * @returns {uint8[]} 8-byte result
+     */
     _callDES(data, key, decrypt = false) {
       if (data.length !== 8 || key.length !== 8) {
         throw new Error("DES requires 8-byte blocks and keys");
       }
 
-      // Initialize DES tables if not done yet
-      if (!this._desTables) {
-        this._initDESTables();
-      }
-
       // Generate subkeys for this DES key
-      const subkeys = this._generateDESSubkeys(key);
+      const roundBits = this._generateDESSubkeys(key);
 
       // Perform DES encryption/decryption
-      return this._desCrypt(data, subkeys, decrypt);
+      return this._desCrypt(data, roundBits, decrypt);
     }
 
-    _initDESTables() {
-      this._desTables = {};
-
-      // Initial Permutation
-      this._desTables.IP = [
-        58, 50, 42, 34, 26, 18, 10, 2,
-        60, 52, 44, 36, 28, 20, 12, 4,
-        62, 54, 46, 38, 30, 22, 14, 6,
-        64, 56, 48, 40, 32, 24, 16, 8,
-        57, 49, 41, 33, 25, 17, 9, 1,
-        59, 51, 43, 35, 27, 19, 11, 3,
-        61, 53, 45, 37, 29, 21, 13, 5,
-        63, 55, 47, 39, 31, 23, 15, 7
-      ];
-
-      // Final Permutation (inverse of IP)
-      this._desTables.FP = [
-        40, 8, 48, 16, 56, 24, 64, 32,
-        39, 7, 47, 15, 55, 23, 63, 31,
-        38, 6, 46, 14, 54, 22, 62, 30,
-        37, 5, 45, 13, 53, 21, 61, 29,
-        36, 4, 44, 12, 52, 20, 60, 28,
-        35, 3, 43, 11, 51, 19, 59, 27,
-        34, 2, 42, 10, 50, 18, 58, 26,
-        33, 1, 41, 9, 49, 17, 57, 25
-      ];
-
-      // Permuted Choice 1 (64 bits to 56 bits)
-      this._desTables.PC1 = [
-        57, 49, 41, 33, 25, 17, 9,
-        1, 58, 50, 42, 34, 26, 18,
-        10, 2, 59, 51, 43, 35, 27,
-        19, 11, 3, 60, 52, 44, 36,
-        63, 55, 47, 39, 31, 23, 15,
-        7, 62, 54, 46, 38, 30, 22,
-        14, 6, 61, 53, 45, 37, 29,
-        21, 13, 5, 28, 20, 12, 4
-      ];
-
-      // Permuted Choice 2 (56 bits to 48 bits)
-      this._desTables.PC2 = [
-        14, 17, 11, 24, 1, 5,
-        3, 28, 15, 6, 21, 10,
-        23, 19, 12, 4, 26, 8,
-        16, 7, 27, 20, 13, 2,
-        41, 52, 31, 37, 47, 55,
-        30, 40, 51, 45, 33, 48,
-        44, 49, 39, 56, 34, 53,
-        46, 42, 50, 36, 29, 32
-      ];
-
-      // Expansion table (32 bits to 48 bits)
-      this._desTables.E = [
-        32, 1, 2, 3, 4, 5,
-        4, 5, 6, 7, 8, 9,
-        8, 9, 10, 11, 12, 13,
-        12, 13, 14, 15, 16, 17,
-        16, 17, 18, 19, 20, 21,
-        20, 21, 22, 23, 24, 25,
-        24, 25, 26, 27, 28, 29,
-        28, 29, 30, 31, 32, 1
-      ];
-
-      // P-box permutation
-      this._desTables.P = [
-        16, 7, 20, 21,
-        29, 12, 28, 17,
-        1, 15, 23, 26,
-        5, 18, 31, 10,
-        2, 8, 24, 14,
-        32, 27, 3, 9,
-        19, 13, 30, 6,
-        22, 11, 4, 25
-      ];
-
-      // Rotation schedule for key generation
-      this._desTables.SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
-
-      // S-boxes
-      const SBOX_DATA = Object.freeze([
-        [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7, 0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8, 4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0, 15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
-        [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10, 3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5, 0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15, 13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
-        [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8, 13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1, 13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7, 1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
-        [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15, 13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9, 10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4, 3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14],
-        [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9, 14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6, 4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14, 11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3],
-        [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11, 10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8, 9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6, 4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
-        [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1, 13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6, 1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2, 6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
-        [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7, 1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2, 7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8, 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
-      ]);
-
-      this._desTables.SBOX = [];
-      for (let i = 0; i < SBOX_DATA.length; i++) {
-        const flatSbox = SBOX_DATA[i];
-        const sbox = [];
-        for (let row = 0; row < 4; row++) {
-          sbox[row] = [];
-          for (let col = 0; col < 16; col++) {
-            sbox[row][col] = flatSbox[row * 16 + col];
-          }
-        }
-        this._desTables.SBOX.push(sbox);
-      }
-    }
-
+    /**
+     * @param {uint8[]} key - 8-byte DES key
+     * @returns {uint8[][]} 16 round keys as 48 bits (0/1) each
+     */
     _generateDESSubkeys(key) {
       // Convert key to bits and apply PC1 permutation
       let keyBits = this._bytesToBits(key);
-      keyBits = this._permute(keyBits, this._desTables.PC1);
+      keyBits = this._permute(keyBits, DESX_PC1);
 
       // Split into two 28-bit halves
       let c = keyBits.slice(0, 28);
       let d = keyBits.slice(28, 56);
 
-      const subkeys = [];
+      /** @type {uint8[][]} */
+      const roundBits = [];
 
       // Generate 16 subkeys
       for (let i = 0; i < 16; i++) {
         // Left circular shift both halves
-        c = this._leftShift(c, this._desTables.SHIFTS[i]);
-        d = this._leftShift(d, this._desTables.SHIFTS[i]);
+        c = this._leftShift(c, DESX_SHIFTS[i]);
+        d = this._leftShift(d, DESX_SHIFTS[i]);
 
         // Combine and apply PC2 permutation
         const combined = c.concat(d);
-        subkeys[i] = this._permute(combined, this._desTables.PC2);
+        roundBits[i] = this._permute(combined, DESX_PC2);
       }
 
-      return subkeys;
+      return roundBits;
     }
 
-    _desCrypt(input, subkeys, isDecrypt) {
+    /**
+     * @param {uint8[]} input - 8-byte block
+     * @param {uint8[][]} roundBits - 16 round keys as bit arrays
+     * @param {boolean} isDecrypt - Decrypt instead of encrypt
+     * @returns {uint8[]} 8-byte result
+     */
+    _desCrypt(input, roundBits, isDecrypt) {
       // Convert input to bits and apply initial permutation
       let bits = this._bytesToBits(input);
-      bits = this._permute(bits, this._desTables.IP);
+      bits = this._permute(bits, DESX_IP);
 
       // Split into left and right halves
       let left = bits.slice(0, 32);
@@ -471,7 +533,7 @@
       // 16 rounds of Feistel network
       for (let i = 0; i < 16; i++) {
         const temp = right.slice();
-        const key = isDecrypt ? subkeys[15 - i] : subkeys[i];
+        const key = isDecrypt ? roundBits[15 - i] : roundBits[i];
         right = this._xorBits(left, this._feistelFunction(right, key));
         left = temp;
       }
@@ -480,13 +542,18 @@
       const combined = right.concat(left);
 
       // Apply final permutation and convert back to bytes
-      const finalBits = this._permute(combined, this._desTables.FP);
+      const finalBits = this._permute(combined, DESX_FP);
       return this._bitsToBytes(finalBits);
     }
 
+    /**
+     * @param {uint8[]} right - 32 bits
+     * @param {uint8[]} key - 48-bit round key
+     * @returns {uint8[]} 32 bits
+     */
     _feistelFunction(right, key) {
       // Expansion permutation (32 bits to 48 bits)
-      const expanded = this._permute(right, this._desTables.E);
+      const expanded = this._permute(right, DESX_E);
 
       // XOR with round key
       const xored = this._xorBits(expanded, key);
@@ -495,10 +562,15 @@
       const substituted = this._sboxSubstitution(xored);
 
       // P-box permutation
-      return this._permute(substituted, this._desTables.P);
+      return this._permute(substituted, DESX_P);
     }
 
+    /**
+     * @param {uint8[]} input - 48 bits
+     * @returns {uint8[]} 32 bits
+     */
     _sboxSubstitution(input) {
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < 8; i++) {
@@ -510,18 +582,24 @@
         const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1]), 2, block[2]), 1, block[3]), 0, block[4]);
 
         // Get value from S-box
-        const val = this._desTables.SBOX[i][row][col];
+        const val = DESX_SBOX[i][row][col];
 
         // Convert to 4-bit binary and add to output
         for (let j = 3; j >= 0; j--) {
-          output.push(OpCodes.GetBit(val, j));
+          output.push(OpCodes.GetBit(val, j) ? 1 : 0);
         }
       }
 
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Bits
+     * @param {int32[]} table - 1-based source positions
+     * @returns {uint8[]} Permuted bits
+     */
     _permute(input, table) {
+      /** @type {uint8[]} */
       const output = new Array(table.length);
       for (let i = 0; i < table.length; i++) {
         output[i] = input[table[i] - 1];
@@ -529,27 +607,48 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} a - Bits
+     * @param {uint8[]} b - Bits
+     * @returns {uint8[]} a XOR b
+     */
     _xorBits(a, b) {
       return OpCodes.XorArrays(a, b);
     }
 
+    /**
+     * @param {uint8[]} input - Bits
+     * @param {int32} n - Rotation amount
+     * @returns {uint8[]} Bits rotated left by n
+     */
     _leftShift(input, n) {
       return input.slice(n).concat(input.slice(0, n));
     }
 
+    /**
+     * @param {uint8[]} bytes - Bytes
+     * @returns {uint8[]} Bits (0/1), most significant first
+     */
     _bytesToBits(bytes) {
+      /** @type {uint8[]} */
       const bits = new Array(bytes.length * 8);
       for (let i = 0; i < bytes.length; i++) {
         for (let j = 0; j < 8; j++) {
-          bits[i * 8 + j] = OpCodes.GetBit(bytes[i], 7 - j);
+          bits[i * 8 + j] = OpCodes.GetBit(bytes[i], 7 - j) ? 1 : 0;
         }
       }
       return bits;
     }
 
+    /**
+     * @param {uint8[]} bits - Bits (0/1), most significant first
+     * @returns {uint8[]} Bytes
+     */
     _bitsToBytes(bits) {
+      /** @type {uint8[]} */
       const bytes = new Array(bits.length / 8);
       for (let i = 0; i < bytes.length; i++) {
+        /** @type {int32} */
         let val = 0;
         for (let j = 0; j < 8; j++) {
           val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j]);

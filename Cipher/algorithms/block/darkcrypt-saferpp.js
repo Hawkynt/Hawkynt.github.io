@@ -123,12 +123,16 @@
 
   // Byte positions using the E-box (XOR-in, ADD-out) round-key layer vs.
   // the L-box (ADD-in, XOR-out) layer, per the classic SAFER round pattern.
+  /** @type {uint8[]} */
   const EBOX_POS = [0, 3, 4, 7, 8, 11, 12, 15];
+  /** @type {uint8[]} */
   const LBOX_POS = [1, 2, 5, 6, 9, 10, 13, 14];
 
   // Byte-shuffle permutation of the SAFER++ linear transform: out[i] = in[SHUFFLE[i]].
+  /** @type {uint8[]} */
   const SHUFFLE = [8, 5, 2, 15, 0, 13, 10, 7, 4, 1, 14, 11, 12, 9, 6, 3];
   // Inverse of SHUFFLE.
+  /** @type {uint8[]} */
   const ISHUFFLE = [4, 9, 2, 15, 8, 1, 14, 7, 0, 13, 6, 11, 12, 5, 10, 3];
 
   class DarkCryptSaferPlusPlusAlgorithm extends BlockCipherAlgorithm {
@@ -184,31 +188,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSaferPlusPlusInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSaferPlusPlusInstance(this, isInverse);
     }
   }
 
   class DarkCryptSaferPlusPlusInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSaferPlusPlusAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this.K = null; // 22 round-key entries of 16 bytes each (only 0..20 used)
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SAFER++ (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SAFER++ (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.K = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -221,8 +242,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -240,8 +262,14 @@
     // bits before the next round pair. K[2p] is the upper/XOR-layer key,
     // K[2p+1] the lower/ADD-layer key; only K[0..20] are ever used (K[21]
     // is unused padding).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[][]} 22 round keys of 16 bytes (only 0..20 used)
+     */
     _scheduleKey(keyBytes) {
+      /** @type {uint8[]} */
       const ka = new Array(KA_LEN);
+      /** @type {uint8[]} */
       const kb = new Array(KA_LEN);
       ka[16] = 0;
       kb[16] = 0;
@@ -253,17 +281,20 @@
       }
       for (let j = 0; j < KA_LEN; j++) kb[j] = OpCodes.RotL8(kb[j], 3);
 
+      /** @type {uint8[][]} */
       const K = new Array(22);
       for (let p = 0; p <= 10; p++) {
         const i = 2 * p + 1;
         const biasOff = p * 32;
+        /** @type {uint8[]} */
         const upper = new Array(16);
+        /** @type {uint8[]} */
         const lower = new Array(16);
         for (let j = 0; j < 16; j++) {
           const kaIdx = (i + j - 1) % KA_LEN;
           const kbIdx = (i + j) % KA_LEN;
-          upper[j] = OpCodes.And32(ka[kaIdx] + BIAS[biasOff + j], 0xFF);
-          lower[j] = OpCodes.And32(kb[kbIdx] + BIAS[biasOff + 16 + j], 0xFF);
+          upper[j] = OpCodes.And32(OpCodes.Add32(ka[kaIdx], BIAS[biasOff + j]), 0xFF);
+          lower[j] = OpCodes.And32(OpCodes.Add32(kb[kbIdx], BIAS[biasOff + 16 + j]), 0xFF);
         }
         K[2 * p] = upper;
         K[2 * p + 1] = lower;
@@ -276,47 +307,90 @@
       return K;
     }
 
+    // Byte arithmetic below is modulo 256: every sum or difference is masked
+    // with 0xFF, so Add32/Sub32 (mod 2^32) leave the kept low byte unchanged.
+    /**
+     * @param {uint8[]} block - State, updated in place
+     * @param {uint8[]} K - XOR-layer round key
+     * @param {uint8[]} K1 - ADD-layer round key
+     */
     _sboxRound(block, K, K1) {
-      for (const idx of EBOX_POS) block[idx] = OpCodes.And32(EBOX[OpCodes.Xor32(block[idx], K[idx])] + K1[idx], 0xFF);
-      for (const idx of LBOX_POS) block[idx] = OpCodes.And32(OpCodes.Xor32(LBOX[OpCodes.And32(block[idx] + K[idx], 0xFF)], K1[idx]), 0xFF);
+      for (let e = 0; e < EBOX_POS.length; e++) {
+        const idx = EBOX_POS[e];
+        block[idx] = OpCodes.And32(OpCodes.Add32(EBOX[OpCodes.Xor32(block[idx], K[idx])], K1[idx]), 0xFF);
+      }
+      for (let l = 0; l < LBOX_POS.length; l++) {
+        const idx = LBOX_POS[l];
+        block[idx] = OpCodes.And32(OpCodes.Xor32(LBOX[OpCodes.And32(OpCodes.Add32(block[idx], K[idx]), 0xFF)], K1[idx]), 0xFF);
+      }
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     * @param {uint8[]} K - XOR-layer round key
+     * @param {uint8[]} K1 - ADD-layer round key
+     */
     _isboxRound(block, K, K1) {
-      for (const idx of EBOX_POS) block[idx] = OpCodes.Xor32(LBOX[OpCodes.And32(block[idx] - K1[idx], 0xFF)], K[idx]);
-      for (const idx of LBOX_POS) block[idx] = OpCodes.And32(EBOX[OpCodes.Xor32(block[idx], K1[idx])] - K[idx], 0xFF);
+      for (let e = 0; e < EBOX_POS.length; e++) {
+        const idx = EBOX_POS[e];
+        block[idx] = OpCodes.Xor32(LBOX[OpCodes.And32(OpCodes.Sub32(block[idx], K1[idx]), 0xFF)], K[idx]);
+      }
+      for (let l = 0; l < LBOX_POS.length; l++) {
+        const idx = LBOX_POS[l];
+        block[idx] = OpCodes.And32(OpCodes.Sub32(EBOX[OpCodes.Xor32(block[idx], K1[idx])], K[idx]), 0xFF);
+      }
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     * @param {int32} off - Index of the first of four bytes
+     */
     _pht4(block, off) {
-      const s = OpCodes.And32(block[off] + block[off + 1] + block[off + 2] + block[off + 3], 0xFF);
-      block[off] = OpCodes.And32(block[off] + s, 0xFF);
-      block[off + 1] = OpCodes.And32(block[off + 1] + s, 0xFF);
-      block[off + 2] = OpCodes.And32(block[off + 2] + s, 0xFF);
+      const s = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(block[off], block[off + 1]), block[off + 2]), block[off + 3]), 0xFF);
+      block[off] = OpCodes.And32(OpCodes.Add32(block[off], s), 0xFF);
+      block[off + 1] = OpCodes.And32(OpCodes.Add32(block[off + 1], s), 0xFF);
+      block[off + 2] = OpCodes.And32(OpCodes.Add32(block[off + 2], s), 0xFF);
       block[off + 3] = s;
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     * @param {int32} off - Index of the first of four bytes
+     */
     _ipht4(block, off) {
       const s = block[off + 3];
-      const a = OpCodes.And32(block[off] - s, 0xFF);
-      const b = OpCodes.And32(block[off + 1] - s, 0xFF);
-      const c = OpCodes.And32(block[off + 2] - s, 0xFF);
+      const a = OpCodes.And32(OpCodes.Sub32(block[off], s), 0xFF);
+      const b = OpCodes.And32(OpCodes.Sub32(block[off + 1], s), 0xFF);
+      const c = OpCodes.And32(OpCodes.Sub32(block[off + 2], s), 0xFF);
       block[off] = a;
       block[off + 1] = b;
       block[off + 2] = c;
-      block[off + 3] = OpCodes.And32(s - a - b - c, 0xFF);
+      block[off + 3] = OpCodes.And32(OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(s, a), b), c), 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     */
     _shuffle(block) {
+      /** @type {uint8[]} */
       const out = new Array(16);
       for (let i = 0; i < 16; i++) out[i] = block[SHUFFLE[i]];
       for (let i = 0; i < 16; i++) block[i] = out[i];
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     */
     _ishuffle(block) {
+      /** @type {uint8[]} */
       const out = new Array(16);
       for (let i = 0; i < 16; i++) out[i] = block[ISHUFFLE[i]];
       for (let i = 0; i < 16; i++) block[i] = out[i];
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     */
     _lt(block) {
       this._shuffle(block);
       this._pht4(block, 0); this._pht4(block, 4); this._pht4(block, 8); this._pht4(block, 12);
@@ -324,6 +398,9 @@
       this._pht4(block, 0); this._pht4(block, 4); this._pht4(block, 8); this._pht4(block, 12);
     }
 
+    /**
+     * @param {uint8[]} block - State, updated in place
+     */
     _ilt(block) {
       this._ipht4(block, 0); this._ipht4(block, 4); this._ipht4(block, 8); this._ipht4(block, 12);
       this._ishuffle(block);
@@ -331,6 +408,10 @@
       this._ishuffle(block);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       const block = [...input];
       for (let r = 0; r < ROUNDS; r++) {
@@ -342,11 +423,15 @@
         const m = OpCodes.And32(i, 3);
         block[i] = (m === 0 || m === 3)
           ? OpCodes.And32(OpCodes.Xor32(block[i], kf[i]), 0xFF)
-          : OpCodes.And32(block[i] + kf[i], 0xFF);
+          : OpCodes.And32(OpCodes.Add32(block[i], kf[i]), 0xFF);
       }
       return block;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       const block = [...input];
       const kf = this.K[2 * ROUNDS];
@@ -354,7 +439,7 @@
         const m = OpCodes.And32(i, 3);
         block[i] = (m === 0 || m === 3)
           ? OpCodes.And32(OpCodes.Xor32(block[i], kf[i]), 0xFF)
-          : OpCodes.And32(block[i] - kf[i], 0xFF);
+          : OpCodes.And32(OpCodes.Sub32(block[i], kf[i]), 0xFF);
       }
       for (let r = ROUNDS - 1; r >= 0; r--) {
         this._ilt(block);

@@ -78,6 +78,7 @@
   // ===== TABLES (CRYPTREC specification, section 2) =====
 
   // 6x6 S-box, used for the two outer 6-bit fields of S.
+  /** @type {uint8[]} */
   const S6 = [
     47,59,25,42,15,23,28,39,26,38,36,19,60,24,29,56,
     37,63,20,61,55, 2,30,44, 9,10, 6,22,53,48,51,11,
@@ -86,17 +87,21 @@
   ];
 
   // 5x5 S-box, used for the four inner 5-bit fields of S.
+  /** @type {uint8[]} */
   const S5 = [
     20,26, 7,31,19,12,10,15,22,30,13,14, 4,24, 9,18,
     27,11, 1,21, 6,16, 2,28,23, 5, 8, 3, 0,17,29,25
   ];
 
   // 4x4 S-box for B, and its exact functional inverse for B^-1.
+  /** @type {uint8[]} */
   const S4 = [2,5,10,12,7,15,1,11,13,6,0,9,4,8,3,14];
+  /** @type {uint8[]} */
   const S4I = [10,6,0,14,12,1,9,4,13,11,2,7,3,8,15,5];
 
   // 32x32 GF(2) diffusion matrix for M. Row i is XORed into the accumulator
   // when bit i of the input - counting bit 0 as the most significant - is set.
+  /** @type {uint32[]} */
   const MATRIX = [
     0xD0C19225, 0xA5A2240A, 0x1B84D250, 0xB728A4A1,
     0x6A704902, 0x85DDDBE6, 0x766FF4A4, 0xECDFE128,
@@ -111,11 +116,13 @@
   // Extended-key selection tables. For output word n the "Order" row picks which
   // of the four intermediate branches (a,b,c,d) supplies each of the four
   // operands, and the "Index" row picks which of that branch's three words.
+  /** @type {int32[][]} */
   const ORDER = [
     [0,1,2,3],[1,0,3,2],[2,3,0,1],[3,2,1,0],
     [0,2,3,1],[1,3,2,0],[2,0,1,3],[3,1,0,2],
     [0,3,1,2],[1,2,0,3],[2,1,3,0],[3,0,2,1]
   ];
+  /** @type {int32[][]} */
   const INDEX = [
     [0,0,0,0],[1,1,1,1],[2,2,2,2],
     [0,1,0,1],[1,2,1,2],[2,0,2,0],
@@ -127,7 +134,11 @@
 
   // ===== PRIMITIVES =====
 
-  // S: split MSB-first into 6/5/5/5/5/6-bit fields, substitute, recombine.
+  /**
+   * S: split MSB-first into 6/5/5/5/5/6-bit fields, substitute, recombine.
+   * @param {uint32} x - Input word
+   * @returns {uint32} Substituted word
+   */
   function sFunc(x) {
     let result = OpCodes.Shl32(S6[OpCodes.And32(OpCodes.Shr32(x, 26), 0x3F)], 26);
     result = OpCodes.Or32(result, OpCodes.Shl32(S5[OpCodes.And32(OpCodes.Shr32(x, 21), 0x1F)], 21));
@@ -138,8 +149,13 @@
     return result;
   }
 
-  // M: 32x32 GF(2) matrix multiply.
+  /**
+   * M: 32x32 GF(2) matrix multiply.
+   * @param {uint32} x - Input word
+   * @returns {uint32} Product
+   */
   function mFunc(x) {
+    /** @type {uint32} */
     let acc = 0;
     for (let b = 0; b < 32; ++b) {
       if (OpCodes.And32(OpCodes.Shr32(x, b), 1) !== 0)
@@ -148,12 +164,29 @@
     return acc;
   }
 
+  /**
+   * M(S(x))
+   * @param {uint32} x - Input word
+   * @returns {uint32} M(S(x))
+   */
   function msFunc(x) { return mFunc(sFunc(x)); }
 
   // B: transpose the four state words into 32 nibbles, substitute, transpose
   // back. Feeding S4I instead of S4 gives B^-1.
+  /**
+   * @param {uint32[]} state - Four state words
+   * @param {uint8[]} table - S4 or S4I
+   * @returns {uint32[]} Four state words
+   */
   function bFunc(state, table) {
-    let o0 = 0, o1 = 0, o2 = 0, o3 = 0;
+    /** @type {uint32} */
+    let o0 = 0;
+    /** @type {uint32} */
+    let o1 = 0;
+    /** @type {uint32} */
+    let o2 = 0;
+    /** @type {uint32} */
+    let o3 = 0;
     for (let bit = 0; bit < 32; ++bit) {
       const a = OpCodes.And32(OpCodes.Shr32(state[0], bit), 1);
       const b = OpCodes.And32(OpCodes.Shr32(state[1], bit), 1);
@@ -166,39 +199,64 @@
       if (OpCodes.And32(OpCodes.Shr32(value, 1), 1) !== 0) o2 = OpCodes.Or32(o2, OpCodes.Shl32(1, bit));
       if (OpCodes.And32(value, 1) !== 0)                   o3 = OpCodes.Or32(o3, OpCodes.Shl32(1, bit));
     }
-    return [o0, o1, o2, o3];
+    /** @type {uint32[]} */
+    const out = [o0, o1, o2, o3];
+    return out;
   }
 
-  // I: XOR four extended-key words into the state.
+  /**
+   * I: XOR four extended-key words into the state.
+   * @param {uint32[]} state - Four state words
+   * @param {uint32[]} rk - Extended key
+   * @param {int32} offset - First extended-key word
+   * @returns {uint32[]} Four state words
+   */
   function iFunc(state, rk, offset) {
-    return [
+    /** @type {uint32[]} */
+    const out = [
       OpCodes.Xor32(state[0], rk[offset]),
       OpCodes.Xor32(state[1], rk[offset + 1]),
       OpCodes.Xor32(state[2], rk[offset + 2]),
       OpCodes.Xor32(state[3], rk[offset + 3])
     ];
+    return out;
   }
 
-  // F = L(M(S(a)), M(S(b)), mask)
+  /**
+   * F = L(M(S(a)), M(S(b)), mask)
+   * @param {uint32} a - First input word
+   * @param {uint32} b - Second input word
+   * @param {uint32} mask - MASK5 or MASK3
+   * @returns {uint32[]} The two output words
+   */
   function fFunc(a, b, mask) {
     const x = msFunc(a);
     const y = msFunc(b);
-    return [
+    /** @type {uint32[]} */
+    const out = [
       OpCodes.Xor32(OpCodes.And32(mask, x), y),
       OpCodes.Xor32(OpCodes.And32(OpCodes.Not32(mask), y), x)
     ];
+    return out;
   }
 
   // One RxR pair: a Feistel round, the cross connection (a,b,c,d)->(c,d,a,b),
   // and a second Feistel round. Both R and the pair as a whole are involutions,
   // which is why decryption reuses this function unchanged.
+  /**
+   * @param {uint32[]} state - Four state words
+   * @param {uint32} mask - MASK5 or MASK3
+   * @returns {uint32[]} Four state words
+   */
   function rFuncPair(state, mask) {
-    const [a, b, c, d] = state;
-    const [s1, t1] = fFunc(c, d, mask);
-    const a1 = OpCodes.Xor32(a, s1);
-    const b1 = OpCodes.Xor32(b, t1);
-    const [s2, t2] = fFunc(a1, b1, mask);
-    return [OpCodes.Xor32(c, s2), OpCodes.Xor32(d, t2), a1, b1];
+    const a = state[0], b = state[1], c = state[2], d = state[3];
+    const st1 = fFunc(c, d, mask);
+    const a1 = OpCodes.Xor32(a, st1[0]);
+    const b1 = OpCodes.Xor32(b, st1[1]);
+    const st2 = fFunc(a1, b1, mask);
+    /** @type {uint32[]} */
+    const out = [OpCodes.Xor32(c, st2[0]), OpCodes.Xor32(d, st2[1]), a1, b1];
+    return out;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -292,23 +350,40 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SC2000Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SC2000Instance(this, isInverse);
     }
   }
 
   class SC2000Instance extends IBlockCipherInstance {
+    /**
+     * @param {SC2000} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
+      /** @type {int32} */
       this._rounds = 0;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -317,13 +392,21 @@
         return;
       }
 
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-        && (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      const sizes = this._keySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          if (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+            isValidSize = true;
+            break;
+          }
+        }
+      }
+
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -333,6 +416,9 @@
       this._roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -345,8 +431,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be a multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be a multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -358,17 +445,27 @@
       return output;
     }
 
-    // The mask of Feistel pair index r: R5 for even, R3 for odd.
+    /**
+     * The mask of Feistel pair index r: R5 for even, R3 for odd.
+     * @param {int32} r - Pair index
+     * @returns {uint32} MASK5 or MASK3
+     */
     _maskOf(r) { return (r % 2) === 0 ? MASK5 : MASK3; }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Extended key words
+     */
     _expandKey(keyBytes) {
       // Step 1: read the master key big-endian and extend it to eight words.
       // A 128-bit key repeats its four words; a 192-bit key repeats its first
       // two; a 256-bit key is used as it stands.
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < keyBytes.length / 4; ++i)
         words.push(OpCodes.Pack32BE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
 
+      /** @type {uint32[]} */
       const uk = new Array(8);
       for (let i = 0; i < words.length; ++i) uk[i] = words[i];
       if (words.length === 4) {
@@ -379,6 +476,7 @@
 
       // Step 2: twelve intermediate key words, three per branch. Branch j takes
       // uk[2j] and uk[2j+1]; the "constants" are simply 4i+j pushed through M(S(.)).
+      /** @type {uint32[]} */
       const intermediate = new Array(12);
       for (let branch = 0; branch < 4; ++branch) {
         const u0 = msFunc(uk[branch * 2]);
@@ -394,6 +492,7 @@
       // Step 3: the extended keys.
       //   ek[n] = ((X[x] ROTL 1) + Y[y]) XOR (((Z[z] ROTL 1) - W[w]) ROTL 1)
       const count = this._rounds === 6 ? 56 : 64;
+      /** @type {uint32[]} */
       const rk = new Array(count);
       for (let n = 0; n < count; ++n) {
         const order = ORDER[(n + Math.floor(n / 36)) % 12];
@@ -409,16 +508,27 @@
       return rk;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four big-endian words
+     */
     _loadBlock(block) {
-      return [
+      /** @type {uint32[]} */
+      const words = [
         OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32BE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32BE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32BE(block[12], block[13], block[14], block[15])
       ];
+      return words;
     }
 
+    /**
+     * @param {uint32[]} state - Four words
+     * @returns {uint8[]} Big-endian bytes
+     */
     _storeBlock(state) {
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 4; ++i) {
         const bytes = OpCodes.Unpack32BE(state[i]);
@@ -427,6 +537,10 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const rk = this._roundKeys;
       let state = this._loadBlock(block);
@@ -446,6 +560,10 @@
       return this._storeBlock(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const rk = this._roundKeys;
       let state = this._loadBlock(block);

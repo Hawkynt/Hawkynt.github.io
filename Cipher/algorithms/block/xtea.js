@@ -61,7 +61,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class XTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class XTEAAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -70,37 +70,37 @@
       this.description = "Extended TEA cipher by Wheeler and Needham with improved key schedule and better security than TEA. Uses 64 rounds with 64-bit blocks and 128-bit keys. Educational cipher for understanding Feistel networks.";
       this.inventor = "David Wheeler, Roger Needham";
       this.year = 1997;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.BEGINNER;
-      this.country = AlgorithmFramework.CountryCode.GB;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.GB;
 
       // Block and key specifications
       this.SupportedBlockSizes = [
         new KeySize(8, 8, 0) // Fixed 64-bit blocks
       ];
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit key
+        new KeySize(16, 16, 0) // Fixed 128-bit key
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("TEA extensions and corrections", "https://www.cix.co.uk/~klockstone/xtea.htm"),
-        new AlgorithmFramework.LinkItem("Cambridge Computer Laboratory", "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/"),
-        new AlgorithmFramework.LinkItem("Block TEA improvements", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29")
+        new LinkItem("TEA extensions and corrections", "https://www.cix.co.uk/~klockstone/xtea.htm"),
+        new LinkItem("Cambridge Computer Laboratory", "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/"),
+        new LinkItem("Block TEA improvements", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Crypto++ XTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/xtea.cpp"),
-        new AlgorithmFramework.LinkItem("Bouncy Castle XTEA Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
-        new AlgorithmFramework.LinkItem("Python XTEA Implementation", "https://pypi.org/project/xtea/")
+        new LinkItem("Crypto++ XTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/xtea.cpp"),
+        new LinkItem("Bouncy Castle XTEA Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
+        new LinkItem("Python XTEA Implementation", "https://pypi.org/project/xtea/")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Limited analysis", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications", "https://www.schneier.com/academic/"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices", "https://eprint.iacr.org/")
+        new Vulnerability("Limited analysis", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications", "https://www.schneier.com/academic/"),
+        new Vulnerability("Related-key attacks", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices", "https://eprint.iacr.org/")
       ];
 
       // Test vectors from various sources
@@ -125,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XTEAInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,10 +139,10 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class XTEAInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XTEAAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -150,6 +150,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -177,7 +178,7 @@
 
       // Validate key size
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16)");
       }
 
       this._key = [...keyBytes];
@@ -192,14 +193,17 @@
       ];
 
       // Precompute sum arrays as per Bouncy Castle C# reference
+      /** @type {uint32[]} */
       this.sum0 = new Array(this.CYCLES);
+      /** @type {uint32[]} */
       this.sum1 = new Array(this.CYCLES);
       
+      /** @type {uint32} */
       let j = 0;
       for (let i = 0; i < this.CYCLES; i++) {
-        this.sum0[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.AndN(j, 3)]);
+        this.sum0[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.And32(j, 3)]);
         j = OpCodes.ToUint32(j + this.DELTA);
-        this.sum1[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.AndN(OpCodes.Shr32(j, 11), 3)]);
+        this.sum1[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.And32(OpCodes.Shr32(j, 11), 3)]);
       }
     }
 
@@ -227,6 +231,10 @@
 
 
     // Encrypt 64-bit block - Bouncy Castle C# reference implementation
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');
@@ -238,11 +246,11 @@
 
       // XTEA encryption using precomputed sum arrays (Bouncy Castle method)
       for (let i = 0; i < this.CYCLES; i++) {
-        v0 = OpCodes.ToUint32(v0 + OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
+        v0 = OpCodes.ToUint32(v0 + OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
           this.sum0[i]));
-        v1 = OpCodes.ToUint32(v1 + OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
+        v1 = OpCodes.ToUint32(v1 + OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
           this.sum1[i]));
       }
 
@@ -254,6 +262,10 @@
     }
 
     // Decrypt 64-bit block - Bouncy Castle C# reference implementation
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');
@@ -265,11 +277,11 @@
 
       // XTEA decryption using precomputed sum arrays (reverse order)
       for (let i = this.CYCLES - 1; i >= 0; i--) {
-        v1 = OpCodes.ToUint32(v1 - OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
+        v1 = OpCodes.ToUint32(v1 - OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v0, 4), OpCodes.Shr32(v0, 5)) + v0),
           this.sum1[i]));
-        v0 = OpCodes.ToUint32(v0 - OpCodes.XorN(
-          OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
+        v0 = OpCodes.ToUint32(v0 - OpCodes.Xor32(
+          OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(v1, 4), OpCodes.Shr32(v1, 5)) + v1),
           this.sum0[i]));
       }
 
