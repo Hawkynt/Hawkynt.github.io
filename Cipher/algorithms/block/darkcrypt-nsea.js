@@ -60,12 +60,19 @@
   const COLUMN_TABLE = [0, 256, 512, 768];
 
   // 16-bit multiplicative LCRNG: x' = (x*23311 + 1) mod 65533
-  function rnd(state) {
-    state.v = OpCodes.And32((state.v * 23311 + 1) % 65533, 0xFFFF);
-    return state.v;
+  /**
+   * @param {uint32} v - Current generator state (16 bits)
+   * @returns {uint32} Next generator state
+   */
+  function rnd(v) {
+    return OpCodes.And32(OpCodes.Add32(OpCodes.Mul32(v, 23311), 1) % 65533, 0xFFFF);
   }
 
+  /**
+   * @returns {uint8[]} Identity S-box bytes (each byte value repeated 4 times)
+   */
   function identitySBoxBytes() {
+    /** @type {uint8[]} */
     const sBox = new Array(SBOX_SIZE);
     let idx = 0;
     for (let i = 0; i < 256; i++)
@@ -74,29 +81,52 @@
     return sBox;
   }
 
+  /**
+   * @param {uint8[]} key - Key material
+   * @param {uint32} salt - 16-bit salt
+   * @returns {uint32} 16-bit generator seed
+   */
   function seedFromKey(key, salt) {
     let s = OpCodes.And32(salt, 0xFFFF);
     for (let i = 0; i < KEY_MATERIAL_LEN; i++) s = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(s, 1), key[i]), 0xFFFF);
     return s;
   }
 
+  /**
+   * @param {uint8[]} key - Key material
+   * @param {uint32} salt - 16-bit salt
+   * @param {uint8[]} tempKey - Buffer to fill
+   * @param {int32} offset - First index to fill
+   */
   function fillTempKeyHalf(key, salt, tempKey, offset) {
-    const state = { v: seedFromKey(key, salt) };
-    for (let i = 0; i < SBOX_SIZE; i++)
-      tempKey[offset + i] = OpCodes.And32(OpCodes.Shr32(rnd(state), 8), 0xFF);
+    let v = seedFromKey(key, salt);
+    for (let i = 0; i < SBOX_SIZE; i++) {
+      v = rnd(v);
+      tempKey[offset + i] = OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF);
+    }
   }
 
+  /**
+   * @param {uint8[]} sBox - S-box bytes, permuted in place
+   * @param {uint8[]} tempKey - Permutation source
+   * @param {int32} tempKeyIndex - First source index
+   */
   function permuteSBox(sBox, tempKey, tempKeyIndex) {
     let tki = tempKeyIndex;
     for (let srcIndex = 0; srcIndex < SBOX_SIZE; srcIndex++) {
-      const destIndex = tempKey[tki++] + COLUMN_TABLE[OpCodes.And32(srcIndex, 3)];
+      const destIndex = OpCodes.Add32(tempKey[tki++], COLUMN_TABLE[OpCodes.And32(srcIndex, 3)]);
       const t = sBox[srcIndex];
       sBox[srcIndex] = sBox[destIndex];
       sBox[destIndex] = t;
     }
   }
 
+  /**
+   * @param {uint8[]} sBoxBytes - 1024 S-box bytes
+   * @returns {uint32[]} 256 little-endian S-box words
+   */
   function sBoxBytesToWords(sBoxBytes) {
+    /** @type {uint32[]} */
     const out = new Array(256);
     for (let i = 0; i < 256; i++) out[i] = OpCodes.Pack32LE(sBoxBytes[i*4], sBoxBytes[i*4+1], sBoxBytes[i*4+2], sBoxBytes[i*4+3]);
     return out;
@@ -105,6 +135,9 @@
   // Core stateless two-round transform shared by encrypt/decrypt/key-setup.
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint32[]} S1 - First S-box words
+   * @param {uint32[]} S2 - Second S-box words
+   * @returns {uint8[]} Output block
    */
   function coreEncrypt(block, S1, S2) {
     let lLeft = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -137,6 +170,9 @@
 
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint32[]} S1 - First S-box words
+   * @param {uint32[]} S2 - Second S-box words
+   * @returns {uint8[]} Output block
    */
   function coreDecrypt(block, S1, S2) {
     let lLeft = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -180,12 +216,17 @@
   //      time, independently (ECB - no chaining/IV)
   //   3) the S-boxes are reset to identity and re-permuted using the
   //      scrambled tempKey, producing the final working S-boxes
+  /**
+   * @param {uint8[]} key36 - 36-byte key
+   * @returns {uint32[][]} The two working S-boxes as words
+   */
   function setupSBoxes(key36) {
     const salt = OpCodes.Pack32LE(key36[32], key36[33], key36[34], key36[35]);
     const key = key36.slice(0, KEY_MATERIAL_LEN);
 
     let sBox1 = identitySBoxBytes();
     let sBox2 = identitySBoxBytes();
+    /** @type {uint8[]} */
     const tempKey = new Array(SBOX_SIZE * 2);
 
     fillTempKeyHalf(key, OpCodes.And32(salt, 0xFFFF), tempKey, 0);
@@ -211,7 +252,11 @@
     permuteSBox(sBox1, tempKey, 0);
     permuteSBox(sBox2, tempKey, SBOX_SIZE);
 
-    return { S1: sBoxBytesToWords(sBox1), S2: sBoxBytesToWords(sBox2) };
+    /** @type {uint32[][]} */
+    const boxes = [];
+    boxes.push(sBoxBytesToWords(sBox1));
+    boxes.push(sBoxBytesToWords(sBox2));
+    return boxes;
   }
 
   class DarkCryptNSEAAlgorithm extends BlockCipherAlgorithm {
@@ -285,7 +330,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._S1 = null;
+      /** @type {uint32[]|null} */
       this._S2 = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -302,9 +349,9 @@
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. NSEA (DarkCrypt) requires exactly 36 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      const { S1, S2 } = setupSBoxes(this._key);
-      this._S1 = S1;
-      this._S2 = S2;
+      const boxes = setupSBoxes(this._key);
+      this._S1 = boxes[0];
+      this._S2 = boxes[1];
     }
 
     /**
