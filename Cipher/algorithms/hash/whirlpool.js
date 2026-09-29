@@ -52,6 +52,7 @@
   const WHIRLPOOL_ROUNDS = 10;       // Number of rounds
 
   // Round constants from RHash reference implementation
+  /** @type {BigInt[]} */
   const RC = Object.freeze([
     0x1823c6e887b8014fn,
     0x36a6d2f5796f9152n,
@@ -66,6 +67,7 @@
   ]);
 
   // Whirlpool S-box lookup table (SB0 - first of 8 tables from libtomcrypt/RHash)
+  /** @type {BigInt[]} */
   const SB0 = Object.freeze([
     0x18186018c07830d8n, 0x23238c2305af4626n, 0xc6c63fc67ef991b8n, 0xe8e887e8136fcdfbn,
     0x878726874ca113cbn, 0xb8b8dab8a9626d11n, 0x0101040108050209n, 0x4f4f214f426e9e0dn,
@@ -133,20 +135,31 @@
     0x2828a0285d885075n, 0x5c5c6d5cda31b886n, 0xf8f8c7f8933fed6bn, 0x8686228644a411c2n
   ]);
 
-  // Extract byte from 64-bit word at position (0-7)
-  // pos 0 = MSB (bits 56-63), pos 7 = LSB (bits 0-7)
+  /**
+   * Extract byte from 64-bit word at position (0-7)
+   * pos 0 = MSB (bits 56-63), pos 7 = LSB (bits 0-7)
+   * @param {BigInt} word - 64-bit word
+   * @param {int32} pos - Byte position 0..7
+   * @returns {uint8} The byte
+   */
   function getByte(word, pos) {
-    const shift = BigInt(OpCodes.AndN(OpCodes.ToUint32(~pos), 7) * 8);
-    return Number(OpCodes.AndN(OpCodes.ShiftRn(word, shift), 0xFFn));
+    /** @type {uint8} */
+    const b = Number(OpCodes.AndN(OpCodes.ShiftRn(word, (7 - pos) * 8), 0xFFn));
+    return b;
   }
 
-  // Rotate right for 64-bit BigInt
-  function rotr64(value, bits) {
-    const shift = BigInt(bits);
-    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, shift), OpCodes.ShiftLn(value, 64n - shift)), 0xFFFFFFFFFFFFFFFFn);
-  }
-
-  // Whirlpool theta_pi_gamma operation using single S-box with rotations (Botan approach)
+  /**
+   * Whirlpool theta_pi_gamma operation using single S-box with rotations (Botan approach)
+   * @param {BigInt} x0 - Word supplying byte 0
+   * @param {BigInt} x1 - Word supplying byte 1
+   * @param {BigInt} x2 - Word supplying byte 2
+   * @param {BigInt} x3 - Word supplying byte 3
+   * @param {BigInt} x4 - Word supplying byte 4
+   * @param {BigInt} x5 - Word supplying byte 5
+   * @param {BigInt} x6 - Word supplying byte 6
+   * @param {BigInt} x7 - Word supplying byte 7
+   * @returns {BigInt} Output word
+   */
   function whirlpoolOp(x0, x1, x2, x3, x4, x5, x6, x7) {
     const s0 = SB0[getByte(x0, 0)];
     const s1 = SB0[getByte(x1, 1)];
@@ -157,7 +170,7 @@
     const s6 = SB0[getByte(x6, 6)];
     const s7 = SB0[getByte(x7, 7)];
 
-    return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, rotr64(s1, 8)), rotr64(s2, 16)), rotr64(s3, 24)), rotr64(s4, 32)), rotr64(s5, 40)), rotr64(s6, 48)), rotr64(s7, 56));
+    return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.RotR64n(s1, 8)), OpCodes.RotR64n(s2, 16)), OpCodes.RotR64n(s3, 24)), OpCodes.RotR64n(s4, 32)), OpCodes.RotR64n(s5, 40)), OpCodes.RotR64n(s6, 48)), OpCodes.RotR64n(s7, 56));
   }
 
   /**
@@ -182,7 +195,7 @@
       this.country = CountryCode.MULTI;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [64]; // 512 bits
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits
 
       // Performance and technical specifications
       this.blockSize = 64; // 512 bits = 64 bytes
@@ -231,7 +244,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {WhirlpoolAlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -248,8 +261,8 @@
   class WhirlpoolAlgorithmInstance extends IHashFunctionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {WhirlpoolAlgorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -257,36 +270,58 @@
       this.isInverse = isInverse;
       this.OutputSize = 64; // 512 bits = 64 bytes
 
+      /** @type {BigInt[]} Chaining value, 8 64-bit words */
+      this.state = null;
+      /** @type {uint8[]} Pending message bytes */
+      this.buffer = null;
+      /** @type {int32} */
+      this.bufferLength = 0;
+      /** @type {int32} Message length in bytes */
+      this.totalLength = 0;
+      /** @type {boolean} */
+      this._streamStarted = false;
+
       this.init();
     }
 
-    // Initialize Whirlpool state
+    /**
+     * Initialize Whirlpool state
+     * @returns {void}
+     */
     init() {
       // 8 64-bit words (512 bits total) - initialized to all zeros
-      this.state = new Array(8).fill(0n);
-      this.buffer = new Array(WHIRLPOOL_BLOCKSIZE).fill(0);
+      this.state = [0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n];
+      this.buffer = OpCodes.CreateArray(WHIRLPOOL_BLOCKSIZE, 0);
       this.bufferLength = 0;
       this.totalLength = 0;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
       this.init();
     }
 
     /**
      * Whirlpool compression function based on RHash implementation
+     * @param {uint8[]} block - 64-byte block
+     * @returns {void}
      */
     processBlock(block) {
       // Convert block to 64-bit words (big-endian)
+      /** @type {BigInt[]} */
       const blockWords = new Array(8);
       for (let i = 0; i < 8; i++) {
         blockWords[i] = 0n;
         for (let j = 0; j < 8; j++) {
-          blockWords[i] = OpCodes.OrN(OpCodes.ShiftLn(blockWords[i], 8n), BigInt(block[i * 8 + j]));
+          blockWords[i] = OpCodes.OrN(OpCodes.ShiftLn(blockWords[i], 8), BigInt(block[i * 8 + j]));
         }
       }
 
       // Initialize key schedule array (11 rounds * 8 words)
+      /** @type {BigInt[]} */
       const K = new Array(11 * 8);
       for (let i = 0; i < 8; i++) {
         K[i] = this.state[i];
@@ -359,18 +394,11 @@
 
     /**
      * Update with data
+     * @param {uint8[]} data - Bytes to hash
+     * @returns {void}
      */
     Update(data) {
       if (!data || data.length === 0) return;
-
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        const bytes = [];
-        for (let i = 0; i < data.length; i++) {
-          bytes.push(OpCodes.ToByte(data.charCodeAt(i)));
-        }
-        data = bytes;
-      }
 
       this.totalLength += data.length;
       let offset = 0;
@@ -401,6 +429,7 @@
 
     /**
      * Finalize and return hash
+     * @returns {uint8[]} 64-byte digest
      */
     Final() {
       // Whirlpool padding: 0x80 + zeros + 64-bit length (like reference)
@@ -422,9 +451,12 @@
       }
 
       // Append 64-bit length in big-endian format (like reference implementation)
-      const bitLength = this.totalLength * 8;
+      /** @type {BigInt} */
+      const bitLength = BigInt(this.totalLength * 8);
       for (let i = 0; i < 8; i++) {
-        this.buffer[56 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(BigInt(bitLength), BigInt(56 - i * 8)), 0xFFn));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(OpCodes.ShiftRn(bitLength, 56 - i * 8), 0xFFn));
+        this.buffer[56 + i] = b;
       }
       this.bufferLength = 64;
 
@@ -432,11 +464,12 @@
       this.processBlock(this.buffer);
 
       // Convert state BigInt array to bytes (big-endian)
+      /** @type {uint8[]} */
       const result = new Array(64);
       for (let i = 0; i < 8; i++) {
         const word = this.state[i];
         for (let j = 0; j < 8; j++) {
-          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(56 - j * 8)), 0xFFn));
+          result[i * 8 + j] = getByte(word, j);
         }
       }
 
@@ -445,6 +478,8 @@
 
     /**
      * Hash a complete message
+     * @param {uint8[]} message - Message to hash
+     * @returns {uint8[]} 64-byte digest
      */
     Hash(message) {
       this.Init();
@@ -452,19 +487,40 @@
       return this.Final();
     }
 
-    // Interface compatibility methods
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} 64-byte digest
+     */
     EncryptBlock(blockIndex, plaintext) {
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @returns {uint8[]} Never returns
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       throw new Error('Whirlpool is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Wipe the chaining value and the buffered bytes
+     * @returns {void}
+     */
     ClearData() {
       if (this.state) {
         OpCodes.ClearArray(this.state);
@@ -479,7 +535,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -495,8 +551,7 @@
 
     /**
    * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @returns {uint8[]} 64-byte digest
    */
 
     Result() {
