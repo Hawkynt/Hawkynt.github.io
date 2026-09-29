@@ -16,7 +16,7 @@ per byte. V8 refuses to grow such an array beyond its backing-store limit. Measu
 **112,813,858 elements — 107.6 MB — and it is a hard limit, not a memory limit.**
 Raising `--max-old-space-size` does not move it. Past that point the harness fails to
 build its own corpus before any algorithm runs, which is why
-`RoundTripSuite.js` refuses a `--large-size` above 112,000,000 with an explicit
+`RoundTrip.js` refuses a `--large-size` above 112,000,000 with an explicit
 message rather than dying inside V8.
 
 The cost per element was measured at 21.2 bytes of RSS during the growth loop, and
@@ -131,10 +131,10 @@ sweep with only a native stack trace; per-algorithm isolation reclaims memory be
 runs and names the algorithm that failed.
 
 ```
-node tests/RoundTripSuite.js --large                 # the 1MB tier, unchanged
-node tests/RoundTripSuite.js --large-size=8M         # any size up to 112000000 bytes
-node tests/RoundTripSuite.js --large-size=16M --category "Compression Algorithms"
-node tests/RoundTripSuite.js --large-size=4M --algorithm "Unary Coding"
+node tests/TestSuite.js --only=roundtrip --large                 # the 1MB tier, unchanged
+node tests/TestSuite.js --only=roundtrip --large-size=8M         # any size up to 112000000 bytes
+node tests/TestSuite.js --only=roundtrip --large-size=16M --category=compression
+node tests/TestSuite.js --only=roundtrip --large-size=4M --algorithm=unary
 ```
 
 `--large-size` accepts a plain byte count or a `K`/`M` suffix, and implies `--large`.
