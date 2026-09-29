@@ -69,7 +69,7 @@
         this.hashSize = 64; // bits (8 bytes) 
         this.blockSize = 0; // Variable input size
         this.outputSize = 8; // 64 bits = 8 bytes
-        this.SupportedOutputSizes = [8]; // 64 bits = 8 bytes
+        this.SupportedOutputSizes = [new KeySize(8, 8, 1)]; // 64 bits = 8 bytes
 
         // Documentation
         this.documentation = [
@@ -196,30 +196,56 @@
         this.testVectors = this.tests;
 
         // CityHash constants - keeping original hex literals since they are internal constants
+        /** @type {BigInt} */
         this.K0 = 0xc3a5c85c97cb3127n;
+        /** @type {BigInt} */
         this.K1 = 0xb492b66fbe98f273n;
+        /** @type {BigInt} */
         this.K2 = 0x9ae16a3b2f90404fn;
         // Multiplier used by Hash128to64 (city.h), i.e. the two-argument HashLen16
+        /** @type {BigInt} */
         this.KMUL = 0x9ddfea08eb382d69n;
       }
 
+      /**
+       * Create a new CityHash64 instance
+       * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+       * @returns {CityHashInstance} New hash instance
+       */
       CreateInstance(isInverse = false) {
         return new CityHashInstance(this, isInverse);
       }
     }
 
+    /**
+     * CityHash64 instance implementing the Feed/Result pattern
+     * @class
+     * @extends {IHashFunctionInstance}
+     */
     class CityHashInstance extends IHashFunctionInstance {
+      /**
+       * @param {CityHash} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - Unused
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.inputBuffer = [];
+        /** @type {int32} */
         this.hashSize = algorithm.hashSize;
+        /** @type {BigInt} */
         this.K0 = algorithm.K0;
+        /** @type {BigInt} */
         this.K1 = algorithm.K1;
+        /** @type {BigInt} */
         this.K2 = algorithm.K2;
+        /** @type {BigInt} */
         this.KMUL = algorithm.KMUL;
       }
 
-
+      /**
+       * Digest of everything fed so far; the buffer is then cleared
+       * @returns {uint8[]} 8-byte digest, big-endian
+       */
       Result() {
         // Process using existing hash logic (even for empty input)
         const result = this.compute(this.inputBuffer);
@@ -228,29 +254,35 @@
         return result;
       }
 
-      // Core CityHash computation (64-bit version)
+      /**
+       * Core CityHash computation (64-bit version)
+       * @param {uint8[]} data - Message bytes
+       * @returns {uint8[]} 8-byte digest, big-endian
+       */
       compute(data) {
         // Feed only ever accumulates raw bytes, so the input is already a byte
         // array. It must not be pushed through a text conversion: CityHash is
         // defined over arbitrary octets and any 7-bit masking would corrupt
         // every byte above 0x7F.
-        const bytes = Array.isArray(data) ? data : Array.from(data);
-        const hash64 = this.cityHash64(bytes);
+        const hash64 = this.cityHash64(data);
 
         // Serialize the 64-bit hash big-endian, matching the hex notation the
         // published city-test.cc table uses for its expected values.
-        return [
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 56n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 48n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 40n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 32n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 24n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 16n), 0xffn)),
-          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 8n), 0xffn)),
-          Number(OpCodes.AndN(hash64, 0xffn))
-        ];
+        /** @type {uint8[]} */
+        const out = new Array(8);
+        for (let i = 0; i < 8; i++) {
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 56 - 8 * i), 0xffn));
+          out[i] = b;
+        }
+        return out;
       }
 
+      /**
+       * CityHash64 over a whole message
+       * @param {uint8[]} bytes - Message bytes
+       * @returns {BigInt} 64-bit hash
+       */
       cityHash64(bytes) {
         const length = bytes.length;
 
@@ -265,13 +297,20 @@
         return this.hashLen65Plus(bytes);
       }
 
+      /**
+       * HashLen0to16
+       * @param {uint8[]} bytes - Message bytes
+       * @param {int32} offset - Start of the message
+       * @param {int32} length - Message length (0..16)
+       * @returns {BigInt} 64-bit hash
+       */
       hashLen0to16(bytes, offset, length) {
         if (length >= 8) {
           const mul = this.mask(this.K2 + BigInt(length) * 2n);
           const a = this.mask(this.fetch64(bytes, offset) + this.K2);
           const b = this.fetch64(bytes, offset + length - 8);
-          const c = this.mask(this.mul(this.rotr64(b, 37n), mul) + a);
-          const d = this.mul(this.mask(this.rotr64(a, 25n) + b), mul);
+          const c = this.mask(this.mul(this.rotr64(b, 37), mul) + a);
+          const d = this.mul(this.mask(this.rotr64(a, 25) + b), mul);
           return this.hashLen16(c, d, mul);
         }
 
@@ -279,25 +318,34 @@
           const mul = this.mask(this.K2 + BigInt(length) * 2n);
           const a = BigInt(this.fetch32(bytes, offset));
           return this.hashLen16(
-            this.mask(BigInt(length) + this.mask(OpCodes.ShiftLn(a, 3n))),
+            this.mask(BigInt(length) + this.mask(OpCodes.ShiftLn(a, 3))),
             BigInt(this.fetch32(bytes, offset + length - 4)),
             mul
           );
         }
 
         if (length > 0) {
-          const a = BigInt(OpCodes.AndN(bytes[offset], 0xFF));
-          const b = BigInt(OpCodes.AndN(bytes[offset + OpCodes.Shr32(length, 1)], 0xFF));
-          const c = BigInt(OpCodes.AndN(bytes[offset + length - 1], 0xFF));
+          /** @type {int32} */
+          const half = OpCodes.Shr32(length, 1);
+          const a = BigInt(OpCodes.And32(bytes[offset], 0xFF));
+          const b = BigInt(OpCodes.And32(bytes[offset + half], 0xFF));
+          const c = BigInt(OpCodes.And32(bytes[offset + length - 1], 0xFF));
           // y and z are 32-bit quantities in the reference implementation
-          const y = OpCodes.AndN(a + OpCodes.ShiftLn(b, 8n), 0xFFFFFFFFn);
-          const z = OpCodes.AndN(BigInt(length) + OpCodes.ShiftLn(c, 2n), 0xFFFFFFFFn);
+          const y = OpCodes.AndN(a + OpCodes.ShiftLn(b, 8), 0xFFFFFFFFn);
+          const z = OpCodes.AndN(BigInt(length) + OpCodes.ShiftLn(c, 2), 0xFFFFFFFFn);
           return this.mul(this.shiftMix(OpCodes.XorN(this.mul(y, this.K2), this.mul(z, this.K0))), this.K2);
         }
 
         return this.K2;
       }
 
+      /**
+       * HashLen17to32
+       * @param {uint8[]} bytes - Message bytes
+       * @param {int32} offset - Start of the message
+       * @param {int32} length - Message length (17..32)
+       * @returns {BigInt} 64-bit hash
+       */
       hashLen17to32(bytes, offset, length) {
         const mul = this.mask(this.K2 + BigInt(length) * 2n);
         const a = this.mul(this.fetch64(bytes, offset), this.K1);
@@ -306,12 +354,19 @@
         const d = this.mul(this.fetch64(bytes, offset + length - 16), this.K2);
 
         return this.hashLen16(
-          this.mask(this.rotr64(this.mask(a + b), 43n) + this.rotr64(c, 30n) + d),
-          this.mask(a + this.rotr64(this.mask(b + this.K2), 18n) + c),
+          this.mask(this.rotr64(this.mask(a + b), 43) + this.rotr64(c, 30) + d),
+          this.mask(a + this.rotr64(this.mask(b + this.K2), 18) + c),
           mul
         );
       }
 
+      /**
+       * HashLen33to64
+       * @param {uint8[]} bytes - Message bytes
+       * @param {int32} offset - Start of the message
+       * @param {int32} length - Message length (33..64)
+       * @returns {BigInt} 64-bit hash
+       */
       hashLen33to64(bytes, offset, length) {
         const mul = this.mask(this.K2 + BigInt(length) * 2n);
         let a = this.mul(this.fetch64(bytes, offset), this.K2);
@@ -323,10 +378,10 @@
         const g = this.fetch64(bytes, offset + length - 8);
         const h = this.mul(this.fetch64(bytes, offset + length - 16), mul);
 
-        const u = this.mask(this.rotr64(this.mask(a + g), 43n) + this.mul(this.mask(this.rotr64(b, 30n) + c), 9n));
+        const u = this.mask(this.rotr64(this.mask(a + g), 43) + this.mul(this.mask(this.rotr64(b, 30) + c), 9n));
         const v = this.mask(OpCodes.XorN(this.mask(a + g), d) + f + 1n);
         const w = this.mask(this.bswap64(this.mul(this.mask(u + v), mul)) + h);
-        const x = this.mask(this.rotr64(this.mask(e + f), 42n) + c);
+        const x = this.mask(this.rotr64(this.mask(e + f), 42) + c);
         const y = this.mul(this.mask(this.bswap64(this.mul(this.mask(v + w), mul)) + g), mul);
         const z = this.mask(e + f + c);
 
@@ -336,6 +391,11 @@
         return this.mask(bb + x);
       }
 
+      /**
+       * CityHash64 for messages longer than 64 bytes
+       * @param {uint8[]} bytes - Message bytes
+       * @returns {BigInt} 64-bit hash
+       */
       hashLen65Plus(bytes) {
         let length = bytes.length;
         let offset = 0;
@@ -353,14 +413,15 @@
         let w = this.weakHashLen32WithSeeds(bytes, length - 32, this.mask(y + this.K1), x);
         x = this.mask(this.mul(x, this.K1) + this.fetch64(bytes, 0));
 
-        // Decrease length to the nearest multiple of 64 and operate on 64-byte chunks
-        length = OpCodes.AndN(length - 1, ~63);
+        // Decrease length to the nearest multiple of 64 and operate on 64-byte
+        // chunks: (length - 1) rounded down to a multiple of 64
+        length = (length - 1) - ((length - 1) % 64);
         do {
-          x = this.mul(this.rotr64(this.mask(x + y + v[0] + this.fetch64(bytes, offset + 8)), 37n), this.K1);
-          y = this.mul(this.rotr64(this.mask(y + v[1] + this.fetch64(bytes, offset + 48)), 42n), this.K1);
+          x = this.mul(this.rotr64(this.mask(x + y + v[0] + this.fetch64(bytes, offset + 8)), 37), this.K1);
+          y = this.mul(this.rotr64(this.mask(y + v[1] + this.fetch64(bytes, offset + 48)), 42), this.K1);
           x = OpCodes.XorN(x, w[1]);
           y = this.mask(y + v[0] + this.fetch64(bytes, offset + 40));
-          z = this.mul(this.rotr64(this.mask(z + w[0]), 33n), this.K1);
+          z = this.mul(this.rotr64(this.mask(z + w[0]), 33), this.K1);
 
           v = this.weakHashLen32WithSeeds(bytes, offset, this.mul(v[1], this.K1), this.mask(x + w[0]));
           w = this.weakHashLen32WithSeeds(bytes, offset + 32, this.mask(z + w[1]), this.mask(y + this.fetch64(bytes, offset + 16)));
@@ -378,63 +439,122 @@
 
       // Helper functions
 
+      /**
+       * Reduce to 64 bits
+       * @param {BigInt} val - Any BigInt
+       * @returns {BigInt} val mod 2^64
+       */
       mask(val) {
         return OpCodes.AndN(val, 0xffffffffffffffffn);
       }
 
+      /**
+       * 64-bit wrapping multiplication
+       * @param {BigInt} a - Factor
+       * @param {BigInt} b - Factor
+       * @returns {BigInt} a * b mod 2^64
+       */
       mul(a, b) {
         return this.mask(a * b);
       }
 
+      /**
+       * Reverse the byte order of a 64-bit word
+       * @param {BigInt} val - 64-bit word
+       * @returns {BigInt} Byte-swapped word
+       */
       bswap64(val) {
         let v = this.mask(val);
+        /** @type {BigInt} */
         let r = 0n;
         for (let i = 0; i < 8; i++) {
-          r = OpCodes.OrN(OpCodes.ShiftLn(r, 8n), OpCodes.AndN(v, 0xffn));
-          v = OpCodes.ShiftRn(v, 8n);
+          r = OpCodes.OrN(OpCodes.ShiftLn(r, 8), OpCodes.AndN(v, 0xffn));
+          v = OpCodes.ShiftRn(v, 8);
         }
         return r;
       }
 
+      /**
+       * Little-endian 32-bit fetch
+       * @param {uint8[]} bytes - Source bytes
+       * @param {int32} offset - Index of the first byte
+       * @returns {uint32} The word
+       */
       fetch32(bytes, offset) {
         return OpCodes.Pack32LE(
-          bytes[offset] || 0,
-          bytes[offset + 1] || 0,
-          bytes[offset + 2] || 0,
-          bytes[offset + 3] || 0
+          bytes[offset],
+          bytes[offset + 1],
+          bytes[offset + 2],
+          bytes[offset + 3]
         );
       }
 
+      /**
+       * Little-endian 64-bit fetch
+       * @param {uint8[]} bytes - Source bytes
+       * @param {int32} offset - Index of the first byte
+       * @returns {BigInt} The word
+       */
       fetch64(bytes, offset) {
         // Note: OpCodes Pack64LE works with separate bytes, not pre-packed 32-bit values
         const low = BigInt(this.fetch32(bytes, offset));
         const high = BigInt(this.fetch32(bytes, offset + 4));
-        return this.mask(low + OpCodes.ShiftLn(high, 32n));
+        return this.mask(low + OpCodes.ShiftLn(high, 32));
       }
 
+      /**
+       * 64-bit right rotation
+       * @param {BigInt} val - 64-bit word
+       * @param {int32} shift - Rotation count
+       * @returns {BigInt} Rotated word
+       */
       rotr64(val, shift) {
-        return OpCodes.RotR64n(this.mask(val), Number(shift));
+        return OpCodes.RotR64n(this.mask(val), shift);
       }
 
+      /**
+       * ShiftMix: val ^ (val >> 47)
+       * @param {BigInt} val - 64-bit word
+       * @returns {BigInt} Mixed word
+       */
       shiftMix(val) {
         const v = this.mask(val);
-        return OpCodes.XorN(v, OpCodes.ShiftRn(v, 47n));
+        return OpCodes.XorN(v, OpCodes.ShiftRn(v, 47));
       }
 
-      // Murmur-inspired 128-to-64-bit mixer with an explicit multiplier
+      /**
+       * Murmur-inspired 128-to-64-bit mixer with an explicit multiplier
+       * @param {BigInt} u - First word
+       * @param {BigInt} v - Second word
+       * @param {BigInt} mul - Multiplier
+       * @returns {BigInt} Mixed word
+       */
       hashLen16(u, v, mul) {
         let a = this.mul(OpCodes.XorN(u, v), mul);
-        a = OpCodes.XorN(a, OpCodes.ShiftRn(a, 47n));
+        a = OpCodes.XorN(a, OpCodes.ShiftRn(a, 47));
         let b = this.mul(OpCodes.XorN(v, a), mul);
-        b = OpCodes.XorN(b, OpCodes.ShiftRn(b, 47n));
+        b = OpCodes.XorN(b, OpCodes.ShiftRn(b, 47));
         return this.mul(b, mul);
       }
 
-      // Hash128to64: the two-argument HashLen16, which uses its own constant
+      /**
+       * Hash128to64: the two-argument HashLen16, which uses its own constant
+       * @param {BigInt} u - First word
+       * @param {BigInt} v - Second word
+       * @returns {BigInt} Mixed word
+       */
       hashLen16Seeded(u, v) {
         return this.hashLen16(u, v, this.KMUL);
       }
 
+      /**
+       * WeakHashLen32WithSeeds over 32 message bytes
+       * @param {uint8[]} bytes - Source bytes
+       * @param {int32} offset - Index of the first byte
+       * @param {BigInt} a - Seed
+       * @param {BigInt} b - Seed
+       * @returns {BigInt[]} Pair of 64-bit words
+       */
       weakHashLen32WithSeeds(bytes, offset, a, b) {
         return this.weakHashLen32WithSeedsWords(
           this.fetch64(bytes, offset),
@@ -446,14 +566,26 @@
         );
       }
 
+      /**
+       * WeakHashLen32WithSeeds over four words
+       * @param {BigInt} w - Word 0
+       * @param {BigInt} x - Word 1
+       * @param {BigInt} y - Word 2
+       * @param {BigInt} z - Word 3
+       * @param {BigInt} a - Seed
+       * @param {BigInt} b - Seed
+       * @returns {BigInt[]} Pair of 64-bit words
+       */
       weakHashLen32WithSeedsWords(w, x, y, z, a, b) {
         a = this.mask(a + w);
-        b = this.rotr64(this.mask(b + a + z), 21n);
+        b = this.rotr64(this.mask(b + a + z), 21);
         const c = a;
         a = this.mask(a + x);
         a = this.mask(a + y);
-        b = this.mask(b + this.rotr64(a, 44n));
-        return [this.mask(a + z), this.mask(b + c)];
+        b = this.mask(b + this.rotr64(a, 44));
+        /** @type {BigInt[]} */
+        const pair = [this.mask(a + z), this.mask(b + c)];
+        return pair;
       }
     }
 
