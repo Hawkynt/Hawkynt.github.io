@@ -48,7 +48,9 @@
 
   // ===== FSE CONSTANTS =====
 
+  /** @type {int32} */
   const FSE_TABLE_LOG = 10;
+  /** @type {int32} */
   const FSE_TABLE_SIZE = 1024; // 1 << FSE_TABLE_LOG
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -162,13 +164,15 @@
   class FSEInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FSECompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -184,7 +188,11 @@
         // A compressed stream always carries at least the 4-byte length
         // header, so an empty buffer here is not a valid compressed
         // empty message.
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decompress();
       }
 
@@ -195,23 +203,41 @@
 
     // ===== COMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Header, normalized table and bitstream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
       // Header: 4-byte LE original length.
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
 
-      if (data.length === 0) return output;
+      if (data.length === 0) {
+        return output;
+      }
 
       // Count raw byte frequencies and collect the used symbols in
       // ascending byte-value order.
-      const rawFreq = new Array(256).fill(0);
-      for (let i = 0; i < data.length; i++) rawFreq[data[i]]++;
+      /** @type {int32[]} */
+      const rawFreq = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        rawFreq[i] = 0;
+      }
+      for (let i = 0; i < data.length; i++) {
+        rawFreq[data[i]]++;
+      }
 
+      /** @type {int32[]} */
       const symbols = [];
       for (let i = 0; i < 256; i++) {
-        if (rawFreq[i] > 0) symbols.push(i);
+        if (rawFreq[i] > 0) {
+          symbols.push(i);
+        }
       }
 
       // Single-symbol special case: tableLog=0 sentinel, no table, no bitstream.
@@ -221,108 +247,163 @@
         return output;
       }
 
+      /** @type {int32} */
       const tableSize = FSE_TABLE_SIZE;
+      /** @type {int32[]} */
       const normFreq = normalizeFrequencies(rawFreq, symbols, tableSize, data.length);
+      /** @type {int32[]} */
       const symbolTable = buildSpreadTable(normFreq, symbols, tableSize);
 
       // Build per-symbol occurrence mapping.
-      const symOccurrence = new Array(256).fill(0);
-      const positionToReduced = new Array(tableSize);
-      for (let s = 0; s < tableSize; s++) {
-        const sym = symbolTable[s];
-        const k = symOccurrence[sym]++;
-        positionToReduced[s] = normFreq[sym] + k;
-      }
+      /** @type {int32[]} */
+      const positionToReduced = buildReducedStates(normFreq, symbolTable, tableSize);
 
       // Build encoding table.
+      /** @type {int32[][]} */
       const encTable = new Array(256);
       for (let i = 0; i < 256; i++) {
-        if (normFreq[i] > 0) encTable[i] = new Array(normFreq[i]);
+        if (normFreq[i] > 0) {
+          /** @type {int32[]} */
+          const row = new Array(normFreq[i]);
+          encTable[i] = row;
+        }
       }
       for (let s = 0; s < tableSize; s++) {
+        /** @type {int32} */
         const sym = symbolTable[s];
+        /** @type {int32} */
         const r = positionToReduced[s];
-        encTable[sym][r - normFreq[sym]] = s;
+        /** @type {int32[]} */
+        const row = encTable[sym];
+        row[r - normFreq[sym]] = s;
       }
 
       // Encode symbols in reverse (tANS/ANS is LIFO).
+      /** @type {int32[]} */
       const bitStack = [];
+      /** @type {int32} */
       let state = tableSize;
 
       for (let i = data.length - 1; i >= 0; i--) {
+        /** @type {uint8} */
         const sym = data[i];
+        /** @type {int32} */
         const f = normFreq[sym];
 
         // Reduce state to [f, 2*f-1] by emitting low bits.
         while (state >= 2 * f) {
-          bitStack.push(OpCodes.AndN(state, 1));
+          bitStack.push(OpCodes.And32(state, 1));
           state = Math.floor(state / 2);
         }
 
-        const spreadPos = encTable[sym][state - f];
+        /** @type {int32[]} */
+        const row = encTable[sym];
+        /** @type {int32} */
+        const spreadPos = row[state - f];
         state = spreadPos + tableSize;
       }
 
       // Header: tableLog, symbolCount16LE, (symbol, freq16LE)*.
       output.push(FSE_TABLE_LOG);
 
+      /** @type {uint8[]} */
       const countBytes = OpCodes.Unpack16LE(symbols.length);
-      output.push(countBytes[0], countBytes[1]);
+      output.push(countBytes[0]);
+      output.push(countBytes[1]);
 
-      for (const sym of symbols) {
+      for (let n = 0; n < symbols.length; n++) {
+        /** @type {int32} */
+        const sym = symbols[n];
         output.push(sym);
+        /** @type {uint8[]} */
         const freqBytes = OpCodes.Unpack16LE(normFreq[sym]);
-        output.push(freqBytes[0], freqBytes[1]);
+        output.push(freqBytes[0]);
+        output.push(freqBytes[1]);
       }
 
       // Final state, then bit count, then the packed bitstream.
+      /** @type {uint8[]} */
       const stateBytes = OpCodes.Unpack16LE(state);
-      output.push(stateBytes[0], stateBytes[1]);
+      output.push(stateBytes[0]);
+      output.push(stateBytes[1]);
 
+      /** @type {uint8[]} */
       const bitCountBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(bitStack.length));
-      output.push(bitCountBytes[0], bitCountBytes[1], bitCountBytes[2], bitCountBytes[3]);
+      for (let n = 0; n < 4; n++) {
+        output.push(bitCountBytes[n]);
+      }
 
+      /** @type {int32} */
       const byteCount = Math.floor((bitStack.length + 7) / 8);
-      const packed = new Array(byteCount).fill(0);
+      /** @type {int32[]} */
+      const packed = new Int32Array(byteCount);
       for (let i = 0; i < bitStack.length; i++) {
         if (bitStack[i] !== 0) {
+          /** @type {int32} */
           const byteIndex = Math.floor(i / 8);
           packed[byteIndex] = OpCodes.SetBit(packed[byteIndex], i % 8, true);
         }
       }
-      for (let i = 0; i < packed.length; i++) output.push(packed[i]);
+      for (let i = 0; i < packed.length; i++) {
+        output.push(packed[i]);
+      }
 
       return output;
     }
 
     // ===== DECOMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
+      /** @type {int32} */
       let offset = 0;
+      /** @type {uint32} */
       const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
       offset += 4;
 
-      if (uncompressedSize === 0) return [];
+      /** @type {uint8[]} */
+      const decoded = new Array(uncompressedSize);
+      if (uncompressedSize === 0) {
+        return decoded;
+      }
 
+      /** @type {uint8} */
       const tableLogByte = data[offset++];
 
       // Single-symbol special case.
       if (tableLogByte === 0) {
-        const sym = data[offset];
-        return new Array(uncompressedSize).fill(sym);
+        /** @type {uint8} */
+        const only = data[offset];
+        for (let i = 0; i < uncompressedSize; i++) {
+          decoded[i] = only;
+        }
+        return decoded;
       }
 
+      /** @type {int32} */
       const tableSize = OpCodes.Shl32(1, tableLogByte);
 
+      /** @type {uint16} */
       const symbolCount = OpCodes.Pack16LE(data[offset], data[offset + 1]);
       offset += 2;
 
-      const normFreq = new Array(256).fill(0);
+      /** @type {int32[]} */
+      const normFreq = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        normFreq[i] = 0;
+      }
+      /** @type {int32[]} */
       const symbols = [];
       for (let i = 0; i < symbolCount; i++) {
+        /** @type {uint8} */
         const sym = data[offset++];
         symbols.push(sym);
         normFreq[sym] = OpCodes.Pack16LE(data[offset], data[offset + 1]);
@@ -330,46 +411,49 @@
       }
 
       // Final state.
+      /** @type {int32} */
       let state = OpCodes.Pack16LE(data[offset], data[offset + 1]);
       offset += 2;
 
+      /** @type {uint32} */
       const bitCount = OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
       offset += 4;
 
-      const byteCount = Math.floor((bitCount + 7) / 8);
+      /** @type {float64} */
+      const paddedBits = bitCount;
+      /** @type {int32} */
+      const byteCount = Math.floor((paddedBits + 7) / 8);
+      /** @type {uint8[]} */
       const packed = data.slice(offset, offset + byteCount);
 
       // Unpack bits.
+      /** @type {int32[]} */
       const bitStack = new Array(bitCount);
       for (let i = 0; i < bitCount; i++) {
         bitStack[i] = OpCodes.GetBit(packed[Math.floor(i / 8)], i % 8) ? 1 : 0;
       }
 
       // Rebuild spread table and occurrence mapping.
+      /** @type {int32[]} */
       const symbolTable = buildSpreadTable(normFreq, symbols, tableSize);
-
-      const symOccurrence = new Array(256).fill(0);
-      const positionToReduced = new Array(tableSize);
-      for (let s = 0; s < tableSize; s++) {
-        const sym = symbolTable[s];
-        const k = symOccurrence[sym]++;
-        positionToReduced[s] = normFreq[sym] + k;
-      }
+      /** @type {int32[]} */
+      const positionToReduced = buildReducedStates(normFreq, symbolTable, tableSize);
 
       // Decode.
-      const decoded = new Array(uncompressedSize);
+      /** @type {int32} */
       let bitPos = bitStack.length - 1;
 
       for (let i = 0; i < uncompressedSize; i++) {
+        /** @type {int32} */
         const spreadPos = state - tableSize;
-        const sym = symbolTable[spreadPos];
-        decoded[i] = sym;
+        decoded[i] = symbolTable[spreadPos];
 
-        const reduced = positionToReduced[spreadPos];
-        state = reduced;
+        state = positionToReduced[spreadPos];
 
         while (state < tableSize) {
-          state = state * 2 + bitStack[bitPos--];
+          /** @type {int32} */
+          const bit = bitStack[bitPos--];
+          state = state * 2 + bit;
         }
       }
 
@@ -379,6 +463,29 @@
 
   // ===== FSE/tANS TABLE CONSTRUCTION =====
 
+  /**
+   * Reduced state of every table position: the symbol's normalized frequency
+   * plus how many earlier positions hold the same symbol.
+   * @param {int32[]} normFreq - Normalized frequency per symbol
+   * @param {int32[]} symbolTable - Symbol per table position
+   * @param {int32} tableSize - Number of table positions
+   * @returns {int32[]} Reduced state per table position
+   */
+  function buildReducedStates(normFreq, symbolTable, tableSize) {
+    /** @type {int32[]} */
+    const symOccurrence = new Int32Array(256);
+    /** @type {int32[]} */
+    const positionToReduced = new Array(tableSize);
+    for (let s = 0; s < tableSize; s++) {
+      /** @type {int32} */
+      const sym = symbolTable[s];
+      /** @type {int32} */
+      const k = symOccurrence[sym]++;
+      positionToReduced[s] = normFreq[sym] + k;
+    }
+    return positionToReduced;
+  }
+
   // Greedy largest-error/smallest-error rounding: scale every used symbol's
   // raw frequency proportionally to tableSize (minimum 1), then repeatedly
   // bump the symbol with the largest positive rounding error (if under
@@ -386,23 +493,48 @@
   // more than 1 slot (if over), until the normalized frequencies sum to
   // exactly tableSize. Ties resolve to the first symbol reached while
   // iterating `symbols` in ascending byte-value order.
+  /**
+   * @param {int32[]} rawFreq - Raw count per byte value
+   * @param {int32[]} symbols - Used symbols in ascending order
+   * @param {int32} tableSize - Sum the frequencies are scaled to
+   * @param {int32} totalCount - Sum of the raw counts
+   * @returns {int32[]} Normalized frequency per byte value
+   */
   function normalizeFrequencies(rawFreq, symbols, tableSize, totalCount) {
-    const normFreq = new Array(256).fill(0);
+    /** @type {int32[]} */
+    const normFreq = new Array(256);
+    for (let i = 0; i < 256; i++) {
+      normFreq[i] = 0;
+    }
+    /** @type {int32} */
     let assigned = 0;
 
-    for (const sym of symbols) {
-      let nf = Math.floor(rawFreq[sym] * tableSize / totalCount);
-      if (nf < 1) nf = 1;
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const sym = symbols[n];
+      /** @type {float64} */
+      const scaled = rawFreq[sym] * tableSize / totalCount;
+      /** @type {int32} */
+      let nf = Math.floor(scaled);
+      if (nf < 1) {
+        nf = 1;
+      }
       normFreq[sym] = nf;
       assigned += nf;
     }
 
     while (assigned !== tableSize) {
       if (assigned < tableSize) {
+        /** @type {int32} */
         let bestSym = symbols[0];
+        /** @type {float64} */
         let bestError = -Infinity;
-        for (const sym of symbols) {
+        for (let n = 0; n < symbols.length; n++) {
+          /** @type {int32} */
+          const sym = symbols[n];
+          /** @type {float64} */
           const ideal = rawFreq[sym] * tableSize / totalCount;
+          /** @type {float64} */
           const error = ideal - normFreq[sym];
           if (error > bestError) {
             bestError = error;
@@ -412,11 +544,19 @@
         normFreq[bestSym]++;
         assigned++;
       } else {
+        /** @type {int32} */
         let bestSym = symbols[0];
+        /** @type {float64} */
         let bestError = Infinity;
-        for (const sym of symbols) {
-          if (normFreq[sym] <= 1) continue;
+        for (let n = 0; n < symbols.length; n++) {
+          /** @type {int32} */
+          const sym = symbols[n];
+          if (normFreq[sym] <= 1) {
+            continue;
+          }
+          /** @type {float64} */
           const ideal = rawFreq[sym] * tableSize / totalCount;
+          /** @type {float64} */
           const error = ideal - normFreq[sym];
           if (error < bestError) {
             bestError = error;
@@ -438,16 +578,32 @@
   // Spreads each symbol across the tableSize-entry state table using the
   // classic FSE/tANS pseudo-random walk: step = tableSize*5/8 + 3, applied
   // modulo tableSize, visiting every slot exactly once overall.
+  /**
+   * @param {int32[]} normFreq - Normalized frequency per symbol
+   * @param {int32[]} symbols - Used symbols in ascending order
+   * @param {int32} tableSize - Number of table positions
+   * @returns {int32[]} Symbol per table position
+   */
   function buildSpreadTable(normFreq, symbols, tableSize) {
+    /** @type {int32[]} */
     const table = new Array(tableSize);
-    const step = OpCodes.Shr32(tableSize, 1) + OpCodes.Shr32(tableSize, 3) + 3;
+    /** @type {int32} */
+    const half = OpCodes.Shr32(tableSize, 1);
+    /** @type {int32} */
+    const eighth = OpCodes.Shr32(tableSize, 3);
+    /** @type {int32} */
+    const step = half + eighth + 3;
+    /** @type {int32} */
     const mask = tableSize - 1;
+    /** @type {int32} */
     let pos = 0;
 
-    for (const sym of symbols) {
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const sym = symbols[n];
       for (let i = 0; i < normFreq[sym]; i++) {
         table[pos] = sym;
-        pos = OpCodes.AndN(pos + step, mask);
+        pos = OpCodes.And32(pos + step, mask);
       }
     }
 
