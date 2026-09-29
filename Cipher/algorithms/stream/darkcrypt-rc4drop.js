@@ -193,8 +193,6 @@
       for (let n = 0; n < DROP_COUNT; n++) this._prgaStep();
     }
 
-    /**
-     */
     _prgaStep() {
       this.i = OpCodes.And32(this.i + 1, 0xFF);
       this.j = OpCodes.And32(this.j + this.S[this.i], 0xFF);
