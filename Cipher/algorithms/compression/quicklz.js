@@ -67,20 +67,31 @@
       this.country = CountryCode.DK;
 
       // QuickLZ Level 1 constants
+      /** @type {int32} */
       this.VERSION_MAJOR = 1;
+      /** @type {int32} */
       this.VERSION_MINOR = 5;
+      /** @type {int32} */
       this.VERSION_REVISION = 0;
 
       // Encoding constants
+      /** @type {int32} */
       this.MIN_MATCH = 3;                    // Minimum match length
+      /** @type {int32} */
       this.MAX_SHORT_MATCH = 17;             // Largest length encodable in the 2-byte match token
+      /** @type {int32} */
       this.MAX_MATCH = this.MAX_SHORT_MATCH + 1 + 255; // Largest length encodable with the extended byte
+      /** @type {int32} */
       this.CWORD_LEN = 4;                    // Control word length (32 bits)
+      /** @type {int32} */
       this.CWORD_BITS = 32;                  // One control bit per token
 
       // Hash table configuration (Level 1)
+      /** @type {int32} */
       this.QLZ_POINTERS = 1;                 // Single pointer per hash entry
+      /** @type {int32} */
       this.QLZ_HASH_VALUES = 4096;           // Hash table size
+      /** @type {int32} */
       this.HASH_MASK = this.QLZ_HASH_VALUES - 1;
 
       // Documentation and references
@@ -177,23 +188,40 @@
   class QuickLZInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {QuickLZCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // QuickLZ parameters from algorithm
+      /** @type {int32} */
       this.MIN_MATCH = algorithm.MIN_MATCH;
+      /** @type {int32} */
       this.MAX_SHORT_MATCH = algorithm.MAX_SHORT_MATCH;
+      /** @type {int32} */
       this.MAX_MATCH = algorithm.MAX_MATCH;
+      /** @type {int32} */
       this.CWORD_LEN = algorithm.CWORD_LEN;
+      /** @type {int32} */
       this.CWORD_BITS = algorithm.CWORD_BITS;
+      /** @type {int32} */
       this.QLZ_HASH_VALUES = algorithm.QLZ_HASH_VALUES;
+      /** @type {int32} */
       this.HASH_MASK = algorithm.HASH_MASK;
+
+      // Fields of the match token most recently read by _decodeMatch
+      /** @type {uint32} */
+      this.tokenHash = 0;
+      /** @type {int32} */
+      this.tokenLength = 0;
+      /** @type {int32} */
+      this.tokenNextPos = 0;
     }
 
 
@@ -223,17 +251,28 @@
      * eagerly (as soon as a token is coded) would let the compressor find
      * matches built from bytes the decompressor has not reconstructed yet,
      * desynchronizing the two tables.
+     * @param {int32[]} pending - Queued positions, oldest first
+     * @param {int32[]} hashTable - Hash table
+     * @param {uint8[]} data - Bytes the positions refer to
+     * @param {int32} currentPos - Number of bytes available
      */
     _flushPending(pending, hashTable, data, currentPos) {
       while (pending.length > 0 && pending[0] + 2 < currentPos) {
+        /** @type {int32} */
         const p = pending.shift();
         hashTable[this._hash(data, p)] = p;
       }
     }
 
+    /**
+     * @returns {uint8[]} Size header and QuickLZ stream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {int32} */
       const inputLength = input.length;
+      /** @type {uint8[]} */
       const output = [];
 
       // 4-byte little-endian uncompressed size header
@@ -241,20 +280,28 @@
 
       if (inputLength === 0) {
         // Empty input - no control word or tokens follow the header
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return output;
       }
 
       // Initialize hash table
+      /** @type {int32[]} */
       const hashTable = new Int32Array(this.QLZ_HASH_VALUES);
       hashTable.fill(-1);
 
       // Queue of positions awaiting hash-table insertion (see _flushPending)
+      /** @type {int32[]} */
       const pending = [];
 
+      /** @type {int32} */
       let ip = 0;                    // Input position
+      /** @type {int32} */
       let cwordPos = -1;             // Position of the current control word
+      /** @type {uint32} */
       let cword = 0;                 // Control word value (one bit per token)
+      /** @type {int32} */
       let bitIndex = this.CWORD_BITS; // Forces allocation of a control word on first iteration
 
       while (ip < inputLength) {
@@ -270,17 +317,23 @@
 
         this._flushPending(pending, hashTable, input, ip);
 
+        /** @type {int32} */
         let matchLen = 0;
+        /** @type {int32} */
         let matchHash = -1;
 
         // Try to find a match (need at least MIN_MATCH bytes)
         if (ip + this.MIN_MATCH <= inputLength) {
+          /** @type {uint32} */
           const hash = this._hash(input, ip);
+          /** @type {int32} */
           const matchPos = hashTable[hash];
 
           if (matchPos >= 0 && matchPos < ip) {
             // Count matching bytes
+            /** @type {int32} */
             const maxLen = Math.min(this.MAX_MATCH, inputLength - ip);
+            /** @type {int32} */
             let len = 0;
             while (len < maxLen && input[matchPos + len] === input[ip + len]) {
               len++;
@@ -315,7 +368,9 @@
         this._updateU32LE(output, cwordPos, cword);
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const cleared = [];
+      this.inputBuffer = cleared;
       return output;
     }
 
@@ -326,32 +381,45 @@
      * a position's 3-byte window only becomes an eligible hash entry once it is fully
      * present in the already-reconstructed output, which keeps this table byte-for-byte
      * identical to the compressor's table at every point in the stream.
+     * @returns {uint8[]} Decoded bytes
      */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
 
       if (input.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // 4-byte little-endian uncompressed size header
+      /** @type {uint32} */
       const originalLength = this._readU32LE(input, 0);
 
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {int32} */
       let ip = 4;  // Input position after header
 
       // Empty input case
       if (originalLength === 0) {
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return output;
       }
 
       // Initialize hash table for decompression
+      /** @type {int32[]} */
       const hashTable = new Int32Array(this.QLZ_HASH_VALUES);
       hashTable.fill(-1);
 
       // Queue of positions awaiting hash-table insertion (see _flushPending)
+      /** @type {int32[]} */
       const pending = [];
 
       while (output.length < originalLength) {
@@ -359,6 +427,7 @@
         if (ip + 4 > input.length) {
           throw new Error("QuickLZ decompression error: truncated control word");
         }
+        /** @type {uint32} */
         const cword = this._readU32LE(input, ip);
         ip += 4;
 
@@ -366,23 +435,25 @@
         for (let bitIndex = 0; bitIndex < this.CWORD_BITS && output.length < originalLength; bitIndex++) {
           this._flushPending(pending, hashTable, output, output.length);
 
+          /** @type {boolean} */
           const isMatch = OpCodes.And32(OpCodes.Shr32(cword, bitIndex), 1) === 1;
 
           if (isMatch) {
             // Match - read encoded (hash, length) token
-            const matchInfo = this._decodeMatch(input, ip);
-            if (!matchInfo) {
+            if (!this._decodeMatch(input, ip)) {
               throw new Error("QuickLZ decompression error: truncated match token");
             }
-            ip = matchInfo.nextPos;
+            ip = this.tokenNextPos;
 
-            const matchPos = hashTable[matchInfo.hash];
+            /** @type {int32} */
+            const matchPos = hashTable[this.tokenHash];
             if (matchPos < 0) {
-              throw new Error(`QuickLZ decompression error: invalid hash index ${matchInfo.hash}`);
+              throw new Error("QuickLZ decompression error: invalid hash index " + this.tokenHash);
             }
 
+            /** @type {int32} */
             const phraseStart = output.length;
-            for (let i = 0; i < matchInfo.length; i++) {
+            for (let i = 0; i < this.tokenLength; i++) {
               output.push(output[matchPos + i]);
             }
 
@@ -395,6 +466,7 @@
             if (ip >= input.length) {
               throw new Error("QuickLZ decompression error: truncated literal");
             }
+            /** @type {int32} */
             const bytePos = output.length;
             output.push(input[ip++]);
 
@@ -406,7 +478,9 @@
         }
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const cleared = [];
+      this.inputBuffer = cleared;
       return output;
     }
 
@@ -414,14 +488,22 @@
 
     /**
      * QuickLZ Level 1 hash function: ((OpCodes.Shr32(i, 12))^i)&(QLZ_HASH_VALUES - 1)
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position of the three hashed bytes
+     * @returns {uint32} Hash bucket (0 when fewer than three bytes remain)
      */
     _hash(data, pos) {
-      if (pos + 2 >= data.length) return 0;
+      if (pos + 2 >= data.length) {
+        return 0;
+      }
 
       // Fetch 3 bytes and pack as 32-bit value (little-endian)
+      /** @type {uint32} */
       const fetch = OpCodes.Pack32LE(data[pos], data[pos + 1], data[pos + 2], 0);
+      /** @type {uint32} */
       const shifted = OpCodes.Shr32(fetch, 12);
       // XOR the shifted value with original
+      /** @type {uint32} */
       const xored = OpCodes.Xor32(shifted, fetch);
       // Mask to hash table size
       return OpCodes.And32(xored, this.HASH_MASK);
@@ -432,14 +514,20 @@
      * QuickLZ encodes the hash value with the match, not the offset.
      * Short matches (length <= MAX_SHORT_MATCH): 2 bytes, length field 0-14 (0x0F is reserved).
      * Long matches (length > MAX_SHORT_MATCH): 3 bytes, extra byte carries length - (MAX_SHORT_MATCH + 1).
+     * @param {uint8[]} output - Output
+     * @param {int32} hash - Hash bucket of the match source
+     * @param {int32} length - Match length
      */
     _encodeMatch(output, hash, length) {
+      /** @type {uint32} */
       const masked = OpCodes.And32(hash, this.HASH_MASK);
       if (length <= this.MAX_SHORT_MATCH) {
+        /** @type {uint32} */
         const encoded = OpCodes.Or32(OpCodes.Shl16(masked, 4), length - this.MIN_MATCH);
         output.push(OpCodes.ToByte(encoded));
         output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
       } else {
+        /** @type {uint32} */
         const encoded = OpCodes.Or32(OpCodes.Shl16(masked, 4), 0x0F);
         output.push(OpCodes.ToByte(encoded));
         output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
@@ -448,43 +536,54 @@
     }
 
     /**
-     * Decode a match token from the input stream.
-     * Returns the hash bucket index (for lookup in the synchronized hash table), the
-     * match length, and the input position following the token.
+     * Decode a match token from the input stream into tokenHash (the hash bucket
+     * index for lookup in the synchronized hash table), tokenLength (the match
+     * length) and tokenNextPos (the input position following the token).
+     * @param {uint8[]} input - Compressed stream
+     * @param {int32} pos - Position of the token
+     * @returns {boolean} False when the token is truncated
      */
     _decodeMatch(input, pos) {
-      if (pos + 2 > input.length) return null;
+      if (pos + 2 > input.length) {
+        return false;
+      }
 
+      /** @type {uint8} */
       const byte0 = input[pos];
+      /** @type {uint8} */
       const byte1 = input[pos + 1];
+      /** @type {uint32} */
       const encoded = OpCodes.Or32(byte0, OpCodes.Shl32(byte1, 8));
 
+      /** @type {uint32} */
       const lengthField = OpCodes.And32(encoded, 0x0F);
+      /** @type {uint32} */
       const hash = OpCodes.And32(OpCodes.Shr32(encoded, 4), this.HASH_MASK);
-
-      let length;
-      let nextPos;
 
       if (lengthField === 0x0F) {
         // Long match: read additional length byte
-        if (pos + 3 > input.length) return null;
-        length = input[pos + 2] + this.MAX_SHORT_MATCH + 1;
-        nextPos = pos + 3;
+        if (pos + 3 > input.length) {
+          return false;
+        }
+        /** @type {int32} */
+        const extra = input[pos + 2];
+        this.tokenLength = extra + this.MAX_SHORT_MATCH + 1;
+        this.tokenNextPos = pos + 3;
       } else {
         // Short/medium match
-        length = lengthField + this.MIN_MATCH;
-        nextPos = pos + 2;
+        /** @type {int32} */
+        const field = lengthField;
+        this.tokenLength = field + this.MIN_MATCH;
+        this.tokenNextPos = pos + 2;
       }
-
-      return {
-        hash: hash,
-        length: length,
-        nextPos: nextPos
-      };
+      this.tokenHash = hash;
+      return true;
     }
 
     /**
      * Write 32-bit little-endian value
+     * @param {uint8[]} output - Output
+     * @param {uint32} value - Value
      */
     _writeU32LE(output, value) {
       output.push(OpCodes.ToByte(value));
@@ -495,6 +594,9 @@
 
     /**
      * Update 32-bit little-endian value at position
+     * @param {uint8[]} output - Output
+     * @param {int32} pos - Position of the value
+     * @param {uint32} value - Value
      */
     _updateU32LE(output, pos, value) {
       output[pos] = OpCodes.ToByte(value);
@@ -505,6 +607,9 @@
 
     /**
      * Read 32-bit little-endian value
+     * @param {uint8[]} input - Bytes
+     * @param {int32} pos - Position of the value
+     * @returns {uint32} Value
      */
     _readU32LE(input, pos) {
       return OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
