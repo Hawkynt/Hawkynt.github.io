@@ -73,19 +73,29 @@
       this.country = CountryCode.ID; // Indonesia (creator's nationality)
 
       // Algorithm constants matching FastLZ specification
+      /** @type {int32} */
       this.HASH_LOG = 13;
+      /** @type {int32} */
       this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_LOG); // 8192
+      /** @type {int32} */
       this.HASH_MASK = this.HASH_SIZE - 1;
 
       // Distance limits
+      /** @type {int32} */
       this.MAX_L1_DISTANCE = 8192;
+      /** @type {int32} */
       this.MAX_L2_DISTANCE = 8191;
+      /** @type {int32} */
       this.MAX_FARDISTANCE = 65535 + this.MAX_L2_DISTANCE - 1;
 
       // Match constraints
+      /** @type {int32} */
       this.MAX_COPY = 32;  // Maximum literal run
+      /** @type {int32} */
       this.MAX_LEN = 264;  // Maximum match length (9 + 255)
+      /** @type {int32} */
       this.MIN_MATCH_LENGTH = 3;
+      /** @type {int32} */
       this.MAX_SHORT_MATCH = 8; // Matches up to this length use the 2-byte token
 
       // Documentation and references
@@ -149,7 +159,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FastLZInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -160,38 +170,54 @@
   /**
  * FastLZ cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class FastLZInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FastLZCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Compression parameters
+      /** @type {int32} */
       this._level = 1; // Default to level 1 (ultra-fast)
 
       // Constants from algorithm
+      /** @type {int32} */
       this.HASH_LOG = algorithm.HASH_LOG;
+      /** @type {int32} */
       this.HASH_SIZE = algorithm.HASH_SIZE;
+      /** @type {int32} */
       this.HASH_MASK = algorithm.HASH_MASK;
+      /** @type {int32} */
       this.MAX_L1_DISTANCE = algorithm.MAX_L1_DISTANCE;
+      /** @type {int32} */
       this.MAX_L2_DISTANCE = algorithm.MAX_L2_DISTANCE;
+      /** @type {int32} */
       this.MAX_FARDISTANCE = algorithm.MAX_FARDISTANCE;
+      /** @type {int32} */
       this.MAX_COPY = algorithm.MAX_COPY;
+      /** @type {int32} */
       this.MAX_LEN = algorithm.MAX_LEN;
+      /** @type {int32} */
       this.MIN_MATCH_LENGTH = algorithm.MIN_MATCH_LENGTH;
+      /** @type {int32} */
       this.MAX_SHORT_MATCH = algorithm.MAX_SHORT_MATCH;
     }
 
-    // Compression level property (1 or 2)
+    /**
+     * Compression level (1 or 2)
+     * @param {int32} value - Level
+     */
     set level(value) {
       if (value !== 1 && value !== 2) {
         throw new Error("Invalid compression level. Must be 1 or 2.");
@@ -199,6 +225,9 @@
       this._level = value;
     }
 
+    /**
+     * @returns {int32} Compression level
+     */
     get level() {
       return this._level;
     }
@@ -213,7 +242,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._decompress();
       }
@@ -226,25 +257,39 @@
     /**
      * FastLZ hash function: h = (v * 2654435769) right-shift (32 - HASH_LOG)
      * Uses golden ratio multiplier for good distribution
+     * @param {uint32} value - 24-bit key
+     * @returns {uint32} Hash bucket
      */
     _hash(value) {
       // Multiply by golden ratio constant (2654435769 = 0x9E3779B9)
-      const h = Math.imul(value&0xFFFFFF, 0x9E3779B9);
-      return OpCodes.Shr32(h, (32 - this.HASH_LOG))&this.HASH_MASK;
+      /** @type {uint32} */
+      const h = OpCodes.Mul32(OpCodes.And32(value, 0xFFFFFF), 0x9E3779B9);
+      return OpCodes.And32(OpCodes.Shr32(h, (32 - this.HASH_LOG)), this.HASH_MASK);
     }
 
     /**
      * Read 3-byte sequence for hash calculation
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position
+     * @returns {uint32} Big-endian 24-bit value, 0 near the end
      */
     _read24(data, pos) {
-      if (pos + 2 >= data.length) return 0;
-      return OpCodes.Shl32(data[pos], 16)|OpCodes.Shl32(data[pos + 1], 8)|data[pos + 2];
+      if (pos + 2 >= data.length) {
+        return 0;
+      }
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(data[pos], 16), OpCodes.Shl32(data[pos + 1], 8)), data[pos + 2]);
     }
 
     /**
      * Count matching bytes at two positions, up to maxLength
+     * @param {uint8[]} data - Bytes
+     * @param {int32} a - First position
+     * @param {int32} b - Second position
+     * @param {int32} maxLength - Limit
+     * @returns {int32} Number of equal bytes
      */
     _matchLength(data, a, b, maxLength) {
+      /** @type {int32} */
       let len = 0;
       while (len < maxLength && data[a + len] === data[b + len]) {
         len++;
@@ -257,23 +302,35 @@
      * Ported from CompressionWorkbench's FastLzCompressor (BB_FastLz) so the
      * wire format is byte-identical: single-candidate hash table (no chaining),
      * greedy matching, hash table refreshed across the whole matched span.
+     * @returns {uint8[]} Block stream
      */
     _compressLevel1() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {int32} */
       const n = input.length;
+      /** @type {uint8[]} */
       const output = [];
-      if (n === 0) return output;
+      if (n === 0) {
+        return output;
+      }
 
+      /** @type {int32[]} */
       const hashTable = new Int32Array(this.HASH_SIZE).fill(-1);
 
+      /** @type {int32} */
       let ip = 0; // Input position
+      /** @type {int32} */
       let anchor = 0; // Start of current literal run
 
       while (ip + this.MIN_MATCH_LENGTH <= n) {
+        /** @type {uint32} */
         const hash = this._hash(this._read24(input, ip));
+        /** @type {int32} */
         const candidate = hashTable[hash];
         hashTable[hash] = ip;
 
+        /** @type {int32} */
         let matchLength = 0;
         if (candidate >= 0 &&
             input[candidate] === input[ip] &&
@@ -287,10 +344,13 @@
           this._outputLiterals(output, input, anchor, ip - anchor);
           this._outputMatch(output, matchLength, ip - candidate);
 
+          /** @type {int32} */
           const matchEnd = ip + matchLength;
           ip++;
           while (ip < matchEnd) {
-            if (ip + this.MIN_MATCH_LENGTH <= n) hashTable[this._hash(this._read24(input, ip))] = ip;
+            if (ip + this.MIN_MATCH_LENGTH <= n) {
+              hashTable[this._hash(this._read24(input, ip))] = ip;
+            }
             ip++;
           }
 
@@ -307,6 +367,7 @@
     /**
      * FastLZ Level 2 compression - CompressionWorkbench's reference building
      * block only exposes the level-1 block format, so level 2 mirrors it.
+     * @returns {uint8[]} Block stream
      */
     _compressLevel2() {
       return this._compressLevel1();
@@ -315,12 +376,23 @@
     /**
      * Main compression dispatcher. Always prepends the 4-byte little-endian
      * original-length header used by the CompressionWorkbench building block.
+     * @returns {uint8[]} Header and block stream
      */
     _compress() {
+      /** @type {int32} */
       const originalLength = this.inputBuffer.length;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(originalLength);
-      const body = this._level === 2 ? this._compressLevel2() : this._compressLevel1();
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let body;
+      if (this._level === 2) {
+        body = this._compressLevel2();
+      } else {
+        body = this._compressLevel1();
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return header.concat(body);
     }
 
@@ -328,12 +400,19 @@
      * Output literal run in FastLZ format
      * Format: [length-1] [byte1] [byte2] ... [byteN]
      * Length field: 0-31 represents 1-32 bytes
+     * @param {uint8[]} output - Destination
+     * @param {uint8[]} input - Source
+     * @param {int32} start - First literal
+     * @param {int32} length - Number of literals
      */
     _outputLiterals(output, input, start, length) {
+      /** @type {int32} */
       let pos = start;
+      /** @type {int32} */
       let remaining = length;
 
       while (remaining > 0) {
+        /** @type {int32} */
         const chunkLen = Math.min(remaining, this.MAX_COPY);
         output.push(chunkLen - 1); // Length encoding: 0 = 1 byte, 31 = 32 bytes
 
@@ -349,21 +428,26 @@
      * Output match token in FastLZ Level 1 format
      *
      * Short match (length 3-8):
-     *   [(len-2 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) & 0xFF]
+     *   [(len-2 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) AND 0xFF]
      *
      * Long match (length 9-264):
-     *   [(7 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) & 0xFF] [len - 9]
+     *   [(7 left-shift 5) OR right-shift(dist-1, 8)] [(dist-1) AND 0xFF] [len - 9]
+     * @param {uint8[]} output - Destination
+     * @param {int32} length - Match length
+     * @param {int32} distance - Match distance
      */
     _outputMatch(output, length, distance) {
+      /** @type {int32} */
       const encodedDistance = distance - 1;
       if (length <= this.MAX_SHORT_MATCH) {
         // Short match: 3-8 bytes
+        /** @type {int32} */
         const type = length - 2;
-        output.push(OpCodes.Shl32(type, 5)|OpCodes.Shr32(encodedDistance, 8));
+        output.push(OpCodes.Or32(OpCodes.Shl32(type, 5), OpCodes.Shr32(encodedDistance, 8)));
         output.push(OpCodes.ToByte(encodedDistance));
       } else {
         // Long match: 9-264 bytes
-        output.push(OpCodes.Shl32(7, 5)|OpCodes.Shr32(encodedDistance, 8));
+        output.push(OpCodes.Or32(OpCodes.Shl32(7, 5), OpCodes.Shr32(encodedDistance, 8)));
         output.push(OpCodes.ToByte(encodedDistance));
         output.push(length - 9); // Length byte: 0 = 9 bytes, 255 = 264 bytes
       }
@@ -372,52 +456,73 @@
     /**
      * FastLZ decompression. Reads the 4-byte little-endian original-length
      * header written by _compress(), then decodes the level-1 block stream.
+     * @returns {uint8[]} Decoded bytes
      */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
+      const output = [];
+      /** @type {uint8[]} */
+      const fresh = [];
       if (input.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       if (originalLength === 0) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
-      const output = [];
+      /** @type {int32} */
       let ip = 4;
 
       while (output.length < originalLength) {
+        /** @type {uint8} */
         const opcode = input[ip++];
+        /** @type {uint32} */
         const type = OpCodes.Shr32(opcode, 5);
 
         if (type === 0) {
           // Literal run: copy (opcode + 1) bytes
-          const litLen = (opcode&0x1F) + 1;
-          for (let i = 0; i < litLen; i++) output.push(input[ip++]);
+          /** @type {int32} */
+          const litLen = OpCodes.And32(opcode, 0x1F) + 1;
+          for (let i = 0; i < litLen; i++) {
+            output.push(input[ip++]);
+          }
           continue;
         }
 
-        const distHigh = opcode&0x1F;
+        /** @type {uint32} */
+        const distHigh = OpCodes.And32(opcode, 0x1F);
+        /** @type {uint8} */
         const distLow = input[ip++];
-        const encodedDistance = OpCodes.Shl32(distHigh, 8)|distLow;
+        /** @type {uint32} */
+        const encodedDistance = OpCodes.Or32(OpCodes.Shl32(distHigh, 8), distLow);
 
-        let length;
+        /** @type {int32} */
+        let length = 0;
         if (type === 7) {
+          /** @type {uint8} */
           const extra = input[ip++];
           length = extra + 9; // Long match: 9-264 bytes
         } else {
           length = type + 2; // Short match: 3-8 bytes
         }
 
+        /** @type {int32} */
         const distance = encodedDistance + 1;
+        /** @type {int32} */
         const refPos = output.length - distance;
-        for (let i = 0; i < length; i++) output.push(output[refPos + i]);
+        for (let i = 0; i < length; i++) {
+          output.push(output[refPos + i]);
+        }
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return output;
     }
   }
