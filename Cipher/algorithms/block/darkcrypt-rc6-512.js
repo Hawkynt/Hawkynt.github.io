@@ -52,10 +52,22 @@
   const ROUNDS = 20;
   const TABLE_SIZE = 2 * ROUNDS + 4; // 44
 
+  /**
+   * Rotate left by the low five bits of positions
+   * @param {uint32} value - Word
+   * @param {uint32} positions - Rotation amount (mod 32)
+   * @returns {uint32} Rotated word
+   */
   function rotL(value, positions) {
     return OpCodes.RotL32(OpCodes.ToUint32(value), OpCodes.And32(positions, 31));
   }
 
+  /**
+   * Rotate right by the low five bits of positions
+   * @param {uint32} value - Word
+   * @param {uint32} positions - Rotation amount (mod 32)
+   * @returns {uint32} Rotated word
+   */
   function rotR(value, positions) {
     return OpCodes.RotR32(OpCodes.ToUint32(value), OpCodes.And32(positions, 31));
   }
@@ -131,6 +143,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.keySchedule = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -182,6 +195,7 @@
     // unlike textbook RC5/RC6's little-endian packing).
     _generateKeySchedule() {
       const c = Math.max(1, Math.floor(this.KeySize / 4));
+      /** @type {uint32[]} */
       const L = new Array(c);
       for (let j = 0; j < c; j++) {
         L[j] = OpCodes.Pack32BE(
@@ -195,11 +209,15 @@
         this.keySchedule[k] = OpCodes.ToUint32(this.keySchedule[k - 1] + Q32);
 
       const iterations = 3 * Math.max(c, TABLE_SIZE);
-      let A = 0, B = 0, i = 0, j = 0;
+      /** @type {uint32} */
+      let A = 0;
+      /** @type {uint32} */
+      let B = 0;
+      let i = 0, j = 0;
 
       for (let k = 0; k < iterations; k++) {
-        A = this.keySchedule[i] = rotL(OpCodes.ToUint32(this.keySchedule[i] + A + B), 3);
-        B = L[j] = rotL(OpCodes.ToUint32(L[j] + A + B), OpCodes.And32(A + B, 31));
+        A = this.keySchedule[i] = rotL(OpCodes.Add32(OpCodes.Add32(this.keySchedule[i], A), B), 3);
+        B = L[j] = rotL(OpCodes.Add32(OpCodes.Add32(L[j], A), B), OpCodes.And32(OpCodes.Add32(A, B), 31));
 
         i = (i + 1) % TABLE_SIZE;
         j = (j + 1) % c;
@@ -222,8 +240,8 @@
       D = OpCodes.ToUint32(D + this.keySchedule[1]);
 
       for (let i = 1; i <= ROUNDS; i++) {
-        const t = rotL(Math.imul(B, OpCodes.ToUint32(2 * B + 1)), 5);
-        const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
+        const t = rotL(OpCodes.Mul32(B, OpCodes.Add32(OpCodes.Add32(B, B), 1)), 5);
+        const u = rotL(OpCodes.Mul32(D, OpCodes.Add32(OpCodes.Add32(D, D), 1)), 5);
 
         A = rotL(OpCodes.Xor32(A, t), OpCodes.And32(u, 31));
         A = OpCodes.ToUint32(A + this.keySchedule[2 * i]);
@@ -259,8 +277,8 @@
       for (let i = ROUNDS; i >= 1; i--) {
         const tmp = D; D = C; C = B; B = A; A = tmp;
 
-        const t = rotL(Math.imul(B, OpCodes.ToUint32(2 * B + 1)), 5);
-        const u = rotL(Math.imul(D, OpCodes.ToUint32(2 * D + 1)), 5);
+        const t = rotL(OpCodes.Mul32(B, OpCodes.Add32(OpCodes.Add32(B, B), 1)), 5);
+        const u = rotL(OpCodes.Mul32(D, OpCodes.Add32(OpCodes.Add32(D, D), 1)), 5);
 
         C = OpCodes.ToUint32(C - this.keySchedule[2 * i + 1]);
         C = rotR(C, OpCodes.And32(t, 31));
