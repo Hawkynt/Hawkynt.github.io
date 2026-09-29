@@ -59,8 +59,14 @@
   ];
 
   // Key schedule for TWINE-80 (80-bit key)
+  /**
+   * @param {uint8[]} key - 10-byte key
+   * @returns {uint8[][]} Round keys RK[1..36] (index 0 unused), eight nibbles each
+   */
   function keySchedule80(key) {
-    const roundKeys = [];
+    /** @type {uint8[][]} */
+    const schedule = new Array(37);
+    /** @type {uint8[]} */
     const wk = new Array(20);
 
     // Initialize working key from input (20 nibbles from 80 bits)
@@ -74,7 +80,9 @@
     // Generate round keys RK[1] to RK[36]
     for (let r = 1; r <= 36; ++r) {
       // Extract round key OpCodes.Xor32(RK, r) = (WK_1, WK_3, WK_4, WK_6, WK_13, WK_14, WK_15, WK_16)
-      roundKeys[r] = [wk[1], wk[3], wk[4], wk[6], wk[13], wk[14], wk[15], wk[16]];
+      /** @type {uint8[]} */
+      const rk = [wk[1], wk[3], wk[4], wk[6], wk[13], wk[14], wk[15], wk[16]];
+      schedule[r] = rk;
 
       // Update working key (only for rounds 1-35, not after round 36)
       if (r < 36) {
@@ -94,6 +102,7 @@
         wk[3] = temp0;
 
         // 4. Rotate all 20 nibbles by 4 positions: WK[0..19] ← WK[4..19, 0..3]
+        /** @type {uint8[]} */
         const temp = [wk[0], wk[1], wk[2], wk[3]];
         for (let i = 0; i < 16; ++i) {
           wk[i] = wk[i + 4];
@@ -105,12 +114,18 @@
       }
     }
 
-    return roundKeys;
+    return schedule;
   }
 
   // Key schedule for TWINE-128 (128-bit key)
+  /**
+   * @param {uint8[]} key - 16-byte key
+   * @returns {uint8[][]} Round keys RK[1..36] (index 0 unused), eight nibbles each
+   */
   function keySchedule128(key) {
-    const roundKeys = [];
+    /** @type {uint8[][]} */
+    const schedule = new Array(37);
+    /** @type {uint8[]} */
     const wk = new Array(32);
 
     // Initialize working key from input (32 nibbles from 128 bits)
@@ -124,7 +139,9 @@
     // Generate round keys RK[1] to RK[36]
     for (let r = 1; r <= 36; ++r) {
       // Extract round key OpCodes.Xor32(RK, r) = (WK_2, WK_3, WK_12, WK_15, WK_17, WK_18, WK_28, WK_31)
-      roundKeys[r] = [wk[2], wk[3], wk[12], wk[15], wk[17], wk[18], wk[28], wk[31]];
+      /** @type {uint8[]} */
+      const rk = [wk[2], wk[3], wk[12], wk[15], wk[17], wk[18], wk[28], wk[31]];
+      schedule[r] = rk;
 
       // Update working key (only for rounds 1-35, not after round 36)
       if (r < 36) {
@@ -145,6 +162,7 @@
         wk[3] = temp0;
 
         // 4. Rotate all 32 nibbles by 4 positions: WK[0..31] ← WK[4..31, 0..3]
+        /** @type {uint8[]} */
         const temp = [wk[0], wk[1], wk[2], wk[3]];
         for (let i = 0; i < 28; ++i) {
           wk[i] = wk[i + 4];
@@ -156,25 +174,40 @@
       }
     }
 
-    return roundKeys;
+    return schedule;
   }
 
   // Inverse permutation for decryption
-  const INV_PERM = new Array(16);
-  for (let i = 0; i < 16; ++i) {
-    INV_PERM[PERM[i]] = i;
+  /**
+   * @returns {uint8[]} Inverse of PERM
+   */
+  function buildInversePerm() {
+    /** @type {uint8[]} */
+    const inv = new Array(16);
+    for (let i = 0; i < 16; ++i) {
+      inv[PERM[i]] = i;
+    }
+    return inv;
   }
+  /** @type {uint8[]} */
+  const INV_PERM = buildInversePerm();
 
   // Round function for encryption
+  /**
+   * @param {uint8[]} state - 16 nibbles
+   * @param {uint8[]} roundKey - 8 round-key nibbles
+   * @returns {uint8[]} Next state
+   */
   function roundFunction(state, roundKey) {
     // 1. Apply S-box to even positions, XOR to odd positions
     // X[2*j+1] = S(X[2*j] XOR RK[j]) XOR X[2*j+1]
     const tempState = [...state];
     for (let j = 0; j < 8; ++j) {
-      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(state[2 * j], roundKey[j])], state[2 * j + 1]);
+      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(state[2 * j], roundKey[j])], state[2 * j + 1]);
     }
 
     // 2. Apply permutation to all 16 nibbles
+    /** @type {uint8[]} */
     const newState = new Array(16);
     for (let h = 0; h < 16; ++h) {
       newState[PERM[h]] = tempState[h];
@@ -184,8 +217,14 @@
   }
 
   // Round function for decryption (same S-box XOR, but inverse permutation first)
+  /**
+   * @param {uint8[]} state - 16 nibbles
+   * @param {uint8[]} roundKey - 8 round-key nibbles
+   * @returns {uint8[]} Next state
+   */
   function invRoundFunction(state, roundKey) {
     // 1. Apply inverse permutation
+    /** @type {uint8[]} */
     const tempState = new Array(16);
     for (let h = 0; h < 16; ++h) {
       tempState[INV_PERM[h]] = state[h];
@@ -194,7 +233,7 @@
     // 2. Apply S-box to even positions, XOR to odd positions (same as encryption)
     // X[2*j+1] = S(X[2*j] XOR RK[j]) XOR X[2*j+1]
     for (let j = 0; j < 8; ++j) {
-      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(tempState[2 * j], roundKey[j])], tempState[2 * j + 1]);
+      tempState[2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(tempState[2 * j], roundKey[j])], tempState[2 * j + 1]);
     }
 
     return tempState;
@@ -284,6 +323,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 
@@ -369,8 +409,11 @@
     processBlock(block) {
       // Convert block to 16 nibbles (4-bit values)
       // Extract nibbles MSB first (like Python reference)
-      const X = {}; // X[round][nibble] like Python reference
-      X[1] = new Array(16);
+      /** @type {uint8[][]} */
+      const X = new Array(37); // X[round][nibble] like Python reference, rounds 1..36
+      /** @type {uint8[]} */
+      const firstState = new Array(16);
+      X[1] = firstState;
       for (let i = 0; i < 16; ++i) {
         const byteIdx = Math.floor(i / 2);
         const nibbleShift = ((i % 2) === 0) ? 4 : 0;
@@ -381,17 +424,18 @@
         // Decryption: Start from round 36 (ciphertext), work backwards to round 1 (plaintext)
         // Python: X[36] = ciphertext, then for i = 36 down to 2: S-box then inv_perm
         X[36] = X[1];
-        delete X[1];
 
         // Round 36 down to round 2
         for (let i = 36; i >= 2; --i) {
           // Apply S-box to even positions, XOR to odd positions (modifies current round i)
           for (let j = 0; j < 8; ++j) {
-            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
+            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
           }
 
           // Apply inverse permutation to previous round (Python: X[i-1][INV_PERM[h]] = X[i][h])
-          X[i - 1] = new Array(16);
+          /** @type {uint8[]} */
+          const nextState = new Array(16);
+          X[i - 1] = nextState;
           for (let h = 0; h < 16; ++h) {
             X[i - 1][INV_PERM[h]] = X[i][h];
           }
@@ -399,10 +443,11 @@
 
         // Round 1: S-box only, no inverse permutation
         for (let j = 0; j < 8; ++j) {
-          X[1][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[1][2 * j], this._roundKeys[1][j])], X[1][2 * j + 1]);
+          X[1][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(X[1][2 * j], this._roundKeys[1][j])], X[1][2 * j + 1]);
         }
 
         // Convert final state (X[1]) back to bytes
+        /** @type {uint8[]} */
         const result = new Array(8);
         for (let i = 0; i < 8; ++i) {
           result[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(X[1][2 * i], 0x0F), 4), OpCodes.And32(X[1][2 * i + 1], 0x0F));
@@ -414,11 +459,13 @@
         for (let i = 1; i <= 35; ++i) {
           // Apply S-box to even positions, XOR to odd positions (modifies current round)
           for (let j = 0; j < 8; ++j) {
-            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
+            X[i][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(X[i][2 * j], this._roundKeys[i][j])], X[i][2 * j + 1]);
           }
 
           // Apply permutation to next round (Python: X[i + 1][PERM[h]] = X[i][h])
-          X[i + 1] = new Array(16);
+          /** @type {uint8[]} */
+          const nextState = new Array(16);
+          X[i + 1] = nextState;
           for (let h = 0; h < 16; ++h) {
             X[i + 1][PERM[h]] = X[i][h];
           }
@@ -426,10 +473,11 @@
 
         // Round 36: S-box only, no permutation
         for (let j = 0; j < 8; ++j) {
-          X[36][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.XorN(X[36][2 * j], this._roundKeys[36][j])], X[36][2 * j + 1]);
+          X[36][2 * j + 1] = OpCodes.Xor32(SBOX[OpCodes.Xor32(X[36][2 * j], this._roundKeys[36][j])], X[36][2 * j + 1]);
         }
 
         // Convert final state (X[36]) back to bytes
+        /** @type {uint8[]} */
         const result = new Array(8);
         for (let i = 0; i < 8; ++i) {
           result[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(X[36][2 * i], 0x0F), 4), OpCodes.And32(X[36][2 * i + 1], 0x0F));

@@ -94,6 +94,7 @@
   // Generate key-dependent S-box by permuting base S-box using key material
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[][]} [sbox, invSbox]
    */
   function generateKeyDependentSbox(keyBytes) {
     const sbox = new Uint8Array(BASE_SBOX);
@@ -101,9 +102,14 @@
 
     // Apply key-dependent permutation using a deterministic shuffle based on key
     // This is a plausible implementation of "key-dependent S-box" concept
+    // Signed 32-bit seed, exactly as JavaScript computes it (the second LCG
+    // step below multiplies beyond 2^53 and is kept as written).
+    /** @type {int32} */
     let seed = 0;
     for (let i = 0; i < keyBytes.length; ++i) {
-      seed = (seed * 31 + keyBytes[i])&0xffffffff;
+      /** @type {int32} */
+      const keyByte = keyBytes[i];
+      seed = (seed * 31 + keyByte)&0xffffffff;
     }
 
     // Fisher-Yates shuffle with key-based PRNG
@@ -120,31 +126,53 @@
       invSbox[sbox[i]] = i;
     }
 
-    return { sbox, invSbox };
+    /** @type {uint8[][]} */
+    const tables = [sbox, invSbox];
+    return tables;
   }
 
   // Key-dependent shift amounts (derived from key)
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {int32[]} Row shift amounts (row 0 is 0)
    */
   function generateKeyDependentShifts(keyBytes) {
+    /** @type {int32} */
     let seed = 0;
     for (let i = 0; i < keyBytes.length; ++i) {
-      seed = (seed * 37 + keyBytes[i])&0xffffffff;
+      /** @type {int32} */
+      const keyByte = keyBytes[i];
+      seed = (seed * 37 + keyByte)&0xffffffff;
     }
 
     // Generate shift amounts for each row (keeping row 0 at 0)
     // Extract different bytes from seed for variety using OpCodes
     const bytes = OpCodes.Unpack32BE(seed);
-    const shifts = [0, (bytes[3] % 3) + 1, (bytes[2] % 3) + 1, (bytes[1] % 3) + 1];
+    /** @type {int32} */
+    const byte1 = bytes[1];
+    /** @type {int32} */
+    const byte2 = bytes[2];
+    /** @type {int32} */
+    const byte3 = bytes[3];
+    /** @type {int32[]} */
+    const shifts = [0, (byte3 % 3) + 1, (byte2 % 3) + 1, (byte1 % 3) + 1];
     OpCodes.ClearArray(bytes);
     return shifts;
   }
 
+  /**
+   * @param {uint32} word - Word
+   * @returns {uint32} Word rotated left by 8
+   */
   function rotWord(word) {
     return OpCodes.RotL32(word, 8);
   }
 
+  /**
+   * @param {uint32} word - Word
+   * @param {uint8[]} sbox - S-box
+   * @returns {uint32} Word with each byte substituted
+   */
   function subWord(word, sbox) {
     const bytes = OpCodes.Unpack32BE(word);
     const result = OpCodes.Pack32BE(
@@ -263,26 +291,39 @@
       this.isInverse = !!isInverse;
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
+      /** @type {int32} */
       this._rounds = ROUNDS;
+      /** @type {uint8[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.sbox = null;
+      /** @type {uint8[]|null} */
       this.invSbox = null;
+      /** @type {int32[]|null} */
       this.shifts = null;
     }
 
     // Make rounds an own property for TestCore compatibility
+    /**
+     * @returns {int32} Round count
+     */
     get rounds() {
       return this._rounds;
     }
 
+    /**
+     * @param {int32} value - Round count 1..20 (other values are ignored)
+     */
     set rounds(value) {
       if (typeof value === 'number' && value > 0 && value <= 20) {
         this._rounds = value;
         // Trigger S-box regeneration if key is already set
         if (this._key) {
+          /** @type {uint8[]} */
           const tempKey = Array.from(this._key);
           this.key = null;
           this.key = tempKey;
@@ -327,13 +368,13 @@
 
       // Generate key-dependent S-box and shift patterns
       const sboxData = generateKeyDependentSbox(keyBytes);
-      this.sbox = sboxData.sbox;
-      this.invSbox = sboxData.invSbox;
+      this.sbox = sboxData[0];
+      this.invSbox = sboxData[1];
       this.shifts = generateKeyDependentShifts(keyBytes);
 
       const expanded = this._expandKey(keyBytes);
-      this._key = expanded.keyCopy;
-      this.roundKeys = expanded.roundKeys;
+      this._key = expanded[0];
+      this.roundKeys = expanded[1];
       this.KeySize = this._key.length;
     }
 
@@ -360,7 +401,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; ++i) {
-        this.inputBuffer.push(data[i]&0xff);
+        this.inputBuffer.push(OpCodes.And32(data[i], 0xFF));
       }
     }
 
@@ -403,9 +444,11 @@
 
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[][]} [key copy, round-key bytes]
      */
     _expandKey(keyBytes) {
-      const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
+      const keyCopy = new Uint8Array(keyBytes.length);
+      for (let i = 0; i < keyBytes.length; ++i) keyCopy[i] = OpCodes.And32(keyBytes[i], 0xFF);
       const nk = KEY_SIZE / 4;
       const totalWords = NB * (this._rounds + 1);
       const words = new Uint32Array(totalWords);
@@ -446,7 +489,9 @@
 
       OpCodes.ClearArray(words);
 
-      return { keyCopy, roundKeys };
+      /** @type {uint8[][]} */
+      const keyMaterial = [keyCopy, roundKeys];
+      return keyMaterial;
     }
 
     /**
@@ -463,7 +508,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = block[i]&0xff;
+        state[i] = OpCodes.And32(block[i], 0xFF);
       }
 
       this._addRoundKey(state, 0);
@@ -479,6 +524,7 @@
       this._shiftRows(state);
       this._addRoundKey(state, this._rounds);
 
+      /** @type {uint8[]} */
       const result = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
         result[i] = state[i];
@@ -501,7 +547,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = block[i]&0xff;
+        state[i] = OpCodes.And32(block[i], 0xFF);
       }
 
       this._addRoundKey(state, this._rounds);
@@ -517,6 +563,7 @@
       this._invSubBytes(state);
       this._addRoundKey(state, 0);
 
+      /** @type {uint8[]} */
       const result = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
         result[i] = state[i];
@@ -525,19 +572,29 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     * @param {int32} round - Round index
+     */
     _addRoundKey(state, round) {
       const offset = round * BLOCK_SIZE;
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = (state[i]^this.roundKeys[offset + i])&0xff;
+        state[i] = OpCodes.And32(OpCodes.Xor32(state[i], this.roundKeys[offset + i]), 0xFF);
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _subBytes(state) {
       for (let i = 0; i < BLOCK_SIZE; ++i) {
         state[i] = this.sbox[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _invSubBytes(state) {
       for (let i = 0; i < BLOCK_SIZE; ++i) {
         state[i] = this.invSbox[state[i]];
@@ -545,9 +602,13 @@
     }
 
     // Key-dependent shift rows using generated shift amounts
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _shiftRows(state) {
       // Row 0: no shift
       // Row 1: shift by shifts[1]
+      /** @type {uint8[]} */
       const temp1 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp1[i] = state[1 + i * 4];
@@ -557,6 +618,7 @@
       }
 
       // Row 2: shift by shifts[2]
+      /** @type {uint8[]} */
       const temp2 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp2[i] = state[2 + i * 4];
@@ -566,6 +628,7 @@
       }
 
       // Row 3: shift by shifts[3]
+      /** @type {uint8[]} */
       const temp3 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp3[i] = state[3 + i * 4];
@@ -575,9 +638,13 @@
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _invShiftRows(state) {
       // Inverse of key-dependent shift rows
       // Row 1: shift by (4 - shifts[1])
+      /** @type {uint8[]} */
       const temp1 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp1[i] = state[1 + i * 4];
@@ -587,6 +654,7 @@
       }
 
       // Row 2: shift by (4 - shifts[2])
+      /** @type {uint8[]} */
       const temp2 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp2[i] = state[2 + i * 4];
@@ -596,6 +664,7 @@
       }
 
       // Row 3: shift by (4 - shifts[3])
+      /** @type {uint8[]} */
       const temp3 = new Array(4);
       for (let i = 0; i < 4; ++i) {
         temp3[i] = state[3 + i * 4];
@@ -605,6 +674,9 @@
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; ++col) {
         const base = col * 4;
@@ -613,21 +685,16 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = (
-          OpCodes.GF256Mul(s0, 2)^OpCodes.GF256Mul(s1, 3)^s2^s3
-        )&0xff;
-        state[base + 1] = (
-          s0^OpCodes.GF256Mul(s1, 2)^OpCodes.GF256Mul(s2, 3)^s3
-        )&0xff;
-        state[base + 2] = (
-          s0^s1^OpCodes.GF256Mul(s2, 2)^OpCodes.GF256Mul(s3, 3)
-        )&0xff;
-        state[base + 3] = (
-          OpCodes.GF256Mul(s0, 3)^s1^s2^OpCodes.GF256Mul(s3, 2)
-        )&0xff;
+        state[base] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3), 0xFF);
+        state[base + 1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3), 0xFF);
+        state[base + 2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3)), 0xFF);
+        state[base + 3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2)), 0xFF);
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes (updated in place)
+     */
     _invMixColumns(state) {
       for (let col = 0; col < 4; ++col) {
         const base = col * 4;
@@ -636,18 +703,10 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = (
-          OpCodes.GF256Mul(s0, 14)^OpCodes.GF256Mul(s1, 11)^OpCodes.GF256Mul(s2, 13)^OpCodes.GF256Mul(s3, 9)
-        )&0xff;
-        state[base + 1] = (
-          OpCodes.GF256Mul(s0, 9)^OpCodes.GF256Mul(s1, 14)^OpCodes.GF256Mul(s2, 11)^OpCodes.GF256Mul(s3, 13)
-        )&0xff;
-        state[base + 2] = (
-          OpCodes.GF256Mul(s0, 13)^OpCodes.GF256Mul(s1, 9)^OpCodes.GF256Mul(s2, 14)^OpCodes.GF256Mul(s3, 11)
-        )&0xff;
-        state[base + 3] = (
-          OpCodes.GF256Mul(s0, 11)^OpCodes.GF256Mul(s1, 13)^OpCodes.GF256Mul(s2, 9)^OpCodes.GF256Mul(s3, 14)
-        )&0xff;
+        state[base] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 14), OpCodes.GF256Mul(s1, 11)), OpCodes.GF256Mul(s2, 13)), OpCodes.GF256Mul(s3, 9)), 0xFF);
+        state[base + 1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 9), OpCodes.GF256Mul(s1, 14)), OpCodes.GF256Mul(s2, 11)), OpCodes.GF256Mul(s3, 13)), 0xFF);
+        state[base + 2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 13), OpCodes.GF256Mul(s1, 9)), OpCodes.GF256Mul(s2, 14)), OpCodes.GF256Mul(s3, 11)), 0xFF);
+        state[base + 3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 11), OpCodes.GF256Mul(s1, 13)), OpCodes.GF256Mul(s2, 9)), OpCodes.GF256Mul(s3, 14)), 0xFF);
       }
     }
   }
