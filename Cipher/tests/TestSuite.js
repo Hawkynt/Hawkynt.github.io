@@ -27,10 +27,12 @@
  * - CHUNKED: Feed(whole) equals Feed(part1); Feed(part2); ... for any split
  *   (ChunkedFeed.js)
  *
- * Over the page (when the whole collection is tested, or named by --only):
+ * Over the whole collection (when it is all tested, or named by --only):
  * - BROWSER: every script tag of index.html evaluates, in page order, in a
  *   context with no require, module or global, as the browser loads it
  *   (BrowserLoad.js)
+ * - LIBRARY: unit tests of the shared code the algorithms are built from:
+ *   OpCodes helpers (OpCodesHelperTests.js) and ByteBuffer (ByteBufferTests.js)
  *
  * Options:
  *   <file.js>                 test one file
@@ -58,6 +60,8 @@ const JSDocTierAudit = require('./JSDocTierAudit');
 const RoundTrip = require('./RoundTrip');
 const ChunkedFeed = require('./ChunkedFeed');
 const BrowserLoad = require('./BrowserLoad');
+const OpCodesHelperTests = require('./OpCodesHelperTests');
+const ByteBufferTests = require('./ByteBufferTests');
 const Runner = require('./CategoryRunner');
 
 const CIPHER_DIR = path.join(__dirname, '..');
@@ -79,14 +83,28 @@ const ENGINE_KEYS = FILE_CATEGORIES.slice(0, 6).map(c => c.key);
 // Names on the per-file progress line
 const FILE_LABELS = { compilation: 'Compilation', interface: 'Interface', metadata: 'Metadata', functionality: 'Function', optimization: 'Optimization' };
 
-// Categories run once, after every file has been loaded. 'algorithms' sweeps the
-// algorithms the tested files registered; 'page' checks the whole site, so it
-// runs when the whole collection is tested or when --only names it. Each module
-// exports run(context) and returns { passed, failed, detail }.
+// LIBRARY: the unit tests of the shared code every algorithm is built from.
+const Library = {
+  run(context) {
+    const parts = [['OpCodes helpers', OpCodesHelperTests.run(context)], ['ByteBuffer', ByteBufferTests.run(context)]];
+    return {
+      passed: parts.reduce((sum, [, r]) => sum + r.passed, 0),
+      failed: parts.reduce((sum, [, r]) => sum + r.failed, 0),
+      detail: parts.map(([name, r]) => `${name} ${r.passed}/${r.passed + r.failed}`).join(', ')
+    };
+  }
+};
+
+// Categories run once per run. 'collection' checks the site or its shared
+// libraries: it runs first, while the heap is still small, and only when the
+// whole collection is tested or --only names it. 'algorithms' sweeps what the
+// tested files registered, after every file has been loaded. Each module exports
+// run(context) and returns { passed, failed, detail }.
 const SWEEPS = [
   { key: 'roundtrip', label: 'ROUNDTRIP', title: 'Round trips over an adversarial corpus', module: RoundTrip, scope: 'algorithms' },
   { key: 'chunked', label: 'CHUNKED', title: 'Feeding in chunks matches feeding whole', module: ChunkedFeed, scope: 'algorithms' },
-  { key: 'browser', label: 'BROWSER', title: 'Every script tag of index.html loads as the browser loads it', module: BrowserLoad, scope: 'page' }
+  { key: 'browser', label: 'BROWSER', title: 'Every script tag of index.html loads as the browser loads it', module: BrowserLoad, scope: 'collection' },
+  { key: 'library', label: 'LIBRARY', title: 'Unit tests of OpCodes helpers and ByteBuffer', module: Library, scope: 'collection' }
 ];
 
 const CATEGORY_KEYS = [...FILE_CATEGORIES.map(c => c.key), ...SWEEPS.map(s => s.key)];
@@ -171,36 +189,46 @@ class TestSuite {
   }
 
   async run() {
-    const started = Date.now();
     console.log('SynthelicZ Cipher Tools - Algorithm Test Suite');
     console.log('==============================================');
     console.log(`Categories: ${CATEGORY_KEYS.filter(k => this.selected.has(k)).join(', ')}\n`);
 
     await TestEngine.LoadDependencies(true, this.verbose);
 
-    if (FILE_CATEGORIES.some(c => this.selected.has(c.key)) || SWEEPS.some(s => this.selected.has(s.key) && s.scope === 'algorithms')) {
+    const runs = sweep => this.selected.has(sweep.key)
+      && (sweep.scope === 'algorithms' || !this.narrowed || this.options.explicit.has(sweep.key));
+    const collectionSweeps = SWEEPS.filter(s => s.scope === 'collection' && runs(s));
+    const algorithmSweeps = SWEEPS.filter(s => s.scope === 'algorithms' && runs(s));
+
+    for (const sweep of collectionSweeps) await this.runSweep(sweep);
+
+    if (FILE_CATEGORIES.some(c => this.selected.has(c.key)) || algorithmSweeps.length) {
       if (this.options.singleFile) await this.testSingleFile(this.options.singleFile);
       else await this.discoverAlgorithms();
     }
 
-    for (const sweep of SWEEPS) {
-      if (!this.selected.has(sweep.key)) continue;
-      if (sweep.scope === 'page' && this.narrowed && !this.options.explicit.has(sweep.key)) continue;
-      console.log(`\n=== ${sweep.label}: ${sweep.title} ===`);
-      const result = await sweep.module.run({
-        algorithms: this.algorithmsInScope(),
-        verbose: this.verbose,
-        options: this.options.sweep,
-        readSource: file => this.readSource(file)
-      });
-      this.sweepRows.push({ label: sweep.label, ...result });
-    }
+    for (const sweep of algorithmSweeps) await this.runSweep(sweep);
 
     const failed = this.generateReport();
     if (this.options.updateTypeBudgets && this.selected.has('types'))
       this.writeTypeBudgets();
-    console.log(`\nWall time: ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    console.log(`\nWall time: ${process.uptime().toFixed(1)}s`);
     return failed;
+  }
+
+  /**
+   * Run one once-per-run category and keep its summary row.
+   * @param {Object} sweep - entry of SWEEPS
+   */
+  async runSweep(sweep) {
+    console.log(`\n=== ${sweep.label}: ${sweep.title} ===`);
+    const result = await sweep.module.run({
+      algorithms: this.algorithmsInScope(),
+      verbose: this.verbose,
+      options: this.options.sweep,
+      readSource: file => this.readSource(file)
+    });
+    this.sweepRows.push({ key: sweep.key, label: sweep.label, ...result });
   }
 
   /**
@@ -551,7 +579,8 @@ class TestSuite {
         rows.push({ label, passed: audit.typed, failed: audit.total - audit.typed, detail: 'members fully typed' });
       }
     }
-    rows.push(...this.sweepRows);
+    const order = SWEEPS.map(s => s.key);
+    rows.push(...this.sweepRows.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)));
 
     return Runner.printSummary('TEST RESULTS SUMMARY', rows);
   }
