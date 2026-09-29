@@ -65,35 +65,53 @@
 
   // ===== ALGORITHM PARAMETERS (fixed to match CompressionWorkbench's BB_Lzw) =====
 
+  /** @type {int32} */
   const MIN_BITS = 9;
+  /** @type {int32} */
   const MAX_BITS = 16;
+  /** @type {int32} */
   const CLEAR_CODE = OpCodes.Shl32(1, MIN_BITS - 1);  // 256
+  /** @type {int32} */
   const STOP_CODE = CLEAR_CODE + 1;                    // 257
+  /** @type {int32} */
   const FIRST_USABLE_CODE = CLEAR_CODE + 2;            // 258
+  /** @type {int32} */
   const MAX_CODE = OpCodes.Shl32(1, MAX_BITS);         // 65536
 
   // ===== BIT STREAM HELPERS (LSB-first) =====
 
   class LzwBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * Append a code, least significant bit first
+     * @param {uint32} value - Code
+     * @param {int32} width - Number of bits
+     */
     writeBits(value, width) {
-      this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(value, this.nBits)));
+      this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(value, this.nBits));
       this.nBits += width;
       while (this.nBits >= 8) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = OpCodes.Shr32(this.buf, 8);
         this.nBits -= 8;
       }
     }
 
+    /**
+     * Append the partial last byte, if any
+     * @returns {uint8[]} All bytes written
+     */
     flush() {
       if (this.nBits > 0) {
-        this.bytes.push(OpCodes.AndN(this.buf, 0xFF));
+        this.bytes.push(OpCodes.And32(this.buf, 0xFF));
         this.buf = 0;
         this.nBits = 0;
       }
@@ -102,24 +120,94 @@
   }
 
   class LzwBitReader {
+    /**
+     * @param {uint8[]} bytes - Bytes to read
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * Whether a code of the given width can still be read
+     * @param {int32} width - Number of bits
+     * @returns {boolean} True when enough bits remain
+     */
+    canRead(width) {
+      return this.nBits + 8 * (this.bytes.length - this.pos) >= width;
+    }
+
+    /**
+     * Read a code, least significant bit first
+     * @param {int32} width - Number of bits
+     * @returns {uint32} Code
+     */
     readBits(width) {
       while (this.nBits < width) {
-        if (this.pos >= this.bytes.length) throw new Error('LZW: unexpected end of stream');
-        this.buf = OpCodes.ToUint32(OpCodes.OrN(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits)));
+        if (this.pos >= this.bytes.length) {
+          throw new Error('LZW: unexpected end of stream');
+        }
+        this.buf = OpCodes.Or32(this.buf, OpCodes.Shl32(this.bytes[this.pos++], this.nBits));
         this.nBits += 8;
       }
-      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, width) - 1);
-      const value = OpCodes.AndN(this.buf, mask);
+      /** @type {uint32} */
+      const mask = OpCodes.Sub32(OpCodes.Shl32(1, width), 1);
+      /** @type {uint32} */
+      const value = OpCodes.And32(this.buf, mask);
       this.buf = OpCodes.Shr32(this.buf, width);
       this.nBits -= width;
       return value;
+    }
+  }
+
+  /**
+   * Encoder lookup trie: every code's children as a linked list of
+   * (next-sibling, byte) nodes, so finding "code followed by byte" walks the
+   * children of code. Child codes are always >= FIRST_USABLE_CODE, so 0 marks
+   * "no child"/"no sibling".
+   */
+  class LzwTrie {
+    constructor() {
+      /** @type {int32[]} */
+      this.firstChild = new Int32Array(MAX_CODE);
+      /** @type {int32[]} */
+      this.nextSibling = new Int32Array(MAX_CODE);
+      /** @type {uint8[]} */
+      this.childByte = new Uint8Array(MAX_CODE);
+    }
+
+    /**
+     * @param {int32} code - Parent code
+     * @param {uint8} value - Following byte
+     * @returns {int32} The child code, or -1 when there is none
+     */
+    find(code, value) {
+      /** @type {int32} */
+      let child = this.firstChild[code];
+      while (child !== 0) {
+        if (this.childByte[child] === value) {
+          return child;
+        }
+        child = this.nextSibling[child];
+      }
+      return -1;
+    }
+
+    /**
+     * @param {int32} code - Parent code
+     * @param {uint8} value - Following byte
+     * @param {int32} child - New code for code + value
+     */
+    add(code, value, child) {
+      this.childByte[child] = value;
+      this.nextSibling[child] = this.firstChild[code];
+      this.firstChild[code] = child;
     }
   }
 
@@ -202,22 +290,40 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LZWCompressionInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LZWCompressionInstance(this, isInverse);
       }
     }
 
     class LZWCompressionInstance extends IAlgorithmInstance {
+      /**
+       * @param {LZWCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
-          if (this.inputBuffer.length === 0) return [];
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            return empty;
+          }
           return this._decompress();
         }
 
@@ -234,162 +340,214 @@
       // code after a reset (hasPrevious) - the classic LZW asymmetry where
       // the very first code after a clear carries no new entry.
 
+      /**
+       * @returns {uint8[]} LSB-first packed codes, starting with a clear code
+       */
       _compress() {
-        try {
-          const input = this.inputBuffer.slice();
-          this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const input = this.inputBuffer.slice();
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
-          const writer = new LzwBitWriter();
-          let currentBits = MIN_BITS;
+        /** @type {LzwBitWriter} */
+        const writer = new LzwBitWriter();
+        /** @type {int32} */
+        let currentBits = MIN_BITS;
 
-          writer.writeBits(CLEAR_CODE, currentBits);
+        writer.writeBits(CLEAR_CODE, currentBits);
 
-          if (input.length === 0) {
-            writer.writeBits(STOP_CODE, currentBits);
-            return writer.flush();
-          }
+        if (input.length === 0) {
+          writer.writeBits(STOP_CODE, currentBits);
+          /** @type {uint8[]} */
+          const headerOnly = writer.flush();
+          return headerOnly;
+        }
 
-          let trieNextCode = FIRST_USABLE_CODE;
-          let decoderNextCode = FIRST_USABLE_CODE;
-          let hasPrevious = false;
-          let trie = new Map();
+        /** @type {int32} */
+        let trieNextCode = FIRST_USABLE_CODE;
+        /** @type {int32} */
+        let decoderNextCode = FIRST_USABLE_CODE;
+        /** @type {boolean} */
+        let hasPrevious = false;
+        /** @type {LzwTrie} */
+        let trie = new LzwTrie();
 
-          let currentCode = input[0];
-          let i = 1;
+        /** @type {int32} */
+        let currentCode = input[0];
+        /** @type {int32} */
+        let i = 1;
 
-          while (i < input.length) {
-            const nextByte = input[i];
-            const key = currentCode + ':' + nextByte;
+        while (i < input.length) {
+          /** @type {uint8} */
+          const nextByte = input[i];
+          /** @type {int32} */
+          const known = trie.find(currentCode, nextByte);
 
-            if (trie.has(key)) {
-              currentCode = trie.get(key);
-              i++;
-              continue;
-            }
-
-            writer.writeBits(currentCode, currentBits);
-
-            // Always add a trie entry for future lookups (if room).
-            if (trieNextCode < MAX_CODE) {
-              trie.set(key, trieNextCode);
-              trieNextCode++;
-            }
-
-            // Mirror the decoder's nextCode: it only grows starting with the
-            // second emitted code after a reset.
-            if (hasPrevious) {
-              if (decoderNextCode < MAX_CODE) {
-                decoderNextCode++;
-                if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
-                  currentBits++;
-              } else {
-                // Dictionary is full: reset before processing the byte that
-                // triggered this miss.
-                writer.writeBits(CLEAR_CODE, currentBits);
-                trie = new Map();
-                currentBits = MIN_BITS;
-                trieNextCode = FIRST_USABLE_CODE;
-                decoderNextCode = FIRST_USABLE_CODE;
-                hasPrevious = false;
-                currentCode = nextByte;
-                i++;
-                continue;
-              }
-            }
-
-            hasPrevious = true;
-            currentCode = nextByte;
+          if (known >= 0) {
+            currentCode = known;
             i++;
+            continue;
           }
 
           writer.writeBits(currentCode, currentBits);
 
-          // The decoder adds one more entry after the final data code.
-          if (hasPrevious && decoderNextCode < MAX_CODE) {
-            decoderNextCode++;
-            if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
-              currentBits++;
+          // Always add a trie entry for future lookups (if room).
+          if (trieNextCode < MAX_CODE) {
+            trie.add(currentCode, nextByte, trieNextCode);
+            trieNextCode++;
           }
 
-          writer.writeBits(STOP_CODE, currentBits);
+          // Mirror the decoder's nextCode: it only grows starting with the
+          // second emitted code after a reset.
+          if (hasPrevious) {
+            if (decoderNextCode < MAX_CODE) {
+              decoderNextCode++;
+              if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS) {
+                currentBits++;
+              }
+            } else {
+              // Dictionary is full: reset before processing the byte that
+              // triggered this miss.
+              writer.writeBits(CLEAR_CODE, currentBits);
+              trie = new LzwTrie();
+              currentBits = MIN_BITS;
+              trieNextCode = FIRST_USABLE_CODE;
+              decoderNextCode = FIRST_USABLE_CODE;
+              hasPrevious = false;
+              currentCode = nextByte;
+              i++;
+              continue;
+            }
+          }
 
-          return writer.flush();
-        } catch (e) {
-          this.inputBuffer = [];
-          return [];
+          hasPrevious = true;
+          currentCode = nextByte;
+          i++;
         }
+
+        writer.writeBits(currentCode, currentBits);
+
+        // The decoder adds one more entry after the final data code.
+        if (hasPrevious && decoderNextCode < MAX_CODE) {
+          decoderNextCode++;
+          if (decoderNextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS) {
+            currentBits++;
+          }
+        }
+
+        writer.writeBits(STOP_CODE, currentBits);
+
+        /** @type {uint8[]} */
+        const packed = writer.flush();
+        return packed;
       }
 
       // ----- Decompression: mirrors LzwDecoder.Decode -----
 
+      /**
+       * Decode the collected codes. An invalid code sequence decodes to an
+       * empty result; running out of input ends the stream like a stop code.
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
-        try {
-          const input = this.inputBuffer.slice();
-          this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const input = this.inputBuffer.slice();
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
-          const reader = new LzwBitReader(input);
-          let currentBits = MIN_BITS;
-          let nextCode = FIRST_USABLE_CODE;
-          let dictionary = this._initDictionary();
-          let previousEntry = null;
-          const output = [];
+        /** @type {LzwBitReader} */
+        const reader = new LzwBitReader(input);
+        /** @type {int32} */
+        let currentBits = MIN_BITS;
+        /** @type {int32} */
+        let nextCode = FIRST_USABLE_CODE;
+        /** @type {uint8[][]} */
+        let dictionary = this._initDictionary();
+        /** @type {uint8[]|null} */
+        let previousEntry = null;
+        /** @type {uint8[]} */
+        const output = [];
 
-          for (;;) {
-            let code;
-            try {
-              code = reader.readBits(currentBits);
-            } catch (e) {
-              break;
-            }
+        for (;;) {
+          /** @type {boolean} */
+          const more = reader.canRead(currentBits);
+          if (!more) {
+            break;
+          }
+          /** @type {uint32} */
+          const code = reader.readBits(currentBits);
 
-            if (code === CLEAR_CODE) {
-              dictionary = this._initDictionary();
-              currentBits = MIN_BITS;
-              nextCode = FIRST_USABLE_CODE;
-              previousEntry = null;
-              continue;
-            }
-
-            if (code === STOP_CODE) break;
-
-            let entry;
-            if (code < dictionary.length) {
-              entry = dictionary[code];
-            } else if (code === nextCode && previousEntry !== null) {
-              // KwKwK case: the new entry is previousEntry + previousEntry[0].
-              entry = previousEntry.concat([previousEntry[0]]);
-            } else {
-              throw new Error('Invalid LZW code sequence');
-            }
-
-            for (let j = 0; j < entry.length; j++) output.push(entry[j]);
-
-            // Add new dictionary entry: previousEntry + entry[0] (not on the
-            // first code after a reset, since previousEntry is null then).
-            if (previousEntry !== null && nextCode < MAX_CODE) {
-              const newEntry = previousEntry.concat([entry[0]]);
-              dictionary.push(newEntry);
-              nextCode++;
-
-              if (nextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS)
-                currentBits++;
-            }
-
-            previousEntry = entry;
+          if (code === CLEAR_CODE) {
+            dictionary = this._initDictionary();
+            currentBits = MIN_BITS;
+            nextCode = FIRST_USABLE_CODE;
+            previousEntry = null;
+            continue;
           }
 
-          return output;
-        } catch (e) {
-          this.inputBuffer = [];
-          return [];
+          if (code === STOP_CODE) {
+            break;
+          }
+
+          /** @type {uint8[]} */
+          let entry;
+          if (code < dictionary.length) {
+            entry = dictionary[code];
+          } else if (code === nextCode && previousEntry !== null) {
+            // KwKwK case: the new entry is previousEntry + previousEntry[0].
+            entry = previousEntry.slice();
+            entry.push(previousEntry[0]);
+          } else {
+            // Invalid LZW code sequence
+            /** @type {uint8[]} */
+            const invalid = [];
+            return invalid;
+          }
+
+          for (let j = 0; j < entry.length; j++) {
+            output.push(entry[j]);
+          }
+
+          // Add new dictionary entry: previousEntry + entry[0] (not on the
+          // first code after a reset, since previousEntry is null then).
+          if (previousEntry !== null && nextCode < MAX_CODE) {
+            /** @type {uint8[]} */
+            const newEntry = previousEntry.slice();
+            newEntry.push(entry[0]);
+            dictionary.push(newEntry);
+            nextCode++;
+
+            if (nextCode >= OpCodes.Shl32(1, currentBits) && currentBits < MAX_BITS) {
+              currentBits++;
+            }
+          }
+
+          previousEntry = entry;
         }
+
+        return output;
       }
 
+      /**
+       * @returns {uint8[][]} Single-byte entries plus the clear and stop placeholders
+       */
       _initDictionary() {
+        /** @type {uint8[][]} */
         const dictionary = [];
-        for (let i = 0; i < CLEAR_CODE; i++) dictionary.push([i]);
-        dictionary.push([]); // clear code placeholder (index 256)
-        dictionary.push([]); // stop code placeholder (index 257)
+        for (let i = 0; i < CLEAR_CODE; i++) {
+          /** @type {uint8[]} */
+          const single = [];
+          single.push(i);
+          dictionary.push(single);
+        }
+        /** @type {uint8[]} */
+        const clearPlaceholder = [];
+        dictionary.push(clearPlaceholder); // clear code placeholder (index 256)
+        /** @type {uint8[]} */
+        const stopPlaceholder = [];
+        dictionary.push(stopPlaceholder); // stop code placeholder (index 257)
         return dictionary;
       }
     }
