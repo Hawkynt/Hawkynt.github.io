@@ -48,14 +48,52 @@
   // MixBytes multiplies each column by the circulant matrix
   // circ(02,02,03,04,05,03,05,07) over GF(2^8) with the AES polynomial.
   // This is not the AES MixColumns matrix.
-  const MIX_COEFFICIENTS = Object.freeze([0x02, 0x02, 0x03, 0x04, 0x05, 0x03, 0x05, 0x07]);
+  /** @type {uint8[]} */
+  const MIX_COEFFICIENTS = [0x02, 0x02, 0x03, 0x04, 0x05, 0x03, 0x05, 0x07];
 
   // ShiftBytes rotates row i to the left by sigma[i]. P and Q differ, and so
   // do the 512-bit and 1024-bit states.
-  const SHIFTS_P_512 = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7]);
-  const SHIFTS_Q_512 = Object.freeze([1, 3, 5, 7, 0, 2, 4, 6]);
-  const SHIFTS_P_1024 = Object.freeze([0, 1, 2, 3, 4, 5, 6, 11]);
-  const SHIFTS_Q_1024 = Object.freeze([1, 3, 5, 11, 0, 2, 4, 6]);
+  /** @type {int32[]} */
+  const SHIFTS_P_512 = [0, 1, 2, 3, 4, 5, 6, 7];
+  /** @type {int32[]} */
+  const SHIFTS_Q_512 = [1, 3, 5, 7, 0, 2, 4, 6];
+  /** @type {int32[]} */
+  const SHIFTS_P_1024 = [0, 1, 2, 3, 4, 5, 6, 11];
+  /** @type {int32[]} */
+  const SHIFTS_Q_1024 = [1, 3, 5, 11, 0, 2, 4, 6];
+
+  // AES S-box (same as Rijndael)
+  /** @type {uint8[]} */
+  const SBOX = [
+    0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
+    0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
+    0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
+    0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
+    0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
+    0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
+    0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
+    0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
+    0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
+    0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
+    0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
+    0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
+    0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
+    0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
+    0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
+    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+  ];
+
+  /**
+   * A fresh all-zero byte array.
+   * @param {int32} length - number of bytes
+   * @returns {uint8[]} length zero bytes
+   */
+  function Zeros(length) {
+    /** @type {uint8[]} */
+    const zeros = [];
+    for (let i = 0; i < length; i++) zeros.push(0);
+    return zeros;
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -83,7 +121,9 @@
         this.country = CountryCode.MULTI;
 
         // Hash-specific properties
+        /** @type {int32} */
         this.hashSize = 512; // bits (default)
+        /** @type {int32} */
         this.blockSize = 1024; // bits
 
         // Documentation
@@ -177,52 +217,91 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create new hash instance
+       * @param {boolean} [isInverse=false] - unused, hashes have no inverse
+       * @returns {GroestlInstance} New hash instance
+       */
       CreateInstance(isInverse = false) {
         return new GroestlInstance(this, isInverse);
       }
     }
 
     class GroestlInstance extends IHashFunctionInstance {
+      /**
+       * @param {Groestl} algorithm - parent algorithm
+       * @param {boolean} [isInverse=false] - unused, hashes have no inverse
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.inputBuffer = [];
+        /** @type {int32} */
         this.hashSize = algorithm.hashSize;
+        /** @type {int32} */
         this.blockSize = algorithm.blockSize;
       }
 
 
+      /**
+       * Hash everything fed so far with Grøstl-512
+       * @returns {uint8[]} 64-byte digest
+       */
       Result() {
         // Process using Grøstl hasher (even for empty input)
         const hasher = new GroestlHasher(512);
         if (this.inputBuffer.length > 0) {
           hasher.update(this.inputBuffer);
         }
+        /** @type {uint8[]} */
         const result = hasher.finalize();
 
         this.inputBuffer = [];
         return Array.from(result);
       }
 
-      // Direct hash interface with variable output
+      /**
+       * Direct hash interface with variable output
+       * @param {uint8[]} data - message bytes
+       * @param {int32} outputBits - 224, 256, 384 or 512
+       * @returns {uint8[]} digest
+       */
       hash(data, outputBits) {
-        const hasher = new GroestlHasher(outputBits || 512);
+        const hasher = new GroestlHasher(outputBits);
         hasher.update(data);
-        return hasher.finalize();
+        /** @type {uint8[]} */
+        const digest = hasher.finalize();
+        return digest;
       }
 
       // Variants
+      /**
+       * @param {uint8[]} data - message bytes
+       * @returns {uint8[]} Grøstl-224 digest
+       */
       hash224(data) {
         return this.hash(data, 224);
       }
 
+      /**
+       * @param {uint8[]} data - message bytes
+       * @returns {uint8[]} Grøstl-256 digest
+       */
       hash256(data) {
         return this.hash(data, 256);
       }
 
+      /**
+       * @param {uint8[]} data - message bytes
+       * @returns {uint8[]} Grøstl-384 digest
+       */
       hash384(data) {
         return this.hash(data, 384);
       }
 
+      /**
+       * @param {uint8[]} data - message bytes
+       * @returns {uint8[]} Grøstl-512 digest
+       */
       hash512(data) {
         return this.hash(data, 512);
       }
@@ -231,27 +310,45 @@
     // ===== GROESTL HASHER IMPLEMENTATION =====
 
     class GroestlHasher {
+      /**
+       * @param {int32} [outputBits=512] - 224, 256, 384 or 512
+       */
       constructor(outputBits = 512) {
+        /** @type {int32} */
         this.outputBits = outputBits;
         // Grøstl-224 and Grøstl-256 use the 512-bit state, Grøstl-384 and
         // Grøstl-512 the 1024-bit one.
+        /** @type {int32} */
         this.stateSize = outputBits <= 256 ? 512 : 1024; // bits
+        /** @type {int32} */
         this.blockSize = this.stateSize; // bits
+        /** @type {int32} */
         this.rows = ROWS;
+        /** @type {int32} */
         this.cols = this.stateSize / 64; // 8 for 512-bit, 16 for 1024-bit
+        /** @type {int32} */
         this.rounds = this.stateSize === 512 ? 10 : 14;
+        /** @type {int32[]} */
         this.shiftsP = this.cols === 8 ? SHIFTS_P_512 : SHIFTS_P_1024;
+        /** @type {int32[]} */
         this.shiftsQ = this.cols === 8 ? SHIFTS_Q_512 : SHIFTS_Q_1024;
 
         // Initialize state (wide-pipe construction)
-        this.state = new Array(this.stateSize / 8).fill(0);
+        /** @type {uint8[]} */
+        this.state = Zeros(this.stateSize / 8);
+        /** @type {int32} */
         this.blocksProcessed = 0;
+        /** @type {BlockAbsorber} */
         this._absorber = new BlockAbsorber(this.stateSize / 8, block => this.processBlock(block));
 
         // Set initial value based on output size
         this.initializeState();
       }
 
+      /**
+       * Set the IV: the output length in bits in the last eight state bytes
+       * @returns {void}
+       */
       initializeState() {
         // Initialize state to zero
         this.state.fill(0);
@@ -261,6 +358,7 @@
         // eight bytes of the state - the final column, not the first byte of
         // it. Grøstl-256 therefore ends ...00 01 00, not ...00 01 00 00 00 00.
         const stateBytes = this.stateSize / 8;
+        /** @type {int32} */
         let bits = this.outputBits;
         for (let i = 0; i < 8; i++) {
           this.state[stateBytes - 1 - i] = OpCodes.ToByte(bits);
@@ -268,6 +366,11 @@
         }
       }
 
+      /**
+       * Absorb message bytes
+       * @param {uint8[]} data - message bytes (typed arrays are copied)
+       * @returns {void}
+       */
       update(data) {
         if (!Array.isArray(data)) {
           data = Array.from(data);
@@ -276,8 +379,11 @@
         this._absorber.Absorb(data);
       }
 
+      /**
+       * Pad, compress the final blocks and apply the output transformation
+       * @returns {uint8[]} outputBits/8 bytes
+       */
       finalize() {
-        const blockBytes = this.stateSize / 8;
 
         // Grøstl specification section 3.3: the padding is 0x80, a zero fill,
         // then the number of blocks in the PADDED message as a 64-bit
@@ -285,16 +391,8 @@
         // blocks the padding itself adds has to be known before the counter
         // can be written, which is why it is computed here and handed to
         // MerkleDamgardBlocks as the value to encode.
-        const blocks = this._absorber.Finish((held, pending) => {
-          const emitted = (pending === blockBytes || pending + 1 > blockBytes - 8) ? 2 : 1;
-          return MerkleDamgardBlocks(held, pending, this.blocksProcessed + emitted, {
-            blockSize: blockBytes,
-            padByte: 0x80,
-            lengthBytes: 8,
-            lengthLittleEndian: false,
-            lengthInBits: false
-          });
-        });
+        /** @type {uint8[][]} */
+        const blocks = this._absorber.Finish((held, pending) => this._paddingBlocks(held, pending));
 
         // Every padding block gets compressed. Testing for a single block and
         // silently discarding anything longer dropped both blocks whenever a
@@ -304,11 +402,12 @@
         }
 
         // Output transformation omega(h) = trunc_n(P(h) xor h)
+        /** @type {uint8[]} */
         const finalState = this.permutationP(this.state.slice());
 
         // XOR with original state for feedforward
         for (let i = 0; i < this.state.length; i++) {
-          finalState[i] = OpCodes.XorN(finalState[i], this.state[i]);
+          finalState[i] = OpCodes.Xor8(finalState[i], this.state[i]);
         }
 
         // Truncate to desired output length
@@ -319,15 +418,42 @@
         return finalState.slice(startIndex, startIndex + outputBytes);
       }
 
+      /**
+       * The padding blocks (BlockAbsorber.Finish callback).
+       * @param {uint8[]} held - trailing message bytes
+       * @param {int32} pending - how many of them are valid
+       * @returns {uint8[][]} one or two padded blocks
+       */
+      _paddingBlocks(held, pending) {
+        const blockBytes = this.stateSize / 8;
+        const emitted = (pending === blockBytes || pending + 1 > blockBytes - 8) ? 2 : 1;
+        /** @type {uint8[][]} */
+        const padded = MerkleDamgardBlocks(held, pending, this.blocksProcessed + emitted, {
+          blockSize: blockBytes,
+          padByte: 0x80,
+          lengthBytes: 8,
+          lengthLittleEndian: false,
+          lengthInBits: false
+        });
+        return padded;
+      }
+
+      /**
+       * Compression function f(h, m) = P(h xor m) xor Q(m) xor h
+       * @param {uint8[]} block - one block of stateSize/8 bytes
+       * @returns {void}
+       */
       processBlock(block) {
         // Compression function: f(h,m) = P(h ⊕ m) ⊕ Q(m) ⊕ h
         const h = this.state.slice();
+        /** @type {uint8[]} */
         const m = Array.from(block);
 
         // h ⊕ m
+        /** @type {uint8[]} */
         const hXorM = new Array(h.length);
         for (let i = 0; i < h.length; i++) {
-          hXorM[i] = OpCodes.XorN(h[i], m[i]);
+          hXorM[i] = OpCodes.Xor8(h[i], m[i]);
         }
 
         // Compute P(h ⊕ m) and Q(m)
@@ -336,32 +462,10 @@
 
         // Final result: P(h ⊕ m) ⊕ Q(m) ⊕ h
         for (let i = 0; i < this.state.length; i++) {
-          this.state[i] = OpCodes.XorN(OpCodes.XorN(pResult[i], qResult[i]), h[i]);
+          this.state[i] = OpCodes.Xor8(OpCodes.Xor8(pResult[i], qResult[i]), h[i]);
         }
 
         this.blocksProcessed++;
-      }
-
-      // AES S-box (same as Rijndael)
-      static get SBOX() {
-        return [
-          0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
-          0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
-          0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
-          0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
-          0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
-          0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
-          0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
-          0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
-          0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
-          0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
-          0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
-          0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
-          0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
-          0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
-          0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-          0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-        ];
       }
 
       /**
@@ -374,20 +478,28 @@
        * row * cols + col transposes the matrix and shuffles bytes that were
        * never meant to meet.
        *
-       * @param {int} row - 0..7
-       * @param {int} col - 0..cols-1
-       * @returns {int} flat index
+       * @param {int32} row - 0..7
+       * @param {int32} col - 0..cols-1
+       * @returns {int32} flat index
        */
       index(row, col) {
         return col * ROWS + row;
       }
 
-      // P permutation
+      /**
+       * P permutation
+       * @param {uint8[]} state - input state, not modified
+       * @returns {uint8[]} permuted state
+       */
       permutationP(state) {
         return this.permute(state, false);
       }
 
-      // Q permutation
+      /**
+       * Q permutation
+       * @param {uint8[]} state - input state, not modified
+       * @returns {uint8[]} permuted state
+       */
       permutationQ(state) {
         return this.permute(state, true);
       }
@@ -421,42 +533,48 @@
        * single byte leaves most of the state unmixed.
        *
        * @param {uint8[]} state - modified in place
-       * @param {int} round - round index
+       * @param {int32} round - round index
        * @param {boolean} isQ - false for P, true for Q
+       * @returns {void}
        */
       addRoundConstant(state, round, isQ) {
         for (let col = 0; col < this.cols; col++) {
-          const columnConstant = OpCodes.XorN(OpCodes.Shl32(col, 4), round);
+          const columnConstant = OpCodes.Xor32(OpCodes.Shl32(col, 4), round);
 
           if (isQ) {
             for (let row = 0; row < ROWS - 1; row++) {
               const i = this.index(row, col);
-              state[i] = OpCodes.XorN(state[i], 0xFF);
+              state[i] = OpCodes.Xor8(state[i], 0xFF);
             }
             const last = this.index(ROWS - 1, col);
-            state[last] = OpCodes.XorN(state[last], OpCodes.XorN(columnConstant, 0xFF));
+            state[last] = OpCodes.Xor8(state[last], OpCodes.Xor8(columnConstant, 0xFF));
           } else {
             const first = this.index(0, col);
-            state[first] = OpCodes.XorN(state[first], columnConstant);
+            state[first] = OpCodes.Xor8(state[first], columnConstant);
           }
         }
       }
 
-      // SubBytes transformation using AES S-box
+      /**
+       * SubBytes transformation using the AES S-box
+       * @param {uint8[]} state - modified in place
+       * @returns {void}
+       */
       subBytes(state) {
-        const sbox = GroestlHasher.SBOX;
         for (let i = 0; i < state.length; i++) {
-          state[i] = sbox[state[i]];
+          state[i] = SBOX[state[i]];
         }
       }
 
       /**
        * ShiftBytes: rotate row i to the LEFT by shifts[i].
        * @param {uint8[]} state - modified in place
-       * @param {int[]} shifts - per-row rotation amounts
+       * @param {int32[]} shifts - per-row rotation amounts
+       * @returns {void}
        */
       shiftBytes(state, shifts) {
         const cols = this.cols;
+        /** @type {uint8[]} */
         const rowData = new Array(cols);
 
         for (let row = 0; row < ROWS; row++) {
@@ -475,17 +593,22 @@
        * MixBytes: multiply every column by circ(02,02,03,04,05,03,05,07) over
        * GF(2^8) with the AES reduction polynomial.
        * @param {uint8[]} state - modified in place
+       * @returns {void}
        */
       mixBytes(state) {
+        /** @type {uint8[]} */
         const column = new Array(ROWS);
 
         for (let col = 0; col < this.cols; col++) {
-          for (let row = 0; row < ROWS; row++) column[row] = state[this.index(row, col)];
+          for (let row = 0; row < ROWS; row++) {
+            column[row] = state[this.index(row, col)];
+          }
 
           for (let row = 0; row < ROWS; row++) {
+            /** @type {uint8} */
             let result = 0;
             for (let k = 0; k < ROWS; k++) {
-              result = OpCodes.XorN(result,
+              result = OpCodes.Xor8(result,
                 OpCodes.GF256Mul(MIX_COEFFICIENTS[k], column[(row + k) % ROWS]));
             }
             state[this.index(row, col)] = result;
