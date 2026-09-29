@@ -55,7 +55,7 @@
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, Vulnerability,
-          KeySize, BlockAbsorber } = AlgorithmFramework;
+          KeySize, BlockAbsorber, MerkleDamgardBlocks } = AlgorithmFramework;
 
   // ===== CONSTANTS =====
 
@@ -66,27 +66,41 @@
   const NIBBLE = 0x0F;
 
   // The two published four-bit S-boxes; a round constant bit picks between them
-  const SBOX = Object.freeze([
-    Object.freeze([9, 0, 4, 11, 13, 12, 3, 15, 1, 10, 2, 6, 7, 5, 8, 14]),
-    Object.freeze([3, 12, 6, 13, 5, 7, 1, 9, 15, 2, 0, 4, 11, 10, 14, 8])
-  ]);
+  /** @type {uint8[][]} */
+  const SBOX = [
+    [9, 0, 4, 11, 13, 12, 3, 15, 1, 10, 2, 6, 7, 5, 8, 14],
+    [3, 12, 6, 13, 5, 7, 1, 9, 15, 2, 0, 4, 11, 10, 14, 8]
+  ];
 
   // Round constant of the first round: the fractional part of the square root
   // of two, 6a09e667f3bcc908b2fb1366ea957d3e3adec17512775099da2f590b0667322a,
   // written as 64 four-bit elements.
-  const ROUND_CONSTANT_ZERO = Object.freeze([
+  /** @type {uint8[]} */
+  const ROUND_CONSTANT_ZERO = [
     0x6, 0xa, 0x0, 0x9, 0xe, 0x6, 0x6, 0x7, 0xf, 0x3, 0xb, 0xc, 0xc, 0x9, 0x0, 0x8,
     0xb, 0x2, 0xf, 0xb, 0x1, 0x3, 0x6, 0x6, 0xe, 0xa, 0x9, 0x5, 0x7, 0xd, 0x3, 0xe,
     0x3, 0xa, 0xd, 0xe, 0xc, 0x1, 0x7, 0x5, 0x1, 0x2, 0x7, 0x7, 0x5, 0x0, 0x9, 0x9,
     0xd, 0xa, 0x2, 0xf, 0x5, 0x9, 0x0, 0xb, 0x0, 0x6, 0x6, 0x7, 0x3, 0x2, 0x2, 0xa
-  ]);
+  ];
+
+  /**
+   * A fresh all-zero byte array.
+   * @param {int32} length - number of bytes
+   * @returns {uint8[]} length zero bytes
+   */
+  function Zeros(length) {
+    /** @type {uint8[]} */
+    const zeros = [];
+    for (let i = 0; i < length; i++) zeros.push(0);
+    return zeros;
+  }
 
   // ===== GF(2^4) AND THE ROUND =====
 
   /**
    * Multiplication by two in GF(2^4) modulo x^4 + x + 1.
-   * @param {int} x - a four-bit element
-   * @returns {int} 2x
+   * @param {uint8} x - a four-bit element
+   * @returns {uint8} 2x
    */
   function Double(x) {
     const shifted = OpCodes.Shl32(x, 1);
@@ -97,8 +111,9 @@
   /**
    * The linear layer, a maximum distance separable code applied to one pair of
    * four-bit elements in place.
-   * @param {int[]} elements
-   * @param {int} at - index of the first element of the pair
+   * @param {uint8[]} elements
+   * @param {int32} at - index of the first element of the pair
+   * @returns {void}
    */
   function MixPair(elements, at) {
     let a = elements[at];
@@ -116,14 +131,15 @@
    * 64-element one that generates the round constants; only the length and the
    * S-box selection differ, which is why there is one function and not two.
    *
-   * @param {int[]} elements - the state, an even number of four-bit elements
-   * @param {int[]|null} selector - one S-box index per element, or null to use
+   * @param {uint8[]} elements - the state, an even number of four-bit elements
+   * @param {uint8[]} selector - one S-box index per element, or null to use
    *        S-box 0 throughout, which is how the constants are generated
-   * @returns {int[]} the new state
+   * @returns {uint8[]} the new state
    */
   function Round(elements, selector) {
     const count = elements.length;
     const half = count / 2;
+    /** @type {uint8[]} */
     const mixed = new Array(count);
 
     for (let i = 0; i < count; i++) mixed[i] = SBOX[selector === null ? 0 : selector[i]][elements[i]];
@@ -137,6 +153,7 @@
     }
 
     // The permutation proper: even positions to the front, odd to the back
+    /** @type {uint8[]} */
     const out = new Array(count);
     for (let i = 0; i < half; i++) {
       out[i] = mixed[i * 2];
@@ -156,27 +173,34 @@
   /**
    * The S-box selection for every round, derived once from the published first
    * round constant. Round r + 1 is round r put through the 64-element round.
+   * @returns {uint8[][]} one 256-entry selector per round
    */
-  const ROUND_SELECTORS = Object.freeze((function () {
+  function BuildRoundSelectors() {
+    /** @type {uint8[][]} */
     const all = new Array(ROUNDS);
     let constant = ROUND_CONSTANT_ZERO.slice();
     for (let r = 0; r < ROUNDS; r++) {
+      /** @type {uint8[]} */
       const selector = new Array(ELEMENTS);
-      for (let i = 0; i < ELEMENTS; i++)
+      for (let i = 0; i < ELEMENTS; i++) {
         selector[i] = OpCodes.And32(OpCodes.Shr32(constant[Math.floor(i / 4)], 3 - (i % 4)), 1);
-      all[r] = Object.freeze(selector);
+      }
+      all[r] = selector;
       constant = Round(constant, null);
     }
     return all;
-  })());
+  }
+
+  /** @type {uint8[][]} */
+  const ROUND_SELECTORS = BuildRoundSelectors();
 
   // ===== THE PERMUTATION E8 AND THE COMPRESSION FUNCTION F8 =====
 
   /**
    * Read bit i of a big-endian bit string held in a byte array.
    * @param {uint8[]} bytes
-   * @param {int} index - bit index, counting from the first bit of byte 0
-   * @returns {int} 0 or 1
+   * @param {int32} index - bit index, counting from the first bit of byte 0
+   * @returns {uint8} 0 or 1
    */
   function BitAt(bytes, index) {
     return OpCodes.And32(OpCodes.Shr32(bytes[Math.floor(index / 8)], 7 - (index % 8)), 1);
@@ -190,8 +214,10 @@
    * that element list are then interleaved. The last step undoes both.
    *
    * @param {uint8[]} state - 128 bytes, modified in place
+   * @returns {void}
    */
   function Permute(state) {
+    /** @type {uint8[]} */
     const grouped = new Array(ELEMENTS);
     for (let i = 0; i < ELEMENTS; i++) {
       const b0 = BitAt(state, i);
@@ -204,14 +230,18 @@
       );
     }
 
+    /** @type {uint8[]} */
     let elements = new Array(ELEMENTS);
     for (let i = 0; i < 128; i++) {
       elements[i * 2] = grouped[i];
       elements[i * 2 + 1] = grouped[i + 128];
     }
 
-    for (let r = 0; r < ROUNDS; r++) elements = Round(elements, ROUND_SELECTORS[r]);
+    for (let r = 0; r < ROUNDS; r++) {
+      elements = Round(elements, ROUND_SELECTORS[r]);
+    }
 
+    /** @type {uint8[]} */
     const ungrouped = new Array(ELEMENTS);
     for (let i = 0; i < 128; i++) {
       ungrouped[i] = elements[i * 2];
@@ -235,6 +265,7 @@
    * the second half.
    * @param {uint8[]} state - 128 bytes, modified in place
    * @param {uint8[]} block - 64 bytes
+   * @returns {void}
    */
   function Compress(state, block) {
     for (let i = 0; i < BLOCK_SIZE; i++) state[i] = OpCodes.Xor32(state[i], OpCodes.ToByte(block[i]));
@@ -246,23 +277,27 @@
    * The initial state for a digest size: the size in bits occupies the first
    * two bytes of an otherwise empty state, which is then compressed with an
    * all-zero block. Computing it costs one E8, so each size is worked out once
-   * and kept.
+   * and kept: INITIAL_STATE_VALUES[k] belongs to INITIAL_STATE_BITS[k].
    */
-  const INITIAL_STATES = new Map();
+  /** @type {int32[]} */
+  const INITIAL_STATE_BITS = [];
+  /** @type {uint8[][]} */
+  const INITIAL_STATE_VALUES = [];
 
   /**
-   * @param {int} digestBits - 224, 256, 384 or 512
+   * @param {int32} digestBits - 224, 256, 384 or 512
    * @returns {uint8[]} a fresh copy of the initial 128-byte state
    */
   function InitialState(digestBits) {
-    let cached = INITIAL_STATES.get(digestBits);
-    if (!cached) {
-      cached = new Array(STATE_BYTES).fill(0);
-      cached[0] = OpCodes.ToByte(OpCodes.Shr32(digestBits, 8));
-      cached[1] = OpCodes.ToByte(digestBits);
-      Compress(cached, new Array(BLOCK_SIZE).fill(0));
-      INITIAL_STATES.set(digestBits, cached);
+    for (let k = 0; k < INITIAL_STATE_BITS.length; k++) {
+      if (INITIAL_STATE_BITS[k] === digestBits) return INITIAL_STATE_VALUES[k].slice();
     }
+    const cached = Zeros(STATE_BYTES);
+    cached[0] = OpCodes.ToByte(OpCodes.Shr32(digestBits, 8));
+    cached[1] = OpCodes.ToByte(digestBits);
+    Compress(cached, Zeros(BLOCK_SIZE));
+    INITIAL_STATE_BITS.push(digestBits);
+    INITIAL_STATE_VALUES.push(cached);
     return cached.slice();
   }
 
@@ -280,6 +315,7 @@
     constructor(digestBits) {
       super();
 
+      /** @type {int32} */
       this.digestBits = digestBits;
       const digestSize = digestBits / 8;
 
@@ -296,7 +332,9 @@
       this.SupportedOutputSizes = [digestSize];
       this.SupportedHashSizes = [new KeySize(digestSize, digestSize, 1)];
       this.BlockSize = BLOCK_SIZE;
+      /** @type {int32} */
       this.blockSize = BLOCK_SIZE;
+      /** @type {int32} */
       this.outputSize = digestSize;
 
       this.documentation = [
@@ -321,7 +359,7 @@
     /**
      * Create new hash instance
      * @param {boolean} [isInverse=false] - unused, hashes have no inverse
-     * @returns {Object} New hash instance
+     * @returns {JHAlgorithmInstance} New hash instance, null for the (nonexistent) inverse
      */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
@@ -336,14 +374,17 @@
    */
   class JHAlgorithmInstance extends IHashFunctionInstance {
     /**
-     * @param {Object} algorithm - parent algorithm
-     * @param {int} digestBits - 224, 256, 384 or 512
+     * @param {JHAlgorithmBase} algorithm - parent algorithm
+     * @param {int32} digestBits - 224, 256, 384 or 512
      */
     constructor(algorithm, digestBits) {
       super(algorithm);
+      /** @type {int32} */
       this.digestBits = digestBits;
       this.OutputSize = digestBits / 8;
+      /** @type {uint8[]} */
       this._state = InitialState(digestBits);
+      /** @type {BlockAbsorber} */
       this._absorber = new BlockAbsorber(BLOCK_SIZE, block => Compress(this._state, block));
     }
 
@@ -352,8 +393,12 @@
      * @param {uint8[]} data - Input data bytes
      */
     Feed(data) {
-      if (!data || data.length === 0) return;
-      if (!Array.isArray(data) && !ArrayBuffer.isView(data)) {
+      if (!data || data.length === 0) {
+        return;
+      }
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(data);
+      if (!Array.isArray(data) && !isTypedArray) {
         throw new Error("Invalid input data - must be byte array");
       }
       this._absorber.Absorb(Array.from(data));
@@ -370,48 +415,53 @@
       const saved = this._state;
       this._state = this._state.slice();
 
-      this._absorber.Finish((held, pending, total) => {
-        let rest = held;
-        let count = pending;
-
-        // A held block that is already full is an ordinary block; the absorber
-        // only kept it back in case more data followed.
-        if (count === BLOCK_SIZE) {
-          Compress(this._state, held);
-          rest = [];
-          count = 0;
-        }
-
-        // The length field is 128 bits, big-endian, at the end of the final
-        // block. Anything this code can be handed fits in the low 64.
-        const lengthBlock = () => {
-          const block = new Array(BLOCK_SIZE).fill(0);
-          let bits = OpCodes.ShiftLn(BigInt(total), 3);
-          for (let i = 0; i < 16; i++) {
-            block[BLOCK_SIZE - 1 - i] = Number(OpCodes.AndN(bits, 0xFFn));
-            bits = OpCodes.ShiftRn(bits, 8);
-          }
-          return block;
-        };
-
-        if (count === 0) {
-          // The message ends on a block boundary, so the padding bit and the
-          // length field share a single extra block.
-          const block = lengthBlock();
-          block[0] = 0x80;
-          Compress(this._state, block);
-        } else {
-          const block = new Array(BLOCK_SIZE).fill(0);
-          for (let i = 0; i < count; i++) block[i] = OpCodes.ToByte(rest[i]);
-          block[count] = 0x80;
-          Compress(this._state, block);
-          Compress(this._state, lengthBlock());
-        }
-      });
+      this._absorber.Finish((held, pending, total) => this._finish(held, pending, total));
 
       const digest = this._state.slice(STATE_BYTES - this.OutputSize, STATE_BYTES);
       this._state = saved;
       return digest;
+    }
+
+    /**
+     * Pad the held tail and compress the final block or blocks (BlockAbsorber.Finish callback).
+     * @param {uint8[]} held - trailing message bytes
+     * @param {int32} pending - how many of them are valid, 0..BLOCK_SIZE
+     * @param {uint64} total - message length in bytes
+     * @returns {void}
+     */
+    _finish(held, pending, total) {
+      /** @type {uint8[]} */
+      let rest = held;
+      /** @type {int32} */
+      let count = pending;
+
+      // A held block that is already full is an ordinary block; the absorber
+      // only kept it back in case more data followed.
+      if (count === BLOCK_SIZE) {
+        Compress(this._state, held);
+        rest = [];
+        count = 0;
+      }
+
+      // The length field is 128 bits, big-endian, at the end of the final
+      // block. MerkleDamgardBlocks writes it (bits = 8 * total) into a single
+      // 64-byte block after the given pad byte.
+      if (count === 0) {
+        // The message ends on a block boundary, so the padding bit and the
+        // length field share a single extra block.
+        /** @type {uint8[][]} */
+        const combined = MerkleDamgardBlocks(rest, 0, total, { blockSize: BLOCK_SIZE, padByte: 0x80, lengthBytes: 16 });
+        Compress(this._state, combined[0]);
+      } else {
+        const block = Zeros(BLOCK_SIZE);
+        for (let i = 0; i < count; i++) block[i] = OpCodes.ToByte(rest[i]);
+        block[count] = 0x80;
+        Compress(this._state, block);
+        // A block holding nothing but the length field (pad byte zero).
+        /** @type {uint8[][]} */
+        const lengthOnly = MerkleDamgardBlocks(rest, 0, total, { blockSize: BLOCK_SIZE, padByte: 0x00, lengthBytes: 16 });
+        Compress(this._state, lengthOnly[0]);
+      }
     }
   }
 
@@ -619,12 +669,21 @@
 
   // ===== REGISTRATION =====
 
-  for (const Variant of [JH224, JH256, JH384, JH512]) {
-    const algorithmInstance = new Variant();
+  /**
+   * Register an algorithm unless one of that name is already registered
+   * @param {JHAlgorithmBase} algorithmInstance - Variant to register
+   * @returns {void}
+   */
+  function registerOnce(algorithmInstance) {
     if (!AlgorithmFramework.Find(algorithmInstance.name)) {
       RegisterAlgorithm(algorithmInstance);
     }
   }
+
+  registerOnce(new JH224());
+  registerOnce(new JH256());
+  registerOnce(new JH384());
+  registerOnce(new JH512());
 
   // ===== EXPORTS =====
 
