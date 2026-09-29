@@ -78,13 +78,22 @@
   const C1 = 0xC4A60B29, C2 = 0xE5F8D137, C3 = 0x1DF6907A, C4 = 0x793FD1A7;
   const MUL = 0xD37AF41B, MUL_INV = 0xA269C613;
 
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Byte-swapped word
+   */
   function bswap32(x) {
     const b = OpCodes.Unpack32LE(OpCodes.ToUint32(x));
     return OpCodes.Pack32BE(b[0], b[1], b[2], b[3]);
   }
 
+  /**
+   * @param {uint32} a - Factor
+   * @param {uint32} b - Factor
+   * @returns {uint32} Low 32 bits of the product
+   */
   function imul32(a, b) {
-    return OpCodes.ToUint32(Math.imul(a, b));
+    return OpCodes.Mul32(a, b);
   }
 
   // Shared 3-step ARX/multiply/bswap chain over (X, Kc, Z) — identical in both
@@ -92,26 +101,40 @@
   // final odd-forced mixing accumulator (c3, also used as the rotate amount)
   // and the chain's output value P (XORed with the block word being
   // transformed one level up).
+  /**
+   * @param {uint32} X - Chain input word
+   * @param {uint32} Kc - Rotated key word
+   * @param {uint32} Z - Chain input word
+   * @returns {uint32[]} [c3, P]: final accumulator and chain output
+   */
   function chain3(X, Kc, Z) {
     const x1 = OpCodes.Add32(X, C1);
     const k1 = OpCodes.Add32(Kc, C2);
     const z1 = OpCodes.Add32(Z, C3);
-    let c = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Add32(k1, x1), z1) | 1);
+    let c = OpCodes.Or32(OpCodes.Xor32(OpCodes.Add32(k1, x1), z1), 1);
     let a = imul32(x1, c);
     a = bswap32(a);
     a = OpCodes.Xor32(a, z1);
-    c = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Add32(c, a), k1) | 1);
+    c = OpCodes.Or32(OpCodes.Xor32(OpCodes.Add32(c, a), k1), 1);
     a = imul32(a, c);
     a = bswap32(a);
     a = OpCodes.Xor32(a, k1);
-    c = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Add32(c, a), x1) | 1);
+    c = OpCodes.Or32(OpCodes.Xor32(OpCodes.Add32(c, a), x1), 1);
     a = imul32(a, c);
     a = bswap32(a);
-    return { c3: c, P: a };
+    return [c, a];
   }
 
+  /**
+   * @param {uint32} X - Chain input word
+   * @param {uint32} Y - Word being transformed
+   * @param {uint32} Kc - Rotated key word
+   * @param {uint32} Z - Chain input word
+   * @returns {uint32} New value of the transformed word
+   */
   function fEncrypt(X, Y, Kc, Z) {
-    const { c3, P } = chain3(X, Kc, Z);
+    const chain = chain3(X, Kc, Z);
+    const c3 = chain[0], P = chain[1];
     let a = OpCodes.Xor32(P, Y);
     a = OpCodes.RotL32(a, OpCodes.And32(c3, 0x1F));
     a = OpCodes.Sub32(a, C4);
@@ -120,8 +143,16 @@
     return a;
   }
 
+  /**
+   * @param {uint32} X - Chain input word
+   * @param {uint32} valueToInvert - Transformed word
+   * @param {uint32} Kc - Rotated key word
+   * @param {uint32} Z - Chain input word
+   * @returns {uint32} Original value of the transformed word
+   */
   function fDecrypt(X, valueToInvert, Kc, Z) {
-    const { c3, P } = chain3(X, Kc, Z);
+    const chain = chain3(X, Kc, Z);
+    const c3 = chain[0], P = chain[1];
     let b = bswap32(valueToInvert);
     b = imul32(b, MUL_INV);
     b = OpCodes.Add32(b, C4);
@@ -199,6 +230,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._K = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -216,10 +248,11 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // setup(): identity copy of the 16 little-endian key words — see file header.
-      const K = new Array(16);
+      /** @type {uint32[]} */
+      const keyWords = new Array(16);
       for (let i = 0; i < 16; i++)
-        K[i] = OpCodes.Pack32LE(keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]);
-      this._K = K;
+        keyWords[i] = OpCodes.Pack32LE(keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]);
+      this._K = keyWords;
     }
 
     /**
@@ -254,25 +287,29 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const K = this._K;
-      const w = new Array(16);
+      const keyWords = this._K;
+      /** @type {uint32[]} */
+      const words = new Array(16);
       for (let i = 0; i < 16; i++)
-        w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
+        words[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
 
-      let esi = 15, edi = 0, ebp = 1, wi = 0, rc = 1;
+      let esi = 15, edi = 0, ebp = 1, wi = 0;
+      /** @type {uint32} */
+      let rc = 1;
       for (let round = 0; round < ROUNDS; round++) {
         esi = (esi + 1) % 16;
         edi = (edi + 1) % 16;
         ebp = (ebp + 1) % 16;
         wi = wi + 1;
         if (wi >= 16) { wi -= 16; rc = OpCodes.Add32(rc, 22); }
-        const Kc = OpCodes.RotL32(K[wi], OpCodes.And32(rc, 0x1F));
-        const x = w[esi], y = w[edi], z = w[ebp];
-        w[edi] = fEncrypt(x, y, Kc, z);
+        const Kc = OpCodes.RotL32(keyWords[wi], OpCodes.And32(rc, 0x1F));
+        const x = words[esi], y = words[edi], z = words[ebp];
+        words[edi] = fEncrypt(x, y, Kc, z);
       }
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 16; i++) out.push(...OpCodes.Unpack32LE(w[i]));
+      for (let i = 0; i < 16; i++) out.push(...OpCodes.Unpack32LE(words[i]));
       return out;
     }
 
@@ -281,24 +318,28 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const K = this._K;
-      const w = new Array(16);
+      const keyWords = this._K;
+      /** @type {uint32[]} */
+      const words = new Array(16);
       for (let i = 0; i < 16; i++)
-        w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
+        words[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
 
-      let esi = 1, edi = 2, ebp = 1, wi = 0, rc = 67;
+      let esi = 1, edi = 2, ebp = 1, wi = 0;
+      /** @type {uint32} */
+      let rc = 67;
       for (let round = 0; round < ROUNDS; round++) {
-        const Kc = OpCodes.RotL32(K[ebp], OpCodes.And32(rc, 0x1F));
-        const xArg = w[esi], yArg = w[wi], zArg = w[edi];
-        w[esi] = fDecrypt(yArg, xArg, Kc, zArg);
+        const Kc = OpCodes.RotL32(keyWords[ebp], OpCodes.And32(rc, 0x1F));
+        const xArg = words[esi], yArg = words[wi], zArg = words[edi];
+        words[esi] = fDecrypt(yArg, xArg, Kc, zArg);
         wi = wi - 1; if (wi < 0) wi += 16;
         esi = esi - 1; if (esi < 0) esi += 16;
         edi = edi - 1; if (edi < 0) edi += 16;
         ebp = ebp - 1; if (ebp < 0) { ebp += 16; rc = OpCodes.Sub32(rc, 22); }
       }
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 16; i++) out.push(...OpCodes.Unpack32LE(w[i]));
+      for (let i = 0; i < 16; i++) out.push(...OpCodes.Unpack32LE(words[i]));
       return out;
     }
   }
