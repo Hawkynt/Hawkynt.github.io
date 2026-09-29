@@ -160,9 +160,11 @@ function analyzeSource(code) {
     let reason = t === 'number'
       ? "declared 'number', which states no width or signedness"
       : `no tier types this ${node.type === 'Identifier' ? `name '${node.name}'` : node.type}`;
-    if (node.opCodesMethod) {
+    if (node.opCodesMethod && !(parser.typeKnowledge.opCodesTypes || {})[node.opCodesMethod]) {
       tier = 'opcodes';
       reason = `OpCodes.${node.opCodesMethod} result has no JSDoc type`;
+    } else if (node.opCodesMethod) {
+      reason = `OpCodes.${node.opCodesMethod} takes its result type from operands that are untyped`;
     } else if (node.type === 'ThisPropertyAccess' && frameworkDeclares(where.className, node.property, 'property')) {
       tier = 'framework';
       reason = `framework member '${node.property}' has no declared type`;
