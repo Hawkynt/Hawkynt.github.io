@@ -118,18 +118,23 @@
       ];
 
       // Algorithm constants (from Tim van Dijk's Python reference)
+      /** @type {int32} */
       this.NUM_WORDS = 12;       // 12 words × 32 bits = 384 bits
+      /** @type {int32} */
       this.BLOCK_SIZE = 48;      // 48 bytes = 384 bits
+      /** @type {int32} */
       this.NUM_ROUNDS = 11;      // 11 rounds
+      /** @type {int32} */
       this.MAX_BITS = 32;        // 32-bit words
 
       // Constants from Tim van Dijk's reference implementation (DoubleKing.py)
+      /** @type {int32[]} */
       this.ROUND_CONSTANTS_TEMPLATE = [0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0];
       /** @type {uint8[]} */
       this.ROUND_CONSTANTS = [11, 22, 44, 88, 176, 113, 226, 213, 187, 103, 206, 141];
       /** @type {uint8[]} */
       this.ROTATION_CONSTANTS = [0, 1, 3, 6, 10, 15, 21, 28, 4, 13, 23, 2];
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       this.DIFFUSION_CONSTANTS = [0, 2, 6, 7, 9, 10, 11];
     }
 
@@ -144,38 +149,70 @@
     }
 
     // Circular rotate left (32-bit) using OpCodes
+    /**
+     * @param {uint32} val - Word
+     * @param {int32} [r_bits=1] - Rotation amount
+     * @returns {uint32} Rotated word
+     */
     rol32(val, r_bits = 1) {
       return OpCodes.RotL32(val, r_bits);
     }
 
     // Circular rotate right (32-bit) using OpCodes
+    /**
+     * @param {uint32} val - Word
+     * @param {int32} [r_bits=1] - Rotation amount
+     * @returns {uint32} Rotated word
+     */
     ror32(val, r_bits = 1) {
       return OpCodes.RotR32(val, r_bits);
     }
 
+    // Transform the words with a linear transformation of high diffusion
+    /**
+     * @param {uint32[]} block - State words
+     * @returns {uint32[]} Diffused state words
+     */
+    diffusion(block) {
+      /** @type {uint32[]} */
+      const result = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        result[i] = 0;
+        for (let k = 0; k < this.DIFFUSION_CONSTANTS.length; k++) {
+          const offset = this.DIFFUSION_CONSTANTS[k];
+          result[i] = OpCodes.Xor32(result[i], block[(i + offset) % 12]);
+        }
+      }
+      return result;
+    }
+
     // Add cipher key and round constant to the state
     /**
-     * @param {uint8[]} block - Input block
+     * @param {string} mode - 'enc' or 'dec'
+     * @param {uint32[]} block - State words
+     * @param {uint32[]} key - Key words
+     * @param {int32} r - Round index
+     * @returns {uint32[]} New state words
      */
     keyAddition(mode, block, key, r) {
       const result = [...block];
 
       if (mode === 'enc') {
-        // Encryption mode
-        const template = [...this.ROUND_CONSTANTS_TEMPLATE];
+        // Encryption mode: the template marks (-1) the words that get the round constant; the others are 0
         for (let i = 0; i < 12; i++) {
-          const roundConstValue = template[i] === -1 ? this.ROUND_CONSTANTS[r] : template[i];
+          /** @type {uint32} */
+          const roundConstValue = this.ROUND_CONSTANTS_TEMPLATE[i] === -1 ? this.ROUND_CONSTANTS[r] : 0;
           result[i] = OpCodes.Xor32(OpCodes.Xor32(block[i], key[i]), roundConstValue);
         }
       } else if (mode === 'dec') {
-        // Decryption mode - different round constant handling
-        const template = [...this.ROUND_CONSTANTS_TEMPLATE];
-        for (let i = 0; i < template.length; i++) {
-          if (template[i] === -1) {
-            template[i] = this.ROUND_CONSTANTS[this.NUM_ROUNDS - r];
-          }
+        // Decryption mode - different round constant handling: the filled-in template in reversed word order
+        /** @type {uint32[]} */
+        const reversedTemplate = new Array(12);
+        for (let i = 0; i < 12; i++) {
+          reversedTemplate[11 - i] = this.ROUND_CONSTANTS_TEMPLATE[i] === -1 ? this.ROUND_CONSTANTS[this.NUM_ROUNDS - r] : 0;
         }
-        const diffusedTemplate = this.diffusion([...template.reverse()]);
+        /** @type {uint32[]} */
+        const diffusedTemplate = this.diffusion(reversedTemplate);
 
         for (let i = 0; i < 12; i++) {
           result[i] = OpCodes.Xor32(OpCodes.Xor32(block[i], key[i]), diffusedTemplate[i]);
@@ -185,26 +222,13 @@
       return result;
     }
 
-    // Transform the words with a linear transformation of high diffusion
-    /**
-     * @param {uint8[]} block - Input block
-     */
-    diffusion(block) {
-      const result = new Array(12);
-      for (let i = 0; i < 12; i++) {
-        result[i] = 0;
-        for (const offset of this.DIFFUSION_CONSTANTS) {
-          result[i] = OpCodes.Xor32(result[i], block[(i + offset) % 12]);
-        }
-      }
-      return result;
-    }
-
     // Shift each 32-bit word in the state the amount specified in ROTATION_CONSTANTS to the left
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint32[]} block - State words
+     * @returns {uint32[]} New state words
      */
     earlyShift(block) {
+      /** @type {uint32[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = this.rol32(block[i], this.ROTATION_CONSTANTS[i]);
@@ -214,9 +238,11 @@
 
     // Nonlinear transformation of words (the gamma operation)
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint32[]} block - State words
+     * @returns {uint32[]} New state words
      */
     sBox(block) {
+      /** @type {uint32[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = OpCodes.Xor32(block[i], OpCodes.Or32(block[(i + 4) % 12], ~OpCodes.ToUint32(block[(i + 8) % 12])));
@@ -226,9 +252,11 @@
 
     // Shift each word in the state the amount specified in ROTATION_CONSTANTS to the right
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint32[]} block - State words
+     * @returns {uint32[]} New state words
      */
     lateShift(block) {
+      /** @type {uint32[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
         result[i] = this.ror32(block[i], this.ROTATION_CONSTANTS[this.NUM_ROUNDS - i]);
@@ -238,7 +266,10 @@
 
     // Core DoubleKing algorithm (encrypts if mode is 'enc', decrypts if mode is 'dec')
     /**
-     * @param {uint8[]} block - Input block
+     * @param {uint32[]} block - Block words
+     * @param {uint32[]} key - Key words (inverse-transformed for decryption)
+     * @param {string} mode - 'enc' or 'dec'
+     * @returns {uint32[]} Output words
      */
     doubleKing(block, key, mode) {
       let state = [...block];
@@ -280,6 +311,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.keyWords = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -305,10 +337,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+          (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -318,8 +357,10 @@
       this.KeySize = keyBytes.length;
 
       // Convert byte array to 32-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
       this.keyWords = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         this.keyWords[i] = OpCodes.Pack32BE(
           keyBytes[i * 4],
           keyBytes[i * 4 + 1],
@@ -398,8 +439,13 @@
      */
     _encryptBlock(block) {
       // Convert bytes to 32-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {uint32[]} */
       const words = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         words[i] = OpCodes.Pack32BE(
           block[i * 4],
           block[i * 4 + 1],
@@ -409,11 +455,13 @@
       }
 
       // Apply DoubleKing encryption
+      /** @type {uint32[]} */
       const result = this.algorithm.doubleKing(words, this.keyWords, 'enc');
 
       // Convert words back to bytes (big-endian) using OpCodes
-      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      /** @type {uint8[]} */
+      const outputBytes = new Array(blockSize);
+      for (let i = 0; i < numWords; i++) {
         const bytes = OpCodes.Unpack32BE(result[i]);
         outputBytes[i * 4] = bytes[0];
         outputBytes[i * 4 + 1] = bytes[1];
@@ -430,8 +478,13 @@
      */
     _decryptBlock(block) {
       // Convert bytes to 32-bit words (big-endian) using OpCodes
+      /** @type {int32} */
+      const numWords = this.algorithm.NUM_WORDS;
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {uint32[]} */
       const words = [];
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      for (let i = 0; i < numWords; i++) {
         words[i] = OpCodes.Pack32BE(
           block[i * 4],
           block[i * 4 + 1],
@@ -441,11 +494,13 @@
       }
 
       // Apply DoubleKing decryption (using same algorithm with preprocessed key)
+      /** @type {uint32[]} */
       const result = this.algorithm.doubleKing(words, this.keyWords, 'dec');
 
       // Convert words back to bytes (big-endian) using OpCodes
-      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
-      for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
+      /** @type {uint8[]} */
+      const outputBytes = new Array(blockSize);
+      for (let i = 0; i < numWords; i++) {
         const bytes = OpCodes.Unpack32BE(result[i]);
         outputBytes[i * 4] = bytes[0];
         outputBytes[i * 4 + 1] = bytes[1];
@@ -458,9 +513,7 @@
   }
 
   // Register the algorithm immediately
-  if (AlgorithmFramework && AlgorithmFramework.RegisterAlgorithm) {
-    AlgorithmFramework.RegisterAlgorithm(new DoubleKingAlgorithm());
-  }
+  RegisterAlgorithm(new DoubleKingAlgorithm());
 
   return DoubleKingAlgorithm;
 }));
