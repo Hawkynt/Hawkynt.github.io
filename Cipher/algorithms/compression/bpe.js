@@ -111,23 +111,82 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {BPEInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new BPEInstance(this, isInverse);
       }
     }
 
+    /**
+     * One dictionary rule: code stands for the pair (val1, val2)
+     */
+    class BPEEntry {
+      /**
+       * @param {int32} code - Replacement code
+       * @param {int32} val1 - First value of the pair
+       * @param {int32} val2 - Second value of the pair
+       */
+      constructor(code, val1, val2) {
+        /** @type {int32} */
+        this.code = code;
+        /** @type {int32} */
+        this.val1 = val1;
+        /** @type {int32} */
+        this.val2 = val2;
+      }
+    }
+
+    /**
+     * Unpacked compressed stream: the rules and the encoded values
+     */
+    class BPEStream {
+      /**
+       * @param {BPEEntry[]} dictionary - Rules in assignment order
+       * @param {int32[]} data - Encoded values
+       */
+      constructor(dictionary, data) {
+        /** @type {BPEEntry[]} */
+        this.dictionary = dictionary;
+        /** @type {int32[]} */
+        this.data = data;
+      }
+    }
+
+    // Codes stay below 256 + 256 (at most 256 rules), so a pair (a, b) of
+    // values is counted at index a * PAIR_STRIDE + b
+    /** @type {int32} */
+    const PAIR_STRIDE = 512;
+
     class BPEInstance extends IAlgorithmInstance {
+      /**
+       * @param {BPECompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {int32} */
         this.maxIterations = 256; // Limit iterations to prevent infinite loops
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
-          if (this.inputBuffer.length === 0) return [];
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            return empty;
+          }
           return this._decompress();
         }
 
@@ -138,20 +197,34 @@
 
       // Mirrors CompressionWorkbench's BpeBuildingBlock.Compress exactly,
       // including its "net savings" acceptance test and early-stop heuristic.
+      /**
+       * @returns {uint8[]} Dictionary and encoded values
+       */
       _compress() {
+        /** @type {int32} */
         const FIRST_CODE = 256;
-        const dataArr = [...this.inputBuffer];
+        /** @type {int32[]} */
+        const dataArr = [];
+        for (let i = 0; i < this.inputBuffer.length; i++) {
+          dataArr.push(this.inputBuffer[i]);
+        }
+        /** @type {int32} */
         let dataLen = dataArr.length;
 
-        const dictionary = []; // [{code, val1, val2}, ...] in assignment order
+        /** @type {BPEEntry[]} */
+        const dictionary = []; // in assignment order
+        /** @type {int32} */
         let nextCode = FIRST_CODE;
+        /** @type {int32[]} */
+        const pairCounts = new Int32Array(PAIR_STRIDE * PAIR_STRIDE);
 
         for (let iter = 0; iter < this.maxIterations && dataLen >= 2; ++iter) {
           // Count consecutive pairs.
-          const pairCounts = new Map();
+          pairCounts.fill(0);
           for (let i = 0; i < dataLen - 1; ++i) {
-            const key = dataArr[i] + ',' + dataArr[i + 1];
-            pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
+            /** @type {int32} */
+            const key = dataArr[i] * PAIR_STRIDE + dataArr[i + 1];
+            pairCounts[key] = pairCounts[key] + 1;
           }
 
           // Pick the most frequent pair, ties going to the one that occurs
@@ -159,11 +232,15 @@
           // makes that rule explicit: the winner is decided by positions in
           // the input, not by the order in which a hash table hands its
           // entries back.
-          let bestKey = null;
+          /** @type {int32} */
+          let bestKey = -1;
+          /** @type {int32} */
           let bestCount = 0;
           for (let i = 0; i < dataLen - 1; ++i) {
-            const key = dataArr[i] + ',' + dataArr[i + 1];
-            const count = pairCounts.get(key);
+            /** @type {int32} */
+            const key = dataArr[i] * PAIR_STRIDE + dataArr[i + 1];
+            /** @type {int32} */
+            const count = pairCounts[key];
             if (count > bestCount) {
               bestCount = count;
               bestKey = key;
@@ -172,15 +249,21 @@
 
           // Stop if the best pair doesn't save enough to justify the
           // 6-byte dictionary entry cost (each replacement saves 2 bytes).
+          /** @type {int32} */
           const netSavings = bestCount * 2 - 6;
-          if (netSavings <= 0) break;
+          if (netSavings <= 0) {
+            break;
+          }
 
-          const commaIndex = bestKey.indexOf(',');
-          const b1 = parseInt(bestKey.substring(0, commaIndex), 10);
-          const b2 = parseInt(bestKey.substring(commaIndex + 1), 10);
+          /** @type {int32} */
+          const b1 = Math.floor(bestKey / PAIR_STRIDE);
+          /** @type {int32} */
+          const b2 = bestKey % PAIR_STRIDE;
 
           // Replace all occurrences in-place
+          /** @type {int32} */
           const prevLen = dataLen;
+          /** @type {int32} */
           let writePos = 0;
           for (let i = 0; i < dataLen; ++i) {
             if (i < dataLen - 1 && dataArr[i] === b1 && dataArr[i + 1] === b2) {
@@ -192,60 +275,102 @@
           }
           dataLen = writePos;
 
-          dictionary.push({ code: nextCode, val1: b1, val2: b2 });
+          dictionary.push(new BPEEntry(nextCode, b1, b2));
           ++nextCode;
 
           // Stop if this iteration shrank the data by less than 0.5%
-          if ((prevLen - dataLen) * 200 < prevLen) break;
+          if ((prevLen - dataLen) * 200 < prevLen) {
+            break;
+          }
         }
 
+        /** @type {uint8[]} */
         const compressed = this._packCompressedData(dictionary, dataArr.slice(0, dataLen));
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return compressed;
       }
 
       // Mirrors CompressionWorkbench's BpeBuildingBlock.Decompress: dictionary
       // rules are expanded in reverse assignment order (last rule first).
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
-        const { dictionary, data } = this._unpackCompressedData(this.inputBuffer);
+        /** @type {BPEStream} */
+        const stream = this._unpackCompressedData(this.inputBuffer);
 
-        let workingData = data;
-        for (let i = dictionary.length - 1; i >= 0; --i) {
-          const { code, val1, val2 } = dictionary[i];
+        /** @type {int32[]} */
+        let workingData = stream.data;
+        for (let i = stream.dictionary.length - 1; i >= 0; --i) {
+          /** @type {BPEEntry} */
+          const entry = stream.dictionary[i];
+          /** @type {int32[]} */
           const newData = [];
-          for (const value of workingData) {
-            if (value === code)
-              newData.push(val1, val2);
-            else
+          for (let k = 0; k < workingData.length; k++) {
+            /** @type {int32} */
+            const value = workingData[k];
+            if (value === entry.code) {
+              newData.push(entry.val1);
+              newData.push(entry.val2);
+            } else {
               newData.push(value);
+            }
           }
           workingData = newData;
         }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return workingData;
+      }
+
+      /**
+       * Append the little-endian bytes of a 16-bit value
+       * @param {uint8[]} bytes - Destination
+       * @param {int32} value - Value
+       */
+      _push16(bytes, value) {
+        /** @type {uint8[]} */
+        const src = OpCodes.Unpack16LE(value);
+        for (let k = 0; k < src.length; k++) {
+          bytes.push(src[k]);
+        }
       }
 
       /**
        * Pack compressed data with dictionary (all fields little-endian)
        * @private
+       * @param {BPEEntry[]} dictionary - Rules in assignment order
+       * @param {int32[]} data - Encoded values
+       * @returns {uint8[]} Packed stream
        */
       _packCompressedData(dictionary, data) {
+        /** @type {uint8[]} */
         const bytes = [];
 
-        { const _src = OpCodes.Unpack16LE(dictionary.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        this._push16(bytes, dictionary.length);
 
-        for (const entry of dictionary) {
-          { const _src = OpCodes.Unpack16LE(entry.code); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
-          { const _src = OpCodes.Unpack16LE(entry.val1); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
-          { const _src = OpCodes.Unpack16LE(entry.val2); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        for (let e = 0; e < dictionary.length; e++) {
+          /** @type {BPEEntry} */
+          const entry = dictionary[e];
+          this._push16(bytes, entry.code);
+          this._push16(bytes, entry.val1);
+          this._push16(bytes, entry.val2);
         }
 
-        { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        /** @type {uint8[]} */
+        const lengthBytes = OpCodes.Unpack32LE(data.length);
+        for (let k = 0; k < lengthBytes.length; k++) {
+          bytes.push(lengthBytes[k]);
+        }
 
-        for (const value of data)
-          { const _src = OpCodes.Unpack16LE(value); for (let _i = 0; _i < _src.length; _i++) bytes.push(_src[_i]); }
+        for (let k = 0; k < data.length; k++) {
+          this._push16(bytes, data[k]);
+        }
 
         return bytes;
       }
@@ -253,28 +378,36 @@
       /**
        * Unpack compressed data (all fields little-endian)
        * @private
+       * @param {uint8[]} bytes - Packed stream
+       * @returns {BPEStream} Rules and encoded values
        */
       _unpackCompressedData(bytes) {
         if (bytes.length < 6) {
           throw new Error('Invalid BPE compressed data: too short');
         }
 
+        /** @type {int32} */
         let pos = 0;
 
+        /** @type {int32} */
         const dictSize = OpCodes.Pack16LE(bytes[pos], bytes[pos + 1]);
         pos += 2;
 
+        /** @type {BPEEntry[]} */
         const dictionary = [];
         for (let i = 0; i < dictSize; i++) {
           if (pos + 6 > bytes.length) {
             throw new Error('Invalid BPE compressed data: incomplete dictionary');
           }
 
+          /** @type {int32} */
           const code = OpCodes.Pack16LE(bytes[pos], bytes[pos + 1]);
+          /** @type {int32} */
           const val1 = OpCodes.Pack16LE(bytes[pos + 2], bytes[pos + 3]);
+          /** @type {int32} */
           const val2 = OpCodes.Pack16LE(bytes[pos + 4], bytes[pos + 5]);
 
-          dictionary.push({ code, val1, val2 });
+          dictionary.push(new BPEEntry(code, val1, val2));
           pos += 6;
         }
 
@@ -282,9 +415,11 @@
           throw new Error('Invalid BPE compressed data: missing data length');
         }
 
+        /** @type {uint32} */
         const dataLength = OpCodes.Pack32LE(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
         pos += 4;
 
+        /** @type {int32[]} */
         const data = [];
         for (let i = 0; i < dataLength; i++) {
           if (pos + 2 > bytes.length) {
@@ -295,7 +430,7 @@
           pos += 2;
         }
 
-        return { dictionary, data };
+        return new BPEStream(dictionary, data);
       }
     }
 
