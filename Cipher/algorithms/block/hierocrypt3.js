@@ -107,6 +107,8 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {KeySize[]} */
+    this._keySizes = algorithm.SupportedKeySizes;
     /** @type {uint8[]} */
     this.inputBuffer = [];
     /** @type {uint8[]|null} */
@@ -127,8 +129,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
       return;
     }
 
-    /** @type {KeySize[]} */
-    const sizes = this.algorithm.SupportedKeySizes;
+    const sizes = this._keySizes;
     let isValidSize = false;
     for (let s = 0; s < sizes.length; s++) {
       const ks = sizes[s];
