@@ -117,13 +117,14 @@
      */
     generateSIV: function(data) {
       // Deterministic IV generation for educational purposes
-      let siv = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]} */
+      const siv = OpCodes.CreateArray(16, 0);
 
       // Generate IV based only on key (deterministic)
       for (let i = 0; i < 16; i++) {
         siv[i] = this.key[i];
-        siv[i] = OpCodes.XorN(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
-        siv[i] = OpCodes.XorN(siv[i], OpCodes.AndN(i * 17, 0xFF)); // Add position-based entropy
+        siv[i] = OpCodes.Xor8(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
+        siv[i] = OpCodes.Xor8(siv[i], OpCodes.ToByte(i * 17)); // Add position-based entropy
       }
 
       return siv;
@@ -132,19 +133,21 @@
     /**
      * Generate keystream bytes
      * @param {uint8[]} data - Input data (used for SIV generation)
-     * @param {number} length - Number of bytes to generate
+     * @param {int32} length - Number of bytes to generate
      * @returns {uint8[]} Keystream bytes
      */
     generateKeystream: function(data, length) {
+      /** @type {uint8[]} */
       const siv = this.generateSIV(data);
       /** @type {uint8[]} */
       const keystream = [];
 
       for (let i = 0; i < length; i++) {
         // Simple keystream generation using SIV and key
+        /** @type {uint8} */
         let byte = siv[i % 16];
-        byte = OpCodes.XorN(byte, this.key[i % 16]);
-        byte = OpCodes.XorN(byte, OpCodes.AndN(i, 0xFF));
+        byte = OpCodes.Xor8(byte, this.key[i % 16]);
+        byte = OpCodes.Xor8(byte, OpCodes.ToByte(i));
         byte = OpCodes.RotL8(byte, (i % 8) + 1);
         keystream.push(byte);
       }
@@ -163,13 +166,16 @@
       }
 
       // Generate keystream based only on key, not input data (for reversibility)
-      const keystream = this.generateKeystream([], data.length);
+      /** @type {uint8[]} */
+      const noData = [];
+      /** @type {uint8[]} */
+      const keystream = this.generateKeystream(noData, data.length);
       return OpCodes.XorArrays(data, keystream);
     },
 
     /**
      * Encrypt block using AES-GCM-SIV
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Encrypted data
      */
@@ -187,7 +193,7 @@
 
     /**
      * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} blockIndex - Block index (position)
+     * @param {int32} blockIndex - Block index (position)
      * @param {string|Array} input - Input data
      * @returns {string|Array} Decrypted data
      */
