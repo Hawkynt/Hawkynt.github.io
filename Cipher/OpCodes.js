@@ -4200,6 +4200,49 @@
     },
 
     /**
+     * Non-negative remainder for BigInt values: the representative of a in
+     * [0, m). JavaScript's % keeps the dividend's sign, so -3n % 5n is -3n;
+     * ModN(-3n, 5n) is 2n.
+     * @param {BigInt} a - Dividend, any sign
+     * @param {BigInt} m - Modulus, must be positive
+     * @returns {BigInt} a mod m in [0, m)
+     * @throws {RangeError} If m is not positive
+     */
+    ModN: function(a, m) {
+      if (m <= 0n) throw new RangeError('ModN requires a positive modulus');
+      const r = a % m;
+      return r < 0n ? r + m : r;
+    },
+
+    /**
+     * Modular multiplicative inverse for BigInt values (extended Euclidean
+     * algorithm)
+     * @param {BigInt} a - Value to invert, any sign
+     * @param {BigInt} m - Modulus, must be positive
+     * @returns {BigInt} x in [0, m) with (a * x) mod m = 1; 0n when m is 1n
+     * @throws {RangeError} If m is not positive or a has no inverse modulo m
+     */
+    ModInverseN: function(a, m) {
+      let oldR = OpCodes.ModN(a, m);
+      let r = m;
+      let oldS = 1n;
+      let s = 0n;
+
+      while (r !== 0n) {
+        const q = oldR / r;
+        const nextR = oldR - q * r;
+        oldR = r;
+        r = nextR;
+        const nextS = oldS - q * s;
+        oldS = s;
+        s = nextS;
+      }
+
+      if (oldR !== 1n) throw new RangeError('ModInverseN: value has no inverse modulo m');
+      return OpCodes.ModN(oldS, m);
+    },
+
+    /**
      * Count bits in BigInt value
      * @param {BigInt} value - Value to measure
      * @returns {int32} Number of bits required to represent value

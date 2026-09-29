@@ -662,6 +662,12 @@
         ["gcdn", "$a, $b",
           "$a = -$a if $a < 0; $b = -$b if $b < 0; " +
           "while ($b != 0) { my $t = $b; $b = $a % $b; $a = $t; } return $a;"],
+        ["modn", "$a, $m",
+          "die \"ModN requires a positive modulus\" if $m <= 0; return Math::BigInt->new(\"$a\") % \"$m\";"],
+        ["modinversen", "$a, $m",
+          "die \"ModInverseN requires a positive modulus\" if $m <= 0; return Math::BigInt->new(0) if $m == 1; " +
+          "my $r = Math::BigInt->new(\"$a\")->bmod(\"$m\")->bmodinv(\"$m\"); " +
+          "die \"ModInverseN: value has no inverse modulo m\" if $r->is_nan(); return $r;"],
         ["bitcountn", "$value",
           "return 1 if $value == 0; $value = -$value if $value < 0; my $count = 0; " +
           "while ($value > 0) { $count++; $value >>= 1; } return $count;"],

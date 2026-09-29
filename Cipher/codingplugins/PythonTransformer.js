@@ -2043,6 +2043,18 @@ class OpCodes(metaclass=_OpCodesMeta):
         return a
 
     @staticmethod
+    def ModN(a, m):
+        if m <= 0:
+            raise ValueError('ModN requires a positive modulus')
+        return a % m
+
+    @staticmethod
+    def ModInverseN(a, m):
+        if m <= 0:
+            raise ValueError('ModInverseN requires a positive modulus')
+        return pow(a, -1, m) if m != 1 else 0
+
+    @staticmethod
     def BitCountN(value):
         if value == 0:
             return 1
