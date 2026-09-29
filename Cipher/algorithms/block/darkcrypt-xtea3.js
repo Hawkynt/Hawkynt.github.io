@@ -174,7 +174,11 @@
       return output;
     }
 
+    /**
+     * @returns {uint32[]} The key as eight little-endian words
+     */
     _keyWords() {
+      /** @type {uint32[]} */
       const k = [];
       for (let i = 0; i < 8; i++) {
         const o = i * 4;
@@ -199,8 +203,10 @@
       v2 = OpCodes.ToUint32(v2 + k[2]);
       v3 = OpCodes.ToUint32(v3 + k[3]);
 
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < ROUNDS; i++) {
+        /** @type {int32} */
         const idxA = OpCodes.And32(sum, 3);
         const a = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxA], v1) + OpCodes.Shl32(v1, 4));
         const b = OpCodes.Xor32(a, OpCodes.ToUint32(v3 + sum));
@@ -209,6 +215,7 @@
 
         sum = OpCodes.ToUint32(sum + DELTA);
 
+        /** @type {int32} */
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const d = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxC], v3) + OpCodes.Shl32(v3, 4));
         const e = OpCodes.Xor32(d, OpCodes.ToUint32(v1 + sum));
@@ -250,6 +257,7 @@
         // Undo the end-of-round permutation (v0,v1,v2,v3) := (v1, v2', v3, v0')
         const v0n = v3, v2n = v1, v1b = v0, v3b = v2;
 
+        /** @type {int32} */
         const idxC = OpCodes.And32(OpCodes.Shr32(sum, 11), 3);
         const d = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxC], v3b) + OpCodes.Shl32(v3b, 4));
         const e = OpCodes.Xor32(d, OpCodes.ToUint32(v1b + sum));
@@ -258,6 +266,7 @@
 
         sum = OpCodes.ToUint32(sum - DELTA);
 
+        /** @type {int32} */
         const idxA = OpCodes.And32(sum, 3);
         const a = OpCodes.ToUint32(OpCodes.RotL32(k[4 + idxA], v1b) + OpCodes.Shl32(v1b, 4));
         const b = OpCodes.Xor32(a, OpCodes.ToUint32(v3b + sum));
