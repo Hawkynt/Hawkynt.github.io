@@ -272,7 +272,6 @@
      * @returns {uint8[]} 20-byte MAC
      */
     hmacSha1(key, data) {
-      // Self-contained HMAC-SHA1 implementation for PBKDF2
       // HMAC(K, M) = H((K xor opad) || H((K xor ipad) || M))
 
       const blockSize = 64; // SHA-1 block size
@@ -302,140 +301,29 @@
     }
 
     /**
-     * SHA-1 digest, from the registered SHA-1 when available
+     * SHA-1 digest with the registered SHA-1. Registry-first: Find() is
+     * checked before require() loads the module (CommonJS only; an AMD or
+     * browser loader cannot require synchronously, and the page loads SHA-1).
      * @param {uint8[]} data - Message
      * @returns {uint8[]} 20-byte digest
+     * @throws {Error} If SHA-1 is not registered
      */
     sha1(data) {
-      // Try to use framework SHA-1 algorithm first
-      const sha1Alg = AlgorithmFramework.Find('SHA-1');
-      if (sha1Alg) {
-        /** @type {IHashFunctionInstance} */
-        const registeredInstance = sha1Alg.CreateInstance();
-        registeredInstance.Feed(data);
-        /** @type {uint8[]} */
-        const digest = registeredInstance.Result();
-        return digest;
-      }
-
-      // If SHA-1 is not registered, load it under CommonJS (Node); an AMD or
-      // browser loader cannot require synchronously and uses the fallback below
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
+      let sha1Alg = AlgorithmFramework.Find('SHA-1');
+      if (!sha1Alg && typeof module !== 'undefined' && typeof require !== 'undefined') {
         require('../hash/sha1.js');
-        const sha1AlgNow = AlgorithmFramework.Find('SHA-1');
-        if (sha1AlgNow) {
-          /** @type {IHashFunctionInstance} */
-          const loadedInstance = sha1AlgNow.CreateInstance();
-          loadedInstance.Feed(data);
-          /** @type {uint8[]} */
-          const loadedDigest = loadedInstance.Result();
-          return loadedDigest;
-        }
+        sha1Alg = AlgorithmFramework.Find('SHA-1');
+      }
+      if (!sha1Alg) {
+        throw new Error('PBKDF2Instance.sha1: SHA-1 is not registered. Load it before PBKDF2');
       }
 
-      // Self-contained SHA-1 implementation for PBKDF2 as last resort
-      // This ensures the algorithm works independently of other framework components
-
-      // SHA-1 initial hash values
-      const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
-
-      // Pre-processing: pad message
+      /** @type {IHashFunctionInstance} */
+      const hashInstance = sha1Alg.CreateInstance();
+      hashInstance.Feed(data);
       /** @type {uint8[]} */
-      const paddedData = data.slice();
-      const originalLength = data.length * 8;
-
-      paddedData.push(0x80);
-      while (paddedData.length % 64 !== 56) {
-        paddedData.push(0);
-      }
-
-      // Append length as 64-bit big-endian
-      for (let i = 7; i >= 0; i--) {
-        paddedData.push(OpCodes.And32(OpCodes.Shr32(originalLength, i * 8), 0xFF));
-      }
-
-      // Process message in chunks of 64 bytes
-      for (let chunkStart = 0; chunkStart < paddedData.length; chunkStart += 64) {
-        /** @type {uint32[]} */
-        const w = new Array(80);
-
-        // Break chunk into sixteen 32-bit big-endian words
-        for (let i = 0; i < 16; i++) {
-          w[i] = OpCodes.Pack32BE(
-            paddedData[chunkStart + i * 4],
-            paddedData[chunkStart + i * 4 + 1],
-            paddedData[chunkStart + i * 4 + 2],
-            paddedData[chunkStart + i * 4 + 3]
-          );
-        }
-
-        // Extend the sixteen 32-bit words into eighty 32-bit words
-        for (let i = 16; i < 80; i++) {
-          w[i] = this.leftRotate(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(w[i-3], w[i-8]), w[i-14]), w[i-16]), 1);
-        }
-
-        // Initialize hash value for this chunk
-        let a = h[0];
-        let b = h[1];
-        let c = h[2];
-        let d = h[3];
-        let e = h[4];
-
-        // Main loop
-        for (let i = 0; i < 80; i++) {
-          /** @type {uint32} */
-          let f;
-          /** @type {uint32} */
-          let k;
-          if (i < 20) {
-            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
-            k = OpCodes.Hex32ToDWords('5A827999')[0];
-          } else if (i < 40) {
-            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
-            k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
-          } else if (i < 60) {
-            f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
-            k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
-          } else {
-            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
-            k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
-          }
-
-          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(this.leftRotate(a, 5), f), e), k), w[i]);
-          e = d;
-          d = c;
-          c = this.leftRotate(b, 30);
-          b = a;
-          a = temp;
-        }
-
-        // Add this chunk's hash to result so far
-        h[0] = OpCodes.Add32(h[0], a);
-        h[1] = OpCodes.Add32(h[1], b);
-        h[2] = OpCodes.Add32(h[2], c);
-        h[3] = OpCodes.Add32(h[3], d);
-        h[4] = OpCodes.Add32(h[4], e);
-      }
-
-      // Convert to byte array
-      /** @type {uint8[]} */
-      const result = [];
-      for (let i = 0; i < 5; i++) {
-        const bytes = OpCodes.Unpack32BE(h[i]);
-        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      }
-
-      return result;
-    }
-
-    /**
-     * Rotate a 32-bit word left
-     * @param {uint32} value - Word
-     * @param {int32} amount - Rotation count
-     * @returns {uint32} Rotated word
-     */
-    leftRotate(value, amount) {
-      return OpCodes.RotL32(value, amount);
+      const digest = hashInstance.Result();
+      return digest;
     }
 
     /**
