@@ -161,7 +161,12 @@
       return output;
     }
 
+    /**
+     * Key as eight little-endian words
+     * @returns {uint32[]} Key words
+     */
     _keyWords() {
+      /** @type {uint32[]} */
       const k = [];
       for (let i = 0; i < 8; i++) {
         const o = i * 4;
@@ -170,7 +175,11 @@
       return k;
     }
 
-    // G(x) = (x >>> 8) ^ (x << 6)
+    /**
+     * G(x) = Shr(x, 8) xor Shl(x, 6)
+     * @param {uint32} x - Input word
+     * @returns {uint32} Mixed word
+     */
     _G(x) {
       return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(x, 8), OpCodes.Shl32(x, 6)));
     }
@@ -185,9 +194,9 @@
       const k = this._keyWords();
       for (let i = 0; i < ROUNDS; i++) {
         if (OpCodes.And32(i, 1) === 0)
-          v1 = OpCodes.ToUint32(v1 + v0 + k[OpCodes.And32(i, 7)] + i + this._G(v0));
+          v1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v1, v0), k[OpCodes.And32(i, 7)]), i), this._G(v0));
         else
-          v0 = OpCodes.ToUint32(v0 + v1 + k[OpCodes.And32(i, 7)] + i + this._G(v1));
+          v0 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v0, v1), k[OpCodes.And32(i, 7)]), i), this._G(v1));
       }
       return [...OpCodes.Unpack32LE(v0), ...OpCodes.Unpack32LE(v1)];
     }
@@ -202,9 +211,10 @@
       const k = this._keyWords();
       for (let i = ROUNDS - 1; i >= 0; i--) {
         if (OpCodes.And32(i, 1) === 1)
-          v0 = OpCodes.ToUint32(v0 - (v1 + k[OpCodes.And32(i, 7)] + i + this._G(v1)));
+          v0 = OpCodes.Sub32(v0, OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v1, k[OpCodes.And32(i, 7)]), i), this._G(v1)));
         else
-          v1 = OpCodes.ToUint32(v1 - (v0 + k[OpCodes.And32(i, 7)] + i + this._G(v0)));
+          v1 = OpCodes.Sub32(v1, OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v0, k[OpCodes.And32(i, 7)]), i), this._G(v0)));
+
       }
       return [...OpCodes.Unpack32LE(v0), ...OpCodes.Unpack32LE(v1)];
     }
