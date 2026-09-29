@@ -1500,8 +1500,16 @@ Test your algorithm manually before submitting:
 Run:
 
 ```bash
-node Tests/TestSuite.js Algorithm.js --verbose
+# Every category for your file (vectors, metadata, OpCodes use, type budget,
+# round trips, chunked feeds)
+node tests/TestSuite.js algorithm.js --verbose
+
+# Everything CI runs, before you open a pull request
+node tests/TestSuite.js
+node tests/TranspilerSuite.js
 ```
+
+`--only=` and `--skip=` pick categories; `tests/README.md` lists them all.
 
 ---
 

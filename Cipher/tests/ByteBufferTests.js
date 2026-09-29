@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /*
  * ByteBuffer tests
  * (c)2006-2025 Hawkynt
@@ -6,7 +5,7 @@
  * Covers the growth path, the mixed input types, the view-versus-copy
  * distinction, and the memory behaviour that motivates the type at all.
  *
- * Usage: node tests/ByteBufferTests.js
+ * Part of the LIBRARY category: node tests/TestSuite.js --only=library
  */
 
 'use strict';
@@ -14,8 +13,12 @@
 const path = require('path');
 const ByteBuffer = require(path.join(__dirname, '..', 'ByteBuffer.js'));
 
+// Each section is a group of checks; run() executes them all.
+const sections = [];
+function section(fn) { sections.push(fn); }
+
 let passed = 0;
-const failures = [];
+let failures = [];
 
 function check(name, condition, detail) {
   if (condition) { passed++; return; }
@@ -31,21 +34,21 @@ function sameBytes(actual, expected) {
 
 //#region ===== basics =====
 
-{
+section(() => {
   const buffer = new ByteBuffer();
   check('empty buffer has zero length', buffer.length === 0);
   check('empty buffer yields empty view', buffer.toUint8Array().length === 0);
   check('empty buffer yields empty array', buffer.toArray().length === 0);
-}
+});
 
-{
+section(() => {
   const buffer = new ByteBuffer();
   buffer.push(0x41).push(0x42).push(0x43);
   check('push records bytes in order', sameBytes(buffer.toUint8Array(), [0x41, 0x42, 0x43]));
   check('push updates length', buffer.length === 3);
-}
+});
 
-{
+section(() => {
   const buffer = new ByteBuffer();
   buffer.append([1, 2, 3]);
   buffer.append(new Uint8Array([4, 5]));
@@ -54,13 +57,13 @@ function sameBytes(actual, expected) {
   buffer.append(null);
   check('append accepts arrays, typed arrays and buffers',
     sameBytes(buffer.toUint8Array(), [1, 2, 3, 4, 5, 6]));
-}
+});
 
 //#endregion
 
 //#region ===== growth =====
 
-{
+section(() => {
   // Start below the default so growth is exercised many times over.
   const buffer = new ByteBuffer(1);
   const expected = [];
@@ -68,22 +71,22 @@ function sameBytes(actual, expected) {
   check('growth preserves every byte across many reallocations',
     sameBytes(buffer.toUint8Array(), expected));
   check('capacity grows to at least the length', buffer.capacity >= buffer.length);
-}
+});
 
-{
+section(() => {
   // A single append larger than the doubled capacity must still fit.
   const buffer = new ByteBuffer(4);
   const big = new Uint8Array(5000).fill(0x7f);
   buffer.append(big);
   check('single oversized append grows enough', buffer.length === 5000);
   check('oversized append preserves content', buffer.toUint8Array()[4999] === 0x7f);
-}
+});
 
 //#endregion
 
 //#region ===== views versus copies =====
 
-{
+section(() => {
   const buffer = new ByteBuffer();
   buffer.append([9, 8, 7]);
   const view = buffer.toUint8Array();
@@ -91,9 +94,9 @@ function sameBytes(actual, expected) {
   buffer.set(0, 1);
   check('toUint8Array returns a live view', view[0] === 1);
   check('toCopy returns an independent copy', copy[0] === 9);
-}
+});
 
-{
+section(() => {
   const buffer = ByteBuffer.from([3, 1, 4]);
   check('static from seeds contents', sameBytes(buffer.toUint8Array(), [3, 1, 4]));
   buffer.clear();
@@ -101,21 +104,21 @@ function sameBytes(actual, expected) {
   check('clear keeps the allocation', buffer.capacity >= 3);
   buffer.push(2);
   check('buffer is reusable after clear', sameBytes(buffer.toUint8Array(), [2]));
-}
+});
 
-{
+section(() => {
   const buffer = new ByteBuffer();
   buffer.append([0x10, 0x20]);
   check('get reads back', buffer.get(1) === 0x20);
   buffer.set(1, 0x21);
   check('set overwrites', buffer.get(1) === 0x21);
-}
+});
 
 //#endregion
 
 //#region ===== the point of the type =====
 
-{
+section(() => {
   // A plain array of numbers costs about 8 bytes per element in V8; the whole
   // reason for this type is that a Uint8Array costs one. Measure it rather than
   // asserting it, so the claim stays honest if the engine changes.
@@ -148,9 +151,21 @@ function sameBytes(actual, expected) {
     bufferPerByte < arrayPerByte / 2,
     `${bufferPerByte.toFixed(2)} vs ${arrayPerByte.toFixed(2)} bytes per element`);
   check('buffer still holds the right bytes', buffer.length === size && buffer.get(size - 1) === ((size - 1) & 0xff));
-}
+});
 
 //#endregion
 
-console.log(`\n${passed} passed, ${failures.length} failed`);
-process.exitCode = failures.length ? 1 : 0;
+/**
+ * Run every ByteBuffer check.
+ * @returns {object} { passed, failed, detail }
+ */
+function run() {
+  passed = 0;
+  failures = [];
+  console.log('ByteBuffer tests');
+  for (const fn of sections) fn();
+  console.log(`\n${passed} passed, ${failures.length} failed`);
+  return { passed, failed: failures.length, detail: '' };
+}
+
+module.exports = { run };
