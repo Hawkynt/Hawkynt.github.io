@@ -424,7 +424,23 @@
         tweak: s.t ? OpCodes.Hex8ToBytes(s.t) : new Uint8Array(0),
         radix: s.r,
         expected: OpCodes.AnsiToBytes(s.c)
-      }));
+      })).concat([
+        // No NIST sample needs more than one PRF block. From 37 radix-36
+        // numerals on, d = 4 * ceil(b / 4) + 4 exceeds 16 and step 6.ii extends
+        // R with CIPH(R xor [j]); 36 numerals is the last length with d = 16.
+        { n: '36 numerals, d = 16', k: K128, t: T2, r: 36, p: '0123456789abcdefghijklmnopqrstuvwxyz', c: 'etctqbhw42iifzhqis3g034b3qcrdrc4de0b' },
+        { n: '37 numerals, d = 20', k: K128, t: T2, r: 36, p: '0123456789abcdefghijklmnopqrstuvwxyz0', c: '0yzk1dh3qrizd3fakndofz0lswvabsajv45o9' },
+        { n: '42 numerals, d = 20', k: K192, t: T0, r: 36, p: 'zyxwvutsrqponmlkjihgfedcba9876543210zyxwvu', c: '0km7yov4j83dez5xjgj0f3garxzbtuv8lb38oyl5dl' },
+        { n: '56 numerals, d = 24', k: K256, t: T1, r: 36, p: '0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghij', c: 'kjgglrhxgz6085z4vy46f12kenmi9msle48zlxb1ign5h8wzq6at5s4y' }
+      ].map(s => ({
+        text: 'FF1 radix ' + s.r + ', ' + s.n + ' (Bouncy Castle FpeFf1Engine)',
+        uri: 'https://github.com/bcgit/bc-csharp/blob/master/crypto/src/crypto/fpe/FpeFf1Engine.cs',
+        input: OpCodes.AnsiToBytes(s.p),
+        key: OpCodes.Hex8ToBytes(s.k),
+        tweak: s.t ? OpCodes.Hex8ToBytes(s.t) : new Uint8Array(0),
+        radix: s.r,
+        expected: OpCodes.AnsiToBytes(s.c)
+      })));
     }
 
     /**
@@ -797,7 +813,7 @@
           sBlocks.set(R.slice(0, FF1_BLOCK_SIZE - 4), sOff);
 
           // Write (j0 XOR j) as 4 bytes big-endian using OpCodes
-          const xorResult = OpCodes.XOR32(j0, j);
+          const xorResult = OpCodes.Xor32(j0, j);
           sBlocks[sOff + FF1_BLOCK_SIZE - 4] = OpCodes.GetByte(xorResult, 3);
           sBlocks[sOff + FF1_BLOCK_SIZE - 3] = OpCodes.GetByte(xorResult, 2);
           sBlocks[sOff + FF1_BLOCK_SIZE - 2] = OpCodes.GetByte(xorResult, 1);

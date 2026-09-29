@@ -626,35 +626,21 @@
      * @returns {uint64} 64-bit BigInt value
      */
     Pack64BE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
-      return (
-        ((b0 & 0xFF) << 56n)
-        | ((b1 & 0xFF) << 48n)
-        | ((b2 & 0xFF) << 40n)
-        | ((b3 & 0xFF) << 32n)
-        | ((b4 & 0xFF) << 24n)
-        | ((b5 & 0xFF) << 16n)
-        | ((b6 & 0xFF) <<  8n)
-        | ((b7 & 0xFF))
-      );
+      // Each half is packed as a Number, then the two are joined as BigInts
+      const high = OpCodes.Pack32BE(b0, b1, b2, b3);
+      const low = OpCodes.Pack32BE(b4, b5, b6, b7);
+      return (BigInt(high) << 32n) | BigInt(low);
     },
 
     /**
      * Unpack 64-bit value to 8 bytes (big-endian)
-     * @param {BigInt} qword - 64-bit value to unpack
+     * @param {uint64} qword - 64-bit value to unpack: a BigInt, or a Number that
+     *   is a safe integer; reduced modulo 2^64
      * @returns {uint8[]} Array of 8 bytes [b0, b1, b2, b3, b4, b5, b6, b7]
      */
     Unpack64BE: function (qword) {
-      qword = qword >>> 0;
-      return [
-        (qword >> 56) & 0xFF,
-        (qword >> 48) & 0xFF,
-        (qword >> 40) & 0xFF,
-        (qword >> 32) & 0xFF,
-        (qword >> 24) & 0xFF,
-        (qword >> 16) & 0xFF,
-        (qword >>  8) & 0xFF,
-        qword & 0xFF
-      ];
+      const value = BigInt.asUintN(64, BigInt(qword));
+      return OpCodes.Unpack32BE(Number(value >> 32n)).concat(OpCodes.Unpack32BE(Number(value & 0xFFFFFFFFn)));
     },
 
     /**
@@ -670,37 +656,19 @@
      * @returns {uint64} 64-bit BigInt value
      */
     Pack64LE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
-      return (
-        ((b7 & 0xFF) << 56n)
-        | ((b6 & 0xFF) << 48n)
-        | ((b5 & 0xFF) << 40n)
-        | ((b4 & 0xFF) << 32n)
-        | ((b3 & 0xFF) << 24n)
-        | ((b2 & 0xFF) << 16n)
-        | ((b1 & 0xFF) <<  8n)
-        | ((b0 & 0xFF))
-      );
+      return OpCodes.Pack64BE(b7, b6, b5, b4, b3, b2, b1, b0);
     },
 
     /**
      * Unpack 64-bit value to 8 bytes (little-endian)
-     * @param {uint64} qword - 64-bit value to unpack
+     * @param {uint64} qword - 64-bit value to unpack: a BigInt, or a Number that
+     *   is a safe integer; reduced modulo 2^64
      * @returns {uint8[]} Array of 8 bytes [b0, b1, b2, b3, b4, b5, b6, b7]
      */
     Unpack64LE: function (qword) {
-      qword = qword >>> 0;
-      return [
-        qword & 0xFF,
-        (qword >>  8) & 0xFF,
-        (qword >> 16) & 0xFF,
-        (qword >> 24) & 0xFF,
-        (qword >> 32) & 0xFF,
-        (qword >> 40) & 0xFF,
-        (qword >> 48) & 0xFF,
-        (qword >> 56) & 0xFF
-      ];
+      return OpCodes.Unpack64BE(qword).reverse();
     },
-    
+
     /**
      * Convert 32-bit words array to bytes array (big-endian)
      * @param {uint32[]} words - Array of 32-bit words
