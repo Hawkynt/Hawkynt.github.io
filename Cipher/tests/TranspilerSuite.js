@@ -7,6 +7,8 @@
  * - CODEGEN: every language plugin and dialect generates code for the shared
  *   AST test cases (CodeGenTests.js)
  * - INFERENCE: type inference of the shared transpiler AST (TypeInferenceTests.js)
+ * - POLICY: the type resolution order - OpCodes JSDoc, framework interfaces,
+ *   local JSDoc - and the untyped-site count built on it (TypePolicyTests.js)
  *
  * Options:
  *   --only=<a,b>          run only these categories (e.g. --only=codegen,csharp)
@@ -27,7 +29,8 @@ const Runner = require('./CategoryRunner');
 // transpiler are large, and a narrowed run should not pay for the others.
 const CATEGORIES = [
   { key: 'codegen', label: 'CODEGEN', title: 'Code generation for every language and dialect', module: './CodeGenTests' },
-  { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' }
+  { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' },
+  { key: 'policy', label: 'POLICY', title: 'Type resolution order and untyped-site count', module: './TypePolicyTests' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 

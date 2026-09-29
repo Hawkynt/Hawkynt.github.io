@@ -1,11 +1,10 @@
-#!/usr/bin/env node
 /**
  * TypePolicyTests.js - unit tests for the transpiler's type resolution order
  * (OpCodes JSDoc, then framework interfaces, then local JSDoc, then nothing)
  * and for the untyped-site count built on it (tests/TypeCoverage.js).
  * Every case is Given / When / Then; classes, boundaries and error cases.
  *
- * Usage: node tests/TypePolicyTests.js [--verbose]
+ * The POLICY category: node tests/TranspilerSuite.js --only=policy [--verbose]
  */
 
 'use strict';
@@ -16,12 +15,8 @@ const { TypeAwareJSASTParser, PreciseTypeKnowledge, JSDocParser } = quiet(() => 
 const TypeCoverage = require('./TypeCoverage.js');
 const { isPreciseType } = require('./JSDocTierAudit.js');
 
-const verbose = process.argv.includes('--verbose');
-let passed = 0, failed = 0;
-function test(name, fn) {
-  try { fn(); ++passed; if (verbose) console.log(`  ✓ ${name}`); }
-  catch (e) { ++failed; console.log(`  ✗ ${name}\n      ${e.message}`); }
-}
+const cases = require('./UnitCases.js').createCases();
+const test = cases.case;
 function equal(actual, expected, what = '') {
   const a = actual && typeof actual === 'object' && actual.name ? actual.name : actual;
   if (a !== expected) throw new Error(`${what}expected ${JSON.stringify(expected)}, got ${JSON.stringify(a)}`);
@@ -45,8 +40,6 @@ function find(node, pred) {
 }
 const declOf = (ast, name) => find(ast, n => n.type === 'VariableDeclarator' && n.id && n.id.name === name);
 const sites = code => TypeCoverage.analyzeSource(code).sites;
-
-console.log('Type policy tests');
 
 // ------------------------------------------------------------ JSDoc audit
 test('audit: given width-and-sign types, when judged, then they are precise', () => {
@@ -286,5 +279,14 @@ test('walk: given sites, when tallied, then every site lands in exactly one tier
   equal(t.opcodes + t.framework + t.local, s.length);
 });
 
-console.log(`${passed} passed, ${failed} failed`);
-process.exitCode = failed ? 1 : 0;
+/**
+ * POLICY: run every type policy case.
+ * @param {object} options - { verbose }
+ * @returns {object} { passed, failed, skipped, detail }
+ */
+function run(options = {}) {
+  console.log('Type policy tests');
+  return cases.run(options);
+}
+
+module.exports = { run };
