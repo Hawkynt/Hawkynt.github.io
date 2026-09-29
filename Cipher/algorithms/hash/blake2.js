@@ -34,12 +34,13 @@
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, LinkItem,
-          BlockAbsorber } = AlgorithmFramework;
+          BlockAbsorber, KeySize } = AlgorithmFramework;
 
   // ===== SHARED BLAKE2 CONSTANTS =====
 
   // Shared sigma permutation schedule (used by both BLAKE2b and BLAKE2s)
-  const SIGMA = Object.freeze([
+  /** @type {int32[][]} */
+  const SIGMA = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
     [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -50,51 +51,73 @@
     [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
     [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]
-  ]);
+  ];
+
+  /**
+   * A zero-filled byte array
+   * @param {int32} length - Number of bytes
+   * @returns {uint8[]} length zero bytes
+   */
+  function zeroBytes(length) {
+    /** @type {uint8[]} */
+    const bytes = [];
+    for (let i = 0; i < length; i++) bytes.push(0);
+    return bytes;
+  }
 
   // ===== BLAKE2B (64-BIT) IMPLEMENTATION =====
 
   // BLAKE2b constants
+  /** @type {int32} */
   const BLAKE2B_BLOCKBYTES = 128;
+  /** @type {int32} */
   const BLAKE2B_OUTBYTES = 64;
+  /** @type {int32} */
   const BLAKE2B_KEYBYTES = 64;
+  /** @type {BigInt} */
+  const MASK64 = BigInt('0xffffffffffffffff');
 
   // BLAKE2b initialization vectors (64-bit words as BigInt values)
-  const BLAKE2B_IV = Object.freeze([
+  /** @type {BigInt[]} */
+  const BLAKE2B_IV = [
     BigInt('0x6a09e667f3bcc908'), BigInt('0xbb67ae8584caa73b'),
     BigInt('0x3c6ef372fe94f82b'), BigInt('0xa54ff53a5f1d36f1'),
     BigInt('0x510e527fade682d1'), BigInt('0x9b05688c2b3e6c1f'),
     BigInt('0x1f83d9abfb41bd6b'), BigInt('0x5be0cd19137e2179')
-  ]);
-
-  /**
-   * 64-bit right rotation for BigInt values
-   */
-  function RotR64(value, positions) {
-    const mask64 = BigInt('0xffffffffffffffff');
-    value = OpCodes.AndN(value, mask64);
-    positions = OpCodes.AndN(BigInt(positions), BigInt(63));
-    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, positions), OpCodes.ShiftLn(value, (BigInt(64) - positions))), mask64);
-  }
+  ];
 
   /**
    * BLAKE2b G function (mixing function for 64-bit)
+   * @param {BigInt[]} v - Working vector, modified in place
+   * @param {int32} a - Index
+   * @param {int32} b - Index
+   * @param {int32} c - Index
+   * @param {int32} d - Index
+   * @param {BigInt} x - First message word
+   * @param {BigInt} y - Second message word
+   * @returns {void}
    */
   function BLAKE2b_G(v, a, b, c, d, x, y) {
-    v[a] = OpCodes.AndN((v[a] + v[b] + x), BigInt('0xffffffffffffffff'));
-    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 32);
-    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
-    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 24);
-    v[a] = OpCodes.AndN((v[a] + v[b] + y), BigInt('0xffffffffffffffff'));
-    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 16);
-    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
-    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 63);
+    v[a] = OpCodes.AndN(v[a] + v[b] + x, MASK64);
+    v[d] = OpCodes.RotR64n(OpCodes.XorN(v[d], v[a]), 32);
+    v[c] = OpCodes.AndN(v[c] + v[d], MASK64);
+    v[b] = OpCodes.RotR64n(OpCodes.XorN(v[b], v[c]), 24);
+    v[a] = OpCodes.AndN(v[a] + v[b] + y, MASK64);
+    v[d] = OpCodes.RotR64n(OpCodes.XorN(v[d], v[a]), 16);
+    v[c] = OpCodes.AndN(v[c] + v[d], MASK64);
+    v[b] = OpCodes.RotR64n(OpCodes.XorN(v[b], v[c]), 63);
   }
 
   /**
    * BLAKE2b compression function
+   * @param {BigInt[]} h - Chaining value, updated in place
+   * @param {BigInt[]} m - 16 message words
+   * @param {BigInt} t - Byte counter (up to 128 bits)
+   * @param {boolean} f - Final-block flag
+   * @returns {void}
    */
   function BLAKE2b_compress(h, m, t, f) {
+    /** @type {BigInt[]} */
     const v = new Array(16);
 
     // Initialize working vector
@@ -106,10 +129,10 @@
     }
 
     // Mix counter and final flag
-    v[12] = OpCodes.XorN(v[12], OpCodes.AndN(t, BigInt('0xffffffffffffffff')));
-    v[13] = OpCodes.XorN(v[13], OpCodes.AndN(OpCodes.ShiftRn(t, BigInt(64)), BigInt('0xffffffffffffffff')));
+    v[12] = OpCodes.XorN(v[12], OpCodes.AndN(t, MASK64));
+    v[13] = OpCodes.XorN(v[13], OpCodes.AndN(OpCodes.ShiftRn(t, 64), MASK64));
     if (f) {
-      v[14] = OpCodes.XorN(v[14], BigInt('0xffffffffffffffff'));
+      v[14] = OpCodes.XorN(v[14], MASK64);
     }
 
     // 12 rounds of mixing
@@ -136,14 +159,17 @@
   }
 
   /**
-   * Convert bytes to 64-bit words (little-endian)
+   * Convert bytes to 64-bit words (little-endian); a short tail makes a partial word
+   * @param {uint8[]} bytes - Input bytes
+   * @returns {BigInt[]} Words
    */
   function bytesToWords64(bytes) {
+    /** @type {BigInt[]} */
     const words = [];
     for (let i = 0; i < bytes.length; i += 8) {
       let word = BigInt(0);
       for (let j = 0; j < 8 && i + j < bytes.length; j++) {
-        word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i + j]), BigInt(j * 8)));
+        word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i + j]), j * 8));
       }
       words.push(word);
     }
@@ -152,16 +178,21 @@
 
   /**
    * Convert 64-bit words to bytes (little-endian)
+   * @param {BigInt[]} words - Words, at least length / 8 of them
+   * @param {int32} length - Number of bytes to produce
+   * @returns {uint8[]} The first length bytes
    */
   function words64ToBytes(words, length) {
-    const bytes = new Uint8Array(length);
-    let byteIndex = 0;
+    /** @type {uint8[]} */
+    const bytes = [];
 
-    for (let i = 0; i < words.length && byteIndex < length; i++) {
+    for (let i = 0; i < words.length && bytes.length < length; i++) {
       let word = words[i];
-      for (let j = 0; j < 8 && byteIndex < length; j++) {
-        bytes[byteIndex++] = Number(OpCodes.AndN(word, BigInt('0xff')));
-        word = OpCodes.ShiftRn(word, BigInt(8));
+      for (let j = 0; j < 8 && bytes.length < length; j++) {
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(word, BigInt(255)));
+        bytes.push(b);
+        word = OpCodes.ShiftRn(word, 8);
       }
     }
 
@@ -169,70 +200,93 @@
   }
 
   /**
-   * BLAKE2b hasher class
+   * BLAKE2b hasher (RFC 7693)
+   * @class
    */
-  function Blake2bHasher(key, outputLength) {
-    this.outputLength = outputLength || BLAKE2B_OUTBYTES;
-    this.key = key || null;
-    this.h = new Array(8);
-    this.counter = BigInt(0);
-    // Holds the last full block back, so finalize always sees the block the
-    // finalization flag belongs to. See BlockAbsorber.
-    this._absorber = new BlockAbsorber(BLAKE2B_BLOCKBYTES, block => this._compress(block));
+  class Blake2bHasher {
+    /**
+     * @param {uint8[]} key - Key bytes, or null for unkeyed hashing
+     * @param {int32} outputLength - Digest length in bytes (anything not positive selects 64)
+     */
+    constructor(key, outputLength) {
+      /** @type {int32} */
+      this.outputLength = outputLength > 0 ? outputLength : BLAKE2B_OUTBYTES;
+      /** @type {uint8[]} */
+      this.key = key;
+      /** @type {BigInt[]} */
+      this.h = BLAKE2B_IV.slice();
+      /** @type {BigInt} */
+      this.counter = BigInt(0);
+      // Holds the last full block back, so finalize always sees the block the
+      // finalization flag belongs to. See BlockAbsorber.
+      /** @type {BlockAbsorber} */
+      this._absorber = new BlockAbsorber(BLAKE2B_BLOCKBYTES, block => this._compress(block));
 
-    // Initialize hash state
-    for (let i = 0; i < 8; i++) {
-      this.h[i] = BLAKE2B_IV[i];
-    }
+      const keyLength = key !== null ? key.length : 0;
 
-    // Set parameter block in h[0]
-    this.h[0] = OpCodes.XorN(this.h[0], OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-                 BigInt(this.outputLength),
-                 OpCodes.ShiftLn(BigInt(key ? key.length : 0), BigInt(8))),
-                 OpCodes.ShiftLn(BigInt(1), BigInt(16))),  // fanout = 1
-                 OpCodes.ShiftLn(BigInt(1), BigInt(24))));   // depth = 1
+      // Set parameter block in h[0]
+      this.h[0] = OpCodes.XorN(this.h[0], OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                   BigInt(this.outputLength),
+                   OpCodes.ShiftLn(BigInt(keyLength), 8)),
+                   OpCodes.ShiftLn(BigInt(1), 16)),  // fanout = 1
+                   OpCodes.ShiftLn(BigInt(1), 24)));   // depth = 1
 
-    // Process key if provided
-    if (key && key.length > 0) {
-      const keyPadded = new Uint8Array(BLAKE2B_BLOCKBYTES);
-      for (let i = 0; i < key.length && i < BLAKE2B_KEYBYTES; i++) {
-        keyPadded[i] = key[i];
+      // Process key if provided
+      if (keyLength > 0) {
+        const keyPadded = zeroBytes(BLAKE2B_BLOCKBYTES);
+        for (let i = 0; i < keyLength && i < BLAKE2B_KEYBYTES; i++) {
+          keyPadded[i] = key[i];
+        }
+        this.update(keyPadded);
       }
-      this.update(keyPadded);
     }
-  }
 
-  /**
-   * Compress one full block that is known not to be the last.
-   * @param {byte[]} block - exactly BLAKE2B_BLOCKBYTES bytes
-   */
-  Blake2bHasher.prototype._compress = function(block) {
-    this.counter += BigInt(BLAKE2B_BLOCKBYTES);
-    const m = bytesToWords64(block);
-    while (m.length < 16) m.push(BigInt(0));
-    BLAKE2b_compress(this.h, m, this.counter, false);
-  };
-
-  Blake2bHasher.prototype.update = function(data) {
-    if (typeof data === 'string') {
-      data = OpCodes.AnsiToBytes(data);
+    /**
+     * Compress one full block that is known not to be the last.
+     * @param {uint8[]} block - exactly BLAKE2B_BLOCKBYTES bytes
+     * @returns {void}
+     */
+    _compress(block) {
+      this.counter = this.counter + BigInt(BLAKE2B_BLOCKBYTES);
+      const m = bytesToWords64(block);
+      while (m.length < 16) m.push(BigInt(0));
+      BLAKE2b_compress(this.h, m, this.counter, false);
     }
-    this._absorber.Absorb(data);
-  };
 
-  /**
-   * RFC 7693 section 3.3 compresses the final block with the finalization flag
-   * set, and for a message whose length is an exact multiple of the block size
-   * that final block is a full one. The absorber holds it back, so the flag can
-   * never be missed the way it was for every message of exactly 128, 256, 384
-   * ... bytes.
-   *
-   * Nothing here writes to the hasher, so calling it twice gives the same
-   * digest twice.
-   */
-  Blake2bHasher.prototype.finalize = function() {
-    return this._absorber.Finish((held, pending) => {
-      const block = new Array(BLAKE2B_BLOCKBYTES).fill(0);
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
+    update(data) {
+      this._absorber.Absorb(data);
+    }
+
+    /**
+     * RFC 7693 section 3.3 compresses the final block with the finalization flag
+     * set, and for a message whose length is an exact multiple of the block size
+     * that final block is a full one. The absorber holds it back, so the flag can
+     * never be missed the way it was for every message of exactly 128, 256, 384
+     * ... bytes.
+     *
+     * Nothing here writes to the hasher, so calling it twice gives the same
+     * digest twice.
+     * @returns {uint8[]} Digest of outputLength bytes
+     */
+    finalize() {
+      /** @type {uint8[]} */
+      const digest = this._absorber.Finish((held, pending) => this._finalize(held, pending));
+      return digest;
+    }
+
+    /**
+     * Compress the held final block on a copy of the state
+     * @param {uint8[]} held - The final (possibly empty or full) block's bytes
+     * @param {int32} pending - Number of valid bytes in held
+     * @returns {uint8[]} Digest of outputLength bytes
+     */
+    _finalize(held, pending) {
+      const block = zeroBytes(BLAKE2B_BLOCKBYTES);
       for (let i = 0; i < pending; i++) block[i] = held[i];
 
       const m = bytesToWords64(block);
@@ -242,14 +296,17 @@
       BLAKE2b_compress(h, m, this.counter + BigInt(pending), true);
 
       return words64ToBytes(h, this.outputLength);
-    });
-  };
+    }
+  }
 
   // ===== BLAKE2S (32-BIT) IMPLEMENTATION =====
 
   // BLAKE2s constants
+  /** @type {int32} */
   const BLAKE2S_BLOCKBYTES = 64;
+  /** @type {int32} */
   const BLAKE2S_OUTBYTES = 32;
+  /** @type {int32} */
   const BLAKE2S_KEYBYTES = 32;
 
   // BLAKE2s initialization vectors
@@ -257,23 +314,38 @@
 
   /**
    * BLAKE2s G function (mixing function for 32-bit)
+   * @param {uint32[]} v - Working vector, modified in place
+   * @param {int32} a - Index
+   * @param {int32} b - Index
+   * @param {int32} c - Index
+   * @param {int32} d - Index
+   * @param {uint32} x - First message word
+   * @param {uint32} y - Second message word
+   * @returns {void}
    */
   function BLAKE2s_G(v, a, b, c, d, x, y) {
-    v[a] = OpCodes.ToUint32(v[a] + v[b] + x);
-    v[d] = OpCodes.RotR32(OpCodes.XorN(v[d], v[a]), 16);
-    v[c] = OpCodes.ToUint32(v[c] + v[d]);
-    v[b] = OpCodes.RotR32(OpCodes.XorN(v[b], v[c]), 12);
-    v[a] = OpCodes.ToUint32(v[a] + v[b] + y);
-    v[d] = OpCodes.RotR32(OpCodes.XorN(v[d], v[a]), 8);
-    v[c] = OpCodes.ToUint32(v[c] + v[d]);
-    v[b] = OpCodes.RotR32(OpCodes.XorN(v[b], v[c]), 7);
+    v[a] = OpCodes.Add32(OpCodes.Add32(v[a], v[b]), x);
+    v[d] = OpCodes.RotR32(OpCodes.Xor32(v[d], v[a]), 16);
+    v[c] = OpCodes.Add32(v[c], v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.Xor32(v[b], v[c]), 12);
+    v[a] = OpCodes.Add32(OpCodes.Add32(v[a], v[b]), y);
+    v[d] = OpCodes.RotR32(OpCodes.Xor32(v[d], v[a]), 8);
+    v[c] = OpCodes.Add32(v[c], v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.Xor32(v[b], v[c]), 7);
   }
 
   /**
    * BLAKE2s compression function
+   * @param {uint32[]} h - Chaining value, updated in place
+   * @param {uint32[]} m - 16 message words
+   * @param {uint32} t0 - Low word of the byte counter
+   * @param {uint32} t1 - High word of the byte counter
+   * @param {boolean} f - Final-block flag
+   * @returns {void}
    */
   function BLAKE2s_compress(h, m, t0, t1, f) {
-    const v = new Uint32Array(16);
+    /** @type {uint32[]} */
+    const v = new Array(16);
 
     // Initialize working vector
     for (let i = 0; i < 8; i++) {
@@ -284,10 +356,10 @@
     }
 
     // Mix counter and final flag
-    v[12] = OpCodes.XorN(v[12], t0);
-    v[13] = OpCodes.XorN(v[13], t1);
+    v[12] = OpCodes.Xor32(v[12], t0);
+    v[13] = OpCodes.Xor32(v[13], t1);
     if (f) {
-      v[14] = OpCodes.ToUint32(~v[14]);
+      v[14] = OpCodes.Not32(v[14]);
     }
 
     // 10 rounds of mixing
@@ -309,135 +381,159 @@
 
     // Update hash state
     for (let i = 0; i < 8; i++) {
-      h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
-    }
-  }
-
-  /**
-   * BLAKE2s hasher class
-   */
-  function Blake2sHasher(key, outputLength, salt, personalization, nodeOffset, xofParams) {
-    this.outputLength = outputLength || BLAKE2S_OUTBYTES;
-    this.key = key || null;
-    this.h = new Uint32Array(8);
-    this.t0 = 0; // Low 32 bits of counter
-    this.t1 = 0; // High 32 bits of counter
-    // The same absorber BLAKE2b uses. These two implementations of one rule
-    // used to disagree, which is how the BLAKE2b defect survived review in a
-    // file that also contained a correct copy.
-    this._absorber = new BlockAbsorber(BLAKE2S_BLOCKBYTES, block => this._compress(block));
-
-    // Tree hashing / XOF parameters
-    const fanout = (xofParams && xofParams.fanout !== undefined) ? xofParams.fanout : 1;
-    const depth = (xofParams && xofParams.depth !== undefined) ? xofParams.depth : 1;
-    const leafLength = (xofParams && xofParams.leafLength) || 0;
-    const innerHashLength = (xofParams && xofParams.innerHashLength) || 0;
-    const nodeDepth = (xofParams && xofParams.nodeDepth) || 0;
-    const xofLength = (xofParams && xofParams.xofLength) || 0;
-    const nOffset = nodeOffset || 0;
-
-    // Initialize hash state
-    for (let i = 0; i < 8; i++) {
-      this.h[i] = BLAKE2S_IV[i];
-    }
-
-    // Set parameter block
-    this.h[0] = OpCodes.XorN(this.h[0],
-                 OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(this.outputLength,
-                 OpCodes.Shl32((key ? key.length : 0), 8)),
-                 OpCodes.Shl32(fanout, 16)),
-                 OpCodes.Shl32(depth, 24)));
-
-    this.h[1] = OpCodes.XorN(this.h[1], leafLength);
-
-    // h[2] and h[3]: node_offset
-    const nodeOffsetLo = OpCodes.ToUint32(nOffset);
-    const nodeOffsetHi = Math.floor(nOffset / 0x100000000);
-    this.h[2] = OpCodes.XorN(this.h[2], nodeOffsetLo);
-    this.h[3] = OpCodes.XorN(this.h[3], OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(xofLength, 0xFFFF), OpCodes.Shl32(nodeDepth, 16)), OpCodes.Shl32(innerHashLength, 24)));
-
-    // h[4] and h[5]: salt
-    if (salt && salt.length === 8) {
-      this.h[4] = OpCodes.XorN(this.h[4], OpCodes.Pack32LE(salt[0], salt[1], salt[2], salt[3]));
-      this.h[5] = OpCodes.XorN(this.h[5], OpCodes.Pack32LE(salt[4], salt[5], salt[6], salt[7]));
-    }
-
-    // h[6] and h[7]: personalization
-    if (personalization && personalization.length === 8) {
-      this.h[6] = OpCodes.XorN(this.h[6], OpCodes.Pack32LE(personalization[0], personalization[1], personalization[2], personalization[3]));
-      this.h[7] = OpCodes.XorN(this.h[7], OpCodes.Pack32LE(personalization[4], personalization[5], personalization[6], personalization[7]));
-    }
-
-    // Process key if provided
-    if (key && key.length > 0) {
-      const keyPadded = new Uint8Array(BLAKE2S_BLOCKBYTES);
-      for (let i = 0; i < key.length && i < BLAKE2S_KEYBYTES; i++) {
-        keyPadded[i] = key[i];
-      }
-      this.update(keyPadded);
+      h[i] = OpCodes.Xor32(h[i], OpCodes.Xor32(v[i], v[i + 8]));
     }
   }
 
   /**
    * Turn a 64-byte block into 16 little-endian 32-bit words.
-   * @param {byte[]} block
-   * @returns {Uint32Array}
+   * @param {uint8[]} block - 64 bytes
+   * @returns {uint32[]} 16 words
    */
   function blake2sWords(block) {
-    const m = new Uint32Array(16);
+    /** @type {uint32[]} */
+    const m = [];
     for (let i = 0; i < 16; i++)
-      m[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
+      m.push(OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]));
     return m;
   }
 
   /**
-   * Compress one full block that is known not to be the last.
-   * @param {byte[]} block - exactly BLAKE2S_BLOCKBYTES bytes
+   * BLAKE2s hasher (RFC 7693), with the tree/XOF parameter block fields BLAKE2X uses
+   * @class
    */
-  Blake2sHasher.prototype._compress = function(block) {
-    // Increment counter (64-bit addition)
-    this.t0 += BLAKE2S_BLOCKBYTES;
-    if (this.t0 < BLAKE2S_BLOCKBYTES) {
-      this.t1++; // Overflow
+  class Blake2sHasher {
+    /**
+     * @param {uint8[]} key - Key bytes, or null for unkeyed hashing
+     * @param {int32} outputLength - Digest length in bytes (anything not positive selects 32)
+     * @param {uint8[]} salt - 8-byte salt, or null
+     * @param {uint8[]} personalization - 8-byte personalization, or null
+     * @param {uint32} nodeOffset - Node offset (tree hashing)
+     * @param {int32} fanout - Fanout (1 for sequential hashing)
+     * @param {int32} depth - Maximal depth (1 for sequential hashing)
+     * @param {uint32} leafLength - Leaf maximal byte length
+     * @param {int32} innerHashLength - Inner hash byte length
+     * @param {int32} nodeDepth - Node depth
+     * @param {int32} xofLength - XOF digest length (0 for plain BLAKE2s)
+     */
+    constructor(key, outputLength, salt, personalization, nodeOffset, fanout, depth, leafLength, innerHashLength, nodeDepth, xofLength) {
+      /** @type {int32} */
+      this.outputLength = outputLength > 0 ? outputLength : BLAKE2S_OUTBYTES;
+      /** @type {uint8[]} */
+      this.key = key;
+      /** @type {uint32[]} */
+      this.h = BLAKE2S_IV.slice();
+      /** @type {uint32} Low 32 bits of the byte counter */
+      this.t0 = 0;
+      /** @type {uint32} High 32 bits of the byte counter */
+      this.t1 = 0;
+      // The same absorber BLAKE2b uses. These two implementations of one rule
+      // used to disagree, which is how the BLAKE2b defect survived review in a
+      // file that also contained a correct copy.
+      /** @type {BlockAbsorber} */
+      this._absorber = new BlockAbsorber(BLAKE2S_BLOCKBYTES, block => this._compress(block));
+
+      const keyLength = key !== null ? key.length : 0;
+
+      // Set parameter block
+      this.h[0] = OpCodes.Xor32(this.h[0],
+                   OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(this.outputLength,
+                   OpCodes.Shl32(keyLength, 8)),
+                   OpCodes.Shl32(fanout, 16)),
+                   OpCodes.Shl32(depth, 24)));
+
+      this.h[1] = OpCodes.Xor32(this.h[1], leafLength);
+
+      // h[2]: node_offset
+      this.h[2] = OpCodes.Xor32(this.h[2], OpCodes.ToUint32(nodeOffset));
+      this.h[3] = OpCodes.Xor32(this.h[3], OpCodes.Or32(OpCodes.Or32(OpCodes.And32(xofLength, 0xFFFF), OpCodes.Shl32(nodeDepth, 16)), OpCodes.Shl32(innerHashLength, 24)));
+
+      // h[4] and h[5]: salt
+      if (salt !== null && salt.length === 8) {
+        this.h[4] = OpCodes.Xor32(this.h[4], OpCodes.Pack32LE(salt[0], salt[1], salt[2], salt[3]));
+        this.h[5] = OpCodes.Xor32(this.h[5], OpCodes.Pack32LE(salt[4], salt[5], salt[6], salt[7]));
+      }
+
+      // h[6] and h[7]: personalization
+      if (personalization !== null && personalization.length === 8) {
+        this.h[6] = OpCodes.Xor32(this.h[6], OpCodes.Pack32LE(personalization[0], personalization[1], personalization[2], personalization[3]));
+        this.h[7] = OpCodes.Xor32(this.h[7], OpCodes.Pack32LE(personalization[4], personalization[5], personalization[6], personalization[7]));
+      }
+
+      // Process key if provided
+      if (keyLength > 0) {
+        const keyPadded = zeroBytes(BLAKE2S_BLOCKBYTES);
+        for (let i = 0; i < keyLength && i < BLAKE2S_KEYBYTES; i++) {
+          keyPadded[i] = key[i];
+        }
+        this.update(keyPadded);
+      }
     }
-    BLAKE2s_compress(this.h, blake2sWords(block), this.t0, this.t1, false);
-  };
 
-  Blake2sHasher.prototype.update = function(data) {
-    if (typeof data === 'string') {
-      data = OpCodes.AnsiToBytes(data);
-    }
-    this._absorber.Absorb(data);
-  };
-
-  Blake2sHasher.prototype.finalize = function() {
-    return this._absorber.Finish((held, pending) => this._finalize(held, pending));
-  };
-
-  Blake2sHasher.prototype._finalize = function(held, pending) {
-    // Counter and state are advanced on copies, so finalizing twice gives the
-    // same digest twice and Result() needs no clone of the hasher.
-    let t0 = this.t0 + pending;
-    let t1 = this.t1;
-    if (t0 < pending) t1++; // Overflow
-
-    const block = new Array(BLAKE2S_BLOCKBYTES).fill(0);
-    for (let i = 0; i < pending; i++) block[i] = held[i];
-
-    const h = new Uint32Array(this.h);
-    BLAKE2s_compress(h, blake2sWords(block), t0, t1, true);
-
-    // Convert hash state to bytes (little-endian)
-    const output = new Uint8Array(this.outputLength);
-    for (let i = 0; i < this.outputLength; i++) {
-      const wordIndex = Math.floor(i / 4);
-      const byteIndex = i % 4;
-      const word = h[wordIndex];
-      output[i] = OpCodes.GetByte(word, byteIndex);
+    /**
+     * Compress one full block that is known not to be the last.
+     * @param {uint8[]} block - exactly BLAKE2S_BLOCKBYTES bytes
+     * @returns {void}
+     */
+    _compress(block) {
+      // Increment counter (64-bit addition)
+      this.t0 = OpCodes.Add32(this.t0, BLAKE2S_BLOCKBYTES);
+      if (this.t0 < BLAKE2S_BLOCKBYTES) {
+        this.t1 = OpCodes.Add32(this.t1, 1); // Overflow
+      }
+      BLAKE2s_compress(this.h, blake2sWords(block), this.t0, this.t1, false);
     }
 
-    return output;
-  };
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
+    update(data) {
+      this._absorber.Absorb(data);
+    }
+
+    /**
+     * Digest of everything absorbed so far; repeatable
+     * @returns {uint8[]} Digest of outputLength bytes
+     */
+    finalize() {
+      /** @type {uint8[]} */
+      const digest = this._absorber.Finish((held, pending) => this._finalize(held, pending));
+      return digest;
+    }
+
+    /**
+     * Compress the held final block on copies of the counter and state
+     * @param {uint8[]} held - The final (possibly empty or full) block's bytes
+     * @param {int32} pending - Number of valid bytes in held
+     * @returns {uint8[]} Digest of outputLength bytes
+     */
+    _finalize(held, pending) {
+      // Counter and state are advanced on copies, so finalizing twice gives the
+      // same digest twice and Result() needs no clone of the hasher.
+      const t0 = OpCodes.Add32(this.t0, pending);
+      let t1 = this.t1;
+      if (t0 < pending) t1 = OpCodes.Add32(t1, 1); // Overflow
+
+      const block = zeroBytes(BLAKE2S_BLOCKBYTES);
+      for (let i = 0; i < pending; i++) block[i] = held[i];
+
+      const h = this.h.slice();
+      BLAKE2s_compress(h, blake2sWords(block), t0, t1, true);
+
+      // Convert hash state to bytes (little-endian)
+      /** @type {uint8[]} */
+      const output = [];
+      for (let w = 0; w < 8 && output.length < this.outputLength; w++) {
+        for (let b = 0; b < 4 && output.length < this.outputLength; b++) {
+          output.push(OpCodes.GetByte(h[w], b));
+        }
+      }
+
+      return output;
+    }
+  }
 
   // ===== BLAKE2B ALGORITHM =====
 
@@ -463,10 +559,12 @@
       this.country = CountryCode.CH;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [64]; // 512 bits = 64 bytes (default)
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits = 64 bytes (default)
 
       // Performance and technical specifications
+      /** @type {int32} */
       this.blockSize = 128; // 1024 bits = 128 bytes
+      /** @type {int32} */
       this.outputSize = 64; // 512 bits = 64 bytes
 
       // Documentation and references
@@ -505,96 +603,137 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
-
+     * Create new hash instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     * @returns {BLAKE2bAlgorithmInstance} New hash instance
+     */
     CreateInstance(isInverse = false) {
       return new BLAKE2bAlgorithmInstance(this, isInverse);
     }
   }
 
   /**
- * BLAKE2bAlgorithm cipher instance implementing Feed/Result pattern
+ * BLAKE2b hash instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class BLAKE2bAlgorithmInstance extends IHashFunctionInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
+     * Initialize a BLAKE2b instance
+     * @param {BLAKE2bAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 64; // 512 bits = 64 bytes
 
       // BLAKE2b state
+      /** @type {Blake2bHasher} */
       this._hasher = null;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
       this._hasher = new Blake2bHasher(null, BLAKE2B_OUTBYTES);
     }
 
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
     Update(data) {
-      if (!this._hasher) this.Init();
+      if (this._hasher === null) {
+        this.Init();
+      }
       this._hasher.update(data);
     }
 
+    /**
+     * Digest of everything absorbed so far
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Final() {
-      if (!this._hasher) this.Init();
-      const result = this._hasher.finalize();
-      return Array.from(result);
+      if (this._hasher === null) {
+        this.Init();
+      }
+      /** @type {uint8[]} */
+      const digest = this._hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Hash(message) {
       this.Init();
       this.Update(message);
       return this.Final();
     }
 
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} Hash digest as byte array
+     */
     EncryptBlock(blockIndex, plaintext) {
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       throw new Error('BLAKE2b is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Forget the message
+     * @returns {void}
+     */
     ClearData() {
       this._hasher = null;
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     */
     Feed(data) {
       // Init() replaces the hasher, so it belongs at the start of the message and
       // not at the start of every call - the same guard the BLAKE2s and BLAKE2X
       // instances below already use. Feed(a); Feed(b) must absorb the same block
       // sequence as Feed(a || b).
-      if (!this._hasher) this.Init();
+      if (this._hasher === null) {
+        this.Init();
+      }
       this.Update(data);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Digest of everything fed so far
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Result() {
       return this.Final();
     }
@@ -624,10 +763,12 @@
       this.country = CountryCode.CH;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [32]; // 256 bits = 32 bytes (default)
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)]; // 256 bits = 32 bytes (default)
 
       // Performance and technical specifications
+      /** @type {int32} */
       this.blockSize = 64; // 512 bits = 64 bytes
+      /** @type {int32} */
       this.outputSize = 32; // 256 bits = 32 bytes
 
       // Documentation and references
@@ -666,105 +807,148 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
-
+     * Create new hash instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     * @returns {BLAKE2sAlgorithmInstance} New hash instance
+     */
     CreateInstance(isInverse = false) {
       return new BLAKE2sAlgorithmInstance(this, isInverse);
     }
   }
 
   /**
- * BLAKE2sAlgorithm cipher instance implementing Feed/Result pattern
+ * BLAKE2s hash instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class BLAKE2sAlgorithmInstance extends IHashFunctionInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
+     * Initialize a BLAKE2s instance
+     * @param {BLAKE2sAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 32; // 256 bits = 32 bytes
 
       // BLAKE2s state
+      /** @type {Blake2sHasher} */
       this._hasher = null;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
-      this._hasher = new Blake2sHasher(null, BLAKE2S_OUTBYTES);
+      this._hasher = new Blake2sHasher(null, BLAKE2S_OUTBYTES, null, null, 0, 1, 1, 0, 0, 0, 0);
     }
 
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
     Update(data) {
-      if (!this._hasher) this.Init();
+      if (this._hasher === null) {
+        this.Init();
+      }
       this._hasher.update(data);
     }
 
+    /**
+     * Digest of everything absorbed so far
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Final() {
-      if (!this._hasher) this.Init();
-      const result = this._hasher.finalize();
-      return Array.from(result);
+      if (this._hasher === null) {
+        this.Init();
+      }
+      /** @type {uint8[]} */
+      const digest = this._hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Hash(message) {
       this.Init();
       this.Update(message);
       return this.Final();
     }
 
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} Hash digest as byte array
+     */
     EncryptBlock(blockIndex, plaintext) {
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       throw new Error('BLAKE2s is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Forget the message
+     * @returns {void}
+     */
     ClearData() {
       this._hasher = null;
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the hash
+     * @param {uint8[]} data - Input data bytes
+     */
     Feed(data) {
-      if (!this._hasher) this.Init();
+      if (this._hasher === null) {
+        this.Init();
+      }
       this.Update(data);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Digest of everything fed so far
+     * @returns {uint8[]} Hash digest as byte array
+     */
     Result() {
-      if (!this._hasher) this.Init();
       // finalize() advances the counter and the state on copies, so it no
       // longer needs a clone of the hasher to stay repeatable.
-      return Array.from(this._hasher.finalize());
+      return this.Final();
     }
   }
 
   // ===== BLAKE2XS ALGORITHM =====
 
   // BLAKE2xs constants
+  /** @type {int32} */
   const BLAKE2XS_DIGEST_LENGTH = 32;
+  /** @type {int32} */
   const BLAKE2XS_UNKNOWN_DIGEST_LENGTH = 65535;
+  /** @type {uint64} */
   const BLAKE2XS_MAX_NUMBER_BLOCKS = 0x100000000; // 2^32
 
   /**
@@ -792,7 +976,9 @@
       this.SupportedOutputSizes = null; // Variable output size
 
       // Performance and technical specifications
+      /** @type {int32} */
       this.blockSize = 64; // 512 bits = 64 bytes (BLAKE2s block size)
+      /** @type {int32} */
       this.outputSize = null; // Variable output
 
       // Documentation and references
@@ -885,51 +1071,62 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
-
+     * Create new XOF instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     * @returns {BLAKE2xsAlgorithmInstance} New XOF instance
+     */
     CreateInstance(isInverse = false) {
       return new BLAKE2xsAlgorithmInstance(this, isInverse);
     }
   }
 
   /**
- * BLAKE2xsAlgorithm cipher instance implementing Feed/Result pattern
+ * BLAKE2xs XOF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class BLAKE2xsAlgorithmInstance extends IHashFunctionInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
+     * Initialize a BLAKE2xs instance
+     * @param {BLAKE2xsAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
 
       // XOF parameters
+      /** @type {int32} */
       this._digestLength = BLAKE2XS_UNKNOWN_DIGEST_LENGTH;
+      /** @type {int32} */
       this._outputSize = 32;
 
       // Root hash
+      /** @type {Blake2sHasher} */
       this._rootHash = null;
+      /** @type {uint8[]} */
       this._h0 = null;
 
       // Current output buffer
-      this._buf = new Uint8Array(32);
+      /** @type {uint8[]} */
+      this._buf = zeroBytes(32);
+      /** @type {int32} */
       this._bufPos = 32;
 
       // Position tracking
+      /** @type {int32} */
       this._digestPos = 0;
+      /** @type {uint64} */
       this._blockPos = 0;
+      /** @type {uint32} */
       this._nodeOffset = 0;
     }
 
+    /**
+     * Set the output length and restart the message
+     * @param {int32} size - Output length in bytes (at least 1)
+     */
     set outputSize(size) {
       if (size < 1) {
         throw new Error("BLAKE2xs output size must be at least 1 byte");
@@ -939,10 +1136,18 @@
       this.Reset();
     }
 
+    /**
+     * The output length
+     * @returns {int32} Output length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
       this._nodeOffset = 0;
       this._rootHash = this.createRootHash(null, null, null);
@@ -952,46 +1157,68 @@
       this._blockPos = 0;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Reset() {
       this.Init();
     }
 
+    /**
+     * The root BLAKE2s instance of the XOF
+     * @param {uint8[]} key - Key bytes, or null
+     * @param {uint8[]} salt - 8-byte salt, or null
+     * @param {uint8[]} personalization - 8-byte personalization, or null
+     * @returns {Blake2sHasher} Root hasher
+     */
     createRootHash(key, salt, personalization) {
-      const hasher = new Blake2sHasher(key, BLAKE2XS_DIGEST_LENGTH, salt, personalization, 0, {
-        fanout: 1,
-        depth: 1,
-        xofLength: this._digestLength
-      });
-      return hasher;
+      return new Blake2sHasher(key, BLAKE2XS_DIGEST_LENGTH, salt, personalization, 0,
+        1, 1, 0, 0, 0, this._digestLength);
     }
 
+    /**
+     * The BLAKE2s instance producing one output block
+     * @param {int32} stepLength - Bytes this block contributes
+     * @param {uint32} nodeOffset - Block index
+     * @returns {Blake2sHasher} Output-block hasher
+     */
     createInternalHash(stepLength, nodeOffset) {
-      const hasher = new Blake2sHasher(null, stepLength, null, null, nodeOffset, {
-        fanout: 0,
-        depth: 0,
-        leafLength: BLAKE2XS_DIGEST_LENGTH,
-        innerHashLength: BLAKE2XS_DIGEST_LENGTH,
-        nodeDepth: 0,
-        xofLength: this._digestLength
-      });
-      return hasher;
+      return new Blake2sHasher(null, stepLength, null, null, nodeOffset,
+        0, 0, BLAKE2XS_DIGEST_LENGTH, BLAKE2XS_DIGEST_LENGTH, 0, this._digestLength);
     }
 
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
+     */
     Update(data) {
-      if (!this._rootHash) this.Init();
+      if (this._rootHash === null) this.Init();
       this._rootHash.update(data);
     }
 
+    /**
+     * Compute the root digest h0 once
+     * @returns {void}
+     */
     finalizeRootHash() {
-      if (!this._h0) {
-        this._h0 = new Uint8Array(32);
+      if (this._h0 === null) {
+        /** @type {uint8[]} */
         const result = this._rootHash.finalize();
+        /** @type {uint8[]} */
+        const h0 = [];
         for (let i = 0; i < 32; i++) {
-          this._h0[i] = result[i];
+          h0.push(result[i]);
         }
+        this._h0 = h0;
       }
     }
 
+    /**
+     * Length of the next output block
+     * @returns {int32} Bytes, at most 32
+     */
     computeStepLength() {
       if (this._digestLength === BLAKE2XS_UNKNOWN_DIGEST_LENGTH) {
         return BLAKE2XS_DIGEST_LENGTH;
@@ -999,6 +1226,11 @@
       return Math.min(BLAKE2XS_DIGEST_LENGTH, this._digestLength - this._digestPos);
     }
 
+    /**
+     * Squeeze output bytes
+     * @param {int32} outputLength - Number of bytes
+     * @returns {uint8[]} Output bytes
+     */
     doOutput(outputLength) {
       this.finalizeRootHash();
 
@@ -1011,7 +1243,8 @@
         throw new Error("Maximum length is 2^32 blocks of 32 bytes");
       }
 
-      const output = new Uint8Array(outputLength);
+      /** @type {uint8[]} */
+      const output = [];
 
       for (let i = 0; i < outputLength; i++) {
         // Generate new block if buffer exhausted
@@ -1023,6 +1256,7 @@
           h.update(this._h0);
 
           // Finalize to get next block
+          /** @type {uint8[]} */
           const result = h.finalize();
           for (let j = 0; j < 32; j++) {
             this._buf[j] = result[j];
@@ -1033,37 +1267,67 @@
           this._blockPos++;
         }
 
-        output[i] = this._buf[this._bufPos];
+        output.push(this._buf[this._bufPos]);
         this._bufPos++;
         this._digestPos++;
       }
 
-      return Array.from(output);
+      return output;
     }
 
+    /**
+     * Squeeze outputSize bytes
+     * @returns {uint8[]} Output bytes
+     */
     Final() {
-      if (!this._rootHash) this.Init();
+      if (this._rootHash === null) this.Init();
       return this.doOutput(this._outputSize);
     }
 
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Output bytes
+     */
     Hash(message) {
       this.Init();
       this.Update(message);
       return this.Final();
     }
 
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} Output bytes
+     */
     EncryptBlock(blockIndex, plaintext) {
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       throw new Error('BLAKE2xs is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Forget the message and the output buffer
+     * @returns {void}
+     */
     ClearData() {
       this._rootHash = null;
       this._h0 = null;
@@ -1071,24 +1335,20 @@
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Feed data to the XOF
+     * @param {uint8[]} data - Input data bytes
+     */
     Feed(data) {
-      if (!this._rootHash) this.Init();
+      if (this._rootHash === null) this.Init();
       this.Update(data);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Squeeze outputSize bytes
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      if (!this._rootHash) this.Init();
+      if (this._rootHash === null) this.Init();
       return this.doOutput(this._outputSize);
     }
   }

@@ -39,21 +39,24 @@
   /**
    * leftEncode from NIST SP 800-185
    * Encodes integer with byte count prefix
+   * @param {uint32} value - Value to encode
+   * @returns {uint8[]} Encoded bytes [length, bytes...]
    */
   function leftEncode(value) {
     // Determine number of bytes needed
     let n = 1;
-    let v = value;
-    while ((v = OpCodes.Shr32(v, 8)) !== 0) {
+    let v = OpCodes.Shr32(value, 8);
+    while (v !== 0) {
       n++;
+      v = OpCodes.Shr32(v, 8);
     }
 
-    const result = new Array(n + 1);
-    result[0] = n; // Byte count prefix
+    /** @type {uint8[]} */
+    const result = [n]; // Byte count prefix
 
     // Encode value in big-endian
     for (let i = 1; i <= n; i++) {
-      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i)), 0xFF);
+      result.push(OpCodes.GetByte(value, n - i));
     }
 
     return result;
@@ -62,44 +65,38 @@
   /**
    * rightEncode from NIST SP 800-185
    * Encodes integer with byte count suffix
+   * @param {uint32} value - Value to encode
+   * @returns {uint8[]} Encoded bytes [bytes..., length]
    */
   function rightEncode(value) {
     // Determine number of bytes needed
     let n = 1;
-    let v = value;
-    while ((v = OpCodes.Shr32(v, 8)) !== 0) {
+    let v = OpCodes.Shr32(value, 8);
+    while (v !== 0) {
       n++;
+      v = OpCodes.Shr32(v, 8);
     }
 
-    const result = new Array(n + 1);
+    /** @type {uint8[]} */
+    const result = [];
 
     // Encode value in big-endian
     for (let i = 0; i < n; i++) {
-      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i - 1)), 0xFF);
+      result.push(OpCodes.GetByte(value, n - i - 1));
     }
 
-    result[n] = n; // Byte count suffix
+    result.push(n); // Byte count suffix
 
     return result;
   }
 
   /**
-   * encodeString from NIST SP 800-185
-   * Encodes string as leftEncode(bitLength) || string
-   */
-  function encodeString(str) {
-    if (!str || str.length === 0) {
-      return leftEncode(0);
-    }
-
-    const bitLength = str.length * 8;
-    const encoded = leftEncode(bitLength);
-    return encoded.concat(str);
-  }
-
-  /**
    * Get cSHAKE instance for the given bit length
    * Returns cSHAKE128 or cSHAKE256 instance
+   * @param {int32} bitLength - 128 or 256
+   * @param {uint8[]} functionName - N
+   * @param {uint8[]} customization - S
+   * @returns {IHashFunctionInstance} A fresh cSHAKE instance
    */
   function getCSHAKEInstance(bitLength, functionName, customization) {
     // Load the appropriate cSHAKE algorithm
@@ -107,12 +104,13 @@
     const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
 
     if (!cshakeAlgo) {
-      throw new Error(`${cshakeName} algorithm not found. Please ensure cshake.js is loaded.`);
+      throw new Error(cshakeName + ' algorithm not found. Please ensure cshake.js is loaded.');
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = cshakeAlgo.CreateInstance();
-    if (functionName) instance.functionName = functionName;
-    if (customization) instance.customization = customization;
+    instance.functionName = functionName;
+    instance.customization = customization;
     return instance;
   }
 
@@ -123,11 +121,15 @@
  */
 
   class ParallelHashAlgorithm extends HashFunctionAlgorithm {
+    /**
+     * @param {int32} bitLength - 128 or 256
+     */
     constructor(bitLength) {
       super();
+      /** @type {int32} */
       this.bitLength = bitLength;
-      this.name = `ParallelHash${bitLength}`;
-      this.description = `ParallelHash${bitLength} is a parallel hash function from NIST SP 800-185 that supports efficient hashing of very long strings using parallelism. Based on cSHAKE${bitLength}.`;
+      this.name = 'ParallelHash' + bitLength;
+      this.description = 'ParallelHash' + bitLength + ' is a parallel hash function from NIST SP 800-185 that supports efficient hashing of very long strings using parallelism. Based on cSHAKE' + bitLength + '.';
       this.inventor = "NIST";
       this.year = 2016;
       this.category = CategoryType.HASH;
@@ -136,7 +138,8 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      this.SupportedHashSizes = [new KeySize(1, 1024, 1)]; // Variable output
+      this.SupportedOutputSizes = [new KeySize(1, 1024, 1)]; // Variable output
+      /** @type {int32} */
       this.BlockSize = bitLength === 128 ? 168 : 136; // cSHAKE rate
 
       this.documentation = [
@@ -265,11 +268,10 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
-   */
-
+     * Create new hash instance
+     * @param {boolean} [isInverse=false] - A hash has no inverse: true yields null
+     * @returns {ParallelHashInstance} New hash instance
+     */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new ParallelHashInstance(this, this.bitLength);
@@ -277,90 +279,150 @@
   }
 
   /**
- * ParallelHash cipher instance implementing Feed/Result pattern
+ * ParallelHash instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IHashFunctionInstance}
  */
 
   class ParallelHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a ParallelHash instance
+     * @param {ParallelHashAlgorithm} algorithm - Parent algorithm instance
+     * @param {int32} bitLength - 128 or 256
+     */
     constructor(algorithm, bitLength) {
       super(algorithm);
+      /** @type {int32} */
       this.bitLength = bitLength;
-      this._outputSize = bitLength / 4; // Default: 32 bytes for 128-bit, 64 bytes for 256-bit
-      this._blockSize = 8; // Default block size parameter B
-      this._customization = []; // S parameter
-      this._xofMode = false; // XOF mode flag
+      /** @type {int32} Default: 32 bytes for 128-bit, 64 bytes for 256-bit */
+      this._outputSize = bitLength / 4;
+      /** @type {int32} Default block size parameter B */
+      this._blockSize = 8;
+      /** @type {uint8[]} S parameter */
+      this._customization = [];
+      /** @type {boolean} XOF mode flag */
+      this._xofMode = false;
 
       // Main cSHAKE instance (accumulates compressed block hashes)
+      /** @type {IHashFunctionInstance} */
       this.cshake = null;
 
       // Compressor cSHAKE instance (hashes individual blocks)
+      /** @type {IHashFunctionInstance} */
       this.compressor = null;
 
       // Buffer for current block
+      /** @type {uint8[]} */
       this.buffer = [];
 
       // Count of blocks processed
+      /** @type {uint32} */
       this.nCount = 0;
 
       // Internal state flag
+      /** @type {boolean} */
       this.firstOutput = true;
     }
 
+    /**
+     * Set the output length
+     * @param {int32} size - Output length in bytes, 1..1024
+     */
     set outputSize(size) {
       if (size < 1 || size > 1024) {
-        throw new Error(`Invalid output size: ${size} bytes`);
+        throw new Error('Invalid output size: ' + size + ' bytes');
       }
       this._outputSize = size;
     }
 
+    /**
+     * The output length
+     * @returns {int32} Output length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
+    /**
+     * Set the block size B
+     * @param {int32} size - Block size in bytes (positive)
+     */
     set blockSize(size) {
       if (size <= 0) {
         throw new Error("Block size must be greater than 0");
       }
       this._blockSize = size;
-      this.buffer = []; // Reset buffer when block size changes
+      /** @type {uint8[]} */
+      const empty = [];
+      this.buffer = empty; // Reset buffer when block size changes
     }
 
+    /**
+     * The block size B
+     * @returns {int32} Block size in bytes
+     */
     get blockSize() {
       return this._blockSize;
     }
 
+    /**
+     * Set the customization string S
+     * @param {uint8[]} customBytes - S as bytes (null clears it)
+     */
     set customization(customBytes) {
-      this._customization = customBytes ? [...customBytes] : [];
+      /** @type {uint8[]} */
+      const copy = [];
+      if (customBytes !== null && customBytes !== undefined) {
+        for (let i = 0; i < customBytes.length; i++) copy.push(customBytes[i]);
+      }
+      this._customization = copy;
     }
 
+    /**
+     * The customization string S
+     * @returns {uint8[]} Copy of S
+     */
     get customization() {
-      return this._customization ? [...this._customization] : [];
+      return this._customization.slice();
     }
 
+    /**
+     * Select XOF output (right_encode(0)) instead of fixed-length output
+     * @param {boolean} enabled - True for ParallelHashXOF
+     */
     set xofMode(enabled) {
-      this._xofMode = !!enabled;
+      this._xofMode = enabled ? true : false;
     }
 
+    /**
+     * Whether XOF output is selected
+     * @returns {boolean} True for ParallelHashXOF
+     */
     get xofMode() {
       return this._xofMode;
     }
 
     /**
      * Initialize cSHAKE instances
+     * @returns {void}
      */
     _initialize() {
-      if (this.cshake) return; // Already initialized
+      if (this.cshake !== null) {
+        return; // Already initialized
+      }
+
+      /** @type {uint8[]} */
+      const empty = [];
 
       // Main cSHAKE with function name "ParallelHash" and customization S
       const functionName = OpCodes.AnsiToBytes("ParallelHash");
       this.cshake = getCSHAKEInstance(this.bitLength, functionName, this._customization);
 
       // Compressor cSHAKE with empty function name and customization
-      this.compressor = getCSHAKEInstance(this.bitLength, [], []);
+      this.compressor = getCSHAKEInstance(this.bitLength, empty, empty);
 
       // Reset state
-      this.buffer = [];
+      this.buffer = empty.slice();
       this.nCount = 0;
       this.firstOutput = true;
 
@@ -371,12 +433,15 @@
 
     /**
      * Compress a block using cSHAKE
+     * @param {uint8[]} blockData - One block of B bytes (or the final shorter one)
+     * @returns {void}
      */
     _compressBlock(blockData) {
       // Hash the block with compressor cSHAKE
       const compressorOutput = this.bitLength / 4; // 32 bytes for 128-bit, 64 bytes for 256-bit
       this.compressor.outputSize = compressorOutput;
       this.compressor.Feed(blockData);
+      /** @type {uint8[]} */
       const compressed = this.compressor.Result();
 
       // Feed compressed hash to main cSHAKE
@@ -384,7 +449,9 @@
       this.nCount++;
 
       // Reset compressor for next block
-      this.compressor = getCSHAKEInstance(this.bitLength, [], []);
+      /** @type {uint8[]} */
+      const empty = [];
+      this.compressor = getCSHAKEInstance(this.bitLength, empty, empty);
     }
 
     /**
@@ -449,7 +516,9 @@
 
       // Get final output from main cSHAKE
       this.cshake.outputSize = this._outputSize;
-      return this.cshake.Result();
+      /** @type {uint8[]} */
+      const output = this.cshake.Result();
+      return output;
     }
   }
 
