@@ -61,7 +61,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize,
+          BlockCipherAlgorithm, IBlockCipherInstance } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -72,37 +73,78 @@
  */
 
   class CHCInstance extends IHashFunctionInstance {
+    /**
+     * @param {CHCAlgorithm} algorithm - Parent algorithm
+     * @param {string} blockCipherName - Registered block cipher name, null/empty for Rijndael (AES)
+     */
     constructor(algorithm, blockCipherName) {
       super(algorithm);
 
       // Store the block cipher name (default to Rijndael)
-      this.blockCipherName = blockCipherName || 'Rijndael (AES)';
+      /** @type {string} */
+      this.blockCipherName = 'Rijndael (AES)';
+      if (blockCipherName !== null && blockCipherName !== undefined && blockCipherName !== '') {
+        this.blockCipherName = blockCipherName;
+      }
+      /** @type {BlockCipherAlgorithm} */
       this.blockCipher = null;
+      /** @type {int32} */
       this.blockSize = 16; // Default for AES
       this.OutputSize = 16;
 
+      /** @type {Uint8Array} */
+      this.state = null;
+      /** @type {Uint8Array} */
+      this.buffer = null;
+      /** @type {int32} */
+      this.bufferLength = 0;
+      /** @type {int32} */
+      this.totalLength = 0;
+
       // Lazy initialization will happen on first use
+      /** @type {boolean} */
       this._initialized = false;
     }
 
+    /**
+     * Look up the configured block cipher in the registry
+     * @returns {BlockCipherAlgorithm} The cipher, or null when it is not registered
+     */
+    _FindBlockCipher() {
+      return AlgorithmFramework.Find(this.blockCipherName);
+    }
+
+    /**
+     * Resolve the block cipher and check its geometry on first use
+     * @returns {void}
+     */
     _EnsureInitialized() {
       if (this._initialized) return;
 
       // Get the block cipher (default to Rijndael/AES)
-      const blockCipher = AlgorithmFramework.Find(this.blockCipherName);
+      const blockCipher = this._FindBlockCipher();
       if (!blockCipher) {
         throw new Error('CHC requires ' + this.blockCipherName + ' block cipher to be loaded');
       }
 
       // Verify block cipher has key size == block size
-      const blockSize = blockCipher.SupportedBlockSizes && blockCipher.SupportedBlockSizes.length > 0
-        ? blockCipher.SupportedBlockSizes[0].minSize
-        : 16;
+      /** @type {int32} */
+      let blockSize = 16;
+      if (blockCipher.SupportedBlockSizes && blockCipher.SupportedBlockSizes.length > 0) {
+        blockSize = blockCipher.SupportedBlockSizes[0].minSize;
+      }
 
-      const hasMatchingKeySize = blockCipher.SupportedKeySizes &&
-        blockCipher.SupportedKeySizes.some(ks =>
-          ks.minSize <= blockSize && ks.maxSize >= blockSize
-        );
+      /** @type {boolean} */
+      let hasMatchingKeySize = false;
+      if (blockCipher.SupportedKeySizes) {
+        for (let i = 0; i < blockCipher.SupportedKeySizes.length; ++i) {
+          const ks = blockCipher.SupportedKeySizes[i];
+          if (ks.minSize <= blockSize && ks.maxSize >= blockSize) {
+            hasMatchingKeySize = true;
+            break;
+          }
+        }
+      }
 
       if (!hasMatchingKeySize) {
         throw new Error('CHC requires a block cipher with key size equal to block size');
@@ -121,15 +163,21 @@
       this._initialized = true;
     }
 
+    /**
+     * Reset the chaining state to E(0, 0) and empty the buffer
+     * @returns {void}
+     */
     _Reset() {
       // Initialize state by encrypting zero block with zero key
       const zeroBlock = new Uint8Array(this.blockSize);
       const zeroKey = new Uint8Array(this.blockSize);
 
       // Create cipher instance and encrypt zero block
+      /** @type {IBlockCipherInstance} */
       const cipherInstance = this.blockCipher.CreateInstance(false);
       cipherInstance.key = zeroKey;
       cipherInstance.Feed(zeroBlock);
+      /** @type {uint8[]} */
       const encrypted = cipherInstance.Result();
 
       // Store as state
@@ -148,6 +196,10 @@
       this.totalLength = 0;
     }
 
+    /**
+     * Reinitialise the hash state
+     * @returns {void}
+     */
     Initialize() {
       this._EnsureInitialized();
       this._Reset();
@@ -156,7 +208,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -222,6 +274,7 @@
       // Calculate how much padding we need
       // We need to leave room for 8-byte length at the end
       const currentLength = this.bufferLength + 1; // +1 for the 0x80 byte
+      /** @type {int32} */
       let paddingZeros;
 
       if (currentLength > this.blockSize - 8) {
@@ -270,6 +323,11 @@
       return result;
     }
 
+    /**
+     * Matyas-Meyer-Oseas compression of one block into the state
+     * @param {Uint8Array} block - One block of blockSize bytes
+     * @returns {void}
+     */
     _CompressBlock(block) {
       // CHC Matyas-Meyer-Oseas compression function:
       // key    <= state
@@ -281,16 +339,19 @@
       const T1 = new Uint8Array(block);
 
       // Create cipher instance with state as key
+      /** @type {IBlockCipherInstance} */
       const cipherInstance = this.blockCipher.CreateInstance(false);
       cipherInstance.key = Array.from(this.state);
 
       // Encrypt the input block: T0 = encrypt(state, block)
       cipherInstance.Feed(block);
-      const T0 = new Uint8Array(cipherInstance.Result());
+      /** @type {uint8[]} */
+      const encrypted = cipherInstance.Result();
+      const T0 = new Uint8Array(encrypted);
 
       // state = state XOR T0 XOR T1
       for (let i = 0; i < this.blockSize; i++) {
-        this.state[i] = OpCodes.XorN(this.state[i], OpCodes.XorN(T0[i], T1[i]));
+        this.state[i] = OpCodes.Xor8(this.state[i], OpCodes.Xor8(T0[i], T1[i]));
       }
 
       // Clear sensitive data
@@ -324,7 +385,7 @@
       this.country = CountryCode.US;
 
       // Capabilities (depends on underlying cipher, default AES-128 = 16 bytes)
-      this.SupportedOutputSizes = [{ minSize: 16, maxSize: 16, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)];
 
       // Documentation
       this.documentation = [
@@ -354,7 +415,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CHCInstance} New hash instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
