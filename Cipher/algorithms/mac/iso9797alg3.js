@@ -132,46 +132,49 @@
  */
 
   class ISO9797Alg3Instance extends IMacInstance {
+    /**
+     * Initialize an ISO 9797-1 Algorithm 3 instance
+     * @param {ISO9797Alg3Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._key1 = null;  // First encryption key (for CBC and final encrypt)
+      /** @type {uint8[]} */
       this._key2 = null;  // Second key (for final decrypt)
+      /** @type {uint8[]} */
       this._key3 = null;  // Third key (for final re-encrypt, often same as key1)
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.macState = null;  // Current MAC state (8 bytes for DES)
+      /** @type {int32} */
       this.blockSize = 8;  // DES block size (could support AES in future)
+      /** @type {int32} */
       this._macSize = 8;   // Default to full block
+      /** @type {boolean} */
       this._usePadding = false; // ISO7816d4 padding flag
 
-      // Cache DES algorithm reference at instance creation time
-      const globalObj = (function() {
-        if (typeof globalThis !== 'undefined') return globalThis;
-        if (typeof window !== 'undefined') return window;
-        if (typeof global !== 'undefined') return global;
-        if (typeof self !== 'undefined') return self;
-        return null;
-      })();
-
-      const AF = (globalObj && globalObj.AlgorithmFramework) || AlgorithmFramework;
-      this._desAlgorithm = (AF && AF.Find) ? AF.Find('DES') : null;
-      this._algorithmFramework = AF;  // Store for lazy loading
-
-      // Note: We don't throw error here - will check lazily when _getDESAlgorithm() is called
-      // This allows the test framework to create instances before all dependencies are loaded
+      // DES is looked up when first needed, so the test framework can create
+      // instances before all dependencies are loaded
     }
 
-    // Lazy-load DES algorithm reference
-    _getDESAlgorithm() {
-      if (!this._desAlgorithm && this._algorithmFramework && this._algorithmFramework.Find) {
-        this._desAlgorithm = this._algorithmFramework.Find('DES');
-      }
-
-      if (!this._desAlgorithm) {
+    /**
+     * New DES instance from the registered DES algorithm
+     * @param {boolean} isInverse - True for decryption
+     * @returns {IBlockCipherInstance} DES instance
+     * @throws {Error} If DES is not registered
+     */
+    _newDESInstance(isInverse) {
+      /** @type {Algorithm} */
+      const desAlgorithm = AlgorithmFramework.Find('DES');
+      if (!desAlgorithm) {
         throw new Error('ISO9797 Algorithm 3 requires DES to be loaded. Please load the DES algorithm before using ISO9797.');
       }
-
-      return this._desAlgorithm;
+      /** @type {IBlockCipherInstance} */
+      const instance = desAlgorithm.CreateInstance(isInverse);
+      return instance;
     }
 
     // Property setter for key
@@ -207,11 +210,11 @@
         this._key2 = keyBytes.slice(8, 16);
         this._key3 = keyBytes.slice(16, 24);
       } else {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Must be 16 or 24 bytes.`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes. Must be 16 or 24 bytes.');
       }
 
-      this._key = [...keyBytes];
-      this.macState = new Array(this.blockSize).fill(0);  // Initialize to zeros
+      this._key = keyBytes.slice();
+      this.macState = OpCodes.CreateArray(this.blockSize, 0);  // Initialize to zeros
     }
 
     /**
@@ -224,22 +227,39 @@
     }
 
     // Property setter for MAC output size
+    /**
+     * Truncate the MAC
+     * @param {int32} size - MAC size in bytes, 4..16
+     * @throws {Error} If size is outside 4..16
+     */
     set macSize(size) {
       if (size < 4 || size > 16) {
-        throw new Error(`Invalid MAC size: ${size} bytes. Must be 4-16 bytes.`);
+        throw new Error('Invalid MAC size: ' + size + ' bytes. Must be 4-16 bytes.');
       }
       this._macSize = size;
     }
 
+    /**
+     * MAC size in bytes
+     * @returns {int32} MAC size in bytes
+     */
     get macSize() {
       return this._macSize;
     }
 
     // Property setter for padding mode
+    /**
+     * Select ISO 7816-4 padding (true) or zero padding (false)
+     * @param {boolean} value - Padding flag (any truthy value enables it)
+     */
     set usePadding(value) {
       this._usePadding = Boolean(value);
     }
 
+    /**
+     * Whether ISO 7816-4 padding is used
+     * @returns {boolean} Padding flag
+     */
     get usePadding() {
       return this._usePadding;
     }
@@ -272,7 +292,8 @@
       }
 
       // Apply padding if enabled
-      let paddedData = [...this.inputBuffer];
+      /** @type {uint8[]} */
+      const paddedData = this.inputBuffer.slice();
 
       if (this._usePadding) {
         // ISO7816d4 padding: add 0x80 byte, then 0x00 bytes to block boundary
@@ -289,7 +310,7 @@
 
       // Process all blocks except the last using CBC mode with K1
       const numBlocks = paddedData.length / this.blockSize;
-      let cbcState = new Array(this.blockSize).fill(0);  // IV = zeros
+      let cbcState = OpCodes.CreateArray(this.blockSize, 0);  // IV = zeros
 
       for (let i = 0; i < numBlocks - 1; i++) {
         const block = paddedData.slice(i * this.blockSize, (i + 1) * this.blockSize);
@@ -318,13 +339,19 @@
 
       // Clear buffers
       this.inputBuffer = [];
-      this.macState = new Array(this.blockSize).fill(0);
+      this.macState = OpCodes.CreateArray(this.blockSize, 0);
 
       // Return truncated MAC if macSize < blockSize
       return mac.slice(0, this._macSize);
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} MAC bytes
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -335,44 +362,58 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer;
       return result;
     }
 
     // DES encryption using a single DES key (8 bytes)
+    /**
+     * Single-DES encryption of one block
+     * @param {uint8[]} block - 8-byte block
+     * @param {uint8[]} key - 8-byte DES key
+     * @returns {uint8[]} 8-byte ciphertext
+     * @throws {Error} If the block or key is not 8 bytes, or DES is missing
+     */
     _desEncrypt(block, key) {
       if (block.length !== 8) {
-        throw new Error(`Invalid block size: ${block.length}. DES requires 8 bytes.`);
+        throw new Error('Invalid block size: ' + block.length + '. DES requires 8 bytes.');
       }
       if (key.length !== 8) {
-        throw new Error(`Invalid key size: ${key.length}. DES requires 8 bytes.`);
+        throw new Error('Invalid key size: ' + key.length + '. DES requires 8 bytes.');
       }
 
-      // Get DES algorithm (lazy-loaded if needed)
-      const desAlgo = this._getDESAlgorithm();
-      const desInstance = desAlgo.CreateInstance(false);
+      const desInstance = this._newDESInstance(false);
       desInstance.key = key;
       desInstance.Feed(block);
-      return desInstance.Result();
+      /** @type {uint8[]} */
+      const output = desInstance.Result();
+      return output;
     }
 
     // DES decryption using a single DES key (8 bytes)
+    /**
+     * Single-DES decryption of one block
+     * @param {uint8[]} block - 8-byte block
+     * @param {uint8[]} key - 8-byte DES key
+     * @returns {uint8[]} 8-byte plaintext
+     * @throws {Error} If the block or key is not 8 bytes, or DES is missing
+     */
     _desDecrypt(block, key) {
       if (block.length !== 8) {
-        throw new Error(`Invalid block size: ${block.length}. DES requires 8 bytes.`);
+        throw new Error('Invalid block size: ' + block.length + '. DES requires 8 bytes.');
       }
       if (key.length !== 8) {
-        throw new Error(`Invalid key size: ${key.length}. DES requires 8 bytes.`);
+        throw new Error('Invalid key size: ' + key.length + '. DES requires 8 bytes.');
       }
 
-      // Get DES algorithm (lazy-loaded if needed)
-      const desAlgo = this._getDESAlgorithm();
-      const desInstance = desAlgo.CreateInstance(true);  // isInverse = true for decryption
+      const desInstance = this._newDESInstance(true);  // isInverse = true for decryption
       desInstance.key = key;
       desInstance.Feed(block);
-      return desInstance.Result();
+      /** @type {uint8[]} */
+      const output = desInstance.Result();
+      return output;
     }
   }
 
