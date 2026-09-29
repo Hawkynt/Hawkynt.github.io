@@ -35,7 +35,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // SPARKLE round constants from specification
   const RC_0 = 0xB7E15162;
@@ -47,6 +47,7 @@
   const RC_6 = 0xCFBFA1C8;
   const RC_7 = 0xC2B3293D;
 
+  /** @type {uint32[]} */
   const SPARKLE_RC = [
     RC_0, RC_1, RC_2, RC_3, RC_4, RC_5, RC_6, RC_7,
     RC_0, RC_1, RC_2, RC_3
@@ -60,39 +61,42 @@
   /**
    * Alzette ARXbox: Core building block of SPARKLE permutation
    * Implements ADD-ROTATE-XOR operations with round constant
-   * @param {number} x - Left half of 64-bit block
-   * @param {number} y - Right half of 64-bit block
-   * @param {number} k - 32-bit round constant
-   * @returns {Object} {x, y} - Updated block halves
+   * @param {uint32[]} xy - The branch [x, y] (left and right half of a 64-bit block), updated in place
+   * @param {uint32} k - 32-bit round constant
+   * @returns {void}
    */
-  function alzette(x, y, k) {
+  function alzette(xy, k) {
+    let x = xy[0];
+    let y = xy[1];
+
     // Step 1: x += ROL1(y), y XOR= ROL8(x), x XOR= k
-    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 1));
+    x = OpCodes.Add32(x, OpCodes.RotL32(y, 1));
     y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 8)));
     x = OpCodes.Xor32(x, k);
 
     // Step 2: x += ROL15(y), y XOR= ROL15(x), x XOR= k
-    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 15));
+    x = OpCodes.Add32(x, OpCodes.RotL32(y, 15));
     y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 15)));
     x = OpCodes.Xor32(x, k);
 
     // Step 3: x += y, y XOR= ROL1(x), x XOR= k
-    x = OpCodes.ToUint32(x + y);
+    x = OpCodes.Add32(x, y);
     y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 1)));
     x = OpCodes.Xor32(x, k);
 
     // Step 4: x += ROL8(y), y XOR= ROL16(x), x XOR= k
-    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 8));
+    x = OpCodes.Add32(x, OpCodes.RotL32(y, 8));
     y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 16)));
     x = OpCodes.Xor32(x, k);
 
-    return { x: x, y: y };
+    xy[0] = x;
+    xy[1] = y;
   }
 
   /**
    * leftRotate16 helper: ROL16 for linear layer
-   * @param {number} x - 32-bit word
-   * @returns {number} Rotated word
+   * @param {uint32} x - 32-bit word
+   * @returns {uint32} Rotated word
    */
   function leftRotate16(x) {
     return OpCodes.RotL32(x, 16);
@@ -101,22 +105,27 @@
   /**
    * SPARKLE-512 permutation (16 words, 512 bits)
    * Performs ARXbox layer + linear diffusion layer
-   * @param {Array<number>} s - 16-word state array (modified in place)
-   * @param {number} steps - Number of steps (8 for slim, 12 for big)
+   * @param {uint32[]} s - 16-word state array (modified in place)
+   * @param {int32} steps - Number of steps (8 for slim, 12 for big)
+   * @returns {void}
    */
   function sparkle_512(s, steps) {
-    let x0, y0, x1, y1, x2, y2, x3, y3, x4, y4, x5, y5, x6, y6, x7, y7;
-    let tx, ty, result;
+    /** @type {uint32[]} */
+    const xy = [0, 0];
+    /** @type {uint32} */
+    let tx;
+    /** @type {uint32} */
+    let ty;
 
     // Load state into local variables
-    x0 = s[0];  y0 = s[1];
-    x1 = s[2];  y1 = s[3];
-    x2 = s[4];  y2 = s[5];
-    x3 = s[6];  y3 = s[7];
-    x4 = s[8];  y4 = s[9];
-    x5 = s[10]; y5 = s[11];
-    x6 = s[12]; y6 = s[13];
-    x7 = s[14]; y7 = s[15];
+    let x0 = s[0];  let y0 = s[1];
+    let x1 = s[2];  let y1 = s[3];
+    let x2 = s[4];  let y2 = s[5];
+    let x3 = s[6];  let y3 = s[7];
+    let x4 = s[8];  let y4 = s[9];
+    let x5 = s[10]; let y5 = s[11];
+    let x6 = s[12]; let y6 = s[13];
+    let x7 = s[14]; let y7 = s[15];
 
     // Perform all steps
     for (let step = 0; step < steps; ++step) {
@@ -125,29 +134,37 @@
       y1 = OpCodes.ToUint32(OpCodes.Xor32(y1, step));
 
       // ARXbox layer - apply Alzette to each branch
-      result = alzette(x0, y0, RC_0);
-      x0 = result.x; y0 = result.y;
+      xy[0] = x0; xy[1] = y0;
+      alzette(xy, RC_0);
+      x0 = xy[0]; y0 = xy[1];
 
-      result = alzette(x1, y1, RC_1);
-      x1 = result.x; y1 = result.y;
+      xy[0] = x1; xy[1] = y1;
+      alzette(xy, RC_1);
+      x1 = xy[0]; y1 = xy[1];
 
-      result = alzette(x2, y2, RC_2);
-      x2 = result.x; y2 = result.y;
+      xy[0] = x2; xy[1] = y2;
+      alzette(xy, RC_2);
+      x2 = xy[0]; y2 = xy[1];
 
-      result = alzette(x3, y3, RC_3);
-      x3 = result.x; y3 = result.y;
+      xy[0] = x3; xy[1] = y3;
+      alzette(xy, RC_3);
+      x3 = xy[0]; y3 = xy[1];
 
-      result = alzette(x4, y4, RC_4);
-      x4 = result.x; y4 = result.y;
+      xy[0] = x4; xy[1] = y4;
+      alzette(xy, RC_4);
+      x4 = xy[0]; y4 = xy[1];
 
-      result = alzette(x5, y5, RC_5);
-      x5 = result.x; y5 = result.y;
+      xy[0] = x5; xy[1] = y5;
+      alzette(xy, RC_5);
+      x5 = xy[0]; y5 = xy[1];
 
-      result = alzette(x6, y6, RC_6);
-      x6 = result.x; y6 = result.y;
+      xy[0] = x6; xy[1] = y6;
+      alzette(xy, RC_6);
+      x6 = xy[0]; y6 = xy[1];
 
-      result = alzette(x7, y7, RC_7);
-      x7 = result.x; y7 = result.y;
+      xy[0] = x7; xy[1] = y7;
+      alzette(xy, RC_7);
+      x7 = xy[0]; y7 = xy[1];
 
       // Linear layer - diffusion step
       // tx = x0 XOR x1 XOR x2 XOR x3; ty = y0 XOR y1 XOR y2 XOR y3
@@ -208,9 +225,10 @@
   /**
    * Esch384 M4 mixing function
    * Implements the Feistel-based mixing from reference implementation
-   * @param {Array<number>} s - SPARKLE-512 state (16 words)
-   * @param {Array<number>} block - Input block as 4 words
-   * @param {number} domain - Domain separator (0x00, 0x01, or 0x02)
+   * @param {uint32[]} s - SPARKLE-512 state (16 words)
+   * @param {uint32[]} block - Input block as 4 words
+   * @param {uint32} domain - Domain separator (0x00, 0x01, or 0x02)
+   * @returns {void}
    */
   function esch_384_m4(s, block, domain) {
     // tx = block[0] XOR block[2]; ty = block[1] XOR block[3]
@@ -256,7 +274,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 48, maxSize: 48, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(48, 48, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -345,7 +363,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Esch384Instance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -358,27 +376,44 @@
    * Esch384 Hash Function Instance
    */
   class Esch384Instance extends IHashFunctionInstance {
+    /**
+     * Initialize an Esch384 instance
+     * @param {Esch384} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // SPARKLE-512 state: 16 words (512 bits)
-      this.state = new Array(SPARKLE_512_STATE_SIZE).fill(0);
+      /** @type {uint32[]} */
+      this.state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
       // Input buffer for rate bytes
-      this.blockWords = new Array(4).fill(0); // 4 words = 16 bytes
-      this.blockBytes = new Array(ESCH_384_RATE).fill(0);
+      /** @type {uint32[]} */
+      this.blockWords = [0, 0, 0, 0]; // 4 words = 16 bytes
+      /** @type {uint8[]} */
+      this.blockBytes = OpCodes.CreateArray(ESCH_384_RATE, 0);
+      /** @type {int32} */
       this.count = 0; // Bytes in buffer
 
+      /** @type {int32} */
       this._outputSize = ESCH_384_HASH_SIZE;
     }
 
+    /**
+     * Set the digest size (only 48 bytes is supported)
+     * @param {int32} size - Digest size in bytes
+     */
     set outputSize(size) {
       if (size !== ESCH_384_HASH_SIZE) {
-        throw new Error(`Invalid output size: ${size} bytes (only 48 supported for Esch384)`);
+        throw new Error('Invalid output size: ' + size + ' bytes (only 48 supported for Esch384)');
       }
       this._outputSize = size;
     }
 
+    /**
+     * Digest size in bytes
+     * @returns {int32} Always 48
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -386,7 +421,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -468,6 +503,7 @@
       sparkle_512(this.state, 12);
 
       // Extract first 16 bytes from state
+      /** @type {uint8[]} */
       const output = new Array(ESCH_384_HASH_SIZE);
       for (let i = 0; i < 4; ++i) {
         const bytes = OpCodes.Unpack32LE(this.state[i]);
