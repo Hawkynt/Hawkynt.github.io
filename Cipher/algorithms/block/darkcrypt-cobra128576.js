@@ -563,7 +563,12 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
-      this._tabs = null;
+      /** @type {uint32[]|null} */
+      this._rk = null;
+      /** @type {uint32[]|null} */
+      this._sbox = null;
+      /** @type {uint32[]|null} */
+      this._whit = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -574,12 +579,12 @@
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this._tabs = null; this.KeySize = 0; return; }
+      if (!keyBytes) { this._key = null; this._rk = null; this._sbox = null; this._whit = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. COBRA-128-576 (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._tabs = this._scheduleKey(this._key);
+      this._scheduleKey(this._key);
     }
 
     /**
@@ -609,115 +614,147 @@
       return output;
     }
 
-    // F(set,x) = ((set0[b3]+set1[b2]) ^ set2[b1]) + set3[b0], set = one of the three 4*256 S-box groups.
-    _f(tabs, setIndex, x) {
+    /**
+     * F(set,x) = ((set0[b3]+set1[b2]) ^ set2[b1]) + set3[b0], set = one of the three 4*256 S-box groups.
+     * @param {uint32[]} sbox - S-box words
+     * @param {int32} setIndex - S-box group 0..2
+     * @param {uint32} x - Input word
+     * @returns {uint32} Output word
+     */
+    _f(sbox, setIndex, x) {
       const t = OpCodes.ToUint32(x);
       const b3 = OpCodes.And32(OpCodes.Shr32(t, 24), 0xFF);
       const b2 = OpCodes.And32(OpCodes.Shr32(t, 16), 0xFF);
       const b1 = OpCodes.And32(OpCodes.Shr32(t, 8), 0xFF);
       const b0 = OpCodes.And32(t, 0xFF);
       const base = setIndex * 1024;
-      const S = tabs.SBOX;
-      let r = OpCodes.ToUint32(S[base + b3] + S[base + 256 + b2]);
-      r = OpCodes.Xor32(r, S[base + 512 + b1]);
-      r = OpCodes.ToUint32(r + S[base + 768 + b0]);
+      let r = OpCodes.ToUint32(sbox[OpCodes.Add32(base, b3)] + sbox[OpCodes.Add32(base + 256, b2)]);
+      r = OpCodes.Xor32(r, sbox[OpCodes.Add32(base + 512, b1)]);
+      r = OpCodes.ToUint32(r + sbox[OpCodes.Add32(base + 768, b0)]);
       return r;
     }
 
-    // Shared round-target/source/S-box-set/round-key index bookkeeping for round i (0-based).
-    _roundPlan(i) {
-      const t = 3 - (i % 4);
-      const src = (t + 1) % 4;
-      const setIndex = 2 - (i % 3);
-      const rk = 3 * ((i / 3) | 0) + (2 - (i % 3));
-      return { t, src, setIndex, rk };
-    }
+    // Round-target/source/S-box-set/round-key index bookkeeping for round i (0-based):
+    //   target t = 3 - (i mod 4), source = (t + 1) mod 4,
+    //   S-box set = 2 - (i mod 3), round key = 3 * floor(i / 3) + (2 - (i mod 3)).
 
-    // Core primitive shared by encrypt and the key-schedule self-encryption; mutates w in place.
-    _coreEncrypt(tabs, w) {
-      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], tabs.WHIT[0]));
-      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], tabs.WHIT[1]));
-      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], tabs.WHIT[2]));
-      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], tabs.WHIT[3]));
+    /**
+     * Core primitive shared by encrypt and the key-schedule self-encryption; mutates w in place.
+     * @param {uint32[]} rkTab - Round-key words
+     * @param {uint32[]} sbox - S-box words
+     * @param {uint32[]} whit - Whitening words
+     * @param {uint32[]} w - Four state words
+     */
+    _coreEncrypt(rkTab, sbox, whit, w) {
+      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], whit[0]));
+      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], whit[1]));
+      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], whit[2]));
+      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], whit[3]));
       for (let i = 0; i < ROUNDS; i++) {
-        const { t, src, setIndex, rk } = this._roundPlan(i);
-        const x = OpCodes.ToUint32(OpCodes.Xor32(w[src], tabs.RK[rk]));
-        const f = this._f(tabs, setIndex, x);
+        const t = 3 - (i % 4);
+        const src = (t + 1) % 4;
+        const setIndex = 2 - (i % 3);
+        const rk = 3 * Math.floor(i / 3) + (2 - (i % 3));
+        const x = OpCodes.ToUint32(OpCodes.Xor32(w[src], rkTab[rk]));
+        const f = this._f(sbox, setIndex, x);
         w[t] = OpCodes.RotR32(OpCodes.ToUint32(OpCodes.Xor32(f, w[t])), 1);
       }
-      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], tabs.WHIT[4]));
-      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], tabs.WHIT[5]));
-      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], tabs.WHIT[6]));
-      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], tabs.WHIT[7]));
+      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], whit[4]));
+      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], whit[5]));
+      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], whit[6]));
+      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], whit[7]));
     }
 
-    _coreDecrypt(tabs, w) {
-      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], tabs.WHIT[4]));
-      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], tabs.WHIT[5]));
-      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], tabs.WHIT[6]));
-      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], tabs.WHIT[7]));
+    /**
+     * Inverse of _coreEncrypt; mutates w in place.
+     * @param {uint32[]} rkTab - Round-key words
+     * @param {uint32[]} sbox - S-box words
+     * @param {uint32[]} whit - Whitening words
+     * @param {uint32[]} w - Four state words
+     */
+    _coreDecrypt(rkTab, sbox, whit, w) {
+      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], whit[4]));
+      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], whit[5]));
+      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], whit[6]));
+      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], whit[7]));
       for (let i = ROUNDS - 1; i >= 0; i--) {
-        const { t, src, setIndex, rk } = this._roundPlan(i);
-        const x = OpCodes.ToUint32(OpCodes.Xor32(w[src], tabs.RK[rk]));
-        const f = this._f(tabs, setIndex, x);
+        const t = 3 - (i % 4);
+        const src = (t + 1) % 4;
+        const setIndex = 2 - (i % 3);
+        const rk = 3 * Math.floor(i / 3) + (2 - (i % 3));
+        const x = OpCodes.ToUint32(OpCodes.Xor32(w[src], rkTab[rk]));
+        const f = this._f(sbox, setIndex, x);
         w[t] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(w[t], 1), f));
       }
-      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], tabs.WHIT[0]));
-      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], tabs.WHIT[1]));
-      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], tabs.WHIT[2]));
-      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], tabs.WHIT[3]));
+      w[0] = OpCodes.ToUint32(OpCodes.Xor32(w[0], whit[0]));
+      w[1] = OpCodes.ToUint32(OpCodes.Xor32(w[1], whit[1]));
+      w[2] = OpCodes.ToUint32(OpCodes.Xor32(w[2], whit[2]));
+      w[3] = OpCodes.ToUint32(OpCodes.Xor32(w[3], whit[3]));
     }
 
-    // Blowfish-style self-encryption key schedule with COBRA-128-576's two-pass round-key mix.
+    /**
+     * Big-endian key word m of the key stream (position 4*m, wrapping every KEY_BYTES bytes)
+     * @param {uint8[]} key - Key bytes
+     * @param {int32} m - Word index
+     * @returns {uint32} Key word
+     */
+    _keyWordAt(key, m) {
+      const p = 4 * m;
+      return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+        OpCodes.Shl32(key[p % KEY_BYTES], 24), OpCodes.Shl32(key[(p + 1) % KEY_BYTES], 16)),
+        OpCodes.Shl32(key[(p + 2) % KEY_BYTES], 8)), key[(p + 3) % KEY_BYTES]);
+    }
+
+    /**
+     * Refill round keys, S-boxes and whitening words by repeated self-encryption of a zero block
+     * @param {uint32[]} rkTab - Round-key words
+     * @param {uint32[]} sbox - S-box words
+     * @param {uint32[]} whit - Whitening words
+     */
+    _selfEncryptFill(rkTab, sbox, whit) {
+      /** @type {uint32[]} */
+      let w = [0, 0, 0, 0];
+      for (let g = 0; g < SUB_WORDS / 4; g++) {
+        this._coreEncrypt(rkTab, sbox, whit, w);
+        rkTab[4 * g] = w[0]; rkTab[4 * g + 1] = w[1]; rkTab[4 * g + 2] = w[2]; rkTab[4 * g + 3] = w[3];
+      }
+      for (let g = 0; g < SBOX_WORDS / 4; g++) {
+        this._coreEncrypt(rkTab, sbox, whit, w);
+        sbox[4 * g] = w[0]; sbox[4 * g + 1] = w[1]; sbox[4 * g + 2] = w[2]; sbox[4 * g + 3] = w[3];
+      }
+      for (let g = 0; g < WHIT_WORDS / 4; g++) {
+        this._coreEncrypt(rkTab, sbox, whit, w);
+        whit[4 * g] = w[0]; whit[4 * g + 1] = w[1]; whit[4 * g + 2] = w[2]; whit[4 * g + 3] = w[3];
+      }
+    }
+
+    /**
+     * Blowfish-style self-encryption key schedule with COBRA-128-576's two-pass round-key mix.
+     * Sets this._rk, this._sbox and this._whit.
+     * @param {uint8[]} key - Key bytes
+     */
     _scheduleKey(key) {
-      const tabs = { RK: [...SUB_BASE], SBOX: [...SBOX_BASE], WHIT: [...WHIT_BASE] };
+      /** @type {uint32[]} */
+      const rkTab = [...SUB_BASE];
+      /** @type {uint32[]} */
+      const sbox = [...SBOX_BASE];
+      /** @type {uint32[]} */
+      const whit = [...WHIT_BASE];
 
-      let kpos = 0;
-      const nextKeyWord = () => {
-        let w = 0;
-        for (let i = 0; i < 4; i++) {
-          if (kpos >= KEY_BYTES) kpos = 0;
-          w = OpCodes.ToUint32(OpCodes.Shl32(w, 8) | key[kpos]);
-          kpos++;
-        }
-        return w;
-      };
-      // Word m counted from the start of the key stream (position 4*m, wrapping every
-      // KEY_BYTES bytes) -- used only for the second round-key mix below, which
-      // re-reads from the very start of the key rather than continuing the cursor above.
-      const keyWordAt = (m) => {
-        const p = 4 * m;
-        return OpCodes.ToUint32(
-          OpCodes.Shl32(key[p % KEY_BYTES], 24) | OpCodes.Shl32(key[(p + 1) % KEY_BYTES], 16) |
-          OpCodes.Shl32(key[(p + 2) % KEY_BYTES], 8) | key[(p + 3) % KEY_BYTES]
-        );
-      };
+      // The key stream is read as consecutive big-endian words from the start of the
+      // key, wrapping every KEY_BYTES bytes: word i for the round keys, then word
+      // SUB_WORDS + i for the S-boxes.
+      for (let i = 0; i < SUB_WORDS; i++) rkTab[i] = OpCodes.ToUint32(OpCodes.Xor32(rkTab[i], this._keyWordAt(key, i)));
+      for (let i = 0; i < SBOX_WORDS; i++) sbox[i] = OpCodes.ToUint32(OpCodes.Xor32(sbox[i], this._keyWordAt(key, SUB_WORDS + i)));
 
-      for (let i = 0; i < SUB_WORDS; i++) tabs.RK[i] = OpCodes.ToUint32(OpCodes.Xor32(tabs.RK[i], nextKeyWord()));
-      for (let i = 0; i < SBOX_WORDS; i++) tabs.SBOX[i] = OpCodes.ToUint32(OpCodes.Xor32(tabs.SBOX[i], nextKeyWord()));
+      this._selfEncryptFill(rkTab, sbox, whit);
+      // The second round-key mix re-reads from the very start of the key.
+      for (let i = 0; i < SUB_WORDS; i++) rkTab[i] = OpCodes.ToUint32(OpCodes.Xor32(rkTab[i], this._keyWordAt(key, i)));
+      this._selfEncryptFill(rkTab, sbox, whit);
 
-      const selfEncryptFill = () => {
-        /** @type {uint8[]} */
-        let w = [0, 0, 0, 0];
-        for (let g = 0; g < SUB_WORDS / 4; g++) {
-          this._coreEncrypt(tabs, w);
-          tabs.RK[4 * g] = w[0]; tabs.RK[4 * g + 1] = w[1]; tabs.RK[4 * g + 2] = w[2]; tabs.RK[4 * g + 3] = w[3];
-        }
-        for (let g = 0; g < SBOX_WORDS / 4; g++) {
-          this._coreEncrypt(tabs, w);
-          tabs.SBOX[4 * g] = w[0]; tabs.SBOX[4 * g + 1] = w[1]; tabs.SBOX[4 * g + 2] = w[2]; tabs.SBOX[4 * g + 3] = w[3];
-        }
-        for (let g = 0; g < WHIT_WORDS / 4; g++) {
-          this._coreEncrypt(tabs, w);
-          tabs.WHIT[4 * g] = w[0]; tabs.WHIT[4 * g + 1] = w[1]; tabs.WHIT[4 * g + 2] = w[2]; tabs.WHIT[4 * g + 3] = w[3];
-        }
-      };
-
-      selfEncryptFill();
-      for (let i = 0; i < SUB_WORDS; i++) tabs.RK[i] = OpCodes.ToUint32(OpCodes.Xor32(tabs.RK[i], keyWordAt(i)));
-      selfEncryptFill();
-
-      return tabs;
+      this._rk = rkTab;
+      this._sbox = sbox;
+      this._whit = whit;
     }
 
     /**
@@ -725,13 +762,14 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
-      this._coreEncrypt(this._tabs, w);
+      this._coreEncrypt(this._rk, this._sbox, this._whit, w);
       return [...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]), ...OpCodes.Unpack32LE(w[2]), ...OpCodes.Unpack32LE(w[3])];
     }
 
@@ -740,13 +778,14 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
-      this._coreDecrypt(this._tabs, w);
+      this._coreDecrypt(this._rk, this._sbox, this._whit, w);
       return [...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]), ...OpCodes.Unpack32LE(w[2]), ...OpCodes.Unpack32LE(w[3])];
     }
   }
