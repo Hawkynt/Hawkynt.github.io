@@ -163,6 +163,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[][]|null} */
       this.subkeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -188,10 +189,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+          (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -314,7 +322,8 @@
 
     _initSBoxes() {
       // Pre-computed S-box data (eliminates hex string literals)
-      const SBOX_DATA = Object.freeze([
+      /** @type {uint8[][]} */
+      const SBOX_DATA = [
         [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7, 0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8, 4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0, 15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
         [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10, 3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5, 0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15, 13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
         [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8, 13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1, 13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7, 1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
@@ -323,22 +332,30 @@
         [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11, 10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8, 9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6, 4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
         [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1, 13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6, 1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2, 6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
         [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7, 1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2, 7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8, 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
-      ]);
+      ];
 
+      /** @type {uint8[][][]} */
       this.SBOX = [];
       for (let i = 0; i < SBOX_DATA.length; i++) {
         const flatSbox = SBOX_DATA[i];
-        const sbox = [];
+        /** @type {uint8[][]} */
+        const sbox = new Array(4);
         for (let row = 0; row < 4; row++) {
-          sbox[row] = [];
+          /** @type {uint8[]} */
+          const rowValues = new Array(16);
           for (let col = 0; col < 16; col++) {
-            sbox[row][col] = flatSbox[row * 16 + col];
+            rowValues[col] = flatSbox[row * 16 + col];
           }
+          sbox[row] = rowValues;
         }
         this.SBOX.push(sbox);
       }
     }
 
+    /**
+     * @param {uint8[]} key - 8 key bytes
+     * @returns {uint8[][]} The 16 round keys as 48-element bit arrays
+     */
     _generateSubkeys(key) {
       // Convert key to bits and apply PC1 permutation
       let keyBits = this._bytesToBits(key);
@@ -348,7 +365,8 @@
       let c = keyBits.slice(0, 28);
       let d = keyBits.slice(28, 56);
 
-      const subkeys = [];
+      /** @type {uint8[][]} */
+      const roundBits = new Array(16);
 
       // Generate 16 subkeys
       for (let i = 0; i < 16; i++) {
@@ -358,10 +376,10 @@
 
         // Combine and apply PC2 permutation
         const combined = c.concat(d);
-        subkeys[i] = this._permute(combined, this.PC2);
+        roundBits[i] = this._permute(combined, this.PC2);
       }
 
-      return subkeys;
+      return roundBits;
     }
 
     /**
@@ -410,6 +428,11 @@
       return this._bitsToBytes(finalBits);
     }
 
+    /**
+     * @param {uint8[]} right - 32 right-half bits
+     * @param {uint8[]} key - 48 round-key bits
+     * @returns {uint8[]} 32 output bits
+     */
     _feistelFunction(right, key) {
       // Expansion permutation (32 bits to 48 bits)
       const expanded = this._permute(right, this.E);
@@ -424,7 +447,12 @@
       return this._permute(substituted, this.P);
     }
 
+    /**
+     * @param {uint8[]} input - 48 bits
+     * @returns {uint8[]} 32 bits
+     */
     _sboxSubstitution(input) {
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < 8; i++) {
@@ -432,53 +460,80 @@
         const block = input.slice(i * 6, (i + 1) * 6);
 
         // Calculate row (outer bits) and column (middle 4 bits)
-        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0]), 0, block[5]);
-        const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1]), 2, block[2]), 1, block[3]), 0, block[4]);
+        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0] !== 0), 0, block[5] !== 0);
+        const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1] !== 0), 2, block[2] !== 0), 1, block[3] !== 0), 0, block[4] !== 0);
 
         // Get value from S-box
         const val = this.SBOX[i][row][col];
 
         // Convert to 4-bit binary and add to output
         for (let j = 3; j >= 0; j--) {
-          output.push(OpCodes.GetBit(val, j));
+          output.push(OpCodes.And32(OpCodes.Shr32(val, j), 1));
         }
       }
 
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Bits
+     * @param {uint8[]} table - 1-based source positions
+     * @returns {uint8[]} Permuted bits
+     */
     _permute(input, table) {
+      /** @type {uint8[]} */
       const output = new Array(table.length);
       for (let i = 0; i < table.length; i++) {
-        output[i] = input[table[i] - 1];
+        output[i] = input[OpCodes.Sub32(table[i], 1)];
       }
       return output;
     }
 
+    /**
+     * @param {uint8[]} a - Bits
+     * @param {uint8[]} b - Bits
+     * @returns {uint8[]} a XOR b
+     */
     _xorBits(a, b) {
       return OpCodes.XorArrays(a, b);
     }
 
+    /**
+     * @param {uint8[]} input - Bits
+     * @param {int32} n - Rotation amount
+     * @returns {uint8[]} Bits rotated left by n
+     */
     _leftShift(input, n) {
       return input.slice(n).concat(input.slice(0, n));
     }
 
+    /**
+     * @param {uint8[]} bytes - Bytes
+     * @returns {uint8[]} Bits (0/1), most significant first
+     */
     _bytesToBits(bytes) {
+      /** @type {uint8[]} */
       const bits = new Array(bytes.length * 8);
       for (let i = 0; i < bytes.length; i++) {
         for (let j = 0; j < 8; j++) {
-          bits[i * 8 + j] = OpCodes.GetBit(bytes[i], 7 - j);
+          bits[i * 8 + j] = OpCodes.And32(OpCodes.Shr32(bytes[i], 7 - j), 1);
         }
       }
       return bits;
     }
 
+    /**
+     * @param {uint8[]} bits - Bits (0/1), most significant first
+     * @returns {uint8[]} Bytes
+     */
     _bitsToBytes(bits) {
+      /** @type {uint8[]} */
       const bytes = new Array(bits.length / 8);
       for (let i = 0; i < bytes.length; i++) {
+        /** @type {uint32} */
         let val = 0;
         for (let j = 0; j < 8; j++) {
-          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j]);
+          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j] !== 0);
         }
         bytes[i] = val;
       }
