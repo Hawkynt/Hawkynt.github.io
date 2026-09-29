@@ -215,7 +215,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._K = null;
+      /** @type {uint8[][][]|null} */
       this._T = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -263,29 +265,46 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {uint32[]} 8 little-endian key words
+     */
     _keyDwords(key) {
-      const K = new Array(8);
+      /** @type {uint32[]} */
+      const dwords = new Array(8);
       for (let i = 0; i < 8; i++)
-        K[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
-      return K;
+        dwords[i] = OpCodes.Pack32LE(key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]);
+      return dwords;
     }
 
     // T[i][j][k] = BASE_SBOX[i][ key[4*i+j] XOR k ], i=0..7 (key dword), j=0..3 (byte pos)
+    /**
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {uint8[][][]} Keyed substitution tables [word][byte position][value]
+     */
     _buildTables(key) {
-      const T = new Array(8);
+      /** @type {uint8[][][]} */
+      const tables = new Array(8);
       for (let i = 0; i < 8; i++) {
+        /** @type {uint8[][]} */
         const group = new Array(4);
         for (let j = 0; j < 4; j++) {
           const kb = key[4*i + j];
+          /** @type {uint8[]} */
           const sub = new Array(256);
-          for (let k = 0; k < 256; k++) sub[k] = BASE_SBOX[i*256 + OpCodes.Xor32(kb, k)];
+          for (let k = 0; k < 256; k++) sub[k] = BASE_SBOX[OpCodes.Add32(i*256, OpCodes.Xor32(kb, k))];
           group[j] = sub;
         }
-        T[i] = group;
+        tables[i] = group;
       }
-      return T;
+      return tables;
     }
 
+    /**
+     * @param {uint32} w - Input word
+     * @param {uint8[][]} Tg - The four byte tables of one key word
+     * @returns {uint32} Substituted word
+     */
     _substituteWord(w, Tg) {
       w = OpCodes.Xor32(w, Tg[0][OpCodes.GetByte(w, 3)]);
       w = OpCodes.Xor32(w, OpCodes.Shl32(Tg[1][OpCodes.GetByte(w, 2)], 8));
@@ -294,6 +313,11 @@
       return OpCodes.ToUint32(w);
     }
 
+    /**
+     * @param {uint32} w - Substituted word
+     * @param {uint8[][]} Tg - The four byte tables of one key word
+     * @returns {uint32} Original word
+     */
     _inverseSubstituteWord(w, Tg) {
       const b0 = OpCodes.GetByte(w, 0), b1 = OpCodes.GetByte(w, 1);
       const b2 = OpCodes.GetByte(w, 2), b3 = OpCodes.GetByte(w, 3);
@@ -304,12 +328,21 @@
       return OpCodes.Pack32LE(o0, o1, o2, o3);
     }
 
+    /**
+     * @param {uint32} x - Input word
+     * @returns {uint32} (x shl 6) XOR (x shr 8)
+     */
     _f(x) {
       return OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8));
     }
 
+    /**
+     * @param {uint32} src - Source word
+     * @param {int32} stepNumber - Step number 1..32
+     * @returns {uint32} Mixing term
+     */
     _mixTerm(src, stepNumber) {
-      return OpCodes.ToUint32(OpCodes.Xor32(src, stepNumber) + this._f(src));
+      return OpCodes.Add32(OpCodes.Xor32(src, stepNumber), this._f(src));
     }
 
     // Explicit, unrolled 32-step mix/refresh sequence (see header comment for the
@@ -320,79 +353,79 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const T = this._T, K = this._K;
-      let A = OpCodes.ToUint32(K[0] + OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
-      let B = OpCodes.ToUint32(K[1] + OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
-      let C = OpCodes.ToUint32(K[2] + OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
-      let D = OpCodes.ToUint32(K[3] + OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
+      const tables = this._T, kw = this._K;
+      let A = OpCodes.Add32(kw[0], OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
+      let B = OpCodes.Add32(kw[1], OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
+      let C = OpCodes.Add32(kw[2], OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
+      let D = OpCodes.Add32(kw[3], OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
 
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[0]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 1));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[1]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 2));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[2]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 3));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[3]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 4));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[4]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 5));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[5]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 6));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[6]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 7));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[7]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 8));
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 9));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[0]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 10));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[1]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 11));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[2]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 12));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[3]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 13));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[4]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 14));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[5]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 15));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[6]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 16));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[7]);
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[1]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 17));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[0]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 18));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[3]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 19));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[2]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 20));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[5]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 21));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[4]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 22));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[7]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 23));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[6]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 24));
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 25));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[1]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 26));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[0]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 27));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[3]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 28));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[2]);
-      A = OpCodes.ToUint32(A + this._mixTerm(D, 29));
-      D = this._substituteWord(OpCodes.RotL32(D, 11), T[5]);
-      D = OpCodes.ToUint32(D + this._mixTerm(C, 30));
-      C = this._substituteWord(OpCodes.RotL32(C, 11), T[4]);
-      C = OpCodes.ToUint32(C + this._mixTerm(B, 31));
-      B = this._substituteWord(OpCodes.RotL32(B, 11), T[7]);
-      B = OpCodes.ToUint32(B + this._mixTerm(A, 32));
-      A = this._substituteWord(OpCodes.RotL32(A, 11), T[6]);
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[0]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 1));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[1]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 2));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[2]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 3));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[3]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 4));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[4]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 5));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[5]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 6));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[6]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 7));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[7]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 8));
+      A = OpCodes.Add32(A, this._mixTerm(D, 9));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[0]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 10));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[1]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 11));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[2]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 12));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[3]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 13));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[4]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 14));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[5]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 15));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[6]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 16));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[7]);
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[1]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 17));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[0]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 18));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[3]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 19));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[2]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 20));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[5]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 21));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[4]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 22));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[7]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 23));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[6]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 24));
+      A = OpCodes.Add32(A, this._mixTerm(D, 25));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[1]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 26));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[0]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 27));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[3]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 28));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[2]);
+      A = OpCodes.Add32(A, this._mixTerm(D, 29));
+      D = this._substituteWord(OpCodes.RotL32(D, 11), tables[5]);
+      D = OpCodes.Add32(D, this._mixTerm(C, 30));
+      C = this._substituteWord(OpCodes.RotL32(C, 11), tables[4]);
+      C = OpCodes.Add32(C, this._mixTerm(B, 31));
+      B = this._substituteWord(OpCodes.RotL32(B, 11), tables[7]);
+      B = OpCodes.Add32(B, this._mixTerm(A, 32));
+      A = this._substituteWord(OpCodes.RotL32(A, 11), tables[6]);
 
-      const out0 = OpCodes.Xor32(A, K[4]), out1 = OpCodes.Xor32(B, K[5]);
-      const out2 = OpCodes.Xor32(C, K[6]), out3 = OpCodes.Xor32(D, K[7]);
+      const out0 = OpCodes.Xor32(A, kw[4]), out1 = OpCodes.Xor32(B, kw[5]);
+      const out2 = OpCodes.Xor32(C, kw[6]), out3 = OpCodes.Xor32(D, kw[7]);
       return [...OpCodes.Unpack32LE(out0), ...OpCodes.Unpack32LE(out1),
               ...OpCodes.Unpack32LE(out2), ...OpCodes.Unpack32LE(out3)];
     }
@@ -405,79 +438,79 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const T = this._T, K = this._K;
-      let A = OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), K[4]);
-      let B = OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), K[5]);
-      let C = OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), K[6]);
-      let D = OpCodes.Xor32(OpCodes.Pack32LE(block[12], block[13], block[14], block[15]), K[7]);
+      const tables = this._T, kw = this._K;
+      let A = OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), kw[4]);
+      let B = OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), kw[5]);
+      let C = OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), kw[6]);
+      let D = OpCodes.Xor32(OpCodes.Pack32LE(block[12], block[13], block[14], block[15]), kw[7]);
 
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[6]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 32));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[7]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 31));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[4]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 30));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[5]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 29));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[2]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 28));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[3]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 27));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[0]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 26));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[1]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 25));
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 24));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[6]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 23));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[7]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 22));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[4]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 21));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[5]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 20));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[2]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 19));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[3]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 18));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[0]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 17));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[1]), 11);
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[7]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 16));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[6]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 15));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[5]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 14));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[4]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 13));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[3]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 12));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[2]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 11));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[1]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 10));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[0]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 9));
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 8));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[7]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 7));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[6]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 6));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[5]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 5));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[4]), 11);
-      A = OpCodes.ToUint32(A - this._mixTerm(D, 4));
-      D = OpCodes.RotR32(this._inverseSubstituteWord(D, T[3]), 11);
-      D = OpCodes.ToUint32(D - this._mixTerm(C, 3));
-      C = OpCodes.RotR32(this._inverseSubstituteWord(C, T[2]), 11);
-      C = OpCodes.ToUint32(C - this._mixTerm(B, 2));
-      B = OpCodes.RotR32(this._inverseSubstituteWord(B, T[1]), 11);
-      B = OpCodes.ToUint32(B - this._mixTerm(A, 1));
-      A = OpCodes.RotR32(this._inverseSubstituteWord(A, T[0]), 11);
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[6]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 32));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[7]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 31));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[4]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 30));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[5]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 29));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[2]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 28));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[3]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 27));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[0]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 26));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[1]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 25));
+      A = OpCodes.Sub32(A, this._mixTerm(D, 24));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[6]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 23));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[7]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 22));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[4]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 21));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[5]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 20));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[2]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 19));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[3]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 18));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[0]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 17));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[1]), 11);
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[7]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 16));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[6]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 15));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[5]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 14));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[4]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 13));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[3]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 12));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[2]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 11));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[1]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 10));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[0]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 9));
+      A = OpCodes.Sub32(A, this._mixTerm(D, 8));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[7]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 7));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[6]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 6));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[5]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 5));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[4]), 11);
+      A = OpCodes.Sub32(A, this._mixTerm(D, 4));
+      D = OpCodes.RotR32(this._inverseSubstituteWord(D, tables[3]), 11);
+      D = OpCodes.Sub32(D, this._mixTerm(C, 3));
+      C = OpCodes.RotR32(this._inverseSubstituteWord(C, tables[2]), 11);
+      C = OpCodes.Sub32(C, this._mixTerm(B, 2));
+      B = OpCodes.RotR32(this._inverseSubstituteWord(B, tables[1]), 11);
+      B = OpCodes.Sub32(B, this._mixTerm(A, 1));
+      A = OpCodes.RotR32(this._inverseSubstituteWord(A, tables[0]), 11);
 
-      const in0 = OpCodes.ToUint32(A - K[0]), in1 = OpCodes.ToUint32(B - K[1]);
-      const in2 = OpCodes.ToUint32(C - K[2]), in3 = OpCodes.ToUint32(D - K[3]);
+      const in0 = OpCodes.Sub32(A, kw[0]), in1 = OpCodes.Sub32(B, kw[1]);
+      const in2 = OpCodes.Sub32(C, kw[2]), in3 = OpCodes.Sub32(D, kw[3]);
       return [...OpCodes.Unpack32LE(in0), ...OpCodes.Unpack32LE(in1),
               ...OpCodes.Unpack32LE(in2), ...OpCodes.Unpack32LE(in3)];
     }
