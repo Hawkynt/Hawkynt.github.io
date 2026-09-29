@@ -110,7 +110,7 @@
       this.hashBits = hashBitLength;
       /** @type {uint8[]} */
       this.buffer = [];
-      /** @type {int32} */
+      /** @type {uint64} Message length in bytes */
       this.totalLength = 0;
 
       // Initialize state with HAVAL IV (from reference implementation)
@@ -373,7 +373,6 @@
 
       const PASSES = this.passes;  // Number of passes (3, 4, or 5)
       const olen = Math.floor(this.hashBits / 32);  // Output length in 32-bit words
-      const MSGLEN = OpCodes.Shl32(msgLen, 3);  // Message length in bits, low 32 bits
 
       // Byte 118: VERSION (always 0x01)|(PASSES * 8)
       this.buffer.push(OpCodes.Or8(0x01, PASSES * 8));
@@ -381,14 +380,11 @@
       // Byte 119: olen * 8 (output length in words, multiplied by 8)
       this.buffer.push(OpCodes.ToByte(olen * 8));
 
-      // Append MSGLEN in little-endian 64-bit format
-      // Note: JavaScript bitwise operators work on 32 bits, so we handle low and high separately
-      for (let i = 0; i < 4; i++) {
-        this.buffer.push(OpCodes.GetByte(MSGLEN, i));
-      }
-      // High 32 bits are always 0 for reasonable message sizes
-      for (let i = 0; i < 4; i++) {
-        this.buffer.push(0x00);
+      // Bytes 120-127: the whole 64-bit bit length, little-endian
+      /** @type {uint8[]} */
+      const lengthBytes = OpCodes.EncodeMsgLength64LE(msgLen * 8);
+      for (let i = 0; i < 8; i++) {
+        this.buffer.push(lengthBytes[i]);
       }
 
       // Process the final block, or the final two when the message left 118
@@ -933,5 +929,5 @@
 
   // ===== EXPORTS =====
 
-  return { Haval, HavalInstance };
+  return { Haval, HavalInstance, HavalHasher };
 }));
