@@ -258,7 +258,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
+
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
@@ -306,16 +308,23 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
      */
     _blockToWords(block) {
-      return [
+      /** @type {uint32[]} */
+      const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
+      return w;
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} Little-endian bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -328,9 +337,12 @@
     // of 19 iterations becomes that round's 4-word round key.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Round keys
      */
     _expandKey(keyBytes) {
-      let [a, b, c, d] = this._blockToWords(keyBytes);
+      const w = this._blockToWords(keyBytes);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
+      /** @type {uint32[]} */
       const rk = [];
 
       for (let round = KEY_SCHEDULE_ITERATIONS; round >= 1; round--) {
@@ -343,7 +355,13 @@
         a = OpCodes.Xor32(a, Q128_TABLE[OpCodes.And32(d, 0x3FF)]);
         d = OpCodes.RotR32(d, 10);
 
-        if (round <= ROUNDS) rk.push(a, b, c, d);
+        if (round <= ROUNDS) {
+          rk.push(a);
+          rk.push(b);
+          rk.push(c);
+          rk.push(d);
+        }
+
       }
 
       return rk; // 64 words = 16 rounds * 4
@@ -355,7 +373,8 @@
      */
     _encryptBlock(block) {
       const rk = this._roundKeys;
-      let [a, b, c, d] = this._blockToWords(block);
+      const w = this._blockToWords(block);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
 
       for (let r = 0; r < ROUNDS; r++) {
         const rk0 = rk[4 * r], rk1 = rk[4 * r + 1], rk2 = rk[4 * r + 2], rk3 = rk[4 * r + 3];
@@ -372,7 +391,9 @@
         a = newA; b = bRot; c = cRot; d = dRot;
       }
 
-      return this._wordsToBlock([a, b, c, d]);
+      /** @type {uint32[]} */
+      const words = [a, b, c, d];
+      return this._wordsToBlock(words);
     }
 
     /**
@@ -381,7 +402,8 @@
      */
     _decryptBlock(block) {
       const rk = this._roundKeys;
-      let [a, b, c, d] = this._blockToWords(block);
+      const w = this._blockToWords(block);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
 
       for (let r = ROUNDS - 1; r >= 0; r--) {
         const rk0 = rk[4 * r], rk1 = rk[4 * r + 1], rk2 = rk[4 * r + 2], rk3 = rk[4 * r + 3];
@@ -398,7 +420,9 @@
         a = aOrig; b = bOrig; c = cOrig; d = dOrig;
       }
 
-      return this._wordsToBlock([a, b, c, d]);
+      /** @type {uint32[]} */
+      const words = [a, b, c, d];
+      return this._wordsToBlock(words);
     }
   }
 
