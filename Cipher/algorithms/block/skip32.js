@@ -188,6 +188,12 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * G-function: 4 rounds of Feistel using the F-table
+     * @param {uint32} w - 16-bit input word
+     * @param {int32} k - Round counter
+     * @returns {uint32} 16-bit output word
+     */
     _g(w, k) {
       // G-function: 4 rounds of Feistel using F-table
       let g1 = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);

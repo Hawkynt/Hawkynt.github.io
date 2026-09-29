@@ -59,19 +59,40 @@
   const ROUNDS = 32;
   const SCHEDULE_LEN = 64; // 16-bit words
 
+  /**
+   * @param {uint16} x - 16-bit word
+   * @param {int32} n - Rotation count
+   * @returns {uint16} Rotated word
+   */
   function rol16(x, n) {
     return OpCodes.RotL16(x, n);
   }
 
+  /**
+   * @param {uint16} x - 16-bit word
+   * @param {int32} n - Rotation count
+   * @returns {uint16} Rotated word
+   */
   function ror16(x, n) {
     return OpCodes.RotR16(x, n);
   }
 
+  /**
+   * @param {uint16} x - 16-bit word
+   * @returns {uint16} Word with its two bytes swapped
+   */
   function byteSwap16(x) {
     return OpCodes.Pack16BE(...OpCodes.Unpack16LE(x));
   }
 
-  // Round boolean core (MD4/SHA-1 style): choose / parity / majority selected by round index.
+  /**
+   * Round boolean core (MD4/SHA-1 style): choose / parity / majority selected by round index.
+   * @param {uint32} x - Word x
+   * @param {uint32} y - Word y
+   * @param {uint32} z - Word z
+   * @param {int32} round - Round index
+   * @returns {uint32} 16-bit result
+   */
   function roundG(x, y, z, round) {
     x &= 0xFFFF; y &= 0xFFFF; z &= 0xFFFF;
     if (round < 10) return OpCodes.And32(OpCodes.Or32(OpCodes.And32(x, z), OpCodes.And32(y, ~x)), 0xFFFF);      // choose
@@ -150,6 +171,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._schedule = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -200,22 +222,25 @@
     // 16-bit multiplications seeded with MD5-style magic-number halves.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 64 16-bit schedule words
      */
     _buildSchedule(keyBytes) {
+      /** @type {uint32[]} */
       const T = new Array(SCHEDULE_LEN);
+
       for (let i = 0; i < 10; i++)
         T[i] = OpCodes.Pack16LE(keyBytes[2 * i], keyBytes[2 * i + 1]);
 
       for (let i = 10; i < SCHEDULE_LEN; i++) {
-        const a = OpCodes.And32(T[i - 9] + T[i - 2] + 0x6745, 0xFFFF);
-        const b = byteSwap16(OpCodes.And32(T[i - 10] + T[i - 8] + 0x2301, 0xFFFF));
+        const a = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(T[i - 9], T[i - 2]), 0x6745), 0xFFFF);
+        const b = byteSwap16(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(T[i - 10], T[i - 8]), 0x2301), 0xFFFF));
         const p1 = OpCodes.ToUint32(a * b);
 
-        const c = byteSwap16(OpCodes.And32(T[i - 5] + T[i - 3] + 0xEFCD, 0xFFFF));
-        const d = OpCodes.And32(OpCodes.And32(p1, 0xFFFF) + T[i - 4] + T[i - 7] + 0xAB89, 0xFFFF);
+        const c = byteSwap16(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(T[i - 5], T[i - 3]), 0xEFCD), 0xFFFF));
+        const d = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.And32(p1, 0xFFFF), T[i - 4]), T[i - 7]), 0xAB89), 0xFFFF);
         const p2 = OpCodes.ToUint32(d * c);
 
-        const e = byteSwap16(OpCodes.And32(T[i - 6] + T[i - 1] + 0x0F1E, 0xFFFF));
+        const e = byteSwap16(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(T[i - 6], T[i - 1]), 0x0F1E), 0xFFFF));
         const p3 = OpCodes.ToUint32(OpCodes.And32(p2, 0xFFFF) * e);
 
         T[i] = ror16(OpCodes.And32(p3, 0xFFFF), 1);
