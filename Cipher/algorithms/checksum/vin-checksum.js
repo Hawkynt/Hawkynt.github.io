@@ -28,13 +28,25 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
+
+  if (!OpCodes) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  /** @type {int32[]} Transliteration value of 'A'..'Z' (-1 for I, O and Q, which a VIN never contains) */
+  const LETTER_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, -1, 1, 2, 3, 4, 5, -1, 7, -1, 9, 2, 3, 4, 5, 6, 7, 8, 9];
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * VIN check digit computation (ISO 3779)
+   * @class
+   * @extends {Algorithm}
+   */
   class VINChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -95,9 +107,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {VINChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -107,39 +119,32 @@
   }
 
   /**
- * VINChecksum cipher instance implementing Feed/Result pattern
+ * VINChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class VINChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a VIN checksum instance
+   * @param {VINChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.chars = [];
-
-      // Character value mapping
-      this.charValues = {
-        'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7, 'H': 8,
-        'J': 1, 'K': 2, 'L': 3, 'M': 4, 'N': 5, 'P': 7, 'R': 9,
-        'S': 2, 'T': 3, 'U': 4, 'V': 5, 'W': 6, 'X': 7, 'Y': 8, 'Z': 9,
-        '0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9
-      };
+      /** @type {uint8[]} Transliterated values of the VIN characters fed so far */
+      this.values = [];
 
       // Position weights (1-17)
+      /** @type {int32[]} */
       this.weights = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed ASCII text; VIN characters (digits and letters except I, O, Q, either case) are collected
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -147,36 +152,43 @@
 
       // Extract alphanumeric characters
       for (let i = 0; i < data.length; i++) {
-        const char = String.fromCharCode(data[i]).toUpperCase();
-        if (this.charValues[char] !== undefined) {
-          this.chars.push(char);
+        const value = this._charValue(data[i]);
+        if (value >= 0) {
+          this.values.push(value);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+     * Transliteration value of one ASCII character
+     * @param {int32} code - Character code
+     * @returns {int32} 0..9, or -1 if the character is not part of a VIN
+     */
+    _charValue(code) {
+      if (code >= 0x30 && code <= 0x39) return code - 0x30;   // '0'..'9'
+      if (code >= 0x61 && code <= 0x7A) code = code - 0x20;   // 'a'..'z' as 'A'..'Z'
+      if (code >= 0x41 && code <= 0x5A) return LETTER_VALUES[code - 0x41];
+      return -1;
+    }
+
+    /**
+   * Compute the check digit over the first 17 VIN characters fed and reset
+   * @returns {uint8[]} One byte: the check digit 0..10 (10 = X; 0 when nothing was fed)
    */
 
     Result() {
-      if (this.chars.length === 0) {
-        this.chars = [];
-        return [0];
-      }
-
-      // Calculate weighted sum
+      // Calculate weighted sum (no character leaves it at 0)
       let sum = 0;
-      for (let i = 0; i < Math.min(this.chars.length, 17); i++) {
-        const value = this.charValues[this.chars[i]] || 0;
+      for (let i = 0; i < this.values.length && i < 17; i++) {
+        /** @type {int32} */
+        const value = this.values[i];
         sum += value * this.weights[i];
       }
 
       // Check digit is sum mod 11
       const checkDigit = sum % 11;
 
-      this.chars = [];
+      this.values = [];
       return [checkDigit]; // 0-9 or 10 (X)
     }
   }
