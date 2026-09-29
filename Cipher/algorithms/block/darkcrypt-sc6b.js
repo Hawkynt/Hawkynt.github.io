@@ -52,6 +52,12 @@
   const SEED = 0xB3E18DA7;
 
   // Bitwise multiplexer: for each bit, select x where s=1 else y.
+  /**
+   * @param {uint32} s - Selector word
+   * @param {uint32} x - Word chosen where s has a 1 bit
+   * @param {uint32} y - Word chosen where s has a 0 bit
+   * @returns {uint32} Multiplexed word
+   */
   function mux(s, x, y) {
     return OpCodes.Or32(OpCodes.And32(s, x), OpCodes.And32((~s), y));
   }
@@ -126,6 +132,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._sched = null;   // 40 expanded words: [0..31] round table, [32..39] whitening
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -173,9 +180,15 @@
     }
 
     // NLFSR key schedule: emit 40 words = 8 rounds x 4 constants + 8 whitening words.
+    /**
+     * @param {uint8[]} key - 40-byte key
+     * @returns {uint32[]} The 40 expanded words
+     */
     _expandKey(key) {
       // Ten little-endian key words, padded with zeros to a 40-entry injection table.
-      const kw = new Array(40).fill(0);
+      /** @type {uint32[]} */
+      const kw = new Array(40);
+      kw.fill(0);
       for (let j = 0; j < 10; j++)
         kw[j] = OpCodes.Pack32LE(key[4 * j], key[4 * j + 1], key[4 * j + 2], key[4 * j + 3]);
 
@@ -185,6 +198,7 @@
       let A = OpCodes.ToUint32(~SEED);
       let P = OpCodes.ToUint32(~1);
 
+      /** @type {uint32[]} */
       const out = [];
       for (let i = 0; i < 10; i++) {
         const odd = OpCodes.And32(i, 1) !== 0;
@@ -197,7 +211,7 @@
           else
             C = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(A, B), (~B)), P);               // OR-dominated boolean
 
-          const F = OpCodes.ToUint32(kw[j % 40] + OpCodes.RotR32(C, 7) + S);
+          const F = OpCodes.Add32(OpCodes.Add32(kw[j % 40], OpCodes.RotR32(C, 7)), S);
 
           const nS = OpCodes.RotR32(B, 11);
           S = nS;
@@ -205,12 +219,21 @@
           A = P;
           P = F;
         }
-        out.push(OpCodes.ToUint32(S), OpCodes.ToUint32(B), OpCodes.ToUint32(A), OpCodes.ToUint32(P));
+        out.push(OpCodes.ToUint32(S));
+        out.push(OpCodes.ToUint32(B));
+        out.push(OpCodes.ToUint32(A));
+        out.push(OpCodes.ToUint32(P));
       }
       return out;
     }
 
     // Keyed mixing function used inside each round (returns [out0, out1]).
+    /**
+     * @param {int32} round - Round index 0..7
+     * @param {uint32} in0 - First input word
+     * @param {uint32} in1 - Second input word
+     * @returns {uint32[]} The two output words
+     */
     _G(round, in0, in1) {
       const s = this._sched;
       const base = round * 4;
@@ -253,7 +276,8 @@
 
       // Eight mixing rounds.
       for (let round = 0; round < 8; round++) {
-        const [o0, o1] = this._G(round, OpCodes.Xor32(b, d), OpCodes.Xor32(a, c));
+        const g = this._G(round, OpCodes.Xor32(b, d), OpCodes.Xor32(a, c));
+        const o0 = g[0], o1 = g[1];
         a = OpCodes.Xor32(a, o0);
         b = OpCodes.Xor32(b, o1);
         c = OpCodes.Xor32(c, o0);
@@ -318,7 +342,8 @@
       for (let round = 7; round >= 0; round--) {
         const t = b; b = c; c = t;                  // undo swap first
 
-        const [o0, o1] = this._G(round, OpCodes.Xor32(b, d), OpCodes.Xor32(a, c));
+        const g = this._G(round, OpCodes.Xor32(b, d), OpCodes.Xor32(a, c));
+        const o0 = g[0], o1 = g[1];
         a = OpCodes.Xor32(a, o0);
         b = OpCodes.Xor32(b, o1);
         c = OpCodes.Xor32(c, o0);
