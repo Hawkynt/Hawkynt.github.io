@@ -110,9 +110,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {DMACInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -131,15 +131,25 @@
  */
 
   class DMACInstance extends IMacInstance {
+    /**
+     * Initialize a DMAC instance
+     * @param {DMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {int32} */
       this._blockSize = 8; // DES block size
       this.inputBuffer = [];
+      /** @type {int32} */
       this.counter = 0; // Track bytes processed modulo block size
+      /** @type {IBlockCipherInstance} */
       this.cipherInstance = null;
+      /** @type {IBlockCipherInstance} */
       this.cipher2Instance = null;
-      this.subkeys = null; // K1 and K2
+      /** @type {uint8[][]} */
+      this.subkeys = null; // [K1, K2]
     }
 
     /**
@@ -159,7 +169,7 @@
 
       // Validate key size (DES uses 8-byte keys)
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 8 for DES)`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (expected 8 for DES)');
       }
 
       this._key = [...keyBytes];
@@ -168,19 +178,13 @@
       this.subkeys = this._generateSubkeys(keyBytes);
 
       // Create DES cipher instances
-      if (!DESModule || !DESModule.DESAlgorithm) {
-        throw new Error('DES module not loaded');
-      }
-
-      const desAlgorithm = new DESModule.DESAlgorithm();
-
       // CBC-MAC cipher using K1
-      this.cipherInstance = desAlgorithm.CreateInstance(false);
-      this.cipherInstance.key = this.subkeys.k1;
+      this.cipherInstance = this._newDESInstance();
+      this.cipherInstance.key = this.subkeys[0];
 
       // Final encryption cipher using K2
-      this.cipher2Instance = desAlgorithm.CreateInstance(false);
-      this.cipher2Instance.key = this.subkeys.k2;
+      this.cipher2Instance = this._newDESInstance();
+      this.cipher2Instance.key = this.subkeys[1];
 
       // Reset counter
       this.counter = 0;
@@ -224,14 +228,16 @@
       // Crypto++ uses padByte = blockSize - counter
       // Then pads with that many bytes of value padByte
       const padByte = this._blockSize - this.counter;
-      const padding = new Array(padByte).fill(padByte);
-      const paddedMessage = [...this.inputBuffer, ...padding];
+      const padding = OpCodes.CreateArray(padByte, padByte);
+      /** @type {uint8[]} */
+      const paddedMessage = this.inputBuffer.concat(padding);
 
       // Step 2: Compute CBC-MAC with K1
       const cbcMac = this._computeCBCMAC(paddedMessage, this.cipherInstance);
 
       // Step 3: Encrypt the CBC-MAC result with K2
       this.cipher2Instance.Feed(cbcMac);
+      /** @type {uint8[]} */
       const mac = this.cipher2Instance.Result();
 
       // Clear for next operation
@@ -246,42 +252,58 @@
      * K1 = E(K, 0^n)
      * K2 = E(K, 0^(n-1) || 1)
      *
-     * @param {Array<number>} key - Master key
-     * @returns {Object} Object with k1 and k2 properties
+     * @param {uint8[]} key - Master key
+     * @returns {uint8[][]} [K1, K2]
      */
     _generateSubkeys(key) {
-      if (!DESModule || !DESModule.DESAlgorithm) {
-        throw new Error('DES module not loaded');
-      }
-
-      const desAlgorithm = new DESModule.DESAlgorithm();
-      const cipher = desAlgorithm.CreateInstance(false);
+      const cipher = this._newDESInstance();
       cipher.key = key;
 
       // K1 = E(K, 0^n) - encrypt all zeros
-      const zeros = new Array(this._blockSize).fill(0);
+      const zeros = OpCodes.CreateArray(this._blockSize, 0);
       cipher.Feed(zeros);
+      /** @type {uint8[]} */
       const k1 = cipher.Result();
 
       // K2 = E(K, 0^(n-1) || 1) - encrypt zeros with last byte = 1
-      const zerosWithOne = new Array(this._blockSize).fill(0);
+      const zerosWithOne = OpCodes.CreateArray(this._blockSize, 0);
       zerosWithOne[this._blockSize - 1] = 1;
       cipher.Feed(zerosWithOne);
+      /** @type {uint8[]} */
       const k2 = cipher.Result();
 
-      return { k1, k2 };
+      /** @type {uint8[][]} */
+      const subkeys = [k1, k2];
+      return subkeys;
+    }
+
+    /**
+     * New DES encryption instance from the registered DES algorithm
+     * (des.js is loaded ahead of this file)
+     * @returns {IBlockCipherInstance} DES encryption instance
+     * @throws {Error} If DES is not registered
+     */
+    _newDESInstance() {
+      /** @type {Algorithm} */
+      const desAlgorithm = AlgorithmFramework.Find('DES');
+      if (!desAlgorithm) {
+        throw new Error('DES module not loaded');
+      }
+      /** @type {IBlockCipherInstance} */
+      const instance = desAlgorithm.CreateInstance(false);
+      return instance;
     }
 
     /**
      * Compute CBC-MAC over message (already padded)
      *
-     * @param {Array<number>} message - Padded message
-     * @param {Object} cipher - DES cipher instance
-     * @returns {Array<number>} CBC-MAC tag
+     * @param {uint8[]} message - Padded message
+     * @param {IBlockCipherInstance} cipher - DES cipher instance
+     * @returns {uint8[]} CBC-MAC tag
      */
     _computeCBCMAC(message, cipher) {
       // Initialize CBC state with zeros
-      let state = new Array(this._blockSize).fill(0);
+      let state = OpCodes.CreateArray(this._blockSize, 0);
 
       // Process each block in CBC mode
       for (let i = 0; i < message.length; i += this._blockSize) {
@@ -292,7 +314,9 @@
 
         // Encrypt the XOR result
         cipher.Feed(xorBlock);
-        state = cipher.Result();
+        /** @type {uint8[]} */
+        const encrypted = cipher.Result();
+        state = encrypted;
       }
 
       // Return final state as MAC
