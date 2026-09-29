@@ -101,50 +101,87 @@
   }
 
   class DarkCryptTriviumInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptTriviumAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this._state = null; // 288-entry bit array (0/1), s[0..92]=A, s[93..176]=B, s[177..287]=C
+      /** @type {uint8[]} */
       this._pendingBits = []; // leftover un-consumed keystream bits (reversed-per-32 order)
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 10)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Trivium (DarkCrypt) requires exactly 10 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Trivium (DarkCrypt) requires exactly 10 bytes");
       this._key = [...keyBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 10)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Trivium (DarkCrypt) requires exactly 10 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Trivium (DarkCrypt) requires exactly 10 bytes");
       this._iv = [...ivBytes];
       this._tryInit();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._state) throw new Error("Key/IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._state) throw new Error("Key/IV not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -153,11 +190,11 @@
     _tryInit() {
       if (!this._key || !this._iv) { this._state = null; return; }
 
-      const s = new Array(288).fill(0);
+      const s = OpCodes.CreateArray(288, 0);
       for (let i = 0; i < 80; i++)
-        s[i] = OpCodes.AndN(OpCodes.Shr32(this._key[OpCodes.Shr32(i, 3)], OpCodes.And32(i, 7)), 1);
+        s[i] = OpCodes.And32(OpCodes.Shr32(this._key[OpCodes.Shr32(i, 3)], OpCodes.And32(i, 7)), 1);
       for (let i = 0; i < 80; i++)
-        s[93 + i] = OpCodes.AndN(OpCodes.Shr32(this._iv[OpCodes.Shr32(i, 3)], OpCodes.And32(i, 7)), 1);
+        s[93 + i] = OpCodes.And32(OpCodes.Shr32(this._iv[OpCodes.Shr32(i, 3)], OpCodes.And32(i, 7)), 1);
       s[285] = 1; s[286] = 1; s[287] = 1;
 
       this._state = s;
@@ -166,19 +203,22 @@
     }
 
     // one standard Trivium clock: updates state in place, returns the raw output bit
+    /**
+     * @returns {uint32}
+     */
     _clock() {
       const s = this._state;
-      const t1 = OpCodes.XorN(s[65], s[92]);
-      const a1 = OpCodes.AndN(s[90], s[91]);
-      const f1 = OpCodes.XorN(OpCodes.XorN(t1, a1), s[170]);
+      const t1 = OpCodes.Xor32(s[65], s[92]);
+      const a1 = OpCodes.And32(s[90], s[91]);
+      const f1 = OpCodes.Xor32(OpCodes.Xor32(t1, a1), s[170]);
 
-      const t2 = OpCodes.XorN(s[161], s[176]);
-      const a2 = OpCodes.AndN(s[174], s[175]);
-      const f2 = OpCodes.XorN(OpCodes.XorN(t2, a2), s[263]);
+      const t2 = OpCodes.Xor32(s[161], s[176]);
+      const a2 = OpCodes.And32(s[174], s[175]);
+      const f2 = OpCodes.Xor32(OpCodes.Xor32(t2, a2), s[263]);
 
-      const t3 = OpCodes.XorN(s[242], s[287]);
-      const a3 = OpCodes.AndN(s[285], s[286]);
-      const f3 = OpCodes.XorN(OpCodes.XorN(t3, a3), s[68]);
+      const t3 = OpCodes.Xor32(s[242], s[287]);
+      const a3 = OpCodes.And32(s[285], s[286]);
+      const f3 = OpCodes.Xor32(OpCodes.Xor32(t3, a3), s[68]);
 
       for (let i = 287; i > 177; i--) s[i] = s[i - 1];
       s[177] = f2;
@@ -187,24 +227,29 @@
       for (let i = 92; i > 0; i--) s[i] = s[i - 1];
       s[0] = f3;
 
-      return OpCodes.XorN(OpCodes.XorN(t1, t2), t3);
+      return OpCodes.Xor32(OpCodes.Xor32(t1, t2), t3);
     }
 
     // Produces the next 32 keystream bits and stores them, bit order REVERSED
     // within the 32-bit group (matching this implementation's word-parallel output packing).
     _fillPending() {
+      /** @type {uint8[]} */
       const block = [];
       for (let i = 0; i < 32; i++) block.push(this._clock());
       block.reverse();
       for (let _i = 0; _i < block.length; _i++) this._pendingBits.push(block[_i]);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++) {
         if (this._pendingBits.length === 0) this._fillPending();
         const bit = this._pendingBits.shift();
-        byte = OpCodes.OrN(byte, OpCodes.Shl32(bit, i));
+        byte = OpCodes.Or32(byte, OpCodes.Shl32(bit, i));
       }
       return byte;
     }

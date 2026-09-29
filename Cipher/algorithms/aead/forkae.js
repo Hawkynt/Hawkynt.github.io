@@ -41,17 +41,30 @@
   }
 
   // Helper: XOR two byte arrays
+  /**
+   * @param {uint8[]} a
+   * @param {uint8[]} b
+   * @param {int32} len
+   * @returns {uint8[]}
+   */
   function xorBytes(a, b, len) {
+    /** @type {uint8[]} */
     const result = new Array(len);
     for (let i = 0; i < len; i++) {
-      result[i] = OpCodes.AndN(OpCodes.XorN(a[i], b[i]), 0xFF);
+      result[i] = OpCodes.And32(OpCodes.Xor32(a[i], b[i]), 0xFF);
     }
     return result;
   }
 
   // Helper: Pad block with 0x80 followed by zeros
+  /**
+   * @param {uint8[]} data
+   * @param {int32} blockSize
+   * @returns {uint8[]}
+   */
   function padBlock(data, blockSize) {
-    const padded = new Array(blockSize).fill(0);
+    /** @type {uint8[]} */
+    const padded = OpCodes.CreateArray(blockSize, 0);
     padded.splice(0, data.length, ...data);
     if (data.length < blockSize) {
       padded[data.length] = 0x80;
@@ -60,6 +73,12 @@
   }
 
   // Helper: Check if padding is valid
+  /**
+   * @param {uint8[]} block
+   * @param {int32} dataLen
+   * @param {int32} blockSize
+   * @returns {boolean}
+   */
   function checkPadding(block, dataLen, blockSize) {
     if (dataLen >= blockSize) return true;
     if (block[dataLen] !== 0x80) return false;
@@ -76,25 +95,44 @@
    * Uses ForkSkinny to process blocks with counter-based tweakey
    */
   class PAEFMode {
+    /**
+     * @param {int32} blockSize - Block size in bytes
+     * @param {int32} nonceSize - Nonce size in bytes
+     * @param {int32} counterSize - Block counter size in bytes
+     * @param {int32} tweakeySize - Tweakey size in bytes
+     * @param {string} forkSkinnyVariant - Registered ForkSkinny algorithm name
+     */
     constructor(blockSize, nonceSize, counterSize, tweakeySize, forkSkinnyVariant) {
+      /** @type {int32} */
       this.blockSize = blockSize;
+      /** @type {int32} */
       this.nonceSize = nonceSize;
+      /** @type {int32} */
       this.counterSize = counterSize;
+      /** @type {int32} */
       this.tweakeySize = tweakeySize;
+      /** @type {string} */
       this.forkSkinnyVariant = forkSkinnyVariant;
     }
 
     // Set counter value in tweakey (big-endian with domain separation)
-    setCounter(tweakey, counter, domain) {
+    /**
+     * @param {uint8[]} tweakey
+     * @param {int32} blockNo
+     * @param {int32} domain
+     */
+    setCounter(tweakey, blockNo, domain) {
       // Domain is encoded in top 3 bits of counter
-      let val = OpCodes.OrN(counter, OpCodes.Shl32(domain, (this.counterSize * 8 - 3)));
+      /** @type {uint32} */
+      let val = OpCodes.Or32(blockNo, OpCodes.Shl32(domain, (this.counterSize * 8 - 3)));
 
       // For 48-byte tweakey (ForkSkinny-128-384), place counter in TK2
+      /** @type {int32} */
       const counterPos = this.tweakeySize === 48 ? 16 + this.nonceSize + this.counterSize - 1 :
                          16 + this.nonceSize + this.counterSize - 1;
 
       for (let i = 0; i < this.counterSize; i++) {
-        tweakey[counterPos - i] = OpCodes.AndN(val, 0xFF);
+        tweakey[counterPos - i] = OpCodes.And32(val, 0xFF);
         val = OpCodes.Shr32(val, 8);
       }
     }
@@ -104,15 +142,23 @@
       const algo = Find(this.forkSkinnyVariant);
 
       if (!algo) {
-        throw new Error(`ForkSkinny variant ${this.forkSkinnyVariant} not found in registry`);
+        throw new Error("ForkSkinny variant " + this.forkSkinnyVariant + " not found in registry");
       }
 
       return algo.CreateInstance(false);
     }
 
+    /**
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @param {uint8[]} plaintext
+     * @param {uint8[]} ad
+     * @returns {uint8[]}
+     */
     encrypt(key, nonce, plaintext, ad) {
       // Initialize tweakey
-      const tweakey = new Array(this.tweakeySize).fill(0);
+      /** @type {uint8[]} */
+      const tweakey = OpCodes.CreateArray(this.tweakeySize, 0);
       // TK1 = key
       tweakey.splice(0, 16, ...key.slice(0, 16));
       // TK2 = nonce || counter || padding (for 48-byte tweakey)
@@ -120,46 +166,52 @@
       tweakey.splice(16, this.nonceSize, ...nonce);
 
       // Tag accumulator (XOR of all intermediate tags)
-      const tag = new Array(this.blockSize).fill(0);
+      /** @type {uint8[]} */
+      const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
       const forkskinny = this.getForkSkinnyInstance();
       forkskinny.key = tweakey;
 
-      let counter = 1;
+      /** @type {int32} */
+      let blockNo = 1;
 
       // Process associated data
       let adPos = 0;
       while (ad.length - adPos > this.blockSize) {
-        this.setCounter(tweakey, counter, 0);
+        this.setCounter(tweakey, blockNo, 0);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(ad.slice(adPos, adPos + this.blockSize));
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
         }
         adPos += this.blockSize;
-        counter++;
+        blockNo++;
       }
 
       // Process final AD block
       const adRem = ad.length - adPos;
       if (adRem === this.blockSize) {
-        this.setCounter(tweakey, counter, 1);
+        this.setCounter(tweakey, blockNo, 1);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(ad.slice(adPos));
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
         }
       } else if (adRem > 0 || plaintext.length === 0) {
+        /** @type {uint8[]} */
         const padded = padBlock(ad.slice(adPos), this.blockSize);
-        this.setCounter(tweakey, counter, 3);
+        this.setCounter(tweakey, blockNo, 3);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(padded);
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
@@ -172,20 +224,24 @@
       }
 
       // Process plaintext
+      /** @type {uint8[]} */
       const ciphertext = [];
-      counter = 1;
+      blockNo = 1;
       let ptPos = 0;
 
       // Process all but last plaintext block
       while (plaintext.length - ptPos > this.blockSize) {
-        this.setCounter(tweakey, counter, 4);
+        this.setCounter(tweakey, blockNo, 4);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "both";
         forkskinny.Feed(plaintext.slice(ptPos, ptPos + this.blockSize));
+        /** @type {uint8[]} */
         const result = forkskinny.Result();
 
         // Result contains left output (16 bytes) then right output (16 bytes)
+        /** @type {uint8[]} */
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         for (let _i = 0; _i < leftOutput.length; _i++) ciphertext.push(leftOutput[_i]);
@@ -194,39 +250,50 @@
         }
 
         ptPos += this.blockSize;
-        counter++;
+        blockNo++;
       }
 
       // Process final plaintext block
       const ptRem = plaintext.length - ptPos;
       if (ptRem === this.blockSize) {
-        this.setCounter(tweakey, counter, 5);
+        this.setCounter(tweakey, blockNo, 5);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "both";
         forkskinny.Feed(plaintext.slice(ptPos));
+        /** @type {uint8[]} */
         const result = forkskinny.Result();
 
+        /** @type {uint8[]} */
+
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         // XOR left output with accumulated tag for ciphertext
+        /** @type {uint8[]} */
         const ctBlock = xorBytes(leftOutput, tag, this.blockSize);
         for (let _i = 0; _i < ctBlock.length; _i++) ciphertext.push(ctBlock[_i]);
 
         // Right output becomes final tag
         for (let _i = 0; _i < rightOutput.length; _i++) ciphertext.push(rightOutput[_i]);
       } else {
+        /** @type {uint8[]} */
         const padded = padBlock(plaintext.slice(ptPos), this.blockSize);
-        this.setCounter(tweakey, counter, 7);
+        this.setCounter(tweakey, blockNo, 7);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "both";
         forkskinny.Feed(padded);
+        /** @type {uint8[]} */
         const result = forkskinny.Result();
 
+        /** @type {uint8[]} */
+
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         // XOR left output with accumulated tag - this is the ciphertext block
+        /** @type {uint8[]} */
         const ctBlock = xorBytes(leftOutput, tag, this.blockSize);
         for (let _i = 0; _i < ctBlock.length; _i++) ciphertext.push(ctBlock[_i]);
 
@@ -237,54 +304,68 @@
       return ciphertext;
     }
 
+    /**
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} ad
+     * @returns {uint8[]}
+     */
     decrypt(key, nonce, ciphertext, ad) {
       if (ciphertext.length < this.blockSize) {
         throw new Error("Ciphertext too short");
       }
 
       // Initialize tweakey
-      const tweakey = new Array(this.tweakeySize).fill(0);
+      /** @type {uint8[]} */
+      const tweakey = OpCodes.CreateArray(this.tweakeySize, 0);
       tweakey.splice(0, 16, ...key.slice(0, 16));
       tweakey.splice(16, this.nonceSize, ...nonce);
 
       // Tag accumulator
-      const tag = new Array(this.blockSize).fill(0);
+      /** @type {uint8[]} */
+      const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
       const forkskinny = this.getForkSkinnyInstance();
-      let counter = 1;
+      /** @type {int32} */
+      let blockNo = 1;
 
       // Process associated data (same as encryption)
       let adPos = 0;
       while (ad.length - adPos > this.blockSize) {
-        this.setCounter(tweakey, counter, 0);
+        this.setCounter(tweakey, blockNo, 0);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(ad.slice(adPos, adPos + this.blockSize));
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
         }
         adPos += this.blockSize;
-        counter++;
+        blockNo++;
       }
 
       const adRem = ad.length - adPos;
       if (adRem === this.blockSize) {
-        this.setCounter(tweakey, counter, 1);
+        this.setCounter(tweakey, blockNo, 1);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(ad.slice(adPos));
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
         }
       } else if (adRem > 0 || (ciphertext.length - this.blockSize) === 0) {
+        /** @type {uint8[]} */
         const padded = padBlock(ad.slice(adPos), this.blockSize);
-        this.setCounter(tweakey, counter, 3);
+        this.setCounter(tweakey, blockNo, 3);
         forkskinny.key = tweakey;
         forkskinny.forkOutput = "right";
         forkskinny.Feed(padded);
+        /** @type {uint8[]} */
         const block = forkskinny.Result();
         for (let i = 0; i < this.blockSize; i++) {
           tag[i] ^= block[i];
@@ -296,31 +377,41 @@
 
       // If no ciphertext, verify tag only
       if (msgLen === 0) {
+        /** @type {uint8[]} */
         const receivedTag = ciphertext.slice(0, this.blockSize);
         if (!OpCodes.SecureCompare(tag.slice(0, this.blockSize), receivedTag)) {
           throw new Error("Authentication tag verification failed");
         }
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       const plaintext = [];
-      counter = 1;
+      blockNo = 1;
       let ctPos = 0;
 
       // Process all but last ciphertext block
       while (msgLen - ctPos > this.blockSize) {
-        this.setCounter(tweakey, counter, 4);
+        this.setCounter(tweakey, blockNo, 4);
         forkskinny.key = tweakey;
+
+        /** @type {uint8[]} */
 
         const ctBlock = ciphertext.slice(ctPos, ctPos + this.blockSize);
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
         instance.Feed(ctBlock);
+        /** @type {uint8[]} */
         const result = instance.Result();
 
+        /** @type {uint8[]} */
+
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         for (let _i = 0; _i < leftOutput.length; _i++) plaintext.push(leftOutput[_i]);
@@ -329,46 +420,61 @@
         }
 
         ctPos += this.blockSize;
-        counter++;
+        blockNo++;
       }
 
       // Process final ciphertext block
       const ctRem = msgLen - ctPos;
       if (ctRem === this.blockSize) {
-        this.setCounter(tweakey, counter, 5);
+        this.setCounter(tweakey, blockNo, 5);
+
+        /** @type {uint8[]} */
 
         const ctBlock = ciphertext.slice(ctPos, ctPos + this.blockSize);
+        /** @type {uint8[]} */
         const xoredBlock = xorBytes(ctBlock, tag, this.blockSize);
 
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
         instance.Feed(xoredBlock);
+        /** @type {uint8[]} */
         const result = instance.Result();
 
+        /** @type {uint8[]} */
+
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         for (let _i = 0; _i < leftOutput.length; _i++) plaintext.push(leftOutput[_i]);
 
         // Verify tag
+        /** @type {uint8[]} */
         const receivedTag = ciphertext.slice(ctPos + this.blockSize);
         if (!OpCodes.SecureCompare(rightOutput.slice(0, this.blockSize), receivedTag)) {
           throw new Error("Authentication tag verification failed");
         }
       } else {
-        this.setCounter(tweakey, counter, 7);
+        this.setCounter(tweakey, blockNo, 7);
+
+        /** @type {uint8[]} */
 
         const ctBlock = ciphertext.slice(ctPos, ctPos + this.blockSize);
+        /** @type {uint8[]} */
         const xoredBlock = xorBytes(ctBlock, tag, this.blockSize);
 
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
         instance.Feed(xoredBlock);
+        /** @type {uint8[]} */
         const result = instance.Result();
 
+        /** @type {uint8[]} */
+
         const leftOutput = result.slice(0, this.blockSize);
+        /** @type {uint8[]} */
         const rightOutput = result.slice(this.blockSize);
 
         // Verify padding
@@ -379,6 +485,7 @@
         plaintext.push(...leftOutput.slice(0, ctRem));
 
         // Verify tag
+        /** @type {uint8[]} */
         const receivedTag = ciphertext.slice(ctPos + this.blockSize, ctPos + this.blockSize + ctRem);
         if (!OpCodes.SecureCompare(rightOutput.slice(0, ctRem), receivedTag)) {
           throw new Error("Authentication tag verification failed");
@@ -471,18 +578,24 @@
   class PAEFForkSkinny128_256Instance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PAEFForkSkinny128_256} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       // Use the registered ForkSkinny-128-256 algorithm
+      /** @type {PAEFMode} */
       this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256");
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._ad = [];
+      /** @type {uint8[]} */
       this._data = [];
     }
 
@@ -498,7 +611,7 @@
         return;
       }
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
       this._key = [...keyBytes];
     }
@@ -512,34 +625,57 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
         return;
       }
       if (nonceBytes.length !== 14) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes");
       }
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this._ad = adBytes ? [...adBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = [...adBytes];
+      }
+      this._ad = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._ad];
     }
 
     // Alias for test vectors
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set aad(adBytes) {
       this.associatedData = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return this.associatedData;
     }
@@ -565,8 +701,11 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
+      if (!this._nonce) {
+        throw new Error("Nonce not set");
+      }
 
+      /** @type {uint8[]} */
       let result;
       if (this.isInverse) {
         result = this.mode.decrypt(this._key, this._nonce, this._data, this._ad);

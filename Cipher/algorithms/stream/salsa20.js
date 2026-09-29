@@ -88,66 +88,109 @@ class Salsa20 extends StreamCipherAlgorithm {
 }
 
 class Salsa20Instance extends IAlgorithmInstance {
+  /**
+   * @param {Salsa20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._nonce = new Array(8).fill(0);
-    this.counter = [0, 0];
-    this.state = new Array(16);
+    /** @type {uint8[]|null} */
+    this._nonce = OpCodes.CreateArray(8, 0);
+    /** @type {uint32[]} */
+    this._blockNumber = [0, 0];
+    /** @type {uint32[]} */
+    this._matrix = new Array(16);
+    /** @type {uint8[]} */
     this.keystreamBuffer = [];
+    /** @type {int32} */
     this.bufferIndex = 0;
 
+    /** @type {uint32[]} */
     this.CONSTANTS_32 = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
+    /** @type {uint32[]} */
     this.CONSTANTS_16 = [0x61707865, 0x3120646e, 0x79622d36, 0x6b206574];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._setupState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 8) {
-      this._nonce = new Array(8).fill(0);
+      this._nonce = OpCodes.CreateArray(8, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
     this._setupState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -157,61 +200,79 @@ class Salsa20Instance extends IAlgorithmInstance {
   _setupState() {
     if (!this._key || !this._nonce) return;
 
+    /** @type {uint32[]} */
     const constants = (this._key.length === 32) ? this.CONSTANTS_32 : this.CONSTANTS_16;
 
-    this.state[0] = constants[0];
-    this.state[5] = constants[1];
-    this.state[10] = constants[2];
-    this.state[15] = constants[3];
+    this._matrix[0] = constants[0];
+    this._matrix[5] = constants[1];
+    this._matrix[10] = constants[2];
+    this._matrix[15] = constants[3];
 
     if (this._key.length === 32) {
-      this.state[1] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
-      this.state[2] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
-      this.state[3] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
-      this.state[4] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
-      this.state[11] = OpCodes.Pack32LE(this._key[16], this._key[17], this._key[18], this._key[19]);
-      this.state[12] = OpCodes.Pack32LE(this._key[20], this._key[21], this._key[22], this._key[23]);
-      this.state[13] = OpCodes.Pack32LE(this._key[24], this._key[25], this._key[26], this._key[27]);
-      this.state[14] = OpCodes.Pack32LE(this._key[28], this._key[29], this._key[30], this._key[31]);
+      this._matrix[1] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      this._matrix[2] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      this._matrix[3] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      this._matrix[4] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
+      this._matrix[11] = OpCodes.Pack32LE(this._key[16], this._key[17], this._key[18], this._key[19]);
+      this._matrix[12] = OpCodes.Pack32LE(this._key[20], this._key[21], this._key[22], this._key[23]);
+      this._matrix[13] = OpCodes.Pack32LE(this._key[24], this._key[25], this._key[26], this._key[27]);
+      this._matrix[14] = OpCodes.Pack32LE(this._key[28], this._key[29], this._key[30], this._key[31]);
     } else {
-      this.state[1] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
-      this.state[2] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
-      this.state[3] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
-      this.state[4] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
-      this.state[11] = this.state[1];
-      this.state[12] = this.state[2];
-      this.state[13] = this.state[3];
-      this.state[14] = this.state[4];
+      this._matrix[1] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      this._matrix[2] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      this._matrix[3] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      this._matrix[4] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
+      this._matrix[11] = this._matrix[1];
+      this._matrix[12] = this._matrix[2];
+      this._matrix[13] = this._matrix[3];
+      this._matrix[14] = this._matrix[4];
     }
 
-    this.state[6] = OpCodes.Pack32LE(this._nonce[0], this._nonce[1], this._nonce[2], this._nonce[3]);
-    this.state[7] = OpCodes.Pack32LE(this._nonce[4], this._nonce[5], this._nonce[6], this._nonce[7]);
+    this._matrix[6] = OpCodes.Pack32LE(this._nonce[0], this._nonce[1], this._nonce[2], this._nonce[3]);
+    this._matrix[7] = OpCodes.Pack32LE(this._nonce[4], this._nonce[5], this._nonce[6], this._nonce[7]);
 
-    this.counter = [0, 0];
-    this.state[8] = 0;
-    this.state[9] = 0;
+    this._blockNumber = [0, 0];
+    this._matrix[8] = 0;
+    this._matrix[9] = 0;
 
     this.keystreamBuffer = [];
     this.bufferIndex = 0;
   }
 
+  /**
+   * @param {uint32} y0
+   * @param {uint32} y1
+   * @param {uint32} y2
+   * @param {uint32} y3
+   * @returns {uint32[]}
+   */
   _quarterRound(y0, y1, y2, y3) {
-    const z1 = OpCodes.XorN(y1, OpCodes.RotL32(OpCodes.Add32(y0, y3), 7));
-    const z2 = OpCodes.XorN(y2, OpCodes.RotL32(OpCodes.Add32(z1, y0), 9));
-    const z3 = OpCodes.XorN(y3, OpCodes.RotL32(OpCodes.Add32(z2, z1), 13));
-    const z0 = OpCodes.XorN(y0, OpCodes.RotL32(OpCodes.Add32(z3, z2), 18));
+    const z1 = OpCodes.Xor32(y1, OpCodes.RotL32(OpCodes.Add32(y0, y3), 7));
+    const z2 = OpCodes.Xor32(y2, OpCodes.RotL32(OpCodes.Add32(z1, y0), 9));
+    const z3 = OpCodes.Xor32(y3, OpCodes.RotL32(OpCodes.Add32(z2, z1), 13));
+    const z0 = OpCodes.Xor32(y0, OpCodes.RotL32(OpCodes.Add32(z3, z2), 18));
 
-    return [OpCodes.ToUint32(z0), OpCodes.ToUint32(z1), OpCodes.ToUint32(z2), OpCodes.ToUint32(z3)];
+    /** @type {uint32[]} */
+    const words = [OpCodes.ToUint32(z0), OpCodes.ToUint32(z1), OpCodes.ToUint32(z2), OpCodes.ToUint32(z3)];
+    return words;
   }
 
-  _salsa20Core(input) {
+  /**
+   * @param {uint32[]} words
+   * @returns {uint32[]}
+   */
+  _salsa20Core(words) {
+    /** @type {uint32[]} */
     const w = new Array(16);
+    /** @type {uint32[]} */
     const x = new Array(16);
+    /** @type {uint32[]} */
     const y = new Array(16);
+    /** @type {uint32[]} */
     const t = new Array(4);
 
     for (let i = 0; i < 16; i++) {
-      x[i] = y[i] = input[i];
+      x[i] = y[i] = words[i];
     }
 
     for (let i = 0; i < 20; i++) {
@@ -220,10 +281,10 @@ class Salsa20Instance extends IAlgorithmInstance {
           t[m] = x[(5*j + 4*m) % 16];
         }
 
-        t[1] = OpCodes.XorN(t[1], OpCodes.RotL32(OpCodes.Add32(t[0], t[3]), 7));
-        t[2] = OpCodes.XorN(t[2], OpCodes.RotL32(OpCodes.Add32(t[1], t[0]), 9));
-        t[3] = OpCodes.XorN(t[3], OpCodes.RotL32(OpCodes.Add32(t[2], t[1]), 13));
-        t[0] = OpCodes.XorN(t[0], OpCodes.RotL32(OpCodes.Add32(t[3], t[2]), 18));
+        t[1] = OpCodes.Xor32(t[1], OpCodes.RotL32(OpCodes.Add32(t[0], t[3]), 7));
+        t[2] = OpCodes.Xor32(t[2], OpCodes.RotL32(OpCodes.Add32(t[1], t[0]), 9));
+        t[3] = OpCodes.Xor32(t[3], OpCodes.RotL32(OpCodes.Add32(t[2], t[1]), 13));
+        t[0] = OpCodes.Xor32(t[0], OpCodes.RotL32(OpCodes.Add32(t[3], t[2]), 18));
 
         for (let m = 0; m < 4; m++) {
           w[4*j + (j+m) % 4] = t[m];
@@ -234,34 +295,46 @@ class Salsa20Instance extends IAlgorithmInstance {
       }
     }
 
-    const output = new Array(16);
+    /** @type {uint32[]} */
+    const sum = new Array(16);
     for (let i = 0; i < 16; i++) {
-      output[i] = OpCodes.Add32(x[i], y[i]);
+      sum[i] = OpCodes.Add32(x[i], y[i]);
     }
 
-    return output;
+    return sum;
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   _generateBlock() {
-    this.state[8] = this.counter[0];
-    this.state[9] = this.counter[1];
+    this._matrix[8] = this._blockNumber[0];
+    this._matrix[9] = this._blockNumber[1];
 
-    const output = this._salsa20Core(this.state);
+    /** @type {uint32[]} */
+    const words = this._salsa20Core(this._matrix);
 
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
-      const bytes = OpCodes.Unpack32LE(output[i]);
-      keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+      const bytes = OpCodes.Unpack32LE(words[i]);
+      keystream.push(bytes[0]);
+      keystream.push(bytes[1]);
+      keystream.push(bytes[2]);
+      keystream.push(bytes[3]);
     }
 
-    this.counter[0] = OpCodes.Add32(this.counter[0], 1);
-    if (this.counter[0] === 0) {
-      this.counter[1] = OpCodes.Add32(this.counter[1], 1);
+    this._blockNumber[0] = OpCodes.Add32(this._blockNumber[0], 1);
+    if (this._blockNumber[0] === 0) {
+      this._blockNumber[1] = OpCodes.Add32(this._blockNumber[1], 1);
     }
 
     return keystream;
   }
 
+  /**
+   * @returns {uint8}
+   */
   _getNextKeystreamByte() {
     if (this.bufferIndex >= this.keystreamBuffer.length) {
       this.keystreamBuffer = this._generateBlock();

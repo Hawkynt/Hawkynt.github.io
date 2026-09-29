@@ -153,6 +153,22 @@
   }
 
   /**
+   * Ciphertext and tag of one EAX encryption
+   */
+  class EaxSealed {
+    /**
+     * @param {uint8[]} ciphertext - Encrypted message
+     * @param {uint8[]} tag - Authentication tag
+     */
+    constructor(ciphertext, tag) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.tag = tag;
+    }
+  }
+
+  /**
  * EaxMode cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -161,18 +177,24 @@
   class EaxModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EaxAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.aad = [];
+      /** @type {int32} */
       this.tagSize = 16; // Default tag size
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -190,7 +212,7 @@
 
     /**
      * Set the nonce for EAX mode
-     * @param {Array} nonce - Nonce (arbitrary length)
+     * @param {uint8[]} nonce - Nonce (arbitrary length)
      */
     setNonce(nonce) {
       if (!nonce || nonce.length === 0) {
@@ -201,15 +223,21 @@
 
     /**
      * Set associated authenticated data
-     * @param {Array} aad - Associated data to authenticate (optional)
+     * @param {uint8[]} aad - Associated data to authenticate (optional)
      */
     setAAD(aad) {
-      this.aad = aad ? [...aad] : [];
+      if (aad) {
+        this.aad = [...aad];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.aad = empty;
+      }
     }
 
     /**
      * Set authentication tag size
-     * @param {number} size - Tag size in bytes (1-16)
+     * @param {int32} size - Tag size in bytes (1-16)
      */
     setTagSize(size) {
       if (size < 1 || size > 16) {
@@ -255,7 +283,13 @@
         // Encryption mode - return concatenated ciphertext+tag for test compatibility
         // Note: Empty plaintext is allowed in EAX
         const result = this._encrypt();
-        return [...result.ciphertext, ...result.tag];
+        /** @type {uint8[]} */
+        const ciphertext = result.ciphertext;
+        /** @type {uint8[]} */
+        const tag = result.tag;
+        /** @type {uint8[]} */
+        const sealed = [...ciphertext, ...tag];
+        return sealed;
       } else {
         // Decryption mode - expect tag at end
         if (this.inputBuffer.length < this.tagSize) {
@@ -265,6 +299,9 @@
       }
     }
 
+    /**
+     * @returns {EaxSealed}
+     */
     _encrypt() {
       const blockSize = this.blockCipher.BlockSize;
 
@@ -281,9 +318,10 @@
       const CPrime = this._omac(2, ciphertext);
 
       // Step 5: Compute tag = N XOR H XOR C'
+      /** @type {uint8[]} */
       const tag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
-        tag[i] = OpCodes.XorN(OpCodes.XorN(N[i], H[i]), CPrime[i]);
+        tag[i] = OpCodes.Xor8(OpCodes.Xor8(N[i], H[i]), CPrime[i]);
       }
 
       // Clear sensitive data
@@ -293,9 +331,13 @@
       OpCodes.ClearArray(CPrime);
       this.inputBuffer = [];
 
-      return { ciphertext: ciphertext, tag: tag };
+      const sealed = new EaxSealed(ciphertext, tag);
+      return sealed;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const blockSize = this.blockCipher.BlockSize;
 
@@ -313,9 +355,10 @@
       const CPrime = this._omac(2, ciphertext);
 
       // Step 4: Compute expected tag = N XOR H XOR C'
+      /** @type {uint8[]} */
       const expectedTag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
-        expectedTag[i] = OpCodes.XorN(OpCodes.XorN(N[i], H[i]), CPrime[i]);
+        expectedTag[i] = OpCodes.Xor8(OpCodes.Xor8(N[i], H[i]), CPrime[i]);
       }
 
       // Step 5: Verify tag
@@ -340,14 +383,15 @@
     /**
      * CMAC computation for EAX (as per specification)
      * EAX uses CMAC with prefix: (blockSize-1) zeros || tag || data
-     * @param {number} tag - Tag byte (0 for nonce, 1 for header, 2 for ciphertext)
-     * @param {Array} data - Data to authenticate
-     * @returns {Array} CMAC output (blockSize bytes)
+     * @param {uint8} tag - Tag byte (0 for nonce, 1 for header, 2 for ciphertext)
+     * @param {uint8[]} data - Data to authenticate
+     * @returns {uint8[]} CMAC output (blockSize bytes)
      */
     _omac(tag, data) {
       const blockSize = this.blockCipher.BlockSize;
 
       // Build message: (blockSize-1) zero bytes || tag byte || data
+      /** @type {uint8[]} */
       const message = [];
       for (let i = 0; i < blockSize - 1; i++) {
         message.push(0);
@@ -356,25 +400,26 @@
       for (let _i = 0; _i < data.length; _i++) message.push(data[_i]);
 
       // Compute CMAC subkeys (K1 and K2)
-      const L = this._aesEncrypt(new Array(blockSize).fill(0));
+      const L = this._aesEncrypt(OpCodes.CreateArray(blockSize, 0));
       const K1 = this._leftShift(L);
-      if (OpCodes.AndN(L[0], 0x80)) {
-        K1[blockSize - 1] = OpCodes.XorN(K1[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B); // Rb constant
+      if (OpCodes.And32(L[0], 0x80)) {
+        K1[blockSize - 1] = OpCodes.Xor8(K1[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B); // Rb constant
       }
 
       const K2 = this._leftShift(K1);
-      if (OpCodes.AndN(K1[0], 0x80)) {
-        K2[blockSize - 1] = OpCodes.XorN(K2[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B);
+      if (OpCodes.And32(K1[0], 0x80)) {
+        K2[blockSize - 1] = OpCodes.Xor8(K2[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B);
       }
 
       // CMAC computation
-      let mac = new Array(blockSize).fill(0);
+      let mac = OpCodes.CreateArray(blockSize, 0);
       const numBlocks = Math.ceil(message.length / blockSize);
 
       if (numBlocks === 0) {
         // Empty message case
+        /** @type {uint8[]} */
         const finalBlock = [...K2];
-        finalBlock[0] = OpCodes.XorN(finalBlock[0], 0x80); // Padding
+        finalBlock[0] = OpCodes.Xor8(finalBlock[0], 0x80); // Padding
         mac = this._aesEncrypt(finalBlock);
         return mac;
       }
@@ -383,7 +428,7 @@
       for (let i = 0; i < numBlocks - 1; i++) {
         const block = message.slice(i * blockSize, (i + 1) * blockSize);
         for (let j = 0; j < blockSize; j++) {
-          mac[j] = OpCodes.XorN(mac[j], block[j]);
+          mac[j] = OpCodes.Xor8(mac[j], block[j]);
         }
         mac = this._aesEncrypt(mac);
       }
@@ -395,16 +440,17 @@
       if (lastBlock.length === blockSize) {
         // Complete final block - use K1
         for (let j = 0; j < blockSize; j++) {
-          mac[j] = OpCodes.XorN(mac[j], OpCodes.XorN(lastBlock[j], K1[j]));
+          mac[j] = OpCodes.Xor8(mac[j], OpCodes.Xor8(lastBlock[j], K1[j]));
         }
       } else {
         // Incomplete final block - use K2 and padding
+        /** @type {uint8[]} */
         const paddedBlock = [...lastBlock, 0x80];
         while (paddedBlock.length < blockSize) {
           paddedBlock.push(0x00);
         }
         for (let j = 0; j < blockSize; j++) {
-          mac[j] = OpCodes.XorN(mac[j], OpCodes.XorN(paddedBlock[j], K2[j]));
+          mac[j] = OpCodes.Xor8(mac[j], OpCodes.Xor8(paddedBlock[j], K2[j]));
         }
       }
 
@@ -414,14 +460,18 @@
 
     /**
      * Left shift for CMAC subkey generation
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
     _leftShift(data) {
+      /** @type {uint8[]} */
       const result = new Array(data.length);
+      /** @type {uint32} */
       let carry = 0;
 
       for (let i = data.length - 1; i >= 0; i--) {
-        const newCarry = OpCodes.AndN(data[i], 0x80) ? 1 : 0;
-        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(data[i], 1), carry), 0xFF);
+        const newCarry = OpCodes.And32(data[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(data[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
@@ -430,23 +480,30 @@
 
     /**
      * AES encryption helper using the block cipher instance
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _aesEncrypt(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const encrypted = cipher.Result();
+      return encrypted;
     }
 
     /**
      * CTR mode implementation
-     * @param {Array} data - Data to encrypt/decrypt
-     * @param {Array} iv - Initial counter value
-     * @returns {Array} Output data
+     * @param {uint8[]} data - Data to encrypt/decrypt
+     * @param {uint8[]} iv - Initial counter value
+     * @returns {uint8[]} Output data
      */
     _ctrMode(data, iv) {
       const blockSize = this.blockCipher.BlockSize;
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {uint8[]} */
       let counter = [...iv];
 
       for (let i = 0; i < data.length; i += blockSize) {
@@ -454,14 +511,16 @@
         const inputBlock = data.slice(i, i + remainingBytes);
 
         // Encrypt counter
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key;
         cipher.Feed(counter);
+        /** @type {uint8[]} */
         const keystream = cipher.Result();
 
         // XOR with data
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(OpCodes.XorN(inputBlock[j], keystream[j]));
+          output.push(OpCodes.Xor8(inputBlock[j], keystream[j]));
         }
 
         // Increment counter
@@ -474,11 +533,11 @@
 
     /**
      * Increment counter for CTR mode
-     * @param {Array} counter - Counter to increment (modified in place)
+     * @param {uint8[]} counter - Counter to increment (modified in place)
      */
     _incrementCounter(counter) {
       for (let i = counter.length - 1; i >= 0; i--) {
-        counter[i] = OpCodes.AndN(counter[i] + 1, 0xFF);
+        counter[i] = OpCodes.And32(counter[i] + 1, 0xFF);
         if (counter[i] !== 0) break; // No carry
       }
     }

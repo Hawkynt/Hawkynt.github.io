@@ -125,11 +125,15 @@
       ];
 
       // ZUC constants
+      /** @type {uint32} */
       this.MASK31 = 0x7FFFFFFF; // 2^31 - 1
+      /** @type {int32} */
       this.LFSR_SIZE = 16;
+      /** @type {int32} */
       this.INIT_ROUNDS = 32;
 
       // ZUC S-boxes (from 3GPP specification)
+      /** @type {uint8[]} */
       this.S0 = [
         0x3E,0x72,0x5B,0x47,0xCA,0xE0,0x00,0x33,0x04,0xD1,0x54,0x98,0x09,0xB9,0x6D,0xCB,
         0x7B,0x1B,0xF9,0x32,0xAF,0x9D,0x6A,0xA5,0xB8,0x2D,0xFC,0x1D,0x08,0x53,0x03,0x90,
@@ -149,6 +153,7 @@
         0x8D,0x27,0x1A,0xDB,0x81,0xB3,0xA0,0xF4,0x45,0x7A,0x19,0xDF,0xEE,0x78,0x34,0x60
       ];
 
+      /** @type {uint8[]} */
       this.S1 = [
         0x55,0xC2,0x63,0x71,0x3B,0xC8,0x47,0x86,0x9F,0x3C,0xDA,0x5B,0x29,0xAA,0xFD,0x77,
         0x8C,0xC5,0x94,0x0C,0xA6,0x1A,0x13,0x00,0xE3,0xA8,0x16,0x72,0x40,0xF9,0xF8,0x42,
@@ -169,6 +174,7 @@
       ];
 
       // D constants for LFSR operations
+      /** @type {uint16[]} */
       this.D = [
         0x44D7, 0x26BC, 0x626B, 0x135E, 0x5789, 0x35E2, 0x7135, 0x09AF,
         0x4D78, 0x2F13, 0x6BC4, 0x1AF1, 0x5E26, 0x3C4D, 0x789A, 0x47AC
@@ -196,22 +202,41 @@
   class ZUCInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ZUCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // ZUC state
-      this.LFSR = new Array(this.algorithm.LFSR_SIZE);  // 16 x 31-bit registers
+      /** @type {uint8[]} */
+      this._s0 = algorithm.S0;
+      /** @type {uint8[]} */
+      this._s1 = algorithm.S1;
+      /** @type {uint16[]} */
+      this._d = algorithm.D;
+      /** @type {uint32} */
+      this._mask31 = algorithm.MASK31;
+      /** @type {int32} */
+      this._initRounds = algorithm.INIT_ROUNDS;
+      /** @type {uint32[]} */
+      this.LFSR = new Array(algorithm.LFSR_SIZE);  // 16 x 31-bit registers
+      /** @type {uint32[]} */
       this.X = new Array(4);                           // Bit reorganization registers
+      /** @type {uint32} */
       this.R1 = 0;                                     // Nonlinear function register 1
+      /** @type {uint32} */
       this.R2 = 0;                                     // Nonlinear function register 2
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -234,7 +259,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid ZUC key size: ${keyBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error("Invalid ZUC key size: " + keyBytes.length + " bytes. Requires exactly 16 bytes (128 bits)");
       }
 
       this._key = [...keyBytes];
@@ -271,7 +296,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`Invalid ZUC IV size: ${ivBytes.length} bytes. Requires exactly 16 bytes (128 bits)`);
+        throw new Error("Invalid ZUC IV size: " + ivBytes.length + " bytes. Requires exactly 16 bytes (128 bits)");
       }
 
       this._iv = [...ivBytes];
@@ -332,6 +357,7 @@
         throw new Error("ZUC not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data in 4-byte (32-bit word) chunks
@@ -363,11 +389,11 @@
           OpCodes.Or32(
             OpCodes.Or32(
               OpCodes.Shl32(this._key[i], 23),
-              OpCodes.Shl32(this.algorithm.D[i], 8)
+              OpCodes.Shl32(this._d[i], 8)
             ),
             this._iv[i]
           ),
-          this.algorithm.MASK31
+          this._mask31
         );
       }
 
@@ -375,7 +401,7 @@
       this.R2 = 0;
 
       // Initialization phase (32 iterations without output)
-      for (let i = 0; i < this.algorithm.INIT_ROUNDS; i++) {
+      for (let i = 0; i < this._initRounds; i++) {
         this._bitReorganization();
         const W = this._nonlinearFunction();
         this._LFSRWithInitialization(OpCodes.And32(OpCodes.Shr32(W, 1), 0x7FFFFFFF));
@@ -390,9 +416,14 @@
     }
 
     // LFSR step with initialization feedback
+    /**
+     * @param {uint32} u
+     */
     _LFSRWithInitialization(u) {
       // BUG FIX: Must use AddM (modular addition mod 2^31-1) for all additions
+      /** @type {uint32} */
       let f = this.LFSR[0];
+      /** @type {uint32} */
       let v = this._mulByPow2(this.LFSR[0], 8);
       f = this._AddM(f, v);
       v = this._mulByPow2(this.LFSR[4], 20);
@@ -415,7 +446,9 @@
     // LFSR step without initialization feedback (working mode)
     _LFSRWithoutInitialization() {
       // BUG FIX: Must use AddM (modular addition mod 2^31-1) for all additions
+      /** @type {uint32} */
       let f = this.LFSR[0];
+      /** @type {uint32} */
       let v = this._mulByPow2(this.LFSR[0], 8);
       f = this._AddM(f, v);
       v = this._mulByPow2(this.LFSR[4], 20);
@@ -435,21 +468,31 @@
     }
 
     // Modular addition mod (2^31 - 1) - from BouncyCastle
+    /**
+     * @param {uint32} a
+     * @param {uint32} b
+     * @returns {uint32}
+     */
     _AddM(a, b) {
-      const c = a + b;
-      return OpCodes.And32(c, 0x7FFFFFFF) + OpCodes.Shr32(c, 31);
+      const c = OpCodes.Add32(a, b);
+      return OpCodes.Add32(OpCodes.And32(c, 0x7FFFFFFF), OpCodes.Shr32(c, 31));
     }
 
     // Multiplication by 2^k modulo (2^31 - 1)
+    /**
+     * @param {uint32} x
+     * @param {int32} k
+     * @returns {uint32}
+     */
     _mulByPow2(x, k) {
-      x = OpCodes.And32(x, this.algorithm.MASK31);
+      x = OpCodes.And32(x, this._mask31);
       k = k % 31;
       const result = OpCodes.And32(
         OpCodes.Or32(
           OpCodes.Shl32(x, k),
           OpCodes.Shr32(x, 31 - k)
         ),
-        this.algorithm.MASK31
+        this._mask31
       );
       return result;
     }
@@ -483,22 +526,30 @@
     }
 
     // S-box lookup (32-bit word composed of 4 bytes)
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     _sbox(x) {
       return OpCodes.ToUint32(
         OpCodes.Or32(
           OpCodes.Or32(
             OpCodes.Or32(
-              OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24),
-              OpCodes.Shl32(this.algorithm.S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16)
+              OpCodes.Shl32(this._s0[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24),
+              OpCodes.Shl32(this._s1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16)
             ),
-            OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8)
+            OpCodes.Shl32(this._s0[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8)
           ),
-          this.algorithm.S1[OpCodes.And32(x, 0xFF)]
+          this._s1[OpCodes.And32(x, 0xFF)]
         )
       );
     }
 
     // Linear transformation L1
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     _L1(x) {
       return OpCodes.ToUint32(
         OpCodes.Xor32(
@@ -515,6 +566,10 @@
     }
 
     // Linear transformation L2
+    /**
+     * @param {uint32} x
+     * @returns {uint32}
+     */
     _L2(x) {
       return OpCodes.ToUint32(
         OpCodes.Xor32(
@@ -531,11 +586,14 @@
     }
 
     // Nonlinear function F
+    /**
+     * @returns {uint32}
+     */
     _nonlinearFunction() {
       // BUG FIX: The return value should be W, not (X[0]^R1)
       // W is calculated from BRC[0], F[0] (R1), and F[1] (R2)
-      const W = OpCodes.ToUint32(OpCodes.Xor32(this.X[0], this.R1) + this.R2);
-      const W1 = OpCodes.ToUint32(this.R1 + this.X[1]);
+      const W = OpCodes.Add32(OpCodes.Xor32(this.X[0], this.R1), this.R2);
+      const W1 = OpCodes.Add32(this.R1, this.X[1]);
       const W2 = OpCodes.ToUint32(OpCodes.Xor32(this.R2, this.X[2]));
       const u = this._L1(OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(W1, 16), OpCodes.Shr32(W2, 16))));
       const v = this._L2(OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(W2, 16), OpCodes.Shr32(W1, 16))));
@@ -547,6 +605,9 @@
     }
 
     // Generate keystream word
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamWord() {
       this._bitReorganization();
       const Z = OpCodes.Xor32(this._nonlinearFunction(), this.X[3]);  // BUG FIX: Must XOR with BRC[3] (which is X[3])

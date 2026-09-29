@@ -61,6 +61,7 @@
   // ===== SPARKLE PERMUTATION (Reused from sparkle-hash.js) =====
 
   // Sparkle round constants
+  /** @type {uint32[]} */
   const RCON = [
     0xB7E15162, 0xBF715880, 0x38B4DA56, 0x324E7738,
     0xBB1185EB, 0x4F7C7B57, 0xCFBFA1C8, 0xC2B3293D
@@ -68,31 +69,31 @@
 
   /**
    * ARXBox operation: ADD, ROTATE, XOR
-   * @param {number} rc - Round constant
-   * @param {number} s00 - First state word
-   * @param {number} s01 - Second state word
-   * @returns {Object} {s00, s01} - Updated state words
+   * @param {uint32} rc - Round constant
+   * @param {uint32} s00 - First state word
+   * @param {uint32} s01 - Second state word
+   * @returns {uint32[]} [s00, s01] - Updated state words
    */
   function ArxBox(rc, s00, s01) {
     s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 31));
-    s01 ^= OpCodes.RotR32(s00, 24);
-    s00 ^= rc;
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 24));
+    s00 = OpCodes.Xor32(s00, rc);
     s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 17));
-    s01 ^= OpCodes.RotR32(s00, 17);
-    s00 ^= rc;
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 17));
+    s00 = OpCodes.Xor32(s00, rc);
     s00 = OpCodes.ToDWord(s00 + s01);
-    s01 ^= OpCodes.RotR32(s00, 31);
-    s00 ^= rc;
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 31));
+    s00 = OpCodes.Xor32(s00, rc);
     s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 24));
-    s01 ^= OpCodes.RotR32(s00, 16);
-    s00 ^= rc;
-    return { s00: OpCodes.ToUint32(s00), s01: OpCodes.ToUint32(s01) };
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 16));
+    s00 = OpCodes.Xor32(s00, rc);
+    return [OpCodes.ToUint32(s00), OpCodes.ToUint32(s01)];
   }
 
   /**
    * ELL function: Linear layer mixing operation
-   * @param {number} x - Input word
-   * @returns {number} Mixed word
+   * @param {uint32} x - Input word
+   * @returns {uint32} Mixed word
    */
   function ELL(x) {
     return OpCodes.Xor32(OpCodes.RotR32(x, 16), OpCodes.And32(x, 0xFFFF));
@@ -100,8 +101,8 @@
 
   /**
    * Sparkle permutation for 256-bit state (8 words) - SPARKLE-256
-   * @param {Array<number>} state - 8-word state array
-   * @param {number} steps - Number of steps (7 or 10)
+   * @param {uint32[]} state - 8-word state array
+   * @param {int32} steps - Number of steps (7 or 10)
    */
   function SparkleOpt8(state, steps) {
     let s00 = state[0];
@@ -115,26 +116,27 @@
 
     for (let step = 0; step < steps; ++step) {
       // Add round constant
-      s01 ^= RCON[OpCodes.And32(step, 7)];
-      s03 ^= step;
+      s01 = OpCodes.Xor32(s01, RCON[OpCodes.And32(step, 7)]);
+      s03 = OpCodes.Xor32(s03, step);
 
       // ARXBox layer
+      /** @type {uint32[]} */
       let result;
       result = ArxBox(RCON[0], s00, s01);
-      s00 = result.s00;
-      s01 = result.s01;
+      s00 = result[0];
+      s01 = result[1];
 
       result = ArxBox(RCON[1], s02, s03);
-      s02 = result.s00;
-      s03 = result.s01;
+      s02 = result[0];
+      s03 = result[1];
 
       result = ArxBox(RCON[2], s04, s05);
-      s04 = result.s00;
-      s05 = result.s01;
+      s04 = result[0];
+      s05 = result[1];
 
       result = ArxBox(RCON[3], s06, s07);
-      s06 = result.s00;
-      s07 = result.s01;
+      s06 = result[0];
+      s07 = result[1];
 
       // Linear layer
       const t02 = ELL(OpCodes.Xor32(s00, s02));
@@ -168,8 +170,8 @@
 
   /**
    * Sparkle permutation for 384-bit state (12 words) - SPARKLE-384
-   * @param {Array<number>} state - 12-word state array
-   * @param {number} steps - Number of steps (7 or 11)
+   * @param {uint32[]} state - 12-word state array
+   * @param {int32} steps - Number of steps (7 or 11)
    */
   function SparkleOpt12(state, steps) {
     let s00 = state[0];
@@ -187,34 +189,35 @@
 
     for (let step = 0; step < steps; ++step) {
       // Add round constant
-      s01 ^= RCON[OpCodes.And32(step, 7)];
-      s03 ^= step;
+      s01 = OpCodes.Xor32(s01, RCON[OpCodes.And32(step, 7)]);
+      s03 = OpCodes.Xor32(s03, step);
 
       // ARXBox layer
+      /** @type {uint32[]} */
       let result;
       result = ArxBox(RCON[0], s00, s01);
-      s00 = result.s00;
-      s01 = result.s01;
+      s00 = result[0];
+      s01 = result[1];
 
       result = ArxBox(RCON[1], s02, s03);
-      s02 = result.s00;
-      s03 = result.s01;
+      s02 = result[0];
+      s03 = result[1];
 
       result = ArxBox(RCON[2], s04, s05);
-      s04 = result.s00;
-      s05 = result.s01;
+      s04 = result[0];
+      s05 = result[1];
 
       result = ArxBox(RCON[3], s06, s07);
-      s06 = result.s00;
-      s07 = result.s01;
+      s06 = result[0];
+      s07 = result[1];
 
       result = ArxBox(RCON[4], s08, s09);
-      s08 = result.s00;
-      s09 = result.s01;
+      s08 = result[0];
+      s09 = result[1];
 
       result = ArxBox(RCON[5], s10, s11);
-      s10 = result.s00;
-      s11 = result.s01;
+      s10 = result[0];
+      s11 = result[1];
 
       // Linear layer
       const t024 = ELL(OpCodes.Xor32(OpCodes.Xor32(s00, s02), s04));
@@ -258,8 +261,8 @@
 
   /**
    * Sparkle permutation for 512-bit state (16 words) - SPARKLE-512
-   * @param {Array<number>} state - 16-word state array
-   * @param {number} steps - Number of steps (8 or 12)
+   * @param {uint32[]} state - 16-word state array
+   * @param {int32} steps - Number of steps (8 or 12)
    */
   function SparkleOpt16(state, steps) {
     let s00 = state[0];
@@ -281,42 +284,43 @@
 
     for (let step = 0; step < steps; ++step) {
       // Add round constant
-      s01 ^= RCON[OpCodes.And32(step, 7)];
-      s03 ^= step;
+      s01 = OpCodes.Xor32(s01, RCON[OpCodes.And32(step, 7)]);
+      s03 = OpCodes.Xor32(s03, step);
 
       // ARXBox layer
+      /** @type {uint32[]} */
       let result;
       result = ArxBox(RCON[0], s00, s01);
-      s00 = result.s00;
-      s01 = result.s01;
+      s00 = result[0];
+      s01 = result[1];
 
       result = ArxBox(RCON[1], s02, s03);
-      s02 = result.s00;
-      s03 = result.s01;
+      s02 = result[0];
+      s03 = result[1];
 
       result = ArxBox(RCON[2], s04, s05);
-      s04 = result.s00;
-      s05 = result.s01;
+      s04 = result[0];
+      s05 = result[1];
 
       result = ArxBox(RCON[3], s06, s07);
-      s06 = result.s00;
-      s07 = result.s01;
+      s06 = result[0];
+      s07 = result[1];
 
       result = ArxBox(RCON[4], s08, s09);
-      s08 = result.s00;
-      s09 = result.s01;
+      s08 = result[0];
+      s09 = result[1];
 
       result = ArxBox(RCON[5], s10, s11);
-      s10 = result.s00;
-      s11 = result.s01;
+      s10 = result[0];
+      s11 = result[1];
 
       result = ArxBox(RCON[6], s12, s13);
-      s12 = result.s00;
-      s13 = result.s01;
+      s12 = result[0];
+      s13 = result[1];
 
       result = ArxBox(RCON[7], s14, s15);
-      s14 = result.s00;
-      s15 = result.s01;
+      s14 = result[0];
+      s15 = result[1];
 
       // Linear layer
       const t0246 = ELL(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s00, s02), s04), s06));
@@ -775,6 +779,68 @@
 
   // ===== SHARED SCHWAEMM INSTANCE IMPLEMENTATION =====
 
+  // Size parameters of one Schwaemm variant
+  class SchwaemmConfig {
+    constructor() {
+      /** @type {int32} */
+      this.STATE_WORDS = 0;
+      /** @type {int32} */
+      this.RATE_BYTES = 0;
+      /** @type {int32} */
+      this.STEPS_SLIM = 0;
+      /** @type {int32} */
+      this.STEPS_BIG = 0;
+      /** @type {int32} */
+      this.KEY_BYTES = 0;
+      /** @type {int32} */
+      this.NONCE_BYTES = 0;
+      /** @type {int32} */
+      this.TAG_BYTES = 0;
+    }
+  }
+
+  /**
+   * @param {int32} stateWords
+   * @param {int32} rateBytes
+   * @param {int32} stepsSlim
+   * @param {int32} stepsBig
+   * @param {int32} keyBytes
+   * @param {int32} nonceBytes
+   * @param {int32} tagBytes
+   * @returns {SchwaemmConfig}
+   */
+  function makeSchwaemmConfig(stateWords, rateBytes, stepsSlim, stepsBig, keyBytes, nonceBytes, tagBytes) {
+    const c = new SchwaemmConfig();
+    c.STATE_WORDS = stateWords;
+    c.RATE_BYTES = rateBytes;
+    c.STEPS_SLIM = stepsSlim;
+    c.STEPS_BIG = stepsBig;
+    c.KEY_BYTES = keyBytes;
+    c.NONCE_BYTES = nonceBytes;
+    c.TAG_BYTES = tagBytes;
+    return c;
+  }
+
+  /**
+   * @param {string} variant - one of 128-128, 256-128, 192-192, 256-256
+   * @returns {SchwaemmConfig|null} the sizes, or null for an unknown variant
+   */
+  function schwaemmConfig(variant) {
+    if (variant === '128-128') {
+      return makeSchwaemmConfig(8, 16, 7, 10, 16, 16, 16);
+    }
+    if (variant === '256-128') {
+      return makeSchwaemmConfig(12, 32, 7, 11, 16, 32, 16);
+    }
+    if (variant === '192-192') {
+      return makeSchwaemmConfig(12, 24, 7, 11, 24, 24, 24);
+    }
+    if (variant === '256-256') {
+      return makeSchwaemmConfig(16, 32, 8, 12, 32, 32, 32);
+    }
+    return null;
+  }
+
   /**
  * Schwaemm cipher instance implementing Feed/Result pattern
  * @class
@@ -782,87 +848,71 @@
  */
 
   class SchwaemmInstance extends IAeadInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     * @param {string} variant - Schwaemm variant name
+     */
     constructor(algorithm, isInverse, variant) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Variant-specific configuration
-      const variants = {
-        '128-128': {
-          STATE_WORDS: 8,
-          RATE_BYTES: 16,
-          STEPS_SLIM: 7,
-          STEPS_BIG: 10,
-          KEY_BYTES: 16,
-          NONCE_BYTES: 16,
-          TAG_BYTES: 16,
-          permute: SparkleOpt8
-        },
-        '256-128': {
-          STATE_WORDS: 12,
-          RATE_BYTES: 32,
-          STEPS_SLIM: 7,
-          STEPS_BIG: 11,
-          KEY_BYTES: 16,
-          NONCE_BYTES: 32,
-          TAG_BYTES: 16,
-          permute: SparkleOpt12
-        },
-        '192-192': {
-          STATE_WORDS: 12,
-          RATE_BYTES: 24,
-          STEPS_SLIM: 7,
-          STEPS_BIG: 11,
-          KEY_BYTES: 24,
-          NONCE_BYTES: 24,
-          TAG_BYTES: 24,
-          permute: SparkleOpt12
-        },
-        '256-256': {
-          STATE_WORDS: 16,
-          RATE_BYTES: 32,
-          STEPS_SLIM: 8,
-          STEPS_BIG: 12,
-          KEY_BYTES: 32,
-          NONCE_BYTES: 32,
-          TAG_BYTES: 32,
-          permute: SparkleOpt16
-        }
-      };
-
-      const config = variants[variant];
+      const config = schwaemmConfig(variant);
       if (!config) {
-        throw new Error(`Unknown variant: ${variant}`);
+        throw new Error("Unknown variant: " + variant);
       }
 
       // Configuration
+      /** @type {string} */
       this.variant = variant;
+      /** @type {int32} */
       this.STATE_WORDS = config.STATE_WORDS;
+      /** @type {int32} */
       this.RATE_BYTES = config.RATE_BYTES;
+      /** @type {int32} */
       this.RATE_WORDS = config.RATE_BYTES / 4;
+      /** @type {int32} */
       this.STEPS_SLIM = config.STEPS_SLIM;
+      /** @type {int32} */
       this.STEPS_BIG = config.STEPS_BIG;
+      /** @type {int32} */
       this.KEY_BYTES = config.KEY_BYTES;
+      /** @type {int32} */
       this.NONCE_BYTES = config.NONCE_BYTES;
+      /** @type {int32} */
       this.TAG_BYTES = config.TAG_BYTES;
-      this.permute = config.permute;
+      /** @type {int32} */
       this.CAP_BRANS = (this.STATE_WORDS * 4 - this.RATE_BYTES) / 8;
+      /** @type {int32} */
       this.CAP_WORDS = (this.STATE_WORDS * 4 - this.RATE_BYTES) / 4;
+      /** @type {int32} */
       this.CAP_MASK = this.RATE_WORDS > this.CAP_WORDS ? this.CAP_WORDS - 1 : -1;
 
       // Domain separation constants (in little-endian byte position)
       const capBit = OpCodes.Shl32(1, this.CAP_BRANS);
+      /** @type {uint32} */
       this._A0 = OpCodes.Shl32(capBit, 24);
+      /** @type {uint32} */
       this._A1 = OpCodes.Shl32(OpCodes.Xor32(1, capBit), 24);
+      /** @type {uint32} */
       this._M2 = OpCodes.Shl32(OpCodes.Xor32(2, capBit), 24);
+      /** @type {uint32} */
       this._M3 = OpCodes.Shl32(OpCodes.Xor32(3, capBit), 24);
 
       // State
+      /** @type {uint32[]} */
       this.state = new Array(this.STATE_WORDS);
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -885,7 +935,7 @@
       }
 
       if (keyBytes.length !== this.KEY_BYTES) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.KEY_BYTES})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.KEY_BYTES + ")");
       }
 
       this._key = [...keyBytes];
@@ -902,6 +952,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -914,18 +967,24 @@
       }
 
       if (nonceBytes.length !== this.NONCE_BYTES) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${this.NONCE_BYTES})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + this.NONCE_BYTES + ")");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -939,6 +998,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -956,10 +1018,10 @@
       for (let i = 0; i < this.RATE_WORDS; ++i) {
         const offset = i * 4;
         this.state[i] = OpCodes.Pack32LE(
-          this._nonce[offset] || 0,
-          this._nonce[offset + 1] || 0,
-          this._nonce[offset + 2] || 0,
-          this._nonce[offset + 3] || 0
+          this._nonce[offset],
+          this._nonce[offset + 1],
+          this._nonce[offset + 2],
+          this._nonce[offset + 3]
         );
       }
 
@@ -976,9 +1038,33 @@
       }
 
       // Execute SPARKLE with big number of steps
-      this.permute(this.state, this.STEPS_BIG);
+      this._permute(this.state, this.STEPS_BIG);
 
       this.initialized = true;
+    }
+
+    /**
+     * Run the SPARKLE permutation that matches this variant's state size
+     * @param {uint32[]} words - state words
+     * @param {int32} steps - number of steps
+     */
+    _permute(words, steps) {
+      if (this.STATE_WORDS === 8) {
+        SparkleOpt8(words, steps);
+      } else if (this.STATE_WORDS === 12) {
+        SparkleOpt12(words, steps);
+      } else {
+        SparkleOpt16(words, steps);
+      }
+    }
+
+    /**
+     * Index of the capacity word that is mixed into rate word j
+     * @param {int32} j - rate word index
+     * @returns {int32} state index of that capacity word
+     */
+    _capWordIndex(j) {
+      return this.RATE_WORDS + OpCodes.ToInt(OpCodes.And32(j, this.CAP_MASK));
     }
 
     /**
@@ -990,7 +1076,7 @@
         const j = i + (this.RATE_WORDS / 2);
         const t = this.state[i];
         this.state[i] = OpCodes.Xor32(this.state[j], this.state[this.RATE_WORDS + i]);
-        this.state[j] ^= OpCodes.Xor32(t, this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]);
+        this.state[j] = OpCodes.Xor32(this.state[j], OpCodes.Xor32(t, this.state[this._capWordIndex(j)]));
       }
     }
 
@@ -998,11 +1084,12 @@
      * Combined Rho and rate-whitening operation
      * Processes a buffer and updates state
      * This is the core operation of the Schwaemm AEAD mode
-     * @param {Array<number>} buffer - Word buffer (RATE_WORDS 32-bit words)
+     * @param {uint32[]} buffer - Word buffer (RATE_WORDS 32-bit words)
      * @param {boolean} forEncryption - true for encryption, false for decryption
-     * @returns {Array<number>} - Output buffer (for decryption returns plaintext XOR)
+     * @returns {uint32[]} - Output buffer (for decryption returns plaintext XOR)
      */
     _rhoWhitening(buffer, forEncryption) {
+      /** @type {uint32[]} */
       const output = new Array(this.RATE_WORDS);
 
       for (let i = 0; i < this.RATE_WORDS / 2; ++i) {
@@ -1014,7 +1101,7 @@
         const d_i = buffer[i];
         const d_j = buffer[j];
 
-        const capJ = this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)];
+        const capJ = this.state[this._capWordIndex(j)];
 
         if (forEncryption) {
           this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_j, d_i), this.state[this.RATE_WORDS + i]);
@@ -1046,6 +1133,7 @@
       // Process full blocks (but not the last one)
       while (adlen > this.RATE_BYTES) {
         // Pack AD into word buffer
+        /** @type {uint32[]} */
         const buffer = new Array(this.RATE_WORDS);
         for (let i = 0; i < this.RATE_WORDS; ++i) {
           const offset = pos + i * 4;
@@ -1061,10 +1149,10 @@
           const d_j = buffer[j];
 
           this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_j, d_i), this.state[this.RATE_WORDS + i]);
-          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]));
+          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this._capWordIndex(j)]));
         }
 
-        this.permute(this.state, this.STEPS_SLIM);
+        this._permute(this.state, this.STEPS_SLIM);
         pos += this.RATE_BYTES;
         adlen -= this.RATE_BYTES;
       }
@@ -1072,14 +1160,16 @@
       // Process final block
       if (adlen < this.RATE_BYTES) {
         // Partial block - add padding
-        this.state[this.STATE_WORDS - 1] ^= this._A0;
+        this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._A0);
 
-        const buffer = new Array(this.RATE_BYTES).fill(0);
+        /** @type {uint8[]} */
+        const buffer = OpCodes.CreateArray(this.RATE_BYTES, 0);
         for (let i = 0; i < adlen; ++i) {
           buffer[i] = ad[pos + i];
         }
         buffer[adlen] = 0x80;
 
+        /** @type {uint32[]} */
         const wordBuffer = new Array(this.RATE_WORDS);
         for (let i = 0; i < this.RATE_WORDS; ++i) {
           wordBuffer[i] = OpCodes.Pack32LE(
@@ -1099,12 +1189,13 @@
           const d_j = wordBuffer[j];
 
           this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_j, d_i), this.state[this.RATE_WORDS + i]);
-          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]));
+          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this._capWordIndex(j)]));
         }
       } else {
         // Full final block
-        this.state[this.STATE_WORDS - 1] ^= this._A1;
+        this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._A1);
 
+        /** @type {uint32[]} */
         const buffer = new Array(this.RATE_WORDS);
         for (let i = 0; i < this.RATE_WORDS; ++i) {
           const offset = pos + i * 4;
@@ -1120,11 +1211,11 @@
           const d_j = buffer[j];
 
           this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_j, d_i), this.state[this.RATE_WORDS + i]);
-          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]));
+          this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(d_j, this.state[this._capWordIndex(j)]));
         }
       }
 
-      this.permute(this.state, this.STEPS_BIG);
+      this._permute(this.state, this.STEPS_BIG);
     }
 
     /**
@@ -1157,6 +1248,7 @@
       // Process associated data first
       this._processAAD();
 
+      /** @type {uint8[]} */
       const output = [];
       let mlen = this.inputBuffer.length;
       let pos = 0;
@@ -1172,12 +1264,17 @@
           // Process full blocks
           while (mlen > this.RATE_BYTES) {
             // XOR ciphertext with state to get plaintext
+            /** @type {uint8[]} */
             const stateBytes = [];
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const unpacked = OpCodes.Unpack32LE(this.state[i]);
-              stateBytes.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+              stateBytes.push(unpacked[0]);
+              stateBytes.push(unpacked[1]);
+              stateBytes.push(unpacked[2]);
+              stateBytes.push(unpacked[3]);
             }
 
+            /** @type {uint8[]} */
             const block = [];
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
@@ -1188,10 +1285,10 @@
             this._rho();
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const offset = i * 4;
-              this.state[i] ^= OpCodes.Pack32LE(block[offset], block[offset + 1], block[offset + 2], block[offset + 3]);
+              this.state[i] = OpCodes.Xor32(this.state[i], OpCodes.Pack32LE(block[offset], block[offset + 1], block[offset + 2], block[offset + 3]));
             }
 
-            this.permute(this.state, this.STEPS_SLIM);
+            this._permute(this.state, this.STEPS_SLIM);
             pos += this.RATE_BYTES;
             mlen -= this.RATE_BYTES;
           }
@@ -1199,45 +1296,51 @@
           // Process final block
           if (mlen === this.RATE_BYTES) {
             // Full final block
+            /** @type {uint8[]} */
             const stateBytes = [];
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const unpacked = OpCodes.Unpack32LE(this.state[i]);
-              stateBytes.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+              stateBytes.push(unpacked[0]);
+              stateBytes.push(unpacked[1]);
+              stateBytes.push(unpacked[2]);
+              stateBytes.push(unpacked[3]);
             }
 
+            /** @type {uint8[]} */
             const block = [];
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
             }
             for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
 
-            this.state[this.STATE_WORDS - 1] ^= this._M3;
+            this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._M3);
             this._rho();
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const offset = i * 4;
-              this.state[i] ^= OpCodes.Pack32LE(block[offset], block[offset + 1], block[offset + 2], block[offset + 3]);
+              this.state[i] = OpCodes.Xor32(this.state[i], OpCodes.Pack32LE(block[offset], block[offset + 1], block[offset + 2], block[offset + 3]));
             }
           } else if (mlen > 0) {
             // Partial final block
-            this.state[this.STATE_WORDS - 1] ^= this._M2;
+            this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._M2);
 
             // Pack ciphertext with state-derived padding into word buffer
-            const buffer = new Array(this.RATE_WORDS).fill(0);
+            /** @type {uint32[]} */
+            const buffer = OpCodes.CreateArray(this.RATE_WORDS, 0);
             for (let i = 0; i < mlen; ++i) {
-              buffer[OpCodes.Shr32(i, 2)] |= OpCodes.Shl32(OpCodes.And32(this.inputBuffer[pos + i], 0xFF), OpCodes.Shl32(OpCodes.And32(i, 3), 3));
+              buffer[OpCodes.Shr32(i, 2)] = OpCodes.Or32(buffer[OpCodes.Shr32(i, 2)], OpCodes.Shl32(OpCodes.And32(this.inputBuffer[pos + i], 0xFF), OpCodes.Shl32(OpCodes.And32(i, 3), 3)));
             }
 
             // For decryption partial block, copy remaining state into buffer
             if (mlen < this.RATE_BYTES) {
               const tmp = OpCodes.Shl32(OpCodes.And32(mlen, 3), 3);
-              buffer[OpCodes.Shr32(mlen, 2)] |= OpCodes.Shl32(OpCodes.Shr32(this.state[OpCodes.Shr32(mlen, 2)], tmp), tmp);
-              const startWord = OpCodes.Shr32(mlen, 2) + 1;
+              buffer[OpCodes.Shr32(mlen, 2)] = OpCodes.Or32(buffer[OpCodes.Shr32(mlen, 2)], OpCodes.Shl32(OpCodes.Shr32(this.state[OpCodes.Shr32(mlen, 2)], tmp), tmp));
+              const startWord = OpCodes.ToInt(OpCodes.Shr32(mlen, 2)) + 1;
               for (let i = startWord; i < this.RATE_WORDS; ++i) {
                 buffer[i] = this.state[i];
               }
             }
 
-            buffer[OpCodes.Shr32(mlen, 2)] ^= OpCodes.Shl32(0x80, OpCodes.Shl32(OpCodes.And32(mlen, 3), 3));
+            buffer[OpCodes.Shr32(mlen, 2)] = OpCodes.Xor32(buffer[OpCodes.Shr32(mlen, 2)], OpCodes.Shl32(0x80, OpCodes.Shl32(OpCodes.And32(mlen, 3), 3)));
 
             // Combined rho+whitening (decryption mode)
             for (let i = 0; i < this.RATE_WORDS / 2; ++i) {
@@ -1246,10 +1349,10 @@
               const s_j = this.state[j];
 
               this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(buffer[i], this.state[this.RATE_WORDS + i]));
-              this.state[j] = OpCodes.Xor32(s_i, OpCodes.Xor32(buffer[j], this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]));
+              this.state[j] = OpCodes.Xor32(s_i, OpCodes.Xor32(buffer[j], this.state[this._capWordIndex(j)]));
 
-              buffer[i] ^= s_i;
-              buffer[j] ^= s_j;
+              buffer[i] = OpCodes.Xor32(buffer[i], s_i);
+              buffer[j] = OpCodes.Xor32(buffer[j], s_j);
             }
 
             // Extract plaintext from buffer
@@ -1258,27 +1361,31 @@
             }
           }
 
-          this.permute(this.state, this.STEPS_BIG);
+          this._permute(this.state, this.STEPS_BIG);
         }
 
         // Generate and verify tag
         const keyWords = this.KEY_BYTES / 4;
         for (let i = 0; i < keyWords; ++i) {
           const offset = i * 4;
-          this.state[this.RATE_WORDS + i] ^= OpCodes.Pack32LE(
+          this.state[this.RATE_WORDS + i] = OpCodes.Xor32(this.state[this.RATE_WORDS + i], OpCodes.Pack32LE(
             this._key[offset],
             this._key[offset + 1],
             this._key[offset + 2],
             this._key[offset + 3]
-          );
+          ));
         }
 
         // Extract tag from capacity
+        /** @type {uint8[]} */
         const computedTag = [];
         const tagWords = this.TAG_BYTES / 4;
         for (let i = 0; i < tagWords; ++i) {
           const unpacked = OpCodes.Unpack32LE(this.state[this.RATE_WORDS + i]);
-          computedTag.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+          computedTag.push(unpacked[0]);
+          computedTag.push(unpacked[1]);
+          computedTag.push(unpacked[2]);
+          computedTag.push(unpacked[3]);
         }
 
         // Verify tag
@@ -1307,12 +1414,17 @@
           // Process full blocks
           while (mlen > this.RATE_BYTES) {
             // XOR state with plaintext to get ciphertext
+            /** @type {uint8[]} */
             const stateBytes = [];
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const unpacked = OpCodes.Unpack32LE(this.state[i]);
-              stateBytes.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+              stateBytes.push(unpacked[0]);
+              stateBytes.push(unpacked[1]);
+              stateBytes.push(unpacked[2]);
+              stateBytes.push(unpacked[3]);
             }
 
+            /** @type {uint8[]} */
             const block = [];
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
@@ -1322,15 +1434,15 @@
             this._rho();
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const offset = i * 4;
-              this.state[i] ^= OpCodes.Pack32LE(
+              this.state[i] = OpCodes.Xor32(this.state[i], OpCodes.Pack32LE(
                 this.inputBuffer[pos + offset],
                 this.inputBuffer[pos + offset + 1],
                 this.inputBuffer[pos + offset + 2],
                 this.inputBuffer[pos + offset + 3]
-              );
+              ));
             }
 
-            this.permute(this.state, this.STEPS_SLIM);
+            this._permute(this.state, this.STEPS_SLIM);
             for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
             pos += this.RATE_BYTES;
             mlen -= this.RATE_BYTES;
@@ -1339,40 +1451,46 @@
           // Process final block
           if (mlen === this.RATE_BYTES) {
             // Full final block
+            /** @type {uint8[]} */
             const stateBytes = [];
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const unpacked = OpCodes.Unpack32LE(this.state[i]);
-              stateBytes.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+              stateBytes.push(unpacked[0]);
+              stateBytes.push(unpacked[1]);
+              stateBytes.push(unpacked[2]);
+              stateBytes.push(unpacked[3]);
             }
 
+            /** @type {uint8[]} */
             const block = [];
             for (let i = 0; i < this.RATE_BYTES; ++i) {
               block.push(OpCodes.Xor32(this.inputBuffer[pos + i], stateBytes[i]));
             }
 
-            this.state[this.STATE_WORDS - 1] ^= this._M3;
+            this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._M3);
             this._rho();
             for (let i = 0; i < this.RATE_WORDS; ++i) {
               const offset = i * 4;
-              this.state[i] ^= OpCodes.Pack32LE(
+              this.state[i] = OpCodes.Xor32(this.state[i], OpCodes.Pack32LE(
                 this.inputBuffer[pos + offset],
                 this.inputBuffer[pos + offset + 1],
                 this.inputBuffer[pos + offset + 2],
                 this.inputBuffer[pos + offset + 3]
-              );
+              ));
             }
 
             for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
           } else {
             // Partial final block
-            this.state[this.STATE_WORDS - 1] ^= this._M2;
+            this.state[this.STATE_WORDS - 1] = OpCodes.Xor32(this.state[this.STATE_WORDS - 1], this._M2);
 
             // Pack plaintext with padding into word buffer
-            const buffer = new Array(this.RATE_WORDS).fill(0);
+            /** @type {uint32[]} */
+            const buffer = OpCodes.CreateArray(this.RATE_WORDS, 0);
             for (let i = 0; i < mlen; ++i) {
-              buffer[OpCodes.Shr32(i, 2)] |= OpCodes.Shl32(this.inputBuffer[pos + i], OpCodes.Shl32(OpCodes.And32(i, 3), 3));
+              buffer[OpCodes.Shr32(i, 2)] = OpCodes.Or32(buffer[OpCodes.Shr32(i, 2)], OpCodes.Shl32(this.inputBuffer[pos + i], OpCodes.Shl32(OpCodes.And32(i, 3), 3)));
             }
-            buffer[OpCodes.Shr32(mlen, 2)] ^= OpCodes.Shl32(0x80, OpCodes.Shl32(OpCodes.And32(mlen, 3), 3));
+            buffer[OpCodes.Shr32(mlen, 2)] = OpCodes.Xor32(buffer[OpCodes.Shr32(mlen, 2)], OpCodes.Shl32(0x80, OpCodes.Shl32(OpCodes.And32(mlen, 3), 3)));
 
             // Combined rho+whitening (modifies state AND buffer)
             for (let i = 0; i < this.RATE_WORDS / 2; ++i) {
@@ -1381,10 +1499,10 @@
               const s_j = this.state[j];
 
               this.state[i] = OpCodes.Xor32(OpCodes.Xor32(s_j, buffer[i]), this.state[this.RATE_WORDS + i]);
-              this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(buffer[j], this.state[this.RATE_WORDS + OpCodes.And32(j, this.CAP_MASK)]));
+              this.state[j] = OpCodes.Xor32(OpCodes.Xor32(s_i, s_j), OpCodes.Xor32(buffer[j], this.state[this._capWordIndex(j)]));
 
-              buffer[i] ^= s_i;
-              buffer[j] ^= s_j;
+              buffer[i] = OpCodes.Xor32(buffer[i], s_i);
+              buffer[j] = OpCodes.Xor32(buffer[j], s_j);
             }
 
             // Extract ciphertext from buffer
@@ -1393,26 +1511,29 @@
             }
           }
 
-          this.permute(this.state, this.STEPS_BIG);
+          this._permute(this.state, this.STEPS_BIG);
         }
 
         // Tag generation
         const keyWords = this.KEY_BYTES / 4;
         for (let i = 0; i < keyWords; ++i) {
           const offset = i * 4;
-          this.state[this.RATE_WORDS + i] ^= OpCodes.Pack32LE(
+          this.state[this.RATE_WORDS + i] = OpCodes.Xor32(this.state[this.RATE_WORDS + i], OpCodes.Pack32LE(
             this._key[offset],
             this._key[offset + 1],
             this._key[offset + 2],
             this._key[offset + 3]
-          );
+          ));
         }
 
         // Extract tag from capacity
         const tagWords = this.TAG_BYTES / 4;
         for (let i = 0; i < tagWords; ++i) {
           const unpacked = OpCodes.Unpack32LE(this.state[this.RATE_WORDS + i]);
-          output.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
+          output.push(unpacked[0]);
+          output.push(unpacked[1]);
+          output.push(unpacked[2]);
+          output.push(unpacked[3]);
         }
 
         // Reset for next operation
@@ -1427,24 +1548,40 @@
   // ===== CONCRETE INSTANCE CLASSES =====
 
   class Schwaemm128128Instance extends SchwaemmInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse, '128-128');
     }
   }
 
   class Schwaemm256128Instance extends SchwaemmInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse, '256-128');
     }
   }
 
   class Schwaemm192192Instance extends SchwaemmInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse, '192-192');
     }
   }
 
   class Schwaemm256256Instance extends SchwaemmInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse, '256-256');
     }

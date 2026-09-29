@@ -158,6 +158,28 @@
   }
 
   /**
+   * Block layout of the buffered message
+   */
+  class CtsLayout {
+    /**
+     * @param {int32} blockSize - Cipher block size in bytes
+     * @param {int32} totalLen - Message length in bytes
+     * @param {int32} lastLen - Length of the last (possibly partial) block, 1..blockSize
+     * @param {int32} chunkCount - Number of blocks including the last one
+     */
+    constructor(blockSize, totalLen, lastLen, chunkCount) {
+      /** @type {int32} */
+      this.blockSize = blockSize;
+      /** @type {int32} */
+      this.totalLen = totalLen;
+      /** @type {int32} */
+      this.lastLen = lastLen;
+      /** @type {int32} */
+      this.chunkCount = chunkCount;
+    }
+  }
+
+  /**
  * CtsMode cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -166,31 +188,43 @@
   class CtsModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CtsAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv = null;
+      /** @type {int32} */
+      this._cipherBlockSize = 0;
     }
 
+    /**
+     * @param {*} cipher - Block cipher instance (an object with BlockSize, key and algorithm)
+     */
     setBlockCipher(cipher) {
       if (!cipher || !cipher.BlockSize) {
         throw new Error("Invalid block cipher instance");
       }
       this.blockCipher = cipher;
+      this._cipherBlockSize = cipher.BlockSize;
     }
 
+    /**
+     * @param {uint8[]} iv
+     */
     setIV(iv) {
       if (!this.blockCipher) {
         throw new Error("Block cipher must be set before IV");
       }
-      if (!iv || iv.length !== this.blockCipher.BlockSize) {
-        throw new Error(`IV must be ${this.blockCipher.BlockSize} bytes`);
+      if (!iv || iv.length !== this._cipherBlockSize) {
+        throw new Error("IV must be " + this._cipherBlockSize + " bytes");
       }
       this.iv = [...iv];
     }
@@ -229,13 +263,14 @@
         throw new Error("No data fed");
       }
 
-      const blockSize = this.blockCipher.BlockSize;
+      const blockSize = this._cipherBlockSize;
 
       // CTS requires at least one full block
       if (this.inputBuffer.length < blockSize) {
-        throw new Error(`CTS requires at least ${blockSize} bytes (one full block)`);
+        throw new Error("CTS requires at least " + blockSize + " bytes (one full block)");
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._decrypt() : this._encrypt();
 
       // Clear sensitive data
@@ -251,47 +286,74 @@
      * exact multiple of the block size still counts as a full final block, and
      * CS3 swaps the last two blocks in that case too.
      * @private
+     * @returns {CtsLayout}
      */
     _layout() {
-      const blockSize = this.blockCipher.BlockSize;
+      const blockSize = this._cipherBlockSize;
       const totalLen = this.inputBuffer.length;
       const remainder = totalLen % blockSize;
       const lastLen = remainder === 0 ? blockSize : remainder;
-      const blockCount = (totalLen - lastLen) / blockSize + 1;
-      return { blockSize, totalLen, lastLen, blockCount };
+      const chunkCount = (totalLen - lastLen) / blockSize + 1;
+      const layout = new CtsLayout(blockSize, totalLen, lastLen, chunkCount);
+      return layout;
     }
 
-    /** @private */
+    /**
+     * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
+     */
     _encipherBlock(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.blockCipher.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const processed = cipher.Result();
+      return processed;
     }
 
-    /** @private */
+    /**
+     * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
+     */
     _decipherBlock(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(true);
       cipher.key = this.blockCipher.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const processed = cipher.Result();
+      return processed;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
-      const { blockSize, lastLen, blockCount } = this._layout();
+      /** @type {CtsLayout} */
+      const layout = this._layout();
+      /** @type {int32} */
+      const blockSize = layout.blockSize;
+      /** @type {int32} */
+      const lastLen = layout.lastLen;
+      /** @type {int32} */
+      const chunkCount = layout.chunkCount;
 
+      /** @type {uint8[]} */
       const output = [];
       let previousBlock = [...this.iv];
 
       // Blocks 1 .. n-2 are plain CBC
-      for (let i = 0; i < blockCount - 2; i++) {
+      for (let i = 0; i < chunkCount - 2; i++) {
         const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
         const encryptedBlock = this._encipherBlock(OpCodes.XorArrays(block, previousBlock));
         for (let _i = 0; _i < encryptedBlock.length; _i++) output.push(encryptedBlock[_i]);
         previousBlock = encryptedBlock;
       }
 
-      if (blockCount === 1) {
+      if (chunkCount === 1) {
         // A single block cannot steal anything; it is plain CBC.
         const block = this.inputBuffer.slice(0, blockSize);
         const encryptedBlock = this._encipherBlock(OpCodes.XorArrays(block, previousBlock));
@@ -304,14 +366,14 @@
       //   C_n      = MSB_d(C*_{n-1})
       //   C_{n-1}  = E((P_n || 0^{b-d}) XOR C*_{n-1})
       // and the two are emitted in the order C_{n-1} then C_n.
-      const penultimateStart = (blockCount - 2) * blockSize;
+      const penultimateStart = (chunkCount - 2) * blockSize;
       const penultimateBlock = this.inputBuffer.slice(penultimateStart, penultimateStart + blockSize);
       const finalBlock = this.inputBuffer.slice(penultimateStart + blockSize);
 
       const encryptedPenultimate = this._encipherBlock(OpCodes.XorArrays(penultimateBlock, previousBlock));
 
       // The final plaintext block is zero-padded, then chained on C*_{n-1}.
-      const paddedFinal = new Array(blockSize).fill(0);
+      const paddedFinal = OpCodes.CreateArray(blockSize, 0);
       for (let i = 0; i < lastLen; i++) paddedFinal[i] = finalBlock[i];
 
       const encryptedFinal = this._encipherBlock(OpCodes.XorArrays(paddedFinal, encryptedPenultimate));
@@ -322,21 +384,32 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
-      const { blockSize, lastLen, blockCount } = this._layout();
+      /** @type {CtsLayout} */
+      const layout = this._layout();
+      /** @type {int32} */
+      const blockSize = layout.blockSize;
+      /** @type {int32} */
+      const lastLen = layout.lastLen;
+      /** @type {int32} */
+      const chunkCount = layout.chunkCount;
 
+      /** @type {uint8[]} */
       const output = [];
       let previousBlock = [...this.iv];
 
       // Blocks 1 .. n-2 are plain CBC
-      for (let i = 0; i < blockCount - 2; i++) {
+      for (let i = 0; i < chunkCount - 2; i++) {
         const block = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
         const plainBlock = OpCodes.XorArrays(this._decipherBlock(block), previousBlock);
         for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
         previousBlock = block;
       }
 
-      if (blockCount === 1) {
+      if (chunkCount === 1) {
         const block = this.inputBuffer.slice(0, blockSize);
         const plainBlock = OpCodes.XorArrays(this._decipherBlock(block), previousBlock);
         for (let _i = 0; _i < plainBlock.length; _i++) output.push(plainBlock[_i]);
@@ -345,7 +418,7 @@
 
       // Inverse of CS3: the full block on the wire is C_{n-1}, followed by the
       // d-byte C_n which is the head of C*_{n-1}.
-      const penultimateStart = (blockCount - 2) * blockSize;
+      const penultimateStart = (chunkCount - 2) * blockSize;
       const wireFullBlock = this.inputBuffer.slice(penultimateStart, penultimateStart + blockSize);
       const wireTail = this.inputBuffer.slice(penultimateStart + blockSize);
 
@@ -353,13 +426,15 @@
       const z = this._decipherBlock(wireFullBlock);
 
       // C*_{n-1} = C_n || LSB_{b-d}(Z)
+      /** @type {uint8[]} */
       const starBlock = new Array(blockSize);
       for (let i = 0; i < lastLen; i++) starBlock[i] = wireTail[i];
       for (let i = lastLen; i < blockSize; i++) starBlock[i] = z[i];
 
       // P_n = MSB_d(Z XOR C*_{n-1})
+      /** @type {uint8[]} */
       const plainFinal = [];
-      for (let i = 0; i < lastLen; i++) plainFinal.push(OpCodes.XorN(z[i], starBlock[i]));
+      for (let i = 0; i < lastLen; i++) plainFinal.push(OpCodes.Xor8(z[i], starBlock[i]));
 
       // P_{n-1} = D(C*_{n-1}) XOR C_{n-2}
       const plainPenultimate = OpCodes.XorArrays(this._decipherBlock(starBlock), previousBlock);

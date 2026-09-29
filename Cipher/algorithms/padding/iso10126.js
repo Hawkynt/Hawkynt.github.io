@@ -92,10 +92,10 @@
       ];
 
       // Add block size and test mode for test
-      this.tests.forEach(test => {
-        test.blockSize = 32; // 32-byte block
-        test.testMode = true; // Enable deterministic padding for testing
-      });
+      for (let i = 0; i < this.tests.length; i++) {
+        this.tests[i].blockSize = 32; // 32-byte block
+        this.tests[i].testMode = true; // Enable deterministic padding for testing
+      }
     }
 
     /**
@@ -118,24 +118,29 @@
   class Iso10126Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Iso10126Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize = 16; // Default block size
+      /** @type {boolean} */
       this.testMode = false; // Use deterministic padding for testing
+      /** @type {uint8[]|null} */
       this._seed = null;
+      /** @type {uint32} */
       this._rngState = 0;
     }
 
     /**
      * Set seed for deterministic random number generation
      * Used for testing purposes to make padding reproducible
-     * @param {Array} seedBytes - Seed bytes for PRNG initialization
+     * @param {uint8[]|null} seedBytes - Seed bytes for PRNG initialization
      */
     set seed(seedBytes) {
       if (!seedBytes) {
@@ -147,19 +152,22 @@
       // Initialize RNG state from seed using simple hash
       this._rngState = 0;
       for (let i = 0; i < this._seed.length; i++) {
-        this._rngState = OpCodes.Shr32((this._rngState * 31) + this._seed[i], 0);
+        this._rngState = OpCodes.Add32(OpCodes.Mul32(this._rngState, 31), this._seed[i]);
       }
       // Ensure non-zero state
       if (this._rngState === 0) this._rngState = 1;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the seed bytes
+     */
     get seed() {
       return this._seed ? [...this._seed] : null;
     }
 
     /**
      * Generate deterministic or secure random byte
-     * @returns {number} Random byte (0-255)
+     * @returns {uint8} Random byte (0-255)
      */
     _getRandomByte() {
       if (this.testMode) {
@@ -168,8 +176,14 @@
       } else if (this._seed) {
         // Deterministic: Linear Congruential Generator
         // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
-        this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
-        return OpCodes.AndN(this._rngState, 0xFF);
+        // Schrage's method keeps every intermediate within 31 bits
+        /** @type {int32} */
+        const reduced = this._rngState % 0x7FFFFFFF;
+        /** @type {int32} */
+        let next = 48271 * (reduced % 44488) - 3399 * Math.floor(reduced / 44488);
+        if (next < 0) next += 0x7FFFFFFF;
+        this._rngState = OpCodes.ToUint32(next);
+        return OpCodes.And32(this._rngState, 0xFF);
       } else {
         // Non-deterministic: Use secure random
         return OpCodes.SecureRandom(256);
@@ -178,7 +192,7 @@
 
     /**
      * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
+     * @param {int32} blockSize - Block size in bytes (1-255)
      */
     setBlockSize(blockSize) {
       if (!blockSize || blockSize < 1 || blockSize > 255) {
@@ -199,7 +213,9 @@
       if (this.isInverse) {
         // For unpadding, we need data
         if (this.inputBuffer.length === 0) {
-          return []; // Return empty array for empty input
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty; // Return empty array for empty input
         }
         return this._removePadding();
       } else {
@@ -210,13 +226,14 @@
 
     /**
      * Add ISO 10126 padding to data
-     * @returns {Array} Padded data
+     * @returns {uint8[]} Padded data
      */
     _addPadding() {
       const data = this.inputBuffer;
       const paddingLength = this.blockSize - (data.length % this.blockSize);
 
       // Create padding: random bytes followed by length byte
+      /** @type {uint8[]} */
       const padding = [];
 
       // Add random bytes (padding length - 1)
@@ -239,7 +256,7 @@
 
     /**
      * Remove ISO 10126 padding from data
-     * @returns {Array} Unpadded data
+     * @returns {uint8[]} Unpadded data
      */
     _removePadding() {
       const paddedData = this.inputBuffer;
@@ -252,6 +269,7 @@
         throw new Error("Padded data length must be multiple of block size");
       }
 
+      /** @type {int32} */
       const paddingLength = paddedData[paddedData.length - 1];
 
       // Validate padding length

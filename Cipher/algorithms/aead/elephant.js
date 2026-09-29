@@ -63,6 +63,7 @@
    * Spongent S-box lookup table (4-bit to 4-bit non-linear transformation)
    * Applied byte-wise for efficient implementation
    */
+  /** @type {uint8[]} */
   var SPONGENT_SBOX = [
     0xee, 0xed, 0xeb, 0xe0, 0xe2, 0xe1, 0xe4, 0xef, 0xe7, 0xea, 0xe8, 0xe5, 0xe9, 0xec, 0xe3, 0xe6,
     0xde, 0xdd, 0xdb, 0xd0, 0xd2, 0xd1, 0xd4, 0xdf, 0xd7, 0xda, 0xd8, 0xd5, 0xd9, 0xdc, 0xd3, 0xd6,
@@ -85,36 +86,40 @@
   /**
    * Generic Spongent permutation based on Bouncy Castle reference implementation
    * Supports both 160-bit (Dumbo) and 176-bit (Jumbo) variants
-   * @param {Array} state - byte array of state (20 or 22 bytes)
-   * @param {number} nBits - state size in bits (160 or 176)
-   * @param {number} nRounds - number of rounds (80 or 90)
-   * @param {number} lfsrIV - initial value for round constant LFSR (0x75 or 0x45)
+   * @param {uint8[]} state - byte array of state (20 or 22 bytes)
+   * @param {int32} nBits - state size in bits (160 or 176)
+   * @param {int32} nRounds - number of rounds (80 or 90)
+   * @param {uint32} lfsrIV - initial value for round constant LFSR (0x75 or 0x45)
    */
   function spongentPermute(state, nBits, nRounds, lfsrIV) {
+    /** @type {int32} */
     var nSBox = OpCodes.Shr32(nBits, 3);  // Number of bytes
+    /** @type {uint32} */
     var IV = lfsrIV;
+    /** @type {uint8[]} */
     var tmp = new Array(nSBox);
 
     for (var round = 0; round < nRounds; ++round) {
       // Add round constants
-      state[0] = OpCodes.XorN(state[0], IV);
-      var reversedIV = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-        OpCodes.Shl32(OpCodes.AndN(IV, 0x01), 7),
-        OpCodes.Shl32(OpCodes.AndN(IV, 0x02), 5)),
-        OpCodes.Shl32(OpCodes.AndN(IV, 0x04), 3)),
-        OpCodes.Shl32(OpCodes.AndN(IV, 0x08), 1)),
-        OpCodes.Shr32(OpCodes.AndN(IV, 0x10), 1)),
-        OpCodes.Shr32(OpCodes.AndN(IV, 0x20), 3)),
-        OpCodes.Shr32(OpCodes.AndN(IV, 0x40), 5)),
-        OpCodes.Shr32(OpCodes.AndN(IV, 0x80), 7));
-      state[nSBox - 1] = OpCodes.XorN(state[nSBox - 1], reversedIV);
+      state[0] = OpCodes.Xor32(state[0], IV);
+      /** @type {uint32} */
+      var reversedIV = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+        OpCodes.Shl32(OpCodes.And32(IV, 0x01), 7),
+        OpCodes.Shl32(OpCodes.And32(IV, 0x02), 5)),
+        OpCodes.Shl32(OpCodes.And32(IV, 0x04), 3)),
+        OpCodes.Shl32(OpCodes.And32(IV, 0x08), 1)),
+        OpCodes.Shr32(OpCodes.And32(IV, 0x10), 1)),
+        OpCodes.Shr32(OpCodes.And32(IV, 0x20), 3)),
+        OpCodes.Shr32(OpCodes.And32(IV, 0x40), 5)),
+        OpCodes.Shr32(OpCodes.And32(IV, 0x80), 7));
+      state[nSBox - 1] = OpCodes.Xor32(state[nSBox - 1], reversedIV);
 
       // Step LFSR for next round constant
-      IV = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(IV, 1), OpCodes.XorN(OpCodes.Shr32(OpCodes.AndN(0x40, IV), 6), OpCodes.Shr32(OpCodes.AndN(0x20, IV), 5))), 0x7f);
+      IV = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(IV, 1), OpCodes.Xor32(OpCodes.Shr32(OpCodes.And32(0x40, IV), 6), OpCodes.Shr32(OpCodes.And32(0x20, IV), 5))), 0x7f);
 
       // S-box layer
       for (var j = 0; j < nSBox; ++j) {
-        state[j] = SPONGENT_SBOX[OpCodes.AndN(state[j], 0xFF)];
+        state[j] = SPONGENT_SBOX[OpCodes.And32(state[j], 0xFF)];
       }
 
       // Bit permutation layer
@@ -124,18 +129,23 @@
 
       for (var j = 0; j < nSBox; ++j) {
         for (var k = 0; k < 8; ++k) {
+          /** @type {int32} */
           var bitNo = OpCodes.Shl32(j, 3) + k;
+          /** @type {int32} */
           var permutedBitNo = bitNo;
 
           // Apply permutation formula: bit i -> ((i * nBits) / 4) % (nBits - 1)
           // except for last bit which stays in place
           if (permutedBitNo !== nBits - 1) {
-            permutedBitNo = OpCodes.Shr32((permutedBitNo * nBits), 2) % (nBits - 1);
+            /** @type {int32} */
+            var scaled = OpCodes.Shr32(permutedBitNo * nBits, 2);
+            permutedBitNo = scaled % (nBits - 1);
           }
 
           // Extract bit from state and place in permuted position
-          var bit = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(state[j], 0xFF), k), 0x1);
-          tmp[OpCodes.Shr32(permutedBitNo, 3)] = OpCodes.XorN(tmp[OpCodes.Shr32(permutedBitNo, 3)], OpCodes.Shl32(bit, OpCodes.AndN(permutedBitNo, 7)));
+          /** @type {uint32} */
+          var bit = OpCodes.And32(OpCodes.Shr32(OpCodes.And32(state[j], 0xFF), k), 0x1);
+          tmp[OpCodes.Shr32(permutedBitNo, 3)] = OpCodes.Xor32(tmp[OpCodes.Shr32(permutedBitNo, 3)], OpCodes.Shl32(bit, OpCodes.And32(permutedBitNo, 7)));
         }
       }
 
@@ -149,6 +159,7 @@
   /**
    * Spongent-π[160] permutation wrapper
    * 160-bit state, 80 rounds, LFSR IV = 0x75
+   * @param {uint8[]} state
    */
   function spongent160Permute(state) {
     spongentPermute(state, 160, 80, 0x75);
@@ -157,6 +168,7 @@
   /**
    * Spongent-π[176] permutation wrapper
    * 176-bit state (22 bytes), 90 rounds, LFSR IV = 0x45
+   * @param {uint8[]} state
    */
   function spongent176Permute(state) {
     spongentPermute(state, 176, 90, 0x45);
@@ -165,37 +177,54 @@
   /**
    * Keccak-p[200] permutation (for Delirium variant)
    * 200-bit state (25 bytes = 5x5 lane array), 18 rounds
+   * @param {uint8[]} state
    */
   function keccakP200Permute(state) {
+    /** @type {uint8[]} */
     var RC = [
       0x01, 0x82, 0x8a, 0x00, 0x8b, 0x01, 0x81, 0x09, 0x8a,
       0x88, 0x09, 0x0a, 0x8b, 0x8b, 0x89, 0x03, 0x02, 0x80
     ];
 
+    /** @type {int32[]} */
     var RHO = [0, 1, 6, 4, 3, 4, 4, 6, 7, 4, 3, 2, 3, 1, 7, 1, 5, 7, 5, 0, 2, 2, 5, 0, 6];
 
+    /** @type {uint8[]} */
     var tempA = new Array(25);
+    /**
+     * @param {int32} x
+     * @param {int32} y
+     * @returns {int32}
+     */
     var index = function(x, y) { return x + y * 5; };
+    /**
+     * @param {uint8} a
+     * @param {int32} offset
+     * @returns {uint8}
+     */
     var ROL8 = function(a, offset) {
-      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(a, offset), OpCodes.Shr32(OpCodes.AndN(a, 0xff), (8 - offset))), 0xFF);
+      return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(a, offset), OpCodes.Shr32(OpCodes.And32(a, 0xff), (8 - offset))), 0xFF);
     };
 
     for (var round = 0; round < 18; ++round) {
-      var x, y;
+      /** @type {int32} */
+      var x = 0;
+      /** @type {int32} */
+      var y = 0;
 
       // Theta
       for (x = 0; x < 5; ++x) {
         tempA[x] = 0;
         for (y = 0; y < 5; ++y) {
-          tempA[x] = OpCodes.XorN(tempA[x], state[index(x, y)]);
+          tempA[x] = OpCodes.Xor32(tempA[x], state[index(x, y)]);
         }
       }
       for (x = 0; x < 5; ++x) {
-        tempA[x + 5] = OpCodes.XorN(ROL8(tempA[(x + 1) % 5], 1), tempA[(x + 4) % 5]);
+        tempA[x + 5] = OpCodes.Xor32(ROL8(tempA[(x + 1) % 5], 1), tempA[(x + 4) % 5]);
       }
       for (x = 0; x < 5; ++x) {
         for (y = 0; y < 5; ++y) {
-          state[index(x, y)] = OpCodes.XorN(state[index(x, y)], tempA[x + 5]);
+          state[index(x, y)] = OpCodes.Xor32(state[index(x, y)], tempA[x + 5]);
         }
       }
 
@@ -216,7 +245,7 @@
       // Chi
       for (y = 0; y < 5; ++y) {
         for (x = 0; x < 5; ++x) {
-          tempA[x] = OpCodes.AndN(OpCodes.XorN(state[index(x, y)], OpCodes.AndN(~state[index((x + 1) % 5, y)], state[index((x + 2) % 5, y)])), 0xFF);
+          tempA[x] = OpCodes.And32(OpCodes.Xor32(state[index(x, y)], OpCodes.And32(~state[index((x + 1) % 5, y)], state[index((x + 2) % 5, y)])), 0xFF);
         }
         for (x = 0; x < 5; ++x) {
           state[index(x, y)] = tempA[x];
@@ -224,7 +253,7 @@
       }
 
       // Iota
-      state[0] = OpCodes.XorN(state[0], RC[round]);
+      state[0] = OpCodes.Xor32(state[0], RC[round]);
     }
   }
 
@@ -234,9 +263,12 @@
    * Dumbo LFSR: feedback polynomial for 160-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
    * newByte = rotL3(mask[0]) XOR (mask[3] left-shift 7) XOR (mask[13] right-shift 7)
+   * @param {uint8[]} output
+   * @param {uint8[]} input
    */
   function dumboLFSR(output, input) {
-    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 3), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[13], 7)), 0xFF);
+    /** @type {uint8} */
+    var temp = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotL8(input[0], 3), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[13], 7)), 0xFF);
     for (var i = 0; i < 19; ++i) {
       output[i] = input[i + 1];
     }
@@ -247,9 +279,12 @@
    * Jumbo LFSR: feedback polynomial for 176-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
    * newByte = rotL1(mask[0]) XOR (mask[3] left-shift 7) XOR (mask[19] right-shift 7)
+   * @param {uint8[]} output
+   * @param {uint8[]} input
    */
   function jumboLFSR(output, input) {
-    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 1), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[19], 7)), 0xFF);
+    /** @type {uint8} */
+    var temp = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotL8(input[0], 1), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[19], 7)), 0xFF);
     for (var i = 0; i < 21; ++i) {
       output[i] = input[i + 1];
     }
@@ -260,9 +295,12 @@
    * Delirium LFSR: feedback polynomial for 200-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
    * newByte = rotL1(mask[0]) XOR rotL1(mask[2]) XOR (mask[13] left-shift 1)
+   * @param {uint8[]} output
+   * @param {uint8[]} input
    */
   function deliriumLFSR(output, input) {
-    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 1), OpCodes.RotL8(input[2], 1)), OpCodes.Shl32(input[13], 1)), 0xFF);
+    /** @type {uint8} */
+    var temp = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotL8(input[0], 1), OpCodes.RotL8(input[2], 1)), OpCodes.Shl32(input[13], 1)), 0xFF);
     for (var i = 0; i < 24; ++i) {
       output[i] = input[i + 1];
     }
@@ -277,42 +315,59 @@
    * Based on Bouncy Castle ElephantEngine reference implementation
    */
   class ElephantInstance extends IAeadInstance {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {string} variant - 'dumbo', 'jumbo' or 'delirium'
+     */
     constructor(algorithm, variant) {
       super(algorithm);
+      /** @type {string} */
       this.variant = variant;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.nbIts = 0;
+      /** @type {int32} */
       this.adOff = 0;
+      /** @type {string} */
       this.aadState = 'INIT';
+      /** @type {int32} */
+      this.blockSize = 0;
+      /** @type {int32} */
+      this.macSize = 0;
 
       // Variant-specific configuration
       if (variant === 'dumbo') {
         this.blockSize = 20;
         this.macSize = 8;
-        this.permute = spongent160Permute;
-        this.lfsrStep = dumboLFSR;
       } else if (variant === 'jumbo') {
         this.blockSize = 22;
         this.macSize = 8;
-        this.permute = spongent176Permute;
-        this.lfsrStep = jumboLFSR;
       } else if (variant === 'delirium') {
         this.blockSize = 25;
         this.macSize = 16;
-        this.permute = keccakP200Permute;
-        this.lfsrStep = deliriumLFSR;
       }
 
       // v2 three-mask system for protected counter sum
+      /** @type {uint8[]} */
       this.previousMask = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.currentMask = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.nextMask = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.buffer = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.tagBuffer = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.previousOutputMessage = new Array(this.blockSize);
+      /** @type {uint8[]} */
       this.expandedKey = new Array(this.blockSize);
 
       // Initialize arrays to zero
@@ -353,6 +408,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -364,14 +422,28 @@
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
-      this._associatedData = adBytes ? [...adBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (adBytes) {
+        copy = [...adBytes];
+      }
+      this._associatedData = copy;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -380,19 +452,55 @@
      * Helper: XOR two arrays into a third array
      * z[i] XOR-equals x[i] XOR y[i]
      */
+    /**
+     * @param {uint8[]} state - Permutation state (permuted in place)
+     */
+    _permute(state) {
+      if (this.variant === 'dumbo') {
+        spongent160Permute(state);
+      } else if (this.variant === 'jumbo') {
+        spongent176Permute(state);
+      } else {
+        keccakP200Permute(state);
+      }
+    }
+
+    /**
+     * @param {uint8[]} output - Next mask
+     * @param {uint8[]} input - Current mask
+     */
+    _lfsrStep(output, input) {
+      if (this.variant === 'dumbo') {
+        dumboLFSR(output, input);
+      } else if (this.variant === 'jumbo') {
+        jumboLFSR(output, input);
+      } else {
+        deliriumLFSR(output, input);
+      }
+    }
+
+    /**
+     * @param {int32} len
+     * @param {uint8[]} x
+     * @param {uint8[]} y
+     * @param {uint8[]} z
+     */
     xorTo(len, x, y, z) {
       for (var i = 0; i < len; ++i) {
-        z[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(z[i], x[i]), y[i]), 0xFF);
+        z[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(z[i], x[i]), y[i]), 0xFF);
       }
     }
 
     /**
      * Helper: XOR array into destination
      * dest[i] ^= src[i]
+     * @param {int32} len
+     * @param {uint8[]} src
+     * @param {uint8[]} dest
      */
     xorArray(len, src, dest) {
       for (var i = 0; i < len; ++i) {
-        dest[i] = OpCodes.AndN(OpCodes.XorN(dest[i], src[i]), 0xFF);
+        dest[i] = OpCodes.And32(OpCodes.Xor32(dest[i], src[i]), 0xFF);
       }
     }
 
@@ -403,7 +511,7 @@
      */
     lfsrStepMask() {
       // The LFSR function does the complete operation
-      this.lfsrStep(this.nextMask, this.currentMask);
+      this._lfsrStep(this.nextMask, this.currentMask);
     }
 
     /**
@@ -411,6 +519,7 @@
      * previous <- current <- next <- previous
      */
     swapMasks() {
+      /** @type {uint8[]} */
       var temp = this.previousMask;
       this.previousMask = this.currentMask;
       this.currentMask = this.nextMask;
@@ -424,6 +533,11 @@
      * buffer = permute(buffer)
      * buffer ^= (current_mask XOR next_mask)
      * buffer ^= input
+     * @param {uint8[]} input
+     * @param {int32} inOff
+     * @param {int32} blockSize
+     * @param {uint8[]} output
+     * @param {int32} outOff
      */
     computeCipherBlock(input, inOff, blockSize, output, outOff) {
       // Initialize buffer with nonce
@@ -438,14 +552,14 @@
       this.xorTo(this.blockSize, this.currentMask, this.nextMask, this.buffer);
 
       // Permute
-      this.permute(this.buffer);
+      this._permute(this.buffer);
 
       // buffer ^= (current_mask XOR next_mask)
       this.xorTo(this.blockSize, this.currentMask, this.nextMask, this.buffer);
 
       // buffer ^= input
       for (var i = 0; i < blockSize; ++i) {
-        this.buffer[i] = OpCodes.AndN(OpCodes.XorN(this.buffer[i], OpCodes.AndN(input[inOff + i], 0xFF)), 0xFF);
+        this.buffer[i] = OpCodes.And32(OpCodes.Xor32(this.buffer[i], OpCodes.And32(input[inOff + i], 0xFF)), 0xFF);
       }
 
       // Copy to output
@@ -457,6 +571,7 @@
     /**
      * Process AAD bytes into buffer
      * State machine: INIT -> AAD -> DATA
+     * @param {uint8[]} output
      */
     processAADBytes(output) {
       var len = 0;
@@ -517,7 +632,7 @@
     absorbAAD() {
       this.processAADBytes(this.buffer);
       this.xorArray(this.blockSize, this.nextMask, this.buffer);
-      this.permute(this.buffer);
+      this._permute(this.buffer);
       this.xorArray(this.blockSize, this.nextMask, this.buffer);
       this.xorArray(this.blockSize, this.buffer, this.tagBuffer);
     }
@@ -528,19 +643,30 @@
      */
     absorbCiphertext() {
       this.xorTo(this.blockSize, this.previousMask, this.nextMask, this.buffer);
-      this.permute(this.buffer);
+      this._permute(this.buffer);
       this.xorTo(this.blockSize, this.previousMask, this.nextMask, this.buffer);
       this.xorArray(this.blockSize, this.buffer, this.tagBuffer);
     }
 
     /**
      * Process complete message bytes (interleaved AD, plaintext, ciphertext)
+     * @param {uint8[]} m
+     * @param {uint8[]} output
+     * @param {int32} outOff
+     * @param {int32} nbIt
+     * @param {int32} nblocksM
+     * @param {int32} nblocksC
+     * @param {int32} mlen
+     * @param {int32} nblocksAd
      */
     processBytes(m, output, outOff, nbIt, nblocksM, nblocksC, mlen, nblocksAd) {
+      /** @type {int32} */
       var rv = 0;
+      /** @type {uint8[]} */
       var outputMessage = new Array(this.blockSize);
 
       for (var i = this.nbIts; i < nbIt; ++i) {
+        /** @type {int32} */
         var rSize = (i === nblocksM - 1) ? mlen - i * this.blockSize : this.blockSize;
 
         // Compute mask for next message
@@ -568,6 +694,7 @@
 
         if (i > 0 && i <= nblocksC) {
           // Compute tag for ciphertext block
+          /** @type {int32} */
           var blockOffset = (i - 1) * this.blockSize;
 
           if (blockOffset === mlen) {
@@ -577,6 +704,7 @@
             }
             this.buffer[0] = 0x01;
           } else {
+            /** @type {int32} */
             var rClen = mlen - blockOffset;
             if (this.blockSize <= rClen) {
               // Enough ciphertext
@@ -650,7 +778,7 @@
       for (var i = 16; i < this.blockSize; ++i) {
         this.expandedKey[i] = 0;
       }
-      this.permute(this.expandedKey);
+      this._permute(this.expandedKey);
 
       // Initialize tag buffer to zero
       for (var i = 0; i < this.blockSize; ++i) {
@@ -662,10 +790,16 @@
       this.adOff = 0;
       this.aadState = 'INIT';
 
+      /** @type {int32} */
+
       var mlen = this.isInverse ? this.inputBuffer.length - this.macSize : this.inputBuffer.length;
+      /** @type {int32} */
       var nblocksC = 1 + Math.floor(mlen / this.blockSize);
+      /** @type {int32} */
       var nblocksM = (mlen % this.blockSize) !== 0 ? nblocksC : nblocksC - 1;
+      /** @type {int32} */
       var nblocksAd = 1 + Math.floor((12 + this._associatedData.length) / this.blockSize);
+      /** @type {int32} */
       var nbIt = Math.max(nblocksC + 1, nblocksAd - 1);
 
       // Process initial AAD block (nonce + start of AD) similar to processFinalAAD()
@@ -675,14 +809,16 @@
         this.processAADBytes(this.tagBuffer);
       }
 
+      /** @type {uint8[]} */
       var output = new Array(mlen);
       this.processBytes(this.inputBuffer, output, 0, nbIt, nblocksM, nblocksC, mlen, nblocksAd);
 
       // Finalize tag: tag = permute(tag XOR expandedKey) XOR expandedKey
       this.xorArray(this.blockSize, this.expandedKey, this.tagBuffer);
-      this.permute(this.tagBuffer);
+      this._permute(this.tagBuffer);
       this.xorArray(this.blockSize, this.expandedKey, this.tagBuffer);
 
+      /** @type {uint8[]} */
       var result;
       if (!this.isInverse) {
         // Encryption: append tag
@@ -695,10 +831,12 @@
         }
       } else {
         // Decryption: verify tag (constant-time comparison)
+        /** @type {uint8[]} */
         var receivedTag = this.inputBuffer.slice(mlen);
+        /** @type {uint32} */
         var diff = 0;
         for (var i = 0; i < this.macSize; ++i) {
-          diff = OpCodes.OrN(diff, OpCodes.XorN(this.tagBuffer[i], receivedTag[i]));
+          diff = OpCodes.Or32(diff, OpCodes.Xor32(this.tagBuffer[i], receivedTag[i]));
         }
         var tagMatch = (diff === 0);
         if (!tagMatch) {

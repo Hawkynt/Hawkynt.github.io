@@ -62,13 +62,23 @@
   const IV_SIZE = 32;  // consumed by setup() but has no effect on the keystream
 
   // TT[8] constant table, identical to the published WAKE algorithm.
+  /** @type {uint32[]} */
   const TT = [
     0x726a8f3b, 0xe69a3b5c, 0xd3c71fe5, 0xab3c73d2,
     0x4d3a8eb3, 0x0396d6e8, 0x3d4c2f7a, 0x9ee27cf3
   ];
 
+  /**
+   * @param {uint32} k0
+   * @param {uint32} k1
+   * @param {uint32} k2
+   * @param {uint32} k3
+   * @returns {uint32[]}
+   */
   function genTable(k0, k1, k2, k3) {
-    const t = new Array(257).fill(0);
+    /** @type {uint32[]} */
+    const t = new Array(257);
+    for (let p = 0; p < 257; p++) t[p] = 0;
     t[0] = OpCodes.ToUint32(k0);
     t[1] = OpCodes.ToUint32(k1);
     t[2] = OpCodes.ToUint32(k2);
@@ -111,6 +121,12 @@
     return t;
   }
 
+  /**
+   * @param {uint32[]} t
+   * @param {uint32} x
+   * @param {uint32} y
+   * @returns {uint32}
+   */
   function M(t, x, y) {
     const w = OpCodes.ToUint32(OpCodes.Add32(x, y));
     return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(w, 8), t[OpCodes.And32(w, 0xff)]));
@@ -168,37 +184,67 @@
   }
 
   class DarkCryptWakeInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptWakeAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
 
+      /** @type {uint32[]|null} */
       this._t = null;
-      this._RA = 0; this._RB = 0; this._RC = 0; this._RD = 0;
+      /** @type {uint32} */
+      this._RA = 0;
+      /** @type {uint32} */
+      this._RB = 0;
+      /** @type {uint32} */
+      this._RC = 0;
+      /** @type {uint32} */
+      this._RD = 0;
+      /** @type {uint8[]} */
       this._pendingBytes = [0, 0, 0, 0]; // current 4-byte output word, LE
+      /** @type {int32} */
       this._wordPos = 0;                  // 0..3, position within pendingBytes
+      /** @type {uint8[]} */
       this._cbuf = [0, 0, 0, 0];          // ciphertext bytes of the current word being produced
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== KEY_SIZE)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. WAKE (DarkCrypt) requires exactly ${KEY_SIZE} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. WAKE (DarkCrypt) requires exactly " + KEY_SIZE + " bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     // Accepted for API compatibility with the reference setup(key,iv); has
     // no effect on the keystream (see header comment), so it is only
     // range-checked, never consumed.
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (ivBytes && ivBytes.length !== IV_SIZE)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. WAKE (DarkCrypt) expects ${IV_SIZE} bytes (ignored)`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. WAKE (DarkCrypt) expects " + IV_SIZE + " bytes (ignored)");
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return null; }
 
     _initialize() {
@@ -211,19 +257,28 @@
       this._RA = k0; this._RB = k1; this._RC = k2; this._RD = k3;
       this._pendingBytes = OpCodes.Unpack32LE(this._RD);
       this._wordPos = 0;
-      this._cbuf = [0, 0, 0, 0];
+      this._cbuf = OpCodes.CreateArray(4, 0);
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const out = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const outByte = OpCodes.And32(OpCodes.Xor32(this._pendingBytes[this._wordPos], this.inputBuffer[i]), 0xff);

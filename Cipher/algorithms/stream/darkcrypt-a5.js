@@ -48,29 +48,44 @@
   // Register 1: 19 bits, clock-control bit 9, feedback taps 18,17,16,13
   const R1_MASK = 0x7FFFF;
   const R1_BIT = 9;
+  /** @type {int32[]} */
   const R1_TAPS = [18, 17, 16, 13];
 
   // Register 2: 22 bits, clock-control bit 11, feedback taps 21,20,16,12
   const R2_MASK = 0x3FFFFF;
   const R2_BIT = 11;
+  /** @type {int32[]} */
   const R2_TAPS = [21, 20, 16, 12];
 
   // Register 3: 23 bits, clock-control bit 11, feedback taps 22,21,18,17
   const R3_MASK = 0x7FFFFF;
   const R3_BIT = 11;
+  /** @type {int32[]} */
   const R3_TAPS = [22, 21, 18, 17];
 
+  /**
+   * @param {uint32} reg
+   * @param {int32[]} taps
+   * @returns {uint32}
+   */
   function tapXor(reg, taps) {
+    /** @type {uint32} */
     let f = 0;
     for (let i = 0; i < taps.length; i++)
-      f = OpCodes.XorN(f, OpCodes.AndN(OpCodes.Shr32(reg, taps[i]), 1));
-    return OpCodes.AndN(f, 1);
+      f = OpCodes.Xor32(f, OpCodes.And32(OpCodes.Shr32(reg, taps[i]), 1));
+    return OpCodes.And32(f, 1);
   }
 
+  /**
+   * @param {uint32} reg
+   * @param {int32[]} taps
+   * @param {uint32} mask
+   * @returns {uint32}
+   */
   function clockRegister(reg, taps, mask) {
     const feedback = tapXor(reg, taps);
-    const shifted = OpCodes.AndN(OpCodes.Shl32(reg, 1), mask);
-    return OpCodes.OrN(shifted, feedback);
+    const shifted = OpCodes.And32(OpCodes.Shl32(reg, 1), mask);
+    return OpCodes.Or32(shifted, feedback);
   }
 
   class DarkCryptA5Algorithm extends StreamCipherAlgorithm {
@@ -124,39 +139,64 @@
   }
 
   class DarkCryptA5Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptA5Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32} */
       this._r1 = 0;
+      /** @type {uint32} */
       this._r2 = 0;
+      /** @type {uint32} */
       this._r3 = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. A5 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. A5 (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++)
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._generateKeystreamByte()));
+        output.push(OpCodes.Xor32(this.inputBuffer[i], this._generateKeystreamByte()));
 
       this.inputBuffer = [];
       return output;
@@ -164,29 +204,36 @@
 
     _initialize() {
       const k = this._key;
-      this._r1 = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(k[0], 11), OpCodes.Shl32(k[1], 3)), OpCodes.Shr32(k[2], 5));
-      this._r2 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(k[2], 17), OpCodes.Shl32(k[3], 9)), OpCodes.Shl32(k[4], 1)), OpCodes.Shr32(k[5], 7));
-      this._r3 = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(k[5], 15), OpCodes.Shl32(k[6], 8)), k[7]);
+      this._r1 = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(k[0], 11), OpCodes.Shl32(k[1], 3)), OpCodes.Shr32(k[2], 5));
+      this._r2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(k[2], 17), OpCodes.Shl32(k[3], 9)), OpCodes.Shl32(k[4], 1)), OpCodes.Shr32(k[5], 7));
+      this._r3 = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(k[5], 15), OpCodes.Shl32(k[6], 8)), k[7]);
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
-      const c1 = OpCodes.AndN(OpCodes.Shr32(this._r1, R1_BIT), 1);
-      const c2 = OpCodes.AndN(OpCodes.Shr32(this._r2, R2_BIT), 1);
-      const c3 = OpCodes.AndN(OpCodes.Shr32(this._r3, R3_BIT), 1);
-      const majority = (c1 + c2 + c3 > 1) ? 1 : 0;
+      const c1 = OpCodes.And32(OpCodes.Shr32(this._r1, R1_BIT), 1);
+      const c2 = OpCodes.And32(OpCodes.Shr32(this._r2, R2_BIT), 1);
+      const c3 = OpCodes.And32(OpCodes.Shr32(this._r3, R3_BIT), 1);
+      const majority = (OpCodes.Add32(OpCodes.Add32(c1, c2), c3) > 1) ? 1 : 0;
 
       if (c1 === majority) this._r1 = clockRegister(this._r1, R1_TAPS, R1_MASK);
       if (c2 === majority) this._r2 = clockRegister(this._r2, R2_TAPS, R2_MASK);
       if (c3 === majority) this._r3 = clockRegister(this._r3, R3_TAPS, R3_MASK);
 
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this._r1, this._r2), this._r3), 1);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this._r1, this._r2), this._r3), 1);
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++) {
-        byte = OpCodes.AndN(OpCodes.Shl32(byte, 1), 0xFF);
-        byte = OpCodes.OrN(byte, this._generateKeystreamBit());
+        byte = OpCodes.And32(OpCodes.Shl32(byte, 1), 0xFF);
+        byte = OpCodes.Or32(byte, this._generateKeystreamBit());
       }
       return byte;
     }

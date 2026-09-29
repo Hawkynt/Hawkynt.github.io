@@ -78,49 +78,96 @@ class Miller extends StreamCipherAlgorithm {
   }
 }
 
+/**
+ * Delay line and phase of the Miller-code generator
+ */
+class MillerLine {
+  constructor() {
+    /** @type {uint8[]} */
+    this.delay = OpCodes.CreateArray(16, 0); // Delay line buffer
+    /** @type {uint32} */
+    this.phase = 0;
+    /** @type {uint32} */
+    this.clock = 0;
+    /** @type {int32} */
+    this.counter = 0;
+  }
+}
+
 class MillerInstance extends IAlgorithmInstance {
+  /**
+   * @param {Miller} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._state = null;
+    /** @type {MillerLine|null} */
+    this._line = null;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._initializeState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -131,48 +178,46 @@ class MillerInstance extends IAlgorithmInstance {
     if (!this._key) return;
 
     // Miller-inspired state initialization with delay encoding concepts
-    this._state = {
-      delay: new Array(16).fill(0), // Delay line buffer
-      phase: 0,
-      clock: 0,
-      counter: 0
-    };
+    this._line = new MillerLine();
 
     // Seed delay line with key
     for (let i = 0; i < this._key.length && i < 16; i++) {
-      this._state.delay[i] = this._key[i];
+      this._line.delay[i] = this._key[i];
     }
 
     // Miller encoding initialization - phase transitions
     for (let i = 0; i < 16; i++) {
-      const bit = OpCodes.AndN(this._state.delay[i], 1);
+      const bit = OpCodes.And32(this._line.delay[i], 1);
       // Miller encoding: transition at start, optional mid-bit transition
-      this._state.phase = OpCodes.XorN(this._state.phase, 1); // Always transition at start
-      if (bit) this._state.phase = OpCodes.XorN(this._state.phase, 1); // Additional transition for '1' bit
-      this._state.delay[i] = OpCodes.AndN((this._state.delay[i] + this._state.phase), 0xFF);
+      this._line.phase = OpCodes.Xor32(this._line.phase, 1); // Always transition at start
+      if (bit) this._line.phase = OpCodes.Xor32(this._line.phase, 1); // Additional transition for '1' bit
+      this._line.delay[i] = OpCodes.And32(OpCodes.Add32(this._line.delay[i], this._line.phase), 0xFF);
     }
   }
 
+  /**
+   * @returns {uint8}
+   */
   _generateByte() {
-    if (!this._state) return 0;
+    if (!this._line) return 0;
 
     // Miller-inspired byte generation with delay encoding
-    const pos = this._state.counter % 16;
+    const pos = this._line.counter % 16;
 
     // Get current and delayed values
-    const current = this._state.delay[pos];
-    const delayed = this._state.delay[(pos + 8) % 16];
+    const current = this._line.delay[pos];
+    const delayed = this._line.delay[(pos + 8) % 16];
 
     // Miller encoding: XOR current with phase-shifted delayed value
-    this._state.phase = OpCodes.AndN((this._state.phase + 1), 1);
-    const byte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(current, delayed), OpCodes.Shl32(this._state.phase, 4)), this._state.clock), 0xFF);
+    this._line.phase = OpCodes.And32(OpCodes.Add32(this._line.phase, 1), 1);
+    const byte = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(current, delayed), OpCodes.Shl32(this._line.phase, 4)), this._line.clock), 0xFF);
 
     // Update delay line (shift and insert new value)
-    this._state.delay[pos] = OpCodes.AndN((this._state.delay[pos] + byte + this._state.counter), 0xFF);
+    this._line.delay[pos] = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(this._line.delay[pos], byte), this._line.counter), 0xFF);
 
     // Update state
-    this._state.clock = OpCodes.AndN((this._state.clock + 1), 0xFF);
-    this._state.counter = (this._state.counter + 1) % 16;
+    this._line.clock = OpCodes.And32(OpCodes.Add32(this._line.clock, 1), 0xFF);
+    this._line.counter = (this._line.counter + 1) % 16;
 
     return byte;
   }
