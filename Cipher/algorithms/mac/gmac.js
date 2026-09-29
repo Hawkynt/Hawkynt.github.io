@@ -132,16 +132,27 @@
  */
 
   class GMACInstance extends IMacInstance {
+    /**
+     * Initialize a GMAC instance
+     * @param {GMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._nonce = null;
       this.inputBuffer = [];
 
-      this.h = new Array(16).fill(0); // Authentication key H = AES_K(0^128)
-      this.ghashState = new Array(16).fill(0); // GHASH accumulator
+      /** @type {uint8[]} */
+      this.h = OpCodes.CreateArray(16, 0); // Authentication key H = AES_K(0^128)
+      /** @type {uint8[]} */
+      this.ghashState = OpCodes.CreateArray(16, 0); // GHASH accumulator
+      /** @type {IBlockCipherInstance} */
+      this.aesInstance = null; // Framework AES, when one is registered
 
       // AES-128 S-box for key generation
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -161,7 +172,8 @@
         0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
       ];
 
-      this.RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+      this.RCON = OpCodes.Hex8ToBytes('01020408102040801b36');
+      /** @type {uint8[][]} */
       this.roundKeys = null;
     }
 
@@ -191,11 +203,14 @@
       this._key = [...keyBytes];
 
       // Load AES algorithm from framework for proper encryption (registry-first, plain require fallback)
-      let aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
+      /** @type {Algorithm} */
+      let aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)");
+      if (!aesAlgorithm) aesAlgorithm = AlgorithmFramework.Find("AES");
 
       if (!aesAlgorithm && typeof require !== 'undefined') {
         try { require('../block/rijndael.js'); } catch (loadError) { /* fall back to built-in AES */ }
-        aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
+        aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)");
+        if (!aesAlgorithm) aesAlgorithm = AlgorithmFramework.Find("AES");
       }
 
       if (aesAlgorithm) {
@@ -204,13 +219,15 @@
         this.aesInstance.key = keyBytes;
 
         // Generate authentication key H = AES_K(0^128)
-        const zeroBlock = new Array(16).fill(0);
+        const zeroBlock = OpCodes.CreateArray(16, 0);
         this.aesInstance.Feed(zeroBlock);
-        this.h = this.aesInstance.Result();
+        /** @type {uint8[]} */
+        const encrypted = this.aesInstance.Result();
+        this.h = encrypted;
       } else {
         // Fall back to built-in AES
         this.roundKeys = this._expandKey(keyBytes);
-        const zeroBlock = new Array(16).fill(0);
+        const zeroBlock = OpCodes.CreateArray(16, 0);
         this.h = this._aesEncrypt(zeroBlock);
         this.aesInstance = null;
       }
@@ -226,6 +243,11 @@
     }
 
     // Property setter for nonce/IV
+    /**
+     * Set the 96-bit nonce
+     * @param {uint8[]} nonceBytes - 12-byte nonce, or null to clear
+     * @throws {Error} If the nonce is not a 12-byte array
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -240,9 +262,13 @@
         throw new Error("GMAC requires 96-bit (12-byte) nonce");
       }
 
-      this._nonce = [...nonceBytes];
+      this._nonce = nonceBytes.slice();
     }
 
+    /**
+     * Copy of the nonce
+     * @returns {uint8[]} Nonce bytes, or null when not set
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
@@ -284,6 +310,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 16-byte tag
+     * @throws {Error} If key or nonce not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -297,17 +329,24 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer; // Restore original buffer
       return result;
     }
 
     // AES key expansion (simplified for AES-128)
+    /**
+     * Built-in AES key schedule (used when no framework AES is registered)
+     * @param {uint8[]} key - 16, 24 or 32-byte key
+     * @returns {uint8[][]} Round keys, 16 bytes each
+     */
     _expandKey(key) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const keyLength = key.length;
       const rounds = keyLength === 16 ? 10 : keyLength === 24 ? 12 : 14;
+      /** @type {uint8[]} */
       const w = new Array((rounds + 1) * 16);
 
       // Copy original key
@@ -316,9 +355,10 @@
       }
 
       // Generate round keys (simplified for educational purposes)
+      /** @type {int32} */
       const keyWords = keyLength / 4;
       for (let i = keyWords; i < (rounds + 1) * 4; i++) {
-        let temp = [w[(i-1)*4], w[(i-1)*4+1], w[(i-1)*4+2], w[(i-1)*4+3]];
+        const temp = w.slice((i-1)*4, i*4);
 
         if (i % keyWords === 0) {
           // RotWord
@@ -334,11 +374,11 @@
           }
 
           // XOR with Rcon
-          temp[0] = OpCodes.XorN(temp[0], this.RCON[Math.floor(i / keyWords) - 1]);
+          temp[0] = OpCodes.Xor8(temp[0], this.RCON[Math.floor(i / keyWords) - 1]);
         }
 
         for (let j = 0; j < 4; j++) {
-          w[i*4 + j] = OpCodes.XorN(w[(i-keyWords)*4 + j], temp[j]);
+          w[i*4 + j] = OpCodes.Xor8(w[(i-keyWords)*4 + j], temp[j]);
         }
       }
 
@@ -351,8 +391,13 @@
     }
 
     // AES-128 encryption (simplified)
+    /**
+     * Built-in AES encryption of one block
+     * @param {uint8[]} plaintext - 16-byte block (not modified)
+     * @returns {uint8[]} 16-byte result (a new array)
+     */
     _aesEncrypt(plaintext) {
-      const state = [...plaintext];
+      const state = plaintext.slice();
       const rounds = this.roundKeys.length - 1;
 
       // Initial round
@@ -375,13 +420,24 @@
     }
 
     // AES transformations
+    /**
+     * SubBytes, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _subBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.SBOX[state[i]];
       }
     }
 
+    /**
+     * ShiftRows, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _shiftRows(state) {
+      /** @type {uint8} */
       let temp;
 
       // Row 1: shift left by 1
@@ -407,6 +463,11 @@
       state[7] = temp;
     }
 
+    /**
+     * MixColumns, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _mixColumns(state) {
       for (let c = 0; c < 4; c++) {
         const s0 = state[c];
@@ -414,47 +475,59 @@
         const s2 = state[c + 8];
         const s3 = state[c + 12];
 
-        state[c] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(0x02, s0), OpCodes.GF256Mul(0x03, s1)), s2), s3);
-        state[c + 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(0x02, s1)), OpCodes.GF256Mul(0x03, s2)), s3);
-        state[c + 8] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(0x02, s2)), OpCodes.GF256Mul(0x03, s3));
-        state[c + 12] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(0x03, s0), s1), s2), OpCodes.GF256Mul(0x02, s3));
+        state[c] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x02, s0), OpCodes.GF256Mul(0x03, s1)), s2), s3);
+        state[c + 4] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, OpCodes.GF256Mul(0x02, s1)), OpCodes.GF256Mul(0x03, s2)), s3);
+        state[c + 8] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, s1), OpCodes.GF256Mul(0x02, s2)), OpCodes.GF256Mul(0x03, s3));
+        state[c + 12] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.GF256Mul(0x03, s0), s1), s2), OpCodes.GF256Mul(0x02, s3));
       }
     }
 
+    /**
+     * AddRoundKey, in place
+     * @param {uint8[]} state - 16-byte state
+     * @param {uint8[]} roundKey - 16-byte round key
+     * @returns {void}
+     */
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor8(state[i], roundKey[i]);
       }
     }
 
     // GF(2^128) multiplication using bit-by-bit algorithm
     // Note: Manual bit operations required for Galois Field arithmetic
     // Cannot use OpCodes as this requires multi-byte shift with carry propagation
+    /**
+     * Multiplication in GF(2^128) as GCM defines it
+     * @param {uint8[]} x - First factor (16 bytes)
+     * @param {uint8[]} y - Second factor (16 bytes, not modified)
+     * @returns {uint8[]} Product (16 bytes)
+     */
     _gfMultiply(x, y) {
-      const result = new Array(16).fill(0);
-      const v = [...y];
+      const result = OpCodes.CreateArray(16, 0);
+      const v = y.slice();
 
       for (let i = 0; i < 16; i++) {
         for (let j = 7; j >= 0; j--) {
-          if (OpCodes.AndN(OpCodes.Shr32(x[i], j), 1)) {
+          if (OpCodes.And32(OpCodes.Shr32(x[i], j), 1)) {
             // XOR v into result
             for (let k = 0; k < 16; k++) {
-              result[k] = OpCodes.XorN(result[k], v[k]);
+              result[k] = OpCodes.Xor8(result[k], v[k]);
             }
           }
 
           // Right shift v across all 16 bytes with carry propagation
           // These OpCodes.Shr32(manual, 1) operations are essential for GF(2^128) multiplication
           // and cannot be replaced - OpCodes has no multi-byte shift-with-carry function
-          const carry = OpCodes.AndN(v[15], 1);
+          const carry = OpCodes.And32(v[15], 1);
           for (let k = 15; k > 0; k--) {
             // Shift current byte right, OR in high bit from previous byte
-            v[k] = OpCodes.OrN(OpCodes.Shr32(v[k], 1), OpCodes.RotL8(OpCodes.AndN(v[k-1], 1), 7));
+            v[k] = OpCodes.Or32(OpCodes.Shr32(v[k], 1), OpCodes.RotL8(OpCodes.And32(v[k-1], 1), 7));
           }
           v[0] = OpCodes.Shr32(v[0], 1); // Shift most significant byte
 
           if (carry) {
-            v[0] = OpCodes.XorN(v[0], 0xE1); // Apply reduction polynomial
+            v[0] = OpCodes.Xor8(v[0], 0xE1); // Apply reduction polynomial
           }
         }
       }
@@ -463,8 +536,13 @@
     }
 
     // GHASH function - core of GMAC authentication
+    /**
+     * GHASH_H over data, zero-padding the last block
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} 16-byte hash
+     */
     _ghash(data) {
-      let y = new Array(16).fill(0);
+      let y = OpCodes.CreateArray(16, 0);
 
       // Process data in 128-bit blocks
       for (let i = 0; i < data.length; i += 16) {
@@ -477,7 +555,7 @@
 
         // Y_i = (Y_{i-1} ⊕ X_i) · H
         for (let j = 0; j < 16; j++) {
-          y[j] = OpCodes.XorN(y[j], block[j]);
+          y[j] = OpCodes.Xor8(y[j], block[j]);
         }
 
         y = this._gfMultiply(y, this.h);
@@ -487,9 +565,13 @@
     }
 
     // Core GMAC computation
+    /**
+     * GMAC tag of the buffered message
+     * @returns {uint8[]} 16-byte tag
+     */
     _computeGMAC() {
       // Prepare GMAC input: AAD || len(AAD)
-      const gmacInput = [...this.inputBuffer];
+      const gmacInput = this.inputBuffer.slice();
 
       // Pad AAD to block boundary
       const aadPadding = 16 - (gmacInput.length % 16);
@@ -515,10 +597,11 @@
       const ghashResult = this._ghash(gmacInput);
 
       // Generate J_0 from IV: IV || 0^31 || 1
-      const j0 = [...this._nonce];
+      const j0 = this._nonce.slice();
       j0.push(0, 0, 0, 1);
 
       // Encrypt J_0 to get tag mask
+      /** @type {uint8[]} */
       let tagMask;
       if (this.aesInstance) {
         // Use framework AES
@@ -530,9 +613,10 @@
       }
 
       // Final tag = GHASH ⊕ E_K(J_0)
+      /** @type {uint8[]} */
       const tag = new Array(16);
       for (let i = 0; i < 16; i++) {
-        tag[i] = OpCodes.XorN(ghashResult[i], tagMask[i]);
+        tag[i] = OpCodes.Xor8(ghashResult[i], tagMask[i]);
       }
 
       return tag;
