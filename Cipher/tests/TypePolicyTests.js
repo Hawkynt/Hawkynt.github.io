@@ -149,6 +149,12 @@ test('parser: given @type as the first statement of a block, when parsed, then i
   equal(declOf(ast, 'x').resultType, 'uint16');
 });
 
+test('IL: given a method with @param, when normalized, then typeInfo.params is still a Map the emitters can read', () => {
+  const ast = il('class C {\n /** @param {uint8[]} d */\n h(d) { return d; } }');
+  const fn = find(ast, n => n.type === 'FunctionExpression' && n.typeInfo);
+  ok(fn && fn.typeInfo.params instanceof Map && fn.typeInfo.params.has('d'), 'params Map with d');
+});
+
 // ------------------------------------------------------------ tier 2 before tier 3
 test('tier 2: given a class deriving from a framework interface, when a framework field is read, then the framework type is used', () => {
   const ast = il('class H extends IHashFunctionInstance { m() { const s = this.OutputSize; return s; } }');
