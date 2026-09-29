@@ -50,6 +50,12 @@
 
   // 64-bit rotation helper using bit-interleaved format
   // GASCON uses bit-interleaving: 64-bit value split into even/odd bits stored in separate 32-bit words
+  /**
+   * @param {uint32} low
+   * @param {uint32} high
+   * @param {int32} bits
+   * @returns {uint32[]}
+   */
   function rotr64_interleaved(low, high, bits) {
     bits = bits % 64;
     if (bits === 0) return [low, high];
@@ -67,6 +73,12 @@
   }
 
   // Odd rotation: swap low/high and adjust rotation amount
+  /**
+   * @param {uint32} low
+   * @param {uint32} high
+   * @param {int32} bits
+   * @returns {uint32[]}
+   */
   function rotr64_interleaved_odd(low, high, bits) {
     const low_rot = OpCodes.RotR32(low, ((bits + 1) % 32));
     const high_rot = OpCodes.RotR32(high, bits);
@@ -75,99 +87,118 @@
 
   // ========================[ SHARED GASCON-128 PERMUTATION ]========================
 
+  /**
+   * A zero 64-bit word as a fresh [low32, high32] pair
+   * @returns {uint32[]}
+   */
+  function zeroWordPair() {
+    /** @type {uint32[]} */
+    const pair = [0, 0];
+    return pair;
+  }
+
   // GASCON-128 permutation state: 5 x 64-bit words in bit-interleaved format
   // Shared by both GASCON-128 and DryGASCON128k16
   class GASCON128Permutation {
     constructor() {
       // State: 5 x 64-bit words stored as pairs [low32, high32] for bit-interleaved operations
+      /** @type {uint32[][]} */
       this.S = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        this.S[i] = [0, 0]; // [low32, high32]
+        this.S[i] = zeroWordPair(); // [low32, high32]
       }
     }
 
     // Core round function implementing GASCON permutation
+    /**
+     * @param {int32} roundNum
+     */
     coreRound(roundNum) {
       // Add round constant to S[2]: ((0x0F - round) left-shift 4) OR round
-      const c = OpCodes.OrN(OpCodes.Shl32(0x0F - roundNum, 4), roundNum);
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], c));
+      const c = OpCodes.Or32(OpCodes.Shl32(0x0F - roundNum, 4), roundNum);
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][0], c));
 
       // Substitution layer (chi function)
       // x0 ^= x4; x2 ^= x1; x4 ^= x3;
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][0], this.S[4][0]));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][1], this.S[4][1]));
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], this.S[1][0]));
-      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][1], this.S[1][1]));
-      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][0], this.S[3][0]));
-      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][1], this.S[3][1]));
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][0], this.S[4][0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][1], this.S[4][1]));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][0], this.S[1][0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][1], this.S[1][1]));
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[4][0], this.S[3][0]));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[4][1], this.S[3][1]));
 
       // t[i] = (~x[i]) & x[i+1]
-      const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
-      const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
-      const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
-      const t1_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][1], this.S[2][1]));
-      const t2_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][0], this.S[3][0]));
-      const t2_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][1], this.S[3][1]));
-      const t3_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][0], this.S[4][0]));
-      const t3_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][1], this.S[4][1]));
-      const t4_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][0], this.S[0][0]));
-      const t4_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][1], this.S[0][1]));
+      const t0_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[0][0]), this.S[1][0]));
+      const t0_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[0][1]), this.S[1][1]));
+      const t1_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[1][0]), this.S[2][0]));
+      const t1_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[1][1]), this.S[2][1]));
+      const t2_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[2][0]), this.S[3][0]));
+      const t2_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[2][1]), this.S[3][1]));
+      const t3_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[3][0]), this.S[4][0]));
+      const t3_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[3][1]), this.S[4][1]));
+      const t4_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[4][0]), this.S[0][0]));
+      const t4_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(this.S[4][1]), this.S[0][1]));
 
       // x[i] ^= t[i+1]
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][0], t1_l));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][1], t1_h));
-      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[1][0], t2_l));
-      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[1][1], t2_h));
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], t3_l));
-      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][1], t3_h));
-      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[3][0], t4_l));
-      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[3][1], t4_h));
-      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][0], t0_l));
-      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][1], t0_h));
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][0], t1_l));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][1], t1_h));
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[1][0], t2_l));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[1][1], t2_h));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][0], t3_l));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[2][1], t3_h));
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[3][0], t4_l));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[3][1], t4_h));
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[4][0], t0_l));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[4][1], t0_h));
 
       // x1 ^= x0; x3 ^= x2; x0 ^= x4; x2 = ~x2;
-      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[1][0], this.S[0][0]));
-      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[1][1], this.S[0][1]));
-      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[3][0], this.S[2][0]));
-      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[3][1], this.S[2][1]));
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][0], this.S[4][0]));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[0][1], this.S[4][1]));
-      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);
-      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[1][0], this.S[0][0]));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[1][1], this.S[0][1]));
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[3][0], this.S[2][0]));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[3][1], this.S[2][1]));
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][0], this.S[4][0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(this.S[0][1], this.S[4][1]));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][1]));
 
       // Linear diffusion layer (bit-interleaved rotations)
       // x0 XOR-equals rightRotate19(x0) XOR rightRotate28(x0)
       let r1 = rotr64_interleaved_odd(this.S[0][0], this.S[0][1], 9);
       let r2 = rotr64_interleaved(this.S[0][0], this.S[0][1], 14);
-      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[0][0], r1[0]), r2[0]));
-      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[0][1], r1[1]), r2[1]));
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[0][0], r1[0]), r2[0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[0][1], r1[1]), r2[1]));
 
       // x1 XOR-equals rightRotate61(x1) XOR rightRotate38(x1)
       r1 = rotr64_interleaved_odd(this.S[1][0], this.S[1][1], 30);
       r2 = rotr64_interleaved(this.S[1][0], this.S[1][1], 19);
-      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[1][0], r1[0]), r2[0]));
-      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[1][1], r1[1]), r2[1]));
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[1][0], r1[0]), r2[0]));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[1][1], r1[1]), r2[1]));
 
       // x2 XOR-equals rightRotate1(x2) XOR rightRotate6(x2)
       const r2a = rotr64_interleaved_odd(this.S[2][0], this.S[2][1], 0);
       r2 = rotr64_interleaved(this.S[2][0], this.S[2][1], 3);
-      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[2][0], r2a[0]), r2[0]));
-      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[2][1], r2a[1]), r2[1]));
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[2][0], r2a[0]), r2[0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[2][1], r2a[1]), r2[1]));
 
       // x3 XOR-equals rightRotate10(x3) XOR rightRotate17(x3)
       r1 = rotr64_interleaved(this.S[3][0], this.S[3][1], 5);
       r2 = rotr64_interleaved_odd(this.S[3][0], this.S[3][1], 8);
-      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[3][0], r1[0]), r2[0]));
-      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[3][1], r1[1]), r2[1]));
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[3][0], r1[0]), r2[0]));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[3][1], r1[1]), r2[1]));
 
       // x4 XOR-equals rightRotate7(x4) XOR rightRotate40(x4)
       r1 = rotr64_interleaved_odd(this.S[4][0], this.S[4][1], 3);
       r2 = rotr64_interleaved(this.S[4][0], this.S[4][1], 20);
-      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[4][0], r1[0]), r2[0]));
-      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.S[4][1], r1[1]), r2[1]));
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[4][0], r1[0]), r2[0]));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this.S[4][1], r1[1]), r2[1]));
     }
 
     // Load bytes into state (little-endian)
+    /**
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @param {int32} index
+     */
     loadBytes(bytes, offset, index) {
       const low = OpCodes.Pack32LE(
         bytes[offset],
@@ -185,6 +216,11 @@
     }
 
     // Store state to bytes (little-endian)
+    /**
+     * @param {uint8[]} bytes
+     * @param {int32} offset
+     * @param {int32} index
+     */
     storeBytes(bytes, offset, index) {
       const b = OpCodes.Unpack32LE(this.S[index][0]);
       bytes[offset] = b[0];
@@ -200,7 +236,11 @@
     }
 
     // Convert to byte array (for GASCON-128 compatibility)
+    /**
+     * @returns {uint8[]}
+     */
     toByteArray() {
+      /** @type {uint8[]} */
       const B = new Array(40);
       for (let i = 0; i < 5; ++i) {
         this.storeBytes(B, i * 8, i);
@@ -209,6 +249,9 @@
     }
 
     // Load from byte array (for GASCON-128 compatibility)
+    /**
+     * @param {uint8[]} B
+     */
     fromByteArray(B) {
       for (let i = 0; i < 5; ++i) {
         this.loadBytes(B, i * 8, i);
@@ -221,9 +264,14 @@
   // GASCON-128 permutation wrapper with byte-oriented interface
   class GasconPermutation {
     constructor() {
+      /** @type {uint8[]} */
       this.B = OpCodes.CreateArray(40, 0);
     }
 
+    /**
+     * @param {int32} offset
+     * @returns {uint32}
+     */
     getWord32LE(offset) {
       return OpCodes.Pack32LE(
         this.B[offset],
@@ -233,6 +281,10 @@
       );
     }
 
+    /**
+     * @param {int32} offset
+     * @param {uint32} value
+     */
     setWord32LE(offset, value) {
       const bytes = OpCodes.Unpack32LE(value);
       this.B[offset] = bytes[0];
@@ -241,6 +293,9 @@
       this.B[offset + 3] = bytes[3];
     }
 
+    /**
+     * @param {int32} firstRound
+     */
     permute(firstRound) {
       // Load state as 10 x 32-bit little-endian words
       let x0_l = this.getWord32LE(0);
@@ -256,61 +311,61 @@
 
       for (let round = firstRound; round < 12; ++round) {
         // Add round constant to x2 low word
-        x2_l = OpCodes.XorN(x2_l, OpCodes.OrN(OpCodes.Shl32(0x0F - round, 4), round));
+        x2_l = OpCodes.Xor32(x2_l, OpCodes.Or32(OpCodes.Shl32(0x0F - round, 4), round));
 
         // Substitution layer
-        x0_l = OpCodes.XorN(x0_l, x4_l); x0_h = OpCodes.XorN(x0_h, x4_h);
-        x2_l = OpCodes.XorN(x2_l, x1_l); x2_h = OpCodes.XorN(x2_h, x1_h);
-        x4_l = OpCodes.XorN(x4_l, x3_l); x4_h = OpCodes.XorN(x4_h, x3_h);
+        x0_l = OpCodes.Xor32(x0_l, x4_l); x0_h = OpCodes.Xor32(x0_h, x4_h);
+        x2_l = OpCodes.Xor32(x2_l, x1_l); x2_h = OpCodes.Xor32(x2_h, x1_h);
+        x4_l = OpCodes.Xor32(x4_l, x3_l); x4_h = OpCodes.Xor32(x4_h, x3_h);
 
-        const t0_l = OpCodes.ToUint32(OpCodes.AndN(~x0_l, x1_l));
-        const t0_h = OpCodes.ToUint32(OpCodes.AndN(~x0_h, x1_h));
-        const t1_l = OpCodes.ToUint32(OpCodes.AndN(~x1_l, x2_l));
-        const t1_h = OpCodes.ToUint32(OpCodes.AndN(~x1_h, x2_h));
-        const t2_l = OpCodes.ToUint32(OpCodes.AndN(~x2_l, x3_l));
-        const t2_h = OpCodes.ToUint32(OpCodes.AndN(~x2_h, x3_h));
-        const t3_l = OpCodes.ToUint32(OpCodes.AndN(~x3_l, x4_l));
-        const t3_h = OpCodes.ToUint32(OpCodes.AndN(~x3_h, x4_h));
-        const t4_l = OpCodes.ToUint32(OpCodes.AndN(~x4_l, x0_l));
-        const t4_h = OpCodes.ToUint32(OpCodes.AndN(~x4_h, x0_h));
+        const t0_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x0_l), x1_l));
+        const t0_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x0_h), x1_h));
+        const t1_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x1_l), x2_l));
+        const t1_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x1_h), x2_h));
+        const t2_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x2_l), x3_l));
+        const t2_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x2_h), x3_h));
+        const t3_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x3_l), x4_l));
+        const t3_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x3_h), x4_h));
+        const t4_l = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x4_l), x0_l));
+        const t4_h = OpCodes.ToUint32(OpCodes.And32(OpCodes.Not32(x4_h), x0_h));
 
-        x0_l = OpCodes.XorN(x0_l, t1_l); x0_h = OpCodes.XorN(x0_h, t1_h);
-        x1_l = OpCodes.XorN(x1_l, t2_l); x1_h = OpCodes.XorN(x1_h, t2_h);
-        x2_l = OpCodes.XorN(x2_l, t3_l); x2_h = OpCodes.XorN(x2_h, t3_h);
-        x3_l = OpCodes.XorN(x3_l, t4_l); x3_h = OpCodes.XorN(x3_h, t4_h);
-        x4_l = OpCodes.XorN(x4_l, t0_l); x4_h = OpCodes.XorN(x4_h, t0_h);
+        x0_l = OpCodes.Xor32(x0_l, t1_l); x0_h = OpCodes.Xor32(x0_h, t1_h);
+        x1_l = OpCodes.Xor32(x1_l, t2_l); x1_h = OpCodes.Xor32(x1_h, t2_h);
+        x2_l = OpCodes.Xor32(x2_l, t3_l); x2_h = OpCodes.Xor32(x2_h, t3_h);
+        x3_l = OpCodes.Xor32(x3_l, t4_l); x3_h = OpCodes.Xor32(x3_h, t4_h);
+        x4_l = OpCodes.Xor32(x4_l, t0_l); x4_h = OpCodes.Xor32(x4_h, t0_h);
 
-        x1_l = OpCodes.XorN(x1_l, x0_l); x1_h = OpCodes.XorN(x1_h, x0_h);
-        x3_l = OpCodes.XorN(x3_l, x2_l); x3_h = OpCodes.XorN(x3_h, x2_h);
-        x0_l = OpCodes.XorN(x0_l, x4_l); x0_h = OpCodes.XorN(x0_h, x4_h);
-        x2_l = OpCodes.ToUint32(~x2_l);
-        x2_h = OpCodes.ToUint32(~x2_h);
+        x1_l = OpCodes.Xor32(x1_l, x0_l); x1_h = OpCodes.Xor32(x1_h, x0_h);
+        x3_l = OpCodes.Xor32(x3_l, x2_l); x3_h = OpCodes.Xor32(x3_h, x2_h);
+        x0_l = OpCodes.Xor32(x0_l, x4_l); x0_h = OpCodes.Xor32(x0_h, x4_h);
+        x2_l = OpCodes.ToUint32(OpCodes.Not32(x2_l));
+        x2_h = OpCodes.ToUint32(OpCodes.Not32(x2_h));
 
         // Linear diffusion layer
         let r0 = rotr64_interleaved_odd(x0_l, x0_h, 9);
         let r1 = rotr64_interleaved(x0_l, x0_h, 14);
-        x0_l = OpCodes.XorN(OpCodes.XorN(x0_l, r0[0]), r1[0]);
-        x0_h = OpCodes.XorN(OpCodes.XorN(x0_h, r0[1]), r1[1]);
+        x0_l = OpCodes.Xor32(OpCodes.Xor32(x0_l, r0[0]), r1[0]);
+        x0_h = OpCodes.Xor32(OpCodes.Xor32(x0_h, r0[1]), r1[1]);
 
         r0 = rotr64_interleaved_odd(x1_l, x1_h, 30);
         r1 = rotr64_interleaved(x1_l, x1_h, 19);
-        x1_l = OpCodes.XorN(OpCodes.XorN(x1_l, r0[0]), r1[0]);
-        x1_h = OpCodes.XorN(OpCodes.XorN(x1_h, r0[1]), r1[1]);
+        x1_l = OpCodes.Xor32(OpCodes.Xor32(x1_l, r0[0]), r1[0]);
+        x1_h = OpCodes.Xor32(OpCodes.Xor32(x1_h, r0[1]), r1[1]);
 
         r0 = rotr64_interleaved_odd(x2_l, x2_h, 0);
         r1 = rotr64_interleaved(x2_l, x2_h, 3);
-        x2_l = OpCodes.XorN(OpCodes.XorN(x2_l, r0[0]), r1[0]);
-        x2_h = OpCodes.XorN(OpCodes.XorN(x2_h, r0[1]), r1[1]);
+        x2_l = OpCodes.Xor32(OpCodes.Xor32(x2_l, r0[0]), r1[0]);
+        x2_h = OpCodes.Xor32(OpCodes.Xor32(x2_h, r0[1]), r1[1]);
 
         r0 = rotr64_interleaved(x3_l, x3_h, 5);
         r1 = rotr64_interleaved_odd(x3_l, x3_h, 8);
-        x3_l = OpCodes.XorN(OpCodes.XorN(x3_l, r0[0]), r1[0]);
-        x3_h = OpCodes.XorN(OpCodes.XorN(x3_h, r0[1]), r1[1]);
+        x3_l = OpCodes.Xor32(OpCodes.Xor32(x3_l, r0[0]), r1[0]);
+        x3_h = OpCodes.Xor32(OpCodes.Xor32(x3_h, r0[1]), r1[1]);
 
         r0 = rotr64_interleaved_odd(x4_l, x4_h, 3);
         r1 = rotr64_interleaved(x4_l, x4_h, 20);
-        x4_l = OpCodes.XorN(OpCodes.XorN(x4_l, r0[0]), r1[0]);
-        x4_h = OpCodes.XorN(OpCodes.XorN(x4_h, r0[1]), r1[1]);
+        x4_l = OpCodes.Xor32(OpCodes.Xor32(x4_l, r0[0]), r1[0]);
+        x4_h = OpCodes.Xor32(OpCodes.Xor32(x4_h, r0[1]), r1[1]);
       }
 
       // Store back to state
@@ -326,27 +381,44 @@
       this.setWord32LE(36, x4_h);
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} offset
+     * @param {int32} length
+     */
     xorBytes(data, offset, length) {
       for (let i = 0; i < length; ++i) {
-        this.B[offset + i] ^= data[i];
+        this.B[offset + i] = OpCodes.Xor32(this.B[offset + i], data[i]);
       }
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} offset
+     * @param {int32} length
+     * @returns {uint8[]}
+     */
     xorAndExtract(data, offset, length) {
       /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < length; ++i) {
-        this.B[offset + i] ^= data[i];
+        this.B[offset + i] = OpCodes.Xor32(this.B[offset + i], data[i]);
         output.push(this.B[offset + i]);
       }
       return output;
     }
 
+    /**
+     * @param {uint8[]} data
+     * @param {int32} offset
+     * @param {int32} length
+     * @returns {uint8[]}
+     */
     xorAndReplace(data, offset, length) {
       /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < length; ++i) {
-        const plainByte = OpCodes.XorN(this.B[offset + i], data[i]);
+        const plainByte = OpCodes.Xor32(this.B[offset + i], data[i]);
         output.push(plainByte);
         this.B[offset + i] = data[i];
       }
@@ -470,14 +542,19 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
+      /** @type {float64} */
       this.IV = 0x80400c0600000000;
+      /** @type {int32} */
       this.rate = 8;
+      /** @type {int32} */
       this.tagSize = 16;
 
+      /** @type {GasconPermutation} */
       this.perm = new GasconPermutation();
     }
 
@@ -580,17 +657,17 @@
     }
 
     _initialize() {
-      const ivLow = OpCodes.ToUint32(OpCodes.AndN(this.IV, 0xFFFFFFFF));
+      const ivLow = OpCodes.ToUint32(OpCodes.And32(this.IV, 0xFFFFFFFF));
       const ivHigh = Math.floor(this.IV / 0x100000000);
 
-      this.perm.B[0] = OpCodes.AndN(ivLow, 0xFF);
-      this.perm.B[1] = OpCodes.AndN(OpCodes.Shr32(ivLow, 8), 0xFF);
-      this.perm.B[2] = OpCodes.AndN(OpCodes.Shr32(ivLow, 16), 0xFF);
-      this.perm.B[3] = OpCodes.AndN(OpCodes.Shr32(ivLow, 24), 0xFF);
-      this.perm.B[4] = OpCodes.AndN(ivHigh, 0xFF);
-      this.perm.B[5] = OpCodes.AndN(OpCodes.Shr32(ivHigh, 8), 0xFF);
-      this.perm.B[6] = OpCodes.AndN(OpCodes.Shr32(ivHigh, 16), 0xFF);
-      this.perm.B[7] = OpCodes.AndN(OpCodes.Shr32(ivHigh, 24), 0xFF);
+      this.perm.B[0] = OpCodes.And32(ivLow, 0xFF);
+      this.perm.B[1] = OpCodes.And32(OpCodes.Shr32(ivLow, 8), 0xFF);
+      this.perm.B[2] = OpCodes.And32(OpCodes.Shr32(ivLow, 16), 0xFF);
+      this.perm.B[3] = OpCodes.And32(OpCodes.Shr32(ivLow, 24), 0xFF);
+      this.perm.B[4] = OpCodes.And32(ivHigh, 0xFF);
+      this.perm.B[5] = OpCodes.And32(OpCodes.Shr32(ivHigh, 8), 0xFF);
+      this.perm.B[6] = OpCodes.And32(OpCodes.Shr32(ivHigh, 16), 0xFF);
+      this.perm.B[7] = OpCodes.And32(OpCodes.Shr32(ivHigh, 24), 0xFF);
 
       for (let i = 0; i < 16; ++i) {
         this.perm.B[8 + i] = this._key[i];
@@ -601,6 +678,9 @@
       this.perm.xorBytes(this._key, 24, 16);
     }
 
+    /**
+     * @param {uint8[]} aad
+     */
     _absorbAAD(aad) {
       let pos = 0;
       while (pos + 8 <= aad.length) {
@@ -613,10 +693,13 @@
         this.perm.xorBytes(aad.slice(pos), 0, aad.length - pos);
       }
 
-      this.perm.B[aad.length % 8] ^= 0x80;
+      this.perm.B[aad.length % 8] = OpCodes.Xor32(this.perm.B[aad.length % 8], 0x80);
       this.perm.permute(6);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       this._initialize();
 
@@ -624,7 +707,7 @@
         this._absorbAAD(this._aad);
       }
 
-      this.perm.B[39] ^= 0x01;
+      this.perm.B[39] = OpCodes.Xor32(this.perm.B[39], 0x01);
 
       /** @type {uint8[]} */
       const ciphertext = [];
@@ -632,6 +715,7 @@
       let pos = 0;
 
       while (pos + 8 <= plaintext.length) {
+        /** @type {uint8[]} */
         const block = this.perm.xorAndExtract(plaintext.slice(pos, pos + 8), 0, 8);
         for (let _i = 0; _i < block.length; _i++) ciphertext.push(block[_i]);
         this.perm.permute(6);
@@ -639,23 +723,28 @@
       }
 
       if (pos < plaintext.length) {
+        /** @type {uint8[]} */
         const block = this.perm.xorAndExtract(plaintext.slice(pos), 0, plaintext.length - pos);
         for (let _i = 0; _i < block.length; _i++) ciphertext.push(block[_i]);
       }
 
-      this.perm.B[plaintext.length % 8] = OpCodes.XorN(this.perm.B[plaintext.length % 8], 0x80);
+      this.perm.B[plaintext.length % 8] = OpCodes.Xor32(this.perm.B[plaintext.length % 8], 0x80);
       this.perm.xorBytes(this._key, 8, 16);
       this.perm.permute(0);
 
+      /** @type {uint8[]} */
       const tag = [];
       for (let i = 0; i < 16; ++i) {
-        tag.push(OpCodes.XorN(this.perm.B[24 + i], this._key[i]));
+        tag.push(OpCodes.Xor32(this.perm.B[24 + i], this._key[i]));
       }
 
       this.inputBuffer = [];
-      return [...ciphertext, ...tag];
+      return ciphertext.concat(tag);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const ciphertextWithTag = this.inputBuffer;
       const ciphertextLen = ciphertextWithTag.length - 16;
@@ -668,13 +757,14 @@
         this._absorbAAD(this._aad);
       }
 
-      this.perm.B[39] ^= 0x01;
+      this.perm.B[39] = OpCodes.Xor32(this.perm.B[39], 0x01);
 
       /** @type {uint8[]} */
       const plaintext = [];
       let pos = 0;
 
       while (pos + 8 <= ciphertext.length) {
+        /** @type {uint8[]} */
         const block = this.perm.xorAndReplace(ciphertext.slice(pos, pos + 8), 0, 8);
         for (let _i = 0; _i < block.length; _i++) plaintext.push(block[_i]);
         this.perm.permute(6);
@@ -682,17 +772,19 @@
       }
 
       if (pos < ciphertext.length) {
+        /** @type {uint8[]} */
         const block = this.perm.xorAndReplace(ciphertext.slice(pos), 0, ciphertext.length - pos);
         for (let _i = 0; _i < block.length; _i++) plaintext.push(block[_i]);
       }
 
-      this.perm.B[ciphertext.length % 8] ^= 0x80;
+      this.perm.B[ciphertext.length % 8] = OpCodes.Xor32(this.perm.B[ciphertext.length % 8], 0x80);
       this.perm.xorBytes(this._key, 8, 16);
       this.perm.permute(0);
 
+      /** @type {uint8[]} */
       const expectedTag = [];
       for (let i = 0; i < 16; ++i) {
-        expectedTag.push(OpCodes.XorN(this.perm.B[24 + i], this._key[i]));
+        expectedTag.push(OpCodes.Xor32(this.perm.B[24 + i], this._key[i]));
       }
 
       let tagMatch = true;
@@ -728,16 +820,26 @@
 
   class DrySponge128State {
     constructor() {
+      /** @type {GASCON128Permutation} */
       this.c = new GASCON128Permutation();
+      /** @type {uint8[]} */
       this.r = new Array(DRYSPONGE128_RATE);
       for (let i = 0; i < DRYSPONGE128_RATE; ++i) this.r[i] = 0;
+      /** @type {uint8[]} */
       this.x = new Array(DRYSPONGE128_XSIZE);
       for (let i = 0; i < DRYSPONGE128_XSIZE; ++i) this.x[i] = 0;
+      /** @type {uint32} */
       this.domain = 0;
+      /** @type {int32} */
       this.rounds = DRYSPONGE128_ROUNDS;
     }
 
+    /**
+     * @param {int32} index
+     * @returns {uint32}
+     */
     selectX(index) {
+      /** @type {uint32[]} */
       const xW = new Array(4);
       for (let i = 0; i < 4; ++i) {
         xW[i] = OpCodes.Pack32LE(
@@ -748,64 +850,72 @@
         );
       }
 
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < 4; ++i) {
         const mask = (i === index) ? 0xFFFFFFFF : 0;
-        result = OpCodes.ToUint32(OpCodes.XorN(result, OpCodes.AndN(xW[i], mask)));
+        result = OpCodes.ToUint32(OpCodes.Xor32(result, OpCodes.And32(xW[i], mask)));
       }
       return result;
     }
 
+    /**
+     * @param {uint8[]} data
+     */
     mixPhase(data) {
       const ds = this.domain;
 
+      /** @type {uint32[]} */
       const mixData = new Array(14);
-      mixData[0] = OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8));
-      mixData[1] = OpCodes.OrN(OpCodes.Shr32(data[1], 2), OpCodes.Shl32(data[2], 6));
-      mixData[2] = OpCodes.OrN(OpCodes.Shr32(data[2], 4), OpCodes.Shl32(data[3], 4));
-      mixData[3] = OpCodes.OrN(OpCodes.Shr32(data[3], 6), OpCodes.Shl32(data[4], 2));
-      mixData[4] = OpCodes.OrN(data[5], OpCodes.Shl32(data[6], 8));
-      mixData[5] = OpCodes.OrN(OpCodes.Shr32(data[6], 2), OpCodes.Shl32(data[7], 6));
-      mixData[6] = OpCodes.OrN(OpCodes.Shr32(data[7], 4), OpCodes.Shl32(data[8], 4));
-      mixData[7] = OpCodes.OrN(OpCodes.Shr32(data[8], 6), OpCodes.Shl32(data[9], 2));
-      mixData[8] = OpCodes.OrN(data[10], OpCodes.Shl32(data[11], 8));
-      mixData[9] = OpCodes.OrN(OpCodes.Shr32(data[11], 2), OpCodes.Shl32(data[12], 6));
-      mixData[10] = OpCodes.OrN(OpCodes.Shr32(data[12], 4), OpCodes.Shl32(data[13], 4));
-      mixData[11] = OpCodes.OrN(OpCodes.Shr32(data[13], 6), OpCodes.Shl32(data[14], 2));
-      mixData[12] = OpCodes.XorN(data[15], ds);
+      mixData[0] = OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8));
+      mixData[1] = OpCodes.Or32(OpCodes.Shr32(data[1], 2), OpCodes.Shl32(data[2], 6));
+      mixData[2] = OpCodes.Or32(OpCodes.Shr32(data[2], 4), OpCodes.Shl32(data[3], 4));
+      mixData[3] = OpCodes.Or32(OpCodes.Shr32(data[3], 6), OpCodes.Shl32(data[4], 2));
+      mixData[4] = OpCodes.Or32(data[5], OpCodes.Shl32(data[6], 8));
+      mixData[5] = OpCodes.Or32(OpCodes.Shr32(data[6], 2), OpCodes.Shl32(data[7], 6));
+      mixData[6] = OpCodes.Or32(OpCodes.Shr32(data[7], 4), OpCodes.Shl32(data[8], 4));
+      mixData[7] = OpCodes.Or32(OpCodes.Shr32(data[8], 6), OpCodes.Shl32(data[9], 2));
+      mixData[8] = OpCodes.Or32(data[10], OpCodes.Shl32(data[11], 8));
+      mixData[9] = OpCodes.Or32(OpCodes.Shr32(data[11], 2), OpCodes.Shl32(data[12], 6));
+      mixData[10] = OpCodes.Or32(OpCodes.Shr32(data[12], 4), OpCodes.Shl32(data[13], 4));
+      mixData[11] = OpCodes.Or32(OpCodes.Shr32(data[13], 6), OpCodes.Shl32(data[14], 2));
+      mixData[12] = OpCodes.Xor32(data[15], ds);
       mixData[13] = OpCodes.Shr32(ds, 10);
 
       // Mix rounds 0-12 followed by coreRound(0), then final mix round 13 without coreRound
       for (let i = 0; i < 13; ++i) {
-        this.mixPhaseRound(OpCodes.AndN(mixData[i], 0x3FF));
+        this.mixPhaseRound(OpCodes.And32(mixData[i], 0x3FF));
         this.c.coreRound(0);
       }
       // Final mix round (ds >> 10) without coreRound after
-      this.mixPhaseRound(OpCodes.AndN(mixData[13], 0x3FF));
+      this.mixPhaseRound(OpCodes.And32(mixData[13], 0x3FF));
     }
 
+    /**
+     * @param {uint32} data
+     */
     mixPhaseRound(data) {
-      const x0 = this.selectX(OpCodes.AndN(data, 0x03));
-      const x1 = this.selectX(OpCodes.AndN(OpCodes.Shr32(data, 2), 0x03));
-      const x2 = this.selectX(OpCodes.AndN(OpCodes.Shr32(data, 4), 0x03));
-      const x3 = this.selectX(OpCodes.AndN(OpCodes.Shr32(data, 6), 0x03));
-      const x4 = this.selectX(OpCodes.AndN(OpCodes.Shr32(data, 8), 0x03));
+      const x0 = this.selectX(OpCodes.And32(data, 0x03));
+      const x1 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 2), 0x03));
+      const x2 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 4), 0x03));
+      const x3 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 6), 0x03));
+      const x4 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 8), 0x03));
 
-      this.c.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.c.S[0][0], x0));
-      this.c.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(this.c.S[1][0], x1));
-      this.c.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.c.S[2][0], x2));
-      this.c.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(this.c.S[3][0], x3));
-      this.c.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(this.c.S[4][0], x4));
+      this.c.S[0][0] = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[0][0], x0));
+      this.c.S[1][0] = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[1][0], x1));
+      this.c.S[2][0] = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[2][0], x2));
+      this.c.S[3][0] = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[3][0], x3));
+      this.c.S[4][0] = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[4][0], x4));
     }
 
     g() {
       // First round: compute and ASSIGN to r
       this.c.coreRound(0);
 
-      let w0 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[0][0], this.c.S[2][1]));
-      let w1 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[0][1], this.c.S[3][0]));
-      let w2 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[1][0], this.c.S[3][1]));
-      let w3 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[1][1], this.c.S[2][0]));
+      let w0 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[0][0], this.c.S[2][1]));
+      let w1 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[0][1], this.c.S[3][0]));
+      let w2 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[1][0], this.c.S[3][1]));
+      let w3 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[1][1], this.c.S[2][0]));
 
       const b0 = OpCodes.Unpack32LE(w0);
       const b1 = OpCodes.Unpack32LE(w1);
@@ -821,24 +931,41 @@
       for (let round = 1; round < this.rounds; ++round) {
         this.c.coreRound(round);
 
-        w0 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[0][0], this.c.S[2][1]));
-        w1 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[0][1], this.c.S[3][0]));
-        w2 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[1][0], this.c.S[3][1]));
-        w3 = OpCodes.ToUint32(OpCodes.XorN(this.c.S[1][1], this.c.S[2][0]));
+        w0 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[0][0], this.c.S[2][1]));
+        w1 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[0][1], this.c.S[3][0]));
+        w2 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[1][0], this.c.S[3][1]));
+        w3 = OpCodes.ToUint32(OpCodes.Xor32(this.c.S[1][1], this.c.S[2][0]));
 
         const b0_new = OpCodes.Unpack32LE(w0);
         const b1_new = OpCodes.Unpack32LE(w1);
         const b2_new = OpCodes.Unpack32LE(w2);
         const b3_new = OpCodes.Unpack32LE(w3);
 
-        this.r[0] ^= b0_new[0]; this.r[1] ^= b0_new[1]; this.r[2] ^= b0_new[2]; this.r[3] ^= b0_new[3];
-        this.r[4] ^= b1_new[0]; this.r[5] ^= b1_new[1]; this.r[6] ^= b1_new[2]; this.r[7] ^= b1_new[3];
-        this.r[8] ^= b2_new[0]; this.r[9] ^= b2_new[1]; this.r[10] ^= b2_new[2]; this.r[11] ^= b2_new[3];
-        this.r[12] ^= b3_new[0]; this.r[13] ^= b3_new[1]; this.r[14] ^= b3_new[2]; this.r[15] ^= b3_new[3];
+        this.r[0] = OpCodes.Xor32(this.r[0], b0_new[0]);
+        this.r[1] = OpCodes.Xor32(this.r[1], b0_new[1]);
+        this.r[2] = OpCodes.Xor32(this.r[2], b0_new[2]);
+        this.r[3] = OpCodes.Xor32(this.r[3], b0_new[3]);
+        this.r[4] = OpCodes.Xor32(this.r[4], b1_new[0]);
+        this.r[5] = OpCodes.Xor32(this.r[5], b1_new[1]);
+        this.r[6] = OpCodes.Xor32(this.r[6], b1_new[2]);
+        this.r[7] = OpCodes.Xor32(this.r[7], b1_new[3]);
+        this.r[8] = OpCodes.Xor32(this.r[8], b2_new[0]);
+        this.r[9] = OpCodes.Xor32(this.r[9], b2_new[1]);
+        this.r[10] = OpCodes.Xor32(this.r[10], b2_new[2]);
+        this.r[11] = OpCodes.Xor32(this.r[11], b2_new[3]);
+        this.r[12] = OpCodes.Xor32(this.r[12], b3_new[0]);
+        this.r[13] = OpCodes.Xor32(this.r[13], b3_new[1]);
+        this.r[14] = OpCodes.Xor32(this.r[14], b3_new[2]);
+        this.r[15] = OpCodes.Xor32(this.r[15], b3_new[3]);
       }
     }
 
+    /**
+     * @param {uint8[]} input
+     * @param {int32} len
+     */
     f(input, len) {
+      /** @type {uint8[]} */
       const padded = new Array(DRYSPONGE128_RATE);
       if (len < DRYSPONGE128_RATE) {
         for (let i = 0; i < len; ++i) padded[i] = input[i];
@@ -984,6 +1111,7 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._aad = [];
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -1084,6 +1212,10 @@
       }
     }
 
+    /**
+     * @param {DrySponge128State} state
+     * @param {boolean} finalBlock
+     */
     _setup(state, finalBlock) {
       state.c.S[0][0] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
       state.c.S[0][1] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
@@ -1108,6 +1240,7 @@
           throw new Error("DryGASCON128: Failed to generate unique X words after " + MAX_ROUNDS + " rounds");
         }
 
+        /** @type {uint32[]} */
         const cWords = [
           state.c.S[0][0],
           state.c.S[0][1],
@@ -1131,9 +1264,9 @@
         const stateIdx = Math.floor(i / 8);
         const wordOffset = i % 8;
         if (wordOffset < 4) {
-          state.x[i] = OpCodes.AndN(OpCodes.Shr32(state.c.S[stateIdx][0], wordOffset * 8), 0xFF);
+          state.x[i] = OpCodes.And32(OpCodes.Shr32(state.c.S[stateIdx][0], wordOffset * 8), 0xFF);
         } else {
-          state.x[i] = OpCodes.AndN(OpCodes.Shr32(state.c.S[stateIdx][1], (wordOffset - 4) * 8), 0xFF);
+          state.x[i] = OpCodes.And32(OpCodes.Shr32(state.c.S[stateIdx][1], (wordOffset - 4) * 8), 0xFF);
         }
       }
 
@@ -1141,24 +1274,29 @@
         const stateIdx = Math.floor(i / 8);
         const wordOffset = i % 8;
         if (wordOffset < 4) {
-          const mask = ~OpCodes.Shl32(0xFF, wordOffset * 8);
-          state.c.S[stateIdx][0] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.AndN(state.c.S[stateIdx][0], mask), OpCodes.Shl32(this._key[i], wordOffset * 8)));
+          const mask = OpCodes.Not32(OpCodes.Shl32(0xFF, wordOffset * 8));
+          state.c.S[stateIdx][0] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(state.c.S[stateIdx][0], mask), OpCodes.Shl32(this._key[i], wordOffset * 8)));
         } else {
-          const mask = ~OpCodes.Shl32(0xFF, (wordOffset - 4) * 8);
-          state.c.S[stateIdx][1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.AndN(state.c.S[stateIdx][1], mask), OpCodes.Shl32(this._key[i], (wordOffset - 4) * 8)));
+          const mask = OpCodes.Not32(OpCodes.Shl32(0xFF, (wordOffset - 4) * 8));
+          state.c.S[stateIdx][1] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.And32(state.c.S[stateIdx][1], mask), OpCodes.Shl32(this._key[i], (wordOffset - 4) * 8)));
         }
       }
 
       state.rounds = DRYSPONGE128_INIT_ROUNDS;
       state.domain = DRYDOMAIN128_NONCE;
       if (finalBlock) {
-        state.domain = OpCodes.OrN(state.domain, DRYDOMAIN128_FINAL);
+        state.domain = OpCodes.Or32(state.domain, DRYDOMAIN128_FINAL);
       }
       state.f(this._nonce, 16);
 
       state.rounds = DRYSPONGE128_ROUNDS;
     }
 
+    /**
+     * @param {DrySponge128State} state
+     * @param {uint8[]} ad
+     * @param {boolean} finalBlock
+     */
     _processAD(state, ad, finalBlock) {
       if (ad.length === 0) return;
 
@@ -1172,19 +1310,23 @@
       const lastBlock = ad.slice(offset);
       state.domain = DRYDOMAIN128_ASSOC_DATA;
       if (finalBlock) {
-        state.domain = OpCodes.OrN(state.domain, DRYDOMAIN128_FINAL);
+        state.domain = OpCodes.Or32(state.domain, DRYDOMAIN128_FINAL);
       }
       if (lastBlock.length < DRYSPONGE128_RATE) {
-        state.domain = OpCodes.OrN(state.domain, DRYDOMAIN128_PADDED);
+        state.domain = OpCodes.Or32(state.domain, DRYDOMAIN128_PADDED);
       }
       state.f(lastBlock, lastBlock.length);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
       const plaintext = this.inputBuffer;
       /** @type {uint8[]} */
       const output = [];
 
+      /** @type {DrySponge128State} */
       const state = new DrySponge128State();
       const adLen = this._aad.length;
       const mLen = plaintext.length;
@@ -1201,20 +1343,20 @@
         while (mLen - offset > DRYSPONGE128_RATE) {
           const block = plaintext.slice(offset, offset + DRYSPONGE128_RATE);
           for (let i = 0; i < DRYSPONGE128_RATE; ++i) {
-            output.push(OpCodes.XorN(block[i], state.r[i]));
+            output.push(OpCodes.Xor32(block[i], state.r[i]));
           }
           state.f(block, DRYSPONGE128_RATE);
           offset += DRYSPONGE128_RATE;
         }
 
         const lastBlock = plaintext.slice(offset);
-        state.domain = OpCodes.OrN(DRYDOMAIN128_MESSAGE, DRYDOMAIN128_FINAL);
+        state.domain = OpCodes.Or32(DRYDOMAIN128_MESSAGE, DRYDOMAIN128_FINAL);
         if (lastBlock.length < DRYSPONGE128_RATE) {
-          state.domain = OpCodes.OrN(state.domain, DRYDOMAIN128_PADDED);
+          state.domain = OpCodes.Or32(state.domain, DRYDOMAIN128_PADDED);
         }
 
         for (let i = 0; i < lastBlock.length; ++i) {
-          output.push(OpCodes.XorN(lastBlock[i], state.r[i]));
+          output.push(OpCodes.Xor32(lastBlock[i], state.r[i]));
         }
 
         state.f(lastBlock, lastBlock.length);
@@ -1228,6 +1370,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       const ciphertext = this.inputBuffer;
 
@@ -1237,6 +1382,7 @@
 
       /** @type {uint8[]} */
       const output = [];
+      /** @type {DrySponge128State} */
       const state = new DrySponge128State();
 
       const ctLen = ciphertext.length - DRYGASCON128_TAG_SIZE;
@@ -1253,9 +1399,10 @@
 
         while (ctLen - offset > DRYSPONGE128_RATE) {
           const block = ciphertext.slice(offset, offset + DRYSPONGE128_RATE);
+          /** @type {uint8[]} */
           const plainBlock = new Array(DRYSPONGE128_RATE);
           for (let i = 0; i < DRYSPONGE128_RATE; ++i) {
-            plainBlock[i] = OpCodes.XorN(block[i], state.r[i]);
+            plainBlock[i] = OpCodes.Xor32(block[i], state.r[i]);
             output.push(plainBlock[i]);
           }
           state.f(plainBlock, DRYSPONGE128_RATE);
@@ -1264,14 +1411,15 @@
 
         const lastBlockLen = ctLen - offset;
         const lastBlock = ciphertext.slice(offset, offset + lastBlockLen);
-        state.domain = OpCodes.OrN(DRYDOMAIN128_MESSAGE, DRYDOMAIN128_FINAL);
+        state.domain = OpCodes.Or32(DRYDOMAIN128_MESSAGE, DRYDOMAIN128_FINAL);
         if (lastBlockLen < DRYSPONGE128_RATE) {
-          state.domain = OpCodes.OrN(state.domain, DRYDOMAIN128_PADDED);
+          state.domain = OpCodes.Or32(state.domain, DRYDOMAIN128_PADDED);
         }
 
+        /** @type {uint8[]} */
         const plainBlock = new Array(lastBlockLen);
         for (let i = 0; i < lastBlockLen; ++i) {
-          plainBlock[i] = OpCodes.XorN(lastBlock[i], state.r[i]);
+          plainBlock[i] = OpCodes.Xor32(lastBlock[i], state.r[i]);
           output.push(plainBlock[i]);
         }
 
@@ -1279,11 +1427,13 @@
       }
 
       const receivedTag = ciphertext.slice(ctLen, ctLen + DRYGASCON128_TAG_SIZE);
+      /** @type {uint8[]} */
       const computedTag = state.r.slice(0, DRYGASCON128_TAG_SIZE);
 
+      /** @type {uint32} */
       let tagMatch = 0;
       for (let i = 0; i < DRYGASCON128_TAG_SIZE; ++i) {
-        tagMatch = OpCodes.OrN(tagMatch, OpCodes.XorN(receivedTag[i], computedTag[i]));
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(receivedTag[i], computedTag[i]));
       }
 
       if (tagMatch !== 0) {
