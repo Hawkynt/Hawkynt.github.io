@@ -24,6 +24,8 @@
  * Over the algorithms the files registered:
  * - ROUNDTRIP: every reversible algorithm decodes its own output over an
  *   adversarial corpus, and compressors compress (RoundTrip.js)
+ * - CHUNKED: Feed(whole) equals Feed(part1); Feed(part2); ... for any split
+ *   (ChunkedFeed.js)
  *
  * Options:
  *   <file.js>                 test one file
@@ -49,6 +51,7 @@ const TestEngine = require('./TestEngine');
 const TypeCoverage = require('./TypeCoverage');
 const JSDocTierAudit = require('./JSDocTierAudit');
 const RoundTrip = require('./RoundTrip');
+const ChunkedFeed = require('./ChunkedFeed');
 const Runner = require('./CategoryRunner');
 
 const CIPHER_DIR = path.join(__dirname, '..');
@@ -74,7 +77,8 @@ const FILE_LABELS = { compilation: 'Compilation', interface: 'Interface', metada
 // algorithms the tested files registered. Each module exports run(context) and
 // returns { passed, failed, detail }.
 const SWEEPS = [
-  { key: 'roundtrip', label: 'ROUNDTRIP', title: 'Round trips over an adversarial corpus', module: RoundTrip, scope: 'algorithms' }
+  { key: 'roundtrip', label: 'ROUNDTRIP', title: 'Round trips over an adversarial corpus', module: RoundTrip, scope: 'algorithms' },
+  { key: 'chunked', label: 'CHUNKED', title: 'Feeding in chunks matches feeding whole', module: ChunkedFeed, scope: 'algorithms' }
 ];
 
 const CATEGORY_KEYS = [...FILE_CATEGORIES.map(c => c.key), ...SWEEPS.map(s => s.key)];
