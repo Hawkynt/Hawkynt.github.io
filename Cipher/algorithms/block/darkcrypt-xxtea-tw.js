@@ -162,6 +162,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint32[]} The four little-endian key words
+     */
     _keyWords() {
       return [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
@@ -172,6 +175,10 @@
     }
 
     // F(x) = ((x<<2) ^ (x>>>9)) + ((x>>>3) ^ (x<<6))   (XXTEA MX terms with DarkCrypt shifts 9/2, 3/6)
+    /**
+     * @param {uint32} x - Input word
+     * @returns {uint32} Mixed word
+     */
     _F(x) {
       const t1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(x, 2), OpCodes.Shr32(x, 9)));
       const t2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(x, 3), OpCodes.Shl32(x, 6)));
@@ -186,6 +193,7 @@
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
       const k = this._keyWords();
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < ROUNDS; i++) {
         sum = OpCodes.ToUint32(sum + DELTA);

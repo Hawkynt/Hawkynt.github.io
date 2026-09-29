@@ -204,6 +204,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint32[]} The four little-endian key words
+     */
     _keyWords() {
       return [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
@@ -214,15 +217,24 @@
     }
 
     // Round value derived from the current key state: (L0 << L2) ^ (L2 + L3) + L0 + L1
+    /**
+     * @param {uint32[]} L - Key state words
+     * @returns {uint32} Round value
+     */
     _roundF(L) {
-      const t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(L[0], L[2]), OpCodes.ToUint32(L[2] + L[3])));
-      return OpCodes.ToUint32(t + L[0] + L[1]);
+      const t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(L[0], L[2]), OpCodes.Add32(L[2], L[3])));
+      return OpCodes.Add32(OpCodes.Add32(t, L[0]), L[1]);
     }
 
     // g(F, x) = ((F+x) << 9) XOR ((F+x) >>> 14) XOR (F - x)
+    /**
+     * @param {uint32} F - Round value
+     * @param {uint32} x - Half-block word
+     * @returns {uint32} Mixed word
+     */
     _g(F, x) {
-      const s = OpCodes.ToUint32(F + x);
-      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(s, 9), OpCodes.Shr32(s, 14))), OpCodes.ToUint32(F - x)));
+      const s = OpCodes.Add32(F, x);
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(s, 9), OpCodes.Shr32(s, 14))), OpCodes.Sub32(F, x)));
     }
 
     /**
@@ -256,6 +268,7 @@
       // Recompute the round-value sequence with a forward pass (state evolution
       // is independent of the block halves), then undo the Feistel updates
       // in reverse round order.
+      /** @type {uint32[]} */
       const Fhist = new Array(ROUNDS);
       for (let r = 0; r < ROUNDS; r++) {
         const F = this._roundF(L);

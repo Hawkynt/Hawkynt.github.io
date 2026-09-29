@@ -47,10 +47,12 @@
 
   const NB = 4;
   const BLOCK_SIZE = 16;
-  const KEY_SIZES = Object.freeze([16, 24, 32]);
+  /** @type {int32[]} */
+  const KEY_SIZES = [16, 24, 32];
+  Object.freeze(KEY_SIZES);
 
-  const RijndaelTables = (() => {
-    const SBOX = new Uint8Array([
+  /** @type {uint8[]} */
+  const SBOX = new Uint8Array([
       0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
       0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
       0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -69,7 +71,8 @@
       0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
     ]);
 
-    const INV_SBOX = new Uint8Array([
+  /** @type {uint8[]} */
+  const INV_SBOX = new Uint8Array([
       0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
       0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
       0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -88,25 +91,30 @@
       0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
     ]);
 
-    const RCON = new Uint8Array([
+  /** @type {uint8[]} */
+  const RCON = new Uint8Array([
       0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
       0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6,
       0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91
     ]);
 
-    return Object.freeze({ SBOX, INV_SBOX, RCON });
-  })();
-
+  /**
+   * @param {uint32} word - Key-schedule word
+   * @returns {uint32} Word rotated left by one byte
+   */
   function rotWord(word) {
     return OpCodes.RotL32(word, 8);
   }
 
-  function subWord(word, tables) {
-    const sbox = tables.SBOX;
+  /**
+   * @param {uint32} word - Key-schedule word
+   * @returns {uint32} Word with the S-box applied to each byte
+   */
+  function subWord(word) {
     // Unpack word to 4 bytes (big-endian)
-    const [b0, b1, b2, b3] = OpCodes.Unpack32BE(word);
+    const b = OpCodes.Unpack32BE(word);
     // Apply S-box to each byte and pack back
-    return OpCodes.Pack32BE(sbox[b0], sbox[b1], sbox[b2], sbox[b3]);
+    return OpCodes.Pack32BE(SBOX[b[0]], SBOX[b[1]], SBOX[b[2]], SBOX[b[3]]);
   }
 
   /**
@@ -129,7 +137,8 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.BE;
 
-      this.SupportedKeySizes = KEY_SIZES.map(length => new KeySize(length, length, 0));
+      this.SupportedKeySizes = [];
+      for (let i = 0; i < KEY_SIZES.length; i++) this.SupportedKeySizes.push(new KeySize(KEY_SIZES[i], KEY_SIZES[i], 0));
       this.SupportedBlockSizes = [new KeySize(BLOCK_SIZE, BLOCK_SIZE, 0)];
 
       this.documentation = [
@@ -224,7 +233,6 @@
         }
       ];
 
-      this.tables = RijndaelTables;
     }
 
     /**
@@ -247,19 +255,21 @@
   class RijndaelInstance extends IBlockCipherInstance {
     /**
      * @param {RijndaelAlgorithm} algorithm - Parent algorithm
-     * @param {boolean} isInverse - Decrypt instead of encrypt
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
      */
-    constructor(algorithm, isInverse) {
+    constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = !!isInverse;
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
+      /** @type {int32} */
       this.rounds = 0;
+      /** @type {uint8[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
-      this.tables = algorithm.tables;
     }
 
     /**
@@ -295,10 +305,13 @@
         OpCodes.ClearArray(this.roundKeys);
       }
 
-      const expanded = this._expandKey(keyBytes);
-      this._key = expanded.keyCopy;
-      this.roundKeys = expanded.roundKeys;
-      this.rounds = expanded.rounds;
+      /** @type {uint8[]} */
+      const keyCopy = new Uint8Array(length);
+      for (let i = 0; i < length; i++) keyCopy[i] = OpCodes.And32(keyBytes[i], 0xff);
+      const roundKeys = this._expandKey(keyCopy);
+      this._key = keyCopy;
+      this.roundKeys = roundKeys;
+      this.rounds = keyCopy.length / 4 + 6;
       this.KeySize = this._key.length;
     }
 
@@ -325,7 +338,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(data[i]&0xff);
+        this.inputBuffer.push(OpCodes.And32(data[i], 0xff));
       }
     }
 
@@ -376,6 +389,9 @@
       return this._decryptBlock(block);
     }
 
+    /**
+     * Clear the key and all buffered data
+     */
     Dispose() {
       this.key = null;
       OpCodes.ClearArray(this.inputBuffer);
@@ -383,11 +399,10 @@
     }
 
     /**
-     * @param {uint8[]} keyBytes - Key bytes
+     * @param {uint8[]} keyCopy - Key bytes (16, 24 or 32)
+     * @returns {uint8[]} Round-key bytes, 16 per round plus the initial whitening
      */
-    _expandKey(keyBytes) {
-      const tables = this.tables;
-      const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
+    _expandKey(keyCopy) {
       const nk = keyCopy.length / 4;
       const nr = nk + 6;
       const totalWords = NB * (nr + 1);
@@ -407,14 +422,15 @@
       for (let i = nk; i < totalWords; i++) {
         let temp = words[i - 1];
         if (i % nk === 0) {
-          temp = OpCodes.ToUint32(OpCodes.Xor32(subWord(rotWord(temp), tables), OpCodes.Pack32BE(tables.RCON[rconIndex], 0, 0, 0)));
+          temp = OpCodes.ToUint32(OpCodes.Xor32(subWord(rotWord(temp)), OpCodes.Pack32BE(RCON[rconIndex], 0, 0, 0)));
           rconIndex++;
         } else if (nk > 6 && (i % nk) === 4) {
-          temp = subWord(temp, tables);
+          temp = subWord(temp);
         }
         words[i] = OpCodes.ToUint32(OpCodes.Xor32(words[i - nk], temp));
       }
 
+      /** @type {uint8[]} */
       const roundKeys = new Uint8Array(totalWords * 4);
       for (let i = 0; i < totalWords; i++) {
         const offset = i * 4;
@@ -428,11 +444,7 @@
 
       OpCodes.ClearArray(words);
 
-      return {
-        keyCopy,
-        roundKeys,
-        rounds: nr
-      };
+      return roundKeys;
     }
 
     /**
@@ -447,9 +459,10 @@
         throw new Error("Rijndael requires exactly " + BLOCK_SIZE + " bytes per block");
       }
 
+      /** @type {uint8[]} */
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = block[i]&0xff;
+        state[i] = OpCodes.And32(block[i], 0xff);
       }
 
       this._addRoundKey(state, 0);
@@ -465,6 +478,7 @@
       this._shiftRows(state);
       this._addRoundKey(state, this.rounds);
 
+      /** @type {uint8[]} */
       const result = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
         result[i] = state[i];
@@ -485,9 +499,10 @@
         throw new Error("Rijndael requires exactly " + BLOCK_SIZE + " bytes per block");
       }
 
+      /** @type {uint8[]} */
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = block[i]&0xff;
+        state[i] = OpCodes.And32(block[i], 0xff);
       }
 
       this._addRoundKey(state, this.rounds);
@@ -503,6 +518,7 @@
       this._invSubBytes(state);
       this._addRoundKey(state, 0);
 
+      /** @type {uint8[]} */
       const result = new Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
         result[i] = state[i];
@@ -511,27 +527,38 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     * @param {int32} round - Round number
+     */
     _addRoundKey(state, round) {
       const offset = round * BLOCK_SIZE;
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = (state[i]^this.roundKeys[offset + i])&0xff;
+        state[i] = OpCodes.And32(OpCodes.Xor32(state[i], this.roundKeys[offset + i]), 0xff);
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _subBytes(state) {
-      const sbox = this.tables.SBOX;
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = sbox[state[i]];
+        state[i] = SBOX[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _invSubBytes(state) {
-      const invSbox = this.tables.INV_SBOX;
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = invSbox[state[i]];
+        state[i] = INV_SBOX[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _shiftRows(state) {
       let temp = state[1];
       state[1] = state[5];
@@ -553,6 +580,9 @@
       state[7] = temp;
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _invShiftRows(state) {
       let temp = state[13];
       state[13] = state[9];
@@ -574,6 +604,9 @@
       state[15] = temp;
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const base = col * 4;
@@ -582,21 +615,16 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = (
-          OpCodes.GF256Mul(s0, 2)^OpCodes.GF256Mul(s1, 3)^s2^s3
-        )&0xff;
-        state[base + 1] = (
-          s0^OpCodes.GF256Mul(s1, 2)^OpCodes.GF256Mul(s2, 3)^s3
-        )&0xff;
-        state[base + 2] = (
-          s0^s1^OpCodes.GF256Mul(s2, 2)^OpCodes.GF256Mul(s3, 3)
-        )&0xff;
-        state[base + 3] = (
-          OpCodes.GF256Mul(s0, 3)^s1^s2^OpCodes.GF256Mul(s3, 2)
-        )&0xff;
+        state[base] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3), 0xff);
+        state[base + 1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3), 0xff);
+        state[base + 2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3)), 0xff);
+        state[base + 3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2)), 0xff);
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16-byte state, updated in place
+     */
     _invMixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const base = col * 4;
@@ -605,18 +633,10 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = (
-          OpCodes.GF256Mul(s0, 14)^OpCodes.GF256Mul(s1, 11)^OpCodes.GF256Mul(s2, 13)^OpCodes.GF256Mul(s3, 9)
-        )&0xff;
-        state[base + 1] = (
-          OpCodes.GF256Mul(s0, 9)^OpCodes.GF256Mul(s1, 14)^OpCodes.GF256Mul(s2, 11)^OpCodes.GF256Mul(s3, 13)
-        )&0xff;
-        state[base + 2] = (
-          OpCodes.GF256Mul(s0, 13)^OpCodes.GF256Mul(s1, 9)^OpCodes.GF256Mul(s2, 14)^OpCodes.GF256Mul(s3, 11)
-        )&0xff;
-        state[base + 3] = (
-          OpCodes.GF256Mul(s0, 11)^OpCodes.GF256Mul(s1, 13)^OpCodes.GF256Mul(s2, 9)^OpCodes.GF256Mul(s3, 14)
-        )&0xff;
+        state[base] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 14), OpCodes.GF256Mul(s1, 11)), OpCodes.GF256Mul(s2, 13)), OpCodes.GF256Mul(s3, 9)), 0xff);
+        state[base + 1] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 9), OpCodes.GF256Mul(s1, 14)), OpCodes.GF256Mul(s2, 11)), OpCodes.GF256Mul(s3, 13)), 0xff);
+        state[base + 2] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 13), OpCodes.GF256Mul(s1, 9)), OpCodes.GF256Mul(s2, 14)), OpCodes.GF256Mul(s3, 11)), 0xff);
+        state[base + 3] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 11), OpCodes.GF256Mul(s1, 13)), OpCodes.GF256Mul(s2, 9)), OpCodes.GF256Mul(s3, 14)), 0xff);
       }
     }
   }
