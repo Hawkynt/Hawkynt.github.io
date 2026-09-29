@@ -113,6 +113,7 @@
       ];
 
       // AES S-box and helper functions
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -144,6 +145,10 @@
     }
 
     // AES SubBytes transformation
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     subBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.SBOX[state[i]];
@@ -152,7 +157,12 @@
     }
 
     // AES ShiftRows transformation
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     shiftRows(state) {
+      /** @type {uint8[]} */
       const temp = OpCodes.CopyArray(state);
 
       // Row 1: shift left by 1
@@ -168,7 +178,12 @@
     }
 
     // AES MixColumns transformation with GF multiplication tables
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     mixColumns(state) {
+      /** @type {uint8[]} */
       const gfMul2 = [
         0x00,0x02,0x04,0x06,0x08,0x0a,0x0c,0x0e,0x10,0x12,0x14,0x16,0x18,0x1a,0x1c,0x1e,
         0x20,0x22,0x24,0x26,0x28,0x2a,0x2c,0x2e,0x30,0x32,0x34,0x36,0x38,0x3a,0x3c,0x3e,
@@ -188,6 +203,7 @@
         0xfb,0xf9,0xff,0xfd,0xf3,0xf1,0xf7,0xf5,0xeb,0xe9,0xef,0xed,0xe3,0xe1,0xe7,0xe5
       ];
 
+      /** @type {uint8[]} */
       const gfMul3 = [
         0x00,0x03,0x06,0x05,0x0c,0x0f,0x0a,0x09,0x18,0x1b,0x1e,0x1d,0x14,0x17,0x12,0x11,
         0x30,0x33,0x36,0x35,0x3c,0x3f,0x3a,0x39,0x28,0x2b,0x2e,0x2d,0x24,0x27,0x22,0x21,
@@ -208,21 +224,29 @@
       ];
 
       for (let col = 0; col < 4; col++) {
+        /** @type {uint8} */
         const a = state[col * 4];
+        /** @type {uint8} */
         const b = state[col * 4 + 1];
+        /** @type {uint8} */
         const c = state[col * 4 + 2];
+        /** @type {uint8} */
         const d = state[col * 4 + 3];
 
-        state[col * 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul2[a], gfMul3[b]), c), d);
-        state[col * 4 + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, gfMul2[b]), gfMul3[c]), d);
-        state[col * 4 + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, b), gfMul2[c]), gfMul3[d]);
-        state[col * 4 + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul3[a], b), c), gfMul2[d]);
+        state[col * 4] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul2[a], gfMul3[b]), c), d);
+        state[col * 4 + 1] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(a, gfMul2[b]), gfMul3[c]), d);
+        state[col * 4 + 2] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(a, b), gfMul2[c]), gfMul3[d]);
+        state[col * 4 + 3] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(gfMul3[a], b), c), gfMul2[d]);
       }
 
       return state;
     }
 
     // AES round function (without key addition)
+    /**
+     * @param {uint8[]} state
+     * @returns {uint8[]}
+     */
     aesRound(state) {
       this.subBytes(state);
       this.shiftRows(state);
@@ -231,10 +255,16 @@
     }
 
     // XOR two 128-bit states
+    /**
+     * @param {uint8[]} a
+     * @param {uint8[]} b
+     * @returns {uint8[]}
+     */
     xorState(a, b) {
+      /** @type {uint8[]} */
       const result = new Array(16);
       for (let i = 0; i < 16; i++) {
-        result[i] = OpCodes.XorN(a[i], b[i]);
+        result[i] = OpCodes.Xor8(a[i], b[i]);
       }
       return result;
     }
@@ -265,6 +295,7 @@
       this.inputBuffer = [];
       /** @type {boolean} */
       this.initialized = false;
+      /** @type {uint8[][]|null} */
       this.state = null;
     }
 
@@ -394,14 +425,15 @@
       // Simplified educational stream cipher implementation
       /** @type {uint8[]} */
       const result = [];
+      /** @type {uint8[]} */
       const inputCopy = [...this.inputBuffer];
 
       // Generate simple keystream based on key and IV
       for (let i = 0; i < inputCopy.length; i++) {
         const keyByte = this._key[i % this._key.length];
         const ivByte = this._iv[i % this._iv.length];
-        const keystreamByte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(keyByte, ivByte), OpCodes.AndN(i, 0xFF)), 0xFF);
-        result.push(OpCodes.XorN(inputCopy[i], keystreamByte));
+        const keystreamByte = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(keyByte, ivByte), OpCodes.And32(i, 0xFF)), 0xFF);
+        result.push(OpCodes.Xor32(inputCopy[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -416,47 +448,86 @@
     }
 
     // Initialize AEGIS state with key and IV
+    /**
+     * @param {uint8[]} key
+     * @param {uint8[]} iv
+     * @returns {uint8[][]}
+     */
     initializeState(key, iv) {
-      const state = new Array(5);
+      /** @type {uint8[][]} */
+      const lanes = new Array(5);
       for (let i = 0; i < 5; i++) {
-        state[i] = new Array(16);
+        /** @type {uint8[]} */
+        const lane = new Array(16);
+        lanes[i] = lane;
       }
 
       // Initialize state with key and IV
+      /** @type {uint8[]} */
       const c1 = OpCodes.Hex8ToBytes("db3d18556dc22ff12011314273b528dd");
+      /** @type {uint8[]} */
       const c2 = OpCodes.Hex8ToBytes("00000000000000000000000000000000");
 
-      state[0] = this.algorithm.xorState(key, iv);
-      state[1] = OpCodes.CopyArray(c1);
-      state[2] = OpCodes.CopyArray(c2);
-      state[3] = this.algorithm.xorState(c1, key);
-      state[4] = this.algorithm.xorState(key, c2);
+      /** @type {uint8[]} */
+      const lane0 = this.algorithm.xorState(key, iv);
+      lanes[0] = lane0;
+      lanes[1] = OpCodes.CopyArray(c1);
+      lanes[2] = OpCodes.CopyArray(c2);
+      /** @type {uint8[]} */
+      const lane3 = this.algorithm.xorState(c1, key);
+      lanes[3] = lane3;
+      /** @type {uint8[]} */
+      const lane4 = this.algorithm.xorState(key, c2);
+      lanes[4] = lane4;
 
       // Perform 10 initialization rounds
       for (let i = 0; i < 10; i++) {
-        this.updateState(state, this.algorithm.xorState(key, iv));
+        this.updateState(lanes, this.algorithm.xorState(key, iv));
       }
 
-      return state;
+      return lanes;
     }
 
     // AEGIS state update
-    updateState(state, message) {
-      const temp = this.algorithm.xorState(this.algorithm.aesRound(OpCodes.CopyArray(state[0])), message);
+    /**
+     * @param {uint8[][]} lanes
+     * @param {uint8[]} message
+     */
+    updateState(lanes, message) {
+      /** @type {uint8[]} */
+      /** @type {uint8[]} */
+      const mixed = this.algorithm.aesRound(OpCodes.CopyArray(lanes[0]));
+      /** @type {uint8[]} */
+      const temp = this.algorithm.xorState(mixed, message);
 
-      state[0] = this.algorithm.aesRound(OpCodes.CopyArray(state[4]));
-      state[4] = this.algorithm.aesRound(OpCodes.CopyArray(state[3]));
-      state[3] = this.algorithm.aesRound(OpCodes.CopyArray(state[2]));
-      state[2] = this.algorithm.aesRound(OpCodes.CopyArray(state[1]));
-      state[1] = temp;
+      /** @type {uint8[]} */
+      const round0 = this.algorithm.aesRound(OpCodes.CopyArray(lanes[4]));
+      lanes[0] = round0;
+      /** @type {uint8[]} */
+      const round4 = this.algorithm.aesRound(OpCodes.CopyArray(lanes[3]));
+      lanes[4] = round4;
+      /** @type {uint8[]} */
+      const round3 = this.algorithm.aesRound(OpCodes.CopyArray(lanes[2]));
+      lanes[3] = round3;
+      /** @type {uint8[]} */
+      const round2 = this.algorithm.aesRound(OpCodes.CopyArray(lanes[1]));
+      lanes[2] = round2;
+      lanes[1] = temp;
     }
 
     // Generate keystream block
-    generateKeystream(state) {
-      return this.algorithm.xorState(
-        this.algorithm.xorState(state[1], state[4]),
-        this.algorithm.xorState(state[2], state[3])
-      );
+    /**
+     * @param {uint8[][]} lanes
+     * @returns {uint8[]}
+     */
+    generateKeystream(lanes) {
+      /** @type {uint8[]} */
+      const left = this.algorithm.xorState(lanes[1], lanes[4]);
+      /** @type {uint8[]} */
+      const right = this.algorithm.xorState(lanes[2], lanes[3]);
+      /** @type {uint8[]} */
+      const block = this.algorithm.xorState(left, right);
+      return block;
     }
   }
 

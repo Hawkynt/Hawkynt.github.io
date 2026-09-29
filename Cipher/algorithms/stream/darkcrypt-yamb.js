@@ -50,6 +50,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Galois-LFSR feedback polynomial used by the OLZ word registers.
+  /** @type {uint32} */
   const ALF = 0x091B17C9;
 
   // Fixed initial nonlinear substitution table (256 bytes), from the eSTREAM reference.
@@ -85,9 +86,19 @@
    * The 12-step nonlinear byte mixing network shared by IV setup and keystream
    * generation. Mutates the 256-byte table M in place and returns the mixed
    * 32-bit little-endian word.
+   * @param {uint32} word
+   * @param {uint8[]} M
+   * @returns {uint32}
    */
   function mix12(word, M) {
-    let a = OpCodes.And32(word, 0xFF), b = OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF), c = OpCodes.And32(OpCodes.Shr32(word, 16), 0xFF), d = OpCodes.And32(OpCodes.Shr32(word, 24), 0xFF);
+    /** @type {uint32} */
+    let a = OpCodes.And32(word, 0xFF);
+    /** @type {uint32} */
+    let b = OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF);
+    /** @type {uint32} */
+    let c = OpCodes.And32(OpCodes.Shr32(word, 16), 0xFF);
+    /** @type {uint32} */
+    let d = OpCodes.And32(OpCodes.Shr32(word, 24), 0xFF);
 
     b ^= M[a]; M[a] = OpCodes.And32(M[a] + d, 0xFF);
     c ^= M[d]; M[d] = OpCodes.And32(M[d] + b, 0xFF);
@@ -191,9 +202,13 @@
       this._iv = null;
 
       // Cipher state
+      /** @type {uint8[]|null} */
       this.M = null;    // 256-byte nonlinear substitution table
+      /** @type {uint32[]|null} */
       this.OLZ = null;  // 64-word Galois-style LFSR register
+      /** @type {uint32[]|null} */
       this.RZ = null;   // 16-word accumulator register
+      /** @type {uint8[]} */
       this._keystreamBuffer = [];
     }
 
@@ -236,7 +251,9 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      if (!this.M) this._initialize();
+      if (!this.M) {
+        this._initialize();
+      }
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
@@ -245,7 +262,9 @@
      */
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (!this.M) this._initialize();
+      if (!this.M) {
+        this._initialize();
+      }
 
       /** @type {uint8[]} */
       const output = [];
@@ -261,15 +280,23 @@
      * (ECRYPT_keysetup + ECRYPT_ivsetup).
      */
     _initialize() {
-      if (!this._key || !this._iv) return;
+      if (!this._key || !this._iv) {
+        return;
+      }
 
+      /** @type {uint8[]} */
       const M = new Array(256);
       for (let i = 0; i < 256; i++) M[i] = CONST_M[i];
 
-      const OLZ = OpCodes.CreateArray(64, 0);
-      const RZ = OpCodes.CreateArray(16, 0);
+      /** @type {uint32[]} */
+      const OLZ = new Array(64);
+      for (let i = 0; i < 64; i++) OLZ[i] = 0;
+      /** @type {uint32[]} */
+      const RZ = new Array(16);
+      for (let i = 0; i < 16; i++) RZ[i] = 0;
 
       // Build the 60-byte seed buffer: key || iv || repeating "LANCrypto" padding.
+      /** @type {uint8[]} */
       const seed = new Array(60);
       for (let i = 0; i < 32; i++) seed[i] = this._key[i % KEY_SIZE];
       for (let i = 32; i < 32 + IV_SIZE; i++) seed[i] = this._iv[i - 32];
@@ -278,20 +305,23 @@
       for (let i = 0; i < 15; i++)
         OLZ[i] = OpCodes.Pack32LE(seed[i * 4], seed[i * 4 + 1], seed[i * 4 + 2], seed[i * 4 + 3]);
 
-      const idx = { I0: 0, I1: 8, I2: 15 };
+      // LFSR cursors I0, I1, I2
+      /** @type {int32[]} */
+      const idx = [0, 8, 15];
+      /** @type {int32} */
       let J = 0;
 
       for (let i = 0; i < 225; i++) {
         const abcd = this._stepOLZ(OLZ, 0xF, idx);
-        const ABCD = OpCodes.XorN(mix12(abcd, M), abcd);
-        RZ[J] = OpCodes.ToUint32(ABCD);
+        const ABCD = OpCodes.Xor32(mix12(abcd, M), abcd);
+        RZ[J] = ABCD;
         J = OpCodes.And32(J + 1, 0xF);
       }
 
       for (let i = 0; i < 64; i++) {
         const abcd = this._stepOLZ(OLZ, 0xF, idx);
-        const ABCD = OpCodes.ToUint32(OpCodes.XorN(mix12(abcd, M), abcd));
-        const abcd2 = OpCodes.ToUint32(ABCD + RZ[J]);
+        const ABCD = OpCodes.Xor32(mix12(abcd, M), abcd);
+        const abcd2 = OpCodes.Add32(ABCD, RZ[J]);
         const bytes2 = OpCodes.Unpack32LE(abcd2);
         M[i * 4] ^= bytes2[0];
         M[i * 4 + 1] ^= bytes2[1];
@@ -303,18 +333,19 @@
 
       for (let i = 0; i < 15; i++) {
         const abcd = this._stepOLZ(OLZ, 0xF, idx);
-        const ABCD = OpCodes.ToUint32(OpCodes.XorN(mix12(abcd, M), abcd));
-        RZ[J] = OpCodes.ToUint32(RZ[J] + ABCD);
+        const ABCD = OpCodes.Xor32(mix12(abcd, M), abcd);
+        RZ[J] = OpCodes.Add32(RZ[J], ABCD);
         J = OpCodes.And32(J + 1, 0xF);
       }
 
       for (let i = 1; i < 16; i++) OLZ[i + 32] = RZ[i];
 
-      const idx64 = { I0: 33, I1: 41, I2: 48 };
+      /** @type {int32[]} */
+      const idx64 = [33, 41, 48];
       J = 0;
       for (let i = 0; i < 16; i++) {
         const abcd = this._stepOLZ(OLZ, 0x3F, idx64);
-        const ABCD = OpCodes.ToUint32(OpCodes.XorN(mix12(abcd, M), abcd));
+        const ABCD = OpCodes.Xor32(mix12(abcd, M), abcd);
         RZ[J] = ABCD;
         J = OpCodes.And32(J + 1, 0xF);
       }
@@ -328,29 +359,46 @@
 
     /**
      * Advances a Galois-style word LFSR register by one step:
-     * new = feedback(ALF if MSB set) XOR (2*OLZ[I0]) XOR OLZ[I1], stored at OLZ[I2].
+     * new = feedback(ALF if MSB set) XOR (2*OLZ[I0]) XOR OLZ[I1], stored at OLZ[I2];
+     * idx holds the cursors [I0, I1, I2] and is advanced in place.
+     * @param {uint32[]} OLZ
+     * @param {int32} mask
+     * @param {int32[]} idx
+     * @returns {uint32}
      */
     _stepOLZ(OLZ, mask, idx) {
-      const v0 = OLZ[idx.I0];
+      /** @type {uint32} */
+      const v0 = OLZ[idx[0]];
+      /** @type {uint32} */
       const feedback = OpCodes.And32(v0, 0x80000000) ? ALF : 0;
-      const abcd = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(feedback, OpCodes.Shl32(v0, 1)), OLZ[idx.I1]));
-      OLZ[idx.I2] = abcd;
-      idx.I0 = OpCodes.And32(idx.I0 + 1, mask);
-      idx.I1 = OpCodes.And32(idx.I1 + 1, mask);
-      idx.I2 = OpCodes.And32(idx.I2 + 1, mask);
+      const abcd = OpCodes.Xor32(OpCodes.Xor32(feedback, OpCodes.Shl32(v0, 1)), OLZ[idx[1]]);
+      OLZ[idx[2]] = abcd;
+      idx[0] = OpCodes.And32(idx[0] + 1, mask);
+      idx[1] = OpCodes.And32(idx[1] + 1, mask);
+      idx[2] = OpCodes.And32(idx[2] + 1, mask);
       return abcd;
     }
 
-    /** Generates one 256-byte keystream block, advancing the 64-word OLZ register. */
+    /**
+     * Generates one 256-byte keystream block, advancing the 64-word OLZ register.
+     * @returns {uint8[]}
+     */
     _generateBlock() {
-      const OLZ = this.OLZ, RZ = this.RZ, M = this.M;
+      /** @type {uint32[]} */
+      const OLZ = this.OLZ;
+      /** @type {uint32[]} */
+      const RZ = this.RZ;
+      /** @type {uint8[]} */
+      const M = this.M;
+      /** @type {uint32[]} */
       const BUF = new Array(64);
       for (let i = 0; i < 64; i++) BUF[i] = mix12(OLZ[i], M);
 
+      /** @type {uint8[]} */
       const out = new Array(BLOCK_SIZE);
       for (let i = 0; i < 64; i++) {
-        const ABCD = OpCodes.ToUint32(OpCodes.XorN(BUF[i], OLZ[i]));
-        const abcd = OpCodes.ToUint32(ABCD + RZ[OpCodes.And32(i, 0xF)]);
+        const ABCD = OpCodes.Xor32(BUF[i], OLZ[i]);
+        const abcd = OpCodes.Add32(ABCD, RZ[OpCodes.And32(i, 0xF)]);
         const bytes = OpCodes.Unpack32LE(abcd);
         out[i * 4] = bytes[0];
         out[i * 4 + 1] = bytes[1];
@@ -358,13 +406,20 @@
         out[i * 4 + 3] = bytes[3];
         RZ[OpCodes.And32(i, 0xF)] = ABCD;
 
-        const t1 = OLZ[OpCodes.And32(i + 49, 0x3F)], t2 = OLZ[OpCodes.And32(i + 57, 0x3F)];
+        /** @type {uint32} */
+        const t1 = OLZ[OpCodes.And32(i + 49, 0x3F)];
+        /** @type {uint32} */
+        const t2 = OLZ[OpCodes.And32(i + 57, 0x3F)];
+        /** @type {uint32} */
         const feedback = OpCodes.And32(t1, 0x80000000) ? ALF : 0;
-        OLZ[OpCodes.And32(i, 0x3F)] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(feedback, OpCodes.Shl32(t1, 1)), t2));
+        OLZ[OpCodes.And32(i, 0x3F)] = OpCodes.Xor32(OpCodes.Xor32(feedback, OpCodes.Shl32(t1, 1)), t2);
       }
       return out;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this._keystreamBuffer.length === 0)
         this._keystreamBuffer = this._generateBlock();

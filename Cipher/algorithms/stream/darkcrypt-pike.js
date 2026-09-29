@@ -55,11 +55,11 @@
   const BLOCK_WORDS = 200;                // keystream words produced per generator block
   const BLOCK_BYTES = BLOCK_WORDS * 4;    // 800 bytes
 
-  const REG_SPECS = [
-    { length: 55, lag: 31 },
-    { length: 57, lag: 50 },
-    { length: 58, lag: 39 }
-  ];
+  // Lagged-register shapes: word count and lag of registers A, B and C.
+  /** @type {int32[]} */
+  const REG_LENGTHS = [55, 57, 58];
+  /** @type {int32[]} */
+  const REG_LAGS = [31, 50, 39];
 
   // Round constants and initial chaining values for the internal seed-whitening digest
   // (an 80-round Merkle-Damgard compression with a non-rotating message schedule).
@@ -72,7 +72,12 @@
   // MD-strengthening padding (0x80, zero fill, 64-bit big-endian bit length); message
   // words are big-endian; the schedule expansion W[t]=W[t-3]^W[t-8]^W[t-14]^W[t-16] has
   // no additional rotation.
+  /**
+   * @param {uint8[]} bytes
+   * @returns {uint32[]}
+   */
   function compressDigest(bytes) {
+    /** @type {uint8[]} */
     const padded = bytes.slice();
     padded.push(0x80);
     while ((padded.length % 64) !== 56) padded.push(0);
@@ -82,9 +87,19 @@
     for (let i = 0; i < 4; i++) padded.push(lenHiBytes[i]);
     for (let i = 0; i < 4; i++) padded.push(lenLoBytes[i]);
 
-    let h0 = DIGEST_IV[0], h1 = DIGEST_IV[1], h2 = DIGEST_IV[2], h3 = DIGEST_IV[3], h4 = DIGEST_IV[4];
+    /** @type {uint32} */
+    let h0 = DIGEST_IV[0];
+    /** @type {uint32} */
+    let h1 = DIGEST_IV[1];
+    /** @type {uint32} */
+    let h2 = DIGEST_IV[2];
+    /** @type {uint32} */
+    let h3 = DIGEST_IV[3];
+    /** @type {uint32} */
+    let h4 = DIGEST_IV[4];
 
     for (let off = 0; off < padded.length; off += 64) {
+      /** @type {uint32[]} */
       const w = new Array(80);
       for (let t = 0; t < 16; t++) {
         const p = off + t * 4;
@@ -93,9 +108,19 @@
       for (let t = 16; t < 80; t++)
         w[t] = OpCodes.Xor32(OpCodes.Xor32(w[t - 3], w[t - 8]), OpCodes.Xor32(w[t - 14], w[t - 16]));
 
-      let a = h0, b = h1, c = h2, d = h3, e = h4;
+      /** @type {uint32} */
+      let a = h0;
+      /** @type {uint32} */
+      let b = h1;
+      /** @type {uint32} */
+      let c = h2;
+      /** @type {uint32} */
+      let d = h3;
+      /** @type {uint32} */
+      let e = h4;
       for (let t = 0; t < 80; t++) {
-        let f;
+        /** @type {uint32} */
+        let f = 0;
         if (t < 20) f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
         else if (t < 40) f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
         else if (t < 60) f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
@@ -108,19 +133,27 @@
       h0 = OpCodes.Add32(h0, a); h1 = OpCodes.Add32(h1, b); h2 = OpCodes.Add32(h2, c);
       h3 = OpCodes.Add32(h3, d); h4 = OpCodes.Add32(h4, e);
     }
-    return [h0, h1, h2, h3, h4];
+    /** @type {uint32[]} */
+    const digest = [h0, h1, h2, h3, h4];
+    return digest;
   }
 
   // Build the 680-byte whitened seed buffer from the 64-byte key: cyclic key fill with
   // the first byte overwritten by the key length, then 34 rounds of "digest the whole
   // buffer, write the 20-byte result back at the next 20-byte slot" self-mixing.
+  /**
+   * @param {uint8[]} keyBytes
+   * @returns {uint8[]}
+   */
   function buildSeed(keyBytes) {
     const keyLen = keyBytes.length;
+    /** @type {uint8[]} */
     const seed = new Array(SEED_SIZE);
     for (let i = 0; i < SEED_SIZE; i++) seed[i] = keyBytes[i % keyLen];
     seed[0] = OpCodes.And32(keyLen, 0xFF);
 
     for (let round = 0; round < WHITEN_ROUNDS; round++) {
+      /** @type {uint32[]} */
       const digest = compressDigest(seed);
       const pos = round * (DIGEST_WORDS * 4);
       for (let w = 0; w < DIGEST_WORDS; w++) {
@@ -132,7 +165,12 @@
     return seed;
   }
 
+  /**
+   * @param {uint8[]} seed
+   * @returns {uint32[]}
+   */
   function seedToWords(seed) {
+    /** @type {uint32[]} */
     const words = new Array(SEED_SIZE / 4);
     for (let w = 0; w < words.length; w++) {
       const o = w * 4;
@@ -141,13 +179,44 @@
     return words;
   }
 
+  // One lagged register: its words, two read cursors, the last output word and carry.
+  class PikeRegister {
+    constructor() {
+      /** @type {int32} */
+      this.length = 0;
+      /** @type {uint32[]} */
+      this.buf = [];
+      /** @type {int32} */
+      this.idx1 = 0;
+      /** @type {int32} */
+      this.idx2 = 0;
+      /** @type {uint32} */
+      this.carry = 0;
+      /** @type {uint32} */
+      this.field = 0;
+    }
+  }
+
+  /**
+   * @param {int32} length
+   * @param {int32} lag
+   * @param {uint32[]} words
+   * @returns {PikeRegister}
+   */
   function makeRegister(length, lag, words) {
-    return { length, buf: words, idx1: 0, idx2: lag % length, carry: 0, field: 0 };
+    const reg = new PikeRegister();
+    reg.length = length;
+    reg.buf = words;
+    reg.idx2 = lag % length;
+    return reg;
   }
 
   // Clock one register: read its two lag-separated words, output their sum, record the
   // carry-out (whether the unsigned addition wrapped), and advance both read cursors.
   // The register's own contents are never modified.
+  /**
+   * @param {PikeRegister} reg
+   */
   function clockRegister(reg) {
     const a = OpCodes.ToUint32(reg.buf[reg.idx1]);
     const b = OpCodes.ToUint32(reg.buf[reg.idx2]);
@@ -163,8 +232,19 @@
   // bit matching the majority of all three carry bits (a register whose carry disagrees
   // with the majority stands still that step); the keystream word is the XOR of the
   // three registers' current outputs.
+  /**
+   * @param {PikeRegister[]} regs
+   * @param {int32} count
+   * @returns {uint32[]}
+   */
   function generateWords(regs, count) {
-    const [a, b, c] = regs;
+    /** @type {PikeRegister} */
+    const a = regs[0];
+    /** @type {PikeRegister} */
+    const b = regs[1];
+    /** @type {PikeRegister} */
+    const c = regs[2];
+    /** @type {uint32[]} */
     const out = new Array(count);
     for (let i = 0; i < count; i++) {
       const maj = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b.carry, a.carry), OpCodes.And32(b.carry, c.carry)), OpCodes.And32(a.carry, c.carry));
@@ -176,7 +256,12 @@
     return out;
   }
 
+  /**
+   * @param {uint32[]} words
+   * @returns {uint8[]}
+   */
   function wordsToBytes(words) {
+    /** @type {uint8[]} */
     const out = new Array(words.length * 4);
     for (let w = 0; w < words.length; w++) {
       const b = OpCodes.Unpack32LE(words[w]);
@@ -251,6 +336,7 @@
       /** @type {uint8[]|null} */
       this._key = null;
 
+      /** @type {PikeRegister[]|null} */
       this._regs = null;     // [regA, regB, regC]
     }
 
@@ -286,6 +372,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = this._process(this.inputBuffer);
       this.inputBuffer = [];
       return output;
@@ -294,26 +381,40 @@
     // Whiten the key into a 680-byte seed and split it word-for-word into the three
     // lagged registers, ready to be clocked from a freshly reset state.
     _initialize() {
+      /** @type {uint8[]} */
       const seed = buildSeed(this._key);
+      /** @type {uint32[]} */
       const words = seedToWords(seed);
 
+      /** @type {int32} */
       let offset = 0;
-      const regs = REG_SPECS.map(spec => {
-        const slice = words.slice(offset, offset + spec.length);
-        offset += spec.length;
-        return makeRegister(spec.length, spec.lag, slice);
-      });
+      /** @type {PikeRegister[]} */
+      const regs = [];
+      for (let r = 0; r < REG_LENGTHS.length; r++) {
+        /** @type {uint32[]} */
+        const slice = words.slice(offset, offset + REG_LENGTHS[r]);
+        offset += REG_LENGTHS[r];
+        regs.push(makeRegister(REG_LENGTHS[r], REG_LAGS[r], slice));
+      }
 
       this._regs = regs;
     }
 
     // Every buffer is enciphered against freshly generated keystream blocks of up to
     // 800 bytes each (200 generator words), continuing the register state across blocks.
+    /**
+     * @param {uint8[]} data
+     * @returns {uint8[]}
+     */
     _process(data) {
+      /** @type {uint8[]} */
       const out = new Array(data.length);
+      /** @type {int32} */
       let pos = 0;
       while (pos < data.length) {
+        /** @type {uint8[]} */
         const ksBytes = wordsToBytes(generateWords(this._regs, BLOCK_WORDS));
+        /** @type {int32} */
         const chunk = Math.min(BLOCK_BYTES, data.length - pos);
         for (let k = 0; k < chunk; k++)
           out[pos + k] = OpCodes.Xor32(data[pos + k], ksBytes[k]);
