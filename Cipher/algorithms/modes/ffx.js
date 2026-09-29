@@ -163,18 +163,24 @@
   class FfxModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FfxAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]} */
       this.tweak = [];
+      /** @type {int32} */
       this.radix = 10; // Default to decimal
+      /** @type {int32} */
       this.rounds = 10; // Standard FFX rounds
     }
 
@@ -191,7 +197,7 @@
 
     /**
      * Set the encryption key
-     * @param {Array} key - Key for block cipher
+     * @param {uint8[]} key - Key for block cipher
      */
     setKey(key) {
       if (!key || key.length === 0) {
@@ -202,15 +208,21 @@
 
     /**
      * Set the tweak value
-     * @param {Array} tweak - Tweak value for FFX mode
+     * @param {uint8[]} tweak - Tweak value for FFX mode
      */
     setTweak(tweak) {
-      this.tweak = tweak ? [...tweak] : [];
+      if (tweak) {
+        this.tweak = [...tweak];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.tweak = empty;
+      }
     }
 
     /**
      * Set the radix (alphabet size)
-     * @param {number} radix - Size of the alphabet (2-2^16)
+     * @param {int32} radix - Size of the alphabet (2-2^16)
      */
     setRadix(radix) {
       if (radix < 2 || radix > 65536) {
@@ -275,9 +287,13 @@
     /**
      * Numeral string to integer, most significant numeral first
      * @private
+     * @param {uint8[]} numerals
+     * @returns {BigInt}
      */
     _numRadix(numerals) {
+      /** @type {BigInt} */
       const radix = BigInt(this.radix);
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < numerals.length; i++) value = value * radix + BigInt(numerals[i]);
       return value;
@@ -286,13 +302,18 @@
     /**
      * Integer to a numeral string of the given length
      * @private
+     * @param {BigInt} value
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     _strRadix(value, length) {
+      /** @type {BigInt} */
       const radix = BigInt(this.radix);
-      const numerals = new Array(length).fill(0);
+      const numerals = OpCodes.CreateArray(length, 0);
+      /** @type {BigInt} */
       let remaining = value;
       for (let i = length - 1; i >= 0; i--) {
-        numerals[i] = Number(remaining % radix);
+        numerals[i] = OpCodes.ToInt(Number(remaining % radix));
         remaining = remaining / radix;
       }
       return numerals;
@@ -301,8 +322,11 @@
     /**
      * Big-endian byte string to integer
      * @private
+     * @param {uint8[]} bytes
+     * @returns {BigInt}
      */
     _bytesToInt(bytes) {
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < bytes.length; i++) value = value * 256n + BigInt(bytes[i]);
       return value;
@@ -311,12 +335,16 @@
     /**
      * Integer to a big-endian byte string of the given length
      * @private
+     * @param {BigInt} value
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     _intToBytes(value, length) {
-      const bytes = new Array(length).fill(0);
+      const bytes = OpCodes.CreateArray(length, 0);
+      /** @type {BigInt} */
       let remaining = value;
       for (let i = length - 1; i >= 0; i--) {
-        bytes[i] = Number(remaining % 256n);
+        bytes[i] = OpCodes.ToByte(Number(remaining % 256n));
         remaining = remaining / 256n;
       }
       return bytes;
@@ -325,20 +353,27 @@
     /**
      * Apply the underlying block cipher to one block
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _ciph(block) {
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = this.key;
       cipher.Feed(block);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const enciphered = cipher.Result();
+      return enciphered;
     }
 
     /**
      * PRF from SP 800-38G: CBC-MAC over a block-aligned string with a zero IV
      * @private
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
     _prf(data) {
-      let y = new Array(16).fill(0);
+      let y = OpCodes.CreateArray(16, 0);
       for (let i = 0; i < data.length; i += 16) {
         y = this._ciph(OpCodes.XorArrays(y, data.slice(i, i + 16)));
       }
@@ -348,6 +383,8 @@
     /**
      * FF1 encryption and decryption (NIST SP 800-38G algorithms 7 and 8)
      * @private
+     * @param {uint8[]} symbols
+     * @returns {uint8[]}
      */
     _ff1(symbols) {
       const n = symbols.length;
@@ -361,11 +398,12 @@
 
       const nBytes = OpCodes.Unpack32BE(n);
       const tBytes = OpCodes.Unpack32BE(t);
+      /** @type {uint8[]} */
       const p = [
         1, 2, 1,
-        OpCodes.AndN(OpCodes.Shr32(this.radix, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(this.radix, 8), 0xFF),
-        OpCodes.AndN(this.radix, 0xFF),
+        OpCodes.And32(OpCodes.Shr32(this.radix, 16), 0xFF),
+        OpCodes.And32(OpCodes.Shr32(this.radix, 8), 0xFF),
+        OpCodes.And32(this.radix, 0xFF),
         10,
         u % 256,
         nBytes[0], nBytes[1], nBytes[2], nBytes[3],
@@ -378,11 +416,12 @@
       let a = symbols.slice(0, u);
       let bHalf = symbols.slice(u);
 
-      const rounds = this.isInverse ? [9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-      for (const round of rounds) {
+      // Rounds 0..9 when encrypting, 9..0 when decrypting
+      for (let roundIndex = 0; roundIndex < 10; roundIndex++) {
+        const round = this.isInverse ? 9 - roundIndex : roundIndex;
         // Q = T || 0^pad || [round] || NUM_radix(other half) as b bytes
         const source = this.isInverse ? a : bHalf;
+        /** @type {uint8[]} */
         const q = [];
         for (let i = 0; i < this.tweak.length; i++) q.push(this.tweak[i]);
         for (let i = 0; i < padLength; i++) q.push(0);
@@ -390,12 +429,14 @@
         const sourceBytes = this._intToBytes(this._numRadix(source), b);
         for (let i = 0; i < sourceBytes.length; i++) q.push(sourceBytes[i]);
 
+        /** @type {uint8[]} */
         const prfInput = [];
         for (let i = 0; i < p.length; i++) prfInput.push(p[i]);
         for (let i = 0; i < q.length; i++) prfInput.push(q[i]);
         const r = this._prf(prfInput);
 
         // S = R || CIPH_K(R xor [1]^16) || CIPH_K(R xor [2]^16) || ... truncated to d
+        /** @type {uint8[]} */
         const s = [];
         for (let i = 0; i < r.length; i++) s.push(r[i]);
         for (let j = 1; s.length < d; j++) {
@@ -406,16 +447,19 @@
         const y = this._bytesToInt(s.slice(0, d));
 
         const m = (round % 2 === 0) ? u : v;
+        /** @type {BigInt} */
         const modulus = BigInt(this.radix) ** BigInt(m);
 
         if (this.isInverse) {
           // c = (NUM_radix(B) - y) mod radix^m; then B <- A and A <- STR(c)
+          /** @type {BigInt} */
           let c = (this._numRadix(bHalf) - y) % modulus;
           if (c < 0n) c += modulus;
           bHalf = a;
           a = this._strRadix(c, m);
         } else {
           // c = (NUM_radix(A) + y) mod radix^m; then A <- B and B <- STR(c)
+          /** @type {BigInt} */
           const c = (this._numRadix(a) + y) % modulus;
           a = bHalf;
           bHalf = this._strRadix(c, m);
@@ -427,8 +471,8 @@
 
     /**
      * Convert bytes to symbols based on radix
-     * @param {Array} bytes - Input bytes
-     * @returns {Array} Symbol array
+     * @param {uint8[]} bytes - Input bytes
+     * @returns {uint8[]} Symbol array
      */
     _bytesToSymbols(bytes) {
       // Format-preserving encryption is only defined on strings over its own
@@ -440,33 +484,44 @@
       if (this.radix === 256) return [...bytes];
 
       if (this.radix > 256)
-        throw new Error(`FFX radix ${this.radix} cannot be represented one symbol per byte; use radix 2-256`);
+        throw new Error("FFX radix " + this.radix + " cannot be represented one symbol per byte; use radix 2-256");
 
       if (this.radix <= 36) {
         // Canonical base-N digits, the same set Number.prototype.toString(radix)
         // produces: '0'-'9' then 'a'-'z'. Uppercase is rejected rather than
         // folded in, because the output is written in the canonical lowercase
         // form and accepting both would make the mapping non-injective.
-        return bytes.map(b => {
+        /** @type {uint8[]} */
+        const digits = new Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) {
+          const b = bytes[i];
           const symbol = this._digitValue(b);
-          if (symbol < 0 || symbol >= this.radix)
-            throw new Error(`FFX input is outside its alphabet: byte 0x${OpCodes.AndN(b, 0xFF).toString(16)} is not a base-${this.radix} digit`);
-          return symbol;
-        });
+          if (symbol < 0 || symbol >= this.radix) {
+            /** @type {string} */
+            const hex = OpCodes.And32(b, 0xFF).toString(16);
+            throw new Error("FFX input is outside its alphabet: byte 0x" + hex + " is not a base-" + this.radix + " digit");
+          }
+          digits[i] = symbol;
+        }
+        return digits;
       }
 
       // Radices above the digit alphabet address byte values directly.
-      return bytes.map(b => {
+      /** @type {uint8[]} */
+      const symbols = new Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) {
+        const b = bytes[i];
         if (b >= this.radix)
-          throw new Error(`FFX input is outside its alphabet: byte value ${b} is not below radix ${this.radix}`);
-        return b;
-      });
+          throw new Error("FFX input is outside its alphabet: byte value " + b + " is not below radix " + this.radix);
+        symbols[i] = b;
+      }
+      return symbols;
     }
 
     /**
      * Value of an ASCII digit character, or -1 when it is not one.
-     * @param {number} code - Character code
-     * @returns {number} Digit value or -1
+     * @param {int32} code - Character code
+     * @returns {int32} Digit value or -1
      */
     _digitValue(code) {
       if (code >= 0x30 && code <= 0x39) return code - 0x30;       // '0'-'9'
@@ -476,20 +531,25 @@
 
     /**
      * Convert symbols back to bytes
-     * @param {Array} symbols - Symbol array
-     * @returns {Array} Byte array
+     * @param {uint8[]} symbols - Symbol array
+     * @returns {uint8[]} Byte array
      */
     _symbolsToBytes(symbols) {
       // Exact inverse of _bytesToSymbols, so the format really is preserved.
       if (this.radix === 256) return [...symbols];
-      if (this.radix <= 36) return symbols.map(s => this._digitCharacter(s));
+      if (this.radix <= 36) {
+        /** @type {uint8[]} */
+        const characters = new Array(symbols.length);
+        for (let i = 0; i < symbols.length; i++) characters[i] = this._digitCharacter(symbols[i]);
+        return characters;
+      }
       return [...symbols];
     }
 
     /**
      * ASCII character code for a base-N digit value.
-     * @param {number} symbol - Digit value
-     * @returns {number} Character code
+     * @param {int32} symbol - Digit value
+     * @returns {uint8} Character code
      */
     _digitCharacter(symbol) {
       return symbol < 10 ? 0x30 + symbol : 0x61 + (symbol - 10);
