@@ -11,6 +11,9 @@
  *   local JSDoc - and the untyped-site count built on it (TypePolicyTests.js)
  * - JSDOC: every OpCodes and AlgorithmFramework member is fully typed by
  *   JSDoc, the two tiers every algorithm's types come from (JSDocTierAudit.js)
+ * - CSHARP: regressions of systematic C# transpilation faults; compiles and
+ *   runs the C# runtime stubs when the .NET SDK is installed
+ *   (CSharpTranspileRegressions.js)
  *
  * Options:
  *   --only=<a,b>          run only these categories (e.g. --only=codegen,csharp)
@@ -19,6 +22,7 @@
  *   --language=<name>     CODEGEN: one language (e.g. python, csharp)
  *   --quick               CODEGEN: smoke cases only
  *   --group=<text>        INFERENCE: only the test groups whose name contains it (e.g. literal)
+ *   --no-dotnet           CSHARP: do not compile and run the C# stubs
  *
  * Exits non-zero when any check of a selected category fails.
  */
@@ -33,7 +37,8 @@ const CATEGORIES = [
   { key: 'codegen', label: 'CODEGEN', title: 'Code generation for every language and dialect', module: './CodeGenTests' },
   { key: 'inference', label: 'INFERENCE', title: 'Type inference of the transpiler AST', module: './TypeInferenceTests' },
   { key: 'policy', label: 'POLICY', title: 'Type resolution order and untyped-site count', module: './TypePolicyTests' },
-  { key: 'jsdoc', label: 'JSDOC', title: 'OpCodes and AlgorithmFramework JSDoc completeness', module: './JSDocTierAudit' }
+  { key: 'jsdoc', label: 'JSDOC', title: 'OpCodes and AlgorithmFramework JSDoc completeness', module: './JSDocTierAudit' },
+  { key: 'csharp', label: 'CSHARP', title: 'C# transpilation regressions', module: './CSharpTranspileRegressions' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 
@@ -44,7 +49,7 @@ const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
  */
 function parseOptions(args) {
   Runner.rejectUnknownOptions(args,
-    ['--verbose', '-v', '--quick'],
+    ['--verbose', '-v', '--quick', '--no-dotnet'],
     ['only', 'skip', 'language', 'group']);
   const positional = args.find(arg => !arg.startsWith('-'));
   if (positional) throw new Error(`unexpected argument ${positional}`);
@@ -53,6 +58,7 @@ function parseOptions(args) {
     selected,
     verbose: args.includes('--verbose') || args.includes('-v'),
     quick: args.includes('--quick'),
+    dotnet: !args.includes('--no-dotnet'),
     language: Runner.optionValue(args, 'language'),
     group: Runner.optionValue(args, 'group')
   };
