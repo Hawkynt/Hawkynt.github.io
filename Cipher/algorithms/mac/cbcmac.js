@@ -148,9 +148,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {CBCMACInstance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -169,14 +169,24 @@
  */
 
   class CBCMACInstance extends IMacInstance {
+    /**
+     * Initialize a CBC-MAC instance
+     * @param {CBCMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint8[]} */
       this._iv = null;
+      /** @type {int32} */
       this._macSize = 4; // Default: half of DES block size (32 bits)
+      /** @type {int32} */
       this._blockSize = 8; // DES block size
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.state = null; // Current CBC state
+      /** @type {IBlockCipherInstance} */
       this.cipherInstance = null;
     }
 
@@ -195,19 +205,19 @@
 
       // Validate key size (DES uses 8-byte keys)
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 8 for DES)`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (expected 8 for DES)');
       }
 
       this._key = [...keyBytes];
 
-      // Create DES cipher instance for encryption
-      // DESModule exports { DESAlgorithm, DESInstance }
-      if (!DESModule || !DESModule.DESAlgorithm) {
+      // Create DES cipher instance for encryption, from the DES algorithm
+      // des.js registers (it is loaded ahead of this file)
+      /** @type {Algorithm} */
+      const desAlgorithm = AlgorithmFramework.Find('DES');
+      if (!desAlgorithm) {
         throw new Error('DES module not loaded');
       }
 
-      // Create DES algorithm instance and then create cipher instance
-      const desAlgorithm = new DESModule.DESAlgorithm();
       this.cipherInstance = desAlgorithm.CreateInstance(false); // false = encrypt
       this.cipherInstance.key = keyBytes;
     }
@@ -235,7 +245,7 @@
 
       // Validate IV size (must match block size)
       if (ivBytes.length !== this._blockSize) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes (expected ${this._blockSize})`);
+        throw new Error('Invalid IV size: ' + ivBytes.length + ' bytes (expected ' + this._blockSize + ')');
       }
 
       this._iv = [...ivBytes];
@@ -250,13 +260,22 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * Truncate the MAC
+     * @param {int32} size - MAC size in bytes, 4..16
+     * @throws {Error} If size is outside 4..16
+     */
     set macSize(size) {
       if (size < 4 || size > 16) {
-        throw new Error(`Invalid MAC size: ${size} bytes (must be 4-16)`);
+        throw new Error('Invalid MAC size: ' + size + ' bytes (must be 4-16)');
       }
       this._macSize = size;
     }
 
+    /**
+     * MAC size in bytes
+     * @returns {int32} MAC size in bytes
+     */
     get macSize() {
       return this._macSize;
     }
@@ -285,10 +304,14 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Initialize CBC state with IV or zeros
-      this.state = this._iv ? [...this._iv] : new Array(this._blockSize).fill(0);
+      if (this._iv) {
+        this.state = this._iv.slice();
+      } else {
+        this.state = OpCodes.CreateArray(this._blockSize, 0);
+      }
 
       // Prepare padded message
-      const paddedMessage = this._padMessage([...this.inputBuffer]);
+      const paddedMessage = this._padMessage(this.inputBuffer.slice());
 
       // Process each block in CBC mode
       for (let i = 0; i < paddedMessage.length; i += this._blockSize) {
@@ -299,7 +322,9 @@
 
         // Encrypt the XOR result
         this.cipherInstance.Feed(xorBlock);
-        this.state = this.cipherInstance.Result();
+        /** @type {uint8[]} */
+        const encrypted = this.cipherInstance.Result();
+        this.state = encrypted;
       }
 
       // MAC is the final ciphertext block (truncated to macSize)
@@ -317,8 +342,8 @@
      * CBC-MAC uses zero padding (FIPS 113 default)
      * Note: BouncyCastle can also use ISO7816 padding, but defaults to zero padding
      *
-     * @param {Array<number>} message - Input message
-     * @returns {Array<number>} Padded message
+     * @param {uint8[]} message - Input message
+     * @returns {uint8[]} Padded message
      */
     _padMessage(message) {
       const remainder = message.length % this._blockSize;
@@ -330,9 +355,11 @@
 
       // Pad with zeros to next block boundary
       const paddingLength = this._blockSize - remainder;
-      const padding = new Array(paddingLength).fill(0);
+      const padding = OpCodes.CreateArray(paddingLength, 0);
 
-      return [...message, ...padding];
+      /** @type {uint8[]} */
+      const padded = message.concat(padding);
+      return padded;
     }
   }
 

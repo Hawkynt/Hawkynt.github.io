@@ -62,7 +62,7 @@
 
       // MAC-specific metadata
       this.SupportedKeySizes = [new KeySize(16, 16, 1)]; // Exactly 16 bytes (128 bits)
-      this.SupportedOutputSizes = [16]; // Fixed 16-byte (128-bit) output
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)]; // Fixed 16-byte (128-bit) output
 
       // Documentation and references
       this.documentation = [
@@ -137,9 +137,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
+   * @returns {SipHash128Instance} New MAC instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,8 +154,8 @@
   class SipHash128Instance extends IMacInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {SipHash128Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a MAC has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -163,24 +163,33 @@
       this.isInverse = isInverse;
 
       // SipHash parameters (c compression rounds, d finalization rounds)
+      /** @type {int32} */
       this._cRounds = 2; // Default: 2 compression rounds
+      /** @type {int32} */
       this._dRounds = 4; // Default: 4 finalization rounds
 
       // Internal state
+      /** @type {uint8[]} */
       this._key = null;
       this.inputBuffer = [];
 
       // State variables (64-bit values represented as [low32, high32])
+      /** @type {uint32[]} */
       this.v0 = [0, 0];
+      /** @type {uint32[]} */
       this.v1 = [0, 0];
+      /** @type {uint32[]} */
       this.v2 = [0, 0];
+      /** @type {uint32[]} */
       this.v3 = [0, 0];
 
       // Message word accumulator
+      /** @type {uint32[]} */
       this.m = [0, 0];
+      /** @type {int32} */
       this.wordPos = 0;
+      /** @type {int32} */
       this.wordCount = 0;
-      this.OpCodes = OpCodes;
     }
 
     // Property: key (128-bit / 16 bytes)
@@ -214,6 +223,11 @@
     }
 
     // Property: cRounds (compression rounds)
+    /**
+     * Set the number of compression rounds
+     * @param {int32} rounds - 1..16
+     * @throws {Error} If out of range
+     */
     set cRounds(rounds) {
       if (rounds < 1 || rounds > 16) {
         throw new Error("Invalid cRounds: " + rounds + ". Must be between 1 and 16.");
@@ -221,11 +235,20 @@
       this._cRounds = rounds;
     }
 
+    /**
+     * Number of compression rounds
+     * @returns {int32} Compression rounds
+     */
     get cRounds() {
       return this._cRounds;
     }
 
     // Property: dRounds (finalization rounds)
+    /**
+     * Set the number of finalization rounds
+     * @param {int32} rounds - 1..16
+     * @throws {Error} If out of range
+     */
     set dRounds(rounds) {
       if (rounds < 1 || rounds > 16) {
         throw new Error("Invalid dRounds: " + rounds + ". Must be between 1 and 16.");
@@ -233,6 +256,10 @@
       this._dRounds = rounds;
     }
 
+    /**
+     * Number of finalization rounds
+     * @returns {int32} Finalization rounds
+     */
     get dRounds() {
       return this._dRounds;
     }
@@ -240,6 +267,7 @@
     /**
      * Initialize SipHash state with key
      * State initialized with key XOR'd with constants
+     * @returns {void}
      */
     _initializeState() {
       if (!this._key) {
@@ -251,19 +279,19 @@
       const k1 = this._bytesToWord64LE(this._key, 8);
 
       // Initialize state: v0 = k0 XOR 0x736f6d6570736575
-      this.v0 = this._xor64(k0, [0x70736575, 0x736f6d65]);
+      this.v0 = this._xor64(k0, this._word64(0x70736575, 0x736f6d65));
       // v1 = k1 XOR 0x646f72616e646f6d
-      this.v1 = this._xor64(k1, [0x6e646f6d, 0x646f7261]);
+      this.v1 = this._xor64(k1, this._word64(0x6e646f6d, 0x646f7261));
       // v2 = k0 XOR 0x6c7967656e657261
-      this.v2 = this._xor64(k0, [0x6e657261, 0x6c796765]);
+      this.v2 = this._xor64(k0, this._word64(0x6e657261, 0x6c796765));
       // v3 = k1 XOR 0x7465646279746573
-      this.v3 = this._xor64(k1, [0x79746573, 0x74656462]);
+      this.v3 = this._xor64(k1, this._word64(0x79746573, 0x74656462));
 
       // For SipHash-128, XOR v1 with 0xee during initialization
-      this.v1 = this._xor64(this.v1, [0xee, 0]);
+      this.v1 = this._xor64(this.v1, this._word64(0xee, 0));
 
       // Reset message processing state
-      this.m = [0, 0];
+      this.m = this._word64(0, 0);
       this.wordPos = 0;
       this.wordCount = 0;
     }
@@ -272,6 +300,7 @@
     /**
      * Compute final MAC result
      * Returns 128-bit (16-byte) MAC tag
+     * @returns {uint8[]} 16-byte tag
      */
     Result() {
       if (!this._key) {
@@ -282,6 +311,7 @@
       const message = this.inputBuffer;
       const messageLen = message.length;
       let i = 0;
+      /** @type {int32} */
       const fullWords = OpCodes.And32(messageLen, OpCodes.Not32(7)); // Round down to multiple of 8
 
       // Process complete 8-byte blocks
@@ -295,7 +325,7 @@
         for (; i < messageLen; i++) {
           this.m = this._shr64(this.m, 8);
           // Place byte at position 56 (bits 56-63): high32[24-31]
-          this.m = this._or64(this.m, [0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)]);
+          this.m = this._or64(this.m, this._word64(0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)));
         }
         this.wordPos = messageLen - fullWords;
       } else {
@@ -310,7 +340,7 @@
         // Process remaining bytes
         for (; i < messageLen; i++) {
           this.m = this._shr64(this.m, 8);
-          this.m = this._or64(this.m, [0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)]);
+          this.m = this._or64(this.m, this._word64(0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)));
 
           if (++this.wordPos === 8) {
             this._processMessageWord();
@@ -324,22 +354,23 @@
       this.m = this._shr64(this.m, OpCodes.Shl32((7 - this.wordPos), 3));
       this.m = this._shr64(this.m, 8);
       // Add message length byte at position 7 (bits 56-63): high32[24-31]
-      const lenByte = OpCodes.And32((OpCodes.Shl32(this.wordCount, 3) + this.wordPos), 0xFF);
-      this.m = this._or64(this.m, [0, OpCodes.Shl32(lenByte, 24)]);
+      const lenByte = OpCodes.And32(OpCodes.Add32(OpCodes.Shl32(this.wordCount, 3), this.wordPos), 0xFF);
+      this.m = this._or64(this.m, this._word64(0, OpCodes.Shl32(lenByte, 24)));
 
       this._processMessageWord();
 
       // Compute first 64-bit half of MAC
-      this.v2 = this._xor64(this.v2, [0xee, 0]); // First finalization XOR (0xee)
+      this.v2 = this._xor64(this.v2, this._word64(0xee, 0)); // First finalization XOR (0xee)
       this._applySipRounds(this._dRounds);
       const r0 = this._xor64(this._xor64(this.v0, this.v1), this._xor64(this.v2, this.v3));
 
       // Compute second 64-bit half of MAC
-      this.v1 = this._xor64(this.v1, [0xdd, 0]); // Second finalization XOR (0xdd)
+      this.v1 = this._xor64(this.v1, this._word64(0xdd, 0)); // Second finalization XOR (0xdd)
       this._applySipRounds(this._dRounds);
       const r1 = this._xor64(this._xor64(this.v0, this.v1), this._xor64(this.v2, this.v3));
 
       // Convert to bytes (little-endian) and concatenate
+      /** @type {uint8[]} */
       const result = new Array(16);
       const r0Bytes = this._word64ToBytes(r0);
       const r1Bytes = this._word64ToBytes(r1);
@@ -361,6 +392,7 @@
     /**
      * Process single 64-bit message word
      * Applies c rounds of SipRound with message mixing
+     * @returns {void}
      */
     _processMessageWord() {
       this.wordCount++;
@@ -378,6 +410,8 @@
     /**
      * Apply n rounds of SipRound function
      * SipRound is the core permutation of SipHash
+     * @param {int32} n - Number of rounds
+     * @returns {void}
      */
     _applySipRounds(n) {
       for (let i = 0; i < n; i++) {
@@ -388,6 +422,7 @@
     /**
      * Single SipRound permutation
      * Based on ARX (Add-Rotate-XOR) operations
+     * @returns {void}
      */
     _sipRound() {
       // v0 += v1; v1 = ROTL(v1, 13); v1 ^= v0; v0 = ROTL(v0, 32)
@@ -415,34 +450,54 @@
 
     /**
      * 64-bit addition using 32-bit arithmetic
-     * Returns [low32, high32]
+     * @param {uint32[]} a - [low32, high32]
+     * @param {uint32[]} b - [low32, high32]
+     * @returns {uint32[]} (a + b) mod 2^64 as [low32, high32]
      */
     _add64(a, b) {
-      const low = OpCodes.ToUint32((a[0] + b[0]));
+      const low = OpCodes.Add32(a[0], b[0]);
       const carry = (low < a[0]) ? 1 : 0;
-      const high = OpCodes.ToUint32((a[1] + b[1] + carry));
-      return [low, high];
+      const high = OpCodes.Add32(OpCodes.Add32(a[1], b[1]), carry);
+      return this._word64(low, high);
+    }
+
+    /**
+     * A 64-bit word from its halves
+     * @param {uint32} low - Bits 0..31
+     * @param {uint32} high - Bits 32..63
+     * @returns {uint32[]} [low32, high32]
+     */
+    _word64(low, high) {
+      /** @type {uint32[]} */
+      const word = [low, high];
+      return word;
     }
 
     /**
      * 64-bit XOR operation
-     * Returns [low32, high32]
+     * @param {uint32[]} a - [low32, high32]
+     * @param {uint32[]} b - [low32, high32]
+     * @returns {uint32[]} a xor b as [low32, high32]
      */
     _xor64(a, b) {
-      return [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])];
+      return this._word64(OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1]));
     }
 
     /**
      * 64-bit OR operation
-     * Returns [low32, high32]
+     * @param {uint32[]} a - [low32, high32]
+     * @param {uint32[]} b - [low32, high32]
+     * @returns {uint32[]} a or b as [low32, high32]
      */
     _or64(a, b) {
-      return [OpCodes.Or32(a[0], b[0]), OpCodes.Or32(a[1], b[1])];
+      return this._word64(OpCodes.Or32(a[0], b[0]), OpCodes.Or32(a[1], b[1]));
     }
 
     /**
      * 64-bit right shift (logical)
-     * Returns [low32, high32]
+     * @param {uint32[]} val - [low32, high32]
+     * @param {int32} positions - Shift (negative shifts left)
+     * @returns {uint32[]} Shifted value (val itself for a zero shift)
      */
     _shr64(val, positions) {
       if (positions === 0) return val;
@@ -454,20 +509,22 @@
       const high = val[1];
       positions = positions % 64;
 
-      if (positions === 0) return [low, high];
+      if (positions === 0) return this._word64(low, high);
       if (positions >= 32) {
         const newLow = OpCodes.Shr32(high, (positions - 32));
-        return [newLow, 0];
+        return this._word64(newLow, 0);
       } else {
         const newLow = OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions)));
         const newHigh = OpCodes.Shr32(high, positions);
-        return [newLow, newHigh];
+        return this._word64(newLow, newHigh);
       }
     }
 
     /**
      * 64-bit left shift
-     * Returns [low32, high32]
+     * @param {uint32[]} val - [low32, high32]
+     * @param {int32} positions - Shift
+     * @returns {uint32[]} Shifted value (val itself for a zero shift)
      */
     _shl64(val, positions) {
       if (positions === 0) return val;
@@ -476,14 +533,14 @@
       const high = val[1];
       positions = positions % 64;
 
-      if (positions === 0) return [low, high];
+      if (positions === 0) return this._word64(low, high);
       if (positions >= 32) {
         const newHigh = OpCodes.Shl32(low, (positions - 32));
-        return [0, newHigh];
+        return this._word64(0, newHigh);
       } else {
         const newHigh = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
         const newLow = OpCodes.Shl32(low, positions);
-        return [newLow, newHigh];
+        return this._word64(newLow, newHigh);
       }
     }
 
@@ -491,14 +548,17 @@
      * 64-bit left rotation
      * Uses 32-bit operations for cross-platform compatibility
      * Value is stored as [low32, high32] representing bits 0-31 and 32-63
+     * @param {uint32[]} val - [low32, high32]
+     * @param {int32} positions - Rotation
+     * @returns {uint32[]} Rotated value
      */
     _rotl64(val, positions) {
       const low = val[0];
       const high = val[1];
       positions = positions % 64;
 
-      if (positions === 0) return [low, high];
-      if (positions === 32) return [high, low];
+      if (positions === 0) return this._word64(low, high);
+      if (positions === 32) return this._word64(high, low);
 
       if (positions < 32) {
         // Rotate left within 64-bit word
@@ -506,37 +566,53 @@
         // New high bits = old high << n|old low >> (32-n)
         const newLow = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions)));
         const newHigh = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
-        return [newLow, newHigh];
+        return this._word64(newLow, newHigh);
       } else {
         // Rotate more than 32 bits = swap + rotate remainder
         positions -= 32;
         const newLow = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
         const newHigh = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions)));
-        return [newLow, newHigh];
+        return this._word64(newLow, newHigh);
       }
     }
 
     /**
      * Convert bytes to 64-bit little-endian word
-     * Returns [low32, high32]
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} offset - Index of the first byte
+     * @returns {uint32[]} [low32, high32]; bytes past the end count as 0
      */
     _bytesToWord64LE(bytes, offset) {
       const low = OpCodes.Pack32LE(
-        bytes[offset] || 0, bytes[offset + 1] || 0,
-        bytes[offset + 2] || 0, bytes[offset + 3] || 0
+        this._byteAt(bytes, offset), this._byteAt(bytes, offset + 1),
+        this._byteAt(bytes, offset + 2), this._byteAt(bytes, offset + 3)
       );
       const high = OpCodes.Pack32LE(
-        bytes[offset + 4] || 0, bytes[offset + 5] || 0,
-        bytes[offset + 6] || 0, bytes[offset + 7] || 0
+        this._byteAt(bytes, offset + 4), this._byteAt(bytes, offset + 5),
+        this._byteAt(bytes, offset + 6), this._byteAt(bytes, offset + 7)
       );
-      return [low, high];
+      return this._word64(low, high);
+    }
+
+    /**
+     * One byte, or 0 where there is none (the old bytes[i] || 0)
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} index - Byte index
+     * @returns {uint8} The byte, or 0
+     */
+    _byteAt(bytes, index) {
+      const b = bytes[index];
+      if (!b) return 0;
+      return b;
     }
 
     /**
      * Convert 64-bit word to bytes (little-endian)
-     * Returns 8-byte array
+     * @param {uint32[]} word - [low32, high32]
+     * @returns {uint8[]} 8 bytes, little-endian
      */
     _word64ToBytes(word) {
+      /** @type {uint8[]} */
       const bytes = new Array(8);
       const lowBytes = OpCodes.Unpack32LE(word[0]);
       const highBytes = OpCodes.Unpack32LE(word[1]);
