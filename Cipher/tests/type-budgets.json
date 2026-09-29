@@ -626,7 +626,7 @@
   "algorithms/hash/luffa.js": 398,
   "algorithms/hash/md.js": 188,
   "algorithms/hash/mdc2.js": 38,
-  "algorithms/hash/murmurhash3.js": 49,
+  "algorithms/hash/murmurhash3.js": 0,
   "algorithms/hash/panama.js": 56,
   "algorithms/hash/parallelhash.js": 79,
   "algorithms/hash/photon-beetle-hash.js": 64,
