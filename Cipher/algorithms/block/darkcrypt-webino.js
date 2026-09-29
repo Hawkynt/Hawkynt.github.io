@@ -66,11 +66,17 @@
     6,10,15,21, 6,10,15,21, 6,10,15,21, 6,10,15,21
   ];
   // Standard MD5 additive constants T[i] = floor(abs(sin(i+1)) * 2^32).
-  const MD5_T = (function () {
-    const t = new Array(64);
-    for (let i = 0; i < 64; i++) t[i] = OpCodes.ToUint32(Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296));
-    return t;
-  })();
+  /** @type {uint32[]} */
+  const MD5_T = [
+    0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+    0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+    0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+    0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+    0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+    0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+    0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+    0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
+  ];
 
   // 64 rows x 256 columns S-box, as implemented in the DarkCrypt Total Commander
   // plugin. Shared table design also seen (with different row-count masks) in other
@@ -241,11 +247,29 @@
     "70821d79d451aeb0c0871b4ca9b5bec8f607dbaa6afe3f17014536a7e452936cf035d16258283c8caf4bcf4f0f5404027d23955be3999888d94ae89dcb20b7839b1547bc8ec5dfc338756ffa63d74d6d6611e2603726ec00f5f9ee893a3ec40e49b3b276" +
     "32e99257bb16de0a30b88180e05f2ec9e1b47b8539ce40e5348d3dddf12c741f31447f2f5da072d0f46455ad5e6173c71a05acf246425afd292d949c22b60343a6d22490c61821e7a5a32a653b86e6671959a2cd"  );
 
-  function u32(x) { return OpCodes.ToUint32(x); }
-  function rol32(x, n) { return OpCodes.RotL32(u32(x), OpCodes.And32(n, 31)); }
-  function ror32(x, n) { return OpCodes.RotR32(u32(x), OpCodes.And32(n, 31)); }
+  /**
+   * @param {uint32} x - Word
+   * @param {uint32} n - Rotation (low 5 bits used)
+   * @returns {uint32} x rotated left
+   */
+  function rol32(x, n) { return OpCodes.RotL32(x, OpCodes.And32(n, 31)); }
+  /**
+   * @param {uint32} x - Word
+   * @param {uint32} n - Rotation (low 5 bits used)
+   * @returns {uint32} x rotated right
+   */
+  function ror32(x, n) { return OpCodes.RotR32(x, OpCodes.And32(n, 31)); }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} (x << 6) XOR (x >>> 8)
+   */
   function fMix(x) { return OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8)); }
-  function sbLookup(row, col) { return SBOX[OpCodes.And32(row, ROWMASK) * 256 + OpCodes.And32(col, 0xFF)]; }
+  /**
+   * @param {uint32} row - S-box row (masked by ROWMASK)
+   * @param {uint32} col - Column (low 8 bits used)
+   * @returns {uint8} S-box entry
+   */
+  function sbLookup(row, col) { return SBOX[OpCodes.Add32(OpCodes.Mul32(OpCodes.And32(row, ROWMASK), 256), OpCodes.And32(col, 0xFF))]; }
 
   // Multiply-and-reduce modulo 2^32-1 is NOT used by this cipher's round function (that
   // pattern belongs to the vemokwana/sobbikashi family); Webino's round function is MD5.
@@ -325,18 +349,22 @@
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
+      /** @type {uint32[]|null} */
+      this._RK = null;   // 64 round keys
+      /** @type {uint32[]|null} */
+      this._W = null;    // 8 whitening words
     }
 
     /**
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
      */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
+      if (!keyBytes) { this._key = null; this.KeySize = 0; this._RK = null; this._W = null; return; }
       if (keyBytes.length !== 64)
         throw new Error("Invalid key size: " + keyBytes.length + " bytes. Webino (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._sched = this._buildSchedule(this._key);
+      this._buildSchedule(this._key);
     }
 
     /**
@@ -366,7 +394,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[]} 16 little-endian key words
+     */
     _keyWords(key) {
+      /** @type {uint32[]} */
       const words = new Array(16);
       for (let i = 0; i < 16; i++)
         words[i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
@@ -375,8 +408,13 @@
 
     // Builds the 64-entry round-key array RK[] and the 8 whitening words W[] from the 512-bit key
     // (identical S-box-driven schedule construction used by the vemokwana/sobbikashi family).
+    /**
+     * Fill _RK and _W
+     * @param {uint8[]} key - 64 key bytes
+     */
     _buildSchedule(key) {
       const K = this._keyWords(key);
+      /** @type {uint32[]} */
       const RKinit = new Array(SCHED_N);
       for (let i = 0; i < SCHED_N; i++) RKinit[i] = K[OpCodes.And32(i, 0xF)];
 
@@ -384,8 +422,8 @@
       let P = PCONST;
       for (let idx = 0; idx < SCHED_N; idx++) {
         const kw = K[OpCodes.And32(idx, 0xF)];
-        A = u32(A + kw + DELTA);
-        const T = u32(RKinit[idx] + P);
+        A = OpCodes.Add32(OpCodes.Add32(A, kw), DELTA);
+        const T = OpCodes.Add32(RKinit[idx], P);
         const rowIdx = OpCodes.And32(idx, ROWMASK);
         const rowP = OpCodes.And32(P, ROWMASK);
         const b0 = sbLookup(rowIdx, OpCodes.Shr32(T, 24));
@@ -394,54 +432,58 @@
         const b2 = sbLookup(rowT, OpCodes.And32(OpCodes.Shr32(T, 8), 0xFF));
         const rowA = OpCodes.And32(A, ROWMASK);
         const b3 = sbLookup(rowA, OpCodes.And32(T, 0xFF));
-        const mix = u32(OpCodes.Shl32(b0, 24) | OpCodes.Shl32(b1, 16) | OpCodes.Shl32(b2, 8) | b3);
+        const mix = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)), OpCodes.Shl32(b2, 8)), b3);
         const F1 = rol32(mix, 11);
-        A = u32(A + F1);
-        let U = u32(rol32(F1, 16) + fMix(F1));
-        U = u32(U + kw);
+        A = OpCodes.Add32(A, F1);
+        let U = OpCodes.Add32(rol32(F1, 16), fMix(F1));
+        U = OpCodes.Add32(U, kw);
         const rowA2 = OpCodes.And32(A, ROWMASK);
         const c0 = sbLookup(rowA2, OpCodes.Shr32(U, 24));
         const rowU = OpCodes.And32(U, ROWMASK);
         const c1 = sbLookup(rowU, OpCodes.And32(OpCodes.Shr32(U, 16), 0xFF));
         const c2 = sbLookup(rowP, OpCodes.And32(OpCodes.Shr32(U, 8), 0xFF));
         const c3 = sbLookup(rowIdx, OpCodes.And32(U, 0xFF));
-        const mix2 = u32(OpCodes.Shl32(c0, 24) | OpCodes.Shl32(c1, 16) | OpCodes.Shl32(c2, 8) | c3);
+        const mix2 = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(c0, 24), OpCodes.Shl32(c1, 16)), OpCodes.Shl32(c2, 8)), c3);
         const F2 = rol32(mix2, 11);
-        A = u32(A + F2);
+        A = OpCodes.Add32(A, F2);
         RKinit[idx] = F2;
-        P = u32(P + PCONST);
+        P = OpCodes.Add32(P, PCONST);
       }
 
       const RKbytes = new Uint8Array(256);
       for (let i = 0; i < SCHED_N && i * 4 < 256; i++) {
-        const w = OpCodes.ToUint32(RKinit[i]);
+        const w = RKinit[i];
         RKbytes[i * 4] = OpCodes.And32(w, 0xFF);
         RKbytes[i * 4 + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
         RKbytes[i * 4 + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF);
         RKbytes[i * 4 + 3] = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
       }
-      const S = new Uint8Array(256);
-      for (let i = 0; i < 256; i++) S[i] = i;
+      const perm = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) perm[i] = i;
+      /** @type {uint32} */
       let j = 0;
       for (let c = 0; c < 0x300; c++) {
         const i = OpCodes.And32(c, 0xFF);
-        const a = S[i];
+        const a = perm[i];
         const kb = RKbytes[i];
-        j = OpCodes.And32(j + a + kb, 0xFF);
-        const m = S[j];
-        const d = S[m];
-        S[i] = d;
-        S[m] = a;
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, a), kb), 0xFF);
+        const m = perm[j];
+        const d = perm[m];
+        perm[i] = d;
+        perm[m] = a;
         j = m;
       }
+      /** @type {uint32[]} */
       const RK = new Array(64);
       for (let i = 0; i < 64; i++)
-        RK[i] = OpCodes.Pack32LE(S[i * 4], S[i * 4 + 1], S[i * 4 + 2], S[i * 4 + 3]);
+        RK[i] = OpCodes.Pack32LE(perm[i * 4], perm[i * 4 + 1], perm[i * 4 + 2], perm[i * 4 + 3]);
 
+      /** @type {uint32[]} */
       const W = new Array(8);
-      for (let i = 0; i < 8; i++) W[i] = u32(K[i] + K[i + 8]);
+      for (let i = 0; i < 8; i++) W[i] = OpCodes.Add32(K[i], K[i + 8]);
 
-      return { RK, W };
+      this._RK = RK;
+      this._W = W;
     }
 
     /**
@@ -449,30 +491,34 @@
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      const { RK, W } = this._sched;
-      let a = u32(W[0] + OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
-      let b = u32(W[1] + OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
-      let c = u32(W[2] + OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
-      let d = u32(W[3] + OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
+      const RK = this._RK;
+      const W = this._W;
+      let a = OpCodes.Add32(W[0], OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
+      let b = OpCodes.Add32(W[1], OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
+      let c = OpCodes.Add32(W[2], OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
+      let d = OpCodes.Add32(W[3], OpCodes.Pack32LE(block[12], block[13], block[14], block[15]));
 
       for (let i = 0; i < 64; i++) {
-        let f;
-        if (i < 16) f = u32(OpCodes.And32(b, c) | OpCodes.And32(~b, d));
-        else if (i < 32) f = u32(OpCodes.And32(d, b) | OpCodes.And32(~d, c));
+        /** @type {uint32} */
+        let f = 0;
+        if (i < 16) f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
+        else if (i < 32) f = OpCodes.Or32(OpCodes.And32(d, b), OpCodes.And32(OpCodes.Not32(d), c));
         else if (i < 48) f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
-        else f = OpCodes.Xor32(c, b | OpCodes.ToUint32(~d));
+        else f = OpCodes.Xor32(c, OpCodes.Or32(b, OpCodes.Not32(d)));
         const tmp = d;
         d = c; c = b;
-        const sum = u32(u32(u32(a + f) + RK[i]) + MD5_T[i]);
-        b = u32(b + rol32(sum, MD5_S[i]));
+        const sum = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(a, f), RK[i]), MD5_T[i]);
+        b = OpCodes.Add32(b, rol32(sum, MD5_S[i]));
         a = tmp;
       }
 
+      const o0 = OpCodes.Xor32(a, W[4]);
+      const o1 = OpCodes.Xor32(b, W[5]);
+      const o2 = OpCodes.Xor32(c, W[6]);
+      const o3 = OpCodes.Xor32(d, W[7]);
       return [
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(a, W[4])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(b, W[5])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(c, W[6])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(d, W[7]))
+        ...OpCodes.Unpack32LE(o0), ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2), ...OpCodes.Unpack32LE(o3)
       ];
     }
 
@@ -481,7 +527,8 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      const { RK, W } = this._sched;
+      const RK = this._RK;
+      const W = this._W;
       let a = OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), W[4]);
       let b = OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), W[5]);
       let c = OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), W[6]);
@@ -490,21 +537,24 @@
       for (let i = 63; i >= 0; i--) {
         const newB = b;
         const oldB = c, oldC = d, oldD = a;
-        let f;
-        if (i < 16) f = u32(OpCodes.And32(oldB, oldC) | OpCodes.And32(~oldB, oldD));
-        else if (i < 32) f = u32(OpCodes.And32(oldD, oldB) | OpCodes.And32(~oldD, oldC));
+        /** @type {uint32} */
+        let f = 0;
+        if (i < 16) f = OpCodes.Or32(OpCodes.And32(oldB, oldC), OpCodes.And32(OpCodes.Not32(oldB), oldD));
+        else if (i < 32) f = OpCodes.Or32(OpCodes.And32(oldD, oldB), OpCodes.And32(OpCodes.Not32(oldD), oldC));
         else if (i < 48) f = OpCodes.Xor32(OpCodes.Xor32(oldB, oldC), oldD);
-        else f = OpCodes.Xor32(oldC, oldB | OpCodes.ToUint32(~oldD));
-        const rorVal = ror32(u32(newB - oldB), MD5_S[i]);
-        const oldA = u32(u32(u32(rorVal - f) - RK[i]) - MD5_T[i]);
+        else f = OpCodes.Xor32(oldC, OpCodes.Or32(oldB, OpCodes.Not32(oldD)));
+        const rorVal = ror32(OpCodes.Sub32(newB, oldB), MD5_S[i]);
+        const oldA = OpCodes.Sub32(OpCodes.Sub32(OpCodes.Sub32(rorVal, f), RK[i]), MD5_T[i]);
         a = oldA; b = oldB; c = oldC; d = oldD;
       }
 
+      const o0 = OpCodes.Sub32(a, W[0]);
+      const o1 = OpCodes.Sub32(b, W[1]);
+      const o2 = OpCodes.Sub32(c, W[2]);
+      const o3 = OpCodes.Sub32(d, W[3]);
       return [
-        ...OpCodes.Unpack32LE(u32(a - W[0])),
-        ...OpCodes.Unpack32LE(u32(b - W[1])),
-        ...OpCodes.Unpack32LE(u32(c - W[2])),
-        ...OpCodes.Unpack32LE(u32(d - W[3]))
+        ...OpCodes.Unpack32LE(o0), ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2), ...OpCodes.Unpack32LE(o3)
       ];
     }
   }

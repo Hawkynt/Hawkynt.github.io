@@ -56,7 +56,7 @@
 
   // Key-dependent multiplication-keyword tweak constants (official MARS "B" table).
   /** @type {uint32[]} */
-  const B = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
+  const B_TABLE = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
 
   class DarkCryptMARS256Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -140,6 +140,7 @@
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
+      /** @type {uint32[]|null} */
       this.expandedKey = null;
 
       /** @type {uint32[]} */
@@ -209,11 +210,25 @@
             0xabb96061, 0x5370f85d, 0xffb07e37, 0xda30d0fb, 0xebc977b6, 0x0b98b40f, 0x3a4d0fe6, 0xdf4fc26b,
             0x159cf22a, 0xc298d6e2, 0x2b78ef6a, 0x61a94ac0, 0xab561187, 0x14eea0f0, 0xdf0d4164, 0x19af70ee
           ];
-
-      this.S = (a) => this.Sbox[OpCodes.And32(a, 0x1FF)];
-      this.S0 = (a) => this.Sbox[OpCodes.And32(a, 0xFF)];
-      this.S1 = (a) => this.Sbox[OpCodes.And32(a, 0xFF) + 256];
     }
+
+    /**
+     * @param {uint32} a - Index source
+     * @returns {uint32} Entry of the 512-word S-box
+     */
+    S(a) { return this.Sbox[OpCodes.And32(a, 0x1FF)]; }
+
+    /**
+     * @param {uint32} a - Index source
+     * @returns {uint32} Entry of the first S-box half
+     */
+    S0(a) { return this.Sbox[OpCodes.And32(a, 0xFF)]; }
+
+    /**
+     * @param {uint32} a - Index source
+     * @returns {uint32} Entry of the second S-box half
+     */
+    S1(a) { return this.Sbox[OpCodes.Add32(OpCodes.And32(a, 0xFF), 256)]; }
 
     /**
      * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
@@ -258,6 +273,10 @@
     // (excluding the two LSBs) in w and builds a 4-bit-aligned mask covering it,
     // so the later XOR with a rotated B[] constant breaks up long bit runs.
     // Ported unchanged (bit-exact) from the official MARS key-tweak logic.
+    /**
+     * @param {uint32} w - Key word
+     * @returns {uint32} Mask of the long bit runs in w
+     */
     _maskWord(w) {
       w = OpCodes.ToUint32(w);
       const notw = OpCodes.Not32(w);
@@ -281,14 +300,17 @@
     // variants observed in this DarkCrypt variant family).
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} The 40-word expanded key
      */
     _expandKey(keyBytes) {
       const Nk = keyBytes.length / 4;
+      /** @type {uint32[]} */
       const keyWords = new Array(Nk);
       for (let i = 0; i < Nk; i++)
         keyWords[i] = OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]);
 
       // T[0..6] seeded from the S-box (official MARS IV words); T[46] holds Nk.
+      /** @type {uint32[]} */
       const T = new Array(47);
       for (let i = 0; i < 7; i++) T[i] = this.Sbox[i];
       T[46] = Nk;
@@ -306,7 +328,9 @@
 
       // Redistribute T[7..46] into the 40-word expanded key via a fixed
       // (Nk-independent) stride-7-mod-33 permutation.
-      const K = new Array(40).fill(0);
+      /** @type {uint32[]} */
+      const K = new Array(40);
+      K.fill(0);
       let idx = 0;
       for (let i = 0; i < 40; i++) {
         K[idx] = T[7 + i];
@@ -320,7 +344,7 @@
         if (mask !== 0) {
           const rot = OpCodes.And32(K[i + 3], 0x1F);
           const j = OpCodes.And32(K[i], 3);
-          const p = OpCodes.RotL32(B[j], rot);
+          const p = OpCodes.RotL32(B_TABLE[j], rot);
           w = OpCodes.Xor32(w, OpCodes.And32(p, mask));
         }
         K[i] = w;
@@ -380,7 +404,7 @@
       c = OpCodes.Sub32(c, this.expandedKey[38]);
       d = OpCodes.Sub32(d, this.expandedKey[39]);
 
-      return [].concat(OpCodes.Unpack32LE(a), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(d));
+      return OpCodes.Unpack32LE(a).concat(OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(d));
     }
 
     /**
@@ -434,7 +458,7 @@
       b = OpCodes.Sub32(b, this.expandedKey[2]);
       a = OpCodes.Sub32(a, this.expandedKey[3]);
 
-      return [].concat(OpCodes.Unpack32LE(d), OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(a));
+      return OpCodes.Unpack32LE(d).concat(OpCodes.Unpack32LE(c), OpCodes.Unpack32LE(b), OpCodes.Unpack32LE(a));
     }
   }
 

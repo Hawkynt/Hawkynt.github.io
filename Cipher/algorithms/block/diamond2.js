@@ -54,15 +54,18 @@
   /**
    * Build CRC-32 lookup table (CCITT polynomial)
    * Uses polynomial 0x04C11DB7
+   * @returns {uint32[]} 256-entry table
    */
   function buildCRC32Table() {
+    /** @type {uint32[]} */
     const table = new Array(256);
     const polynomial = 0xEDB88320; // Reversed polynomial for table-driven CRC
 
     for (let i = 0; i < 256; i++) {
+      /** @type {uint32} */
       let crc = i;
       for (let j = 0; j < 8; j++) {
-        if (OpCodes.AndN(crc, 1)) {
+        if (OpCodes.And32(crc, 1)) {
           crc = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(crc, 1), polynomial));
         } else {
           crc = OpCodes.ToUint32(OpCodes.Shr32(crc, 1));
@@ -77,9 +80,12 @@
 
   /**
    * Update CRC-32 accumulator with one byte
+   * @param {uint32} crc - Accumulator
+   * @param {uint32} byte - Next byte
+   * @returns {uint32} Updated accumulator
    */
   function crc32Update(crc, byte) {
-    return OpCodes.ToUint32(OpCodes.Xor32(CRC32_TABLE[OpCodes.And32(OpCodes.XorN(crc, byte), 0xFF)], OpCodes.Shr32(crc, 8)));
+    return OpCodes.ToUint32(OpCodes.Xor32(CRC32_TABLE[OpCodes.And32(OpCodes.Xor32(crc, byte), 0xFF)], OpCodes.Shr32(crc, 8)));
   }
 
   // ===== DIAMOND2 ALGORITHM IMPLEMENTATION =====
@@ -373,9 +379,17 @@
       this.BlockSize = 16;
       this.KeySize = 0;
 
-      // Diamond2-specific state
+      // Diamond2-specific state: one 256-entry box per (round, byte position),
+      // stored at index round * 16 + bytePos
+      /** @type {uint8[][]|null} */
       this.substitutionBoxes = null;     // Forward S-boxes
+      /** @type {uint8[][]|null} */
       this.inverseSubstitutionBoxes = null; // Inverse S-boxes for decryption
+      // Key expansion PRNG state (persistent across all S-boxes of one schedule)
+      /** @type {int32} */
+      this._keyIndex = 0;
+      /** @type {uint32} */
+      this._accum = 0;
     }
 
     /**
@@ -395,9 +409,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -423,6 +445,7 @@
     /**
      * Generate substitution boxes using CRC-32 based PRNG
      * This is the key scheduling algorithm from the Diamond2 specification
+     * @param {uint8[]} key - Key bytes
      */
     _generateSubstitutionBoxes(key) {
       // Validate rounds
@@ -434,17 +457,17 @@
       const blockSize = 16; // Diamond2 uses 16-byte blocks
 
       // Allocate substitution box arrays
-      this.substitutionBoxes = new Array(numRounds);
-      for (let i = 0; i < numRounds; i++) {
-        this.substitutionBoxes[i] = new Array(blockSize);
-        for (let j = 0; j < blockSize; j++) {
-          this.substitutionBoxes[i][j] = new Uint8Array(256);
-        }
+      /** @type {uint8[][]} */
+      const boxes = [];
+      for (let i = 0; i < numRounds * blockSize; i++) {
+        boxes.push(new Uint8Array(256));
       }
+      this.substitutionBoxes = boxes;
 
       // Key expansion state (persistent across all S-boxes)
       this._keyIndex = 0;
       this._accum = 0xFFFFFFFF; // Initial CRC value (all ones)
+      /** @type {uint8[]|null} */
       let previousSBox = null;
 
       // Fill all substitution boxes
@@ -453,7 +476,7 @@
           this._makeOneBox(round, bytePos, key, previousSBox);
 
           // Update previous S-box pointer for next iteration
-          previousSBox = this.substitutionBoxes[round][bytePos];
+          previousSBox = boxes[round * blockSize + bytePos];
         }
       }
 
@@ -466,10 +489,17 @@
     /**
      * Fill one substitution box (256-byte array)
      * Implements the key scheduling algorithm from Diamond2 spec
+     * @param {int32} round - Round index
+     * @param {int32} bytePos - Byte position
+     * @param {uint8[]} key - Key bytes
+     * @param {uint8[]|null} previousSBox - Previously filled box, or null for the first
      */
     _makeOneBox(round, bytePos, key, previousSBox) {
-      const sbox = this.substitutionBoxes[round][bytePos];
-      const filled = new Array(256).fill(false);
+      const sbox = this.substitutionBoxes[round * 16 + bytePos];
+      /** @type {boolean[]} */
+      const filled = new Array(256);
+      for (let i = 0; i < 256; i++) filled[i] = false;
+
 
       // Fill array from 255 down to 0
       for (let n = 255; n >= 0; n--) {
@@ -494,18 +524,24 @@
      * Generate normalized pseudorandom number in range [0, maxValue]
      * Using CRC-32 based PRNG from Diamond2 specification
      * Uses instance variables _keyIndex and _accum for state persistence
+     * @param {uint32} maxValue - Upper bound (inclusive)
+     * @param {uint8[]} key - Key bytes
+     * @param {uint8[]|null} previousSBox - Previously filled box, or null
+     * @returns {uint32} Value in [0, maxValue]
      */
     _keyrand(maxValue, key, previousSBox) {
+      // Calculate minimum number of bits needed to cover range
+      /** @type {uint32} */
+      let mask = 0;
       if (maxValue === 0) return 0;
 
-      // Calculate minimum number of bits needed to cover range
-      let mask = 0;
       for (let i = maxValue; i > 0; i = OpCodes.Shr32(i, 1)) {
         mask = OpCodes.Or32(OpCodes.Shl32(mask, 1), 1);
       }
 
       let attempts = 0;
-      let prandValue;
+      /** @type {uint32} */
+      let prandValue = 0;
 
       do {
         // Update CRC accumulator with next key byte
@@ -532,7 +568,7 @@
 
         // After 97 attempts, introduce negligible bias to prevent infinite loop
         if (++attempts > 97 && prandValue > maxValue) {
-          prandValue -= maxValue;
+          prandValue = OpCodes.Sub32(prandValue, maxValue);
         }
       } while (prandValue > maxValue);
 
@@ -546,26 +582,30 @@
       const numRounds = this.rounds;
       const blockSize = 16;
 
-      this.inverseSubstitutionBoxes = new Array(numRounds);
+      /** @type {uint8[][]} */
+      const inverse = [];
 
       for (let round = 0; round < numRounds; round++) {
-        this.inverseSubstitutionBoxes[round] = new Array(blockSize);
-
         for (let bytePos = 0; bytePos < blockSize; bytePos++) {
-          this.inverseSubstitutionBoxes[round][bytePos] = new Uint8Array(256);
+          const box = this.substitutionBoxes[round * blockSize + bytePos];
+          const inv = new Uint8Array(256);
 
           // Build inverse: if sbox[k] = v, then inverse_sbox[v] = k
           for (let k = 0; k < 256; k++) {
-            const v = this.substitutionBoxes[round][bytePos][k];
-            this.inverseSubstitutionBoxes[round][bytePos][v] = k;
+            inv[box[k]] = k;
           }
+          inverse.push(inv);
         }
       }
+
+      this.inverseSubstitutionBoxes = inverse;
     }
 
     /**
      * Permutation function - spreads bits across bytes
      * Each output byte takes bits from 8 different input bytes
+     * @param {uint8[]} input - 16-byte state
+     * @returns {uint8[]} Permuted state
      */
     _permute(input) {
       const output = new Uint8Array(16);
@@ -597,6 +637,8 @@
 
     /**
      * Inverse permutation function for decryption
+     * @param {uint8[]} input - 16-byte state
+     * @returns {uint8[]} Inverse-permuted state
      */
     _inversePermute(input) {
       const output = new Uint8Array(16);
@@ -628,12 +670,15 @@
 
     /**
      * Substitution function - apply S-boxes to each byte
+     * @param {int32} round - Round index
+     * @param {uint8[]} input - 16-byte state
+     * @returns {uint8[]} Substituted state
      */
     _substitute(round, input) {
       const output = new Uint8Array(16);
 
       for (let i = 0; i < 16; i++) {
-        output[i] = this.substitutionBoxes[round][i][input[i]];
+        output[i] = this.substitutionBoxes[round * 16 + i][input[i]];
       }
 
       return output;
@@ -641,12 +686,16 @@
 
     /**
      * Inverse substitution for decryption
+     * @param {int32} round - Round index
+     * @param {uint8[]} input - 16-byte state
+     * @returns {uint8[]} Substituted state
      */
     _inverseSubstitute(round, input) {
       const output = new Uint8Array(16);
 
       for (let i = 0; i < 16; i++) {
-        output[i] = this.inverseSubstitutionBoxes[round][i][input[i]];
+        output[i] = this.inverseSubstitutionBoxes[round * 16 + i][input[i]];
+
       }
 
       return output;
