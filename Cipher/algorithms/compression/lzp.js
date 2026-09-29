@@ -143,7 +143,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZPInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,21 +154,25 @@
   /**
  * LZP cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LZPInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZPCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.order = algorithm.ORDER;
+      /** @type {uint32} */
       this.hashSize = OpCodes.Shl32(1, algorithm.HASH_BITS);
     }
 
@@ -180,8 +184,16 @@
    */
 
     Result() {
-      const result = this.isInverse ? this._decompress() : this._compress();
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress();
+      } else {
+        result = this._compress();
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
@@ -189,8 +201,13 @@
      * 20-bit FNV-1a hash of the `order` bytes immediately before `pos`,
      * matching the reference encoder's ComputeHash exactly (32-bit
      * unsigned offset basis/prime, masked down to the hash table width).
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position after the context
+     * @param {int32} order - Context length
+     * @returns {uint32} Hash table index
      */
     _computeHash(data, pos, order) {
+      /** @type {uint32} */
       let h = 2166136261;
       for (let i = pos - order; i < pos; ++i) {
         h = OpCodes.Xor32(h, data[i]);
@@ -200,27 +217,37 @@
     }
 
     /**
-     * Compress data using LZP.
-     * Format: 4-byte LE original size + 1-byte order, then groups of up to
-     * 8 decisions: a flag byte (bit i = 1 -> prediction hit) followed by
-     * the literal bytes for any misses in that group, in order.
+     * Compress: 4-byte LE original size, the order byte, then groups of a
+     * flag byte (bit set = predicted correctly) followed by the literals.
+     * @returns {uint8[]} Compressed bytes
      */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {int32} */
       const n = input.length;
-      const header = OpCodes.Unpack32LE(n).concat([this.order]);
-      if (n === 0) return header;
+      /** @type {uint8[]} */
+      const result = OpCodes.Unpack32LE(n);
+      result.push(this.order);
+      if (n === 0) {
+        return result;
+      }
 
+      /** @type {uint8[]} */
       const hashTable = new Uint8Array(this.hashSize);
-      const result = header;
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < n) {
+        /** @type {uint32} */
         let flags = 0;
+        /** @type {uint8[]} */
         const literals = [];
+        /** @type {int32} */
         const count = Math.min(8, n - pos);
 
         for (let bit = 0; bit < count; ++bit) {
+          /** @type {uint8} */
           const current = input[pos];
 
           if (pos < this.order) {
@@ -229,64 +256,91 @@
             continue;
           }
 
+          /** @type {uint32} */
           const hash = this._computeHash(input, pos, this.order);
+          /** @type {uint8} */
           const predicted = hashTable[hash];
 
-          if (predicted === current)
+          if (predicted === current) {
             flags = OpCodes.SetBit(flags, bit, true);
-          else
+          } else {
             literals.push(current);
+          }
 
           hashTable[hash] = current;
           ++pos;
         }
 
         result.push(flags);
-        for (let i = 0; i < literals.length; ++i) result.push(literals[i]);
+        for (let i = 0; i < literals.length; ++i) {
+          result.push(literals[i]);
+        }
       }
 
       return result;
     }
 
     /**
-     * Decompress LZP compressed data.
+     * Decompress the format written by _compress()
+     * @returns {uint8[]} Original bytes
      */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      if (input.length < 5)
+      if (input.length < 5) {
         throw new Error("LZP compressed data is too short (missing header).");
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      /** @type {int32} */
       const order = input[4];
-      if (originalSize === 0) return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const hashTable = new Uint8Array(this.hashSize);
+      /** @type {uint8[]} */
       const output = new Array(originalSize);
-      let srcPos = 5, dstPos = 0;
+      /** @type {int32} */
+      let srcPos = 5;
+      /** @type {int32} */
+      let dstPos = 0;
 
       while (dstPos < originalSize) {
-        if (srcPos >= input.length)
+        if (srcPos >= input.length) {
           throw new Error("Unexpected end of LZP compressed data.");
+        }
 
+        /** @type {uint8} */
         const flags = input[srcPos++];
-        const count = Math.min(8, originalSize - dstPos);
+        /** @type {int32} */
+        const count = Math.min(8, OpCodes.Sub32(originalSize, dstPos));
 
         for (let bit = 0; bit < count; ++bit) {
-          let byte;
+          /** @type {uint8} */
+          let byte = 0;
 
           if (dstPos < order) {
-            if (srcPos >= input.length)
+            if (srcPos >= input.length) {
               throw new Error("Unexpected end of LZP compressed data.");
+            }
             byte = input[srcPos++];
           } else {
+            /** @type {uint32} */
             const hash = this._computeHash(output, dstPos, order);
+            /** @type {boolean} */
             const isMatch = OpCodes.GetBit(flags, bit);
 
             if (isMatch) {
               byte = hashTable[hash];
             } else {
-              if (srcPos >= input.length)
+              if (srcPos >= input.length) {
                 throw new Error("Unexpected end of LZP compressed data.");
+              }
               byte = input[srcPos++];
             }
 
