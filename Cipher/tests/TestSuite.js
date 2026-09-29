@@ -27,6 +27,11 @@
  * - CHUNKED: Feed(whole) equals Feed(part1); Feed(part2); ... for any split
  *   (ChunkedFeed.js)
  *
+ * Over the page (when the whole collection is tested, or named by --only):
+ * - BROWSER: every script tag of index.html evaluates, in page order, in a
+ *   context with no require, module or global, as the browser loads it
+ *   (BrowserLoad.js)
+ *
  * Options:
  *   <file.js>                 test one file
  *   --category=<dir>          test one category directory (e.g. --category=hash)
@@ -52,6 +57,7 @@ const TypeCoverage = require('./TypeCoverage');
 const JSDocTierAudit = require('./JSDocTierAudit');
 const RoundTrip = require('./RoundTrip');
 const ChunkedFeed = require('./ChunkedFeed');
+const BrowserLoad = require('./BrowserLoad');
 const Runner = require('./CategoryRunner');
 
 const CIPHER_DIR = path.join(__dirname, '..');
@@ -74,11 +80,13 @@ const ENGINE_KEYS = FILE_CATEGORIES.slice(0, 6).map(c => c.key);
 const FILE_LABELS = { compilation: 'Compilation', interface: 'Interface', metadata: 'Metadata', functionality: 'Function', optimization: 'Optimization' };
 
 // Categories run once, after every file has been loaded. 'algorithms' sweeps the
-// algorithms the tested files registered. Each module exports run(context) and
-// returns { passed, failed, detail }.
+// algorithms the tested files registered; 'page' checks the whole site, so it
+// runs when the whole collection is tested or when --only names it. Each module
+// exports run(context) and returns { passed, failed, detail }.
 const SWEEPS = [
   { key: 'roundtrip', label: 'ROUNDTRIP', title: 'Round trips over an adversarial corpus', module: RoundTrip, scope: 'algorithms' },
-  { key: 'chunked', label: 'CHUNKED', title: 'Feeding in chunks matches feeding whole', module: ChunkedFeed, scope: 'algorithms' }
+  { key: 'chunked', label: 'CHUNKED', title: 'Feeding in chunks matches feeding whole', module: ChunkedFeed, scope: 'algorithms' },
+  { key: 'browser', label: 'BROWSER', title: 'Every script tag of index.html loads as the browser loads it', module: BrowserLoad, scope: 'page' }
 ];
 
 const CATEGORY_KEYS = [...FILE_CATEGORIES.map(c => c.key), ...SWEEPS.map(s => s.key)];
@@ -143,6 +151,18 @@ class TestSuite {
     this.typeCounts = {};                                   // path -> count (null: unparsed)
     this.typeTotals = { sites: 0, opcodes: 0, framework: 0, local: 0, unparsed: 0 };
     this.typeTimeMs = 0;
+    this.sources = new Map();                               // absolute path -> text, read once
+  }
+
+  /**
+   * The text of a source file, read from disk once per run.
+   * @param {string} file - path
+   * @returns {string} text
+   */
+  readSource(file) {
+    const key = path.resolve(file);
+    if (!this.sources.has(key)) this.sources.set(key, fs.readFileSync(key, 'utf8'));
+    return this.sources.get(key);
   }
 
   /** @returns {boolean} true when a file, category or algorithm filter narrows the run */
@@ -165,11 +185,13 @@ class TestSuite {
 
     for (const sweep of SWEEPS) {
       if (!this.selected.has(sweep.key)) continue;
+      if (sweep.scope === 'page' && this.narrowed && !this.options.explicit.has(sweep.key)) continue;
       console.log(`\n=== ${sweep.label}: ${sweep.title} ===`);
       const result = await sweep.module.run({
         algorithms: this.algorithmsInScope(),
         verbose: this.verbose,
-        options: this.options.sweep
+        options: this.options.sweep,
+        readSource: file => this.readSource(file)
       });
       this.sweepRows.push({ label: sweep.label, ...result });
     }
@@ -253,7 +275,7 @@ class TestSuite {
   async testFile(category, filename) {
     const filePath = path.join(ALGORITHMS_DIR, category, filename);
     const algorithmName = path.basename(filename, '.js');
-    const source = fs.readFileSync(filePath, 'utf8');
+    const source = this.readSource(filePath);
 
     this.totalAlgorithms++;
     this.algorithmsPerCategory[category]++;
