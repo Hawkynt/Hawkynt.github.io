@@ -68,23 +68,47 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {int32} */
   const MIN_EMITTED_LEN = 3;
+  /** @type {int32} */
   const MAX_OFFSET = 0xFFFFFF;
+  /** @type {int32} */
   const OFFSET_LARGE_THRESHOLD = 0xD00;
+  /** @type {int32} */
   const HASH_BITS = 16;
+  /** @type {int32} */
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  /** @type {int32} */
   const CHAIN_LIMIT = 64;
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position of the three hashed bytes
+   * @returns {uint32} Bucket
+   */
   function hash3(data, pos) {
+    /** @type {uint32} */
     const h1 = OpCodes.Shl32(data[pos], 8);
+    /** @type {uint32} */
     const h2 = OpCodes.Shl32(data[pos + 1], 4);
+    /** @type {uint8} */
     const h3 = data[pos + 2];
     return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(h1, h2), h3), HASH_SIZE - 1);
   }
 
+  /**
+   * @param {uint32} value - Value
+   * @returns {int32} Index of the highest set bit, -1 for 0
+   */
   function highestSetBitIndex(value) {
-    let index = -1, v = value;
-    while (v > 0) { v = OpCodes.Shr32(v, 1); index++; }
+    /** @type {int32} */
+    let index = -1;
+    /** @type {uint32} */
+    let v = value;
+    while (v > 0) {
+      v = OpCodes.Shr32(v, 1);
+      index++;
+    }
     return index;
   }
 
@@ -92,10 +116,19 @@
   // 0xD00, 6 otherwise). Snap any proposed length landing in the gap to the
   // next-lower encodable length so the encoder never tries to emit an
   // unrepresentable size.
+  /**
+   * @param {int32} proposed - Match length
+   * @param {int32} offset - Match offset
+   * @returns {int32} An encodable length no longer than proposed
+   */
   function snapToEncodable(proposed, offset) {
+    /** @type {int32} */
     const effective = offset > OFFSET_LARGE_THRESHOLD ? proposed - 1 : proposed;
+    /** @type {int32} */
     const mLen = effective - 2;
-    if (mLen === 3) return offset > OFFSET_LARGE_THRESHOLD ? 5 : 4;
+    if (mLen === 3) {
+      return offset > OFFSET_LARGE_THRESHOLD ? 5 : 4;
+    }
     return proposed;
   }
 
@@ -109,21 +142,34 @@
 
   class Nrv2bEncoder {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint8[]} */
       this.pendingBytes = [];
+      /** @type {uint32} */
       this.bitWord = 0;
+      /** @type {int32} */
       this.bitsUsed = 0;
     }
 
+    /**
+     * @param {int32} bit - Bit (any non-zero value writes 1)
+     */
     writeBit(bit) {
       this.bitWord = OpCodes.Or32(OpCodes.Shl32(this.bitWord, 1), bit ? 1 : 0);
       this.bitsUsed++;
-      if (this.bitsUsed === 32) this._flushWord();
+      if (this.bitsUsed === 32) {
+        this._flushWord();
+      }
     }
 
     // For value >= 2, emit (data, continue=0) pairs from msb-1 down to bit 0,
     // with the trailing continue bit set to 1.
+    /**
+     * @param {uint32} value - Value >= 2
+     */
     writeVarInt(value) {
+      /** @type {int32} */
       const msb = highestSetBitIndex(value);
       for (let i = msb - 1; i >= 0; i--) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
@@ -134,7 +180,11 @@
     // Writes all varint bits except the final continue bit; the caller
     // writes the trailing continue=1 bit after queuing any pending byte, so
     // the byte's epoch lines up with the word containing that final bit.
+    /**
+     * @param {uint32} value - Value >= 2
+     */
     writeVarIntExceptFinalContinue(value) {
+      /** @type {int32} */
       const msb = highestSetBitIndex(value);
       for (let i = msb - 1; i >= 1; i--) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
@@ -143,26 +193,40 @@
       this.writeBit(OpCodes.And32(value, 1));
     }
 
+    /**
+     * @param {uint8} value - Literal byte
+     */
     emitLiteral(value) {
       this.pendingBytes.push(value);
       this.writeBit(1);
     }
 
+    /**
+     * @param {int32} offset - Match offset
+     * @param {int32} length - Match length
+     * @param {boolean} reuseLast - True to code the offset as "same as last"
+     */
     emitMatch(offset, length, reuseLast) {
       this.writeBit(0); // match flag
 
       if (reuseLast) {
         this.writeVarInt(2);
       } else {
+        /** @type {int32} */
         const adjusted = offset - 1;
-        const v = OpCodes.Shr32(adjusted, 8) + 3;
+        /** @type {uint32} */
+        const v = OpCodes.Add32(OpCodes.Shr32(adjusted, 8), 3);
         this.writeVarIntExceptFinalContinue(v);
         this.pendingBytes.push(OpCodes.And32(adjusted, 0xFF));
         this.writeBit(1); // final continue bit
       }
 
+      /** @type {int32} */
       let emitted = length;
-      if (offset > OFFSET_LARGE_THRESHOLD) emitted--;
+      if (offset > OFFSET_LARGE_THRESHOLD) {
+        emitted--;
+      }
+      /** @type {int32} */
       const mLen = emitted - 2;
       if (mLen === 1) {
         this.writeBit(0);
@@ -170,13 +234,18 @@
         this.writeBit(1);
         this.writeBit(0);
       } else {
-        if (mLen < 4) throw new Error("NRV2B: unencodable match length 3 (encoder didn't snap).");
+        if (mLen < 4) {
+          throw new Error("NRV2B: unencodable match length 3 (encoder didn't snap).");
+        }
         this.writeBit(1);
         this.writeBit(1);
         this.writeVarInt(mLen - 2);
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes written
+     */
     finish() {
       if (this.bitsUsed > 0) {
         this.bitWord = OpCodes.Shl32(this.bitWord, 32 - this.bitsUsed);
@@ -187,11 +256,19 @@
       return this.bytes;
     }
 
+    /** Emit the bit word, then the bytes queued behind it */
     _flushWord() {
+      /** @type {uint8[]} */
       const w = OpCodes.Unpack32LE(this.bitWord);
-      for (let i = 0; i < 4; i++) this.bytes.push(w[i]);
-      for (let i = 0; i < this.pendingBytes.length; i++) this.bytes.push(this.pendingBytes[i]);
-      this.pendingBytes.length = 0;
+      for (let i = 0; i < 4; i++) {
+        this.bytes.push(w[i]);
+      }
+      for (let i = 0; i < this.pendingBytes.length; i++) {
+        this.bytes.push(this.pendingBytes[i]);
+      }
+      /** @type {uint8[]} */
+      const noPending = [];
+      this.pendingBytes = noPending;
       this.bitWord = 0;
       this.bitsUsed = 0;
     }
@@ -200,41 +277,77 @@
   // ── Bit-word decoder ────────────────────────────────────────────────────
 
   class Nrv2bDecoder {
+    /**
+     * @param {uint8[]} data - Bit words and bytes
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.bitWord = 0;
+      /** @type {int32} */
       this.bitsLeft = 0;
       this._refillWord();
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
-      if (this.bitsLeft === 0) this._refillWord();
+      if (this.bitsLeft === 0) {
+        this._refillWord();
+      }
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.bitWord, 31), 1);
       this.bitWord = OpCodes.Shl32(this.bitWord, 1);
       this.bitsLeft--;
       return bit;
     }
 
+    /**
+     * @returns {uint8} Next byte of the byte stream
+     */
     readByte() {
-      if (this.pos >= this.data.length) throw new Error("NRV2B: unexpected end of byte stream.");
+      if (this.pos >= this.data.length) {
+        throw new Error("NRV2B: unexpected end of byte stream.");
+      }
       return this.data[this.pos++];
     }
 
+    /**
+     * @returns {uint32} Next varint
+     */
     readVarInt() {
+      /** @type {uint32} */
       let v = 1;
       for (;;) {
         v = OpCodes.Or32(OpCodes.Shl32(v, 1), this.readBit());
-        if (this.readBit() === 1) return v;
+        /** @type {uint32} */
+        const stop = this.readBit();
+        if (stop === 1) {
+          return v;
+        }
       }
     }
 
+    /** Load the next 32-bit word, zero padded past the end */
     _refillWord() {
       // Mirrors the reference decoder's RefillWord exactly, including its
       // zero-padding of a short/absent final word.
+      /** @type {int32} */
       const take = Math.min(4, this.data.length - this.pos);
-      const pad = [0, 0, 0, 0];
-      if (take > 0) for (let i = 0; i < take; i++) pad[i] = this.data[this.pos + i];
+      /** @type {uint8[]} */
+      const pad = new Array(4);
+      for (let i = 0; i < 4; i++) {
+        pad[i] = 0;
+      }
+      if (take > 0) {
+        for (let i = 0; i < take; i++) {
+          pad[i] = this.data[this.pos + i];
+        }
+      }
       this.pos += take;
       this.bitWord = OpCodes.Pack32LE(pad[0], pad[1], pad[2], pad[3]);
       this.bitsLeft = 32;
@@ -313,6 +426,11 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {UCLInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new UCLInstance(this, isInverse);
     }
@@ -320,46 +438,88 @@
 
   // UCL NRV2B compression instance
   class UCLInstance extends IAlgorithmInstance {
+    /**
+     * @param {UCLCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(this.inputBuffer);
+      } else {
+        result = this._compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} 4-byte LE size followed by the NRV2B stream
+     */
     _compress(input) {
+      /** @type {int32} */
       const n = input.length;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(n);
-      if (n === 0) return header;
+      if (n === 0) {
+        return header;
+      }
 
+      /** @type {Nrv2bEncoder} */
       const enc = new Nrv2bEncoder();
+      /** @type {int32[]} */
       const head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       const prev = new Int32Array(n);
 
+      /** @type {int32} */
       let lastMatchOffset = 0;
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < n) {
-        let bestLen = 0, bestOff = 0;
+        /** @type {int32} */
+        let bestLen = 0;
+        /** @type {int32} */
+        let bestOff = 0;
 
         if (pos + MIN_EMITTED_LEN <= n) {
+          /** @type {uint32} */
           const h = hash3(input, pos);
+          /** @type {int32} */
           let chainLen = 0;
+          /** @type {int32} */
           const minPos = Math.max(0, pos - MAX_OFFSET);
+          /** @type {int32} */
           let idx = head[h];
 
           while (idx >= minPos && chainLen < CHAIN_LIMIT) {
+            /** @type {int32} */
             const off = pos - idx;
             if (off <= MAX_OFFSET && input[idx] === input[pos]) {
+              /** @type {int32} */
               const maxLen = Math.min(n - pos, 1024);
+              /** @type {int32} */
               let len = 0;
-              while (len < maxLen && input[idx + len] === input[pos + len]) len++;
+              while (len < maxLen && input[idx + len] === input[pos + len]) {
+                len++;
+              }
               if (len >= MIN_EMITTED_LEN && len > bestLen) {
                 bestLen = len;
                 bestOff = off;
@@ -378,11 +538,13 @@
         // matches with far offsets.
         if (bestLen >= MIN_EMITTED_LEN && !(bestOff > OFFSET_LARGE_THRESHOLD && bestLen < 4)) {
           bestLen = snapToEncodable(bestLen, bestOff);
+          /** @type {boolean} */
           const reuseLast = bestOff === lastMatchOffset;
           enc.emitMatch(bestOff, bestLen, reuseLast);
           lastMatchOffset = bestOff;
 
           for (let j = 1; j < bestLen && pos + j + MIN_EMITTED_LEN <= n; j++) {
+            /** @type {uint32} */
             const h = hash3(input, pos + j);
             prev[pos + j] = head[h];
             head[h] = pos + j;
@@ -394,51 +556,104 @@
         }
       }
 
-      return header.concat(enc.finish());
+      /** @type {uint8[]} */
+      const body = enc.finish();
+      return header.concat(body);
     }
 
+    /**
+     * @param {uint8[]} input - 4-byte LE size followed by the NRV2B stream
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(input) {
-      if (input.length < 4) throw new Error("NRV2B: input smaller than 4-byte header.");
+      if (input.length < 4) {
+        throw new Error("NRV2B: input smaller than 4-byte header.");
+      }
+      /** @type {uint32} */
       const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
-      if (targetSize < 0) throw new Error("NRV2B: negative decompressed size.");
-      if (targetSize === 0) return [];
-
-      const dec = new Nrv2bDecoder(input.slice(4));
+      if (targetSize < 0) {
+        throw new Error("NRV2B: negative decompressed size.");
+      }
+      /** @type {uint8[]} */
       const output = new Array(targetSize);
+      if (targetSize === 0) {
+        return output;
+      }
+
+      /** @type {Nrv2bDecoder} */
+      const dec = new Nrv2bDecoder(input.slice(4));
+      /** @type {int32} */
       let lastMatchOffset = 0;
+      /** @type {int32} */
       let op = 0;
 
       while (op < targetSize) {
-        while (dec.readBit() === 1) {
-          output[op++] = dec.readByte();
-          if (op >= targetSize) return output;
+        /** @type {uint32} */
+        let flag = dec.readBit();
+        while (flag === 1) {
+          /** @type {uint8} */
+          const literal = dec.readByte();
+          output[op++] = literal;
+          if (op >= targetSize) {
+            return output;
+          }
+          flag = dec.readBit();
         }
 
+        /** @type {uint32} */
         const mOff = dec.readVarInt();
 
-        let finalOff;
+        /** @type {int32} */
+        let finalOff = 0;
         if (mOff === 2) {
-          if (lastMatchOffset === 0) throw new Error("NRV2B: reuse-last-offset before any match emitted.");
+          if (lastMatchOffset === 0) {
+            throw new Error("NRV2B: reuse-last-offset before any match emitted.");
+          }
           finalOff = lastMatchOffset;
         } else {
+          /** @type {uint8} */
           const b = dec.readByte();
+          /** @type {uint32} */
           const raw = OpCodes.Or32(OpCodes.Shl32(mOff - 3, 8), b);
-          if (raw === 0xFFFFFFFF) break;
+          if (raw === 0xFFFFFFFF) {
+            break;
+          }
           finalOff = raw + 1;
           lastMatchOffset = finalOff;
         }
 
-        let mLen;
-        if (dec.readBit() === 0) mLen = 1;
-        else if (dec.readBit() === 0) mLen = 2;
-        else mLen = dec.readVarInt() + 2;
+        /** @type {int32} */
+        let mLen = 0;
+        /** @type {uint32} */
+        const lengthBit1 = dec.readBit();
+        if (lengthBit1 === 0) {
+          mLen = 1;
+        } else {
+          /** @type {uint32} */
+          const lengthBit2 = dec.readBit();
+          if (lengthBit2 === 0) {
+            mLen = 2;
+          } else {
+            /** @type {uint32} */
+            const lengthCode = dec.readVarInt();
+            mLen = lengthCode + 2;
+          }
+        }
 
-        if (finalOff > OFFSET_LARGE_THRESHOLD) mLen++;
-        if (finalOff > op) throw new Error("NRV2B: offset points before start of output.");
+        if (finalOff > OFFSET_LARGE_THRESHOLD) {
+          mLen++;
+        }
+        if (finalOff > op) {
+          throw new Error("NRV2B: offset points before start of output.");
+        }
 
+        /** @type {int32} */
         const src = op - finalOff;
+        /** @type {int32} */
         const totalToEmit = mLen + 2;
-        for (let i = 0; i < totalToEmit && op < targetSize; i++) output[op++] = output[src + i];
+        for (let i = 0; i < totalToEmit && op < targetSize; i++) {
+          output[op++] = output[src + i];
+        }
       }
 
       return output;
