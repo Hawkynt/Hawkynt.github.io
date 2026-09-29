@@ -28,13 +28,22 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
+  /**
+   * ICCIDChecksum algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class ICCIDChecksumAlgorithm extends Algorithm {
     constructor() {
       super();
@@ -49,6 +58,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null; // International
 
+      /** @type {int32} */
       this.checksumSize = 8; // Single digit 0-9
 
       this.documentation = [
@@ -61,6 +71,7 @@
         new LinkItem("python-stdnum Luhn implementation (used for ICCID check digit)", "https://github.com/arthurdejong/python-stdnum/blob/master/stdnum/luhn.py")
       ];
 
+      /** @type {string[]} */
       this.notes = [
         "Format: 89 CC II... (18-20 digits)",
         "89: Major industry identifier (Telecom)",
@@ -97,9 +108,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {ICCIDChecksumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -109,28 +120,28 @@
   }
 
   /**
- * ICCIDChecksum cipher instance implementing Feed/Result pattern
+ * ICCIDChecksum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class ICCIDChecksumInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {ICCIDChecksumAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32[]} Decimal digits fed since the last Result() */
       this.digits = [];
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
@@ -140,21 +151,24 @@
       for (let i = 0; i < data.length; i++) {
         const char = String.fromCharCode(data[i]);
         if (char >= '0' && char <= '9') {
-          this.digits.push(data[i] - 0x30);
+          /** @type {int32} */
+          const code = data[i];
+          this.digits.push(code - 0x30);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
       if (this.digits.length === 0) {
         this.digits = [];
-        return [0];
+        /** @type {uint8[]} */
+        const none = [0];
+        return none;
       }
 
       // Luhn algorithm (double at odd positions from right)

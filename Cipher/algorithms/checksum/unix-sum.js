@@ -54,16 +54,94 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Unix sum(1), one registered algorithm per variant
+   * @class
+   * @extends {Algorithm}
+   */
   class UnixSumAlgorithm extends Algorithm {
+    /**
+     * Configure one sum(1) variant
+     * @param {string} [variant='BSD'] - 'BSD' or 'SYSV' (anything else is configured as BSD)
+     */
     constructor(variant = 'BSD') {
       super();
 
-      // Get configuration for this variant
-      this.config = this._getVariantConfig(variant);
+      /** @type {string} What the variant computes */
+      this.variantDescription = '';
+      /** @type {boolean} Rotate the 16-bit sum right before each byte (BSD) */
+      this.useRotation = true;
+      /** @type {int32} Bytes in the checksum */
+      this.resultBytes = 2;
+
+      switch (variant) {
+        case 'SYSV':
+          this.variantDescription = 'SYSV checksum using simple summation with order-independent calculation';
+          this.useRotation = false;
+          this.resultBytes = 2;
+          this.tests = [
+            new TestCase(
+              [],
+              OpCodes.Hex8ToBytes("0000"),
+              "Empty string",
+              "SYSV sum(1) standard test"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("a"),
+              OpCodes.Hex8ToBytes("0061"),
+              "Single byte 'a'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abc"),
+              OpCodes.Hex8ToBytes("0126"),
+              "String 'abc'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+              OpCodes.Hex8ToBytes("0fd9"),
+              "Standard test phrase",
+              "Educational test vector"
+            )
+          ];
+          break;
+        default: // 'BSD'
+          this.variantDescription = 'BSD checksum with circular right rotation providing order-dependent error detection';
+          this.useRotation = true;
+          this.resultBytes = 2;
+          this.tests = [
+            new TestCase(
+              [],
+              OpCodes.Hex8ToBytes("0000"),
+              "Empty string",
+              "BSD sum(1) standard test"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("a"),
+              OpCodes.Hex8ToBytes("0061"),
+              "Single byte 'a'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("abc"),
+              OpCodes.Hex8ToBytes("40ac"),
+              "String 'abc'",
+              "Educational test vector"
+            ),
+            new TestCase(
+              OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+              OpCodes.Hex8ToBytes("c56e"),
+              "Standard test phrase",
+              "Educational test vector"
+            )
+          ];
+          break;
+      }
 
       // Required metadata
-      this.name = `Unix-Sum-${variant}`;
-      this.description = `${this.config.description} Classic Unix sum(1) algorithm for basic file integrity verification.`;
+      this.name = 'Unix-Sum-' + variant;
+      this.description = this.variantDescription + ' Classic Unix sum(1) algorithm for basic file integrity verification.';
       this.inventor = "Bell Labs";
       this.year = 1971;
       this.category = CategoryType.CHECKSUM;
@@ -99,112 +177,43 @@
           "Output can be easily predicted and manipulated by attackers"
         )
       ];
-
-      // Test vectors specific to this variant
-      this.tests = this.config.tests;
-    }
-
-    _getVariantConfig(variant) {
-      const configs = {
-        'BSD': {
-          description: 'BSD checksum with circular right rotation providing order-dependent error detection',
-          useRotation: true,
-          resultBytes: 2,
-          tests: [
-            new TestCase(
-              [],
-              OpCodes.Hex8ToBytes("0000"),
-              "Empty string",
-              "BSD sum(1) standard test"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              OpCodes.Hex8ToBytes("0061"),
-              "Single byte 'a'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("abc"),
-              OpCodes.Hex8ToBytes("40ac"),
-              "String 'abc'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
-              OpCodes.Hex8ToBytes("c56e"),
-              "Standard test phrase",
-              "Educational test vector"
-            )
-          ]
-        },
-        'SYSV': {
-          description: 'SYSV checksum using simple summation with order-independent calculation',
-          useRotation: false,
-          resultBytes: 2,
-          tests: [
-            new TestCase(
-              [],
-              OpCodes.Hex8ToBytes("0000"),
-              "Empty string",
-              "SYSV sum(1) standard test"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("a"),
-              OpCodes.Hex8ToBytes("0061"),
-              "Single byte 'a'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("abc"),
-              OpCodes.Hex8ToBytes("0126"),
-              "String 'abc'",
-              "Educational test vector"
-            ),
-            new TestCase(
-              OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
-              OpCodes.Hex8ToBytes("0fd9"),
-              "Standard test phrase",
-              "Educational test vector"
-            )
-          ]
-        }
-      };
-
-      return configs[variant] || configs['BSD'];
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {UnixSumInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
-      if (isInverse) {
-        return null; // Checksums do not support inverse operations
-      }
-      return new UnixSumInstance(this, this.config);
+      return new UnixSumInstance(this);
     }
   }
 
   /**
- * UnixSum cipher instance implementing Feed/Result pattern
+ * UnixSum instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class UnixSumInstance extends IAlgorithmInstance {
-    constructor(algorithm, config) {
+    /**
+     * Start with a zero sum
+     * @param {UnixSumAlgorithm} algorithm - Parent algorithm (the variant)
+     */
+    constructor(algorithm) {
       super(algorithm);
-      this.config = config;
+      /** @type {boolean} Rotate the sum right before each byte (BSD) */
+      this.useRotation = algorithm.useRotation;
+      /** @type {uint32} Running 16-bit sum */
       this.checksum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @throws {Error} If the input is not an array
    */
 
     Feed(data) {
@@ -214,29 +223,25 @@
 
       // Process each byte according to the variant
       for (let i = 0; i < data.length; i++) {
-        if (this.config.useRotation) {
+        if (this.useRotation) {
           // BSD algorithm: circular right rotation
-          this.checksum = OpCodes.OrN(OpCodes.Shr32(this.checksum, 1), OpCodes.Shl32(OpCodes.AndN(this.checksum, 1), 15)) + data[i];
-          this.checksum = OpCodes.AndN(this.checksum, 0xFFFF); // Keep it 16-bit
+          this.checksum = OpCodes.Add32(OpCodes.Or32(OpCodes.Shr32(this.checksum, 1), OpCodes.Shl32(OpCodes.And32(this.checksum, 1), 15)), data[i]);
+          this.checksum = OpCodes.And32(this.checksum, 0xFFFF); // Keep it 16-bit
         } else {
           // SYSV algorithm: simple addition with overflow
-          this.checksum = OpCodes.AndN(this.checksum + data[i], 0xFFFF);
+          this.checksum = OpCodes.And32(OpCodes.Add32(this.checksum, data[i]), 0xFFFF);
         }
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} 16-bit sum, big-endian
    */
 
     Result() {
       // Return checksum as 2-byte array (big-endian)
-      const result = [
-        OpCodes.AndN(OpCodes.Shr32(this.checksum, 8), 0xFF),
-        OpCodes.AndN(this.checksum, 0xFF)
-      ];
+      const result = OpCodes.Unpack16BE(this.checksum);
 
       // Reset for next calculation
       this.checksum = 0;
@@ -248,11 +253,6 @@
   // Register all Unix Sum variants
   RegisterAlgorithm(new UnixSumAlgorithm('BSD'));
   RegisterAlgorithm(new UnixSumAlgorithm('SYSV'));
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { UnixSumAlgorithm, UnixSumInstance };
-  }
 
   // ===== REGISTRATION =====
 
