@@ -137,13 +137,20 @@
  */
 
   class OMACInstance extends IMacInstance {
+    /**
+     * Initialize an OMAC (CMAC) instance
+     * @param {OMACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
       this.inputBuffer = [];
-      this.state = new Array(16).fill(0); // AES block state
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(16, 0); // AES block state
 
       // AES-128 S-box
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -164,10 +171,12 @@
       ];
 
       // AES round constants
-      this.RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+      this.RCON = OpCodes.Hex8ToBytes('01020408102040801b36');
 
+      /** @type {uint8[][]} */
       this.roundKeys = null;
-      this.subkeys = null; // K1 and K2 for CMAC
+      /** @type {uint8[][]} */
+      this.subkeys = null; // [K1, K2] for CMAC
     }
 
     // Property setter for key
@@ -242,6 +251,12 @@
     }
 
     // Compute MAC (IMacInstance interface)
+    /**
+     * Compute the MAC of a whole message without touching the Feed buffer
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} 16-byte MAC
+     * @throws {Error} If key not set or data is not a byte array
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -252,29 +267,36 @@
 
       // Temporarily store current buffer and replace with new data
       const originalBuffer = this.inputBuffer;
-      this.inputBuffer = [...data];
+      this.inputBuffer = data.slice();
       const result = this.Result();
       this.inputBuffer = originalBuffer; // Restore original buffer
       return result;
     }
 
     // AES key expansion for AES-128
+    /**
+     * AES-128 key schedule
+     * @param {uint8[]} key - 16-byte key
+     * @returns {uint8[][]} Eleven 16-byte round keys
+     */
     _expandKey(key) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const Nk = 4; // Number of 32-bit words in key (128 bits / 32 = 4)
       const Nb = 4; // Number of columns in state (always 4 for AES)
       const Nr = 10; // Number of rounds (10 for AES-128)
 
+      /** @type {uint8[][]} */
       const w = new Array((Nb * (Nr + 1))); // 44 words total
 
       // Copy key into first Nk words
       for (let i = 0; i < Nk; i++) {
-        w[i] = [key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]];
+        w[i] = key.slice(4 * i, 4 * i + 4);
       }
 
       // Generate remaining words
       for (let i = Nk; i < Nb * (Nr + 1); i++) {
-        let temp = [...w[i-1]];
+        const temp = w[i-1].slice();
 
         if (i % Nk === 0) {
           // RotWord: rotate left by one byte
@@ -294,19 +316,16 @@
         }
 
         // w[i] = w[i-Nk] XOR temp
-        w[i] = [
-          OpCodes.Xor32(w[i-Nk][0], temp[0]),
-          OpCodes.Xor32(w[i-Nk][1], temp[1]),
-          OpCodes.Xor32(w[i-Nk][2], temp[2]),
-          OpCodes.Xor32(w[i-Nk][3], temp[3])
-        ];
+        w[i] = OpCodes.XorArrays(w[i-Nk], temp);
       }
 
       // Convert word array to round key array
       for (let round = 0; round <= Nr; round++) {
+        /** @type {uint8[]} */
         const roundKey = [];
         for (let col = 0; col < Nb; col++) {
-          roundKey.push(...w[round * Nb + col]);
+          const word = w[round * Nb + col];
+          for (let j = 0; j < 4; j++) roundKey.push(word[j]);
         }
         roundKeys[round] = roundKey;
       }
@@ -315,9 +334,13 @@
     }
 
     // Generate CMAC subkeys K1 and K2
+    /**
+     * CMAC subkeys: K1 = dbl(AES_K(0)), K2 = dbl(K1)
+     * @returns {uint8[][]} [K1, K2]
+     */
     _generateSubkeys() {
       // Encrypt zero block with AES
-      const zeroBlock = new Array(16).fill(0);
+      const zeroBlock = OpCodes.CreateArray(16, 0);
       const L = this._aesEncrypt(zeroBlock);
 
       // Generate K1
@@ -332,17 +355,26 @@
         K2[15] = OpCodes.Xor32(K2[15], 0x87);
       }
 
-      return { K1, K2 };
+      /** @type {uint8[][]} */
+      const subkeys = [K1, K2];
+      return subkeys;
     }
 
     // Left shift operation for CMAC subkey generation
+    /**
+     * Shift a byte string left by one bit
+     * @param {uint8[]} data - Bytes (big-endian bit order)
+     * @returns {uint8[]} Shifted bytes
+     */
     _leftShift(data) {
+      /** @type {uint8[]} */
       const result = new Array(data.length);
+      /** @type {uint32} */
       let carry = 0;
 
       for (let i = data.length - 1; i >= 0; i--) {
         const newCarry = (data[i]&0x80) ? 1 : 0;
-        result[i] = OpCodes.ToByte((OpCodes.Shl32(data[i], 1)|carry));
+        result[i] = OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(data[i], 1), carry));
         carry = newCarry;
       }
 
@@ -350,6 +382,11 @@
     }
 
     // AES-128 encryption - simplified implementation for CMAC
+    /**
+     * AES-128 encryption of one block (the key schedule is built on first use)
+     * @param {uint8[]} plaintext - 16-byte block (not modified)
+     * @returns {uint8[]} 16-byte ciphertext (a new array)
+     */
     _aesEncrypt(plaintext) {
       // Use simple AES implementation for educational purposes
       // This is a minimal AES-128 implementation specifically for CMAC
@@ -358,7 +395,7 @@
         this.roundKeys = this._expandKey(this._key);
       }
 
-      let state = [...plaintext];
+      const state = plaintext.slice();
 
       // Initial AddRoundKey
       this._addRoundKey(state, this.roundKeys[0]);
@@ -379,18 +416,34 @@
       return state;
     }
 
+    /**
+     * AddRoundKey, in place
+     * @param {uint8[]} state - 16-byte state
+     * @param {uint8[]} roundKey - 16-byte round key
+     * @returns {void}
+     */
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
         state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
     }
 
+    /**
+     * SubBytes, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _subBytes(state) {
       for (let i = 0; i < 16; i++) {
         state[i] = this.SBOX[state[i]];
       }
     }
 
+    /**
+     * ShiftRows, in place (column-major state)
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _shiftRows(state) {
       // Row 1: shift left by 1
       const temp1 = state[1];
@@ -400,7 +453,8 @@
       state[13] = temp1;
 
       // Row 2: shift left by 2
-      const temp2a = state[2], temp2b = state[6];
+      const temp2a = state[2];
+      const temp2b = state[6];
       state[2] = state[10];
       state[6] = state[14];
       state[10] = temp2a;
@@ -414,6 +468,11 @@
       state[3] = temp3;
     }
 
+    /**
+     * MixColumns, in place
+     * @param {uint8[]} state - 16-byte state
+     * @returns {void}
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; col++) {
         const c0 = state[col * 4];
@@ -428,27 +487,41 @@
       }
     }
 
+    /**
+     * Multiply by 2 in GF(2^8)
+     * @param {uint8} x - Byte
+     * @returns {uint8} 2x
+     */
     _mul2(x) {
-      return OpCodes.ToByte(OpCodes.Xor32(OpCodes.Shl32(x, 1), ((OpCodes.Shr32(x, 7)&1) * 0x1B)));
+      return OpCodes.ToByte(OpCodes.Xor32(OpCodes.Shl32(x, 1), OpCodes.Mul32(OpCodes.And32(OpCodes.Shr32(x, 7), 1), 0x1B)));
     }
 
+    /**
+     * Multiply by 3 in GF(2^8)
+     * @param {uint8} x - Byte
+     * @returns {uint8} 3x
+     */
     _mul3(x) {
       return OpCodes.Xor32(this._mul2(x), x);
     }
 
     // Core CMAC computation
+    /**
+     * CMAC of the buffered message (RFC 4493)
+     * @returns {uint8[]} 16-byte MAC
+     */
     _computeCMAC() {
-      let x = new Array(16).fill(0); // CBC-MAC state
+      let x = OpCodes.CreateArray(16, 0); // CBC-MAC state
       const msgLen = this.inputBuffer.length;
 
       // Special case: empty message
       if (msgLen === 0) {
-        const finalBlock = new Array(16).fill(0);
+        const finalBlock = OpCodes.CreateArray(16, 0);
         finalBlock[0] = 0x80; // Padding
 
         // XOR with K2 (for incomplete block)
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] = OpCodes.Xor32(finalBlock[i], this.subkeys.K2[i]);
+          finalBlock[i] = OpCodes.Xor32(finalBlock[i], this.subkeys[1][i]);
         }
 
         // XOR with state and encrypt
@@ -482,12 +555,12 @@
 
       // Handle final block
       const remainingBytes = msgLen - pos;
-      const finalBlock = new Array(16).fill(0);
+      const finalBlock = OpCodes.CreateArray(16, 0);
 
       if (remainingBytes === 16) {
         // Complete final block: XOR with K1
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] = OpCodes.Xor32(this.inputBuffer[pos + i], this.subkeys.K1[i]);
+          finalBlock[i] = OpCodes.Xor32(this.inputBuffer[pos + i], this.subkeys[0][i]);
         }
       } else {
         // Incomplete final block: pad and XOR with K2
@@ -499,7 +572,7 @@
         }
 
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] = OpCodes.Xor32(finalBlock[i], this.subkeys.K2[i]);
+          finalBlock[i] = OpCodes.Xor32(finalBlock[i], this.subkeys[1][i]);
         }
       }
 
