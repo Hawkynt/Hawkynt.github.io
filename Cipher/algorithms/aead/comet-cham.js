@@ -61,12 +61,13 @@
 
   /**
    * CHAM-128/128 encryption function
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} input - 16-byte input block
-   * @returns {Uint8Array} - 16-byte output block
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} input - 16-byte input block
+   * @returns {uint8[]} - 16-byte output block
    */
   function cham128_128_encrypt(key, input) {
     // Unpack key and generate key schedule
+    /** @type {uint32[]} */
     const k = new Array(8);
     k[0] = OpCodes.Pack32LE(key[0], key[1], key[2], key[3]);
     k[1] = OpCodes.Pack32LE(key[4], key[5], key[6], key[7]);
@@ -74,14 +75,14 @@
     k[3] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
 
     // Key schedule generation (from C reference)
-    k[4] = OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 11));
-    k[5] = OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 11));
-    k[6] = OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 11));
-    k[7] = OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 11));
-    k[0] = OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 8));
-    k[1] = OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 8));
-    k[2] = OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 8));
-    k[3] = OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 8));
+    k[4] = OpCodes.Xor32(OpCodes.Xor32(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 11));
+    k[5] = OpCodes.Xor32(OpCodes.Xor32(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 11));
+    k[6] = OpCodes.Xor32(OpCodes.Xor32(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 11));
+    k[7] = OpCodes.Xor32(OpCodes.Xor32(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 11));
+    k[0] = OpCodes.Xor32(OpCodes.Xor32(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 8));
+    k[1] = OpCodes.Xor32(OpCodes.Xor32(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 8));
+    k[2] = OpCodes.Xor32(OpCodes.Xor32(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 8));
+    k[3] = OpCodes.Xor32(OpCodes.Xor32(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 8));
 
     // Unpack input block
     let x0 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
@@ -92,14 +93,14 @@
     // Perform 80 rounds (8 at a time)
     for (let round = 0; round < 80; round += 8) {
       // Round operations: ((x ^ round_const) + (rotate(next_x) ^ key))
-      x0 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x0, round) + OpCodes.XorN(OpCodes.RotL32(x1, 1), k[0])), 8);
-      x1 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 1)) + OpCodes.XorN(OpCodes.RotL32(x2, 8), k[1])), 1);
-      x2 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 2)) + OpCodes.XorN(OpCodes.RotL32(x3, 1), k[2])), 8);
-      x3 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 3)) + OpCodes.XorN(OpCodes.RotL32(x0, 8), k[3])), 1);
-      x0 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x0, (round + 4)) + OpCodes.XorN(OpCodes.RotL32(x1, 1), k[4])), 8);
-      x1 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 5)) + OpCodes.XorN(OpCodes.RotL32(x2, 8), k[5])), 1);
-      x2 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 6)) + OpCodes.XorN(OpCodes.RotL32(x3, 1), k[6])), 8);
-      x3 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 7)) + OpCodes.XorN(OpCodes.RotL32(x0, 8), k[7])), 1);
+      x0 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x0, round), OpCodes.Xor32(OpCodes.RotL32(x1, 1), k[0])), 8);
+      x1 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x1, (round + 1)), OpCodes.Xor32(OpCodes.RotL32(x2, 8), k[1])), 1);
+      x2 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x2, (round + 2)), OpCodes.Xor32(OpCodes.RotL32(x3, 1), k[2])), 8);
+      x3 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x3, (round + 3)), OpCodes.Xor32(OpCodes.RotL32(x0, 8), k[3])), 1);
+      x0 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x0, (round + 4)), OpCodes.Xor32(OpCodes.RotL32(x1, 1), k[4])), 8);
+      x1 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x1, (round + 5)), OpCodes.Xor32(OpCodes.RotL32(x2, 8), k[5])), 1);
+      x2 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x2, (round + 6)), OpCodes.Xor32(OpCodes.RotL32(x3, 1), k[6])), 8);
+      x3 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Xor32(x3, (round + 7)), OpCodes.Xor32(OpCodes.RotL32(x0, 8), k[7])), 1);
     }
 
     // Pack output block
@@ -120,24 +121,24 @@
   /**
    * Adjusts Z state for next block (Galois Field doubling in GF(2^64))
    * Doubles the 64-bit prefix in the F(2^64) field
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
    */
   function comet_adjust_block_key(Z) {
     // Carry bit from bit 63 (byte 7, bit 7)
-    const mask = OpCodes.AndN(Z[7], 0x80) ? 0x1B : 0x00;
+    const mask = OpCodes.And32(Z[7], 0x80) ? 0x1B : 0x00;
 
     // Left shift by 1 bit across 8 bytes
     for (let i = 7; i > 0; --i) {
-      Z[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
+      Z[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
     }
-    Z[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
+    Z[0] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
   }
 
   /**
    * Shuffle function for 128-bit blocks
    * Permutes: [x0, x1, x2, x3] -> [x3, ROR1(x2), x0, x1]
-   * @param {Uint8Array} block - 16-byte block
-   * @returns {Uint8Array} - Shuffled 16-byte block
+   * @param {uint8[]} block - 16-byte block
+   * @returns {uint8[]} - Shuffled 16-byte block
    */
   function comet_shuffle_block_128(block) {
     // Pack bytes to 32-bit words
@@ -157,10 +158,10 @@
 
   /**
    * Process associated data
-   * @param {Uint8Array} Y - 16-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} ad - Associated data
+   * @param {uint8[]} Y - 16-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} ad - Associated data
    */
   function comet_process_ad(Y, Z, key, ad) {
     // Domain separator for associated data
@@ -200,11 +201,11 @@
 
   /**
    * Encrypt plaintext
-   * @param {Uint8Array} Y - 16-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} plaintext - Input plaintext
-   * @returns {Uint8Array} - Ciphertext (same length as plaintext)
+   * @param {uint8[]} Y - 16-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} plaintext - Input plaintext
+   * @returns {uint8[]} - Ciphertext (same length as plaintext)
    */
   function comet_encrypt_128(Y, Z, key, plaintext) {
     // Domain separator for payload data
@@ -229,7 +230,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < 16; ++i) {
-        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
+        ciphertext[offset + i] = OpCodes.Xor32(plaintext[offset + i], Ys[i]);
       }
 
       offset += 16;
@@ -253,7 +254,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
+        ciphertext[offset + i] = OpCodes.Xor32(plaintext[offset + i], Ys[i]);
       }
     }
 
@@ -262,11 +263,11 @@
 
   /**
    * Decrypt ciphertext
-   * @param {Uint8Array} Y - 16-byte Y state (modified in place)
-   * @param {Uint8Array} Z - 16-byte Z state (modified in place)
-   * @param {Uint8Array} key - 16-byte key
-   * @param {Uint8Array} ciphertext - Input ciphertext
-   * @returns {Uint8Array} - Plaintext (same length as ciphertext)
+   * @param {uint8[]} Y - 16-byte Y state (modified in place)
+   * @param {uint8[]} Z - 16-byte Z state (modified in place)
+   * @param {uint8[]} key - 16-byte key
+   * @param {uint8[]} ciphertext - Input ciphertext
+   * @returns {uint8[]} - Plaintext (same length as ciphertext)
    */
   function comet_decrypt_128(Y, Z, key, ciphertext) {
     // Domain separator for payload data
@@ -286,7 +287,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < 16; ++i) {
-        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
+        plaintext[offset + i] = OpCodes.Xor32(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with plaintext
@@ -309,7 +310,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
+        plaintext[offset + i] = OpCodes.Xor32(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with partial plaintext
@@ -559,6 +560,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} plaintext
+     * @returns {uint8[]}
+     */
     _encrypt(plaintext) {
       // Initialize Y and Z states
       const Y = new Uint8Array(this._key);
@@ -570,6 +575,7 @@
       }
 
       // Encrypt plaintext
+      /** @type {uint8[]} */
       let ciphertext;
       if (plaintext.length > 0) {
         ciphertext = comet_encrypt_128(Y, Z, this._key, plaintext);
@@ -589,13 +595,19 @@
       return Array.from(result);
     }
 
+    /**
+     * @param {uint8[]} ciphertextAndTag
+     * @returns {uint8[]}
+     */
     _decrypt(ciphertextAndTag) {
       if (ciphertextAndTag.length < 16) {
         throw new Error("Invalid ciphertext: too short for authentication tag");
       }
 
       // Split ciphertext and tag
+      /** @type {uint8[]} */
       const ciphertext = ciphertextAndTag.slice(0, -16);
+      /** @type {uint8[]} */
       const receivedTag = ciphertextAndTag.slice(-16);
 
       // Initialize Y and Z states
@@ -608,6 +620,7 @@
       }
 
       // Decrypt ciphertext
+      /** @type {uint8[]} */
       let plaintext;
       if (ciphertext.length > 0) {
         plaintext = comet_decrypt_128(Y, Z, this._key, ciphertext);
