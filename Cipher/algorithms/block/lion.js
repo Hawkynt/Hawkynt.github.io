@@ -70,19 +70,6 @@
     }
   }
 
-  // Check global namespace if require failed
-  if (!SHA1Class && typeof root !== 'undefined' && root.AlgorithmFramework) {
-    // Try to find registered algorithms
-    const registry = root.AlgorithmFramework.GetAlgorithmRegistry ?
-                     root.AlgorithmFramework.GetAlgorithmRegistry() : null;
-    if (registry) {
-      const sha1Algo = registry.find(a => a.name === 'SHA-1');
-      if (sha1Algo) SHA1Class = sha1Algo.constructor;
-      const rc4Algo = registry.find(a => a.name === 'RC4');
-      if (rc4Algo) RC4Class = rc4Algo.constructor;
-    }
-  }
-
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
@@ -176,13 +163,19 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this.key1 = null; // First half of key
+      /** @type {uint8[]|null} */
       this.key2 = null; // Second half of key
 
       // Hash function parameters (SHA-1)
+      /** @type {int32} */
       this.hashSize = 20; // SHA-1 produces 20-byte output
+      /** @type {int32} */
       this.blockSize = 64; // Total block size in bytes
+      /** @type {int32} */
       this.leftSize = 20; // Left part size (hash output size)
+      /** @type {int32} */
       this.rightSize = 44; // Right part size (64 - 20)
     }
 
@@ -239,7 +232,11 @@
       return this._key ? [...this._key] : null;
     }
 
-    // SHA-1 hash function wrapper
+    /**
+     * SHA-1 hash function wrapper
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 20-byte digest
+     */
     _hash(data) {
       // Use external SHA-1 module if available (fully OpCodes-optimized)
       if (typeof require !== 'undefined') {
@@ -256,10 +253,15 @@
       // Embedded SHA-1 implementation for standalone use
       // NOTE: Contains direct bit operations for educational clarity
       // Production use relies on external SHA-1 module with full OpCodes integration
+      /** @type {uint32} */
       let h0 = 0x67452301;
+      /** @type {uint32} */
       let h1 = 0xEFCDAB89;
+      /** @type {uint32} */
       let h2 = 0x98BADCFE;
+      /** @type {uint32} */
       let h3 = 0x10325476;
+      /** @type {uint32} */
       let h4 = 0xC3D2E1F0;
 
       const msgLen = data.length;
@@ -279,6 +281,7 @@
       for (let offset = 0; offset < paddedData.length; offset += 64) {
         const block = paddedData.slice(offset, offset + 64);
 
+        /** @type {uint32[]} */
         const W = new Array(80);
         for (let t = 0; t < 16; t++) {
           W[t] = OpCodes.Pack32BE(block[t*4], block[t*4+1], block[t*4+2], block[t*4+3]);
@@ -295,22 +298,25 @@
         let a = h0, b = h1, c = h2, d = h3, e = h4;
 
         for (let t = 0; t < 80; t++) {
-          let f, k;
+          /** @type {uint32} */
+          let f;
+          /** @type {uint32} */
+          let k;
           if (t < 20) {
-            f = OpCodes.ToUint32((b&c)|((~b)&d));
+            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
             k = 0x5A827999;
           } else if (t < 40) {
             f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = 0x6ED9EBA1;
           } else if (t < 60) {
-            f = OpCodes.ToUint32((b&c)|((b&d)|(c&d)));
+            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, d)));
             k = 0x8F1BBCDC;
           } else {
             f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = 0xCA62C1D6;
           }
 
-          const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), f), e), k), W[t]);
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -325,30 +331,40 @@
         h4 = OpCodes.ToUint32((h4 + e));
       }
 
+      /** @type {uint8[]} */
       const result = [];
-      [h0, h1, h2, h3, h4].forEach(word => {
-        const bytes = OpCodes.Unpack32BE(word);
+      /** @type {uint32[]} */
+      const digestWords = [h0, h1, h2, h3, h4];
+      for (let w = 0; w < digestWords.length; w++) {
+        const bytes = OpCodes.Unpack32BE(digestWords[w]);
         for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      });
+      }
 
       return result;
     }
 
-    // RC4 stream cipher wrapper
+    /**
+     * RC4 stream cipher wrapper
+     * @param {uint8[]} key - RC4 key
+     * @param {uint8[]} data - Bytes to encrypt/decrypt
+     * @returns {uint8[]} data XOR keystream
+     */
     _rc4(key, data) {
       // Embedded RC4 implementation for LION construction
       // NOTE: Contains direct bit operations for performance
       // The external RC4 module is not used here to avoid circular dependencies
 
       // RC4 Key Scheduling Algorithm (KSA)
+      /** @type {uint8[]} */
       const S = new Array(256);
       for (let i = 0; i < 256; i++) {
         S[i] = i;
       }
 
+      /** @type {uint32} */
       let j = 0;
       for (let i = 0; i < 256; i++) {
-        j = (j + S[i] + key[i % key.length])&0xFF;
+        j = OpCodes.And32(OpCodes.Add32(OpCodes.Add32(j, S[i]), key[i % key.length]), 0xFF);
         // Swap S[i] and S[j]
         const temp = S[i];
         S[i] = S[j];
@@ -356,22 +372,24 @@
       }
 
       // Pseudo-Random Generation Algorithm (PRGA)
+      /** @type {uint32} */
       let i = 0;
       j = 0;
+      /** @type {uint8[]} */
       const output = [];
 
       for (let k = 0; k < data.length; k++) {
-        i = (i + 1)&0xFF;
-        j = (j + S[i])&0xFF;
+        i = OpCodes.And32(OpCodes.Add32(i, 1), 0xFF);
+        j = OpCodes.And32(OpCodes.Add32(j, S[i]), 0xFF);
 
         // Swap S[i] and S[j]
         const temp = S[i];
         S[i] = S[j];
         S[j] = temp;
 
-        const t = (S[i] + S[j])&0xFF;
+        const t = OpCodes.And32(OpCodes.Add32(S[i], S[j]), 0xFF);
         const keystreamByte = S[t];
-        const ciphertextByte = OpCodes.Xor32(data[k], keystreamByte)&0xFF;
+        const ciphertextByte = OpCodes.And32(OpCodes.Xor32(data[k], keystreamByte), 0xFF);
         output.push(ciphertextByte);
       }
 
@@ -407,7 +425,10 @@
         const inL = block.slice(0, this.leftSize);
         const inR = block.slice(this.leftSize);
 
-        let outL, outR;
+        /** @type {uint8[]} */
+        let outL;
+        /** @type {uint8[]} */
+        let outR;
 
         if (this.isInverse) {
           // Decryption (reverse of encryption)
