@@ -87,6 +87,7 @@
   const H_PERM = new Uint8Array([1, 6, 11, 12, 5, 10, 15, 0, 9, 14, 3, 4, 13, 2, 7, 8]);
 
   // Round constants for Deoxys-BC
+  /** @type {uint8[][]} */
   const RCON = [
     [1, 2, 4, 8, 0x2f, 0x2f, 0x2f, 0x2f, 0, 0, 0, 0, 0, 0, 0, 0],
     [1, 2, 4, 8, 0x5e, 0x5e, 0x5e, 0x5e, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -115,18 +116,39 @@
   const TWEAK_TAG = 0x10;      // Tag generation
 
   // AES MixColumns multiplication lookup tables (for performance)
-  const MUL2 = new Uint8Array(256);
-  const MUL3 = new Uint8Array(256);
-
-  // Initialize MixColumns tables (AES GF(2^8) with irreducible 0x11B)
-  (function() {
+  // (AES GF(2^8) with irreducible 0x11B)
+  /**
+   * @param {uint8} factor - Constant multiplier
+   * @returns {uint8[]} product of every byte with factor
+   */
+  function buildMulTable(factor) {
+    /** @type {uint8[]} */
+    const table = new Uint8Array(256);
     for (let i = 0; i < 256; ++i) {
-      MUL2[i] = OpCodes.GFMul(i, 2, 0x11B, 8);
-      MUL3[i] = OpCodes.GFMul(i, 3, 0x11B, 8);
+      table[i] = OpCodes.GFMul(i, factor, 0x11B, 8);
     }
-  })();
+    return table;
+  }
+
+  /** @type {uint8[]} */
+  const MUL2 = buildMulTable(2);
+  /** @type {uint8[]} */
+  const MUL3 = buildMulTable(3);
+
+  /**
+   * @param {int32} index - Block index
+   * @returns {uint8[]} index as a 64-bit big-endian block counter
+   */
+  function blockIndexBytes(index) {
+    /** @type {uint8[]} */
+    const bytes = [...OpCodes.Unpack32BE(Math.floor(index / 0x100000000)), ...OpCodes.Unpack32BE(index)];
+    return bytes;
+  }
 
   // AES SubBytes transformation
+  /**
+   * @param {uint8[]} state
+   */
   function SubBytes(state) {
     for (let i = 0; i < 16; ++i) {
       state[i] = SBOX[state[i]];
@@ -134,8 +156,12 @@
   }
 
   // AES ShiftRows transformation
+  /**
+   * @param {uint8[]} state
+   */
   function ShiftRows(state) {
-    let temp;
+    /** @type {uint8} */
+    let temp = 0;
     // Row 1: shift left by 1
     temp = state[1];
     state[1] = state[5];
@@ -160,22 +186,32 @@
   }
 
   // AES MixColumns transformation
+  /**
+   * @param {uint8[]} state
+   */
   function MixColumns(state) {
     for (let c = 0; c < 4; ++c) {
       const i = c * 4; // Column c starts at byte c*4
+      /** @type {uint8} */
       const s0 = state[i];
+      /** @type {uint8} */
       const s1 = state[i + 1];
+      /** @type {uint8} */
       const s2 = state[i + 2];
+      /** @type {uint8} */
       const s3 = state[i + 3];
 
-      state[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(MUL2[s0], MUL3[s1]), s2), s3);
-      state[i + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, MUL2[s1]), MUL3[s2]), s3);
-      state[i + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), MUL2[s2]), MUL3[s3]);
-      state[i + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(MUL3[s0], s1), s2), MUL2[s3]);
+      state[i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(MUL2[s0], MUL3[s1]), s2), s3);
+      state[i + 1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, MUL2[s1]), MUL3[s2]), s3);
+      state[i + 2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s1), MUL2[s2]), MUL3[s3]);
+      state[i + 3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(MUL3[s0], s1), s2), MUL2[s3]);
     }
   }
 
   // AES round function (SubBytes + ShiftRows + MixColumns)
+  /**
+   * @param {uint8[]} state
+   */
   function AESRound(state) {
     SubBytes(state);
     ShiftRows(state);
@@ -183,7 +219,11 @@
   }
 
   // H-substitution for TWEAKEY framework
+  /**
+   * @param {uint8[]} tk
+   */
   function HSubstitution(tk) {
+    /** @type {uint8[]} */
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = tk[H_PERM[i]];
@@ -192,31 +232,46 @@
   }
 
   // LFSR2 for TWEAKEY framework (used in Deoxys-BC-256)
+  /**
+   * @param {uint8[]} tk
+   */
   function LFSR2(tk) {
     for (let i = 0; i < 16; ++i) {
+      /** @type {uint8} */
       const x = tk[i];
-      tk[i] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl32(x, 1), 0xFE), OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01));
+      tk[i] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl32(x, 1), 0xFE), OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01));
     }
   }
 
   // LFSR3 for TWEAKEY framework (used in Deoxys-BC-384)
+  /**
+   * @param {uint8[]} tk
+   */
   function LFSR3(tk) {
     for (let i = 0; i < 16; ++i) {
+      /** @type {uint8} */
       const x = tk[i];
-      tk[i] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shr32(x, 1), 0x7F), OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80));
+      tk[i] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr32(x, 1), 0x7F), OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80));
     }
   }
 
   // Deoxys-BC-256 encryption (14 rounds, 128-bit key + 128-bit tweak)
+  /**
+   * @param {uint8[]} state
+   * @param {uint8[]} tweak
+   * @param {uint8[][]} subkeys
+   */
   function DeoxysBc256Encrypt(state, tweak, subkeys) {
     // Precompute all subtweakeys (tweak XOR subkeys)
+    /** @type {uint8[][]} */
     const subtweakeys = new Array(15);
+    /** @type {uint8[]} */
     const tweakCopy = new Uint8Array(tweak);
 
     // First subtweakey
     subtweakeys[0] = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      subtweakeys[0][i] = OpCodes.XorN(tweakCopy[i], subkeys[0][i]);
+      subtweakeys[0][i] = OpCodes.Xor32(tweakCopy[i], subkeys[0][i]);
     }
 
     // Remaining subtweakeys
@@ -224,7 +279,7 @@
       HSubstitution(tweakCopy);
       subtweakeys[r] = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        subtweakeys[r][i] = OpCodes.XorN(tweakCopy[i], subkeys[r][i]);
+        subtweakeys[r][i] = OpCodes.Xor32(tweakCopy[i], subkeys[r][i]);
       }
     }
 
@@ -247,15 +302,22 @@
   }
 
   // Deoxys-BC-384 encryption (16 rounds, 256-bit key + 128-bit tweak)
+  /**
+   * @param {uint8[]} state
+   * @param {uint8[]} tweak
+   * @param {uint8[][]} subkeys
+   */
   function DeoxysBc384Encrypt(state, tweak, subkeys) {
     // Precompute all subtweakeys (tweak XOR subkeys)
+    /** @type {uint8[][]} */
     const subtweakeys = new Array(17);
+    /** @type {uint8[]} */
     const tweakCopy = new Uint8Array(tweak);
 
     // First subtweakey
     subtweakeys[0] = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      subtweakeys[0][i] = OpCodes.XorN(tweakCopy[i], subkeys[0][i]);
+      subtweakeys[0][i] = OpCodes.Xor32(tweakCopy[i], subkeys[0][i]);
     }
 
     // Remaining subtweakeys
@@ -263,7 +325,7 @@
       HSubstitution(tweakCopy);
       subtweakeys[r] = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        subtweakeys[r][i] = OpCodes.XorN(tweakCopy[i], subkeys[r][i]);
+        subtweakeys[r][i] = OpCodes.Xor32(tweakCopy[i], subkeys[r][i]);
       }
     }
 
@@ -286,14 +348,20 @@
   }
 
   // Precompute subkeys for Deoxys-BC-256 (128-bit key)
+  /**
+   * @param {uint8[]} key
+   * @returns {uint8[][]}
+   */
   function PrecomputeSubkeysBc256(key) {
+    /** @type {uint8[][]} */
     const subkeys = [];
+    /** @type {uint8[]} */
     const tk2 = new Uint8Array(key);
 
     // First subkey
     const sk0 = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      sk0[i] = OpCodes.XorN(tk2[i], RCON[0][i]);
+      sk0[i] = OpCodes.Xor32(tk2[i], RCON[0][i]);
     }
     subkeys.push(sk0);
 
@@ -303,7 +371,7 @@
       LFSR2(tk2);
       const sk = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        sk[i] = OpCodes.XorN(tk2[i], RCON[r][i]);
+        sk[i] = OpCodes.Xor32(tk2[i], RCON[r][i]);
       }
       subkeys.push(sk);
     }
@@ -312,15 +380,22 @@
   }
 
   // Precompute subkeys for Deoxys-BC-384 (256-bit key)
+  /**
+   * @param {uint8[]} key
+   * @returns {uint8[][]}
+   */
   function PrecomputeSubkeysBc384(key) {
+    /** @type {uint8[][]} */
     const subkeys = [];
+    /** @type {uint8[]} */
     const tk3 = new Uint8Array(key.slice(0, 16));
+    /** @type {uint8[]} */
     const tk2 = new Uint8Array(key.slice(16, 32));
 
     // First subkey
     const sk0 = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      sk0[i] = OpCodes.XorN(OpCodes.XorN(tk3[i], tk2[i]), RCON[0][i]);
+      sk0[i] = OpCodes.Xor32(OpCodes.Xor32(tk3[i], tk2[i]), RCON[0][i]);
     }
     subkeys.push(sk0);
 
@@ -333,7 +408,7 @@
 
       const sk = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        sk[i] = OpCodes.XorN(OpCodes.XorN(tk3[i], tk2[i]), RCON[r][i]);
+        sk[i] = OpCodes.Xor32(OpCodes.Xor32(tk3[i], tk2[i]), RCON[r][i]);
       }
       subkeys.push(sk);
     }
@@ -609,21 +684,40 @@
  */
 
   class DeoxysIIInstanceBase extends IAeadInstance {
-    constructor(algorithm, isInverse, bcEncrypt, precomputeSubkeys) {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     * @param {boolean} wideKey - true for Deoxys-BC-384 (256-bit key), false for Deoxys-BC-256
+     */
+    constructor(algorithm, isInverse, wideKey) {
       super(algorithm);
       /** @type {KeySize[]} */
       this.keySizeList = algorithm.SupportedKeySizes;
       /** @type {boolean} */
       this.isInverse = isInverse;
-      this.bcEncrypt = bcEncrypt;
-      this.precomputeSubkeys = precomputeSubkeys;
+      /** @type {boolean} */
+      this.wideKey = wideKey;
       /** @type {uint8[]|null} */
       this._key = null;
       /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[][]|null} */
       this.subkeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+    }
+
+    // Deoxys-BC encryption of one block under the precomputed subkeys
+    /**
+     * @param {uint8[]} block - 16-byte block (encrypted in place)
+     * @param {uint8[]} tweak - 16-byte tweak
+     */
+    _bcEncrypt(block, tweak) {
+      if (this.wideKey) {
+        DeoxysBc384Encrypt(block, tweak, this.subkeys);
+      } else {
+        DeoxysBc256Encrypt(block, tweak, this.subkeys);
+      }
     }
 
     /**
@@ -654,7 +748,11 @@
       }
 
       this._key = [...keyBytes];
-      this.subkeys = this.precomputeSubkeys(new Uint8Array(keyBytes));
+      if (this.wideKey) {
+        this.subkeys = PrecomputeSubkeysBc384(new Uint8Array(keyBytes));
+      } else {
+        this.subkeys = PrecomputeSubkeysBc256(new Uint8Array(keyBytes));
+      }
     }
 
     /**
@@ -704,6 +802,7 @@
       const aad = this.aad && this.aad.length > 0 ? new Uint8Array(this.aad) : new Uint8Array(0);
       const nonce = new Uint8Array(this._nonce);
 
+      /** @type {uint8[]} */
       let result;
       if (this.isInverse) {
         // Decryption: split ciphertext and tag
@@ -722,8 +821,16 @@
       return Array.from(result);
     }
 
+    /**
+     * @param {uint8[]} nonce
+     * @param {uint8[]} aad
+     * @param {uint8[]} plaintext
+     * @returns {uint8[]}
+     */
     encrypt(nonce, aad, plaintext) {
+      /** @type {uint8[]} */
       const tag = new Uint8Array(16);
+      /** @type {uint8[]} */
       const tweak = new Uint8Array(16);
 
       // Process associated data
@@ -736,28 +843,41 @@
       tweak.fill(0);
       tweak[0] = TWEAK_TAG;
       tweak.set(nonce, 1);
+      /** @type {uint8[]} */
       const tagBlock = new Uint8Array(tag);
-      this.bcEncrypt(tagBlock, tweak, this.subkeys);
+      this._bcEncrypt(tagBlock, tweak);
       tag.set(tagBlock);
 
       // Encrypt message
+      /** @type {uint8[]} */
       const ciphertext = this.encryptMessage(plaintext, tweak, tag, nonce);
 
       // Return ciphertext || tag
+      /** @type {uint8[]} */
       const result = new Uint8Array(ciphertext.length + 16);
       result.set(ciphertext);
       result.set(tag, ciphertext.length);
       return result;
     }
 
+    /**
+     * @param {uint8[]} nonce
+     * @param {uint8[]} aad
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} expectedTag
+     * @returns {uint8[]}
+     */
     decrypt(nonce, aad, ciphertext, expectedTag) {
+      /** @type {uint8[]} */
       const tag = new Uint8Array(16);
+      /** @type {uint8[]} */
       const tweak = new Uint8Array(16);
 
       // Process associated data
       this.computeAdTag(aad, tweak, tag);
 
       // Decrypt message
+      /** @type {uint8[]} */
       const plaintext = this.encryptMessage(ciphertext, tweak, expectedTag, nonce);
 
       // Authenticate decrypted message
@@ -767,14 +887,16 @@
       // Generate tag
       tweak[0] = TWEAK_TAG;
       tweak.set(nonce, 1);
+      /** @type {uint8[]} */
       const tagBlock = new Uint8Array(tag);
-      this.bcEncrypt(tagBlock, tweak, this.subkeys);
+      this._bcEncrypt(tagBlock, tweak);
       tag.set(tagBlock);
 
       // Constant-time tag comparison
+      /** @type {uint32} */
       let mismatch = 0;
       for (let i = 0; i < 16; ++i) {
-        mismatch = OpCodes.OrN(mismatch, OpCodes.XorN(tag[i], expectedTag[i]));
+        mismatch = OpCodes.Or32(mismatch, OpCodes.Xor32(tag[i], expectedTag[i]));
       }
 
       if (mismatch !== 0) {
@@ -784,6 +906,11 @@
       return plaintext;
     }
 
+    /**
+     * @param {uint8[]} aad
+     * @param {uint8[]} tweak
+     * @param {uint8[]} tag
+     */
     computeAdTag(aad, tweak, tag) {
       if (aad.length === 0) return;
 
@@ -792,27 +919,30 @@
       for (let index = 0; index * 16 < aad.length; ++index) {
         const start = index * 16;
         const end = Math.min(start + 16, aad.length);
+        /** @type {uint8[]} */
         const adBlock = aad.slice(start, end);
 
         // Set block counter
-        const counter = new DataView(new ArrayBuffer(8));
-        counter.setBigUint64(0, BigInt(index), false);
-        tweak.set(new Uint8Array(counter.buffer), 8);
+        /** @type {uint8[]} */
+        const counterBytes = blockIndexBytes(index);
+        tweak.set(counterBytes, 8);
 
         if (adBlock.length === 16) {
           // Full block
+          /** @type {uint8[]} */
           const block = new Uint8Array(adBlock);
-          this.bcEncrypt(block, tweak, this.subkeys);
+          this._bcEncrypt(block, tweak);
           for (let i = 0; i < 16; ++i) {
             tag[i] ^= block[i];
           }
         } else {
           // Last partial block
           tweak[0] = TWEAK_AD_LAST;
+          /** @type {uint8[]} */
           const block = new Uint8Array(16);
           block.set(adBlock);
           block[adBlock.length] = 0x80; // Padding
-          this.bcEncrypt(block, tweak, this.subkeys);
+          this._bcEncrypt(block, tweak);
           for (let i = 0; i < 16; ++i) {
             tag[i] ^= block[i];
           }
@@ -820,6 +950,11 @@
       }
     }
 
+    /**
+     * @param {uint8[]} message
+     * @param {uint8[]} tweak
+     * @param {uint8[]} tag
+     */
     authenticateMessage(message, tweak, tag) {
       if (message.length === 0) return;
 
@@ -828,27 +963,30 @@
       for (let index = 0; index * 16 < message.length; ++index) {
         const start = index * 16;
         const end = Math.min(start + 16, message.length);
+        /** @type {uint8[]} */
         const msgBlock = message.slice(start, end);
 
         // Set block counter
-        const counter = new DataView(new ArrayBuffer(8));
-        counter.setBigUint64(0, BigInt(index), false);
-        tweak.set(new Uint8Array(counter.buffer), 8);
+        /** @type {uint8[]} */
+        const counterBytes = blockIndexBytes(index);
+        tweak.set(counterBytes, 8);
 
         if (msgBlock.length === 16) {
           // Full block
+          /** @type {uint8[]} */
           const block = new Uint8Array(msgBlock);
-          this.bcEncrypt(block, tweak, this.subkeys);
+          this._bcEncrypt(block, tweak);
           for (let i = 0; i < 16; ++i) {
             tag[i] ^= block[i];
           }
         } else {
           // Last partial block
           tweak[0] = TWEAK_M_LAST;
+          /** @type {uint8[]} */
           const block = new Uint8Array(16);
           block.set(msgBlock);
           block[msgBlock.length] = 0x80; // Padding
-          this.bcEncrypt(block, tweak, this.subkeys);
+          this._bcEncrypt(block, tweak);
           for (let i = 0; i < 16; ++i) {
             tag[i] ^= block[i];
           }
@@ -856,9 +994,21 @@
       }
     }
 
+    /**
+     * @param {uint8[]} message
+     * @param {uint8[]} tweak
+     * @param {uint8[]} tag
+     * @param {uint8[]} nonce
+     * @returns {uint8[]}
+     */
     encryptMessage(message, tweak, tag, nonce) {
-      if (message.length === 0) return new Uint8Array(0);
+      if (message.length === 0) {
+        /** @type {uint8[]} */
+        const empty = new Uint8Array(0);
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const output = new Uint8Array(message.length);
       tweak.set(tag);
       tweak[0] |= 0x80; // Set encryption flag
@@ -866,25 +1016,26 @@
       for (let index = 0; index * 16 < message.length; ++index) {
         const start = index * 16;
         const end = Math.min(start + 16, message.length);
+        /** @type {uint8[]} */
         const msgBlock = message.slice(start, end);
 
         // XOR block counter into tweak
-        const counter = new DataView(new ArrayBuffer(8));
-        counter.setBigUint64(0, BigInt(index), false);
-        const counterBytes = new Uint8Array(counter.buffer);
+        /** @type {uint8[]} */
+        const counterBytes = blockIndexBytes(index);
         for (let i = 0; i < 8; ++i) {
           tweak[8 + i] ^= counterBytes[i];
         }
 
         // Generate keystream block
+        /** @type {uint8[]} */
         const keystreamBlock = new Uint8Array(16);
         keystreamBlock[0] = 0;
         keystreamBlock.set(nonce, 1);
-        this.bcEncrypt(keystreamBlock, tweak, this.subkeys);
+        this._bcEncrypt(keystreamBlock, tweak);
 
         // XOR with message
         for (let i = 0; i < msgBlock.length; ++i) {
-          output[start + i] = OpCodes.XorN(msgBlock[i], keystreamBlock[i]);
+          output[start + i] = OpCodes.Xor32(msgBlock[i], keystreamBlock[i]);
         }
 
         // XOR counter back out
@@ -899,15 +1050,23 @@
 
   // Deoxys-II-128 instance
   class DeoxysII128Instance extends DeoxysIIInstanceBase {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
-      super(algorithm, isInverse, DeoxysBc256Encrypt, PrecomputeSubkeysBc256);
+      super(algorithm, isInverse, false);
     }
   }
 
   // Deoxys-II-256 instance
   class DeoxysII256Instance extends DeoxysIIInstanceBase {
+    /**
+     * @param {AeadAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decryption mode flag
+     */
     constructor(algorithm, isInverse) {
-      super(algorithm, isInverse, DeoxysBc384Encrypt, PrecomputeSubkeysBc384);
+      super(algorithm, isInverse, true);
     }
   }
 
