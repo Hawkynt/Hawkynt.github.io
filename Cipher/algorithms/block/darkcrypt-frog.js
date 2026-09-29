@@ -66,47 +66,34 @@
   const BLOCK_LEN = 16;
 
   // First 251 five-digit groups of "A Million Random Digits with 100,000 Normal
-  // Deviates" (RAND Corporation, 1955), each string interpreted as a decimal
-  // integer and reduced mod 256. This is the standard FROG/Merkle nothing-up-
-  // my-sleeve seed (identical text also used for Khufu/Khafre/Snefru S-boxes).
-  const RAND_DIGITS =
-    "100973253376520135863467354876809590911739292749453754204805648947429624" +
-    "805240372063610402008229166508422689531964509303232090256015953347643508" +
-    "033606990190252909376707153831131165886767439704436276591280799970801573" +
-    "614764032366539895116877121717683366065747173407276850366973617065813398" +
-    "851119929170310601080545571824063530342614867990743923403097328526977602" +
-    "020516569268665748187305385247186238857963573321350532547048905535754828" +
-    "468287098349125624737964575303529647783580834282609352034435273884359852" +
-    "017767149056860722109405586097093433505007399811805054313980827732507256" +
-    "824829405242015277567851834529963406288980831374670078184754061068711778" +
-    "178868540200865075840136766679519036476493296091106299594673488751764969" +
-    "918260892893785613682347834113654811767417468509505804776974730395718640" +
-    "218165448012435635177270801545318223742111578253143855376374350998177740" +
-    "277214432360021045521642379628602655699162680366252291483693687203766211" +
-    "399094400564180989320505142256851446427567889629778822543821459891499145" +
-    "236847927686461628355494750899233708920048803369459826940368587029734135" +
-    "531403334042050823414410481949851574795432979265755760040881222220641312" +
-    "550737421110002040128607469796644894392870725815636064932916505344844021" +
-    "9525634365177082072073179061196";
+  // Deviates" (RAND Corporation, 1955), each group read as a decimal integer and
+  // reduced mod 256 (group 0 "10097" -> 0x71, group 1 "32533" -> 0x15, ...). This is
+  // the standard FROG/Merkle nothing-up-my-sleeve seed (identical text also used
+  // for Khufu/Khafre/Snefru S-boxes).
+  const RANDOM_SEED = OpCodes.Hex8ToBytes(
+    "7115e812715c3f9d7cc1a6c57e38e5e59ca23611e659bd57a90051cc0846cbe1a03ba7bd649d540b07821d33202d87ed8b21" +
+    "11dd1832594a15cdbff2543503e6e7760f0f6b041522039c39425dffbf035587cdc8b9cc3425231844b9c90ae0ea0778c973" +
+    "d86739ff5d6e2af9440e1d3780542598dd89270bfc329023b2be2ba267f96d08eb219e6ffccda9360a14ddc9b2e059b8b641" +
+    "c90a3c06bfae4f621aa0fc333f4f06667bad31036ee95a9ee4d2d1ed1e5f1cb3ccdc48a34da6c062a51991a25bd429e66e06" +
+    "6bbb7f2652621e43e150d0863cfa9957943c42a5481da552d3cf00b1ce0d060e5cf83cc9845f23d776b179b41b53831a272e" +
+    "0c"
+  );
 
-  function buildRandomSeed() {
-    const seed = new Array(251);
-    for (let i = 0; i < 251; i++) {
-      seed[i] = parseInt(RAND_DIGITS.substr(i * 5, 5), 10) % 256;
-    }
-    return seed;
-  }
-
-  const RANDOM_SEED = buildRandomSeed();
-
+  /**
+   * Turn a byte array into a permutation of 0..length-1 in place, driven by its
+   * own contents.
+   * @param {uint8[]} input - Bytes to permute (length at most 256)
+   */
   function makePermutation(input) {
     const length = input.length;
+    /** @type {uint8[]} */
     const use = new Array(length);
     for (let i = 0; i < length; i++) use[i] = i;
+    /** @type {uint32} */
     let index = 0;
     let last = length - 1;
     for (let i = 0; i < length - 1; i++) {
-      index = (index + input[i]) % (last + 1);
+      index = OpCodes.Add32(index, input[i]) % (last + 1);
       input[i] = use[index];
       if (index < last) use.splice(index, 1);
       last--;
@@ -115,7 +102,11 @@
     input[length - 1] = use[0];
   }
 
+  /**
+   * @param {uint8[]} permutation - Permutation to invert in place
+   */
   function invertPermutation(permutation) {
+    /** @type {uint8[]} */
     const temp = new Array(permutation.length);
     for (let i = 0; i < permutation.length; i++) temp[permutation[i]] = i;
     for (let i = 0; i < permutation.length; i++) permutation[i] = temp[i];
@@ -123,11 +114,19 @@
 
   // Merges any smaller cycles within bombPermu into a single full-length cycle,
   // which is required for the round function's avalanche property to hold.
+  /**
+   * @param {uint8[]} bombPermu - Diffusion permutation, modified in place
+   * @param {int32} blockLength - Block length in bytes
+   */
   function make1Cycle(bombPermu, blockLength) {
-    const used = new Array(blockLength).fill(0);
+    /** @type {uint8[]} */
+    const used = new Array(blockLength);
+    for (let i = 0; i < blockLength; i++) used[i] = 0;
+    /** @type {uint8} */
     let j = 0;
     for (let i = 0; i < blockLength - 1; i++) {
       if (bombPermu[j] === 0) {
+        /** @type {int32} */
         let k = j;
         do {
           k = (k + 1) % blockLength;
@@ -144,6 +143,10 @@
 
   // Prevents bombPermu[i] from pointing at the same index the round function
   // already XORs via the "next byte" step (which would otherwise cancel out).
+  /**
+   * @param {uint8[]} bombPermu - Diffusion permutation, modified in place
+   * @param {int32} blockLength - Block length in bytes
+   */
   function removeReferences(bombPermu, blockLength) {
     for (let i = 0; i < blockLength; i++) {
       const j = (i + 1) % blockLength;
@@ -151,26 +154,42 @@
     }
   }
 
+  // The internal key is a flat list of three tables per round r:
+  // [3r] xorBu (blockLength bytes), [3r+1] substPermu (256 bytes),
+  // [3r+2] bombPermu (blockLength bytes).
+  /**
+   * @param {uint8[]} bytes - Raw internal key bytes
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   * @returns {uint8[][]} Three tables per round
+   */
   function toStructuredKey(bytes, blockLength, rounds) {
     const subkeyLength = bytes.length / rounds;
-    const result = new Array(rounds);
+    /** @type {uint8[][]} */
+    const result = [];
     for (let r = 0; r < rounds; r++) {
       const offsetXorBu = r * subkeyLength;
       const offsetSubstPermu = offsetXorBu + blockLength;
       const offsetBombPermu = offsetSubstPermu + 256;
-      result[r] = {
-        xorBu: bytes.slice(offsetXorBu, offsetSubstPermu),
-        substPermu: bytes.slice(offsetSubstPermu, offsetBombPermu),
-        bombPermu: bytes.slice(offsetBombPermu, offsetBombPermu + blockLength)
-      };
+      result.push(bytes.slice(offsetXorBu, offsetSubstPermu));
+      result.push(bytes.slice(offsetSubstPermu, offsetBombPermu));
+      result.push(bytes.slice(offsetBombPermu, offsetBombPermu + blockLength));
     }
     return result;
   }
 
+  /**
+   * @param {uint8[]} key - Raw internal key bytes
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   * @param {boolean} decrypt - Invert the substitution tables
+   * @returns {uint8[][]} Three tables per round (see toStructuredKey)
+   */
   function makeInternalKey(key, blockLength, rounds, decrypt) {
     const structuredKey = toStructuredKey(key, blockLength, rounds);
     for (let r = 0; r < rounds; r++) {
-      const { substPermu, bombPermu } = structuredKey[r];
+      const substPermu = structuredKey[r * 3 + 1];
+      const bombPermu = structuredKey[r * 3 + 2];
       makePermutation(substPermu);
       if (decrypt) invertPermutation(substPermu);
       makePermutation(bombPermu);
@@ -180,39 +199,58 @@
     return structuredKey;
   }
 
+  /**
+   * @param {uint8[]} state - Block, encrypted in place
+   * @param {uint8[][]} keys - Internal key (three tables per round)
+   */
   function frogEncrypt(state, keys) {
-    for (let r = 0; r < keys.length; r++) {
-      const key = keys[r];
+    const rounds = keys.length / 3;
+    for (let r = 0; r < rounds; r++) {
+      const xorBu = keys[r * 3];
+      const substPermu = keys[r * 3 + 1];
+      const bombPermu = keys[r * 3 + 2];
       for (let i = 0; i < state.length; i++) {
-        state[i] = key.substPermu[OpCodes.Xor32(state[i], key.xorBu[i])];
+        state[i] = substPermu[OpCodes.Xor32(state[i], xorBu[i])];
         const next = (i + 1) % state.length;
         state[next] ^= state[i];
-        const k = key.bombPermu[i];
+        const k = bombPermu[i];
         state[k] ^= state[i];
       }
     }
   }
 
+  /**
+   * @param {uint8[]} state - Block, decrypted in place
+   * @param {uint8[][]} keys - Internal key (three tables per round)
+   */
   function frogDecrypt(state, keys) {
-    for (let r = keys.length - 1; r >= 0; r--) {
-      const key = keys[r];
+    const rounds = keys.length / 3;
+    for (let r = rounds - 1; r >= 0; r--) {
+      const xorBu = keys[r * 3];
+      const substPermu = keys[r * 3 + 1];
+      const bombPermu = keys[r * 3 + 2];
       for (let i = state.length - 1; i >= 0; i--) {
-        const k = key.bombPermu[i];
+        const k = bombPermu[i];
         state[k] ^= state[i];
         const next = (i + 1) % state.length;
         state[next] ^= state[i];
-        state[i] = OpCodes.Xor32(key.substPermu[state[i]], key.xorBu[i]);
+        state[i] = OpCodes.Xor32(substPermu[state[i]], xorBu[i]);
       }
     }
   }
 
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} blockLength - Block length in bytes
+   * @param {int32} rounds - Number of rounds
+   * @param {boolean} decrypt - Build the decryption key
+   * @returns {uint8[][]} Internal key (three tables per round)
    */
   function generateKeys(keyBytes, blockLength, rounds, decrypt) {
     const keyLength = keyBytes.length;
     const internalKeyLength = (blockLength * 2 + 256) * rounds;
 
+    /** @type {uint8[]} */
     const simpleKey = new Array(internalKeyLength);
     for (let i = 0; i < simpleKey.length; i++) {
       simpleKey[i] = OpCodes.Xor32(RANDOM_SEED[i % 251], keyBytes[i % keyLength]);
@@ -220,12 +258,15 @@
 
     const internalKey = makeInternalKey(simpleKey, blockLength, rounds, false);
 
-    const iv = new Array(blockLength).fill(0);
+    /** @type {uint8[]} */
+    const iv = new Array(blockLength);
+    for (let i = 0; i < blockLength; i++) iv[i] = 0;
     const ivLength = Math.min(keyLength, blockLength);
     for (let i = 0; i < ivLength; i++) iv[i] ^= keyBytes[i];
     iv[0] ^= keyLength;
 
     let i = 0;
+    /** @type {uint8[]} */
     const result = new Array(internalKeyLength);
     while (i < internalKeyLength) {
       frogEncrypt(iv, internalKey);
@@ -316,6 +357,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
