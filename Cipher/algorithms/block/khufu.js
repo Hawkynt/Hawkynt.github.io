@@ -190,7 +190,7 @@
 
       // Validate key size (1-64 bytes for 8-512 bits)
       if (keyBytes.length < 1 || keyBytes.length > 64) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Khufu requires 1-64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Khufu requires 1-64 bytes");
       }
 
       this._key = [...keyBytes];
@@ -209,7 +209,7 @@
     // Allow setting number of rounds (must be multiple of 8, between 8 and 64)
     set numRounds(rounds) {
       if (rounds < 8 || rounds > 64 || rounds % 8 !== 0) {
-        throw new Error(`Invalid rounds: ${rounds}. Must be multiple of 8 between 8 and 64`);
+        throw new Error("Invalid rounds: " + rounds + ". Must be multiple of 8 between 8 and 64");
       }
       this.rounds = rounds;
       // Re-initialize if key is already set
@@ -247,7 +247,7 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

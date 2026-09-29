@@ -185,7 +185,7 @@
 
       // Validate key size (4-64 bytes, multiple of 4)
       if (keyBytes.length < 4 || keyBytes.length > 64 || keyBytes.length % 4 !== 0) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. EnRUPT requires 4-64 bytes in 4-byte increments`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. EnRUPT requires 4-64 bytes in 4-byte increments");
       }
 
       this._key = [...keyBytes];
@@ -226,7 +226,7 @@
 
       // Validate input length (must be multiple of 4 bytes and at least 8 bytes)
       if (this.inputBuffer.length < 8 || this.inputBuffer.length % 4 !== 0) {
-        throw new Error(`Input length must be at least 8 bytes and multiple of 4 bytes. Got ${this.inputBuffer.length} bytes`);
+        throw new Error("Input length must be at least 8 bytes and multiple of 4 bytes. Got " + this.inputBuffer.length + " bytes");
       }
 
       const output = this.isInverse
@@ -319,7 +319,7 @@
       // Unbalanced Feistel network structure
       for (let round = 0; round < rounds; round++) {
         sum = OpCodes.Shr32((sum + this.DELTA), 0);
-        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
+        const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
@@ -349,7 +349,7 @@
 
       // Reverse unbalanced Feistel network
       for (let round = 0; round < rounds; round++) {
-        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
+        const e = OpCodes.And32(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
@@ -375,8 +375,8 @@
       // operations like rotations, packing, and array operations.
 
       // Part 1: Rotation-based diffusion (unbalanced left shift dominance)
-      const part1 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
-      const part2 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
+      const part1 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
+      const part2 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
 
       // Part 2: Sum and key mixing with ADD operations
       const part3 = OpCodes.Shr32(OpCodes.XorN(sum, y), 0);
@@ -388,7 +388,7 @@
       const combined2 = OpCodes.Shr32((part3 + part4), 0);
 
       // Final mixing with XOR
-      return OpCodes.Shr32(OpCodes.XorN(combined1, combined2), 0);
+      return OpCodes.Shr32(OpCodes.Xor32(combined1, combined2), 0);
     }
   }
 

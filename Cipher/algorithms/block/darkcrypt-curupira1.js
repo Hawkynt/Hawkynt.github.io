@@ -94,6 +94,7 @@
   ];
 
   function matmul3(matrix, col) {
+    /** @type {uint8[]} */
     const out = [0, 0, 0];
     for (let i = 0; i < 3; i++) {
       let v = 0;
@@ -306,7 +307,7 @@
         (keyBytes.length - ks.minSize) % ks.stepSize === 0
       );
       if (!isValidSize)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Curupira-1 (DarkCrypt) requires 12, 18, or 24 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Curupira-1 (DarkCrypt) requires 12, 18, or 24 bytes");
       this._key = [...keyBytes];
       this._t = keyBytes.length / 6;
       this.KeySize = keyBytes.length;
@@ -324,7 +325,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

@@ -56,6 +56,7 @@
   const KEY_SCHEDULE_WARMUP = 3; // first 3 iterations are discarded, remaining 16 are captured
 
   // 1024-entry 32-bit lookup table, as used by the DarkCrypt implementation.
+  /** @type {uint32[]} */
   const Q128_TABLE = [
     0xd6d92632,0x5e84404d,0x4f341282,0x71654b06,0xd48d6a0b,0x245becc4,0xc8f84d80,0x22c620c9,
     0x66aa8b02,0x0ac697ff,0x8b755a36,0x2577931c,0x438d17b6,0xbb7b1bd1,0xe0a8f51e,0xf4fd583d,
@@ -257,7 +258,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Q128 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Q128 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = this._expandKey(this._key);
@@ -275,7 +276,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

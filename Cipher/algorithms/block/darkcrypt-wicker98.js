@@ -74,8 +74,10 @@
   const COMBINE_OP = ['&','&','&','&','&','|','|','&','|','&','&','|','&','|','&','|','|','|','|','|','|','|','&','&','|','&','|','&','&','&','|','|','&','&','&'];
   const OP_P = ['^','+','^','+','^','+','+','^','+','^','+','^','+','+','^','+','^','+','^','+','+','^','+','^','+','^','+','+','^','+','^','+','^','+','+'];
   const OP_S = ['+','^','^','+','+','^','+','+','^','^','+','+','^','+','+','^','^','+','+','^','+','+','^','^','+','+','^','+','+','^','^','+','+','^','+'];
+  /** @type {uint8[]} */
   const ROT = [2,4,8,16,21,6,12,24,16,11,10,20,8,16,25,14,28,24,16,19,22,12,24,16,27,26,20,8,16,25,18,4,8,16,1];
   // Target word cycles A,B,C,D (stored at these four "slot" indices) every 4 rounds.
+  /** @type {uint8[]} */
   const CYCLE = [8, 4, 0, 12];
 
   class DarkCryptWicker98Algorithm extends BlockCipherAlgorithm {
@@ -174,7 +176,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Wicker-98 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Wicker-98 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
@@ -191,7 +193,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

@@ -59,6 +59,7 @@
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Fixed 256-byte substitution table.
+  /** @type {uint8[]} */
   const SBOX = [
     0x17,0x63,0x50,0xC2,0xEB,0x3B,0xE7,0xDF,0xC6,0x6C,0x5B,0x86,
     0x64,0x56,0x6B,0x37,0xA1,0xD3,0xB7,0x1D,0x75,0x80,0xB9,0xE3,0x9D,0xEE,0xDB,0x71,
@@ -82,22 +83,22 @@
   const GF_POLY = 0x169; // custom GF(2^8) reduction polynomial (x^8+x^6+x^5+x^3+1)
 
   function rol8(x, n) {
-    x = OpCodes.AndN(x, 0xff);
-    return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 8 - n)), 0xff);
+    x = OpCodes.And32(x, 0xff);
+    return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 8 - n)), 0xff);
   }
 
   // Peasant/Russian multiplication in the DLL's custom GF(2^8) field.
   function gfMul(a, b) {
-    let A = OpCodes.AndN(a, 0xff);
-    let B = OpCodes.AndN(b, 0xff);
+    let A = OpCodes.And32(a, 0xff);
+    let B = OpCodes.And32(b, 0xff);
     let acc = 0;
     while (B !== 0) {
-      if (OpCodes.AndN(B, 1)) acc = OpCodes.XorN(acc, A);
+      if (OpCodes.AndN(B, 1)) acc = OpCodes.Xor32(acc, A);
       A = OpCodes.Shl32(A, 1);
-      if (OpCodes.AndN(A, 0x100)) A = OpCodes.XorN(A, GF_POLY);
+      if (OpCodes.AndN(A, 0x100)) A = OpCodes.Xor32(A, GF_POLY);
       B = OpCodes.Shr32(B, 1);
     }
-    return OpCodes.AndN(acc, 0xff);
+    return OpCodes.And32(acc, 0xff);
   }
 
   // Build the 232-byte key-expansion buffer L.
@@ -105,7 +106,7 @@
     const L = new Array(232);
     for (let i = 0; i < 32; i++) L[i] = keyBytes[i % 8];
     for (let i = 32; i < 232; i++) {
-      const v = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+      const v = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
                   OpCodes.XorN(L[i-32], L[i-7]), L[i-5]), L[i-3]), L[i-2]), L[i-1]), 0x1B);
       L[i] = rol8(v, 1);
     }
@@ -163,7 +164,7 @@
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
         let acc = 0;
-        for (let k = 0; k < 8; k++) acc = OpCodes.XorN(acc, gfMul(A[i*8+k], B[k*8+j]));
+        for (let k = 0; k < 8; k++) acc = OpCodes.Xor32(acc, gfMul(A[i*8+k], B[k*8+j]));
         M[i*8+j] = acc;
       }
     }
@@ -188,7 +189,7 @@
     const out = new Array(8);
     for (let i = 0; i < 8; i++) {
       let acc = 0;
-      for (let j = 0; j < 8; j++) acc = OpCodes.XorN(acc, gfMul(t[j], sched.M[i*8+j]));
+      for (let j = 0; j < 8; j++) acc = OpCodes.Xor32(acc, gfMul(t[j], sched.M[i*8+j]));
       out[i] = acc;
     }
     return out;
@@ -263,7 +264,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._sched = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. TC18 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. TC18 (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = keySchedule(keyBytes);
@@ -281,7 +282,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

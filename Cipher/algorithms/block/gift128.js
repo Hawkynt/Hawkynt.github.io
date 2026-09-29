@@ -189,8 +189,8 @@
 
     // Bit permutation helper using bit_permute_step technique
     bitPermuteStep(value, mask, shift) {
-      const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
-      return OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift));
+      const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
+      return OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift));
     }
 
     // PERM3_INNER - Core permutation used by all PERM functions
@@ -375,7 +375,7 @@
         // AddRoundKey
         state[2] = OpCodes.Xor32(state[2], keyState[1]);
         state[1] = OpCodes.Xor32(state[1], keyState[3]);
-        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
+        state[3] = OpCodes.Xor32(state[3], OpCodes.Xor32(0x80000000, Gift128Instance.RC[round]));
 
         // Ensure all values are unsigned 32-bit
         state = state.map(x => OpCodes.ToUint32(x));
@@ -438,7 +438,7 @@
         // AddRoundKey (same as encryption, XOR is self-inverse)
         state[2] = OpCodes.Xor32(state[2], keyState[1]);
         state[1] = OpCodes.Xor32(state[1], keyState[3]);
-        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
+        state[3] = OpCodes.Xor32(state[3], OpCodes.Xor32(0x80000000, Gift128Instance.RC[round]));
 
         // Ensure all values are unsigned 32-bit
         state = state.map(x => OpCodes.ToUint32(x));

@@ -54,6 +54,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Key-dependent multiplication-keyword tweak constants (official MARS "B" table).
+  /** @type {uint32[]} */
   const B = [0xa4a8d57b, 0x5b5d193b, 0xc8a8309b, 0x73f9a978];
 
   class DarkCryptMARS512Algorithm extends BlockCipherAlgorithm {
@@ -123,6 +124,7 @@
       this.KeySize = 0;
       this.expandedKey = null;
 
+      /** @type {uint32[]} */
       this.Sbox = [
             0x09d0c479, 0x28c8ffe0, 0x84aa6c39, 0x9dad7287, 0x7dff9be3, 0xd4268361, 0xc96da1d4, 0x7974cc93,
             0x85d0582e, 0x2a4b5705, 0x1ca16a62, 0xc3bd279d, 0x0f1f25e5, 0x5160372f, 0xc695c1fb, 0x4d7ff1e4,
@@ -198,7 +200,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this.expandedKey = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MARS-512 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MARS-512 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.expandedKey = this._expandKey(keyBytes);
@@ -216,7 +218,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

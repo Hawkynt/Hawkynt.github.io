@@ -192,7 +192,7 @@
 
       let exp = 1;
       for (let i = 0; i < this.TAB_LEN; i++) {
-        this.exp_tab[i] = OpCodes.AndN(exp, 0xFF);
+        this.exp_tab[i] = OpCodes.And32(exp, 0xFF);
         this.log_tab[this.exp_tab[i]] = i;
         exp = (exp * 45) % 257; // GF(257) with primitive element 45
       }
@@ -251,7 +251,7 @@
 
       // Validate key size (64 or 128 bits)
       if (keyBytes.length !== 8 && keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SAFER requires 8 bytes (K-64) or 16 bytes (K-128)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SAFER requires 8 bytes (K-64) or 16 bytes (K-128)");
       }
 
       this._key = [...keyBytes];
@@ -289,7 +289,7 @@
 
     set rounds(value) {
       if (!value || value < 1 || value > this.algorithm.MAX_ROUNDS) {
-        throw new Error(`Invalid round count: ${value} (1..${this.algorithm.MAX_ROUNDS})`);
+        throw new Error("Invalid round count: " + value + " (1.." + this.algorithm.MAX_ROUNDS + ")");
       }
       this.nofRounds = value;
       if (this._key) this.expandedKey = this._expandKey(this._key);
@@ -320,7 +320,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
@@ -353,23 +353,23 @@
       while (round--) {
         // Key addition/XOR
         a = OpCodes.XorN(a, this.expandedKey[++keyIndex]);
-        b = OpCodes.AndN((b + this.expandedKey[++keyIndex]), 0xFF);
-        c = OpCodes.AndN((c + this.expandedKey[++keyIndex]), 0xFF);
+        b = OpCodes.And32((b + this.expandedKey[++keyIndex]), 0xFF);
+        c = OpCodes.And32((c + this.expandedKey[++keyIndex]), 0xFF);
         d = OpCodes.XorN(d, this.expandedKey[++keyIndex]);
         e = OpCodes.XorN(e, this.expandedKey[++keyIndex]);
-        f = OpCodes.AndN((f + this.expandedKey[++keyIndex]), 0xFF);
-        g = OpCodes.AndN((g + this.expandedKey[++keyIndex]), 0xFF);
+        f = OpCodes.And32((f + this.expandedKey[++keyIndex]), 0xFF);
+        g = OpCodes.And32((g + this.expandedKey[++keyIndex]), 0xFF);
         h = OpCodes.XorN(h, this.expandedKey[++keyIndex]);
 
         // S-box layer
-        a = OpCodes.AndN((this._EXP(a) + this.expandedKey[++keyIndex]), 0xFF);
+        a = OpCodes.And32((this._EXP(a) + this.expandedKey[++keyIndex]), 0xFF);
         b = OpCodes.XorN(this._LOG(b), this.expandedKey[++keyIndex]);
         c = OpCodes.XorN(this._LOG(c), this.expandedKey[++keyIndex]);
-        d = OpCodes.AndN((this._EXP(d) + this.expandedKey[++keyIndex]), 0xFF);
-        e = OpCodes.AndN((this._EXP(e) + this.expandedKey[++keyIndex]), 0xFF);
+        d = OpCodes.And32((this._EXP(d) + this.expandedKey[++keyIndex]), 0xFF);
+        e = OpCodes.And32((this._EXP(e) + this.expandedKey[++keyIndex]), 0xFF);
         f = OpCodes.XorN(this._LOG(f), this.expandedKey[++keyIndex]);
         g = OpCodes.XorN(this._LOG(g), this.expandedKey[++keyIndex]);
-        h = OpCodes.AndN((this._EXP(h) + this.expandedKey[++keyIndex]), 0xFF);
+        h = OpCodes.And32((this._EXP(h) + this.expandedKey[++keyIndex]), 0xFF);
 
         // Pseudo-Hadamard Transform layers
         [a, b] = this._PHT(a, b); [c, d] = this._PHT(c, d);
@@ -388,16 +388,16 @@
 
       // Final key addition
       a = OpCodes.XorN(a, this.expandedKey[++keyIndex]);
-      b = OpCodes.AndN((b + this.expandedKey[++keyIndex]), 0xFF);
-      c = OpCodes.AndN((c + this.expandedKey[++keyIndex]), 0xFF);
+      b = OpCodes.And32((b + this.expandedKey[++keyIndex]), 0xFF);
+      c = OpCodes.And32((c + this.expandedKey[++keyIndex]), 0xFF);
       d = OpCodes.XorN(d, this.expandedKey[++keyIndex]);
       e = OpCodes.XorN(e, this.expandedKey[++keyIndex]);
-      f = OpCodes.AndN((f + this.expandedKey[++keyIndex]), 0xFF);
-      g = OpCodes.AndN((g + this.expandedKey[++keyIndex]), 0xFF);
+      f = OpCodes.And32((f + this.expandedKey[++keyIndex]), 0xFF);
+      g = OpCodes.And32((g + this.expandedKey[++keyIndex]), 0xFF);
       h = OpCodes.XorN(h, this.expandedKey[++keyIndex]);
 
-      return [OpCodes.AndN(a, 0xFF), OpCodes.AndN(b, 0xFF), OpCodes.AndN(c, 0xFF), OpCodes.AndN(d, 0xFF),
-              OpCodes.AndN(e, 0xFF), OpCodes.AndN(f, 0xFF), OpCodes.AndN(g, 0xFF), OpCodes.AndN(h, 0xFF)];
+      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
+              OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
     }
 
     _decryptBlock(block) {
@@ -413,12 +413,12 @@
 
       // Reverse final key addition
       h = OpCodes.XorN(h, this.expandedKey[keyIndex]);
-      g = OpCodes.AndN((g - this.expandedKey[--keyIndex]), 0xFF);
-      f = OpCodes.AndN((f - this.expandedKey[--keyIndex]), 0xFF);
+      g = OpCodes.And32((g - this.expandedKey[--keyIndex]), 0xFF);
+      f = OpCodes.And32((f - this.expandedKey[--keyIndex]), 0xFF);
       e = OpCodes.XorN(e, this.expandedKey[--keyIndex]);
       d = OpCodes.XorN(d, this.expandedKey[--keyIndex]);
-      c = OpCodes.AndN((c - this.expandedKey[--keyIndex]), 0xFF);
-      b = OpCodes.AndN((b - this.expandedKey[--keyIndex]), 0xFF);
+      c = OpCodes.And32((c - this.expandedKey[--keyIndex]), 0xFF);
+      b = OpCodes.And32((b - this.expandedKey[--keyIndex]), 0xFF);
       a = OpCodes.XorN(a, this.expandedKey[--keyIndex]);
 
       while (round--) {
@@ -437,50 +437,50 @@
         [e, f] = this._IPHT(e, f); [g, h] = this._IPHT(g, h);
 
         // Reverse S-box layer
-        h = OpCodes.AndN((h - this.expandedKey[--keyIndex]), 0xFF);
-        g = OpCodes.XorN(g, this.expandedKey[--keyIndex]);
-        f = OpCodes.XorN(f, this.expandedKey[--keyIndex]);
-        e = OpCodes.AndN((e - this.expandedKey[--keyIndex]), 0xFF);
-        d = OpCodes.AndN((d - this.expandedKey[--keyIndex]), 0xFF);
-        c = OpCodes.XorN(c, this.expandedKey[--keyIndex]);
-        b = OpCodes.XorN(b, this.expandedKey[--keyIndex]);
-        a = OpCodes.AndN((a - this.expandedKey[--keyIndex]), 0xFF);
+        h = OpCodes.And32((h - this.expandedKey[--keyIndex]), 0xFF);
+        g = OpCodes.Xor32(g, this.expandedKey[--keyIndex]);
+        f = OpCodes.Xor32(f, this.expandedKey[--keyIndex]);
+        e = OpCodes.And32((e - this.expandedKey[--keyIndex]), 0xFF);
+        d = OpCodes.And32((d - this.expandedKey[--keyIndex]), 0xFF);
+        c = OpCodes.Xor32(c, this.expandedKey[--keyIndex]);
+        b = OpCodes.Xor32(b, this.expandedKey[--keyIndex]);
+        a = OpCodes.And32((a - this.expandedKey[--keyIndex]), 0xFF);
 
         h = OpCodes.XorN(this._LOG(h), this.expandedKey[--keyIndex]);
-        g = OpCodes.AndN((this._EXP(g) - this.expandedKey[--keyIndex]), 0xFF);
-        f = OpCodes.AndN((this._EXP(f) - this.expandedKey[--keyIndex]), 0xFF);
+        g = OpCodes.And32((this._EXP(g) - this.expandedKey[--keyIndex]), 0xFF);
+        f = OpCodes.And32((this._EXP(f) - this.expandedKey[--keyIndex]), 0xFF);
         e = OpCodes.XorN(this._LOG(e), this.expandedKey[--keyIndex]);
         d = OpCodes.XorN(this._LOG(d), this.expandedKey[--keyIndex]);
-        c = OpCodes.AndN((this._EXP(c) - this.expandedKey[--keyIndex]), 0xFF);
-        b = OpCodes.AndN((this._EXP(b) - this.expandedKey[--keyIndex]), 0xFF);
+        c = OpCodes.And32((this._EXP(c) - this.expandedKey[--keyIndex]), 0xFF);
+        b = OpCodes.And32((this._EXP(b) - this.expandedKey[--keyIndex]), 0xFF);
         a = OpCodes.XorN(this._LOG(a), this.expandedKey[--keyIndex]);
       }
 
-      return [OpCodes.AndN(a, 0xFF), OpCodes.AndN(b, 0xFF), OpCodes.AndN(c, 0xFF), OpCodes.AndN(d, 0xFF),
-              OpCodes.AndN(e, 0xFF), OpCodes.AndN(f, 0xFF), OpCodes.AndN(g, 0xFF), OpCodes.AndN(h, 0xFF)];
+      return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
+              OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
     }
 
     // Exponential S-box lookup
     _EXP(x) {
-      return this.algorithm.exp_tab[OpCodes.AndN(x, 0xFF)];
+      return this.algorithm.exp_tab[OpCodes.And32(x, 0xFF)];
     }
 
     // Logarithmic S-box lookup
     _LOG(x) {
-      return this.algorithm.log_tab[OpCodes.AndN(x, 0xFF)];
+      return this.algorithm.log_tab[OpCodes.And32(x, 0xFF)];
     }
 
     // Pseudo-Hadamard Transform
     _PHT(x, y) {
-      const new_y = OpCodes.AndN((y + x), 0xFF);
-      const new_x = OpCodes.AndN((x + new_y), 0xFF);
+      const new_y = OpCodes.And32((y + x), 0xFF);
+      const new_x = OpCodes.And32((x + new_y), 0xFF);
       return [new_x, new_y];
     }
 
     // Inverse Pseudo-Hadamard Transform
     _IPHT(x, y) {
-      const new_x = OpCodes.AndN((x - y), 0xFF);
-      const new_y = OpCodes.AndN((y - new_x), 0xFF);
+      const new_x = OpCodes.And32((x - y), 0xFF);
+      const new_y = OpCodes.And32((y - new_x), 0xFF);
       return [new_x, new_y];
     }
 
@@ -488,7 +488,7 @@
     _expandKey(keyBytes) {
       const nofRounds = this.nofRounds;
       if (nofRounds > this.algorithm.MAX_ROUNDS) {
-        throw new Error(`Too many rounds: ${nofRounds}`);
+        throw new Error("Too many rounds: " + nofRounds);
       }
 
       const keyLen = 1 + this.algorithm.BLOCK_LEN * (1 + 2 * nofRounds);
@@ -509,7 +509,7 @@
         const userkey1_j = keyBytes[j] || 0;
         const userkey2_j = (keyBytes.length > 8) ? (keyBytes[j + 8] || 0) : userkey1_j;
 
-        ka[this.algorithm.BLOCK_LEN] = OpCodes.XorN(ka[this.algorithm.BLOCK_LEN], ka[j] = OpCodes.RotL8(userkey1_j, 5));
+        ka[this.algorithm.BLOCK_LEN] = OpCodes.Xor32(ka[this.algorithm.BLOCK_LEN], ka[j] = OpCodes.RotL8(userkey1_j, 5));
         kb[this.algorithm.BLOCK_LEN] = OpCodes.XorN(kb[this.algorithm.BLOCK_LEN], kb[j] = key[keyIndex++] = userkey2_j);
       }
 
@@ -523,12 +523,12 @@
 
         // Generate first 8 bytes of round key
         for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
-          key[keyIndex++] = OpCodes.AndN((ka[j] + this._EXP(this._EXP(OpCodes.AndN((18 * i + j + 1), 0xFF)))), 0xFF);
+          key[keyIndex++] = OpCodes.And32((ka[j] + this._EXP(this._EXP(OpCodes.And32((18 * i + j + 1), 0xFF)))), 0xFF);
         }
 
         // Generate second 8 bytes of round key
         for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
-          key[keyIndex++] = OpCodes.AndN((kb[j] + this._EXP(this._EXP(OpCodes.AndN((18 * i + j + 10), 0xFF)))), 0xFF);
+          key[keyIndex++] = OpCodes.And32((kb[j] + this._EXP(this._EXP(OpCodes.And32((18 * i + j + 10), 0xFF)))), 0xFF);
         }
       }
 

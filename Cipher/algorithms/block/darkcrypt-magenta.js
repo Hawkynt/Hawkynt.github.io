@@ -59,18 +59,18 @@
     const table = new Array(256).fill(0);
     let cur = 1;
     for (let i = 0; i < 255; i++) {
-      table[i] = OpCodes.AndN(cur, 0xFF);
+      table[i] = OpCodes.And32(cur, 0xFF);
       cur = OpCodes.Shl32(cur, 1);
       if (OpCodes.AndN(cur, 0x100))
-        cur = OpCodes.XorN(cur, 0x165);
-      cur = OpCodes.AndN(cur, 0x1FF);
+        cur = OpCodes.Xor32(cur, 0x165);
+      cur = OpCodes.And32(cur, 0x1FF);
     }
     return table;
   })();
 
   // a(x,y) = S(x XOR S(y))
   function a(x, y) {
-    return SBOX[OpCodes.XorN(x, SBOX[y])];
+    return SBOX[OpCodes.Xor32(x, SBOX[y])];
   }
 
   // P: pairs byte i with byte i+8 (i=0..7), both directions
@@ -189,7 +189,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._subkeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MAGENTA (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MAGENTA (DarkCrypt) requires exactly 32 bytes");
 
       this._key = OpCodes.CopyArray(keyBytes);
       this.KeySize = keyBytes.length;
@@ -213,7 +213,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -228,7 +228,7 @@
       let A = block.slice(0, 4), B = block.slice(4, 8), C = block.slice(8, 12), D = block.slice(12, 16);
 
       for (let i = 0; i < 8; i++) {
-        if (OpCodes.AndN(i, 1) === 0) {
+        if (OpCodes.And32(i, 1) === 0) {
           const fOut = magentaF(C.concat(D), this._subkeys[i]);
           A = OpCodes.XorArrays(A, fOut.slice(0, 4));
           B = OpCodes.XorArrays(B, fOut.slice(4, 8));
@@ -246,7 +246,7 @@
       let A = block.slice(0, 4), B = block.slice(4, 8), C = block.slice(8, 12), D = block.slice(12, 16);
 
       for (let i = 0; i < 8; i++) {
-        if (OpCodes.AndN(i, 1) === 0) {
+        if (OpCodes.And32(i, 1) === 0) {
           const fOut = magentaF(A.concat(B), this._subkeys[i]);
           C = OpCodes.XorArrays(C, fOut.slice(0, 4));
           D = OpCodes.XorArrays(D, fOut.slice(4, 8));

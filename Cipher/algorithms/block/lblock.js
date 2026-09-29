@@ -71,23 +71,23 @@
       // K <<< 29 (rotate left by 29 bits)
       const keyR = [k[6], k[7], k[8], k[9]];
 
-      k[9] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[6], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[5], 0xF8), 3), 0x1F));
-      k[8] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[5], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[4], 0xF8), 3), 0x1F));
-      k[7] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[4], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[3], 0xF8), 3), 0x1F));
-      k[6] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[3], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[2], 0xF8), 3), 0x1F));
-      k[5] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[2], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[1], 0xF8), 3), 0x1F));
-      k[4] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[1], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(k[0], 0xF8), 3), 0x1F));
-      k[3] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(k[0], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(keyR[3], 0xF8), 3), 0x1F));
-      k[2] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(keyR[3], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(keyR[2], 0xF8), 3), 0x1F));
-      k[1] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(keyR[2], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(keyR[1], 0xF8), 3), 0x1F));
-      k[0] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl8(OpCodes.AndN(keyR[1], 0x07), 5), 0xE0), OpCodes.AndN(OpCodes.Shr8(OpCodes.AndN(keyR[0], 0xF8), 3), 0x1F));
+      k[9] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[6], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[5], 0xF8), 3), 0x1F));
+      k[8] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[5], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[4], 0xF8), 3), 0x1F));
+      k[7] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[4], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[3], 0xF8), 3), 0x1F));
+      k[6] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[3], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[2], 0xF8), 3), 0x1F));
+      k[5] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[2], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[1], 0xF8), 3), 0x1F));
+      k[4] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[1], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(k[0], 0xF8), 3), 0x1F));
+      k[3] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(k[0], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(keyR[3], 0xF8), 3), 0x1F));
+      k[2] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(keyR[3], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(keyR[2], 0xF8), 3), 0x1F));
+      k[1] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(keyR[2], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(keyR[1], 0xF8), 3), 0x1F));
+      k[0] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shl8(OpCodes.And32(keyR[1], 0x07), 5), 0xE0), OpCodes.And32(OpCodes.Shr8(OpCodes.And32(keyR[0], 0xF8), 3), 0x1F));
 
       // Apply S-boxes to k[9]
-      k[9] = OpCodes.XorN(OpCodes.Shl8(SBOX[9][OpCodes.AndN(OpCodes.Shr8(k[9], 4), 0x0F)], 4), SBOX[8][OpCodes.AndN(k[9], 0x0F)]);
+      k[9] = OpCodes.Xor32(OpCodes.Shl8(SBOX[9][OpCodes.And32(OpCodes.Shr8(k[9], 4), 0x0F)], 4), SBOX[8][OpCodes.And32(k[9], 0x0F)]);
 
       // XOR with round constant
-      k[6] = OpCodes.XorN(k[6], OpCodes.AndN(OpCodes.Shr32(i, 2), 0x07));
-      k[5] = OpCodes.XorN(k[5], OpCodes.Shl8(OpCodes.AndN(i, 0x03), 6));
+      k[6] = OpCodes.Xor32(k[6], OpCodes.And32(OpCodes.Shr32(i, 2), 0x07));
+      k[5] = OpCodes.Xor32(k[5], OpCodes.Shl8(OpCodes.And32(i, 0x03), 6));
 
       // Extract round key
       roundKeys[i] = [k[6], k[7], k[8], k[9]];
@@ -110,17 +110,17 @@
 
     // Step 2: S-box substitution (2 S-boxes per byte)
     // Each byte: high nibble uses odd S-box, low nibble uses even S-box
-    tmp[0] = OpCodes.XorN(OpCodes.Shl8(SBOX[1][OpCodes.AndN(OpCodes.Shr8(tmp[0], 4), 0x0F)], 4), SBOX[0][OpCodes.AndN(tmp[0], 0x0F)]);
-    tmp[1] = OpCodes.XorN(OpCodes.Shl8(SBOX[3][OpCodes.AndN(OpCodes.Shr8(tmp[1], 4), 0x0F)], 4), SBOX[2][OpCodes.AndN(tmp[1], 0x0F)]);
-    tmp[2] = OpCodes.XorN(OpCodes.Shl8(SBOX[5][OpCodes.AndN(OpCodes.Shr8(tmp[2], 4), 0x0F)], 4), SBOX[4][OpCodes.AndN(tmp[2], 0x0F)]);
-    tmp[3] = OpCodes.XorN(OpCodes.Shl8(SBOX[7][OpCodes.AndN(OpCodes.Shr8(tmp[3], 4), 0x0F)], 4), SBOX[6][OpCodes.AndN(tmp[3], 0x0F)]);
+    tmp[0] = OpCodes.Xor32(OpCodes.Shl8(SBOX[1][OpCodes.And32(OpCodes.Shr8(tmp[0], 4), 0x0F)], 4), SBOX[0][OpCodes.And32(tmp[0], 0x0F)]);
+    tmp[1] = OpCodes.Xor32(OpCodes.Shl8(SBOX[3][OpCodes.And32(OpCodes.Shr8(tmp[1], 4), 0x0F)], 4), SBOX[2][OpCodes.And32(tmp[1], 0x0F)]);
+    tmp[2] = OpCodes.Xor32(OpCodes.Shl8(SBOX[5][OpCodes.And32(OpCodes.Shr8(tmp[2], 4), 0x0F)], 4), SBOX[4][OpCodes.And32(tmp[2], 0x0F)]);
+    tmp[3] = OpCodes.Xor32(OpCodes.Shl8(SBOX[7][OpCodes.And32(OpCodes.Shr8(tmp[3], 4), 0x0F)], 4), SBOX[6][OpCodes.And32(tmp[3], 0x0F)]);
 
     // Step 3: P-layer permutation (inline nibble swapping and XOR)
     const t = new Array(4);
-    t[0] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shr8(tmp[0], 4), 0x0F), OpCodes.AndN(tmp[1], 0xF0));
-    t[1] = OpCodes.XorN(OpCodes.AndN(tmp[0], 0x0F), OpCodes.Shl8(OpCodes.AndN(tmp[1], 0x0F), 4));
-    t[2] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shr8(tmp[2], 4), 0x0F), OpCodes.AndN(tmp[3], 0xF0));
-    t[3] = OpCodes.XorN(OpCodes.AndN(tmp[2], 0x0F), OpCodes.Shl8(OpCodes.AndN(tmp[3], 0x0F), 4));
+    t[0] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr8(tmp[0], 4), 0x0F), OpCodes.And32(tmp[1], 0xF0));
+    t[1] = OpCodes.Xor32(OpCodes.And32(tmp[0], 0x0F), OpCodes.Shl8(OpCodes.And32(tmp[1], 0x0F), 4));
+    t[2] = OpCodes.Xor32(OpCodes.And32(OpCodes.Shr8(tmp[2], 4), 0x0F), OpCodes.And32(tmp[3], 0xF0));
+    t[3] = OpCodes.Xor32(OpCodes.And32(tmp[2], 0x0F), OpCodes.Shl8(OpCodes.And32(tmp[3], 0x0F), 4));
 
     return t;
   }
@@ -223,7 +223,7 @@
       }
 
       if (keyBytes.length !== 10) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 10 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 10 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -267,7 +267,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
       const output = [];

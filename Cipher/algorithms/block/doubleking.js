@@ -125,8 +125,11 @@
 
       // Constants from Tim van Dijk's reference implementation (DoubleKing.py)
       this.ROUND_CONSTANTS_TEMPLATE = [0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0];
+      /** @type {uint8[]} */
       this.ROUND_CONSTANTS = [11, 22, 44, 88, 176, 113, 226, 213, 187, 103, 206, 141];
+      /** @type {uint8[]} */
       this.ROTATION_CONSTANTS = [0, 1, 3, 6, 10, 15, 21, 28, 4, 13, 23, 2];
+      /** @type {uint8[]} */
       this.DIFFUSION_CONSTANTS = [0, 2, 6, 7, 9, 10, 11];
     }
 
@@ -159,7 +162,7 @@
         const template = [...this.ROUND_CONSTANTS_TEMPLATE];
         for (let i = 0; i < 12; i++) {
           const roundConstValue = template[i] === -1 ? this.ROUND_CONSTANTS[r] : template[i];
-          result[i] = OpCodes.XorN(OpCodes.XorN(block[i], key[i]), roundConstValue);
+          result[i] = OpCodes.Xor32(OpCodes.XorN(block[i], key[i]), roundConstValue);
         }
       } else if (mode === 'dec') {
         // Decryption mode - different round constant handling
@@ -172,7 +175,7 @@
         const diffusedTemplate = this.diffusion([...template.reverse()]);
 
         for (let i = 0; i < 12; i++) {
-          result[i] = OpCodes.XorN(OpCodes.XorN(block[i], key[i]), diffusedTemplate[i]);
+          result[i] = OpCodes.Xor32(OpCodes.XorN(block[i], key[i]), diffusedTemplate[i]);
         }
       }
 
@@ -204,7 +207,7 @@
     sBox(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
-        result[i] = OpCodes.XorN(block[i], OpCodes.OrN(block[(i + 4) % 12], ~OpCodes.ToUint32(block[(i + 8) % 12])));
+        result[i] = OpCodes.Xor32(block[i], OpCodes.Or32(block[(i + 4) % 12], ~OpCodes.ToUint32(block[(i + 8) % 12])));
       }
       return result;
     }
@@ -284,7 +287,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -343,7 +346,7 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

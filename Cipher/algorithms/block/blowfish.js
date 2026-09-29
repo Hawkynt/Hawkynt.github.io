@@ -220,7 +220,7 @@
 
       // Validate key size (4-56 bytes)
       if (keyBytes.length < 4 || keyBytes.length > 56) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Blowfish requires 4-56 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Blowfish requires 4-56 bytes");
       }
 
       this._key = [...keyBytes];
@@ -253,6 +253,7 @@
 
     _initConstants() {
       // Initial P-box constants (digits of pi in hexadecimal)
+      /** @type {uint32[]} */
       this.PBOX_INIT = [
         0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0,
         0x082efa98, 0xec4e6c89, 0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c,
@@ -266,6 +267,7 @@
     _initProperSBoxes() {
       // Proper Blowfish S-box constants from the original specification
       // S-box 1 (first 256 entries)
+      /** @type {uint32[]} */
       this.SBOX1_INIT = [
         0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,
         0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16,
@@ -313,6 +315,7 @@
       ];
 
       // S-box 2
+      /** @type {uint32[]} */
       this.SBOX2_INIT = [
         0x4b7a70e9, 0xb5b32944, 0xdb75092e, 0xc4192623, 0xad6ea6b0, 0x49a7df7d,
         0x9cee60b8, 0x8fedb266, 0xecaa8c71, 0x699a17ff, 0x5664526c, 0xc2b19ee1,
@@ -360,6 +363,7 @@
       ];
 
       // S-box 3
+      /** @type {uint32[]} */
       this.SBOX3_INIT = [
         0xe93d5a68, 0x948140f7, 0xf64c261c, 0x94692934, 0x411520f7, 0x7602d4f7,
         0xbcf46b2e, 0xd4a20068, 0xd4082471, 0x3320f46a, 0x43b7d4b7, 0x500061af,
@@ -407,6 +411,7 @@
       ];
 
       // S-box 4
+      /** @type {uint32[]} */
       this.SBOX4_INIT = [
         0x3a39ce37, 0xd3faf5cf, 0xabc27737, 0x5ac52d1b, 0x5cb0679e, 0x4fa33742,
         0xd3822740, 0x99bc9bbe, 0xd5118e9d, 0xbf0f7315, 0xd62d1c7e, 0xc700c47b,
@@ -476,7 +481,7 @@
         keyIndex = (keyIndex + 1) % key.length;
 
         const keyWord = OpCodes.Pack32BE(b0, b1, b2, b3);
-        this.pBox[i] = OpCodes.XorN(this.pBox[i], keyWord);
+        this.pBox[i] = OpCodes.Xor32(this.pBox[i], keyWord);
       }
 
       // Encrypt all-zero string with the current state and use results to replace P-box and S-boxes
@@ -559,8 +564,8 @@
 
       // 16 rounds in reverse order
       for (let i = 15; i >= 0; i--) {
-        right = OpCodes.XorN(right, this._f(left));
-        left = OpCodes.XorN(left, this.pBox[i]);
+        right = OpCodes.Xor32(right, this._f(left));
+        left = OpCodes.Xor32(left, this.pBox[i]);
 
         // Swap left and right
         const temp = left;
@@ -584,7 +589,7 @@
       const temp1 = OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]);
 
       // Step 2: temp1 XOR S3[c]
-      const temp2 = OpCodes.XorN(temp1, this.sBox3[c]);
+      const temp2 = OpCodes.Xor32(temp1, this.sBox3[c]);
 
       // Step 3: temp2 + S4[d] mod OpCodes.Xor32(2, 32)
       return OpCodes.ToUint32(temp2 + this.sBox4[d]);

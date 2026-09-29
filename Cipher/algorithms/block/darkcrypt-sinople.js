@@ -60,6 +60,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // S0: fixed XOR-tap S-box (256 x 32-bit).
+  /** @type {uint32[]} */
   const S0 = [
     0x80b26358, 0x6dd6428b, 0xeb18fbf2, 0xcf9a5de5, 0x52338ab4, 0xcba557d0, 0x4f3931d0, 0xeede690c,
     0xe1f810ea, 0xcfc4fc91, 0x62203ec7, 0x7a63c227, 0xedcc58a1, 0x17b62c48, 0x697b6e99, 0x0628dafa,
@@ -96,6 +97,7 @@
   ];
 
   // S1: fixed ADD-tap S-box (256 x 32-bit).
+  /** @type {uint32[]} */
   const S1 = [
     0x2883d2bf, 0x6d06c2ed, 0xbbc0e8a5, 0x9c4d9827, 0x68b6a43a, 0x076eff68, 0xb4674931, 0x06612aec,
     0xaf0fa5ca, 0x10fc9d00, 0x895fa667, 0x2dc393aa, 0x88b11802, 0x75546ce7, 0x52fc7389, 0xf997af66,
@@ -203,7 +205,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._KS = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Sinople (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Sinople (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._KS = this._buildSchedule(this._key);
@@ -221,7 +223,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

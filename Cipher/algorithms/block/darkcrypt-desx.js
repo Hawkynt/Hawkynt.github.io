@@ -50,18 +50,24 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ---- Standard DES tables (bit-identical to textbook DES) ----
+  /** @type {uint8[]} */
   const IP = [58,50,42,34,26,18,10,2,60,52,44,36,28,20,12,4,62,54,46,38,30,22,14,6,64,56,48,40,32,24,16,8,
               57,49,41,33,25,17,9,1,59,51,43,35,27,19,11,3,61,53,45,37,29,21,13,5,63,55,47,39,31,23,15,7];
+  /** @type {uint8[]} */
   const FP = [40,8,48,16,56,24,64,32,39,7,47,15,55,23,63,31,38,6,46,14,54,22,62,30,37,5,45,13,53,21,61,29,
               36,4,44,12,52,20,60,28,35,3,43,11,51,19,59,27,34,2,42,10,50,18,58,26,33,1,41,9,49,17,57,25];
+  /** @type {uint8[]} */
   const PC1 = [57,49,41,33,25,17,9,1,58,50,42,34,26,18,10,2,59,51,43,35,27,19,11,3,60,52,44,36,
                63,55,47,39,31,23,15,7,62,54,46,38,30,22,14,6,61,53,45,37,29,21,13,5,28,20,12,4];
+  /** @type {uint8[]} */
   const PC2 = [14,17,11,24,1,5,3,28,15,6,21,10,23,19,12,4,26,8,16,7,27,20,13,2,
                41,52,31,37,47,55,30,40,51,45,33,48,44,49,39,56,34,53,46,42,50,36,29,32];
   // Cumulative left-rotation amount (from the ORIGINAL PC1 output) used per round
   // by DarkCrypt's schedule generator: rounds are recomputed from pc1[], not
   // rotated incrementally from the previous round.
+  /** @type {uint8[]} */
   const ROT = [1,2,4,6,8,10,12,14,15,17,19,21,23,25,27,28];
+  /** @type {uint8[]} */
   const PTAB = [16,7,20,21,29,12,28,17,1,15,23,26,5,18,31,10,2,8,24,14,32,27,3,9,19,13,30,6,22,11,4,25];
   const SBOXES = [
     [14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7, 0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8,
@@ -83,6 +89,7 @@
   ];
 
   // DarkCrypt-specific 256-byte S-box driving the K2 (output-whitening key) LFSR.
+  /** @type {uint8[]} */
   const K2SBOX = [
     0xBD,0x56,0xEA,0xF2,0xA2,0xF1,0xAC,0x2A,0xB0,0x93,0xD1,0x9C,0x1B,0x33,0xFD,0xD0,
     0x30,0x04,0xB6,0xDC,0x7D,0xDF,0x32,0x4B,0xF7,0xCB,0x45,0x9B,0x31,0xBB,0x21,0x5A,
@@ -228,6 +235,7 @@
   // K2 (output whitening key) LFSR: 8 bytes of desKeyOrig, then 8 bytes of K1,
   // each step folding K2SBOX[buf[0]^buf[1]] ^ srcByte into the shift register.
   function deriveK2(desKeyOrig, K1) {
+    /** @type {uint8[]} */
     const buf = [0, 0, 0, 0, 0, 0, 0, 0];
     function step(srcByte) {
       const fb = K2SBOX[OpCodes.And32(OpCodes.Xor32(buf[0], buf[1]), 0xFF)];
@@ -313,7 +321,7 @@
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. DES-X (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. DES-X (DarkCrypt) requires exactly 16 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
@@ -337,7 +345,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

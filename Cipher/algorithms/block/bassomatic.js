@@ -95,6 +95,7 @@
   const NTABLES = 8;           // number of permutation tables (key schedule)
   const BLOCK_SIZE = 256;      // BassOmatic block size in bytes
   const MAXTICS = 16383;       // give up on a stuck LFSR after this many tics
+  /** @type {uint8[]} */
   const BIT_MASKS = [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01];
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -284,7 +285,7 @@
 
       // initkey() rejects a key shorter than 2 bytes (control byte + body)
       if (keyBytes.length < 2) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. BassOmatic requires at least 2 bytes (1 control byte + 1 key byte)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. BassOmatic requires at least 2 bytes (1 control byte + 1 key byte)");
       }
 
       // The original source silently clamps the key to 255 bytes
@@ -320,8 +321,8 @@
       let count = BLOCK_SIZE;
       while (count--) {
         ltail = (ltail + 255) % BLOCK_SIZE;
-        const value = OpCodes.XorN(OpCodes.XorN(lfsr[ltap0], lfsr[ltap82]), lfsr[ltap255]);
-        lfsr[ltail] = OpCodes.AndN(value, 0xFF);
+        const value = OpCodes.Xor32(OpCodes.XorN(lfsr[ltap0], lfsr[ltap82]), lfsr[ltap255]);
+        lfsr[ltail] = OpCodes.And32(value, 0xFF);
         ltap0 = (ltap0 + 255) % BLOCK_SIZE;
         ltap82 = (ltap82 + 255) % BLOCK_SIZE;
         ltap255 = (ltap255 + 255) % BLOCK_SIZE;
@@ -348,10 +349,10 @@
       const size = seed.length;
       this.lfsr = new Array(BLOCK_SIZE).fill(0);
       this.rtail = 0;
-      let c = OpCodes.AndN(size, 0xFFFF);
+      let c = OpCodes.And32(size, 0xFFFF);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        c = OpCodes.AndN(c + seed[i % size], 0xFFFF);
-        this.lfsr[i] = OpCodes.AndN(c + Math.floor(c / 256), 0xFF);
+        c = OpCodes.And32(c + seed[i % size], 0xFFFF);
+        this.lfsr[i] = OpCodes.And32(c + Math.floor(c / 256), 0xFF);
       }
     }
 
@@ -362,7 +363,7 @@
     _stomplfsr() {
       let i = 255, idx = 0;
       while (i) {
-        this.lfsr[idx] = OpCodes.XorN(this.lfsr[idx], i);
+        this.lfsr[idx] = OpCodes.Xor32(this.lfsr[idx], i);
         ++idx;
         --i;
       }
@@ -492,7 +493,7 @@
         const bitmask = BIT_MASKS[bitIndex];
         const table = this.tlist[bitIndex];
         for (let i = 0; i < BLOCK_SIZE; ++i)
-          outArr[table[i]] = OpCodes.OrN(outArr[table[i]], OpCodes.AndN(inArr[i], bitmask));
+          outArr[table[i]] = OpCodes.Or32(outArr[table[i]], OpCodes.And32(inArr[i], bitmask));
       }
     }
 
@@ -500,17 +501,17 @@
     _shred4bit(inArr, outArr, t1, t2, bitmask) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
         outArr[t1[i]] = OpCodes.AndN(inArr[i], bitmask);
-      const invMask = OpCodes.AndN(OpCodes.Not32(bitmask), 0xFF);
+      const invMask = OpCodes.And32(OpCodes.Not32(bitmask), 0xFF);
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        outArr[t2[i]] = OpCodes.OrN(outArr[t2[i]], OpCodes.AndN(inArr[i], invMask));
+        outArr[t2[i]] = OpCodes.Or32(outArr[t2[i]], OpCodes.And32(inArr[i], invMask));
     }
 
     /** multilookup - substitute 32-byte groups through a rotating selection of the 8 tables. */
     _multilookup(inArr, outArr, tiStart) {
-      let ti = OpCodes.AndN(tiStart, 0xFF);
+      let ti = OpCodes.And32(tiStart, 0xFF);
       for (let group = 0; group < NTABLES; ++group) {
-        const table = this.tlist[OpCodes.AndN(ti, 7)];
-        ti = OpCodes.AndN(ti + 1, 0xFF);
+        const table = this.tlist[OpCodes.And32(ti, 7)];
+        ti = OpCodes.And32(ti + 1, 0xFF);
         const base = group * 32;
         for (let pos = 0; pos < 32; ++pos)
           outArr[base + pos] = table[inArr[base + pos]];
@@ -526,7 +527,7 @@
     /** ixortable - inverse of xortable when table has already been inverted. */
     _ixortable(block, table) {
       for (let i = 0; i < BLOCK_SIZE; ++i)
-        block[table[i]] = OpCodes.XorN(block[table[i]], i);
+        block[table[i]] = OpCodes.Xor32(block[table[i]], i);
     }
 
     /** rake - unkeyed diffusion: cumulative forward XOR, then cumulative backward addition mod 256. */
@@ -547,7 +548,7 @@
 
     /** f(i,j) - circular addressing mod 8 into tlist, as used throughout bassomatic(). */
     _f(i, j) {
-      return OpCodes.AndN(i + j, 7);
+      return OpCodes.And32(i + j, 7);
     }
 
     /** tl(i,j) - convenience accessor for tlist[f(i,j)]. */
@@ -603,10 +604,10 @@
      */
     _initKey(keyBytes, decrypt) {
       const control = keyBytes[0];
-      this.nrounds = OpCodes.AndN(control, 0x07) + 1;
-      this.shred8ways = OpCodes.AndN(control, 0x08) !== 0;
-      this.rerand = OpCodes.AndN(control, 0x20) !== 0;
-      this.hardrand = OpCodes.AndN(control, 0x10) !== 0 && !this.rerand;
+      this.nrounds = OpCodes.And32(control, 0x07) + 1;
+      this.shred8ways = OpCodes.And32(control, 0x08) !== 0;
+      this.rerand = OpCodes.And32(control, 0x20) !== 0;
+      this.hardrand = OpCodes.And32(control, 0x10) !== 0 && !this.rerand;
       this.uncryp = false; // initially assume encrypt, in case of hardrand
 
       this.tlist = new Array(NTABLES).fill(null);
@@ -673,7 +674,7 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];

@@ -62,6 +62,7 @@
   const BLOCK_BYTES = 8;
 
   // Fixed 256-byte substitution box.
+  /** @type {uint8[]} */
   const SBOX = [
     0x89, 0x56, 0xb3, 0x44, 0x5d, 0x69, 0x13, 0xc0, 0x61, 0x1e, 0xed, 0xa6, 0xcb, 0x36, 0xa2, 0x1b,
     0xe0, 0xd5, 0xba, 0xbe, 0x55, 0xfc, 0x4e, 0xcd, 0xee, 0x07, 0x9e, 0x5a, 0xdc, 0xc9, 0xfe, 0x3c,
@@ -82,9 +83,11 @@
   ];
 
   // Fixed byte-position permutation (8 entries).
+  /** @type {uint8[]} */
   const TABLE2 = [0x00, 0x03, 0x02, 0x05, 0x04, 0x07, 0x06, 0x01];
 
   // Fixed round permutation (16 entries).
+  /** @type {uint8[]} */
   const TABLE3 = [0x00, 0x03, 0x0a, 0x05, 0x04, 0x07, 0x0e, 0x09, 0x08, 0x0b, 0x02, 0x0d, 0x0c, 0x0f, 0x06, 0x01];
 
   // Computes the byte XORed into block[i] during round r; reads every other byte of block.
@@ -167,7 +170,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Snappy (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Snappy (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
@@ -184,7 +187,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

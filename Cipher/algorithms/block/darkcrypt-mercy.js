@@ -387,7 +387,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._ks = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Mercy-6 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Mercy-6 (DarkCrypt) requires exactly 32 bytes");
       this._ks = keySchedule(keyBytes);
       this.KeySize = keyBytes.length;
     }
@@ -404,7 +404,7 @@
       if (!this._ks) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

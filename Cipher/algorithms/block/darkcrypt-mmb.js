@@ -48,8 +48,10 @@
   const MOD_2_32_1 = OpCodes.ShiftLn(1n, 32) - 1n;
 
   // Per-word multiplication constants (encrypt direction).
+  /** @type {uint32[]} */
   const FWD_CONST = [0x025F1CDB, 0x04BE39B6, 0x12F8E6D8, 0x2F8E6D81];
   // Multiplicative inverses of FWD_CONST modulo (2^32 - 1), used for decryption.
+  /** @type {uint32[]} */
   const INV_CONST = [0x0DAD4694, 0x06D6A34A, 0x81B5A8D2, 0x281B5A8D];
 
   // Multiplication modulo 2^32 - 1.
@@ -169,7 +171,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MMB (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MMB (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K = [
@@ -192,7 +194,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -232,6 +234,7 @@
     _decryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
+      /** @type {uint8[]} */
       const rotations = [2, 1, 0, 3, 2, 1, 0];
       for (let r = 0; r < ROUNDS + 1; r++) {
         for (let j = 0; j < 4; j++) w[j] = OpCodes.Xor32(w[j], K[(rotations[r] + j) % 4]);

@@ -315,7 +315,7 @@
     // Encrypt a 512-byte block using 6-round Feistel network
     encryptBlock(block, key, tweak) {
       if (block.length !== this.BLOCK_SIZE) {
-        throw new Error(`Block must be exactly ${this.BLOCK_SIZE} bytes`);
+        throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
       }
 
       // Split block into left and right halves
@@ -348,7 +348,7 @@
     // Decrypt a 512-byte block (reverse Feistel network)
     decryptBlock(block, key, tweak) {
       if (block.length !== this.BLOCK_SIZE) {
-        throw new Error(`Block must be exactly ${this.BLOCK_SIZE} bytes`);
+        throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
       }
 
       // Split block - note reversed order due to final non-swap
@@ -431,7 +431,7 @@
 
       // Validate key size (must be exactly 16 bytes)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -456,7 +456,7 @@
 
       // Validate tweak size (must be exactly 16 bytes)
       if (tweakBytes.length !== 16) {
-        throw new Error(`Invalid tweak size: ${tweakBytes.length} bytes (must be 16 bytes)`);
+        throw new Error("Invalid tweak size: " + tweakBytes.length + " bytes (must be 16 bytes)");
       }
 
       this._tweak = [...tweakBytes];
@@ -506,7 +506,7 @@
 
       // Validate input length
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes (4096 bits)`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes (4096 bits)");
       }
 
       // Process each block

@@ -180,7 +180,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     }
 
     if (keyBytes.length !== 16) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16)");
     }
 
     this._key = [...keyBytes];
@@ -200,7 +200,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
     if (this.inputBuffer.length % 8 !== 0) {
-      throw new Error(`Input length must be multiple of 8 bytes`);
+      throw new Error("Input length must be multiple of 8 bytes");
     }
 
     const output = [];
@@ -243,6 +243,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
   // mdsL: circulant 4x4 over GF(2^8), primitive polynomial z^8+z^6+z^5+z+1
   static _circ(row, x) {
+    /** @type {uint8[]} */
     const y = [0, 0, 0, 0];
     for (let i = 0; i < 4; i++) {
       let acc = 0;

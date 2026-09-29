@@ -129,7 +129,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. KeeLoq (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. KeeLoq (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
@@ -146,7 +146,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -167,12 +167,12 @@
     _keyBit(keyLow, keyHigh, i) {
       const idx = i % 64;
       return idx < 32
-        ? OpCodes.AndN(OpCodes.Shr32(keyLow, idx), 1)
-        : OpCodes.AndN(OpCodes.Shr32(keyHigh, idx - 32), 1);
+        ? OpCodes.And32(OpCodes.Shr32(keyLow, idx), 1)
+        : OpCodes.And32(OpCodes.Shr32(keyHigh, idx - 32), 1);
     }
 
     _nlf(idx) {
-      return OpCodes.AndN(OpCodes.Shr32(NLF, idx), 1);
+      return OpCodes.And32(OpCodes.Shr32(NLF, idx), 1);
     }
 
     _encryptBlock(block) {
@@ -180,21 +180,21 @@
       const { keyLow, keyHigh } = this._keyWords();
 
       for (let i = 0; i < ROUNDS; ++i) {
-        const b1 = OpCodes.AndN(OpCodes.Shr32(state, 1), 1);
-        const b9 = OpCodes.AndN(OpCodes.Shr32(state, 9), 1);
-        const b20 = OpCodes.AndN(OpCodes.Shr32(state, 20), 1);
-        const b26 = OpCodes.AndN(OpCodes.Shr32(state, 26), 1);
-        const b31 = OpCodes.AndN(OpCodes.Shr32(state, 31), 1);
-        const nlfIdx = OpCodes.OrN(b1, OpCodes.OrN(OpCodes.Shl32(b9, 1),
-          OpCodes.OrN(OpCodes.Shl32(b20, 2), OpCodes.OrN(OpCodes.Shl32(b26, 3), OpCodes.Shl32(b31, 4)))));
+        const b1 = OpCodes.And32(OpCodes.Shr32(state, 1), 1);
+        const b9 = OpCodes.And32(OpCodes.Shr32(state, 9), 1);
+        const b20 = OpCodes.And32(OpCodes.Shr32(state, 20), 1);
+        const b26 = OpCodes.And32(OpCodes.Shr32(state, 26), 1);
+        const b31 = OpCodes.And32(OpCodes.Shr32(state, 31), 1);
+        const nlfIdx = OpCodes.Or32(b1, OpCodes.Or32(OpCodes.Shl32(b9, 1),
+          OpCodes.Or32(OpCodes.Shl32(b20, 2), OpCodes.Or32(OpCodes.Shl32(b26, 3), OpCodes.Shl32(b31, 4)))));
         const nlfOut = this._nlf(nlfIdx);
 
         const keyBit = this._keyBit(keyLow, keyHigh, i);
-        const bit0 = OpCodes.AndN(state, 1);
-        const bit16 = OpCodes.AndN(OpCodes.Shr32(state, 16), 1);
-        const fb = OpCodes.XorN(keyBit, OpCodes.XorN(bit0, OpCodes.XorN(bit16, nlfOut)));
+        const bit0 = OpCodes.And32(state, 1);
+        const bit16 = OpCodes.And32(OpCodes.Shr32(state, 16), 1);
+        const fb = OpCodes.Xor32(keyBit, OpCodes.Xor32(bit0, OpCodes.Xor32(bit16, nlfOut)));
 
-        state = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(state, 1), OpCodes.Shl32(fb, 31)));
+        state = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(state, 1), OpCodes.Shl32(fb, 31)));
       }
 
       return [...OpCodes.Unpack32LE(state)];
@@ -205,21 +205,21 @@
       const { keyLow, keyHigh } = this._keyWords();
 
       for (let i = ROUNDS - 1; i >= 0; --i) {
-        const b0 = OpCodes.AndN(state, 1);
-        const b8 = OpCodes.AndN(OpCodes.Shr32(state, 8), 1);
-        const b19 = OpCodes.AndN(OpCodes.Shr32(state, 19), 1);
-        const b25 = OpCodes.AndN(OpCodes.Shr32(state, 25), 1);
-        const b30 = OpCodes.AndN(OpCodes.Shr32(state, 30), 1);
-        const nlfIdx = OpCodes.OrN(b0, OpCodes.OrN(OpCodes.Shl32(b8, 1),
-          OpCodes.OrN(OpCodes.Shl32(b19, 2), OpCodes.OrN(OpCodes.Shl32(b25, 3), OpCodes.Shl32(b30, 4)))));
+        const b0 = OpCodes.And32(state, 1);
+        const b8 = OpCodes.And32(OpCodes.Shr32(state, 8), 1);
+        const b19 = OpCodes.And32(OpCodes.Shr32(state, 19), 1);
+        const b25 = OpCodes.And32(OpCodes.Shr32(state, 25), 1);
+        const b30 = OpCodes.And32(OpCodes.Shr32(state, 30), 1);
+        const nlfIdx = OpCodes.Or32(b0, OpCodes.Or32(OpCodes.Shl32(b8, 1),
+          OpCodes.Or32(OpCodes.Shl32(b19, 2), OpCodes.Or32(OpCodes.Shl32(b25, 3), OpCodes.Shl32(b30, 4)))));
         const nlfOut = this._nlf(nlfIdx);
 
         const keyBit = this._keyBit(keyLow, keyHigh, i);
-        const bit15 = OpCodes.AndN(OpCodes.Shr32(state, 15), 1);
-        const bit31 = OpCodes.AndN(OpCodes.Shr32(state, 31), 1);
-        const fb = OpCodes.XorN(keyBit, OpCodes.XorN(bit15, OpCodes.XorN(bit31, nlfOut)));
+        const bit15 = OpCodes.And32(OpCodes.Shr32(state, 15), 1);
+        const bit31 = OpCodes.And32(OpCodes.Shr32(state, 31), 1);
+        const fb = OpCodes.Xor32(keyBit, OpCodes.Xor32(bit15, OpCodes.Xor32(bit31, nlfOut)));
 
-        state = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state, 1), fb));
+        state = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state, 1), fb));
       }
 
       return [...OpCodes.Unpack32LE(state)];

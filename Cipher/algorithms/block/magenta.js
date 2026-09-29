@@ -231,7 +231,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -280,7 +280,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -344,7 +344,7 @@
         table[i] = value;
         value = value * 2;
         if (value > 0xFF) {
-          value = OpCodes.XorN(value % 256, 0x65);
+          value = OpCodes.Xor32(value % 256, 0x65);
         }
       }
 

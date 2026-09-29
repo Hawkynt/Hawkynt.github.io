@@ -78,6 +78,7 @@
   // DarkCrypt's non-standard key-schedule parity constant (standard Skein uses C240 = 0x1BD11BDA1BD11BD1).
   const PARITY = 0x5555555555555555n;
   // Standard Threefish-1024 word permutation applied after every round.
+  /** @type {uint8[]} */
   const PI = [0, 9, 2, 13, 6, 11, 4, 15, 10, 7, 12, 3, 14, 5, 8, 1];
 
   // DarkCrypt's non-standard 8x8 rotation-constant table.
@@ -389,7 +390,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 144)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Threefish-1024 (DarkCrypt) requires exactly 144 bytes (128-byte key + 16-byte tweak)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Threefish-1024 (DarkCrypt) requires exactly 144 bytes (128-byte key + 16-byte tweak)");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
@@ -413,7 +414,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

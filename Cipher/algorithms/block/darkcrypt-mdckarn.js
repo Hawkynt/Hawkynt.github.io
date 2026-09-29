@@ -59,6 +59,7 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {uint32[]} */
   const T = [
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
     0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
@@ -69,12 +70,14 @@
     0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
     0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ];
+  /** @type {uint8[]} */
   const S = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
     5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
     4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
     6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
   ];
+  /** @type {uint32[]} */
   const MD5_IV = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476];
 
   function stepFG(i, B, C, D) {
@@ -194,7 +197,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K1 = null; this._K2 = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 96)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MD5-Karn (DarkCrypt) requires exactly 96 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MD5-Karn (DarkCrypt) requires exactly 96 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K1 = keyBytes.slice(0, 48);
@@ -213,7 +216,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

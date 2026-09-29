@@ -183,7 +183,7 @@
     // Property setter for rounds
     set rounds(numRounds) {
       if (numRounds < 4) {
-        throw new Error(`Invalid rounds: ${numRounds} (minimum 4 rounds required)`);
+        throw new Error("Invalid rounds: " + numRounds + " (minimum 4 rounds required)");
       }
       this._rounds = numRounds;
 
@@ -214,7 +214,7 @@
 
       // Validate key size
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 16 bytes)");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -263,7 +263,7 @@
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -283,11 +283,11 @@
 
     // FEAL S-box functions (same as FEAL-8)
     _S0(a, b) {
-      return OpCodes.RotL8(OpCodes.AndN((a + b), 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32((a + b), 0xFF), 2);
     }
 
     _S1(a, b) {
-      return OpCodes.RotL8(OpCodes.AndN((a + b + 1), 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32((a + b + 1), 0xFF), 2);
     }
 
     // FEAL F-function - takes 4 bytes data and 2 bytes key
@@ -298,9 +298,10 @@
       const b = key;
 
       // FEAL F-function as per specification
+      /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
-      const T = OpCodes.XorN(OpCodes.XorN(a[3], a[2]), b[1]);
-      ret[1] = this._S1(OpCodes.XorN(OpCodes.XorN(a[0], a[1]), b[0]), T);
+      const T = OpCodes.Xor32(OpCodes.XorN(a[3], a[2]), b[1]);
+      ret[1] = this._S1(OpCodes.Xor32(OpCodes.XorN(a[0], a[1]), b[0]), T);
       ret[0] = this._S0(a[0], ret[1]);
       ret[2] = this._S0(T, ret[1]);
       ret[3] = this._S1(ret[2], a[3]);
@@ -311,13 +312,14 @@
     // FEAL Fk function for key schedule - takes 4 bytes a and 4 bytes b
     _Fk(a, b) {
       // a and b are 4-byte arrays
+      /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
 
       // FEAL Fk function as per specification
-      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]));
-      ret[0] = this._S0(a[0], OpCodes.XorN(b[2], ret[1]));
-      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]))));
-      ret[3] = this._S1(a[3], OpCodes.XorN(b[3], ret[2]));
+      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.Xor32(OpCodes.XorN(b[0], a[2]), a[3]));
+      ret[0] = this._S0(a[0], OpCodes.Xor32(b[2], ret[1]));
+      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.Xor32(OpCodes.XorN(b[0], a[2]), a[3]))));
+      ret[3] = this._S1(a[3], OpCodes.Xor32(b[3], ret[2]));
 
       return ret;
     }
@@ -338,6 +340,7 @@
       const KR2 = keyBytes.slice(12, 16);
       const KRX = OpCodes.XorArrays(KR1, KR2);
 
+      /** @type {uint8[]} */
       let XORTemp = [0, 0, 0, 0];
 
       // Core loop - generate subkeys

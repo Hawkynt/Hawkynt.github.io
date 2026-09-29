@@ -54,6 +54,7 @@
   const ODD_CORRECTION = 0x2AAAAAAA;
 
   // Per-stage round constants XORed into word 0 only; each is the previous one doubled.
+  /** @type {uint32[]} */
   const EXTRA = [0x0DAE, 0x1B5C, 0x36B8, 0x6D70, 0xDAE0, 0x1B5C0, 0x36B80];
 
   // "theta" XOR diffusion layer shared by encryption and decryption (it is its own inverse).
@@ -149,7 +150,7 @@
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MMB2 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MMB2 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._K = [
@@ -172,7 +173,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -216,6 +217,7 @@
     _decryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
+      /** @type {uint8[]} */
       const encRounds = [6, 5, 4, 3, 2, 1, 0];
       for (let idx = 0; idx < STAGES; idx++) {
         const r = encRounds[idx];
