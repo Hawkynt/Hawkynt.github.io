@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * JSDocTierAudit.js - completeness audit of the two library type tiers the
  * transpiler resolves types from before it ever looks at an algorithm file:
@@ -15,10 +14,8 @@
  * not precise. `number` is only accepted for members listed in
  * FLOAT_MEMBERS, whose values genuinely are floating point.
  *
- * Usage:
- *   node tests/JSDocTierAudit.js            summary of both tiers
- *   node tests/JSDocTierAudit.js --verbose  also list every gap
- *   node tests/JSDocTierAudit.js --strict   exit 1 when any gap remains
+ * The JSDOC category: node tests/TranspilerSuite.js --only=jsdoc
+ * Every member with a gap fails it and is listed with the gap.
  */
 
 'use strict';
@@ -330,19 +327,23 @@ function summarize(members) {
   return { total: members.length, typed: members.filter(m => m.gaps.length === 0).length, members };
 }
 
-module.exports = { auditOpCodes, auditFramework, isPreciseType, parseTags, FLOAT_MEMBERS };
-
-if (require.main === module) {
-  const verbose = process.argv.includes('--verbose');
-  const strict = process.argv.includes('--strict');
-  let gaps = 0;
-  for (const [label, audit] of [['OpCodes (tier 1)', auditOpCodes()], ['AlgorithmFramework (tier 2)', auditFramework()]]) {
-    console.log(`${label}: ${audit.typed}/${audit.total} members fully typed`);
-    for (const m of audit.members) {
-      if (!m.gaps.length) continue;
-      ++gaps;
-      if (verbose) console.log(`  ${m.name}: ${m.gaps.join('; ')}`);
-    }
+/**
+ * JSDOC: tiers 1 and 2 are libraries every file relies on, so each of their
+ * members must be fully typed by JSDoc, or no algorithm can be.
+ * @returns {object} { passed, failed, detail } counted in members
+ */
+function run() {
+  let passed = 0, failed = 0;
+  const parts = [];
+  for (const [label, audit] of [['OpCodes', auditOpCodes()], ['AlgorithmFramework', auditFramework()]]) {
+    console.log(`${label} JSDoc: ${audit.typed}/${audit.total} members fully typed`);
+    for (const m of audit.members.filter(member => member.gaps.length > 0))
+      console.log(`  ✗ ${label}.${m.name}: ${m.gaps.join('; ')}`);
+    passed += audit.typed;
+    failed += audit.total - audit.typed;
+    parts.push(`${label} ${audit.typed}/${audit.total}`);
   }
-  process.exit(strict && gaps ? 1 : 0);
+  return { passed, failed, detail: `members fully typed: ${parts.join(', ')}` };
 }
+
+module.exports = { auditOpCodes, auditFramework, isPreciseType, parseTags, FLOAT_MEMBERS, run };
