@@ -336,6 +336,26 @@
       return finalHash;
     }
 
+    /**
+     * Source file (in ../hash, without extension) that registers a hash algorithm
+     * @param {string} hashFunction - Registered hash algorithm name
+     * @returns {string} File name: MD5 lives in md.js, SHA-224 in sha256.js and
+     *                   SHA-384 in sha512.js; any other name maps to itself,
+     *                   lower-case and without dashes
+     */
+    _hashFileOf(hashFunction) {
+      switch (hashFunction) {
+        case 'MD5':
+          return 'md';
+        case 'SHA-224':
+          return 'sha256';
+        case 'SHA-384':
+          return 'sha512';
+        default:
+          return hashFunction.toLowerCase().replace(/-/g, '');
+      }
+    }
+
     // Helper to hash byte arrays using specified hash function
     /**
      * Hash bytes with a registered hash algorithm
@@ -352,9 +372,7 @@
       // If not found, try to load it dynamically (for testing environments)
       if (!hashAlgorithm && typeof require !== 'undefined') {
         try {
-          /** @type {string} */
-          const hashFileName = hashFunction.toLowerCase().replace(/-/g, '');
-          require('../hash/' + hashFileName + '.js');
+          require('../hash/' + this._hashFileOf(hashFunction) + '.js');
           hashAlgorithm = AlgorithmFramework.Find(hashFunction);
         } catch (loadError) {
           // Ignore load errors, will throw below if still not found
