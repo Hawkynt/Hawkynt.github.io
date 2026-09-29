@@ -1,11 +1,10 @@
-#!/usr/bin/env node
 /**
  * OpCodesHelperTests.js - unit tests for OpCodes helpers that were added to
  * give algorithm-common operations a typed (tier-1) home. Every case is
  * written Given / When / Then and covers equivalence classes, boundaries and
  * error cases, not only the happy path.
  *
- * Usage: node tests/OpCodesHelperTests.js [--verbose]
+ * Part of the LIBRARY category: node tests/TestSuite.js --only=library [--verbose]
  */
 
 'use strict';
@@ -13,19 +12,8 @@
 const path = require('path');
 const OpCodes = require(path.join(__dirname, '..', 'OpCodes.js'));
 
-const verbose = process.argv.includes('--verbose');
-let passed = 0, failed = 0;
-
-function test(name, fn) {
-  try {
-    fn();
-    ++passed;
-    if (verbose) console.log(`  ✓ ${name}`);
-  } catch (e) {
-    ++failed;
-    console.log(`  ✗ ${name}\n      ${e.message}`);
-  }
-}
+const cases = require('./UnitCases.js').createCases();
+const test = cases.case;
 function equal(actual, expected) {
   if (actual !== expected) throw new Error(`expected ${String(expected)}n, got ${String(actual)}n`);
 }
@@ -38,8 +26,6 @@ function throws(fn, type) {
 }
 
 const P25519 = (1n << 255n) - 19n;
-
-console.log('OpCodes helper tests');
 
 // ---------------------------------------------------------------- ModN
 test('ModN: given 0 <= a < m, when reduced, then a is returned unchanged', () => {
@@ -127,5 +113,14 @@ test('ModInverseN: given a negative modulus, when inverted, then a RangeError is
   throws(() => OpCodes.ModInverseN(3n, -11n), RangeError);
 });
 
-console.log(`${passed} passed, ${failed} failed`);
-process.exitCode = failed ? 1 : 0;
+/**
+ * Run every OpCodes helper case.
+ * @param {object} options - { verbose }
+ * @returns {object} { passed, failed, skipped, detail }
+ */
+function run(options = {}) {
+  console.log('OpCodes helper tests');
+  return cases.run(options);
+}
+
+module.exports = { run };
