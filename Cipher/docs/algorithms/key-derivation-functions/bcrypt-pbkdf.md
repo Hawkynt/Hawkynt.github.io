@@ -19,7 +19,7 @@
 
 | Parameter | Supported values |
 | --- | --- |
-| Output sizes | 1 byte (8 bits); 1024 bytes (8192 bits) |
+| Output sizes | 1 byte (8 bits) to 1024 bytes (8192 bits) |
 
 ## Capabilities
 

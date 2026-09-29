@@ -19,7 +19,7 @@
 
 | Parameter | Supported values |
 | --- | --- |
-| Output sizes | 20 bytes (160 bits) — 160-bit SHA-1 hash |
+| Output sizes | 20 bytes (160 bits) |
 
 ## Security
 
