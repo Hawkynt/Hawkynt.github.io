@@ -196,13 +196,21 @@
       this.KeySize = 0;
 
       // Subkey storage
+      /** @type {uint32[]|null} */
       this.KLi1 = null;
+      /** @type {uint32[]|null} */
       this.KLi2 = null;
+      /** @type {uint32[]|null} */
       this.KOi1 = null;
+      /** @type {uint32[]|null} */
       this.KOi2 = null;
+      /** @type {uint32[]|null} */
       this.KOi3 = null;
+      /** @type {uint32[]|null} */
       this.KIi1 = null;
+      /** @type {uint32[]|null} */
       this.KIi2 = null;
+      /** @type {uint32[]|null} */
       this.KIi3 = null;
 
       // S-boxes
@@ -291,19 +299,25 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * Derive the round subkeys from the 128-bit key
+     */
     _keySchedule() {
-      const C = Object.freeze([0x0123, 0x4567, 0x89AB, 0xCDEF, 0xFEDC, 0xBA98, 0x7654, 0x3210]);
-      const ukey = new Array(8);
+      /** @type {uint16[]} */
+      const C = [0x0123, 0x4567, 0x89AB, 0xCDEF, 0xFEDC, 0xBA98, 0x7654, 0x3210];
+      /** @type {uint16[]} */
+      const words16 = new Array(8);
+      /** @type {uint32[]} */
       const Kprime = new Array(8);
 
       // Convert key bytes to 16-bit words (big-endian)
       for (let n = 0; n < 8; ++n) {
-        ukey[n] = OpCodes.Pack16BE(this._key[2 * n], this._key[2 * n + 1]);
+        words16[n] = OpCodes.Pack16BE(this._key[2 * n], this._key[2 * n + 1]);
       }
 
       // Build K' keys
       for (let n = 0; n < 8; ++n) {
-        Kprime[n] = OpCodes.Xor32(ukey[n], C[n]);
+        Kprime[n] = OpCodes.Xor32(words16[n], C[n]);
       }
 
       // Generate round subkeys
@@ -317,17 +331,22 @@
       this.KIi3 = new Array(8);
 
       for (let n = 0; n < 8; ++n) {
-        this.KLi1[n] = OpCodes.RotL16(ukey[n], 1);
+        this.KLi1[n] = OpCodes.RotL16(words16[n], 1);
         this.KLi2[n] = Kprime[OpCodes.And32((n + 2), 0x7)];
-        this.KOi1[n] = OpCodes.RotL16(ukey[OpCodes.And32((n + 1), 0x7)], 5);
-        this.KOi2[n] = OpCodes.RotL16(ukey[OpCodes.And32((n + 5), 0x7)], 8);
-        this.KOi3[n] = OpCodes.RotL16(ukey[OpCodes.And32((n + 6), 0x7)], 13);
+        this.KOi1[n] = OpCodes.RotL16(words16[OpCodes.And32((n + 1), 0x7)], 5);
+        this.KOi2[n] = OpCodes.RotL16(words16[OpCodes.And32((n + 5), 0x7)], 8);
+        this.KOi3[n] = OpCodes.RotL16(words16[OpCodes.And32((n + 6), 0x7)], 13);
         this.KIi1[n] = Kprime[OpCodes.And32((n + 4), 0x7)];
         this.KIi2[n] = Kprime[OpCodes.And32((n + 3), 0x7)];
         this.KIi3[n] = Kprime[OpCodes.And32((n + 7), 0x7)];
       }
     }
 
+    /**
+     * @param {uint32} inVal - 16-bit input
+     * @param {uint32} subkey - 16-bit KI subkey
+     * @returns {uint32} 16-bit output
+     */
     _FI(inVal, subkey) {
       // Split 16-bit input into 9-bit and 7-bit parts
       let nine = OpCodes.And32(OpCodes.Shr32(inVal, 7), 0x1FF);
@@ -341,9 +360,14 @@
       nine = OpCodes.Xor32(this.S9[nine], seven);
       seven = OpCodes.Xor32(this.S7[seven], OpCodes.And32(nine, 0x7F));
 
-      return OpCodes.And32((OpCodes.Shl32(seven, 9) + nine), 0xFFFF);
+      return OpCodes.And32(OpCodes.Add32(OpCodes.Shl32(seven, 9), nine), 0xFFFF);
     }
 
+    /**
+     * @param {uint32} inVal - 32-bit input
+     * @param {int32} roundNo - Round index (0..7)
+     * @returns {uint32} 32-bit output
+     */
     _FO(inVal, roundNo) {
       // Split 32-bit input into two 16-bit words
       let left = OpCodes.And32(OpCodes.Shr32(inVal, 16), 0xFFFF);
@@ -362,9 +386,14 @@
       left = this._FI(left, this.KIi3[roundNo]);
       left = OpCodes.Xor32(left, right);
 
-      return OpCodes.ToUint32((OpCodes.ToUint32(OpCodes.Shl32(right, 16)) + left));
+      return OpCodes.Add32(OpCodes.Shl32(right, 16), left);
     }
 
+    /**
+     * @param {uint32} inVal - 32-bit input
+     * @param {int32} roundNo - Round index (0..7)
+     * @returns {uint32} 32-bit output
+     */
     _FL(inVal, roundNo) {
       // Split into left and right halves
       let l = OpCodes.And32(OpCodes.Shr32(inVal, 16), 0xFFFF);
@@ -376,7 +405,7 @@
       const b = OpCodes.And32(OpCodes.Or32(r, this.KLi2[roundNo]), 0xFFFF);
       l = OpCodes.Xor32(l, OpCodes.RotL16(b, 1));
 
-      return OpCodes.ToUint32((OpCodes.ToUint32(OpCodes.Shl32(l, 16)) + r));
+      return OpCodes.Add32(OpCodes.Shl32(l, 16), r);
     }
 
     /**
