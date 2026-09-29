@@ -149,7 +149,15 @@
     0xFEDECC7A,0xE6D18CB7,0xCEC04C49,0xD6CF0C84,0x9EE2651C,0x86ED25D1,0xAEFCE52F,0xB6F3A5E2
   ];
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function mulA(x) { return OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(x, 8), 0xFFFFFF00), 0) === 0 ? 0 : OpCodes.Xor32(OpCodes.Shl32(x, 8), MUL_A_TABLE[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)]); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function mulG(x) { return OpCodes.Xor32(OpCodes.Shr32(x, 8), MUL_IA_TABLE[OpCodes.And32(x, 0xFF)]); }
 
   // ===== SERPENT BITSLICE S-BOXES =====
@@ -161,8 +169,21 @@
   // bit-lanes in parallel -- exactly the semantics of plain 32-bit AND/OR/
   // XOR/NOT in JavaScript, so this is a direct, literal transcription.
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S0(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r3 ^= r0;  r4  = r1;
     r1 &= r3;  r4 ^= r2;
     r1 ^= r0;  r0 |= r3;
@@ -172,11 +193,26 @@
     r4 |= r1;  r1 ^= r3;
     r1 ^= r4;  r3 |= r0;
     r1 ^= r3;  r4 ^= r3;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S1(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r0 = ~r0;  r2 = ~r2;
     r4  = r0;  r0 &= r1;
     r2 ^= r0;  r0 |= r3;
@@ -187,11 +223,26 @@
     r1 &= r2;
     r1 ^= r0;  r0 &= r2;
     r0 ^= r4;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S2(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r4  = r0;  r0 &= r2;
     r0 ^= r3;  r2 ^= r1;
     r2 ^= r0;  r3 |= r4;
@@ -200,11 +251,26 @@
     r3 ^= r0;  r0 &= r1;
     r4 ^= r0;  r1 ^= r3;
     r1 ^= r4;  r4 = ~r4;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S3(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r4  = r0;  r0 |= r3;
     r3 ^= r1;  r1 &= r4;
     r4 ^= r2;  r2 ^= r3;
@@ -215,11 +281,26 @@
     r1 ^= r2;  r0 ^= r3;
     r2  = r1;  r1 |= r3;
     r1 ^= r0;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S4(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r1 ^= r3;  r3 = ~r3;
     r2 ^= r3;  r3 ^= r0;
     r4  = r1;  r1 &= r3;
@@ -230,11 +311,26 @@
     r4 ^= r0;  r0 |= r3;
     r0 ^= r2;  r2 &= r3;
     r0 = ~r0;  r4 ^= r2;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S5(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r0 ^= r1;  r1 ^= r3;
     r3 = ~r3;  r4  = r1;
     r1 &= r0;  r2 ^= r3;
@@ -245,11 +341,26 @@
     r0 &= r3;  r2 = ~r2;
     r0 ^= r4;  r4 |= r3;
     r2 ^= r4;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S6(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r2 = ~r2;  r4  = r3;
     r3 &= r0;  r0 ^= r4;
     r3 ^= r2;  r2 |= r4;
@@ -260,11 +371,26 @@
     r4 ^= r0;  r3 = ~r3;
     r2 &= r4;
     r2 ^= r3;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
+  /**
+   * @param {uint32[]} r
+   * @returns {uint32[]}
+   */
   function S7(r) {
-    let r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4];
+    /** @type {uint32} */
+    let r0 = r[0];
+    /** @type {uint32} */
+    let r1 = r[1];
+    /** @type {uint32} */
+    let r2 = r[2];
+    /** @type {uint32} */
+    let r3 = r[3];
+    /** @type {uint32} */
+    let r4 = r[4];
     r4  = r1;  r1 |= r2;
     r1 ^= r3;  r4 ^= r2;
     r2 ^= r1;  r3 |= r4;
@@ -276,12 +402,37 @@
     r1 ^= r4;  r2 = ~r2;
     r2 |= r0;
     r4 ^= r2;
-    return [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    /** @type {uint32[]} */
+    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    return regs;
   }
 
-  const SBOX = [S0, S1, S2, S3, S4, S5, S6, S7];
+  /**
+   * @param {int32} idx - S-box number 0..7
+   * @param {uint32[]} r - 5-word register bank
+   * @returns {uint32[]} the S-box output registers
+   */
+  function applySbox(idx, r) {
+    switch (idx) {
+      case 0: return S0(r);
+      case 1: return S1(r);
+      case 2: return S2(r);
+      case 3: return S3(r);
+      case 4: return S4(r);
+      case 5: return S5(r);
+      case 6: return S6(r);
+      default: return S7(r);
+    }
+  }
 
   // The Serpent linear transform, operating on four 32-bit words in place.
+  /**
+   * @param {uint32} x0
+   * @param {uint32} x1
+   * @param {uint32} x2
+   * @param {uint32} x3
+   * @returns {uint32[]}
+   */
   function serpentLT(x0, x1, x2, x3) {
     x0 = OpCodes.RotL32(x0, 13);
     x2 = OpCodes.RotL32(x2, 3);
@@ -293,7 +444,9 @@
     x2 = OpCodes.Xor32(OpCodes.Xor32(x2, x3), (OpCodes.Shl32(x1, 7)));
     x0 = OpCodes.RotL32(x0, 5);
     x2 = OpCodes.RotL32(x2, 22);
-    return [x0, x1, x2, x3];
+    /** @type {uint32[]} */
+    const words = [x0, x1, x2, x3];
+    return words;
   }
 
   // ===== KEY SCHEDULE: truncated Serpent24 key schedule =====
@@ -304,7 +457,12 @@
   // (SKS) identical to the Serpent key schedule, just stopped after
   // producing 25 subkeys instead of 33.
 
+  /**
+   * @param {uint8[]} key
+   * @returns {uint32[]}
+   */
   function sosemanukSchedule(key) {
+    /** @type {uint8[]} */
     const wbuf = OpCodes.CreateArray(32, 0);
     for (let i = 0; i < key.length; i++) wbuf[i] = key[i];
     if (key.length < 32) {
@@ -312,24 +470,41 @@
       // remaining bytes already zero from fill(0)
     }
 
+    /** @type {uint32[]} */
     const w = new Array(8);
     for (let i = 0; i < 8; i++) {
       w[i] = OpCodes.Pack32LE(wbuf[i*4], wbuf[i*4+1], wbuf[i*4+2], wbuf[i*4+3]);
     }
 
-    const sk = OpCodes.CreateArray(100, 0);
+    /** @type {uint32[]} */
+    const sk = [];
+    for (let i = 0; i < 100; i++) sk[i] = 0;
+    /** @type {int32} */
     let si = 0;
 
+    /**
+     * @param {int32} idx
+     * @param {int32} i5
+     * @param {int32} i3
+     * @param {int32} i1
+     * @param {uint32} cc
+     */
     function WUP(idx, i5, i3, i1, cc) {
       const tt = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(w[idx], w[i5]), w[i3]), w[i1]), OpCodes.Xor32(0x9E3779B9, cc));
       w[idx] = OpCodes.RotL32(tt, 11);
     }
+    /**
+     * @param {uint32} cc
+     */
     function WUP0(cc) {
       WUP(0, 3, 5, 7, cc);
       WUP(1, 4, 6, 0, cc + 1);
       WUP(2, 5, 7, 1, cc + 2);
       WUP(3, 6, 0, 2, cc + 3);
     }
+    /**
+     * @param {uint32} cc
+     */
     function WUP1(cc) {
       WUP(4, 7, 1, 3, cc);
       WUP(5, 0, 2, 4, cc + 1);
@@ -337,22 +512,34 @@
       WUP(7, 2, 4, 6, cc + 3);
     }
 
+    /**
+     * @param {int32} sboxIdx
+     * @param {int32} o0
+     * @param {int32} o1
+     * @param {int32} o2
+     * @param {int32} o3
+     * @param {int32} d0
+     * @param {int32} d1
+     * @param {int32} d2
+     * @param {int32} d3
+     */
     function SKS(sboxIdx, o0, o1, o2, o3, d0, d1, d2, d3) {
-      const out = SBOX[sboxIdx]([w[o0], w[o1], w[o2], w[o3], 0]);
+      /** @type {uint32[]} */
+      const out = applySbox(sboxIdx, [w[o0], w[o1], w[o2], w[o3], 0]);
       sk[si++] = out[d0];
       sk[si++] = out[d1];
       sk[si++] = out[d2];
       sk[si++] = out[d3];
     }
 
-    const SKS0 = () => SKS(0, 4, 5, 6, 7, 1, 4, 2, 0);
-    const SKS1 = () => SKS(1, 0, 1, 2, 3, 2, 0, 3, 1);
-    const SKS2 = () => SKS(2, 4, 5, 6, 7, 2, 3, 1, 4);
-    const SKS3 = () => SKS(3, 0, 1, 2, 3, 1, 2, 3, 4);
-    const SKS4 = () => SKS(4, 4, 5, 6, 7, 1, 4, 0, 3);
-    const SKS5 = () => SKS(5, 0, 1, 2, 3, 1, 3, 0, 2);
-    const SKS6 = () => SKS(6, 4, 5, 6, 7, 0, 1, 4, 2);
-    const SKS7 = () => SKS(7, 0, 1, 2, 3, 4, 3, 1, 0);
+    function SKS0() { SKS(0, 4, 5, 6, 7, 1, 4, 2, 0); }
+    function SKS1() { SKS(1, 0, 1, 2, 3, 2, 0, 3, 1); }
+    function SKS2() { SKS(2, 4, 5, 6, 7, 2, 3, 1, 4); }
+    function SKS3() { SKS(3, 0, 1, 2, 3, 1, 2, 3, 4); }
+    function SKS4() { SKS(4, 4, 5, 6, 7, 1, 4, 0, 3); }
+    function SKS5() { SKS(5, 0, 1, 2, 3, 1, 3, 0, 2); }
+    function SKS6() { SKS(6, 4, 5, 6, 7, 0, 1, 4, 2); }
+    function SKS7() { SKS(7, 0, 1, 2, 3, 4, 3, 1, 0); }
 
     WUP0(0);   SKS3();
     WUP1(4);   SKS2();
@@ -391,7 +578,25 @@
   // states during that encryption (per the Sosemanuk specification), not
   // from its final output.
 
+  // LFSR words s[0..9] and FSM registers r1, r2 harvested during IV setup.
+  class SosemanukState {
+    constructor() {
+      /** @type {uint32[]} */
+      this.s = new Array(10);
+      /** @type {uint32} */
+      this.r1 = 0;
+      /** @type {uint32} */
+      this.r2 = 0;
+    }
+  }
+
+  /**
+   * @param {uint32[]} sk
+   * @param {uint8[]} iv
+   * @returns {SosemanukState}
+   */
   function sosemanukInit(sk, iv) {
+    /** @type {uint8[]} */
     const ivtmp = OpCodes.CreateArray(16, 0);
     for (let i = 0; i < Math.min(16, iv.length); i++) ivtmp[i] = iv[i];
 
@@ -399,6 +604,7 @@
     // below select which physical slot plays which role for that round
     // (this mirrors the reference implementation's register-renaming
     // trick, which avoids an explicit permutation step).
+    /** @type {uint32[]} */
     const r = [
       OpCodes.Pack32LE(ivtmp[0], ivtmp[1], ivtmp[2], ivtmp[3]),
       OpCodes.Pack32LE(ivtmp[4], ivtmp[5], ivtmp[6], ivtmp[7]),
@@ -407,25 +613,74 @@
       0
     ];
 
+    /**
+     * @param {int32} zc
+     * @param {int32} i0
+     * @param {int32} i1
+     * @param {int32} i2
+     * @param {int32} i3
+     */
     function KA(zc, i0, i1, i2, i3) {
       r[i0] = OpCodes.Xor32(r[i0], sk[zc]);
       r[i1] = OpCodes.Xor32(r[i1], sk[zc + 1]);
       r[i2] = OpCodes.Xor32(r[i2], sk[zc + 2]);
       r[i3] = OpCodes.Xor32(r[i3], sk[zc + 3]);
     }
+    /**
+     * @param {int32} sboxIdx
+     * @param {int32} i0
+     * @param {int32} i1
+     * @param {int32} i2
+     * @param {int32} i3
+     * @param {int32} i4
+     */
     function applyS(sboxIdx, i0, i1, i2, i3, i4) {
-      const out = SBOX[sboxIdx]([r[i0], r[i1], r[i2], r[i3], r[i4]]);
+      /** @type {uint32[]} */
+      const out = applySbox(sboxIdx, [r[i0], r[i1], r[i2], r[i3], r[i4]]);
       r[i0] = out[0]; r[i1] = out[1]; r[i2] = out[2]; r[i3] = out[3]; r[i4] = out[4];
     }
+    /**
+     * @param {int32} o0
+     * @param {int32} o1
+     * @param {int32} o2
+     * @param {int32} o3
+     */
     function applyLT(o0, o1, o2, o3) {
+      /** @type {uint32[]} */
       const lt = serpentLT(r[o0], r[o1], r[o2], r[o3]);
       r[o0] = lt[0]; r[o1] = lt[1]; r[o2] = lt[2]; r[o3] = lt[3];
     }
+    /**
+     * @param {int32} zc
+     * @param {int32} sboxIdx
+     * @param {int32} i0
+     * @param {int32} i1
+     * @param {int32} i2
+     * @param {int32} i3
+     * @param {int32} i4
+     * @param {int32} o0
+     * @param {int32} o1
+     * @param {int32} o2
+     * @param {int32} o3
+     */
     function FSS(zc, sboxIdx, i0, i1, i2, i3, i4, o0, o1, o2, o3) {
       KA(zc, i0, i1, i2, i3);
       applyS(sboxIdx, i0, i1, i2, i3, i4);
       applyLT(o0, o1, o2, o3);
     }
+    /**
+     * @param {int32} zc
+     * @param {int32} sboxIdx
+     * @param {int32} i0
+     * @param {int32} i1
+     * @param {int32} i2
+     * @param {int32} i3
+     * @param {int32} i4
+     * @param {int32} o0
+     * @param {int32} o1
+     * @param {int32} o2
+     * @param {int32} o3
+     */
     function FSF(zc, sboxIdx, i0, i1, i2, i3, i4, o0, o1, o2, o3) {
       KA(zc, i0, i1, i2, i3);
       applyS(sboxIdx, i0, i1, i2, i3, i4);
@@ -433,7 +688,7 @@
       KA(zc + 4, o0, o1, o2, o3);
     }
 
-    const rc = { s: new Array(10) };
+    const rc = new SosemanukState();
 
     FSS(0,  0, 0,1,2,3,4, 1,4,2,0);
     FSS(4,  1, 1,4,2,0,3, 2,1,0,4);
@@ -487,37 +742,56 @@
   // words and the result is XORed with the 4 dropped words to produce 16
   // bytes of output (little-endian).
 
+  /**
+   * @param {SosemanukState} rc
+   * @returns {uint8[]}
+   */
   function sosemanukRound(rc) {
+    /** @type {uint32[]} */
     const s = rc.s;
-    let r1 = rc.r1, r2 = rc.r2;
+    /** @type {uint32} */
+    let r1 = rc.r1;
+    /** @type {uint32} */
+    let r2 = rc.r2;
+    /** @type {uint8[]} */
     const out = OpCodes.CreateArray(BLOCK_LEN, 0);
 
+    /** @type {int32} */
     let k = 0;
     for (let group = 0; group < 5; group++) {
+      /** @type {uint32[]} */
       const v = new Array(4);
+      /** @type {uint32[]} */
       const u = new Array(4);
 
       for (let j = 0; j < 4; j++) {
-        const x0 = k % 10, x1 = (k + 1) % 10, x3 = (k + 3) % 10, x8 = (k + 8) % 10, x9 = (k + 9) % 10;
+        const x0 = k % 10;
+        const x1 = (k + 1) % 10;
+        const x3 = (k + 3) % 10;
+        const x8 = (k + 8) % 10;
+        const x9 = (k + 9) % 10;
 
         // FSM update (uses the pre-update r1 to select the multiplexer input).
+        /** @type {uint32} */
         const muxed = OpCodes.And32(r1, 1) ? OpCodes.Xor32(s[x1], s[x8]) : s[x1];
         const or1 = r1;
-        r1 = OpCodes.ToUint32(r2 + muxed);
+        r1 = OpCodes.Add32(r2, muxed);
         r2 = OpCodes.RotL32(OpCodes.Mul32(or1, 0x54655307), 7);
 
         // LFSR update: drop s[x0], compute its replacement (s_t+10).
+        /** @type {uint32} */
         const dropped = s[x0];
         s[x0] = OpCodes.Xor32(OpCodes.Xor32(mulA(s[x0]), mulG(s[x3])), s[x9]);
 
         // Combination word (s[x9] is still the pre-update value: x9 != x0).
-        const combined = OpCodes.Xor32((OpCodes.ToUint32(s[x9] + r1)), r2);
+        const combined = OpCodes.Xor32(OpCodes.Add32(s[x9], r1), r2);
 
         v[j] = dropped;
         u[j] = combined;
         k++;
       }
 
+      /** @type {uint32[]} */
       const sres = S2([u[0], u[1], u[2], u[3], 0]);
       const w0 = OpCodes.Xor32(sres[2], v[0]);
       const w1 = OpCodes.Xor32(sres[3], v[1]);
@@ -525,8 +799,10 @@
       const w3 = OpCodes.Xor32(sres[4], v[3]);
 
       const off = group * 16;
-      const b0 = OpCodes.Unpack32LE(w0), b1 = OpCodes.Unpack32LE(w1);
-      const b2 = OpCodes.Unpack32LE(w2), b3 = OpCodes.Unpack32LE(w3);
+      const b0 = OpCodes.Unpack32LE(w0);
+      const b1 = OpCodes.Unpack32LE(w1);
+      const b2 = OpCodes.Unpack32LE(w2);
+      const b3 = OpCodes.Unpack32LE(w3);
       for (let i = 0; i < 4; i++) {
         out[off + i] = b0[i];
         out[off + 4 + i] = b1[i];
@@ -611,8 +887,13 @@
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
+      /** @type {uint32[]|null} */
+      this._sk = null;
+      /** @type {SosemanukState|null} */
       this.rc = null;
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
@@ -689,13 +970,19 @@
     }
 
     _initialize() {
-      if (!this._key) return;
-      const iv = this._iv || OpCodes.CreateArray(IV_LEN, 0);
+      if (!this._key) {
+        return;
+      }
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : OpCodes.CreateArray(IV_LEN, 0);
       this.rc = sosemanukInit(this._sk, iv);
       this.keystreamBuffer = [];
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = sosemanukRound(this.rc);
@@ -733,6 +1020,7 @@
         throw new Error("Sosemanuk not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i++) {
         output[i] = OpCodes.Xor32(this.inputBuffer[i], this._getNextKeystreamByte());
