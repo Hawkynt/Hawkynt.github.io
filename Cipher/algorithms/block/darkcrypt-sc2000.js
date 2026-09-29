@@ -89,11 +89,13 @@
   // TBL_A[idx1] picks 4 branch indices (0..3) and TBL_B[idx2] picks 4 within-
   // branch indices (0..2); together they select the 4 intermediate words that
   // feed the rotate/add/xor combiner.
+  /** @type {uint8[][]} */
   const TBL_A = [
     [0,1,2,3],[1,0,3,2],[2,3,0,1],[3,2,1,0],
     [0,2,3,1],[1,3,2,0],[2,0,1,3],[3,1,0,2],
     [0,3,1,2],[1,2,0,3],[2,1,3,0],[3,0,2,1]
   ];
+  /** @type {uint8[][]} */
   const TBL_B = [
     [0,0,0,0],[1,1,1,1],[2,2,2,2],[0,1,0,1],
     [1,2,1,2],[2,0,2,0],[0,2,0,2],[1,0,1,0],
@@ -178,6 +180,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -227,6 +230,10 @@
     // ----- Sfunc: split a word into 6/5/5/5/5/6-bit fields (MSB to LSB),
     // run the outer fields through the 6x6 S-box and the inner fields
     // through the 5x5 S-box, and recombine at the same bit positions -----
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} S-layer output
+     */
     _sFunc(x) {
       const top6  = OpCodes.And32(OpCodes.Shr32(x, 26), 0x3F);
       const f1    = OpCodes.And32(OpCodes.Shr32(x, 21), 0x1F);
@@ -246,7 +253,12 @@
 
     // ----- Mfunc: 32x32 bit GF(2) matrix multiply. Bit b of the input
     // selects MATRIX[31-b], which is XORed into the accumulator -----
+    /**
+     * @param {uint32} x - Word
+     * @returns {uint32} Matrix product
+     */
     _mFunc(x) {
+      /** @type {uint32} */
       let acc = 0;
       for (let b = 0; b < 32; b++) {
         if (OpCodes.And32(OpCodes.Shr32(x, b), 1))
@@ -257,63 +269,114 @@
 
     // ----- Bfunc: bit-sliced 4x4 S-box applied to a 4x32 matrix formed
     // from the state words (one row per word, one column per bit lane) -----
-    _bFunc(state, table) {
-      let o0 = 0, o1 = 0, o2 = 0, o3 = 0;
+    /**
+     * @param {uint32[]} words - Four state words
+     * @param {uint8[]} table - 4x4 S-box
+     * @returns {uint32[]} Four output words
+     */
+    _bFunc(words, table) {
+      /** @type {uint32} */
+      let o0 = 0;
+      /** @type {uint32} */
+      let o1 = 0;
+      /** @type {uint32} */
+      let o2 = 0;
+      /** @type {uint32} */
+      let o3 = 0;
       for (let bit = 0; bit < 32; bit++) {
-        const a = OpCodes.And32(OpCodes.Shr32(state[0], bit), 1);
-        const b = OpCodes.And32(OpCodes.Shr32(state[1], bit), 1);
-        const c = OpCodes.And32(OpCodes.Shr32(state[2], bit), 1);
-        const d = OpCodes.And32(OpCodes.Shr32(state[3], bit), 1);
+        const a = OpCodes.And32(OpCodes.Shr32(words[0], bit), 1);
+        const b = OpCodes.And32(OpCodes.Shr32(words[1], bit), 1);
+        const c = OpCodes.And32(OpCodes.Shr32(words[2], bit), 1);
+        const d = OpCodes.And32(OpCodes.Shr32(words[3], bit), 1);
         const val = table[OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(a, 3), OpCodes.Shl32(b, 2)), OpCodes.Shl32(c, 1)), d)];
         if (OpCodes.And32(OpCodes.Shr32(val, 3), 1)) o0 = OpCodes.Or32(o0, OpCodes.Shl32(1, bit));
         if (OpCodes.And32(OpCodes.Shr32(val, 2), 1)) o1 = OpCodes.Or32(o1, OpCodes.Shl32(1, bit));
         if (OpCodes.And32(OpCodes.Shr32(val, 1), 1)) o2 = OpCodes.Or32(o2, OpCodes.Shl32(1, bit));
         if (OpCodes.And32(val, 1))                   o3 = OpCodes.Or32(o3, OpCodes.Shl32(1, bit));
       }
-      return [o0, o1, o2, o3];
+      /** @type {uint32[]} */
+      const out = [o0, o1, o2, o3];
+      return out;
     }
 
     // ----- Ifunc: XOR four subkey words into the state -----
-    _iFunc(state, rk0, rk1, rk2, rk3) {
-      return [
-        OpCodes.Xor32(state[0], rk0),
-        OpCodes.Xor32(state[1], rk1),
-        OpCodes.Xor32(state[2], rk2),
-        OpCodes.Xor32(state[3], rk3)
+    /**
+     * @param {uint32[]} words - Four state words
+     * @param {uint32} rk0 - Subkey word
+     * @param {uint32} rk1 - Subkey word
+     * @param {uint32} rk2 - Subkey word
+     * @param {uint32} rk3 - Subkey word
+     * @returns {uint32[]} Four output words
+     */
+    _iFunc(words, rk0, rk1, rk2, rk3) {
+      /** @type {uint32[]} */
+      const out = [
+        OpCodes.Xor32(words[0], rk0),
+        OpCodes.Xor32(words[1], rk1),
+        OpCodes.Xor32(words[2], rk2),
+        OpCodes.Xor32(words[3], rk3)
       ];
+      return out;
     }
 
     // ----- F: combine Mfunc(Sfunc(u)) and Mfunc(Sfunc(v)) under a bit mask -----
+    /**
+     * @param {uint32} u - First word
+     * @param {uint32} v - Second word
+     * @param {uint32} mask - Bit mask
+     * @returns {uint32[]} [m0, m1]
+     */
     _fFunc(u, v, mask) {
       const t0 = this._mFunc(this._sFunc(u));
       const t1 = this._mFunc(this._sFunc(v));
       const m0 = OpCodes.Xor32(OpCodes.And32(mask, t0), t1);
       const m1 = OpCodes.Xor32(OpCodes.And32(OpCodes.Not32(mask), t1), t0);
-      return [m0, m1];
+      /** @type {uint32[]} */
+      const out = [m0, m1];
+      return out;
     }
 
     // ----- Rfunc: two one-round Feistel passes over the four state words -----
-    _rFuncPair(state, mask) {
-      const [X0, X1, X2, X3] = state;
-      const [m0a, m1a] = this._fFunc(X2, X3, mask);
-      const X0p = OpCodes.Xor32(X0, m0a);
-      const X1p = OpCodes.Xor32(X1, m1a);
-      const [m0b, m1b] = this._fFunc(X0p, X1p, mask);
-      const X0f = OpCodes.Xor32(X2, m0b);
-      const X1f = OpCodes.Xor32(X3, m1b);
-      return [X0f, X1f, X0p, X1p];
+    /**
+     * @param {uint32[]} words - Four state words
+     * @param {uint32} mask - Round mask
+     * @returns {uint32[]} Four output words
+     */
+    _rFuncPair(words, mask) {
+      const X0 = words[0];
+      const X1 = words[1];
+      const X2 = words[2];
+      const X3 = words[3];
+      const ma = this._fFunc(X2, X3, mask);
+      const X0p = OpCodes.Xor32(X0, ma[0]);
+      const X1p = OpCodes.Xor32(X1, ma[1]);
+      const mb = this._fFunc(X0p, X1p, mask);
+      const X0f = OpCodes.Xor32(X2, mb[0]);
+      const X1f = OpCodes.Xor32(X3, mb[1]);
+      /** @type {uint32[]} */
+      const out = [X0f, X1f, X0p, X1p];
+      return out;
     }
 
-    _rFuncPairInverse(state, mask) {
-      const [X0f, X1f, X2f, X3f] = state;
-      const X0p = X2f, X1p = X3f;
-      const [m0b, m1b] = this._fFunc(X0p, X1p, mask);
-      const X2 = OpCodes.Xor32(X0f, m0b);
-      const X3 = OpCodes.Xor32(X1f, m1b);
-      const [m0a, m1a] = this._fFunc(X2, X3, mask);
-      const X0 = OpCodes.Xor32(X0p, m0a);
-      const X1 = OpCodes.Xor32(X1p, m1a);
-      return [X0, X1, X2, X3];
+    /**
+     * @param {uint32[]} words - Four state words
+     * @param {uint32} mask - Round mask
+     * @returns {uint32[]} Four output words
+     */
+    _rFuncPairInverse(words, mask) {
+      const X0f = words[0];
+      const X1f = words[1];
+      const X0p = words[2];
+      const X1p = words[3];
+      const mb = this._fFunc(X0p, X1p, mask);
+      const X2 = OpCodes.Xor32(X0f, mb[0]);
+      const X3 = OpCodes.Xor32(X1f, mb[1]);
+      const ma = this._fFunc(X2, X3, mask);
+      const X0 = OpCodes.Xor32(X0p, ma[0]);
+      const X1 = OpCodes.Xor32(X1p, ma[1]);
+      /** @type {uint32[]} */
+      const out = [X0, X1, X2, X3];
+      return out;
     }
 
     // ----- Key schedule -----
@@ -322,35 +385,42 @@
     // Step 3: the 12 intermediate words are combined (rotate/add/xor) into 56 round-key words.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 56 round-key words
      */
     _expandKey(keyBytes) {
-      const key = [];
+      /** @type {uint32[]} */
+      const master = [];
       for (let i = 0; i < 8; i++)
-        key.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
+        master.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
 
-      const pairs = [[key[0], key[1]], [key[2], key[3]], [key[4], key[5]], [key[6], key[7]]];
+      /** @type {uint32[]} */
       const V = new Array(12);
       for (let branch = 0; branch < 4; branch++) {
-        const X = pairs[branch][0], Y = pairs[branch][1];
+        const X = master[2 * branch];
+        const Y = master[2 * branch + 1];
         const U0 = this._mFunc(this._sFunc(X));
         const U1 = this._mFunc(this._sFunc(Y));
         for (let k = 0; k < 3; k++) {
           const mult = k + 1;
           const kConst = this._mFunc(this._sFunc(4 * k + branch));
           const sum = OpCodes.Add32(U0, kConst);
-          const multU1 = OpCodes.ToUint32(mult * U1);
+          const multU1 = OpCodes.Mul32(mult, U1); // mult is 1..3, so the product is exact
           const xorVal = OpCodes.Xor32(sum, multU1);
           V[branch * 3 + k] = this._mFunc(this._sFunc(xorVal));
         }
       }
 
+      /** @type {uint32[]} */
       const RK = new Array(RK_WORDS);
       for (let n = 0; n < RK_WORDS; n++) {
         const idx1 = (Math.floor(n / 36) + n) % 12;
         const idx2 = n % 9;
-        const [b1, b2, b3, b4] = TBL_A[idx1];
-        const [k1, k2, k3, k4] = TBL_B[idx2];
-        const W1 = V[b1 * 3 + k1], W2 = V[b2 * 3 + k2], W3 = V[b3 * 3 + k3], W4 = V[b4 * 3 + k4];
+        const sa = TBL_A[idx1];
+        const sb = TBL_B[idx2];
+        const W1 = V[OpCodes.Add32(OpCodes.Mul32(sa[0], 3), sb[0])];
+        const W2 = V[OpCodes.Add32(OpCodes.Mul32(sa[1], 3), sb[1])];
+        const W3 = V[OpCodes.Add32(OpCodes.Mul32(sa[2], 3), sb[2])];
+        const W4 = V[OpCodes.Add32(OpCodes.Mul32(sa[3], 3), sb[3])];
         const part1 = OpCodes.Add32(OpCodes.RotL32(W1, 1), W2);
         const sub = OpCodes.Sub32(OpCodes.RotL32(W3, 1), W4);
         const part2 = OpCodes.RotL32(sub, 1);
@@ -365,7 +435,8 @@
      */
     _encryptBlock(block) {
       const RK = this._roundKeys;
-      let state = [
+      /** @type {uint32[]} */
+      let words = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
@@ -373,19 +444,19 @@
       ];
 
       for (let r = 0; r < ROUNDS; r++) {
-        state = this._iFunc(state, RK[8 * r], RK[8 * r + 1], RK[8 * r + 2], RK[8 * r + 3]);
-        state = this._bFunc(state, BSBOX);
-        state = this._iFunc(state, RK[8 * r + 4], RK[8 * r + 5], RK[8 * r + 6], RK[8 * r + 7]);
+        words = this._iFunc(words, RK[8 * r], RK[8 * r + 1], RK[8 * r + 2], RK[8 * r + 3]);
+        words = this._bFunc(words, BSBOX);
+        words = this._iFunc(words, RK[8 * r + 4], RK[8 * r + 5], RK[8 * r + 6], RK[8 * r + 7]);
         const mask = OpCodes.And32(r, 1) === 0 ? 0x55555555 : 0x33333333;
-        state = this._rFuncPair(state, mask);
+        words = this._rFuncPair(words, mask);
       }
-      state = this._iFunc(state, RK[48], RK[49], RK[50], RK[51]);
-      state = this._bFunc(state, BSBOX);
-      state = this._iFunc(state, RK[52], RK[53], RK[54], RK[55]);
+      words = this._iFunc(words, RK[48], RK[49], RK[50], RK[51]);
+      words = this._bFunc(words, BSBOX);
+      words = this._iFunc(words, RK[52], RK[53], RK[54], RK[55]);
 
       return [
-        ...OpCodes.Unpack32LE(state[0]), ...OpCodes.Unpack32LE(state[1]),
-        ...OpCodes.Unpack32LE(state[2]), ...OpCodes.Unpack32LE(state[3])
+        ...OpCodes.Unpack32LE(words[0]), ...OpCodes.Unpack32LE(words[1]),
+        ...OpCodes.Unpack32LE(words[2]), ...OpCodes.Unpack32LE(words[3])
       ];
     }
 
@@ -395,28 +466,29 @@
      */
     _decryptBlock(block) {
       const RK = this._roundKeys;
-      let state = [
+      /** @type {uint32[]} */
+      let words = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
 
-      state = this._iFunc(state, RK[52], RK[53], RK[54], RK[55]);
-      state = this._bFunc(state, BSBOX_INV);
-      state = this._iFunc(state, RK[48], RK[49], RK[50], RK[51]);
+      words = this._iFunc(words, RK[52], RK[53], RK[54], RK[55]);
+      words = this._bFunc(words, BSBOX_INV);
+      words = this._iFunc(words, RK[48], RK[49], RK[50], RK[51]);
 
       for (let r = ROUNDS - 1; r >= 0; r--) {
         const mask = OpCodes.And32(r, 1) === 0 ? 0x55555555 : 0x33333333;
-        state = this._rFuncPairInverse(state, mask);
-        state = this._iFunc(state, RK[8 * r + 4], RK[8 * r + 5], RK[8 * r + 6], RK[8 * r + 7]);
-        state = this._bFunc(state, BSBOX_INV);
-        state = this._iFunc(state, RK[8 * r], RK[8 * r + 1], RK[8 * r + 2], RK[8 * r + 3]);
+        words = this._rFuncPairInverse(words, mask);
+        words = this._iFunc(words, RK[8 * r + 4], RK[8 * r + 5], RK[8 * r + 6], RK[8 * r + 7]);
+        words = this._bFunc(words, BSBOX_INV);
+        words = this._iFunc(words, RK[8 * r], RK[8 * r + 1], RK[8 * r + 2], RK[8 * r + 3]);
       }
 
       return [
-        ...OpCodes.Unpack32LE(state[0]), ...OpCodes.Unpack32LE(state[1]),
-        ...OpCodes.Unpack32LE(state[2]), ...OpCodes.Unpack32LE(state[3])
+        ...OpCodes.Unpack32LE(words[0]), ...OpCodes.Unpack32LE(words[1]),
+        ...OpCodes.Unpack32LE(words[2]), ...OpCodes.Unpack32LE(words[3])
       ];
     }
   }
