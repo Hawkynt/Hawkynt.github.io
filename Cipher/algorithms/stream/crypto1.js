@@ -125,14 +125,18 @@
       ];
 
       // Crypto-1 constants
+      /** @type {int32} */
       this.LFSR_SIZE = 48;         // 48-bit LFSR state
+      /** @type {int32} */
       this.KEY_SIZE = 6;           // 48 bits = 6 bytes
 
       // LFSR feedback polynomial (reverse-engineered)
       // Polynomial: x^48 + x^43 + x^39 + x^38 + x^36 + x^34 + x^33 + x^31 + x^29 + x^24 + x^23 + x^21 + x^19 + x^13 + x^9 + x^7 + x^6 + x^5 + 1
+      /** @type {int32[]} */
       this.FEEDBACK_TAPS = [0, 5, 6, 7, 9, 13, 19, 21, 23, 24, 29, 31, 33, 34, 36, 38, 39, 43];
 
       // Filter function taps (20 positions used for nonlinear filter)
+      /** @type {int32[]} */
       this.FILTER_TAPS = [0, 1, 2, 3, 5, 6, 7, 8, 9, 13, 14, 15, 17, 19, 24, 30, 32, 33, 43, 45];
     }
 
@@ -162,6 +166,14 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {int32} */
+      this.LFSR_SIZE = algorithm.LFSR_SIZE;
+      /** @type {int32} */
+      this.KEY_SIZE = algorithm.KEY_SIZE;
+      /** @type {int32[]} */
+      this.FEEDBACK_TAPS = algorithm.FEEDBACK_TAPS;
+      /** @type {int32[]} */
+      this.FILTER_TAPS = algorithm.FILTER_TAPS;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
@@ -170,7 +182,8 @@
       this.inputBuffer = [];
 
       // Crypto-1 state
-      this.state = new Array(this.algorithm.LFSR_SIZE);
+      /** @type {uint8[]} */
+      this.state = new Array(this.LFSR_SIZE);
       /** @type {boolean} */
       this.initialized = false;
     }
@@ -192,7 +205,7 @@
         throw new Error("Invalid key - must be byte array");
       }
 
-      if (keyBytes.length !== this.algorithm.KEY_SIZE) {
+      if (keyBytes.length !== this.KEY_SIZE) {
         throw new Error("Crypto-1 requires exactly 48-bit (6-byte) keys, got " + keyBytes.length + " bytes");
       }
 
@@ -248,7 +261,7 @@
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        result.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -258,11 +271,11 @@
 
     _initializeCrypto1() {
       // Load 48-bit key into LFSR state
-      for (let i = 0; i < this.algorithm.LFSR_SIZE; i++) {
+      for (let i = 0; i < this.LFSR_SIZE; i++) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
         if (byteIndex < this._key.length) {
-          this.state[i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
+          this.state[i] = OpCodes.And32(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
         } else {
           this.state[i] = 0;
         }
@@ -272,13 +285,14 @@
 
     _clockLFSR() {
       // Calculate feedback using linear polynomial
+      /** @type {uint32} */
       let feedback = 0;
-      for (let i = 0; i < this.algorithm.FEEDBACK_TAPS.length; i++) {
-        feedback = OpCodes.XorN(feedback, this.state[this.algorithm.FEEDBACK_TAPS[i]]);
+      for (let i = 0; i < this.FEEDBACK_TAPS.length; i++) {
+        feedback = OpCodes.Xor32(feedback, this.state[this.FEEDBACK_TAPS[i]]);
       }
 
       // Shift LFSR
-      for (let i = this.algorithm.LFSR_SIZE - 1; i > 0; i--) {
+      for (let i = this.LFSR_SIZE - 1; i > 0; i--) {
         this.state[i] = this.state[i - 1];
       }
       this.state[0] = feedback;
@@ -286,56 +300,68 @@
       return feedback;
     }
 
+    /**
+     * @returns {uint32}
+     */
     _filterFunction() {
       // Nonlinear 20-to-1 filter function
       // Extract bits from filter tap positions
-      const filterBits = new Array(this.algorithm.FILTER_TAPS.length);
-      for (let i = 0; i < this.algorithm.FILTER_TAPS.length; i++) {
-        filterBits[i] = this.state[this.algorithm.FILTER_TAPS[i]];
+      /** @type {uint8[]} */
+      const filterBits = new Array(this.FILTER_TAPS.length);
+      for (let i = 0; i < this.FILTER_TAPS.length; i++) {
+        filterBits[i] = this.state[this.FILTER_TAPS[i]];
       }
 
       // Simplified nonlinear Boolean function (educational approximation)
       // Real Crypto-1 uses a more complex function, but this captures the essence
+      /** @type {uint32} */
       let output = 0;
 
       // Linear terms
       for (let i = 0; i < filterBits.length; i++) {
-        output = OpCodes.XorN(output, filterBits[i]);
+        output = OpCodes.Xor32(output, filterBits[i]);
       }
 
       // Quadratic terms (degree 2)
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[0], filterBits[1]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[2], filterBits[3]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[4], filterBits[5]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[6], filterBits[7]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[8], filterBits[9]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[10], filterBits[11]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[12], filterBits[13]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[14], filterBits[15]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[16], filterBits[17]));
-      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[18], filterBits[19]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[0], filterBits[1]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[2], filterBits[3]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[4], filterBits[5]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[6], filterBits[7]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[8], filterBits[9]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[10], filterBits[11]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[12], filterBits[13]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[14], filterBits[15]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[16], filterBits[17]));
+      output = OpCodes.Xor32(output, OpCodes.And32(filterBits[18], filterBits[19]));
 
       // Some cubic terms (degree 3) - simplified
       if (filterBits.length >= 6) {
-        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(filterBits[0], filterBits[1]), filterBits[2]));
-        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(filterBits[3], filterBits[4]), filterBits[5]));
+        output = OpCodes.Xor32(output, OpCodes.And32(OpCodes.And32(filterBits[0], filterBits[1]), filterBits[2]));
+        output = OpCodes.Xor32(output, OpCodes.And32(OpCodes.And32(filterBits[3], filterBits[4]), filterBits[5]));
       }
 
-      return OpCodes.AndN(output, 1);
+      return OpCodes.And32(output, 1);
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
       // Clock LFSR and apply filter function
       this._clockLFSR();
       return this._filterFunction();
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let keystreamByte = 0;
 
       for (let bit = 0; bit < 8; bit++) {
         const keystreamBit = this._generateKeystreamBit();
-        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
+        keystreamByte = OpCodes.Or32(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
       return keystreamByte;

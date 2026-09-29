@@ -143,6 +143,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {int32} */
+      this.STATE_SIZE = algorithm.STATE_SIZE;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
@@ -153,12 +155,19 @@
       this.inputBuffer = [];
 
       // Spritz state
-      this.S = new Array(this.algorithm.STATE_SIZE);  // 256-byte state
+      /** @type {int32[]} */
+      this.S = new Array(this.STATE_SIZE);  // 256-byte state (a permutation of 0..255)
+      /** @type {int32} */
       this.i = 0;                                     // State pointer i
+      /** @type {int32} */
       this.j = 0;                                     // State pointer j
+      /** @type {int32} */
       this.k = 0;                                     // State pointer k
+      /** @type {int32} */
       this.z = 0;                                     // State pointer z
+      /** @type {int32} */
       this.a = 0;                                     // Absorb counter
+      /** @type {int32} */
       this.w = 1;                                     // Whip counter
       /** @type {boolean} */
       this.initialized = false;
@@ -316,12 +325,15 @@
       this.w = 1;
 
       // Initialize S to identity permutation
-      for (let v = 0; v < this.algorithm.STATE_SIZE; v++) {
+      for (let v = 0; v < this.STATE_SIZE; v++) {
         this.S[v] = v;
       }
     }
 
     // Absorb data into state (sponge absorb phase)
+    /**
+     * @param {uint8[]} data
+     */
     _absorb(data) {
       for (let v = 0; v < data.length; v++) {
         this._absorbByte(data[v]);
@@ -329,14 +341,20 @@
     }
 
     // Absorb single byte
+    /**
+     * @param {uint8} b
+     */
     _absorbByte(b) {
-      this._absorbNibble(OpCodes.AndN(b, 0xF));        // Low nibble
-      this._absorbNibble(OpCodes.AndN(OpCodes.Shr32(b, 4), 0xF)); // High nibble
+      this._absorbNibble(OpCodes.And32(b, 0xF));        // Low nibble
+      this._absorbNibble(OpCodes.And32(OpCodes.Shr32(b, 4), 0xF)); // High nibble
     }
 
     // Absorb single nibble (4 bits)
+    /**
+     * @param {int32} x
+     */
     _absorbNibble(x) {
-      if (this.a === (this.algorithm.STATE_SIZE / 2)) {
+      if (this.a === (this.STATE_SIZE / 2)) {
         this._shuffle();
       }
 
@@ -345,15 +363,15 @@
       this.S[this.a] = this.S[128 + x];
       this.S[128 + x] = temp;
 
-      this.a = (this.a + 1) % (this.algorithm.STATE_SIZE / 2);
+      this.a = (this.a + 1) % (this.STATE_SIZE / 2);
     }
 
     // Stop absorbing (pad and transition)
     _absorbStop() {
-      if (this.a === (this.algorithm.STATE_SIZE / 2)) {
+      if (this.a === (this.STATE_SIZE / 2)) {
         this._shuffle();
       }
-      this.a = (this.a + 1) % (this.algorithm.STATE_SIZE / 2);
+      this.a = (this.a + 1) % (this.STATE_SIZE / 2);
     }
 
     // Shuffle state (multiple whip operations)
@@ -367,6 +385,9 @@
     }
 
     // Whip operation (state mixing)
+    /**
+     * @param {int32} r
+     */
     _whip(r) {
       for (let v = 0; v < r; v++) {
         this._update();
@@ -376,21 +397,21 @@
 
     // Crush operation (avalanche)
     _crush() {
-      for (let v = 0; v < (this.algorithm.STATE_SIZE / 2); v++) {
-        if (this.S[v] > this.S[this.algorithm.STATE_SIZE - 1 - v]) {
+      for (let v = 0; v < (this.STATE_SIZE / 2); v++) {
+        if (this.S[v] > this.S[this.STATE_SIZE - 1 - v]) {
           // Swap S[v] and S[STATE_SIZE - 1 - v]
           const temp = this.S[v];
-          this.S[v] = this.S[this.algorithm.STATE_SIZE - 1 - v];
-          this.S[this.algorithm.STATE_SIZE - 1 - v] = temp;
+          this.S[v] = this.S[this.STATE_SIZE - 1 - v];
+          this.S[this.STATE_SIZE - 1 - v] = temp;
         }
       }
     }
 
     // Update state pointers and mix
     _update() {
-      this.i = (this.i + this.w) % this.algorithm.STATE_SIZE;
-      this.j = (this.k + this.S[(this.j + this.S[this.i]) % this.algorithm.STATE_SIZE]) % this.algorithm.STATE_SIZE;
-      this.k = (this.i + this.k + this.S[this.j]) % this.algorithm.STATE_SIZE;
+      this.i = (this.i + this.w) % this.STATE_SIZE;
+      this.j = (this.k + this.S[(this.j + this.S[this.i]) % this.STATE_SIZE]) % this.STATE_SIZE;
+      this.k = (this.i + this.k + this.S[this.j]) % this.STATE_SIZE;
 
       // Swap S[i] and S[j]
       const temp = this.S[this.i];
@@ -399,6 +420,9 @@
     }
 
     // Drip operation (prepare for output)
+    /**
+     * @returns {int32}
+     */
     _drip() {
       if (this.a > 0) {
         this._shuffle();
@@ -408,12 +432,18 @@
     }
 
     // Output function
+    /**
+     * @returns {int32}
+     */
     _output() {
-      this.z = this.S[(this.j + this.S[(this.i + this.S[(this.z + this.k) % this.algorithm.STATE_SIZE]) % this.algorithm.STATE_SIZE]) % this.algorithm.STATE_SIZE];
+      this.z = this.S[(this.j + this.S[(this.i + this.S[(this.z + this.k) % this.STATE_SIZE]) % this.STATE_SIZE]) % this.STATE_SIZE];
       return this.z;
     }
 
     // Squeeze operation (sponge squeeze phase)
+    /**
+     * @returns {int32}
+     */
     _squeeze() {
       if (this.a > 0) {
         this._shuffle();

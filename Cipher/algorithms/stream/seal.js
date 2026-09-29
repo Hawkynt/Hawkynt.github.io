@@ -42,9 +42,13 @@
    * SEAL Stream Cipher - Base class for both endianness variants
    */
   class SEALStreamCipher extends StreamCipherAlgorithm {
+    /**
+     * @param {boolean} isBigEndian - True for the big-endian variant
+     */
     constructor(isBigEndian) {
       super();
 
+      /** @type {boolean} */
       this.isBigEndian = isBigEndian;
       this.name = isBigEndian ? "SEAL-3.0-BE" : "SEAL-3.0-LE";
       this.description = "Software-optimized stream cipher designed by Rogaway and Coppersmith using SHA-1-based table generation. " +
@@ -183,7 +187,7 @@
       }
 
       if (isBigEndian) {
-        this.tests.push({
+        this.tests = this.tests.concat([{
           text: "DarkCrypt Seal3lib KERNEL vector (SEAL 3.0, key=00..13, iv=00000000)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.CreateArray(128, 0x00),
@@ -196,7 +200,7 @@
             "d7be56fd8bc11e81e8498c6354ee2fbe43431a1223527e11a3ef739954d9732" +
             "edfc"
           )
-        });
+        }]);
       }
     }
 
@@ -215,8 +219,13 @@
    * SEAL Stream Cipher Instance - Implements Feed/Result pattern
    */
   class SEALStreamCipherInstance extends IAlgorithmInstance {
+    /**
+     * @param {SEALStreamCipher} algorithm - Parent algorithm instance
+     * @param {boolean} isBigEndian - True for big-endian keystream words
+     */
     constructor(algorithm, isBigEndian) {
       super(algorithm);
+      /** @type {boolean} */
       this.isBigEndian = isBigEndian;
       /** @type {uint8[]|null} */
       this._key = null;
@@ -226,22 +235,35 @@
       this.inputBuffer = [];
 
       // SEAL tables
-      this.T = OpCodes.CreateArray(512, 0); // 512 32-bit words
-      this.S = OpCodes.CreateArray(256, 0); // 256 32-bit words
+      /** @type {uint32[]} */
+      this.T = new Array(512); // 512 32-bit words
+      for (let i = 0; i < 512; i++) this.T[i] = 0;
+      /** @type {uint32[]} */
+      this.S = new Array(256); // 256 32-bit words
+      for (let i = 0; i < 256; i++) this.S[i] = 0;
+      /** @type {uint32[]} */
       this.R = [];                     // Variable size
 
       // Counters
+      /** @type {uint32} */
       this.outsideCounter = 0;
+      /** @type {int32} */
       this.insideCounter = 0;
+      /** @type {uint32} */
       this.startCount = 0;
+      /** @type {int32} */
       this.iterationsPerCount = 4; // Default: 32*1024 / 8192
 
       // Keystream buffer
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
 
       // Gamma function state
+      /** @type {uint32[]|null} */
       this.gammaZ = null;
+      /** @type {uint32} */
       this.lastGammaIndex = 0xffffffff; // -1 in unsigned
     }
 
@@ -307,6 +329,9 @@
      * SHA-1 based Gamma function for table generation
      * Based on Crypto++ seal.cpp SEAL_Gamma::Apply()
      * Gamma(i) returns a 32-bit word derived from SHA-1
+     * @param {int32} i
+     * @param {uint32[]} H
+     * @returns {uint32}
      */
     _gamma(i, H) {
       const shaIndex = Math.floor(i / 5);
@@ -336,9 +361,13 @@
     /**
      * SHA-1 Transform function - processes one 512-bit block
      * Based on RFC 3174 and our sha1.js implementation
+     * @param {uint32[]} hashWords
+     * @param {uint8[]} block
      */
-    _sha1Transform(state, block) {
+    _sha1Transform(hashWords, block) {
+      /** @type {uint32[]} */
       const K = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+      /** @type {uint32[]} */
       const W = new Array(80);
 
       // Prepare message schedule W[t]
@@ -352,11 +381,14 @@
       }
 
       // Initialize working variables
-      let a = state[0], b = state[1], c = state[2], d = state[3], e = state[4];
+      let a = hashWords[0], b = hashWords[1], c = hashWords[2], d = hashWords[3], e = hashWords[4];
 
       // Main loop (80 rounds)
       for (let t = 0; t < 80; t++) {
-        let f, k;
+        /** @type {uint32} */
+        let f = 0;
+        /** @type {uint32} */
+        let k = 0;
 
         if (t < 20) {
           f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.ToUint32(OpCodes.Not32(b)), d));
@@ -372,7 +404,7 @@
           k = K[3];
         }
 
-        const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
+        const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), f), e), k), W[t]);
         e = d;
         d = c;
         c = OpCodes.RotL32(b, 30);
@@ -381,20 +413,23 @@
       }
 
       // Add working variables to state
-      state[0] = OpCodes.ToUint32((state[0] + a));
-      state[1] = OpCodes.ToUint32((state[1] + b));
-      state[2] = OpCodes.ToUint32((state[2] + c));
-      state[3] = OpCodes.ToUint32((state[3] + d));
-      state[4] = OpCodes.ToUint32((state[4] + e));
+      hashWords[0] = OpCodes.Add32(hashWords[0], a);
+      hashWords[1] = OpCodes.Add32(hashWords[1], b);
+      hashWords[2] = OpCodes.Add32(hashWords[2], c);
+      hashWords[3] = OpCodes.Add32(hashWords[3], d);
+      hashWords[4] = OpCodes.Add32(hashWords[4], e);
     }
 
     /**
      * SEAL key setup - generates T, S, and R tables
      */
     _keySetup() {
-      if (!this._key) return;
+      if (!this._key) {
+        return;
+      }
 
       // Initialize H from key (5 32-bit words = 20 bytes)
+      /** @type {uint32[]} */
       const H = [];
       for (let i = 0; i < 5; i++) {
         const offset = i * 4;
@@ -449,6 +484,7 @@
 
     /**
      * Generate 1024 bytes (256 words) of keystream
+     * @returns {uint8[]}
      */
     _generateKeystream() {
       let a = OpCodes.Xor32(this.outsideCounter, this.R[4 * this.insideCounter]);
@@ -577,6 +613,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._generateKeystream();

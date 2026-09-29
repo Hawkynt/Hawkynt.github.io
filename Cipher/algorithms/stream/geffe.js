@@ -51,6 +51,149 @@
  * @extends {StreamCipherAlgorithm}
  */
 
+  // LFSR parameters (coprime lengths for security)
+  const LFSR1_LENGTH = 11;  // First LFSR length
+  const LFSR2_LENGTH = 13;  // Second LFSR length
+  const LFSR3_LENGTH = 17;  // Third LFSR length
+
+  // LFSR feedback polynomials (primitive polynomials)
+  /** @type {int32[]} */
+  const LFSR1_TAPS = [11, 9];      // x^11 + x^9 + 1
+  /** @type {int32[]} */
+  const LFSR2_TAPS = [13, 12, 10, 9]; // x^13 + x^12 + x^10 + x^9 + 1
+  /** @type {int32[]} */
+  const LFSR3_TAPS = [17, 14];     // x^17 + x^14 + 1
+
+  /**
+   * The three LFSR registers of a Geffe generator
+   */
+  class GeffeState {
+    constructor() {
+      /** @type {uint8[]} */
+      this.lfsr1 = []; // 11-bit register
+      /** @type {uint8[]} */
+      this.lfsr2 = []; // 13-bit register
+      /** @type {uint8[]} */
+      this.lfsr3 = []; // 17-bit register
+    }
+  }
+
+  /**
+   * @param {uint8[]} bits - Register bits
+   * @returns {boolean} True when every bit is 0
+   */
+  function allZero(bits) {
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] !== 0) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Initialize LFSR state from key and IV
+   * @param {uint8[]} key - Key bytes
+   * @param {uint8[]} iv - IV bytes
+   * @returns {GeffeState} Fresh register state
+   */
+  function initializeRegisters(key, iv) {
+    // Initialize LFSR1 from first part of key
+    /** @type {uint8[]} */
+    const lfsr1 = new Array(LFSR1_LENGTH);
+    for (let i = 0; i < LFSR1_LENGTH; i++) {
+      lfsr1[i] = OpCodes.And32(OpCodes.Shr32(key[i % key.length], (i % 8)), 1);
+    }
+
+    // Initialize LFSR2 from middle part of key + IV
+    /** @type {uint8[]} */
+    const lfsr2 = new Array(LFSR2_LENGTH);
+    for (let i = 0; i < LFSR2_LENGTH; i++) {
+      const keyIdx = (i + 4) % key.length;
+      const ivIdx = i % iv.length;
+      lfsr2[i] = OpCodes.And32(OpCodes.Shr32(OpCodes.Xor32(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
+    }
+
+    // Initialize LFSR3 from last part of key + IV
+    /** @type {uint8[]} */
+    const lfsr3 = new Array(LFSR3_LENGTH);
+    for (let i = 0; i < LFSR3_LENGTH; i++) {
+      const keyIdx = (i + 8) % key.length;
+      const ivIdx = (i + 4) % iv.length;
+      lfsr3[i] = OpCodes.And32(OpCodes.Shr32(OpCodes.Xor32(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
+    }
+
+    // Ensure LFSRs are not all-zero
+    if (allZero(lfsr1)) lfsr1[0] = 1;
+    if (allZero(lfsr2)) lfsr2[0] = 1;
+    if (allZero(lfsr3)) lfsr3[0] = 1;
+
+    const registers = new GeffeState();
+    registers.lfsr1 = lfsr1;
+    registers.lfsr2 = lfsr2;
+    registers.lfsr3 = lfsr3;
+    return registers;
+  }
+
+  /**
+   * Step LFSR and return output bit
+   * @param {uint8[]} lfsr - Register bits (shifted in place)
+   * @param {int32[]} taps - Feedback taps (1-based)
+   * @returns {uint8} Output bit
+   */
+  function stepRegister(lfsr, taps) {
+    // Calculate feedback bit
+    /** @type {uint32} */
+    let feedback = 0;
+    for (let t = 0; t < taps.length; t++) {
+      feedback = OpCodes.Xor32(feedback, lfsr[taps[t] - 1]); // Convert to 0-based indexing
+    }
+
+    // Shift register
+    const outputBit = lfsr[0];
+    for (let i = 0; i < lfsr.length - 1; i++) {
+      lfsr[i] = lfsr[i + 1];
+    }
+    lfsr[lfsr.length - 1] = feedback;
+
+    return outputBit;
+  }
+
+  /**
+   * Geffe combining function: f(x1,x2,x3) = (x1 AND x2) XOR (NOT x1 AND x3)
+   * @param {uint8} bit1 - Selector bit
+   * @param {uint8} bit2 - Bit taken when bit1 is 1
+   * @param {uint8} bit3 - Bit taken when bit1 is 0
+   * @returns {uint32} Combined bit
+   */
+  function combine(bit1, bit2, bit3) {
+    return OpCodes.Xor32(OpCodes.And32(bit1, bit2), OpCodes.And32((1 - bit1), bit3));
+  }
+
+  /**
+   * Generate one byte of keystream
+   * @param {GeffeState} registers - Register state (advanced in place)
+   * @returns {uint8} Keystream byte
+   */
+  function nextKeystreamByte(registers) {
+    /** @type {uint32} */
+    let output = 0;
+
+    // Generate 8 bits for one byte
+    for (let bit = 0; bit < 8; bit++) {
+      // Step each LFSR and get output bits
+      const bit1 = stepRegister(registers.lfsr1, LFSR1_TAPS);
+      const bit2 = stepRegister(registers.lfsr2, LFSR2_TAPS);
+      const bit3 = stepRegister(registers.lfsr3, LFSR3_TAPS);
+
+      // Apply Geffe combining function
+      const keyBit = combine(bit1, bit2, bit3);
+
+      // Add bit to output byte
+      output = OpCodes.Or32(output, OpCodes.Shl32(keyBit, bit));
+    }
+
+    return OpCodes.And32(output, 0xFF);
+  }
+
   class GeffeAlgorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
@@ -113,14 +256,20 @@
       ];
 
       // LFSR parameters (coprime lengths for security)
-      this.LFSR1_LENGTH = 11;  // First LFSR length
-      this.LFSR2_LENGTH = 13;  // Second LFSR length
-      this.LFSR3_LENGTH = 17;  // Third LFSR length
+      /** @type {int32} */
+      this.LFSR1_LENGTH = LFSR1_LENGTH;
+      /** @type {int32} */
+      this.LFSR2_LENGTH = LFSR2_LENGTH;
+      /** @type {int32} */
+      this.LFSR3_LENGTH = LFSR3_LENGTH;
 
       // LFSR feedback polynomials (primitive polynomials)
-      this.LFSR1_TAPS = [11, 9];      // x^11 + x^9 + 1
-      this.LFSR2_TAPS = [13, 12, 10, 9]; // x^13 + x^12 + x^10 + x^9 + 1
-      this.LFSR3_TAPS = [17, 14];     // x^17 + x^14 + 1
+      /** @type {int32[]} */
+      this.LFSR1_TAPS = LFSR1_TAPS;
+      /** @type {int32[]} */
+      this.LFSR2_TAPS = LFSR2_TAPS;
+      /** @type {int32[]} */
+      this.LFSR3_TAPS = LFSR3_TAPS;
     }
 
     /**
@@ -133,80 +282,44 @@
       return new GeffeInstance(this, isInverse);
     }
 
-    // Initialize LFSR state from key and IV
+    /**
+     * Initialize LFSR state from key and IV
+     * @param {uint8[]} key - Key bytes
+     * @param {uint8[]} iv - IV bytes
+     * @returns {GeffeState} Fresh register state
+     */
     initializeLFSRs(key, iv) {
-      // Initialize LFSR1 from first part of key
-      const lfsr1 = new Array(this.LFSR1_LENGTH);
-      for (let i = 0; i < this.LFSR1_LENGTH; i++) {
-        lfsr1[i] = OpCodes.AndN(OpCodes.Shr32(key[i % key.length], (i % 8)), 1);
-      }
-
-      // Initialize LFSR2 from middle part of key + IV
-      const lfsr2 = new Array(this.LFSR2_LENGTH);
-      for (let i = 0; i < this.LFSR2_LENGTH; i++) {
-        const keyIdx = (i + 4) % key.length;
-        const ivIdx = i % iv.length;
-        lfsr2[i] = OpCodes.AndN(OpCodes.Shr32(OpCodes.XorN(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
-      }
-
-      // Initialize LFSR3 from last part of key + IV
-      const lfsr3 = new Array(this.LFSR3_LENGTH);
-      for (let i = 0; i < this.LFSR3_LENGTH; i++) {
-        const keyIdx = (i + 8) % key.length;
-        const ivIdx = (i + 4) % iv.length;
-        lfsr3[i] = OpCodes.AndN(OpCodes.Shr32(OpCodes.XorN(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
-      }
-
-      // Ensure LFSRs are not all-zero
-      if (lfsr1.every(bit => bit === 0)) lfsr1[0] = 1;
-      if (lfsr2.every(bit => bit === 0)) lfsr2[0] = 1;
-      if (lfsr3.every(bit => bit === 0)) lfsr3[0] = 1;
-
-      return { lfsr1, lfsr2, lfsr3 };
+      return initializeRegisters(key, iv);
     }
 
-    // Step LFSR and return output bit
+    /**
+     * Step LFSR and return output bit
+     * @param {uint8[]} lfsr - Register bits (shifted in place)
+     * @param {int32[]} taps - Feedback taps (1-based)
+     * @returns {uint8} Output bit
+     */
     stepLFSR(lfsr, taps) {
-      // Calculate feedback bit
-      let feedback = 0;
-      for (const tap of taps) {
-        feedback = OpCodes.XorN(feedback, lfsr[tap - 1]); // Convert to 0-based indexing
-      }
-
-      // Shift register
-      const outputBit = lfsr[0];
-      for (let i = 0; i < lfsr.length - 1; i++) {
-        lfsr[i] = lfsr[i + 1];
-      }
-      lfsr[lfsr.length - 1] = feedback;
-
-      return outputBit;
+      return stepRegister(lfsr, taps);
     }
 
-    // Geffe combining function: f(x1,x2,x3) = (x1 AND x2) XOR (NOT x1 AND x3)
+    /**
+     * Geffe combining function: f(x1,x2,x3) = (x1 AND x2) XOR (NOT x1 AND x3)
+     * @param {uint8} bit1 - Selector bit
+     * @param {uint8} bit2 - Bit taken when bit1 is 1
+     * @param {uint8} bit3 - Bit taken when bit1 is 0
+     * @returns {uint32} Combined bit
+     */
     geffeFunction(bit1, bit2, bit3) {
-      return OpCodes.XorN(OpCodes.AndN(bit1, bit2), OpCodes.AndN((1 - bit1), bit3));
+      return combine(bit1, bit2, bit3);
     }
 
-    // Generate one byte of keystream
+    /**
+     * Generate one byte of keystream
+     * @param {GeffeState} state - Register state (advanced in place)
+     * @returns {uint8} Keystream byte
+     */
     generateKeystreamByte(state) {
-      let output = 0;
-
-      // Generate 8 bits for one byte
-      for (let bit = 0; bit < 8; bit++) {
-        // Step each LFSR and get output bits
-        const bit1 = this.stepLFSR(state.lfsr1, this.LFSR1_TAPS);
-        const bit2 = this.stepLFSR(state.lfsr2, this.LFSR2_TAPS);
-        const bit3 = this.stepLFSR(state.lfsr3, this.LFSR3_TAPS);
-
-        // Apply Geffe combining function
-        const keyBit = this.geffeFunction(bit1, bit2, bit3);
-
-        // Add bit to output byte
-        output = OpCodes.OrN(output, OpCodes.Shl32(keyBit, bit));
-      }
-
-      return OpCodes.AndN(output, 0xFF);
+      return nextKeystreamByte(state);
     }
   }
 
@@ -237,6 +350,7 @@
       this.inputBuffer = [];
       /** @type {boolean} */
       this.initialized = false;
+      /** @type {GeffeState|null} */
       this.state = null;
     }
 
@@ -310,7 +424,7 @@
 
     _initializeIfReady() {
       if (this._key && this._iv) {
-        this.state = this.algorithm.initializeLFSRs(this._key, this._iv);
+        this.state = initializeRegisters(this._key, this._iv);
         this.initialized = true;
       }
     }
@@ -362,8 +476,8 @@
 
       // Process each byte of input
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        const keystreamByte = this.algorithm.generateKeystreamByte(this.state);
-        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        const keystreamByte = nextKeystreamByte(this.state);
+        result.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer
