@@ -58,7 +58,8 @@
 
   // Four 256-entry 32-bit substitution/permutation tables.
   // Byte i of (subkey ^ half) selects table Ti; the four lookups are XORed together.
-  const DARKCRYPT_FCRYPT_T0 = Object.freeze([
+  /** @type {uint32[]} */
+  const DARKCRYPT_FCRYPT_T0 = [
     0x50070000,0xF8030000,0x90050000,0x20030000,0xE8040000,0x80050000,0xC8060000,0x88000000,
     0x68060000,0x30040000,0x30040000,0x88040000,0x50000000,0x90050000,0x98040000,0x30000000,
     0x70000000,0x30000000,0x90060000,0x28030000,0x98030000,0x28060000,0x40010000,0x00030000,
@@ -91,9 +92,11 @@
     0x18020000,0xC0070000,0xB0050000,0xC8050000,0x88070000,0x20010000,0xA8030000,0x18000000,
     0x20070000,0x80050000,0xC8040000,0x30020000,0xE8010000,0xA8070000,0x88060000,0xC8010000,
     0x90030000,0x90000000,0xB0070000,0xD0050000,0x60000000,0x68000000,0x10020000,0x70010000
-  ]);
+  ];
+  Object.freeze(DARKCRYPT_FCRYPT_T0);
 
-  const DARKCRYPT_FCRYPT_T1 = Object.freeze([
+  /** @type {uint32[]} */
+  const DARKCRYPT_FCRYPT_T1 = [
     0x030000B8,0x000000A0,0x05000030,0x070000F0,0x05000090,0x020000F0,0x04000060,0x010000F0,
     0x03000038,0x03000060,0x05000008,0x00000068,0x06000010,0x05000010,0x06000008,0x04000028,
     0x03000060,0x030000D8,0x03000038,0x06000030,0x01000018,0x07000018,0x07000090,0x04000048,
@@ -126,9 +129,11 @@
     0x030000C8,0x06000038,0x010000A0,0x060000B0,0x02000018,0x060000F8,0x07000020,0x030000C0,
     0x000000B0,0x00000030,0x060000D0,0x04000090,0x030000B0,0x02000088,0x07000008,0x060000A0,
     0x03000080,0x00000018,0x07000000,0x01000078,0x040000B0,0x04000088,0x04000010,0x04000000
-  ]);
+  ];
+  Object.freeze(DARKCRYPT_FCRYPT_T1);
 
-  const DARKCRYPT_FCRYPT_T2 = Object.freeze([
+  /** @type {uint32[]} */
+  const DARKCRYPT_FCRYPT_T2 = [
     0x00800700,0x00B80100,0x00200100,0x00980200,0x00500100,0x00180000,0x00180400,0x00300400,
     0x00880600,0x00600700,0x00800200,0x00800700,0x00100200,0x00C00300,0x00780100,0x00680300,
     0x00F80500,0x00000400,0x00380400,0x00380100,0x00A80400,0x00100700,0x00280600,0x00E80200,
@@ -161,9 +166,11 @@
     0x00A00100,0x00700000,0x00A80500,0x00000700,0x00200200,0x00C00300,0x00200400,0x00C80200,
     0x00B00200,0x00400300,0x00B80300,0x00280500,0x00A00000,0x00300000,0x00A80700,0x00780100,
     0x00600400,0x00500400,0x00980300,0x00000400,0x00B00300,0x00A00500,0x00800000,0x00300400
-  ]);
+  ];
+  Object.freeze(DARKCRYPT_FCRYPT_T2);
 
-  const DARKCRYPT_FCRYPT_T3 = Object.freeze([
+  /** @type {uint32[]} */
+  const DARKCRYPT_FCRYPT_T3 = [
     0x00004805,0x00005001,0x00004002,0x00008802,0x00002004,0x0000F003,0x00004802,0x00001007,
     0x0000A805,0x0000B805,0x00001002,0x00009801,0x0000E803,0x0000E802,0x00003005,0x00009000,
     0x00002002,0x00004002,0x00006803,0x00004001,0x00005005,0x00000001,0x00006803,0x0000B802,
@@ -196,7 +203,8 @@
     0x00009806,0x0000B805,0x0000A804,0x00004802,0x00007806,0x00001806,0x0000E800,0x00007804,
     0x0000C006,0x00000807,0x00009803,0x0000D806,0x00006805,0x00004006,0x00004806,0x00004805,
     0x00000805,0x00001006,0x00002806,0x00001807,0x0000D005,0x0000E007,0x00007000,0x00002801
-  ]);
+  ];
+  Object.freeze(DARKCRYPT_FCRYPT_T3);
 
   // 8-byte key -> 16 subkey words (DES-style: low bit of each key byte dropped,
   // 8x7=56 significant bits packed into a rotating 32+24-bit register pair;
@@ -204,6 +212,7 @@
   // then rotates the pair by 11 bits for the next round).
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[]} The 16 round subkeys
    */
   function darkCryptFcryptExpandKey(keyBytes) {
     let eax = OpCodes.Shr32(keyBytes[0], 1);
@@ -227,6 +236,11 @@
 
     edx = OpCodes.Shr32(savedEdx, 4);
 
+    /**
+     * Reverse the byte order of a 32-bit word
+     * @param {uint32} x - Word
+     * @returns {uint32} Byte-reversed word
+     */
     function bswap32(x) {
       return OpCodes.ToUint32(
         OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
@@ -237,16 +251,17 @@
       );
     }
 
-    const subkeys = new Array(16);
-    subkeys[0] = bswap32(eax);
+    /** @type {uint32[]} */
+    const roundWords = new Array(16);
+    roundWords[0] = bswap32(eax);
 
     for (let i = 1; i < 16; i++) {
       const oldEax = eax, oldEdx = edx;
       eax = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEax, 11), OpCodes.Shl32(OpCodes.And32(oldEdx, 0x7FF), 21)));
       edx = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(oldEdx, 11), OpCodes.Shl32(OpCodes.And32(oldEax, 0x7FF), 13)));
-      subkeys[i] = bswap32(eax);
+      roundWords[i] = bswap32(eax);
     }
-    return subkeys;
+    return roundWords;
   }
 
   function darkCryptFcryptF(t) {
@@ -263,6 +278,8 @@
   // Base cipher: 16-round alternating Feistel on a 64-bit (2x32-bit LE) block.
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint32[]} subkeys - The 16 round subkeys
+   * @returns {uint8[]} Output block
    */
   function darkCryptFcryptCoreEncrypt(block, subkeys) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -281,6 +298,8 @@
 
   /**
    * @param {uint8[]} block - Input block
+   * @param {uint32[]} subkeys - The 16 round subkeys
+   * @returns {uint8[]} Output block
    */
   function darkCryptFcryptCoreDecrypt(block, subkeys) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -369,8 +388,11 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.kc = null;
+      /** @type {uint32[]|null} */
       this.ka = null;
+      /** @type {uint32[]|null} */
       this.kb = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];

@@ -60,7 +60,262 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class MercyAlgorithm extends BlockCipherAlgorithm {
+
+
+  /** @type {int32} */
+  const BLOCK_SIZE = 512;        // 4096 bits = 512 bytes
+  /** @type {int32} */
+  const HALF_BLOCK = 256;        // 2048 bits = 256 bytes
+  /** @type {int32} */
+  const KEY_SIZE = 16;           // 128 bits
+  /** @type {int32} */
+  const TWEAK_SIZE = 16;         // 128 bits
+  /** @type {int32} */
+  const ROUNDS = 6;              // 6 Feistel rounds
+
+  // Generate AES S-box (used as basis for key-dependent S-boxes)
+  /**
+   * @returns {uint8[]} The AES S-box
+   */
+  function mercyAesSbox() {
+    /** @type {uint8[]} */
+    const sbox = new Array(256);
+    /** @type {uint8[]} */
+    const p = new Array(256);
+    let i = 0;
+    /** @type {uint32} */
+    let x = 0;
+
+    // Initialize with identity
+    p[0] = 1;
+    for (i = 1; i < 256; i++) {
+      x = OpCodes.Xor32(p[i - 1], OpCodes.Shl32(p[i - 1], 1));
+      if (OpCodes.And32(x, 0x100) !== 0) x = OpCodes.Xor32(x, 0x11B);
+      p[i] = OpCodes.And32(x, 0xFF);
+    }
+
+    // Generate S-box using affine transformation
+    for (i = 0; i < 256; i++) {
+      x = p[255 - i];
+      if (i === 0) x = 0;
+
+      /** @type {uint32} */
+      let s = x;
+      s = OpCodes.Xor32(s, OpCodes.RotL8(x, 1));
+      s = OpCodes.Xor32(s, OpCodes.RotL8(x, 2));
+      s = OpCodes.Xor32(s, OpCodes.RotL8(x, 3));
+      s = OpCodes.Xor32(s, OpCodes.RotL8(x, 4));
+      s = OpCodes.Xor32(s, 0x63);
+
+      sbox[i] = OpCodes.And32(s, 0xFF);
+    }
+
+    return sbox;
+  }
+
+  // AES-like S-box for the key-dependent transformations
+  /** @type {uint8[]} */
+  const MERCY_SBOX = mercyAesSbox();
+
+  // Generate key-dependent S-box by XORing base S-box with key material
+  /**
+   * @param {uint8[]} key - 16 key bytes
+   * @param {uint8[]} tweak - 16 tweak bytes
+   * @param {int32} round - Round index
+   * @returns {uint8[]} Key-dependent S-box
+   */
+  function mercyKeySbox(key, tweak, round) {
+    /** @type {uint8[]} */
+    const keySbox = new Array(256);
+
+    for (let i = 0; i < 256; i++) {
+      const keyByte = key[i % 16];
+      const tweakByte = tweak[i % 16];
+      const roundByte = OpCodes.And32(round * 17 + i, 0xFF);
+
+      // Combine base S-box with key material
+      keySbox[i] = MERCY_SBOX[OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(i, keyByte), tweakByte), roundByte), 0xFF)];
+    }
+
+    return keySbox;
+  }
+
+  // Feistel F-function: processes right half to modify left half
+  // Uses key-dependent S-boxes and mixing operations
+  /**
+   * @param {uint8[]} rightHalf - Half block
+   * @param {uint8[]} roundKey - Round key bytes
+   * @param {uint8[]} keySbox - Key-dependent S-box
+   * @returns {uint8[]} F output
+   */
+  function mercyF(rightHalf, roundKey, keySbox) {
+    /** @type {uint8[]} */
+    const output = new Array(HALF_BLOCK);
+
+    // Apply key-dependent S-box substitution
+    for (let i = 0; i < HALF_BLOCK; i++) {
+      output[i] = keySbox[rightHalf[i]];
+    }
+
+    // Mix with round key
+    for (let i = 0; i < HALF_BLOCK; i++) {
+      output[i] = OpCodes.Xor32(output[i], roundKey[i % roundKey.length]);
+    }
+
+    // Diffusion layer - mix adjacent bytes
+    /** @type {uint8[]} */
+    const temp = [...output];
+    for (let i = 0; i < HALF_BLOCK; i++) {
+      const next = (i + 1) % HALF_BLOCK;
+      const prev = (i + HALF_BLOCK - 1) % HALF_BLOCK;
+      output[i] = OpCodes.Xor32(OpCodes.Xor32(temp[i], OpCodes.RotL8(temp[next], 1)), OpCodes.RotL8(temp[prev], 2));
+    }
+
+    // Additional mixing with rotations
+    for (let i = 0; i < HALF_BLOCK; i += 4) {
+      if (i + 3 < HALF_BLOCK) {
+        const t0 = output[i];
+        const t1 = output[i + 1];
+        const t2 = output[i + 2];
+        const t3 = output[i + 3];
+
+        output[i] = OpCodes.Xor32(t0, t2);
+        output[i + 1] = OpCodes.Xor32(t1, t3);
+        output[i + 2] = OpCodes.Xor32(t2, OpCodes.RotL8(t0, 3));
+        output[i + 3] = OpCodes.Xor32(t3, OpCodes.RotL8(t1, 5));
+      }
+    }
+
+    return output;
+  }
+
+  // Generate round keys from master key and tweak
+  /**
+   * @param {uint8[]} key - 16 key bytes
+   * @param {uint8[]} tweak - 16 tweak bytes
+   * @returns {uint8[][]} One HALF_BLOCK-byte round key per round
+   */
+  function mercyRoundKeys(key, tweak) {
+    /** @type {uint8[][]} */
+    const roundTable = [];
+
+    for (let round = 0; round < ROUNDS; round++) {
+      /** @type {uint8[]} */
+      const roundKey = new Array(HALF_BLOCK);
+
+      // Expand key material using simple key schedule
+      for (let i = 0; i < HALF_BLOCK; i++) {
+        const keyByte = key[i % KEY_SIZE];
+        const tweakByte = tweak[i % TWEAK_SIZE];
+        const positionByte = OpCodes.And32(i, 0xFF);
+        const roundByte = OpCodes.And32(round, 0xFF);
+
+        // Mix key, tweak, position, and round number
+        roundKey[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(keyByte, tweakByte), positionByte), roundByte), 0xFF);
+
+        // Additional mixing
+        if (i > 0) {
+          roundKey[i] = OpCodes.And32(OpCodes.Xor32(roundKey[i], OpCodes.RotL8(roundKey[i - 1], 1)), 0xFF);
+        }
+      }
+
+      roundTable.push(roundKey);
+    }
+
+    return roundTable;
+  }
+
+  // Encrypt a 512-byte block using 6-round Feistel network
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - 16 key bytes
+   * @param {uint8[]} tweak - 16 tweak bytes
+   * @returns {uint8[]} Output block
+   */
+  function mercyEncrypt(block, key, tweak) {
+    if (block.length !== BLOCK_SIZE) {
+      throw new Error("Block must be exactly " + BLOCK_SIZE + " bytes");
+    }
+
+    // Split block into left and right halves
+    let left = block.slice(0, HALF_BLOCK);
+    let right = block.slice(HALF_BLOCK);
+
+    // Generate round keys and key-dependent S-boxes
+    const roundTable = mercyRoundKeys(key, tweak);
+
+    // 6 Feistel rounds
+    for (let round = 0; round < ROUNDS; round++) {
+      const keySbox = mercyKeySbox(key, tweak, round);
+      const fOutput = mercyF(right, roundTable[round], keySbox);
+
+      // XOR left with F(right)
+      /** @type {uint8[]} */
+      const newRight = new Array(HALF_BLOCK);
+      for (let i = 0; i < HALF_BLOCK; i++) {
+        newRight[i] = OpCodes.Xor32(left[i], fOutput[i]);
+      }
+
+      // Swap halves for next round
+      left = right;
+      right = newRight;
+    }
+
+    // Final combination (no swap after last round)
+    return [...right, ...left];
+  }
+
+  // Decrypt a 512-byte block (reverse Feistel network)
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - 16 key bytes
+   * @param {uint8[]} tweak - 16 tweak bytes
+   * @returns {uint8[]} Output block
+   */
+  function mercyDecrypt(block, key, tweak) {
+    if (block.length !== BLOCK_SIZE) {
+      throw new Error("Block must be exactly " + BLOCK_SIZE + " bytes");
+    }
+
+    // Split block - note reversed order due to final non-swap
+    let right = block.slice(0, HALF_BLOCK);
+    let left = block.slice(HALF_BLOCK);
+
+    // Generate round keys (same as encryption)
+    const roundTable = mercyRoundKeys(key, tweak);
+
+    // Reverse 6 Feistel rounds
+    for (let round = ROUNDS - 1; round >= 0; round--) {
+      const keySbox = mercyKeySbox(key, tweak, round);
+      const fOutput = mercyF(left, roundTable[round], keySbox);
+
+      // XOR right with F(left) to recover original left
+      /** @type {uint8[]} */
+      const newLeft = new Array(HALF_BLOCK);
+      for (let i = 0; i < HALF_BLOCK; i++) {
+        newLeft[i] = OpCodes.Xor32(right[i], fOutput[i]);
+      }
+
+      // Swap halves for next round
+      right = left;
+      left = newLeft;
+    }
+
+    // Final combination
+    return [...left, ...right];
+  }
+
+  /**
+   * Test-vector plaintext: byte i is i mod 256
+   * @param {int32} n - Length
+   * @returns {uint8[]} Ramp bytes
+   */
+  function rampBytes(n) {
+    /** @type {uint8[]} */
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) out[i] = OpCodes.And32(i, 0xFF);
+    return out;
+  }  class MercyAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -111,9 +366,9 @@
         {
           text: "Mercy all-zeros test with zero key and tweak",
           uri: "Implementation-derived test vector (round-trip validated)",
-          input: new Array(512).fill(0),
-          key: new Array(16).fill(0),
-          tweak: new Array(16).fill(0),
+          input: OpCodes.CreateArray(512, 0),
+          key: OpCodes.CreateArray(16, 0),
+          tweak: OpCodes.CreateArray(16, 0),
           expected: OpCodes.Hex8ToBytes("406E45494BECE167E520D9DCEE31C9A2C4422AD833F47E73A4D2133F0CEDA06F" +
             "3C77BDA3B4DE72F0FA740A668836A0301736E2AF6A24A928A370BD4C246E0502" +
             "1829369758A0F19CDBCEC54A00AA33998059EC1ED2369F74B44736FF59E1056A" +
@@ -135,7 +390,7 @@
         {
           text: "Mercy incremental input pattern",
           uri: "Implementation-derived test vector (round-trip validated)",
-          input: Array.from({ length: 512 }, (_, i) => i&0xFF),
+          input: rampBytes(512),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           tweak: OpCodes.Hex8ToBytes("FEDCBA9876543210FEDCBA9876543210"),
           expected: OpCodes.Hex8ToBytes("873A7C5888A267BE835FF946630849AFD73B64C6CA8BF7168CD2ACB0B3C917FB" +
@@ -159,7 +414,7 @@
         {
           text: "Mercy with 0x55 pattern and non-zero tweak",
           uri: "Implementation-derived test vector (round-trip validated)",
-          input: new Array(512).fill(0x55),
+          input: OpCodes.CreateArray(512, 0x55),
           key: OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"),
           tweak: OpCodes.Hex8ToBytes("0F0E0D0C0B0A09080706050403020100"),
           expected: OpCodes.Hex8ToBytes("FC71CF4407DDADF52B8705483E1451E8520594B10DB497C900F4DB40DF081908" +
@@ -183,208 +438,72 @@
       ];
 
       // Algorithm constants
-      this.BLOCK_SIZE = 512;        // 4096 bits = 512 bytes
-      this.HALF_BLOCK = 256;        // 2048 bits = 256 bytes
-      this.KEY_SIZE = 16;           // 128 bits
-      this.TWEAK_SIZE = 16;         // 128 bits
-      this.ROUNDS = 6;              // 6 Feistel rounds
+      /** @type {int32} */
+      this.BLOCK_SIZE = BLOCK_SIZE;
+      /** @type {int32} */
+      this.HALF_BLOCK = HALF_BLOCK;
+      /** @type {int32} */
+      this.KEY_SIZE = KEY_SIZE;
+      /** @type {int32} */
+      this.TWEAK_SIZE = TWEAK_SIZE;
+      /** @type {int32} */
+      this.ROUNDS = ROUNDS;
 
       // Initialize AES-like S-box for key-dependent transformations
       // This is a simplified approach - real Mercy uses more complex state machine
-      this.SBOX = this.generateAESSbox();
+      /** @type {uint8[]} */
+      this.SBOX = MERCY_SBOX;
     }
 
     // Generate AES S-box (used as basis for key-dependent S-boxes)
-    generateAESSbox() {
-      const sbox = new Array(256);
-      const p = new Array(256);
-      let i, x;
-
-      // Initialize with identity
-      p[0] = 1;
-      for (i = 1; i < 256; i++) {
-        x = p[i - 1]^OpCodes.Shl32(p[i - 1], 1);
-        if (x&0x100) x = OpCodes.Xor32(x, 0x11B);
-        p[i] = x&0xFF;
-      }
-
-      // Generate S-box using affine transformation
-      for (i = 0; i < 256; i++) {
-        x = p[255 - i];
-        if (i === 0) x = 0;
-
-        let s = x;
-        s ^= OpCodes.RotL8(x, 1);
-        s ^= OpCodes.RotL8(x, 2);
-        s ^= OpCodes.RotL8(x, 3);
-        s ^= OpCodes.RotL8(x, 4);
-        s = OpCodes.Xor32(s, 0x63);
-
-        sbox[i] = s&0xFF;
-      }
-
-      return sbox;
-    }
+    /**
+     * @returns {uint8[]} The AES S-box
+     */
+    generateAESSbox() { return mercyAesSbox(); }
 
     // Generate key-dependent S-box by XORing base S-box with key material
-    generateKeySbox(key, tweak, round) {
-      const keySbox = new Array(256);
-
-      for (let i = 0; i < 256; i++) {
-        const keyByte = key[i % 16];
-        const tweakByte = tweak[i % 16];
-        const roundByte = (round * 17 + i)&0xFF;
-
-        // Combine base S-box with key material
-        keySbox[i] = this.SBOX[(i^keyByte^tweakByte^roundByte)&0xFF];
-      }
-
-      return keySbox;
-    }
+    /**
+     * @param {uint8[]} key - 16 key bytes
+     * @param {uint8[]} tweak - 16 tweak bytes
+     * @param {int32} round - Round index
+     * @returns {uint8[]} Key-dependent S-box
+     */
+    generateKeySbox(key, tweak, round) { return mercyKeySbox(key, tweak, round); }
 
     // Feistel F-function: processes right half to modify left half
-    // Uses key-dependent S-boxes and mixing operations
-    fFunction(rightHalf, roundKey, keySbox) {
-      const output = new Array(this.HALF_BLOCK);
-
-      // Apply key-dependent S-box substitution
-      for (let i = 0; i < this.HALF_BLOCK; i++) {
-        output[i] = keySbox[rightHalf[i]];
-      }
-
-      // Mix with round key
-      for (let i = 0; i < this.HALF_BLOCK; i++) {
-        output[i] ^= roundKey[i % roundKey.length];
-      }
-
-      // Diffusion layer - mix adjacent bytes
-      const temp = [...output];
-      for (let i = 0; i < this.HALF_BLOCK; i++) {
-        const next = (i + 1) % this.HALF_BLOCK;
-        const prev = (i + this.HALF_BLOCK - 1) % this.HALF_BLOCK;
-        output[i] = temp[i]^OpCodes.RotL8(temp[next], 1)^OpCodes.RotL8(temp[prev], 2);
-      }
-
-      // Additional mixing with rotations
-      for (let i = 0; i < this.HALF_BLOCK; i += 4) {
-        if (i + 3 < this.HALF_BLOCK) {
-          const t0 = output[i];
-          const t1 = output[i + 1];
-          const t2 = output[i + 2];
-          const t3 = output[i + 3];
-
-          output[i] = t0^t2;
-          output[i + 1] = t1^t3;
-          output[i + 2] = t2^OpCodes.RotL8(t0, 3);
-          output[i + 3] = t3^OpCodes.RotL8(t1, 5);
-        }
-      }
-
-      return output;
-    }
+    /**
+     * @param {uint8[]} rightHalf - Half block
+     * @param {uint8[]} roundKey - Round key bytes
+     * @param {uint8[]} keySbox - Key-dependent S-box
+     * @returns {uint8[]} F output
+     */
+    fFunction(rightHalf, roundKey, keySbox) { return mercyF(rightHalf, roundKey, keySbox); }
 
     // Generate round keys from master key and tweak
-    generateRoundKeys(key, tweak) {
-      const roundKeys = [];
-
-      for (let round = 0; round < this.ROUNDS; round++) {
-        const roundKey = new Array(this.HALF_BLOCK);
-
-        // Expand key material using simple key schedule
-        for (let i = 0; i < this.HALF_BLOCK; i++) {
-          const keyByte = key[i % this.KEY_SIZE];
-          const tweakByte = tweak[i % this.TWEAK_SIZE];
-          const positionByte = i&0xFF;
-          const roundByte = round&0xFF;
-
-          // Mix key, tweak, position, and round number
-          roundKey[i] = (keyByte^tweakByte^positionByte^roundByte)&0xFF;
-
-          // Additional mixing
-          if (i > 0) {
-            roundKey[i] = (roundKey[i]^OpCodes.RotL8(roundKey[i - 1], 1))&0xFF;
-          }
-        }
-
-        roundKeys.push(roundKey);
-      }
-
-      return roundKeys;
-    }
+    /**
+     * @param {uint8[]} key - 16 key bytes
+     * @param {uint8[]} tweak - 16 tweak bytes
+     * @returns {uint8[][]} One HALF_BLOCK-byte round key per round
+     */
+    generateRoundKeys(key, tweak) { return mercyRoundKeys(key, tweak); }
 
     // Encrypt a 512-byte block using 6-round Feistel network
     /**
      * @param {uint8[]} block - Input block
+     * @param {uint8[]} key - 16 key bytes
+     * @param {uint8[]} tweak - 16 tweak bytes
      * @returns {uint8[]} Output block
      */
-    encryptBlock(block, key, tweak) {
-      if (block.length !== this.BLOCK_SIZE) {
-        throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
-      }
-
-      // Split block into left and right halves
-      let left = block.slice(0, this.HALF_BLOCK);
-      let right = block.slice(this.HALF_BLOCK);
-
-      // Generate round keys and key-dependent S-boxes
-      const roundKeys = this.generateRoundKeys(key, tweak);
-
-      // 6 Feistel rounds
-      for (let round = 0; round < this.ROUNDS; round++) {
-        const keySbox = this.generateKeySbox(key, tweak, round);
-        const fOutput = this.fFunction(right, roundKeys[round], keySbox);
-
-        // XOR left with F(right)
-        const newRight = new Array(this.HALF_BLOCK);
-        for (let i = 0; i < this.HALF_BLOCK; i++) {
-          newRight[i] = left[i]^fOutput[i];
-        }
-
-        // Swap halves for next round
-        left = right;
-        right = newRight;
-      }
-
-      // Final combination (no swap after last round)
-      return [...right, ...left];
-    }
+    encryptBlock(block, key, tweak) { return mercyEncrypt(block, key, tweak); }
 
     // Decrypt a 512-byte block (reverse Feistel network)
     /**
      * @param {uint8[]} block - Input block
+     * @param {uint8[]} key - 16 key bytes
+     * @param {uint8[]} tweak - 16 tweak bytes
      * @returns {uint8[]} Output block
      */
-    decryptBlock(block, key, tweak) {
-      if (block.length !== this.BLOCK_SIZE) {
-        throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
-      }
-
-      // Split block - note reversed order due to final non-swap
-      let right = block.slice(0, this.HALF_BLOCK);
-      let left = block.slice(this.HALF_BLOCK);
-
-      // Generate round keys (same as encryption)
-      const roundKeys = this.generateRoundKeys(key, tweak);
-
-      // Reverse 6 Feistel rounds
-      for (let round = this.ROUNDS - 1; round >= 0; round--) {
-        const keySbox = this.generateKeySbox(key, tweak, round);
-        const fOutput = this.fFunction(left, roundKeys[round], keySbox);
-
-        // XOR right with F(left) to recover original left
-        const newLeft = new Array(this.HALF_BLOCK);
-        for (let i = 0; i < this.HALF_BLOCK; i++) {
-          newLeft[i] = right[i]^fOutput[i];
-        }
-
-        // Swap halves for next round
-        right = left;
-        left = newLeft;
-      }
-
-      // Final combination
-      return [...left, ...right];
-    }
+    decryptBlock(block, key, tweak) { return mercyDecrypt(block, key, tweak); }
 
     // Required: Create instance for this algorithm
     /**
@@ -420,6 +539,7 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._tweak = null;
       this.BlockSize = 512; // 4096 bits = 512 bytes
       this.KeySize = 0;
@@ -458,9 +578,12 @@
     }
 
     // Property setter for tweak (128-bit block number / sector ID)
+    /**
+     * @param {uint8[]|null} tweakBytes - 16 tweak bytes, or null for the zero tweak
+     */
     set tweak(tweakBytes) {
       if (!tweakBytes) {
-        this._tweak = new Array(16).fill(0); // Default to zero tweak
+        this._tweak = OpCodes.CreateArray(16, 0); // Default to zero tweak
         return;
       }
 
@@ -472,8 +595,11 @@
       this._tweak = [...tweakBytes];
     }
 
+    /**
+     * @returns {uint8[]} Copy of the tweak (zeros when unset)
+     */
     get tweak() {
-      return this._tweak ? [...this._tweak] : new Array(16).fill(0);
+      return this._tweak ? [...this._tweak] : OpCodes.CreateArray(16, 0);
     }
 
     // Feed data to the cipher (accumulates until we have complete blocks)
@@ -489,7 +615,7 @@
 
       // Initialize tweak if not set
       if (!this._tweak) {
-        this._tweak = new Array(16).fill(0);
+        this._tweak = OpCodes.CreateArray(16, 0);
       }
 
       // Add data to input buffer
@@ -509,7 +635,7 @@
 
       // Initialize tweak if not set
       if (!this._tweak) {
-        this._tweak = new Array(16).fill(0);
+        this._tweak = OpCodes.CreateArray(16, 0);
       }
 
       const blockSize = this.BlockSize;
@@ -525,9 +651,12 @@
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
 
-        const processedBlock = this.isInverse
-          ? this.algorithm.decryptBlock(block, this._key, this._tweak)
-          : this.algorithm.encryptBlock(block, this._key, this._tweak);
+        /** @type {uint8[]} */
+        let processedBlock = [];
+        if (this.isInverse)
+          processedBlock = mercyDecrypt(block, this._key, this._tweak);
+        else
+          processedBlock = mercyEncrypt(block, this._key, this._tweak);
 
         for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
       }

@@ -754,8 +754,11 @@
   //   mem[0        .. 256)          = 256-byte round-key scratch table
   //   mem[K_BASE   .. K_BASE+128)   = 32-word (128-byte) round-key table K[0..31]
   //   mem[SBOX_BASE.. SBOX_BASE+32768) = 32-row x 4x256-byte round S-box table
+  /** @type {int32} */
   const K_BASE = 0x100;
+  /** @type {int32} */
   const SBOX_BASE = 0x180;
+  /** @type {int32} */
   const MEM_SIZE = SBOX_BASE + 0x8000;
 
   // RC4-KSA-style keyed permutation of the 32768-byte round S-box table (128 segments
@@ -766,7 +769,12 @@
   // `scratch` -- i.e. leftover contents from a PRIOR call -- xored with the segment
   // index (pass 2, 2048 KSA iterations per segment).
   /**
+   * @param {uint8[]} scratch - 32768-byte S-box work table, permuted in place
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} keyLen - Number of key bytes used
+   * @param {uint8} seedByte - Initial running byte
+   * @param {boolean} usesCopyInit - Seed from the fixed table (pass 1) or from the leftovers (pass 2)
+   * @returns {uint8} Final running byte
    */
   function buildSbox(scratch, keyBytes, keyLen, seedByte, usesCopyInit) {
     let runningByte = seedByte;
@@ -778,17 +786,17 @@
       } else {
         const old = scratch.slice(srcOff, srcOff + 256);
         for (let i = 0; i < 256; i++)
-          scratch[srcOff + i] = T_COPY10[srcOff + OpCodes.Xor32(old[i], i)];
+          scratch[srcOff + i] = T_COPY10[OpCodes.Add32(srcOff, OpCodes.Xor32(old[i], i))];
       }
       for (let n = 0; n < iters; n++) {
         const keyByte = keyBytes[n % keyLen];
         const i = OpCodes.And32(n, 0xFF);
-        const idx1 = OpCodes.And32(keyByte + scratch[srcOff + i], 0xFF);
-        const idx2 = OpCodes.And32(T_LOOKUP10[srcOff + idx1] + runningByte, 0xFF);
-        runningByte = scratch[srcOff + idx2];
-        const oldTi = scratch[srcOff + i];
-        scratch[srcOff + i] = scratch[srcOff + runningByte];
-        scratch[srcOff + runningByte] = oldTi;
+        const idx1 = OpCodes.And32(keyByte + scratch[OpCodes.Add32(srcOff, i)], 0xFF);
+        const idx2 = OpCodes.And32(T_LOOKUP10[OpCodes.Add32(srcOff, idx1)] + runningByte, 0xFF);
+        runningByte = scratch[OpCodes.Add32(srcOff, idx2)];
+        const oldTi = scratch[OpCodes.Add32(srcOff, i)];
+        scratch[OpCodes.Add32(srcOff, i)] = scratch[OpCodes.Add32(srcOff, runningByte)];
+        scratch[OpCodes.Add32(srcOff, runningByte)] = oldTi;
       }
     }
     return runningByte;
@@ -797,7 +805,12 @@
   // Same RC4-KSA-style permutation, applied once to the 256-byte round-key scratch
   // table (written directly into mem[0..256), i.e. the WORK180 region).
   /**
+   * @param {uint8[]} mem - Working memory (its first 256 bytes are permuted)
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} keyLen - Number of key bytes used
+   * @param {uint8} seedByte - Initial running byte
+   * @param {boolean} usesCopyInit - Seed from the fixed table (pass 1) or the identity (pass 2)
+   * @returns {uint8} Final running byte
    */
   function buildKeyScratch(mem, keyBytes, keyLen, seedByte, usesCopyInit) {
     if (usesCopyInit) { for (let b = 0; b < 256; b++) mem[b] = T_COPY180[b]; }
@@ -817,78 +830,133 @@
     return runningByte;
   }
 
+  /**
+   * @param {uint8[]} arr - Bytes
+   * @param {int32} off - Offset
+   * @returns {uint32} Little-endian word at off
+   */
   function readWordLE(arr, off) {
     return OpCodes.Pack32LE(arr[off], arr[off + 1], arr[off + 2], arr[off + 3]);
   }
+  /**
+   * @param {uint8[]} arr - Bytes, updated in place
+   * @param {int32} off - Offset
+   * @param {uint32} word - Word stored little-endian at off
+   */
   function writeWordLE(arr, off, word) {
     const b = OpCodes.Unpack32LE(word);
     arr[off] = b[0]; arr[off + 1] = b[1]; arr[off + 2] = b[2]; arr[off + 3] = b[3];
   }
+  /**
+   * @param {uint8[]} mem - Working memory
+   * @param {int32} i - Round-key index
+   * @returns {uint32} Round key i
+   */
   function readK(mem, i) { return readWordLE(mem, K_BASE + i * 4); }
 
   // F(x, round): substitute each byte of x through the round's 4 S-box columns,
   // repack big-endian (top byte's substitute -> top byte of result), rotate left 11.
+  /**
+   * @param {uint8[]} mem - Working memory
+   * @param {uint32} value - Word
+   * @param {int32} round - Round index
+   * @returns {uint32} F(value, round)
+   */
   function roundF(mem, value, round) {
     const rowBase = SBOX_BASE + round * 1024;
     const b3 = OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF), b2 = OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF), b1 = OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF), b0 = OpCodes.And32(value, 0xFF);
-    const combined = OpCodes.Pack32BE(mem[rowBase + b3], mem[rowBase + 256 + b2], mem[rowBase + 512 + b1], mem[rowBase + 768 + b0]);
+    const combined = OpCodes.Pack32BE(mem[OpCodes.Add32(rowBase, b3)], mem[OpCodes.Add32(rowBase + 256, b2)], mem[OpCodes.Add32(rowBase + 512, b1)], mem[OpCodes.Add32(rowBase + 768, b0)]);
     return OpCodes.RotL32(combined, 11);
   }
 
+  /**
+   * @param {uint8[]} mem - Working memory
+   * @param {uint32} word0 - First word
+   * @param {uint32} word1 - Second word
+   * @returns {uint32[]} Encrypted [first, second]
+   */
   function encryptWords(mem, word0, word1) {
     let esi = word0, ebx = word1;
     for (let round = 0; round < 32; round += 2) {
       ebx = OpCodes.Xor32(ebx, roundF(mem, OpCodes.Add32(readK(mem, round), esi), round));
       esi = OpCodes.Xor32(esi, roundF(mem, OpCodes.Add32(readK(mem, round + 1), ebx), round + 1));
     }
-    return [ebx, esi];
+    /** @type {uint32[]} */
+    const out = [ebx, esi];
+    return out;
   }
 
+  /**
+   * @param {uint8[]} mem - Working memory
+   * @param {uint32} word0 - First word
+   * @param {uint32} word1 - Second word
+   * @returns {uint32[]} Decrypted [first, second]
+   */
   function decryptWords(mem, word0, word1) {
     let ebx = word0, esi = word1;
     for (let round = 31; round >= 0; round -= 2) {
       esi = OpCodes.Xor32(esi, roundF(mem, OpCodes.Add32(readK(mem, round), ebx), round));
       ebx = OpCodes.Xor32(ebx, roundF(mem, OpCodes.Add32(readK(mem, round - 1), esi), round - 1));
     }
-    return [esi, ebx];
+    /** @type {uint32[]} */
+    const out = [esi, ebx];
+    return out;
   }
 
+  /**
+   * @param {uint8[]} mem - Working memory, updated in place
+   * @param {int32} off - Offset of the 8 bytes to encrypt
+   */
   function mixEncryptInPlace(mem, off) {
     const w0 = readWordLE(mem, off), w1 = readWordLE(mem, off + 4);
-    const [r0, r1] = encryptWords(mem, w0, w1);
-    writeWordLE(mem, off, r0); writeWordLE(mem, off + 4, r1);
+    const r = encryptWords(mem, w0, w1);
+    writeWordLE(mem, off, r[0]); writeWordLE(mem, off + 4, r[1]);
   }
+  /**
+   * @param {uint8[]} mem - Working memory, updated in place
+   * @param {int32} off - Offset of the 8 bytes to decrypt
+   */
   function mixDecryptInPlace(mem, off) {
     const w0 = readWordLE(mem, off), w1 = readWordLE(mem, off + 4);
-    const [r0, r1] = decryptWords(mem, w0, w1);
-    writeWordLE(mem, off, r0); writeWordLE(mem, off + 4, r1);
+    const r = decryptWords(mem, w0, w1);
+    writeWordLE(mem, off, r[0]); writeWordLE(mem, off + 4, r[1]);
   }
 
   // 16 self-mix blocks at triangular byte offsets (0,8,24,48,80,120,168,224,288,...)
   // into `mem` -- intentionally overruns the 256-byte scratch table into the
   // round-key table and S-box table, matching the DarkCrypt implementation.
-  function selfMix(mem, mixFn) {
+  /**
+   * @param {uint8[]} mem - Working memory, updated in place
+   * @param {boolean} decrypt - Mix with the decryption (true) or encryption (false) direction
+   */
+  function selfMix(mem, decrypt) {
     let esi = 0, ebx = 0;
     for (let k = 0; k < 16; k++) {
-      esi = OpCodes.ToUint32(esi + ebx);
-      mixFn(mem, esi);
-      ebx = OpCodes.ToUint32(ebx + 8);
+      esi += ebx;
+      if (decrypt) mixDecryptInPlace(mem, esi);
+      else mixEncryptInPlace(mem, esi);
+      ebx += 8;
     }
   }
 
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[]} Working memory (round keys and S-boxes)
    */
   function setup(keyBytes) {
-    const scratch = new Array(0x8000).fill(0);
-    const mem = new Array(MEM_SIZE).fill(0);
+    /** @type {uint8[]} */
+    const scratch = new Array(0x8000);
+    scratch.fill(0);
+    /** @type {uint8[]} */
+    const mem = new Array(MEM_SIZE);
+    mem.fill(0);
 
     // ---- Pass 1: seed everything from the raw 64-byte key ----
     const rb1 = buildSbox(scratch, keyBytes, 64, 0, true);
     for (let i = 0; i < 0x8000; i++) mem[SBOX_BASE + i] = scratch[i];
     const rb1b = buildKeyScratch(mem, keyBytes, 64, rb1, true);
     for (let i = 0; i < 128; i++) mem[K_BASE + i] = mem[128 + i];
-    selfMix(mem, mixEncryptInPlace);
+    selfMix(mem, false);
     const derivedKey = mem.slice(0, 128);
 
     // ---- Pass 2: reseed everything from the derived 128-byte key ----
@@ -896,7 +964,7 @@
     for (let i = 0; i < 0x8000; i++) mem[SBOX_BASE + i] = scratch[i];
     buildKeyScratch(mem, derivedKey, 128, rb1b, false);
     for (let i = 0; i < 128; i++) mem[K_BASE + i] = mem[128 + i];
-    selfMix(mem, mixDecryptInPlace);
+    selfMix(mem, true);
     for (let i = 0; i < 128; i++) mem[K_BASE + i] = mem[i];
 
     return mem;
@@ -972,6 +1040,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._mem = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -1025,7 +1094,8 @@
     _encryptBlock(block) {
       const word0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const word1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      const [c0, c1] = encryptWords(this._mem, word0, word1);
+      const c = encryptWords(this._mem, word0, word1);
+      const c0 = c[0], c1 = c[1];
       return [...OpCodes.Unpack32LE(c0), ...OpCodes.Unpack32LE(c1)];
     }
 
@@ -1036,7 +1106,8 @@
     _decryptBlock(block) {
       const word0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       const word1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      const [p0, p1] = decryptWords(this._mem, word0, word1);
+      const d = decryptWords(this._mem, word0, word1);
+      const p0 = d[0], p1 = d[1];
       return [...OpCodes.Unpack32LE(p0), ...OpCodes.Unpack32LE(p1)];
     }
   }
