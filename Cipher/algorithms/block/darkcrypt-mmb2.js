@@ -58,6 +58,10 @@
   const EXTRA = [0x0DAE, 0x1B5C, 0x36B8, 0x6D70, 0xDAE0, 0x1B5C0, 0x36B80];
 
   // "theta" XOR diffusion layer shared by encryption and decryption (it is its own inverse).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Diffused words
+   */
   function diffuse(w) {
     const e = OpCodes.Xor32(w[2], w[0]);
     const a = OpCodes.Xor32(w[1], w[3]);
@@ -66,6 +70,10 @@
 
   // Forward round transform. The multiplication step is intentionally omitted: see the
   // implementation-quirk note above (computed but discarded in the original).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Words after the forward round
+   */
   function roundForward(w) {
     const s = w.slice();
     if (OpCodes.And32(s[0], 1)) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
@@ -73,6 +81,10 @@
   }
 
   // Inverse round transform: diffuse first, then the same odd correction (both are self-inverse).
+  /**
+   * @param {uint32[]} w - Four state words
+   * @returns {uint32[]} Words after the inverse round
+   */
   function roundInverse(w) {
     const s = diffuse(w);
     if (OpCodes.And32(s[0], 1)) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
@@ -203,6 +215,7 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
      */
     _blockToWords(block) {
       return [
@@ -213,6 +226,10 @@
       ];
     }
 
+    /**
+     * @param {uint32[]} w - Four state words
+     * @returns {uint8[]} 16-byte block
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -245,7 +262,7 @@
     _decryptBlock(block) {
       const K = this._K;
       let w = this._blockToWords(block);
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const encRounds = [6, 5, 4, 3, 2, 1, 0];
       for (let idx = 0; idx < STAGES; idx++) {
         const r = encRounds[idx];
