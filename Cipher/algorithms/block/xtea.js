@@ -61,7 +61,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class XTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+  class XTEAAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -70,37 +70,37 @@
       this.description = "Extended TEA cipher by Wheeler and Needham with improved key schedule and better security than TEA. Uses 64 rounds with 64-bit blocks and 128-bit keys. Educational cipher for understanding Feistel networks.";
       this.inventor = "David Wheeler, Roger Needham";
       this.year = 1997;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.BEGINNER;
-      this.country = AlgorithmFramework.CountryCode.GB;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.GB;
 
       // Block and key specifications
       this.SupportedBlockSizes = [
         new KeySize(8, 8, 0) // Fixed 64-bit blocks
       ];
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit key
+        new KeySize(16, 16, 0) // Fixed 128-bit key
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("TEA extensions and corrections", "https://www.cix.co.uk/~klockstone/xtea.htm"),
-        new AlgorithmFramework.LinkItem("Cambridge Computer Laboratory", "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/"),
-        new AlgorithmFramework.LinkItem("Block TEA improvements", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29")
+        new LinkItem("TEA extensions and corrections", "https://www.cix.co.uk/~klockstone/xtea.htm"),
+        new LinkItem("Cambridge Computer Laboratory", "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/"),
+        new LinkItem("Block TEA improvements", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Crypto++ XTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/xtea.cpp"),
-        new AlgorithmFramework.LinkItem("Bouncy Castle XTEA Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
-        new AlgorithmFramework.LinkItem("Python XTEA Implementation", "https://pypi.org/project/xtea/")
+        new LinkItem("Crypto++ XTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/xtea.cpp"),
+        new LinkItem("Bouncy Castle XTEA Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
+        new LinkItem("Python XTEA Implementation", "https://pypi.org/project/xtea/")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Limited analysis", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications", "https://www.schneier.com/academic/"),
-        new AlgorithmFramework.Vulnerability("Related-key attacks", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices", "https://eprint.iacr.org/")
+        new Vulnerability("Limited analysis", "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses exist", "Use modern standardized ciphers like AES for production applications", "https://www.schneier.com/academic/"),
+        new Vulnerability("Related-key attacks", "While improved over TEA, XTEA may still be vulnerable to certain related-key attacks", "Avoid key reuse and use proper key management practices", "https://eprint.iacr.org/")
       ];
 
       // Test vectors from various sources
@@ -139,7 +139,7 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class XTEAInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
    * @param {XTEAAlgorithm} algorithm - Parent algorithm instance
@@ -193,9 +193,12 @@
       ];
 
       // Precompute sum arrays as per Bouncy Castle C# reference
+      /** @type {uint32[]} */
       this.sum0 = new Array(this.CYCLES);
+      /** @type {uint32[]} */
       this.sum1 = new Array(this.CYCLES);
       
+      /** @type {uint32} */
       let j = 0;
       for (let i = 0; i < this.CYCLES; i++) {
         this.sum0[i] = OpCodes.ToUint32(j + this.keyWords[OpCodes.And32(j, 3)]);
