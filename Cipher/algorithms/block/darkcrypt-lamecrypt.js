@@ -197,22 +197,41 @@
     "ae7e29686a98ad7914303a121e28271ba46634616688bb772f9f065815c7436901f7797b0de76f75b4adf78248e0c45496d59eafcbf2199250c0e848e98a70bf" +
     "8df1393e87e92437d83d51fcc01d7de08bf932394be44fd9ed71894eba4e137a851ad6c1513791336080b0709fc9082b3f54c5bb9722e7d44dec44deb65e0574" +
     "a16ab4eba9815b14050c808aee7502c3af8950136f942df36177c90b9d3afadd98367a57eb7982492774e9a7bf4293f042f8d95d861e5d4cdb39da71912aecd3");
-  const TABLE2 = new Array(2048);
-  for (let i = 0; i < 2048; i++)
-    TABLE2[i] = OpCodes.Pack32LE(TABLE2_BYTES[i*4], TABLE2_BYTES[i*4+1], TABLE2_BYTES[i*4+2], TABLE2_BYTES[i*4+3]);
+  /**
+   * Pack TABLE2_BYTES into little-endian 32-bit words
+   * @returns {uint32[]} 2048 words
+   */
+  function buildTable2() {
+    /** @type {uint32[]} */
+    const table = new Array(2048);
+    for (let i = 0; i < 2048; i++)
+      table[i] = OpCodes.Pack32LE(TABLE2_BYTES[i*4], TABLE2_BYTES[i*4+1], TABLE2_BYTES[i*4+2], TABLE2_BYTES[i*4+3]);
+    return table;
+  }
+  /** @type {uint32[]} */
+  const TABLE2 = buildTable2();
 
   // G(x) = ((x<<6) + x) ^ (x>>>8), mod 2^32
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} G(x)
+   */
   function G(x) {
     return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.ToUint32(OpCodes.Shl32(x, 6) + x), OpCodes.Shr32(x, 8)));
   }
 
   // P(x): 4x8->32 S-box permutation then rotate-left-by-11
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} P(x)
+   */
   function P(x) {
     x = OpCodes.ToUint32(x);
-    const r = OpCodes.Shl32(PSBOX1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24) |
-              OpCodes.Shl32(PSBOX2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16) |
-              OpCodes.Shl32(PSBOX3[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8) |
-               PSBOX4[OpCodes.And32(x, 0xFF)];
+    const r = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+              OpCodes.Shl32(PSBOX1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24),
+              OpCodes.Shl32(PSBOX2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16)),
+              OpCodes.Shl32(PSBOX3[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8)),
+               PSBOX4[OpCodes.And32(x, 0xFF)]);
     return OpCodes.RotL32(OpCodes.ToUint32(r), 11);
   }
 
@@ -286,7 +305,9 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._SK = null;
+      /** @type {uint32[]|null} */
       this._W = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -311,44 +332,55 @@
      */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * Derive the subkey table and the whitening words from the key
+     */
     _expandKey() {
       const key = this._key;
-      const k = new Array(8), kh = new Array(8);
+      /** @type {uint32[]} */
+      const k = new Array(8);
+      /** @type {uint32[]} */
+      const kh = new Array(8);
       for (let i = 0; i < 8; i++) {
         k[i]  = OpCodes.Pack32LE(key[i*4],    key[i*4+1],    key[i*4+2],    key[i*4+3]);
         kh[i] = OpCodes.Pack32LE(key[32+i*4], key[32+i*4+1], key[32+i*4+2], key[32+i*4+3]);
       }
 
       // Per-key expanded S-box: EXP[s][j] = BASESBOX[(key[s] ^ j) & 0xFF]
+      /** @type {uint8[][]} */
       const EXP = new Array(32);
       for (let s = 0; s < 32; s++) {
-        const row = new Uint8Array(256);
-        for (let j = 0; j < 256; j++) row[j] = BASESBOX[OpCodes.And32(OpCodes.Xor32(key[s], j), 0xFF)];
-        EXP[s] = row;
+        const expLine = new Uint8Array(256);
+        for (let j = 0; j < 256; j++) expLine[j] = BASESBOX[OpCodes.And32(OpCodes.Xor32(key[s], j), 0xFF)];
+        EXP[s] = expLine;
       }
 
       // Key-dependent subkey table SK[s][j] (32 x 256 x 32-bit)
+      /** @type {uint32[][]} */
       const SK = new Array(32);
+      /** @type {uint32} */
       let sum = 0;
       for (let s = 0; s < 32; s++) {
-        const row = new Array(256);
+        /** @type {uint32[]} */
+        const skLine = new Array(256);
         for (let j = 0; j < 256; j++) {
           sum = OpCodes.ToUint32(sum + DELTA);
           const t = s * 256 + j;
           const e = EXP[s][j];
           let v = OpCodes.ToUint32(k[OpCodes.And32(j, 7)] + sum);
           v = OpCodes.RotL32(v, OpCodes.And32(j, 31));
-          v = OpCodes.ToUint32(OpCodes.Xor32(v, TABLE2[OpCodes.And32(s, 7) * 256 + e]));
+          v = OpCodes.ToUint32(OpCodes.Xor32(v, TABLE2[OpCodes.Add32(OpCodes.Mul32(OpCodes.And32(s, 7), 256), e)]));
           v = OpCodes.RotL32(v, OpCodes.And32(s, 31));
           const shiftAmt = OpCodes.Shr32(OpCodes.RotL32(sum, OpCodes.And32(t, 31)), 27);
           v = OpCodes.ToUint32(v + OpCodes.RotL32(kh[OpCodes.And32(t, 7)], shiftAmt));
-          row[j] = P(v);
+          skLine[j] = P(v);
         }
-        SK[s] = row;
+        SK[s] = skLine;
       }
       this._SK = SK;
 
       // Whitening subkeys W[0..7] = P(k[i] + k[i+8])
+      /** @type {uint32[]} */
       const W = new Array(8);
       for (let i = 0; i < 8; i++) W[i] = P(OpCodes.ToUint32(k[i] + kh[i]));
       this._W = W;
@@ -390,9 +422,9 @@
       for (let r = 0; r < ROUNDS; r++) {
         const base = 4 * r;
         a = OpCodes.ToUint32(a + OpCodes.ToUint32(G(b) + SK[r][OpCodes.And32(OpCodes.RotL32(b, OpCodes.Shr32(c, 27)) + base, 0xFF)]));
-        b = OpCodes.ToUint32(b + OpCodes.ToUint32(G(c) + SK[r][OpCodes.And32(OpCodes.RotL32(c, OpCodes.Shr32(d, 27)) + base + 1, 0xFF)]));
-        c = OpCodes.ToUint32(c + OpCodes.ToUint32(G(d) + SK[r][OpCodes.And32(OpCodes.RotL32(d, OpCodes.Shr32(a, 27)) + base + 2, 0xFF)]));
-        d = OpCodes.ToUint32(d + OpCodes.ToUint32(G(a) + SK[r][OpCodes.And32(OpCodes.RotL32(a, OpCodes.Shr32(b, 27)) + base + 3, 0xFF)]));
+        b = OpCodes.ToUint32(b + OpCodes.ToUint32(G(c) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(c, OpCodes.Shr32(d, 27)), base), 1), 0xFF)]));
+        c = OpCodes.ToUint32(c + OpCodes.ToUint32(G(d) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(d, OpCodes.Shr32(a, 27)), base), 2), 0xFF)]));
+        d = OpCodes.ToUint32(d + OpCodes.ToUint32(G(a) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, OpCodes.Shr32(b, 27)), base), 3), 0xFF)]));
       }
 
       a = OpCodes.ToUint32(OpCodes.Xor32(a, W[4]));
@@ -415,9 +447,9 @@
 
       for (let r = ROUNDS - 1; r >= 0; r--) {
         const base = 4 * r;
-        d = OpCodes.ToUint32(d - OpCodes.ToUint32(G(a) + SK[r][OpCodes.And32(OpCodes.RotL32(a, OpCodes.Shr32(b, 27)) + base + 3, 0xFF)]));
-        c = OpCodes.ToUint32(c - OpCodes.ToUint32(G(d) + SK[r][OpCodes.And32(OpCodes.RotL32(d, OpCodes.Shr32(a, 27)) + base + 2, 0xFF)]));
-        b = OpCodes.ToUint32(b - OpCodes.ToUint32(G(c) + SK[r][OpCodes.And32(OpCodes.RotL32(c, OpCodes.Shr32(d, 27)) + base + 1, 0xFF)]));
+        d = OpCodes.ToUint32(d - OpCodes.ToUint32(G(a) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, OpCodes.Shr32(b, 27)), base), 3), 0xFF)]));
+        c = OpCodes.ToUint32(c - OpCodes.ToUint32(G(d) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(d, OpCodes.Shr32(a, 27)), base), 2), 0xFF)]));
+        b = OpCodes.ToUint32(b - OpCodes.ToUint32(G(c) + SK[r][OpCodes.And32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(c, OpCodes.Shr32(d, 27)), base), 1), 0xFF)]));
         a = OpCodes.ToUint32(a - OpCodes.ToUint32(G(b) + SK[r][OpCodes.And32(OpCodes.RotL32(b, OpCodes.Shr32(c, 27)) + base, 0xFF)]));
       }
 
