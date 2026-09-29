@@ -205,60 +205,95 @@
   }
 
   class DarkCryptTuringInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptTuringAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
       this.keyLength = 0;
-      this.mixedKey = new Array(KEY_WORDS).fill(0);
-      this.shiftRegister = new Array(SHIFT_REGISTER_LENGTH).fill(0);
-      this.s0 = new Array(256).fill(0);
-      this.s1 = new Array(256).fill(0);
-      this.s2 = new Array(256).fill(0);
-      this.s3 = new Array(256).fill(0);
+      this.mixedKey = OpCodes.CreateArray(KEY_WORDS, 0);
+      this.shiftRegister = OpCodes.CreateArray(SHIFT_REGISTER_LENGTH, 0);
+      this.s0 = OpCodes.CreateArray(256, 0);
+      this.s1 = OpCodes.CreateArray(256, 0);
+      this.s2 = OpCodes.CreateArray(256, 0);
+      this.s3 = OpCodes.CreateArray(256, 0);
 
       this.keystreamBuffer = [];
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Turing (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Turing (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length !== 16)
-        throw new Error(`Invalid IV size. Turing (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid IV size. Turing (DarkCrypt) requires exactly 16 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key || !this._iv) throw new Error("Key and IV must be set");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
       }
       this.inputBuffer = [];
       return output;
@@ -431,7 +466,7 @@
     // Generates a full 340-byte keystream block (17 rounds of 20 bytes each,
     // in the specific out-of-order round sequence used by the reference).
     _turingGen() {
-      const buf = new Array(MAX_STREAM_LENGTH).fill(0);
+      const buf = OpCodes.CreateArray(MAX_STREAM_LENGTH, 0);
       const rounds = [
         [0, 0], [5, 20], [10, 40], [15, 60], [3, 80], [8, 100], [13, 120],
         [1, 140], [6, 160], [11, 180], [16, 200], [4, 220], [9, 240],

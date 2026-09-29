@@ -160,21 +160,26 @@
   class RC4Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RC4Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // RC4 state
       this.S = new Array(256);  // S-box permutation
       this.i = 0;               // PRGA counter i
       this.j = 0;               // PRGA counter j
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -198,7 +203,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid RC4 key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid RC4 key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -214,6 +219,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       // RC4 doesn't traditionally use IV, but store for compatibility
       this._iv = ivData;
@@ -228,10 +236,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -273,12 +287,13 @@
         throw new Error("RC4 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation

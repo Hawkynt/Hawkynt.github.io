@@ -191,16 +191,21 @@
   class FFCSRInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FFCSRAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {boolean} */
       this.initialized = false;
       this.state = null;
     }
@@ -223,7 +228,7 @@
       }
 
       if (keyBytes.length !== 10 && keyBytes.length !== 16) {
-        throw new Error(`F-FCSR requires 10-byte or 16-byte keys, got ${keyBytes.length} bytes`);
+        throw new Error("F-FCSR requires 10-byte or 16-byte keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -257,7 +262,7 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`F-FCSR requires exactly 8-byte IVs, got ${ivBytes.length} bytes`);
+        throw new Error("F-FCSR requires exactly 8-byte IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -322,6 +327,7 @@
       }
 
       // Educational F-FCSR implementation
+      /** @type {uint8[]} */
       const result = [];
 
       // Process each byte of input

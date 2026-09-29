@@ -125,19 +125,23 @@
   class A51Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A51} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._frameNumber = 0;
       this._lfsr1 = 0;
       this._lfsr2 = 0;
       this._lfsr3 = 0;
+      /** @type {boolean} */
       this._initialized = false;
 
       // A5/1 Constants from C reference
@@ -172,7 +176,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -213,12 +217,15 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -393,20 +400,24 @@
   class A52Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A52} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._frameNumber = 0;
       this._lfsr1 = 0;
       this._lfsr2 = 0;
       this._lfsr3 = 0;
       this._lfsr4 = 0;
+      /** @type {boolean} */
       this._initialized = false;
 
       // A5/2 Constants
@@ -440,7 +451,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -481,12 +492,15 @@
 
     Result() {
       if (!this._key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -710,14 +724,17 @@
   class A53Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {A53} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.keystreamBuffer = [];
       this.bufferPosition = 0;
@@ -744,7 +761,7 @@
       );
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -785,10 +802,11 @@
         return [];
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -846,7 +864,7 @@
     }
 
     _generateKeystreamBlock() {
-      const input = new Array(8).fill(0);
+      const input = OpCodes.CreateArray(8, 0);
       const blockCount = Math.floor(this.keystreamBuffer.length / 8);
 
       const fullCount = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.count, 0x1F), 27), OpCodes.AndN(blockCount, 0x07FFFFFF)));

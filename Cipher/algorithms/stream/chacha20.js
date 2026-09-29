@@ -91,12 +91,19 @@ class ChaCha20 extends StreamCipherAlgorithm {
 }
 
 class ChaCha20Instance extends IAlgorithmInstance {
+  /**
+   * @param {ChaCha20} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._nonce = new Array(12).fill(0);
+    this._nonce = OpCodes.CreateArray(12, 0);
     this._counter = 0;
     this.state = new Array(16);
     this.keystreamBuffer = [];
@@ -110,6 +117,9 @@ class ChaCha20Instance extends IAlgorithmInstance {
     ];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -121,30 +131,45 @@ class ChaCha20Instance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._initializeState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 12) {
-      this._nonce = new Array(12).fill(0);
+      this._nonce = OpCodes.CreateArray(12, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
     this._initializeState();
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     this.nonce = ivBytes;
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this.nonce; }
 
   set counter(counterValue) {
@@ -156,20 +181,29 @@ class ChaCha20Instance extends IAlgorithmInstance {
 
   get counter() { return this._counter; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -255,6 +289,7 @@ class ChaCha20Instance extends IAlgorithmInstance {
     }
 
     // Convert words to bytes (little-endian)
+    /** @type {uint8[]} */
     const keystream = [];
     for (let i = 0; i < 16; i++) {
       const bytes = OpCodes.Unpack32LE(workingState[i]);

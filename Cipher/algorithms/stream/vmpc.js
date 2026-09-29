@@ -112,7 +112,7 @@
         {
           text: "BouncyCastle Test Vector - First 256 bytes (verified against Java implementation)",
           uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCTest.java",
-          input: new Array(256).fill(0),
+          input: OpCodes.CreateArray(256, 0),
           key: OpCodes.Hex8ToBytes("9661410AB797D8A9EB767C21172DF6C7"),
           iv: OpCodes.Hex8ToBytes("4B5C2F003E67F39557A8D26F3DA2B155"),
           // Expected output verified against BouncyCastle Java reference implementation
@@ -131,7 +131,7 @@
         {
           text: "BouncyCastle Test Vector - First 32 keystream bytes",
           uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCTest.java",
-          input: new Array(32).fill(0),
+          input: OpCodes.CreateArray(32, 0),
           key: OpCodes.Hex8ToBytes("9661410AB797D8A9EB767C21172DF6C7"),
           iv: OpCodes.Hex8ToBytes("4B5C2F003E67F39557A8D26F3DA2B155"),
           expected: OpCodes.Hex8ToBytes("A82479F512E604148DB1548CD194702EDE20E787FE248A543EFE139C071B78AC")
@@ -139,7 +139,7 @@
         {
           text: "DarkCrypt Vmpc - 128-byte keystream (key=00..3F, IV=00)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           iv: [0],
           expected: OpCodes.Hex8ToBytes("291626f81795b6895ec89d4fd2dbb1195ba0a901161bb1ba0b8e3f5ec14187ae94ab8fe2e9a564b8e9c1345cfede17968aba3029130327bdfec2b641134b30c310dc2991128094cfeadb960e65c7b9d5eb1705b5401de5a8fdd966b6d3fd6d3d212410385fc1b834ac3b3f3268ea7c2aac731ada2e113afb7800bdc541cbbe92")
@@ -177,21 +177,26 @@
   class VMPCInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VMPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // VMPC state
       this.P = new Array(256);  // S-box permutation (called P in VMPC spec)
       this.n = 0;               // PRGA counter n
       this.s = 0;               // PRGA counter s
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -215,7 +220,7 @@
 
       const keyLength = keyBytes.length;
       if (keyLength < 1 || keyLength > 256) {
-        throw new Error(`Invalid VMPC key size: ${keyLength} bytes. Requires 1-256 bytes`);
+        throw new Error("Invalid VMPC key size: " + keyLength + " bytes. Requires 1-256 bytes");
       }
 
       this._key = [...keyBytes];
@@ -236,6 +241,9 @@
     }
 
     // Property setter for IV/nonce
+    /**
+     * @param {uint8[]|null} ivData
+     */
     set iv(ivData) {
       if (!ivData) {
         this._iv = null;
@@ -249,7 +257,7 @@
 
       const ivLength = ivData.length;
       if (ivLength < 1 || ivLength > 768) {
-        throw new Error(`Invalid VMPC IV size: ${ivLength} bytes. Requires 1-768 bytes`);
+        throw new Error("Invalid VMPC IV size: " + ivLength + " bytes. Requires 1-768 bytes");
       }
 
       this._iv = [...ivData];
@@ -269,10 +277,16 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceData
+     */
     set nonce(nonceData) {
       this.iv = nonceData;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -320,6 +334,7 @@
         throw new Error("VMPC not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process input data byte by byte (stream cipher)

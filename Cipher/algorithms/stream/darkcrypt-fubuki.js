@@ -203,15 +203,15 @@
           text: "DarkCrypt Fubuki - 512-bit key, zero initial value, 128 zero bytes",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-          iv: new Array(64).fill(0),
-          input: new Array(128).fill(0),
+          iv: OpCodes.CreateArray(64, 0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("e7a824ba3c50c8a7d88a534fae0aeacf32a9e53a484b1ffd549ad8c24a1538e44ca2fcbc3d3d07d4f66238ec0786188ad559f1865b4d15937667934eef3dd1e283597c6c1792b3c0ac235173e4099100617534faf737aa1bcdbe8c3e2cdcf6dd8491da13d6b8da73868d5398f794d5eac3df453d348b4efcec187694bbd13882")
         },
         {
           text: "DarkCrypt Fubuki - 512-bit key, zero initial value, incrementing 64-byte input (fresh setup)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-          iv: new Array(64).fill(0),
+          iv: OpCodes.CreateArray(64, 0),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("f8876dc89d3331a7bef5e9dcf2860402b6a9a38864cbf13d65df3c30e312a643c33516aa4d26eb44a44680d36582da86de579aea2e88eeb788343c2991b9f07f")
         }
@@ -224,38 +224,68 @@
   }
 
   class DarkCryptFubukiInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptFubukiAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Fubuki (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Fubuki (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length !== 64)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Fubuki (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Fubuki (DarkCrypt) requires exactly 64 bytes");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -263,6 +293,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
@@ -666,10 +699,11 @@
     _process(bytesIn, isInverse) {
       const blockBytes = 4 * TUPLE;
       if (bytesIn.length % blockBytes !== 0)
-        throw new Error(`Fubuki (DarkCrypt) encodes whole ${blockBytes}-byte blocks; `
-          + `${bytesIn.length} bytes is not a multiple of ${blockBytes}`);
+        throw new Error("Fubuki (DarkCrypt) encodes whole " + blockBytes + "-byte blocks; "
+          + bytesIn.length + " bytes is not a multiple of " + blockBytes);
 
       const repeat = bytesIn.length / blockBytes;
+      /** @type {uint8[]} */
       const out = [];
       let pos = 0;
       for (let r = 0; r < repeat; r++) {

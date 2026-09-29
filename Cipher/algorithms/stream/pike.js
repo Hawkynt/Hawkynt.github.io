@@ -117,6 +117,7 @@
 
     // Initialize algorithm
     Init: function() {
+      /** @type {boolean} */
       this.isInitialized = true;
       return true;
     },
@@ -194,6 +195,7 @@
       let posA = 0, posB = 0, posC = 0;
 
       // Generate keystream and encrypt data
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < data.length; i++) {
@@ -231,7 +233,7 @@
         throw new Error('Key not set up');
       }
 
-      const iv = new Array(this.IV_SIZE).fill(0);
+      const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
       iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
       iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
@@ -243,7 +245,7 @@
         throw new Error('Key not set up');
       }
 
-      const iv = new Array(this.IV_SIZE).fill(0);
+      const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
       iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
       iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
@@ -294,8 +296,8 @@
           }
 
           // Use default key/iv if not provided
-          const key = this._key || new Array(PIKE.KEY_SIZE).fill(0);
-          const iv = this._iv || new Array(PIKE.IV_SIZE).fill(0);
+          const key = this._key || OpCodes.CreateArray(PIKE.KEY_SIZE, 0);
+          const iv = this._iv || OpCodes.CreateArray(PIKE.IV_SIZE, 0);
 
           return PIKE.educationalPike(key, iv, this._inputData);
         }

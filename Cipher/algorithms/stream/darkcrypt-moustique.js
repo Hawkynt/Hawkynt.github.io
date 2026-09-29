@@ -347,38 +347,67 @@
   }
 
   class DarkCryptMoustiqueInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptMoustiqueAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
       this.engine = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.engine = null; return; }
       if (keyBytes.length !== 12)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Moustique requires exactly 12 bytes (96 bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Moustique requires exactly 12 bytes (96 bits)");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.engine = null; return; }
       if (ivBytes.length !== 13)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. Moustique requires exactly 13 bytes (104 bits)`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. Moustique requires exactly 13 bytes (104 bits)");
       this._iv = [...ivBytes];
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -386,6 +415,9 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
@@ -411,7 +443,7 @@
       const startBits = bytesToBitsMSBFirst(this._iv);      // 104 bits
 
       this.engine = new MoustiqueEngine(keyBits);
-      const warmupBits = new Array(WARMUP_CLOCKS).fill(0);
+      const warmupBits = OpCodes.CreateArray(WARMUP_CLOCKS, 0);
       for (let i = 0; i < startBits.length; i++) warmupBits[1 + i] = startBits[i];
       this.engine.warmUp(warmupBits);
     }

@@ -197,26 +197,31 @@
   class TSC4Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TSC4Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // TSC-4 state
       this.lfsrs = [];
       this.keyBytes = [];
       this.ivBytes = [];
+      /** @type {boolean} */
       this.initialized = false;
 
       // Initialize LFSRs
       for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
-        this.lfsrs[i] = new Array(this.algorithm.LFSR_LENGTHS[i]).fill(0);
+        this.lfsrs[i] = OpCodes.CreateArray(this.algorithm.LFSR_LENGTHS[i], 0);
       }
     }
 
@@ -238,7 +243,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`TSC-4 requires exactly 128-bit (16-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error("TSC-4 requires exactly 128-bit (16-byte) keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -273,7 +278,7 @@
       }
 
       if (ivBytes.length !== 16) {
-        throw new Error(`TSC-4 requires exactly 128-bit (16-byte) IVs, got ${ivBytes.length} bytes`);
+        throw new Error("TSC-4 requires exactly 128-bit (16-byte) IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -290,11 +295,17 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       // For compatibility, treat nonce as IV
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -340,6 +351,7 @@
         throw new Error("TSC-4 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.generateKeystreamByte();

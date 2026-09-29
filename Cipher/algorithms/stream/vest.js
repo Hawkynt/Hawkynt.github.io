@@ -155,15 +155,19 @@
   class VESTInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VESTAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // VEST state
@@ -172,6 +176,7 @@
       this.lfsrs = [];
       this.lfsrSizes = [];
       this.wordSize = 8; // Default to 8-bit mode
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -193,7 +198,7 @@
       }
 
       if (keyBytes.length < 8 || keyBytes.length > 16 || keyBytes.length % 2 !== 0) {
-        throw new Error(`VEST requires 8, 10, 12, 14, or 16-byte keys, got ${keyBytes.length} bytes`);
+        throw new Error("VEST requires 8, 10, 12, 14, or 16-byte keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -228,7 +233,7 @@
       }
 
       if (ivBytes.length < 8 || ivBytes.length > 16) {
-        throw new Error(`VEST requires 8-16 byte IVs, got ${ivBytes.length} bytes`);
+        throw new Error("VEST requires 8-16 byte IVs, got " + ivBytes.length + " bytes");
       }
 
       this._iv = [...ivBytes];
@@ -249,11 +254,17 @@
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       // For compatibility, treat nonce as IV
       this.iv = nonceBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this.iv;
     }
@@ -299,6 +310,7 @@
         throw new Error("VEST not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.generateKeystreamByte();
@@ -349,7 +361,7 @@
       // Initialize LFSRs
       this.lfsrs = [];
       for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
-        this.lfsrs[i] = new Array(this.lfsrSizes[i]).fill(0);
+        this.lfsrs[i] = OpCodes.CreateArray(this.lfsrSizes[i], 0);
       }
     }
 

@@ -156,18 +156,22 @@
   class Crypto1Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Crypto1Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Crypto-1 state
       this.state = new Array(this.algorithm.LFSR_SIZE);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -189,7 +193,7 @@
       }
 
       if (keyBytes.length !== this.algorithm.KEY_SIZE) {
-        throw new Error(`Crypto-1 requires exactly 48-bit (6-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error("Crypto-1 requires exactly 48-bit (6-byte) keys, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -240,6 +244,7 @@
         throw new Error("Crypto-1 not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();

@@ -270,11 +270,19 @@
   }
 
   class DarkCryptDragonInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptDragonAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
       // Dragon state: 32-word (1024-bit) NLFSR, plus 64-bit memory/counter M
@@ -286,13 +294,16 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
         return;
       }
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Dragon (DarkCrypt) requires exactly 32 bytes (256 bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Dragon (DarkCrypt) requires exactly 32 bytes (256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -301,11 +312,17 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length !== 32) {
-        this._iv = new Array(32).fill(0);
+        this._iv = OpCodes.CreateArray(32, 0);
       } else {
         this._iv = [...ivBytes];
       }
@@ -315,14 +332,23 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
 
@@ -330,10 +356,11 @@
         return [];
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];

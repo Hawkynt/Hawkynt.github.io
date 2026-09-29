@@ -104,17 +104,28 @@ class MORUS extends StreamCipherAlgorithm {
 }
 
 class MORUSInstance extends IAlgorithmInstance {
+  /**
+   * @param {MORUS} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    /** @type {uint8[]|null} */
     this._nonce = null;
 
     // MORUS-640 state (5 registers of 4×32-bit words)
     this.state = null;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -126,7 +137,7 @@ class MORUSInstance extends IAlgorithmInstance {
     );
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -135,11 +146,17 @@ class MORUSInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} nonceBytes
+   */
   set nonce(nonceBytes) {
     if (!nonceBytes || nonceBytes.length !== 16) {
-      this._nonce = new Array(16).fill(0);
+      this._nonce = OpCodes.CreateArray(16, 0);
     } else {
       this._nonce = [...nonceBytes];
     }
@@ -149,14 +166,23 @@ class MORUSInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
     // The nonce is optional at the interface; the setter substitutes the all-zero
@@ -195,7 +221,7 @@ class MORUSInstance extends IAlgorithmInstance {
     // was never implemented - Result() re-ran encryption and appended a second
     // tag, growing the message by 16 bytes instead of recovering the plaintext.
     if (input.length < TAG_SIZE)
-      throw new Error(`MORUS input too short: ${input.length} bytes cannot contain the ${TAG_SIZE}-byte authentication tag`);
+      throw new Error("MORUS input too short: " + input.length + " bytes cannot contain the " + TAG_SIZE + "-byte authentication tag");
 
     const ciphertext = input.slice(0, input.length - TAG_SIZE);
     const receivedTag = input.slice(input.length - TAG_SIZE);
