@@ -81,12 +81,7 @@
       this.knownVulnerabilities = [];
 
       // Test vectors with bit-perfect accuracy
-      this.tests = this.createTestVectors();
-    }
-
-    createTestVectors() {
-      // Ensure OpCodes is available
-      return [
+      this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes(""),
           OpCodes.AnsiToBytes(""),
@@ -147,7 +142,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Base85Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -164,24 +159,34 @@
   class Base85Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Base85Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // RFC 1924 Base85 alphabet (0-9, A-Z, a-z, and 23 additional characters)
+      /** @type {uint8[]} */
       this.alphabet = OpCodes.AnsiToBytes("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~");
+      /** @type {int32} */
       this.base = 85;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      // Create decode lookup table
-      this.decodeTable = {};
-      const alphabetStr = String.fromCharCode(...this.alphabet);
-      for (let i = 0; i < alphabetStr.length; i++) {
-        this.decodeTable[alphabetStr[i]] = i;
+      // Decode lookup table indexed by character code: the digit value, or -1
+      // for a character outside the alphabet
+      /** @type {int32[]} */
+      this.decodeTable = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        this.decodeTable[i] = -1;
+      }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        this.decodeTable[this.alphabet[i]] = i;
       }
     }
 
@@ -201,8 +206,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -215,97 +226,125 @@
       if (!this._feedBuffer) {
         throw new Error('Base85Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode bytes as RFC 1924 Base85 characters
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII Base85 characters
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-      const alphabetStr = String.fromCharCode(...this.alphabet);
+      /** @type {uint8[]} */
+      const chars = new Array(5);
 
       // Process in groups of 4 bytes
       for (let i = 0; i < data.length; i += 4) {
-        const group = [];
+        /** @type {int32} */
         const groupSize = Math.min(4, data.length - i);
 
         // Get the 4-byte group (pad with zeros if necessary)
-        for (let j = 0; j < 4; j++) {
-          group.push(i + j < data.length ? data[i + j] : 0);
-        }
+        /** @type {uint8} */
+        const b0 = data[i];
+        /** @type {uint8} */
+        const b1 = i + 1 < data.length ? data[i + 1] : 0;
+        /** @type {uint8} */
+        const b2 = i + 2 < data.length ? data[i + 2] : 0;
+        /** @type {uint8} */
+        const b3 = i + 3 < data.length ? data[i + 3] : 0;
 
         // Convert 4 bytes to 32-bit number (big-endian). Must use the
         // unsigned Or32 (not OrN, which is BigInt-signed-32 semantics on
         // plain Numbers): once byte 0 is >= 0x80 the packed value's top
         // bit is set, and OrN would hand back a negative Number, sending
         // the base-85 digit loop into negative-index territory.
-        const num = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(group[0], 24), OpCodes.Shl32(group[1], 16)), OpCodes.Shl32(group[2], 8)), group[3]);
+        /** @type {uint32} */
+        const num = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)), OpCodes.Shl32(b2, 8)), b3);
 
-        // Convert to base85 (5 characters). No all-zero shortcut here: this
-        // alphabet (RFC 1924 order) already assigns 'z' as an ordinary
-        // digit, so a borrowed Adobe-style 'z' shortcut would be
-        // indistinguishable on decode from a real group that legitimately
-        // starts with the 'z' digit.
-        const chars = [];
+        // Convert to base85 (5 characters, most significant first). No
+        // all-zero shortcut here: this alphabet (RFC 1924 order) already
+        // assigns 'z' as an ordinary digit, so a borrowed Adobe-style 'z'
+        // shortcut would be indistinguishable on decode from a real group
+        // that legitimately starts with the 'z' digit.
+        /** @type {uint32} */
         let n = num;
-
-        for (let k = 0; k < 5; k++) {
-          chars.unshift(alphabetStr[n % this.base]);
+        for (let k = 4; k >= 0; k--) {
+          chars[k] = this.alphabet[n % this.base];
           n = Math.floor(n / this.base);
         }
 
         // For partial groups, only output the needed characters
+        /** @type {int32} */
         const outputSize = groupSize + 1;
         for (let k = 0; k < outputSize; k++) {
-          result.push(chars[k].charCodeAt(0));
+          result.push(chars[k]);
         }
       }
 
       return result;
     }
 
+    /**
+     * Decode RFC 1924 Base85 characters to bytes
+     * @param {uint8[]} data - ASCII Base85 characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const input = OpCodes.BytesToChars(data);
-      const result = [];
-
+      /** @type {uint8[]} */
+      const bytes = new Array(4);
+      /** @type {int32} */
       let i = 0;
-      while (i < input.length) {
+      while (i < data.length) {
         // Process 5-character group
-        let groupSize = Math.min(5, input.length - i);
+        /** @type {int32} */
+        const groupSize = Math.min(5, data.length - i);
+        // Only the value modulo 2^32 is used below, so the group is
+        // accumulated modulo 2^32 (85^5 exceeds 2^32)
+        /** @type {uint32} */
         let num = 0;
 
         // Convert base85 characters to number
         for (let j = 0; j < groupSize; j++) {
-          const c = input[i + j];
-          if (!(c in this.decodeTable)) {
-            throw new Error(`Base85Instance.decode: Invalid character '${c}'`);
+          /** @type {int32} */
+          const code = data[i + j];
+          /** @type {int32} */
+          const digit = code >= 0 && code < 256 ? this.decodeTable[code] : -1;
+          if (digit < 0) {
+            throw new Error("Base85Instance.decode: Invalid character '" + String.fromCharCode(code) + "'");
           }
-          num = num * this.base + this.decodeTable[c];
+          num = OpCodes.Add32(OpCodes.Mul32(num, this.base), digit);
         }
 
         // Handle partial groups by adjusting for missing characters
         for (let j = groupSize; j < 5; j++) {
-          num = num * this.base + (this.base - 1);
+          num = OpCodes.Add32(OpCodes.Mul32(num, this.base), this.base - 1);
         }
 
         // Convert back to 4 bytes
-        const bytes = [
-          OpCodes.AndN(OpCodes.Shr32(num, 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(num, 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(num, 8), 0xFF),
-          OpCodes.AndN(num, 0xFF)
-        ];
+        bytes[0] = OpCodes.And32(OpCodes.Shr32(num, 24), 0xFF);
+        bytes[1] = OpCodes.And32(OpCodes.Shr32(num, 16), 0xFF);
+        bytes[2] = OpCodes.And32(OpCodes.Shr32(num, 8), 0xFF);
+        bytes[3] = OpCodes.And32(num, 0xFF);
 
         // For partial groups, only output the actual data bytes
+        /** @type {int32} */
         const outputSize = Math.max(0, groupSize - 1);
         for (let j = 0; j < outputSize; j++) {
           result.push(bytes[j]);
@@ -318,14 +357,29 @@
     }
 
     // Utility methods for string encoding
+
+    /**
+     * Encode a string (one byte per character) as Base85 text
+     * @param {string} str - Input text
+     * @returns {string} Base85 text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * Decode Base85 text to a string (one character per byte)
+     * @param {string} str - Base85 text
+     * @returns {string} Decoded text
+     */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToChars(decoded);
     }
