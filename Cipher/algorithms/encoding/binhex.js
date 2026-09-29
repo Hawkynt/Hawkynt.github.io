@@ -96,49 +96,67 @@
       ];
 
       // BinHex 4.0 alphabet (64 characters)
+      /** @type {string} */
       this.alphabet = "!\"#$%&'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr";
 
+      /** @type {int32[]|null} */
       this.decodeTable = null;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BinHexInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new BinHexInstance(this, isInverse);
     }
 
+    /**
+     * Build the decode lookup table: the 6-bit value of each character code,
+     * or -1 for a character outside the alphabet
+     */
     init() {
-      // Build decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
+      /** @type {int32[]} */
+      const table = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        table[i] = -1;
       }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        table[this.alphabet.charCodeAt(i)] = i;
+      }
+      this.decodeTable = table;
     }
   }
 
   /**
  * BinHex cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class BinHexInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BinHexAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      this.algorithm.init();
+      algorithm.init();
+      /** @type {string} */
+      this.alphabet = algorithm.alphabet;
+      /** @type {int32[]} */
+      this.decodeTable = algorithm.decodeTable;
     }
 
     /**
@@ -157,8 +175,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -171,17 +195,26 @@
       if (!this._feedBuffer) {
         throw new Error('BinHexInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Wrap bytes in BinHex-style text
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII text
+     */
     encode(data) {
+      /** @type {string} */
       let result = "(This file must be converted with BinHex 4.0)\n:";
 
       if (data.length > 0) {
         // Simple BinHex-style encoding (simplified for educational purposes)
+        /** @type {string} */
         const encoded = this.encodeBinHex(data);
 
         // Add line breaks every 64 characters
@@ -196,6 +229,7 @@
       result += "\n:";
 
       // Convert string to byte array
+      /** @type {uint8[]} */
       const resultBytes = [];
       for (let i = 0; i < result.length; i++) {
         resultBytes.push(result.charCodeAt(i));
@@ -203,14 +237,23 @@
       return resultBytes;
     }
 
+    /**
+     * Extract the bytes of BinHex-style text
+     * @param {uint8[]} data - ASCII text
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {string} */
       const binhexText = OpCodes.BytesToChars(data);
 
       // Extract content between colons
+      /** @type {string[]} */
       const lines = binhexText.split('\n');
+      /** @type {string} */
       let content = '';
 
       for (let i = 1; i < lines.length - 1; i++) { // Skip first and last line
+        /** @type {string} */
         const line = lines[i];
         if (line.startsWith(':')) {
           content += line.substring(1);
@@ -218,34 +261,50 @@
       }
 
       if (content.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // Decode BinHex content
       return this.decodeBinHex(content);
     }
 
+    /**
+     * Six-bit groups of some bytes, spelled in the BinHex alphabet
+     * @param {uint8[]} data - Input bytes
+     * @returns {string} Encoded text
+     */
     encodeBinHex(data) {
       if (data.length === 0) {
         return "";
       }
 
+      /** @type {string} */
       let result = "";
 
       // Process in groups of 3 bytes (similar to Base64 but using BinHex alphabet)
       for (let i = 0; i < data.length; i += 3) {
+        /** @type {uint8} */
         const byte1 = data[i];
+        /** @type {uint8} */
         const byte2 = i + 1 < data.length ? data[i + 1] : 0;
+        /** @type {uint8} */
         const byte3 = i + 2 < data.length ? data[i + 2] : 0;
 
         // Pack 3 bytes into 24-bit value
-        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(byte1, 16), OpCodes.Shl32(byte2, 8)), byte3);
+        /** @type {uint32} */
+        const packed = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(byte1, 16), OpCodes.Shl32(byte2, 8)), byte3);
 
         // Convert to 4 base-64 characters using BinHex alphabet
-        const char4 = this.algorithm.alphabet[OpCodes.AndN(packed, 0x3F)];
-        const char3 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 6), 0x3F)];
-        const char2 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 12), 0x3F)];
-        const char1 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 18), 0x3F)];
+        /** @type {string} */
+        const char4 = this.alphabet.charAt(OpCodes.And32(packed, 0x3F));
+        /** @type {string} */
+        const char3 = this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(packed, 6), 0x3F));
+        /** @type {string} */
+        const char2 = this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(packed, 12), 0x3F));
+        /** @type {string} */
+        const char1 = this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(packed, 18), 0x3F));
 
         result += char1 + char2 + char3 + char4;
       }
@@ -253,35 +312,64 @@
       return result;
     }
 
+    /**
+     * Value of a BinHex character; anything outside the alphabet counts as 0
+     * @param {string} text - Text
+     * @param {int32} index - Position of the character
+     * @returns {int32} Its 6-bit value
+     */
+    charValue(text, index) {
+      /** @type {int32} */
+      const code = text.charCodeAt(index);
+      if (code >= 256) {
+        return 0;
+      }
+      /** @type {int32} */
+      const value = this.decodeTable[code];
+      return value < 0 ? 0 : value;
+    }
+
+    /**
+     * Bytes of BinHex-style text
+     * @param {string} input - Encoded text
+     * @returns {uint8[]} Decoded bytes
+     */
     decodeBinHex(input) {
+      /** @type {uint8[]} */
+      const result = [];
       if (input.length === 0) {
-        return [];
+        return result;
       }
 
       // BinHex requires input length to be multiple of 4 characters
-      if (input.length % 4 !== 0) {
+      /** @type {string} */
+      let text = input;
+      if (text.length % 4 !== 0) {
         // Pad with first character of alphabet for simplicity
-        while (input.length % 4 !== 0) {
-          input += this.algorithm.alphabet[0];
+        while (text.length % 4 !== 0) {
+          text += this.alphabet.charAt(0);
         }
       }
 
-      const result = [];
-
-      for (let i = 0; i < input.length; i += 4) {
+      for (let i = 0; i < text.length; i += 4) {
         // Convert 4 characters to values
-        const val1 = this.algorithm.decodeTable[input[i]] || 0;
-        const val2 = this.algorithm.decodeTable[input[i + 1]] || 0;
-        const val3 = this.algorithm.decodeTable[input[i + 2]] || 0;
-        const val4 = this.algorithm.decodeTable[input[i + 3]] || 0;
+        /** @type {int32} */
+        const val1 = this.charValue(text, i);
+        /** @type {int32} */
+        const val2 = this.charValue(text, i + 1);
+        /** @type {int32} */
+        const val3 = this.charValue(text, i + 2);
+        /** @type {int32} */
+        const val4 = this.charValue(text, i + 3);
 
         // Reconstruct 24-bit value
-        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
+        /** @type {uint32} */
+        const packed = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
 
         // Unpack to 3 bytes
-        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 16), 0xFF));
-        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 8), 0xFF));
-        result.push(OpCodes.AndN(packed, 0xFF));
+        result.push(OpCodes.And32(OpCodes.Shr32(packed, 16), 0xFF));
+        result.push(OpCodes.And32(OpCodes.Shr32(packed, 8), 0xFF));
+        result.push(OpCodes.And32(packed, 0xFF));
       }
 
       // Simple padding removal
