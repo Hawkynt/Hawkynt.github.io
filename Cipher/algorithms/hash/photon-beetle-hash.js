@@ -31,7 +31,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // PhotonBeetle Hash constants
   const INITIAL_RATE_INBYTES = 16;
@@ -47,6 +47,7 @@
   const DSquare = 64;
 
   // PHOTON permutation round constants
+  /** @type {uint8[]} */
   const RC = [
      1,  0,  2,  6, 14, 15, 13,  9,
      3,  2,  0,  4, 12, 13, 15, 11,
@@ -63,6 +64,7 @@
   ];
 
   // MixColumn matrix for PHOTON permutation
+  /** @type {uint8[][]} */
   const MixColMatrix = [
     [  2,  4,  2, 11,  2,  8,  5,  6 ],
     [ 12,  9,  8, 13,  7,  7,  5,  2 ],
@@ -75,6 +77,7 @@
   ];
 
   // PHOTON S-box
+  /** @type {uint8[]} */
   const sbox = [ 12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2 ];
 
   /**
@@ -97,7 +100,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -168,7 +171,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PhotonBeetleHashInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -184,24 +187,44 @@
  */
 
   class PhotonBeetleHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a PhotonBeetle hash instance
+     * @param {PhotonBeetleHash} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
-      this.state = new Array(STATE_INBYTES).fill(0);
-      this.state_2d = Array.from({ length: D }, () => new Array(D).fill(0));
-      this.buffer = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      this.state = OpCodes.CreateArray(STATE_INBYTES, 0);
+      /** @type {uint8[][]} */
+      this.state_2d = [];
+      for (let i = 0; i < D; ++i)
+        this.state_2d.push(OpCodes.CreateArray(D, 0));
+      /** @type {uint8[]} */
+      this.buffer = OpCodes.CreateArray(16, 0);
+      /** @type {int32} */
       this.bufPos = 0;
+      /** @type {int32} */
       this.phase = 0;
+      /** @type {int32} */
       this._outputSize = TAG_INBYTES;
     }
 
+    /**
+     * Set the digest size (only 32 bytes is supported)
+     * @param {int32} size - Digest size in bytes
+     */
     set outputSize(size) {
       if (size !== TAG_INBYTES) {
-        throw new Error(`Invalid output size: ${size} bytes (PhotonBeetle Hash only supports 32 bytes)`);
+        throw new Error('Invalid output size: ' + size + ' bytes (PhotonBeetle Hash only supports 32 bytes)');
       }
       this._outputSize = size;
     }
 
+    /**
+     * Digest size in bytes
+     * @returns {int32} Always 32
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -209,7 +232,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -248,6 +271,7 @@
 
       // Squeeze phase
       this._PHOTON_Permutation();
+      /** @type {uint8[]} */
       const output = new Array(TAG_INBYTES);
 
       // First squeeze
@@ -270,6 +294,10 @@
       return output;
     }
 
+    /**
+     * Absorb the full 16-byte buffer
+     * @returns {void}
+     */
     _processBuffer() {
       if (this.phase === 0) {
         // First block: copy directly to state
@@ -295,6 +323,10 @@
       }
     }
 
+    /**
+     * Absorb the partial buffer and apply padding and domain separation
+     * @returns {void}
+     */
     _finishAbsorbing() {
       if (this.phase === 0) {
         // No full blocks processed
@@ -332,12 +364,25 @@
       }
     }
 
+    /**
+     * XOR a run of source bytes into a destination
+     * @param {int32} length - Number of bytes
+     * @param {uint8[]} src - Source bytes
+     * @param {int32} srcPos - Source offset
+     * @param {uint8[]} dest - Destination bytes (modified in place)
+     * @param {int32} destPos - Destination offset
+     * @returns {void}
+     */
     _xorBytes(length, src, srcPos, dest, destPos) {
       for (let i = 0; i < length; ++i) {
         dest[destPos + i] = OpCodes.ToByte(dest[destPos + i]^src[srcPos + i]);
       }
     }
 
+    /**
+     * The PHOTON-256 permutation on the 32-byte state
+     * @returns {void}
+     */
     _PHOTON_Permutation() {
       // Convert byte array to 2D nibble array
       for (let i = 0; i < DSquare; ++i) {
@@ -361,6 +406,7 @@
 
         // ShiftRows
         for (let i = 1; i < D; ++i) {
+          /** @type {uint8[]} */
           const temp = new Array(D);
           for (let j = 0; j < D; ++j) {
             temp[j] = this.state_2d[i][j];
@@ -371,19 +417,21 @@
         }
 
         // MixColumnSerial
+        /** @type {uint8[]} */
         const tempCol = new Array(D);
         for (let j = 0; j < D; ++j) {
           for (let i = 0; i < D; ++i) {
+            /** @type {uint32} */
             let sum = 0;
             for (let k = 0; k < D; ++k) {
               const x = MixColMatrix[i][k];
               const b = this.state_2d[k][j];
 
               // GF(16) multiplication by expanding b
-              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&1)));
-              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&2)));
-              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&4)));
-              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&8)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * OpCodes.And8(b, 1)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * OpCodes.And8(b, 2)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * OpCodes.And8(b, 4)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * OpCodes.And8(b, 8)));
             }
 
             // Reduction modulo x^4 + x + 1
@@ -403,7 +451,7 @@
 
       // Convert 2D nibble array back to byte array
       for (let i = 0; i < DSquare; i += 2) {
-        this.state[OpCodes.Shr32(i, 1)] = OpCodes.ToByte((this.state_2d[OpCodes.Shr32(i, Dq)][i&Dr]&0xf)|OpCodes.Shl32(this.state_2d[OpCodes.Shr32(i, Dq)][(i + 1)&Dr]&0xf, 4));
+        this.state[OpCodes.Shr32(i, 1)] = OpCodes.ToByte(OpCodes.Or32(OpCodes.And8(this.state_2d[OpCodes.Shr32(i, Dq)][i&Dr], 0xf), OpCodes.Shl32(OpCodes.And8(this.state_2d[OpCodes.Shr32(i, Dq)][(i + 1)&Dr], 0xf), 4)));
       }
     }
   }
