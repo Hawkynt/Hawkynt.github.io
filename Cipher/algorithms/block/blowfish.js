@@ -160,7 +160,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BlowfishInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -177,7 +177,7 @@
   class BlowfishInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BlowfishAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -185,15 +185,21 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
 
       // Blowfish-specific state
+      /** @type {uint32[]|null} */
       this.pBox = null;
+      /** @type {uint32[]|null} */
       this.sBox1 = null;
+      /** @type {uint32[]|null} */
       this.sBox2 = null;
+      /** @type {uint32[]|null} */
       this.sBox3 = null;
+      /** @type {uint32[]|null} */
       this.sBox4 = null;
 
       // Initialize constant tables
@@ -220,7 +226,7 @@
 
       // Validate key size (4-56 bytes)
       if (keyBytes.length < 4 || keyBytes.length > 56) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Blowfish requires 4-56 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Blowfish requires 4-56 bytes");
       }
 
       this._key = [...keyBytes];
@@ -253,6 +259,7 @@
 
     _initConstants() {
       // Initial P-box constants (digits of pi in hexadecimal)
+      /** @type {uint32[]} */
       this.PBOX_INIT = [
         0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0,
         0x082efa98, 0xec4e6c89, 0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c,
@@ -266,6 +273,7 @@
     _initProperSBoxes() {
       // Proper Blowfish S-box constants from the original specification
       // S-box 1 (first 256 entries)
+      /** @type {uint32[]} */
       this.SBOX1_INIT = [
         0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,
         0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16,
@@ -313,6 +321,7 @@
       ];
 
       // S-box 2
+      /** @type {uint32[]} */
       this.SBOX2_INIT = [
         0x4b7a70e9, 0xb5b32944, 0xdb75092e, 0xc4192623, 0xad6ea6b0, 0x49a7df7d,
         0x9cee60b8, 0x8fedb266, 0xecaa8c71, 0x699a17ff, 0x5664526c, 0xc2b19ee1,
@@ -360,6 +369,7 @@
       ];
 
       // S-box 3
+      /** @type {uint32[]} */
       this.SBOX3_INIT = [
         0xe93d5a68, 0x948140f7, 0xf64c261c, 0x94692934, 0x411520f7, 0x7602d4f7,
         0xbcf46b2e, 0xd4a20068, 0xd4082471, 0x3320f46a, 0x43b7d4b7, 0x500061af,
@@ -407,6 +417,7 @@
       ];
 
       // S-box 4
+      /** @type {uint32[]} */
       this.SBOX4_INIT = [
         0x3a39ce37, 0xd3faf5cf, 0xabc27737, 0x5ac52d1b, 0x5cb0679e, 0x4fa33742,
         0xd3822740, 0x99bc9bbe, 0xd5118e9d, 0xbf0f7315, 0xd62d1c7e, 0xc700c47b,
@@ -454,6 +465,10 @@
       ];
     }
 
+    /**
+     * Run the Blowfish key schedule
+     * @param {uint8[]} key - Key bytes
+     */
     _initializeWithKey(key) {
       // Copy initial values to working arrays
       this.pBox = [...this.PBOX_INIT];
@@ -476,64 +491,81 @@
         keyIndex = (keyIndex + 1) % key.length;
 
         const keyWord = OpCodes.Pack32BE(b0, b1, b2, b3);
-        this.pBox[i] = OpCodes.XorN(this.pBox[i], keyWord);
+        this.pBox[i] = OpCodes.Xor32(this.pBox[i], keyWord);
       }
 
       // Encrypt all-zero string with the current state and use results to replace P-box and S-boxes
+      /** @type {uint32} */
       let left = 0;
+      /** @type {uint32} */
       let right = 0;
 
       // Encrypt P-box entries
       for (let i = 0; i < 18; i += 2) {
         const encrypted = this._encryptPair(left, right);
-        left = encrypted.left;
-        right = encrypted.right;
+        left = encrypted[0];
+        right = encrypted[1];
         this.pBox[i] = left;
         this.pBox[i + 1] = right;
       }
 
       // Encrypt S-box entries
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
-      for (const sBox of sBoxes) {
+      for (let n = 0; n < sBoxes.length; n++) {
+        const sBox = sBoxes[n];
         for (let i = 0; i < 256; i += 2) {
           const encrypted = this._encryptPair(left, right);
-          left = encrypted.left;
-          right = encrypted.right;
+          left = encrypted[0];
+          right = encrypted[1];
           sBox[i] = left;
           if (i + 1 < 256) sBox[i + 1] = right;
         }
       }
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       const encrypted = this._encryptPair(left, right);
 
-      const leftBytes = OpCodes.Unpack32BE(encrypted.left);
-      const rightBytes = OpCodes.Unpack32BE(encrypted.right);
+      const leftBytes = OpCodes.Unpack32BE(encrypted[0]);
+      const rightBytes = OpCodes.Unpack32BE(encrypted[1]);
 
       return [...leftBytes, ...rightBytes];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       const left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       const right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       const decrypted = this._decryptPair(left, right);
 
-      const leftBytes = OpCodes.Unpack32BE(decrypted.left);
-      const rightBytes = OpCodes.Unpack32BE(decrypted.right);
+      const leftBytes = OpCodes.Unpack32BE(decrypted[0]);
+      const rightBytes = OpCodes.Unpack32BE(decrypted[1]);
 
       return [...leftBytes, ...rightBytes];
     }
 
+    /**
+     * Encrypt one pair of 32-bit halves
+     * @param {uint32} left - Left half
+     * @param {uint32} right - Right half
+     * @returns {uint32[]} Encrypted halves [left, right]
+     */
     _encryptPair(left, right) {
       // 16 rounds of Feistel network
       for (let i = 0; i < 16; i++) {
-        left = OpCodes.XorN(left, this.pBox[i]);
-        right = OpCodes.XorN(right, this._f(left));
+        left = OpCodes.Xor32(left, this.pBox[i]);
+        right = OpCodes.Xor32(right, this._f(left));
 
         // Swap left and right
         const temp = left;
@@ -546,21 +578,27 @@
       left = right;
       right = temp;
 
-      right = OpCodes.XorN(right, this.pBox[16]);
-      left = OpCodes.XorN(left, this.pBox[17]);
+      right = OpCodes.Xor32(right, this.pBox[16]);
+      left = OpCodes.Xor32(left, this.pBox[17]);
 
-      return { left, right };
+      return [left, right];
     }
 
+    /**
+     * Decrypt one pair of 32-bit halves
+     * @param {uint32} left - Left half
+     * @param {uint32} right - Right half
+     * @returns {uint32[]} Decrypted halves [left, right]
+     */
     _decryptPair(left, right) {
       // Reverse of encryption - apply final subkeys first
-      left = OpCodes.XorN(left, this.pBox[17]);
-      right = OpCodes.XorN(right, this.pBox[16]);
+      left = OpCodes.Xor32(left, this.pBox[17]);
+      right = OpCodes.Xor32(right, this.pBox[16]);
 
       // 16 rounds in reverse order
       for (let i = 15; i >= 0; i--) {
-        right = OpCodes.XorN(right, this._f(left));
-        left = OpCodes.XorN(left, this.pBox[i]);
+        right = OpCodes.Xor32(right, this._f(left));
+        left = OpCodes.Xor32(left, this.pBox[i]);
 
         // Swap left and right
         const temp = left;
@@ -573,9 +611,14 @@
       left = right;
       right = temp;
 
-      return { left, right };
+      return [left, right];
     }
 
+    /**
+     * Blowfish F-function
+     * @param {uint32} x - Input word
+     * @returns {uint32} F(x)
+     */
     _f(x) {
       // Blowfish F-function: F(x) = ((S1[a] + S2[b] mod OpCodes.Xor32(2, 32)) XOR S3[c]) + S4[d] mod OpCodes.Xor32(2, 32)
       const [a, b, c, d] = OpCodes.Unpack32BE(x);
@@ -584,7 +627,7 @@
       const temp1 = OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]);
 
       // Step 2: temp1 XOR S3[c]
-      const temp2 = OpCodes.XorN(temp1, this.sBox3[c]);
+      const temp2 = OpCodes.Xor32(temp1, this.sBox3[c]);
 
       // Step 3: temp2 + S4[d] mod OpCodes.Xor32(2, 32)
       return OpCodes.ToUint32(temp2 + this.sBox4[d]);

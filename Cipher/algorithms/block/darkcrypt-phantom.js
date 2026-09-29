@@ -59,6 +59,7 @@
 
   // 64-entry key-word index table (each value 0..7 selects one of the 8 key words to
   // form the per-round key-schedule word).
+  /** @type {uint8[]} */
   const KEY_INDEX = [
     0,4,1,5,2,6,3,7, 1,0,3,2,5,4,7,6, 0,4,5,1,2,6,7,3, 7,6,5,4,3,2,1,0,
     0,4,3,7,1,5,2,6, 1,3,5,7,4,6,0,2, 1,0,2,3,5,4,6,7, 7,6,5,4,3,2,1,0
@@ -136,6 +137,11 @@
   const PHANTOM_SBOX = OpCodes.Hex8ToBytes(PHANTOM_SBOX_HEX);
 
   // IDEA-style multiplication modulo 65537 (0x10001); the value 0 represents 65536 (2^16).
+  /**
+   * @param {uint32} a - 16-bit operand (0 means 65536)
+   * @param {uint32} b - 16-bit operand (0 means 65536)
+   * @returns {uint32} Product modulo 65537 (65536 as 0)
+   */
   function mulMod65537(a, b) {
     const A = a === 0 ? 65536 : a;
     const B = b === 0 ? 65536 : b;
@@ -195,31 +201,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptPhantomInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptPhantomInstance(this, isInverse);
     }
   }
 
   class DarkCryptPhantomInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptPhantomAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundTable = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundTable = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Phantom (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Phantom (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundTable = this._buildRoundTable(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -232,8 +255,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -245,6 +269,10 @@
 
     // Eight 32-bit big-endian key words, expanded to a 64-word round-key table by
     // selecting round-key[i] = K[KEY_INDEX[i]] (fixed permutation, values 0..7).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 64-word round-key table
+     */
     _buildRoundTable(keyBytes) {
       const K = [
         OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
@@ -256,6 +284,7 @@
         OpCodes.Pack32BE(keyBytes[24], keyBytes[25], keyBytes[26], keyBytes[27]),
         OpCodes.Pack32BE(keyBytes[28], keyBytes[29], keyBytes[30], keyBytes[31])
       ];
+      /** @type {uint32[]} */
       const table = new Array(64);
       for (let i = 0; i < 64; i++) table[i] = K[KEY_INDEX[i]];
       return table;
@@ -263,6 +292,11 @@
 
     // F(x,k): split x and k into high/low 16-bit halves; multiply matching halves modulo
     // 65537 (IDEA-style); recombine the two 16-bit results into a 32-bit word.
+    /**
+     * @param {uint32} x - Data word
+     * @param {uint32} k - Round-key word
+     * @returns {uint32} Recombined product halves
+     */
     _f(x, k) {
       const xHi = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFFFF), xLo = OpCodes.And32(x, 0xFFFF);
       const kHi = OpCodes.And32(OpCodes.Shr32(k, 16), 0xFFFF), kLo = OpCodes.And32(k, 0xFFFF);
@@ -271,23 +305,37 @@
 
     // S(group, v): apply four independent 256-entry byte-substitution tables (selected by
     // 'group' 0..3) to the four bytes of v (LSB..MSB) and recombine into a 32-bit word.
+    /**
+     * @param {int32} group - Table group 0..3
+     * @param {uint32} v - Input word
+     * @returns {uint32} Substituted word
+     */
     _sbox(group, v) {
       const base = group * 1024;
-      const b0 = PHANTOM_SBOX[base + 0 * 256 + OpCodes.And32(v, 0xFF)];
-      const b1 = PHANTOM_SBOX[base + 1 * 256 + OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF)];
-      const b2 = PHANTOM_SBOX[base + 2 * 256 + OpCodes.And32(OpCodes.Shr32(v, 16), 0xFF)];
-      const b3 = PHANTOM_SBOX[base + 3 * 256 + OpCodes.And32(OpCodes.Shr32(v, 24), 0xFF)];
+      const b0 = PHANTOM_SBOX[OpCodes.Add32(base + 0 * 256, OpCodes.And32(v, 0xFF))];
+      const b1 = PHANTOM_SBOX[OpCodes.Add32(base + 1 * 256, OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF))];
+      const b2 = PHANTOM_SBOX[OpCodes.Add32(base + 2 * 256, OpCodes.And32(OpCodes.Shr32(v, 16), 0xFF))];
+      const b3 = PHANTOM_SBOX[OpCodes.Add32(base + 3 * 256, OpCodes.And32(OpCodes.Shr32(v, 24), 0xFF))];
       return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), OpCodes.Shl32(b2, 16)), OpCodes.Shl32(b3, 24));
     }
 
     // Rotate the pair (c0=low word, c1=high word), treated as one 64-bit little-endian
     // word, left by 19 bits.
+    /**
+     * @param {uint32} c0 - Low word
+     * @param {uint32} c1 - High word
+     * @returns {uint32[]} Rotated [low, high] pair
+     */
     _mix64(c0, c1) {
       const n0 = OpCodes.Or32(OpCodes.Shl32(c0, 19), OpCodes.Shr32(c1, 13));
       const n1 = OpCodes.Or32(OpCodes.Shl32(c1, 19), OpCodes.Shr32(c0, 13));
       return [n0, n1];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -313,6 +361,10 @@
       return [...OpCodes.Unpack32BE(A), ...OpCodes.Unpack32BE(B), ...OpCodes.Unpack32BE(L), ...OpCodes.Unpack32BE(R)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);

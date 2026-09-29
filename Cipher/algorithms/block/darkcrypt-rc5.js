@@ -104,31 +104,47 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRC5Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRC5Instance(this, isInverse);
     }
   }
 
   class DarkCryptRC5Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRC5Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.expandedKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.expandedKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RC5-32/16/64 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RC5-32/16/64 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._keyExpansion();
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -141,8 +157,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -157,29 +174,36 @@
       const u = WORD_BYTES;
       const c = Math.max(1, Math.ceil(this.KeySize / u));
       const tableSize = 2 * (ROUNDS + 1);
-      const L = new Array(c).fill(0);
+      /** @type {uint32[]} */
+      const L = new Array(c);
+      L.fill(0);
 
       for (let i = 0; i < this.KeySize; i++) {
-        const keyByte = OpCodes.AndN(this._key[i], 0xFF);
+        const keyByte = OpCodes.And32(this._key[i], 0xFF);
         const shift = 8 * (i % u);
         const idx = Math.floor(i / u);
         L[idx] = OpCodes.ToUint32(L[idx] + OpCodes.Shl32(keyByte, shift));
       }
 
+      /** @type {uint32[]} */
       this.expandedKey = new Array(tableSize);
       this.expandedKey[0] = P32;
       for (let i = 1; i < tableSize; i++)
         this.expandedKey[i] = OpCodes.ToUint32(this.expandedKey[i - 1] + Q32);
 
-      let A = 0, B = 0, i = 0, j = 0;
+      /** @type {uint32} */
+      let A = 0;
+      /** @type {uint32} */
+      let B = 0;
+      let i = 0, j = 0;
       const iterations = 3 * Math.max(tableSize, c);
 
       for (let k = 0; k < iterations; k++) {
-        this.expandedKey[i] = OpCodes.ToUint32(this.expandedKey[i] + A + B);
+        this.expandedKey[i] = OpCodes.Add32(OpCodes.Add32(this.expandedKey[i], A), B);
         A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
 
-        L[j] = OpCodes.ToUint32(L[j] + A + B);
-        B = L[j] = OpCodes.RotL32(L[j], OpCodes.AndN(A + B, 31));
+        L[j] = OpCodes.Add32(OpCodes.Add32(L[j], A), B);
+        B = L[j] = OpCodes.RotL32(L[j], OpCodes.And32(OpCodes.Add32(A, B), 31));
 
         i = (i + 1) % tableSize;
         j = (j + 1) % c;
@@ -189,6 +213,10 @@
     }
 
     // Only bytes 0-7 are transformed by the real 64-bit RC5 cipher; bytes 8-15 pass through unchanged.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -197,30 +225,34 @@
       B = OpCodes.ToUint32(B + this.expandedKey[1]);
 
       for (let i = 1; i <= ROUNDS; i++) {
-        A = OpCodes.XorN(A, B);
-        A = OpCodes.RotL32(A, OpCodes.AndN(B, 31));
+        A = OpCodes.Xor32(A, B);
+        A = OpCodes.RotL32(A, OpCodes.And32(B, 31));
         A = OpCodes.ToUint32(A + this.expandedKey[2 * i]);
 
-        B = OpCodes.XorN(B, A);
-        B = OpCodes.RotL32(B, OpCodes.AndN(A, 31));
+        B = OpCodes.Xor32(B, A);
+        B = OpCodes.RotL32(B, OpCodes.And32(A, 31));
         B = OpCodes.ToUint32(B + this.expandedKey[2 * i + 1]);
       }
 
       return [...OpCodes.Unpack32LE(A), ...OpCodes.Unpack32LE(B), ...block.slice(8, 16)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
 
       for (let i = ROUNDS; i >= 1; i--) {
         B = OpCodes.ToUint32(B - this.expandedKey[2 * i + 1]);
-        B = OpCodes.RotR32(B, OpCodes.AndN(A, 31));
-        B = OpCodes.XorN(B, A);
+        B = OpCodes.RotR32(B, OpCodes.And32(A, 31));
+        B = OpCodes.Xor32(B, A);
 
         A = OpCodes.ToUint32(A - this.expandedKey[2 * i]);
-        A = OpCodes.RotR32(A, OpCodes.AndN(B, 31));
-        A = OpCodes.XorN(A, B);
+        A = OpCodes.RotR32(A, OpCodes.And32(B, 31));
+        A = OpCodes.Xor32(A, B);
       }
 
       A = OpCodes.ToUint32(A - this.expandedKey[0]);

@@ -55,7 +55,8 @@
   // ===== SEED CONSTANTS =====
 
   // SEED S-boxes - Four 32-bit S-boxes with 256 entries each (from Bouncy Castle reference)
-  const SS0 = Object.freeze([
+  /** @type {uint32[]} */
+  const SS0 = [
     0x2989a1a8, 0x05858184, 0x16c6d2d4, 0x13c3d3d0, 0x14445054, 0x1d0d111c, 0x2c8ca0ac, 0x25052124,
     0x1d4d515c, 0x03434340, 0x18081018, 0x1e0e121c, 0x11415150, 0x3cccf0fc, 0x0acac2c8, 0x23436360,
     0x28082028, 0x04444044, 0x20002020, 0x1d8d919c, 0x20c0e0e0, 0x22c2e2e0, 0x08c8c0c8, 0x17071314,
@@ -88,9 +89,10 @@
     0x31013130, 0x2acae2e8, 0x2d4d616c, 0x1f4f535c, 0x24c4e0e4, 0x30c0f0f0, 0x0dcdc1cc, 0x08888088,
     0x16061214, 0x3a0a3238, 0x18485058, 0x14c4d0d4, 0x22426260, 0x29092128, 0x07070304, 0x33033330,
     0x28c8e0e8, 0x1b0b1318, 0x05050104, 0x39497178, 0x10809090, 0x2a4a6268, 0x2a0a2228, 0x1a8a9298
-  ]);
+  ];
 
-  const SS1 = Object.freeze([
+  /** @type {uint32[]} */
+  const SS1 = [
     0x38380830, 0xe828c8e0, 0x2c2d0d21, 0xa42686a2, 0xcc0fcfc3, 0xdc1eced2, 0xb03383b3, 0xb83888b0,
     0xac2f8fa3, 0x60204060, 0x54154551, 0xc407c7c3, 0x44044440, 0x6c2f4f63, 0x682b4b63, 0x581b4b53,
     0xc003c3c3, 0x60224262, 0x30330333, 0xb43585b1, 0x28290921, 0xa02080a0, 0xe022c2e2, 0xa42787a3,
@@ -123,9 +125,10 @@
     0x0c0e0e02, 0x50104050, 0x38390931, 0x24260622, 0x30320232, 0x84048480, 0x68294961, 0x90138393,
     0x34370733, 0xe427c7e3, 0x24240420, 0xa42484a0, 0xc80bcbc3, 0x50134353, 0x080a0a02, 0x84078783,
     0xd819c9d1, 0x4c0c4c40, 0x80038383, 0x8c0f8f83, 0xcc0ecec2, 0x383b0b33, 0x480a4a42, 0xb43787b3
-  ]);
+  ];
 
-  const SS2 = Object.freeze([
+  /** @type {uint32[]} */
+  const SS2 = [
     0xa1a82989, 0x81840585, 0xd2d416c6, 0xd3d013c3, 0x50541444, 0x111c1d0d, 0xa0ac2c8c, 0x21242505,
     0x515c1d4d, 0x43400343, 0x10181808, 0x121c1e0e, 0x51501141, 0xf0fc3ccc, 0xc2c80aca, 0x63602343,
     0x20282808, 0x40440444, 0x20202000, 0x919c1d8d, 0xe0e020c0, 0xe2e022c2, 0xc0c808c8, 0x13141707,
@@ -158,9 +161,10 @@
     0x31303101, 0xe2e82aca, 0x616c2d4d, 0x535c1f4f, 0xe0e424c4, 0xf0f030c0, 0xc1cc0dcd, 0x80880888,
     0x12141606, 0x32383a0a, 0x50581848, 0xd0d414c4, 0x62602242, 0x21282909, 0x03040707, 0x33303303,
     0xe0e828c8, 0x13181b0b, 0x01040505, 0x71783949, 0x90901080, 0x62682a4a, 0x22282a0a, 0x92981a8a
-  ]);
+  ];
 
-  const SS3 = Object.freeze([
+  /** @type {uint32[]} */
+  const SS3 = [
     0x08303838, 0xc8e0e828, 0x0d212c2d, 0x86a2a426, 0xcfc3cc0f, 0xced2dc1e, 0x83b3b033, 0x88b0b838,
     0x8fa3ac2f, 0x40606020, 0x45515415, 0xc7c3c407, 0x44404404, 0x4f636c2f, 0x4b63682b, 0x4b53581b,
     0xc3c3c003, 0x42626022, 0x03333033, 0x85b1b435, 0x09212829, 0x80a0a020, 0xc2e2e022, 0x87a3a427,
@@ -193,37 +197,49 @@
     0x0e020c0e, 0x40505010, 0x09313839, 0x06222426, 0x02323032, 0x84808404, 0x49616829, 0x83939013,
     0x07333437, 0xc7e3e427, 0x04202424, 0x84a0a424, 0xcbc3c80b, 0x43535013, 0x0a02080a, 0x87838407,
     0xc9d1d819, 0x4c404c0c, 0x83838003, 0x8f838c0f, 0xcec2cc0e, 0x0b33383b, 0x4a42480a, 0x87b3b437
-  ]);
+  ];
 
   // SEED key constants
-  const KC = Object.freeze([
+  /** @type {uint32[]} */
+  const KC = [
     0x9e3779b9, 0x3c6ef373, 0x78dde6e6, 0xf1bbcdcc,
     0xe3779b99, 0xc6ef3733, 0x8dde6e67, 0x1bbcdccf,
     0x3779b99e, 0x6ef3733c, 0xdde6e678, 0xbbcdccf1,
     0x779b99e3, 0xef3733c6, 0xde6e678d, 0xbcdccf1b
-  ]);
+  ];
 
   // ===== HELPER FUNCTIONS =====
 
   // SEED G-function - uses all four S-boxes
+  /**
+   * @param {uint32} x - Input word
+   * @returns {uint32} G(x)
+   */
   function G(x) {
     const x_masked = OpCodes.ToUint32(x);
     return OpCodes.ToUint32(
-      OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-        SS0[OpCodes.AndN(x_masked, 0xff)],
-        SS1[OpCodes.AndN(OpCodes.Shr32(x_masked, 8), 0xff)]),
-        SS2[OpCodes.AndN(OpCodes.Shr32(x_masked, 16), 0xff)]),
-        SS3[OpCodes.AndN(OpCodes.Shr32(x_masked, 24), 0xff)])
+      OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+        SS0[OpCodes.And32(x_masked, 0xff)],
+        SS1[OpCodes.And32(OpCodes.Shr32(x_masked, 8), 0xff)]),
+        SS2[OpCodes.And32(OpCodes.Shr32(x_masked, 16), 0xff)]),
+        SS3[OpCodes.And32(OpCodes.Shr32(x_masked, 24), 0xff)])
     );
   }
 
   // SEED F-function - processes 64-bit data with two key words
   // Takes two 32-bit key words and a 64-bit value as [high32, low32] array
+  /**
+   * @param {uint32} ki0 - First round key word
+   * @param {uint32} ki1 - Second round key word
+   * @param {uint32} rHigh - High half of the 64-bit input
+   * @param {uint32} rLow - Low half of the 64-bit input
+   * @returns {uint32[]} [high, low] halves of the output
+   */
   function F(ki0, ki1, rHigh, rLow) {
-    const r0 = OpCodes.ToUint32(OpCodes.XorN(ki0, rHigh));
-    const r1 = OpCodes.ToUint32(OpCodes.XorN(ki1, rLow));
+    const r0 = OpCodes.Xor32(ki0, rHigh);
+    const r1 = OpCodes.Xor32(ki1, rLow);
 
-    const t0 = G(OpCodes.ToUint32(OpCodes.XorN(r0, r1)));
+    const t0 = G(OpCodes.ToUint32(OpCodes.Xor32(r0, r1)));
     const t1 = G(OpCodes.ToUint32(r0 + t0));
 
     const rd1 = G(OpCodes.ToUint32(t1 + t0));
@@ -233,11 +249,16 @@
   }
 
   // Create working key from 16-byte master key
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[]} The 32 round key words
+   */
   function createWorkingKey(keyBytes) {
     if (keyBytes.length !== 16) {
       throw new Error('Key size must be 128 bits (16 bytes)');
     }
 
+    /** @type {uint32[]} */
     const key = new Array(32);
 
     // Convert key bytes to 32-bit words using OpCodes
@@ -250,19 +271,19 @@
       let KC_i, keyt;
 
       KC_i = KC[i];
-      key[2 * i + 0] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
-      key[2 * i + 1] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
+      key[2 * i + 0] = G(OpCodes.Sub32(OpCodes.Add32(key0, key2), KC_i));
+      key[2 * i + 1] = G(OpCodes.Add32(OpCodes.Sub32(key1, key3), KC_i));
 
-      keyt = OpCodes.OrN(OpCodes.Shr32(key0, 8), OpCodes.Shl32(key1, 24));
-      key1 = OpCodes.OrN(OpCodes.Shr32(key1, 8), OpCodes.Shl32(key0, 24));
+      keyt = OpCodes.Or32(OpCodes.Shr32(key0, 8), OpCodes.Shl32(key1, 24));
+      key1 = OpCodes.Or32(OpCodes.Shr32(key1, 8), OpCodes.Shl32(key0, 24));
       key0 = keyt;
 
       KC_i = KC[i + 1];
-      key[2 * i + 2] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
-      key[2 * i + 3] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
+      key[2 * i + 2] = G(OpCodes.Sub32(OpCodes.Add32(key0, key2), KC_i));
+      key[2 * i + 3] = G(OpCodes.Add32(OpCodes.Sub32(key1, key3), KC_i));
 
-      keyt = OpCodes.OrN(OpCodes.Shl32(key2, 8), OpCodes.Shr32(key3, 24));
-      key3 = OpCodes.OrN(OpCodes.Shl32(key3, 8), OpCodes.Shr32(key2, 24));
+      keyt = OpCodes.Or32(OpCodes.Shl32(key2, 8), OpCodes.Shr32(key3, 24));
+      key3 = OpCodes.Or32(OpCodes.Shl32(key3, 8), OpCodes.Shr32(key2, 24));
       key2 = keyt;
     }
 
@@ -356,7 +377,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SeedInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -373,7 +394,7 @@
   class SeedInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SeedAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -381,7 +402,9 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint32[]|null} */
       this.workingKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -404,7 +427,7 @@
 
       // Validate key size (SEED only supports 128-bit keys)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SEED requires 128-bit (16 byte) keys.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SEED requires 128-bit (16 byte) keys.");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -448,12 +471,13 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -472,6 +496,10 @@
     }
 
     // Encrypt 128-bit block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       if (input.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');
@@ -491,14 +519,14 @@
         const w3 = this.workingKey[i + 3];
 
         // l XOR equals F(w0, w1, r)
-        const [f1High, f1Low] = F(w0, w1, rHigh, rLow);
-        lHigh = OpCodes.XorN(lHigh, f1High);
-        lLow = OpCodes.XorN(lLow, f1Low);
+        const f1 = F(w0, w1, rHigh, rLow);
+        lHigh = OpCodes.Xor32(lHigh, f1[0]);
+        lLow = OpCodes.Xor32(lLow, f1[1]);
 
         // r XOR equals F(w2, w3, l)
-        const [f2High, f2Low] = F(w2, w3, lHigh, lLow);
-        rHigh = OpCodes.XorN(rHigh, f2High);
-        rLow = OpCodes.XorN(rLow, f2Low);
+        const f2 = F(w2, w3, lHigh, lLow);
+        rHigh = OpCodes.Xor32(rHigh, f2[0]);
+        rLow = OpCodes.Xor32(rLow, f2[1]);
       }
 
       // Convert back to bytes (swap l and r for final output)
@@ -511,6 +539,10 @@
     }
 
     // Decrypt 128-bit block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       if (input.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');
@@ -530,14 +562,14 @@
         const w3 = this.workingKey[i + 3];
 
         // l XOR equals F(w2, w3, r)
-        const [f1High, f1Low] = F(w2, w3, rHigh, rLow);
-        lHigh = OpCodes.XorN(lHigh, f1High);
-        lLow = OpCodes.XorN(lLow, f1Low);
+        const f1 = F(w2, w3, rHigh, rLow);
+        lHigh = OpCodes.Xor32(lHigh, f1[0]);
+        lLow = OpCodes.Xor32(lLow, f1[1]);
 
         // r XOR equals F(w0, w1, l)
-        const [f2High, f2Low] = F(w0, w1, lHigh, lLow);
-        rHigh = OpCodes.XorN(rHigh, f2High);
-        rLow = OpCodes.XorN(rLow, f2Low);
+        const f2 = F(w0, w1, lHigh, lLow);
+        rHigh = OpCodes.Xor32(rHigh, f2[0]);
+        rLow = OpCodes.Xor32(rLow, f2[1]);
       }
 
       // Convert back to bytes (swap l and r for final output)

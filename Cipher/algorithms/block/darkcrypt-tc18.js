@@ -59,6 +59,7 @@
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Fixed 256-byte substitution table.
+  /** @type {uint8[]} */
   const SBOX = [
     0x17,0x63,0x50,0xC2,0xEB,0x3B,0xE7,0xDF,0xC6,0x6C,0x5B,0x86,
     0x64,0x56,0x6B,0x37,0xA1,0xD3,0xB7,0x1D,0x75,0x80,0xB9,0xE3,0x9D,0xEE,0xDB,0x71,
@@ -81,32 +82,48 @@
 
   const GF_POLY = 0x169; // custom GF(2^8) reduction polynomial (x^8+x^6+x^5+x^3+1)
 
+  /**
+   * @param {uint32} x - Byte value
+   * @param {int32} n - Rotation 1..7
+   * @returns {uint32} Rotated byte
+   */
   function rol8(x, n) {
-    x = OpCodes.AndN(x, 0xff);
-    return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 8 - n)), 0xff);
+    x = OpCodes.And32(x, 0xff);
+    return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 8 - n)), 0xff);
   }
 
   // Peasant/Russian multiplication in the DLL's custom GF(2^8) field.
+  /**
+   * @param {uint32} a - First factor
+   * @param {uint32} b - Second factor
+   * @returns {uint32} Product byte
+   */
   function gfMul(a, b) {
-    let A = OpCodes.AndN(a, 0xff);
-    let B = OpCodes.AndN(b, 0xff);
+    let x = OpCodes.And32(a, 0xff);
+    let y = OpCodes.And32(b, 0xff);
+    /** @type {uint32} */
     let acc = 0;
-    while (B !== 0) {
-      if (OpCodes.AndN(B, 1)) acc = OpCodes.XorN(acc, A);
-      A = OpCodes.Shl32(A, 1);
-      if (OpCodes.AndN(A, 0x100)) A = OpCodes.XorN(A, GF_POLY);
-      B = OpCodes.Shr32(B, 1);
+    while (y !== 0) {
+      if (OpCodes.And32(y, 1)) acc = OpCodes.Xor32(acc, x);
+      x = OpCodes.Shl32(x, 1);
+      if (OpCodes.And32(x, 0x100)) x = OpCodes.Xor32(x, GF_POLY);
+      y = OpCodes.Shr32(y, 1);
     }
-    return OpCodes.AndN(acc, 0xff);
+    return OpCodes.And32(acc, 0xff);
   }
 
   // Build the 232-byte key-expansion buffer L.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[]} The 232-byte expansion buffer
+   */
   function buildL(keyBytes) {
+    /** @type {uint8[]} */
     const L = new Array(232);
     for (let i = 0; i < 32; i++) L[i] = keyBytes[i % 8];
     for (let i = 32; i < 232; i++) {
-      const v = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  OpCodes.XorN(L[i-32], L[i-7]), L[i-5]), L[i-3]), L[i-2]), L[i-1]), 0x1B);
+      const v = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  OpCodes.Xor32(L[i-32], L[i-7]), L[i-5]), L[i-3]), L[i-2]), L[i-1]), 0x1B);
       L[i] = rol8(v, 1);
     }
     for (let i = 32; i < 232; i++) L[i] = SBOX[L[i]];
@@ -116,16 +133,25 @@
   // 8x8 matrix A: row 0 always draws from the cursor; elsewhere the diagonal
   // and the strictly-lower triangle draw from the cursor (diagonal entries
   // get 0 replaced by 1); the strictly-upper triangle is zero.
+  /**
+   * @param {uint8[]} L - Expansion buffer
+   * @param {uint32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
+   * @returns {uint8[]} 8x8 matrix, row-major
+   */
   function buildMatrixA(L, cursorRef) {
+    /** @type {uint8[]} */
     const m = new Array(64);
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
-        let v;
+        /** @type {uint8} */
+        let v = 0;
         if (c === 0 || c === r) {
-          v = L[cursorRef.pos++];
+          v = L[cursorRef[0]];
+          cursorRef[0]++;
           if (v === 0) v = 1;
         } else if (c < r) {
-          v = L[cursorRef.pos++];
+          v = L[cursorRef[0]];
+          cursorRef[0]++;
         } else {
           v = 0;
         }
@@ -138,18 +164,27 @@
   // 8x8 matrix B: row 0 and the diagonal draw from the cursor (0->1 on the
   // diagonal); the strictly-upper triangle draws further cursor bytes
   // unmodified; the strictly-lower triangle (excluding row 0) is zero.
+  /**
+   * @param {uint8[]} L - Expansion buffer
+   * @param {uint32[]} cursorRef - [pos], the next byte of L to draw; advanced in place
+   * @returns {uint8[]} 8x8 matrix, row-major
+   */
   function buildMatrixB(L, cursorRef) {
+    /** @type {uint8[]} */
     const m = new Array(64);
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
-        let v;
+        /** @type {uint8} */
+        let v = 0;
         if (c === r || r === 0) {
-          v = L[cursorRef.pos++];
+          v = L[cursorRef[0]];
+          cursorRef[0]++;
           if (v === 0) v = 1;
         } else if (c < r) {
           v = 0;
         } else {
-          v = L[cursorRef.pos++];
+          v = L[cursorRef[0]];
+          cursorRef[0]++;
         }
         m[r * 8 + c] = v;
       }
@@ -158,45 +193,73 @@
   }
 
   // Standard GF(2^8) matrix product M = A x B.
+  /**
+   * @param {uint8[]} A - Left 8x8 matrix
+   * @param {uint8[]} B - Right 8x8 matrix
+   * @returns {uint8[]} Product matrix
+   */
   function matMul(A, B) {
+    /** @type {uint8[]} */
     const M = new Array(64);
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
+        /** @type {uint32} */
         let acc = 0;
-        for (let k = 0; k < 8; k++) acc = OpCodes.XorN(acc, gfMul(A[i*8+k], B[k*8+j]));
+        for (let k = 0; k < 8; k++) acc = OpCodes.Xor32(acc, gfMul(A[i*8+k], B[k*8+j]));
         M[i*8+j] = acc;
       }
     }
     return M;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint8[][]} [M, RK0, ..., RK15]: the mixing matrix, then the 16 round keys
+   */
   function keySchedule(keyBytes) {
     const L = buildL(keyBytes);
-    const cursor = { pos: 32 };
+    /** @type {uint32[]} */
+    const cursor = [32];
     const A = buildMatrixA(L, cursor);
     const B = buildMatrixB(L, cursor);
     const M = matMul(A, B);
-    const RK = [];
-    for (let r = 0; r < 16; r++) RK.push(L.slice(104 + r * 8, 104 + r * 8 + 8));
-    return { M, RK };
+    /** @type {uint8[][]} */
+    const sched = [M];
+    for (let r = 0; r < 16; r++) sched.push(L.slice(104 + r * 8, 104 + r * 8 + 8));
+    return sched;
   }
 
   // Round function: byte-wise key-XOR + S-box, then the GF(2^8) matrix M.
+  /**
+   * @param {uint8[]} X - 8-byte half block
+   * @param {int32} r - Round index 0..15
+   * @param {uint8[][]} sched - [M, RK0, ..., RK15] from keySchedule
+   * @returns {uint8[]} 8-byte round output
+   */
   function roundF(X, r, sched) {
+    /** @type {uint8[]} */
     const t = new Array(8);
-    for (let i = 0; i < 8; i++) t[i] = SBOX[OpCodes.And32(OpCodes.XorN(X[i], sched.RK[r][i]), 0xff)];
+    for (let i = 0; i < 8; i++) t[i] = SBOX[OpCodes.And32(OpCodes.Xor32(X[i], sched[1 + r][i]), 0xff)];
+    /** @type {uint8[]} */
     const out = new Array(8);
     for (let i = 0; i < 8; i++) {
+      /** @type {uint32} */
       let acc = 0;
-      for (let j = 0; j < 8; j++) acc = OpCodes.XorN(acc, gfMul(t[j], sched.M[i*8+j]));
+      for (let j = 0; j < 8; j++) acc = OpCodes.Xor32(acc, gfMul(t[j], sched[0][i*8+j]));
       out[i] = acc;
     }
     return out;
   }
 
+  /**
+   * @param {uint8[]} a - First 8 bytes
+   * @param {uint8[]} b - Second 8 bytes
+   * @returns {uint8[]} Byte-wise XOR
+   */
   function xor8(a, b) {
+    /** @type {uint8[]} */
     const o = new Array(8);
-    for (let i = 0; i < 8; i++) o[i] = OpCodes.XorN(a[i], b[i]);
+    for (let i = 0; i < 8; i++) o[i] = OpCodes.Xor32(a[i], b[i]);
     return o;
   }
 
@@ -244,31 +307,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptTC18Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptTC18Instance(this, isInverse);
     }
   }
 
   class DarkCryptTC18Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptTC18Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._sched = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._sched = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. TC18 (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. TC18 (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = keySchedule(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -281,8 +361,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -292,6 +373,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let P0 = block.slice(0, 8), P1 = block.slice(8, 16);
       for (let r = 0; r < 16; r += 2) {
@@ -301,6 +386,10 @@
       return P0.concat(P1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let P0 = block.slice(0, 8), P1 = block.slice(8, 16);
       for (let r = 15; r >= 1; r -= 2) {

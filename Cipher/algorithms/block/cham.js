@@ -59,7 +59,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class CHAMCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class CHAMCipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -68,29 +68,29 @@
       this.description = "Korean lightweight block cipher designed for resource-constrained devices. CHAM-128/128 uses 128-bit blocks with 128-bit keys and 112 rounds with ARX operations.";
       this.inventor = "Koo, Roh, Kim, Jung, Lee, and Kwon";
       this.year = 2017;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.BASIC;
-      this.country = AlgorithmFramework.CountryCode.KR;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BASIC;
+      this.country = CountryCode.KR;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // CHAM-128/128: 128-bit keys only
+        new KeySize(16, 16, 1) // CHAM-128/128: 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit blocks
+        new KeySize(16, 16, 1) // Fixed 128-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("CHAM: A Family of Lightweight Block Ciphers", "https://link.springer.com/chapter/10.1007/978-3-319-78556-1_1"),
-        new AlgorithmFramework.LinkItem("ICISC 2017 Paper", "https://eprint.iacr.org/2017/1032.pdf")
+        new LinkItem("CHAM: A Family of Lightweight Block Ciphers", "https://link.springer.com/chapter/10.1007/978-3-319-78556-1_1"),
+        new LinkItem("ICISC 2017 Paper", "https://eprint.iacr.org/2017/1032.pdf")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original CHAM Specification", "https://eprint.iacr.org/2017/1032.pdf"),
-        new AlgorithmFramework.LinkItem("Lightweight Cryptography Research", "https://csrc.nist.gov/projects/lightweight-cryptography")
+        new LinkItem("Original CHAM Specification", "https://eprint.iacr.org/2017/1032.pdf"),
+        new LinkItem("Lightweight Cryptography Research", "https://csrc.nist.gov/projects/lightweight-cryptography")
       ];
 
       // Test vectors
@@ -105,15 +105,18 @@
       ];
 
       // CHAM-128/128 Constants
+      /** @type {int32} */
       this.ROUNDS = 80;      // 80 rounds for CHAM-128/128
+      /** @type {int32} */
       this.ROT_ALPHA = 1;     // Alpha rotation constant
+      /** @type {int32} */
       this.ROT_BETA = 8;      // Beta rotation constant
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CHAMInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -127,19 +130,26 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class CHAMInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class CHAMInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CHAMCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
+      this.rounds = algorithm.ROUNDS;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
       this.key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.outputBuffer = [];
       this.BlockSize = 16;    // 128-bit blocks
       this.KeySize = 0;
@@ -160,13 +170,19 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      const sizes = this._keySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -215,19 +231,27 @@
       // correct to do with one - completing it is a padding scheme's job - so it
       // is refused rather than dropped.
       if (this.inputBuffer.length !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       if (this.outputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = [...this.outputBuffer];
       this.outputBuffer = [];
       return result;
     }
 
+    /**
+     * Drop buffered input and output
+     */
     Reset() {
       this.inputBuffer = [];
       this.outputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('CHAM: Input must be exactly 16 bytes');
@@ -245,34 +269,35 @@
       let x2 = OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
       let x3 = OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
-      for (let round = 0; round < this.algorithm.ROUNDS; round += 8) {
-        let temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x0, round)), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[0])));
+      for (let round = 0; round < this.rounds; round += 8) {
+        let temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x0, round)), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[0])));
         x0 = OpCodes.RotL32(temp, 8);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 1))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[1])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x1, (round + 1))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[1])));
         x1 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 2))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[2])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x2, (round + 2))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[2])));
         x2 = OpCodes.RotL32(temp, 8);
 
         const x0Rot8 = OpCodes.RotL32(x0, 8);
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 3))), OpCodes.ToUint32(OpCodes.XorN(x0Rot8, rk[3])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x3, (round + 3))), OpCodes.ToUint32(OpCodes.Xor32(x0Rot8, rk[3])));
         x3 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x0, (round + 4))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[4])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x0, (round + 4))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[4])));
         x0 = OpCodes.RotL32(temp, 8);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 5))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[5])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x1, (round + 5))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[5])));
         x1 = OpCodes.RotL32(temp, 1);
 
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 6))), OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[6])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x2, (round + 6))), OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[6])));
         x2 = OpCodes.RotL32(temp, 8);
 
         const x0Rot8Second = OpCodes.RotL32(x0, 8);
-        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 7))), OpCodes.ToUint32(OpCodes.XorN(x0Rot8Second, rk[7])));
+        temp = OpCodes.Add32(OpCodes.ToUint32(OpCodes.Xor32(x3, (round + 7))), OpCodes.ToUint32(OpCodes.Xor32(x0Rot8Second, rk[7])));
         x3 = OpCodes.RotL32(temp, 1);
       }
 
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32LE(x0));
       result.push(...OpCodes.Unpack32LE(x1));
@@ -282,6 +307,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('CHAM: Input must be exactly 16 bytes');
@@ -298,42 +327,44 @@
       let x2 = OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
       let x3 = OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
-      for (let round = this.algorithm.ROUNDS - 8; round >= 0; round -= 8) {
+      for (let round = this.rounds - 8; round >= 0; round -= 8) {
+
         const x0Rot8After5 = OpCodes.RotL32(x0, 8);
         let tmp = OpCodes.RotR32(x3, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(x0Rot8After5, rk[7])));
-        x3 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 7)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(x0Rot8After5, rk[7])));
+        x3 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 7)));
 
         tmp = OpCodes.RotR32(x2, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[6])));
-        x2 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 6)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[6])));
+        x2 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 6)));
 
         tmp = OpCodes.RotR32(x1, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[5])));
-        x1 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 5)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[5])));
+        x1 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 5)));
 
         tmp = OpCodes.RotR32(x0, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[4])));
-        x0 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 4)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[4])));
+        x0 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 4)));
 
         const x0Rot8After1 = OpCodes.RotL32(x0, 8);
         tmp = OpCodes.RotR32(x3, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(x0Rot8After1, rk[3])));
-        x3 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 3)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(x0Rot8After1, rk[3])));
+        x3 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 3)));
 
         tmp = OpCodes.RotR32(x2, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x3, 1), rk[2])));
-        x2 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 2)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x3, 1), rk[2])));
+        x2 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 2)));
 
         tmp = OpCodes.RotR32(x1, 1);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x2, 8), rk[1])));
-        x1 = OpCodes.ToUint32(OpCodes.XorN(tmp, (round + 1)));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x2, 8), rk[1])));
+        x1 = OpCodes.ToUint32(OpCodes.Xor32(tmp, (round + 1)));
 
         tmp = OpCodes.RotR32(x0, 8);
-        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.XorN(OpCodes.RotL32(x1, 1), rk[0])));
-        x0 = OpCodes.ToUint32(OpCodes.XorN(tmp, round));
+        tmp = OpCodes.Sub32(tmp, OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(x1, 1), rk[0])));
+        x0 = OpCodes.ToUint32(OpCodes.Xor32(tmp, round));
       }
 
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32LE(x0));
       result.push(...OpCodes.Unpack32LE(x1));
@@ -343,7 +374,12 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Eight round-key words
+     */
     _expandKey(keyBytes) {
+      /** @type {uint32[]} */
       const words = [
         OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
         OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
@@ -351,21 +387,23 @@
         OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
       ];
 
+      /** @type {uint32[]} */
       const rk = new Array(8);
+
       rk[0] = OpCodes.ToUint32(words[0]);
       rk[1] = OpCodes.ToUint32(words[1]);
       rk[2] = OpCodes.ToUint32(words[2]);
       rk[3] = OpCodes.ToUint32(words[3]);
 
-      rk[4] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 11)));
-      rk[5] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 11)));
-      rk[6] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 11)));
-      rk[7] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 11)));
+      rk[4] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 11)));
+      rk[5] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 11)));
+      rk[6] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 11)));
+      rk[7] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 11)));
 
-      rk[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 8)));
-      rk[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 8)));
-      rk[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 8)));
-      rk[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 8)));
+      rk[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[0], OpCodes.RotL32(rk[0], 1)), OpCodes.RotL32(rk[0], 8)));
+      rk[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[1], OpCodes.RotL32(rk[1], 1)), OpCodes.RotL32(rk[1], 8)));
+      rk[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[2], OpCodes.RotL32(rk[2], 1)), OpCodes.RotL32(rk[2], 8)));
+      rk[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rk[3], OpCodes.RotL32(rk[3], 1)), OpCodes.RotL32(rk[3], 8)));
 
       return rk;
     }

@@ -70,7 +70,8 @@
 
   // S7 S-box table (7-bit input, 7-bit output) - RFC 2994
   // Shared by both MISTY1 and MISTY2
-  const S7TABLE = Object.freeze([
+  /** @type {uint8[]} */
+  const S7TABLE = [
     0x1b, 0x32, 0x33, 0x5a, 0x3b, 0x10, 0x17, 0x54, 0x5b, 0x1a, 0x72, 0x73, 0x6b, 0x2c, 0x66, 0x49,
     0x1f, 0x24, 0x13, 0x6c, 0x37, 0x2e, 0x3f, 0x4a, 0x5d, 0x0f, 0x40, 0x56, 0x25, 0x51, 0x1c, 0x04,
     0x0b, 0x46, 0x20, 0x0d, 0x7b, 0x35, 0x44, 0x42, 0x2b, 0x1e, 0x41, 0x14, 0x4b, 0x79, 0x15, 0x6f,
@@ -79,11 +80,13 @@
     0x59, 0x48, 0x03, 0x57, 0x7c, 0x4f, 0x62, 0x3c, 0x1d, 0x21, 0x5e, 0x27, 0x6a, 0x70, 0x4d, 0x3a,
     0x01, 0x6d, 0x6e, 0x63, 0x18, 0x77, 0x23, 0x05, 0x26, 0x76, 0x00, 0x31, 0x2d, 0x7a, 0x7f, 0x61,
     0x50, 0x22, 0x11, 0x06, 0x47, 0x16, 0x52, 0x4e, 0x71, 0x3e, 0x69, 0x43, 0x34, 0x5c, 0x58, 0x7d
-  ]);
+  ];
+  Object.freeze(S7TABLE);
 
   // S9 S-box table (9-bit input, 9-bit output) - RFC 2994
   // Shared by both MISTY1 and MISTY2
-  const S9TABLE = Object.freeze([
+  /** @type {uint16[]} */
+  const S9TABLE = [
     0x1c3, 0x0cb, 0x153, 0x19f, 0x1e3, 0x0e9, 0x0fb, 0x035, 0x181, 0x0b9, 0x117, 0x1eb, 0x133, 0x009, 0x02d, 0x0d3,
     0x0c7, 0x14a, 0x037, 0x07e, 0x0eb, 0x164, 0x193, 0x1d8, 0x0a3, 0x11e, 0x055, 0x02c, 0x01d, 0x1a2, 0x163, 0x118,
     0x14b, 0x152, 0x1d2, 0x00f, 0x02b, 0x030, 0x13a, 0x0e5, 0x111, 0x138, 0x18e, 0x063, 0x0e3, 0x0c8, 0x1f4, 0x01b,
@@ -116,36 +119,130 @@
     0x1c0, 0x0a9, 0x11d, 0x1b0, 0x1a6, 0x0cd, 0x0f3, 0x05c, 0x102, 0x05b, 0x1d9, 0x144, 0x1f6, 0x0ad, 0x0a5, 0x03a,
     0x1cb, 0x136, 0x17f, 0x046, 0x0e1, 0x01e, 0x1dd, 0x0e6, 0x137, 0x1fa, 0x185, 0x08c, 0x08f, 0x040, 0x1b5, 0x0be,
     0x078, 0x000, 0x0ac, 0x110, 0x15e, 0x124, 0x002, 0x1bc, 0x0a2, 0x0ea, 0x070, 0x1fc, 0x116, 0x15c, 0x04c, 0x1c2
-  ]);
+  ];
+  Object.freeze(S9TABLE);
 
   // ===== SHARED S-BOX LOOKUP FUNCTIONS =====
 
   // S7 lookup - shared by both variants
+  /**
+   * @param {uint32} x - 7-bit input (masked)
+   * @returns {uint8} S7 output
+   */
   function S7(x) {
-    return S7TABLE[x&0x7F];
+    return S7TABLE[OpCodes.And32(x, 0x7F)];
   }
 
   // S9 lookup - shared by both variants
+  /**
+   * @param {uint32} x - 9-bit input (masked)
+   * @returns {uint16} S9 output
+   */
   function S9(x) {
-    return S9TABLE[x&0x1FF];
+    return S9TABLE[OpCodes.And32(x, 0x1FF)];
   }
 
   // ===== SHARED FI FUNCTION =====
   // FI function - core non-linear transformation (RFC 2994)
   // Used identically by both MISTY1 and MISTY2
+  /**
+   * @param {uint32} fi_in - 16-bit input
+   * @param {uint32} fi_key - 16-bit key
+   * @returns {uint32} 16-bit output
+   */
   function FI(fi_in, fi_key) {
     // RFC 2994 Section 2.3: 3-stage structure over the S9/S7/S9 boxes
-    let d9 = OpCodes.Shr32(fi_in, 7)&0x1FF;  // Upper 9 bits
-    let d7 = fi_in&0x7F;                     // Lower 7 bits
+    let d9 = OpCodes.And32(OpCodes.Shr32(fi_in, 7), 0x1FF);  // Upper 9 bits
+    let d7 = OpCodes.And32(fi_in, 0x7F);                     // Lower 7 bits
 
-    d9 = OpCodes.Xor32(S9(d9), d7)&0x1FF;
-    d7 = OpCodes.Xor32(S7(d7), d9)&0x7F;
-    d7 = OpCodes.Xor32(d7, OpCodes.Shr32(fi_key, 9))&0x7F;
-    d9 = OpCodes.Xor32(d9, fi_key&0x1FF)&0x1FF;
-    d9 = OpCodes.Xor32(S9(d9), d7)&0x1FF;
+    d9 = OpCodes.And32(OpCodes.Xor32(S9(d9), d7), 0x1FF);
+    d7 = OpCodes.And32(OpCodes.Xor32(S7(d7), d9), 0x7F);
+    d7 = OpCodes.And32(OpCodes.Xor32(d7, OpCodes.Shr32(fi_key, 9)), 0x7F);
+    d9 = OpCodes.And32(OpCodes.Xor32(d9, OpCodes.And32(fi_key, 0x1FF)), 0x1FF);
+    d9 = OpCodes.And32(OpCodes.Xor32(S9(d9), d7), 0x1FF);
 
     // Combine results: 7-bit d7 in upper bits, 9-bit d9 in lower bits
-    return OpCodes.Or32(OpCodes.Shl32(d7&0x7F, 9), d9&0x1FF)&0xFFFF;
+    return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(d7, 0x7F), 9), OpCodes.And32(d9, 0x1FF)), 0xFFFF);
+  }
+
+  // ===== MISTY1 FO/FL FUNCTIONS =====
+
+  // FO function - 3-round Feistel with FI function (RFC 2994 Section 2.3)
+  /**
+   * @param {uint32} fo_in - 32-bit input
+   * @param {int32} k - Round index
+   * @param {uint32[]} EK - Extended key
+   * @returns {uint32} 32-bit output
+   */
+  function misty1FO(fo_in, k, EK) {
+    let t0 = OpCodes.And32(OpCodes.Shr32(fo_in, 16), 0xFFFF);  // Upper 16 bits
+    let t1 = OpCodes.And32(fo_in, 0xFFFF);                     // Lower 16 bits
+
+    t0 = OpCodes.And32(OpCodes.Xor32(t0, EK[k]), 0xFFFF);
+    t0 = FI(t0, EK[(k + 5) % 8 + 8]);
+    t0 = OpCodes.And32(OpCodes.Xor32(t0, t1), 0xFFFF);
+
+    t1 = OpCodes.And32(OpCodes.Xor32(t1, EK[(k + 2) % 8]), 0xFFFF);
+    t1 = FI(t1, EK[(k + 1) % 8 + 8]);
+    t1 = OpCodes.And32(OpCodes.Xor32(t1, t0), 0xFFFF);
+
+    t0 = OpCodes.And32(OpCodes.Xor32(t0, EK[(k + 7) % 8]), 0xFFFF);
+    t0 = FI(t0, EK[(k + 3) % 8 + 8]);
+    t0 = OpCodes.And32(OpCodes.Xor32(t0, t1), 0xFFFF);
+
+    t1 = OpCodes.And32(OpCodes.Xor32(t1, EK[(k + 4) % 8]), 0xFFFF);
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(t1, 0xFFFF), 16), OpCodes.And32(t0, 0xFFFF));
+  }
+
+  // FL function - linear layer for diffusion (RFC 2994 exact implementation)
+  /**
+   * @param {uint32} fl_in - 32-bit input
+   * @param {int32} k - FL index
+   * @param {uint32[]} EK - Extended key
+   * @returns {uint32} 32-bit output
+   */
+  function misty1FL(fl_in, k, EK) {
+    let d0 = OpCodes.And32(OpCodes.Shr32(fl_in, 16), 0xFFFF);  // Upper 16 bits
+    let d1 = OpCodes.And32(fl_in, 0xFFFF);           // Lower 16 bits
+
+    // FL function as per RFC 2994 Section 2.4
+    if (k % 2 === 0) {
+      // Even k
+      d1 = OpCodes.And32(OpCodes.Xor32(d1, OpCodes.And32(d0, EK[Math.floor(k / 2)])), 0xFFFF);
+      d0 = OpCodes.And32(OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8])), 0xFFFF);
+    } else {
+      // Odd k
+      d1 = OpCodes.And32(OpCodes.Xor32(d1, OpCodes.And32(d0, EK[((k - 1) / 2 + 2) % 8 + 8])), 0xFFFF);
+      d0 = OpCodes.And32(OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8])), 0xFFFF);
+    }
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(d0, 0xFFFF), 16), OpCodes.And32(d1, 0xFFFF));
+  }
+
+  // FL inverse function for decryption (RFC 2994)
+  /**
+   * @param {uint32} fl_in - 32-bit FL output
+   * @param {int32} k - FL index
+   * @param {uint32[]} EK - Extended key
+   * @returns {uint32} 32-bit FL input
+   */
+  function misty1FL_inv(fl_in, k, EK) {
+    let d0 = OpCodes.And32(OpCodes.Shr32(fl_in, 16), 0xFFFF);  // Upper 16 bits
+    let d1 = OpCodes.And32(fl_in, 0xFFFF);           // Lower 16 bits
+
+    // Reverse FL function
+    if (k % 2 === 0) {
+      // Even k - reverse order
+      d0 = OpCodes.And32(OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8])), 0xFFFF);
+      d1 = OpCodes.And32(OpCodes.Xor32(d1, OpCodes.And32(d0, EK[Math.floor(k / 2)])), 0xFFFF);
+    } else {
+      // Odd k - reverse order
+      d0 = OpCodes.And32(OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8])), 0xFFFF);
+      d1 = OpCodes.And32(OpCodes.Xor32(d1, OpCodes.And32(d0, EK[((k - 1) / 2 + 2) % 8 + 8])), 0xFFFF);
+    }
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(d0, 0xFFFF), 16), OpCodes.And32(d1, 0xFFFF));
   }
 
   // ===== MISTY1 IMPLEMENTATION =====
@@ -156,7 +253,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class MISTY1Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class MISTY1Cipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -165,31 +262,31 @@
       this.description = "Japanese block cipher by Mitsuru Matsui designed for provable security. Uses 64-bit blocks and 128-bit keys with 8-round FL/FO structure. First practical cipher with decorrelation theory proof.";
       this.inventor = "Mitsuru Matsui";
       this.year = 1996;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
       this.securityStatus = null; // Conservative - proven secure but conservative for educational use
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.JP;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.JP;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // 128-bit keys only
+        new KeySize(16, 16, 1) // 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // 64-bit blocks only
+        new KeySize(8, 8, 1) // 64-bit blocks only
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("RFC 2994 - MISTY1 Specification", "https://tools.ietf.org/rfc/rfc2994.txt"),
-        new AlgorithmFramework.LinkItem("CRYPTREC Evaluation", "https://www.cryptrec.go.jp/english/"),
-        new AlgorithmFramework.LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/MISTY1")
+        new LinkItem("RFC 2994 - MISTY1 Specification", "https://tools.ietf.org/rfc/rfc2994.txt"),
+        new LinkItem("CRYPTREC Evaluation", "https://www.cryptrec.go.jp/english/"),
+        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/MISTY1")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original MISTY1 Paper", "https://link.springer.com/chapter/10.1007/3-540-69053-0_5"),
-        new AlgorithmFramework.LinkItem("Decorrelation Theory", "https://crypto.stanford.edu/~dabo/papers/decorrelation.pdf"),
-        new AlgorithmFramework.LinkItem("CRYPTREC Report", "https://www.cryptrec.go.jp/english/method.html")
+        new LinkItem("Original MISTY1 Paper", "https://link.springer.com/chapter/10.1007/3-540-69053-0_5"),
+        new LinkItem("Decorrelation Theory", "https://crypto.stanford.edu/~dabo/papers/decorrelation.pdf"),
+        new LinkItem("CRYPTREC Report", "https://www.cryptrec.go.jp/english/method.html")
       ];
 
       // Published known-answer tests
@@ -246,6 +343,7 @@
       ];
 
       // MISTY1 Constants
+      /** @type {int32} */
       this.ROUNDS = 8;
 
     }
@@ -253,72 +351,13 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MISTY1Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new MISTY1Instance(this, isInverse);
     }
 
-    // FO function - 3-round Feistel with FI function (RFC 2994 Section 2.3)
-    static FO(fo_in, k, EK) {
-      let t0 = OpCodes.Shr32(fo_in, 16)&0xFFFF;  // Upper 16 bits
-      let t1 = fo_in&0xFFFF;                     // Lower 16 bits
-
-      t0 = OpCodes.Xor32(t0, EK[k])&0xFFFF;
-      t0 = FI(t0, EK[(k + 5) % 8 + 8]);
-      t0 = OpCodes.Xor32(t0, t1)&0xFFFF;
-
-      t1 = OpCodes.Xor32(t1, EK[(k + 2) % 8])&0xFFFF;
-      t1 = FI(t1, EK[(k + 1) % 8 + 8]);
-      t1 = OpCodes.Xor32(t1, t0)&0xFFFF;
-
-      t0 = OpCodes.Xor32(t0, EK[(k + 7) % 8])&0xFFFF;
-      t0 = FI(t0, EK[(k + 3) % 8 + 8]);
-      t0 = OpCodes.Xor32(t0, t1)&0xFFFF;
-
-      t1 = OpCodes.Xor32(t1, EK[(k + 4) % 8])&0xFFFF;
-
-      return OpCodes.Or32(OpCodes.Shl32(t1&0xFFFF, 16), t0&0xFFFF);
-    }
-
-    // FL function - linear layer for diffusion (RFC 2994 exact implementation)
-    static FL(fl_in, k, EK) {
-      let d0 = OpCodes.Shr32(fl_in, 16)&0xFFFF;  // Upper 16 bits
-      let d1 = fl_in&0xFFFF;           // Lower 16 bits
-
-      // FL function as per RFC 2994 Section 2.4
-      if (k % 2 === 0) {
-        // Even k
-        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)])&0xFFFF;
-        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8]))&0xFFFF;
-      } else {
-        // Odd k
-        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8])&0xFFFF;
-        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8]))&0xFFFF;
-      }
-
-      return OpCodes.Or32(OpCodes.Shl32(d0&0xFFFF, 16), d1&0xFFFF);
-    }
-
-    // FL inverse function for decryption (RFC 2994)
-    static FL_inv(fl_in, k, EK) {
-      let d0 = OpCodes.Shr32(fl_in, 16)&0xFFFF;  // Upper 16 bits
-      let d1 = fl_in&0xFFFF;           // Lower 16 bits
-
-      // Reverse FL function
-      if (k % 2 === 0) {
-        // Even k - reverse order
-        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[(Math.floor(k / 2) + 6) % 8 + 8]))&0xFFFF;
-        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)])&0xFFFF;
-      } else {
-        // Odd k - reverse order
-        d0 = OpCodes.Xor32(d0, OpCodes.Or32(d1, EK[((k - 1) / 2 + 4) % 8]))&0xFFFF;
-        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8])&0xFFFF;
-      }
-
-      return OpCodes.Or32(OpCodes.Shl32(d0&0xFFFF, 16), d1&0xFFFF);
-    }
   }
 
   /**
@@ -327,21 +366,30 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class MISTY1Instance extends AlgorithmFramework.IBlockCipherInstance {
+  class MISTY1Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MISTY1Cipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      // Parameters of the parent algorithm
+      /** @type {int32} */
+      this.roundCount = algorithm.ROUNDS;
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
     }
 
     /**
@@ -359,13 +407,16 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if ((keyBytes.length - ks.minSize) % ks.stepSize === 0) { isValidSize = true; break; }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -407,9 +458,10 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -427,15 +479,21 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[][]} [EK (32 extended key words), K (8 key words)]
+     */
     _expandKey(keyBytes) {
       // MISTY1 key schedule - RFC 2994 Section 2.2
       // Convert 16 key bytes to 8 key words K[0]...K[7]
+      /** @type {uint32[]} */
       const K = new Array(8);
       for (let i = 0; i < 8; i++) {
-        K[i] = OpCodes.Shl32(keyBytes[i * 2], 8)|keyBytes[i * 2 + 1];
+        K[i] = OpCodes.Or32(OpCodes.Shl32(keyBytes[i * 2], 8), keyBytes[i * 2 + 1]);
       }
 
       // Generate EK array (32 elements) as per RFC 2994
+      /** @type {uint32[]} */
       const EK = new Array(32);
 
       // EK[0]...EK[7] = K[0]...K[7] (direct copy)
@@ -445,39 +503,45 @@
 
       // Generate EK[8]...EK[15] using FI function
       for (let i = 0; i < 8; i++) {
-        EK[i + 8] = FI(EK[i], EK[(i + 1) % 8])&0xFFFF;
+        EK[i + 8] = OpCodes.And32(FI(EK[i], EK[(i + 1) % 8]), 0xFFFF);
       }
 
       // Generate EK[16]...EK[23] (lower 9 bits of EK[8]...EK[15])
       for (let i = 0; i < 8; i++) {
-        EK[i + 16] = EK[i + 8]&0x1FF;
+        EK[i + 16] = OpCodes.And32(EK[i + 8], 0x1FF);
       }
 
       // Generate EK[24]...EK[31] (upper 7 bits of EK[8]...EK[15])
       for (let i = 0; i < 8; i++) {
-        EK[i + 24] = OpCodes.Shr32(EK[i + 8], 9)&0x7F;
+        EK[i + 24] = OpCodes.And32(OpCodes.Shr32(EK[i + 8], 9), 0x7F);
       }
 
-      return { EK, K };
+      /** @type {uint32[][]} */
+      const expanded = [EK, K];
+      return expanded;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       // P is split into the leftmost 32-bit D0 and the rightmost 32-bit D1
-      const EK = this.roundKeys.EK;
+      const EK = this.roundKeys[0];
       let d0 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
       let d1 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
       // 8 rounds; even-numbered rounds additionally call FL (RFC 2994 Section 2.3)
-      for (let round = 0; round < this.algorithm.ROUNDS; round += 2) {
-        d0 = MISTY1Cipher.FL(d0, round, EK);
-        d1 = MISTY1Cipher.FL(d1, round + 1, EK);
-        d1 = OpCodes.Xor32(d1, MISTY1Cipher.FO(d0, round, EK));
-        d0 = OpCodes.Xor32(d0, MISTY1Cipher.FO(d1, round + 1, EK));
+      for (let round = 0; round < this.roundCount; round += 2) {
+        d0 = misty1FL(d0, round, EK);
+        d1 = misty1FL(d1, round + 1, EK);
+        d1 = OpCodes.Xor32(d1, misty1FO(d0, round, EK));
+        d0 = OpCodes.Xor32(d0, misty1FO(d1, round + 1, EK));
       }
 
       // Final FL applications after the last round
-      d0 = MISTY1Cipher.FL(d0, this.algorithm.ROUNDS, EK);
-      d1 = MISTY1Cipher.FL(d1, this.algorithm.ROUNDS + 1, EK);
+      d0 = misty1FL(d0, this.roundCount, EK);
+      d1 = misty1FL(d1, this.roundCount + 1, EK);
 
       // Ciphertext is D1 followed by D0
       const high = OpCodes.Unpack32BE(d1);
@@ -485,20 +549,24 @@
       return [...high, ...low];
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       // D1 is the leftmost 32-bit of C, D0 the rightmost 32-bit
-      const EK = this.roundKeys.EK;
+      const EK = this.roundKeys[0];
       let d1 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
       let d0 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
-      d0 = MISTY1Cipher.FL_inv(d0, this.algorithm.ROUNDS, EK);
-      d1 = MISTY1Cipher.FL_inv(d1, this.algorithm.ROUNDS + 1, EK);
+      d0 = misty1FL_inv(d0, this.roundCount, EK);
+      d1 = misty1FL_inv(d1, this.roundCount + 1, EK);
 
-      for (let round = this.algorithm.ROUNDS - 2; round >= 0; round -= 2) {
-        d0 = OpCodes.Xor32(d0, MISTY1Cipher.FO(d1, round + 1, EK));
-        d1 = OpCodes.Xor32(d1, MISTY1Cipher.FO(d0, round, EK));
-        d0 = MISTY1Cipher.FL_inv(d0, round, EK);
-        d1 = MISTY1Cipher.FL_inv(d1, round + 1, EK);
+      for (let round = this.roundCount - 2; round >= 0; round -= 2) {
+        d0 = OpCodes.Xor32(d0, misty1FO(d1, round + 1, EK));
+        d1 = OpCodes.Xor32(d1, misty1FO(d0, round, EK));
+        d0 = misty1FL_inv(d0, round, EK);
+        d1 = misty1FL_inv(d1, round + 1, EK);
       }
 
       // Plaintext is D0 followed by D1
@@ -506,6 +574,69 @@
       const low = OpCodes.Unpack32BE(d1);
       return [...high, ...low];
     }
+  }
+
+  // ===== MISTY2 FO/FL FUNCTIONS =====
+
+  // FO function - simplified 32-bit function with 3-round Feistel structure
+  /**
+   * @param {uint32} input - 32-bit input
+   * @param {uint32[]} ko_keys - Three FI keys
+   * @param {uint32[]} ki_keys - Unused
+   * @returns {uint32} 32-bit output
+   */
+  function misty2FO(input, ko_keys, ki_keys) {
+    let left = OpCodes.And32(OpCodes.Shr32(input, 16), 0xFFFF);
+    let right = OpCodes.And32(input, 0xFFFF);
+
+    // 3-round Feistel structure
+    for (let i = 0; i < 3; i++) {
+      const temp = left;
+      left = right;
+      right = OpCodes.Xor32(temp, FI(right, ko_keys[i]));
+    }
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(left, 0xFFFF), 16), (OpCodes.And32(right, 0xFFFF)));
+  }
+
+  // FL function - simplified 32-bit linear function
+  /**
+   * @param {uint32} input - 32-bit input
+   * @param {uint32} kl_key - 32-bit FL key
+   * @returns {uint32} 32-bit output
+   */
+  function misty2FL(input, kl_key) {
+    let left = OpCodes.And32(OpCodes.Shr32(input, 16), 0xFFFF);
+    let right = OpCodes.And32(input, 0xFFFF);
+
+    const kl1 = OpCodes.And32(OpCodes.Shr32(kl_key, 16), 0xFFFF);
+    const kl2 = OpCodes.And32(kl_key, 0xFFFF);
+
+    // Simplified FL function
+    right = OpCodes.Xor32(right, OpCodes.And32(left, kl1));
+    left = OpCodes.Xor32(left, OpCodes.Or32(right, kl2));
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(left, 0xFFFF), 16), (OpCodes.And32(right, 0xFFFF)));
+  }
+
+  // Inverse FL function
+  /**
+   * @param {uint32} input - 32-bit FL output
+   * @param {uint32} kl_key - 32-bit FL key
+   * @returns {uint32} 32-bit FL input
+   */
+  function misty2FL_inv(input, kl_key) {
+    let left = OpCodes.And32(OpCodes.Shr32(input, 16), 0xFFFF);
+    let right = OpCodes.And32(input, 0xFFFF);
+
+    const kl1 = OpCodes.And32(OpCodes.Shr32(kl_key, 16), 0xFFFF);
+    const kl2 = OpCodes.And32(kl_key, 0xFFFF);
+
+    // Reverse FL function
+    left = OpCodes.Xor32(left, OpCodes.Or32(right, kl2));
+    right = OpCodes.Xor32(right, OpCodes.And32(left, kl1));
+
+    return OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(left, 0xFFFF), 16), (OpCodes.And32(right, 0xFFFF)));
   }
 
   // ===== MISTY2 IMPLEMENTATION =====
@@ -516,7 +647,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class MISTY2Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class MISTY2Cipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -525,29 +656,29 @@
       this.description = "Enhanced theoretical successor to MISTY1 with 12-round structure. Features enhanced FL/FO functions and additional diffusion. Academic design for educational purposes only.";
       this.inventor = "Theoretical enhancement of Mitsuru Matsui design";
       this.year = 2000; // Theoretical date
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.JP;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.JP;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // 128-bit keys only
+        new KeySize(16, 16, 1) // 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // 64-bit blocks only
+        new KeySize(8, 8, 1) // 64-bit blocks only
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("MISTY1 RFC 2994 (Base Design)", "https://tools.ietf.org/rfc/rfc2994.txt"),
-        new AlgorithmFramework.LinkItem("MISTY Family Information", "https://en.wikipedia.org/wiki/MISTY1")
+        new LinkItem("MISTY1 RFC 2994 (Base Design)", "https://tools.ietf.org/rfc/rfc2994.txt"),
+        new LinkItem("MISTY Family Information", "https://en.wikipedia.org/wiki/MISTY1")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Educational Cipher Design", "https://www.cryptrec.go.jp/english/"),
-        new AlgorithmFramework.LinkItem("Feistel Network Theory", "https://en.wikipedia.org/wiki/Feistel_cipher")
+        new LinkItem("Educational Cipher Design", "https://www.cryptrec.go.jp/english/"),
+        new LinkItem("Feistel Network Theory", "https://en.wikipedia.org/wiki/Feistel_cipher")
       ];
 
       // No published known-answer test exists for MISTY2; this vector only
@@ -565,6 +696,7 @@
       // Algorithm parameters
       this.BLOCK_SIZE = 8;
       this.KEY_SIZE = 16;
+      /** @type {int32} */
       this.ROUNDS = 12;
 
     }
@@ -572,57 +704,13 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MISTY2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new MISTY2Instance(this, isInverse);
     }
 
-    // FO function - simplified 32-bit function with 3-round Feistel structure
-    static FO(input, ko_keys, ki_keys) {
-      let left = OpCodes.Shr32(input, 16)&0xFFFF;
-      let right = input&0xFFFF;
-
-      // 3-round Feistel structure
-      for (let i = 0; i < 3; i++) {
-        const temp = left;
-        left = right;
-        right = OpCodes.Xor32(temp, FI(right, ko_keys[i]));
-      }
-
-      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
-    }
-
-    // FL function - simplified 32-bit linear function
-    static FL(input, kl_key) {
-      let left = OpCodes.Shr32(input, 16)&0xFFFF;
-      let right = input&0xFFFF;
-
-      const kl1 = OpCodes.Shr32(kl_key, 16)&0xFFFF;
-      const kl2 = kl_key&0xFFFF;
-
-      // Simplified FL function
-      right = OpCodes.Xor32(right, left&kl1);
-      left = OpCodes.Xor32(left, right|kl2);
-
-      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
-    }
-
-    // Inverse FL function
-    static FL_inv(input, kl_key) {
-      let left = OpCodes.Shr32(input, 16)&0xFFFF;
-      let right = input&0xFFFF;
-
-      const kl1 = OpCodes.Shr32(kl_key, 16)&0xFFFF;
-      const kl2 = kl_key&0xFFFF;
-
-      // Reverse FL function
-      left = OpCodes.Xor32(left, right|kl2);
-      right = OpCodes.Xor32(right, left&kl1);
-
-      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
-    }
   }
 
   /**
@@ -631,21 +719,30 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class MISTY2Instance extends AlgorithmFramework.IBlockCipherInstance {
+  class MISTY2Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MISTY2Cipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
+      // Parameters of the parent algorithm
+      /** @type {int32} */
+      this.roundCount = algorithm.ROUNDS;
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
     }
 
     /**
@@ -663,13 +760,16 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if ((keyBytes.length - ks.minSize) % ks.stepSize === 0) { isValidSize = true; break; }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -711,9 +811,10 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -731,68 +832,83 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[][]} [KO, KI, KL] round keys
+     */
     _generateRoundKeys(keyBytes) {
       // Convert key bytes to 16-bit words
+      /** @type {uint32[]} */
       const K = new Array(8);
       for (let i = 0; i < 8; i++) {
-        K[i] = OpCodes.Shl32(keyBytes[i * 2], 8)|keyBytes[i * 2 + 1];
+        K[i] = OpCodes.Or32(OpCodes.Shl32(keyBytes[i * 2], 8), keyBytes[i * 2 + 1]);
       }
 
       // Generate extended keys using FI function
+      /** @type {uint32[]} */
       const KP = new Array(8);
       for (let i = 0; i < 8; i++) {
-        KP[i] = FI(K[i], K[(i + 1) % 8])&0xFFFF;
+        KP[i] = OpCodes.And32(FI(K[i], K[(i + 1) % 8]), 0xFFFF);
       }
 
-      const keys = {
-        KO: new Array(this.algorithm.ROUNDS * 3), // 3 keys per round for FO
-        KI: new Array(this.algorithm.ROUNDS * 3), // 3 keys per round for FI in FO
-        KL: new Array(this.algorithm.ROUNDS)      // 1 key per round for FL
-      };
+      /** @type {uint32[]} */
+      const KO = new Array(this.roundCount * 3); // 3 keys per round for FO
+      /** @type {uint32[]} */
+      const KI = new Array(this.roundCount * 3); // 3 keys per round for FI in FO
+      /** @type {uint32[]} */
+      const KL = new Array(this.roundCount);     // 1 key per round for FL
 
       // Generate round keys
-      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+      for (let round = 0; round < this.roundCount; round++) {
         // KO keys for FO function (3 per round)
-        keys.KO[round * 3 + 0] = K[(round * 2 + 0) % 8];
-        keys.KO[round * 3 + 1] = K[(round * 2 + 1) % 8];
-        keys.KO[round * 3 + 2] = K[(round * 2 + 2) % 8];
+        KO[round * 3 + 0] = K[(round * 2 + 0) % 8];
+        KO[round * 3 + 1] = K[(round * 2 + 1) % 8];
+        KO[round * 3 + 2] = K[(round * 2 + 2) % 8];
 
         // KI keys for FI functions within FO (3 per round)
-        keys.KI[round * 3 + 0] = KP[(round * 2 + 0) % 8];
-        keys.KI[round * 3 + 1] = KP[(round * 2 + 1) % 8];
-        keys.KI[round * 3 + 2] = KP[(round * 2 + 2) % 8];
+        KI[round * 3 + 0] = KP[(round * 2 + 0) % 8];
+        KI[round * 3 + 1] = KP[(round * 2 + 1) % 8];
+        KI[round * 3 + 2] = KP[(round * 2 + 2) % 8];
 
         // KL keys for FL function (1 per round) - 32-bit keys
         const kl1 = K[(round * 2 + 4) % 8];
         const kl2 = K[(round * 2 + 5) % 8];
-        keys.KL[round] = OpCodes.Shl32(kl1, 16)|kl2;
+        KL[round] = OpCodes.Or32(OpCodes.Shl32(kl1, 16), kl2);
       }
 
+      /** @type {uint32[][]} */
+      const keys = [KO, KI, KL];
       return keys;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       // Convert bytes to 32-bit words (big-endian)
       let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
       let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
       // 12-round Feistel structure: (L_{i+1}, R_{i+1}) = (R_i, L_i ⊕ F(R_i, K_i))
-      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+      for (let round = 0; round < this.roundCount; round++) {
         // Apply FO function (Feistel round)
+        /** @type {uint32[]} */
         const ko_keys = [
-          this.roundKeys.KO[round * 3 + 0],
-          this.roundKeys.KO[round * 3 + 1],
-          this.roundKeys.KO[round * 3 + 2]
+          this.roundKeys[0][round * 3 + 0],
+          this.roundKeys[0][round * 3 + 1],
+          this.roundKeys[0][round * 3 + 2]
         ];
+        /** @type {uint32[]} */
         const ki_keys = [
-          this.roundKeys.KI[round * 3 + 0],
-          this.roundKeys.KI[round * 3 + 1],
-          this.roundKeys.KI[round * 3 + 2]
+          this.roundKeys[1][round * 3 + 0],
+          this.roundKeys[1][round * 3 + 1],
+          this.roundKeys[1][round * 3 + 2]
         ];
 
         // Standard Feistel: new_left = old_right, new_right = old_left XOR F(old_right)
         const new_left = right;
-        const new_right = OpCodes.Xor32(left, MISTY2Cipher.FO(right, ko_keys, ki_keys));
+        const new_right = OpCodes.Xor32(left, misty2FO(right, ko_keys, ki_keys));
         left = new_left;
         right = new_right;
       }
@@ -804,27 +920,33 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       // Convert bytes to 32-bit words (big-endian)
       let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
       let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
 
       // 12-round Feistel decryption: (L_i, R_i) = (R_{i+1} ⊕ F(L_{i+1}, K_i), L_{i+1})
-      for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
+      for (let round = this.roundCount - 1; round >= 0; round--) {
         // Get round keys for this round
+        /** @type {uint32[]} */
         const ko_keys = [
-          this.roundKeys.KO[round * 3 + 0],
-          this.roundKeys.KO[round * 3 + 1],
-          this.roundKeys.KO[round * 3 + 2]
+          this.roundKeys[0][round * 3 + 0],
+          this.roundKeys[0][round * 3 + 1],
+          this.roundKeys[0][round * 3 + 2]
         ];
+        /** @type {uint32[]} */
         const ki_keys = [
-          this.roundKeys.KI[round * 3 + 0],
-          this.roundKeys.KI[round * 3 + 1],
-          this.roundKeys.KI[round * 3 + 2]
+          this.roundKeys[1][round * 3 + 0],
+          this.roundKeys[1][round * 3 + 1],
+          this.roundKeys[1][round * 3 + 2]
         ];
 
         // Standard Feistel decryption: new_left = old_right XOR F(old_left), new_right = old_left
-        const new_left = OpCodes.Xor32(right, MISTY2Cipher.FO(left, ko_keys, ki_keys));
+        const new_left = OpCodes.Xor32(right, misty2FO(left, ko_keys, ki_keys));
         const new_right = left;
         left = new_left;
         right = new_right;

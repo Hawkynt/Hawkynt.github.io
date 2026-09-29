@@ -79,30 +79,41 @@
   ]);
 
   // GF(OpCodes.Xor32(2, 8)) multiplication with irreducible polynomial 0x1C3 (OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 7) + OpCodes.Xor32(x, 6) + x + 1)
+  /**
+   * @param {uint8} a - First factor
+   * @param {uint8} b - Second factor
+   * @returns {uint32} Product in GF(2^8)
+   */
   function gfMul(a, b) {
+    /** @type {uint32} */
     let result = 0;
-    let aVal = OpCodes.AndN(a, 0xFF);
-    let bVal = OpCodes.AndN(b, 0xFF);
+    let aVal = OpCodes.And32(a, 0xFF);
+    let bVal = OpCodes.And32(b, 0xFF);
     for (let i = 0; i < 8; ++i) {
-      if (OpCodes.AndN(bVal, 1)) result = OpCodes.XorN(result, aVal);
-      const high_bit_set = OpCodes.AndN(aVal, 0x80);
-      aVal = OpCodes.AndN(OpCodes.Shl32(aVal, 1), 0xFF);
-      if (high_bit_set) aVal = OpCodes.XorN(aVal, 0xC3); // Reduction modulo 0x1C3
+      if (OpCodes.AndN(bVal, 1)) result = OpCodes.Xor32(result, aVal);
+      const high_bit_set = OpCodes.And32(aVal, 0x80);
+      aVal = OpCodes.And32(OpCodes.Shl32(aVal, 1), 0xFF);
+      if (high_bit_set) aVal = OpCodes.Xor32(aVal, 0xC3); // Reduction modulo 0x1C3
       bVal = OpCodes.Shr32(bVal, 1);
     }
-    return OpCodes.AndN(result, 0xFF);
+    return OpCodes.And32(result, 0xFF);
   }
 
   // Single R transformation from RFC 7801:
   // R(a) = a[15] ⊕ l(a[0..14] || 0) where l is linear feedback
   // The linear feedback coefficients determine l(a)
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function transformR(block) {
     const result = new Uint8Array(16);
 
     // Calculate l(a) = sum of gfMul(LINEAR[i], a[i]) for i=0..15
+    /** @type {uint32} */
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l = OpCodes.XorN(l, gfMul(LINEAR[i], block[i]));
+      l = OpCodes.Xor32(l, gfMul(LINEAR[i], block[i]));
     }
 
     // Shift right and insert l at position 0
@@ -114,6 +125,10 @@
   }
 
   // L transformation = R applied 16 times (RFC 7801)
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function transformL(block) {
     let result = new Uint8Array(block);
     for (let i = 0; i < 16; ++i) {
@@ -123,6 +138,10 @@
   }
 
   // Inverse R transformation
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function invTransformR(block) {
     const result = new Uint8Array(16);
 
@@ -132,16 +151,21 @@
     }
 
     // Calculate l(a')
+    /** @type {uint32} */
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l = OpCodes.XorN(l, gfMul(LINEAR[i], result[i]));
+      l = OpCodes.Xor32(l, gfMul(LINEAR[i], result[i]));
     }
 
-    result[15] = OpCodes.XorN(block[0], l);
+    result[15] = OpCodes.Xor32(block[0], l);
     return result;
   }
 
   // Inverse L transformation = R^{-1} applied 16 times
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function invTransformL(block) {
     let result = new Uint8Array(block);
     for (let i = 0; i < 16; ++i) {
@@ -151,6 +175,10 @@
   }
 
   // Substitution transformation S (apply S-box to all bytes)
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function transformS(block) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -160,6 +188,10 @@
   }
 
   // Inverse substitution transformation S^{-1}
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function invTransformS(block) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
@@ -169,17 +201,26 @@
   }
 
   // XOR transformation X[k]
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - Round key
+   * @returns {uint8[]} Output block
+   */
   function transformX(block, key) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      result[i] = OpCodes.XorN(block[i], key[i]);
+      result[i] = OpCodes.Xor32(block[i], key[i]);
     }
     return result;
   }
 
   // Feistel round constants from RFC 7801 Section 4.3
   // Pre-compute all 32 round constants
+  /**
+   * @returns {uint8[][]} The 32 iteration constants
+   */
   function computeRoundConstants() {
+    /** @type {uint8[][]} */
     const constants = [];
     for (let i = 1; i <= 32; ++i) {
       const vec = new Uint8Array(16);
@@ -189,9 +230,15 @@
     return constants;
   }
 
+  /** @type {uint8[][]} */
   const ROUND_CONSTANTS = computeRoundConstants();
 
   // LSX transformation: L ∘ S ∘ X[k]
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint8[]} key - Round key
+   * @returns {uint8[]} Output block
+   */
   function transformLSX(block, key) {
     let result = transformX(block, key);
     result = transformS(result);
@@ -201,7 +248,12 @@
 
   // Key schedule from RFC 7801 Section 4.3 and 4.4
   // Generates 10 round keys K_1 through K_10
+  /**
+   * @param {uint8[]} key - 32 key bytes
+   * @returns {uint8[][]} The 10 round keys
+   */
   function keyExpansion(key) {
+    /** @type {uint8[][]} */
     const keys = new Array(10);
 
     // K_1 = first 16 bytes of key, K_2 = last 16 bytes
@@ -306,7 +358,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KuznyechikInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -323,15 +375,18 @@
   class KuznyechikInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Kuznyechik} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._roundKeys = null;
     }
 
@@ -349,7 +404,7 @@
       }
 
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 32 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -387,9 +442,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 16 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 16)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 16;
 
@@ -403,6 +459,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(block) {
       // RFC 7801 encryption: apply 9 rounds of LSX, then final X
       let state = new Uint8Array(block);
@@ -420,6 +480,10 @@
       return Array.from(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(block) {
       // RFC 7801 decryption: inverse operations in reverse order
       let state = new Uint8Array(block);

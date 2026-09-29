@@ -55,26 +55,46 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // S-box: S(x) = 2^x in GF(2^8) with reduction polynomial 0x165, x=0..254; S(255)=0
-  const SBOX = (function () {
-    const table = new Array(256).fill(0);
+  /**
+   * Build the S-box table
+   * @returns {uint8[]} S(x) for x = 0..255
+   */
+  function buildSbox() {
+    /** @type {uint8[]} */
+    const table = new Array(256);
+    table.fill(0);
+    /** @type {uint32} */
     let cur = 1;
     for (let i = 0; i < 255; i++) {
-      table[i] = OpCodes.AndN(cur, 0xFF);
+      table[i] = OpCodes.And32(cur, 0xFF);
       cur = OpCodes.Shl32(cur, 1);
-      if (OpCodes.AndN(cur, 0x100))
-        cur = OpCodes.XorN(cur, 0x165);
-      cur = OpCodes.AndN(cur, 0x1FF);
+      if (OpCodes.And32(cur, 0x100) !== 0)
+        cur = OpCodes.Xor32(cur, 0x165);
+      cur = OpCodes.And32(cur, 0x1FF);
     }
     return table;
-  })();
+  }
+
+  /** @type {uint8[]} */
+  const SBOX = buildSbox();
 
   // a(x,y) = S(x XOR S(y))
+  /**
+   * @param {uint8} x - Byte
+   * @param {uint8} y - Byte
+   * @returns {uint8} S(x XOR S(y))
+   */
   function a(x, y) {
-    return SBOX[OpCodes.XorN(x, SBOX[y])];
+    return SBOX[OpCodes.Xor32(x, SBOX[y])];
   }
 
   // P: pairs byte i with byte i+8 (i=0..7), both directions
+  /**
+   * @param {uint8[]} x - 16-byte state
+   * @returns {uint8[]} Permuted 16-byte state
+   */
   function permuteP(x) {
+    /** @type {uint8[]} */
     const y = new Array(16);
     for (let i = 0; i < 8; i++) {
       y[2 * i] = a(x[i], x[i + 8]);
@@ -84,19 +104,31 @@
   }
 
   // Byte transpose: deinterleave even/odd byte lanes of the 4 dwords
+  /**
+   * @param {uint8[]} z - 16-byte state
+   * @returns {uint8[]} Even bytes followed by odd bytes
+   */
   function byteTranspose(z) {
-    return [
+    /** @type {uint8[]} */
+    const out = [
       z[0], z[2], z[4], z[6],
       z[8], z[10], z[12], z[14],
       z[1], z[3], z[5], z[7],
       z[9], z[11], z[13], z[15]
     ];
+    return out;
   }
 
   // MAGENTA round function: F(right[8], subkey[8]) -> 8 bytes
+  /**
+   * @param {uint8[]} right - 8-byte half block
+   * @param {uint8[]} subkey - 8-byte round key
+   * @returns {uint8[]} 8-byte round output
+   */
   function magentaF(right, subkey) {
     const orig = right.concat(subkey);
     let state = OpCodes.CopyArray(orig);
+    /** @type {uint8[]|null} */
     let w = null;
 
     for (let round = 0; round < 3; round++) {
@@ -170,26 +202,40 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMagentaInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMagentaInstance(this, isInverse);
     }
   }
 
   class DarkCryptMagentaInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMagentaAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._subkeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. MAGENTA (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. MAGENTA (DarkCrypt) requires exactly 32 bytes");
 
       this._key = OpCodes.CopyArray(keyBytes);
       this.KeySize = keyBytes.length;
@@ -201,6 +247,9 @@
       this._subkeys = [k1, k2, k3, k4, k4, k3, k2, k1];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? OpCodes.CopyArray(this._key) : null; }
 
     Feed(data) {
@@ -213,8 +262,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -224,11 +274,15 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let A = block.slice(0, 4), B = block.slice(4, 8), C = block.slice(8, 12), D = block.slice(12, 16);
 
       for (let i = 0; i < 8; i++) {
-        if (OpCodes.AndN(i, 1) === 0) {
+        if (OpCodes.And32(i, 1) === 0) {
           const fOut = magentaF(C.concat(D), this._subkeys[i]);
           A = OpCodes.XorArrays(A, fOut.slice(0, 4));
           B = OpCodes.XorArrays(B, fOut.slice(4, 8));
@@ -242,11 +296,15 @@
       return A.concat(B, C, D);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let A = block.slice(0, 4), B = block.slice(4, 8), C = block.slice(8, 12), D = block.slice(12, 16);
 
       for (let i = 0; i < 8; i++) {
-        if (OpCodes.AndN(i, 1) === 0) {
+        if (OpCodes.And32(i, 1) === 0) {
           const fOut = magentaF(A.concat(B), this._subkeys[i]);
           C = OpCodes.XorArrays(C, fOut.slice(0, 4));
           D = OpCodes.XorArrays(D, fOut.slice(4, 8));

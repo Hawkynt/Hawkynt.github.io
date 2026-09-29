@@ -156,35 +156,53 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptBJ256Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptBJ256Instance(this, isInverse);
     }
   }
 
   class DarkCryptBJ256Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptBJ256Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._K = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 32;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. BJ-256 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. BJ-256 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       // setup(): identity copy of the 16 little-endian key words — see file header.
+      /** @type {uint32[]} */
       const K = new Array(16);
       for (let i = 0; i < 16; i++)
         K[i] = OpCodes.Pack32LE(keyBytes[4 * i], keyBytes[4 * i + 1], keyBytes[4 * i + 2], keyBytes[4 * i + 3]);
       this._K = K;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -197,8 +215,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -208,8 +227,13 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const K = this._K;
+      /** @type {uint32[]} */
       const w = new Array(8);
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
@@ -767,13 +791,19 @@
       b = OpCodes.Xor32(b, a);  // 00401648
       w[7] = b;  // 0040164A
 
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(w[i]));
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const K = this._K;
+      /** @type {uint32[]} */
       const w = new Array(8);
       for (let i = 0; i < 8; i++)
         w[i] = OpCodes.Pack32LE(block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]);
@@ -1367,6 +1397,7 @@
       b = OpCodes.Xor32(b, a);  // 00401D1C
       w[7] = b;  // 00401D1E
 
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(w[i]));
       return out;

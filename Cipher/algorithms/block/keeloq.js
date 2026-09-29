@@ -100,7 +100,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KeeloqInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -117,14 +117,16 @@
   class KeeloqInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Keeloq} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.BlockSize = 4;
       this.KeySize = 0;
@@ -147,7 +149,7 @@
       }
 
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 8)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be 8)");
       }
 
       this._key = [...keyBytes];
@@ -165,9 +167,13 @@
 
     _nlf(input) {
       // 5-bit input to 1-bit output nonlinear function
-      return OpCodes.AndN(OpCodes.Shr32(this.NLF, input), 0x1);
+      return OpCodes.And32(OpCodes.Shr32(this.NLF, input), 0x1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Load 32-bit value (big-endian)
       let state = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -179,37 +185,41 @@
       // 528 rounds
       for (let i = 0; i < this.ROUNDS; ++i) {
         // NLF input: bits 31, 26, 20, 9, 1
-        const nlf_input = OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.OrN(
-                OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 31), 0x1), 4),
-                OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 26), 0x1), 3)
+        const nlf_input = OpCodes.Or32(
+          OpCodes.Or32(
+            OpCodes.Or32(
+              OpCodes.Or32(
+                OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 31), 0x1), 4),
+                OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 26), 0x1), 3)
               ),
-              OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 20), 0x1), 2)
+              OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 20), 0x1), 2)
             ),
-            OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 9), 0x1), 1)
+            OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 9), 0x1), 1)
           ),
-          OpCodes.AndN(OpCodes.Shr32(state, 1), 0x1)
+          OpCodes.And32(OpCodes.Shr32(state, 1), 0x1)
         );
 
         const nlf_out = this._nlf(nlf_input);
 
         // Key bit selection (cycles through 64-bit key)
         const keyIndex = i % 64;
-        const keyBit = (keyIndex < 32) ? OpCodes.AndN(OpCodes.Shr32(keyLow, keyIndex), 0x1) : OpCodes.AndN(OpCodes.Shr32(keyHigh, (keyIndex - 32)), 0x1);
+        const keyBit = (keyIndex < 32) ? OpCodes.And32(OpCodes.Shr32(keyLow, keyIndex), 0x1) : OpCodes.And32(OpCodes.Shr32(keyHigh, (keyIndex - 32)), 0x1);
 
         // Feedback: key_bit XOR bit16 XOR bit0 XOR nlf_out
-        const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(keyBit, OpCodes.AndN(OpCodes.Shr32(state, 16), 0x1)), OpCodes.AndN(state, 0x1)), nlf_out);
+        const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(keyBit, OpCodes.And32(OpCodes.Shr32(state, 16), 0x1)), OpCodes.And32(state, 0x1)), nlf_out);
 
         // Shift right and insert feedback at bit 31
-        state = OpCodes.Shr32(OpCodes.OrN(OpCodes.Shr32(state, 1), OpCodes.Shl32(feedback, 31)), 0);
+        state = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(state, 1), OpCodes.Shl32(feedback, 31)), 0);
       }
 
       // Output (big-endian)
       return [...OpCodes.Unpack32BE(state)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Load 32-bit value (big-endian)
       let state = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -221,31 +231,31 @@
       // 528 rounds in reverse
       for (let i = this.ROUNDS - 1; i >= 0; --i) {
         // NLF input for decryption: bits 30, 25, 19, 8, 0 (one position left from encrypt)
-        const nlf_input = OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.OrN(
-                OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 30), 0x1), 4),
-                OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 25), 0x1), 3)
+        const nlf_input = OpCodes.Or32(
+          OpCodes.Or32(
+            OpCodes.Or32(
+              OpCodes.Or32(
+                OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 30), 0x1), 4),
+                OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 25), 0x1), 3)
               ),
-              OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 19), 0x1), 2)
+              OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 19), 0x1), 2)
             ),
-            OpCodes.Shl32(OpCodes.AndN(OpCodes.Shr32(state, 8), 0x1), 1)
+            OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(state, 8), 0x1), 1)
           ),
-          OpCodes.AndN(state, 0x1)
+          OpCodes.And32(state, 0x1)
         );
 
         const nlf_out = this._nlf(nlf_input);
 
         // Key bit selection (same as encryption)
         const keyIndex = i % 64;
-        const keyBit = (keyIndex < 32) ? OpCodes.AndN(OpCodes.Shr32(keyLow, keyIndex), 0x1) : OpCodes.AndN(OpCodes.Shr32(keyHigh, (keyIndex - 32)), 0x1);
+        const keyBit = (keyIndex < 32) ? OpCodes.And32(OpCodes.Shr32(keyLow, keyIndex), 0x1) : OpCodes.And32(OpCodes.Shr32(keyHigh, (keyIndex - 32)), 0x1);
 
         // Feedback: key_bit XOR bit15 XOR bit31 XOR nlf_out
-        const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(keyBit, OpCodes.AndN(OpCodes.Shr32(state, 15), 0x1)), OpCodes.AndN(OpCodes.Shr32(state, 31), 0x1)), nlf_out);
+        const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(keyBit, OpCodes.And32(OpCodes.Shr32(state, 15), 0x1)), OpCodes.And32(OpCodes.Shr32(state, 31), 0x1)), nlf_out);
 
         // Shift left and insert feedback at bit 0
-        state = OpCodes.Shr32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), feedback), 0xFFFFFFFF), 0);
+        state = OpCodes.Shr32(OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(state, 1), feedback), 0xFFFFFFFF), 0);
       }
 
       // Output (big-endian)
@@ -274,9 +284,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

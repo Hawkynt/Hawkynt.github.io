@@ -49,9 +49,8 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Original (pre-tweak) Anubis tables, matching Barreto's NESSIE-submission construction.
-  const AnubisOrigTables = (() => {
-
-    const T0 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T0 = new Uint32Array([
       0xa753a6f5, 0xd3bb6bd0, 0xe6d1bf6e, 0x71e2d93b, 0xd0bd67da, 0xac458acf, 0x4d9a29b3, 0x79f2f90b,
       0x3a74e89c, 0xc98f038c, 0x913f7e41, 0xfce5d732, 0x1e3c7844, 0x478e018f, 0x54a84de5, 0xbd67cea9,
       0x8c050a0f, 0xa557aef9, 0x7af4f501, 0xfbebcb20, 0x63c69157, 0xb86ddab7, 0xdda753f4, 0xd4b577c2,
@@ -86,7 +85,8 @@
       0xa455aaff, 0x2f5ebce2, 0x95376e59, 0x13264c6a, 0x0b162c3a, 0xf3fbeb10, 0xe0dda77a, 0x376edcb2
     ]);
 
-    const T1 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T1 = new Uint32Array([
       0x53a7f5a6, 0xbbd3d06b, 0xd1e66ebf, 0xe2713bd9, 0xbdd0da67, 0x45accf8a, 0x9a4db329, 0xf2790bf9,
       0x743a9ce8, 0x8fc98c03, 0x3f91417e, 0xe5fc32d7, 0x3c1e4478, 0x8e478f01, 0xa854e54d, 0x67bda9ce,
       0x058c0f0a, 0x57a5f9ae, 0xf47a01f5, 0xebfb20cb, 0xc6635791, 0x6db8b7da, 0xa7ddf453, 0xb5d4c277,
@@ -121,7 +121,8 @@
       0x55a4ffaa, 0x5e2fe2bc, 0x3795596e, 0x26136a4c, 0x160b3a2c, 0xfbf310eb, 0xdde07aa7, 0x6e37b2dc
     ]);
 
-    const T2 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T2 = new Uint32Array([
       0xa6f5a753, 0x6bd0d3bb, 0xbf6ee6d1, 0xd93b71e2, 0x67dad0bd, 0x8acfac45, 0x29b34d9a, 0xf90b79f2,
       0xe89c3a74, 0x038cc98f, 0x7e41913f, 0xd732fce5, 0x78441e3c, 0x018f478e, 0x4de554a8, 0xcea9bd67,
       0x0a0f8c05, 0xaef9a557, 0xf5017af4, 0xcb20fbeb, 0x915763c6, 0xdab7b86d, 0x53f4dda7, 0x77c2d4b5,
@@ -156,7 +157,8 @@
       0xaaffa455, 0xbce22f5e, 0x6e599537, 0x4c6a1326, 0x2c3a0b16, 0xeb10f3fb, 0xa77ae0dd, 0xdcb2376e
     ]);
 
-    const T3 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T3 = new Uint32Array([
       0xf5a653a7, 0xd06bbbd3, 0x6ebfd1e6, 0x3bd9e271, 0xda67bdd0, 0xcf8a45ac, 0xb3299a4d, 0x0bf9f279,
       0x9ce8743a, 0x8c038fc9, 0x417e3f91, 0x32d7e5fc, 0x44783c1e, 0x8f018e47, 0xe54da854, 0xa9ce67bd,
       0x0f0a058c, 0xf9ae57a5, 0x01f5f47a, 0x20cbebfb, 0x5791c663, 0xb7da6db8, 0xf453a7dd, 0xc277b5d4,
@@ -191,7 +193,8 @@
       0xffaa55a4, 0xe2bc5e2f, 0x596e3795, 0x6a4c2613, 0x3a2c160b, 0x10ebfbf3, 0x7aa7dde0, 0xb2dc6e37
     ]);
 
-    const T4 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T4 = new Uint32Array([
       0xa7a7a7a7, 0xd3d3d3d3, 0xe6e6e6e6, 0x71717171, 0xd0d0d0d0, 0xacacacac, 0x4d4d4d4d, 0x79797979,
       0x3a3a3a3a, 0xc9c9c9c9, 0x91919191, 0xfcfcfcfc, 0x1e1e1e1e, 0x47474747, 0x54545454, 0xbdbdbdbd,
       0x8c8c8c8c, 0xa5a5a5a5, 0x7a7a7a7a, 0xfbfbfbfb, 0x63636363, 0xb8b8b8b8, 0xdddddddd, 0xd4d4d4d4,
@@ -226,7 +229,8 @@
       0xa4a4a4a4, 0x2f2f2f2f, 0x95959595, 0x13131313, 0x0b0b0b0b, 0xf3f3f3f3, 0xe0e0e0e0, 0x37373737
     ]);
 
-    const T5 = new Uint32Array([
+  /** @type {uint32[]} */
+  const ANUBIS_T5 = new Uint32Array([
       0x00000000, 0x01020608, 0x02040c10, 0x03060a18, 0x04081820, 0x050a1e28, 0x060c1430, 0x070e1238,
       0x08103040, 0x09123648, 0x0a143c50, 0x0b163a58, 0x0c182860, 0x0d1a2e68, 0x0e1c2470, 0x0f1e2278,
       0x10206080, 0x11226688, 0x12246c90, 0x13266a98, 0x142878a0, 0x152a7ea8, 0x162c74b0, 0x172e72b8,
@@ -261,9 +265,6 @@
       0xf8ed2a93, 0xf9ef2c9b, 0xfae92683, 0xfbeb208b, 0xfce532b3, 0xfde734bb, 0xfee13ea3, 0xffe338ab
     ]);
 
-    return Object.freeze({ T0, T1, T2, T3, T4, T5 });
-
-  })();
 
   class DarkCryptAnubis320Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -323,47 +324,71 @@
         }
       ];
 
-      this.T0 = AnubisOrigTables.T0;
-      this.T1 = AnubisOrigTables.T1;
-      this.T2 = AnubisOrigTables.T2;
-      this.T3 = AnubisOrigTables.T3;
-      this.T4 = AnubisOrigTables.T4;
-      this.T5 = AnubisOrigTables.T5;
+      /** @type {uint32[]} */
+      this.T0 = ANUBIS_T0;
+      /** @type {uint32[]} */
+      this.T1 = ANUBIS_T1;
+      /** @type {uint32[]} */
+      this.T2 = ANUBIS_T2;
+      /** @type {uint32[]} */
+      this.T3 = ANUBIS_T3;
+      /** @type {uint32[]} */
+      this.T4 = ANUBIS_T4;
+      /** @type {uint32[]} */
+      this.T5 = ANUBIS_T5;
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptAnubis320Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptAnubis320Instance(this, isInverse);
     }
   }
 
   class DarkCryptAnubis320Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptAnubis320Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
-      this.roundKeyEnc = null;
-      this.roundKeyDec = null;
+      /** @type {uint32[][]|null} */
+      this._encWords = null;
+      /** @type {uint32[][]|null} */
+      this._decWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this.roundKeyEnc = null;
-        this.roundKeyDec = null;
+        this._encWords = null;
+        this._decWords = null;
         this.KeySize = 0;
         return;
       }
       if (keyBytes.length !== 40)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Anubis-320 (DarkCrypt) requires exactly 40 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Anubis-320 (DarkCrypt) requires exactly 40 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._generateKeySchedule(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -376,84 +401,93 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
-      const roundKey = this.isInverse ? this.roundKeyDec : this.roundKeyEnc;
+      const roundWords = this.isInverse ? this._decWords : this._encWords;
 
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        output.push(...this._crypt(block, roundKey));
+        output.push(...this._crypt(block, roundWords));
       }
 
       this.inputBuffer = [];
       return output;
     }
 
-    _crypt(bytes, roundKey) {
-      const state = new Array(4);
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @param {uint32[][]} rw - Round key words (encryption or decryption schedule)
+     * @returns {uint8[]} Output block
+     */
+    _crypt(bytes, rw) {
+      /** @type {uint32[]} */
+      const st = new Array(4);
+      /** @type {uint32[]} */
       const inter = new Array(4);
-      const R = roundKey.length - 1;
+      const R = rw.length - 1;
 
       for (let i = 0; i < 4; i++) {
-        state[i] = OpCodes.Pack32BE(bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]);
-        state[i] = OpCodes.ToUint32(OpCodes.XorN(state[i], roundKey[0][i]));
+        st[i] = OpCodes.Pack32BE(bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]);
+        st[i] = OpCodes.ToUint32(OpCodes.Xor32(st[i], rw[0][i]));
       }
 
       for (let r = 1; r < R; r++) {
-        inter[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 24), 0xff)],
-                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 24), 0xff)]),
-                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 24), 0xff)]),
-                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 24), 0xff)]),
-                    roundKey[r][0]));
-        inter[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 16), 0xff)],
-                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 16), 0xff)]),
-                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 16), 0xff)]),
-                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 16), 0xff)]),
-                    roundKey[r][1]));
-        inter[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 8), 0xff)],
-                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 8), 0xff)]),
-                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 8), 0xff)]),
-                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 8), 0xff)]),
-                    roundKey[r][2]));
-        inter[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                    this.algorithm.T0[OpCodes.AndN(state[0], 0xff)],
-                    this.algorithm.T1[OpCodes.AndN(state[1], 0xff)]),
-                    this.algorithm.T2[OpCodes.AndN(state[2], 0xff)]),
-                    this.algorithm.T3[OpCodes.AndN(state[3], 0xff)]),
-                    roundKey[r][3]));
+        inter[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                    ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 24), 0xff)],
+                    ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 24), 0xff)]),
+                    ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 24), 0xff)]),
+                    ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 24), 0xff)]),
+                    rw[r][0]));
+        inter[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                    ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 16), 0xff)],
+                    ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 16), 0xff)]),
+                    ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 16), 0xff)]),
+                    ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 16), 0xff)]),
+                    rw[r][1]));
+        inter[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                    ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 8), 0xff)],
+                    ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 8), 0xff)]),
+                    ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 8), 0xff)]),
+                    ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 8), 0xff)]),
+                    rw[r][2]));
+        inter[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                    ANUBIS_T0[OpCodes.And32(st[0], 0xff)],
+                    ANUBIS_T1[OpCodes.And32(st[1], 0xff)]),
+                    ANUBIS_T2[OpCodes.And32(st[2], 0xff)]),
+                    ANUBIS_T3[OpCodes.And32(st[3], 0xff)]),
+                    rw[r][3]));
 
-        for (let i = 0; i < 4; i++) state[i] = inter[i];
+        for (let i = 0; i < 4; i++) st[i] = inter[i];
       }
 
-      inter[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 24), 0xff)], 0xff000000),
-                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 24), 0xff)], 0x00ff0000)),
-                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 24), 0xff)], 0x0000ff00)),
-                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 24), 0xff)], 0x000000ff)),
-                  roundKey[R][0]));
-      inter[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 16), 0xff)], 0xff000000),
-                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 16), 0xff)], 0x00ff0000)),
-                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 16), 0xff)], 0x0000ff00)),
-                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 16), 0xff)], 0x000000ff)),
-                  roundKey[R][1]));
-      inter[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 8), 0xff)], 0xff000000),
-                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 8), 0xff)], 0x00ff0000)),
-                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 8), 0xff)], 0x0000ff00)),
-                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 8), 0xff)], 0x000000ff)),
-                  roundKey[R][2]));
-      inter[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(state[0], 0xff)], 0xff000000),
-                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(state[1], 0xff)], 0x00ff0000)),
-                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(state[2], 0xff)], 0x0000ff00)),
-                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(state[3], 0xff)], 0x000000ff)),
-                  roundKey[R][3]));
+      inter[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  OpCodes.And32(ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 24), 0xff)], 0xff000000),
+                  OpCodes.And32(ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 24), 0xff)], 0x00ff0000)),
+                  OpCodes.And32(ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 24), 0xff)], 0x0000ff00)),
+                  OpCodes.And32(ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 24), 0xff)], 0x000000ff)),
+                  rw[R][0]));
+      inter[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  OpCodes.And32(ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 16), 0xff)], 0xff000000),
+                  OpCodes.And32(ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 16), 0xff)], 0x00ff0000)),
+                  OpCodes.And32(ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 16), 0xff)], 0x0000ff00)),
+                  OpCodes.And32(ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 16), 0xff)], 0x000000ff)),
+                  rw[R][1]));
+      inter[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  OpCodes.And32(ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(st[0], 8), 0xff)], 0xff000000),
+                  OpCodes.And32(ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(st[1], 8), 0xff)], 0x00ff0000)),
+                  OpCodes.And32(ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(st[2], 8), 0xff)], 0x0000ff00)),
+                  OpCodes.And32(ANUBIS_T3[OpCodes.And32(OpCodes.Shr32(st[3], 8), 0xff)], 0x000000ff)),
+                  rw[R][2]));
+      inter[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                  OpCodes.And32(ANUBIS_T0[OpCodes.And32(st[0], 0xff)], 0xff000000),
+                  OpCodes.And32(ANUBIS_T1[OpCodes.And32(st[1], 0xff)], 0x00ff0000)),
+                  OpCodes.And32(ANUBIS_T2[OpCodes.And32(st[2], 0xff)], 0x0000ff00)),
+                  OpCodes.And32(ANUBIS_T3[OpCodes.And32(st[3], 0xff)], 0x000000ff)),
+                  rw[R][3]));
 
+      /** @type {uint8[]} */
       const resultBytes = new Array(16);
       for (let i = 0; i < 4; i++) {
         const unpacked = OpCodes.Unpack32BE(inter[i]);
@@ -466,95 +500,109 @@
       return resultBytes;
     }
 
+    /**
+     * Fill the encryption and decryption round-key words
+     * @param {uint8[]} key - Key bytes
+     */
     _generateKeySchedule(key) {
       const N = Math.floor(key.length / 4);
+      /** @type {uint32[]} */
       const kappa = new Array(N);
+      /** @type {uint32[]} */
       const inter = new Array(N);
       const R = 8 + N;
 
-      this.roundKeyEnc = new Array(R + 1);
-      this.roundKeyDec = new Array(R + 1);
+      /** @type {uint32[][]} */
+      const enc = new Array(R + 1);
+      /** @type {uint32[][]} */
+      const dec = new Array(R + 1);
       for (let i = 0; i <= R; i++) {
-        this.roundKeyEnc[i] = new Array(4);
-        this.roundKeyDec[i] = new Array(4);
+        /** @type {uint32[]} */
+        const e = new Array(4);
+        /** @type {uint32[]} */
+        const d = new Array(4);
+        enc[i] = e;
+        dec[i] = d;
       }
+      this._encWords = enc;
+      this._decWords = dec;
 
       for (let i = 0; i < N; i++) {
         kappa[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
       }
 
       for (let r = 0; r <= R; r++) {
-        let K0 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 24), 0xff)];
-        let K1 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 16), 0xff)];
-        let K2 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 8), 0xff)];
-        let K3 = this.algorithm.T4[OpCodes.AndN(kappa[N-1], 0xff)];
+        let K0 = ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[N-1], 24), 0xff)];
+        let K1 = ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[N-1], 16), 0xff)];
+        let K2 = ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[N-1], 8), 0xff)];
+        let K3 = ANUBIS_T4[OpCodes.And32(kappa[N-1], 0xff)];
 
         for (let t = N - 2; t >= 0; t--) {
-          K0 = OpCodes.ToUint32(OpCodes.XorN(
-                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 24), 0xff)],
-                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 24), 0xff)], 0xff000000),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 16), 0xff)], 0x00ff0000)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 8), 0xff)], 0x0000ff00)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K0, 0xff)], 0x000000ff))));
-          K1 = OpCodes.ToUint32(OpCodes.XorN(
-                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 16), 0xff)],
-                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 24), 0xff)], 0xff000000),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 16), 0xff)], 0x00ff0000)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 8), 0xff)], 0x0000ff00)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K1, 0xff)], 0x000000ff))));
-          K2 = OpCodes.ToUint32(OpCodes.XorN(
-                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 8), 0xff)],
-                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 24), 0xff)], 0xff000000),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 16), 0xff)], 0x00ff0000)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 8), 0xff)], 0x0000ff00)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K2, 0xff)], 0x000000ff))));
-          K3 = OpCodes.ToUint32(OpCodes.XorN(
-                this.algorithm.T4[OpCodes.AndN(kappa[t], 0xff)],
-                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 24), 0xff)], 0xff000000),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 16), 0xff)], 0x00ff0000)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 8), 0xff)], 0x0000ff00)),
-                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K3, 0xff)], 0x000000ff))));
+          K0 = OpCodes.ToUint32(OpCodes.Xor32(
+                ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[t], 24), 0xff)],
+                OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K0, 24), 0xff)], 0xff000000),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K0, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K0, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(K0, 0xff)], 0x000000ff))));
+          K1 = OpCodes.ToUint32(OpCodes.Xor32(
+                ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[t], 16), 0xff)],
+                OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K1, 24), 0xff)], 0xff000000),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K1, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K1, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(K1, 0xff)], 0x000000ff))));
+          K2 = OpCodes.ToUint32(OpCodes.Xor32(
+                ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(kappa[t], 8), 0xff)],
+                OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K2, 24), 0xff)], 0xff000000),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K2, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K2, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(K2, 0xff)], 0x000000ff))));
+          K3 = OpCodes.ToUint32(OpCodes.Xor32(
+                ANUBIS_T4[OpCodes.And32(kappa[t], 0xff)],
+                OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K3, 24), 0xff)], 0xff000000),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K3, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(OpCodes.Shr32(K3, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.And32(ANUBIS_T5[OpCodes.And32(K3, 0xff)], 0x000000ff))));
         }
 
-        this.roundKeyEnc[r][0] = K0;
-        this.roundKeyEnc[r][1] = K1;
-        this.roundKeyEnc[r][2] = K2;
-        this.roundKeyEnc[r][3] = K3;
+        this._encWords[r][0] = K0;
+        this._encWords[r][1] = K1;
+        this._encWords[r][2] = K2;
+        this._encWords[r][3] = K3;
 
         if (r < R) {
           for (let i = 0; i < N; i++) {
-            inter[i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                        this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(kappa[i], 24), 0xff)],
-                        this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(kappa[(N + i - 1) % N], 16), 0xff)]),
-                        this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(kappa[(N + i - 2) % N], 8), 0xff)]),
-                        this.algorithm.T3[OpCodes.AndN(kappa[(N + i - 3) % N], 0xff)]));
+            inter[i] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                        ANUBIS_T0[OpCodes.And32(OpCodes.Shr32(kappa[i], 24), 0xff)],
+                        ANUBIS_T1[OpCodes.And32(OpCodes.Shr32(kappa[(N + i - 1) % N], 16), 0xff)]),
+                        ANUBIS_T2[OpCodes.And32(OpCodes.Shr32(kappa[(N + i - 2) % N], 8), 0xff)]),
+                        ANUBIS_T3[OpCodes.And32(kappa[(N + i - 3) % N], 0xff)]));
           }
-          kappa[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                      OpCodes.AndN(this.algorithm.T0[4*r], 0xff000000),
-                      OpCodes.AndN(this.algorithm.T1[4*r + 1], 0x00ff0000)),
-                      OpCodes.AndN(this.algorithm.T2[4*r + 2], 0x0000ff00)),
-                      OpCodes.AndN(this.algorithm.T3[4*r + 3], 0x000000ff)),
+          kappa[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                      OpCodes.And32(ANUBIS_T0[4*r], 0xff000000),
+                      OpCodes.And32(ANUBIS_T1[4*r + 1], 0x00ff0000)),
+                      OpCodes.And32(ANUBIS_T2[4*r + 2], 0x0000ff00)),
+                      OpCodes.And32(ANUBIS_T3[4*r + 3], 0x000000ff)),
                       inter[0]));
           for (let i = 1; i < N; i++) kappa[i] = inter[i];
         }
       }
 
       for (let i = 0; i < 4; i++) {
-        this.roundKeyDec[0][i] = this.roundKeyEnc[R][i];
-        this.roundKeyDec[R][i] = this.roundKeyEnc[0][i];
+        this._decWords[0][i] = this._encWords[R][i];
+        this._decWords[R][i] = this._encWords[0][i];
       }
       for (let r = 1; r < R; r++) {
         for (let i = 0; i < 4; i++) {
-          const v = this.roundKeyEnc[R - r][i];
-          this.roundKeyDec[r][i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                                    this.algorithm.T0[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 24), 0xff)], 0xff)],
-                                    this.algorithm.T1[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 16), 0xff)], 0xff)]),
-                                    this.algorithm.T2[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 8), 0xff)], 0xff)]),
-                                    this.algorithm.T3[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(v, 0xff)], 0xff)]));
+          const v = this._encWords[R - r][i];
+          this._decWords[r][i] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(
+                                    ANUBIS_T0[OpCodes.And32(ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(v, 24), 0xff)], 0xff)],
+                                    ANUBIS_T1[OpCodes.And32(ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(v, 16), 0xff)], 0xff)]),
+                                    ANUBIS_T2[OpCodes.And32(ANUBIS_T4[OpCodes.And32(OpCodes.Shr32(v, 8), 0xff)], 0xff)]),
+                                    ANUBIS_T3[OpCodes.And32(ANUBIS_T4[OpCodes.And32(v, 0xff)], 0xff)]));
         }
       }
 

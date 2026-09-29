@@ -93,12 +93,108 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Pyjamask128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new Pyjamask128Instance(this, isInverse);
     }
+  }
+
+  // Pyjamask-128 constants
+  /** @type {int32} */
+  const ROUNDS = 14;
+
+  // Matrix multiplication functions for encryption
+  /**
+   * Multiply by circulant matrix matrixMultiply_b881b9ca
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_b881b9ca(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25)), OpCodes.RotR32(y, 28)), OpCodes.RotR32(y, 30));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_a3861085
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_a3861085(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_63417021
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_63417021(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_692cf280
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_692cf280(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_48a54813
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_48a54813(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
+  }
+
+  // Matrix multiplication functions for decryption (inverse)
+  /**
+   * Multiply by circulant matrix matrixMultiply_2037a121
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_2037a121(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_108ff2a0
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_108ff2a0(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 3), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 26));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_9054d8c0
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_9054d8c0(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25));
+    return OpCodes.ToUint32(result);
+  }
+
+  /**
+   * Multiply by circulant matrix matrixMultiply_3354b117
+   * @param {uint32} y - Row word
+   * @returns {uint32} Product word
+   */
+  function matrixMultiply_3354b117(y) {
+    const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
   }
 
   /**
@@ -110,67 +206,20 @@
   class Pyjamask128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Pyjamask128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
-    }
-
-    // Pyjamask-128 constants
-    static ROUNDS = 14;
-
-    // Matrix multiplication functions for encryption
-    static matrixMultiply_b881b9ca(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25)), OpCodes.RotR32(y, 28)), OpCodes.RotR32(y, 30));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_a3861085(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 31));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_63417021(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_692cf280(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_48a54813(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
-      return OpCodes.ToUint32(result);
-    }
-
-    // Matrix multiplication functions for decryption (inverse)
-    static matrixMultiply_2037a121(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_108ff2a0(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 3), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 26));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_9054d8c0(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25));
-      return OpCodes.ToUint32(result);
-    }
-
-    static matrixMultiply_3354b117(y) {
-      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
-      return OpCodes.ToUint32(result);
     }
 
     // Property setter for key - validates and sets up key schedule
@@ -206,8 +255,13 @@
     }
 
     // Key expansion function
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} The 15 round keys, four words each
+     */
     expandKey(keyBytes) {
-      const roundKeys = [];
+      /** @type {uint32[]} */
+      const rkWords = [];
 
       // Load the initial key words (big-endian)
       let k0 = OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
@@ -216,10 +270,13 @@
       let k3 = OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
 
       // First round key is the key itself
-      roundKeys.push(k0, k1, k2, k3);
+      rkWords.push(k0);
+      rkWords.push(k1);
+      rkWords.push(k2);
+      rkWords.push(k3);
 
       // Derive round keys for all 14 rounds
-      for (let round = 0; round < Pyjamask128Instance.ROUNDS; ++round) {
+      for (let round = 0; round < ROUNDS; ++round) {
         // Mix the columns
         const temp = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(k0, k1), k2), k3));
         k0 = OpCodes.ToUint32(OpCodes.Xor32(k0, temp));
@@ -229,26 +286,37 @@
 
         // Mix the rows and add round constants
         // Note: The specification says rotate left, but reference code uses right rotation
-        k0 = Pyjamask128Instance.matrixMultiply_b881b9ca(k0);
+        k0 = matrixMultiply_b881b9ca(k0);
         k0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(k0, 0x00000080), round));
         k1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k1, 8), 0x00006a00));
         k2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k2, 15), 0x003f0000));
         k3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k3, 18), 0x24000000));
 
         // Store round key
-        roundKeys.push(k0, k1, k2, k3);
+        rkWords.push(k0);
+        rkWords.push(k1);
+        rkWords.push(k2);
+        rkWords.push(k3);
       }
 
-      return roundKeys;
+      return rkWords;
     }
 
     // Pyjamask-128 S-box
+    /**
+     * Pyjamask-128 S-box (bitsliced)
+     * @param {uint32} s0 - Word 0
+     * @param {uint32} s1 - Word 1
+     * @param {uint32} s2 - Word 2
+     * @param {uint32} s3 - Word 3
+     * @returns {uint32[]} The four output words
+     */
     sbox(s0, s1, s2, s3) {
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
-      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0&s1));
-      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1&s2));
-      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2&s3));
-      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0&s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, OpCodes.And32(s0, s1)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, OpCodes.And32(s1, s2)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, OpCodes.And32(s2, s3)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, OpCodes.And32(s0, s3)));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
       s3 = OpCodes.ToUint32(~s3);
@@ -260,6 +328,14 @@
     }
 
     // Inverse Pyjamask-128 S-box
+    /**
+     * Inverse Pyjamask-128 S-box (bitsliced)
+     * @param {uint32} s0 - Word 0
+     * @param {uint32} s1 - Word 1
+     * @param {uint32} s2 - Word 2
+     * @param {uint32} s3 - Word 3
+     * @returns {uint32[]} The four output words
+     */
     sboxInverse(s0, s1, s2, s3) {
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
       s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
@@ -267,16 +343,20 @@
       s3 = OpCodes.ToUint32(~s3);
       s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
       s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
-      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0&s3));
-      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2&s3));
-      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1&s2));
-      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0&s1));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, OpCodes.And32(s0, s3)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, OpCodes.And32(s2, s3)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, OpCodes.And32(s1, s2)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, OpCodes.And32(s0, s1)));
       s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
 
       return [s0, s1, s2, s3];
     }
 
     // Encryption function
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       if (!this.roundKeys) {
         throw new Error('Key not set');
@@ -289,33 +369,34 @@
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
       // Perform all 14 encryption rounds
-      for (let round = 0; round < Pyjamask128Instance.ROUNDS; ++round) {
+      for (let round = 0; round < ROUNDS; ++round) {
         const rkOffset = round * 4;
 
         // Add round key
-        s0 = OpCodes.ToUint32((s0^this.roundKeys[rkOffset]));
-        s1 = OpCodes.ToUint32((s1^this.roundKeys[rkOffset + 1]));
-        s2 = OpCodes.ToUint32((s2^this.roundKeys[rkOffset + 2]));
-        s3 = OpCodes.ToUint32((s3^this.roundKeys[rkOffset + 3]));
+        s0 = OpCodes.Xor32(s0, this.roundKeys[rkOffset]);
+        s1 = OpCodes.Xor32(s1, this.roundKeys[rkOffset + 1]);
+        s2 = OpCodes.Xor32(s2, this.roundKeys[rkOffset + 2]);
+        s3 = OpCodes.Xor32(s3, this.roundKeys[rkOffset + 3]);
 
         // Apply S-box
         [s0, s1, s2, s3] = this.sbox(s0, s1, s2, s3);
 
         // Mix rows
-        s0 = Pyjamask128Instance.matrixMultiply_a3861085(s0);
-        s1 = Pyjamask128Instance.matrixMultiply_63417021(s1);
-        s2 = Pyjamask128Instance.matrixMultiply_692cf280(s2);
-        s3 = Pyjamask128Instance.matrixMultiply_48a54813(s3);
+        s0 = matrixMultiply_a3861085(s0);
+        s1 = matrixMultiply_63417021(s1);
+        s2 = matrixMultiply_692cf280(s2);
+        s3 = matrixMultiply_48a54813(s3);
       }
 
       // Final round key addition
-      const finalRkOffset = Pyjamask128Instance.ROUNDS * 4;
-      s0 = OpCodes.ToUint32((s0^this.roundKeys[finalRkOffset]));
-      s1 = OpCodes.ToUint32((s1^this.roundKeys[finalRkOffset + 1]));
-      s2 = OpCodes.ToUint32((s2^this.roundKeys[finalRkOffset + 2]));
-      s3 = OpCodes.ToUint32((s3^this.roundKeys[finalRkOffset + 3]));
+      const finalRkOffset = ROUNDS * 4;
+      s0 = OpCodes.Xor32(s0, this.roundKeys[finalRkOffset]);
+      s1 = OpCodes.Xor32(s1, this.roundKeys[finalRkOffset + 1]);
+      s2 = OpCodes.Xor32(s2, this.roundKeys[finalRkOffset + 2]);
+      s3 = OpCodes.Xor32(s3, this.roundKeys[finalRkOffset + 3]);
 
       // Store ciphertext (big-endian)
+      /** @type {uint8[]} */
       const output = [];
       output.push(...OpCodes.Unpack32BE(s0));
       output.push(...OpCodes.Unpack32BE(s1));
@@ -326,6 +407,10 @@
     }
 
     // Decryption function
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       if (!this.roundKeys) {
         throw new Error('Key not set');
@@ -338,32 +423,33 @@
       let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
 
       // Initial round key subtraction (final round key)
-      const finalRkOffset = Pyjamask128Instance.ROUNDS * 4;
-      s0 = OpCodes.ToUint32((s0^this.roundKeys[finalRkOffset]));
-      s1 = OpCodes.ToUint32((s1^this.roundKeys[finalRkOffset + 1]));
-      s2 = OpCodes.ToUint32((s2^this.roundKeys[finalRkOffset + 2]));
-      s3 = OpCodes.ToUint32((s3^this.roundKeys[finalRkOffset + 3]));
+      const finalRkOffset = ROUNDS * 4;
+      s0 = OpCodes.Xor32(s0, this.roundKeys[finalRkOffset]);
+      s1 = OpCodes.Xor32(s1, this.roundKeys[finalRkOffset + 1]);
+      s2 = OpCodes.Xor32(s2, this.roundKeys[finalRkOffset + 2]);
+      s3 = OpCodes.Xor32(s3, this.roundKeys[finalRkOffset + 3]);
 
       // Perform all 14 decryption rounds (in reverse)
-      for (let round = Pyjamask128Instance.ROUNDS - 1; round >= 0; --round) {
+      for (let round = ROUNDS - 1; round >= 0; --round) {
         // Inverse mix rows
-        s0 = Pyjamask128Instance.matrixMultiply_2037a121(s0);
-        s1 = Pyjamask128Instance.matrixMultiply_108ff2a0(s1);
-        s2 = Pyjamask128Instance.matrixMultiply_9054d8c0(s2);
-        s3 = Pyjamask128Instance.matrixMultiply_3354b117(s3);
+        s0 = matrixMultiply_2037a121(s0);
+        s1 = matrixMultiply_108ff2a0(s1);
+        s2 = matrixMultiply_9054d8c0(s2);
+        s3 = matrixMultiply_3354b117(s3);
 
         // Apply inverse S-box
         [s0, s1, s2, s3] = this.sboxInverse(s0, s1, s2, s3);
 
         // Subtract round key
         const rkOffset = round * 4;
-        s0 = OpCodes.ToUint32((s0^this.roundKeys[rkOffset]));
-        s1 = OpCodes.ToUint32((s1^this.roundKeys[rkOffset + 1]));
-        s2 = OpCodes.ToUint32((s2^this.roundKeys[rkOffset + 2]));
-        s3 = OpCodes.ToUint32((s3^this.roundKeys[rkOffset + 3]));
+        s0 = OpCodes.Xor32(s0, this.roundKeys[rkOffset]);
+        s1 = OpCodes.Xor32(s1, this.roundKeys[rkOffset + 1]);
+        s2 = OpCodes.Xor32(s2, this.roundKeys[rkOffset + 2]);
+        s3 = OpCodes.Xor32(s3, this.roundKeys[rkOffset + 3]);
       }
 
       // Store plaintext (big-endian)
+      /** @type {uint8[]} */
       const output = [];
       output.push(...OpCodes.Unpack32BE(s0));
       output.push(...OpCodes.Unpack32BE(s1));
@@ -396,10 +482,12 @@
       if (!this._key) throw new Error('Key not set');
       if (this.inputBuffer.length === 0) throw new Error('No data fed');
 
+      /** @type {uint8[]} */
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0)
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
       // Process complete blocks only
       while (this.inputBuffer.length >= blockSize) {

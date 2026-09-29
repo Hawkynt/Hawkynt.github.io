@@ -70,37 +70,42 @@
   const SB2_HEX = "b17276bfacee5583edaa47d8339560c49b391e0c0a1dff26895b22f1d440c8679da43ce7c6b5f7dc61791586786eeb32b0ca4f23d2fb5e08244d8a100951a39ff66b21c30d38991f1c9064fe8ba648bd53e1ea57ae84b24535027fd9c72ad07cc9186500972b066a34f32c92efdd7a56a24c88b95075d3e411ce4ba7fd3fbe818ed55a49425470a1df87ab7df412052e270fc13066983dcbb8e69c63e3bc19fa3a2f9ef26f1a283bc20e03c0b759a9d77485d6ad41ec8c71f0935db61b68e54407e014a8f973cd4e25bb315f4acc8f91de6d7bf5b329a0176cdae80496825236435cdb8d80d1e2b45846bae90120fc1316f8946237cf699aaf77c53e7ea52d0b";
   const SB3_HEX = "b1f68e07726bd5e076215a14bfc349a8ac0d42f9ee385473559970cd831fa14eed1cdf25aa9087bb4764ab31d8fe7d5f338bf44a95a612cc6048058fc4bd2e919b5327de39e10f6d1eeac17b0c5730f50aae66b31d849829ffb23da02645cb178935b86c5b02e6da227f9ce8f1d96304d4c7e396402abc82c8d01952677cfa369dc93a43a4182f5c3c659edbe700f28dc6976f80b52b1ad1f70628e2dc6a3bb46134c25879f30e46152c03ba8692c0e978efb7016edd5920eb7aa9fc3256d713b0a27416ca4c85f84f88d69423b9ad62d2504137fb75eccf5ed38c6908e4719a2411f0af4dce93778a4b5dc510a7b63e09fd1b7e513f68a5a3bee52d9f81440b";
 
-  function hexToU32Table(hex) {
-    const n = hex.length / 8;
-    const table = new Uint32Array(n);
-    for (let i = 0; i < n; i++)
-      table[i] = OpCodes.ToUint32(parseInt(hex.substr(i * 8, 8), 16));
-    return table;
-  }
-
-  const T = [hexToU32Table(T0_HEX), hexToU32Table(T1_HEX), hexToU32Table(T2_HEX), hexToU32Table(T3_HEX)];
+  /** @type {uint32[][]} */
+  const T = [OpCodes.Hex32ToDWords(T0_HEX), OpCodes.Hex32ToDWords(T1_HEX), OpCodes.Hex32ToDWords(T2_HEX), OpCodes.Hex32ToDWords(T3_HEX)];
+  /** @type {uint8[][]} */
   const SB = [OpCodes.Hex8ToBytes(SB0_HEX), OpCodes.Hex8ToBytes(SB1_HEX), OpCodes.Hex8ToBytes(SB2_HEX), OpCodes.Hex8ToBytes(SB3_HEX)];
 
   // Masks used by the final-group "phi" key-diffusion step.
+  /** @type {uint32[]} */
   const MB = [0xcffccffc, 0xf33ff33f, 0xfccffccf, 0x3ff33ff3];
 
   // Round constants for the 12 key-schedule diffusion groups (offsets 0x00..0xB0),
   // plus the constant used for the final phi-mixed group (0xC0).
+  /** @type {uint32[]} */
   const GROUP_CONST = [
     0xA54FF53A, 0xE1BEE8AC, 0x1E2DDC1E, 0x5A9CCF90, 0x970BC302, 0xD37AB674,
     0x0FE9A9E6, 0x4C589D58, 0x88C790CA, 0xC536843C, 0x01A577AE, 0x3E146B20
   ];
+  /** @type {uint32[]} */
   const POS_CONST = [0xACACACAC, 0x59595959, 0xB2B2B2B2, 0x65656565];
   const FINAL_GROUP_CONST = 0x7A835E92;
 
   // ===== BIT-DIFFUSION HELPERS =====
 
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Each byte rotated right by 2
+   */
   function byteRotR2(x) {
     const lo = OpCodes.And32(x, 0x03030303);
     const hi = OpCodes.And32(x, 0xFCFCFCFC);
     return OpCodes.Xor32(OpCodes.Shl32(lo, 6), OpCodes.Shr32(hi, 2));
   }
 
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} Each byte rotated left by 2
+   */
   function byteRotL2(x) {
     const lo = OpCodes.And32(x, 0x3F3F3F3F);
     const hi = OpCodes.And32(x, 0xC0C0C0C0);
@@ -110,6 +115,14 @@
   // phiN: GF(2)-linear mask/rotate/combine step used for the final encrypt round-key
   // group and for deriving every interior decrypt round-key group from its mirrored
   // encrypt group.
+  /**
+   * @param {uint32} word - Word
+   * @param {int32} n0 - Mask index for the unrotated part
+   * @param {int32} n1 - Mask index for the part rotated by 8
+   * @param {int32} n2 - Mask index for the part rotated by 16
+   * @param {int32} n3 - Mask index for the part rotated by 24
+   * @returns {uint32} Mixed word
+   */
   function phiN(word, n0, n1, n2, n3) {
     const a = OpCodes.And32(word, MB[n0]);
     const b = OpCodes.RotL32(OpCodes.And32(word, MB[n1]), 8);
@@ -120,11 +133,29 @@
 
   // Mask-index tuple used by phiN for decrypt-schedule group i, position p:
   // tupleFor((p + 2*i) mod 4).
-  function tupleFor(index) {
-    const m = n => ((n % 4) + 4) % 4;
-    return [m(2 - index), m(1 - index), m(0 - index), m(3 - index)];
+  /**
+   * @param {int32} n - Value
+   * @returns {int32} n mod 4 in 0..3
+   */
+  function mod4(n) {
+    return ((n % 4) + 4) % 4;
   }
 
+  /**
+   * @param {int32} index - Tuple selector
+   * @returns {int32[]} The four phiN mask indices
+   */
+  function tupleFor(index) {
+    /** @type {int32[]} */
+    const tuple = [mod4(2 - index), mod4(1 - index), mod4(0 - index), mod4(3 - index)];
+    return tuple;
+  }
+
+  /**
+   * @param {uint32} word - Word
+   * @param {int32} pos - Byte position (0 = least significant)
+   * @returns {uint32} The byte
+   */
   function byteAt(word, pos) {
     return OpCodes.And32(OpCodes.Shr32(word, pos * 8), 0xff);
   }
@@ -183,23 +214,38 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptCryptonInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptCryptonInstance(this, isInverse);
     }
   }
 
   class DarkCryptCryptonInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptCryptonAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.encRoundKeys = null;
+      /** @type {uint32[]|null} */
       this.decRoundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -209,13 +255,16 @@
         return;
       }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Crypton v1.0 (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Crypton v1.0 (DarkCrypt) requires exactly 32 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._generateRoundKeys(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -228,8 +277,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       const rk = this.isInverse ? this.decRoundKeys : this.encRoundKeys;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -242,12 +292,17 @@
 
     // Builds both the encrypt and decrypt 52-word round-key schedules from the
     // 32-byte key, exactly mirroring the DarkCrypt plugin's key-setup computation.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes) {
+      /** @type {uint32[]} */
       const K = new Array(8);
       for (let i = 0; i < 8; i++)
         K[i] = OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]);
 
       // Stage 1: derive 8 diffused key words via byte-wise lookups into T0..T3.
+      /** @type {uint32[]} */
       const EK = new Array(8);
       EK[0] = OpCodes.Xor32(OpCodes.Xor32(T[0][byteAt(K[0], 0)], T[1][byteAt(K[2], 0)]), OpCodes.Xor32(T[2][byteAt(K[4], 0)], T[3][byteAt(K[6], 0)]));
       EK[1] = OpCodes.Xor32(OpCodes.Xor32(T[0][byteAt(K[6], 2)], T[1][byteAt(K[0], 2)]), OpCodes.Xor32(T[2][byteAt(K[2], 2)], T[3][byteAt(K[4], 2)]));
@@ -261,6 +316,7 @@
       // Stage 2: cross-group XOR mix (each half is folded into the other).
       const sum0123 = OpCodes.Xor32(OpCodes.Xor32(EK[0], EK[1]), OpCodes.Xor32(EK[2], EK[3]));
       const sum4567 = OpCodes.Xor32(OpCodes.Xor32(EK[4], EK[5]), OpCodes.Xor32(EK[6], EK[7]));
+      /** @type {uint32[]} */
       const D = new Array(8);
       for (let i = 0; i < 4; i++) D[i] = OpCodes.Xor32(EK[i], sum4567);
       for (let i = 4; i < 8; i++) D[i] = OpCodes.Xor32(EK[i], sum0123);
@@ -268,9 +324,13 @@
       // Stage 3: 12-group affine diffusion producing round keys 0..47.
       // Two independent 4-word chains ("A" from D[0..3], "B" from D[4..7]) advance
       // by a fixed recurrence after each group they feed.
+      /** @type {uint32[]} */
       let seqA = [D[0], D[1], D[2], D[3]];
+      /** @type {uint32[]} */
       let seqB = [D[4], D[5], D[6], D[7]];
-      const encRk = new Array(52).fill(0);
+      /** @type {uint32[]} */
+      const encRk = new Array(52);
+      encRk.fill(0);
 
       for (let g = 0; g < 6; g++) {
         const offA = (2 * g) * 4, offB = (2 * g + 1) * 4;
@@ -294,7 +354,9 @@
       }
 
       // Stage 4: final round-key group (48..51) via the phi diffusion step.
-      const X = [0, 1, 2, 3].map(i => OpCodes.Xor32(OpCodes.Xor32(seqA[i], FINAL_GROUP_CONST), POS_CONST[i]));
+      /** @type {uint32[]} */
+      const X = [];
+      for (let i = 0; i < 4; i++) X.push(OpCodes.Xor32(OpCodes.Xor32(seqA[i], FINAL_GROUP_CONST), POS_CONST[i]));
       encRk[48] = phiN(X[0], 2, 1, 0, 3);
       encRk[49] = phiN(X[1], 1, 0, 3, 2);
       encRk[50] = phiN(X[2], 0, 3, 2, 1);
@@ -302,7 +364,9 @@
 
       // Decrypt schedule: first/last groups are shared verbatim with the encrypt
       // schedule; every interior group is phi-mixed from its mirrored group.
-      const decRk = new Array(52).fill(0);
+      /** @type {uint32[]} */
+      const decRk = new Array(52);
+      decRk.fill(0);
       for (let p = 0; p < 4; p++) {
         decRk[p] = encRk[48 + p];
         decRk[48 + p] = encRk[p];
@@ -320,7 +384,13 @@
 
     // Shared round function for both encryption and decryption; only the round-key
     // schedule passed in differs.
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @param {uint32[]} rk - 52-word round-key schedule (encrypt or decrypt)
+     * @returns {uint8[]} Output block
+     */
     _processBlock(bytes, rk) {
+      /** @type {uint32[]} */
       let w = [
         OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),
         OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]),
@@ -332,8 +402,10 @@
 
       for (let round = 1; round <= 11; round++) {
         const shift = (round % 2 === 1) ? 0 : 2;
+        /** @type {uint32[]} */
         const next = new Array(4);
         for (let i = 0; i < 4; i++) {
+          /** @type {uint32} */
           let v = 0;
           for (let j = 0; j < 4; j++)
             v = OpCodes.Xor32(v, T[(i + j + shift) % 4][byteAt(w[j], i)]);
@@ -342,8 +414,10 @@
         w = next;
       }
 
+      /** @type {uint32[]} */
       const outWords = new Array(4);
       for (let k = 0; k < 4; k++) {
+        /** @type {uint32} */
         let v = 0;
         for (let j = 0; j < 4; j++) {
           const tblIdx = (k + 2 + j) % 4;
@@ -352,6 +426,7 @@
         outWords[k] = OpCodes.Xor32(v, rk[48 + k]);
       }
 
+      /** @type {uint8[]} */
       const result = [];
       for (let k = 0; k < 4; k++) result.push(...OpCodes.Unpack32LE(outWords[k]));
       return result;

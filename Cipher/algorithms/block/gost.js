@@ -53,20 +53,28 @@
   const GOST28147_BLOCK_SIZE = 8;
   const GOST28147_KEY_BYTES = 32;
 
-  // Precompute round tables using Crypto++ TestParam S-box rotations
-  const Gost28147Tables = (() => {
-    const baseSBoxes = [
-      [4, 10, 9, 2, 13, 8, 0, 14, 6, 11, 1, 12, 7, 15, 5, 3],
-      [14, 11, 4, 12, 6, 13, 15, 10, 2, 3, 8, 1, 0, 7, 5, 9],
-      [5, 8, 1, 13, 10, 3, 4, 2, 14, 15, 12, 7, 6, 0, 9, 11],
-      [7, 13, 10, 1, 0, 8, 9, 15, 14, 4, 6, 12, 11, 2, 5, 3],
-      [6, 12, 7, 1, 5, 15, 13, 8, 4, 10, 9, 14, 0, 3, 11, 2],
-      [4, 11, 10, 0, 7, 2, 1, 13, 3, 6, 8, 5, 9, 12, 15, 14],
-      [13, 11, 4, 1, 3, 15, 5, 9, 0, 10, 14, 7, 6, 8, 2, 12],
-      [1, 15, 13, 0, 5, 7, 10, 4, 9, 2, 3, 14, 6, 11, 8, 12]
-    ];
+  // Crypto++ TestParam S-boxes: eight 4-bit substitution rows
+  /** @type {uint32[][]} */
+  const GOST28147_BASE_SBOXES = [
+    [4, 10, 9, 2, 13, 8, 0, 14, 6, 11, 1, 12, 7, 15, 5, 3],
+    [14, 11, 4, 12, 6, 13, 15, 10, 2, 3, 8, 1, 0, 7, 5, 9],
+    [5, 8, 1, 13, 10, 3, 4, 2, 14, 15, 12, 7, 6, 0, 9, 11],
+    [7, 13, 10, 1, 0, 8, 9, 15, 14, 4, 6, 12, 11, 2, 5, 3],
+    [6, 12, 7, 1, 5, 15, 13, 8, 4, 10, 9, 14, 0, 3, 11, 2],
+    [4, 11, 10, 0, 7, 2, 1, 13, 3, 6, 8, 5, 9, 12, 15, 14],
+    [13, 11, 4, 1, 3, 15, 5, 9, 0, 10, 14, 7, 6, 8, 2, 12],
+    [1, 15, 13, 0, 5, 7, 10, 4, 9, 2, 3, 14, 6, 11, 8, 12]
+  ];
 
+  /**
+   * Precompute the four byte-wide round tables from the S-box rows, each
+   * pre-rotated by its byte position plus 11 (Crypto++ TestParam layout)
+   * @returns {uint32[][]} T0..T3, 256 words each
+   */
+  function buildGost28147Tables() {
+    /** @type {uint8[]} */
     const rotation = [11, 19, 27, 3];
+    /** @type {uint32[][]} */
     const tables = [
       new Uint32Array(256),
       new Uint32Array(256),
@@ -75,38 +83,51 @@
     ];
 
     for (let i = 0; i < 4; i++) {
-      const lowRow = baseSBoxes[2 * i];
-      const highRow = baseSBoxes[(2 * i) + 1];
+      const lowRow = GOST28147_BASE_SBOXES[2 * i];
+      const highRow = GOST28147_BASE_SBOXES[(2 * i) + 1];
       const table = tables[i];
       for (let j = 0; j < 256; j++) {
-        const combined = OpCodes.OrN(lowRow[OpCodes.AndN(j, 0x0f)], OpCodes.Shl32(highRow[OpCodes.Shr32(j, 4)], 4));
+        const combined = OpCodes.Or32(lowRow[OpCodes.And32(j, 0x0f)], OpCodes.Shl32(highRow[OpCodes.Shr32(j, 4)], 4));
         table[j] = OpCodes.RotL32(combined, rotation[i]);
       }
     }
+    return tables;
+  }
 
-    const exportedSBoxes = baseSBoxes.map(row => Object.freeze(row.slice()));
-    return {
-      sBoxes: Object.freeze(exportedSBoxes),
-      T0: tables[0],
-      T1: tables[1],
-      T2: tables[2],
-      T3: tables[3]
-    };
-  })();
+  /**
+   * @returns {uint32[][]} Frozen copies of the S-box rows, exposed as GOST_SBOXES
+   */
+  function exportGost28147SBoxes() {
+    /** @type {uint32[][]} */
+    const rows = [];
+    for (let i = 0; i < GOST28147_BASE_SBOXES.length; i++) rows.push(Object.freeze(GOST28147_BASE_SBOXES[i].slice()));
+    return rows;
+  }
 
+  /** @type {uint32[][]} */
+  const GOST28147_TABLES = buildGost28147Tables();
+  /** @type {uint32[][]} */
+  const GOST28147_SBOXES = exportGost28147SBoxes();
+  Object.freeze(GOST28147_SBOXES);
+
+  /**
+   * @param {uint32} word - Half block
+   * @param {uint32} keyWord - Subkey word
+   * @returns {uint32} Round function output
+   */
   function gostRound(word, keyWord) {
     const sum = OpCodes.Add32(word, keyWord);
-    const b0 = OpCodes.AndN(sum, 0xFF);
-    const b1 = OpCodes.AndN(OpCodes.Shr32(sum, 8), 0xFF);
-    const b2 = OpCodes.AndN(OpCodes.Shr32(sum, 16), 0xFF);
-    const b3 = OpCodes.AndN(OpCodes.Shr32(sum, 24), 0xFF);
+    const b0 = OpCodes.And32(sum, 0xFF);
+    const b1 = OpCodes.And32(OpCodes.Shr32(sum, 8), 0xFF);
+    const b2 = OpCodes.And32(OpCodes.Shr32(sum, 16), 0xFF);
+    const b3 = OpCodes.And32(OpCodes.Shr32(sum, 24), 0xFF);
     return OpCodes.ToUint32(
-      OpCodes.XorN(
-        OpCodes.XorN(
-          OpCodes.XorN(Gost28147Tables.T0[b0], Gost28147Tables.T1[b1]),
-          Gost28147Tables.T2[b2]
+      OpCodes.Xor32(
+        OpCodes.Xor32(
+          OpCodes.Xor32(GOST28147_TABLES[0][b0], GOST28147_TABLES[1][b1]),
+          GOST28147_TABLES[2][b2]
         ),
-        Gost28147Tables.T3[b3]
+        GOST28147_TABLES[3][b3]
       )
     );
   }
@@ -188,13 +209,14 @@
         }
       ];
 
-      this.GOST_SBOXES = Gost28147Tables.sBoxes;
+      /** @type {uint32[][]} */
+      this.GOST_SBOXES = GOST28147_SBOXES;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Gost28147Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -209,11 +231,18 @@
  */
 
   class Gost28147Instance extends IBlockCipherInstance {
+    /**
+     * @param {Gost28147Algorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super(algorithm);
       this.isInverse = !!isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
-      this.subkeys = null;
+      /** @type {uint32[]|null} */
+      this._subkeyWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = GOST28147_BLOCK_SIZE;
       this.KeySize = 0;
@@ -230,11 +259,11 @@
         if (this._key) {
           OpCodes.ClearArray(this._key);
         }
-        if (this.subkeys) {
-          OpCodes.ClearArray(this.subkeys);
+        if (this._subkeyWords) {
+          OpCodes.ClearArray(this._subkeyWords);
         }
         this._key = null;
-        this.subkeys = null;
+        this._subkeyWords = null;
         this.KeySize = 0;
         return;
       }
@@ -246,13 +275,13 @@
       if (this._key) {
         OpCodes.ClearArray(this._key);
       }
-      if (this.subkeys) {
-        OpCodes.ClearArray(this.subkeys);
+      if (this._subkeyWords) {
+        OpCodes.ClearArray(this._subkeyWords);
       }
 
       const keyCopy = Uint8Array.from(keyBytes);
       this._key = keyCopy;
-      this.subkeys = this._expandKey(keyCopy);
+      this._subkeyWords = this._expandKey(keyCopy);
       this.KeySize = keyCopy.length;
     }
 
@@ -279,7 +308,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(OpCodes.AndN(data[i], 0xFF));
+        this.inputBuffer.push(OpCodes.And32(data[i], 0xFF));
       }
     }
 
@@ -300,6 +329,7 @@
         throw new Error("Input length must be multiple of " + GOST28147_BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let offset = 0; offset < this.inputBuffer.length; offset += GOST28147_BLOCK_SIZE) {
         const block = this.inputBuffer.slice(offset, offset + GOST28147_BLOCK_SIZE);
@@ -320,6 +350,10 @@
       this.inputBuffer.length = 0;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!block || block.length !== GOST28147_BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
@@ -327,34 +361,37 @@
 
       let n1 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let n2 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      const k = this.subkeys;
-
-      const applyPair = (firstKey, secondKey) => {
-        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
-        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
-      };
+      const k = this._subkeyWords;
 
       for (let cycle = 0; cycle < 3; cycle++) {
-        applyPair(k[0], k[1]);
-        applyPair(k[2], k[3]);
-        applyPair(k[4], k[5]);
-        applyPair(k[6], k[7]);
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[0])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[1])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[2])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[3])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[4])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[5])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[6])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[7])));
       }
 
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[7])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[6])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[5])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[4])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[3])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[2])));
-      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[1])));
-      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[0])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[7])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[6])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[5])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[4])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[3])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[2])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[1])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[0])));
 
       const leftBytes = OpCodes.Unpack32LE(n2);
       const rightBytes = OpCodes.Unpack32LE(n1);
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!block || block.length !== GOST28147_BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
@@ -362,23 +399,26 @@
 
       let n1 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let n2 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      const k = this.subkeys;
+      const k = this._subkeyWords;
 
-      const applyPair = (firstKey, secondKey) => {
-        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
-        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
-      };
-
-      applyPair(k[0], k[1]);
-      applyPair(k[2], k[3]);
-      applyPair(k[4], k[5]);
-      applyPair(k[6], k[7]);
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[0])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[1])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[2])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[3])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[4])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[5])));
+      n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[6])));
+      n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[7])));
 
       for (let cycle = 0; cycle < 3; cycle++) {
-        applyPair(k[7], k[6]);
-        applyPair(k[5], k[4]);
-        applyPair(k[3], k[2]);
-        applyPair(k[1], k[0]);
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[7])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[6])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[5])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[4])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[3])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[2])));
+        n2 = OpCodes.ToUint32(OpCodes.Xor32(n2, gostRound(n1, k[1])));
+        n1 = OpCodes.ToUint32(OpCodes.Xor32(n1, gostRound(n2, k[0])));
       }
 
       const leftBytes = OpCodes.Unpack32LE(n2);
@@ -386,18 +426,22 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Eight little-endian subkey words
+     */
     _expandKey(keyBytes) {
-      const subkeys = new Uint32Array(GOST28147_KEY_BYTES / 4);
-      for (let i = 0; i < subkeys.length; i++) {
+      const words = new Uint32Array(GOST28147_KEY_BYTES / 4);
+      for (let i = 0; i < words.length; i++) {
         const offset = i * 4;
-        subkeys[i] = OpCodes.ToUint32(OpCodes.Pack32LE(
+        words[i] = OpCodes.ToUint32(OpCodes.Pack32LE(
           keyBytes[offset],
           keyBytes[offset + 1],
           keyBytes[offset + 2],
           keyBytes[offset + 3]
         ));
       }
-      return subkeys;
+      return words;
     }
   }
 
@@ -464,6 +508,7 @@
       ];
 
       // GOST R 34.12-2015 S-box (π transformation)
+      /** @type {uint8[]} */
       this.SBOX = [
         0xFC, 0xEE, 0xDD, 0x11, 0xCF, 0x6E, 0x31, 0x16, 0xFB, 0xC4, 0xFA, 0xDA, 0x23, 0xC5, 0x04, 0x4D,
         0xE9, 0x77, 0xF0, 0xDB, 0x93, 0x2E, 0x99, 0xBA, 0x17, 0x36, 0xF1, 0xBB, 0x14, 0xCD, 0x5F, 0xC1,
@@ -484,6 +529,7 @@
       ];
 
       // Inverse S-box (inverse π transformation)
+      /** @type {uint8[]} */
       this.SBOX_INV = [
         0xA5, 0x2D, 0x32, 0x8F, 0x0E, 0x30, 0x38, 0xC0, 0x54, 0xE6, 0x9E, 0x39, 0x55, 0x7E, 0x52, 0x91,
         0x64, 0x03, 0x57, 0x5A, 0x1C, 0x60, 0x07, 0x18, 0x21, 0x72, 0xA8, 0xD1, 0x29, 0xC6, 0xA4, 0x3F,
@@ -504,6 +550,7 @@
       ];
 
       // Linear transformation vector for L transformation (GOST R 34.12-2015)
+      /** @type {uint8[]} */
       this.LINEAR_VECTOR = [
         0x94, 0x20, 0x85, 0x10, 0xc2, 0xc0, 0x01, 0xfb,
         0x01, 0xc0, 0xc2, 0x10, 0x85, 0x20, 0x94, 0x01
@@ -513,7 +560,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GostKuznyechikInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -530,15 +577,23 @@
   class GostKuznyechikInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GostKuznyechikAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this._sbox = algorithm.SBOX;
+      /** @type {uint8[]} */
+      this._sboxInv = algorithm.SBOX_INV;
+      /** @type {uint8[]} */
+      this._linearVector = algorithm.LINEAR_VECTOR;
       this.key = null;
+      /** @type {uint8[][]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = KUZNYECHIK_BLOCK_SIZE;
       this.KeySize = 0;
@@ -559,7 +614,7 @@
       }
 
       if (keyBytes.length !== KUZNYECHIK_KEY_BYTES) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. GOST R 34.12-2015 requires 32 bytes (256 bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. GOST R 34.12-2015 requires 32 bytes (256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -600,9 +655,10 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -619,6 +675,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== KUZNYECHIK_BLOCK_SIZE) {
         throw new Error("GOST R 34.12-2015 requires exactly 16 bytes per block");
@@ -637,6 +697,10 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== KUZNYECHIK_BLOCK_SIZE) {
         throw new Error("GOST R 34.12-2015 requires exactly 16 bytes per block");
@@ -655,67 +719,95 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes, updated in place
+     */
     _sTransformation(state) {
       for (let i = 0; i < 16; i++) {
-        state[i] = this.algorithm.SBOX[state[i]];
+        state[i] = this._sbox[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes, updated in place
+     */
     _invSTransformation(state) {
       for (let i = 0; i < 16; i++) {
-        state[i] = this.algorithm.SBOX_INV[state[i]];
+        state[i] = this._sboxInv[state[i]];
       }
     }
 
+    /**
+     * @param {uint32} x - First factor
+     * @param {uint32} y - Second factor
+     * @returns {uint32} Product byte in GF(2^8) mod x^8+x^7+x^6+x+1
+     */
     _gfMultiply(x, y) {
+      /** @type {uint32} */
       let z = 0;
       while (y !== 0) {
-        if (OpCodes.AndN(y, 1)) {
-          z = OpCodes.XorN(z, x);
+        if (OpCodes.And32(y, 1)) {
+          z = OpCodes.Xor32(z, x);
         }
-        x = OpCodes.XorN(OpCodes.Shl32(x, 1), OpCodes.AndN(x, 0x80) ? 0xC3 : 0x00);
+        x = OpCodes.Xor32(OpCodes.Shl32(x, 1), OpCodes.And32(x, 0x80) ? 0xC3 : 0x00);
         y = OpCodes.Shr32(y, 1);
       }
-      return OpCodes.AndN(z, 0xFF);
+      return OpCodes.And32(z, 0xFF);
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes, updated in place
+     */
     _lTransformation(state) {
       for (let j = 0; j < 16; j++) {
         let x = state[15];
 
         for (let i = 14; i >= 0; i--) {
           state[i + 1] = state[i];
-          x = OpCodes.XorN(x, this._gfMultiply(state[i], this.algorithm.LINEAR_VECTOR[i]));
+          x = OpCodes.Xor32(x, this._gfMultiply(state[i], this._linearVector[i]));
         }
 
         state[0] = x;
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes, updated in place
+     */
     _invLTransformation(state) {
       for (let i = 0; i < 16; i++) {
         let c = state[0];
 
         for (let j = 0; j < 15; j++) {
           state[j] = state[j + 1];
-          c = OpCodes.XorN(c, this._gfMultiply(state[j], this.algorithm.LINEAR_VECTOR[j]));
+          c = OpCodes.Xor32(c, this._gfMultiply(state[j], this._linearVector[j]));
         }
 
         state[15] = c;
       }
     }
 
+    /**
+     * @param {uint8[]} state - 16 state bytes, updated in place
+     * @param {uint8[]} roundKey - 16 round-key bytes
+     */
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
     }
 
+    /**
+     * @returns {uint8[][]} The 32 round constants
+     */
     _generateRoundConstants() {
+      /** @type {uint8[][]} */
       const constants = [];
 
       for (let i = 1; i <= 32; i++) {
-        const constant = new Array(16).fill(0);
+        /** @type {uint8[]} */
+        const constant = new Array(16);
+        constant.fill(0);
         constant[15] = i;
 
         this._lTransformation(constant);
@@ -726,10 +818,16 @@
       return constants;
     }
 
+    /**
+     * @param {uint8[]} input - 16 bytes
+     * @param {uint8[]} constant - 16-byte round constant
+     * @returns {uint8[]} 16 output bytes
+     */
     _feistelFunction(input, constant) {
+      /** @type {uint8[]} */
       const temp = new Array(16);
       for (let i = 0; i < 16; i++) {
-        temp[i] = OpCodes.XorN(input[i], constant[i]);
+        temp[i] = OpCodes.Xor32(input[i], constant[i]);
       }
 
       this._sTransformation(temp);
@@ -738,7 +836,12 @@
       return temp;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[][]} Ten 16-byte round keys
+     */
     _expandKey(keyBytes) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const roundConstants = this._generateRoundConstants();
 
@@ -757,7 +860,7 @@
           const temp = this._feistelFunction(left, roundConstants[constIndex]);
 
           for (let k = 0; k < 16; k++) {
-            temp[k] = OpCodes.XorN(temp[k], right[k]);
+            temp[k] = OpCodes.Xor32(temp[k], right[k]);
           }
 
           right = [...left];

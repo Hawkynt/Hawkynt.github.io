@@ -60,10 +60,12 @@
 
   // Fixed 8-bit bit-weight mask, MSB first (used both as a bit-test table and,
   // combined with PERM_TABLE, to build the key-schedule bit permutation).
+  /** @type {uint8[]} */
   const BITMASK = [0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01];
 
   // Per-key-byte bit permutation used to build the "A" key-schedule buffer:
   // source bit j (weight BITMASK[j]) moves to destination bit PERM_TABLE[j].
+  /** @type {uint8[]} */
   const PERM_TABLE = [3, 5, 0, 4, 2, 1, 7, 6];
 
   // Diffusion table: 8 groups of 8 bytes, group p used for right-half byte
@@ -71,6 +73,7 @@
   // so group[p][k] is always a single bit weight; it selects which single bit
   // of the round-function output for position p lands in left-half byte k
   // (bit weight preserved). This is Lucifer's fixed P-permutation.
+  /** @type {uint8[]} */
   const PBOX = [
     0x04,0x10,0x20,0x02,0x01,0x08,0x40,0x80,0x80,0x04,0x10,0x20,0x02,0x01,0x08,0x40,
     0x40,0x80,0x04,0x10,0x20,0x02,0x01,0x08,0x08,0x40,0x80,0x04,0x10,0x20,0x02,0x01,
@@ -81,6 +84,7 @@
   // Byte-substitution table used when the interchange control bit for a given
   // right-half byte position is CLEAR (combines the two classic 4-bit Lucifer
   // S-boxes applied to the nibbles in one fixed order).
+  /** @type {uint8[]} */
   const SBOX_B = [
     0x57,0x15,0x75,0x36,0x17,0x37,0x14,0x54,0x74,0x76,0x16,0x35,0x55,0x77,0x34,0x56,
     0xDF,0x9D,0xFD,0xBE,0x9F,0xBF,0x9C,0xDC,0xFC,0xFE,0x9E,0xBD,0xDD,0xFF,0xBC,0xDE,
@@ -102,6 +106,7 @@
 
   // Byte-substitution table used when the interchange control bit is SET
   // (same two 4-bit S-boxes, nibble order swapped relative to SBOX_B).
+  /** @type {uint8[]} */
   const SBOX_A = [
     0x57,0xDF,0xCF,0xD3,0xD7,0x5F,0xDB,0x43,0xC3,0xC7,0xCB,0x4B,0x5B,0x47,0x4F,0x53,
     0x15,0x9D,0x8D,0x91,0x95,0x1D,0x99,0x01,0x81,0x85,0x89,0x09,0x19,0x05,0x0D,0x11,
@@ -121,7 +126,12 @@
     0x56,0xDE,0xCE,0xD2,0xD6,0x5E,0xDA,0x42,0xC2,0xC6,0xCA,0x4A,0x5A,0x46,0x4E,0x52
   ];
 
+  /**
+   * @param {uint8} byte - Key byte
+   * @returns {uint8} Bit-permuted byte
+   */
   function bitPermuteByte(byte) {
+    /** @type {uint8} */
     let out = 0;
     for (let j = 0; j < 8; j++)
       if (OpCodes.And32(byte, BITMASK[j])) out |= BITMASK[PERM_TABLE[j]];
@@ -130,43 +140,61 @@
 
   // Builds both the encryption (mode=1) and decryption (mode=0) round schedules
   // (16 x 8-byte subkeys, 16 selector bytes) from the 16-byte master key.
+  /**
+   * @param {uint8[]} key16 - 16-byte master key
+   * @returns {uint8[][]} Schedules indexed by mode (0 decrypt, 1 encrypt)
+   */
   function buildSchedules(key16) {
     const rawBuf = key16.slice();
-    const permBuf = key16.map(bitPermuteByte);
+    /** @type {uint8[]} */
+    const permBuf = [];
+    for (let i = 0; i < key16.length; i++) permBuf.push(bitPermuteByte(key16[i]));
 
-    const schedules = {};
-    for (const mode of [1, 0]) {
-      let idx = (mode === 1) ? 8 : 0;
-      const subkeys = [];
-      const selectors = [];
-      for (let r = 0; r < 16; r++) {
-        if (mode === 1) idx = OpCodes.And32(idx + 1, 0xF);
-        selectors.push(rawBuf[idx === 0 ? 15 : idx - 1]);
-        const roundKey = new Array(8);
-        for (let j = 0; j < 8; j++) {
-          roundKey[j] = permBuf[idx];
-          if (j < 7) idx = OpCodes.And32(idx + 1, 0xF);
-        }
-        subkeys.push(roundKey);
-        if (mode === 1) idx = OpCodes.And32(idx + 1, 0xF);
-      }
-      schedules[mode] = { subkeys, selectors };
-    }
-    return schedules;
+    return [buildSchedule(rawBuf, permBuf, 0), buildSchedule(rawBuf, permBuf, 1)];
   }
 
+  /**
+   * Round schedule for one direction: per round r, byte 9r is the
+   * interchange-control selector and bytes 9r+1 .. 9r+8 are the subkey.
+   * @param {uint8[]} rawBuf - Master key bytes
+   * @param {uint8[]} permBuf - Bit-permuted master key bytes
+   * @param {int32} mode - 1 for encryption, 0 for decryption
+   * @returns {uint8[]} 16 x 9 schedule bytes
+   */
+  function buildSchedule(rawBuf, permBuf, mode) {
+    /** @type {uint32} */
+    let idx = (mode === 1) ? 8 : 0;
+    /** @type {uint8[]} */
+    const schedule = [];
+    for (let r = 0; r < 16; r++) {
+      if (mode === 1) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+      schedule.push(rawBuf[idx === 0 ? 15 : OpCodes.Sub32(idx, 1)]);
+      for (let j = 0; j < 8; j++) {
+        schedule.push(permBuf[idx]);
+        if (j < 7) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+      }
+      if (mode === 1) idx = OpCodes.And32(OpCodes.Add32(idx, 1), 0xF);
+    }
+    return schedule;
+  }
+
+  /**
+   * @param {uint8[]} block16 - 16-byte block
+   * @param {uint8[]} schedule - Round schedule (see buildSchedule)
+   * @returns {uint8[]} Transformed block
+   */
   function cryptCore(block16, schedule) {
     const blk = block16.slice();
     let leftOff = 0, rightOff = 8;
 
     for (let r = 0; r < 16; r++) {
       const right = blk.slice(rightOff, rightOff + 8);
-      let t = schedule.selectors[r];
+      let t = schedule[r * 9];
       for (let i = 0; i < 8; i++) t ^= right[i];
 
       for (let p = 0; p < 8; p++) {
         const table = OpCodes.And32(t, BITMASK[p]) ? SBOX_A : SBOX_B;
-        const combined = OpCodes.And32(OpCodes.Xor32(table[right[p]], schedule.subkeys[r][p]), 0xFF);
+        const combined = OpCodes.And32(OpCodes.Xor32(table[right[p]], schedule[r * 9 + 1 + p]), 0xFF);
         const group = p * 8;
         for (let k = 0; k < 8; k++)
           blk[leftOff + k] ^= OpCodes.And32(PBOX[group + k], combined);
@@ -175,6 +203,7 @@
       const tmp = leftOff; leftOff = rightOff; rightOff = tmp;
     }
 
+    /** @type {uint8[]} */
     const out = new Array(16);
     for (let i = 0; i < 8; i++) { out[i] = blk[8 + i]; out[8 + i] = blk[i]; }
     return out;
@@ -232,34 +261,52 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptLuciferInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptLuciferInstance(this, isInverse);
     }
   }
 
   class DarkCryptLuciferInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptLuciferAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
+      this._schedules = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0; this._schedules = null;
         return;
       }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Lucifer (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Lucifer (DarkCrypt) requires exactly 16 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._schedules = buildSchedules(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -272,11 +319,13 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        /** @type {uint8[]} */
         const schedule = this._schedules[this.isInverse ? 0 : 1];
         output.push(...cryptCore(block, schedule));
       }

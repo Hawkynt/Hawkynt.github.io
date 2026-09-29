@@ -111,29 +111,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKeeLoqInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKeeLoqInstance(this, isInverse);
     }
   }
 
   class DarkCryptKeeLoqInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKeeLoqAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 4;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. KeeLoq (DarkCrypt) requires exactly 8 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. KeeLoq (DarkCrypt) requires exactly 8 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -146,8 +162,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -157,69 +174,105 @@
       return output;
     }
 
+    /**
+     * Split the key into its two little-endian words
+     * @returns {uint32[]} Low and high key word
+     */
     _keyWords() {
       // First four key bytes -> low 32 bits (key bit index 0..31); last four -> high 32 bits (32..63). Little-endian words.
       const keyLow = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
       const keyHigh = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
-      return { keyLow, keyHigh };
+      /** @type {uint32[]} */
+      const kw = [keyLow, keyHigh];
+      return kw;
     }
 
+    /**
+     * Key bit for round i (round-robin over the 64-bit key)
+     * @param {uint32} keyLow - Key bits 0..31
+     * @param {uint32} keyHigh - Key bits 32..63
+     * @param {int32} i - Round index
+     * @returns {uint32} The key bit (0 or 1)
+     */
     _keyBit(keyLow, keyHigh, i) {
       const idx = i % 64;
       return idx < 32
-        ? OpCodes.AndN(OpCodes.Shr32(keyLow, idx), 1)
-        : OpCodes.AndN(OpCodes.Shr32(keyHigh, idx - 32), 1);
+        ? OpCodes.And32(OpCodes.Shr32(keyLow, idx), 1)
+        : OpCodes.And32(OpCodes.Shr32(keyHigh, idx - 32), 1);
     }
 
+    /**
+     * Non-linear function lookup
+     * @param {uint32} idx - 5-bit index
+     * @returns {uint32} The function bit (0 or 1)
+     */
     _nlf(idx) {
-      return OpCodes.AndN(OpCodes.Shr32(NLF, idx), 1);
+      return OpCodes.And32(OpCodes.Shr32(NLF, idx), 1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let state = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      const { keyLow, keyHigh } = this._keyWords();
+      /** @type {uint32[]} */
+      const kw = this._keyWords();
+      /** @type {uint32} */
+      const keyLow = kw[0];
+      /** @type {uint32} */
+      const keyHigh = kw[1];
 
       for (let i = 0; i < ROUNDS; ++i) {
-        const b1 = OpCodes.AndN(OpCodes.Shr32(state, 1), 1);
-        const b9 = OpCodes.AndN(OpCodes.Shr32(state, 9), 1);
-        const b20 = OpCodes.AndN(OpCodes.Shr32(state, 20), 1);
-        const b26 = OpCodes.AndN(OpCodes.Shr32(state, 26), 1);
-        const b31 = OpCodes.AndN(OpCodes.Shr32(state, 31), 1);
-        const nlfIdx = OpCodes.OrN(b1, OpCodes.OrN(OpCodes.Shl32(b9, 1),
-          OpCodes.OrN(OpCodes.Shl32(b20, 2), OpCodes.OrN(OpCodes.Shl32(b26, 3), OpCodes.Shl32(b31, 4)))));
+        const b1 = OpCodes.And32(OpCodes.Shr32(state, 1), 1);
+        const b9 = OpCodes.And32(OpCodes.Shr32(state, 9), 1);
+        const b20 = OpCodes.And32(OpCodes.Shr32(state, 20), 1);
+        const b26 = OpCodes.And32(OpCodes.Shr32(state, 26), 1);
+        const b31 = OpCodes.And32(OpCodes.Shr32(state, 31), 1);
+        const nlfIdx = OpCodes.Or32(b1, OpCodes.Or32(OpCodes.Shl32(b9, 1),
+          OpCodes.Or32(OpCodes.Shl32(b20, 2), OpCodes.Or32(OpCodes.Shl32(b26, 3), OpCodes.Shl32(b31, 4)))));
         const nlfOut = this._nlf(nlfIdx);
 
         const keyBit = this._keyBit(keyLow, keyHigh, i);
-        const bit0 = OpCodes.AndN(state, 1);
-        const bit16 = OpCodes.AndN(OpCodes.Shr32(state, 16), 1);
-        const fb = OpCodes.XorN(keyBit, OpCodes.XorN(bit0, OpCodes.XorN(bit16, nlfOut)));
+        const bit0 = OpCodes.And32(state, 1);
+        const bit16 = OpCodes.And32(OpCodes.Shr32(state, 16), 1);
+        const fb = OpCodes.Xor32(keyBit, OpCodes.Xor32(bit0, OpCodes.Xor32(bit16, nlfOut)));
 
-        state = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(state, 1), OpCodes.Shl32(fb, 31)));
+        state = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(state, 1), OpCodes.Shl32(fb, 31)));
       }
 
       return [...OpCodes.Unpack32LE(state)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let state = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      const { keyLow, keyHigh } = this._keyWords();
+      /** @type {uint32[]} */
+      const kw = this._keyWords();
+      /** @type {uint32} */
+      const keyLow = kw[0];
+      /** @type {uint32} */
+      const keyHigh = kw[1];
 
       for (let i = ROUNDS - 1; i >= 0; --i) {
-        const b0 = OpCodes.AndN(state, 1);
-        const b8 = OpCodes.AndN(OpCodes.Shr32(state, 8), 1);
-        const b19 = OpCodes.AndN(OpCodes.Shr32(state, 19), 1);
-        const b25 = OpCodes.AndN(OpCodes.Shr32(state, 25), 1);
-        const b30 = OpCodes.AndN(OpCodes.Shr32(state, 30), 1);
-        const nlfIdx = OpCodes.OrN(b0, OpCodes.OrN(OpCodes.Shl32(b8, 1),
-          OpCodes.OrN(OpCodes.Shl32(b19, 2), OpCodes.OrN(OpCodes.Shl32(b25, 3), OpCodes.Shl32(b30, 4)))));
+        const b0 = OpCodes.And32(state, 1);
+        const b8 = OpCodes.And32(OpCodes.Shr32(state, 8), 1);
+        const b19 = OpCodes.And32(OpCodes.Shr32(state, 19), 1);
+        const b25 = OpCodes.And32(OpCodes.Shr32(state, 25), 1);
+        const b30 = OpCodes.And32(OpCodes.Shr32(state, 30), 1);
+        const nlfIdx = OpCodes.Or32(b0, OpCodes.Or32(OpCodes.Shl32(b8, 1),
+          OpCodes.Or32(OpCodes.Shl32(b19, 2), OpCodes.Or32(OpCodes.Shl32(b25, 3), OpCodes.Shl32(b30, 4)))));
         const nlfOut = this._nlf(nlfIdx);
 
         const keyBit = this._keyBit(keyLow, keyHigh, i);
-        const bit15 = OpCodes.AndN(OpCodes.Shr32(state, 15), 1);
-        const bit31 = OpCodes.AndN(OpCodes.Shr32(state, 31), 1);
-        const fb = OpCodes.XorN(keyBit, OpCodes.XorN(bit15, OpCodes.XorN(bit31, nlfOut)));
+        const bit15 = OpCodes.And32(OpCodes.Shr32(state, 15), 1);
+        const bit31 = OpCodes.And32(OpCodes.Shr32(state, 31), 1);
+        const fb = OpCodes.Xor32(keyBit, OpCodes.Xor32(bit15, OpCodes.Xor32(bit31, nlfOut)));
 
-        state = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state, 1), fb));
+        state = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state, 1), fb));
       }
 
       return [...OpCodes.Unpack32LE(state)];
