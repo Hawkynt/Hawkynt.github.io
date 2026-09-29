@@ -59,7 +59,7 @@
    * @class
    * @extends {BlockCipherAlgorithm}
    */
-  class SpeckCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class SpeckCipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -68,35 +68,35 @@
       this.description = "NSA's lightweight ARX (Addition-Rotation-XOR) cipher designed for software efficiency. Speck64/128 variant uses 64-bit blocks with 128-bit keys and 27 rounds. Companion to Simon cipher.";
       this.inventor = "NSA (National Security Agency)";
       this.year = 2013;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.BASIC;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BASIC;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // Speck64/128: 128-bit keys only
+        new KeySize(16, 16, 1) // Speck64/128: 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // Fixed 64-bit blocks
+        new KeySize(8, 8, 1) // Fixed 64-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("The Simon and Speck Families of Lightweight Block Ciphers", "https://eprint.iacr.org/2013/404.pdf"),
-        new AlgorithmFramework.LinkItem("NSA Simon and Speck Specification", "https://nsacyber.github.io/simon-speck/"),
-        new AlgorithmFramework.LinkItem("Lightweight Cryptography Standardization", "https://csrc.nist.gov/projects/lightweight-cryptography")
+        new LinkItem("The Simon and Speck Families of Lightweight Block Ciphers", "https://eprint.iacr.org/2013/404.pdf"),
+        new LinkItem("NSA Simon and Speck Specification", "https://nsacyber.github.io/simon-speck/"),
+        new LinkItem("Lightweight Cryptography Standardization", "https://csrc.nist.gov/projects/lightweight-cryptography")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("NSA Reference Implementation", "https://github.com/nsacyber/simon-speck-supercop"),
-        new AlgorithmFramework.LinkItem("Cryptanalysis of Speck variants", "https://eprint.iacr.org/2016/1010.pdf"),
-        new AlgorithmFramework.LinkItem("NIST Lightweight Cryptography", "https://csrc.nist.gov/Projects/Lightweight-Cryptography")
+        new LinkItem("NSA Reference Implementation", "https://github.com/nsacyber/simon-speck-supercop"),
+        new LinkItem("Cryptanalysis of Speck variants", "https://eprint.iacr.org/2016/1010.pdf"),
+        new LinkItem("NIST Lightweight Cryptography", "https://csrc.nist.gov/Projects/Lightweight-Cryptography")
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Reduced-round attacks", "Various attacks exist against reduced-round variants (not full 27 rounds)", "Use full-round implementation and consider alternatives for high-security applications")
+        new Vulnerability("Reduced-round attacks", "Various attacks exist against reduced-round variants (not full 27 rounds)", "Use full-round implementation and consider alternatives for high-security applications")
       ];
 
       // Test vectors from NSA specification
@@ -132,8 +132,11 @@
       ];
 
       // Speck64/128 Constants
+      /** @type {int32} */
       this.ROUNDS = 27;       // NSA standard: 27 rounds for 64/128 variant
+      /** @type {int32} */
       this.ALPHA = 8;         // Right rotation constant
+      /** @type {int32} */
       this.BETA = 3;          // Left rotation constant
     }
 
@@ -152,7 +155,7 @@
    * @class
    * @extends {IBlockCipherInstance}
    */
-  class SpeckInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class SpeckInstance extends IBlockCipherInstance {
     /**
      * Initialize Speck cipher instance
      * @param {SpeckCipher} algorithm - Parent algorithm instance
@@ -162,8 +165,11 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.outputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
       this.KeySize = 0;
@@ -183,10 +189,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -267,19 +280,21 @@
       // The lower word y is serialised first, the upper word x second.
       let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
       let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      /** @type {SpeckCipher} */
+      const alg = this.algorithm;
 
       // Speck encryption: 27 rounds of ARX operations
       // Round function based on NSA specification:
       // x = (ROR(x, 8) + y)^roundKey
       // y = ROL(y, 3)^x
-      for (let i = 0; i < this.algorithm.ROUNDS; i++) {
+      for (let i = 0; i < alg.ROUNDS; i++) {
         // Right rotate x by 8 bits, add y, then XOR with round key
-        x = OpCodes.RotR32(x, this.algorithm.ALPHA);
+        x = OpCodes.RotR32(x, alg.ALPHA);
         x = OpCodes.ToUint32(x + y);
         x = OpCodes.Xor32(x, this.roundKeys[i]);
 
         // Left rotate y by 3 bits, then XOR with new x
-        y = OpCodes.RotL32(y, this.algorithm.BETA);
+        y = OpCodes.RotL32(y, alg.BETA);
         y = OpCodes.Xor32(y, x);
       }
 
@@ -305,20 +320,22 @@
       // The lower word y is serialised first, the upper word x second.
       let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
       let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      /** @type {SpeckCipher} */
+      const alg = this.algorithm;
 
       // Speck decryption: reverse the encryption process
       // Inverse operations in reverse order:
       // y = ROR(OpCodes.Xor32(y, x), 3)
       // x = ROL((OpCodes.Xor32(x, roundKey)) - y, 8)
-      for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
+      for (let i = alg.ROUNDS - 1; i >= 0; i--) {
         // Reverse: y = ROL(y, 3)^x
         y = OpCodes.Xor32(y, x);
-        y = OpCodes.RotR32(y, this.algorithm.BETA);
+        y = OpCodes.RotR32(y, alg.BETA);
 
         // Reverse: x = (ROR(x, 8) + y)^roundKey
         x = OpCodes.Xor32(x, this.roundKeys[i]);
         x = OpCodes.ToUint32(x - y);
-        x = OpCodes.RotL32(x, this.algorithm.ALPHA);
+        x = OpCodes.RotL32(x, alg.ALPHA);
       }
 
       // Convert back to bytes using OpCodes (little-endian, lower word first)
@@ -344,8 +361,12 @@
         OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])  // l2
       ];
 
+      /** @type {SpeckCipher} */
+      const alg = this.algorithm;
+
       // Expand key to 27 round keys using Speck key schedule
-      const roundKeys = new Array(this.algorithm.ROUNDS);
+      /** @type {uint32[]} */
+      const roundKeys = new Array(alg.ROUNDS);
 
       // Initialize first round key and working variables
       roundKeys[0] = k[0];  // First round key is k[0]
@@ -353,16 +374,16 @@
 
       // Generate remaining round keys using Speck key schedule
       // Key schedule uses same ARX structure as round function
-      for (let i = 0; i < this.algorithm.ROUNDS - 1; i++) {
+      for (let i = 0; i < alg.ROUNDS - 1; i++) {
         // Apply round function to l[i % 3] and roundKeys[i]
         // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i])^i
         const idx = i % 3;
-        l[idx] = OpCodes.RotR32(l[idx], this.algorithm.ALPHA);
+        l[idx] = OpCodes.RotR32(l[idx], alg.ALPHA);
         l[idx] = OpCodes.ToUint32(l[idx] + roundKeys[i]);
         l[idx] = OpCodes.Xor32(l[idx], i);
 
         // Generate next round key: roundKeys[i+1] = ROL(roundKeys[i], 3)^l[i % 3]
-        roundKeys[i + 1] = OpCodes.Xor32(OpCodes.RotL32(roundKeys[i], this.algorithm.BETA), l[idx]);
+        roundKeys[i + 1] = OpCodes.Xor32(OpCodes.RotL32(roundKeys[i], alg.BETA), l[idx]);
       }
 
       return roundKeys;
