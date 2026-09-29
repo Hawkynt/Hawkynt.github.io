@@ -137,6 +137,11 @@
   const PHANTOM_SBOX = OpCodes.Hex8ToBytes(PHANTOM_SBOX_HEX);
 
   // IDEA-style multiplication modulo 65537 (0x10001); the value 0 represents 65536 (2^16).
+  /**
+   * @param {uint32} a - 16-bit operand (0 means 65536)
+   * @param {uint32} b - 16-bit operand (0 means 65536)
+   * @returns {uint32} Product modulo 65537 (65536 as 0)
+   */
   function mulMod65537(a, b) {
     const A = a === 0 ? 65536 : a;
     const B = b === 0 ? 65536 : b;
@@ -215,6 +220,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundTable = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -265,6 +271,7 @@
     // selecting round-key[i] = K[KEY_INDEX[i]] (fixed permutation, values 0..7).
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 64-word round-key table
      */
     _buildRoundTable(keyBytes) {
       const K = [
@@ -277,6 +284,7 @@
         OpCodes.Pack32BE(keyBytes[24], keyBytes[25], keyBytes[26], keyBytes[27]),
         OpCodes.Pack32BE(keyBytes[28], keyBytes[29], keyBytes[30], keyBytes[31])
       ];
+      /** @type {uint32[]} */
       const table = new Array(64);
       for (let i = 0; i < 64; i++) table[i] = K[KEY_INDEX[i]];
       return table;
@@ -284,6 +292,11 @@
 
     // F(x,k): split x and k into high/low 16-bit halves; multiply matching halves modulo
     // 65537 (IDEA-style); recombine the two 16-bit results into a 32-bit word.
+    /**
+     * @param {uint32} x - Data word
+     * @param {uint32} k - Round-key word
+     * @returns {uint32} Recombined product halves
+     */
     _f(x, k) {
       const xHi = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFFFF), xLo = OpCodes.And32(x, 0xFFFF);
       const kHi = OpCodes.And32(OpCodes.Shr32(k, 16), 0xFFFF), kLo = OpCodes.And32(k, 0xFFFF);
@@ -292,17 +305,27 @@
 
     // S(group, v): apply four independent 256-entry byte-substitution tables (selected by
     // 'group' 0..3) to the four bytes of v (LSB..MSB) and recombine into a 32-bit word.
+    /**
+     * @param {int32} group - Table group 0..3
+     * @param {uint32} v - Input word
+     * @returns {uint32} Substituted word
+     */
     _sbox(group, v) {
       const base = group * 1024;
-      const b0 = PHANTOM_SBOX[base + 0 * 256 + OpCodes.And32(v, 0xFF)];
-      const b1 = PHANTOM_SBOX[base + 1 * 256 + OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF)];
-      const b2 = PHANTOM_SBOX[base + 2 * 256 + OpCodes.And32(OpCodes.Shr32(v, 16), 0xFF)];
-      const b3 = PHANTOM_SBOX[base + 3 * 256 + OpCodes.And32(OpCodes.Shr32(v, 24), 0xFF)];
+      const b0 = PHANTOM_SBOX[OpCodes.Add32(base + 0 * 256, OpCodes.And32(v, 0xFF))];
+      const b1 = PHANTOM_SBOX[OpCodes.Add32(base + 1 * 256, OpCodes.And32(OpCodes.Shr32(v, 8), 0xFF))];
+      const b2 = PHANTOM_SBOX[OpCodes.Add32(base + 2 * 256, OpCodes.And32(OpCodes.Shr32(v, 16), 0xFF))];
+      const b3 = PHANTOM_SBOX[OpCodes.Add32(base + 3 * 256, OpCodes.And32(OpCodes.Shr32(v, 24), 0xFF))];
       return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), OpCodes.Shl32(b2, 16)), OpCodes.Shl32(b3, 24));
     }
 
     // Rotate the pair (c0=low word, c1=high word), treated as one 64-bit little-endian
     // word, left by 19 bits.
+    /**
+     * @param {uint32} c0 - Low word
+     * @param {uint32} c1 - High word
+     * @returns {uint32[]} Rotated [low, high] pair
+     */
     _mix64(c0, c1) {
       const n0 = OpCodes.Or32(OpCodes.Shl32(c0, 19), OpCodes.Shr32(c1, 13));
       const n1 = OpCodes.Or32(OpCodes.Shl32(c1, 19), OpCodes.Shr32(c0, 13));
