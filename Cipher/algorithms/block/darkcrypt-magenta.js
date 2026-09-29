@@ -55,26 +55,46 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // S-box: S(x) = 2^x in GF(2^8) with reduction polynomial 0x165, x=0..254; S(255)=0
-  const SBOX = (function () {
-    const table = new Array(256).fill(0);
+  /**
+   * Build the S-box table
+   * @returns {uint8[]} S(x) for x = 0..255
+   */
+  function buildSbox() {
+    /** @type {uint8[]} */
+    const table = new Array(256);
+    table.fill(0);
+    /** @type {uint32} */
     let cur = 1;
     for (let i = 0; i < 255; i++) {
       table[i] = OpCodes.And32(cur, 0xFF);
       cur = OpCodes.Shl32(cur, 1);
-      if (OpCodes.AndN(cur, 0x100))
+      if (OpCodes.And32(cur, 0x100) !== 0)
         cur = OpCodes.Xor32(cur, 0x165);
       cur = OpCodes.And32(cur, 0x1FF);
     }
     return table;
-  })();
+  }
+
+  /** @type {uint8[]} */
+  const SBOX = buildSbox();
 
   // a(x,y) = S(x XOR S(y))
+  /**
+   * @param {uint8} x - Byte
+   * @param {uint8} y - Byte
+   * @returns {uint8} S(x XOR S(y))
+   */
   function a(x, y) {
     return SBOX[OpCodes.Xor32(x, SBOX[y])];
   }
 
   // P: pairs byte i with byte i+8 (i=0..7), both directions
+  /**
+   * @param {uint8[]} x - 16-byte state
+   * @returns {uint8[]} Permuted 16-byte state
+   */
   function permuteP(x) {
+    /** @type {uint8[]} */
     const y = new Array(16);
     for (let i = 0; i < 8; i++) {
       y[2 * i] = a(x[i], x[i + 8]);
@@ -84,19 +104,31 @@
   }
 
   // Byte transpose: deinterleave even/odd byte lanes of the 4 dwords
+  /**
+   * @param {uint8[]} z - 16-byte state
+   * @returns {uint8[]} Even bytes followed by odd bytes
+   */
   function byteTranspose(z) {
-    return [
+    /** @type {uint8[]} */
+    const out = [
       z[0], z[2], z[4], z[6],
       z[8], z[10], z[12], z[14],
       z[1], z[3], z[5], z[7],
       z[9], z[11], z[13], z[15]
     ];
+    return out;
   }
 
   // MAGENTA round function: F(right[8], subkey[8]) -> 8 bytes
+  /**
+   * @param {uint8[]} right - 8-byte half block
+   * @param {uint8[]} subkey - 8-byte round key
+   * @returns {uint8[]} 8-byte round output
+   */
   function magentaF(right, subkey) {
     const orig = right.concat(subkey);
     let state = OpCodes.CopyArray(orig);
+    /** @type {uint8[]|null} */
     let w = null;
 
     for (let round = 0; round < 3; round++) {
@@ -189,6 +221,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[][]|null} */
       this._subkeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
