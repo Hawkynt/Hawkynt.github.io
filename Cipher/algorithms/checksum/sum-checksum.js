@@ -28,7 +28,11 @@
 })(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  if (!AlgorithmFramework || !OpCodes) {
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework and OpCodes dependencies are required');
+  }
+
+  if (!OpCodes) {
     throw new Error('AlgorithmFramework and OpCodes dependencies are required');
   }
 
@@ -37,6 +41,11 @@
 
   // ===== SUM8 =====
 
+  /**
+   * Sum8 algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class Sum8Algorithm extends Algorithm {
     constructor() {
       super();
@@ -51,6 +60,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 8;
 
       this.documentation = [
@@ -79,9 +89,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Sum8Instance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -91,41 +101,40 @@
   }
 
   /**
- * Sum8 cipher instance implementing Feed/Result pattern
+ * Sum8 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Sum8Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Sum8Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running sum */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.AndN(this.sum + data[i], 0xFF);
+        this.sum = OpCodes.And32(OpCodes.Add32(this.sum, data[i]), 0xFF);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
@@ -137,6 +146,11 @@
 
   // ===== SUM16 =====
 
+  /**
+   * Sum16 algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class Sum16Algorithm extends Algorithm {
     constructor() {
       super();
@@ -151,6 +165,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 16;
 
       this.documentation = [
@@ -178,9 +193,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Sum16Instance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -190,48 +205,44 @@
   }
 
   /**
- * Sum16 cipher instance implementing Feed/Result pattern
+ * Sum16 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Sum16Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Sum16Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running sum */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.AndN(this.sum + data[i], 0xFFFF);
+        this.sum = OpCodes.And32(OpCodes.Add32(this.sum, data[i]), 0xFFFF);
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
-      const result = [
-        OpCodes.AndN(OpCodes.Shr32(this.sum, 8), 0xFF),  // High byte
-        OpCodes.AndN(this.sum, 0xFF)                      // Low byte
-      ];
+      const result = OpCodes.Unpack16BE(this.sum); // High byte, low byte
       this.sum = 0;
       return result;
     }
@@ -239,6 +250,11 @@
 
   // ===== SUM32 =====
 
+  /**
+   * Sum32 algorithm
+   * @class
+   * @extends {Algorithm}
+   */
   class Sum32Algorithm extends Algorithm {
     constructor() {
       super();
@@ -253,6 +269,7 @@
       this.complexity = ComplexityType.BEGINNER;
       this.country = null;
 
+      /** @type {int32} */
       this.checksumSize = 32;
 
       this.documentation = [
@@ -274,9 +291,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new checksum instance
+   * @param {boolean} [isInverse=false] - Checksums have no inverse
+   * @returns {Sum32Instance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -286,50 +303,44 @@
   }
 
   /**
- * Sum32 cipher instance implementing Feed/Result pattern
+ * Sum32 instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Sum32Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * Initialize a checksum instance
+   * @param {Sum32Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint32} Running sum */
       this.sum = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed data to the checksum
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
    */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = OpCodes.Shr32(this.sum + data[i], 0); // Unsigned 32-bit
+        this.sum = OpCodes.Add32(this.sum, data[i]); // Unsigned 32-bit
       }
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the checksum of everything fed so far and reset for the next message
+   * @returns {uint8[]} Checksum bytes
    */
 
     Result() {
-      const result = [
-        OpCodes.AndN(OpCodes.Shr32(this.sum, 24), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(this.sum, 16), 0xFF),
-        OpCodes.AndN(OpCodes.Shr32(this.sum, 8), 0xFF),
-        OpCodes.AndN(this.sum, 0xFF)
-      ];
+      const result = OpCodes.Unpack32BE(this.sum);
       this.sum = 0;
       return result;
     }
