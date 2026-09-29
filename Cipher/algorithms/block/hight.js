@@ -367,9 +367,9 @@
         xx[0] = block[7];
 
         xx[1] = OpCodes.And32(block[0] - this.roundKeys[4], 0xFF);
-        xx[3] = OpCodes.XorN(block[2], this.roundKeys[5]);
+        xx[3] = OpCodes.Xor32(block[2], this.roundKeys[5]);
         xx[5] = OpCodes.And32(block[4] - this.roundKeys[6], 0xFF);
-        xx[7] = OpCodes.XorN(block[6], this.roundKeys[7]);
+        xx[7] = OpCodes.Xor32(block[6], this.roundKeys[7]);
 
         // 32 rounds in reverse (lines 237-268)
         this._decryptRound(xx, 33, 7,6,5,4,3,2,1,0);
@@ -426,9 +426,9 @@
         xx[7] = block[7];
 
         xx[0] = OpCodes.And32(block[0] + this.roundKeys[0], 0xFF);
-        xx[2] = OpCodes.XorN(block[2], this.roundKeys[1]);
+        xx[2] = OpCodes.Xor32(block[2], this.roundKeys[1]);
         xx[4] = OpCodes.And32(block[4] + this.roundKeys[2], 0xFF);
-        xx[6] = OpCodes.XorN(block[6], this.roundKeys[3]);
+        xx[6] = OpCodes.Xor32(block[6], this.roundKeys[3]);
 
         // 32 rounds (lines 157-188)
         this._encryptRound(xx,  2,  7,6,5,4,3,2,1,0);

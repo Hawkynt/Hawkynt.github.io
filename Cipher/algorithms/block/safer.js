@@ -358,14 +358,14 @@
 
       while (round--) {
         // Key addition/XOR
-        a = OpCodes.XorN(a, this.expandedKey[++keyIndex]);
+        a = OpCodes.Xor32(a, this.expandedKey[++keyIndex]);
         b = OpCodes.And32((b + this.expandedKey[++keyIndex]), 0xFF);
         c = OpCodes.And32((c + this.expandedKey[++keyIndex]), 0xFF);
-        d = OpCodes.XorN(d, this.expandedKey[++keyIndex]);
-        e = OpCodes.XorN(e, this.expandedKey[++keyIndex]);
+        d = OpCodes.Xor32(d, this.expandedKey[++keyIndex]);
+        e = OpCodes.Xor32(e, this.expandedKey[++keyIndex]);
         f = OpCodes.And32((f + this.expandedKey[++keyIndex]), 0xFF);
         g = OpCodes.And32((g + this.expandedKey[++keyIndex]), 0xFF);
-        h = OpCodes.XorN(h, this.expandedKey[++keyIndex]);
+        h = OpCodes.Xor32(h, this.expandedKey[++keyIndex]);
 
         // S-box layer
         a = OpCodes.And32((this._EXP(a) + this.expandedKey[++keyIndex]), 0xFF);
@@ -393,14 +393,14 @@
       }
 
       // Final key addition
-      a = OpCodes.XorN(a, this.expandedKey[++keyIndex]);
+      a = OpCodes.Xor32(a, this.expandedKey[++keyIndex]);
       b = OpCodes.And32((b + this.expandedKey[++keyIndex]), 0xFF);
       c = OpCodes.And32((c + this.expandedKey[++keyIndex]), 0xFF);
-      d = OpCodes.XorN(d, this.expandedKey[++keyIndex]);
-      e = OpCodes.XorN(e, this.expandedKey[++keyIndex]);
+      d = OpCodes.Xor32(d, this.expandedKey[++keyIndex]);
+      e = OpCodes.Xor32(e, this.expandedKey[++keyIndex]);
       f = OpCodes.And32((f + this.expandedKey[++keyIndex]), 0xFF);
       g = OpCodes.And32((g + this.expandedKey[++keyIndex]), 0xFF);
-      h = OpCodes.XorN(h, this.expandedKey[++keyIndex]);
+      h = OpCodes.Xor32(h, this.expandedKey[++keyIndex]);
 
       return [OpCodes.And32(a, 0xFF), OpCodes.And32(b, 0xFF), OpCodes.And32(c, 0xFF), OpCodes.And32(d, 0xFF),
               OpCodes.And32(e, 0xFF), OpCodes.And32(f, 0xFF), OpCodes.And32(g, 0xFF), OpCodes.And32(h, 0xFF)];
@@ -422,14 +422,14 @@
       let keyIndex = this.algorithm.BLOCK_LEN * (1 + 2 * round);
 
       // Reverse final key addition
-      h = OpCodes.XorN(h, this.expandedKey[keyIndex]);
+      h = OpCodes.Xor32(h, this.expandedKey[keyIndex]);
       g = OpCodes.And32((g - this.expandedKey[--keyIndex]), 0xFF);
       f = OpCodes.And32((f - this.expandedKey[--keyIndex]), 0xFF);
-      e = OpCodes.XorN(e, this.expandedKey[--keyIndex]);
-      d = OpCodes.XorN(d, this.expandedKey[--keyIndex]);
+      e = OpCodes.Xor32(e, this.expandedKey[--keyIndex]);
+      d = OpCodes.Xor32(d, this.expandedKey[--keyIndex]);
       c = OpCodes.And32((c - this.expandedKey[--keyIndex]), 0xFF);
       b = OpCodes.And32((b - this.expandedKey[--keyIndex]), 0xFF);
-      a = OpCodes.XorN(a, this.expandedKey[--keyIndex]);
+      a = OpCodes.Xor32(a, this.expandedKey[--keyIndex]);
 
       while (round--) {
         // Reverse permutation
