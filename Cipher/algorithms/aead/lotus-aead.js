@@ -56,27 +56,47 @@
   ];
 
   // TweGIFT-64 tweak values (4-bit expanded to 16-bit)
-  const GIFT64_TWEAKS = {
-    0: 0x0000, 1: 0xe1e1, 2: 0xd2d2, 3: 0x3333,
-    4: 0xb4b4, 5: 0x5555, 6: 0x6666, 12: 0xcccc, 13: 0x2d2d
-  };
+  // indexed by the 4-bit tweak; tweaks 7 to 11 are not used by the mode
+  /** @type {uint16[]} */
+  const GIFT64_TWEAKS = [
+    0x0000, 0xe1e1, 0xd2d2, 0x3333,
+    0xb4b4, 0x5555, 0x6666, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000,
+    0xcccc, 0x2d2d
+  ];
 
   // Bit permutation step helper
+  /**
+   * @param {uint32} y
+   * @param {uint32} mask
+   * @param {int32} shift
+   * @returns {uint32}
+   */
   function bitPermuteStep16(y, mask, shift) {
-    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask);
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift)));
+    const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(y, shift), y), mask);
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(y, t), OpCodes.Shl32(t, shift)));
   }
 
   // Bit permutation step for 32-bit
+  /**
+   * @param {uint32} y
+   * @param {uint32} mask
+   * @param {int32} shift
+   * @returns {uint32}
+   */
   function bitPermuteStep32(y, mask, shift) {
-    const t = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask));
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift)));
+    const t = OpCodes.ToUint32(OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(y, shift), y), mask));
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(y, t), OpCodes.Shl32(t, shift)));
   }
 
   // GIFT-64 key schedule class
   class Gift64KeySchedule {
+    /**
+     * @param {uint8[]} key
+     */
     constructor(key) {
       // Key schedule: 4 x 32-bit words (little-endian from 16-byte key)
+      /** @type {uint32[]} */
       this.k = new Uint32Array(4);
       if (key && key.length === 16) {
         this.k[0] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
@@ -88,51 +108,73 @@
 
     // Multiply key by 2 in GF(128) - used for state updates
     mul2() {
-      const mask = OpCodes.AndN(this.k[0], 0x80000000) !== 0 ? 0x87 : 0;
-      this.k[0] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.k[0], 1), OpCodes.Shr32(this.k[1], 31)));
-      this.k[1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.k[1], 1), OpCodes.Shr32(this.k[2], 31)));
-      this.k[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.k[2], 1), OpCodes.Shr32(this.k[3], 31)));
-      this.k[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(this.k[3], 1), mask));
+      const mask = OpCodes.And32(this.k[0], 0x80000000) !== 0 ? 0x87 : 0;
+      this.k[0] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.k[0], 1), OpCodes.Shr32(this.k[1], 31)));
+      this.k[1] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.k[1], 1), OpCodes.Shr32(this.k[2], 31)));
+      this.k[2] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(this.k[2], 1), OpCodes.Shr32(this.k[3], 31)));
+      this.k[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(this.k[3], 1), mask));
     }
   }
 
   // PERM1_INNER permutation for GIFT-64 (low memory version)
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm1Inner(x) {
     x = bitPermuteStep16(x, 0x0a0a, 3);
     x = bitPermuteStep16(x, 0x00cc, 6);
-    x = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x0f0f), 4), OpCodes.AndN(OpCodes.Shr32(x, 4), 0x0f0f)));
-    return OpCodes.ToUint32(OpCodes.AndN(x, 0xFFFF));
+    x = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x0f0f), 4), OpCodes.And32(OpCodes.Shr32(x, 4), 0x0f0f)));
+    return OpCodes.ToUint32(OpCodes.And32(x, 0xFFFF));
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm0(x) {
     x = perm1Inner(x);
     // leftRotate12_16: rotate left by 12 bits in 16-bit value
-    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(x, 12), OpCodes.Shr32(x, 4)), 0xFFFF));
+    return OpCodes.ToUint32(OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, 12), OpCodes.Shr32(x, 4)), 0xFFFF));
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm2(x) {
     x = perm1Inner(x);
     // leftRotate4_16: rotate left by 4 bits
-    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(x, 4), OpCodes.Shr32(x, 12)), 0xFFFF));
+    return OpCodes.ToUint32(OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, 4), OpCodes.Shr32(x, 12)), 0xFFFF));
   }
 
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function perm3(x) {
     x = perm1Inner(x);
     // leftRotate8_16: rotate left by 8 bits
-    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(x, 8), OpCodes.Shr32(x, 8)), 0xFFFF));
+    return OpCodes.ToUint32(OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, 8), OpCodes.Shr32(x, 8)), 0xFFFF));
   }
 
   // TweGIFT-64 encryption with tweak (low memory version)
+  /**
+   * @param {Gift64KeySchedule} ks
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   * @param {uint32} tweak
+   */
   function gift64tEncrypt(ks, output, input, tweak) {
     // Convert nibble-based input to word-based representation
     const state = new Uint8Array(8);
     gift64nToWords(state, input);
 
     // Load state into 16-bit words (big-endian)
-    let s0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state[0], 8), state[1]));
-    let s1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state[2], 8), state[3]));
-    let s2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state[4], 8), state[5]));
-    let s3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state[6], 8), state[7]));
+    let s0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state[0], 8), state[1]));
+    let s1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state[2], 8), state[3]));
+    let s2 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state[4], 8), state[5]));
+    let s3 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state[6], 8), state[7]));
 
     // Initialize key schedule words
     let w0 = ks.k[0], w1 = ks.k[1], w2 = ks.k[2], w3 = ks.k[3];
@@ -140,13 +182,13 @@
     // 28 rounds of GIFT-64
     for (let round = 0; round < 28; ++round) {
       // SubCells - apply S-box
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.AndN(s0, s2)));
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(s1, s3)));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.OrN(s0, s1)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s2));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s3));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, 0xFFFF));
-      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.AndN(s0, s1)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, OpCodes.And32(s0, s2)));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, OpCodes.And32(s1, s3)));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, OpCodes.Or32(s0, s1)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0xFFFF));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, OpCodes.And32(s0, s1)));
       let temp = s0;
       s0 = s3;
       s3 = temp;
@@ -158,13 +200,13 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR key schedule and round constant
-      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(w3, 0xFFFF)));
-      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.Shr32(w3, 16)));
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, OpCodes.XorN(0x8000, GIFT64_RC[round])));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, OpCodes.And32(w3, 0xFFFF)));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, OpCodes.Shr32(w3, 16)));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, OpCodes.Xor32(0x8000, GIFT64_RC[round])));
 
       // AddTweak - XOR tweak every 4 rounds except the last
-      if (OpCodes.AndN(OpCodes.AndN(round + 1, 0xFF) % 4, 0xFF) === 0 && round < 27) {
-        s2 = OpCodes.ToUint32(OpCodes.XorN(s2, tweak));
+      if (OpCodes.And32(OpCodes.And32(round + 1, 0xFF) % 4, 0xFF) === 0 && round < 27) {
+        s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, tweak));
       }
 
       // Rotate key schedule
@@ -172,24 +214,28 @@
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(temp, 0xFFFC0000), 2), OpCodes.Shl32(OpCodes.AndN(temp, 0x00030000), 14)), OpCodes.Shl32(OpCodes.AndN(temp, 0x00000FFF), 4)), OpCodes.Shr32(OpCodes.AndN(temp, 0x0000F000), 12)));
+      w0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(temp, 0xFFFC0000), 2), OpCodes.Shl32(OpCodes.And32(temp, 0x00030000), 14)), OpCodes.Shl32(OpCodes.And32(temp, 0x00000FFF), 4)), OpCodes.Shr32(OpCodes.And32(temp, 0x0000F000), 12)));
     }
 
     // Convert back to byte form (big-endian)
-    state[0] = OpCodes.AndN(OpCodes.Shr32(s0, 8), 0xFF);
-    state[1] = OpCodes.AndN(s0, 0xFF);
-    state[2] = OpCodes.AndN(OpCodes.Shr32(s1, 8), 0xFF);
-    state[3] = OpCodes.AndN(s1, 0xFF);
-    state[4] = OpCodes.AndN(OpCodes.Shr32(s2, 8), 0xFF);
-    state[5] = OpCodes.AndN(s2, 0xFF);
-    state[6] = OpCodes.AndN(OpCodes.Shr32(s3, 8), 0xFF);
-    state[7] = OpCodes.AndN(s3, 0xFF);
+    state[0] = OpCodes.And32(OpCodes.Shr32(s0, 8), 0xFF);
+    state[1] = OpCodes.And32(s0, 0xFF);
+    state[2] = OpCodes.And32(OpCodes.Shr32(s1, 8), 0xFF);
+    state[3] = OpCodes.And32(s1, 0xFF);
+    state[4] = OpCodes.And32(OpCodes.Shr32(s2, 8), 0xFF);
+    state[5] = OpCodes.And32(s2, 0xFF);
+    state[6] = OpCodes.And32(OpCodes.Shr32(s3, 8), 0xFF);
+    state[7] = OpCodes.And32(s3, 0xFF);
 
     // Convert word-based output back to nibbles
     gift64nToNibbles(output, state);
   }
 
   // Convert GIFT-64 nibble-based representation to word-based (little-endian)
+  /**
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function gift64nToWords(output, input) {
     // Load as little-endian 32-bit words
     let s0 = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
@@ -207,21 +253,25 @@
     s1 = bitPermuteStep32(s1, 0x0000ff00, 8);
 
     // Rearrange bytes
-    output[0] = OpCodes.AndN(s0, 0xFF);
-    output[1] = OpCodes.AndN(s1, 0xFF);
-    output[2] = OpCodes.AndN(OpCodes.Shr32(s0, 8), 0xFF);
-    output[3] = OpCodes.AndN(OpCodes.Shr32(s1, 8), 0xFF);
-    output[4] = OpCodes.AndN(OpCodes.Shr32(s0, 16), 0xFF);
-    output[5] = OpCodes.AndN(OpCodes.Shr32(s1, 16), 0xFF);
-    output[6] = OpCodes.AndN(OpCodes.Shr32(s0, 24), 0xFF);
-    output[7] = OpCodes.AndN(OpCodes.Shr32(s1, 24), 0xFF);
+    output[0] = OpCodes.And32(s0, 0xFF);
+    output[1] = OpCodes.And32(s1, 0xFF);
+    output[2] = OpCodes.And32(OpCodes.Shr32(s0, 8), 0xFF);
+    output[3] = OpCodes.And32(OpCodes.Shr32(s1, 8), 0xFF);
+    output[4] = OpCodes.And32(OpCodes.Shr32(s0, 16), 0xFF);
+    output[5] = OpCodes.And32(OpCodes.Shr32(s1, 16), 0xFF);
+    output[6] = OpCodes.And32(OpCodes.Shr32(s0, 24), 0xFF);
+    output[7] = OpCodes.And32(OpCodes.Shr32(s1, 24), 0xFF);
   }
 
   // Convert GIFT-64 word-based representation back to nibble-based
+  /**
+   * @param {uint8[]} output
+   * @param {uint8[]} input
+   */
   function gift64nToNibbles(output, input) {
     // Load bytes and rearrange
-    let s0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[6], 24), OpCodes.Shl32(input[4], 16)), OpCodes.Shl32(input[2], 8)), input[0]));
-    let s1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[7], 24), OpCodes.Shl32(input[5], 16)), OpCodes.Shl32(input[3], 8)), input[1]));
+    let s0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(input[6], 24), OpCodes.Shl32(input[4], 16)), OpCodes.Shl32(input[2], 8)), input[0]));
+    let s1 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(input[7], 24), OpCodes.Shl32(input[5], 16)), OpCodes.Shl32(input[3], 8)), input[1]));
 
     // Apply inverse bit permutation
     s0 = bitPermuteStep32(s0, 0x00aa00aa, 7);
@@ -242,6 +292,13 @@
   }
 
   // LOTUS-AEAD initialization
+  /**
+   * @param {Gift64KeySchedule} ks
+   * @param {uint8[]} deltaN
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @param {uint8[]} temp
+   */
   function lotusInit(ks, deltaN, key, nonce, temp) {
     // Initialize with key
     ks.k[0] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
@@ -255,7 +312,7 @@
 
     // temp = key XOR nonce
     for (let i = 0; i < 16; ++i) {
-      temp[i] = OpCodes.XorN(key[i], nonce[i]);
+      temp[i] = OpCodes.Xor32(key[i], nonce[i]);
     }
 
     // Re-initialize key schedule with temp
@@ -269,6 +326,13 @@
   }
 
   // Process associated data
+  /**
+   * @param {Gift64KeySchedule} ks
+   * @param {uint8[]} deltaN
+   * @param {uint8[]} V
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   */
   function lotusProcessAD(ks, deltaN, V, ad, adlen) {
     const X = new Uint8Array(GIFT64_BLOCK_SIZE);
     let adpos = 0;
@@ -277,12 +341,12 @@
       ks.mul2();
       // X = ad XOR deltaN
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        X[i] = OpCodes.XorN(ad[adpos + i], deltaN[i]);
+        X[i] = OpCodes.Xor32(ad[adpos + i], deltaN[i]);
       }
       gift64tEncrypt(ks, X, X, GIFT64_TWEAKS[2]);
       // V = V XOR X
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        V[i] = OpCodes.XorN(V[i], X[i]);
+        V[i] = OpCodes.Xor32(V[i], X[i]);
       }
       adpos += GIFT64_BLOCK_SIZE;
       adlen -= GIFT64_BLOCK_SIZE;
@@ -295,41 +359,57 @@
         X[i] = deltaN[i];
       }
       for (let i = 0; i < adlen; ++i) {
-        X[i] = OpCodes.XorN(X[i], ad[adpos + i]);
+        X[i] = OpCodes.Xor32(X[i], ad[adpos + i]);
       }
-      X[adlen] = OpCodes.XorN(X[adlen], 0x01);
+      X[adlen] = OpCodes.Xor32(X[adlen], 0x01);
       gift64tEncrypt(ks, X, X, GIFT64_TWEAKS[3]);
     } else {
       // Full block
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        X[i] = OpCodes.XorN(ad[adpos + i], deltaN[i]);
+        X[i] = OpCodes.Xor32(ad[adpos + i], deltaN[i]);
       }
       gift64tEncrypt(ks, X, X, GIFT64_TWEAKS[2]);
     }
     // V = V XOR X
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      V[i] = OpCodes.XorN(V[i], X[i]);
+      V[i] = OpCodes.Xor32(V[i], X[i]);
     }
   }
 
   // Generate authentication tag
+  /**
+   * @param {Gift64KeySchedule} ks
+   * @param {uint8[]} tag
+   * @param {uint8[]} deltaN
+   * @param {uint8[]} W
+   * @param {uint8[]} V
+   */
   function lotusGenTag(ks, tag, deltaN, W, V) {
     ks.mul2();
     // W = W XOR deltaN XOR V
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      W[i] = OpCodes.XorN(W[i], OpCodes.XorN(deltaN[i], V[i]));
+      W[i] = OpCodes.Xor32(W[i], OpCodes.Xor32(deltaN[i], V[i]));
     }
     gift64tEncrypt(ks, W, W, GIFT64_TWEAKS[6]);
     // tag = W XOR deltaN
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      tag[i] = OpCodes.XorN(W[i], deltaN[i]);
+      tag[i] = OpCodes.Xor32(W[i], deltaN[i]);
     }
   }
 
   // LOTUS-AEAD encryption
+  /**
+   * @param {uint8[]} ciphertext
+   * @param {uint8[]} plaintext
+   * @param {int32} ptlen
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @returns {uint8[]}
+   */
   function lotusEncrypt(ciphertext, plaintext, ptlen, ad, adlen, key, nonce) {
     const ks = new Gift64KeySchedule(key);
-    const WV = new Uint8Array(16); // W and V concatenated
     const deltaN = new Uint8Array(GIFT64_BLOCK_SIZE);
     const X1 = new Uint8Array(GIFT64_BLOCK_SIZE);
     const X2 = new Uint8Array(GIFT64_BLOCK_SIZE);
@@ -337,10 +417,9 @@
 
     // Initialize
     lotusInit(ks, deltaN, key, nonce, temp);
-    WV.fill(0);
-
-    const V = new Uint8Array(WV.buffer, GIFT64_BLOCK_SIZE, GIFT64_BLOCK_SIZE);
-    const W = new Uint8Array(WV.buffer, 0, GIFT64_BLOCK_SIZE);
+    // checksum W and associated-data accumulator V, both zero-initialised
+    const V = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const W = new Uint8Array(GIFT64_BLOCK_SIZE);
 
     // Process associated data
     if (adlen > 0) {
@@ -358,31 +437,31 @@
         ks.mul2();
         // X1 = plaintext[0:8] XOR deltaN
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          X1[i] = OpCodes.XorN(plaintext[mpos + i], deltaN[i]);
+          X1[i] = OpCodes.Xor32(plaintext[mpos + i], deltaN[i]);
         }
         gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[4]);
         // W = W XOR X2
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[4]);
         // X2 = plaintext[8:16] XOR X2
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          X2[i] = OpCodes.XorN(X2[i], plaintext[mpos + GIFT64_BLOCK_SIZE + i]);
+          X2[i] = OpCodes.Xor32(X2[i], plaintext[mpos + GIFT64_BLOCK_SIZE + i]);
         }
         // ciphertext[0:8] = X2 XOR deltaN
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          ciphertext[cpos + i] = OpCodes.XorN(X2[i], deltaN[i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(X2[i], deltaN[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[5]);
         // W = W XOR X2
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[5]);
         // ciphertext[8:16] = X1 XOR X2
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          ciphertext[cpos + GIFT64_BLOCK_SIZE + i] = OpCodes.XorN(X1[i], X2[i]);
+          ciphertext[cpos + GIFT64_BLOCK_SIZE + i] = OpCodes.Xor32(X1[i], X2[i]);
         }
         cpos += GIFT64_BLOCK_SIZE * 2;
         mpos += GIFT64_BLOCK_SIZE * 2;
@@ -394,25 +473,25 @@
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
         X1[i] = deltaN[i];
       }
-      X1[0] = OpCodes.XorN(X1[0], OpCodes.AndN(mlen, 0xFFFFFFFF));
+      X1[0] = OpCodes.Xor32(X1[0], OpCodes.And32(mlen, 0xFFFFFFFF));
       gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[12]);
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        W[i] = OpCodes.XorN(W[i], X2[i]);
+        W[i] = OpCodes.Xor32(W[i], X2[i]);
       }
       gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[12]);
 
       if (mlen <= GIFT64_BLOCK_SIZE) {
         // Single partial block
         for (let i = 0; i < mlen; ++i) {
-          W[i] = OpCodes.XorN(W[i], plaintext[mpos + i]);
-          X2[i] = OpCodes.XorN(X2[i], plaintext[mpos + i]);
-          ciphertext[cpos + i] = OpCodes.XorN(X2[i], deltaN[i]);
+          W[i] = OpCodes.Xor32(W[i], plaintext[mpos + i]);
+          X2[i] = OpCodes.Xor32(X2[i], plaintext[mpos + i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(X2[i], deltaN[i]);
         }
       } else {
         // Two blocks with second partial
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          X2[i] = OpCodes.XorN(X2[i], plaintext[mpos + i]);
-          ciphertext[cpos + i] = OpCodes.XorN(X2[i], deltaN[i]);
+          X2[i] = OpCodes.Xor32(X2[i], plaintext[mpos + i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(X2[i], deltaN[i]);
         }
         cpos += GIFT64_BLOCK_SIZE;
         mpos += GIFT64_BLOCK_SIZE;
@@ -420,13 +499,13 @@
 
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
         for (let i = 0; i < mlen; ++i) {
-          W[i] = OpCodes.XorN(W[i], plaintext[mpos + i]);
-          X1[i] = OpCodes.XorN(X1[i], X2[i]);
-          ciphertext[cpos + i] = OpCodes.XorN(X1[i], plaintext[mpos + i]);
+          W[i] = OpCodes.Xor32(W[i], plaintext[mpos + i]);
+          X1[i] = OpCodes.Xor32(X1[i], X2[i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(X1[i], plaintext[mpos + i]);
         }
       }
     }
@@ -459,9 +538,18 @@
   // during decryption yields the identical W and therefore the identical tag.
   // The tag is recomputed here and returned to the caller for comparison; it
   // is never derived from the received tag.
+  /**
+   * @param {uint8[]} plaintext
+   * @param {uint8[]} ciphertext
+   * @param {int32} ctlen
+   * @param {uint8[]} ad
+   * @param {int32} adlen
+   * @param {uint8[]} key
+   * @param {uint8[]} nonce
+   * @returns {uint8[]}
+   */
   function lotusDecrypt(plaintext, ciphertext, ctlen, ad, adlen, key, nonce) {
     const ks = new Gift64KeySchedule(key);
-    const WV = new Uint8Array(16); // W and V concatenated
     const deltaN = new Uint8Array(GIFT64_BLOCK_SIZE);
     const X1 = new Uint8Array(GIFT64_BLOCK_SIZE);
     const X2 = new Uint8Array(GIFT64_BLOCK_SIZE);
@@ -470,10 +558,9 @@
 
     // Initialize
     lotusInit(ks, deltaN, key, nonce, temp);
-    WV.fill(0);
-
-    const V = new Uint8Array(WV.buffer, GIFT64_BLOCK_SIZE, GIFT64_BLOCK_SIZE);
-    const W = new Uint8Array(WV.buffer, 0, GIFT64_BLOCK_SIZE);
+    // checksum W and associated-data accumulator V, both zero-initialised
+    const V = new Uint8Array(GIFT64_BLOCK_SIZE);
+    const W = new Uint8Array(GIFT64_BLOCK_SIZE);
 
     // Process associated data - identical to encryption, the tag covers it the
     // same way in both directions.
@@ -491,26 +578,26 @@
         ks.mul2();
         // Z = ciphertext[0:8] XOR deltaN
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          Z[i] = OpCodes.XorN(ciphertext[cpos + i], deltaN[i]);
+          Z[i] = OpCodes.Xor32(ciphertext[cpos + i], deltaN[i]);
         }
         // W absorbs E_t5(Z), then X1 = ciphertext[8:16] XOR E^2_t5(Z)
         gift64tEncrypt(ks, X2, Z, GIFT64_TWEAKS[5]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[5]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          X1[i] = OpCodes.XorN(ciphertext[cpos + GIFT64_BLOCK_SIZE + i], X2[i]);
-          plaintext[mpos + i] = OpCodes.XorN(X1[i], deltaN[i]);
+          X1[i] = OpCodes.Xor32(ciphertext[cpos + GIFT64_BLOCK_SIZE + i], X2[i]);
+          plaintext[mpos + i] = OpCodes.Xor32(X1[i], deltaN[i]);
         }
         // W absorbs E_t4(X1), then plaintext[8:16] = Z XOR E^2_t4(X1)
         gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[4]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[4]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          plaintext[mpos + GIFT64_BLOCK_SIZE + i] = OpCodes.XorN(Z[i], X2[i]);
+          plaintext[mpos + GIFT64_BLOCK_SIZE + i] = OpCodes.Xor32(Z[i], X2[i]);
         }
         cpos += GIFT64_BLOCK_SIZE * 2;
         mpos += GIFT64_BLOCK_SIZE * 2;
@@ -523,26 +610,26 @@
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
         X1[i] = deltaN[i];
       }
-      X1[0] = OpCodes.XorN(X1[0], OpCodes.AndN(mlen, 0xFFFFFFFF));
+      X1[0] = OpCodes.Xor32(X1[0], OpCodes.And32(mlen, 0xFFFFFFFF));
       gift64tEncrypt(ks, X2, X1, GIFT64_TWEAKS[12]);
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        W[i] = OpCodes.XorN(W[i], X2[i]);
+        W[i] = OpCodes.Xor32(W[i], X2[i]);
       }
       gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[12]);
 
       if (mlen <= GIFT64_BLOCK_SIZE) {
         // Single (possibly partial) block
         for (let i = 0; i < mlen; ++i) {
-          const p = OpCodes.XorN(OpCodes.XorN(ciphertext[cpos + i], deltaN[i]), X2[i]);
+          const p = OpCodes.Xor32(OpCodes.Xor32(ciphertext[cpos + i], deltaN[i]), X2[i]);
           plaintext[mpos + i] = p;
-          W[i] = OpCodes.XorN(W[i], p);
-          X2[i] = OpCodes.XorN(X2[i], p);
+          W[i] = OpCodes.Xor32(W[i], p);
+          X2[i] = OpCodes.Xor32(X2[i], p);
         }
       } else {
         // Full block followed by a partial one
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          const masked = OpCodes.XorN(ciphertext[cpos + i], deltaN[i]);
-          plaintext[mpos + i] = OpCodes.XorN(masked, X2[i]);
+          const masked = OpCodes.Xor32(ciphertext[cpos + i], deltaN[i]);
+          plaintext[mpos + i] = OpCodes.Xor32(masked, X2[i]);
           X2[i] = masked;
         }
         cpos += GIFT64_BLOCK_SIZE;
@@ -551,14 +638,14 @@
 
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
         for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-          W[i] = OpCodes.XorN(W[i], X2[i]);
+          W[i] = OpCodes.Xor32(W[i], X2[i]);
         }
         gift64tEncrypt(ks, X2, X2, GIFT64_TWEAKS[13]);
         for (let i = 0; i < mlen; ++i) {
-          X1[i] = OpCodes.XorN(X1[i], X2[i]);
-          const p = OpCodes.XorN(ciphertext[cpos + i], X1[i]);
+          X1[i] = OpCodes.Xor32(X1[i], X2[i]);
+          const p = OpCodes.Xor32(ciphertext[cpos + i], X1[i]);
           plaintext[mpos + i] = p;
-          W[i] = OpCodes.XorN(W[i], p);
+          W[i] = OpCodes.Xor32(W[i], p);
         }
       }
     }
@@ -570,11 +657,19 @@
   }
 
   // Compare two tags without leaking the position of the first difference.
+  /**
+   * @param {uint8[]} expected
+   * @param {uint8[]} received
+   * @returns {boolean}
+   */
   function lotusTagsMatch(expected, received) {
-    if (expected.length !== received.length) return false;
+    if (expected.length !== received.length) {
+      return false;
+    }
+    /** @type {uint32} */
     let diff = 0;
     for (let i = 0; i < expected.length; ++i) {
-      diff = OpCodes.OrN(diff, OpCodes.XorN(expected[i], received[i]));
+      diff = OpCodes.Or32(diff, OpCodes.Xor32(expected[i], received[i]));
     }
     return diff === 0;
   }
@@ -697,6 +792,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.aadBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
@@ -791,7 +887,11 @@
 
     _encrypt() {
       const plaintext = new Uint8Array(this.inputBuffer);
-      const aad = this._aad || new Uint8Array(0);
+      /** @type {uint8[]} */
+      let aad = new Uint8Array(0);
+      if (this._aad) {
+        aad = this._aad;
+      }
       const ciphertext = new Uint8Array(plaintext.length);
 
       const tag = lotusEncrypt(
@@ -831,7 +931,11 @@
       const ctlen = this.inputBuffer.length - TAG_SIZE;
       const ciphertext = new Uint8Array(this.inputBuffer.slice(0, ctlen));
       const receivedTag = new Uint8Array(this.inputBuffer.slice(ctlen));
-      const aad = this._aad || new Uint8Array(0);
+      /** @type {uint8[]} */
+      let aad = new Uint8Array(0);
+      if (this._aad) {
+        aad = this._aad;
+      }
       const plaintext = new Uint8Array(ctlen);
 
       const expectedTag = lotusDecrypt(
