@@ -33,7 +33,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   const GIMLI24_BLOCK_SIZE = 16;  // 16 bytes rate for sponge
   const GIMLI24_HASH_SIZE = 32;   // 256-bit output
@@ -42,25 +42,30 @@
    * GIMLI-24 permutation implementation
    * State: 12 x 32-bit words (48 bytes total)
    * Operates on 3 columns of 4 rows each
+   * @param {uint32[]} state - 12-word state (modified in place)
+   * @returns {void}
    */
   function gimli24_permute(state) {
-    var s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11;
-    var x, y;
+    /** @type {uint32} */
+    var x;
+    /** @type {uint32} */
+    var y;
+    /** @type {int32} */
     var round;
 
     // Load state (little-endian)
-    s0 = state[0];
-    s1 = state[1];
-    s2 = state[2];
-    s3 = state[3];
-    s4 = state[4];
-    s5 = state[5];
-    s6 = state[6];
-    s7 = state[7];
-    s8 = state[8];
-    s9 = state[9];
-    s10 = state[10];
-    s11 = state[11];
+    var s0 = state[0];
+    var s1 = state[1];
+    var s2 = state[2];
+    var s3 = state[3];
+    var s4 = state[4];
+    var s5 = state[5];
+    var s6 = state[6];
+    var s7 = state[7];
+    var s8 = state[8];
+    var s9 = state[9];
+    var s10 = state[10];
+    var s11 = state[11];
 
     // 24 rounds, processed 4 at a time
     for (round = 24; round > 0; round -= 4) {
@@ -233,7 +238,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.INTL;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -303,7 +308,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Gimli24HashInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -319,17 +324,62 @@
  */
 
   class Gimli24HashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a GIMLI-24-HASH instance
+     * @param {Gimli24Hash} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // GIMLI-24 state: 12 x 32-bit words (48 bytes)
-      this.state = new Array(12);
-      for (var i = 0; i < 12; i++) {
-        this.state[i] = 0;
-      }
+      /** @type {uint32[]} */
+      this.state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
       // Input buffer for incomplete blocks
+      /** @type {uint8[]} */
       this.buffer = [];
+    }
+
+    /**
+     * Convert the state to bytes (little-endian)
+     * @param {uint8[]} stateBytes - 48-byte destination
+     * @returns {void}
+     */
+    _stateToBytes(stateBytes) {
+      for (let j = 0; j < 12; j++) {
+        const word = this.state[j];
+        stateBytes[j * 4 + 0] = OpCodes.GetByte(word, 0);
+        stateBytes[j * 4 + 1] = OpCodes.GetByte(word, 1);
+        stateBytes[j * 4 + 2] = OpCodes.GetByte(word, 2);
+        stateBytes[j * 4 + 3] = OpCodes.GetByte(word, 3);
+      }
+    }
+
+    /**
+     * Convert bytes back to the state (little-endian)
+     * @param {uint8[]} stateBytes - 48-byte source
+     * @returns {void}
+     */
+    _bytesToState(stateBytes) {
+      for (let j = 0; j < 12; j++) {
+        this.state[j] = OpCodes.Pack32LE(stateBytes[j * 4 + 0], stateBytes[j * 4 + 1], stateBytes[j * 4 + 2], stateBytes[j * 4 + 3]);
+      }
+    }
+
+    /**
+     * XOR one whole rate block from source[start..start+15] and permute
+     * @param {uint8[]} stateBytes - 48-byte scratch buffer
+     * @param {uint8[]} source - Message bytes
+     * @param {int32} start - Offset of the block in source
+     * @returns {void}
+     */
+    _absorbBlock(stateBytes, source, start) {
+      this._stateToBytes(stateBytes);
+      for (let i = 0; i < GIMLI24_BLOCK_SIZE; i++) {
+        stateBytes[i] = OpCodes.Xor8(stateBytes[i], source[start + i]);
+      }
+      this._bytesToState(stateBytes);
+      gimli24_permute(this.state);
     }
 
     /**
@@ -342,43 +392,14 @@
      * Feed(a); Feed(b) absorbs exactly the same block sequence as Feed(a || b).
      * The buffer therefore never reaches the rate on exit, which is also what
      * keeps the padding byte written by Result() inside the rate.
+     * @param {uint8[]} data - Message bytes
+     * @returns {void}
      */
     _absorb(data) {
-      var offset = 0;
-      var stateBytes = new Array(48);
-      var i, j, word;
-      var self = this;
-      var buffer = self.buffer;
-
-      // Convert state to bytes (little-endian)
-      function stateToBytes() {
-        for (j = 0; j < 12; j++) {
-          word = self.state[j];
-          stateBytes[j * 4 + 0] = word&0xFF;
-          stateBytes[j * 4 + 1] = (OpCodes.Shr32(word, 8))&0xFF;
-          stateBytes[j * 4 + 2] = (OpCodes.Shr32(word, 16))&0xFF;
-          stateBytes[j * 4 + 3] = (OpCodes.Shr32(word, 24))&0xFF;
-        }
-      }
-
-      // Convert bytes to state (little-endian)
-      function bytesToState() {
-        for (j = 0; j < 12; j++) {
-          self.state[j] = (
-            stateBytes[j * 4 + 0]|(OpCodes.Shl32(stateBytes[j * 4 + 1], 8))|(OpCodes.Shl32(stateBytes[j * 4 + 2], 16))|(OpCodes.Shl32(stateBytes[j * 4 + 3], 24))
-          );
-        }
-      }
-
-      // XOR one whole rate block from source[start..start+15] and permute
-      function absorbBlock(source, start) {
-        stateToBytes();
-        for (i = 0; i < GIMLI24_BLOCK_SIZE; i++) {
-          stateBytes[i] ^= source[start + i];
-        }
-        bytesToState();
-        gimli24_permute(self.state);
-      }
+      let offset = 0;
+      /** @type {uint8[]} */
+      const stateBytes = new Array(48);
+      const buffer = this.buffer;
 
       // Complete a block carried over from an earlier Feed before touching the
       // rest, otherwise the carried bytes would be absorbed out of order.
@@ -387,13 +408,13 @@
           buffer.push(data[offset++]);
         }
         if (buffer.length < GIMLI24_BLOCK_SIZE) return;
-        absorbBlock(buffer, 0);
+        this._absorbBlock(stateBytes, buffer, 0);
         buffer.length = 0;
       }
 
       // Process full blocks straight out of the caller's data
       while (offset + GIMLI24_BLOCK_SIZE <= data.length) {
-        absorbBlock(data, offset);
+        this._absorbBlock(stateBytes, data, offset);
         offset += GIMLI24_BLOCK_SIZE;
       }
 
@@ -406,7 +427,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -417,73 +438,52 @@
     /**
    * Get cipher result (encrypted or decrypted data)
    * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
    */
 
     Result() {
-      var i, j, temp, word;
-      var stateBytes = new Array(48);
-      var output = new Array(GIMLI24_HASH_SIZE);
-      var self = this;
-
-      // Convert state to bytes (little-endian)
-      function stateToBytes() {
-        for (j = 0; j < 12; j++) {
-          word = self.state[j];
-          stateBytes[j * 4 + 0] = word&0xFF;
-          stateBytes[j * 4 + 1] = (OpCodes.Shr32(word, 8))&0xFF;
-          stateBytes[j * 4 + 2] = (OpCodes.Shr32(word, 16))&0xFF;
-          stateBytes[j * 4 + 3] = (OpCodes.Shr32(word, 24))&0xFF;
-        }
-      }
-
-      // Convert bytes to state (little-endian)
-      function bytesToState() {
-        for (j = 0; j < 12; j++) {
-          self.state[j] = (
-            stateBytes[j * 4 + 0]|(OpCodes.Shl32(stateBytes[j * 4 + 1], 8))|(OpCodes.Shl32(stateBytes[j * 4 + 2], 16))|(OpCodes.Shl32(stateBytes[j * 4 + 3], 24))
-          );
-        }
-      }
+      /** @type {uint8[]} */
+      const stateBytes = new Array(48);
+      /** @type {uint8[]} */
+      const output = new Array(GIMLI24_HASH_SIZE);
 
       // Process remaining buffered data with padding
-      if (self.buffer.length > 0) {
-        stateToBytes();
+      if (this.buffer.length > 0) {
+        this._stateToBytes(stateBytes);
         // XOR buffered data
-        for (i = 0; i < self.buffer.length; i++) {
-          stateBytes[i] ^= self.buffer[i];
+        for (let i = 0; i < this.buffer.length; i++) {
+          stateBytes[i] = OpCodes.Xor8(stateBytes[i], this.buffer[i]);
         }
-        bytesToState();
+        this._bytesToState(stateBytes);
       }
 
       // Apply padding: byte at position of last data XOR 0x01, byte 47 XOR 0x01
-      stateToBytes();
-      temp = self.buffer.length;
-      stateBytes[temp] ^= 0x01;
-      stateBytes[47] ^= 0x01;
-      bytesToState();
+      this._stateToBytes(stateBytes);
+      const temp = this.buffer.length;
+      stateBytes[temp] = OpCodes.Xor8(stateBytes[temp], 0x01);
+      stateBytes[47] = OpCodes.Xor8(stateBytes[47], 0x01);
+      this._bytesToState(stateBytes);
 
       // Final permutation
-      gimli24_permute(self.state);
+      gimli24_permute(this.state);
 
       // Extract first half of output (16 bytes)
-      stateToBytes();
-      for (i = 0; i < GIMLI24_HASH_SIZE / 2; i++) {
+      this._stateToBytes(stateBytes);
+      for (let i = 0; i < GIMLI24_HASH_SIZE / 2; i++) {
         output[i] = stateBytes[i];
       }
 
       // Permute again
-      gimli24_permute(self.state);
+      gimli24_permute(this.state);
 
       // Extract second half of output (16 bytes)
-      stateToBytes();
-      for (i = 0; i < GIMLI24_HASH_SIZE / 2; i++) {
+      this._stateToBytes(stateBytes);
+      for (let i = 0; i < GIMLI24_HASH_SIZE / 2; i++) {
         output[GIMLI24_HASH_SIZE / 2 + i] = stateBytes[i];
       }
 
       // Clear sensitive data
-      OpCodes.ClearArray(self.state);
-      OpCodes.ClearArray(self.buffer);
+      OpCodes.ClearArray(this.state);
+      OpCodes.ClearArray(this.buffer);
 
       return output;
     }
