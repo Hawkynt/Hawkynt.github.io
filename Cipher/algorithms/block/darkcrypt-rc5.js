@@ -174,7 +174,9 @@
       const u = WORD_BYTES;
       const c = Math.max(1, Math.ceil(this.KeySize / u));
       const tableSize = 2 * (ROUNDS + 1);
-      const L = new Array(c).fill(0);
+      /** @type {uint32[]} */
+      const L = new Array(c);
+      L.fill(0);
 
       for (let i = 0; i < this.KeySize; i++) {
         const keyByte = OpCodes.And32(this._key[i], 0xFF);
@@ -183,20 +185,25 @@
         L[idx] = OpCodes.ToUint32(L[idx] + OpCodes.Shl32(keyByte, shift));
       }
 
+      /** @type {uint32[]} */
       this.expandedKey = new Array(tableSize);
       this.expandedKey[0] = P32;
       for (let i = 1; i < tableSize; i++)
         this.expandedKey[i] = OpCodes.ToUint32(this.expandedKey[i - 1] + Q32);
 
-      let A = 0, B = 0, i = 0, j = 0;
+      /** @type {uint32} */
+      let A = 0;
+      /** @type {uint32} */
+      let B = 0;
+      let i = 0, j = 0;
       const iterations = 3 * Math.max(tableSize, c);
 
       for (let k = 0; k < iterations; k++) {
-        this.expandedKey[i] = OpCodes.ToUint32(this.expandedKey[i] + A + B);
+        this.expandedKey[i] = OpCodes.Add32(OpCodes.Add32(this.expandedKey[i], A), B);
         A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
 
-        L[j] = OpCodes.ToUint32(L[j] + A + B);
-        B = L[j] = OpCodes.RotL32(L[j], OpCodes.And32(A + B, 31));
+        L[j] = OpCodes.Add32(OpCodes.Add32(L[j], A), B);
+        B = L[j] = OpCodes.RotL32(L[j], OpCodes.And32(OpCodes.Add32(A, B), 31));
 
         i = (i + 1) % tableSize;
         j = (j + 1) % c;
