@@ -189,6 +189,38 @@
   }
 
   /**
+   * Ciphertext and tag of one GCM-SIV encryption
+   */
+  class GcmSivSealed {
+    /**
+     * @param {uint8[]} ciphertext - Encrypted message
+     * @param {uint8[]} tag - Authentication tag
+     */
+    constructor(ciphertext, tag) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.tag = tag;
+    }
+  }
+
+  /**
+   * Per-nonce keys derived from the master key
+   */
+  class GcmSivKeys {
+    /**
+     * @param {uint8[]} authKey - POLYVAL key
+     * @param {uint8[]} encKey - Message encryption key
+     */
+    constructor(authKey, encKey) {
+      /** @type {uint8[]} */
+      this.authKey = authKey;
+      /** @type {uint8[]} */
+      this.encKey = encKey;
+    }
+  }
+
+  /**
  * GcmSivMode cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -197,21 +229,30 @@
   class GcmSivModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GcmSivAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.aad = [];
+      /** @type {int32} */
       this.tagSize = 16;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
+    /**
+     * @param {IBlockCipherInstance} cipher
+     */
     setBlockCipher(cipher) {
       if (!cipher || !cipher.BlockSize || cipher.BlockSize !== 16) {
         throw new Error("GCM-SIV requires AES (128-bit block size)");
@@ -220,6 +261,9 @@
       this.key = cipher.key;
     }
 
+    /**
+     * @param {uint8[]} nonce
+     */
     setNonce(nonce) {
       if (!nonce || nonce.length !== 12) {
         throw new Error("GCM-SIV requires exactly 96-bit (12-byte) nonce");
@@ -227,10 +271,22 @@
       this.nonce = [...nonce];
     }
 
+    /**
+     * @param {uint8[]} aad
+     */
     setAAD(aad) {
-      this.aad = aad ? [...aad] : [];
+      if (aad) {
+        this.aad = [...aad];
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        this.aad = empty;
+      }
     }
 
+    /**
+     * @param {int32} size
+     */
     setTagSize(size) {
       if (size !== 16) {
         throw new Error("GCM-SIV only supports 128-bit (16-byte) tags");
@@ -271,8 +327,15 @@
 
       if (!this.isInverse) {
         // GCM-SIV encryption - return concatenated ciphertext+tag for test compatibility
+        /** @type {GcmSivSealed} */
         const result = this._encrypt();
-        return [...result.ciphertext, ...result.tag];
+        /** @type {uint8[]} */
+        const ciphertext = result.ciphertext;
+        /** @type {uint8[]} */
+        const tag = result.tag;
+        /** @type {uint8[]} */
+        const sealed = [...ciphertext, ...tag];
+        return sealed;
       } else {
         if (this.inputBuffer.length < this.tagSize) {
           throw new Error("Input too short for authentication tag");
@@ -281,9 +344,17 @@
       }
     }
 
+    /**
+     * @returns {GcmSivSealed}
+     */
     _encrypt() {
       // Step 1: Derive keys
-      const {authKey, encKey} = this._deriveKeys();
+      /** @type {GcmSivKeys} */
+      const keys = this._deriveKeys();
+      /** @type {uint8[]} */
+      const authKey = keys.authKey;
+      /** @type {uint8[]} */
+      const encKey = keys.encKey;
 
       // Step 2: Compute authentication tag using POLYVAL
       const tag = this._computeTag(authKey, encKey);
@@ -295,16 +366,25 @@
       OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];
 
-      return { ciphertext: ciphertext, tag: tag };
+      const sealed = new GcmSivSealed(ciphertext, tag);
+      return sealed;
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
       // Extract ciphertext and tag
       const ciphertext = this.inputBuffer.slice(0, -this.tagSize);
       const receivedTag = this.inputBuffer.slice(-this.tagSize);
 
       // Step 1: Derive keys
-      const {authKey, encKey} = this._deriveKeys();
+      /** @type {GcmSivKeys} */
+      const keys = this._deriveKeys();
+      /** @type {uint8[]} */
+      const authKey = keys.authKey;
+      /** @type {uint8[]} */
+      const encKey = keys.encKey;
 
       // Step 2: Decrypt ciphertext using AES-CTR
       const plaintext = this._ctrDecrypt(encKey, receivedTag, ciphertext);
@@ -329,7 +409,7 @@
 
     /**
      * Derive authentication and encryption keys from master key
-     * @returns {Object} Object with authKey and encKey
+     * @returns {GcmSivKeys} Object with authKey and encKey
      */
     _deriveKeys() {
       // RFC 8452 section 4: each derivation block is a 32-bit little-endian
@@ -337,10 +417,11 @@
       // of every AES output contribute to the derived key.
       const encKeyLength = this.key.length === 32 ? 32 : 16;
       const blockCount = 2 + encKeyLength / 8;
+      /** @type {uint8[]} */
       const material = [];
 
       for (let i = 0; i < blockCount; i++) {
-        const block = new Array(16).fill(0);
+        const block = OpCodes.CreateArray(16, 0);
         const counterBytes = OpCodes.Unpack32LE(i);
         block[0] = counterBytes[0];
         block[1] = counterBytes[1];
@@ -348,24 +429,30 @@
         block[3] = counterBytes[3];
         for (let j = 0; j < 12; j++) block[4 + j] = this.nonce[j];
 
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key;
         cipher.Feed(block);
+        /** @type {uint8[]} */
         const out = cipher.Result();
         for (let j = 0; j < 8; j++) material.push(out[j]);
       }
 
-      return {
-        authKey: material.slice(0, 16),
-        encKey: material.slice(16, 16 + encKeyLength)
-      };
+      const keys = new GcmSivKeys(
+        material.slice(0, 16),
+        material.slice(16, 16 + encKeyLength)
+      );
+      return keys;
     }
 
     /**
      * Reverse the byte order of a 16-byte block
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _byteReverse(block) {
+      /** @type {uint8[]} */
       const out = new Array(16);
       for (let i = 0; i < 16; i++) out[i] = block[15 - i];
       return out;
@@ -374,28 +461,32 @@
     /**
      * Multiply a GHASH field element by x
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _mulXGhash(block) {
+      /** @type {uint8[]} */
       const out = new Array(16);
-      const carry = OpCodes.AndN(block[15], 1);
+      const carry = OpCodes.And32(block[15], 1);
       for (let i = 15; i > 0; i--) {
         const low = OpCodes.Shr32(block[i], 1);
-        const high = OpCodes.AndN(OpCodes.Shl32(OpCodes.AndN(block[i - 1], 1), 7), 0xFF);
-        out[i] = OpCodes.OrN(low, high);
+        const high = OpCodes.And32(OpCodes.Shl32(OpCodes.And32(block[i - 1], 1), 7), 0xFF);
+        out[i] = OpCodes.Or32(low, high);
       }
       out[0] = OpCodes.Shr32(block[0], 1);
-      if (carry) out[0] = OpCodes.XorN(out[0], 0xE1);
+      if (carry) out[0] = OpCodes.Xor32(out[0], 0xE1);
       return out;
     }
 
     /**
      * Compute authentication tag using POLYVAL
-     * @param {Array} authKey - Authentication key
-     * @param {Array} encKey - Encryption key  
-     * @returns {Array} Authentication tag
+     * @param {uint8[]} authKey - Authentication key
+     * @param {uint8[]} encKey - Encryption key  
+     * @returns {uint8[]} Authentication tag
      */
     _computeTag(authKey, encKey) {
       // S_s = POLYVAL(H, pad(AAD), pad(plaintext), length_block)
+      /** @type {uint8[][]} */
       const blocks = [];
       const paddedAAD = this._padToBlockSize([...this.aad]);
       for (let i = 0; i < paddedAAD.length; i += 16) blocks.push(paddedAAD.slice(i, i + 16));
@@ -408,13 +499,16 @@
       // The nonce is XORed into the first twelve bytes and the top bit of the
       // last byte is cleared, then the block is enciphered with the message
       // encryption key.
-      for (let i = 0; i < 12; i++) s[i] = OpCodes.XorN(s[i], this.nonce[i]);
-      s[15] = OpCodes.AndN(s[15], 0x7F);
+      for (let i = 0; i < 12; i++) s[i] = OpCodes.Xor8(s[i], this.nonce[i]);
+      s[15] = OpCodes.And32(s[15], 0x7F);
 
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = encKey;
       cipher.Feed(s);
-      return cipher.Result();
+      /** @type {uint8[]} */
+      const tag = cipher.Result();
+      return tag;
     }
 
     /**
@@ -422,13 +516,13 @@
      * GHASH: POLYVAL(H, X_i) = ByteReverse(GHASH(mulX_GHASH(ByteReverse(H)),
      * ByteReverse(X_i)...)). POLYVAL and GHASH use reversed polynomials and
      * reversed bit orders, so a GHASH multiplier cannot be used directly.
-     * @param {Array} key - POLYVAL key H
-     * @param {Array} blocks - Array of 16-byte blocks
-     * @returns {Array} POLYVAL result
+     * @param {uint8[]} key - POLYVAL key H
+     * @param {uint8[][]} blocks - Array of 16-byte blocks
+     * @returns {uint8[]} POLYVAL result
      */
     _polyval(key, blocks) {
       const ghashKey = this._mulXGhash(this._byteReverse(key));
-      let y = new Array(16).fill(0);
+      let y = OpCodes.CreateArray(16, 0);
 
       for (const block of blocks) {
         y = OpCodes.XorArrays(y, this._byteReverse(block));
@@ -440,11 +534,12 @@
 
     /**
      * AES-CTR mode encryption
-     * @param {Array} key - Encryption key
-     * @param {Array} tag - Tag used as initial counter
-     * @returns {Array} Ciphertext
+     * @param {uint8[]} key - Encryption key
+     * @param {uint8[]} tag - Tag used as initial counter
+     * @returns {uint8[]} Ciphertext
      */
     _ctrEncrypt(key, tag) {
+      /** @type {uint8[]} */
       const output = [];
       let counter = [...tag];
       counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
@@ -454,9 +549,11 @@
         const plaintextBlock = this.inputBuffer.slice(i, i + remainingBytes);
 
         // Encrypt counter
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = key;
         cipher.Feed(counter);
+        /** @type {uint8[]} */
         const keystream = cipher.Result();
 
         // XOR with plaintext
@@ -473,12 +570,13 @@
 
     /**
      * AES-CTR mode decryption
-     * @param {Array} key - Encryption key
-     * @param {Array} tag - Tag used as initial counter
-     * @param {Array} ciphertext - Ciphertext to decrypt
-     * @returns {Array} Plaintext
+     * @param {uint8[]} key - Encryption key
+     * @param {uint8[]} tag - Tag used as initial counter
+     * @param {uint8[]} ciphertext - Ciphertext to decrypt
+     * @returns {uint8[]} Plaintext
      */
     _ctrDecrypt(key, tag, ciphertext) {
+      /** @type {uint8[]} */
       const output = [];
       let counter = [...tag];
       counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
@@ -488,9 +586,11 @@
         const cipherBlock = ciphertext.slice(i, i + remainingBytes);
 
         // Encrypt counter (same as encryption)
+        /** @type {IBlockCipherInstance} */
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = key;
         cipher.Feed(counter);
+        /** @type {uint8[]} */
         const keystream = cipher.Result();
 
         // XOR with ciphertext
@@ -507,7 +607,7 @@
 
     /**
      * Encode AAD and plaintext lengths for authentication
-     * @returns {Array} Length encoding block
+     * @returns {uint8[]} Length encoding block
      */
     _encodeLengths() {
       // length_block = LE64(bitlen(AAD)) || LE64(bitlen(plaintext)). This is a
@@ -515,7 +615,7 @@
       const aadBits = this.aad.length * 8;
       const plaintextBits = this.inputBuffer.length * 8;
 
-      const result = new Array(16).fill(0);
+      const result = OpCodes.CreateArray(16, 0);
 
       const aadBytes = OpCodes.Unpack32LE(aadBits);
       result[0] = aadBytes[0];
@@ -534,27 +634,27 @@
 
     /**
      * Pad data to multiple of block size
-     * @param {Array} data - Data to pad
-     * @returns {Array} Padded data
+     * @param {uint8[]} data - Data to pad
+     * @returns {uint8[]} Padded data
      */
     _padToBlockSize(data) {
       const blockSize = 16;
       const paddingLength = blockSize - (data.length % blockSize);
       if (paddingLength === blockSize) return data;
 
-      return [...data, ...new Array(paddingLength).fill(0)];
+      return [...data, ...OpCodes.CreateArray(paddingLength, 0)];
     }
 
     /**
      * Increment counter for CTR mode
-     * @param {Array} counter - Counter to increment (modified in place)
+     * @param {uint8[]} counter - Counter to increment (modified in place)
      */
     _incrementCounter(counter) {
       // RFC 8452: only the first 32 bits form the counter, little-endian, and
       // overflow past those four bytes is discarded rather than carried into
       // the rest of the block.
       for (let i = 0; i < 4; i++) {
-        counter[i] = (counter[i] + 1) % 256;
+        counter[i] = OpCodes.And32(counter[i] + 1, 0xFF);
         if (counter[i] !== 0) break;
       }
     }

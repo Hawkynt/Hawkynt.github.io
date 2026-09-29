@@ -164,17 +164,21 @@
   class GcmModeInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GcmAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.iv = null;
       this.tagSize = 16; // Default 128-bit tag
+      /** @type {uint8[]|null} */
       this.hashKey = null; // GHASH key (E_K(0^128))
     }
 
@@ -192,7 +196,7 @@
 
     /**
      * Set the initialization vector (nonce)
-     * @param {Array} iv - IV/nonce (recommended 96 bits, but supports arbitrary lengths)
+     * @param {uint8[]} iv - IV/nonce (recommended 96 bits, but supports arbitrary lengths)
      */
     setIV(iv) {
       if (!this.blockCipher) {
@@ -206,7 +210,7 @@
 
     /**
      * Set authentication tag size (in bytes)
-     * @param {number} size - Tag size in bytes (4-16)
+     * @param {int32} size - Tag size in bytes (4-16)
      */
     setTagSize(size) {
       if (size < 4 || size > 16) {
@@ -222,25 +226,31 @@
     _computeHashKey() {
       if (!this.blockCipher) return;
 
-      const zeroBlock = new Array(16).fill(0);
+      const zeroBlock = OpCodes.CreateArray(16, 0);
+      /** @type {IBlockCipherInstance} */
       const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
       encryptCipher.key = this.blockCipher.key;
       encryptCipher.Feed(zeroBlock);
-      this.hashKey = encryptCipher.Result();
+      /** @type {uint8[]} */
+      const hashKey = encryptCipher.Result();
+      this.hashKey = hashKey;
     }
 
     /**
      * Compute initial counter J_0 from IV
      * @private
+     * @returns {uint8[]}
      */
     _computeInitialCounter() {
       if (this.iv.length === 12) {
         // Standard 96-bit IV: J_0 = IV || 0^31 || 1
-        return [...this.iv, 0, 0, 0, 1];
+        /** @type {uint8[]} */
+        const j0 = [...this.iv, 0, 0, 0, 1];
+        return j0;
       } else {
         // Non-standard IV length: J_0 = GHASH(H, IV || padding || len(IV))
         const ivBlocks = this._padToBlocks(this.iv);
-        const lenBlock = new Array(16).fill(0);
+        const lenBlock = OpCodes.CreateArray(16, 0);
 
         // Encode IV length in bits as 64-bit big-endian using OpCodes
         const ivBitLen = this.iv.length * 8;
@@ -263,12 +273,15 @@
     /**
      * Pad data to complete 128-bit blocks
      * @private
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
     _padToBlocks(data) {
+      /** @type {uint8[]} */
       const result = [...data];
       const remainder = result.length % 16;
       if (remainder > 0) {
-        const padding = new Array(16 - remainder).fill(0);
+        const padding = OpCodes.CreateArray(16 - remainder, 0);
         for (let _i = 0; _i < padding.length; _i++) result.push(padding[_i]);
       }
       return result;
@@ -277,13 +290,15 @@
     /**
      * GHASH authentication function
      * @private
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
     _ghash(data) {
       if (!this.hashKey) {
         throw new Error("Hash key not computed");
       }
 
-      let y = new Array(16).fill(0); // Initialize Y_0 = 0^128
+      let y = OpCodes.CreateArray(16, 0); // Initialize Y_0 = 0^128
 
       // Process data in 128-bit blocks
       for (let i = 0; i < data.length; i += 16) {
@@ -330,6 +345,7 @@
 
       const j0 = this._computeInitialCounter();
       let counter = [...j0];
+      /** @type {uint8[]} */
       const output = [];
 
       if (this.isInverse) {
@@ -347,11 +363,14 @@
           const cipherBlock = ciphertext.slice(i, i + remainingBytes);
 
           counter = OpCodes.GCMIncrement(counter);
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.blockCipher.key;
           encryptCipher.Feed(counter);
+          /** @type {uint8[]} */
           const keystream = encryptCipher.Result();
 
+          /** @type {uint8[]} */
           const plainBlock = [];
           for (let j = 0; j < remainingBytes; j++) {
             plainBlock[j] = OpCodes.XorArrays([cipherBlock[j]], [keystream[j]])[0];
@@ -377,11 +396,14 @@
           const plainBlock = plaintext.slice(i, i + remainingBytes);
 
           counter = OpCodes.GCMIncrement(counter);
+          /** @type {IBlockCipherInstance} */
           const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
           encryptCipher.key = this.blockCipher.key;
           encryptCipher.Feed(counter);
+          /** @type {uint8[]} */
           const keystream = encryptCipher.Result();
 
+          /** @type {uint8[]} */
           const cipherBlock = [];
           for (let j = 0; j < remainingBytes; j++) {
             cipherBlock[j] = OpCodes.XorArrays([plainBlock[j]], [keystream[j]])[0];
@@ -406,9 +428,13 @@
     /**
      * Compute GCM authentication tag
      * @private
+     * @param {uint8[]} ciphertext
+     * @param {uint8[]} j0
+     * @returns {uint8[]}
      */
     _computeTag(ciphertext, j0) {
       // Prepare data for GHASH: AAD || pad || C || pad || len(AAD) || len(C)
+      /** @type {uint8[]} */
       const ghashInput = [];
 
       // Add AAD (Additional Authenticated Data). Spreading a message-sized
@@ -426,7 +452,7 @@
       }
 
       // Add length block: len(AAD) || len(C) in bits as 64-bit values
-      const lenBlock = new Array(16).fill(0);
+      const lenBlock = OpCodes.CreateArray(16, 0);
       const aadBitLen = (this.aad ? this.aad.length : 0) * 8;
       const cBitLen = ciphertext.length * 8;
 
@@ -445,9 +471,11 @@
       const s = this._ghash(ghashInput);
 
       // Encrypt S with J_0 to get authentication tag
+      /** @type {IBlockCipherInstance} */
       const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
       encryptCipher.key = this.blockCipher.key;
       encryptCipher.Feed(j0);
+      /** @type {uint8[]} */
       const j0Encrypted = encryptCipher.Result();
 
       return OpCodes.XorArrays(s, j0Encrypted);
