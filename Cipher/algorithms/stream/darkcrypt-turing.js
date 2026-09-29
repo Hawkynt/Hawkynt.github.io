@@ -146,6 +146,29 @@
     0x78dee220, 0xa8f5a147, 0x958864ee, 0x45a32789, 0xef72a3f1, 0x3f59e096, 0x0224253f, 0xd20f6658
   ];
 
+  /**
+   * @param {int32} n - Word count
+   * @returns {uint32[]} n zero words
+   */
+  function zeroWords(n) {
+    /** @type {uint32[]} */
+    const words = new Array(n);
+    for (let i = 0; i < n; ++i) words[i] = 0;
+    return words;
+  }
+
+  // Keystream round schedule: register offset z and output byte offset per round,
+  // in the reference's out-of-order sequence.
+  /** @type {int32[]} */
+  const ROUND_Z = [0, 5, 10, 15, 3, 8, 13, 1, 6, 11, 16, 4, 9, 14, 2, 7, 12];
+  /** @type {int32[]} */
+  const ROUND_OFFSET = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 320];
+
+  /**
+   * @param {uint32} word
+   * @param {int32} i
+   * @returns {uint32}
+   */
   function getByte(word, i) {
     return OpCodes.And32(OpCodes.Shr32(word, 24 - 8 * i), 0xff);
   }
@@ -223,15 +246,24 @@
       /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {int32} */
       this.keyLength = 0;
-      this.mixedKey = OpCodes.CreateArray(KEY_WORDS, 0);
-      this.shiftRegister = OpCodes.CreateArray(SHIFT_REGISTER_LENGTH, 0);
-      this.s0 = OpCodes.CreateArray(256, 0);
-      this.s1 = OpCodes.CreateArray(256, 0);
-      this.s2 = OpCodes.CreateArray(256, 0);
-      this.s3 = OpCodes.CreateArray(256, 0);
+      /** @type {uint32[]} */
+      this.mixedKey = zeroWords(KEY_WORDS);
+      /** @type {uint32[]} */
+      this.shiftRegister = zeroWords(SHIFT_REGISTER_LENGTH);
+      /** @type {uint32[]} */
+      this.s0 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s1 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s2 = zeroWords(256);
+      /** @type {uint32[]} */
+      this.s3 = zeroWords(256);
 
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
@@ -315,7 +347,12 @@
 
     // Reversible fixed transform of a word (RC4-derived S-box + Q-box).
     // Reads produced/consumed as native little-endian words (DarkCrypt build).
+    /**
+     * @param {uint32} w
+     * @returns {uint32}
+     */
     _fixedS(w) {
+      /** @type {uint32} */
       let b = THE_SBOX[getByte(w, 0)];
       w = OpCodes.Or32(OpCodes.And32(OpCodes.Xor32(w, THE_QBOX[b]), 0x00ffffff), OpCodes.Shl32(b, 24));
       b = THE_SBOX[getByte(w, 1)];
@@ -328,7 +365,12 @@
     }
 
     // Word-wide n-element Pseudo-Hadamard Transform
+    /**
+     * @param {uint32[]} w
+     * @param {int32} n
+     */
     _mixWords(w, n) {
+      /** @type {uint32} */
       let sum = 0;
       for (let i = 0; i < n - 1; i++) sum = OpCodes.Add32(sum, w[i]);
       w[n - 1] = OpCodes.Add32(w[n - 1], sum);
@@ -336,6 +378,9 @@
       for (let i = 0; i < n - 1; i++) w[i] = OpCodes.Add32(w[i], sum);
     }
 
+    /**
+     * @param {uint8[]} key
+     */
     _setKey(key) {
       this.keyLength = 0;
       for (let i = 0; i < key.length; i += 4) {
@@ -348,7 +393,10 @@
 
     _buildSBoxTables() {
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 0), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i));
@@ -356,7 +404,10 @@
         this.s0[j] = OpCodes.Or32(OpCodes.And32(w, 0x00FFFFFF), OpCodes.Shl32(k, 24));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 1), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 8));
@@ -364,7 +415,10 @@
         this.s1[j] = OpCodes.Or32(OpCodes.And32(w, 0xFF00FFFF), OpCodes.Shl32(k, 16));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 2), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 16));
@@ -372,7 +426,10 @@
         this.s2[j] = OpCodes.Or32(OpCodes.And32(w, 0xFFFF00FF), OpCodes.Shl32(k, 8));
       }
       for (let j = 0; j < 256; j++) {
-        let w = 0, k = j;
+        /** @type {uint32} */
+        let w = 0;
+        /** @type {uint32} */
+        let k = j;
         for (let i = 0; i < this.keyLength; i++) {
           k = THE_SBOX[OpCodes.Xor32(getByte(this.mixedKey[i], 3), k)];
           w = OpCodes.Xor32(w, OpCodes.RotL32(THE_QBOX[k], i + 24));
@@ -381,6 +438,9 @@
       }
     }
 
+    /**
+     * @param {uint8[]} iv
+     */
     _setIV(iv) {
       let i = 0, j = 0;
       for (i = 0, j = 0; j < iv.length; j += 4) {
@@ -399,6 +459,11 @@
     }
 
     // Non-linear keyed transform: XOR of 4 keyed S-box lookups on rotated byte offsets
+    /**
+     * @param {uint32} w
+     * @param {int32} r
+     * @returns {uint32}
+     */
     _s(w, r) {
       return OpCodes.Xor32(
         OpCodes.Xor32(
@@ -412,11 +477,19 @@
       );
     }
 
+    /**
+     * @param {int32} zero
+     * @param {int32} i
+     * @returns {int32}
+     */
     _offset(zero, i) {
       return (zero + i) % SHIFT_REGISTER_LENGTH;
     }
 
     // Step the LFSR using the multiplication-table feedback
+    /**
+     * @param {int32} z
+     */
     _step(z) {
       const idx0 = this._offset(z, 0);
       const w0 = this.shiftRegister[idx0];
@@ -433,8 +506,22 @@
     }
 
     // Generates a 5-word (20-byte) block of output, big-endian word order.
+    /**
+     * @param {int32} z
+     * @param {uint8[]} buf
+     * @param {int32} offset
+     */
     _turingGenRound(z, buf, offset) {
-      let a, b, c, d, e;
+      /** @type {uint32} */
+      let a = 0;
+      /** @type {uint32} */
+      let b = 0;
+      /** @type {uint32} */
+      let c = 0;
+      /** @type {uint32} */
+      let d = 0;
+      /** @type {uint32} */
+      let e = 0;
       this._step(z);
 
       a = this.shiftRegister[this._offset(z + 1, 16)];
@@ -459,6 +546,7 @@
       d = OpCodes.Add32(d, this.shiftRegister[this._offset(z + 4, 1)]);
       e = OpCodes.Add32(e, this.shiftRegister[this._offset(z + 4, 0)]);
 
+      /** @type {uint8[]} */
       let bytes = OpCodes.Unpack32BE(a); buf[offset]   = bytes[0]; buf[offset+1]  = bytes[1]; buf[offset+2]  = bytes[2]; buf[offset+3]  = bytes[3];
       bytes = OpCodes.Unpack32BE(b);     buf[offset+4] = bytes[0]; buf[offset+5]  = bytes[1]; buf[offset+6]  = bytes[2]; buf[offset+7]  = bytes[3];
       bytes = OpCodes.Unpack32BE(c);     buf[offset+8] = bytes[0]; buf[offset+9]  = bytes[1]; buf[offset+10] = bytes[2]; buf[offset+11] = bytes[3];
@@ -470,17 +558,19 @@
 
     // Generates a full 340-byte keystream block (17 rounds of 20 bytes each,
     // in the specific out-of-order round sequence used by the reference).
+    /**
+     * @returns {uint8[]}
+     */
     _turingGen() {
+      /** @type {uint8[]} */
       const buf = OpCodes.CreateArray(MAX_STREAM_LENGTH, 0);
-      const rounds = [
-        [0, 0], [5, 20], [10, 40], [15, 60], [3, 80], [8, 100], [13, 120],
-        [1, 140], [6, 160], [11, 180], [16, 200], [4, 220], [9, 240],
-        [14, 260], [2, 280], [7, 300], [12, 320]
-      ];
-      for (const [z, offset] of rounds) this._turingGenRound(z, buf, offset);
+      for (let r = 0; r < ROUND_Z.length; r++) this._turingGenRound(ROUND_Z[r], buf, ROUND_OFFSET[r]);
       return buf;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
         this.keystreamBuffer = this._turingGen();
