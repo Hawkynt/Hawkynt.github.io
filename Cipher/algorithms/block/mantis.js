@@ -41,40 +41,56 @@
           BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Alpha constant for k' derivation (fractional part of pi, PRINCE-style)
-  const ALPHA = [0x24, 0x3F, 0x6A, 0x88, 0x85, 0xA3, 0x08, 0xD3];
+  const ALPHA = OpCodes.Hex8ToBytes("243F6A8885A308D3");
 
   // S-box (4-bit Midori Sb0 from MANTIS specification - involutory)
-  const SBOX = [0xC, 0xA, 0xD, 0x3, 0xE, 0xB, 0xF, 0x7, 0x8, 0x9, 0x1, 0x5, 0x0, 0x2, 0x4, 0x6];
+  const SBOX = OpCodes.Hex8ToBytes("0C0A0D030E0B0F070809010500020406");
 
-  // Inverse S-box
-  const INV_SBOX = new Array(16);
-  for (let i = 0; i < 16; ++i) {
-    INV_SBOX[SBOX[i]] = i;
+  /**
+   * Invert a 16-entry permutation
+   * @param {uint8[]} perm - Permutation of 0..15
+   * @returns {uint8[]} Inverse permutation
+   */
+  function invert16(perm) {
+    const inv = OpCodes.CreateArray(16, 0);
+    for (let i = 0; i < 16; ++i) {
+      inv[perm[i]] = i;
+    }
+    return inv;
   }
 
+  // Inverse S-box
+  const INV_SBOX = invert16(SBOX);
+
   // Round constants (8 constants for maximum rounds) - as byte arrays
+  /** @type {uint8[][]} */
   const RC = [
-    [0x13, 0x19, 0x8A, 0x2E, 0x03, 0x70, 0x73, 0x44],
-    [0xA4, 0x09, 0x38, 0x22, 0x29, 0x9F, 0x31, 0xD0],
-    [0x08, 0x2E, 0xFA, 0x98, 0xEC, 0x4E, 0x6C, 0x89],
-    [0x45, 0x28, 0x21, 0xE6, 0x38, 0xD0, 0x13, 0x77],
-    [0xBE, 0x54, 0x66, 0xCF, 0x34, 0xE9, 0x0C, 0x6C],
-    [0xC0, 0xAC, 0x29, 0xB7, 0xC9, 0x7C, 0x50, 0xDD],
-    [0x3F, 0x84, 0xD5, 0xB5, 0xB5, 0x47, 0x09, 0x17],
-    [0x92, 0x16, 0xD5, 0xD9, 0x89, 0x79, 0xFB, 0x1B]
+    OpCodes.Hex8ToBytes("13198A2E03707344"),
+    OpCodes.Hex8ToBytes("A4093822299F31D0"),
+    OpCodes.Hex8ToBytes("082EFA98EC4E6C89"),
+    OpCodes.Hex8ToBytes("452821E638D01377"),
+    OpCodes.Hex8ToBytes("BE5466CF34E90C6C"),
+    OpCodes.Hex8ToBytes("C0AC29B7C97C50DD"),
+    OpCodes.Hex8ToBytes("3F84D5B5B5470917"),
+    OpCodes.Hex8ToBytes("9216D5D98979FB1B")
   ];
 
-  // MixColumns operation (works on byte array [8 bytes])
+  /**
+   * MixColumns operation (works on byte array [8 bytes])
+   * @param {uint8[]} state - 8 state bytes
+   * @returns {uint8[]} Mixed state bytes
+   */
   function mixColumns(state) {
     // State is 8 bytes, treat as 4 rows of 16 bits each
     // Row 0: bytes 0-1, Row 1: bytes 2-3, Row 2: bytes 4-5, Row 3: bytes 6-7
+    /** @type {uint8[]} */
     const result = new Array(8);
 
     // Extract rows (as 16-bit values)
-    const row0 = OpCodes.Shl32(state[0], 8)|state[1];
-    const row1 = OpCodes.Shl32(state[2], 8)|state[3];
-    const row2 = OpCodes.Shl32(state[4], 8)|state[5];
-    const row3 = OpCodes.Shl32(state[6], 8)|state[7];
+    const row0 = OpCodes.Or32(OpCodes.Shl32(state[0], 8), state[1]);
+    const row1 = OpCodes.Or32(OpCodes.Shl32(state[2], 8), state[3]);
+    const row2 = OpCodes.Or32(OpCodes.Shl32(state[4], 8), state[5]);
+    const row3 = OpCodes.Or32(OpCodes.Shl32(state[6], 8), state[7]);
 
     // Mix: each new row is XOR of three other rows
     const newRow0 = OpCodes.Xor32(OpCodes.Xor32(row1, row2), row3);
@@ -94,9 +110,15 @@
     return result;
   }
 
-  // ShuffleCells permutation (works on nibble array [16 nibbles])
+  /**
+   * ShuffleCells permutation (works on nibble array [16 nibbles])
+   * @param {uint8[]} nibbles - 16 nibbles
+   * @returns {uint8[]} Permuted nibbles
+   */
   function shuffleCells(nibbles) {
+    /** @type {uint8[]} */
     const perm = [0, 11, 6, 13, 10, 1, 12, 7, 5, 14, 3, 8, 15, 4, 9, 2];
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = nibbles[perm[i]];
@@ -104,9 +126,15 @@
     return result;
   }
 
-  // h permutation for tweak schedule (works on nibble array [16 nibbles])
+  /**
+   * h permutation for tweak schedule (works on nibble array [16 nibbles])
+   * @param {uint8[]} nibbles - 16 nibbles
+   * @returns {uint8[]} Permuted nibbles
+   */
   function hPermutation(nibbles) {
+    /** @type {uint8[]} */
     const perm = [6, 5, 14, 15, 0, 1, 2, 3, 7, 12, 13, 4, 8, 9, 10, 11];
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = nibbles[perm[i]];
@@ -114,9 +142,15 @@
     return result;
   }
 
-  // Inverse h permutation
+  /**
+   * Inverse h permutation
+   * @param {uint8[]} nibbles - 16 nibbles
+   * @returns {uint8[]} Permuted nibbles
+   */
   function hInversePermutation(nibbles) {
+    /** @type {uint8[]} */
     const invPerm = [4, 5, 6, 7, 11, 1, 0, 8, 12, 13, 14, 15, 9, 10, 2, 3];
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = nibbles[invPerm[i]];
@@ -124,13 +158,20 @@
     return result;
   }
 
-  // Inverse ShuffleCells
+  /**
+   * Inverse ShuffleCells
+   * @param {uint8[]} nibbles - 16 nibbles
+   * @returns {uint8[]} Permuted nibbles
+   */
   function invShuffleCells(nibbles) {
+    /** @type {uint8[]} */
     const perm = [0, 11, 6, 13, 10, 1, 12, 7, 5, 14, 3, 8, 15, 4, 9, 2];
+    /** @type {uint8[]} */
     const invPerm = new Array(16);
     for (let i = 0; i < 16; ++i) {
       invPerm[perm[i]] = i;
     }
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = nibbles[invPerm[i]];
@@ -138,9 +179,15 @@
     return result;
   }
 
-  // Apply S-box to all nibbles
+  /**
+   * Apply S-box to all nibbles
+   * @param {uint8[]} nibbles - 16 nibbles
+   * @param {boolean} [inverse=false] - Use the inverse S-box
+   * @returns {uint8[]} Substituted nibbles
+   */
   function subCells(nibbles, inverse = false) {
     const sbox = inverse ? INV_SBOX : SBOX;
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
       result[i] = sbox[nibbles[i]];
@@ -148,21 +195,31 @@
     return result;
   }
 
-  // Convert bytes to nibbles (16 nibbles from 8 bytes)
+  /**
+   * Convert bytes to nibbles (16 nibbles from 8 bytes)
+   * @param {uint8[]} bytes - 8 bytes
+   * @returns {uint8[]} 16 nibbles, high nibble first
+   */
   function bytesToNibbles(bytes) {
+    /** @type {uint8[]} */
     const nibbles = new Array(16);
     for (let i = 0; i < 8; ++i) {
-      nibbles[2 * i] = OpCodes.Shr32(bytes[i], 4)&0x0F;       // High nibble
-      nibbles[2 * i + 1] = bytes[i]&0x0F;            // Low nibble
+      nibbles[2 * i] = OpCodes.And32(OpCodes.Shr32(bytes[i], 4), 0x0F);       // High nibble
+      nibbles[2 * i + 1] = OpCodes.And32(bytes[i], 0x0F);            // Low nibble
     }
     return nibbles;
   }
 
-  // Convert nibbles to bytes (8 bytes from 16 nibbles)
+  /**
+   * Convert nibbles to bytes (8 bytes from 16 nibbles)
+   * @param {uint8[]} nibbles - 16 nibbles, high nibble first
+   * @returns {uint8[]} 8 bytes
+   */
   function nibblesToBytes(nibbles) {
+    /** @type {uint8[]} */
     const bytes = new Array(8);
     for (let i = 0; i < 8; ++i) {
-      bytes[i] = OpCodes.Shl32(nibbles[2 * i]&0x0F, 4)|(nibbles[2 * i + 1]&0x0F);
+      bytes[i] = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(nibbles[2 * i], 0x0F), 4), OpCodes.And32(nibbles[2 * i + 1], 0x0F));
     }
     return bytes;
   }
@@ -219,7 +276,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MantisInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -236,18 +293,24 @@
   class MantisInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Mantis} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._tweak = null;
+      /** @type {uint8[]|null} */
       this._k0 = null;
+      /** @type {uint8[]|null} */
       this._k1 = null;
+      /** @type {uint8[]|null} */
       this._kPrime = null;
     }
 
@@ -267,7 +330,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       this._key = [...keyBytes];
@@ -277,11 +340,13 @@
       this._k1 = keyBytes.slice(8, 16);
 
       // k' = 1-bit right rotation of k0 with XOR (from skinny-c mantis_unpack_rotated_block)
-      this._kPrime = new Array(8);
+      /** @type {uint8[]} */
+      const rotated = new Array(8);
+      this._kPrime = rotated;
       let carry = this._k0[7];
       for (let index = 0; index < 8; ++index) {
         const next = this._k0[index];
-        this._kPrime[index] = OpCodes.ToByte(OpCodes.Shl32(carry, 7)|OpCodes.Shr32(next, 1));
+        this._kPrime[index] = OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(carry, 7), OpCodes.Shr32(next, 1)));
         carry = next;
       }
       this._kPrime[7] = OpCodes.Xor32(this._kPrime[7], OpCodes.Shr32(this._k0[0], 7));
@@ -296,7 +361,7 @@
 
         // XOR k1 with ALPHA for decryption mode
         for (let i = 0; i < 8; ++i) {
-          this._k1[i] ^= ALPHA[i];
+          this._k1[i] = OpCodes.Xor32(this._k1[i], ALPHA[i]);
         }
       }
     }
@@ -310,6 +375,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} tweakBytes - 8-byte tweak, or null to clear
+     */
     set tweak(tweakBytes) {
       if (!tweakBytes) {
         this._tweak = null;
@@ -317,12 +385,15 @@
       }
 
       if (tweakBytes.length !== 8) {
-        throw new Error(`Invalid tweak size: ${tweakBytes.length} bytes (expected 8 bytes)`);
+        throw new Error("Invalid tweak size: " + tweakBytes.length + " bytes (expected 8 bytes)");
       }
 
       this._tweak = [...tweakBytes];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the tweak, or null
+     */
     get tweak() {
       return this._tweak ? [...this._tweak] : null;
     }
@@ -349,9 +420,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 8;
 
@@ -365,20 +437,25 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     processBlock(block) {
       // State is 8 bytes
+      /** @type {uint8[]} */
       let state = [...block];
-      let tweakBytes = this._tweak || new Array(8).fill(0);
+      let tweakBytes = this._tweak !== null ? this._tweak : OpCodes.CreateArray(8, 0);
 
       // Initial whitening: state XOR k0 XOR k1 XOR tweak (from skinny-c)
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= this._k0[i];
+        state[i] = OpCodes.Xor32(state[i], this._k0[i]);
       }
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= this._k1[i];
+        state[i] = OpCodes.Xor32(state[i], this._k1[i]);
       }
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= tweakBytes[i];
+        state[i] = OpCodes.Xor32(state[i], tweakBytes[i]);
       }
 
       // Forward rounds (7 rounds)
@@ -396,12 +473,12 @@
 
         // Add round constant
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= RC[r][i];
+          state[i] = OpCodes.Xor32(state[i], RC[r][i]);
         }
 
         // XOR k1 and tweak
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= this._k1[i]^tweakBytes[i];
+          state[i] = OpCodes.Xor32(state[i], OpCodes.Xor32(this._k1[i], tweakBytes[i]));
         }
 
         // ShuffleCells (Permutation)
@@ -423,9 +500,10 @@
       state = nibblesToBytes(nibbles);
 
       // After middle round: XOR ALPHA into k1 for backward rounds (from skinny-c)
+      /** @type {uint8[]} */
       const k1Modified = new Array(8);
       for (let i = 0; i < 8; ++i) {
-        k1Modified[i] = this._k1[i]^ALPHA[i];
+        k1Modified[i] = OpCodes.Xor32(this._k1[i], ALPHA[i]);
       }
 
       // Backward rounds (7 rounds in reverse)
@@ -441,12 +519,12 @@
 
         // XOR k1Modified and tweak
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= k1Modified[i]^tweakBytes[i];
+          state[i] = OpCodes.Xor32(state[i], OpCodes.Xor32(k1Modified[i], tweakBytes[i]));
         }
 
         // Add round constant
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= RC[r][i];
+          state[i] = OpCodes.Xor32(state[i], RC[r][i]);
         }
 
         // InvSubCells
@@ -462,13 +540,13 @@
 
       // Final whitening: state XOR k0' XOR k1Modified XOR tweak (from skinny-c)
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= this._kPrime[i];
+        state[i] = OpCodes.Xor32(state[i], this._kPrime[i]);
       }
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= k1Modified[i];
+        state[i] = OpCodes.Xor32(state[i], k1Modified[i]);
       }
       for (let i = 0; i < 8; ++i) {
-        state[i] ^= tweakBytes[i];
+        state[i] = OpCodes.Xor32(state[i], tweakBytes[i]);
       }
 
       return state;

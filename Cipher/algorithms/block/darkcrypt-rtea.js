@@ -98,29 +98,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRTEAInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRTEAInstance(this, isInverse);
     }
   }
 
   class DarkCryptRTEAInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRTEAAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. RTEA (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. RTEA (DarkCrypt) requires exactly 32 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -133,8 +149,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -144,7 +161,12 @@
       return output;
     }
 
+    /**
+     * Key as eight little-endian words
+     * @returns {uint32[]} Key words
+     */
     _keyWords() {
+      /** @type {uint32[]} */
       const k = [];
       for (let i = 0; i < 8; i++) {
         const o = i * 4;
@@ -153,33 +175,46 @@
       return k;
     }
 
-    // G(x) = (x >>> 8) ^ (x << 6)
+    /**
+     * G(x) = Shr(x, 8) xor Shl(x, 6)
+     * @param {uint32} x - Input word
+     * @returns {uint32} Mixed word
+     */
     _G(x) {
       return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(x, 8), OpCodes.Shl32(x, 6)));
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
       const k = this._keyWords();
       for (let i = 0; i < ROUNDS; i++) {
         if (OpCodes.And32(i, 1) === 0)
-          v1 = OpCodes.ToUint32(v1 + v0 + k[OpCodes.And32(i, 7)] + i + this._G(v0));
+          v1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v1, v0), k[OpCodes.And32(i, 7)]), i), this._G(v0));
         else
-          v0 = OpCodes.ToUint32(v0 + v1 + k[OpCodes.And32(i, 7)] + i + this._G(v1));
+          v0 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v0, v1), k[OpCodes.And32(i, 7)]), i), this._G(v1));
       }
       return [...OpCodes.Unpack32LE(v0), ...OpCodes.Unpack32LE(v1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let v0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
       const k = this._keyWords();
       for (let i = ROUNDS - 1; i >= 0; i--) {
         if (OpCodes.And32(i, 1) === 1)
-          v0 = OpCodes.ToUint32(v0 - (v1 + k[OpCodes.And32(i, 7)] + i + this._G(v1)));
+          v0 = OpCodes.Sub32(v0, OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v1, k[OpCodes.And32(i, 7)]), i), this._G(v1)));
         else
-          v1 = OpCodes.ToUint32(v1 - (v0 + k[OpCodes.And32(i, 7)] + i + this._G(v0)));
+          v1 = OpCodes.Sub32(v1, OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v0, k[OpCodes.And32(i, 7)]), i), this._G(v0)));
+
       }
       return [...OpCodes.Unpack32LE(v0), ...OpCodes.Unpack32LE(v1)];
     }

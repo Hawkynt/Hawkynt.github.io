@@ -57,7 +57,7 @@
  * @extends {BlockCipherAlgorithm}
  */
 
-  class NOEKEONCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class NOEKEONCipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -66,29 +66,29 @@
       this.description = "NESSIE 128-bit block cipher designed by Joan Daemen, Michaël Peeters, Gilles Van Assche and Vincent Rijmen. Direct Key Mode implementation for efficiency.";
       this.inventor = "Joan Daemen, Michaël Peeters, Gilles Van Assche, Vincent Rijmen";
       this.year = 2000;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.BE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.BE;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // NOEKEON: 128-bit keys only
+        new KeySize(16, 16, 1) // NOEKEON: 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit blocks
+        new KeySize(16, 16, 1) // Fixed 128-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("NOEKEON Specification", "https://gro.noekeon.org/"),
-        new AlgorithmFramework.LinkItem("NESSIE Project", "https://www.cosic.esat.kuleuven.be/nessie/")
+        new LinkItem("NOEKEON Specification", "https://gro.noekeon.org/"),
+        new LinkItem("NESSIE Project", "https://www.cosic.esat.kuleuven.be/nessie/")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original NOEKEON Paper", "https://gro.noekeon.org/Noekeon-spec.pdf"),
-        new AlgorithmFramework.LinkItem("NESSIE Final Report", "https://www.cosic.esat.kuleuven.be/nessie/")
+        new LinkItem("Original NOEKEON Paper", "https://gro.noekeon.org/Noekeon-spec.pdf"),
+        new LinkItem("NESSIE Final Report", "https://www.cosic.esat.kuleuven.be/nessie/")
       ];
 
       // Test vectors from NESSIE
@@ -139,10 +139,13 @@
       ];
 
       // NOEKEON Constants
+      /** @type {int32} */
       this.ROUNDS = 16;                     // 16 rounds
+      /** @type {int32} */
       this.RC1_ENCRYPT_START = 0x80;        // Round constant start for encryption
       
       // Predefined round constants (matching C# BouncyCastle implementation)
+      /** @type {uint8[]} */
       this.ROUND_CONSTANTS = [0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e,
                              0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4];
     }
@@ -150,7 +153,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {NOEKEONInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -164,19 +167,28 @@
  * @extends {IBlockCipherInstance}
  */
 
-  class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class NOEKEONInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NOEKEONCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {uint8[]} */
+      this._roundConstants = algorithm.ROUND_CONSTANTS;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint32[]|null} */
       this.keyWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.outputBuffer = [];
       this.BlockSize = 16;    // 128-bit blocks
       this.KeySize = 0;
@@ -197,13 +209,18 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      let isValidSize = false;
+      for (let i = 0; i < this._keySizes.length; i++) {
+        const ks = this._keySizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -228,7 +245,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
 
@@ -246,13 +263,13 @@
    * @throws {Error} If key not set, no data fed, or invalid input length
    */
     Result() {
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       // Feed consumes whole blocks as they arrive, so whatever is still in the
       // input buffer is a trailing partial block. A raw block cipher has nothing
       // correct to do with one - completing it is a padding scheme's job - so it
       // is refused rather than dropped.
       if (this.inputBuffer.length !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       if (this.outputBuffer.length === 0) throw new Error("No data fed");
 
       const result = [...this.outputBuffer];
@@ -260,17 +277,25 @@
       return result;
     }
 
+    /**
+     * Clear the input and output buffers
+     */
     Reset() {
       this.inputBuffer = [];
       this.outputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Working key words
+     */
     _convertKeyToWords(keyBytes) {
       // Direct mode NOEKEON - use cipher key directly as working key
-      const keyWords = new Array(4);
+      /** @type {uint32[]} */
+      const words = new Array(4);
       for (let i = 0; i < 4; i++) {
         const offset = i * 4;
-        keyWords[i] = OpCodes.Pack32BE(
+        words[i] = OpCodes.Pack32BE(
           keyBytes[offset],
           keyBytes[offset + 1],
           keyBytes[offset + 2],
@@ -280,25 +305,29 @@
 
       // For decryption, apply theta(k, {0,0,0,0}) to the key (matching C# BouncyCastle)
       if (this.isInverse) {
-        let a0 = keyWords[0], a1 = keyWords[1], a2 = keyWords[2], a3 = keyWords[3];
+        let a0 = words[0], a1 = words[1], a2 = words[2], a3 = words[3];
 
-        let t02 = OpCodes.XorN(a0, a2);
-        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
+        let t02 = OpCodes.Xor32(a0, a2);
+        t02 = OpCodes.Xor32(OpCodes.Xor32(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        let t13 = OpCodes.XorN(a1, a3);
-        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
+        let t13 = OpCodes.Xor32(a1, a3);
+        t13 = OpCodes.Xor32(OpCodes.Xor32(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 = OpCodes.XorN(a0, t13);
-        a1 = OpCodes.XorN(a1, t02);
-        a2 = OpCodes.XorN(a2, t13);
-        a3 = OpCodes.XorN(a3, t02);
+        a0 = OpCodes.Xor32(a0, t13);
+        a1 = OpCodes.Xor32(a1, t02);
+        a2 = OpCodes.Xor32(a2, t13);
+        a3 = OpCodes.Xor32(a3, t02);
 
-        keyWords[0] = a0; keyWords[1] = a1; keyWords[2] = a2; keyWords[3] = a3;
+        words[0] = a0; words[1] = a1; words[2] = a2; words[3] = a3;
       }
 
-      return keyWords;
+      return words;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('NOEKEON: Input must be exactly 16 bytes');
@@ -314,24 +343,24 @@
 
       let round = 0;
       for (;;) {
-        a0 = OpCodes.XorN(a0, this.algorithm.ROUND_CONSTANTS[round]);
+        a0 = OpCodes.Xor32(a0, this._roundConstants[round]);
 
         // theta(a, k);
-        let t02 = OpCodes.XorN(a0, a2);
-        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
+        let t02 = OpCodes.Xor32(a0, a2);
+        t02 = OpCodes.Xor32(OpCodes.Xor32(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        a0 = OpCodes.XorN(a0, k0);
-        a1 = OpCodes.XorN(a1, k1);
-        a2 = OpCodes.XorN(a2, k2);
-        a3 = OpCodes.XorN(a3, k3);
+        a0 = OpCodes.Xor32(a0, k0);
+        a1 = OpCodes.Xor32(a1, k1);
+        a2 = OpCodes.Xor32(a2, k2);
+        a3 = OpCodes.Xor32(a3, k3);
 
-        let t13 = OpCodes.XorN(a1, a3);
-        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
+        let t13 = OpCodes.Xor32(a1, a3);
+        t13 = OpCodes.Xor32(OpCodes.Xor32(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 = OpCodes.XorN(a0, t13);
-        a1 = OpCodes.XorN(a1, t02);
-        a2 = OpCodes.XorN(a2, t13);
-        a3 = OpCodes.XorN(a3, t02);
+        a0 = OpCodes.Xor32(a0, t13);
+        a1 = OpCodes.Xor32(a1, t02);
+        a2 = OpCodes.Xor32(a2, t13);
+        a3 = OpCodes.Xor32(a3, t02);
 
         if (++round > 16) {
           break;
@@ -343,9 +372,10 @@
         a3 = OpCodes.RotL32(a3, 2);
 
         // gamma(a);
-        const state = [a0, a1, a2, a3];
-        this._gamma(state);
-        a0 = state[0]; a1 = state[1]; a2 = state[2]; a3 = state[3];
+        /** @type {uint32[]} */
+        const quad = [a0, a1, a2, a3];
+        this._gamma(quad);
+        a0 = quad[0]; a1 = quad[1]; a2 = quad[2]; a3 = quad[3];
 
         // pi2(a);
         a1 = OpCodes.RotL32(a1, 31);
@@ -354,6 +384,7 @@
       }
 
       // Convert back to bytes using OpCodes (big-endian)
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32BE(a0));
       result.push(...OpCodes.Unpack32BE(a1));
@@ -363,6 +394,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('NOEKEON: Input must be exactly 16 bytes');
@@ -379,23 +414,23 @@
       let round = 16;
       for (;;) {
         // theta(a, k);
-        let t02 = OpCodes.XorN(a0, a2);
-        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
+        let t02 = OpCodes.Xor32(a0, a2);
+        t02 = OpCodes.Xor32(OpCodes.Xor32(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        a0 = OpCodes.XorN(a0, k0);
-        a1 = OpCodes.XorN(a1, k1);
-        a2 = OpCodes.XorN(a2, k2);
-        a3 = OpCodes.XorN(a3, k3);
+        a0 = OpCodes.Xor32(a0, k0);
+        a1 = OpCodes.Xor32(a1, k1);
+        a2 = OpCodes.Xor32(a2, k2);
+        a3 = OpCodes.Xor32(a3, k3);
 
-        let t13 = OpCodes.XorN(a1, a3);
-        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
+        let t13 = OpCodes.Xor32(a1, a3);
+        t13 = OpCodes.Xor32(OpCodes.Xor32(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 = OpCodes.XorN(a0, t13);
-        a1 = OpCodes.XorN(a1, t02);
-        a2 = OpCodes.XorN(a2, t13);
-        a3 = OpCodes.XorN(a3, t02);
+        a0 = OpCodes.Xor32(a0, t13);
+        a1 = OpCodes.Xor32(a1, t02);
+        a2 = OpCodes.Xor32(a2, t13);
+        a3 = OpCodes.Xor32(a3, t02);
 
-        a0 = OpCodes.XorN(a0, this.algorithm.ROUND_CONSTANTS[round]);
+        a0 = OpCodes.Xor32(a0, this._roundConstants[round]);
 
         if (--round < 0) {
           break;
@@ -407,9 +442,10 @@
         a3 = OpCodes.RotL32(a3, 2);
 
         // gamma(a);
-        const state = [a0, a1, a2, a3];
-        this._gamma(state);
-        a0 = state[0]; a1 = state[1]; a2 = state[2]; a3 = state[3];
+        /** @type {uint32[]} */
+        const quad = [a0, a1, a2, a3];
+        this._gamma(quad);
+        a0 = quad[0]; a1 = quad[1]; a2 = quad[2]; a3 = quad[3];
 
         // pi2(a);
         a1 = OpCodes.RotL32(a1, 31);
@@ -418,6 +454,7 @@
       }
 
       // Convert back to bytes using OpCodes (big-endian)
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32BE(a0));
       result.push(...OpCodes.Unpack32BE(a1));
@@ -428,15 +465,18 @@
     }
 
     // NOEKEON Gamma function (matching C# BouncyCastle implementation)
+    /**
+     * @param {uint32[]} a - Four state words, updated in place
+     */
     _gamma(a) {
       const t = a[3];
-      a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-      a[3] = OpCodes.XorN(a[0], OpCodes.AndN(a[2], ~a[1]));
+      a[1] = OpCodes.Xor32(a[1], OpCodes.Or32(a[3], a[2]));
+      a[3] = OpCodes.Xor32(a[0], OpCodes.And32(a[2], OpCodes.Not32(a[1])));
 
-      a[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(t, ~a[1]), a[2]), a[3]);
+      a[2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(t, OpCodes.Not32(a[1])), a[2]), a[3]);
 
-      a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
-      a[0] = OpCodes.XorN(t, OpCodes.AndN(a[2], a[1]));
+      a[1] = OpCodes.Xor32(a[1], OpCodes.Or32(a[3], a[2]));
+      a[0] = OpCodes.Xor32(t, OpCodes.And32(a[2], a[1]));
     }
   }
 

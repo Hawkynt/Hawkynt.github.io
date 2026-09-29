@@ -76,19 +76,34 @@ class UnicornA extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {UnicornAInstance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new UnicornAInstance(this, isInverse);
   }
 }
 
 class UnicornAInstance extends IBlockCipherInstance {
+  /**
+   * @param {UnicornA} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {KeySize[]} */
+    this._keySizes = algorithm.SupportedKeySizes;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
+    // Per round: [mainKey, tempKey], each 8 bytes
+    /** @type {uint8[][][]|null} */
     this._roundKeys = null;
 
+    /** @type {uint8[]} */
     this._sBox = [
       0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5,
       0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -125,6 +140,9 @@ class UnicornAInstance extends IBlockCipherInstance {
     ];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -132,18 +150,27 @@ class UnicornAInstance extends IBlockCipherInstance {
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this._keySizes;
+    let isValidSize = false;
+    for (let s = 0; s < sizes.length; s++) {
+      const ks = sizes[s];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this._roundKeys = this._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() { return this._key ? [...this._key] : null; }
 
   Feed(data) {
@@ -156,13 +183,14 @@ class UnicornAInstance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+    /** @type {uint8[]} */
     const output = [];
     const blockSize = 16;
 
     for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
       const block = this.inputBuffer.slice(i, i + blockSize);
       if (block.length !== blockSize) {
-        throw new Error(`Incomplete block: ${block.length} bytes`);
+        throw new Error("Incomplete block: " + block.length + " bytes");
       }
 
       const processedBlock = this.isInverse ?
@@ -176,29 +204,37 @@ class UnicornAInstance extends IBlockCipherInstance {
     return output;
   }
 
+  /**
+   * @param {uint8[]} key - Key bytes
+   * @returns {uint8[][][]} Per round [mainKey, tempKey]
+   */
   _expandKey(key) {
+    /** @type {uint8[][][]} */
     const roundKeys = new Array(16);
 
     for (let round = 0; round < 16; round++) {
-      roundKeys[round] = {
-        mainKey: new Uint8Array(8),
-        tempKey: new Uint8Array(8)
-      };
+      /** @type {uint8[][]} */
+      const pair = [new Uint8Array(8), new Uint8Array(8)];
+      roundKeys[round] = pair;
 
       for (let i = 0; i < 8; i++) {
-        roundKeys[round].mainKey[i] = key[(round * 8 + i) % key.length];
-        roundKeys[round].mainKey[i] = OpCodes.XorN(roundKeys[round].mainKey[i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.AndN(round, 7)));
-        roundKeys[round].mainKey[i] = OpCodes.XorN(roundKeys[round].mainKey[i], OpCodes.AndN(round * 13 + i * 7, 0xFF));
+        roundKeys[round][0][i] = key[(round * 8 + i) % key.length];
+        roundKeys[round][0][i] = OpCodes.Xor32(roundKeys[round][0][i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.And32(round, 7)));
+        roundKeys[round][0][i] = OpCodes.Xor32(roundKeys[round][0][i], OpCodes.And32(round * 13 + i * 7, 0xFF));
 
-        roundKeys[round].tempKey[i] = key[(round * 4 + i) % key.length];
-        roundKeys[round].tempKey[i] = OpCodes.XorN(roundKeys[round].tempKey[i], OpCodes.RotL8(roundKeys[round].mainKey[i], OpCodes.AndN(i + 1, 7)));
-        roundKeys[round].tempKey[i] = OpCodes.XorN(roundKeys[round].tempKey[i], OpCodes.AndN(round * 17 + i * 11, 0xFF));
+        roundKeys[round][1][i] = key[(round * 4 + i) % key.length];
+        roundKeys[round][1][i] = OpCodes.Xor32(roundKeys[round][1][i], OpCodes.RotL8(roundKeys[round][0][i], OpCodes.And32(i + 1, 7)));
+        roundKeys[round][1][i] = OpCodes.Xor32(roundKeys[round][1][i], OpCodes.And32(round * 17 + i * 11, 0xFF));
       }
     }
 
     return roundKeys;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(data) {
     let left = new Uint8Array(data.slice(0, 8));
     let right = new Uint8Array(data.slice(8, 16));
@@ -213,6 +249,10 @@ class UnicornAInstance extends IBlockCipherInstance {
     return new Uint8Array([...left, ...right]);
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(data) {
     let left = new Uint8Array(data.slice(0, 8));
     let right = new Uint8Array(data.slice(8, 16));
@@ -227,18 +267,28 @@ class UnicornAInstance extends IBlockCipherInstance {
     return new Uint8Array([...left, ...right]);
   }
 
+  /**
+   * @param {uint8[]} input - Half block
+   * @param {uint8[][]} roundKey - [mainKey, tempKey]
+   * @returns {uint8[]} F output
+   */
   _complexFFunction(input, roundKey) {
-    const mainStream = this._mainFeistelNetwork(input, roundKey.mainKey);
-    const tempStream = this._tempKeyGeneration(input, roundKey.tempKey);
+    const mainStream = this._mainFeistelNetwork(input, roundKey[0]);
+    const tempStream = this._tempKeyGeneration(input, roundKey[1]);
 
     const result = new Uint8Array(8);
     for (let i = 0; i < 8; i++) {
-      result[i] = OpCodes.XorN(mainStream[i], tempStream[i % 4]);
+      result[i] = OpCodes.Xor32(mainStream[i], tempStream[i % 4]);
     }
 
     return result;
   }
 
+  /**
+   * @param {uint8[]} input - 8 input bytes
+   * @param {uint8[]} key - 8-byte main key
+   * @returns {uint8[]} 8 output bytes
+   */
   _mainFeistelNetwork(input, key) {
     let left = new Uint8Array(input.slice(0, 4));
     let right = new Uint8Array(input.slice(4, 8));
@@ -253,13 +303,18 @@ class UnicornAInstance extends IBlockCipherInstance {
     return new Uint8Array([...left, ...right]);
   }
 
+  /**
+   * @param {uint8[]} input - 8 input bytes
+   * @param {uint8[]} key - 8-byte temp key
+   * @returns {uint8[]} 4 output bytes
+   */
   _tempKeyGeneration(input, key) {
     const result = new Uint8Array(4);
 
     for (let i = 0; i < 4; i++) {
-      result[i] = OpCodes.XorN(OpCodes.XorN(input[i], input[i + 4]), key[i]);
+      result[i] = OpCodes.Xor32(OpCodes.Xor32(input[i], input[i + 4]), key[i]);
       result[i] = this._sBox[result[i]];
-      result[i] = OpCodes.XorN(result[i], OpCodes.RotL8(result[i], OpCodes.AndN(i + 1, 7)));
+      result[i] = OpCodes.Xor32(result[i], OpCodes.RotL8(result[i], OpCodes.And32(i + 1, 7)));
     }
 
     const temp = result[0];
@@ -271,16 +326,22 @@ class UnicornAInstance extends IBlockCipherInstance {
     return result;
   }
 
+  /**
+   * @param {uint8[]} input - 4 input bytes
+   * @param {uint8[]} key - 8-byte main key
+   * @param {int32} round - Inner round
+   * @returns {uint8[]} 4 output bytes
+   */
   _innerFFunction(input, key, round) {
     const result = new Uint8Array(4);
 
     for (let i = 0; i < 4; i++) {
-      result[i] = OpCodes.XorN(input[i], key[(round + i) % 8]);
+      result[i] = OpCodes.Xor32(input[i], key[(round + i) % 8]);
       result[i] = this._sBox[result[i]];
     }
 
-    result[0] = OpCodes.XorN(result[0], result[1]);
-    result[2] = OpCodes.XorN(result[2], result[3]);
+    result[0] = OpCodes.Xor32(result[0], result[1]);
+    result[2] = OpCodes.Xor32(result[2], result[3]);
 
     const temp = result[0];
     result[0] = OpCodes.RotL8(result[2], 3);

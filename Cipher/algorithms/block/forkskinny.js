@@ -14,38 +14,46 @@
  * @author JavaScript implementation for SynthelicZ Cipher Tools
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Load dependencies
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-  }
-
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
-  }
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ForkSkinny round constants (7-bit LFSR for 87 rounds)
-  const RC = [
-    0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7e, 0x7d,
-    0x7b, 0x77, 0x6f, 0x5f, 0x3e, 0x7c, 0x79, 0x73,
-    0x67, 0x4f, 0x1e, 0x3d, 0x7a, 0x75, 0x6b, 0x57,
-    0x2e, 0x5c, 0x38, 0x70, 0x61, 0x43, 0x06, 0x0d,
-    0x1b, 0x37, 0x6e, 0x5d, 0x3a, 0x74, 0x69, 0x53,
-    0x26, 0x4c, 0x18, 0x31, 0x62, 0x45, 0x0a, 0x15,
-    0x2b, 0x56, 0x2c, 0x58, 0x30, 0x60, 0x41, 0x02,
-    0x05, 0x0b, 0x17, 0x2f, 0x5e, 0x3c, 0x78, 0x71,
-    0x63, 0x47, 0x0e, 0x1d, 0x3b, 0x76, 0x6d, 0x5b,
-    0x36, 0x6c, 0x59, 0x32, 0x64, 0x49, 0x12, 0x25,
-    0x4a, 0x14, 0x29, 0x52, 0x24, 0x48, 0x10
-  ];
+  const RC = OpCodes.Hex8ToBytes(
+    "0103070f1f3f7e7d7b776f5f3e7c7973674f1e3d7a756b572e5c38706143060d" +
+    "1b376e5d3a746953264c183162450a152b562c5830604102050b172f5e3c7871" +
+    "63470e1d3b766d5b366c5932644912254a142952244810"
+  );
 
-  // SKINNY-128 S-box (optimized bit-sliced version)
+  /**
+   * SKINNY-128 S-box (optimized bit-sliced version)
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_sbox(x) {
+    /** @type {uint32} */
     let y;
 
     // Mix the bits
@@ -60,20 +68,18 @@
     x = OpCodes.Not32(x);
 
     // Permutation: [2 7 6 1 3 0 4 5]
-    x = OpCodes.ToUint32(
-      OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1) |
-      OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2) |
-      OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5) |
-      OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6) |
-      OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4) |
-      OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2)
-    );
+    x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x08080808), 1), OpCodes.Shl32(OpCodes.And32(x, 0x32323232), 2)), OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 5)), OpCodes.Shr32(OpCodes.And32(x, 0x80808080), 6)), OpCodes.Shr32(OpCodes.And32(x, 0x40404040), 4)), OpCodes.Shr32(OpCodes.And32(x, 0x04040404), 2));
 
     return x;
   }
 
-  // SKINNY-128 inverse S-box
+  /**
+   * SKINNY-128 inverse S-box
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_inv_sbox(x) {
+    /** @type {uint32} */
     let y;
 
     // Mix the bits
@@ -89,19 +95,16 @@
     x = OpCodes.Not32(x);
 
     // Permutation: [5 3 0 4 6 7 2 1]
-    x = OpCodes.ToUint32(
-      OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 2) |
-      OpCodes.Shl32(OpCodes.And32(x, 0x04040404), 4) |
-      OpCodes.Shl32(OpCodes.And32(x, 0x02020202), 6) |
-      OpCodes.Shr32(OpCodes.And32(x, 0x20202020), 5) |
-      OpCodes.Shr32(OpCodes.And32(x, 0xC8C8C8C8), 2) |
-      OpCodes.Shr32(OpCodes.And32(x, 0x10101010), 1)
-    );
+    x = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(x, 0x01010101), 2), OpCodes.Shl32(OpCodes.And32(x, 0x04040404), 4)), OpCodes.Shl32(OpCodes.And32(x, 0x02020202), 6)), OpCodes.Shr32(OpCodes.And32(x, 0x20202020), 5)), OpCodes.Shr32(OpCodes.And32(x, 0xC8C8C8C8), 2)), OpCodes.Shr32(OpCodes.And32(x, 0x10101010), 1));
 
     return x;
   }
 
-  // LFSR2 for TK2 (forward direction)
+  /**
+   * LFSR2 for TK2 (forward direction)
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_LFSR2(x) {
     const _x = OpCodes.ToUint32(x);
     return OpCodes.Xor32(
@@ -110,7 +113,11 @@
     );
   }
 
-  // LFSR3 for TK3 (forward direction)
+  /**
+   * LFSR3 for TK3 (forward direction)
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_LFSR3(x) {
     const _x = OpCodes.ToUint32(x);
     return OpCodes.Xor32(
@@ -119,61 +126,59 @@
     );
   }
 
-  // Inverse LFSR2 (LFSR3 is inverse of LFSR2)
+  /**
+   * Inverse LFSR2 (LFSR3 is inverse of LFSR2)
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_inv_LFSR2(x) {
     return skinny128_LFSR3(x);
   }
 
-  // Inverse LFSR3 (LFSR2 is inverse of LFSR3)
+  /**
+   * Inverse LFSR3 (LFSR2 is inverse of LFSR3)
+   * @param {uint32} x - Word of four cells
+   * @returns {uint32} Result word
+   */
   function skinny128_inv_LFSR3(x) {
     return skinny128_LFSR2(x);
   }
 
-  // Permute tweakey state PT = [9, 15, 8, 13, 10, 14, 12, 11, 0, 1, 2, 3, 4, 5, 6, 7]
+  /**
+   * Permute tweakey state PT = [9, 15, 8, 13, 10, 14, 12, 11, 0, 1, 2, 3, 4, 5, 6, 7]
+   * @param {uint32[]} tk - Tweakey words (permuted in place)
+   */
   function skinny128_permute_tk(tk) {
     const row2 = tk[2];
     const row3 = tk[3];
     tk[2] = tk[0];
     tk[3] = tk[1];
     const row3_rot = OpCodes.RotL32(row3, 16);
-    tk[0] = OpCodes.ToUint32(
-      OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF) |
-      OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000) |
-      OpCodes.And32(row3_rot, 0xFF00FF00)
-    );
-    tk[1] = OpCodes.ToUint32(
-      OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF) |
-      OpCodes.And32(row2, 0xFF000000) |
-      OpCodes.And32(OpCodes.Shl32(row3_rot, 8), 0x0000FF00) |
-      OpCodes.And32(row3_rot, 0x00FF0000)
-    );
+    tk[0] = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 8), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row2, 16), 0x00FF0000)), OpCodes.And32(row3_rot, 0xFF00FF00));
+    tk[1] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row2, 16), 0x000000FF), OpCodes.And32(row2, 0xFF000000)), OpCodes.And32(OpCodes.Shl32(row3_rot, 8), 0x0000FF00)), OpCodes.And32(row3_rot, 0x00FF0000));
   }
 
-  // Inverse permute tweakey PT' = [8, 9, 10, 11, 12, 13, 14, 15, 2, 0, 4, 7, 6, 3, 5, 1]
+  /**
+   * Inverse permute tweakey PT' = [8, 9, 10, 11, 12, 13, 14, 15, 2, 0, 4, 7, 6, 3, 5, 1]
+   * @param {uint32[]} tk - Tweakey words (permuted in place)
+   */
   function skinny128_inv_permute_tk(tk) {
     const row0 = tk[0];
     const row1 = tk[1];
     tk[0] = tk[2];
     tk[1] = tk[3];
-    tk[2] = OpCodes.ToUint32(
-      OpCodes.And32(OpCodes.Shr32(row0, 16), 0x000000FF) |
-      OpCodes.And32(OpCodes.Shl32(row0, 8), 0x0000FF00) |
-      OpCodes.And32(OpCodes.Shl32(row1, 16), 0x00FF0000) |
-      OpCodes.And32(row1, 0xFF000000)
-    );
-    tk[3] = OpCodes.ToUint32(
-      OpCodes.And32(OpCodes.Shr32(row0, 16), 0x0000FF00) |
-      OpCodes.And32(OpCodes.Shl32(row0, 16), 0xFF000000) |
-      OpCodes.And32(OpCodes.Shr32(row1, 16), 0x000000FF) |
-      OpCodes.And32(OpCodes.Shl32(row1, 8), 0x00FF0000)
-    );
+    tk[2] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row0, 16), 0x000000FF), OpCodes.And32(OpCodes.Shl32(row0, 8), 0x0000FF00)), OpCodes.And32(OpCodes.Shl32(row1, 16), 0x00FF0000)), OpCodes.And32(row1, 0xFF000000));
+    tk[3] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(OpCodes.Shr32(row0, 16), 0x0000FF00), OpCodes.And32(OpCodes.Shl32(row0, 16), 0xFF000000)), OpCodes.And32(OpCodes.Shr32(row1, 16), 0x000000FF)), OpCodes.And32(OpCodes.Shl32(row1, 8), 0x00FF0000));
   }
 
   // ForkSkinny-128-256 state
   class ForkSkinny128_256_State {
     constructor() {
+      /** @type {uint32[]} */
       this.TK1 = new Uint32Array(4);
+      /** @type {uint32[]} */
       this.TK2 = new Uint32Array(4);
+      /** @type {uint32[]} */
       this.S = new Uint32Array(4);
     }
   }
@@ -181,14 +186,23 @@
   // ForkSkinny-128-384 state
   class ForkSkinny128_384_State {
     constructor() {
+      /** @type {uint32[]} */
       this.TK1 = new Uint32Array(4);
+      /** @type {uint32[]} */
       this.TK2 = new Uint32Array(4);
+      /** @type {uint32[]} */
       this.TK3 = new Uint32Array(4);
+      /** @type {uint32[]} */
       this.S = new Uint32Array(4);
     }
   }
 
-  // Apply ForkSkinny-128-256 rounds
+  /**
+   * Apply ForkSkinny-128-256 rounds
+   * @param {ForkSkinny128_256_State} state - Cipher state
+   * @param {int32} first - First round
+   * @param {int32} last - Round after the last one
+   */
   function forkskinny_128_256_rounds(state, first, last) {
     let s0 = state.S[0];
     let s1 = state.S[1];
@@ -206,7 +220,7 @@
       const rc = RC[round];
       s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000))));
       s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Shr32(rc, 4))));
-      s2 ^= 0x02;
+      s2 = OpCodes.Xor32(s2, 0x02);
 
       // Shift rows (left rotate to move cells right)
       s1 = OpCodes.RotL32(s1, 8);
@@ -214,8 +228,8 @@
       s3 = OpCodes.RotL32(s3, 24);
 
       // Mix columns
-      s1 ^= s2;
-      s2 ^= s0;
+      s1 = OpCodes.Xor32(s1, s2);
+      s2 = OpCodes.Xor32(s2, s0);
       const temp = OpCodes.Xor32(s3, s2);
       s3 = s2;
       s2 = s1;
@@ -235,7 +249,12 @@
     state.S[3] = s3;
   }
 
-  // Apply ForkSkinny-128-256 inverse rounds
+  /**
+   * Apply ForkSkinny-128-256 inverse rounds
+   * @param {ForkSkinny128_256_State} state - Cipher state
+   * @param {int32} first - Round after the first one undone
+   * @param {int32} last - Last round kept
+   */
   function forkskinny_128_256_inv_rounds(state, first, last) {
     let s0 = state.S[0];
     let s1 = state.S[1];
@@ -255,8 +274,8 @@
       s1 = s2;
       s2 = s3;
       s3 = OpCodes.Xor32(temp, s2);
-      s2 ^= s0;
-      s1 ^= s2;
+      s2 = OpCodes.Xor32(s2, s0);
+      s1 = OpCodes.Xor32(s1, s2);
 
       // Inverse shift rows
       s1 = OpCodes.RotR32(s1, 8);
@@ -267,7 +286,7 @@
       const rc = RC[round - 1];
       s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000))));
       s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Shr32(rc, 4))));
-      s2 ^= 0x02;
+      s2 = OpCodes.Xor32(s2, 0x02);
 
       // Apply inverse S-box
       s0 = skinny128_inv_sbox(s0);
@@ -282,7 +301,11 @@
     state.S[3] = s3;
   }
 
-  // Forward tweakey schedule
+  /**
+   * Forward tweakey schedule
+   * @param {ForkSkinny128_256_State} state - Cipher state
+   * @param {int32} rounds - Rounds to advance
+   */
   function forkskinny_128_256_forward_tk(state, rounds) {
     // Optimization: permutation repeats every 16 rounds
     while (rounds >= 16) {
@@ -305,7 +328,11 @@
     }
   }
 
-  // Reverse tweakey schedule
+  /**
+   * Reverse tweakey schedule
+   * @param {ForkSkinny128_256_State} state - Cipher state
+   * @param {int32} rounds - Rounds to rewind
+   */
   function forkskinny_128_256_reverse_tk(state, rounds) {
     // Optimization: permutation repeats every 16 rounds
     while (rounds >= 16) {
@@ -328,7 +355,12 @@
     }
   }
 
-  // Apply ForkSkinny-128-384 rounds
+  /**
+   * Apply ForkSkinny-128-384 rounds
+   * @param {ForkSkinny128_384_State} state - Cipher state
+   * @param {int32} first - First round
+   * @param {int32} last - Round after the last one
+   */
   function forkskinny_128_384_rounds(state, first, last) {
     let s0 = state.S[0];
     let s1 = state.S[1];
@@ -346,7 +378,7 @@
       const rc = RC[round];
       s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(state.TK3[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000)))));
       s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Xor32(state.TK3[1], OpCodes.Shr32(rc, 4)))));
-      s2 ^= 0x02;
+      s2 = OpCodes.Xor32(s2, 0x02);
 
       // Shift rows
       s1 = OpCodes.RotL32(s1, 8);
@@ -354,8 +386,8 @@
       s3 = OpCodes.RotL32(s3, 24);
 
       // Mix columns
-      s1 ^= s2;
-      s2 ^= s0;
+      s1 = OpCodes.Xor32(s1, s2);
+      s2 = OpCodes.Xor32(s2, s0);
       const temp = OpCodes.Xor32(s3, s2);
       s3 = s2;
       s2 = s1;
@@ -378,7 +410,12 @@
     state.S[3] = s3;
   }
 
-  // Apply ForkSkinny-128-384 inverse rounds
+  /**
+   * Apply ForkSkinny-128-384 inverse rounds
+   * @param {ForkSkinny128_384_State} state - Cipher state
+   * @param {int32} first - Round after the first one undone
+   * @param {int32} last - Last round kept
+   */
   function forkskinny_128_384_inv_rounds(state, first, last) {
     let s0 = state.S[0];
     let s1 = state.S[1];
@@ -401,8 +438,8 @@
       s1 = s2;
       s2 = s3;
       s3 = OpCodes.Xor32(temp, s2);
-      s2 ^= s0;
-      s1 ^= s2;
+      s2 = OpCodes.Xor32(s2, s0);
+      s1 = OpCodes.Xor32(s1, s2);
 
       // Inverse shift rows
       s1 = OpCodes.RotR32(s1, 8);
@@ -413,7 +450,7 @@
       const rc = RC[round - 1];
       s0 = OpCodes.Xor32(s0, OpCodes.Xor32(state.TK1[0], OpCodes.Xor32(state.TK2[0], OpCodes.Xor32(state.TK3[0], OpCodes.Xor32(OpCodes.And32(rc, 0x0F), 0x00020000)))));
       s1 = OpCodes.Xor32(s1, OpCodes.Xor32(state.TK1[1], OpCodes.Xor32(state.TK2[1], OpCodes.Xor32(state.TK3[1], OpCodes.Shr32(rc, 4)))));
-      s2 ^= 0x02;
+      s2 = OpCodes.Xor32(s2, 0x02);
 
       // Apply inverse S-box
       s0 = skinny128_inv_sbox(s0);
@@ -428,7 +465,11 @@
     state.S[3] = s3;
   }
 
-  // Forward tweakey schedule for 128-384
+  /**
+   * Forward tweakey schedule for 128-384
+   * @param {ForkSkinny128_384_State} state - Cipher state
+   * @param {int32} rounds - Rounds to advance
+   */
   function forkskinny_128_384_forward_tk(state, rounds) {
     while (rounds >= 16) {
       for (let i = 0; i < 8; i++) {
@@ -456,7 +497,11 @@
     }
   }
 
-  // Reverse tweakey schedule for 128-384
+  /**
+   * Reverse tweakey schedule for 128-384
+   * @param {ForkSkinny128_384_State} state - Cipher state
+   * @param {int32} rounds - Rounds to rewind
+   */
   function forkskinny_128_384_reverse_tk(state, rounds) {
     while (rounds >= 16) {
       for (let i = 0; i < 8; i++) {
@@ -491,6 +536,7 @@
   const FORKSKINNY_128_384_ROUNDS_AFTER = 31;
 
   // Branching constants for left fork
+  /** @type {uint32[]} */
   const BRANCH_CONSTANT = [0x08040201, 0x82412010, 0x28140a05, 0x8844a251];
 
   // ForkSkinny-128-256 Algorithm
@@ -550,22 +596,21 @@
       // official ForkAE KATs, where the advanced-tweakey reading passes all 40
       // while the non-advanced reading fails precisely the vectors that exercise
       // the left branch.
-      const OC = typeof OpCodes !== 'undefined' ? OpCodes : global.OpCodes;
       this.tests = [
         {
           text: "ForkSkinny-128-256 Left Output",
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
-          input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OC.Hex8ToBytes("1078c53597fc5e4c9d91a8eae8f5a876"),
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("1078c53597fc5e4c9d91a8eae8f5a876"),
           forkOutput: "left"
         },
         {
           text: "ForkSkinny-128-256 Right Output",
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
-          input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OC.Hex8ToBytes("d6fd008b1f5f14aaf1341a5f76e5a32f"),
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          expected: OpCodes.Hex8ToBytes("d6fd008b1f5f14aaf1341a5f76e5a32f"),
           forkOutput: "right"
         }
       ];
@@ -574,7 +619,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ForkSkinny128_256Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -592,15 +637,18 @@
   class ForkSkinny128_256Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ForkSkinny128_256} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {string} */
       this._forkOutput = "both"; // "left", "right", or "both"
     }
 
@@ -632,6 +680,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {string} value - "left", "right" or "both"
+     */
     set forkOutput(value) {
       if (value !== "left" && value !== "right" && value !== "both") {
         throw new Error("forkOutput must be 'left', 'right', or 'both'");
@@ -639,6 +690,9 @@
       this._forkOutput = value;
     }
 
+    /**
+     * @returns {string} Selected fork output
+     */
     get forkOutput() {
       return this._forkOutput;
     }
@@ -668,10 +722,12 @@
         throw new Error("Input must be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const block = this.inputBuffer.slice(i, i + 16);
+        /** @type {uint8[]} */
         let result;
 
         if (this.isInverse) {
@@ -687,6 +743,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       const state = new ForkSkinny128_256_State();
 
@@ -707,11 +767,14 @@
       // Run rounds before forking
       forkskinny_128_256_rounds(state, 0, FORKSKINNY_128_256_ROUNDS_BEFORE);
 
+      /** @type {uint8[]|null} */
       let outputLeft = null;
+      /** @type {uint8[]|null} */
       let outputRight = null;
 
       if (this._forkOutput === "both" || this._forkOutput === "left") {
         // Save state at fork point (state only, NOT tweakey - per reference implementation)
+        /** @type {uint32[]} */
         const F_S = [state.S[0], state.S[1], state.S[2], state.S[3]];
 
         if (this._forkOutput === "both") {
@@ -737,10 +800,10 @@
         }
 
         // Generate left output with branching constant
-        state.S[0] ^= BRANCH_CONSTANT[0];
-        state.S[1] ^= BRANCH_CONSTANT[1];
-        state.S[2] ^= BRANCH_CONSTANT[2];
-        state.S[3] ^= BRANCH_CONSTANT[3];
+        state.S[0] = OpCodes.Xor32(state.S[0], BRANCH_CONSTANT[0]);
+        state.S[1] = OpCodes.Xor32(state.S[1], BRANCH_CONSTANT[1]);
+        state.S[2] = OpCodes.Xor32(state.S[2], BRANCH_CONSTANT[2]);
+        state.S[3] = OpCodes.Xor32(state.S[3], BRANCH_CONSTANT[3]);
         forkskinny_128_256_rounds(state, FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER,
                                   FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER * 2);
         outputLeft = this.unpackState(state.S);
@@ -757,6 +820,10 @@
       return outputLeft.concat(outputRight); // Both outputs concatenated
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       const state = new ForkSkinny128_256_State();
 
@@ -794,20 +861,21 @@
       const totalRounds = before + after * 2;
       forkskinny_128_256_forward_tk(state, totalRounds);
       forkskinny_128_256_inv_rounds(state, totalRounds, before + after);
-      state.S[0] ^= BRANCH_CONSTANT[0];
-      state.S[1] ^= BRANCH_CONSTANT[1];
-      state.S[2] ^= BRANCH_CONSTANT[2];
-      state.S[3] ^= BRANCH_CONSTANT[3];
+      state.S[0] = OpCodes.Xor32(state.S[0], BRANCH_CONSTANT[0]);
+      state.S[1] = OpCodes.Xor32(state.S[1], BRANCH_CONSTANT[1]);
+      state.S[2] = OpCodes.Xor32(state.S[2], BRANCH_CONSTANT[2]);
+      state.S[3] = OpCodes.Xor32(state.S[3], BRANCH_CONSTANT[3]);
       forkskinny_128_256_reverse_tk(state, after);
 
       // "both" reproduces the sibling output C1 from the recovered fork point,
       // which is what the ForkAE modes need in order to check the tag.
+      /** @type {uint8[]|null} */
       let outputRight = null;
       if (this._forkOutput === "both") {
         const fstate = new ForkSkinny128_256_State();
-        fstate.S.set(state.S);
-        fstate.TK1.set(state.TK1);
-        fstate.TK2.set(state.TK2);
+        for (let i = 0; i < 4; i++) fstate.S[i] = state.S[i];
+        for (let i = 0; i < 4; i++) fstate.TK1[i] = state.TK1[i];
+        for (let i = 0; i < 4; i++) fstate.TK2[i] = state.TK2[i];
         forkskinny_128_256_rounds(fstate, before, before + after);
         outputRight = this.unpackState(fstate.S);
       }
@@ -819,10 +887,15 @@
       return outputRight ? outputLeft.concat(outputRight) : outputLeft;
     }
 
-    unpackState(S) {
+    /**
+     * @param {uint32[]} words - Four state words
+     * @returns {uint8[]} Little-endian bytes
+     */
+    unpackState(words) {
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < 4; i++) {
-        const bytes = OpCodes.Unpack32LE(S[i]);
+        const bytes = OpCodes.Unpack32LE(words[i]);
         for (let _i = 0; _i < bytes.length; _i++) output.push(bytes[_i]);
       }
       return output;
@@ -863,26 +936,25 @@
         new LinkItem("Reference Implementation", "https://github.com/rweather/lightweight-crypto")
       ];
 
-      const OC = typeof OpCodes !== 'undefined' ? OpCodes : global.OpCodes;
       this.tests = [
         {
           text: "ForkSkinny-128-384 Left Output",
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
-          input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
           // Corrected alongside the 128-256 left output above, for the same
           // reason and from the same source: the reference test file's "Both
           // Left" case, rather than its "Left" case, which was produced without
           // advancing the tweakey across the skipped right branch.
-          expected: OC.Hex8ToBytes("a842dcd53062730d8e293cd923ef9aa9"),
+          expected: OpCodes.Hex8ToBytes("a842dcd53062730d8e293cd923ef9aa9"),
           forkOutput: "left"
         },
         {
           text: "ForkSkinny-128-384 Right Output",
           uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-forkskinny.c",
-          input: OC.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OC.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
-          expected: OC.Hex8ToBytes("d086cd2919969ee6c30adba21194f870"),
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
+          expected: OpCodes.Hex8ToBytes("d086cd2919969ee6c30adba21194f870"),
           forkOutput: "right"
         }
       ];
@@ -891,7 +963,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ForkSkinny128_384Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -909,15 +981,18 @@
   class ForkSkinny128_384Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ForkSkinny128_384} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {string} */
       this._forkOutput = "both";
     }
 
@@ -949,6 +1024,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {string} value - "left", "right" or "both"
+     */
     set forkOutput(value) {
       if (value !== "left" && value !== "right" && value !== "both") {
         throw new Error("forkOutput must be 'left', 'right', or 'both'");
@@ -956,6 +1034,9 @@
       this._forkOutput = value;
     }
 
+    /**
+     * @returns {string} Selected fork output
+     */
     get forkOutput() {
       return this._forkOutput;
     }
@@ -985,10 +1066,12 @@
         throw new Error("Input must be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const block = this.inputBuffer.slice(i, i + 16);
+        /** @type {uint8[]} */
         let result;
 
         if (this.isInverse) {
@@ -1004,6 +1087,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       const state = new ForkSkinny128_384_State();
 
@@ -1028,11 +1115,14 @@
       // Run rounds before forking
       forkskinny_128_384_rounds(state, 0, FORKSKINNY_128_384_ROUNDS_BEFORE);
 
+      /** @type {uint8[]|null} */
       let outputLeft = null;
+      /** @type {uint8[]|null} */
       let outputRight = null;
 
       if (this._forkOutput === "both" || this._forkOutput === "left") {
         // Save state at fork point (state only, NOT tweakey - per reference implementation)
+        /** @type {uint32[]} */
         const F_S = [state.S[0], state.S[1], state.S[2], state.S[3]];
 
         if (this._forkOutput === "both") {
@@ -1052,10 +1142,10 @@
           forkskinny_128_384_forward_tk(state, FORKSKINNY_128_384_ROUNDS_AFTER);
         }
 
-        state.S[0] ^= BRANCH_CONSTANT[0];
-        state.S[1] ^= BRANCH_CONSTANT[1];
-        state.S[2] ^= BRANCH_CONSTANT[2];
-        state.S[3] ^= BRANCH_CONSTANT[3];
+        state.S[0] = OpCodes.Xor32(state.S[0], BRANCH_CONSTANT[0]);
+        state.S[1] = OpCodes.Xor32(state.S[1], BRANCH_CONSTANT[1]);
+        state.S[2] = OpCodes.Xor32(state.S[2], BRANCH_CONSTANT[2]);
+        state.S[3] = OpCodes.Xor32(state.S[3], BRANCH_CONSTANT[3]);
         forkskinny_128_384_rounds(state, FORKSKINNY_128_384_ROUNDS_BEFORE + FORKSKINNY_128_384_ROUNDS_AFTER,
                                   FORKSKINNY_128_384_ROUNDS_BEFORE + FORKSKINNY_128_384_ROUNDS_AFTER * 2);
         outputLeft = this.unpackState(state.S);
@@ -1070,6 +1160,10 @@
       return outputLeft.concat(outputRight);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       const state = new ForkSkinny128_384_State();
 
@@ -1105,19 +1199,20 @@
       const totalRounds = before + after * 2;
       forkskinny_128_384_forward_tk(state, totalRounds);
       forkskinny_128_384_inv_rounds(state, totalRounds, before + after);
-      state.S[0] ^= BRANCH_CONSTANT[0];
-      state.S[1] ^= BRANCH_CONSTANT[1];
-      state.S[2] ^= BRANCH_CONSTANT[2];
-      state.S[3] ^= BRANCH_CONSTANT[3];
+      state.S[0] = OpCodes.Xor32(state.S[0], BRANCH_CONSTANT[0]);
+      state.S[1] = OpCodes.Xor32(state.S[1], BRANCH_CONSTANT[1]);
+      state.S[2] = OpCodes.Xor32(state.S[2], BRANCH_CONSTANT[2]);
+      state.S[3] = OpCodes.Xor32(state.S[3], BRANCH_CONSTANT[3]);
       forkskinny_128_384_reverse_tk(state, after);
 
+      /** @type {uint8[]|null} */
       let outputRight = null;
       if (this._forkOutput === "both") {
         const fstate = new ForkSkinny128_384_State();
-        fstate.S.set(state.S);
-        fstate.TK1.set(state.TK1);
-        fstate.TK2.set(state.TK2);
-        fstate.TK3.set(state.TK3);
+        for (let i = 0; i < 4; i++) fstate.S[i] = state.S[i];
+        for (let i = 0; i < 4; i++) fstate.TK1[i] = state.TK1[i];
+        for (let i = 0; i < 4; i++) fstate.TK2[i] = state.TK2[i];
+        for (let i = 0; i < 4; i++) fstate.TK3[i] = state.TK3[i];
         forkskinny_128_384_rounds(fstate, before, before + after);
         outputRight = this.unpackState(fstate.S);
       }
@@ -1128,10 +1223,15 @@
       return outputRight ? outputLeft.concat(outputRight) : outputLeft;
     }
 
-    unpackState(S) {
+    /**
+     * @param {uint32[]} words - Four state words
+     * @returns {uint8[]} Little-endian bytes
+     */
+    unpackState(words) {
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < 4; i++) {
-        const bytes = OpCodes.Unpack32LE(S[i]);
+        const bytes = OpCodes.Unpack32LE(words[i]);
         for (let _i = 0; _i < bytes.length; _i++) output.push(bytes[_i]);
       }
       return output;
@@ -1142,12 +1242,5 @@
   RegisterAlgorithm(new ForkSkinny128_256());
   RegisterAlgorithm(new ForkSkinny128_384());
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-      ForkSkinny128_256,
-      ForkSkinny128_384
-    };
-  }
-
-})(typeof window !== 'undefined' ? window : global);
+  return { ForkSkinny128_256, ForkSkinny128_384 };
+}));

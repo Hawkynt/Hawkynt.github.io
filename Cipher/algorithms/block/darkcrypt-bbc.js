@@ -69,44 +69,81 @@
 
   // Additive lagged-Fibonacci generator (glibc random() family).
   class LFib {
+    /**
+     * @param {uint32} seed - LCG seed for the initial state
+     * @param {int32} n - State size
+     * @param {int32} lag - Initial front index
+     * @param {int32} warmupBase - Minimum number of discarded outputs
+     * @param {int32} shift - Output right shift (when rotate is 0)
+     * @param {int32} rotate - Output right rotation (0 to shift instead)
+     */
     constructor(seed, n, lag, warmupBase, shift, rotate) {
+      /** @type {int32} */
       this.n = n;
+      /** @type {int32} */
       this.shift = shift;
+      /** @type {int32} */
       this.rotate = rotate;
+      /** @type {uint32[]} */
       this.state = new Uint32Array(n);
       let lcg = OpCodes.ToUint32(seed);
       this.state[0] = lcg;
       for (let i = 1; i < n; i++) {
-        lcg = OpCodes.ToUint32(Math.imul(lcg, LCG_MULT) + LCG_INC);
+        lcg = OpCodes.Add32(OpCodes.Mul32(lcg, LCG_MULT), LCG_INC);
         this.state[i] = lcg;
       }
+      /** @type {int32} */
       this.f = lag;
+      /** @type {int32} */
       this.r = 0;
-      const warm = (this.state[n - 1] % n) + warmupBase;
-      for (let i = 0; i < warm; i++) this.next();
-    }
-    next() {
-      const sum = OpCodes.Add32(this.state[this.f], this.state[this.r]);
-      this.state[this.f] = sum;
-      if (++this.f >= this.n) this.f = 0;
-      if (++this.r >= this.n) this.r = 0;
-      return this.rotate
-        ? OpCodes.RotR32(sum, this.rotate)
-        : OpCodes.Shr32(sum, this.shift);
+      const warm = OpCodes.Add32(this.state[n - 1] % n, warmupBase);
+      for (let i = 0; i < warm; i++) lfibNext(this);
     }
   }
 
+  /**
+   * Next output of a lagged-Fibonacci generator
+   * @param {LFib} rng - Generator (state advanced in place)
+   * @returns {uint32} Output word
+   */
+  function lfibNext(rng) {
+    const sum = OpCodes.Add32(rng.state[rng.f], rng.state[rng.r]);
+    rng.state[rng.f] = sum;
+    if (++rng.f >= rng.n) rng.f = 0;
+    if (++rng.r >= rng.n) rng.r = 0;
+    return rng.rotate
+      ? OpCodes.RotR32(sum, rng.rotate)
+      : OpCodes.Shr32(sum, rng.shift);
+  }
+
+  /**
+   * @param {uint32} seed - Key byte
+   * @returns {LFib} Generator A
+   */
   function makeRngA(seed) { return new LFib(seed, 1289, 242, 0x325A, 6, 0); }
+  /**
+   * @param {uint32} seed - Key byte
+   * @returns {LFib} Generator B
+   */
   function makeRngB(seed) { return new LFib(seed, 1223, 588, 0x2FC6, 23, 0); }
+  /**
+   * @param {uint32} seed - Key byte
+   * @returns {LFib} Generator C
+   */
   function makeRngC(seed) { return new LFib(seed, 431, 200, 0x10D6, 0, 10); }
 
   // Random permutation of 0..255 (Fisher-Yates, 255 draws of RNG C).
+  /**
+   * @param {LFib} rngC - Generator C
+   * @returns {uint8[]} Permutation of 0..255
+   */
   function buildPerm(rngC) {
     const local = new Uint8Array(256);
     for (let i = 0; i < 256; i++) local[i] = i;
     const dest = new Uint8Array(256);
     for (let count = 256; count >= 2; count--) {
-      const r = rngC.next() % count;
+      /** @type {int32} */
+      const r = lfibNext(rngC) % count;
       dest[count - 1] = local[r];
       for (let k = r + 1; k < count; k++) local[k - 1] = local[k];
     }
@@ -114,6 +151,10 @@
     return dest;
   }
 
+  /**
+   * @param {uint8[]} p - Permutation of 0..255
+   * @returns {uint8[]} Its inverse
+   */
   function invPerm(p) {
     const q = new Uint8Array(256);
     for (let i = 0; i < 256; i++) q[p[i]] = i;
@@ -122,12 +163,18 @@
 
   // In-place involution shuffle: product of disjoint random transpositions
   // (n/2 draws of RNG C). Self-inverse when replayed on the same RNG C stream.
+  /**
+   * @param {uint8[]} arr - Bytes, shuffled in place
+   * @param {int32} n - Number of bytes
+   * @param {LFib} rngC - Generator C
+   */
   function involutionShuffle(arr, n, rngC) {
     const temp = new Int32Array(n);
     for (let i = 0; i < n; i++) temp[i] = i;
     let count = n;
     while (count > 1) {
-      const j = (rngC.next() % (count - 1)) + 1;
+      /** @type {int32} */
+      const j = (lfibNext(rngC) % (count - 1)) + 1;
       const a = temp[0], b = temp[j];
       const t = arr[a]; arr[a] = arr[b]; arr[b] = t;
       temp[0] = (j === count - 2) ? temp[count - 1] : temp[count - 2];
@@ -136,13 +183,22 @@
     }
   }
 
+  /**
+   * @param {LFib} rngC - Generator C
+   * @returns {uint8[][]} The 16 substitution tables
+   */
   function buildTables(rngC) {
+    /** @type {uint8[][]} */
     const T = new Array(16);
-    const pairs = [[0, 3], [1, 4], [2, 5], [6, 9], [7, 10], [8, 11]];
-    for (const [p, q] of pairs) { T[p] = buildPerm(rngC); T[q] = invPerm(T[p]); }
+    // Table pairs (p, q) where q is the inverse of p.
+    /** @type {int32[]} */
+    const pairP = [0, 1, 2, 6, 7, 8];
+    /** @type {int32[]} */
+    const pairQ = [3, 4, 5, 9, 10, 11];
+    for (let n = 0; n < pairP.length; n++) { T[pairP[n]] = buildPerm(rngC); T[pairQ[n]] = invPerm(T[pairP[n]]); }
     T[12] = buildPerm(rngC); T[13] = buildPerm(rngC);
     T[14] = buildPerm(rngC); T[15] = buildPerm(rngC);
-    for (const [p, q] of pairs) { involutionShuffle(T[p], 256, rngC); T[q] = invPerm(T[p]); }
+    for (let n = 0; n < pairP.length; n++) { involutionShuffle(T[pairP[n]], 256, rngC); T[pairQ[n]] = invPerm(T[pairP[n]]); }
     involutionShuffle(T[12], 256, rngC); involutionShuffle(T[13], 256, rngC);
     involutionShuffle(T[14], 256, rngC); involutionShuffle(T[15], 256, rngC);
     return T;
@@ -188,29 +244,45 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptBBCInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptBBCInstance(this, isInverse);
     }
   }
 
   class DarkCryptBBCInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptBBCAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. BBC (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. BBC (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -223,8 +295,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be a multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be a multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -235,21 +308,25 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const len = block.length;
       const rngA = makeRngA(this._key[0]);
       const rngB = makeRngB(this._key[1]);
       const rngC = makeRngC(this._key[2]);
       const T = buildTables(rngC);
-      const fbA = OpCodes.And32(rngA.next(), 0xFF);
-      const fbB = OpCodes.And32(rngB.next(), 0xFF);
+      const fbA = OpCodes.And32(lfibNext(rngA), 0xFF);
+      const fbB = OpCodes.And32(lfibNext(rngB), 0xFF);
       const buf = new Uint8Array(block);
 
       // Pass 1 (forward), keyed by RNG A.
       let fb = fbA;
       for (let i = 0; i < len; i++) {
         const inner = T[1][OpCodes.And32(OpCodes.Xor32(T[13][fb], T[2][buf[i]]), 0xFF)];
-        const ra = T[12][OpCodes.And32(rngA.next(), 0xFF)];
+        const ra = T[12][OpCodes.And32(lfibNext(rngA), 0xFF)];
         const c = T[0][OpCodes.And32(OpCodes.Xor32(ra, inner), 0xFF)];
         buf[i] = c; fb = c;
       }
@@ -257,7 +334,7 @@
       fb = fbB;
       for (let i = len - 1; i >= 0; i--) {
         const inner = T[7][OpCodes.And32(OpCodes.Xor32(T[15][fb], T[8][buf[i]]), 0xFF)];
-        const rb = T[14][OpCodes.And32(rngB.next(), 0xFF)];
+        const rb = T[14][OpCodes.And32(lfibNext(rngB), 0xFF)];
         const c = T[6][OpCodes.And32(OpCodes.Xor32(rb, inner), 0xFF)];
         buf[i] = c; fb = c;
       }
@@ -267,14 +344,18 @@
       return Array.from(buf);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const len = block.length;
       const rngA = makeRngA(this._key[0]);
       const rngB = makeRngB(this._key[1]);
       const rngC = makeRngC(this._key[2]);
       const T = buildTables(rngC);
-      const fbA = OpCodes.And32(rngA.next(), 0xFF);
-      const fbB = OpCodes.And32(rngB.next(), 0xFF);
+      const fbA = OpCodes.And32(lfibNext(rngA), 0xFF);
+      const fbB = OpCodes.And32(lfibNext(rngB), 0xFF);
       const buf = new Uint8Array(block);
 
       // Undo the final involution shuffle (same RNG C stream => self-inverse).
@@ -284,7 +365,7 @@
       let fb = fbB;
       for (let i = len - 1; i >= 0; i--) {
         const cur = buf[i];
-        const t = T[10][OpCodes.And32(OpCodes.Xor32(T[14][OpCodes.And32(rngB.next(), 0xFF)], T[9][cur]), 0xFF)];
+        const t = T[10][OpCodes.And32(OpCodes.Xor32(T[14][OpCodes.And32(lfibNext(rngB), 0xFF)], T[9][cur]), 0xFF)];
         buf[i] = T[11][OpCodes.And32(OpCodes.Xor32(T[15][fb], t), 0xFF)];
         fb = cur;
       }
@@ -292,7 +373,7 @@
       fb = fbA;
       for (let i = 0; i < len; i++) {
         const cur = buf[i];
-        const t = T[4][OpCodes.And32(OpCodes.Xor32(T[3][cur], T[12][OpCodes.And32(rngA.next(), 0xFF)]), 0xFF)];
+        const t = T[4][OpCodes.And32(OpCodes.Xor32(T[3][cur], T[12][OpCodes.And32(lfibNext(rngA), 0xFF)]), 0xFF)];
         buf[i] = T[5][OpCodes.And32(OpCodes.Xor32(t, T[13][fb]), 0xFF)];
         fb = cur;
       }

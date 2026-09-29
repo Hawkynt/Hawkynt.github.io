@@ -56,61 +56,111 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Key-schedule shift-register seed constants (DLL globals at 0x40800C/0x40800E/0x408010).
+  /** @type {uint32} */
   const SEED_S1 = 0xf659; // (initial "ebx")
+  /** @type {uint32} */
   const SEED_S2 = 0xd76c; // (initial "ecx")
+  /** @type {uint32} */
   const SEED_S3 = 0x9bf4; // (initial "esi")
 
-  function u16(x) { return OpCodes.AndN(x, 0xffff); }
+  /**
+   * @param {uint32} x - Value
+   * @returns {uint32} Low 16 bits of x
+   */
+  function u16(x) { return OpCodes.And32(x, 0xffff); }
 
+  /**
+   * @param {uint32} x - 16-bit word
+   * @param {int32} n - Rotation amount (mod 16)
+   * @returns {uint32} x rotated left within 16 bits
+   */
   function rotL16(x, n) {
     x = u16(x);
     n &= 15;
     if (n === 0) return x;
-    return u16(OpCodes.OrN(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 16 - n)));
+    return u16(OpCodes.Or32(OpCodes.Shl32(x, n), OpCodes.Shr32(x, 16 - n)));
   }
 
+  /**
+   * @param {uint32} x - 16-bit word
+   * @param {int32} n - Rotation amount (mod 16)
+   * @returns {uint32} x rotated right within 16 bits
+   */
   function rotR16(x, n) {
     x = u16(x);
     n &= 15;
     if (n === 0) return x;
-    return u16(OpCodes.OrN(OpCodes.Shr32(x, n), OpCodes.Shl32(x, 16 - n)));
+    return u16(OpCodes.Or32(OpCodes.Shr32(x, n), OpCodes.Shl32(x, 16 - n)));
   }
 
   // Four nonlinear Boolean combining functions, one per 16-round group. Each takes
   // the current 8-word queue (q[0] = head/newest .. q[7] = tail/oldest) and returns
   // a 16-bit "T" value; q[7] itself never participates here (it is folded in
   // separately as rotL16(q[7], 9)).
+  /**
+   * @param {uint32[]} q - 8-word queue
+   * @returns {uint32} 16-bit T value
+   */
   function combineT1(q) {
-    return u16(OpCodes.XorN(OpCodes.XorN(q[0], OpCodes.AndN(q[0], q[1])),
-           OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(q[2], q[4]), OpCodes.AndN(q[3], q[6])), OpCodes.AndN(q[1], q[5]))));
+    return u16(OpCodes.Xor32(OpCodes.Xor32(q[0], OpCodes.And32(q[0], q[1])),
+           OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(q[2], q[4]), OpCodes.And32(q[3], q[6])), OpCodes.And32(q[1], q[5]))));
   }
 
+  /**
+   * @param {uint32[]} q - 8-word queue
+   * @returns {uint32} 16-bit T value
+   */
   function combineT2(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[1], OpCodes.AndN(q[0], q[3])),
-      OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(q[1], q[4]), OpCodes.AndN(q[2], q[5])), OpCodes.AndN(q[3], q[4])));
-    const triples = OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(q[0], q[3]), q[4]), OpCodes.AndN(OpCodes.AndN(q[0], q[4]), q[6]));
-    return u16(OpCodes.XorN(terms, triples));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[1], OpCodes.And32(q[0], q[3])),
+      OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(q[1], q[4]), OpCodes.And32(q[2], q[5])), OpCodes.And32(q[3], q[4])));
+    const triples = OpCodes.Xor32(OpCodes.And32(OpCodes.And32(q[0], q[3]), q[4]), OpCodes.And32(OpCodes.And32(q[0], q[4]), q[6]));
+    return u16(OpCodes.Xor32(terms, triples));
   }
 
+  /**
+   * @param {uint32[]} q - 8-word queue
+   * @returns {uint32} 16-bit T value
+   */
   function combineT3(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[3], OpCodes.AndN(q[0], q[1])),
-      OpCodes.XorN(OpCodes.AndN(q[0], q[3]), OpCodes.XorN(OpCodes.AndN(q[2], q[5]), OpCodes.AndN(q[4], q[6]))));
-    const triple = OpCodes.AndN(OpCodes.AndN(q[0], q[4]), q[5]);
-    return u16(OpCodes.XorN(terms, triple));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[3], OpCodes.And32(q[0], q[1])),
+      OpCodes.Xor32(OpCodes.And32(q[0], q[3]), OpCodes.Xor32(OpCodes.And32(q[2], q[5]), OpCodes.And32(q[4], q[6]))));
+    const triple = OpCodes.And32(OpCodes.And32(q[0], q[4]), q[5]);
+    return u16(OpCodes.Xor32(terms, triple));
   }
 
+  /**
+   * @param {uint32[]} q - 8-word queue
+   * @returns {uint32} 16-bit T value
+   */
   function combineT4(q) {
-    const terms = OpCodes.XorN(OpCodes.XorN(q[2], OpCodes.AndN(q[0], q[1])),
-      OpCodes.XorN(OpCodes.AndN(q[2], q[3]), OpCodes.XorN(OpCodes.AndN(q[3], q[4]), OpCodes.AndN(q[5], q[6]))));
-    const quad = OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(q[0], q[2]), q[4]), q[6]);
-    return u16(OpCodes.XorN(terms, quad));
+    const terms = OpCodes.Xor32(OpCodes.Xor32(q[2], OpCodes.And32(q[0], q[1])),
+      OpCodes.Xor32(OpCodes.And32(q[2], q[3]), OpCodes.Xor32(OpCodes.And32(q[3], q[4]), OpCodes.And32(q[5], q[6]))));
+    const quad = OpCodes.And32(OpCodes.And32(OpCodes.And32(q[0], q[2]), q[4]), q[6]);
+    return u16(OpCodes.Xor32(terms, quad));
   }
 
-  const COMBINERS = [combineT1, combineT2, combineT3, combineT4];
+  /**
+   * The combining function of a 16-round group
+   * @param {int32} group - Round group 0..3
+   * @param {uint32[]} q - 8-word queue
+   * @returns {uint32} 16-bit T value
+   */
+  function combineGroup(group, q) {
+    switch (group) {
+      case 0: return combineT1(q);
+      case 1: return combineT2(q);
+      case 2: return combineT3(q);
+      default: return combineT4(q);
+    }
+  }
 
   // Data-dependent rotate amount derived from T itself (RC5/RC6-style).
+  /**
+   * @param {uint32} T - 16-bit T value
+   * @returns {uint32} Rotation amount 0..15
+   */
   function shiftAmount(T) {
-    const mixed = OpCodes.AndN(OpCodes.Add32(OpCodes.Shr32(T, 8), T), 0xff);
+    const mixed = OpCodes.And32(OpCodes.Add32(OpCodes.Shr32(T, 8), T), 0xff);
     return OpCodes.Shr32(mixed, 4);
   }
 
@@ -168,22 +218,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSpeedInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSpeedInstance(this, isInverse);
     }
   }
 
   class DarkCryptSpeedInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSpeedAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this.expandedKey = null; // 64 x 16-bit round-key words
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -192,13 +256,16 @@
         return;
       }
       if (keyBytes.length !== 32)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SPEED (DarkCrypt) requires exactly 32 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SPEED (DarkCrypt) requires exactly 32 bytes");
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this.expandedKey = this._expandKey(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -211,8 +278,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -224,17 +292,29 @@
 
     // Expands the 16 raw 16-bit key words into a 64-word round-key schedule via a
     // 3-word nonlinear (majority + rotate) shift register seeded from fixed constants.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} 64 16-bit round-key words
+     */
     _expandKey(keyBytes) {
+      /** @type {uint32[]} */
       const rawWords = new Array(16);
       for (let i = 0; i < 16; i++)
         rawWords[i] = OpCodes.Pack16LE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
 
+      /** @type {uint32[]} */
       const words = new Array(64);
       for (let i = 0; i < 16; i++) words[i] = rawWords[i];
 
-      let s3 = SEED_S3, s1 = SEED_S1, s2 = SEED_S2; // (esi, ebx, ecx) in the DLL's naming
+      // (esi, ebx, ecx) in the DLL's naming
+      /** @type {uint32} */
+      let s3 = SEED_S3;
+      /** @type {uint32} */
+      let s1 = SEED_S1;
+      /** @type {uint32} */
+      let s2 = SEED_S2;
       for (let i = 16; i < 64; i++) {
-        const majority = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(s3, s1), OpCodes.AndN(s1, s2)), OpCodes.AndN(s2, s3));
+        const majority = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(s3, s1), OpCodes.And32(s1, s2)), OpCodes.And32(s2, s3));
         const rotated = rotL16(majority, 5);
         const newWord = u16(OpCodes.Add32(OpCodes.Add32(rotated, s2), rawWords[OpCodes.And32(i, 0xF)]));
         words[i] = newWord;
@@ -243,42 +323,59 @@
       return words;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       let q = new Array(8);
-      for (let i = 0; i < 8; i++) q[i] = OpCodes.OrN(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
+      for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
 
       for (let round = 0; round < 64; round++) {
-        const combine = COMBINERS[Math.floor(round / 16)];
-        const T = combine(q);
+        const T = combineGroup(Math.floor(round / 16), q);
         const shamt = shiftAmount(T);
-        const rotated = rotR16(OpCodes.AndN(T, 0xffff), shamt);
+        const rotated = rotR16(OpCodes.And32(T, 0xffff), shamt);
         const newHead = u16(OpCodes.Add32(OpCodes.Add32(rotated, rotL16(q[7], 9)), this.expandedKey[round]));
         q = [newHead, q[0], q[1], q[2], q[3], q[4], q[5], q[6]];
       }
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(OpCodes.AndN(q[i], 0xff), OpCodes.AndN(OpCodes.Shr32(q[i], 8), 0xff));
+      for (let i = 0; i < 8; i++) {
+        out.push(OpCodes.And32(q[i], 0xff));
+        out.push(OpCodes.And32(OpCodes.Shr32(q[i], 8), 0xff));
+      }
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       let q = new Array(8);
-      for (let i = 0; i < 8; i++) q[i] = OpCodes.OrN(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
+      for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
 
       for (let round = 63; round >= 0; round--) {
         // q currently holds the post-round state; recover the pre-round state.
+        /** @type {uint32[]} */
         const oldQ = [q[1], q[2], q[3], q[4], q[5], q[6], q[7], 0];
-        const combine = COMBINERS[Math.floor(round / 16)];
-        const T = combine(oldQ);
+        const T = combineGroup(Math.floor(round / 16), oldQ);
         const shamt = shiftAmount(T);
-        const rotated = rotR16(OpCodes.AndN(T, 0xffff), shamt);
+        const rotated = rotR16(OpCodes.And32(T, 0xffff), shamt);
         const rotatedOldTail = u16(OpCodes.Sub32(OpCodes.Sub32(q[0], rotated), this.expandedKey[round]));
         oldQ[7] = rotR16(rotatedOldTail, 9);
         q = oldQ;
       }
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(OpCodes.AndN(q[i], 0xff), OpCodes.AndN(OpCodes.Shr32(q[i], 8), 0xff));
+      for (let i = 0; i < 8; i++) {
+        out.push(OpCodes.And32(q[i], 0xff));
+        out.push(OpCodes.And32(OpCodes.Shr32(q[i], 8), 0xff));
+      }
       return out;
     }
   }

@@ -55,9 +55,17 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
+  /** @type {int32} */
   const ROUND = 16;
+  /** @type {int32} */
+  const EK_FK = 0; // EK[EK_FK][r] = fk subkey pair of round r
+  /** @type {int32} */
+  const EK_SK = 1; // EK[EK_SK][r] = sk subkey pair of round r
+  /** @type {int32} */
+  const EK_IK = 2; // EK[EK_IK][i] = ik pair of the i-th L layer
 
   // Byte-shuffle order table, indexed by the top nibble of the "temporary key" stream.
+  /** @type {int32[][]} */
   const SH = [
     [0,2,1,3],[0,2,3,1],[0,3,1,2],[0,3,2,1],
     [1,0,3,2],[1,2,0,3],[1,3,0,2],[3,1,0,2],
@@ -66,7 +74,8 @@
   ];
 
   // Four 8-bit-in/8-bit-out S-boxes, as implemented in the DarkCrypt Total Commander plugin.
-  const S = [
+  /** @type {uint8[][]} */
+  const SB = [
   [149,111,237,155, 21, 85,108, 76,236, 75,193, 84, 22,138, 89, 55,
     51,145, 13,153,148,163, 86, 59,204,175, 91,117,126, 70,144, 10,
    248,146,201,  0, 97,208, 23,214,147,234, 66, 65,226, 57,210,224,
@@ -133,142 +142,225 @@
    213, 53,148, 15, 55,239,  3,191,134,250,193,  9,130,118,138, 34]
   ];
 
-  function u32(x) { return OpCodes.ToUint32(x); }
-
   // S-box mixing primitive. Builds four substituted bytes at positions
   // rotated by n, then combines them: wx[3] is XORed with two terms that
   // are themselves computed via subtraction (this last step is where the
   // DarkCrypt implementation deviates from the ISO/IEC9979-0019 reference,
   // which uses plain XOR for all four terms).
-  function T(x, n, inByte) {
+  /**
+   * @param {uint32} x - Word
+   * @param {int32} n - Byte position of the XOR term (0..3)
+   * @param {uint8} inByte - S-box input byte
+   * @returns {uint32} Mixed word
+   */
+  function subT(x, n, inByte) {
+    /** @type {uint8[]} */
     const wx = [0, 0, 0, 0];
-    wx[(n + 1) % 4] = S[0][inByte];
-    wx[(n + 2) % 4] = S[1][inByte];
-    wx[(n + 3) % 4] = S[2][inByte];
-    wx[n]           = OpCodes.And32(OpCodes.Xor32(S[3][inByte], inByte), 0xFF);
-    const hi  = u32(x - u32(OpCodes.Shl32(wx[0], 24)));
-    const mid = u32(u32(OpCodes.Shl32(wx[1], 16)) - u32(OpCodes.Shl32(wx[2], 8)));
-    return u32(OpCodes.Xor32(OpCodes.Xor32(wx[3], mid), hi));
+    wx[(n + 1) % 4] = SB[0][inByte];
+    wx[(n + 2) % 4] = SB[1][inByte];
+    wx[(n + 3) % 4] = SB[2][inByte];
+    wx[n]           = OpCodes.And32(OpCodes.Xor32(SB[3][inByte], inByte), 0xFF);
+    const hi  = OpCodes.Sub32(x, OpCodes.Shl32(wx[0], 24));
+    const mid = OpCodes.Sub32(OpCodes.Shl32(wx[1], 16), OpCodes.Shl32(wx[2], 8));
+    return OpCodes.Xor32(OpCodes.Xor32(wx[3], mid), hi);
   }
 
   // Additive nonlinear mixing used while deriving the "temporary key" stream.
-  function Y(x, s1, s2, s3) {
-    let wx = u32(x);
-    wx = u32(wx + u32(OpCodes.Shl32(wx, s1)));
-    wx = u32(wx + u32(OpCodes.Shl32(wx, s2)));
-    wx = u32(wx + u32(OpCodes.Shl32(wx, s3)));
+  /**
+   * @param {uint32} x - Word
+   * @param {int32} s1 - First shift
+   * @param {int32} s2 - Second shift
+   * @param {int32} s3 - Third shift
+   * @returns {uint32} Mixed word
+   */
+  function mixY(x, s1, s2, s3) {
+    let wx = x;
+    wx = OpCodes.Add32(wx, OpCodes.Shl32(wx, s1));
+    wx = OpCodes.Add32(wx, OpCodes.Shl32(wx, s2));
+    wx = OpCodes.Add32(wx, OpCodes.Shl32(wx, s3));
     return wx;
   }
 
   // Keyed XOR whitening at a byte position determined by the shuffle table.
-  function K(x, k, s) {
-    return u32(OpCodes.Xor32(x, u32(OpCodes.Shl32(k, s))));
+  /**
+   * @param {uint32} x - Word
+   * @param {uint32} k - Key byte
+   * @param {int32} s - Bit position of the key byte
+   * @returns {uint32} x XOR (k shifted left by s)
+   */
+  function keyK(x, k, s) {
+    return OpCodes.Xor32(x, OpCodes.Shl32(k, s));
   }
 
   // Round function: combines a main stream of S-box substitutions with a
   // temporary-key stream derived from the round's fk/sk subkeys.
-  function F(EK, r, x) {
-    let w32 = u32(x);
-    let k32;
-    w32 = u32(w32 + EK.fk[r][0]);
-    k32 = u32(EK.sk[r][0] + w32);
-    k32 = Y(k32, 3, 8, 16);
-    k32 = T(k32, 0, OpCodes.And32(OpCodes.Shr32(k32, 24), 0xFF));
-    k32 = u32(k32 + EK.sk[r][1]);
-    k32 = Y(k32, 7, 9, 13);
-    k32 = T(k32, 0, OpCodes.And32(OpCodes.Shr32(k32, 24), 0xFF));
-    k32 = T(k32, 1, OpCodes.And32(OpCodes.Shr32(k32, 16), 0xFF));
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {int32} r - Round index
+   * @param {uint32} x - Half block
+   * @returns {uint32} F output
+   */
+  function roundF(EK, r, x) {
+    let w32 = x;
+    /** @type {uint32} */
+    let k32 = 0;
+    w32 = OpCodes.Add32(w32, EK[EK_FK][r][0]);
+    k32 = OpCodes.Add32(EK[EK_SK][r][0], w32);
+    k32 = mixY(k32, 3, 8, 16);
+    k32 = subT(k32, 0, OpCodes.And32(OpCodes.Shr32(k32, 24), 0xFF));
+    k32 = OpCodes.Add32(k32, EK[EK_SK][r][1]);
+    k32 = mixY(k32, 7, 9, 13);
+    k32 = subT(k32, 0, OpCodes.And32(OpCodes.Shr32(k32, 24), 0xFF));
+    k32 = subT(k32, 1, OpCodes.And32(OpCodes.Shr32(k32, 16), 0xFF));
     const wk1 = OpCodes.And32(OpCodes.Shr32(k32, 28), 0xFF);
     const wk2 = OpCodes.And32(k32, 0xFF);
     const wk3 = OpCodes.And32(OpCodes.Shr32(k32, 8), 0xFF);
 
-    w32 = T(w32, 0, OpCodes.And32(OpCodes.Shr32(w32, 24), 0xFF));
-    w32 = T(w32, 1, OpCodes.And32(OpCodes.Shr32(w32, 16), 0xFF));
-    w32 = T(w32, 2, OpCodes.And32(OpCodes.Shr32(w32, 8), 0xFF));
-    w32 = T(w32, 3, OpCodes.And32(w32, 0xFF));
-    w32 = u32(w32 + EK.fk[r][1]);
-    w32 = T(w32, SH[wk1][0], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][0] * 8))), 0xFF));
-    w32 = T(w32, SH[wk1][1], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][1] * 8))), 0xFF));
-    w32 = T(w32, SH[wk1][2], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][2] * 8))), 0xFF));
-    w32 = T(w32, SH[wk1][3], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][3] * 8))), 0xFF));
-    w32 = K(w32, wk2, 24 - (SH[wk1][0] * 8));
-    w32 = T(w32, SH[wk1][0], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][0] * 8))), 0xFF));
-    w32 = K(w32, wk3, 24 - (SH[wk1][1] * 8));
-    w32 = T(w32, SH[wk1][1], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][1] * 8))), 0xFF));
+    w32 = subT(w32, 0, OpCodes.And32(OpCodes.Shr32(w32, 24), 0xFF));
+    w32 = subT(w32, 1, OpCodes.And32(OpCodes.Shr32(w32, 16), 0xFF));
+    w32 = subT(w32, 2, OpCodes.And32(OpCodes.Shr32(w32, 8), 0xFF));
+    w32 = subT(w32, 3, OpCodes.And32(w32, 0xFF));
+    w32 = OpCodes.Add32(w32, EK[EK_FK][r][1]);
+    w32 = subT(w32, SH[wk1][0], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][0] * 8))), 0xFF));
+    w32 = subT(w32, SH[wk1][1], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][1] * 8))), 0xFF));
+    w32 = subT(w32, SH[wk1][2], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][2] * 8))), 0xFF));
+    w32 = subT(w32, SH[wk1][3], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][3] * 8))), 0xFF));
+    w32 = keyK(w32, wk2, 24 - (SH[wk1][0] * 8));
+    w32 = subT(w32, SH[wk1][0], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][0] * 8))), 0xFF));
+    w32 = keyK(w32, wk3, 24 - (SH[wk1][1] * 8));
+    w32 = subT(w32, SH[wk1][1], OpCodes.And32(OpCodes.Shr32(w32, (24 - (SH[wk1][1] * 8))), 0xFF));
 
     return w32;
   }
 
   // Key-dependent linear mixing applied between rounds.
-  function L(state, k0, k1) {
+  /**
+   * @param {uint32[]} state - Two words, updated in place
+   * @param {uint32} k0 - First ik word
+   * @param {uint32} k1 - Second ik word
+   */
+  function linL(state, k0, k1) {
     const w0 = state[0], w1 = state[1];
-    state[0] = u32(OpCodes.Xor32(OpCodes.Xor32(w0, OpCodes.And32(w1, k1)), OpCodes.And32(OpCodes.And32(w0, k0), k1)));
-    state[1] = u32(OpCodes.Xor32(OpCodes.Xor32(w1, OpCodes.And32(w0, k0)), OpCodes.And32(OpCodes.And32(w1, k1), k0)));
+    state[0] = OpCodes.Xor32(OpCodes.Xor32(w0, OpCodes.And32(w1, k1)), OpCodes.And32(OpCodes.And32(w0, k0), k1));
+    state[1] = OpCodes.Xor32(OpCodes.Xor32(w1, OpCodes.And32(w0, k0)), OpCodes.And32(OpCodes.And32(w1, k1), k0));
   }
 
   // Key-schedule helpers: each derives one (or one pair of) 32-bit subkey
   // words from the running 128-bit schedule state x[0..3], itself updated
-  // as a small internal Feistel step built from T().
+  // as a small internal Feistel step built from subT().
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {int32} line - Running schedule step (selects byte positions)
+   * @param {int32} n - Destination index
+   * @param {uint32[]} x - 128-bit schedule state, updated in place
+   */
   function SetIK(EK, line, n, x) {
     let xl = x[2], xr = x[3];
-    xl = u32(xl + T(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF)));
-    const ik0 = T(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
-    xr = u32(xr + ik0);
-    x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-    x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-    xl = u32(xl + T(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF)));
-    const ik1 = T(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
-    xr = u32(xr + ik1);
-    x[2] = u32(OpCodes.Xor32(x[2], xl));
-    x[3] = u32(OpCodes.Xor32(x[3], xr));
-    EK.ik[n] = [ik0, ik1];
+    xl = OpCodes.Add32(xl, subT(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF)));
+    const ik0 = subT(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, ik0);
+    x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+    x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+    xl = OpCodes.Add32(xl, subT(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF)));
+    const ik1 = subT(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, ik1);
+    x[2] = OpCodes.Xor32(x[2], xl);
+    x[3] = OpCodes.Xor32(x[3], xr);
+    /** @type {uint32[]} */
+    const ikPair = [ik0, ik1];
+    EK[EK_IK][n] = ikPair;
   }
 
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {int32} line - Running schedule step (selects byte positions)
+   * @param {int32} n - Destination index
+   * @param {uint32[]} x - 128-bit schedule state, updated in place
+   */
   function SetSK(EK, line, n, x) {
     let xl = x[2], xr = x[3];
-    const sk_n_1 = T(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF));
-    xl = u32(xl + sk_n_1);
-    const sk_n1_1 = T(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
-    xr = u32(xr + sk_n1_1);
-    x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-    x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-    const sk_n_0 = T(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF));
-    xl = u32(xl + sk_n_0);
-    const sk_n1_0 = T(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
-    xr = u32(xr + sk_n1_0);
-    x[2] = u32(OpCodes.Xor32(x[2], xl));
-    x[3] = u32(OpCodes.Xor32(x[3], xr));
-    EK.sk[n]     = [sk_n_0, sk_n_1];
-    EK.sk[n + 1] = [sk_n1_0, sk_n1_1];
+    const sk_n_1 = subT(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF));
+    xl = OpCodes.Add32(xl, sk_n_1);
+    const sk_n1_1 = subT(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, sk_n1_1);
+    x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+    x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+    const sk_n_0 = subT(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF));
+    xl = OpCodes.Add32(xl, sk_n_0);
+    const sk_n1_0 = subT(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, sk_n1_0);
+    x[2] = OpCodes.Xor32(x[2], xl);
+    x[3] = OpCodes.Xor32(x[3], xr);
+    /** @type {uint32[]} */
+    const skPair0 = [sk_n_0, sk_n_1];
+    /** @type {uint32[]} */
+    const skPair1 = [sk_n1_0, sk_n1_1];
+    EK[EK_SK][n]     = skPair0;
+    EK[EK_SK][n + 1] = skPair1;
   }
 
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {int32} line - Running schedule step (selects byte positions)
+   * @param {int32} n - Destination index
+   * @param {uint32[]} x - 128-bit schedule state, updated in place
+   */
   function SetFK(EK, line, n, x) {
     let xl = x[2], xr = x[3];
-    const fk_n_1 = T(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF));
-    xl = u32(xl + fk_n_1);
-    const fk_n1_1 = T(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
-    xr = u32(xr + fk_n1_1);
-    x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-    x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-    const fk_n_0 = T(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF));
-    xl = u32(xl + fk_n_0);
-    const fk_n1_0 = T(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
-    xr = u32(xr + fk_n1_0);
-    x[2] = u32(OpCodes.Xor32(x[2], xl));
-    x[3] = u32(OpCodes.Xor32(x[3], xr));
-    EK.fk[n]     = [fk_n_0, fk_n_1];
-    EK.fk[n + 1] = [fk_n1_0, fk_n1_1];
+    const fk_n_1 = subT(xr, line % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (line % 4) * 8)), 0xFF));
+    xl = OpCodes.Add32(xl, fk_n_1);
+    const fk_n1_1 = subT(xl, (line + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 1) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, fk_n1_1);
+    x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+    x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+    const fk_n_0 = subT(xr, (line + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((line + 2) % 4) * 8)), 0xFF));
+    xl = OpCodes.Add32(xl, fk_n_0);
+    const fk_n1_0 = subT(xl, (line + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((line + 3) % 4) * 8)), 0xFF));
+    xr = OpCodes.Add32(xr, fk_n1_0);
+    x[2] = OpCodes.Xor32(x[2], xl);
+    x[3] = OpCodes.Xor32(x[3], xr);
+    /** @type {uint32[]} */
+    const fkPair0 = [fk_n_0, fk_n_1];
+    /** @type {uint32[]} */
+    const fkPair1 = [fk_n1_0, fk_n1_1];
+    EK[EK_FK][n]     = fkPair0;
+    EK[EK_FK][n + 1] = fkPair1;
   }
 
   // Expands a 128-bit master key (as four 32-bit words) into the fk/sk/ik
-  // subkey tables consumed by F() and L().
+  // subkey tables consumed by roundF() and linL().
+  /**
+   * @param {uint32[]} mkey - Master key as four little-endian words
+   * @returns {uint32[][][]} Expanded key: [fk pairs, sk pairs, ik pairs]
+   */
   function UnicornScheduler(mkey) {
-    const EK = { fk: new Array(ROUND), sk: new Array(ROUND), ik: new Array((ROUND / 2) + 1) };
-    for (let i = 0; i < ROUND; i++) { EK.fk[i] = [0, 0]; EK.sk[i] = [0, 0]; }
-    for (let i = 0; i <= ROUND / 2; i++) { EK.ik[i] = [0, 0]; }
+    /** @type {uint32[][]} */
+    const fkList = new Array(ROUND);
+    /** @type {uint32[][]} */
+    const skList = new Array(ROUND);
+    /** @type {uint32[][]} */
+    const ikList = new Array((ROUND / 2) + 1);
+    for (let i = 0; i < ROUND; i++) {
+      /** @type {uint32[]} */
+      const fz = [0, 0];
+      /** @type {uint32[]} */
+      const sz = [0, 0];
+      fkList[i] = fz; skList[i] = sz;
+    }
+    for (let i = 0; i <= ROUND / 2; i++) {
+      /** @type {uint32[]} */
+      const iz = [0, 0];
+      ikList[i] = iz;
+    }
+    /** @type {uint32[][][]} */
+    const EK = [fkList, skList, ikList];
 
+    /** @type {uint32[]} */
     const x = [0, 0, 0, 0];
-    let xl, xr;
+    /** @type {uint32} */
+    let xl = 0;
+    /** @type {uint32} */
+    let xr = 0;
     let num = 0, ik = 0, sk = 0, fk = 0;
 
     x[0] = mkey[0];
@@ -277,14 +369,14 @@
     xr = x[3] = mkey[3];
 
     for (let lp = 0; lp < 4; lp++) {
-      xl = u32(xl + T(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF)));
-      xr = u32(xr + T(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF)));
-      x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-      x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-      xl = u32(xl + T(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF)));
-      xr = u32(xr + T(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF)));
-      x[2] = u32(OpCodes.Xor32(x[2], xl)); xl = x[2];
-      x[3] = u32(OpCodes.Xor32(x[3], xr)); xr = x[3];
+      xl = OpCodes.Add32(xl, subT(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF)));
+      xr = OpCodes.Add32(xr, subT(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF)));
+      x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+      x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+      xl = OpCodes.Add32(xl, subT(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF)));
+      xr = OpCodes.Add32(xr, subT(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF)));
+      x[2] = OpCodes.Xor32(x[2], xl); xl = x[2];
+      x[3] = OpCodes.Xor32(x[3], xr); xr = x[3];
       num++;
     }
 
@@ -300,47 +392,48 @@
       SetSK(EK, num++, sk, x); sk += 2;
 
       xl = x[2]; xr = x[3];
-      let t;
-      t = T(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF));
-      EK.fk[fk][0] = t; xl = u32(xl + t);
-      t = T(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
-      EK.fk[fk + 1][0] = t; xr = u32(xr + t);
-      x[0] = u32(OpCodes.Xor32(x[0], xl)); EK.fk[fk][1] = x[0]; xl = x[0];
-      x[1] = u32(OpCodes.Xor32(x[1], xr)); EK.fk[fk + 1][1] = x[1]; xr = x[1];
-      xl = u32(xl + T(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF)));
-      t = T(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
-      EK.ik[ik][0] = t; xr = u32(xr + t);
+      /** @type {uint32} */
+      let t = 0;
+      t = subT(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF));
+      EK[EK_FK][fk][0] = t; xl = OpCodes.Add32(xl, t);
+      t = subT(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
+      EK[EK_FK][fk + 1][0] = t; xr = OpCodes.Add32(xr, t);
+      x[0] = OpCodes.Xor32(x[0], xl); EK[EK_FK][fk][1] = x[0]; xl = x[0];
+      x[1] = OpCodes.Xor32(x[1], xr); EK[EK_FK][fk + 1][1] = x[1]; xr = x[1];
+      xl = OpCodes.Add32(xl, subT(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF)));
+      t = subT(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
+      EK[EK_IK][ik][0] = t; xr = OpCodes.Add32(xr, t);
       num++;
       fk += 2;
 
-      x[2] = u32(OpCodes.Xor32(x[2], xl)); EK.fk[fk][1] = x[2]; xl = x[2];
-      x[3] = u32(OpCodes.Xor32(x[3], xr)); EK.fk[fk + 1][1] = x[3]; xr = x[3];
-      xl = u32(xl + T(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF)));
-      t = T(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
-      EK.ik[ik][1] = t; xr = u32(xr + t);
-      x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-      x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-      t = T(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF));
-      EK.sk[sk][1] = t; xl = u32(xl + t);
-      t = T(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
-      EK.sk[sk + 1][1] = t; xr = u32(xr + t);
-      x[2] = u32(OpCodes.Xor32(x[2], xl)); xl = x[2];
-      x[3] = u32(OpCodes.Xor32(x[3], xr)); xr = x[3];
+      x[2] = OpCodes.Xor32(x[2], xl); EK[EK_FK][fk][1] = x[2]; xl = x[2];
+      x[3] = OpCodes.Xor32(x[3], xr); EK[EK_FK][fk + 1][1] = x[3]; xr = x[3];
+      xl = OpCodes.Add32(xl, subT(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF)));
+      t = subT(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
+      EK[EK_IK][ik][1] = t; xr = OpCodes.Add32(xr, t);
+      x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+      x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+      t = subT(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF));
+      EK[EK_SK][sk][1] = t; xl = OpCodes.Add32(xl, t);
+      t = subT(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
+      EK[EK_SK][sk + 1][1] = t; xr = OpCodes.Add32(xr, t);
+      x[2] = OpCodes.Xor32(x[2], xl); xl = x[2];
+      x[3] = OpCodes.Xor32(x[3], xr); xr = x[3];
       num++;
       ik++;
 
-      t = T(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF));
-      EK.sk[sk][0] = t; xl = u32(xl + t);
-      t = T(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
-      EK.sk[sk + 1][0] = t; xr = u32(xr + t);
-      x[0] = u32(OpCodes.Xor32(x[0], xl)); xl = x[0];
-      x[1] = u32(OpCodes.Xor32(x[1], xr)); xr = x[1];
-      t = T(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF));
-      EK.fk[fk][0] = t; xl = u32(xl + t);
-      t = T(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
-      EK.fk[fk + 1][0] = t; xr = u32(xr + t);
-      x[2] = u32(OpCodes.Xor32(x[2], xl)); xl = x[2];
-      x[3] = u32(OpCodes.Xor32(x[3], xr)); xr = x[3];
+      t = subT(xr, num % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - (num % 4) * 8)), 0xFF));
+      EK[EK_SK][sk][0] = t; xl = OpCodes.Add32(xl, t);
+      t = subT(xl, (num + 1) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 1) % 4) * 8)), 0xFF));
+      EK[EK_SK][sk + 1][0] = t; xr = OpCodes.Add32(xr, t);
+      x[0] = OpCodes.Xor32(x[0], xl); xl = x[0];
+      x[1] = OpCodes.Xor32(x[1], xr); xr = x[1];
+      t = subT(xr, (num + 2) % 4, OpCodes.And32(OpCodes.Shr32(xr, (24 - ((num + 2) % 4) * 8)), 0xFF));
+      EK[EK_FK][fk][0] = t; xl = OpCodes.Add32(xl, t);
+      t = subT(xl, (num + 3) % 4, OpCodes.And32(OpCodes.Shr32(xl, (24 - ((num + 3) % 4) * 8)), 0xFF));
+      EK[EK_FK][fk + 1][0] = t; xr = OpCodes.Add32(xr, t);
+      x[2] = OpCodes.Xor32(x[2], xl); xl = x[2];
+      x[3] = OpCodes.Xor32(x[3], xr); xr = x[3];
       num++;
       sk += 2;
       fk += 2;
@@ -357,24 +450,36 @@
     return EK;
   }
 
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {uint32[]} p - Plaintext words
+   * @returns {uint32[]} Ciphertext words
+   */
   function UnicornEncode(EK, p) {
+    /** @type {uint32[]} */
     const state = [p[0], p[1]];
-    L(state, EK.ik[0][0], EK.ik[0][1]);
+    linL(state, EK[EK_IK][0][0], EK[EK_IK][0][1]);
     for (let r = 0; r < ROUND; r += 2) {
-      state[0] = u32(OpCodes.Xor32(state[0], F(EK, r, state[1])));
-      state[1] = u32(OpCodes.Xor32(state[1], F(EK, r + 1, state[0])));
-      L(state, EK.ik[r / 2 + 1][0], EK.ik[r / 2 + 1][1]);
+      state[0] = OpCodes.Xor32(state[0], roundF(EK, r, state[1]));
+      state[1] = OpCodes.Xor32(state[1], roundF(EK, r + 1, state[0]));
+      linL(state, EK[EK_IK][r / 2 + 1][0], EK[EK_IK][r / 2 + 1][1]);
     }
     return state;
   }
 
+  /**
+   * @param {uint32[][][]} EK - Expanded key: [fk pairs, sk pairs, ik pairs]
+   * @param {uint32[]} c - Ciphertext words
+   * @returns {uint32[]} Plaintext words
+   */
   function UnicornDecode(EK, c) {
+    /** @type {uint32[]} */
     const state = [c[0], c[1]];
-    L(state, EK.ik[ROUND / 2][0], EK.ik[ROUND / 2][1]);
+    linL(state, EK[EK_IK][ROUND / 2][0], EK[EK_IK][ROUND / 2][1]);
     for (let r = ROUND - 1; r > 0; r -= 2) {
-      state[1] = u32(OpCodes.Xor32(state[1], F(EK, r, state[0])));
-      state[0] = u32(OpCodes.Xor32(state[0], F(EK, r - 1, state[1])));
-      L(state, EK.ik[(r / 2) | 0][0], EK.ik[(r / 2) | 0][1]);
+      state[1] = OpCodes.Xor32(state[1], roundF(EK, r, state[0]));
+      state[0] = OpCodes.Xor32(state[0], roundF(EK, r - 1, state[1]));
+      linL(state, EK[EK_IK][Math.floor(r / 2)][0], EK[EK_IK][Math.floor(r / 2)][1]);
     }
     return state;
   }
@@ -432,29 +537,44 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptUnicornEInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptUnicornEInstance(this, isInverse);
     }
   }
 
   class DarkCryptUnicornEInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptUnicornEAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][][]|null} */
       this._EK = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._EK = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CIPHERUNICORN-E (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CIPHERUNICORN-E (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
+      /** @type {uint32[]} */
       const mkey = [
         OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
         OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
@@ -464,6 +584,9 @@
       this._EK = UnicornScheduler(mkey);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -476,8 +599,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -487,7 +611,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
+      /** @type {uint32[]} */
       const p = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7])
@@ -496,7 +625,12 @@
       return [...OpCodes.Unpack32LE(c[0]), ...OpCodes.Unpack32LE(c[1])];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
+      /** @type {uint32[]} */
       const c = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7])

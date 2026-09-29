@@ -165,24 +165,36 @@
   }
 
   class DarkCryptLja1Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptLja1Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._sbox = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - 16-byte key, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._sbox = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Lja1 (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Lja1 (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       // setup() copies the key verbatim into a 256-byte substitution table.
       this._sbox = keyBytes.slice(0, KEY_BYTES);
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._sbox ? this._sbox.slice() : null; }
 
     Feed(data) {
@@ -195,8 +207,9 @@
       if (!this._sbox) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -208,8 +221,14 @@
 
     // 8-bit accumulator folded over the 15 bytes other than index m,
     // in rotational order (m+1 .. m+15 mod 16). Never reads b[m].
+    /**
+     * @param {uint8[]} b - Block state
+     * @param {int32} m - Index of the byte being updated
+     * @returns {uint8} Accumulator
+     */
     _accumulate(b, m) {
       const S = this._sbox;
+      /** @type {uint8} */
       let a = 0;
       for (let k = 1; k <= 15; k++) {
         a = S[OpCodes.And32(a + S[b[OpCodes.And32(m + k, 15)]], 0xFF)];
@@ -217,6 +236,10 @@
       return a;
     }
 
+    /**
+     * @param {uint8[]} block - 16-byte plaintext block
+     * @returns {uint8[]} Ciphertext block
+     */
     _encryptBlock(block) {
       const b = block.slice();
       let c = 0;
@@ -230,6 +253,10 @@
       return b;
     }
 
+    /**
+     * @param {uint8[]} block - 16-byte ciphertext block
+     * @returns {uint8[]} Plaintext block
+     */
     _decryptBlock(block) {
       const b = block.slice();
       // Reverse the cycle/byte order; the counter for (cycle,m) is 16*cycle+m.

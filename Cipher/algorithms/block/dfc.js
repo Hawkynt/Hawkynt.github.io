@@ -114,10 +114,13 @@
       ];
 
       // Algorithm parameters
+      /** @type {int32} */
       this.BLOCK_SIZE = 16;      // 128 bits = 16 bytes
+      /** @type {int32} */
       this.ROUNDS = 8;           // Number of rounds
 
       // DFC S-box (8-bit substitution table)
+      /** @type {uint8[]} */
       this.SBOX = [
         0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
         0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -138,12 +141,14 @@
       ];
 
       // DFC inverse S-box - generated in constructor
+      /** @type {uint8[]} */
       this.SBOX_INV = new Array(256);
       for (let i = 0; i < 256; i++) {
         this.SBOX_INV[this.SBOX[i]] = i;
       }
 
       // DFC linear transformation constants
+      /** @type {uint8[]} */
       this.RT = [
         0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
         0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A, 0x2F
@@ -154,7 +159,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DFCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,15 +168,17 @@
 
     /**
      * Generate round keys for DFC
-     * @param {Array} key - master key
-     * @returns {Array} Array of round keys
+     * @param {uint8[]} key - master key (16, 24 or 32 bytes)
+     * @returns {uint8[][]} Array of round keys
      */
     generateRoundKeys(key) {
+      /** @type {uint8[][]} */
       const roundKeys = [];
       const keySize = key.length;
       const wordCount = keySize / 4;
 
       // Convert key to 32-bit words
+      /** @type {uint32[]} */
       const keyWords = [];
       for (let i = 0; i < wordCount; i++) {
         keyWords[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
@@ -179,6 +186,7 @@
 
       // DFC key schedule
       for (let round = 0; round <= this.ROUNDS; round++) {
+        /** @type {uint8[]} */
         const roundKey = new Array(16);
 
         // Generate 4 words for this round
@@ -187,7 +195,7 @@
 
           // Apply round transformation
           word = OpCodes.RotL32(word, (round * 3 + i) % 32);
-          word = OpCodes.XorN(word, OpCodes.Shl32(this.RT[round % 16], i * 8));
+          word = OpCodes.Xor32(word, OpCodes.Shl32(this.RT[round % 16], i * 8));
 
           // Apply S-box to each byte
           const bytes = OpCodes.Unpack32BE(word);
@@ -214,13 +222,13 @@
 
     /**
      * DFC round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
+     * @param {uint8[]} state - 16-byte state array (updated in place)
+     * @param {uint8[]} roundKey - 16-byte round key
      */
     dfcRound(state, roundKey) {
       // Add round key
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
 
       // S-box substitution
@@ -235,9 +243,9 @@
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
           const pos = i * 4 + j;
-          state[pos] = OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(temp[pos], OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)])),
+          state[pos] = OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(temp[pos], OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)])),
               OpCodes.GF256Mul(0x03, temp[((i + 1) % 4) * 4 + j])
             ),
             temp[((i + 2) % 4) * 4 + (j + 2) % 4]
@@ -254,8 +262,8 @@
 
     /**
      * DFC inverse round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
+     * @param {uint8[]} state - 16-byte state array (updated in place)
+     * @param {uint8[]} roundKey - 16-byte round key
      */
     dfcInvRound(state, roundKey) {
       // Reverse operations in exact reverse order of dfcRound
@@ -271,9 +279,11 @@
       // 3. Inverse linear transformation
       // Apply the mathematically computed inverse matrix
       const temp = state.slice();
+      /** @type {uint8[]} */
       const newState = new Array(16);
 
       // Precomputed inverse matrix coefficients (16x16 matrix)
+      /** @type {uint8[][]} */
       const invMatrix = [
         [0x00, 0x00, 0x01, 0x08, 0x00, 0x00, 0x0c, 0x00, 0x01, 0x0a, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00],
         [0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x01, 0x0a, 0x00, 0x00, 0x0f, 0x00, 0x00],
@@ -298,7 +308,7 @@
         newState[i] = 0;
         for (let j = 0; j < 16; j++) {
           if (invMatrix[i][j] !== 0) {
-            newState[i] = OpCodes.XorN(newState[i], OpCodes.GF256Mul(invMatrix[i][j], temp[j]));
+            newState[i] = OpCodes.Xor32(newState[i], OpCodes.GF256Mul(invMatrix[i][j], temp[j]));
           }
         }
       }
@@ -314,7 +324,7 @@
 
       // 1. Subtract round key (XOR again)
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], roundKey[i]);
+        state[i] = OpCodes.Xor32(state[i], roundKey[i]);
       }
     }
   }
@@ -329,15 +339,19 @@
   class DFCInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DFC} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint8[][]|null} */
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // bytes
       this.KeySize = 0;    // will be set when key is assigned
@@ -359,18 +373,24 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {KeySize[]} */
+      const sizes = this.algorithm.SupportedKeySizes;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if ((keyBytes.length - ks.minSize) % ks.stepSize === 0) { isValidSize = true; break; }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
       this.KeySize = keyBytes.length;
-      this.keySchedule = this.algorithm.generateRoundKeys(keyBytes);
+      /** @type {uint8[][]} */
+      const schedule = this.algorithm.generateRoundKeys(keyBytes);
+      this.keySchedule = schedule;
     }
 
     /**
@@ -409,12 +429,13 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
       // Validate input length for block cipher
       if (this.inputBuffer.length % blockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+        throw new Error("Input length must be multiple of " + blockSize + " bytes");
       }
 
       // Process each block
@@ -433,8 +454,16 @@
     }
 
     // Private methods for actual crypto operations
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {int32} */
+      const rounds = this.algorithm.ROUNDS;
+      if (!this.keySchedule || !block || block.length !== blockSize) {
         throw new Error("Invalid block or key schedule not initialized");
       }
 
@@ -443,19 +472,27 @@
 
       // Initial key whitening
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], this.keySchedule[0][i]);
+        state[i] = OpCodes.Xor32(state[i], this.keySchedule[0][i]);
       }
 
       // 8 rounds
-      for (let round = 1; round <= this.algorithm.ROUNDS; round++) {
+      for (let round = 1; round <= rounds; round++) {
         this.algorithm.dfcRound(state, this.keySchedule[round]);
       }
 
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      /** @type {int32} */
+      const blockSize = this.algorithm.BLOCK_SIZE;
+      /** @type {int32} */
+      const rounds = this.algorithm.ROUNDS;
+      if (!this.keySchedule || !block || block.length !== blockSize) {
         throw new Error("Invalid block or key schedule not initialized");
       }
 
@@ -463,13 +500,13 @@
       const state = block.slice();
 
       // 8 inverse rounds
-      for (let round = this.algorithm.ROUNDS; round >= 1; round--) {
+      for (let round = rounds; round >= 1; round--) {
         this.algorithm.dfcInvRound(state, this.keySchedule[round]);
       }
 
       // Final key whitening
       for (let i = 0; i < 16; i++) {
-        state[i] = OpCodes.XorN(state[i], this.keySchedule[0][i]);
+        state[i] = OpCodes.Xor32(state[i], this.keySchedule[0][i]);
       }
 
       return state;

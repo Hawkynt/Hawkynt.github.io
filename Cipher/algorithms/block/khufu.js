@@ -48,7 +48,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -95,13 +95,13 @@
       ];
 
       // Vulnerabilities
-      this.vulnerabilities = [
-        {
-          name: "Differential Cryptanalysis",
-          severity: "Critical",
-          description: "Khufu can be broken using differential cryptanalysis with 2^43 chosen plaintexts",
-          reference: "https://link.springer.com/chapter/10.1007/3-540-48658-5_33"
-        }
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Differential Cryptanalysis",
+          "Critical: Khufu can be broken using differential cryptanalysis with 2^43 chosen plaintexts",
+          "",
+          "https://link.springer.com/chapter/10.1007/3-540-48658-5_33"
+        )
       ];
 
       // Test vectors - Since no official test vectors exist from NIST or the original
@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KhufuInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,21 +156,27 @@
   class KhufuInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KhufuAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // 64 bits
 
       // Khufu-specific state
+      /** @type {int32} */
       this.rounds = 16; // Default 16 rounds (2 octets)
+      /** @type {uint32} */
       this.seed = 5; // Default seed for S-box generation
+      /** @type {uint32[][]|null} */
       this.sBoxes = null;
+      /** @type {uint32[]|null} */
       this.auxKeys = null;
     }
 
@@ -190,7 +196,7 @@
 
       // Validate key size (1-64 bytes for 8-512 bits)
       if (keyBytes.length < 1 || keyBytes.length > 64) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Khufu requires 1-64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Khufu requires 1-64 bytes");
       }
 
       this._key = [...keyBytes];
@@ -207,9 +213,12 @@
     }
 
     // Allow setting number of rounds (must be multiple of 8, between 8 and 64)
+    /**
+     * @param {int32} rounds - Round count
+     */
     set numRounds(rounds) {
       if (rounds < 8 || rounds > 64 || rounds % 8 !== 0) {
-        throw new Error(`Invalid rounds: ${rounds}. Must be multiple of 8 between 8 and 64`);
+        throw new Error("Invalid rounds: " + rounds + ". Must be multiple of 8 between 8 and 64");
       }
       this.rounds = rounds;
       // Re-initialize if key is already set
@@ -218,6 +227,9 @@
       }
     }
 
+    /**
+     * @returns {int32} Round count
+     */
     get numRounds() {
       return this.rounds;
     }
@@ -247,9 +259,10 @@
 
       // Validate input length
       if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 8-byte block
@@ -267,11 +280,16 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - Key bytes
+     */
     _initializeWithKey(key) {
       const octets = this.rounds / 8; // Number of octet groups
 
       // Initialize state for pseudo-random generation
-      const state64 = new Array(16).fill(0); // 64 bytes = 16 uint32
+      /** @type {uint32[]} */
+      const state64 = new Array(16); // 64 bytes = 16 uint32
+      state64.fill(0);
       this._diffuse(key, state64);
 
       // Generate initial S-box using simple PRNG (seeded)
@@ -284,10 +302,17 @@
       }
 
       // Generate auxiliary keys for pre/post whitening
-      this.auxKeys = new Array(4).fill(0);
-      this._diffuse(key, this.auxKeys);
+      /** @type {uint32[]} */
+      const auxKeys = new Array(4);
+      auxKeys.fill(0);
+      this.auxKeys = auxKeys;
+      this._diffuse(key, auxKeys);
     }
 
+    /**
+     * @param {uint8[]} key - Key bytes
+     * @param {uint32[]} output - Words to fill, overwritten in place
+     */
     _diffuse(key, output) {
       // Simple key diffusion - repeat key material to fill output
       let outputBytes = new Uint8Array(output.length * 4);
@@ -309,9 +334,14 @@
       }
     }
 
+    /**
+     * @param {uint32} seed - LCG seed
+     * @returns {uint32[]} 256-word initial S-box
+     */
     _generateInitialSBox(seed) {
       // Simple PRNG for initial S-box generation
       // Using Linear Congruential Generator with seed
+      /** @type {uint32[]} */
       const sbox = new Array(256);
       let state = OpCodes.ToUint32(seed);
 
@@ -325,8 +355,15 @@
       return sbox;
     }
 
+    /**
+     * @param {uint32[]} initialSBox - Initial S-box
+     * @param {uint32[]} state64 - Diffused key state
+     * @param {int32} octet - Octet index
+     * @returns {uint32[]} Key-dependent S-box
+     */
     _generateKeyDependentSBox(initialSBox, state64, octet) {
       // Create a copy of initial S-box as byte array
+      /** @type {uint32[]} */
       const sbox = new Array(256);
       for (let i = 0; i < 256; i++) {
         sbox[i] = initialSBox[i];
@@ -348,11 +385,11 @@
         for (let i = 0; i < 256; i++) {
           // Generate pseudo-random swap index based on state
           const randVal = this._getKeyRandom(state64, stateIndex++);
-          const swapIdx = (randVal % (256 - i)) + i;
+          const swapIdx = OpCodes.Add32(randVal % (256 - i), i);
 
           // Swap bytes in this column
           const idx1 = column + (i * 4);
-          const idx2 = column + (swapIdx * 4);
+          const idx2 = OpCodes.Add32(column, OpCodes.Mul32(swapIdx, 4));
           const temp = sboxBytes[idx1];
           sboxBytes[idx1] = sboxBytes[idx2];
           sboxBytes[idx2] = temp;
@@ -372,14 +409,23 @@
       return sbox;
     }
 
+    /**
+     * @param {uint32[]} state - Diffused key state
+     * @param {int32} index - Draw counter
+     * @returns {uint32} Pseudo-random word
+     */
     _getKeyRandom(state, index) {
       // Simple key-based random number generator
       // In the reference implementation, this uses Khufu encryption of state
       // For simplicity, we use a hash-based approach
-      const val = OpCodes.ToUint32(state[index % state.length] + index * 0x9e3779b9);
+      const val = OpCodes.Add32(state[index % state.length], OpCodes.Mul32(index, 0x9e3779b9));
       return val;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Pack input bytes to 32-bit words (big-endian)
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -442,6 +488,10 @@
       return [...leftBytes, ...rightBytes];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Pack input bytes to 32-bit words (big-endian)
       let L = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

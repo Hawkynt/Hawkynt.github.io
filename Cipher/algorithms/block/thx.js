@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {THXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,26 +154,22 @@
   class THXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {THXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128-bit blocks
       this.KeySize = 0;
 
-      // THX configuration constants
-      this.ROUNDS_CONFIG = {
-        256: 16,  // THX-256: 16 rounds
-        512: 20,  // THX-512: 20 rounds
-        1024: 24  // THX-1024: 24 rounds
-      };
-
       // Twofish Q0 S-box (original from Twofish specification)
+      /** @type {uint8[]} */
       this.Q0 = [
         0xA9, 0x67, 0xB3, 0xE8, 0x04, 0xFD, 0xA3, 0x76, 0x9A, 0x92, 0x80, 0x78, 0xE4, 0xDD, 0xD1, 0x38,
         0x0D, 0xC6, 0x35, 0x98, 0x18, 0xF7, 0xEC, 0x6C, 0x43, 0x75, 0x37, 0x26, 0xFA, 0x13, 0x94, 0x48,
@@ -194,6 +190,7 @@
       ];
 
       // Twofish Q1 S-box (original from Twofish specification)
+      /** @type {uint8[]} */
       this.Q1 = [
         0x75, 0xF3, 0xC6, 0xF4, 0xDB, 0x7B, 0xFB, 0xC8, 0x4A, 0xD3, 0xE6, 0x6B, 0x45, 0x7D, 0xE8, 0x4B,
         0xD6, 0x32, 0xD8, 0xFD, 0x37, 0x71, 0xF1, 0xE1, 0x30, 0x0F, 0xF8, 0x1B, 0x87, 0xFA, 0x06, 0x3F,
@@ -214,6 +211,7 @@
       ];
 
       // Twofish MDS matrix for diffusion
+      /** @type {uint8[][]} */
       this.MDS = [
         [0x01, 0xEF, 0x5B, 0x5B],
         [0x5B, 0xEF, 0xEF, 0x01],
@@ -221,9 +219,23 @@
         [0xEF, 0x01, 0xEF, 0x5B]
       ];
 
+      /** @type {uint32[]|null} */
       this.subkeys = null;
+      /** @type {uint8[][]|null} */
       this.sboxKeys = null;
       this.numRounds = 0;
+    }
+
+    /**
+     * THX round count for a key size
+     * @param {int32} keyBits - Key size in bits
+     * @returns {int32} 16 (THX-256), 20 (THX-512), 24 (THX-1024), or 0 if unsupported
+     */
+    _roundsForKeyBits(keyBits) {
+      if (keyBits === 256) return 16;
+      if (keyBits === 512) return 20;
+      if (keyBits === 1024) return 24;
+      return 0;
     }
 
     // Property setter for key
@@ -248,13 +260,13 @@
       }
 
       const keyBits = keyBytes.length * 8;
-      if (!this.ROUNDS_CONFIG[keyBits]) {
-        throw new Error(`Invalid THX key size: ${keyBits} bits. Supported: 256, 512, 1024 bits`);
+      if (this._roundsForKeyBits(keyBits) === 0) {
+        throw new Error("Invalid THX key size: " + keyBits + " bits. Supported: 256, 512, 1024 bits");
       }
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this.numRounds = this.ROUNDS_CONFIG[keyBits];
+      this.numRounds = this._roundsForKeyBits(keyBits);
 
       // Generate key schedule using simplified approach
       this._generateKeySchedule(keyBytes);
@@ -302,6 +314,7 @@
         throw new Error("THX requires input length to be multiple of 16 bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process data in 16-byte blocks
@@ -318,14 +331,27 @@
     }
 
     // Generate simplified key schedule
+    /**
+     * @param {uint8[]} masterKey - Key bytes
+     */
     _generateKeySchedule(masterKey) {
       const keyWords = masterKey.length / 4;
       const subkeyCount = 4 + (this.numRounds * 2) + 4; // Input + rounds + output whitening
 
-      this.subkeys = [];
-      this.sboxKeys = [[], [], [], []];
+      /** @type {uint32[]} */
+      const subkeys = [];
+      this.subkeys = subkeys;
+      /** @type {uint8[][]} */
+      const sboxKeys = [];
+      for (let box = 0; box < 4; box++) {
+        /** @type {uint8[]} */
+        const row = [];
+        sboxKeys.push(row);
+      }
+      this.sboxKeys = sboxKeys;
 
       // Convert key to 32-bit words
+      /** @type {uint32[]} */
       const keyWords32 = [];
       for (let i = 0; i < keyWords; i++) {
         const offset = i * 4;
@@ -343,10 +369,10 @@
         const b = this._h(i * 2 + 1, keyWords32);
 
         // PHT (Pseudo Hadamard Transform)
-        const [t0, t1] = this._pht(a, OpCodes.RotL32(b, 8));
-        this.subkeys.push(t0);
+        const t = this._pht(a, OpCodes.RotL32(b, 8));
+        subkeys.push(t[0]);
         if (i + 1 < subkeyCount) {
-          this.subkeys.push(t1);
+          subkeys.push(t[1]);
         }
       }
 
@@ -356,12 +382,17 @@
           const keyIndex = (box * 256 + i) % keyWords32.length;
           const mixValue = keyWords32[keyIndex];
           const baseQ = (box % 2 === 0) ? this.Q0[i] : this.Q1[i];
-          this.sboxKeys[box][i] = OpCodes.Xor32(baseQ, OpCodes.ToByte(OpCodes.Shr32(mixValue, 8 * (i % 4))));
+          sboxKeys[box][i] = OpCodes.Xor8(baseQ, OpCodes.ToByte(OpCodes.Shr32(mixValue, 8 * (i % 4))));
         }
       }
     }
 
     // Simplified h-function for educational purposes
+    /**
+     * @param {uint32} x - Input word
+     * @param {uint32[]} k - Key words
+     * @returns {uint32} h(x, k)
+     */
     _h(x, k) {
       const bytes = [
         OpCodes.ToByte(x),
@@ -386,6 +417,7 @@
       }
 
       // MDS matrix multiplication
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
@@ -397,6 +429,11 @@
     }
 
     // Pseudo Hadamard Transform
+    /**
+     * @param {uint32} a - First word
+     * @param {uint32} b - Second word
+     * @returns {uint32[]} [a + b, a + 2b] mod 2^32
+     */
     _pht(a, b) {
       const newA = OpCodes.ToUint32(a + b);
       const newB = OpCodes.ToUint32(a + OpCodes.Shl32(b, 1));
@@ -404,6 +441,10 @@
     }
 
     // F-function for Feistel rounds
+    /**
+     * @param {uint32} x - Input word
+     * @returns {uint32} F(x)
+     */
     _fFunction(x) {
       const bytes = [
         OpCodes.ToByte(x),
@@ -421,6 +462,7 @@
       ];
 
       // MDS matrix multiplication
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
@@ -432,6 +474,10 @@
     }
 
     // Process a single 16-byte block
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       // Convert block to 32-bit words (little-endian)
       let r0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -465,11 +511,11 @@
           const f1 = this._fFunction(OpCodes.RotL32(r1, 8));
 
           // PHT
-          const [t0, t1] = this._pht(f0, f1);
+          const t = this._pht(f0, f1);
 
           // Undo round key application
-          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t0 + this.subkeys[k]));
-          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t1 + this.subkeys[k + 1]));
+          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t[0] + this.subkeys[k]));
+          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t[1] + this.subkeys[k + 1]));
         }
 
         // Undo input whitening
@@ -496,11 +542,11 @@
           const f1 = this._fFunction(OpCodes.RotL32(r1, 8));
 
           // PHT
-          const [t0, t1] = this._pht(f0, f1);
+          const t = this._pht(f0, f1);
 
           // Apply round keys and update state
-          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t0 + this.subkeys[k]));
-          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t1 + this.subkeys[k + 1]));
+          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t[0] + this.subkeys[k]));
+          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t[1] + this.subkeys[k + 1]));
           r2 = OpCodes.RotL32(r2, 1);
           r3 = OpCodes.RotR32(r3, 1);
 

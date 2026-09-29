@@ -59,6 +59,7 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // Four 256-byte S-boxes. SBOX[0..3] map to byte positions 0..3 of the round function.
+  /** @type {uint8[]} */
   const SBOX0 = [
     0x02, 0x9a, 0x68, 0x6c, 0x39, 0xdb, 0x70, 0x42, 0xa3, 0x9b, 0x9c, 0x50, 0x0b, 0x46, 0xea, 0x05,
     0xc0, 0xe5, 0x67, 0x55, 0x99, 0xac, 0x34, 0xf8, 0xed, 0x76, 0xbb, 0x6b, 0xd1, 0xdf, 0xcd, 0x90,
@@ -78,6 +79,7 @@
     0x4e, 0xb0, 0x63, 0xc3, 0xff, 0x58, 0x88, 0x18, 0xa4, 0x8b, 0xcb, 0x91, 0x15, 0x24, 0x45, 0x74
   ];
 
+  /** @type {uint8[]} */
   const SBOX1 = [
     0x01, 0x66, 0xf7, 0x37, 0x45, 0xbe, 0x13, 0x61, 0xc9, 0x26, 0xc5, 0xd9, 0x2e, 0x1c, 0x90, 0x83,
     0x07, 0xf3, 0xf8, 0xe1, 0xd8, 0xfc, 0x74, 0x76, 0x54, 0xb2, 0x05, 0x38, 0x50, 0x5d, 0x75, 0x85,
@@ -97,6 +99,7 @@
     0x4a, 0x1b, 0xf4, 0x8c, 0x65, 0x1f, 0x0e, 0x4f, 0xa8, 0xd6, 0xb5, 0xfb, 0xad, 0x6d, 0xf2, 0x6c
   ];
 
+  /** @type {uint8[]} */
   const SBOX2 = [
     0xae, 0xcd, 0x9c, 0xc9, 0xe2, 0xa1, 0x9e, 0x7c, 0x91, 0x27, 0xa3, 0x4c, 0xe5, 0x8d, 0xe8, 0x1a,
     0x3c, 0x6f, 0x73, 0xe4, 0x82, 0xca, 0x19, 0xb1, 0x72, 0x7f, 0xa0, 0x28, 0x85, 0x23, 0x67, 0xd0,
@@ -116,6 +119,7 @@
     0x08, 0x1e, 0xa8, 0x6c, 0xfa, 0xbf, 0xcc, 0x3f, 0x79, 0x58, 0xf6, 0xe6, 0x0b, 0xab, 0x81, 0x36
   ];
 
+  /** @type {uint8[]} */
   const SBOX3 = [
     0xf5, 0x70, 0xc7, 0x50, 0x84, 0x68, 0xa7, 0x1e, 0x1b, 0xd3, 0x45, 0x1f, 0xf2, 0xea, 0xd6, 0xc5,
     0x61, 0x7d, 0x87, 0x6f, 0x2b, 0x11, 0x99, 0xb7, 0xdc, 0xed, 0x8e, 0x2f, 0xc6, 0x88, 0xca, 0xd7,
@@ -189,31 +193,47 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptPikachuInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptPikachuInstance(this, isInverse);
     }
   }
 
   class DarkCryptPikachuInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptPikachuAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._schedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._schedule = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Pikachu (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Pikachu (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._schedule = this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -226,8 +246,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -239,12 +260,18 @@
 
     // Key schedule: byte-oriented KSA seeded from the key, then 4 chained
     // scrambling passes (one per S-box) over the same 104-byte buffer.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[]} The 104-byte schedule
+     */
     _buildSchedule(keyBytes) {
-      const buf = new Array(SCHEDULE_LEN);
+      /** @type {uint8[]} */
+      const buf = OpCodes.CreateArray(SCHEDULE_LEN, 0);
       for (let i = 0; i < SCHEDULE_LEN; i++) {
         const idx = OpCodes.And32(keyBytes[i % 16] + i, 0xFF);
         buf[i] = SBOX0[idx];
       }
+      /** @type {uint32} */
       let state = 0;
       for (let pass = 0; pass < 4; pass++) {
         const sbox = SBOXES[pass];
@@ -258,6 +285,11 @@
       return buf;
     }
 
+    /**
+     * Read a little-endian 32-bit word from the schedule
+     * @param {int32} off - Byte offset into the schedule
+     * @returns {uint32} The word
+     */
     _readWordLE(off) {
       const s = this._schedule;
       return OpCodes.Pack32LE(s[off], s[off + 1], s[off + 2], s[off + 3]);
@@ -265,6 +297,12 @@
 
     // Round function: byte-wise (mod 256) mixing of value^K0, four dedicated S-box
     // lookups, recombine little-endian, rotate left by 1 bit, whiten with K1.
+    /**
+     * Round function
+     * @param {uint32} value - Half-block input
+     * @param {int32} off - Schedule offset of K0/K1
+     * @returns {uint32} Round output
+     */
     _F(value, off) {
       const K0 = this._readWordLE(off);
       const K1 = this._readWordLE(off + 4);
@@ -283,6 +321,10 @@
       return OpCodes.Xor32(OpCodes.RotL32(combined, 1), K1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let w0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let w1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -297,6 +339,10 @@
       return [...OpCodes.Unpack32LE(w0), ...OpCodes.Unpack32LE(w1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let w0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let w1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
