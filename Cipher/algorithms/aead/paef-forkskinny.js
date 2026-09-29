@@ -689,14 +689,21 @@
     class PAEFForkSkinny128_192Instance extends IAeadInstance {
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]|null} */
         this._key = null;
+        /** @type {uint8[]|null} */
         this._nonce = null;
         this._associatedData = [];
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
       // Property: key
+      /**
+       * @param {uint8[]|null} keyBytes
+       */
       set key(keyBytes) {
         if (!keyBytes) {
           this._key = null;
@@ -710,11 +717,17 @@
         this._key = Array.from(keyBytes);
       }
 
+      /**
+       * @returns {uint8[]|null}
+       */
       get key() {
         return this._key ? [...this._key] : null;
       }
 
       // Property: nonce
+      /**
+       * @param {uint8[]|null} nonceBytes
+       */
       set nonce(nonceBytes) {
         if (!nonceBytes) {
           this._nonce = null;
@@ -728,11 +741,17 @@
         this._nonce = Array.from(nonceBytes);
       }
 
+      /**
+       * @returns {uint8[]|null}
+       */
       get nonce() {
         return this._nonce ? [...this._nonce] : null;
       }
 
       // Property: associatedData
+      /**
+       * @param {uint8[]|null} adBytes
+       */
       set associatedData(adBytes) {
         if (!adBytes || adBytes.length === 0) {
           this._associatedData = [];
@@ -742,11 +761,17 @@
         this._associatedData = Array.from(adBytes);
       }
 
+      /**
+       * @returns {uint8[]|null}
+       */
       get associatedData() {
         return [...this._associatedData];
       }
 
 
+      /**
+       * @returns {uint8[]}
+       */
       Result() {
         if (!this._key) throw new Error("Key not set");
         if (!this._nonce) throw new Error("Nonce not set");

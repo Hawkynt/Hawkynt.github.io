@@ -432,6 +432,7 @@
   // tweakey schedule only runs forwards, then consumed in reverse.
   // ==========================================================================
 
+  /** @type {uint8[]} */
   const ROUND_ANCHOR = [0, 3, 2, 1];
 
   // One step of the 6-bit round-constant LFSR, identical to the encryptors'.
@@ -574,7 +575,7 @@
       this.tag_size = tag_size;
       this.uses_256 = uses_256;
 
-      this.name = `SKINNY-AEAD-M${variant}`;
+      this.name = "SKINNY-AEAD-M" + variant;
 
       const descriptions = {
         1: 'Primary SKINNY-AEAD variant using SKINNY-128-384 with 128-bit key, 128-bit nonce, and 128-bit tag. NIST LWC Round 2 candidate.',
@@ -633,15 +634,19 @@
   class SkinnyAeadInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SkinnyAeadAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
     }
@@ -658,7 +663,7 @@
         return;
       }
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Must be 16 bytes.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Must be 16 bytes.");
       }
       this._key = [...keyBytes];
     }
@@ -670,6 +675,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -677,17 +685,26 @@
       }
       const expectedSize = this.algorithm.nonce_size;
       if (nonceBytes.length !== expectedSize) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes. Must be ${expectedSize} bytes.`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes. Must be " + expectedSize + " bytes.");
       }
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
     /**
@@ -778,13 +795,14 @@
       }
 
       // Process message
-      const sum = new Array(16).fill(0);
+      const sum = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]} */
       const output = [];
       let mlen = message.length;
       let offset = 0;
 
       // 64-bit LFSR stored as bytes in little-endian
-      const lfsr_bytes = new Array(8).fill(0);
+      const lfsr_bytes = OpCodes.CreateArray(8, 0);
       lfsr_bytes[0] = 1; // Start with 1
 
       // Set domain for message processing
@@ -838,7 +856,7 @@
       if (mlen > 0) {
         tweakey[15] = OpCodes.OrN(prefix, 1);
 
-        const zero_block = new Array(16).fill(0);
+        const zero_block = OpCodes.CreateArray(16, 0);
         const keystream = new Array(16);
         skinny_128_384_encrypt_tk_full(tweakey, keystream, zero_block);
 
@@ -888,7 +906,7 @@
       let adlen = ad.length;
       let offset = 0;
 
-      const lfsr_bytes = new Array(8).fill(0);
+      const lfsr_bytes = OpCodes.CreateArray(8, 0);
       lfsr_bytes[0] = 1;
 
       tweakey[15] = OpCodes.OrN(prefix, 2);
@@ -924,7 +942,7 @@
         }
         tweakey[15] = OpCodes.OrN(prefix, 3);
 
-        const block = new Array(16).fill(0);
+        const block = OpCodes.CreateArray(16, 0);
         for (let i = 0; i < adlen; i++) {
           block[i] = ad[offset + i];
         }
@@ -962,7 +980,8 @@
       }
 
       // Process message
-      const sum = new Array(16).fill(0);
+      const sum = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]} */
       const output = [];
       let mlen = message.length;
       let offset = 0;
@@ -1015,7 +1034,7 @@
       if (mlen > 0) {
         tweakey[3] = OpCodes.OrN(prefix, 1);
 
-        const zero_block = new Array(16).fill(0);
+        const zero_block = OpCodes.CreateArray(16, 0);
         const keystream = new Array(16);
         skinny_128_256_encrypt_tk_full(tweakey, keystream, zero_block);
 
@@ -1092,7 +1111,7 @@
         tweakey[2] = OpCodes.AndN(OpCodes.Shr32(lfsr, 16), 0xFF);
         tweakey[3] = OpCodes.OrN(prefix, 3);
 
-        const block = new Array(16).fill(0);
+        const block = OpCodes.CreateArray(16, 0);
         for (let i = 0; i < adlen; i++) {
           block[i] = ad[offset + i];
         }

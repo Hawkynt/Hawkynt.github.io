@@ -257,6 +257,7 @@
      * Extract bytes from state (little-endian)
      */
     extractBytes(length) {
+      /** @type {uint8[]} */
       const result = [];
       const bytesPerLane = this.laneSize / 8;
       let extracted = 0;
@@ -529,15 +530,18 @@
   class KetjeInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KetjeBase} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.variant = algorithm.variant;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
       this._inputBuffer = [];
@@ -578,7 +582,7 @@
       }
 
       if (keyBytes.length !== this.keybytes) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.keybytes})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.keybytes + ")");
       }
 
       this._key = [...keyBytes];
@@ -594,6 +598,9 @@
     }
 
     // Nonce property
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -601,21 +608,30 @@
       }
 
       if (nonceBytes.length > this.noncebytes) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (max ${this.noncebytes})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (max " + this.noncebytes + ")");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // AAD property
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : [];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() {
       return [...this._aad];
     }
@@ -654,6 +670,7 @@
       // Initialize with key and nonce
       duplex.initialize(this._key, this._nonce);
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process AAD if present

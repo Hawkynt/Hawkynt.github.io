@@ -244,6 +244,7 @@
     s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex++]));
 
     // Pack output
+    /** @type {uint8[]} */
     const output = [];
     const b0 = OpCodes.Unpack32BE(s0);
     const b1 = OpCodes.Unpack32BE(s1);
@@ -294,6 +295,7 @@
       s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex + 2]));
     }
 
+    /** @type {uint8[]} */
     const output = [];
     const b0 = OpCodes.Unpack32BE(s0);
     const b1 = OpCodes.Unpack32BE(s1);
@@ -318,7 +320,7 @@
       this.keySchedule = setupKey(key);
 
       // Initialize L values
-      this.Lstar = new Array(BLOCK_SIZE).fill(0);
+      this.Lstar = OpCodes.CreateArray(BLOCK_SIZE, 0);
       this.Lstar = encryptBlock(this.keySchedule, this.Lstar);
 
       this.Ldollar = new Array(BLOCK_SIZE);
@@ -331,7 +333,7 @@
       doubleL(this.L1, this.L0);
 
       // Initialize offset from nonce
-      this.offset = new Array(BLOCK_SIZE).fill(0);
+      this.offset = OpCodes.CreateArray(BLOCK_SIZE, 0);
       // Copy nonce to end of offset block
       for (let i = 0; i < NONCE_SIZE; ++i) {
         this.offset[BLOCK_SIZE - NONCE_SIZE + i] = nonce[i];
@@ -383,8 +385,8 @@
     }
 
     processAD(ad) {
-      const tag = new Array(BLOCK_SIZE).fill(0);
-      const offset = new Array(BLOCK_SIZE).fill(0);
+      const tag = OpCodes.CreateArray(BLOCK_SIZE, 0);
+      const offset = OpCodes.CreateArray(BLOCK_SIZE, 0);
       let blockNumber = 1;
       let adIndex = 0;
       let adLen = ad.length;
@@ -438,8 +440,9 @@
     }
 
     encrypt(plaintext, ad) {
+      /** @type {uint8[]} */
       const ciphertext = [];
-      const sum = new Array(BLOCK_SIZE).fill(0);
+      const sum = OpCodes.CreateArray(BLOCK_SIZE, 0);
       let blockNumber = 1;
       let ptIndex = 0;
       let ptLen = plaintext.length;
@@ -521,8 +524,9 @@
 
       const ctLen = ciphertext.length - TAG_SIZE;
       const receivedTag = ciphertext.slice(ctLen);
+      /** @type {uint8[]} */
       const plaintext = [];
-      const sum = new Array(BLOCK_SIZE).fill(0);
+      const sum = OpCodes.CreateArray(BLOCK_SIZE, 0);
       let blockNumber = 1;
       let ctIndex = 0;
       let remainingLen = ctLen;
@@ -715,16 +719,20 @@
   class Pyjamask96AEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Pyjamask96AEAD} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -741,7 +749,7 @@
       }
 
       if (keyBytes.length !== KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + KEY_SIZE + ")");
       }
 
       this._key = [...keyBytes];
@@ -754,6 +762,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -761,14 +772,20 @@
       }
 
       if (nonceBytes.length !== NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected ${NONCE_SIZE})`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected " + NONCE_SIZE + ")");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -777,12 +794,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }

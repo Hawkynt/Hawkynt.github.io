@@ -97,7 +97,7 @@
       this.permutation = config.permutation;
 
       // Required metadata
-      this.name = `TinyJAMBU-${variant} AEAD`;
+      this.name = "TinyJAMBU-" + variant + " AEAD";
       this.description = config.description;
       this.inventor = "Hongjun Wu, Tao Huang";
       this.year = 2019;
@@ -357,7 +357,7 @@
       };
 
       if (!configs[variant]) {
-        throw new Error(`Unsupported TinyJAMBU variant: ${variant}`);
+        throw new Error("Unsupported TinyJAMBU variant: " + variant);
       }
 
       return configs[variant];
@@ -382,16 +382,20 @@
   class TinyJAMBUInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TinyJAMBUAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._aad = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Store variant-specific parameters
@@ -413,7 +417,7 @@
       }
 
       if (keyBytes.length !== this.keySize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${this.keySize})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + this.keySize + ")");
       }
 
       this._key = [...keyBytes];
@@ -426,6 +430,9 @@
 
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -433,14 +440,20 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 12)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 12)");
       }
 
       this._nonce = [...nonceBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this._nonce ? [...this._nonce] : null; }
 
+    /**
+     * @param {uint8[]|null} aadBytes
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = [];
@@ -449,12 +462,21 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get aad() { return [...this._aad]; }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this.aad;
     }
@@ -593,7 +615,7 @@
           this._permutation256(state, key, rounds);
           break;
         default:
-          throw new Error(`Unsupported key size: ${this.keyWords} words`);
+          throw new Error("Unsupported key size: " + this.keyWords + " words");
       }
     }
 
@@ -684,6 +706,7 @@
 
     _encrypt() {
       const plaintext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
       const state = [0, 0, 0, 0];
 
@@ -750,6 +773,7 @@
 
     _decrypt() {
       const ciphertext = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = [];
       const state = [0, 0, 0, 0];
 

@@ -63,6 +63,7 @@
   const TAG_SIZE = 16;          // 128-bit tag
 
   // Round constants RC0 and RC1 (interleaved, 222 bytes total)
+  /** @type {uint8[]} */
   const WAGE_RC = [
     0x7f, 0x3f, 0x1f, 0x0f, 0x07, 0x03, 0x01, 0x40, 0x20, 0x10, 0x08, 0x04,
     0x02, 0x41, 0x60, 0x30, 0x18, 0x0c, 0x06, 0x43, 0x21, 0x50, 0x28, 0x14,
@@ -86,6 +87,7 @@
   ];
 
   // WGP S-box (7-bit permutation, 128 entries)
+  /** @type {uint8[]} */
   const WAGE_WGP = [
     0x00, 0x12, 0x0a, 0x4b, 0x66, 0x0c, 0x48, 0x73, 0x79, 0x3e, 0x61, 0x51,
     0x01, 0x15, 0x17, 0x0e, 0x7e, 0x33, 0x68, 0x36, 0x42, 0x35, 0x37, 0x5e,
@@ -581,18 +583,23 @@
   class WAGEInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {WAGEAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.state = null;
+      /** @type {boolean} */
       this.initialized = false;
     }
 
@@ -632,6 +639,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -651,11 +661,17 @@
       this.initialized = false;
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? this._nonce.slice() : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -669,6 +685,9 @@
       this._associatedData = adBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return this._associatedData.slice();
     }
@@ -750,6 +769,7 @@
 
     // Encrypt plaintext
     _encrypt() {
+      /** @type {uint8[]} */
       var output = [];
       var mlen = this.inputBuffer.length;
       var offset = 0;
@@ -804,6 +824,7 @@
         throw new Error("Ciphertext too short - must include 16-byte tag");
       }
 
+      /** @type {uint8[]} */
       var output = [];
       var clen = this.inputBuffer.length - TAG_SIZE;
       var offset = 0;

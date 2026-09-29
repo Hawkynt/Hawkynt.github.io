@@ -400,7 +400,9 @@
     constructor(algorithm, variant) {
       super(algorithm);
       this.variant = variant;  // 1, 2, or 3
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
       this.aad = [];
       this.message = [];
@@ -466,17 +468,26 @@
       return this._key ? Array.from(this._key) : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || nonceBytes.length !== this.nonceSize) {
-        throw new Error(`Nonce must be ${this.nonceSize} bytes`);
+        throw new Error("Nonce must be " + this.nonceSize + " bytes");
       }
       this._nonce = new Uint8Array(nonceBytes);
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? Array.from(this._nonce) : null;
     }
 
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       this.aad = adBytes ? Array.from(adBytes) : [];
     }
