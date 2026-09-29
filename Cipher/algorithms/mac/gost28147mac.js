@@ -55,6 +55,7 @@
   const MAC_SIZE = 4; // Default MAC output size (4 bytes = 32 bits)
 
   // Default S-box (E-A / TestParam S-box used in Bouncy Castle)
+  /** @type {uint8[]} */
   const DEFAULT_SBOX = [
     0x9,0x6,0x3,0x2,0x8,0xB,0x1,0x7,0xA,0x4,0xE,0xF,0xC,0x0,0xD,0x5,
     0x3,0x7,0xE,0x9,0x8,0xA,0xF,0x0,0x5,0x2,0x6,0xC,0xB,0x4,0xD,0x1,
@@ -142,16 +143,29 @@
  */
 
   class GOST28147MACInstance extends IMacInstance {
+    /**
+     * Initialize a GOST 28147-89 MAC instance
+     * @param {GOST28147MACAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {uint32[]} */
       this.workingKey = null;
+      /** @type {uint8[]} */
       this.sbox = DEFAULT_SBOX.slice(); // Copy default S-box
-      this.mac = new Array(BLOCK_SIZE).fill(0); // MAC state (8 bytes)
-      this.buf = new Array(BLOCK_SIZE).fill(0); // Input buffer (8 bytes)
+      /** @type {uint8[]} */
+      this.mac = OpCodes.CreateArray(BLOCK_SIZE, 0); // MAC state (8 bytes)
+      /** @type {uint8[]} */
+      this.buf = OpCodes.CreateArray(BLOCK_SIZE, 0); // Input buffer (8 bytes)
+      /** @type {int32} */
       this.bufOff = 0;
+      /** @type {boolean} */
       this.firstStep = true;
+      /** @type {int32} */
       this.macSize = MAC_SIZE; // Default 4-byte output
+      /** @type {uint8[]} */
       this.macIV = null; // Optional initialization vector
     }
 
@@ -186,6 +200,11 @@
     }
 
     // Additional property setters for MAC configuration
+    /**
+     * Select the MAC size
+     * @param {int32} size - 4 or 8 bytes
+     * @throws {Error} If size is neither
+     */
     set outputSize(size) {
       if (size !== 4 && size !== 8) {
         throw new Error("Invalid MAC size: " + size + " bytes. Must be 4 or 8 bytes.");
@@ -193,6 +212,10 @@
       this.macSize = size;
     }
 
+    /**
+     * MAC size in bytes
+     * @returns {int32} MAC size in bytes
+     */
     get outputSize() {
       return this.macSize;
     }
@@ -242,7 +265,7 @@
       if (len > gapLen) {
         // Fill remaining buffer space
         for (let i = 0; i < gapLen; i++) {
-          this.buf[this.bufOff + i] = OpCodes.AndN(data[inOff + i], 0xFF);
+          this.buf[this.bufOff + i] = OpCodes.ToByte(data[inOff + i]);
         }
 
         // Process full block
@@ -255,7 +278,7 @@
         // Process full blocks directly from input
         while (len > BLOCK_SIZE) {
           for (let i = 0; i < BLOCK_SIZE; i++) {
-            this.buf[i] = OpCodes.AndN(data[inOff + i], 0xFF);
+            this.buf[i] = OpCodes.ToByte(data[inOff + i]);
           }
           this._processBlock();
           len -= BLOCK_SIZE;
@@ -265,7 +288,7 @@
 
       // Copy remaining data to buffer
       for (let i = 0; i < len; i++) {
-        this.buf[this.bufOff + i] = OpCodes.AndN(data[inOff + i], 0xFF);
+        this.buf[this.bufOff + i] = OpCodes.ToByte(data[inOff + i]);
       }
       this.bufOff += len;
     }
@@ -287,6 +310,7 @@
       }
 
       // Process final block
+      /** @type {uint8[]} */
       const sum = new Array(BLOCK_SIZE);
       if (this.firstStep) {
         this.firstStep = false;
@@ -302,6 +326,7 @@
       // Extract MAC bytes: take from middle of final block
       // Bouncy Castle uses: mac[(mac.length/2)-MAC_SIZE] to mac[mac.length/2]
       // For 8-byte block with 4-byte MAC: mac[0..3] (first 4 bytes)
+      /** @type {uint8[]} */
       const macResult = new Array(this.macSize);
       const startPos = (BLOCK_SIZE / 2) - MAC_SIZE; // Position 0 for 4-byte MAC
       for (let i = 0; i < this.macSize; i++) {
@@ -314,6 +339,12 @@
       return macResult;
     }
 
+    /**
+     * Compute the MAC of a whole message, discarding any buffered state
+     * @param {uint8[]} data - Message bytes
+     * @returns {uint8[]} MAC bytes
+     * @throws {Error} If key not set
+     */
     ComputeMac(data) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -326,7 +357,13 @@
 
     // GOST 28147-89 MAC internal functions
 
+    /**
+     * Load the 256-bit key as eight little-endian 32-bit subkeys
+     * @param {uint8[]} userKey - 32-byte key
+     * @returns {uint32[]} Subkeys K0..K7
+     */
     _generateWorkingKey(userKey) {
+      /** @type {uint32[]} */
       const key = new Uint32Array(8);
       for (let i = 0; i < 8; i++) {
         const offset = i * 4;
@@ -340,25 +377,36 @@
       return key;
     }
 
+    /**
+     * GOST round function: S-boxes over n1 + key, rotated left by 11
+     * @param {uint32} n1 - Right half
+     * @param {uint32} keyWord - Round subkey
+     * @returns {uint32} Round function output
+     */
     _gost28147_mainStep(n1, keyWord) {
       // CM1: Add key
       const cm = OpCodes.Add32(n1, keyWord);
 
-      // S-box substitution (8 x 4-bit S-boxes)
+      // S-box substitution (8 x 4-bit S-boxes); the nibbles land in disjoint
+      // positions, so combining them with OR is the same as adding them
+      /** @type {uint32} */
       let om = 0;
-      om += OpCodes.Shl32(this.sbox[0 + OpCodes.AndN(OpCodes.Shr32(cm, 0), 0xF)], 0);
-      om += OpCodes.Shl32(this.sbox[16 + OpCodes.AndN(OpCodes.Shr32(cm, 4), 0xF)], 4);
-      om += OpCodes.Shl32(this.sbox[32 + OpCodes.AndN(OpCodes.Shr32(cm, 8), 0xF)], 8);
-      om += OpCodes.Shl32(this.sbox[48 + OpCodes.AndN(OpCodes.Shr32(cm, 12), 0xF)], 12);
-      om += OpCodes.Shl32(this.sbox[64 + OpCodes.AndN(OpCodes.Shr32(cm, 16), 0xF)], 16);
-      om += OpCodes.Shl32(this.sbox[80 + OpCodes.AndN(OpCodes.Shr32(cm, 20), 0xF)], 20);
-      om += OpCodes.Shl32(this.sbox[96 + OpCodes.AndN(OpCodes.Shr32(cm, 24), 0xF)], 24);
-      om += OpCodes.Shl32(this.sbox[112 + OpCodes.AndN(OpCodes.Shr32(cm, 28), 0xF)], 28);
+      for (let i = 0; i < 8; i++) {
+        /** @type {int32} */
+        const nibble = OpCodes.And32(OpCodes.Shr32(cm, i * 4), 0xF);
+        om = OpCodes.Or32(om, OpCodes.Shl32(this.sbox[i * 16 + nibble], i * 4));
+      }
 
       // 11-bit left rotation
       return OpCodes.RotL32(om, 11);
     }
 
+    /**
+     * 16 GOST rounds over one block (the MAC's reduced encryption)
+     * @param {uint8[]} inBlock - 8-byte input block
+     * @param {uint8[]} outBlock - Receives the 8-byte result
+     * @returns {void}
+     */
     _gost28147MacFunc(inBlock, outBlock) {
       let N1 = OpCodes.Pack32LE(inBlock[0], inBlock[1], inBlock[2], inBlock[3]);
       let N2 = OpCodes.Pack32LE(inBlock[4], inBlock[5], inBlock[6], inBlock[7]);
@@ -367,7 +415,7 @@
       for (let k = 0; k < 2; k++) {
         for (let j = 0; j < 8; j++) {
           const tmp = N1;
-          N1 = OpCodes.ToUint32(OpCodes.XorN(N2, this._gost28147_mainStep(N1, this.workingKey[j])));
+          N1 = OpCodes.ToUint32(OpCodes.Xor32(N2, this._gost28147_mainStep(N1, this.workingKey[j])));
           N2 = tmp;
         }
       }
@@ -381,14 +429,27 @@
       }
     }
 
+    /**
+     * sum = buf[bufOff..] xor mac for one block
+     * @param {uint8[]} buf - Input bytes
+     * @param {int32} bufOff - Offset into buf
+     * @param {uint8[]} mac - Chaining value (or IV)
+     * @param {uint8[]} sum - Receives the block
+     * @returns {void}
+     */
     _CM5func(buf, bufOff, mac, sum) {
       // XOR input block with MAC state
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        sum[i] = OpCodes.AndN(OpCodes.XorN(buf[bufOff + i], mac[i]), 0xFF);
+        sum[i] = OpCodes.Xor8(buf[bufOff + i], mac[i]);
       }
     }
 
+    /**
+     * Absorb the full buffer block
+     * @returns {void}
+     */
     _processBlock() {
+      /** @type {uint8[]} */
       const sum = new Array(BLOCK_SIZE);
 
       if (this.firstStep) {
@@ -411,6 +472,10 @@
       this._gost28147MacFunc(sum, this.mac);
     }
 
+    /**
+     * Clear buffer and chaining state
+     * @returns {void}
+     */
     _reset() {
       // Clear buffer and state
       this.buf.fill(0);
