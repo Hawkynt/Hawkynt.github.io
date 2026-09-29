@@ -40,44 +40,30 @@
           BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // S-Box S0 from RFC 6114 Table 1
-  const S0 = Object.freeze([
-    0x57, 0x49, 0xd1, 0xc6, 0x2f, 0x33, 0x74, 0xfb, 0x95, 0x6d, 0x82, 0xea, 0x0e, 0xb0, 0xa8, 0x1c,
-    0x28, 0xd0, 0x4b, 0x92, 0x5c, 0xee, 0x85, 0xb1, 0xc4, 0x0a, 0x76, 0x3d, 0x63, 0xf9, 0x17, 0xaf,
-    0xbf, 0xa1, 0x19, 0x65, 0xf7, 0x7a, 0x32, 0x20, 0x06, 0xce, 0xe4, 0x83, 0x9d, 0x5b, 0x4c, 0xd8,
-    0x42, 0x5d, 0x2e, 0xe8, 0xd4, 0x9b, 0x0f, 0x13, 0x3c, 0x89, 0x67, 0xc0, 0x71, 0xaa, 0xb6, 0xf5,
-    0xa4, 0xbe, 0xfd, 0x8c, 0x12, 0x00, 0x97, 0xda, 0x78, 0xe1, 0xcf, 0x6b, 0x39, 0x43, 0x55, 0x26,
-    0x30, 0x98, 0xcc, 0xdd, 0xeb, 0x54, 0xb3, 0x8f, 0x4e, 0x16, 0xfa, 0x22, 0xa5, 0x77, 0x09, 0x61,
-    0xd6, 0x2a, 0x53, 0x37, 0x45, 0xc1, 0x6c, 0xae, 0xef, 0x70, 0x08, 0x99, 0x8b, 0x1d, 0xf2, 0xb4,
-    0xe9, 0xc7, 0x9f, 0x4a, 0x31, 0x25, 0xfe, 0x7c, 0xd3, 0xa2, 0xbd, 0x56, 0x14, 0x88, 0x60, 0x0b,
-    0xcd, 0xe2, 0x34, 0x50, 0x9e, 0xdc, 0x11, 0x05, 0x2b, 0xb7, 0xa9, 0x48, 0xff, 0x66, 0x8a, 0x73,
-    0x03, 0x75, 0x86, 0xf1, 0x6a, 0xa7, 0x40, 0xc2, 0xb9, 0x2c, 0xdb, 0x1f, 0x58, 0x94, 0x3e, 0xed,
-    0xfc, 0x1b, 0xa0, 0x04, 0xb8, 0x8d, 0xe6, 0x59, 0x62, 0x93, 0x35, 0x7e, 0xca, 0x21, 0xdf, 0x47,
-    0x15, 0xf3, 0xba, 0x7f, 0xa6, 0x69, 0xc8, 0x4d, 0x87, 0x3b, 0x9c, 0x01, 0xe0, 0xde, 0x24, 0x52,
-    0x7b, 0x0c, 0x68, 0x1e, 0x80, 0xb2, 0x5a, 0xe7, 0xad, 0xd5, 0x23, 0xf4, 0x46, 0x3f, 0x91, 0xc9,
-    0x6e, 0x84, 0x72, 0xbb, 0x0d, 0x18, 0xd9, 0x96, 0xf0, 0x5f, 0x41, 0xac, 0x27, 0xc5, 0xe3, 0x3a,
-    0x81, 0x6f, 0x07, 0xa3, 0x79, 0xf6, 0x2d, 0x38, 0x1a, 0x44, 0x5e, 0xb5, 0xd2, 0xec, 0xcb, 0x90,
-    0x9a, 0x36, 0xe5, 0x29, 0xc3, 0x4f, 0xab, 0x64, 0x51, 0xf8, 0x10, 0xd7, 0xbc, 0x02, 0x7d, 0x8e
-  ]);
+  const S0 = OpCodes.Hex8ToBytes(
+    "5749d1c62f3374fb956d82ea0eb0a81c28d04b925cee85b1c40a763d63f917af" +
+    "bfa11965f77a322006cee4839d5b4cd8425d2ee8d49b0f133c8967c071aab6f5" +
+    "a4befd8c120097da78e1cf6b394355263098ccddeb54b38f4e16fa22a5770961" +
+    "d62a533745c16caeef7008998b1df2b4e9c79f4a3125fe7cd3a2bd561488600b" +
+    "cde234509edc11052bb7a948ff668a73037586f16aa740c2b92cdb1f58943eed" +
+    "fc1ba004b88de6596293357eca21df4715f3ba7fa669c84d873b9c01e0de2452" +
+    "7b0c681e80b25ae7add523f4463f91c96e8472bb0d18d996f05f41ac27c5e33a" +
+    "816f07a379f62d381a445eb5d2eccb909a36e529c34fab6451f810d7bc027d8e"
+  );
+  Object.freeze(S0);
 
   // S-Box S1 from RFC 6114 Table 2
-  const S1 = Object.freeze([
-    0x6c, 0xda, 0xc3, 0xe9, 0x4e, 0x9d, 0x0a, 0x3d, 0xb8, 0x36, 0xb4, 0x38, 0x13, 0x34, 0x0c, 0xd9,
-    0xbf, 0x74, 0x94, 0x8f, 0xb7, 0x9c, 0xe5, 0xdc, 0x9e, 0x07, 0x49, 0x4f, 0x98, 0x2c, 0xb0, 0x93,
-    0x12, 0xeb, 0xcd, 0xb3, 0x92, 0xe7, 0x41, 0x60, 0xe3, 0x21, 0x27, 0x3b, 0xe6, 0x19, 0xd2, 0x0e,
-    0x91, 0x11, 0xc7, 0x3f, 0x2a, 0x8e, 0xa1, 0xbc, 0x2b, 0xc8, 0xc5, 0x0f, 0x5b, 0xf3, 0x87, 0x8b,
-    0xfb, 0xf5, 0xde, 0x20, 0xc6, 0xa7, 0x84, 0xce, 0xd8, 0x65, 0x51, 0xc9, 0xa4, 0xef, 0x43, 0x53,
-    0x25, 0x5d, 0x9b, 0x31, 0xe8, 0x3e, 0x0d, 0xd7, 0x80, 0xff, 0x69, 0x8a, 0xba, 0x0b, 0x73, 0x5c,
-    0x6e, 0x54, 0x15, 0x62, 0xf6, 0x35, 0x30, 0x52, 0xa3, 0x16, 0xd3, 0x28, 0x32, 0xfa, 0xaa, 0x5e,
-    0xcf, 0xea, 0xed, 0x78, 0x33, 0x58, 0x09, 0x7b, 0x63, 0xc0, 0xc1, 0x46, 0x1e, 0xdf, 0xa9, 0x99,
-    0x55, 0x04, 0xc4, 0x86, 0x39, 0x77, 0x82, 0xec, 0x40, 0x18, 0x90, 0x97, 0x59, 0xdd, 0x83, 0x1f,
-    0x9a, 0x37, 0x06, 0x24, 0x64, 0x7c, 0xa5, 0x56, 0x48, 0x08, 0x85, 0xd0, 0x61, 0x26, 0xca, 0x6f,
-    0x7e, 0x6a, 0xb6, 0x71, 0xa0, 0x70, 0x05, 0xd1, 0x45, 0x8c, 0x23, 0x1c, 0xf0, 0xee, 0x89, 0xad,
-    0x7a, 0x4b, 0xc2, 0x2f, 0xdb, 0x5a, 0x4d, 0x76, 0x67, 0x17, 0x2d, 0xf4, 0xcb, 0xb1, 0x4a, 0xa8,
-    0xb5, 0x22, 0x47, 0x3a, 0xd5, 0x10, 0x4c, 0x72, 0xcc, 0x00, 0xf9, 0xe0, 0xfd, 0xe2, 0xfe, 0xae,
-    0xf8, 0x5f, 0xab, 0xf1, 0x1b, 0x42, 0x81, 0xd6, 0xbe, 0x44, 0x29, 0xa6, 0x57, 0xb9, 0xaf, 0xf2,
-    0xd4, 0x75, 0x66, 0xbb, 0x68, 0x9f, 0x50, 0x02, 0x01, 0x3c, 0x7f, 0x8d, 0x1a, 0x88, 0xbd, 0xac,
-    0xf7, 0xe4, 0x79, 0x96, 0xa2, 0xfc, 0x6d, 0xb2, 0x6b, 0x03, 0xe1, 0x2e, 0x7d, 0x14, 0x95, 0x1d
-  ]);
+  const S1 = OpCodes.Hex8ToBytes(
+    "6cdac3e94e9d0a3db836b43813340cd9bf74948fb79ce5dc9e07494f982cb093" +
+    "12ebcdb392e74160e321273be619d20e9111c73f2a8ea1bc2bc8c50f5bf3878b" +
+    "fbf5de20c6a784ced86551c9a4ef4353255d9b31e83e0dd780ff698aba0b735c" +
+    "6e541562f6353052a316d32832faaa5ecfeaed783358097b63c0c1461edfa999" +
+    "5504c486397782ec4018909759dd831f9a370624647ca556480885d06126ca6f" +
+    "7e6ab671a07005d1458c231cf0ee89ad7a4bc22fdb5a4d7667172df4cbb14aa8" +
+    "b522473ad5104c72cc00f9e0fde2feaef85fabf11b4281d6be4429a657b9aff2" +
+    "d47566bb689f5002013c7f8d1a88bdacf7e47996a2fc6db26b03e12e7d14951d"
+  );
+  Object.freeze(S1);
 
   // CON constant generation - RFC 6114 Section 6.6
   // P(16) = 0xb7e1 (fractional part of e-2), Q(16) = 0x243f (fractional part of pi-3)
@@ -90,13 +76,23 @@
   // Divide a GF(2^16) element by z (multiply by the inverse of 2) under the
   // CLEFIA constant-generation polynomial: reduce with the low 16 bits of the
   // primitive polynomial (0xa831) whenever the constant term is set.
+  /**
+   * @param {uint32} t - GF(2^16) element
+   * @returns {uint32} t / z
+   */
   function gf16DivZ(t) {
-    return OpCodes.AndN(t, 1) ? OpCodes.Or32(OpCodes.Shr16(OpCodes.Xor32(t, 0xa831), 1), 0x8000) : OpCodes.Shr16(t, 1);
+    return OpCodes.And32(t, 1) !== 0 ? OpCodes.Or32(OpCodes.Shr16(OpCodes.Xor32(t, 0xa831), 1), 0x8000) : OpCodes.Shr16(t, 1);
   }
 
   // Generate `count` pairs of 32-bit CON words from the given 16-bit IV,
   // per RFC 6114 Section 6.6 (Table 4-9 lists the resulting constants).
+  /**
+   * @param {uint32} iv - 16-bit IV
+   * @param {int32} count - Number of word pairs
+   * @returns {uint32[]} CON words
+   */
   function generateCON(iv, count) {
+    /** @type {uint32[]} */
     const con = new Array(count * 2);
     let t = OpCodes.And32(iv, 0xFFFF);
     for (let i = 0; i < count; i++) {
@@ -114,26 +110,35 @@
 
   // CON_128/192/256 - RFC 6114 Appendix C (Tables 7-9), generated rather than
   // hardcoded so the constants are provably derived from the spec algorithm.
-  const CON_128 = Object.freeze(generateCON(0x428a, 30));
-  const CON_192 = Object.freeze(generateCON(0x7137, 42));
-  const CON_256 = Object.freeze(generateCON(0xb5c0, 46));
+  const CON_128 = generateCON(0x428a, 30);
+  Object.freeze(CON_128);
+  const CON_192 = generateCON(0x7137, 42);
+  Object.freeze(CON_192);
+  const CON_256 = generateCON(0xb5c0, 46);
+  Object.freeze(CON_256);
 
   // CLEFIA-specific GF(2^8) multiplication
   // Uses irreducible polynomial z^8 + z^4 + z^3 + z^2 + 1 (0x1d)
   // This is different from AES which uses 0x1b
+  /**
+   * @param {uint32} a - First factor (low byte used)
+   * @param {uint32} b - Second factor (low byte used)
+   * @returns {uint32} Product byte
+   */
   function gfMul(a, b) {
+    /** @type {uint32} */
     let result = 0;
-    a &= 0xFF;
-    b &= 0xFF;
+    a = OpCodes.And32(a, 0xFF);
+    b = OpCodes.And32(b, 0xFF);
 
     for (let i = 0; i < 8; i++) {
-      if (OpCodes.AndN(b, 1)) {
+      if (OpCodes.And32(b, 1) !== 0) {
         result = OpCodes.Xor32(result, a);
       }
 
       const highBit = OpCodes.And32(a, 0x80);
       a = OpCodes.And32(OpCodes.Shl8(a, 1), 0xFF);
-      if (highBit) {
+      if (highBit !== 0) {
         a = OpCodes.Xor32(a, 0x1D); // CLEFIA polynomial: z^8 + z^4 + z^3 + z^2 + 1
       }
 
@@ -254,6 +259,10 @@
       this._key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[][]|null} */
+      this.rk = null;
+      /** @type {uint8[][]|null} */
+      this.wk = null;
     }
 
     /**
@@ -270,7 +279,7 @@
         return;
       }
 
-      if (![16, 24, 32].includes(keyBytes.length)) {
+      if (keyBytes.length !== 16 && keyBytes.length !== 24 && keyBytes.length !== 32) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
@@ -324,6 +333,9 @@
       return output;
     }
 
+    /**
+     * Derive whitening and round keys from this._key
+     */
     _setupKey() {
       const keyLen = this._key.length;
       if (keyLen === 16) {
@@ -335,25 +347,33 @@
 
     // 128-bit key schedule - RFC 6114 Section 6.3
     // L <- GFN_{4,12}(CON_128[0..23], K); WK0..3 <- K; 9 iterations produce 36 round keys (18 rounds)
+    /**
+     * 128-bit key schedule
+     */
     _setupKey128() {
       const conWords = this._genCon(16);
       const gfnRounds = 12;
       const L = this._gfn([...this._key], conWords, gfnRounds, 4);
 
       // Whitening keys from original key - RFC 6114 Section 6.3
-      this.wk = [];
+      /** @type {uint8[][]} */
+      const whitening = [];
       for (let i = 0; i < 4; i++) {
-        this.wk[i] = this._key.slice(i * 4, i * 4 + 4);
+        whitening[i] = this._key.slice(i * 4, i * 4 + 4);
       }
+      this.wk = whitening;
 
       // Round keys derived from L - RFC 6114 Section 6.3
       // 9 iterations generating 4 RK each = 36 round keys for 18 rounds
-      this.rk = [];
+      /** @type {uint8[][]} */
+      const roundKeys = [];
+      this.rk = roundKeys;
       const r = 9;
       const conStartIdx = gfnRounds * 2;  // Start after GFN_{4,12} constants (in CON word array)
 
       for (let i = 0; i < r; i++) {
         // Step 1: T <- L XOR CON (4 CON words = 16 bytes)
+        /** @type {uint8[]} */
         const temp = new Array(16);
         for (let j = 0; j < 4; j++) {
           const conWord = conWords[conStartIdx + i * 4 + j];
@@ -367,7 +387,7 @@
         // RFC 6114 Section 6.3: "if i is odd: T <- T XOR K"
         if ((i % 2) === 1) {
           for (let j = 0; j < 16; j++) {
-            temp[j] ^= this._key[j];
+            temp[j] = OpCodes.Xor32(temp[j], this._key[j]);
           }
         }
 
@@ -389,16 +409,20 @@
     // LL|LR <- GFN_{8,10}(CON_k[0..39], KL|KR); WK0..3 <- KL XOR KR.
     // 11 (192-bit) or 13 (256-bit) iterations alternate LL/LR, producing 44/52
     // round keys for 22/26 rounds.
+    /**
+     * 192/256-bit key schedule
+     * @param {int32} keyLen - Key length in bytes (24 or 32)
+     */
     _setupKey192Or256(keyLen) {
       const conWords = this._genCon(keyLen);
 
       const kl = this._key.slice(0, 16);
+      /** @type {uint8[]} */
       let kr;
       if (keyLen === 24) {
         // KR <- K4 | K5 | ~K0 | ~K1 (bitwise complement of the first two key words)
-        kr = this._key.slice(16, 24)
-          .concat(this._key.slice(0, 4).map(b => OpCodes.And32(OpCodes.Xor32(b, 0xFF), 0xFF)))
-          .concat(this._key.slice(4, 8).map(b => OpCodes.And32(OpCodes.Xor32(b, 0xFF), 0xFF)));
+        kr = this._key.slice(16, 24);
+        for (let i = 0; i < 8; i++) kr.push(OpCodes.And32(OpCodes.Xor32(this._key[i], 0xFF), 0xFF));
       } else {
         kr = this._key.slice(16, 32);
       }
@@ -409,16 +433,22 @@
       const LR = gfnOut.slice(16, 32);
 
       // Whitening keys - RFC 6114 Section 6.4/6.5: WK0|WK1|WK2|WK3 <- KL XOR KR
-      this.wk = [];
+      /** @type {uint8[][]} */
+      const whitening = [];
       for (let i = 0; i < 4; i++) {
-        this.wk[i] = [];
+        /** @type {uint8[]} */
+        const wkRow = [];
         for (let j = 0; j < 4; j++) {
-          this.wk[i][j] = OpCodes.Xor32(kl[i * 4 + j], kr[i * 4 + j]);
+          wkRow[j] = OpCodes.Xor32(kl[i * 4 + j], kr[i * 4 + j]);
         }
+        whitening[i] = wkRow;
       }
+      this.wk = whitening;
 
       // Round keys derived from LL/LR, alternating every two iterations
-      this.rk = [];
+      /** @type {uint8[][]} */
+      const roundKeys = [];
+      this.rk = roundKeys;
       const r = keyLen === 24 ? 11 : 13;
       const conStartIdx = gfnRounds * 4;  // Start after GFN_{8,10} constants (in CON word array)
 
@@ -428,6 +458,7 @@
         const otherKey = useLL ? kr : kl;
 
         // Step 1: T <- L XOR CON (4 CON words = 16 bytes)
+        /** @type {uint8[]} */
         const temp = new Array(16);
         for (let j = 0; j < 4; j++) {
           const conWord = conWords[conStartIdx + i * 4 + j];
@@ -440,7 +471,7 @@
         // Step 2: XOR temp with the complementary key half on ODD iterations
         if ((i % 2) === 1) {
           for (let j = 0; j < 16; j++) {
-            temp[j] ^= otherKey[j];
+            temp[j] = OpCodes.Xor32(temp[j], otherKey[j]);
           }
         }
 
@@ -455,11 +486,14 @@
       }
     }
 
+    /**
+     * Sigma (DoubleSwap) function from Sony reference implementation
+     * RFC 6114 Section 4.2: Complex bit permutation on two 64-bit halves
+     * Reference: clefia_ref.c ClefiaDoubleSwap
+     * @param {uint8[]} x - 16 bytes (permuted in place)
+     */
     _sigma(x) {
-      // Sigma (DoubleSwap) function from Sony reference implementation
-      // RFC 6114 Section 4.2: Complex bit permutation on two 64-bit halves
-      // Reference: clefia_ref.c ClefiaDoubleSwap
-
+      /** @type {uint8[]} */
       const t = new Array(16);
 
       // First half (bytes 0-7): 7-bit left rotation with crossover
@@ -488,8 +522,12 @@
       }
     }
 
-    // Return the generated CON constants for the given key length (in bytes)
-    // Returns array of 32-bit words (not bytes) - RFC 6114 Appendix C
+    /**
+     * Return the generated CON constants for the given key length (in bytes)
+     * Returns array of 32-bit words (not bytes) - RFC 6114 Appendix C
+     * @param {int32} keyLen - Key length in bytes
+     * @returns {uint32[]} CON words
+     */
     _genCon(keyLen) {
       if (keyLen === 16) return CON_128;
       if (keyLen === 24) return CON_192;
@@ -503,8 +541,16 @@
     // conWords: array of 32-bit words to use as round keys (d/2 per round)
     // r: number of rounds
     // Output: byte array (d*4 bytes)
+    /**
+     * @param {uint8[]} x - d*4 input bytes
+     * @param {uint32[]} conWords - CON words
+     * @param {int32} r - Rounds
+     * @param {int32} d - Branches (4 or 8)
+     * @returns {uint8[]} d*4 output bytes
+     */
     _gfn(x, conWords, r, d) {
       // Convert input bytes to 32-bit words (big-endian per RFC 6114)
+      /** @type {uint32[]} */
       const t = new Array(d);
       for (let branch = 0; branch < d; branch++) {
         t[branch] = OpCodes.Pack32BE(x[branch * 4], x[branch * 4 + 1], x[branch * 4 + 2], x[branch * 4 + 3]);
@@ -533,6 +579,7 @@
       }
 
       // Convert 32-bit words back to bytes (big-endian per RFC 6114)
+      /** @type {uint8[]} */
       const result = [];
       for (let branch = 0; branch < d; branch++) {
         result.push(...OpCodes.Unpack32BE(t[branch]));
@@ -542,11 +589,17 @@
 
     // F0 function - accepts 32-bit word and RK bytes, returns 32-bit word
     // RFC 6114 Section 2.1: F0(RK, X) uses S0,S1,S0,S1 S-boxes
+    /**
+     * @param {uint32} x32 - Input word
+     * @param {uint8[]} rk - 4 round-key bytes
+     * @returns {uint32} Output word
+     */
     _f0(x32, rk) {
       // Unpack 32-bit word into bytes (big-endian per RFC 6114)
       const xBytes = OpCodes.Unpack32BE(x32);
 
       // S-box substitution: S0,S1,S0,S1
+      /** @type {uint8[]} */
       const y = [
         S0[OpCodes.Xor32(xBytes[0], rk[0])],
         S1[OpCodes.Xor32(xBytes[1], rk[1])],
@@ -555,11 +608,12 @@
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
+      /** @type {uint8[]} */
       const z = [
         OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
         OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)
@@ -568,11 +622,17 @@
 
     // F1 function - accepts 32-bit word and RK bytes, returns 32-bit word
     // RFC 6114 Section 2.1: F1(RK, X) uses S1,S0,S1,S0 S-boxes
+    /**
+     * @param {uint32} x32 - Input word
+     * @param {uint8[]} rk - 4 round-key bytes
+     * @returns {uint32} Output word
+     */
     _f1(x32, rk) {
       // Unpack 32-bit word into bytes (big-endian per RFC 6114)
       const xBytes = OpCodes.Unpack32BE(x32);
 
       // S-box substitution: S1,S0,S1,S0
+      /** @type {uint8[]} */
       const y = [
         S1[OpCodes.Xor32(xBytes[0], rk[0])],
         S0[OpCodes.Xor32(xBytes[1], rk[1])],
@@ -581,11 +641,12 @@
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
+      /** @type {uint8[]} */
       const z = [
         OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
         OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
-        OpCodes.Xor32(OpCodes.Xor32(OpCodes.XorN(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)
@@ -617,10 +678,10 @@
       const r = this.rk.length / 2;
       for (let round = 0; round < r; round++) {
         // P1 ^= F0(RK_{2i}, P0)
-        p1 ^= this._f0(p0, this.rk[round * 2]);
+        p1 = OpCodes.Xor32(p1, this._f0(p0, this.rk[round * 2]));
 
         // P3 ^= F1(RK_{2i+1}, P2)
-        p3 ^= this._f1(p2, this.rk[round * 2 + 1]);
+        p3 = OpCodes.Xor32(p3, this._f1(p2, this.rk[round * 2 + 1]));
 
         // Rotate: P0|P1|P2|P3 <- P1|P2|P3|P0
         // Skip rotation on last round (Sony reference clefia_ref.c line 197)
@@ -638,6 +699,7 @@
       p3 = OpCodes.Xor32(p3, wk3);
 
       // Convert output words back to bytes (big-endian per RFC 6114)
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32BE(p0));
       result.push(...OpCodes.Unpack32BE(p1));
@@ -681,10 +743,10 @@
         }
 
         // C1 ^= F0(RK_{2i}, C0)
-        c1 ^= this._f0(c0, this.rk[round * 2]);
+        c1 = OpCodes.Xor32(c1, this._f0(c0, this.rk[round * 2]));
 
         // C3 ^= F1(RK_{2i+1}, C2)
-        c3 ^= this._f1(c2, this.rk[round * 2 + 1]);
+        c3 = OpCodes.Xor32(c3, this._f1(c2, this.rk[round * 2 + 1]));
       }
 
       // Inverse post-whitening: C1 ^= WK0, C3 ^= WK1
@@ -692,6 +754,7 @@
       c3 = OpCodes.Xor32(c3, wk1);
 
       // Convert output words back to bytes (big-endian per RFC 6114)
+      /** @type {uint8[]} */
       const result = [];
       result.push(...OpCodes.Unpack32BE(c0));
       result.push(...OpCodes.Unpack32BE(c1));
