@@ -190,9 +190,13 @@
       this.inputBuffer = [];
 
       // ChaCha20-Poly1305 constants
+      /** @type {int32} */
       this.KEY_SIZE = 32;
+      /** @type {int32} */
       this.NONCE_SIZE = 12;
+      /** @type {int32} */
       this.TAG_SIZE = 16;
+      /** @type {int32} */
       this.BLOCK_SIZE = 64;
     }
 
@@ -252,14 +256,24 @@
      * @param {uint8[]|null} aadBytes
      */
     set associatedData(aadBytes) {
-      this._aad = aadBytes ? [...aadBytes] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aadBytes) {
+        copy = [...aadBytes];
+      }
+      this._aad = copy;
     }
 
     /**
      * @returns {uint8[]|null}
      */
     get associatedData() {
-      return this._aad ? [...this._aad] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (this._aad) {
+        copy = [...this._aad];
+      }
+      return copy;
     }
 
     // Feed/Result pattern implementation
@@ -291,36 +305,60 @@
         throw new Error('Nonce not set');
       }
 
-      const result = this.isInverse ? this._decrypt() : this._encrypt();
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decrypt();
+      } else {
+        result = this._encrypt();
+      }
       this.inputBuffer = []; // Clear buffer for next operation
       return result;
     }
 
     // ===== ENCRYPTION =====
 
+    /**
+     * @returns {uint8[]}
+     */
     _encrypt() {
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
-      const aad = this._aad || [];
+      /** @type {uint8[]} */
+      let aad = [];
+      if (this._aad) {
+        aad = this._aad;
+      }
 
       // Step 1: Generate Poly1305 key using ChaCha20 block with counter=0
+      /** @type {uint8[]} */
       const poly1305Key = this._generatePoly1305Key(this._key, this._nonce);
 
       // Step 2: Encrypt plaintext with ChaCha20 (counter starts at 1)
+      /** @type {uint8[]} */
       const ciphertext = this._chacha20Encrypt(this._key, this._nonce, 1, plaintext);
 
       // Step 3: Construct MAC input according to RFC 8439 Section 2.8
+      /** @type {uint8[]} */
       const macData = this._constructMacData(aad, ciphertext);
 
       // Step 4: Compute Poly1305 MAC
+      /** @type {uint8[]} */
       const tag = this._poly1305Mac(poly1305Key, macData);
 
       // Step 5: Return ciphertext || tag
-      return [...ciphertext, ...tag];
+      /** @type {uint8[]} */
+      const sealed = [...ciphertext, ...tag];
+      return sealed;
     }
 
     // ===== DECRYPTION =====
 
+    /**
+     * @returns {uint8[]}
+     */
     _decrypt() {
+      /** @type {uint8[]} */
       const inputData = this.inputBuffer;
 
       // Verify minimum length for tag
@@ -329,17 +367,26 @@
       }
 
       // Split ciphertext and tag
+      /** @type {uint8[]} */
       const ciphertext = inputData.slice(0, -this.TAG_SIZE);
+      /** @type {uint8[]} */
       const receivedTag = inputData.slice(-this.TAG_SIZE);
-      const aad = this._aad || [];
+      /** @type {uint8[]} */
+      let aad = [];
+      if (this._aad) {
+        aad = this._aad;
+      }
 
       // Step 1: Generate Poly1305 key
+      /** @type {uint8[]} */
       const poly1305Key = this._generatePoly1305Key(this._key, this._nonce);
 
       // Step 2: Construct MAC input
+      /** @type {uint8[]} */
       const macData = this._constructMacData(aad, ciphertext);
 
       // Step 3: Compute expected MAC
+      /** @type {uint8[]} */
       const expectedTag = this._poly1305Mac(poly1305Key, macData);
 
       // Step 4: Constant-time tag comparison
@@ -348,6 +395,7 @@
       }
 
       // Step 5: Decrypt ciphertext with ChaCha20
+      /** @type {uint8[]} */
       const plaintext = this._chacha20Encrypt(this._key, this._nonce, 1, ciphertext);
 
       return plaintext;
@@ -358,8 +406,12 @@
     /**
      * Generate Poly1305 one-time key using first ChaCha20 block (counter=0)
      * RFC 8439 Section 2.6
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @returns {uint8[]}
      */
     _generatePoly1305Key(key, nonce) {
+      /** @type {uint8[]} */
       const block = this._chaCha20Block(key, 0, nonce);
       return block.slice(0, 32); // First 32 bytes of first block
     }
@@ -367,21 +419,28 @@
     /**
      * ChaCha20 encryption/decryption (XOR with keystream)
      * RFC 8439 Section 2.4
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @param {uint32} firstBlock
+     * @param {uint8[]} data
+     * @returns {uint8[]}
      */
-    _chacha20Encrypt(key, nonce, counter, data) {
+    _chacha20Encrypt(key, nonce, firstBlock, data) {
       /** @type {uint8[]} */
       const result = [];
-      let blockCounter = counter;
+      /** @type {uint32} */
+      let blockIndex = firstBlock;
 
       for (let i = 0; i < data.length; i += this.BLOCK_SIZE) {
-        const keystream = this._chaCha20Block(key, blockCounter, nonce);
+        /** @type {uint8[]} */
+        const keystream = this._chaCha20Block(key, blockIndex, nonce);
         const blockEnd = Math.min(i + this.BLOCK_SIZE, data.length);
 
         for (let j = i; j < blockEnd; j++) {
-          result.push(OpCodes.XorN(data[j], keystream[j - i]));
+          result.push(OpCodes.Xor32(data[j], keystream[j - i]));
         }
 
-        blockCounter++;
+        blockIndex++;
       }
 
       return result;
@@ -390,20 +449,25 @@
     /**
      * ChaCha20 block function
      * RFC 8439 Section 2.3
+     * @param {uint8[]} key
+     * @param {uint32} position
+     * @param {uint8[]} nonce
+     * @returns {uint8[]}
      */
-    _chaCha20Block(key, counter, nonce) {
+    _chaCha20Block(key, position, nonce) {
       // Initialize state with constants, key, counter, and nonce
-      const state = new Array(16);
+      /** @type {uint32[]} */
+      const init = new Array(16);
 
       // Constants: "expand 32-byte k"
-      state[0] = 0x61707865; // "expa"
-      state[1] = 0x3320646e; // "nd 3"
-      state[2] = 0x79622d32; // "2-by"
-      state[3] = 0x6b206574; // "te k"
+      init[0] = 0x61707865; // "expa"
+      init[1] = 0x3320646e; // "nd 3"
+      init[2] = 0x79622d32; // "2-by"
+      init[3] = 0x6b206574; // "te k"
 
       // Key (8 words = 32 bytes)
       for (let i = 0; i < 8; i++) {
-        state[4 + i] = OpCodes.Pack32LE(
+        init[4 + i] = OpCodes.Pack32LE(
           key[i * 4],
           key[i * 4 + 1],
           key[i * 4 + 2],
@@ -412,11 +476,11 @@
       }
 
       // Counter (1 word = 4 bytes)
-      state[12] = counter;
+      init[12] = position;
 
       // Nonce (3 words = 12 bytes)
       for (let i = 0; i < 3; i++) {
-        state[13 + i] = OpCodes.Pack32LE(
+        init[13 + i] = OpCodes.Pack32LE(
           nonce[i * 4],
           nonce[i * 4 + 1],
           nonce[i * 4 + 2],
@@ -425,33 +489,34 @@
       }
 
       // Working state for rounds
-      const workingState = [...state];
+      /** @type {uint32[]} */
+      const ws = [...init];
 
       // Perform 20 rounds (10 double rounds)
       for (let i = 0; i < 10; i++) {
         // Column rounds
-        this._quarterRound(workingState, 0, 4, 8, 12);
-        this._quarterRound(workingState, 1, 5, 9, 13);
-        this._quarterRound(workingState, 2, 6, 10, 14);
-        this._quarterRound(workingState, 3, 7, 11, 15);
+        this._quarterRound(ws, 0, 4, 8, 12);
+        this._quarterRound(ws, 1, 5, 9, 13);
+        this._quarterRound(ws, 2, 6, 10, 14);
+        this._quarterRound(ws, 3, 7, 11, 15);
 
         // Diagonal rounds
-        this._quarterRound(workingState, 0, 5, 10, 15);
-        this._quarterRound(workingState, 1, 6, 11, 12);
-        this._quarterRound(workingState, 2, 7, 8, 13);
-        this._quarterRound(workingState, 3, 4, 9, 14);
+        this._quarterRound(ws, 0, 5, 10, 15);
+        this._quarterRound(ws, 1, 6, 11, 12);
+        this._quarterRound(ws, 2, 7, 8, 13);
+        this._quarterRound(ws, 3, 4, 9, 14);
       }
 
       // Add original state to working state
       for (let i = 0; i < 16; i++) {
-        workingState[i] = OpCodes.Add32(workingState[i], state[i]);
+        ws[i] = OpCodes.Add32(ws[i], init[i]);
       }
 
       // Serialize to bytes (little-endian)
       /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(workingState[i]);
+        const bytes = OpCodes.Unpack32LE(ws[i]);
         for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
@@ -461,19 +526,24 @@
     /**
      * ChaCha20 quarter round operation
      * RFC 8439 Section 2.1
+     * @param {uint32[]} x
+     * @param {int32} a
+     * @param {int32} b
+     * @param {int32} c
+     * @param {int32} d
      */
-    _quarterRound(state, a, b, c, d) {
-      state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 16);
+    _quarterRound(x, a, b, c, d) {
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.RotL32(OpCodes.Xor32(x[d], x[a]), 16);
 
-      state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 12);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.RotL32(OpCodes.Xor32(x[b], x[c]), 12);
 
-      state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 8);
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.RotL32(OpCodes.Xor32(x[d], x[a]), 8);
 
-      state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 7);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.RotL32(OpCodes.Xor32(x[b], x[c]), 7);
     }
 
     // ===== POLY1305 IMPLEMENTATION =====
@@ -481,8 +551,12 @@
     /**
      * Construct MAC input data according to RFC 8439 Section 2.8
      * Format: AAD || pad16(AAD) || Ciphertext || pad16(Ciphertext) || len(AAD) || len(Ciphertext)
+     * @param {uint8[]} aad
+     * @param {uint8[]} ciphertext
+     * @returns {uint8[]}
      */
     _constructMacData(aad, ciphertext) {
+      /** @type {uint8[]} */
       const macData = [];
 
       // Add AAD
@@ -513,17 +587,21 @@
     /**
      * Encode length as 8-byte little-endian integer
      * Note: JavaScript unsigned right shift only works for 32 bits, so we handle high/low separately
+     * @param {int32} length
+     * @returns {uint8[]}
      */
     _encodeLengthLE64(length) {
+      /** @type {uint8[]} */
       const bytes = new Array(8);
       // Low 32 bits
       for (let i = 0; i < 4; i++) {
-        bytes[i] = OpCodes.AndN(OpCodes.Shr32(length, i * 8), 0xff);
+        bytes[i] = OpCodes.And32(OpCodes.Shr32(length, i * 8), 0xff);
       }
       // High 32 bits (will be 0 for lengths < 2^32)
+      /** @type {uint32} */
       const high = Math.floor(length / 0x100000000);
       for (let i = 0; i < 4; i++) {
-        bytes[4 + i] = OpCodes.AndN(OpCodes.Shr32(high, i * 8), 0xff);
+        bytes[4 + i] = OpCodes.And32(OpCodes.Shr32(high, i * 8), 0xff);
       }
       return bytes;
     }
@@ -531,6 +609,9 @@
     /**
      * Poly1305 MAC computation
      * RFC 8439 Section 2.5
+     * @param {uint8[]} key
+     * @param {uint8[]} message
+     * @returns {uint8[]}
      */
     _poly1305Mac(key, message) {
       if (key.length !== 32) {
@@ -538,29 +619,36 @@
       }
 
       // Extract r and s from key
+      /** @type {uint8[]} */
       const r = key.slice(0, 16);
+      /** @type {uint8[]} */
       const s = key.slice(16, 32);
 
       // Clamp r according to RFC 8439 Section 2.5
-      r[3] = OpCodes.AndN(r[3], 15);
-      r[7] = OpCodes.AndN(r[7], 15);
-      r[11] = OpCodes.AndN(r[11], 15);
-      r[15] = OpCodes.AndN(r[15], 15);
-      r[4] = OpCodes.AndN(r[4], 252);
-      r[8] = OpCodes.AndN(r[8], 252);
-      r[12] = OpCodes.AndN(r[12], 252);
+      r[3] = OpCodes.And32(r[3], 15);
+      r[7] = OpCodes.And32(r[7], 15);
+      r[11] = OpCodes.And32(r[11], 15);
+      r[15] = OpCodes.And32(r[15], 15);
+      r[4] = OpCodes.And32(r[4], 252);
+      r[8] = OpCodes.And32(r[8], 252);
+      r[12] = OpCodes.And32(r[12], 252);
 
       // Convert to BigInt for arithmetic
+      /** @type {bigint} */
       const rBig = this._bytesToBigInt(r);
+      /** @type {bigint} */
       const sBig = this._bytesToBigInt(s);
+      /** @type {bigint} */
       const p = (OpCodes.ShiftLn(BigInt(1), 130)) - BigInt(5); // Prime: 2^130 - 5
 
       // Initialize accumulator
+      /** @type {bigint} */
       let accumulator = BigInt(0);
 
       // Process message in 16-byte blocks
       for (let i = 0; i < message.length; i += 16) {
         const blockSize = Math.min(16, message.length - i);
+        /** @type {uint8[]} */
         const block = message.slice(i, i + blockSize);
 
         // Pad block to 16 bytes
@@ -569,6 +657,7 @@
         }
 
         // Convert block to number and add padding bit
+        /** @type {bigint} */
         let n = this._bytesToBigInt(block);
         n += OpCodes.ShiftLn(BigInt(1), blockSize * 8); // Add 2^(8*blockSize)
 
@@ -586,8 +675,11 @@
 
     /**
      * Convert byte array to BigInt (little-endian)
+     * @param {uint8[]} bytes
+     * @returns {bigint}
      */
     _bytesToBigInt(bytes) {
+      /** @type {bigint} */
       let result = BigInt(0);
       for (let i = bytes.length - 1; i >= 0; i--) {
         result = (OpCodes.ShiftLn(result, 8)) + BigInt(bytes[i]);
@@ -597,11 +689,15 @@
 
     /**
      * Convert BigInt to byte array (little-endian)
+     * @param {bigint} bigInt
+     * @param {int32} count
+     * @returns {uint8[]}
      */
-    _bigIntToBytes(bigInt, length) {
-      const bytes = new Array(length);
-      for (let i = 0; i < length; i++) {
-        bytes[i] = Number(OpCodes.AndN(bigInt, BigInt(0xff)));
+    _bigIntToBytes(bigInt, count) {
+      /** @type {uint8[]} */
+      const bytes = new Array(count);
+      for (let i = 0; i < count; i++) {
+        bytes[i] = OpCodes.ToByte(Number(OpCodes.AndN(bigInt, BigInt(0xff))));
         bigInt = OpCodes.ShiftRn(bigInt, 8);
       }
       return bytes;
