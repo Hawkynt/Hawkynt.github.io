@@ -134,7 +134,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ROTInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -151,14 +151,18 @@
   class ROTInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ROTAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
       // ROT13 is self-inverting, so isInverse doesn't change behavior
     }
 
@@ -176,8 +180,14 @@
       // Feed is a streaming interface: successive calls extend the message
       // rather than replace it, so the bytes are collected here and transformed
       // once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -190,56 +200,70 @@
       if (!this._feedBuffer) {
         throw new Error('ROTInstance.Result: No data processed. Call Feed() first.');
       }
+
       // ROT13 is self-inverting, so encode and decode are the same operation
       this.processedData = this.rot13(this._feedBuffer);
       return this.processedData;
     }
 
+    /**
+     * Rotate the ASCII letters by 13 places
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Rotated bytes
+     */
     rot13(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-
       for (let i = 0; i < data.length; i++) {
+        /** @type {int32} */
         const byte = data[i];
+        /** @type {int32} */
         let transformed = byte;
 
         // Handle uppercase letters (A-Z)
         if (byte >= 65 && byte <= 90) {
           transformed = ((byte - 65 + 13) % 26) + 65;
         }
-        // Handle lowercase letters (a-z)  
+        // Handle lowercase letters (a-z)
         else if (byte >= 97 && byte <= 122) {
           transformed = ((byte - 97 + 13) % 26) + 97;
         }
-        // Non-alphabetic characters remain unchanged
 
+        // Non-alphabetic characters remain unchanged
         result.push(transformed);
       }
 
       return result;
     }
 
-    // ROT47 variant for printable ASCII (33-126)
+    /**
+     * ROT47 variant for printable ASCII (33-126)
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Rotated bytes
+     */
     rot47(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-
       for (let i = 0; i < data.length; i++) {
+        /** @type {int32} */
         const byte = data[i];
+        /** @type {int32} */
         let transformed = byte;
 
         // Handle printable ASCII characters (33-126)
         if (byte >= 33 && byte <= 126) {
           transformed = ((byte - 33 + 47) % 94) + 33;
         }
-        // Non-printable characters remain unchanged
 
+        // Non-printable characters remain unchanged
         result.push(transformed);
       }
 
@@ -247,20 +271,40 @@
     }
 
     // Utility methods
+
+    /**
+     * ROT13 of a string (one byte per character)
+     * @param {string} str - Input text
+     * @returns {string} Rotated text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.rot13(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * ROT13 of a string (ROT13 is self-inverting)
+     * @param {string} str - Input text
+     * @returns {string} Rotated text
+     */
     decodeString(str) {
-      // ROT13 is self-inverting
       return this.encodeString(str);
     }
 
     // ROT47 utility methods
+
+    /**
+     * ROT47 of a string (one byte per character)
+     * @param {string} str - Input text
+     * @returns {string} Rotated text
+     */
     rot47EncodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.rot47(bytes);
       return OpCodes.BytesToChars(encoded);
     }
