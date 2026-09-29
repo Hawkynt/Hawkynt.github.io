@@ -174,6 +174,8 @@ function precedingJSDoc(src, pos) {
 function judge(name, doc, params, needsReturn) {
   const gaps = [];
   const allowFloat = FLOAT_MEMBERS.has(name);
+  // Nothing to type: no parameters and no value returned.
+  if (!doc && params && params.length === 0 && !needsReturn) return [];
   if (!doc) return ['no JSDoc'];
   const tags = parseTags(doc);
   if (params === null) {
@@ -255,6 +257,16 @@ function auditOpCodes(source) {
 function auditFramework(source) {
   const src = source || fs.readFileSync(path.join(CIPHER_DIR, 'AlgorithmFramework.js'), 'utf8');
   const members = [];
+  // Exported free functions (named in the factory's returned object).
+  const exportBlock = src.slice(src.lastIndexOf('return {'));
+  const exported = new Set((exportBlock.match(/\b[A-Za-z_$][\w$]*\b/g) || []));
+  const fnRe = /^[ \t]*function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/gm;
+  let fm;
+  while ((fm = fnRe.exec(src)) !== null) {
+    if (!exported.has(fm[1])) continue;
+    const braceOpen = fm.index + fm[0].length - 1;
+    members.push({ name: fm[1], gaps: judge(fm[1], precedingJSDoc(src, fm.index), paramNames(fm[2]), returnsValue(src, braceOpen)) });
+  }
   const classRe = /class\s+(\w+)(?:\s+extends\s+([\w.]+))?\s*\{/g;
   let c;
   while ((c = classRe.exec(src)) !== null) {

@@ -395,7 +395,7 @@
         this._held = new Array(blockSize).fill(0)
         /** @type {int} - bytes valid in _held */
         this._pending = 0
-        /** @type {number} - bytes absorbed since construction */
+        /** @type {uint64} - bytes absorbed since construction */
         this._length = 0
       }
 
@@ -405,7 +405,7 @@
       /** @returns {int} bytes held back, 0..BlockSize */
       get Pending() { return this._pending }
 
-      /** @returns {number} total bytes absorbed */
+      /** @returns {uint64} total bytes absorbed */
       get Length() { return this._length }
 
       /**
@@ -444,8 +444,9 @@
        * it into two. It receives a copy, so calling Finish twice gives the same
        * answer and neither call can corrupt the other.
        *
-       * @param {function(byte[], int, number):*} finalize - (held, pending, totalLength)
-       * @returns {*} whatever the finalizer returned
+       * @template T
+       * @param {function(byte[], int, uint64):T} finalize - (held, pending, totalLength)
+       * @returns {T} whatever the finalizer returned
        */
       Finish(finalize) {
         if (typeof finalize !== 'function')
@@ -512,6 +513,15 @@
     }
 
     /**
+     * @typedef {Object} MerkleDamgardOptions
+     * @property {int} blockSize - bytes per block
+     * @property {int} [padByte=0x80] - 0x01 for Tiger
+     * @property {int} [lengthBytes=8] - 16 for SHA-512, 0 for no length field
+     * @property {bool} [lengthLittleEndian=false] - true for MD4, MD5, RIPEMD
+     * @property {bool} [lengthInBits=true] - false where the field counts bytes
+     */
+
+    /**
      * The padded block or blocks that end a Merkle-Damgard absorption.
      *
      * One pad byte, zero fill, then the message length in a fixed-width field
@@ -522,13 +532,8 @@
      *
      * @param {byte[]} held - trailing message bytes
      * @param {int} pending - how many are valid, 0..blockSize
-     * @param {number} totalLength - total message length in bytes
-     * @param {object} options
-     * @param {int} options.blockSize - bytes per block
-     * @param {int} [options.padByte=0x80] - 0x01 for Tiger
-     * @param {int} [options.lengthBytes=8] - 16 for SHA-512, 0 for no length field
-     * @param {bool} [options.lengthLittleEndian=false] - true for MD4, MD5, RIPEMD
-     * @param {bool} [options.lengthInBits=true] - false where the field counts bytes
+     * @param {uint64} totalLength - total message length in bytes
+     * @param {MerkleDamgardOptions} options
      * @returns {byte[][]} the blocks still to be compressed, in order
      */
     function MerkleDamgardBlocks(held, pending, totalLength, options) {
@@ -658,15 +663,15 @@
         this.inventor = null
         /** @type {int} */
         this.year = null
-        /** @type {object} */
+        /** @type {CategoryType} */
         this.category = null
         /** @type {string} */
         this.subCategory = null
-        /** @type {object} */
+        /** @type {SecurityStatus} */
         this.securityStatus = null
-        /** @type {object} */
+        /** @type {ComplexityType} */
         this.complexity = null
-        /** @type {object} */
+        /** @type {CountryCode} */
         this.country = null
         /** @type {LinkItem[]} */
         this.documentation = []
@@ -1044,6 +1049,11 @@
     // #region Registry
     const Algorithms = [];
     
+    /**
+     * Add an algorithm to the registry after validating its name and test vectors
+     * @param {Algorithm} algorithm - Algorithm to register
+     * @returns {void}
+     */
     function RegisterAlgorithm(algorithm) { 
       // Validate algorithm
       if (!algorithm || typeof algorithm !== 'object') {
@@ -1113,6 +1123,11 @@
       return test;
     }
     
+    /**
+     * Look up a registered algorithm by name
+     * @param {string} name - Algorithm name
+     * @returns {Algorithm} The algorithm, or null when none is registered under that name
+     */
     function Find(name) { return Algorithms.find(a => a.name === name) || null }
     function Clear() { Algorithms.length = 0 }
     // #endregion
