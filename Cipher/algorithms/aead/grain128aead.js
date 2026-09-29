@@ -180,25 +180,39 @@
   class Grain128AEADInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Grain128AEADAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._nonce = null;
+      /** @type {uint8[]} */
       this._associatedData = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Grain-128 state (using 32-bit words for bit-level operations)
+      /** @type {uint32[]} */
       this.lfsr = new Array(4);    // 128 bits = 4 x 32-bit words
+      /** @type {uint32[]} */
       this.nfsr = new Array(4);    // 128 bits = 4 x 32-bit words
+      /** @type {uint32[]} */
       this.authAcc = new Array(2); // 64-bit accumulator (2 x 32-bit words)
+      /** @type {uint32[]} */
       this.authSr = new Array(2);  // 64-bit shift register (2 x 32-bit words)
 
+      /** @type {boolean} */
       this.initialized = false;
+      /** @type {int32} */
+      this.posn = 0;
+      /** @type {boolean} */
+      this.ksBufferValid = false;
     }
 
     // Property: key
@@ -220,7 +234,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Grain-128-AEAD key must be 16 bytes long, got ${keyBytes.length} bytes`);
+        throw new Error("Grain-128-AEAD key must be 16 bytes long, got " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -237,6 +251,9 @@
     }
 
     // Property: nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
         this._nonce = null;
@@ -249,18 +266,24 @@
       }
 
       if (nonceBytes.length !== 12) {
-        throw new Error(`Grain-128-AEAD requires exactly 12 bytes of nonce, got ${nonceBytes.length} bytes`);
+        throw new Error("Grain-128-AEAD requires exactly 12 bytes of nonce, got " + nonceBytes.length + " bytes");
       }
 
       this._nonce = [...nonceBytes];
       this._initializeIfReady();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null;
     }
 
     // Property: associatedData
+    /**
+     * @param {uint8[]|null} adBytes
+     */
     set associatedData(adBytes) {
       if (!adBytes) {
         this._associatedData = [];
@@ -274,6 +297,9 @@
       this._associatedData = [...adBytes];
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get associatedData() {
       return [...this._associatedData];
     }
@@ -317,6 +343,7 @@
         throw new Error("Grain-128-AEAD not properly initialized");
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       if (this.isInverse) {
@@ -326,16 +353,20 @@
         }
 
         const ctLen = this.inputBuffer.length - 8;
+        /** @type {uint8[]} */
         const ciphertext = this.inputBuffer.slice(0, ctLen);
+        /** @type {uint8[]} */
         const receivedTag = this.inputBuffer.slice(ctLen);
 
         // Authenticate AD (with DER-encoded length prefix)
         this._authenticateAD();
 
         // Decrypt ciphertext
+        /** @type {uint8[]} */
         const plaintext = this._decrypt(ciphertext);
 
         // Compute tag
+        /** @type {uint8[]} */
         const computedTag = this._computeTag();
 
         // Verify tag (constant-time comparison)
@@ -346,19 +377,23 @@
         for (let _i = 0; _i < plaintext.length; _i++) result.push(plaintext[_i]);
       } else {
         // Encryption mode: input is plaintext
+        /** @type {uint8[]} */
         const plaintext = this.inputBuffer;
 
         // Authenticate AD (with DER-encoded length prefix)
         this._authenticateAD();
 
         // Encrypt plaintext
+        /** @type {uint8[]} */
         const ciphertext = this._encrypt(plaintext);
 
         // Compute tag
+        /** @type {uint8[]} */
         const tag = this._computeTag();
 
         // Return ciphertext || tag
-        result.push(...ciphertext, ...tag);
+        for (let _i = 0; _i < ciphertext.length; _i++) result.push(ciphertext[_i]);
+        for (let _i = 0; _i < tag.length; _i++) result.push(tag[_i]);
       }
 
       // Clear input buffer for next operation
@@ -376,6 +411,7 @@
     // Setup Grain-128-AEAD with key and nonce
     _setup() {
       // Prepare working IV: nonce (96 bits) + padding (32 bits: 0xFFFFFF7F)
+      /** @type {uint8[]} */
       const workingIV = new Array(16);
       for (let i = 0; i < 12; ++i) {
         workingIV[i] = this._nonce[i];
@@ -403,17 +439,19 @@
 
       // 320 clocks initialization phase
       for (let i = 0; i < 320; ++i) {
+        /** @type {uint32} */
         const output = this._getOutput();
-        this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), output), 1));
-        this._shift(this.lfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputLFSR(), output), 1));
+        this._shift(this.nfsr, OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this._getOutputNFSR(), this.lfsr[0]), output), 1));
+        this._shift(this.lfsr, OpCodes.And32(OpCodes.Xor32(this._getOutputLFSR(), output), 1));
       }
 
       // Absorb key (64 more clocks)
       for (let quotient = 0; quotient < 8; ++quotient) {
         for (let remainder = 0; remainder < 8; ++remainder) {
-          const output = this._getOutput();
-          this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), output), OpCodes.Shr32(this._key[quotient], remainder)), 1));
-          this._shift(this.lfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this._getOutputLFSR(), output), OpCodes.Shr32(this._key[quotient + 8], remainder)), 1));
+          /** @type {uint32} */
+        const output = this._getOutput();
+          this._shift(this.nfsr, OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this._getOutputNFSR(), this.lfsr[0]), output), OpCodes.Shr32(this._key[quotient], remainder)), 1));
+          this._shift(this.lfsr, OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this._getOutputLFSR(), output), OpCodes.Shr32(this._key[quotient + 8], remainder)), 1));
         }
       }
 
@@ -429,14 +467,21 @@
     }
 
     // Shift array right by 1 bit, insert val at MSB
+    /**
+     * @param {uint32[]} array
+     * @param {uint32} val
+     */
     _shift(array, val) {
-      array[0] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[0], 1), OpCodes.Shl32(array[1], 31)));
-      array[1] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[1], 1), OpCodes.Shl32(array[2], 31)));
-      array[2] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[2], 1), OpCodes.Shl32(array[3], 31)));
-      array[3] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[3], 1), OpCodes.Shl32(val, 31)));
+      array[0] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(array[0], 1), OpCodes.Shl32(array[1], 31)));
+      array[1] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(array[1], 1), OpCodes.Shl32(array[2], 31)));
+      array[2] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(array[2], 1), OpCodes.Shl32(array[3], 31)));
+      array[3] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(array[3], 1), OpCodes.Shl32(val, 31)));
     }
 
     // Get output from NFSR
+    /**
+     * @returns {uint32}
+     */
     _getOutputNFSR() {
       const b0 = this.nfsr[0];
       const b3 = OpCodes.Shr32(this.nfsr[0], 3);
@@ -468,10 +513,13 @@
       const b95 = OpCodes.Shr32(this.nfsr[2], 31);
       const b96 = this.nfsr[3];
 
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(b0, b26), b56), b91), b96), OpCodes.AndN(b3, b67)), OpCodes.AndN(b11, b13)), OpCodes.AndN(b17, b18)), OpCodes.AndN(b27, b59)), OpCodes.AndN(b40, b48)), OpCodes.AndN(b61, b65)), OpCodes.AndN(b68, b84)), OpCodes.AndN(OpCodes.AndN(b22, b24), b25)), OpCodes.AndN(OpCodes.AndN(b70, b78), b82)), OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(b88, b92), b93), b95)), 1);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(b0, b26), b56), b91), b96), OpCodes.And32(b3, b67)), OpCodes.And32(b11, b13)), OpCodes.And32(b17, b18)), OpCodes.And32(b27, b59)), OpCodes.And32(b40, b48)), OpCodes.And32(b61, b65)), OpCodes.And32(b68, b84)), OpCodes.And32(OpCodes.And32(b22, b24), b25)), OpCodes.And32(OpCodes.And32(b70, b78), b82)), OpCodes.And32(OpCodes.And32(OpCodes.And32(b88, b92), b93), b95)), 1);
     }
 
     // Get output from LFSR
+    /**
+     * @returns {uint32}
+     */
     _getOutputLFSR() {
       const s0 = this.lfsr[0];
       const s7 = OpCodes.Shr32(this.lfsr[0], 7);
@@ -480,10 +528,13 @@
       const s81 = OpCodes.Shr32(this.lfsr[2], 17);
       const s96 = this.lfsr[3];
 
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s7), s38), s70), s81), s96), 1);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s7), s38), s70), s81), s96), 1);
     }
 
     // Get output from output function h(x)
+    /**
+     * @returns {uint32}
+     */
     _getOutput() {
       const b2 = OpCodes.Shr32(this.nfsr[0], 2);
       const b12 = OpCodes.Shr32(this.nfsr[0], 12);
@@ -503,49 +554,75 @@
       const s93 = OpCodes.Shr32(this.lfsr[2], 29);
       const s94 = OpCodes.Shr32(this.lfsr[2], 30);
 
-      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(b12, s8), OpCodes.AndN(s13, s20)), OpCodes.AndN(b95, s42)), OpCodes.AndN(s60, s79)), OpCodes.AndN(OpCodes.AndN(b12, b95), s94)), s93), b2), b15), b36), b45), b64), b73), b89), 1);
+      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(b12, s8), OpCodes.And32(s13, s20)), OpCodes.And32(b95, s42)), OpCodes.And32(s60, s79)), OpCodes.And32(OpCodes.And32(b12, b95), s94)), s93), b2), b15), b36), b45), b64), b73), b89), 1);
     }
 
     // Initialize authentication registers
+    /**
+     * @param {uint32[]} auth
+     */
     _initGrain(auth) {
       for (let quotient = 0; quotient < 2; ++quotient) {
         for (let remainder = 0; remainder < 32; ++remainder) {
-          auth[quotient] = OpCodes.ToDWord(OpCodes.OrN(auth[quotient], OpCodes.Shl32(this._getByteKeyStream(), remainder)));
+          auth[quotient] = OpCodes.ToDWord(OpCodes.Or32(auth[quotient], OpCodes.Shl32(this._getByteKeyStream(), remainder)));
         }
       }
     }
 
     // Get one bit of keystream and shift
+    /**
+     * @returns {uint32}
+     */
     _getByteKeyStream() {
+      /** @type {uint32} */
       const rlt = this._getOutput();
-      this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), 1));
-      this._shift(this.lfsr, OpCodes.AndN(this._getOutputLFSR(), 1));
+      this._shift(this.nfsr, OpCodes.And32(OpCodes.Xor32(this._getOutputNFSR(), this.lfsr[0]), 1));
+      this._shift(this.lfsr, OpCodes.And32(this._getOutputLFSR(), 1));
       return rlt;
     }
 
     // Update internal authentication state with one bit
+    /**
+     * @param {uint32} mask
+     */
     _updateInternalState(mask) {
-      mask = -mask;  // Expand bit to full 32-bit mask
-      this.authAcc[0] = OpCodes.XorN(this.authAcc[0], OpCodes.AndN(this.authSr[0], mask));
-      this.authAcc[1] = OpCodes.XorN(this.authAcc[1], OpCodes.AndN(this.authSr[1], mask));
-      mask = this._getByteKeyStream();
-      this.authSr[0] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(this.authSr[0], 1), OpCodes.Shl32(this.authSr[1], 31)));
-      this.authSr[1] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(this.authSr[1], 1), OpCodes.Shl32(mask, 31)));
+      const fullMask = OpCodes.Sub32(0, mask);  // Expand bit to full 32-bit mask
+      this.authAcc[0] = OpCodes.Xor32(this.authAcc[0], OpCodes.And32(this.authSr[0], fullMask));
+      this.authAcc[1] = OpCodes.Xor32(this.authAcc[1], OpCodes.And32(this.authSr[1], fullMask));
+      /** @type {uint32} */
+      const nextBit = this._getByteKeyStream();
+      this.authSr[0] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(this.authSr[0], 1), OpCodes.Shl32(this.authSr[1], 31)));
+      this.authSr[1] = OpCodes.ToDWord(OpCodes.Or32(OpCodes.Shr32(this.authSr[1], 1), OpCodes.Shl32(nextBit, 31)));
     }
 
     // Encode AD length in DER format
+    /**
+     * @param {int32} adlen
+     * @returns {uint8[]}
+     */
     _encodeDERLength(adlen) {
+      /** @type {uint8[]} */
       const buf = [];
       if (adlen < 0x80) {
         buf.push(adlen);
       } else if (adlen < 0x100) {
-        buf.push(0x81, adlen);
+        buf.push(0x81);
+        buf.push(adlen);
       } else if (adlen < 0x10000) {
-        buf.push(0x82, OpCodes.Shr32(adlen, 8), OpCodes.AndN(adlen, 0xFF));
+        buf.push(0x82);
+        buf.push(OpCodes.Shr32(adlen, 8));
+        buf.push(OpCodes.And32(adlen, 0xFF));
       } else if (adlen < 0x1000000) {
-        buf.push(0x83, OpCodes.Shr32(adlen, 16), OpCodes.AndN(OpCodes.Shr32(adlen, 8), 0xFF), OpCodes.AndN(adlen, 0xFF));
+        buf.push(0x83);
+        buf.push(OpCodes.Shr32(adlen, 16));
+        buf.push(OpCodes.And32(OpCodes.Shr32(adlen, 8), 0xFF));
+        buf.push(OpCodes.And32(adlen, 0xFF));
       } else {
-        buf.push(0x84, OpCodes.Shr32(adlen, 24), OpCodes.AndN(OpCodes.Shr32(adlen, 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(adlen, 8), 0xFF), OpCodes.AndN(adlen, 0xFF));
+        buf.push(0x84);
+        buf.push(OpCodes.Shr32(adlen, 24));
+        buf.push(OpCodes.And32(OpCodes.Shr32(adlen, 16), 0xFF));
+        buf.push(OpCodes.And32(OpCodes.Shr32(adlen, 8), 0xFF));
+        buf.push(OpCodes.And32(adlen, 0xFF));
       }
       return buf;
     }
@@ -555,6 +632,7 @@
       const adlen = this._associatedData.length;
 
       // Encode and authenticate the DER-encoded AD length
+      /** @type {uint8[]} */
       const derLen = this._encodeDERLength(adlen);
       this._absorbAadData(derLen, 0, derLen.length);
 
@@ -565,28 +643,40 @@
     }
 
     // Absorb AAD data into authentication state
+    /**
+     * @param {uint8[]} buf
+     * @param {int32} off
+     * @param {int32} len
+     */
     _absorbAadData(buf, off, len) {
       for (let i = 0; i < len; ++i) {
+        /** @type {uint8} */
         const b = buf[off + i];
         for (let j = 0; j < 8; ++j) {
           // First shift of LFSR/NFSR
-          this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), 1));
-          this._shift(this.lfsr, OpCodes.AndN(this._getOutputLFSR(), 1));
+          this._shift(this.nfsr, OpCodes.And32(OpCodes.Xor32(this._getOutputNFSR(), this.lfsr[0]), 1));
+          this._shift(this.lfsr, OpCodes.And32(this._getOutputLFSR(), 1));
           // Update authentication state (includes second shift via _getByteKeyStream)
-          this._updateInternalState(OpCodes.AndN(OpCodes.Shr32(b, j), 1));
+          this._updateInternalState(OpCodes.And32(OpCodes.Shr32(b, j), 1));
         }
       }
     }
 
     // Encrypt plaintext
+    /**
+     * @param {uint8[]} plaintext
+     * @returns {uint8[]}
+     */
     _encrypt(plaintext) {
+      /** @type {uint8[]} */
       const ciphertext = [];
       for (let i = 0; i < plaintext.length; ++i) {
+        /** @type {uint32} */
         let cc = 0;
         const input_i = plaintext[i];
         for (let j = 0; j < 8; ++j) {
-          const input_i_j = OpCodes.AndN(OpCodes.Shr32(input_i, j), 1);
-          cc = OpCodes.OrN(cc, OpCodes.Shl32(OpCodes.XorN(input_i_j, this._getByteKeyStream()), j));
+          const input_i_j = OpCodes.And32(OpCodes.Shr32(input_i, j), 1);
+          cc = OpCodes.Or32(cc, OpCodes.Shl32(OpCodes.Xor32(input_i_j, this._getByteKeyStream()), j));
           this._updateInternalState(input_i_j);
         }
         ciphertext.push(cc);
@@ -595,14 +685,20 @@
     }
 
     // Decrypt ciphertext
+    /**
+     * @param {uint8[]} ciphertext
+     * @returns {uint8[]}
+     */
     _decrypt(ciphertext) {
+      /** @type {uint8[]} */
       const plaintext = [];
       for (let i = 0; i < ciphertext.length; ++i) {
+        /** @type {uint32} */
         let cc = 0;
         const input_i = ciphertext[i];
         for (let j = 0; j < 8; ++j) {
-          cc = OpCodes.OrN(cc, OpCodes.Shl32(OpCodes.XorN(OpCodes.AndN(OpCodes.Shr32(input_i, j), 1), this._getByteKeyStream()), j));
-          this._updateInternalState(OpCodes.AndN(OpCodes.Shr32(cc, j), 1));
+          cc = OpCodes.Or32(cc, OpCodes.Shl32(OpCodes.Xor32(OpCodes.And32(OpCodes.Shr32(input_i, j), 1), this._getByteKeyStream()), j));
+          this._updateInternalState(OpCodes.And32(OpCodes.Shr32(cc, j), 1));
         }
         plaintext.push(cc);
       }
@@ -610,23 +706,27 @@
     }
 
     // Compute authentication tag
+    /**
+     * @returns {uint8[]}
+     */
     _computeTag() {
       // Final step: XOR shift register into accumulator (Java line 229-230)
-      this.authAcc[0] = OpCodes.XorN(this.authAcc[0], this.authSr[0]);
-      this.authAcc[1] = OpCodes.XorN(this.authAcc[1], this.authSr[1]);
+      this.authAcc[0] = OpCodes.Xor32(this.authAcc[0], this.authSr[0]);
+      this.authAcc[1] = OpCodes.Xor32(this.authAcc[1], this.authSr[1]);
 
       // Output as little-endian (Java line 231: Pack.intToLittleEndian(authAcc, mac, 0))
+      /** @type {uint8[]} */
       const tag = [];
       // First int (authAcc[0])
-      tag.push(OpCodes.AndN(this.authAcc[0], 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 8), 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 16), 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 24), 0xFF));
+      tag.push(OpCodes.And32(this.authAcc[0], 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[0], 8), 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[0], 16), 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[0], 24), 0xFF));
       // Second int (authAcc[1])
-      tag.push(OpCodes.AndN(this.authAcc[1], 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 8), 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 16), 0xFF));
-      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 24), 0xFF));
+      tag.push(OpCodes.And32(this.authAcc[1], 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[1], 8), 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[1], 16), 0xFF));
+      tag.push(OpCodes.And32(OpCodes.Shr32(this.authAcc[1], 24), 0xFF));
 
       return tag;
     }

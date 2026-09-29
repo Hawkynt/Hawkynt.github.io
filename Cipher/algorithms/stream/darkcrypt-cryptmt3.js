@@ -52,21 +52,64 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
-  const MUL32 = (a, b) => OpCodes.ToUint32(Math.imul(OpCodes.ToUint32(a), OpCodes.ToUint32(b)));
-
+  /**
+   * @param {uint8[]} v
+   * @param {int32} off
+   * @returns {uint32}
+   */
   function u8to32(v, off) {
     return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(v[off], OpCodes.Shl32(v[off + 1], 8)), OpCodes.Shl32(v[off + 2], 16)), OpCodes.Shl32(v[off + 3], 24));
   }
 
-  function newBlock() { return [0, 0, 0, 0]; }
+  /**
+   * @returns {uint32[]} a zeroed 4-word block
+   */
+  function newBlock() {
+    /** @type {uint32[]} */
+    const block = [0, 0, 0, 0];
+    return block;
+  }
+
+  // Output byte positions written by the first and second half of each filter step.
+  /** @type {int32[]} */
+  const ORDER_LOW = [0, 1, 4, 5, 8, 9, 12, 13];
+  /** @type {int32[]} */
+  const ORDER_HIGH = [2, 3, 6, 7, 10, 11, 14, 15];
+
+  // Keyed working state produced by the key/IV setup.
+  class CryptMtState {
+    constructor() {
+      /** @type {uint32[][]} */
+      this.sfmt = [];
+      /** @type {int32} */
+      this.psfmtOff = 0;
+      /** @type {uint32[]} */
+      this.lung = [];
+      /** @type {uint32[]} */
+      this.accum = [];
+      /** @type {int32} */
+      this.keyAreaLength = 0;
+    }
+  }
 
   // booter_am (reference cryptmt.cpp, non-SIMD path): folds pos1[]+pos2[] through a
   // multiplicative recurrence, mutating pos1 in place and writing pos2[i+2] outputs.
+  /**
+   * @param {uint32[]} acc
+   * @param {uint32[][]} pos1
+   * @param {int32} pos1Off
+   * @param {uint32[][]} pos2
+   * @param {int32} pos2Off
+   * @param {int32} count
+   */
   function booterAm(acc, pos1, pos1Off, pos2, pos2Off, count) {
-    const a = [0, 0, 0, 0], b = [0, 0, 0, 0];
+    /** @type {uint32[]} */
+    const a = [0, 0, 0, 0];
+    /** @type {uint32[]} */
+    const b = [0, 0, 0, 0];
     for (let i = 0; i < count; i++) {
       for (let j = 0; j < 4; j++) {
-        const v = OpCodes.ToUint32(pos1[pos1Off + i][j] + pos2[pos2Off + i][j]);
+        const v = OpCodes.Add32(pos1[pos1Off + i][j], pos2[pos2Off + i][j]);
         pos1[pos1Off + i][j] = v;
         a[j] = v;
       }
@@ -75,23 +118,39 @@
       a[3] = OpCodes.Xor32(a[2], OpCodes.Shr32(a[3], 13));
       a[2] = OpCodes.Xor32(a[1], OpCodes.Shr32(a[2], 13));
       a[1] = OpCodes.Xor32(tmp, OpCodes.Shr32(a[1], 13));
+      /** @type {uint32[]} */
       const p2n = pos2[pos2Off + i + 1];
       b[0] = OpCodes.Xor32(p2n[3], OpCodes.Shr32(p2n[0], 11));
       b[1] = OpCodes.Xor32(p2n[2], OpCodes.Shr32(p2n[1], 11));
       b[2] = OpCodes.Xor32(p2n[0], OpCodes.Shr32(p2n[2], 11));
       b[3] = OpCodes.Xor32(p2n[1], OpCodes.Shr32(p2n[3], 11));
       for (let j = 0; j < 4; j++)
-        acc[j] = OpCodes.ToUint32(MUL32(OpCodes.ToUint32(2 * b[j] + 1), acc[j]) + b[j]);
+        acc[j] = OpCodes.Add32(OpCodes.Mul32(OpCodes.Add32(OpCodes.Shl32(b[j], 1), 1), acc[j]), b[j]);
       if (!pos2[pos2Off + i + 2]) pos2[pos2Off + i + 2] = newBlock();
       for (let j = 0; j < 4; j++)
-        pos2[pos2Off + i + 2][j] = OpCodes.ToUint32(a[j] - acc[j]);
+        pos2[pos2Off + i + 2][j] = OpCodes.Sub32(a[j], acc[j]);
     }
   }
 
   // filter_16bytes (reference cryptmt.cpp, non-SIMD path): the nonlinear multiplicative
   // filter with memory; generates 16 keystream bytes (XORed with plain) per input block pair.
+  /**
+   * @param {uint32[][]} sfmt
+   * @param {int32} sfmtOff
+   * @param {uint32[]} accum
+   * @param {uint8[]} cipher
+   * @param {uint8[]} plain
+   * @param {int32} count
+   */
   function filter16Bytes(sfmt, sfmtOff, accum, cipher, plain, count) {
-    let ac1 = accum[0], ac2 = accum[1], ac3 = accum[2], ac4 = accum[3];
+    /** @type {uint32} */
+    let ac1 = accum[0];
+    /** @type {uint32} */
+    let ac2 = accum[1];
+    /** @type {uint32} */
+    let ac3 = accum[2];
+    /** @type {uint32} */
+    let ac4 = accum[3];
     for (let i = 0; i < count; i++) {
       const base = i * 16;
       for (let half = 0; half < 2; half++) {
@@ -100,13 +159,18 @@
         ac2 = OpCodes.Xor32(ac2, OpCodes.Shr32(ac3, 1));
         ac3 = OpCodes.Xor32(ac3, OpCodes.Shr32(ac4, 1));
         ac4 = OpCodes.Xor32(ac4, OpCodes.Shr32(t1, 1));
+        /** @type {uint32[]} */
         const blk = sfmt[sfmtOff + i * 2 + half];
-        ac1 = OpCodes.ToUint32(MUL32(OpCodes.ToUint32(2 * ac1 + 1), blk[0]) + ac1);
-        ac2 = OpCodes.ToUint32(MUL32(OpCodes.ToUint32(2 * ac2 + 1), blk[1]) + ac2);
-        ac3 = OpCodes.ToUint32(MUL32(OpCodes.ToUint32(2 * ac3 + 1), blk[2]) + ac3);
-        ac4 = OpCodes.ToUint32(MUL32(OpCodes.ToUint32(2 * ac4 + 1), blk[3]) + ac4);
-        const u1 = OpCodes.Xor32(OpCodes.Shr32(ac1, 16), ac1), u2 = OpCodes.Xor32(OpCodes.Shr32(ac2, 16), ac2), u3 = OpCodes.Xor32(OpCodes.Shr32(ac3, 16), ac3), u4 = OpCodes.Xor32(OpCodes.Shr32(ac4, 16), ac4);
-        const o = half === 0 ? [0, 1, 4, 5, 8, 9, 12, 13] : [2, 3, 6, 7, 10, 11, 14, 15];
+        ac1 = OpCodes.Add32(OpCodes.Mul32(OpCodes.Add32(OpCodes.Shl32(ac1, 1), 1), blk[0]), ac1);
+        ac2 = OpCodes.Add32(OpCodes.Mul32(OpCodes.Add32(OpCodes.Shl32(ac2, 1), 1), blk[1]), ac2);
+        ac3 = OpCodes.Add32(OpCodes.Mul32(OpCodes.Add32(OpCodes.Shl32(ac3, 1), 1), blk[2]), ac3);
+        ac4 = OpCodes.Add32(OpCodes.Mul32(OpCodes.Add32(OpCodes.Shl32(ac4, 1), 1), blk[3]), ac4);
+        const u1 = OpCodes.Xor32(OpCodes.Shr32(ac1, 16), ac1);
+        const u2 = OpCodes.Xor32(OpCodes.Shr32(ac2, 16), ac2);
+        const u3 = OpCodes.Xor32(OpCodes.Shr32(ac3, 16), ac3);
+        const u4 = OpCodes.Xor32(OpCodes.Shr32(ac4, 16), ac4);
+        /** @type {int32[]} */
+        const o = half === 0 ? ORDER_LOW : ORDER_HIGH;
         cipher[base + o[0]] = OpCodes.And32(OpCodes.Xor32(plain[base + o[0]], OpCodes.And32(u1, 0xFF)), 0xFF);
         cipher[base + o[1]] = OpCodes.And32(OpCodes.Xor32(plain[base + o[1]], OpCodes.And32(OpCodes.Shr32(u1, 8), 0xFF)), 0xFF);
         cipher[base + o[2]] = OpCodes.And32(OpCodes.Xor32(plain[base + o[2]], OpCodes.And32(u2, 0xFF)), 0xFF);
@@ -174,65 +238,102 @@
   }
 
   class DarkCryptCryptMT3Instance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptCryptMT3Algorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {CryptMtState|null} */
+      this._ctx = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this._tryInitialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
       if (ivBytes.length !== 64)
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. CryptMT3 (DarkCrypt) requires exactly 64 bytes");
       this._iv = [...ivBytes];
       this._tryInitialize();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this._state) throw new Error("Key and IV not set");
+      if (!this._ctx) throw new Error("Key and IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
-      if (!this._state) throw new Error("Key and IV not set");
+      if (!this._ctx) throw new Error("Key and IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 16 !== 0)
         throw new Error("CryptMT3 (DarkCrypt) requires input length to be a multiple of 16 bytes");
 
+      /** @type {uint8[]} */
       const plain = this.inputBuffer;
-      const { sfmt, psfmtOff, lung, accum, keyAreaLength } = this._state;
+      /** @type {CryptMtState} */
+      const ctx = this._ctx;
+      /** @type {int32} */
       const count = Math.floor((plain.length + 7) / 8);
-      const p = keyAreaLength - 2;
-      booterAm(lung, sfmt, psfmtOff, sfmt, psfmtOff + p, count);
-      const cipher = new Array(plain.length).fill(0);
-      filter16Bytes(sfmt, psfmtOff, accum, cipher, plain, Math.floor(plain.length / 16));
+      const p = ctx.keyAreaLength - 2;
+      booterAm(ctx.lung, ctx.sfmt, ctx.psfmtOff, ctx.sfmt, ctx.psfmtOff + p, count);
+      /** @type {uint8[]} */
+      const cipher = OpCodes.CreateArray(plain.length, 0);
+      filter16Bytes(ctx.sfmt, ctx.psfmtOff, ctx.accum, cipher, plain, Math.floor(plain.length / 16));
 
       this.inputBuffer = [];
       return cipher;
     }
 
     _tryInitialize() {
-      if (!this._key || !this._iv) return;
+      if (!this._key || !this._iv) {
+        return;
+      }
 
+      /** @type {int32} */
       const keyBlocks = this._key.length / 16; // 4
+      /** @type {int32} */
       const ivBlocks = this._iv.length / 16;    // 4
       const blockSize = keyBlocks + ivBlocks;   // 8
       const length = blockSize * 2;             // 16
 
       const totalBlocks = 156 + 64; // 156 (ARRAY_SIZE) plus generous padding for the booter/filter reach
+      /** @type {uint32[][]} */
       const sfmt = new Array(totalBlocks);
       for (let i = 0; i < totalBlocks; i++) sfmt[i] = newBlock();
 
@@ -249,25 +350,34 @@
           sfmt[blockSize + i][j] = sfmt[i][j];
 
       const p = 2 * blockSize - 1;
-      sfmt[p][0] = OpCodes.ToUint32(sfmt[p][0] + 314159);
-      sfmt[p][1] = OpCodes.ToUint32(sfmt[p][1] + 265358);
-      sfmt[p][2] = OpCodes.ToUint32(sfmt[p][2] + 979323);
-      sfmt[p][3] = OpCodes.ToUint32(sfmt[p][3] + 846264);
+      sfmt[p][0] = OpCodes.Add32(sfmt[p][0], 314159);
+      sfmt[p][1] = OpCodes.Add32(sfmt[p][1], 265358);
+      sfmt[p][2] = OpCodes.Add32(sfmt[p][2], 979323);
+      sfmt[p][3] = OpCodes.Add32(sfmt[p][3], 846264);
 
       const keyAreaLength = length; // 16
 
       const psfmtOff = keyAreaLength + 2; // 18
+      /** @type {int32} */
       const pIv = Math.floor(ivBlocks / 4);
+      /** @type {uint32[]} */
       const lung = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) lung[i] = OpCodes.Or32(sfmt[pIv * 4][i], 1);
       const p2 = keyAreaLength - 2; // 14
       booterAm(lung, sfmt, 0, sfmt, p2, keyAreaLength + 2);
+      /** @type {uint32[]} */
       const accum = [
         sfmt[2 * keyAreaLength + 1][0], sfmt[2 * keyAreaLength + 1][1],
         sfmt[2 * keyAreaLength + 1][2], sfmt[2 * keyAreaLength + 1][3]
       ];
 
-      this._state = { sfmt, psfmtOff, lung, accum, keyAreaLength };
+      const ctx = new CryptMtState();
+      ctx.sfmt = sfmt;
+      ctx.psfmtOff = psfmtOff;
+      ctx.lung = lung;
+      ctx.accum = accum;
+      ctx.keyAreaLength = keyAreaLength;
+      this._ctx = ctx;
     }
   }
 

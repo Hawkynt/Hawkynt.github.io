@@ -69,6 +69,7 @@
 
   // 9-to-7 S-box for the Key Map: inversion in the multiplicative group of
   // GF(2^9) with primitive polynomial f(x) = x^9 + x + 1 (top/bottom bits dropped).
+  /** @type {uint8[]} */
   const SBOX = [
     0,0,0,127,64,85,127,54,96,18,42,57,63,83,91,51,112,17,73,38,21,
     103,92,49,95,122,105,113,45,104,25,61,120,107,8,112,100,89,19,39,
@@ -99,6 +100,7 @@
 
   // 7-variable balanced Boolean function (2-resilient, degree 4, nonlinearity 56)
   // producing the section's "jump control out" bit from the Key Map's S-box output.
+  /** @type {uint8[]} */
   const BOOL_F = [
     0,1,1,1,1,0,0,1,0,1,1,0,1,0,0,1,1,0,0,0,0,0,0,1,0,1,1,1,1,1,0,0,
     1,1,0,0,0,1,0,1,1,0,0,0,1,0,0,1,0,0,1,1,1,0,1,1,1,0,1,0,0,1,1,0,
@@ -108,26 +110,52 @@
 
   // Fixed preset values for the nine jump registers (lsb of each value loads
   // into the register's cell 1).
+  /** @type {uint16[]} */
   const PRESET = [0x090F, 0x36A8, 0x2216, 0x2308, 0x34C4, 0x3198, 0x28B8, 0x0370, 0x1CD1];
 
   // Cell roles at Jump Control = 0: true = feedback (F) cell, false = shift (S) cell,
   // indexed by cell number 1..14 (array index = cell - 1). Exactly seven of each.
+  /** @type {boolean[]} */
   const IS_FEEDBACK_CELL = [true, false, true, false, false, false, true, true, true, false, true, false, true, false];
 
   // Key Map input cells (lsb..msb of the 9-bit filter input vector).
+  /** @type {uint8[]} */
   const KEYMAP_CELLS = [2, 3, 4, 5, 7, 8, 9, 10, 11];
 
   const TAP_CELL_A = 6;        // trinomial feedback tap
   const TAP_CELL_B = 14;       // register wrap-around cell
   const KEYSTREAM_CELL = 13;   // keystream contribution tap
 
+  /**
+   * @param {uint32} reg - Register value
+   * @param {int32} cell - Cell number (1-based)
+   * @returns {uint32} Cell bit
+   */
   function cellBit(reg, cell) { return OpCodes.And32(OpCodes.Shr32(reg, cell - 1), 1); }
+
+  /**
+   * @param {int32} length - Number of words
+   * @returns {uint16[]} Zero-filled word array
+   */
+  function zeroWords(length) {
+    /** @type {uint16[]} */
+    const words = new Array(length);
+    for (let i = 0; i < length; i++) words[i] = 0;
+    return words;
+  }
 
   // One clock of a single 14-bit jump register: Galois-style left shift with the
   // trinomial tap fed into cell 1, F-cells additionally XOR their own previous value.
+  /**
+   * @param {uint32} reg
+   * @param {uint32} injectBit
+   * @param {uint32} jumpControl
+   * @returns {uint32}
+   */
   function clockRegister(reg, injectBit, jumpControl) {
     const tap = OpCodes.Xor32(cellBit(reg, TAP_CELL_A), cellBit(reg, TAP_CELL_B));
     const newCell1 = OpCodes.Xor32(tap, OpCodes.And32(injectBit, 1));
+    /** @type {uint32} */
     let result = 0;
     let prevBit = newCell1;
     for (let cell = 1; cell <= REG_BITS; cell++) {
@@ -143,7 +171,13 @@
 
   // Key Map: derives the "jump control out" bit of a section from its register
   // state and its 16-bit section key.
+  /**
+   * @param {uint32} reg
+   * @param {uint32} sectionKey
+   * @returns {uint8}
+   */
   function keyMapOutput(reg, sectionKey) {
+    /** @type {uint32} */
     let v = 0;
     for (let i = 0; i < KEYMAP_CELLS.length; i++) v |= OpCodes.Shl32(cellBit(reg, KEYMAP_CELLS[i]), i);
     const sum9 = OpCodes.Xor32(v, OpCodes.And32(sectionKey, 0x1FF));
@@ -186,7 +220,7 @@
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000"),
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           expected: OpCodes.Hex8ToBytes("e5d7f7c09b1f1d3f672216e3e3103fce0619eb25cce07c03a2f8be6925248beb5dd63ea00a03885b02c97b77aab437b9b2642c0d78c5ddc443bc4a28032f7b441cc09ba2992b57b6074a370eee93503efd988c1f2b873780f6afd0c662ee5730648a969b2458be556a4371e1e0cd4b390cb028860b122db7b7116a243d56f448")
         },
         {
@@ -206,28 +240,48 @@
   }
 
   class DarkCryptPomaranchInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptPomaranchAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
-      this.registers = new Array(SECTIONS).fill(0);
-      this.sectionKeys = new Array(KEYMAP_SECTIONS).fill(0);
+      /** @type {uint16[]} */
+      this.registers = zeroWords(SECTIONS);
+      /** @type {uint16[]} */
+      this.sectionKeys = zeroWords(KEYMAP_SECTIONS);
+      /** @type {boolean} */
       this.initialized = false;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.initialized = false; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Pomaranch (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Pomaranch (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       if (this._iv) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; this.initialized = false; return; }
       if (ivBytes.length === 0)
@@ -236,11 +290,23 @@
       if (this._key) this._initialize();
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) { this.iv = nonceBytes; }
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() { return this.iv; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
@@ -248,15 +314,21 @@
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._iv) throw new Error("IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data to process");
-      if (!this.initialized) throw new Error("Pomaranch (DarkCrypt) not properly initialized");
+      if (!this.initialized) {
+        throw new Error("Pomaranch (DarkCrypt) not properly initialized");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
-        output.push(OpCodes.XorN(this.inputBuffer[i], this._nextKeystreamByte()));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._nextKeystreamByte()));
       }
       this.inputBuffer = [];
       return output;
@@ -281,13 +353,15 @@
       const initVector = this.registers.slice();
       this.registers = initVector.slice();
 
+      /** @type {uint8[]} */
       const ivBits = [];
       for (const b of this._iv) for (let k = 7; k >= 0; k--) ivBits.push(OpCodes.And32(OpCodes.Shr32(b, k), 1));
       let pos = 0;
       for (let i = 0; i < SECTIONS; i++) {
+        /** @type {uint32} */
         let chunk = 0;
         for (let k = 0; k < REG_BITS; k++) {
-          chunk = OpCodes.Shl32(chunk, 1) | ivBits[pos % ivBits.length];
+          chunk = OpCodes.Or32(OpCodes.Shl32(chunk, 1), ivBits[pos % ivBits.length]);
           pos++;
         }
         this.registers[i] ^= chunk;
@@ -306,9 +380,11 @@
     _shiftModeStep() {
       const reg = this.registers;
       const wrapBit = cellBit(reg[SECTIONS - 1], 1);
+      /** @type {uint8[]} */
       const jco = new Array(KEYMAP_SECTIONS);
       for (let i = 0; i < KEYMAP_SECTIONS; i++) jco[i] = keyMapOutput(reg[i], this.sectionKeys[i]);
 
+      /** @type {uint16[]} */
       const next = new Array(SECTIONS);
       next[0] = clockRegister(reg[0], wrapBit, 0);
       for (let i = 1; i < SECTIONS; i++) next[i] = clockRegister(reg[i], jco[i - 1], 0);
@@ -320,18 +396,25 @@
     // running total), selecting each register's cell roles for this step; the
     // output bit is the XOR of the tap cell across all nine registers, read
     // before the registers are clocked.
+    /**
+     * @returns {uint32}
+     */
     _generateStep() {
       const reg = this.registers;
+      /** @type {uint8[]} */
       const jco = new Array(KEYMAP_SECTIONS);
       for (let i = 0; i < KEYMAP_SECTIONS; i++) jco[i] = keyMapOutput(reg[i], this.sectionKeys[i]);
 
+      /** @type {uint32[]} */
       const jc = new Array(SECTIONS);
       jc[0] = 0;
       for (let i = 1; i < SECTIONS; i++) jc[i] = OpCodes.Xor32(jc[i - 1], jco[i - 1]);
 
+      /** @type {uint32} */
       let outputBit = 0;
       for (let i = 0; i < SECTIONS; i++) outputBit ^= cellBit(reg[i], KEYSTREAM_CELL);
 
+      /** @type {uint16[]} */
       const next = new Array(SECTIONS);
       for (let i = 0; i < SECTIONS; i++) next[i] = clockRegister(reg[i], 0, jc[i]);
       this.registers = next;
@@ -339,7 +422,11 @@
       return outputBit;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
+      /** @type {uint32} */
       let b = 0;
       for (let bitpos = 7; bitpos >= 0; bitpos--) b |= OpCodes.Shl32(this._generateStep(), bitpos);
       return OpCodes.And32(b, 0xFF);

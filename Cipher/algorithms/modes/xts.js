@@ -159,17 +159,22 @@
   class XtsModeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XtsAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {IBlockCipherInstance|null} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.tweak = null;
+      /** @type {uint8[]|null} */
       this.key1 = null;
+      /** @type {uint8[]|null} */
       this.key2 = null;
     }
 
@@ -186,7 +191,7 @@
 
     /**
      * Set the XTS key (must be double the block cipher key size)
-     * @param {Array} key - Combined key (Key1 || Key2)
+     * @param {uint8[]} key - Combined key (Key1 || Key2)
      */
     setKey(key) {
       if (!key || key.length % 2 !== 0) {
@@ -205,7 +210,7 @@
 
     /**
      * Set the tweak value (typically sector/block number)
-     * @param {Array} tweak - 128-bit tweak value
+     * @param {uint8[]} tweak - 128-bit tweak value
      */
     setTweak(tweak) {
       if (!this.blockCipher) {
@@ -219,6 +224,7 @@
 
     /**
      * Alternative method for compatibility with IV-based interfaces
+     * @param {uint8[]} iv
      */
     setIV(iv) {
       this.setTweak(iv);
@@ -228,23 +234,27 @@
      * Multiply 128-bit value by α in GF(2^128)
      * α is the primitive element x in the field
      * @private
+     * @param {uint8[]} block
+     * @returns {uint8[]}
      */
     _multiplyAlpha(block) {
       // IEEE 1619 represents the tweak as a little-endian 128-bit value, so the
       // multiplication by the primitive element runs from byte 0 (least
       // significant) upwards and the x^128 reduction folds back into byte 0.
+      /** @type {uint8[]} */
       const result = new Array(16);
+      /** @type {uint32} */
       let carry = 0;
 
       for (let i = 0; i < 16; i++) {
-        const newCarry = OpCodes.AndN(block[i], 0x80) ? 1 : 0;
-        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(block[i], 1), carry), 0xFF);
+        const newCarry = OpCodes.And32(block[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(block[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // Handle reduction for x^128
       if (carry) {
-        result[0] = OpCodes.XorN(result[0], 0x87); // Reduction polynomial
+        result[0] = OpCodes.Xor32(result[0], 0x87); // Reduction polynomial
       }
 
       return result;
@@ -253,9 +263,14 @@
     /**
      * Compute sequence of tweaks T_i = α^i * T_0
      * @private
+     * @param {uint8[]} startTweak
+     * @param {int32} count
+     * @returns {uint8[][]}
      */
     _computeTweaks(startTweak, count) {
+      /** @type {uint8[][]} */
       const tweaks = [];
+      /** @type {uint8[]} */
       let currentTweak = [...startTweak];
 
       for (let i = 0; i < count; i++) {
@@ -315,9 +330,11 @@
       const needsSteal = partialBytes > 0;
 
       // Encrypt tweak with Key2 to get T_0
+      /** @type {IBlockCipherInstance} */
       const tweakCipher = this.blockCipher.algorithm.CreateInstance(false);
       tweakCipher.key = this.key2;
       tweakCipher.Feed(this.tweak);
+      /** @type {uint8[]} */
       const t0 = tweakCipher.Result();
 
       // Generate sequence of tweaks. Ciphertext stealing consumes one tweak
@@ -327,6 +344,7 @@
       const tweakCount = needsSteal ? fullBlocks + 1 : fullBlocks;
       const tweaks = this._computeTweaks(t0, tweakCount);
 
+      /** @type {uint8[]} */
       const output = [];
 
       if (needsSteal) {
@@ -402,15 +420,20 @@
     /**
      * Process a single 16-byte block with XTS
      * @private
+     * @param {uint8[]} block
+     * @param {uint8[]} tweak
+     * @returns {uint8[]}
      */
     _processBlock(block, tweak) {
       // Step 1: XOR with tweak
       const tweakedBlock = OpCodes.XorArrays(block, tweak);
 
       // Step 2: Encrypt/decrypt with Key1
+      /** @type {IBlockCipherInstance} */
       const cipher = this.blockCipher.algorithm.CreateInstance(this.isInverse);
       cipher.key = this.key1;
       cipher.Feed(tweakedBlock);
+      /** @type {uint8[]} */
       const cipherOutput = cipher.Result();
 
       // Step 3: XOR with tweak again

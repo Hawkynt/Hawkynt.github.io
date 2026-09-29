@@ -88,13 +88,20 @@
   const WARMUP_ROUNDS = 8;
 
   // One "imul-chain" round: mutates state[4] in place, returns the 4 derived table words.
-  function scopRound(state, keyBuf) {
+  /**
+   * @param {uint32[]} lanes
+   * @param {uint8[]} keyBuf
+   * @returns {uint32[]}
+   */
+  function scopRound(lanes, keyBuf) {
+    /** @type {uint32[]} */
     const packed = new Array(4);
+    /** @type {uint32[]} */
     const overflow = new Array(4);
 
     for (let iter = 0; iter < 4; ++iter) {
       const koff = iter * 8;
-      const s = OpCodes.ToUint32(state[iter]);
+      const s = OpCodes.ToUint32(lanes[iter]);
 
       // high 16-bit lane: P_hi(x) = k0*x^4 + k1*x^3 + k2*x^2 + k3*x + 1
       const x = OpCodes.And32(OpCodes.Shr32(s, 16), 0xFFFF);
@@ -116,24 +123,32 @@
       sumLo = OpCodes.Add32(sumLo, OpCodes.ToUint32(Math.imul(keyBuf[koff + 7], y)));
       const pLo = OpCodes.Add32(sumLo, 1);
 
-      packed[iter] = OpCodes.OrN(OpCodes.Shl32(pHi, 16), OpCodes.And32(pLo, 0xFFFF));
-      overflow[iter] = OpCodes.OrN(OpCodes.Shr32(pLo, 16), OpCodes.And32(pHi, 0xFFFF0000));
+      packed[iter] = OpCodes.Or32(OpCodes.Shl32(pHi, 16), OpCodes.And32(pLo, 0xFFFF));
+      overflow[iter] = OpCodes.Or32(OpCodes.Shr32(pLo, 16), OpCodes.And32(pHi, 0xFFFF0000));
     }
 
-    const newState = new Array(4);
+    /** @type {uint32[]} */
+    const next = new Array(4);
     for (let n = 0; n < 4; ++n) {
+      /** @type {uint32} */
       const prev = overflow[OpCodes.And32(n + 3, 3)];
-      newState[n] = OpCodes.OrN(OpCodes.Shl32(prev, 16), OpCodes.Shr32(overflow[n], 16));
+      next[n] = OpCodes.Or32(OpCodes.Shl32(prev, 16), OpCodes.Shr32(overflow[n], 16));
     }
-    for (let n = 0; n < 4; ++n) state[n] = newState[n];
+    for (let n = 0; n < 4; ++n) lanes[n] = next[n];
 
     return packed;
   }
 
   // Builds the 48-byte key work buffer: copy + zero-scrub the first 32 bytes only.
+  /**
+   * @param {uint8[]} keyBytes
+   * @returns {uint8[]}
+   */
   function buildKeyBuf(keyBytes) {
+    /** @type {uint8[]} */
     const buf = new Array(KEY_BYTES);
     for (let i = 0; i < KEY_BYTES; ++i) buf[i] = keyBytes[i];
+    /** @type {int32} */
     let counter = 1;
     for (let i = 0; i < 32; ++i) {
       if (buf[i] === 0) { buf[i] = OpCodes.And32(counter, 0xFF); ++counter; }
@@ -173,7 +188,7 @@
         {
           text: "DarkCrypt Scop — keystream from 128 zero bytes, 48-byte incrementing key",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-          input: new Array(128).fill(0),
+          input: OpCodes.CreateArray(128, 0),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
           expected: OpCodes.Hex8ToBytes("e2ee660b62e416934a31c17c949a93e05692a0d5a8d4971a4a9e94929823f1e5d8ed60d1c201d50ad6af1eec1e29917a6d1ef7cf829d847504dda2f0e010f85fe98d7676c2e5d801da0288a3ee4217bbb2d747f2f5973b4a84bd36c6f291df04847310e2203cf7b8744230088c1e978cbe79febd6d08b9a8bef1356e44d92f0b")
         },
@@ -193,42 +208,71 @@
   }
 
   class DarkCryptScopInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptScopAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._table = null;   // Uint32-valued Array(384), mutates across 64-byte block calls
-      this._i0 = 0; this._j0 = 0; this._k0 = 0;
+      /** @type {int32} */
+      this._i0 = 0;
+      /** @type {int32} */
+      this._j0 = 0;
+      /** @type {uint32} */
+      this._k0 = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._table = null; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SCOP-384 (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SCOP-384 (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this._setup();
     }
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._table) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._table) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
 
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {int32} */
       const sign = this.isInverse ? -1 : 1;
       let offset = 0;
       const total = this.inputBuffer.length;
 
       while (offset < total) {
         const chunkLen = Math.min(BLOCK_BYTES, total - offset);
-        const block = new Array(BLOCK_BYTES).fill(0);
+        const block = OpCodes.CreateArray(BLOCK_BYTES, 0);
         for (let i = 0; i < chunkLen; ++i) block[i] = this.inputBuffer[offset + i];
 
         this._block64(block, sign);
@@ -242,50 +286,70 @@
     }
 
     _setup() {
+      /** @type {uint8[]} */
       const keyBuf = buildKeyBuf(this._key);
-      const state = [
+      /** @type {uint32[]} */
+      const lanes = [
         OpCodes.Pack32LE(keyBuf[32], keyBuf[33], keyBuf[34], keyBuf[35]),
         OpCodes.Pack32LE(keyBuf[36], keyBuf[37], keyBuf[38], keyBuf[39]),
         OpCodes.Pack32LE(keyBuf[40], keyBuf[41], keyBuf[42], keyBuf[43]),
         OpCodes.Pack32LE(keyBuf[44], keyBuf[45], keyBuf[46], keyBuf[47])
       ];
 
-      for (let r = 0; r < WARMUP_ROUNDS; ++r) scopRound(state, keyBuf);
+      for (let r = 0; r < WARMUP_ROUNDS; ++r) scopRound(lanes, keyBuf);
 
+      /** @type {uint32[]} */
       const table = new Array(TABLE_WORDS);
       let pos = 0;
       for (let block = 0; block < 12; ++block) {
         for (let chunk = 0; chunk < 8; ++chunk) {
-          const packed = scopRound(state, keyBuf);
+          /** @type {uint32[]} */
+          const packed = scopRound(lanes, keyBuf);
           table[pos++] = packed[0]; table[pos++] = packed[1];
           table[pos++] = packed[2]; table[pos++] = packed[3];
         }
-        scopRound(state, keyBuf); // extra diffusion-only round, output discarded
+        scopRound(lanes, keyBuf); // extra diffusion-only round, output discarded
       }
 
-      const finalPacked = scopRound(state, keyBuf);
+      /** @type {uint32[]} */
+      const finalPacked = scopRound(lanes, keyBuf);
+      /** @type {uint32} */
       const w3 = finalPacked[3];
       this._i0 = OpCodes.And32(OpCodes.Shr32(w3, 24), 0xFF);
       this._j0 = OpCodes.And32(OpCodes.Shr32(w3, 16), 0xFF);
       this._k0 = OpCodes.And32(OpCodes.Shr32(w3, 8), 0xFF);
       const idx = OpCodes.And32(w3, 0x7F);
-      table[idx] = OpCodes.OrN(table[idx], 1);
+      table[idx] = OpCodes.Or32(table[idx], 1);
 
       this._table = table;
     }
 
     // Transforms exactly BLOCK_BYTES bytes in place (sign=+1 encrypt/add, sign=-1 decrypt/sub).
+    /**
+     * @param {uint8[]} block
+     * @param {int32} sign
+     */
     _block64(block, sign) {
+      /** @type {uint32[]} */
       const table = this._table;
-      let i = this._i0, j = this._j0, k = this._k0;
+      /** @type {int32} */
+      let i = this._i0;
+      /** @type {int32} */
+      let j = this._j0;
+      /** @type {uint32} */
+      let k = this._k0;
 
       for (let w = 0; w < 16; ++w) {
         const off = w * 4;
         const dataWord = OpCodes.Pack32LE(block[off], block[off + 1], block[off + 2], block[off + 3]);
 
-        const jk = OpCodes.And32(j + k, 0xFF);
+        /** @type {int32} */
+        const jk = OpCodes.And32(OpCodes.Add32(j, k), 0xFF);
+        /** @type {uint32} */
         const Tj = table[128 + j];
+        /** @type {uint32} */
         const Si = table[i];
+        /** @type {uint32} */
         const TjkOld = table[128 + jk];
 
         const ks = OpCodes.Add32(Tj, TjkOld);

@@ -161,23 +161,35 @@
   class NorxInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NorxAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.KeySize = 32;
+      /** @type {int32} */
       this.NonceSize = 16;
 
       // NORX educational parameters
+      /** @type {int32} */
       this.KEY_SIZE = 32;
+      /** @type {int32} */
       this.NONCE_SIZE = 16;
+      /** @type {int32} */
       this.TAG_SIZE = 32;
+      /** @type {int32} */
       this.BLOCK_SIZE = 64;
     }
 
@@ -190,19 +202,25 @@
 
     set key(keyBytes) {
       if (!keyBytes) {
+        /** @type {uint8[]|null} */
         this._key = null;
         this.KeySize = 0;
         return;
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      const sizes = this.keySizeList;
+      let isValidSize = false;
+      for (let k = 0; k < sizes.length; k++) {
+        const ks = sizes[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize && (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes]; // Copy the key
@@ -219,19 +237,26 @@
     }
 
     // Property setter for nonce
+    /**
+     * @param {uint8[]|null} nonceBytes
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes) {
+        /** @type {uint8[]|null} */
         this._nonce = null;
         return;
       }
 
       if (nonceBytes.length !== this.NONCE_SIZE) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes, expected ${this.NONCE_SIZE}`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes, expected " + this.NONCE_SIZE);
       }
 
       this._nonce = [...nonceBytes]; // Copy the nonce
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get nonce() {
       return this._nonce ? [...this._nonce] : null; // Return copy
     }
@@ -259,10 +284,14 @@
 
     Result() {
       if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
       // Use provided nonce or generate default
-      const nonce = this.nonce || new Array(this.NONCE_SIZE).fill(0);
+      const nonce = this.nonce ? this.nonce : OpCodes.CreateArray(this.NONCE_SIZE, 0);
 
       // Process data using educational NORX
       const result = this._educationalNORX(this.key, nonce, this.inputBuffer);
@@ -274,50 +303,59 @@
     }
 
     // Educational NORX-like stream function (stream mode for testing)
+    /**
+     * @param {uint8[]} key
+     * @param {uint8[]} nonce
+     * @param {uint8[]} data
+     * @returns {uint8[]}
+     */
     _educationalNORX(key, nonce, data) {
       // Initialize state with key and nonce
-      const state = new Array(16);
+      /** @type {uint32[]} */
+      const words = new Array(16);
 
       // Load key (32 bytes = 8 words)
       for (let i = 0; i < 8; i++) {
-        state[i] = OpCodes.Pack32LE(
+        words[i] = OpCodes.Pack32LE(
           key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]
         );
       }
 
       // Load nonce (16 bytes = 4 words)
       for (let i = 0; i < 4; i++) {
-        state[8 + i] = OpCodes.Pack32LE(
+        words[8 + i] = OpCodes.Pack32LE(
           nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]
         );
       }
 
       // Constants
-      state[12] = 0x243F6A88;
-      state[13] = 0x85A308D3;
-      state[14] = 0x13198A2E;
-      state[15] = 0x03707344;
+      words[12] = 0x243F6A88;
+      words[13] = 0x85A308D3;
+      words[14] = 0x13198A2E;
+      words[15] = 0x03707344;
 
       // Simple permutation rounds
       for (let round = 0; round < 8; round++) {
         for (let i = 0; i < 16; i++) {
-          state[i] = OpCodes.XorN(OpCodes.RotL32(state[i] + state[(i + 1) % 16], 7), state[(i + 8) % 16]);
+          words[i] = OpCodes.Xor32(OpCodes.RotL32(OpCodes.Add32(words[i], words[(i + 1) % 16]), 7), words[(i + 8) % 16]);
         }
       }
 
       // Generate keystream
+      /** @type {uint8[]} */
       const keystream = [];
 
       // Extract keystream
       for (let i = 0; i < 8; i++) {
-        const bytes = OpCodes.Unpack32LE(state[i]);
+        const bytes = OpCodes.Unpack32LE(words[i]);
         for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
       // Process data (stream cipher mode - no tag)
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < data.length; i++) {
-        output.push(OpCodes.XorN(data[i], keystream[i % keystream.length]));
+        output.push(OpCodes.Xor8(data[i], keystream[i % keystream.length]));
       }
 
       return output;

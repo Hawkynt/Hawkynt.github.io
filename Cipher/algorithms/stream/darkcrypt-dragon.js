@@ -59,7 +59,8 @@
 
   // ===== DRAGON S-BOXES (S1, S2) — official values from the Dragon specification =====
 
-  const S1 = Object.freeze([
+  /** @type {uint32[]} */
+  const S1 = [
     0x393BCE6B,0x232BA00D,0x84E18ADA,0x84557BA7,0x56828948,0x166908F3,
     0x414A3437,0x7BB44897,0x2315BE89,0x7A01F224,0x7056AA5D,0x121A3917,
     0xE3F47FA2,0x1F99D0AD,0x9BAD518B,0x99B9E75F,0x8829A7ED,0x2C511CA9,
@@ -103,9 +104,10 @@
     0xFAAC50CE,0xFA1E98AE,0x61498532,0x03678CC0,0x9E85EFD7,0x3069CE1A,
     0xF115D008,0x4553AA9F,0x3194BE09,0xB4A9367D,0x0A9DFEEC,0x7CA002D6,
     0x8E53A875,0x965E8183,0x14D79DAC,0x0192B555
-  ]);
+  ];
 
-  const S2 = Object.freeze([
+  /** @type {uint32[]} */
+  const S2 = [
     0xA94BC384,0xF7A81CAE,0xAB84ECD4,0x00DEF340,0x8E2329B8,0x23AF3A22,
     0x23C241FA,0xAED8729E,0x2E59357F,0xC3ED78AB,0x687724BB,0x7663886F,
     0x1669AA35,0x5966EAC1,0xD574C543,0xDBC3F2FF,0x4DD44303,0xCD4F8D01,
@@ -149,19 +151,43 @@
     0xB7AB85B5,0xA875E314,0x1372F18D,0xFD105270,0xB83F161F,0x5C175260,
     0x44FFD49F,0xD428C4F6,0x2C2002FC,0xF2797BAF,0xA3B20A4E,0xB9BF1A89,
     0xE4ABA5E2,0xC912C58D,0x96516F9A,0x51561E77
-  ]);
+  ];
 
   // Dragon's fixed initial memory constant M = 0x0000447261676F6E (ASCII "Dragon")
   const M_INIT_HI = 0x00004472;
   const M_INIT_LO = 0x61676F6E;
 
   // Virtual 32x32 mappings, byte order MSB..LSB = x0,x1,x2,x3 (x0 most significant)
-  function G1(x) { return OpCodes.XorN(OpCodes.XorN(S2[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
-  function G2(x) { return OpCodes.XorN(OpCodes.XorN(S1[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
-  function G3(x) { return OpCodes.XorN(OpCodes.XorN(S1[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
-  function H1(x) { return OpCodes.XorN(OpCodes.XorN(S1[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
-  function H2(x) { return OpCodes.XorN(OpCodes.XorN(S2[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
-  function H3(x) { return OpCodes.XorN(OpCodes.XorN(S2[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.XorN(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function G1(x) { return OpCodes.Xor32(OpCodes.Xor32(S2[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function G2(x) { return OpCodes.Xor32(OpCodes.Xor32(S1[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function G3(x) { return OpCodes.Xor32(OpCodes.Xor32(S1[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function H1(x) { return OpCodes.Xor32(OpCodes.Xor32(S1[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function H2(x) { return OpCodes.Xor32(OpCodes.Xor32(S2[OpCodes.And32(x, 0xFF)], S1[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S2[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
+  function H3(x) { return OpCodes.Xor32(OpCodes.Xor32(S2[OpCodes.And32(x, 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)]), OpCodes.Xor32(S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], S2[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)])); }
 
   /**
    * Dragon's reversible state-update function F (Table 1 of the specification).
@@ -169,25 +195,38 @@
    * strict sequential (imperative) order: each step reads the most recently
    * updated value of every variable, including the post-mixing XOR layer which
    * consumes the words just produced by the preceding ADD layer.
-   * @param {number[]} w - [a,b,c,d,e,f] as uint32
-   * @returns {number[]} [a',b',c',d',e',f'] as uint32
+   * @param {uint32[]} w - [a,b,c,d,e,f]
+   * @returns {uint32[]} [a',b',c',d',e',f']
    */
   function dragonF(w) {
-    let [a, b, c, d, e, f] = w;
+    /** @type {uint32} */
+    let a = w[0];
+    /** @type {uint32} */
+    let b = w[1];
+    /** @type {uint32} */
+    let c = w[2];
+    /** @type {uint32} */
+    let d = w[3];
+    /** @type {uint32} */
+    let e = w[4];
+    /** @type {uint32} */
+    let f = w[5];
 
     // Pre-mixing layer
-    b = OpCodes.XorN(b, a); d = OpCodes.XorN(d, c); f = OpCodes.XorN(f, e);
+    b = OpCodes.Xor32(b, a); d = OpCodes.Xor32(d, c); f = OpCodes.Xor32(f, e);
     c = OpCodes.Add32(c, b); e = OpCodes.Add32(e, d); a = OpCodes.Add32(a, f);
 
     // S-box layer
-    d = OpCodes.XorN(d, G1(a)); f = OpCodes.XorN(f, G2(c)); b = OpCodes.XorN(b, G3(e));
-    a = OpCodes.XorN(a, H1(b)); c = OpCodes.XorN(c, H2(d)); e = OpCodes.XorN(e, H3(f));
+    d = OpCodes.Xor32(d, G1(a)); f = OpCodes.Xor32(f, G2(c)); b = OpCodes.Xor32(b, G3(e));
+    a = OpCodes.Xor32(a, H1(b)); c = OpCodes.Xor32(c, H2(d)); e = OpCodes.Xor32(e, H3(f));
 
     // Post-mixing layer (sequential: XOR sub-step consumes the just-updated ADD results)
     d = OpCodes.Add32(d, a); f = OpCodes.Add32(f, c); b = OpCodes.Add32(b, e);
-    c = OpCodes.XorN(c, b); e = OpCodes.XorN(e, d); a = OpCodes.XorN(a, f);
+    c = OpCodes.Xor32(c, b); e = OpCodes.Xor32(e, d); a = OpCodes.Xor32(a, f);
 
-    return [a, b, c, d, e, f];
+    /** @type {uint32[]} */
+    const words = [a, b, c, d, e, f];
+    return words;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -270,29 +309,45 @@
   }
 
   class DarkCryptDragonInstance extends IAlgorithmInstance {
+    /**
+     * @param {DarkCryptDragonAlgorithm} algorithm
+     * @param {boolean} [isInverse=false]
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
       // Dragon state: 32-word (1024-bit) NLFSR, plus 64-bit memory/counter M
+      /** @type {uint32[]|null} */
       this.B = null;
+      /** @type {uint32} */
       this.Mhi = 0;
+      /** @type {uint32} */
       this.Mlo = 0;
 
+      /** @type {uint8[]} */
       this.keystreamBuffer = [];
+      /** @type {int32} */
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
         return;
       }
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Dragon (DarkCrypt) requires exactly 32 bytes (256 bits)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Dragon (DarkCrypt) requires exactly 32 bytes (256 bits)");
       }
 
       this._key = [...keyBytes];
@@ -301,11 +356,17 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get key() { return this._key ? [...this._key] : null; }
 
+    /**
+     * @param {uint8[]|null} ivBytes
+     */
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length !== 32) {
-        this._iv = new Array(32).fill(0);
+        this._iv = OpCodes.CreateArray(32, 0);
       } else {
         this._iv = [...ivBytes];
       }
@@ -315,25 +376,37 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null}
+     */
     get iv() { return this._iv ? [...this._iv] : null; }
 
+    /**
+     * @param {uint8[]} data
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
+    /**
+     * @returns {uint8[]}
+     */
     Result() {
       if (!this._key) throw new Error("Key not set");
 
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -350,36 +423,51 @@
     _initialize() {
       if (!this._key || !this._iv) return;
 
-      const K = this._bytesToWordsBE(this._key);   // 8 words
-      const IV = this._bytesToWordsBE(this._iv);    // 8 words
-      const KxorIV = K.map((k, i) => OpCodes.XorN(k, IV[i]));
-      const notKxorIV = KxorIV.map(x => OpCodes.ToUint32(~x));
+      /** @type {uint32[]} */
+      const kwords = this._bytesToWordsBE(this._key);   // 8 words
+      /** @type {uint32[]} */
+      const vwords = this._bytesToWordsBE(this._iv);    // 8 words
+      /** @type {uint32[]} */
+      const KxorIV = [];
+      for (let i = 0; i < kwords.length; i++) KxorIV.push(OpCodes.Xor32(kwords[i], vwords[i]));
+      /** @type {uint32[]} */
+      const notKxorIV = [];
+      for (let i = 0; i < KxorIV.length; i++) notKxorIV.push(OpCodes.Not32(KxorIV[i]));
 
       // W0..W7, 32 words total, grouped as 8 blocks of 4 words each
-      let W = [].concat(
-        K.slice(0, 4), K.slice(4, 8),
-        KxorIV.slice(0, 4), KxorIV.slice(4, 8),
-        notKxorIV.slice(0, 4), notKxorIV.slice(4, 8),
-        IV.slice(0, 4), IV.slice(4, 8)
-      );
+      /** @type {uint32[]} */
+      let W = kwords.slice(0, 8).concat(KxorIV.slice(0, 8)).concat(notKxorIV.slice(0, 8)).concat(vwords.slice(0, 8));
 
-      let e = M_INIT_HI, f = M_INIT_LO;
+      /** @type {uint32} */
+      let e = M_INIT_HI;
+      /** @type {uint32} */
+      let f = M_INIT_LO;
 
       for (let round = 0; round < 16; round++) {
-        const W0 = W.slice(0, 4), W6 = W.slice(24, 28), W7 = W.slice(28, 32);
-        const a = OpCodes.XorN(OpCodes.XorN(W0[0], W6[0]), W7[0]);
-        const b = OpCodes.XorN(OpCodes.XorN(W0[1], W6[1]), W7[1]);
-        const c = OpCodes.XorN(OpCodes.XorN(W0[2], W6[2]), W7[2]);
-        const d = OpCodes.XorN(OpCodes.XorN(W0[3], W6[3]), W7[3]);
+        /** @type {uint32[]} */
+        const W0 = W.slice(0, 4);
+        /** @type {uint32[]} */
+        const W6 = W.slice(24, 28);
+        /** @type {uint32[]} */
+        const W7 = W.slice(28, 32);
+        const a = OpCodes.Xor32(OpCodes.Xor32(W0[0], W6[0]), W7[0]);
+        const b = OpCodes.Xor32(OpCodes.Xor32(W0[1], W6[1]), W7[1]);
+        const c = OpCodes.Xor32(OpCodes.Xor32(W0[2], W6[2]), W7[2]);
+        const d = OpCodes.Xor32(OpCodes.Xor32(W0[3], W6[3]), W7[3]);
 
+        /** @type {uint32[]} */
         const out = dragonF([a, b, c, d, e, f]);
+        /** @type {uint32[]} */
         const W4old = W.slice(16, 20);
+        /** @type {uint32[]} */
         const newW0 = [
-          OpCodes.XorN(out[0], W4old[0]), OpCodes.XorN(out[1], W4old[1]),
-          OpCodes.XorN(out[2], W4old[2]), OpCodes.XorN(out[3], W4old[3])
+          OpCodes.Xor32(out[0], W4old[0]), OpCodes.Xor32(out[1], W4old[1]),
+          OpCodes.Xor32(out[2], W4old[2]), OpCodes.Xor32(out[3], W4old[3])
         ];
 
+        /** @type {uint32[]} */
         const oldW = W.slice();
+        /** @type {uint32[]} */
         const nextW = new Array(32);
         for (let blk = 7; blk >= 1; blk--) {
           for (let k = 0; k < 4; k++) nextW[blk * 4 + k] = oldW[(blk - 1) * 4 + k];
@@ -398,7 +486,12 @@
       this.keystreamPosition = 0;
     }
 
+    /**
+     * @param {uint8[]} bytes
+     * @returns {uint32[]}
+     */
     _bytesToWordsBE(bytes) {
+      /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < bytes.length; i += 4) {
         words.push(OpCodes.Pack32BE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
@@ -412,16 +505,30 @@
      * set) feed F together with the 64-bit counter M; F's a' and e' outputs
      * form the 64-bit keystream word, b' and c' feed back into the NLFSR
      * head, and the register shifts down by two words each round.
+     * @returns {uint32[]}
      */
     _generateKeystreamWords() {
+      /** @type {uint32[]} */
       const B = this.B;
-      const a = B[0], b = B[9], c = B[16], d = B[19];
-      const e = OpCodes.XorN(B[30], this.Mhi);
-      const f = OpCodes.XorN(B[31], this.Mlo);
+      /** @type {uint32} */
+      const a = B[0];
+      /** @type {uint32} */
+      const b = B[9];
+      /** @type {uint32} */
+      const c = B[16];
+      /** @type {uint32} */
+      const d = B[19];
+      /** @type {uint32} */
+      const e = OpCodes.Xor32(B[30], this.Mhi);
+      /** @type {uint32} */
+      const f = OpCodes.Xor32(B[31], this.Mlo);
 
+      /** @type {uint32[]} */
       const out = dragonF([a, b, c, d, e, f]);
 
+      /** @type {uint32[]} */
       const oldB = B.slice();
+      /** @type {uint32[]} */
       const newB = new Array(32);
       newB[0] = out[1]; newB[1] = out[2];
       for (let i = 2; i < 32; i++) newB[i] = oldB[i - 2];
@@ -432,13 +539,21 @@
       this.Mhi = (lo === 0) ? OpCodes.Add32(this.Mhi, 1) : this.Mhi;
       this.Mlo = lo;
 
-      return [out[0], out[4]]; // k = a' || e'
+      /** @type {uint32[]} */
+      const words = [out[0], out[4]]; // k = a' || e'
+      return words;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _getNextKeystreamByte() {
       if (this.keystreamPosition >= this.keystreamBuffer.length) {
+        /** @type {uint32[]} */
         const words = this._generateKeystreamWords();
-        this.keystreamBuffer = [...OpCodes.Unpack32BE(words[0]), ...OpCodes.Unpack32BE(words[1])];
+        /** @type {uint8[]} */
+        const bytes = [...OpCodes.Unpack32BE(words[0]), ...OpCodes.Unpack32BE(words[1])];
+        this.keystreamBuffer = bytes;
         this.keystreamPosition = 0;
       }
       return this.keystreamBuffer[this.keystreamPosition++];

@@ -34,7 +34,8 @@
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // Dragon S-box (AES S-box)
-  const SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -51,7 +52,7 @@
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-  ]);
+  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -111,36 +112,61 @@ class Dragon extends StreamCipherAlgorithm {
 }
 
 class DragonInstance extends IAlgorithmInstance {
+  /**
+   * @param {Dragon} algorithm
+   * @param {boolean} [isInverse=false]
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
+    /** @type {KeySize[]} */
+    this.keySizeList = algorithm.SupportedKeySizes;
+    /** @type {boolean} */
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
-    this._iv = new Array(16).fill(0);
+    /** @type {uint8[]|null} */
+    this._iv = OpCodes.CreateArray(16, 0);
 
     // Dragon state
+    /** @type {uint32[]|null} */
     this.nlfsr1 = null;
+    /** @type {uint32[]|null} */
     this.nlfsr2 = null;
+    /** @type {uint8[]|null} */
     this.wordBuffer = null;
+    /** @type {int32} */
     this.wordBufferPos = 0;
 
     // Constants
+    /** @type {int32} */
     this.NLFSR_SIZE = 8;       // Each NLFSR has 8 words
+    /** @type {int32} */
     this.INIT_ROUNDS = 1024;   // Initialization rounds
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
       return;
     }
 
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-    );
+    const sizes = this.keySizeList;
+    let isValidSize = false;
+    for (let k = 0; k < sizes.length; k++) {
+      const ks = sizes[k];
+      if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+        isValidSize = true;
+        break;
+      }
+    }
 
     if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
@@ -149,11 +175,17 @@ class DragonInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get key() { return this._key ? [...this._key] : null; }
 
+  /**
+   * @param {uint8[]|null} ivBytes
+   */
   set iv(ivBytes) {
     if (!ivBytes || ivBytes.length !== 16) {
-      this._iv = new Array(16).fill(0);
+      this._iv = OpCodes.CreateArray(16, 0);
     } else {
       this._iv = [...ivBytes];
     }
@@ -163,26 +195,38 @@ class DragonInstance extends IAlgorithmInstance {
     }
   }
 
+  /**
+   * @returns {uint8[]|null}
+   */
   get iv() { return this._iv ? [...this._iv] : null; }
 
+  /**
+   * @param {uint8[]} data
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this._key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]}
+   */
   Result() {
     if (!this._key) throw new Error("Key not set");
 
     // Handle empty input
     if (this.inputBuffer.length === 0) {
-      return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor8(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -197,16 +241,18 @@ class DragonInstance extends IAlgorithmInstance {
     this.nlfsr2 = new Array(this.NLFSR_SIZE);
 
     // Convert key to 32-bit words (little-endian)
+    /** @type {uint32[]} */
     const keyWords = [];
     for (let i = 0; i < this._key.length; i += 4) {
-      const b0 = this._key[i] || 0;
-      const b1 = this._key[i + 1] || 0;
-      const b2 = this._key[i + 2] || 0;
-      const b3 = this._key[i + 3] || 0;
+      const b0 = (i < this._key.length) ? this._key[i] : 0;
+      const b1 = (i + 1 < this._key.length) ? this._key[i + 1] : 0;
+      const b2 = (i + 2 < this._key.length) ? this._key[i + 2] : 0;
+      const b3 = (i + 3 < this._key.length) ? this._key[i + 3] : 0;
       keyWords.push(OpCodes.Pack32LE(b0, b1, b2, b3));
     }
 
     // Convert IV to 32-bit words (little-endian)
+    /** @type {uint32[]} */
     const ivWords = [];
     for (let i = 0; i < 16; i += 4) {
       ivWords.push(OpCodes.Pack32LE(
@@ -232,6 +278,8 @@ class DragonInstance extends IAlgorithmInstance {
 
   /**
    * Nonlinear function F (32-bit S-box substitution)
+   * @param {uint32} x
+   * @returns {uint32}
    */
   _F(x) {
     const bytes = OpCodes.Unpack32LE(x);
@@ -245,30 +293,32 @@ class DragonInstance extends IAlgorithmInstance {
 
   /**
    * NLFSR1 feedback function
+   * @returns {uint32}
    */
   _getNLFSR1Feedback() {
     // Linear feedback polynomial terms
-    const linear = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.nlfsr1[0], this.nlfsr1[2]), this.nlfsr1[5]), this.nlfsr1[7]);
+    const linear = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.nlfsr1[0], this.nlfsr1[2]), this.nlfsr1[5]), this.nlfsr1[7]);
 
     // Nonlinear terms using F function
-    const nonlinear1 = this._F(OpCodes.XorN(this.nlfsr1[1], this.nlfsr1[6]));
+    const nonlinear1 = this._F(OpCodes.Xor32(this.nlfsr1[1], this.nlfsr1[6]));
     const nonlinear2 = OpCodes.RotL32(this._F(this.nlfsr1[3]), 16);
 
-    return OpCodes.XorN(OpCodes.XorN(linear, nonlinear1), nonlinear2);
+    return OpCodes.Xor32(OpCodes.Xor32(linear, nonlinear1), nonlinear2);
   }
 
   /**
    * NLFSR2 feedback function
+   * @returns {uint32}
    */
   _getNLFSR2Feedback() {
     // Linear feedback polynomial terms
-    const linear = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.nlfsr2[0], this.nlfsr2[3]), this.nlfsr2[4]), this.nlfsr2[7]);
+    const linear = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.nlfsr2[0], this.nlfsr2[3]), this.nlfsr2[4]), this.nlfsr2[7]);
 
     // Nonlinear terms using F function
-    const nonlinear1 = this._F(OpCodes.XorN(this.nlfsr2[1], this.nlfsr2[5]));
+    const nonlinear1 = this._F(OpCodes.Xor32(this.nlfsr2[1], this.nlfsr2[5]));
     const nonlinear2 = OpCodes.RotL32(this._F(this.nlfsr2[2]), 8);
 
-    return OpCodes.XorN(OpCodes.XorN(linear, nonlinear1), nonlinear2);
+    return OpCodes.Xor32(OpCodes.Xor32(linear, nonlinear1), nonlinear2);
   }
 
   /**
@@ -293,25 +343,27 @@ class DragonInstance extends IAlgorithmInstance {
 
   /**
    * Generate one keystream word (32 bits)
+   * @returns {uint32}
    */
   _generateKeystreamWord() {
     // Clock the NLFSRs
     this._clockNLFSRs();
 
     // Output function combines values from both NLFSRs
-    const x1 = OpCodes.XorN(this.nlfsr1[3], this.nlfsr1[6]);
-    const x2 = OpCodes.XorN(this.nlfsr2[1], this.nlfsr2[4]);
+    const x1 = OpCodes.Xor32(this.nlfsr1[3], this.nlfsr1[6]);
+    const x2 = OpCodes.Xor32(this.nlfsr2[1], this.nlfsr2[4]);
 
     // Apply nonlinear filter
     const y1 = this._F(x1);
     const y2 = this._F(x2);
 
     // Combine with rotation and addition
-    return OpCodes.ToUint32(y1 + OpCodes.RotL32(y2, 16));
+    return OpCodes.Add32(y1, OpCodes.RotL32(y2, 16));
   }
 
   /**
    * Generate one keystream byte
+   * @returns {uint8}
    */
   _generateKeystreamByte() {
     if (!this.wordBuffer || this.wordBufferPos >= 4) {
