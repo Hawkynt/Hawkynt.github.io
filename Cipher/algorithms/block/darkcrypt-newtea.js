@@ -173,6 +173,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint32[]} The four little-endian key words
+     */
     _keyWords() {
       return [
         OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
