@@ -69,6 +69,10 @@
       this.setupKey = null;
     },
 
+    /**
+     * @param {uint8[]} key - 16-byte key
+     * @returns {boolean} true when the key was accepted
+     */
     KeySetup: function(key) {
       this.Init();
 
@@ -81,32 +85,44 @@
       return true;
     },
 
+    /**
+     * @param {int32} blockIndex - Block counter
+     * @returns {uint8[]|null} 16 keystream bytes, null without key
+     */
     generateKeystream: function(blockIndex) {
       if (!this.setupKey) return null;
 
       // Create a block using counter (simplified E2-based keystream generation)
+      /** @type {uint8[]} */
       const counter = new Array(16);
       for (let i = 0; i < 16; i++) {
-        counter[i] = OpCodes.AndN(OpCodes.Shr32(blockIndex, (i % 4 * 8)), 0xFF);
+        counter[i] = OpCodes.And32(OpCodes.Shr32(blockIndex, (i % 4 * 8)), 0xFF);
       }
 
       // Simple keystream generation based on E2 principles
+      /** @type {uint8[]} */
       const keystream = new Array(16);
       for (let i = 0; i < 16; i++) {
-        keystream[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.setupKey[i], counter[i]), (blockIndex * 17 + i)), 0xFF);
+        keystream[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this.setupKey[i], counter[i]), OpCodes.Add32(OpCodes.Mul32(blockIndex, 17), i)), 0xFF);
       }
 
       // Apply S-box-like transformation for better diffusion
       for (let i = 0; i < 16; i++) {
-        keystream[i] = OpCodes.AndN((keystream[i] + OpCodes.XorN(keystream[(i + 1) % 16], keystream[(i + 15) % 16])), 0xFF);
+        keystream[i] = OpCodes.And32(OpCodes.Add32(keystream[i], OpCodes.Xor32(keystream[(i + 1) % 16], keystream[(i + 15) % 16])), 0xFF);
       }
 
       return keystream;
     },
 
+    /**
+     * @param {int32} blockIndex - Unused block position
+     * @param {uint8[]} input - Data bytes
+     * @returns {uint8[]|null} Processed bytes, null without key or input
+     */
     EncryptBlock: function(blockIndex, input) {
       if (!input || !this.setupKey) return null;
 
+      /** @type {uint8[]} */
       const output = new Array(input.length);
 
       for (let i = 0; i < input.length; i++) {
@@ -117,12 +133,17 @@
         }
 
         // XOR input with keystream
-        output[i] = OpCodes.XorN(input[i], this.keystream[this.keystreamPos++]);
+        output[i] = OpCodes.Xor32(input[i], this.keystream[this.keystreamPos++]);
       }
 
       return output;
     },
 
+    /**
+     * @param {int32} blockIndex - Unused block position
+     * @param {uint8[]} input - Data bytes
+     * @returns {uint8[]|null} Processed bytes, null without key or input
+     */
     DecryptBlock: function(blockIndex, input) {
       // Stream cipher: decryption is same as encryption
       return this.EncryptBlock(blockIndex, input);
@@ -155,10 +176,13 @@
             this._cipher.KeySetup(this._key);
           }
 
+          /** @type {uint8[]} */
           const output = new Array(this._inputData.length);
+          /** @type {int32} */
           let blockCounter = 0;
           /** @type {uint8[]} */
           let keystream = [];
+          /** @type {int32} */
           let keystreamPos = 0;
 
           for (let i = 0; i < this._inputData.length; i++) {
@@ -167,7 +191,7 @@
               keystreamPos = 0;
             }
 
-            output[i] = OpCodes.XorN(this._inputData[i], keystream[keystreamPos++]);
+            output[i] = OpCodes.Xor32(this._inputData[i], keystream[keystreamPos++]);
           }
 
           return output;

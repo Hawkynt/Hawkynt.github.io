@@ -162,7 +162,9 @@
       this.inputBuffer = [];
 
       // Achterbahn configuration
+      /** @type {int32[]} */
       this.NLFSR_SIZES = [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+      /** @type {int32[][]} */
       this.NLFSR_TAP_POLYNOMIALS = [
         [0, 5, 17],   // NLFSR 0 (18 bits)
         [0, 2, 18],   // NLFSR 1 (19 bits)
@@ -179,7 +181,9 @@
         [0, 1, 29]    // NLFSR 12 (30 bits)
       ];
 
+      /** @type {uint8[][]|null} */
       this.nlfsr = null;
+      /** @type {int32} */
       this.numNLFSRs = 0;
       /** @type {boolean} */
       this.initialized = false;
@@ -360,7 +364,7 @@
             const byteIndex = Math.floor(ivBitIndex / 8);
             const bitIndex = ivBitIndex % 8;
             const ivBit = OpCodes.GetBit(this._iv[byteIndex], bitIndex);
-            this.nlfsr[reg][i] = OpCodes.XorN(this.nlfsr[reg][i], ivBit);
+            this.nlfsr[reg][i] = OpCodes.Xor32(this.nlfsr[reg][i], ivBit);
             ivBitIndex++;
           }
         }
@@ -375,38 +379,51 @@
     }
 
     // Clock single NLFSR with nonlinear feedback
+    /**
+     * @param {int32} regIndex
+     * @returns {uint8}
+     */
     _clockNLFSR(regIndex) {
+      /** @type {uint8[]} */
       const reg = this.nlfsr[regIndex];
+      /** @type {int32} */
       const size = this.NLFSR_SIZES[regIndex];
+      /** @type {int32[]} */
       const taps = this.NLFSR_TAP_POLYNOMIALS[regIndex];
 
       // Calculate linear feedback
+      /** @type {uint32} */
       let feedback = 0;
       for (let i = 0; i < taps.length; i++) {
-        feedback = OpCodes.XorN(feedback, reg[taps[i]]);
+        feedback = OpCodes.Xor32(feedback, reg[taps[i]]);
       }
 
       // Add nonlinear terms for security
       if (size > 20) {
-        feedback = OpCodes.XorN(feedback, OpCodes.AndN(reg[5], reg[10]));
-        feedback = OpCodes.XorN(feedback, OpCodes.AndN(reg[8], reg[15]));
+        feedback = OpCodes.Xor32(feedback, OpCodes.And32(reg[5], reg[10]));
+        feedback = OpCodes.Xor32(feedback, OpCodes.And32(reg[8], reg[15]));
       }
       if (size > 25) {
-        feedback = OpCodes.XorN(feedback, OpCodes.AndN(OpCodes.AndN(reg[3], reg[7]), reg[12]));
+        feedback = OpCodes.Xor32(feedback, OpCodes.And32(OpCodes.And32(reg[3], reg[7]), reg[12]));
       }
 
       // Shift register and insert feedback
+      /** @type {uint8} */
       const output = reg[size - 1];
       for (let i = size - 1; i > 0; i--) {
         reg[i] = reg[i - 1];
       }
-      reg[0] = OpCodes.AndN(feedback, 1);
+      reg[0] = OpCodes.And32(feedback, 1);
 
       return output;
     }
 
     // Clock all NLFSRs and collect outputs
+    /**
+     * @returns {uint8[]}
+     */
     _clockAllNLFSRs() {
+      /** @type {uint8[]} */
       const outputs = new Array(this.numNLFSRs);
       for (let i = 0; i < this.numNLFSRs; i++) {
         outputs[i] = this._clockNLFSR(i);
@@ -415,49 +432,62 @@
     }
 
     // Boolean combining function for NLFSR outputs
+    /**
+     * @param {uint8[]} inputs
+     * @returns {uint32}
+     */
     _combiningFunction(inputs) {
-      if (!inputs || inputs.length === 0) return 0;
+      if (!inputs || inputs.length === 0) {
+        return 0;
+      }
 
+      /** @type {uint32} */
       let output = 0;
 
       // Linear terms
       for (let i = 0; i < inputs.length; i++) {
-        output = OpCodes.XorN(output, inputs[i]);
+        output = OpCodes.Xor32(output, inputs[i]);
       }
 
       // Nonlinear terms for security
       if (inputs.length >= 8) {
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[0], inputs[1]));
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[2], inputs[3]));
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[4], inputs[5]));
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[6], inputs[7]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[0], inputs[1]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[2], inputs[3]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[4], inputs[5]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[6], inputs[7]));
       }
 
       if (inputs.length >= 12) {
-        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(inputs[0], inputs[2]), inputs[4]));
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[8], inputs[9]));
-        output = OpCodes.XorN(output, OpCodes.AndN(inputs[10], inputs[11]));
+        output = OpCodes.Xor32(output, OpCodes.And32(OpCodes.And32(inputs[0], inputs[2]), inputs[4]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[8], inputs[9]));
+        output = OpCodes.Xor32(output, OpCodes.And32(inputs[10], inputs[11]));
       }
 
       // Higher-order terms
       if (inputs.length >= 13) {
-        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(inputs[1], inputs[3]), inputs[5]), inputs[12]));
+        output = OpCodes.Xor32(output, OpCodes.And32(OpCodes.And32(OpCodes.And32(inputs[1], inputs[3]), inputs[5]), inputs[12]));
       }
 
-      return OpCodes.AndN(output, 1);
+      return OpCodes.And32(output, 1);
     }
 
     // Generate single keystream byte
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let keystreamByte = 0;
 
       for (let bit = 0; bit < 8; bit++) {
+        /** @type {uint8[]} */
         const nlfsr_outputs = this._clockAllNLFSRs();
+        /** @type {uint32} */
         const keystreamBit = this._combiningFunction(nlfsr_outputs);
-        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
+        keystreamByte = OpCodes.Or32(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
-      return OpCodes.AndN(keystreamByte, 0xFF);
+      return OpCodes.And32(keystreamByte, 0xFF);
     }
   }
 

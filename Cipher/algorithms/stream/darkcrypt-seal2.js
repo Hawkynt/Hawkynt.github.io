@@ -70,30 +70,47 @@
   const SHA_K = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
 
   // SHA-0-shaped compression (no message-schedule rotate) used by Gamma().
-  function compress(state, block) {
+  /**
+   * @param {uint32[]} h
+   * @param {uint8[]} block
+   */
+  function compress(h, block) {
+    /** @type {uint32[]} */
     const W = new Array(80);
     for (let t = 0; t < 16; t++)
       W[t] = OpCodes.Pack32BE(block[t * 4], block[t * 4 + 1], block[t * 4 + 2], block[t * 4 + 3]);
     for (let t = 16; t < 80; t++)
       W[t] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[t - 3], W[t - 8]), W[t - 14]), W[t - 16]);
 
-    let a = state[0], b = state[1], c = state[2], d = state[3], e = state[4];
+    /** @type {uint32} */
+    let a = h[0];
+    /** @type {uint32} */
+    let b = h[1];
+    /** @type {uint32} */
+    let c = h[2];
+    /** @type {uint32} */
+    let d = h[3];
+    /** @type {uint32} */
+    let e = h[4];
     for (let t = 0; t < 80; t++) {
-      let f, k;
+      /** @type {uint32} */
+      let f = 0;
+      /** @type {uint32} */
+      let k = 0;
       if (t < 20) { f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)); k = SHA_K[0]; }
       else if (t < 40) { f = OpCodes.Xor32(OpCodes.Xor32(b, c), d); k = SHA_K[1]; }
       else if (t < 60) { f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d)); k = SHA_K[2]; }
       else { f = OpCodes.Xor32(OpCodes.Xor32(b, c), d); k = SHA_K[3]; }
 
-      const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
+      const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), f), e), k), W[t]);
       e = d; d = c; c = OpCodes.RotL32(b, 30); b = a; a = temp;
     }
 
-    state[0] = OpCodes.ToUint32(state[0] + a);
-    state[1] = OpCodes.ToUint32(state[1] + b);
-    state[2] = OpCodes.ToUint32(state[2] + c);
-    state[3] = OpCodes.ToUint32(state[3] + d);
-    state[4] = OpCodes.ToUint32(state[4] + e);
+    h[0] = OpCodes.Add32(h[0], a);
+    h[1] = OpCodes.Add32(h[1], b);
+    h[2] = OpCodes.Add32(h[2], c);
+    h[3] = OpCodes.Add32(h[3], d);
+    h[4] = OpCodes.Add32(h[4], e);
   }
 
   class DarkCryptSeal2Algorithm extends StreamCipherAlgorithm {
@@ -168,15 +185,24 @@
       /** @type {uint8[]|null} */
       this._key = null;
 
+      /** @type {uint32[]|null} */
       this.T = null;            // 512 words
+      /** @type {uint32[]|null} */
       this.S = null;            // 256 words
+      /** @type {uint32[]|null} */
       this.R = null;            // 16 words
+      /** @type {uint32[]|null} */
       this._H = null;           // 5-word key state
+      /** @type {int32} */
       this._lastGammaIndex = -1;
+      /** @type {uint32[]|null} */
       this._gammaZ = null;
 
+      /** @type {uint32} */
       this._outsideCounter = 0;
+      /** @type {uint8[]} */
       this._keystreamBuffer = [];
+      /** @type {int32} */
       this._keystreamPos = 0;
     }
 
@@ -212,6 +238,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const out = new Array(this.inputBuffer.length);
       for (let i = 0; i < this.inputBuffer.length; i++)
         out[i] = OpCodes.And32(OpCodes.Xor32(this.inputBuffer[i], this._nextKeystreamByte()), 0xff);
@@ -223,7 +250,12 @@
     // ---- Gamma(i): SHA-0-shaped compression of H with a message block
     // that is all zero except the first word, which carries floor(i/5).
 
+    /**
+     * @param {int32} i
+     * @returns {uint32}
+     */
     _gamma(i) {
+      /** @type {int32} */
       const shaIndex = Math.floor(i / 5);
       if (shaIndex !== this._lastGammaIndex || !this._gammaZ) {
         this._gammaZ = [...this._H];
@@ -259,16 +291,28 @@
       this._keystreamPos = 0;
     }
 
+    /**
+     * @param {uint32} a
+     * @param {uint32} b
+     * @param {uint32} c
+     * @param {uint32} d
+     * @returns {uint32[]}
+     */
     _round(a, b, c, d) {
       let p = OpCodes.And32(a, 0x7fc); b = OpCodes.Add32(b, this.T[OpCodes.Shr32(p, 2)]); a = OpCodes.RotR32(a, 9);
       p = OpCodes.And32(b, 0x7fc); c = OpCodes.Add32(c, this.T[OpCodes.Shr32(p, 2)]); b = OpCodes.RotR32(b, 9);
       p = OpCodes.And32(c, 0x7fc); d = OpCodes.Add32(d, this.T[OpCodes.Shr32(p, 2)]); c = OpCodes.RotR32(c, 9);
       p = OpCodes.And32(d, 0x7fc); a = OpCodes.Add32(a, this.T[OpCodes.Shr32(p, 2)]); d = OpCodes.RotR32(d, 9);
-      return [a, b, c, d];
+      /** @type {uint32[]} */
+      const words = [a, b, c, d];
+      return words;
     }
 
     // Generates one 1024-byte (256-word) keystream block for the current
     // outsideCounter, then advances it.
+    /**
+     * @returns {uint8[]}
+     */
     _generateBlock() {
       const oc = this._outsideCounter;
       let a = OpCodes.Xor32(oc, this.R[12]);
@@ -280,6 +324,7 @@
       const n1 = d, n2 = b, n3 = a, n4 = c;
       [a, b, c, d] = this._round(a, b, c, d);
 
+      /** @type {uint8[]} */
       const output = new Array(BLOCK_BYTES);
       let pos = 0;
       for (let i = 0; i < 64; i++) {
@@ -313,6 +358,9 @@
       return output;
     }
 
+    /**
+     * @returns {uint8}
+     */
     _nextKeystreamByte() {
       if (this._keystreamPos >= this._keystreamBuffer.length) {
         this._keystreamBuffer = this._generateBlock();
