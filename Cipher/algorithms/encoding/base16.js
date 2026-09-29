@@ -129,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Base16Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -146,24 +146,23 @@
   class Base16Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Base16Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       // Use OpCodes for alphabet definition
+      /** @type {uint8[]} */
       this.alphabetBytes = OpCodes.AnsiToBytes("0123456789ABCDEF");
-      this.alphabet = String.fromCharCode(...this.alphabetBytes);
+      /** @type {string} */
+      this.alphabet = "0123456789ABCDEF";
+      /** @type {uint8[]|null} */
       this.processedData = null;
-
-      // Create decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
-        this.decodeTable[this.alphabet[i].toLowerCase()] = i;
-      }
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
     }
 
     /**
@@ -182,8 +181,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -196,74 +201,114 @@
       if (!this._feedBuffer) {
         throw new Error('Base16Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode bytes as uppercase hex digits
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII hex digits
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-
       for (let i = 0; i < data.length; i++) {
+        /** @type {uint8} */
         const byte = data[i];
         // Extract high and low nibbles (4 bits each)
-        const high_nibble = OpCodes.AndN(OpCodes.Shr32(byte, 4), 0x0F);
-        const low_nibble = OpCodes.AndN(byte, 0x0F);
-        result.push(this.alphabet.charCodeAt(high_nibble));
-        result.push(this.alphabet.charCodeAt(low_nibble));
+        /** @type {uint32} */
+        const high_nibble = OpCodes.And32(OpCodes.Shr32(byte, 4), 0x0F);
+        /** @type {uint32} */
+        const low_nibble = OpCodes.And32(byte, 0x0F);
+        result.push(this.alphabetBytes[high_nibble]);
+        result.push(this.alphabetBytes[low_nibble]);
       }
 
       return result;
     }
 
+    /**
+     * Value of a hex digit character code (0-9, A-F or a-f)
+     * @param {int32} code - Character code of a hex digit
+     * @returns {int32} Its value 0..15
+     */
+    hexValue(code) {
+      if (code <= 57) {
+        return code - 48;
+      }
+      if (code <= 70) {
+        return code - 55;
+      }
+      return code - 87;
+    }
+
+    /**
+     * Decode hex digits to bytes (case-insensitive, other characters ignored)
+     * @param {uint8[]} data - ASCII hex digits
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const input = OpCodes.BytesToChars(data);
-      let cleanInput = '';
-      for (let i = 0; i < input.length; ++i) {
-        const code = input.charCodeAt(i);
-        if ((code >= 48 && code <= 57) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102)) { // 0-9, A-F, a-f
-          cleanInput += input[i];
+      // Keep only the hex digits: 0-9, A-F, a-f
+      /** @type {int32[]} */
+      const digits = [];
+      for (let i = 0; i < data.length; ++i) {
+        /** @type {int32} */
+        const code = data[i];
+        if ((code >= 48 && code <= 57) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102)) {
+          digits.push(this.hexValue(code));
         }
       }
 
-      if (cleanInput.length % 2 !== 0) {
+      if (digits.length % 2 !== 0) {
         throw new Error('Base16Instance.decode: Invalid hex string length');
       }
 
-      const result = [];
-
-      for (let i = 0; i < cleanInput.length; i += 2) {
-        const high = this.decodeTable[cleanInput[i]];
-        const low = this.decodeTable[cleanInput[i + 1]];
-
-        if (high === undefined || low === undefined) {
-          throw new Error('Base16Instance.decode: Invalid hex character');
-        }
-
-        result.push(OpCodes.OrN(OpCodes.Shl32(high, 4), low));
+      for (let i = 0; i < digits.length; i += 2) {
+        result.push(OpCodes.Or32(OpCodes.Shl32(digits[i], 4), digits[i + 1]));
       }
 
       return result;
     }
 
     // Utility methods
+
+    /**
+     * Encode a string (one byte per character) as hex text
+     * @param {string} str - Input text
+     * @returns {string} Hex text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * Decode hex text to a string (one character per byte)
+     * @param {string} str - Hex text
+     * @returns {string} Decoded text
+     */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToChars(decoded);
     }
