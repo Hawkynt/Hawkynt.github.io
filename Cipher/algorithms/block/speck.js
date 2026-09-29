@@ -163,6 +163,16 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      // Parameters copied from the typed algorithm (the C# translation cannot
+      // reach them through this.algorithm)
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {int32} */
+      this._rounds = algorithm.ROUNDS;
+      /** @type {int32} */
+      this._alpha = algorithm.ALPHA;
+      /** @type {int32} */
+      this._beta = algorithm.BETA;
       this.isInverse = isInverse;
       this.key = null;
       /** @type {uint32[]|null} */
@@ -189,8 +199,7 @@
       }
 
       // Validate key size
-      /** @type {KeySize[]} */
-      const sizes = this.algorithm.SupportedKeySizes;
+      const sizes = this._keySizes;
       let isValidSize = false;
       for (let i = 0; i < sizes.length; i++) {
         const ks = sizes[i];
@@ -280,21 +289,19 @@
       // The lower word y is serialised first, the upper word x second.
       let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
       let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
-      /** @type {SpeckCipher} */
-      const alg = this.algorithm;
 
       // Speck encryption: 27 rounds of ARX operations
       // Round function based on NSA specification:
       // x = (ROR(x, 8) + y)^roundKey
       // y = ROL(y, 3)^x
-      for (let i = 0; i < alg.ROUNDS; i++) {
+      for (let i = 0; i < this._rounds; i++) {
         // Right rotate x by 8 bits, add y, then XOR with round key
-        x = OpCodes.RotR32(x, alg.ALPHA);
+        x = OpCodes.RotR32(x, this._alpha);
         x = OpCodes.ToUint32(x + y);
         x = OpCodes.Xor32(x, this.roundKeys[i]);
 
         // Left rotate y by 3 bits, then XOR with new x
-        y = OpCodes.RotL32(y, alg.BETA);
+        y = OpCodes.RotL32(y, this._beta);
         y = OpCodes.Xor32(y, x);
       }
 
@@ -320,22 +327,20 @@
       // The lower word y is serialised first, the upper word x second.
       let y = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
       let x = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
-      /** @type {SpeckCipher} */
-      const alg = this.algorithm;
 
       // Speck decryption: reverse the encryption process
       // Inverse operations in reverse order:
       // y = ROR(OpCodes.Xor32(y, x), 3)
       // x = ROL((OpCodes.Xor32(x, roundKey)) - y, 8)
-      for (let i = alg.ROUNDS - 1; i >= 0; i--) {
+      for (let i = this._rounds - 1; i >= 0; i--) {
         // Reverse: y = ROL(y, 3)^x
         y = OpCodes.Xor32(y, x);
-        y = OpCodes.RotR32(y, alg.BETA);
+        y = OpCodes.RotR32(y, this._beta);
 
         // Reverse: x = (ROR(x, 8) + y)^roundKey
         x = OpCodes.Xor32(x, this.roundKeys[i]);
         x = OpCodes.ToUint32(x - y);
-        x = OpCodes.RotL32(x, alg.ALPHA);
+        x = OpCodes.RotL32(x, this._alpha);
       }
 
       // Convert back to bytes using OpCodes (little-endian, lower word first)
@@ -361,32 +366,30 @@
         OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])  // l2
       ];
 
-      /** @type {SpeckCipher} */
-      const alg = this.algorithm;
 
       // Expand key to 27 round keys using Speck key schedule
       /** @type {uint32[]} */
-      const roundKeys = new Array(alg.ROUNDS);
+      const roundWords = new Array(this._rounds);
 
       // Initialize first round key and working variables
-      roundKeys[0] = k[0];  // First round key is k[0]
+      roundWords[0] = k[0];  // First round key is k[0]
       let l = [k[1], k[2], k[3]];  // Key schedule working array
 
       // Generate remaining round keys using Speck key schedule
       // Key schedule uses same ARX structure as round function
-      for (let i = 0; i < alg.ROUNDS - 1; i++) {
-        // Apply round function to l[i % 3] and roundKeys[i]
-        // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i])^i
+      for (let i = 0; i < this._rounds - 1; i++) {
+        // Apply round function to l[i % 3] and roundWords[i]
+        // l[i % 3] = (ROR(l[i % 3], 8) + roundWords[i])^i
         const idx = i % 3;
-        l[idx] = OpCodes.RotR32(l[idx], alg.ALPHA);
-        l[idx] = OpCodes.ToUint32(l[idx] + roundKeys[i]);
+        l[idx] = OpCodes.RotR32(l[idx], this._alpha);
+        l[idx] = OpCodes.ToUint32(l[idx] + roundWords[i]);
         l[idx] = OpCodes.Xor32(l[idx], i);
 
-        // Generate next round key: roundKeys[i+1] = ROL(roundKeys[i], 3)^l[i % 3]
-        roundKeys[i + 1] = OpCodes.Xor32(OpCodes.RotL32(roundKeys[i], alg.BETA), l[idx]);
+        // Generate next round key: roundWords[i+1] = ROL(roundWords[i], 3)^l[i % 3]
+        roundWords[i + 1] = OpCodes.Xor32(OpCodes.RotL32(roundWords[i], this._beta), l[idx]);
       }
 
-      return roundKeys;
+      return roundWords;
     }
   }
 
