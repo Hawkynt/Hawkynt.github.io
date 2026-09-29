@@ -244,7 +244,7 @@
       this.xBuf = [];
       /** @type {int32} */
       this.xBufOff = 0;
-      /** @type {int32} */
+      /** @type {uint64} Message length in bytes */
       this.byteCount = 0;
 
       this._Reset();
@@ -539,22 +539,16 @@
      * @returns {void}
      */
     _finish() {
-      // Encode length as 256-bit little-endian; the bit count is kept to its
-      // low 32 bits, exactly as Unpack32LE reduced it before
-      const bitCount = OpCodes.Shl32(this.byteCount, 3);
-
-      // Store bit count in L (little-endian, 64-bit is enough for practical purposes)
+      // Encode the bit count as a 256-bit little-endian number; a byte count
+      // stays below 2^53, so its bit count fits the low 64 bits
       for (let i = 0; i < 32; ++i) {
         this.L[i] = 0;
       }
-
-      // Pack 64-bit bit count (little-endian)
-      const bitCountBytes = OpCodes.Unpack32LE(bitCount);
-      this.L[0] = bitCountBytes[0];
-      this.L[1] = bitCountBytes[1];
-      this.L[2] = bitCountBytes[2];
-      this.L[3] = bitCountBytes[3];
-      // Higher bytes remain 0 for practical message sizes
+      /** @type {uint8[]} */
+      const bitCountBytes = OpCodes.EncodeMsgLength64LE(this.byteCount * 8);
+      for (let i = 0; i < 8; ++i) {
+        this.L[i] = bitCountBytes[i];
+      }
 
       // Pad with zeros to complete block
       while (this.xBufOff !== 0) {
