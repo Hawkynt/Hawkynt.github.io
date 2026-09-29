@@ -176,6 +176,26 @@ check('runtime-keyed tables: numeric key into a string-keyed dictionary is conve
 });
 
 // ---------------------------------------------------------------------------
+// JSDoc reaches the emitter
+// ---------------------------------------------------------------------------
+check('jsdoc: a method @param {uint8[]} beats body usage that suggests uint[]', () => {
+  const code = transpile('class A {\n  /**\n   * @param {uint8[]} input - bytes\n   * @returns {uint32} value\n   */\n' +
+    '  h(input) { return OpCodes.Xor32(OpCodes.Shl32(input[0], 16), input[1]); }\n  g() { return this.h([]); }\n}');
+  expectMatch(code, /\bH\(byte\[\] input/, 'H(byte[] input');
+});
+check('fields: a framework-declared field shadowed by a same-named accessor pair gets its own backing field', () => {
+  const code = transpile('class K extends IKdfInstance {\n  constructor(a) { super(a); this.Iterations = 1000; }\n' +
+    '  get iterations() { return this.Iterations; }\n  set iterations(v) { this.Iterations = v; }\n}');
+  expectMatch(code, /private int _iterations\b/, 'a private _iterations backing field');
+  expectNoMatch(code, /this\.Iterations = unchecked/, 'a cast assignment into the accessor itself');
+});
+check('jsdoc: a width-less @param {Array} does not override body-usage inference', () => {
+  const code = transpile('/**\n * @param {Array} a - [low32, high32]\n * @param {Array} b - [low32, high32]\n */\n' +
+    'function xor64(a, b) { return [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])]; }');
+  expectMatch(code, /Xor64\(uint\[\] a/, 'Xor64(uint[] a (not byte[])');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {

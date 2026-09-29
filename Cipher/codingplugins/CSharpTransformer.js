@@ -496,6 +496,23 @@
      * @returns {string|null} The type string or null if not found
      */
     getParamType(typeInfo, paramName) {
+      const type = this.getDeclaredParamType(typeInfo, paramName);
+      // A JSDoc type that states no width or signedness ({Array}, {number},
+      // {Object}, ...) is no better than the body-usage inference that follows,
+      // and often worse (Keccak's `@param {Array} a` holding [low32, high32]).
+      const name = type && typeof type === 'object' ? type.name : type;
+      if (typeof name === 'string' && /^(Array|Object|object|\*|any|number|mixed|Function|function)$/.test(name.trim()))
+        return null;
+      return type;
+    }
+
+    /**
+     * The raw declared parameter type from typeInfo.params (Map, array or plain object)
+     * @param {Object} typeInfo - Type info object from JSDoc or IL AST
+     * @param {string} paramName - Parameter name to look up
+     * @returns {string|Object|null} The declared type or null
+     */
+    getDeclaredParamType(typeInfo, paramName) {
       if (!typeInfo?.params) return null;
 
       // Handle Map format (from parseJSDocComment)
@@ -515,6 +532,10 @@
         }
         return null;
       }
+
+      // Handle plain-object format ({ name: type }, from extractTypeInfo)
+      if (typeof typeInfo.params === 'object')
+        return Object.prototype.hasOwnProperty.call(typeInfo.params, paramName) ? typeInfo.params[paramName] : null;
 
       return null;
     }
@@ -18572,9 +18593,15 @@
         // never-assigned field would be its own, differently-wrong compile error).
         if (this.isKnownFrameworkPresenceRoot(expr.right)) continue;
 
+        // A get/set pair under another raw name that maps to the same PascalCase
+        // name needs this field as its backing store (see below), inherited or not.
+        const collidingAccessorRawNames = accessorRawNamesByPascal?.get(this.toPascalCase(propName));
+        const hasAccessorCaseCollision = collidingAccessorRawNames &&
+          [...collidingAccessorRawNames].some(rawName => rawName !== propName);
+
         // Skip if this property is inherited from base class (already declared there)
         // Check type knowledge first
-        if (baseClassName) {
+        if (baseClassName && !hasAccessorCaseCollision) {
           const inheritedType = this.getInheritedPropertyType(baseClassName, this.toPascalCase(propName));
           if (inheritedType) continue;
         }
@@ -18611,10 +18638,7 @@
         // alongside a separate `get iterations()`/`set iterations(value)` pair) - that
         // shape needs its own backing field (see the caller's hasAccessorCaseCollision
         // check), not a silent skip that leaves the accessor with nothing real to
-        // reference.
-        const collidingAccessorRawNames = accessorRawNamesByPascal?.get(this.toPascalCase(propName));
-        const hasAccessorCaseCollision = collidingAccessorRawNames &&
-          [...collidingAccessorRawNames].some(rawName => rawName !== propName);
+        // reference. (hasAccessorCaseCollision is computed above.)
         if (baseClassName && knownBaseProps.includes(lowerPropName) &&
             !this.hasReservedBasePropertyTypeConflict(this.toPascalCase(propName), expr.right) &&
             !hasAccessorCaseCollision) continue;
