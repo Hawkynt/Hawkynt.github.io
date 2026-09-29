@@ -171,7 +171,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DESXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -188,7 +188,7 @@
   class DESXInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DESXAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -196,6 +196,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -274,6 +275,10 @@
     }
 
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       // Pre-whitening: XOR plaintext with K1
       const preWhitened = [];
@@ -293,6 +298,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       // Reverse post-whitening: XOR ciphertext with K2
       const postDewhitened = [];
@@ -313,6 +322,9 @@
     }
 
     // Inline DES implementation for DES-X
+    /**
+     * @param {boolean} [decrypt=false] - Decrypt instead of encrypt
+     */
     _callDES(data, key, decrypt = false) {
       if (data.length !== 8 || key.length !== 8) {
         throw new Error("DES requires 8-byte blocks and keys");
@@ -459,6 +471,9 @@
       return subkeys;
     }
 
+    /**
+     * @param {boolean} isDecrypt - Decrypt instead of encrypt
+     */
     _desCrypt(input, subkeys, isDecrypt) {
       // Convert input to bits and apply initial permutation
       let bits = this._bytesToBits(input);

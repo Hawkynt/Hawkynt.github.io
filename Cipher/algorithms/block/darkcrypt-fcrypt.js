@@ -202,6 +202,9 @@
   // 8x7=56 significant bits packed into a rotating 32+24-bit register pair;
   // each round byte-reverses the current 32-bit half for that round's subkey,
   // then rotates the pair by 11 bits for the next round).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function darkCryptFcryptExpandKey(keyBytes) {
     let eax = OpCodes.Shr32(keyBytes[0], 1);
     let edx = OpCodes.Shr32(keyBytes[1], 1);
@@ -258,6 +261,9 @@
   }
 
   // Base cipher: 16-round alternating Feistel on a 64-bit (2x32-bit LE) block.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function darkCryptFcryptCoreEncrypt(block, subkeys) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -273,6 +279,9 @@
     return [...OpCodes.Unpack32LE(A), ...OpCodes.Unpack32LE(B)];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function darkCryptFcryptCoreDecrypt(block, subkeys) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -341,24 +350,37 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptFcryptEdeInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptFcryptEdeInstance(this, isInverse);
     }
   }
 
   class DarkCryptFcryptEdeInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptFcryptEdeAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.kc = null;
       this.ka = null;
       this.kb = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.kc = null; this.ka = null; this.kb = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 24)
@@ -370,6 +392,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -384,6 +409,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -394,6 +420,10 @@
     }
 
     // crypt(block) = Encrypt(Decrypt(Encrypt(block,Kc),Ka),Kb)
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let stage = darkCryptFcryptCoreEncrypt(block, this.kc);
       stage = darkCryptFcryptCoreDecrypt(stage, this.ka);
@@ -402,6 +432,10 @@
     }
 
     // decrypt(block) = Decrypt(Encrypt(Decrypt(block,Kb),Ka),Kc)
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let stage = darkCryptFcryptCoreDecrypt(block, this.kb);
       stage = darkCryptFcryptCoreEncrypt(stage, this.ka);

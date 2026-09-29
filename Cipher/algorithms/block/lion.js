@@ -147,7 +147,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LIONInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -165,14 +165,16 @@
   class LIONInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LIONAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.key1 = null; // First half of key
       this.key2 = null; // Second half of key
@@ -395,6 +397,7 @@
         throw new Error("Input must be multiple of block size (" + this.blockSize + " bytes)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each block

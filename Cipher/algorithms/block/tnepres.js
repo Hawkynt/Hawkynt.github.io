@@ -198,7 +198,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TnepresInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -215,7 +215,7 @@
   class TnepresInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TnepresAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -224,6 +224,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -679,6 +680,10 @@
     }
 
     // Encrypt a block - Tnepres uses big-endian byte order
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Tnepres block size must be exactly 16 bytes');
@@ -727,6 +732,10 @@
     }
 
     // Decrypt a block - Tnepres uses big-endian byte order
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('Tnepres block size must be exactly 16 bytes');

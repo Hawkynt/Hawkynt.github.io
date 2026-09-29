@@ -80,6 +80,9 @@
   // schedule, and each subsequent word is derived by a 9/7-bit split of
   // earlier words (equivalent to rotating a 128-bit register left by 25 bits
   // and re-slicing it into 16-bit windows).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function expandKey(keyBytes) {
     const w = new Array(55);
     for (let i = 0; i < 8; i++) w[i] = OpCodes.Pack16LE(keyBytes[i * 2], keyBytes[i * 2 + 1]);
@@ -152,22 +155,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptPESInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptPESInstance(this, isInverse);
     }
   }
 
   class DarkCryptPESInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptPESAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._T = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._T = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -177,6 +193,9 @@
       this._T = buildTables(expandKey(keyBytes));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -191,6 +210,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -200,6 +220,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const T = this._T;
       let X1 = OpCodes.Pack16LE(block[0], block[1]);
@@ -234,6 +258,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const T = this._T;
       let X1 = OpCodes.Pack16LE(block[0], block[1]);

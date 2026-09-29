@@ -93,7 +93,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Pyjamask128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -110,15 +110,17 @@
   class Pyjamask128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Pyjamask128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
     }
@@ -206,6 +208,9 @@
     }
 
     // Key expansion function
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     expandKey(keyBytes) {
       const roundKeys = [];
 
@@ -277,6 +282,10 @@
     }
 
     // Encryption function
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       if (!this.roundKeys) {
         throw new Error('Key not set');
@@ -326,6 +335,10 @@
     }
 
     // Decryption function
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       if (!this.roundKeys) {
         throw new Error('Key not set');
@@ -396,6 +409,7 @@
       if (!this._key) throw new Error('Key not set');
       if (this.inputBuffer.length === 0) throw new Error('No data fed');
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
       if (this.inputBuffer.length % blockSize !== 0)

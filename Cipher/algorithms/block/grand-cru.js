@@ -92,6 +92,9 @@
   ]);
 
   // Generate key-dependent S-box by permuting base S-box using key material
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function generateKeyDependentSbox(keyBytes) {
     const sbox = new Uint8Array(BASE_SBOX);
     const invSbox = new Uint8Array(256);
@@ -121,6 +124,9 @@
   }
 
   // Key-dependent shift amounts (derived from key)
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function generateKeyDependentShifts(keyBytes) {
     let seed = 0;
     for (let i = 0; i < keyBytes.length; ++i) {
@@ -233,7 +239,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GrandCruInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -248,6 +254,10 @@
  */
 
   class GrandCruInstance extends IBlockCipherInstance {
+    /**
+     * @param {GrandCruAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super(algorithm);
       this.isInverse = !!isInverse;
@@ -256,6 +266,7 @@
       this._rounds = ROUNDS;
       this.roundKeys = null;
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.sbox = null;
       this.invSbox = null;
@@ -370,6 +381,7 @@
         throw new Error("Input length must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {
         const block = this.inputBuffer.slice(offset, offset + BLOCK_SIZE);
@@ -389,6 +401,9 @@
       this.inputBuffer.length = 0;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
       const nk = KEY_SIZE / 4;
@@ -434,6 +449,10 @@
       return { keyCopy, roundKeys };
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!this.roundKeys) {
         throw new Error("Key not set");
@@ -468,6 +487,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!this.roundKeys) {
         throw new Error("Key not set");

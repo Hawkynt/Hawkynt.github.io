@@ -76,6 +76,9 @@
     return { f, g };
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function md5Encrypt(block, M) {
     let [A, B, C, D] = block;
     for (let i = 0; i < 64; i++) {
@@ -90,6 +93,9 @@
   // Inverse: replay the 64 steps back to front. At step i the forward transform was
   // (A,B,C,D) -> (D, B+rotl(f+A+T+M,S), B, C); given the post-state we recover B_old = C_new,
   // C_old = D_new, D_old = A_new, and A_old by undoing the rotate/add on B_new.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function md5Decrypt(block, M) {
     let [A, B, C, D] = block;
     for (let i = 63; i >= 0; i--) {
@@ -146,20 +152,33 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMD5Instance} New instance
+     */
     CreateInstance(isInverse = false) { return new DarkCryptMD5Instance(this, isInverse); }
   }
 
   class DarkCryptMD5Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMD5Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._M = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._M = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 64)
@@ -171,6 +190,9 @@
         this._M.push(OpCodes.Pack32LE(keyBytes[i * 4], keyBytes[i * 4 + 1], keyBytes[i * 4 + 2], keyBytes[i * 4 + 3]));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -185,6 +207,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -194,6 +217,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _blockToWords(block) {
       return [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
@@ -210,11 +236,19 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const out = md5Encrypt(this._blockToWords(block), this._M);
       return this._wordsToBlock(out);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const out = md5Decrypt(this._blockToWords(block), this._M);
       return this._wordsToBlock(out);

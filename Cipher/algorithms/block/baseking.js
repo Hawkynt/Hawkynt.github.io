@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BaseKingInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -154,6 +154,9 @@
     }
 
     // Add cipher key and round constant to the state
+    /**
+     * @param {uint8[]} block - Input block
+     */
     keyAddition(mode, block, key, r) {
       const result = [...block];
 
@@ -183,6 +186,9 @@
     }
 
     // Transform the words with a linear transformation of high diffusion
+    /**
+     * @param {uint8[]} block - Input block
+     */
     diffusion(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
@@ -195,6 +201,9 @@
     }
 
     // Shift each 16-bit word in the state the amount specified in ROTATION_CONSTANTS to the left
+    /**
+     * @param {uint8[]} block - Input block
+     */
     earlyShift(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
@@ -204,6 +213,9 @@
     }
 
     // Nonlinear transformation of words (the gamma operation)
+    /**
+     * @param {uint8[]} block - Input block
+     */
     sBox(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
@@ -213,6 +225,9 @@
     }
 
     // Shift each word in the state the amount specified in ROTATION_CONSTANTS to the right
+    /**
+     * @param {uint8[]} block - Input block
+     */
     lateShift(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
@@ -222,6 +237,9 @@
     }
 
     // Core BaseKing algorithm (encrypts if mode is 'enc', decrypts if mode is 'dec')
+    /**
+     * @param {uint8[]} block - Input block
+     */
     baseKing(block, key, mode) {
       let state = [...block];
 
@@ -252,12 +270,18 @@
  */
 
   class BaseKingInstance extends IBlockCipherInstance {
+    /**
+     * @param {BaseKingAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super();
       this.algorithm = algorithm;
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.keyWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Properties
@@ -344,6 +368,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each block
@@ -362,6 +387,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Convert bytes to 16-bit words (big-endian) using OpCodes
       const words = [];
@@ -383,6 +412,10 @@
       return outputBytes;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       // Convert bytes to 16-bit words (big-endian) using OpCodes
       const words = [];

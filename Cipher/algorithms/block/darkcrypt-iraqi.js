@@ -198,6 +198,10 @@
 
   // 5-round Feistel; because the round function is identical every round and the
   // halves are swapped on output, this is an involution (encrypt === decrypt).
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function processBlock(sched, block) {
     let L = block.slice(0, 16), R = block.slice(16, 32);
     for (let round = 0; round < ROUNDS; round++) {
@@ -261,22 +265,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptIraqiInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptIraqiInstance(this, isInverse);
     }
   }
 
   class DarkCryptIraqiInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptIraqiAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._sched = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_LEN;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._sched = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_LEN)
@@ -286,6 +303,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -300,6 +320,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -310,7 +331,15 @@
     }
 
     // The cipher is an involution, so encrypt and decrypt are identical.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) { return processBlock(this._sched, block); }
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) { return processBlock(this._sched, block); }
   }
 

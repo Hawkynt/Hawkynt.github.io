@@ -102,6 +102,9 @@
   }
 
   // Build the 232-byte key-expansion buffer L.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildL(keyBytes) {
     const L = new Array(232);
     for (let i = 0; i < 32; i++) L[i] = keyBytes[i % 8];
@@ -171,6 +174,9 @@
     return M;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keySchedule(keyBytes) {
     const L = buildL(keyBytes);
     const cursor = { pos: 32 };
@@ -245,22 +251,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptTC18Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptTC18Instance(this, isInverse);
     }
   }
 
   class DarkCryptTC18Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptTC18Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._sched = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._sched = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 8)
@@ -270,6 +289,9 @@
       this._sched = keySchedule(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -284,6 +306,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -293,6 +316,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let P0 = block.slice(0, 8), P1 = block.slice(8, 16);
       for (let r = 0; r < 16; r += 2) {
@@ -302,6 +329,10 @@
       return P0.concat(P1);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let P0 = block.slice(0, 8), P1 = block.slice(8, 16);
       for (let r = 15; r >= 1; r -= 2) {

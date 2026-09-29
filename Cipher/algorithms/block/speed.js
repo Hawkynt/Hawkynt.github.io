@@ -241,16 +241,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SPEEDInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SPEEDInstance(this, isInverse);
     }
   }
 
   class SPEEDInstance extends IBlockCipherInstance {
+    /**
+     * @param {SPEED} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._widthBytes = 16;   // bytes; w = 128 bits
       this._rounds = 0;       // 0 means "use the recommended count for w"
@@ -259,6 +269,9 @@
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -281,6 +294,9 @@
       this._roundKeys = null; // rebuilt lazily: it depends on blockSize and rounds too
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     set blockSize(width) {
@@ -323,6 +339,7 @@
 
       if (!this._roundKeys) this._roundKeys = this._expandKey();
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this._widthBytes) {
         const block = this.inputBuffer.slice(i, i + this._widthBytes);
@@ -396,6 +413,9 @@
 
     // t7 is the FIRST word group of the block and t0 the last; bytes within a
     // word are big-endian.
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _loadBlock(block) {
       const { wordBytes, fullMask } = this._shape();
       const t = new Array(8);
@@ -419,6 +439,10 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const { wordBits, fullMask, halfBits, halfMask, vvShift, fixedRotate } = this._shape();
       const rk = this._roundKeys;
@@ -438,6 +462,10 @@
       return this._storeBlock(t);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const { wordBits, fullMask, halfBits, halfMask, vvShift, fixedRotate } = this._shape();
       const rk = this._roundKeys;

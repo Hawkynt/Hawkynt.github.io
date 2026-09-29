@@ -91,6 +91,9 @@
   const TABLE3 = [0x00, 0x03, 0x0a, 0x05, 0x04, 0x07, 0x0e, 0x09, 0x08, 0x0b, 0x02, 0x0d, 0x0c, 0x0f, 0x06, 0x01];
 
   // Computes the byte XORed into block[i] during round r; reads every other byte of block.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function mix(block, key, r, i) {
     let ah = SBOX[r * 8 + i];
     for (let j = 0; j < BLOCK_BYTES; j++) {
@@ -152,21 +155,34 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSnappyInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSnappyInstance(this, isInverse);
     }
   }
 
   class DarkCryptSnappyInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSnappyAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -175,6 +191,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -189,6 +208,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -198,6 +218,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const b = [...block];
       const key = this._key;
@@ -207,6 +231,10 @@
       return b;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const b = [...block];
       const key = this._key;

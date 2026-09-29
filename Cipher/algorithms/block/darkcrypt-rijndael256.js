@@ -158,22 +158,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptRijndael256Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptRijndael256Instance(this, isInverse);
     }
   }
 
   class DarkCryptRijndael256Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptRijndael256Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = null; // NR+1 words of NB*4 bytes each, stored as [round][col][row]
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_SIZE)
@@ -183,6 +196,9 @@
       this.roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -197,6 +213,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -209,6 +226,9 @@
     // Generalized Rijndael key schedule: RotWord+SubWord+Rcon every Nk
     // words, plus (since Nk=8 > 6) an extra SubWord-only step at the
     // halfway point of each Nk-word group, per the original Rijndael spec.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const totalWords = NB * (NR + 1);
       const w = new Array(totalWords);
@@ -231,6 +251,9 @@
       return w;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _stateFromBlock(block) {
       const state = [[], [], [], []];
       for (let c = 0; c < NB; c++)
@@ -302,6 +325,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const state = this._stateFromBlock(block);
       this._addRoundKey(state, 0);
@@ -317,6 +344,10 @@
       return this._blockFromState(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const state = this._stateFromBlock(block);
       this._addRoundKey(state, NR);

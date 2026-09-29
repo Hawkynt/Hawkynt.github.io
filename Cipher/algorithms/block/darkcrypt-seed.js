@@ -272,22 +272,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSEEDInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSEEDInstance(this, isInverse);
     }
   }
 
   class DarkCryptSEEDInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSEEDAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
       this.workingKey = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.workingKey = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -297,6 +310,9 @@
       this.workingKey = this._createWorkingKey(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -311,6 +327,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -322,6 +339,9 @@
 
     // Key schedule per RFC 4269 §3.2, operating on little-endian 32-bit words
     // (identical math to the RFC, only the byte<->word packing differs).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _createWorkingKey(keyBytes) {
       const key = new Array(32);
 
@@ -353,6 +373,10 @@
       return key;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       let lHigh = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       let lLow = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
@@ -380,6 +404,10 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       let lHigh = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       let lLow = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);

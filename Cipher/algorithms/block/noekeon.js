@@ -151,7 +151,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {NOEKEONInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -168,7 +168,7 @@
   class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NOEKEONCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -177,6 +177,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.keyWords = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.outputBuffer = [];
       this.BlockSize = 16;    // 128-bit blocks
@@ -266,6 +267,9 @@
       this.outputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _convertKeyToWords(keyBytes) {
       // Direct mode NOEKEON - use cipher key directly as working key
       const keyWords = new Array(4);
@@ -300,6 +304,10 @@
       return keyWords;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('NOEKEON: Input must be exactly 16 bytes');
@@ -364,6 +372,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} blockBytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 16) {
         throw new Error('NOEKEON: Input must be exactly 16 bytes');

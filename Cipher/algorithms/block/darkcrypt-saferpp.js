@@ -188,22 +188,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSaferPlusPlusInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSaferPlusPlusInstance(this, isInverse);
     }
   }
 
   class DarkCryptSaferPlusPlusInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSaferPlusPlusAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.K = null; // 22 round-key entries of 16 bytes each (only 0..20 used)
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.K = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_SIZE)
@@ -213,6 +226,9 @@
       this.K = this._scheduleKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -227,6 +243,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -244,6 +261,9 @@
     // bits before the next round pair. K[2p] is the upper/XOR-layer key,
     // K[2p+1] the lower/ADD-layer key; only K[0..20] are ever used (K[21]
     // is unused padding).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _scheduleKey(keyBytes) {
       const ka = new Array(KA_LEN);
       const kb = new Array(KA_LEN);
@@ -280,16 +300,25 @@
       return K;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _sboxRound(block, K, K1) {
       for (const idx of EBOX_POS) block[idx] = OpCodes.And32(EBOX[OpCodes.Xor32(block[idx], K[idx])] + K1[idx], 0xFF);
       for (const idx of LBOX_POS) block[idx] = OpCodes.And32(OpCodes.Xor32(LBOX[OpCodes.And32(block[idx] + K[idx], 0xFF)], K1[idx]), 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _isboxRound(block, K, K1) {
       for (const idx of EBOX_POS) block[idx] = OpCodes.Xor32(LBOX[OpCodes.And32(block[idx] - K1[idx], 0xFF)], K[idx]);
       for (const idx of LBOX_POS) block[idx] = OpCodes.And32(EBOX[OpCodes.Xor32(block[idx], K1[idx])] - K[idx], 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _pht4(block, off) {
       const s = OpCodes.And32(block[off] + block[off + 1] + block[off + 2] + block[off + 3], 0xFF);
       block[off] = OpCodes.And32(block[off] + s, 0xFF);
@@ -298,6 +327,9 @@
       block[off + 3] = s;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _ipht4(block, off) {
       const s = block[off + 3];
       const a = OpCodes.And32(block[off] - s, 0xFF);
@@ -309,18 +341,27 @@
       block[off + 3] = OpCodes.And32(s - a - b - c, 0xFF);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _shuffle(block) {
       const out = new Array(16);
       for (let i = 0; i < 16; i++) out[i] = block[SHUFFLE[i]];
       for (let i = 0; i < 16; i++) block[i] = out[i];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _ishuffle(block) {
       const out = new Array(16);
       for (let i = 0; i < 16; i++) out[i] = block[ISHUFFLE[i]];
       for (let i = 0; i < 16; i++) block[i] = out[i];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _lt(block) {
       this._shuffle(block);
       this._pht4(block, 0); this._pht4(block, 4); this._pht4(block, 8); this._pht4(block, 12);
@@ -328,6 +369,9 @@
       this._pht4(block, 0); this._pht4(block, 4); this._pht4(block, 8); this._pht4(block, 12);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _ilt(block) {
       this._ipht4(block, 0); this._ipht4(block, 4); this._ipht4(block, 8); this._ipht4(block, 12);
       this._ishuffle(block);
@@ -335,6 +379,10 @@
       this._ishuffle(block);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(input) {
       const block = [...input];
       for (let r = 0; r < ROUNDS; r++) {
@@ -351,6 +399,10 @@
       return block;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(input) {
       const block = [...input];
       const kf = this.K[2 * ROUNDS];

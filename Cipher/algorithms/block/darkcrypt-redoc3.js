@@ -118,16 +118,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptREDOC3Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptREDOC3Instance(this, isInverse);
     }
   }
 
   class DarkCryptREDOC3Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptREDOC3Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 0;
@@ -135,6 +145,9 @@
       this._subkey = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._table = null; this._subkey = null; return; }
       if (keyBytes.length !== KEY_BYTES)
@@ -145,6 +158,9 @@
       this._subkey = this._foldSubkey(this._table);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     // Classic LCG (Borland/Turbo C runtime rand()): seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF
@@ -199,6 +215,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -208,6 +225,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const table = this._table, subkey = this._subkey;
       const data = block.slice(0, TRANSFORMED_BYTES);
@@ -226,6 +247,10 @@
       return [...data, block[8], block[9]];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const table = this._table, subkey = this._subkey;
       const data = block.slice(0, TRANSFORMED_BYTES);

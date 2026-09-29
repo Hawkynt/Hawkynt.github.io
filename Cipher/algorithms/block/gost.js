@@ -195,7 +195,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Gost28147Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -210,11 +210,17 @@
  */
 
   class Gost28147Instance extends IBlockCipherInstance {
+    /**
+     * @param {Gost28147Algorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super(algorithm);
       this.isInverse = !!isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = GOST28147_BLOCK_SIZE;
       this.KeySize = 0;
@@ -301,6 +307,7 @@
         throw new Error("Input length must be multiple of " + GOST28147_BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let offset = 0; offset < this.inputBuffer.length; offset += GOST28147_BLOCK_SIZE) {
         const block = this.inputBuffer.slice(offset, offset + GOST28147_BLOCK_SIZE);
@@ -321,6 +328,10 @@
       this.inputBuffer.length = 0;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!block || block.length !== GOST28147_BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
@@ -356,6 +367,10 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!block || block.length !== GOST28147_BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
@@ -387,6 +402,9 @@
       return leftBytes.concat(rightBytes);
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const subkeys = new Uint32Array(GOST28147_KEY_BYTES / 4);
       for (let i = 0; i < subkeys.length; i++) {
@@ -517,7 +535,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GostKuznyechikInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -534,7 +552,7 @@
   class GostKuznyechikInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GostKuznyechikAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -543,6 +561,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = KUZNYECHIK_BLOCK_SIZE;
       this.KeySize = 0;
@@ -607,6 +626,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -623,6 +643,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== KUZNYECHIK_BLOCK_SIZE) {
         throw new Error("GOST R 34.12-2015 requires exactly 16 bytes per block");
@@ -641,6 +665,10 @@
       return state;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== KUZNYECHIK_BLOCK_SIZE) {
         throw new Error("GOST R 34.12-2015 requires exactly 16 bytes per block");
@@ -742,6 +770,9 @@
       return temp;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const roundKeys = [];
       const roundConstants = this._generateRoundConstants();

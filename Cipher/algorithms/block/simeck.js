@@ -162,7 +162,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SIMECK32Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -179,14 +179,16 @@
   class SIMECK32Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SIMECK32Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = new Array(32); // 32 rounds for SIMECK-32
     }
@@ -293,6 +295,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 4;
       if (this.inputBuffer.length % blockSize !== 0)
@@ -309,6 +312,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       const state = new Array(2);
 
@@ -458,7 +465,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SIMECK64Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -475,14 +482,16 @@
   class SIMECK64Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SIMECK64Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = new Array(44); // 44 rounds for SIMECK-64
     }
@@ -591,6 +600,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
@@ -607,6 +617,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       const state = new Array(2);
 

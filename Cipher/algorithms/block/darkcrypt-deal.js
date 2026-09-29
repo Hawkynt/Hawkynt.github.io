@@ -139,17 +139,27 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptDEALInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptDEALInstance(this, isInverse);
     }
   }
 
   class DarkCryptDEALInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptDEALAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._subKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -160,6 +170,9 @@
       this._desAlgorithm = new (getDES().DESAlgorithm)();
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._subKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -169,6 +182,9 @@
       this._subKeys = this._generateSubKeys(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -183,6 +199,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -194,6 +211,10 @@
 
     // DES-encrypt an 8-byte block under an 8-byte key (used both for the
     // DEAL round function and for round-key expansion).
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @param {uint8[]} blockBytes - Input block
+     */
     _desEncrypt(keyBytes, blockBytes) {
       const inst = new (getDES().DESInstance)(this._desAlgorithm, false);
       inst.key = keyBytes;
@@ -207,6 +228,9 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateSubKeys(keyBytes) {
       const k = [];
       for (let i = 0; i < KEY_BLOCKS; i++) k.push(keyBytes.slice(i * 8, i * 8 + 8));
@@ -225,6 +249,10 @@
       return subKeys;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let left = block.slice(0, 8);
       let right = block.slice(8, 16);
@@ -238,6 +266,10 @@
       return left.concat(right);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const revKeys = this._subKeys.slice().reverse();
       let left = block.slice(0, 8);

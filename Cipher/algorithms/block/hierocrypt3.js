@@ -90,21 +90,34 @@ class Hierocrypt3 extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {Hierocrypt3Instance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new Hierocrypt3Instance(this, isInverse);
   }
 }
 
 class Hierocrypt3Instance extends IBlockCipherInstance {
+  /**
+   * @param {Hierocrypt3} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
     this._roundKeys = null;
     this._rounds = 0;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -125,6 +138,9 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     this._roundKeys = this._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() { return this._key ? [...this._key] : null; }
 
   Feed(data) {
@@ -137,6 +153,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+    /** @type {uint8[]} */
     const output = [];
     const blockSize = 16;
 
@@ -189,6 +206,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return roundKeys;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(data) {
     let state = new Uint8Array(data);
 
@@ -205,6 +226,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     return state;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(data) {
     let state = new Uint8Array(data);
 

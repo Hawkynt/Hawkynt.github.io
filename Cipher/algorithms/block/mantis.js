@@ -145,6 +145,9 @@
   }
 
   // Apply S-box to all nibbles
+  /**
+   * @param {boolean} [inverse=false] - Decrypt instead of encrypt
+   */
   function subCells(nibbles, inverse = false) {
     const sbox = inverse ? INV_SBOX : SBOX;
     const result = new Array(16);
@@ -225,7 +228,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MantisInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -242,14 +245,16 @@
   class MantisInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Mantis} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._tweak = null;
       this._k0 = null;
@@ -358,6 +363,7 @@
         throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 8;
 
@@ -371,6 +377,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     processBlock(block) {
       // State is 8 bytes
       let state = [...block];

@@ -184,6 +184,9 @@
     return tmp;
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function keyBufBlock(keyBytes, blockIndex) {
     const n = keyBytes.length;
     const bytes = [];
@@ -203,6 +206,9 @@
   // Full 14-entry round-key schedule: RK[0..6] via plain CFB, RK[7..13] via CFB + rejection
   // sampling (RK[7] is the plaintext "multiplier" key; RK[8..12] fold into rounds 0..4's
   // diffusion matrices; RK[13] feeds the final round's diffusion-matrix construction).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function deriveRoundKeys(keyBytes) {
     /** @type {uint8[]} */
     let feedback = [0, 0];
@@ -365,16 +371,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SharkADarkCryptInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SharkADarkCryptInstance(this, isInverse);
     }
   }
 
   class SharkADarkCryptInstance extends IBlockCipherInstance {
+    /**
+     * @param {SharkADarkCryptAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -387,6 +403,9 @@
       this._roundFold = null;   // fold[0..5]: 8-byte round-key XOR applied after diffusion
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0;
@@ -401,6 +420,9 @@
       this._setupSchedule();
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     _setupSchedule() {
@@ -442,6 +464,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -452,6 +475,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       // Initial whitening: byte-wise GF(2^8) multiplication of the plaintext with RK[7],
       // XORed with RK[0].
@@ -465,6 +492,10 @@
       return W;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       this._ensureInverseMatrices();
 

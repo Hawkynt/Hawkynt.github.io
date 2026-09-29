@@ -119,7 +119,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Gift128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -136,14 +136,16 @@
   class Gift128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Gift128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
     }
@@ -342,6 +344,10 @@
     }
 
     // Encrypt a single 16-byte block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(input) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -395,6 +401,10 @@
     }
 
     // Decrypt a single 16-byte block
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(input) {
       if (!this._key) {
         throw new Error("Key not set");
@@ -488,6 +498,7 @@
         throw new Error("Invalid block size: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 16-byte block

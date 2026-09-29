@@ -368,7 +368,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Midori64Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -385,14 +385,16 @@
   class Midori64Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Midori64} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
     }
@@ -452,6 +454,7 @@
         throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 8;
 
@@ -465,6 +468,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     processBlock(block) {
       // Convert block to 16 nibbles (4×4 state)
       let state = new Array(16);
@@ -593,7 +600,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Midori128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -610,14 +617,16 @@
   class Midori128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Midori128} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
     }
@@ -677,6 +686,7 @@
         throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 16)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 16;
 
@@ -690,6 +700,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     processBlock(block) {
       // Midori128 state uses column-major order to match reference implementation
       // Python: i = col * 4 + row, so byte 0->state[0,0], byte 1->state[1,0], etc.

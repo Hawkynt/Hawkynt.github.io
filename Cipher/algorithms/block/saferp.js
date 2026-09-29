@@ -192,7 +192,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SAFERPInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -209,14 +209,16 @@
   class SAFERPInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SAFERPAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._rounds = 0;
       this.K = []; // Round keys
@@ -438,6 +440,7 @@
         throw new Error("Input must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {

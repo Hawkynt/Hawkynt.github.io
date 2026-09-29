@@ -230,7 +230,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RijndaelInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -245,6 +245,10 @@
  */
 
   class RijndaelInstance extends IBlockCipherInstance {
+    /**
+     * @param {RijndaelAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} isInverse - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse) {
       super(algorithm);
       this.isInverse = !!isInverse;
@@ -253,6 +257,7 @@
       this.rounds = 0;
       this.roundKeys = null;
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.tables = algorithm.tables;
     }
@@ -341,6 +346,7 @@
         throw new Error("Input length must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {
         const block = this.inputBuffer.slice(offset, offset + BLOCK_SIZE);
@@ -354,10 +360,18 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       return this._encryptBlock(block);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       return this._decryptBlock(block);
     }
@@ -368,6 +382,9 @@
       this.inputBuffer.length = 0;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const tables = this.tables;
       const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
@@ -418,6 +435,10 @@
       };
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (!this.roundKeys) {
         throw new Error("Key not set");
@@ -452,6 +473,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (!this.roundKeys) {
         throw new Error("Key not set");

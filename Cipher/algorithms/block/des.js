@@ -138,7 +138,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DESInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,7 +155,7 @@
   class DESInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DESAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -164,6 +164,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -363,14 +364,27 @@
       return subkeys;
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(input) {
       return this._crypt(input, false);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(input) {
       return this._crypt(input, true);
     }
 
+    /**
+     * @param {uint8[]} input - Input block
+     * @param {boolean} isDecrypt - Decrypt instead of encrypt
+     * @returns {uint8[]} Output block
+     */
     _crypt(input, isDecrypt) {
       // Convert input to bits and apply initial permutation
       let bits = this._bytesToBits(input);

@@ -340,7 +340,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Diamond2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -357,14 +357,16 @@
   class Diamond2Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Diamond2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.rounds = 10; // Default 10 rounds (as own property for TestCore compatibility)
       this._sboxRounds = 0; // Track rounds for which S-boxes were generated
@@ -689,6 +691,7 @@
         }
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process each 16-byte block
@@ -709,6 +712,8 @@
     /**
      * Encrypt one 16-byte block
      * Algorithm: substitute -> (permute -> substitute) repeated for all rounds
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
       let state = new Uint8Array(block);
@@ -728,6 +733,8 @@
     /**
      * Decrypt one 16-byte block
      * Reverse operations in reverse order
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
       let state = new Uint8Array(block);
