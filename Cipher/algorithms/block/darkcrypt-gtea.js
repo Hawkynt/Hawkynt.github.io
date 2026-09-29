@@ -555,11 +555,13 @@
         idx2 = idx2 + 2;
       }
 
+      const o0 = OpCodes.Xor32(v0, W[4]);
+      const o1 = OpCodes.Xor32(v1, W[5]);
+      const o2 = OpCodes.Xor32(v2, W[6]);
+      const o3 = OpCodes.Xor32(v3, W[7]);
       return [
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v0, W[4])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v1, W[5])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v2, W[6])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v3, W[7]))
+        ...OpCodes.Unpack32LE(o0), ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2), ...OpCodes.Unpack32LE(o3)
       ];
     }
 
@@ -600,11 +602,13 @@
         newV1 = v0; newV3 = v1; x = v2; z = v3;
       }
 
+      const o0 = OpCodes.Sub32(newV1, W[0]);
+      const o1 = OpCodes.Sub32(newV3, W[1]);
+      const o2 = OpCodes.Sub32(x, W[2]);
+      const o3 = OpCodes.Sub32(z, W[3]);
       return [
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(newV1 - W[0])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(newV3 - W[1])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(x - W[2])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(z - W[3]))
+        ...OpCodes.Unpack32LE(o0), ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2), ...OpCodes.Unpack32LE(o3)
       ];
     }
   }
