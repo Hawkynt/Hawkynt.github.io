@@ -79,7 +79,7 @@
   // always expose through a get/set accessor pair (never a raw public
   // field) - the same enumerated list the test harness itself uses to
   // generically apply test-vector fields onto a constructed instance (see
-  // tests/TranspilerValidationSuite.js's "_setup_instance_pl"/
+  // tests/TranspilerValidation.js's "_setup_instance_pl"/
   // "_set_test_property" property-name allowlist, which this mirrors) -
   // used by _isCipherInstanceRef()'s call sites in transformMemberExpression/
   // transformAssignmentExpression to decide whether a CROSS-FILE property

@@ -306,7 +306,7 @@ class JavaScriptPlugin extends LanguagePlugin {
 
   /**
    * Public accessor for the standalone runtime prelude (see
-   * _buildStandalonePrelude). Used by TranspilerValidationSuite.js's
+   * _buildStandalonePrelude). Used by tests/TranspilerValidation.js's
    * cipher-mode bundling to splice bundled dependency-cipher class code
    * between the shared prelude and the mode's own class code, so the
    * dependency's bare RegisterAlgorithm/BlockCipherAlgorithm/etc identifiers
