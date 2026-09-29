@@ -40,30 +40,45 @@
   const DEFAULT_ROUNDS = 128;
 
   // Pi functions
+  /**
+   * @param {uint32[]} p - Two-word state, updated in place
+   */
   function pi1(p) {
     p[1] = OpCodes.Xor32(p[1], p[0]);
   }
 
+  /**
+   * @param {uint32[]} p - Two-word state, updated in place
+   * @param {uint32[]} k - Four key words
+   */
   function pi2(p, k) {
-    let t = OpCodes.ToUint32((p[1] + k[0]));
-    t = OpCodes.ToUint32(OpCodes.RotL32(t, 1) + t - 1);
+    let t = OpCodes.Add32(p[1], k[0]);
+    t = OpCodes.Sub32(OpCodes.Add32(OpCodes.RotL32(t, 1), t), 1);
     t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(t, 4), t));
     p[0] = OpCodes.Xor32(p[0], t);
   }
 
+  /**
+   * @param {uint32[]} p - Two-word state, updated in place
+   * @param {uint32[]} k - Four key words
+   */
   function pi3(p, k) {
-    let t = OpCodes.ToUint32((p[0] + k[1]));
-    t = OpCodes.ToUint32(OpCodes.RotL32(t, 2) + t + 1);
+    let t = OpCodes.Add32(p[0], k[1]);
+    t = OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(t, 2), t), 1);
     t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(t, 8), t));
-    t = OpCodes.ToUint32((t + k[2]));
-    t = OpCodes.ToUint32(OpCodes.RotL32(t, 1) - t);
+    t = OpCodes.Add32(t, k[2]);
+    t = OpCodes.Sub32(OpCodes.RotL32(t, 1), t);
     t = OpCodes.Xor32(OpCodes.RotL32(t, 16), (p[0]|t));
     p[1] = OpCodes.Xor32(p[1], t);
   }
 
+  /**
+   * @param {uint32[]} p - Two-word state, updated in place
+   * @param {uint32[]} k - Four key words
+   */
   function pi4(p, k) {
-    let t = OpCodes.ToUint32((p[1] + k[3]));
-    t = OpCodes.ToUint32(OpCodes.RotL32(t, 2) + t + 1);
+    let t = OpCodes.Add32(p[1], k[3]);
+    t = OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(t, 2), t), 1);
     p[0] = OpCodes.Xor32(p[0], t);
   }
 
@@ -150,7 +165,9 @@
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {int32} */
       this._rounds = DEFAULT_ROUNDS;
+      /** @type {uint32[]} */
       this.uk = new Uint32Array(8); // Scheduled key
     }
 
@@ -183,6 +200,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {int32} value - Number of rounds (1..255)
+     */
     set rounds(value) {
       if (value < 1 || value > 255) {
         throw new Error("Invalid rounds: " + value + " (must be 1-255)");
@@ -190,6 +210,9 @@
       this._rounds = value;
     }
 
+    /**
+     * @returns {int32} Number of rounds
+     */
     get rounds() {
       return this._rounds;
     }
@@ -289,16 +312,20 @@
         // Store block as big-endian
         const bytes0 = OpCodes.Unpack32BE(p[0]);
         const bytes1 = OpCodes.Unpack32BE(p[1]);
-        output.push(...bytes0, ...bytes1);
+        output.push(...bytes0);
+        output.push(...bytes1);
       }
 
       this.inputBuffer = [];
       return output;
     }
 
+    /**
+     * @param {uint32[]} p - Two-word block, encrypted in place
+     */
     _encrypt(p) {
       let n = 0;
-      let t = 0;
+      let t = 0; // key-word offset, alternating 0 and 4
 
       while (true) {
         pi1(p);
@@ -309,13 +336,16 @@
         if (++n === this._rounds) break;
         pi4(p, [this.uk[t], this.uk[t + 1], this.uk[t + 2], this.uk[t + 3]]);
         if (++n === this._rounds) break;
-        t = OpCodes.Xor32(t, 4);
+        t = 4 - t;
       }
     }
 
+    /**
+     * @param {uint32[]} p - Two-word block, decrypted in place
+     */
     _decrypt(p) {
       let n = this._rounds;
-      let t = 4 * (OpCodes.Shr32((n - 1), 2)&1);
+      let t = (n - 1) % 8 < 4 ? 0 : 4; // key-word offset of the last round group
 
       while (true) {
         const mod = n <= 4 ? n : ((n - 1) % 4) + 1;
@@ -339,7 +369,7 @@
           case 0:
             return;
         }
-        t = OpCodes.Xor32(t, 4);
+        t = 4 - t;
       }
     }
   }
