@@ -44,34 +44,133 @@
   // ===== SHARED MD CONSTANTS AND UTILITIES =====
 
   // MD2 S-box (RFC 1319 Appendix A) - Complete 256-byte table
-  const MD2_S = Object.freeze([
-    0x29, 0x2E, 0x43, 0xC9, 0xA2, 0xD8, 0x7C, 0x01, 0x3D, 0x36, 0x54, 0xA1, 0xEC, 0xF0, 0x06, 0x13,
-    0x62, 0xA7, 0x05, 0xF3, 0xC0, 0xC7, 0x73, 0x8C, 0x98, 0x93, 0x2B, 0xD9, 0xBC, 0x4C, 0x82, 0xCA,
-    0x1E, 0x9B, 0x57, 0x3C, 0xFD, 0xD4, 0xE0, 0x16, 0x67, 0x42, 0x6F, 0x18, 0x8A, 0x17, 0xE5, 0x12,
-    0xBE, 0x4E, 0xC4, 0xD6, 0xDA, 0x9E, 0xDE, 0x49, 0xA0, 0xFB, 0xF5, 0x8E, 0xBB, 0x2F, 0xEE, 0x7A,
-    0xA9, 0x68, 0x79, 0x91, 0x15, 0xB2, 0x07, 0x3F, 0x94, 0xC2, 0x10, 0x89, 0x0B, 0x22, 0x5F, 0x21,
-    0x80, 0x7F, 0x5D, 0x9A, 0x5A, 0x90, 0x32, 0x27, 0x35, 0x3E, 0xCC, 0xE7, 0xBF, 0xF7, 0x97, 0x03,
-    0xFF, 0x19, 0x30, 0xB3, 0x48, 0xA5, 0xB5, 0xD1, 0xD7, 0x5E, 0x92, 0x2A, 0xAC, 0x56, 0xAA, 0xC6,
-    0x4F, 0xB8, 0x38, 0xD2, 0x96, 0xA4, 0x7D, 0xB6, 0x76, 0xFC, 0x6B, 0xE2, 0x9C, 0x74, 0x04, 0xF1,
-    0x45, 0x9D, 0x70, 0x59, 0x64, 0x71, 0x87, 0x20, 0x86, 0x5B, 0xCF, 0x65, 0xE6, 0x2D, 0xA8, 0x02,
-    0x1B, 0x60, 0x25, 0xAD, 0xAE, 0xB0, 0xB9, 0xF6, 0x1C, 0x46, 0x61, 0x69, 0x34, 0x40, 0x7E, 0x0F,
-    0x55, 0x47, 0xA3, 0x23, 0xDD, 0x51, 0xAF, 0x3A, 0xC3, 0x5C, 0xF9, 0xCE, 0xBA, 0xC5, 0xEA, 0x26,
-    0x2C, 0x53, 0x0D, 0x6E, 0x85, 0x28, 0x84, 0x09, 0xD3, 0xDF, 0xCD, 0xF4, 0x41, 0x81, 0x4D, 0x52,
-    0x6A, 0xDC, 0x37, 0xC8, 0x6C, 0xC1, 0xAB, 0xFA, 0x24, 0xE1, 0x7B, 0x08, 0x0C, 0xBD, 0xB1, 0x4A,
-    0x78, 0x88, 0x95, 0x8B, 0xE3, 0x63, 0xE8, 0x6D, 0xE9, 0xCB, 0xD5, 0xFE, 0x3B, 0x00, 0x1D, 0x39,
-    0xF2, 0xEF, 0xB7, 0x0E, 0x66, 0x58, 0xD0, 0xE4, 0xA6, 0x77, 0x72, 0xF8, 0xEB, 0x75, 0x4B, 0x0A,
-    0x31, 0x44, 0x50, 0xB4, 0x8F, 0xED, 0x1F, 0x1A, 0xDB, 0x99, 0x8D, 0x33, 0x9F, 0x11, 0x83, 0x14
-  ]);
+  /** @type {uint8[]} */
+  const MD2_S = Object.freeze(OpCodes.Hex8ToBytes(
+    '292E43C9A2D87C013D3654A1ECF00613' +
+    '62A705F3C0C7738C98932BD9BC4C82CA' +
+    '1E9B573CFDD4E01667426F188A17E512' +
+    'BE4EC4D6DA9EDE49A0FBF58EBB2FEE7A' +
+    'A968799115B2073F94C210890B225F21' +
+    '807F5D9A5A903227353ECCE7BFF79703' +
+    'FF1930B348A5B5D1D75E922AAC56AAC6' +
+    '4FB838D296A47DB676FC6BE29C7404F1' +
+    '459D705964718720865BCF65E62DA802' +
+    '1B6025ADAEB0B9F61C46616934407E0F' +
+    '5547A323DD51AF3AC35CF9CEBAC5EA26' +
+    '2C530D6E85288409D3DFCDF441814D52' +
+    '6ADC37C86CC1ABFA24E17B080CBDB14A' +
+    '7888958BE363E86DE9CBD5FE3B001D39' +
+    'F2EFB70E6658D0E4A67772F8EB754B0A' +
+    '314450B48FED1F1ADB998D339F118314'
+  ));
 
   // MD4 constants
-  const MD4_H = Object.freeze([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476]);
+  /** @type {uint32[]} */
+  const MD4_H = Object.freeze(OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476'));
 
-  // MD4 auxiliary functions
-  function MD4_F(x, y, z) { return OpCodes.ToUint32((x&y)|((OpCodes.ToUint32(~x))&z)); }
-  function MD4_G(x, y, z) { return OpCodes.ToUint32((x&y)|(x&z)|(y&z)); }
+  // MD4 message word order of rounds 2 and 3, and the rotation of each step
+  // (steps rotate the roles of A, B, C, D; see RFC 1320 section 3.4)
+  /** @type {int32[]} */
+  const MD4_X2 = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15];
+  /** @type {int32[]} */
+  const MD4_X3 = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
+  /** @type {int32[]} */
+  const MD4_S1 = [3, 7, 11, 19];
+  /** @type {int32[]} */
+  const MD4_S2 = [3, 5, 9, 13];
+  /** @type {int32[]} */
+  const MD4_S3 = [3, 9, 11, 15];
+
+  /**
+   * MD4 round 1 function: (x AND y) OR (NOT x AND z)
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD4_F(x, y, z) { return OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(OpCodes.Not32(x), z)); }
+
+  /**
+   * MD4 round 2 function: majority of x, y, z
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD4_G(x, y, z) { return OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(x, z)), OpCodes.And32(y, z)); }
+
+  /**
+   * MD4 round 3 function: x XOR y XOR z
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
   function MD4_AUX_H(x, y, z) { return OpCodes.Xor32(OpCodes.Xor32(x, y), z); }
 
-  // Shared padding function for MD4/MD5 (Merkle-Damgard construction)
+  // MD5 round constants (RFC 1321)
+  /** @type {uint32[]} */
+  const MD5_K = Object.freeze(OpCodes.Hex32ToDWords(
+    'D76AA478E8C7B756242070DBC1BDCEEEF57C0FAF4787C62AA8304613FD469501' +
+    '698098D88B44F7AFFFFF5BB1895CD7BE6B901122FD987193A679438E49B40821' +
+    'F61E2562C040B340265E5A51E9B6C7AAD62F105D02441453D8A1E681E7D3FBC8' +
+    '21E1CDE6C33707D6F4D50D87455A14EDA9E3E905FCEFA3F8676F02D98D2A4C8A' +
+    'FFFA39428771F6816D9D6122FDE5380CA4BEEA444BDECFA9F6BB4B60BEBFBC70' +
+    '289B7EC6EAA127FAD4EF308504881D05D9D4D039E6DB99E51FA27CF8C4AC5665' +
+    'F4292244432AFF97AB9423A7FC93A039655B59C38F0CCC92FFEFF47D85845DD1' +
+    '6FA87E4FFE2CE6E0A30143144E0811A1F7537E82BD3AF2352AD7D2BBEB86D391'
+  ));
+
+  // MD5 shift amounts per round (RFC 1321)
+  /** @type {int32[]} */
+  const MD5_SHIFTS = [
+    7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
+    5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
+    4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
+    6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
+  ];
+
+  /**
+   * MD5 F function: (x AND y) OR (NOT x AND z)
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD5_F(x, y, z) { return OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(OpCodes.Not32(x), z)); }
+
+  /**
+   * MD5 G function: (x AND z) OR (y AND NOT z)
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD5_G(x, y, z) { return OpCodes.Or32(OpCodes.And32(x, z), OpCodes.And32(y, OpCodes.Not32(z))); }
+
+  /**
+   * MD5 H function: x XOR y XOR z
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD5_H(x, y, z) { return OpCodes.Xor32(OpCodes.Xor32(x, y), z); }
+
+  /**
+   * MD5 I function: y XOR (x OR NOT z)
+   * @param {uint32} x - Word
+   * @param {uint32} y - Word
+   * @param {uint32} z - Word
+   * @returns {uint32} Result word
+   */
+  function MD5_I(x, y, z) { return OpCodes.Xor32(y, OpCodes.Or32(x, OpCodes.Not32(z))); }
+
+  /**
+   * Shared padding function for MD4 (Merkle-Damgard construction)
+   * @param {uint8[]} msgBytes - Message
+   * @returns {uint8[]} Padded message (a multiple of 64 bytes)
+   */
   function padMessageMD(msgBytes) {
     const msgLength = msgBytes.length;
     const bitLength = msgLength * 8;
@@ -122,7 +221,7 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [16]; // 128 bits = 16 bytes
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)]; // 128 bits = 16 bytes
 
       // Performance and technical specifications
       this.blockSize = 16; // 128 bits = 16 bytes
@@ -162,9 +261,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+   * @returns {MD2AlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -181,8 +280,8 @@
   class MD2AlgorithmInstance extends IHashFunctionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {MD2Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -191,44 +290,70 @@
       this.OutputSize = 16; // 128 bits = 16 bytes
 
       // MD2 state
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._length = 0;
+      /** @type {boolean} */
+      this._streamStarted = false;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
       this._buffer = [];
       this._length = 0;
     }
 
+    /**
+     * Add data to the message
+     * @param {uint8[]} data - Bytes to hash
+     * @returns {void}
+     */
     Update(data) {
       if (!data || data.length === 0) return;
-
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
 
       this._buffer = this._buffer.concat(Array.from(data));
       this._length += data.length;
     }
 
+    /**
+     * Finish the message
+     * @returns {uint8[]} Digest
+     */
     Final() {
       return this._computeMD2(this._buffer);
     }
 
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message to hash
+     * @returns {uint8[]} Digest
+     */
     Hash(message) {
       this.Init();
       this.Update(message);
       return this.Final();
     }
 
+    /**
+     * Compute the MD2 digest of a whole message (RFC 1319 section 3)
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 16-byte digest
+     */
     _computeMD2(data) {
       // Step 1: Padding
       const padLength = 16 - (data.length % 16);
-      const paddedData = data.concat(new Array(padLength).fill(padLength));
+      /** @type {uint8[]} */
+      const padding = OpCodes.CreateArray(padLength, padLength);
+      const paddedData = data.concat(padding);
 
       // Step 2: Checksum computation
-      const checksum = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      const checksum = OpCodes.CreateArray(16, 0);
+      /** @type {uint8} */
       let L = 0;
 
       for (let i = 0; i < paddedData.length; i += 16) {
@@ -241,7 +366,8 @@
 
       // Step 3: Hash computation
       const finalData = paddedData.concat(checksum);
-      const hash = new Array(48).fill(0); // MD2 uses 48-byte state
+      /** @type {uint8[]} */
+      const hash = OpCodes.CreateArray(48, 0); // MD2 uses 48-byte state
 
       // Process each 16-byte block
       for (let i = 0; i < finalData.length; i += 16) {
@@ -252,6 +378,7 @@
         }
 
         // 18 rounds of transformation
+        /** @type {uint8} */
         let t = 0;
         for (let round = 0; round < 18; round++) {
           for (let k = 0; k < 48; k++) {
@@ -266,21 +393,43 @@
       return hash.slice(0, 16);
     }
 
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       // Hashes don't use keys
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} Digest
+     */
     EncryptBlock(blockIndex, plaintext) {
       // Return hash of the plaintext
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @returns {uint8[]} Never returns
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       // Hash functions are one-way
       throw new Error('MD2 is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Wipe the buffered message
+     * @returns {void}
+     */
     ClearData() {
       if (this._buffer) OpCodes.ClearArray(this._buffer);
       this._length = 0;
@@ -289,7 +438,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -305,8 +454,7 @@
 
     /**
    * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @returns {uint8[]} Digest
    */
 
     Result() {
@@ -338,7 +486,7 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [16]; // 128 bits = 16 bytes
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)]; // 128 bits = 16 bytes
 
       // Performance and technical specifications
       this.blockSize = 64; // 512 bits = 64 bytes
@@ -378,9 +526,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+   * @returns {MD4AlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -397,8 +545,8 @@
   class MD4AlgorithmInstance extends IHashFunctionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
+   * @param {MD4Algorithm} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
    */
 
     constructor(algorithm, isInverse = false) {
@@ -407,137 +555,160 @@
       this.OutputSize = 16; // 128 bits = 16 bytes
 
       // MD4 state
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._length = 0;
+      /** @type {boolean} */
+      this._streamStarted = false;
     }
 
+    /**
+     * Start a new message
+     * @returns {void}
+     */
     Init() {
       this._buffer = [];
       this._length = 0;
     }
 
+    /**
+     * Add data to the message
+     * @param {uint8[]} data - Bytes to hash
+     * @returns {void}
+     */
     Update(data) {
       if (!data || data.length === 0) return;
-
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        data = OpCodes.AnsiToBytes(data);
-      }
 
       this._buffer = this._buffer.concat(Array.from(data));
       this._length += data.length;
     }
 
+    /**
+     * Finish the message
+     * @returns {uint8[]} Digest
+     */
     Final() {
       return this._computeMD4(this._buffer);
     }
 
+    /**
+     * Hash a complete message in one operation
+     * @param {uint8[]} message - Message to hash
+     * @returns {uint8[]} Digest
+     */
     Hash(message) {
       this.Init();
       this.Update(message);
       return this.Final();
     }
 
+    /**
+     * Compute the MD4 digest of a whole message (RFC 1320 section 3)
+     * @param {uint8[]} data - Message
+     * @returns {uint8[]} 16-byte digest
+     */
     _computeMD4(data) {
       // Pre-processing: append padding
       const paddedMsg = padMessageMD(data);
 
       // Initialize MD4 buffer
-      let h = [...MD4_H];
+      /** @type {uint32[]} */
+      const h = MD4_H.slice();
 
       // Process message in 512-bit chunks
       for (let chunkStart = 0; chunkStart < paddedMsg.length; chunkStart += 64) {
         const chunk = paddedMsg.slice(chunkStart, chunkStart + 64);
 
         // Break chunk into sixteen 32-bit little-endian words
+        /** @type {uint32[]} */
         const X = new Array(16);
         for (let i = 0; i < 16; i++) {
           const offset = i * 4;
           X[i] = OpCodes.Pack32LE(chunk[offset], chunk[offset + 1], chunk[offset + 2], chunk[offset + 3]);
         }
 
-        // Initialize working variables
-        let A = h[0], B = h[1], C = h[2], D = h[3];
+        // Working variables A, B, C, D; step i updates v[a] with a = 0, 3, 2, 1, ...
+        // and uses the next three (cyclically) as the function arguments
+        /** @type {uint32[]} */
+        const v = h.slice();
 
-        // MD4 complete 3-round algorithm (RFC 1320)
-
-        // Round 1: F function, no constants
-        const round1Ops = [
-          [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  1,  7], [2, 3, 0, 1,  2, 11], [1, 2, 3, 0,  3, 19],
-          [0, 1, 2, 3,  4,  3], [3, 0, 1, 2,  5,  7], [2, 3, 0, 1,  6, 11], [1, 2, 3, 0,  7, 19],
-          [0, 1, 2, 3,  8,  3], [3, 0, 1, 2,  9,  7], [2, 3, 0, 1, 10, 11], [1, 2, 3, 0, 11, 19],
-          [0, 1, 2, 3, 12,  3], [3, 0, 1, 2, 13,  7], [2, 3, 0, 1, 14, 11], [1, 2, 3, 0, 15, 19]
-        ];
-
-        const vars = [A, B, C, D];
-        for (const [a, b, c, d, xi, s] of round1Ops) {
-          const temp = OpCodes.ToUint32(vars[a] + MD4_F(vars[b], vars[c], vars[d]) + X[xi]);
-          vars[a] = OpCodes.RotL32(temp, s);
+        // Round 1: F function, no constant
+        for (let i = 0; i < 16; i++) {
+          const a = (4 - (i % 4)) % 4;
+          const temp = OpCodes.Add32(OpCodes.Add32(v[a], MD4_F(v[(a + 1) % 4], v[(a + 2) % 4], v[(a + 3) % 4])), X[i]);
+          v[a] = OpCodes.RotL32(temp, MD4_S1[i % 4]);
         }
-        [A, B, C, D] = vars;
 
         // Round 2: G function, constant 0x5A827999
-        const round2Ops = [
-          [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  4,  5], [2, 3, 0, 1,  8,  9], [1, 2, 3, 0, 12, 13],
-          [0, 1, 2, 3,  1,  3], [3, 0, 1, 2,  5,  5], [2, 3, 0, 1,  9,  9], [1, 2, 3, 0, 13, 13],
-          [0, 1, 2, 3,  2,  3], [3, 0, 1, 2,  6,  5], [2, 3, 0, 1, 10,  9], [1, 2, 3, 0, 14, 13],
-          [0, 1, 2, 3,  3,  3], [3, 0, 1, 2,  7,  5], [2, 3, 0, 1, 11,  9], [1, 2, 3, 0, 15, 13]
-        ];
-
-        const vars2 = [A, B, C, D];
-        for (const [a, b, c, d, xi, s] of round2Ops) {
-          const temp = OpCodes.ToUint32(vars2[a] + MD4_G(vars2[b], vars2[c], vars2[d]) + X[xi] + 0x5A827999);
-          vars2[a] = OpCodes.RotL32(temp, s);
+        for (let i = 0; i < 16; i++) {
+          const a = (4 - (i % 4)) % 4;
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v[a], MD4_G(v[(a + 1) % 4], v[(a + 2) % 4], v[(a + 3) % 4])), X[MD4_X2[i]]), 0x5A827999);
+          v[a] = OpCodes.RotL32(temp, MD4_S2[i % 4]);
         }
-        [A, B, C, D] = vars2;
 
         // Round 3: H function, constant 0x6ED9EBA1
-        const round3Ops = [
-          [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  8,  9], [2, 3, 0, 1,  4, 11], [1, 2, 3, 0, 12, 15],
-          [0, 1, 2, 3,  2,  3], [3, 0, 1, 2, 10,  9], [2, 3, 0, 1,  6, 11], [1, 2, 3, 0, 14, 15],
-          [0, 1, 2, 3,  1,  3], [3, 0, 1, 2,  9,  9], [2, 3, 0, 1,  5, 11], [1, 2, 3, 0, 13, 15],
-          [0, 1, 2, 3,  3,  3], [3, 0, 1, 2, 11,  9], [2, 3, 0, 1,  7, 11], [1, 2, 3, 0, 15, 15]
-        ];
-
-        const vars3 = [A, B, C, D];
-        for (const [a, b, c, d, xi, s] of round3Ops) {
-          const temp = OpCodes.ToUint32(vars3[a] + MD4_AUX_H(vars3[b], vars3[c], vars3[d]) + X[xi] + 0x6ED9EBA1);
-          vars3[a] = OpCodes.RotL32(temp, s);
+        for (let i = 0; i < 16; i++) {
+          const a = (4 - (i % 4)) % 4;
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(v[a], MD4_AUX_H(v[(a + 1) % 4], v[(a + 2) % 4], v[(a + 3) % 4])), X[MD4_X3[i]]), 0x6ED9EBA1);
+          v[a] = OpCodes.RotL32(temp, MD4_S3[i % 4]);
         }
-        [A, B, C, D] = vars3;
 
         // Add this chunk's hash to result so far
-        h[0] = OpCodes.ToUint32(h[0] + A);
-        h[1] = OpCodes.ToUint32(h[1] + B);
-        h[2] = OpCodes.ToUint32(h[2] + C);
-        h[3] = OpCodes.ToUint32(h[3] + D);
+        h[0] = OpCodes.Add32(h[0], v[0]);
+        h[1] = OpCodes.Add32(h[1], v[1]);
+        h[2] = OpCodes.Add32(h[2], v[2]);
+        h[3] = OpCodes.Add32(h[3], v[3]);
       }
 
       // Convert to byte array (little-endian)
+      /** @type {uint8[]} */
       const result = [];
-      h.forEach(word => {
-        const bytes = OpCodes.Unpack32LE(word);
+      for (let i = 0; i < 4; i++) {
+        const bytes = OpCodes.Unpack32LE(h[i]);
         for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      });
+      }
 
       return result;
     }
 
+    /**
+     * Hashes take no key
+     * @param {uint8[]} key - Unused
+     * @returns {boolean} Always true
+     */
     KeySetup(key) {
       // Hashes don't use keys
       return true;
     }
 
+    /**
+     * Hash one block (block-cipher style convenience)
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} plaintext - Bytes to hash
+     * @returns {uint8[]} Digest
+     */
     EncryptBlock(blockIndex, plaintext) {
       // Return hash of the plaintext
       return this.Hash(plaintext);
     }
 
+    /**
+     * Hash functions have no inverse
+     * @param {int32} blockIndex - Unused
+     * @param {uint8[]} ciphertext - Unused
+     * @returns {uint8[]} Never returns
+     * @throws {Error} Always
+     */
     DecryptBlock(blockIndex, ciphertext) {
       // Hash functions are one-way
       throw new Error('MD4 is a one-way hash function - decryption not possible');
     }
 
+    /**
+     * Wipe the buffered message
+     * @returns {void}
+     */
     ClearData() {
       if (this._buffer) OpCodes.ClearArray(this._buffer);
       this._length = 0;
@@ -546,7 +717,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -562,8 +733,7 @@
 
     /**
    * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @returns {uint8[]} Digest
    */
 
     Result() {
@@ -595,7 +765,7 @@
       this.country = CountryCode.US;
 
       // Capabilities
-      this.SupportedOutputSizes = [{ minSize: 16, maxSize: 16, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)];
 
       // Documentation
       this.documentation = [
@@ -666,9 +836,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new hash instance
+   * @param {boolean} [isInverse=false] - Unused: a hash has no inverse (MD5 returns null for it)
+   * @returns {MD5AlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -687,12 +857,20 @@
  */
 
   class MD5AlgorithmInstance extends IHashFunctionInstance {
+    /**
+     * Initialize an MD5 instance
+     * @param {MD5Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
       this.OutputSize = 16; // 128 bits
       this._Reset();
     }
 
+    /**
+     * Reset the chaining value and the block buffer
+     * @returns {void}
+     */
     _Reset() {
       // MD5 initialization values (RFC 1321)
       const initValues = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476');
@@ -703,6 +881,10 @@
       this.totalLength = 0;
     }
 
+    /**
+     * Reset the chaining value and the block buffer
+     * @returns {void}
+     */
     Initialize() {
       this._Reset();
     }
@@ -710,7 +892,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -752,8 +934,7 @@
 
     /**
    * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * @returns {uint8[]} Digest
    */
 
     Result() {
@@ -787,6 +968,7 @@
       this.Feed(padding);
 
       // Convert hash to bytes (little-endian)
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 4; i++) {
         const bytes = OpCodes.Unpack32LE(this.h[i]);
@@ -802,72 +984,58 @@
       return result;
     }
 
+    /**
+     * Process one 64-byte block (RFC 1321 section 3.4)
+     * @param {uint8[]} block - 64-byte block
+     * @returns {void}
+     */
     _ProcessBlock(block) {
       // Convert block to 32-bit words (little-endian)
+      /** @type {uint32[]} */
       const w = new Array(16);
       for (let i = 0; i < 16; i++) {
         w[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
       }
 
       // Initialize working variables
-      let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
-
-      // MD5 round constants (RFC 1321)
-      const k = OpCodes.Hex32ToDWords(
-        'D76AA478E8C7B756242070DBC1BDCEEEF57C0FAF4787C62AA8304613FD469501' +
-        '698098D88B44F7AFFFFF5BB1895CD7BE6B901122FD987193A679438E49B40821' +
-        'F61E2562C040B340265E5A51E9B6C7AAD62F105D02441453D8A1E681E7D3FBC8' +
-        '21E1CDE6C33707D6F4D50D87455A14EDA9E3E905FCEFA3F8676F02D98D2A4C8A' +
-        'FFFA39428771F6816D9D6122FDE5380CA4BEEA444BDECFA9F6BB4B60BEBFBC70' +
-        '289B7EC6EAA127FAD4EF308504881D05D9D4D039E6DB99E51FA27CF8C4AC5665' +
-        'F4292244432AFF97AB9423A7FC93A039655B59C38F0CCC92FFEFF47D85845DD1' +
-        '6FA87E4FFE2CE6E0A30143144E0811A1F7537E82BD3AF2352AD7D2BBEB86D391'
-      );
-
-      // MD5 auxiliary functions
-      const F = (x, y, z) => OpCodes.ToUint32((x&y)|((OpCodes.ToUint32(~x))&z));
-      const G = (x, y, z) => OpCodes.ToUint32((x&z)|(y&(OpCodes.ToUint32(~z))));
-      const H = (x, y, z) => OpCodes.Xor32(OpCodes.Xor32(x, y), z);
-      const I = (x, y, z) => OpCodes.Xor32(y, OpCodes.ToUint32(x|(OpCodes.ToUint32(~z))));
-
-      // MD5 shift amounts per round (RFC 1321)
-      const shifts = [
-        7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
-        5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
-        4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
-        6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
-      ];
+      let a = this.h[0];
+      let b = this.h[1];
+      let c = this.h[2];
+      let d = this.h[3];
 
       // MD5 rounds
       for (let i = 0; i < 64; i++) {
-        let f, g;
+        /** @type {uint32} */
+        let f;
+        /** @type {int32} */
+        let g;
 
         if (i < 16) {
-          f = F(b, c, d);
+          f = MD5_F(b, c, d);
           g = i;
         } else if (i < 32) {
-          f = G(b, c, d);
+          f = MD5_G(b, c, d);
           g = (5 * i + 1) % 16;
         } else if (i < 48) {
-          f = H(b, c, d);
+          f = MD5_H(b, c, d);
           g = (3 * i + 5) % 16;
         } else {
-          f = I(b, c, d);
+          f = MD5_I(b, c, d);
           g = (7 * i) % 16;
         }
 
-        f = OpCodes.ToUint32(f + a + k[i] + w[g]);
+        f = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(f, a), MD5_K[i]), w[g]);
         a = d;
         d = c;
         c = b;
-        b = OpCodes.ToUint32(b + OpCodes.RotL32(f, shifts[i]));
+        b = OpCodes.Add32(b, OpCodes.RotL32(f, MD5_SHIFTS[i]));
       }
 
       // Add to hash
-      this.h[0] = OpCodes.ToUint32(this.h[0] + a);
-      this.h[1] = OpCodes.ToUint32(this.h[1] + b);
-      this.h[2] = OpCodes.ToUint32(this.h[2] + c);
-      this.h[3] = OpCodes.ToUint32(this.h[3] + d);
+      this.h[0] = OpCodes.Add32(this.h[0], a);
+      this.h[1] = OpCodes.Add32(this.h[1], b);
+      this.h[2] = OpCodes.Add32(this.h[2], c);
+      this.h[3] = OpCodes.Add32(this.h[3], d);
     }
   }
 

@@ -48,7 +48,8 @@
   // K[1] = 0x6ED9EBA1 (rounds 20-39)
   // K[2] = 0x8F1BBCDC (rounds 40-59)
   // K[3] = 0xCA62C1D6 (rounds 60-79)
-  const K = Object.freeze([0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6]);
+  /** @type {uint32[]} */
+  const K = Object.freeze(OpCodes.Hex32ToDWords('5A8279996ED9EBA18F1BBCDCCA62C1D6'));
 
   /**
  * SHA1Algorithm - Cryptographic hash function
@@ -72,9 +73,7 @@
         this.country = CountryCode.US;
 
         // Hash-specific metadata
-        this.SupportedOutputSizes = [
-          { size: 20, description: "160-bit SHA-1 hash" }
-        ];
+        this.SupportedOutputSizes = [new KeySize(20, 20, 1)];
 
         // Documentation and references
         this.documentation = [
@@ -129,20 +128,34 @@
         ];
       }
 
+      /**
+       * Create a new hash instance
+       * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+       * @returns {SHA1Instance} New hash instance
+       */
       CreateInstance(isInverse = false) {
         return new SHA1Instance(this, isInverse);
       }
     }
 
     class SHA1Instance extends IHashFunctionInstance {
+      /**
+       * Initialize a SHA-1 instance
+       * @param {SHA1Algorithm} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - Unused: a hash has no inverse
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
         this.isInverse = isInverse;
         this.OutputSize = 20; // 160 bits
 
         // SHA-1 state variables
+        /** @type {uint32[]} */
         this._h = null;
+        /** @type {BlockAbsorber} */
         this._absorber = null;
+        /** @type {boolean} */
+        this._streamStarted = false;
       }
 
       /**
@@ -151,37 +164,32 @@
        */
       Init() {
         // Initial hash values (RFC 3174 Section 6.1)
-        this._h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+        this._h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
         this._absorber = new BlockAbsorber(64, block => this._processBlock(block));
       }
 
+      /**
+       * Restart the hash state
+       * @returns {void}
+       */
       _Reset() {
         this.Init();
       }
 
       /**
        * Add data to the hash calculation
-       * @param {Array} data - Data to hash as byte array
+       * @param {uint8[]} data - Data to hash as byte array
+       * @returns {void}
        */
       Update(data) {
         if (!data || data.length === 0) return;
-
-        // Convert string to byte array if needed
-        if (typeof data === 'string') {
-          const bytes = [];
-          for (let i = 0; i < data.length; i++) {
-            bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
-          }
-          data = bytes;
-        }
-
         this._absorber.Absorb(data);
       }
 
       /**
        * Finalize the hash calculation and return result as byte array
        * RFC 3174 Section 4
-       * @returns {Array} Hash digest as byte array
+       * @returns {uint8[]} Hash digest as byte array
        */
       Final() {
         this._absorber.Finish((held, pending, total) => {
@@ -190,6 +198,7 @@
         });
 
         // Convert hash to byte array
+        /** @type {uint8[]} */
         const result = [];
         for (let i = 0; i < 5; i++) {
           const bytes = OpCodes.Unpack32BE(this._h[i]);
@@ -204,11 +213,12 @@
       /**
        * Process a single 512-bit block
        * RFC 3174 Section 6.1
-       * @param {Array} block - 64-byte block to process
+       * @param {uint8[]} block - 64-byte block to process
+       * @returns {void}
        */
       _processBlock(block) {
+        /** @type {uint32[]} */
         const W = new Array(80);
-        let a, b, c, d, e;
 
         // Prepare message schedule W[t]
         for (let t = 0; t < 16; t++) {
@@ -217,31 +227,38 @@
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
         for (let t = 16; t < 80; t++) {
-          W[t] = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
+          W[t] = OpCodes.RotL32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
         }
 
         // Initialize working variables
-        a = this._h[0]; b = this._h[1]; c = this._h[2]; d = this._h[3]; e = this._h[4];
+        let a = this._h[0];
+        let b = this._h[1];
+        let c = this._h[2];
+        let d = this._h[3];
+        let e = this._h[4];
 
         // Main loop (80 rounds)
         for (let t = 0; t < 80; t++) {
-          let f, k;
+          /** @type {uint32} */
+          let f;
+          /** @type {uint32} */
+          let k;
 
           if (t < 20) {
-            f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
+            f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d));
             k = K[0];
           } else if (t < 40) {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = K[1];
           } else if (t < 60) {
-            f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
+            f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
             k = K[2];
           } else {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = K[3];
           }
 
-          const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
+          const temp = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.RotL32(a, 5), f), e), k), W[t]);
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -250,17 +267,17 @@
         }
 
         // Add working variables to hash value
-        this._h[0] = OpCodes.ToUint32(this._h[0] + a);
-        this._h[1] = OpCodes.ToUint32(this._h[1] + b);
-        this._h[2] = OpCodes.ToUint32(this._h[2] + c);
-        this._h[3] = OpCodes.ToUint32(this._h[3] + d);
-        this._h[4] = OpCodes.ToUint32(this._h[4] + e);
+        this._h[0] = OpCodes.Add32(this._h[0], a);
+        this._h[1] = OpCodes.Add32(this._h[1], b);
+        this._h[2] = OpCodes.Add32(this._h[2], c);
+        this._h[3] = OpCodes.Add32(this._h[3], d);
+        this._h[4] = OpCodes.Add32(this._h[4], e);
       }
 
       /**
        * Hash a complete message in one operation
-       * @param {Array} message - Message to hash as byte array
-       * @returns {Array} Hash digest as byte array
+       * @param {uint8[]} message - Message to hash as byte array
+       * @returns {uint8[]} Hash digest as byte array
        */
       Hash(message) {
         this.Init();
@@ -269,23 +286,42 @@
       }
 
       /**
-       * Required interface methods for IAlgorithmInstance compatibility
+       * Hashes take no key
+       * @param {uint8[]} key - Unused
+       * @returns {boolean} Always true
        */
       KeySetup(key) {
         // Hashes don't use keys
         return true;
       }
 
+      /**
+       * Hash one block (block-cipher style convenience)
+       * @param {int32} blockIndex - Unused
+       * @param {uint8[]} plaintext - Bytes to hash
+       * @returns {uint8[]} Hash digest as byte array
+       */
       EncryptBlock(blockIndex, plaintext) {
         // Return hash of the plaintext
         return this.Hash(plaintext);
       }
 
+      /**
+       * Hash functions have no inverse
+       * @param {int32} blockIndex - Unused
+       * @param {uint8[]} ciphertext - Unused
+       * @returns {uint8[]} Never returns
+       * @throws {Error} Always
+       */
       DecryptBlock(blockIndex, ciphertext) {
         // Hash functions are one-way
         throw new Error('SHA-1 is a one-way hash function - decryption not possible');
       }
 
+      /**
+       * Wipe the chaining state and any buffered bytes
+       * @returns {void}
+       */
       ClearData() {
         if (this._h) OpCodes.ClearArray(this._h);
         if (this._absorber) this._absorber.Reset();
@@ -293,7 +329,8 @@
 
       /**
        * Feed method required by test suite - processes input data
-       * @param {Array} data - Input data as byte array
+       * @param {uint8[]} data - Input data as byte array
+       * @returns {void}
        */
       Feed(data) {
         // Init() discards the state, so it belongs at the start of the message
@@ -308,7 +345,7 @@
 
       /**
        * Result method required by test suite - returns final hash
-       * @returns {Array} Hash digest as byte array
+       * @returns {uint8[]} Hash digest as byte array
        */
       Result() {
         return this.Final();
