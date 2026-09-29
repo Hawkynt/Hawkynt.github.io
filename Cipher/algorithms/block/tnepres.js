@@ -222,19 +222,26 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.key = null;
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint32[][]|null} */
       this.roundKeys = null;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      this.key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
 
       // Serpent/Tnepres constants
+      /** @type {int32} */
       this.ROUNDS = 32;
+      /** @type {uint32} */
       this.PHI = 0x9e3779b9; // Golden ratio constant for key schedule
 
       // Temporary registers for S-box operations
-      /** @type {uint8[]} */
+      /** @type {uint32[]} */
       this.X = [0, 0, 0, 0];
     }
 
@@ -253,10 +260,17 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      const sizes = this._keySizes;
+      let isValidSize = false;
+      for (let i = 0; i < sizes.length; i++) {
+        const ks = sizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          if (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+            isValidSize = true;
+            break;
+          }
+        }
+      }
 
       if (!isValidSize) {
         throw new Error("Invalid key size: " + keyBytes.length + " bytes");
@@ -294,290 +308,414 @@
 
     // S-box implementations (same as Serpent/SerpentEngineBase from BouncyCastle)
     // S0 - { 3, 8,15, 1,10, 6, 5,11,14,13, 4, 2, 7, 0, 9,12 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb0(a, b, c, d) {
-      const t1 = a^d;
-      const t3 = c^t1;
-      const t4 = b^t3;
-      this.X[3] = (a&d)^t4;
-      const t7 = a^(b&t1);
-      this.X[2] = t4^(c|t7);
-      const t12 = this.X[3]&(t3^t7);
-      this.X[1] = (~t3)^t12;
-      this.X[0] = t12^(~t7);
+      const t1 = OpCodes.Xor32(a, d);
+      const t3 = OpCodes.Xor32(c, t1);
+      const t4 = OpCodes.Xor32(b, t3);
+      this.X[3] = OpCodes.Xor32(OpCodes.And32(a, d), t4);
+      const t7 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
+      this.X[2] = OpCodes.Xor32(t4, OpCodes.Or32(c, t7));
+      const t12 = OpCodes.And32(this.X[3], OpCodes.Xor32(t3, t7));
+      this.X[1] = OpCodes.Xor32(OpCodes.Not32(t3), t12);
+      this.X[0] = OpCodes.Xor32(t12, OpCodes.Not32(t7));
     }
 
     // InvS0 - {13, 3,11, 0,10, 6, 5,12, 1,14, 4, 7,15, 9, 8, 2 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib0(a, b, c, d) {
-      const t1 = ~a;
-      const t2 = a^b;
-      const t4 = d^(t1|t2);
-      const t5 = c^t4;
-      this.X[2] = t2^t5;
-      const t8 = t1^(d&t2);
-      this.X[1] = t4^(this.X[2]&t8);
-      this.X[3] = (a&t4)^(t5|this.X[1]);
-      this.X[0] = this.X[3]^(t5^t8);
+      const t1 = OpCodes.Not32(a);
+      const t2 = OpCodes.Xor32(a, b);
+      const t4 = OpCodes.Xor32(d, OpCodes.Or32(t1, t2));
+      const t5 = OpCodes.Xor32(c, t4);
+      this.X[2] = OpCodes.Xor32(t2, t5);
+      const t8 = OpCodes.Xor32(t1, OpCodes.And32(d, t2));
+      this.X[1] = OpCodes.Xor32(t4, OpCodes.And32(this.X[2], t8));
+      this.X[3] = OpCodes.Xor32(OpCodes.And32(a, t4), OpCodes.Or32(t5, this.X[1]));
+      this.X[0] = OpCodes.Xor32(this.X[3], OpCodes.Xor32(t5, t8));
     }
 
     // S1 - {15,12, 2, 7, 9, 0, 5,10, 1,11,14, 8, 6,13, 3, 4 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb1(a, b, c, d) {
-      const t2 = b^(~a);
-      const t5 = c^(a|t2);
-      this.X[2] = d^t5;
-      const t7 = b^(d|t2);
-      const t8 = t2^this.X[2];
-      this.X[3] = t8^(t5&t7);
-      const t11 = t5^t7;
-      this.X[1] = this.X[3]^t11;
-      this.X[0] = t5^(t8&t11);
+      const t2 = OpCodes.Xor32(b, OpCodes.Not32(a));
+      const t5 = OpCodes.Xor32(c, OpCodes.Or32(a, t2));
+      this.X[2] = OpCodes.Xor32(d, t5);
+      const t7 = OpCodes.Xor32(b, OpCodes.Or32(d, t2));
+      const t8 = OpCodes.Xor32(t2, this.X[2]);
+      this.X[3] = OpCodes.Xor32(t8, OpCodes.And32(t5, t7));
+      const t11 = OpCodes.Xor32(t5, t7);
+      this.X[1] = OpCodes.Xor32(this.X[3], t11);
+      this.X[0] = OpCodes.Xor32(t5, OpCodes.And32(t8, t11));
     }
 
     // InvS1 - { 5, 8, 2,14,15, 6,12, 3,11, 4, 7, 9, 1,13,10, 0 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib1(a, b, c, d) {
-      const t1 = b^d;
-      const t3 = a^(b&t1);
-      const t4 = t1^t3;
-      this.X[3] = c^t4;
-      const t7 = b^(t1&t3);
-      const t8 = this.X[3]|t7;
-      this.X[1] = t3^t8;
-      const t10 = ~this.X[1];
-      const t11 = this.X[3]^t7;
-      this.X[0] = t10^t11;
-      this.X[2] = t4^(t10|t11);
+      const t1 = OpCodes.Xor32(b, d);
+      const t3 = OpCodes.Xor32(a, OpCodes.And32(b, t1));
+      const t4 = OpCodes.Xor32(t1, t3);
+      this.X[3] = OpCodes.Xor32(c, t4);
+      const t7 = OpCodes.Xor32(b, OpCodes.And32(t1, t3));
+      const t8 = OpCodes.Or32(this.X[3], t7);
+      this.X[1] = OpCodes.Xor32(t3, t8);
+      const t10 = OpCodes.Not32(this.X[1]);
+      const t11 = OpCodes.Xor32(this.X[3], t7);
+      this.X[0] = OpCodes.Xor32(t10, t11);
+      this.X[2] = OpCodes.Xor32(t4, OpCodes.Or32(t10, t11));
     }
 
     // S2 - { 8, 6, 7, 9, 3,12,10,15,13, 1,14, 4, 0,11, 5, 2 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb2(a, b, c, d) {
-      const t1 = ~a;
-      const t2 = b^d;
-      const t3 = c&t1;
-      this.X[0] = t2^t3;
-      const t5 = c^t1;
-      const t6 = c^this.X[0];
-      const t7 = b&t6;
-      this.X[3] = t5^t7;
-      this.X[2] = a^((d|t7)&(this.X[0]|t5));
-      this.X[1] = (t2^this.X[3])^(this.X[2]^(d|t1));
+      const t1 = OpCodes.Not32(a);
+      const t2 = OpCodes.Xor32(b, d);
+      const t3 = OpCodes.And32(c, t1);
+      this.X[0] = OpCodes.Xor32(t2, t3);
+      const t5 = OpCodes.Xor32(c, t1);
+      const t6 = OpCodes.Xor32(c, this.X[0]);
+      const t7 = OpCodes.And32(b, t6);
+      this.X[3] = OpCodes.Xor32(t5, t7);
+      this.X[2] = OpCodes.Xor32(a, OpCodes.And32(OpCodes.Or32(d, t7), OpCodes.Or32(this.X[0], t5)));
+      this.X[1] = OpCodes.Xor32(OpCodes.Xor32(t2, this.X[3]), OpCodes.Xor32(this.X[2], OpCodes.Or32(d, t1)));
     }
 
     // InvS2 - {12, 9,15, 4,11,14, 1, 2, 0, 3, 6,13, 5, 8,10, 7 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib2(a, b, c, d) {
-      const t1 = b^d;
-      const t2 = ~t1;
-      const t3 = a^c;
-      const t4 = c^t1;
-      const t5 = b&t4;
-      this.X[0] = t3^t5;
-      const t7 = a|t2;
-      const t8 = d^t7;
-      const t9 = t3|t8;
-      this.X[3] = t1^t9;
-      const t11 = ~t4;
-      const t12 = this.X[0]|this.X[3];
-      this.X[1] = t11^t12;
-      this.X[2] = (d&t11)^(t3^t12);
+      const t1 = OpCodes.Xor32(b, d);
+      const t2 = OpCodes.Not32(t1);
+      const t3 = OpCodes.Xor32(a, c);
+      const t4 = OpCodes.Xor32(c, t1);
+      const t5 = OpCodes.And32(b, t4);
+      this.X[0] = OpCodes.Xor32(t3, t5);
+      const t7 = OpCodes.Or32(a, t2);
+      const t8 = OpCodes.Xor32(d, t7);
+      const t9 = OpCodes.Or32(t3, t8);
+      this.X[3] = OpCodes.Xor32(t1, t9);
+      const t11 = OpCodes.Not32(t4);
+      const t12 = OpCodes.Or32(this.X[0], this.X[3]);
+      this.X[1] = OpCodes.Xor32(t11, t12);
+      this.X[2] = OpCodes.Xor32(OpCodes.And32(d, t11), OpCodes.Xor32(t3, t12));
     }
 
     // S3 - { 0,15,11, 8,12, 9, 6, 3,13, 1, 2, 4,10, 7, 5,14 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb3(a, b, c, d) {
-      const t1 = a^b;
-      const t2 = a&c;
-      const t3 = a|d;
-      const t4 = c^d;
-      const t5 = t1&t3;
-      const t6 = t2|t5;
-      this.X[2] = t4^t6;
-      const t8 = b^t3;
-      const t9 = t6^t8;
-      const t10 = t4&t9;
-      this.X[0] = t1^t10;
-      const t12 = this.X[2]&this.X[0];
-      this.X[1] = t9^t12;
-      this.X[3] = (b|d)^(t4^t12);
+      const t1 = OpCodes.Xor32(a, b);
+      const t2 = OpCodes.And32(a, c);
+      const t3 = OpCodes.Or32(a, d);
+      const t4 = OpCodes.Xor32(c, d);
+      const t5 = OpCodes.And32(t1, t3);
+      const t6 = OpCodes.Or32(t2, t5);
+      this.X[2] = OpCodes.Xor32(t4, t6);
+      const t8 = OpCodes.Xor32(b, t3);
+      const t9 = OpCodes.Xor32(t6, t8);
+      const t10 = OpCodes.And32(t4, t9);
+      this.X[0] = OpCodes.Xor32(t1, t10);
+      const t12 = OpCodes.And32(this.X[2], this.X[0]);
+      this.X[1] = OpCodes.Xor32(t9, t12);
+      this.X[3] = OpCodes.Xor32(OpCodes.Or32(b, d), OpCodes.Xor32(t4, t12));
     }
 
     // InvS3 - { 0, 9,10, 7,11,14, 6,13, 3, 5,12, 2, 4, 8,15, 1 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib3(a, b, c, d) {
-      const t1 = a|b;
-      const t2 = b^c;
-      const t3 = b&t2;
-      const t4 = a^t3;
-      const t5 = c^t4;
-      const t6 = d|t4;
-      this.X[0] = t2^t6;
-      const t8 = t2|t6;
-      const t9 = d^t8;
-      this.X[2] = t5^t9;
-      const t11 = t1^t9;
-      const t12 = this.X[0]&t11;
-      this.X[3] = t4^t12;
-      this.X[1] = this.X[3]^(this.X[0]^t11);
+      const t1 = OpCodes.Or32(a, b);
+      const t2 = OpCodes.Xor32(b, c);
+      const t3 = OpCodes.And32(b, t2);
+      const t4 = OpCodes.Xor32(a, t3);
+      const t5 = OpCodes.Xor32(c, t4);
+      const t6 = OpCodes.Or32(d, t4);
+      this.X[0] = OpCodes.Xor32(t2, t6);
+      const t8 = OpCodes.Or32(t2, t6);
+      const t9 = OpCodes.Xor32(d, t8);
+      this.X[2] = OpCodes.Xor32(t5, t9);
+      const t11 = OpCodes.Xor32(t1, t9);
+      const t12 = OpCodes.And32(this.X[0], t11);
+      this.X[3] = OpCodes.Xor32(t4, t12);
+      this.X[1] = OpCodes.Xor32(this.X[3], OpCodes.Xor32(this.X[0], t11));
     }
 
     // S4 - { 1,15, 8, 3,12, 0,11, 6, 2, 5, 4,10, 9,14, 7,13 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb4(a, b, c, d) {
-      const t1 = a^d;
-      const t2 = d&t1;
-      const t3 = c^t2;
-      const t4 = b|t3;
-      this.X[3] = t1^t4;
-      const t6 = ~b;
-      const t7 = t1|t6;
-      this.X[0] = t3^t7;
-      const t9 = a&this.X[0];
-      const t10 = t1^t6;
-      const t11 = t4&t10;
-      this.X[2] = t9^t11;
-      this.X[1] = (a^t3)^(t10&this.X[2]);
+      const t1 = OpCodes.Xor32(a, d);
+      const t2 = OpCodes.And32(d, t1);
+      const t3 = OpCodes.Xor32(c, t2);
+      const t4 = OpCodes.Or32(b, t3);
+      this.X[3] = OpCodes.Xor32(t1, t4);
+      const t6 = OpCodes.Not32(b);
+      const t7 = OpCodes.Or32(t1, t6);
+      this.X[0] = OpCodes.Xor32(t3, t7);
+      const t9 = OpCodes.And32(a, this.X[0]);
+      const t10 = OpCodes.Xor32(t1, t6);
+      const t11 = OpCodes.And32(t4, t10);
+      this.X[2] = OpCodes.Xor32(t9, t11);
+      this.X[1] = OpCodes.Xor32(OpCodes.Xor32(a, t3), OpCodes.And32(t10, this.X[2]));
     }
 
     // InvS4 - { 5, 0, 8, 3,10, 9, 7,14, 2,12,11, 6, 4,15,13, 1 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib4(a, b, c, d) {
-      const t1 = c|d;
-      const t2 = a&t1;
-      const t3 = b^t2;
-      const t4 = a&t3;
-      const t5 = c^t4;
-      this.X[1] = d^t5;
-      const t7 = ~a;
-      const t8 = t5&this.X[1];
-      this.X[3] = t3^t8;
-      const t10 = this.X[1]|t7;
-      const t11 = d^t10;
-      this.X[0] = this.X[3]^t11;
-      this.X[2] = (t3&t11)^(this.X[1]^t7);
+      const t1 = OpCodes.Or32(c, d);
+      const t2 = OpCodes.And32(a, t1);
+      const t3 = OpCodes.Xor32(b, t2);
+      const t4 = OpCodes.And32(a, t3);
+      const t5 = OpCodes.Xor32(c, t4);
+      this.X[1] = OpCodes.Xor32(d, t5);
+      const t7 = OpCodes.Not32(a);
+      const t8 = OpCodes.And32(t5, this.X[1]);
+      this.X[3] = OpCodes.Xor32(t3, t8);
+      const t10 = OpCodes.Or32(this.X[1], t7);
+      const t11 = OpCodes.Xor32(d, t10);
+      this.X[0] = OpCodes.Xor32(this.X[3], t11);
+      this.X[2] = OpCodes.Xor32(OpCodes.And32(t3, t11), OpCodes.Xor32(this.X[1], t7));
     }
 
     // S5 - {15, 5, 2,11, 4,10, 9,12, 0, 3,14, 8,13, 6, 7, 1 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb5(a, b, c, d) {
-      const t1 = ~a;
-      const t2 = a^b;
-      const t3 = a^d;
-      const t4 = c^t1;
-      const t5 = t2|t3;
-      this.X[0] = t4^t5;
-      const t7 = d&this.X[0];
-      const t8 = t2^this.X[0];
-      this.X[1] = t7^t8;
-      const t10 = t1|this.X[0];
-      const t11 = t2|t7;
-      const t12 = t3^t10;
-      this.X[2] = t11^t12;
-      this.X[3] = (b^t7)^(this.X[1]&t12);
+      const t1 = OpCodes.Not32(a);
+      const t2 = OpCodes.Xor32(a, b);
+      const t3 = OpCodes.Xor32(a, d);
+      const t4 = OpCodes.Xor32(c, t1);
+      const t5 = OpCodes.Or32(t2, t3);
+      this.X[0] = OpCodes.Xor32(t4, t5);
+      const t7 = OpCodes.And32(d, this.X[0]);
+      const t8 = OpCodes.Xor32(t2, this.X[0]);
+      this.X[1] = OpCodes.Xor32(t7, t8);
+      const t10 = OpCodes.Or32(t1, this.X[0]);
+      const t11 = OpCodes.Or32(t2, t7);
+      const t12 = OpCodes.Xor32(t3, t10);
+      this.X[2] = OpCodes.Xor32(t11, t12);
+      this.X[3] = OpCodes.Xor32(OpCodes.Xor32(b, t7), OpCodes.And32(this.X[1], t12));
     }
 
     // InvS5 - { 8,15, 2, 9, 4, 1,13,14,11, 6, 5, 3, 7,12,10, 0 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib5(a, b, c, d) {
-      const t1 = ~c;
-      const t2 = b&t1;
-      const t3 = d^t2;
-      const t4 = a&t3;
-      const t5 = b^t1;
-      this.X[3] = t4^t5;
-      const t7 = b|this.X[3];
-      const t8 = a&t7;
-      this.X[1] = t3^t8;
-      const t10 = a|d;
-      const t11 = t1^t7;
-      this.X[0] = t10^t11;
-      this.X[2] = (b&t10)^(t4|(a^c));
+      const t1 = OpCodes.Not32(c);
+      const t2 = OpCodes.And32(b, t1);
+      const t3 = OpCodes.Xor32(d, t2);
+      const t4 = OpCodes.And32(a, t3);
+      const t5 = OpCodes.Xor32(b, t1);
+      this.X[3] = OpCodes.Xor32(t4, t5);
+      const t7 = OpCodes.Or32(b, this.X[3]);
+      const t8 = OpCodes.And32(a, t7);
+      this.X[1] = OpCodes.Xor32(t3, t8);
+      const t10 = OpCodes.Or32(a, d);
+      const t11 = OpCodes.Xor32(t1, t7);
+      this.X[0] = OpCodes.Xor32(t10, t11);
+      this.X[2] = OpCodes.Xor32(OpCodes.And32(b, t10), OpCodes.Or32(t4, OpCodes.Xor32(a, c)));
     }
 
     // S6 - { 7, 2,12, 5, 8, 4, 6,11,14, 9, 1,15,13, 3,10, 0 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb6(a, b, c, d) {
-      const t1 = ~a;
-      const t2 = a^d;
-      const t3 = b^t2;
-      const t4 = t1|t2;
-      const t5 = c^t4;
-      this.X[1] = b^t5;
-      const t7 = t2|this.X[1];
-      const t8 = d^t7;
-      const t9 = t5&t8;
-      this.X[2] = t3^t9;
-      const t11 = t5^t8;
-      this.X[0] = this.X[2]^t11;
-      this.X[3] = (~t5)^(t3&t11);
+      const t1 = OpCodes.Not32(a);
+      const t2 = OpCodes.Xor32(a, d);
+      const t3 = OpCodes.Xor32(b, t2);
+      const t4 = OpCodes.Or32(t1, t2);
+      const t5 = OpCodes.Xor32(c, t4);
+      this.X[1] = OpCodes.Xor32(b, t5);
+      const t7 = OpCodes.Or32(t2, this.X[1]);
+      const t8 = OpCodes.Xor32(d, t7);
+      const t9 = OpCodes.And32(t5, t8);
+      this.X[2] = OpCodes.Xor32(t3, t9);
+      const t11 = OpCodes.Xor32(t5, t8);
+      this.X[0] = OpCodes.Xor32(this.X[2], t11);
+      this.X[3] = OpCodes.Xor32(OpCodes.Not32(t5), OpCodes.And32(t3, t11));
     }
 
     // InvS6 - {15,10, 1,13, 5, 3, 6, 0, 4, 9,14, 7, 2,12, 8,11 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib6(a, b, c, d) {
-      const t1 = ~a;
-      const t2 = a^b;
-      const t3 = c^t2;
-      const t4 = c|t1;
-      const t5 = d^t4;
-      this.X[1] = t3^t5;
-      const t7 = t3&t5;
-      const t8 = t2^t7;
-      const t9 = b|t8;
-      this.X[3] = t5^t9;
-      const t11 = b|this.X[3];
-      this.X[0] = t8^t11;
-      this.X[2] = (d&t1)^(t3^t11);
+      const t1 = OpCodes.Not32(a);
+      const t2 = OpCodes.Xor32(a, b);
+      const t3 = OpCodes.Xor32(c, t2);
+      const t4 = OpCodes.Or32(c, t1);
+      const t5 = OpCodes.Xor32(d, t4);
+      this.X[1] = OpCodes.Xor32(t3, t5);
+      const t7 = OpCodes.And32(t3, t5);
+      const t8 = OpCodes.Xor32(t2, t7);
+      const t9 = OpCodes.Or32(b, t8);
+      this.X[3] = OpCodes.Xor32(t5, t9);
+      const t11 = OpCodes.Or32(b, this.X[3]);
+      this.X[0] = OpCodes.Xor32(t8, t11);
+      this.X[2] = OpCodes.Xor32(OpCodes.And32(d, t1), OpCodes.Xor32(t3, t11));
     }
 
     // S7 - { 1,13,15, 0,14, 8, 2,11, 7, 4,12,10, 9, 3, 5, 6 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _sb7(a, b, c, d) {
-      const t1 = b^c;
-      const t2 = c&t1;
-      const t3 = d^t2;
-      const t4 = a^t3;
-      const t5 = d|t1;
-      const t6 = t4&t5;
-      this.X[1] = b^t6;
-      const t8 = t3|this.X[1];
-      const t9 = a&t4;
-      this.X[3] = t1^t9;
-      const t11 = t4^t8;
-      const t12 = this.X[3]&t11;
-      this.X[2] = t3^t12;
-      this.X[0] = (~t11)^(this.X[3]&this.X[2]);
+      const t1 = OpCodes.Xor32(b, c);
+      const t2 = OpCodes.And32(c, t1);
+      const t3 = OpCodes.Xor32(d, t2);
+      const t4 = OpCodes.Xor32(a, t3);
+      const t5 = OpCodes.Or32(d, t1);
+      const t6 = OpCodes.And32(t4, t5);
+      this.X[1] = OpCodes.Xor32(b, t6);
+      const t8 = OpCodes.Or32(t3, this.X[1]);
+      const t9 = OpCodes.And32(a, t4);
+      this.X[3] = OpCodes.Xor32(t1, t9);
+      const t11 = OpCodes.Xor32(t4, t8);
+      const t12 = OpCodes.And32(this.X[3], t11);
+      this.X[2] = OpCodes.Xor32(t3, t12);
+      this.X[0] = OpCodes.Xor32(OpCodes.Not32(t11), OpCodes.And32(this.X[3], this.X[2]));
     }
 
     // InvS7 - { 3, 0, 6,13, 9,14,15, 8, 5,12,11, 7,10, 1, 4, 2 }
+    /**
+     * Bitsliced S-box on four words; result in this.X
+     * @param {uint32} a - Word 0
+     * @param {uint32} b - Word 1
+     * @param {uint32} c - Word 2
+     * @param {uint32} d - Word 3
+     */
     _ib7(a, b, c, d) {
-      const t3 = c|(a&b);
-      const t4 = d&(a|b);
-      this.X[3] = t3^t4;
-      const t6 = ~d;
-      const t7 = b^t4;
-      const t9 = t7|(this.X[3]^t6);
-      this.X[1] = a^t9;
-      this.X[0] = (c^t7)^(d|this.X[1]);
-      this.X[2] = (t3^this.X[1])^(this.X[0]^(a&this.X[3]));
+      const t3 = OpCodes.Or32(c, OpCodes.And32(a, b));
+      const t4 = OpCodes.And32(d, OpCodes.Or32(a, b));
+      this.X[3] = OpCodes.Xor32(t3, t4);
+      const t6 = OpCodes.Not32(d);
+      const t7 = OpCodes.Xor32(b, t4);
+      const t9 = OpCodes.Or32(t7, OpCodes.Xor32(this.X[3], t6));
+      this.X[1] = OpCodes.Xor32(a, t9);
+      this.X[0] = OpCodes.Xor32(OpCodes.Xor32(c, t7), OpCodes.Or32(d, this.X[1]));
+      this.X[2] = OpCodes.Xor32(OpCodes.Xor32(t3, this.X[1]), OpCodes.Xor32(this.X[0], OpCodes.And32(a, this.X[3])));
     }
 
     // Linear transformation (same as Serpent)
+    /**
+     * Linear transformation on this.X
+     */
     _LT() {
       const x0 = OpCodes.RotL32(this.X[0], 13);
       const x2 = OpCodes.RotL32(this.X[2], 3);
-      const x1 = this.X[1]^x0^x2;
-      const x3 = this.X[3]^x2^OpCodes.Shl32(x0, 3);
+      const x1 = OpCodes.Xor32(OpCodes.Xor32(this.X[1], x0), x2);
+      const x3 = OpCodes.Xor32(OpCodes.Xor32(this.X[3], x2), OpCodes.Shl32(x0, 3));
 
       this.X[1] = OpCodes.RotL32(x1, 1);
       this.X[3] = OpCodes.RotL32(x3, 7);
-      this.X[0] = OpCodes.RotL32(x0^this.X[1]^this.X[3], 5);
-      this.X[2] = OpCodes.RotL32(x2^this.X[3]^OpCodes.Shl32(this.X[1], 7), 22);
+      this.X[0] = OpCodes.RotL32(OpCodes.Xor32(OpCodes.Xor32(x0, this.X[1]), this.X[3]), 5);
+      this.X[2] = OpCodes.RotL32(OpCodes.Xor32(OpCodes.Xor32(x2, this.X[3]), OpCodes.Shl32(this.X[1], 7)), 22);
     }
 
     // Inverse linear transformation (same as Serpent)
+    /**
+     * Inverse linear transformation on this.X
+     */
     _inverseLT() {
-      const x2 = OpCodes.RotR32(this.X[2], 22)^this.X[3]^OpCodes.Shl32(this.X[1], 7);
-      const x0 = OpCodes.RotR32(this.X[0], 5)^this.X[1]^this.X[3];
+      const x2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(this.X[2], 22), this.X[3]), OpCodes.Shl32(this.X[1], 7));
+      const x0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(this.X[0], 5), this.X[1]), this.X[3]);
       const x3 = OpCodes.RotR32(this.X[3], 7);
       const x1 = OpCodes.RotR32(this.X[1], 1);
-      this.X[3] = x3^x2^OpCodes.Shl32(x0, 3);
-      this.X[1] = x1^x0^x2;
+      this.X[3] = OpCodes.Xor32(OpCodes.Xor32(x3, x2), OpCodes.Shl32(x0, 3));
+      this.X[1] = OpCodes.Xor32(OpCodes.Xor32(x1, x0), x2);
       this.X[2] = OpCodes.RotR32(x2, 3);
       this.X[0] = OpCodes.RotR32(x0, 13);
     }
 
-    // Key scheduling function - Tnepres version (big-endian, reverse order)
+    /**
+     * Key scheduling function - Tnepres version (big-endian, reverse order)
+     * @param {uint8[]} key - Key bytes
+     * @returns {uint32[][]} 33 round keys of four words
+     */
     _generateKeySchedule(key) {
       // Pad key to 256 bits (16 words) - big-endian order
-      const kPad = new Array(16).fill(0);
+      /** @type {uint32[]} */
+      const kPad = new Array(16);
+      for (let i = 0; i < 16; ++i) kPad[i] = 0;
       let length = 0;
 
       // Process key from end backwards (big-endian)
@@ -601,12 +739,14 @@
 
       // Expand padded key up to 33 x 128 bits of key material
       const amount = (this.ROUNDS + 1) * 4;
-      const w = new Array(amount).fill(0);
+      /** @type {uint32[]} */
+      const w = new Array(amount);
+      for (let i = 0; i < amount; ++i) w[i] = 0;
 
       // Compute w0 to w7 from padded key
       for (let i = 8; i < 16; ++i) {
         kPad[i] = OpCodes.RotL32(
-          kPad[i - 8]^kPad[i - 5]^kPad[i - 3]^kPad[i - 1]^this.PHI^(i - 8),
+          OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(kPad[i - 8], kPad[i - 5]), kPad[i - 3]), kPad[i - 1]), this.PHI), i - 8),
           11
         );
       }
@@ -619,14 +759,15 @@
       // Expand to full key schedule
       for (let i = 8; i < amount; ++i) {
         w[i] = OpCodes.RotL32(
-          w[i - 8]^w[i - 5]^w[i - 3]^w[i - 1]^this.PHI^i,
+          OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(w[i - 8], w[i - 5]), w[i - 3]), w[i - 1]), this.PHI), i),
           11
         );
       }
 
       // Apply S-boxes to create working keys (Tnepres order: 3,2,1,0,7,6,5,4...)
-      const roundKeys = [];
-      /** @type {uint8[]} */
+      /** @type {uint32[][]} */
+      const schedule = [];
+      /** @type {int32[]} */
       const sboxOrder = [3, 2, 1, 0, 7, 6, 5, 4];
 
       for (let i = 0; i < 33; ++i) {
@@ -643,15 +784,24 @@
         w[i * 4 + 2] = this.X[2];
         w[i * 4 + 3] = this.X[3];
 
-        roundKeys[i] = [this.X[0], this.X[1], this.X[2], this.X[3]];
+        /** @type {uint32[]} */
+        const rkRow = [this.X[0], this.X[1], this.X[2], this.X[3]];
+        schedule.push(rkRow);
       }
 
-      return roundKeys;
+      return schedule;
     }
 
     // Helper method to apply S-box based on index
+    /**
+     * Apply S-box sboxIndex to this.X
+     * @param {int32} sboxIndex - S-box 0..7
+     */
     _applySBox(sboxIndex) {
-      const a = this.X[0], b = this.X[1], c = this.X[2], d = this.X[3];
+      const a = this.X[0];
+      const b = this.X[1];
+      const c = this.X[2];
+      const d = this.X[3];
       switch (sboxIndex) {
         case 0: this._sb0(a, b, c, d); break;
         case 1: this._sb1(a, b, c, d); break;
@@ -665,8 +815,15 @@
     }
 
     // Helper method to apply inverse S-box based on index
+    /**
+     * Apply inverse S-box sboxIndex to this.X
+     * @param {int32} sboxIndex - S-box 0..7
+     */
     _applyInverseSBox(sboxIndex) {
-      const a = this.X[0], b = this.X[1], c = this.X[2], d = this.X[3];
+      const a = this.X[0];
+      const b = this.X[1];
+      const c = this.X[2];
+      const d = this.X[3];
       switch (sboxIndex) {
         case 0: this._ib0(a, b, c, d); break;
         case 1: this._ib1(a, b, c, d); break;
@@ -698,10 +855,10 @@
       // 32 rounds
       for (let round = 0; round < this.ROUNDS; ++round) {
         // Key mixing
-        this.X[0] ^= this.roundKeys[round][0];
-        this.X[1] ^= this.roundKeys[round][1];
-        this.X[2] ^= this.roundKeys[round][2];
-        this.X[3] ^= this.roundKeys[round][3];
+        this.X[0] = OpCodes.Xor32(this.X[0], this.roundKeys[round][0]);
+        this.X[1] = OpCodes.Xor32(this.X[1], this.roundKeys[round][1]);
+        this.X[2] = OpCodes.Xor32(this.X[2], this.roundKeys[round][2]);
+        this.X[3] = OpCodes.Xor32(this.X[3], this.roundKeys[round][3]);
 
         // S-box substitution
         const sboxIndex = round % 8;
@@ -714,12 +871,13 @@
       }
 
       // Final key mixing
-      this.X[3] ^= this.roundKeys[32][3];
-      this.X[2] ^= this.roundKeys[32][2];
-      this.X[1] ^= this.roundKeys[32][1];
-      this.X[0] ^= this.roundKeys[32][0];
+      this.X[3] = OpCodes.Xor32(this.X[3], this.roundKeys[32][3]);
+      this.X[2] = OpCodes.Xor32(this.X[2], this.roundKeys[32][2]);
+      this.X[1] = OpCodes.Xor32(this.X[1], this.roundKeys[32][1]);
+      this.X[0] = OpCodes.Xor32(this.X[0], this.roundKeys[32][0]);
 
       // Convert back to bytes (big-endian, reverse word order)
+      /** @type {uint8[]} */
       const result = [];
       const bytes3 = OpCodes.Unpack32BE(this.X[3]);
       const bytes2 = OpCodes.Unpack32BE(this.X[2]);
@@ -748,10 +906,10 @@
       this.X[0] = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
 
       // Undo final key mixing
-      this.X[3] ^= this.roundKeys[32][3];
-      this.X[2] ^= this.roundKeys[32][2];
-      this.X[1] ^= this.roundKeys[32][1];
-      this.X[0] ^= this.roundKeys[32][0];
+      this.X[3] = OpCodes.Xor32(this.X[3], this.roundKeys[32][3]);
+      this.X[2] = OpCodes.Xor32(this.X[2], this.roundKeys[32][2]);
+      this.X[1] = OpCodes.Xor32(this.X[1], this.roundKeys[32][1]);
+      this.X[0] = OpCodes.Xor32(this.X[0], this.roundKeys[32][0]);
 
       // 32 rounds in reverse
       for (let round = this.ROUNDS - 1; round >= 0; --round) {
@@ -765,13 +923,14 @@
         this._applyInverseSBox(sboxIndex);
 
         // Undo key mixing
-        this.X[0] ^= this.roundKeys[round][0];
-        this.X[1] ^= this.roundKeys[round][1];
-        this.X[2] ^= this.roundKeys[round][2];
-        this.X[3] ^= this.roundKeys[round][3];
+        this.X[0] = OpCodes.Xor32(this.X[0], this.roundKeys[round][0]);
+        this.X[1] = OpCodes.Xor32(this.X[1], this.roundKeys[round][1]);
+        this.X[2] = OpCodes.Xor32(this.X[2], this.roundKeys[round][2]);
+        this.X[3] = OpCodes.Xor32(this.X[3], this.roundKeys[round][3]);
       }
 
       // Convert back to bytes (big-endian, reverse word order)
+      /** @type {uint8[]} */
       const result = [];
       const bytes3 = OpCodes.Unpack32BE(this.X[3]);
       const bytes2 = OpCodes.Unpack32BE(this.X[2]);
