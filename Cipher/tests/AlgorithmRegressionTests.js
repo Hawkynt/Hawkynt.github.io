@@ -65,6 +65,74 @@ test('GOST R 34.11-94: given a message of 2^32 + 24 bits, when finalized, then t
   equalHex(blocks[blocks.length - 2], hex(leBytes(LONG_BITS, 32)));
 });
 
+// ---------------------------------------------------------------- missing dependencies
+// A page context (no require, no module, no global) holding only the named
+// scripts: what an algorithm meets when the hash or cipher it builds on is not
+// on the page.
+function pageWith(...files) {
+  const fs = require('fs');
+  const vm = require('vm');
+  const sandbox = require('./BrowserLoad').browserContext();
+  for (const file of ['AlgorithmFramework.js', 'OpCodes.js', ...files]) {
+    vm.runInContext(fs.readFileSync(path.join(CIPHER_ROOT, file), 'utf8'), sandbox, { filename: file });
+  }
+  return sandbox.AlgorithmFramework;
+}
+/** Runs fn; a thrown Error is returned as { error }, a result as { value } */
+function attempt(fn) {
+  try { return { value: fn() }; } catch (e) { return { error: e }; }
+}
+/** Passes when the outcome is the expected bytes or an error naming the missing dependency */
+function correctOrRefused(outcome, expected, dependency) {
+  if (outcome.error) {
+    if (!String(outcome.error.message).includes(dependency)) throw new Error(`refused without naming ${dependency}: ${outcome.error.message}`);
+    return;
+  }
+  equalHex(outcome.value, expected);
+}
+
+function pbkdf2(framework, password, salt, iterations, size) {
+  const instance = framework.Find('PBKDF2').CreateInstance();
+  instance.salt = Array.from(Buffer.from(salt));
+  instance.iterations = iterations;
+  instance.outputSize = size;
+  instance.Feed(Array.from(Buffer.from(password)));
+  return instance.Result();
+}
+
+// RFC 6070 test case 1, also node's crypto.pbkdf2Sync('password', 'salt', 1, 20, 'sha1')
+const PBKDF2_RFC6070_1 = '0c60c80f961f0e71f3a9b524af6012062fe037a6';
+
+test('PBKDF2: given a page without SHA-1, when a key is derived, then it is the RFC 6070 key or a refusal naming SHA-1 - never a wrong key', () => {
+  const framework = pageWith('algorithms/kdf/pbkdf2.js');
+  correctOrRefused(attempt(() => pbkdf2(framework, 'password', 'salt', 1, 20)), PBKDF2_RFC6070_1, 'SHA-1');
+});
+test('PBKDF2: given a page with SHA-1, when a key is derived, then it is the RFC 6070 key', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/kdf/pbkdf2.js');
+  equalHex(pbkdf2(framework, 'password', 'salt', 1, 20), PBKDF2_RFC6070_1);
+});
+
+function pbkdf1(framework, hashName, iterations) {
+  const instance = framework.Find('PBKDF1').CreateInstance();
+  instance.hashFunction = hashName;
+  instance.salt = Array.from(Buffer.from('saltsalt'));
+  instance.iterations = iterations;
+  instance.outputSize = 16;
+  instance.Feed(Array.from(Buffer.from('password')));
+  return instance.Result();
+}
+// OpenSSL evpkdf_pbkdf1.txt: password/saltsalt, 2 iterations, SHA-1
+const PBKDF1_OPENSSL_SHA1_2 = 'e3a8dfcf2eea6dc81d2ad154274faae9';
+
+test('PBKDF1: given a page without SHA-1, when a key is derived with SHA1, then it is the OpenSSL key or a refusal naming SHA-1 - never a wrong key', () => {
+  const framework = pageWith('algorithms/kdf/pbkdf1.js');
+  correctOrRefused(attempt(() => pbkdf1(framework, 'SHA1', 2)), PBKDF1_OPENSSL_SHA1_2, 'SHA-1');
+});
+test('PBKDF1: given a page with SHA-1, when a key is derived with the undashed name SHA1, then it is the OpenSSL key', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/kdf/pbkdf1.js');
+  equalHex(pbkdf1(framework, 'SHA1', 2), PBKDF1_OPENSSL_SHA1_2);
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
