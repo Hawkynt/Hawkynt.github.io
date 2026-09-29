@@ -262,13 +262,16 @@
     // scrambling passes (one per S-box) over the same 104-byte buffer.
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint8[]} The 104-byte schedule
      */
     _buildSchedule(keyBytes) {
-      const buf = new Array(SCHEDULE_LEN);
+      /** @type {uint8[]} */
+      const buf = OpCodes.CreateArray(SCHEDULE_LEN, 0);
       for (let i = 0; i < SCHEDULE_LEN; i++) {
         const idx = OpCodes.And32(keyBytes[i % 16] + i, 0xFF);
         buf[i] = SBOX0[idx];
       }
+      /** @type {uint32} */
       let state = 0;
       for (let pass = 0; pass < 4; pass++) {
         const sbox = SBOXES[pass];
@@ -282,6 +285,11 @@
       return buf;
     }
 
+    /**
+     * Read a little-endian 32-bit word from the schedule
+     * @param {int32} off - Byte offset into the schedule
+     * @returns {uint32} The word
+     */
     _readWordLE(off) {
       const s = this._schedule;
       return OpCodes.Pack32LE(s[off], s[off + 1], s[off + 2], s[off + 3]);
@@ -289,6 +297,12 @@
 
     // Round function: byte-wise (mod 256) mixing of value^K0, four dedicated S-box
     // lookups, recombine little-endian, rotate left by 1 bit, whiten with K1.
+    /**
+     * Round function
+     * @param {uint32} value - Half-block input
+     * @param {int32} off - Schedule offset of K0/K1
+     * @returns {uint32} Round output
+     */
     _F(value, off) {
       const K0 = this._readWordLE(off);
       const K1 = this._readWordLE(off + 4);
