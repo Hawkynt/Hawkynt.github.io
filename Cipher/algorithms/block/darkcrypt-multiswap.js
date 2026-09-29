@@ -150,21 +150,34 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMultiswapInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMultiswapInstance(this, isInverse);
     }
   }
 
   class DarkCryptMultiswapInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMultiswapAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
       if (keyBytes.length !== 56)
@@ -174,6 +187,9 @@
       this._sched = this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     _buildSchedule(key) {
@@ -205,6 +221,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -214,6 +231,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const { k, s0, s1 } = this._sched;
       const x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
@@ -227,6 +248,10 @@
       return [...OpCodes.Unpack32LE(c0), ...OpCodes.Unpack32LE(c1)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const { k, ik, s0, s1 } = this._sched;
       const c0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);

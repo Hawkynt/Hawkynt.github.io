@@ -89,6 +89,9 @@
   }
 
   // ---- Key expansion (Schroeppel "stir", original pre-Wagner-fix) -----------
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function expandKey(keyBytes) {
     const KX = new Array(286).fill(0n);
 
@@ -142,6 +145,10 @@
   // ---- HPC-Medium block transform (65-128 bit blocks, here fixed 128) -------
   const KKC = m64(PI19 + 128n); // p119 + blocksize
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function encryptBlock(KX, spice, block) {
     let s0 = be64(block, 0), s1 = be64(block, 8);
     s0 = m64(s0 + KX[128]); s1 = m64(s1 + KX[129]);
@@ -195,6 +202,10 @@
     return out;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   function decryptBlock(KX, spice, block) {
     let s0 = be64(block, 0), s1 = be64(block, 8);
     s0 = m64(s0 - KX[136]); s1 = m64(s1 - KX[137]);
@@ -306,23 +317,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptHPCInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptHPCInstance(this, isInverse);
     }
   }
 
   class DarkCryptHPCInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptHPCAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._KX = null;
       this._spice = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._KX = null; this._spice = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
@@ -334,6 +358,9 @@
       for (let i = 0; i < 8; ++i) this._spice[i] = le64(this._key, SPICE_OFFSET + i * 8);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -348,6 +375,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

@@ -179,7 +179,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TripleDESInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -196,7 +196,7 @@
   class TripleDESInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TripleDESAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -204,6 +204,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -296,6 +297,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -314,6 +316,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("3DES requires exactly 8 bytes per block");
@@ -334,6 +340,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error("3DES requires exactly 8 bytes per block");
@@ -355,15 +365,24 @@
     }
 
     // Use real DES algorithm for proper 3DES implementation
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _desEncrypt(block, key) {
       return this._callDES(block, key, false);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _desDecrypt(block, key) {
       return this._callDES(block, key, true);
     }
 
     // Use DES implementation with lazy loading and fallback strategies
+    /**
+     * @param {boolean} [decrypt=false] - Decrypt instead of encrypt
+     */
     _callDES(data, key, decrypt = false) {
       if (data.length !== 8 || key.length !== 8) {
         throw new Error("DES requires 8-byte blocks and keys");

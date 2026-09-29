@@ -297,16 +297,26 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {SC2000Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SC2000Instance(this, isInverse);
     }
   }
 
   class SC2000Instance extends IBlockCipherInstance {
+    /**
+     * @param {SC2000} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
       this._rounds = 0;
@@ -314,6 +324,9 @@
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -338,6 +351,9 @@
       this._roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -352,6 +368,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be a multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -366,6 +383,9 @@
     // The mask of Feistel pair index r: R5 for even, R3 for odd.
     _maskOf(r) { return (r % 2) === 0 ? MASK5 : MASK3; }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       // Step 1: read the master key big-endian and extend it to eight words.
       // A 128-bit key repeats its four words; a 192-bit key repeats its first
@@ -414,6 +434,9 @@
       return rk;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _loadBlock(block) {
       return [
         OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
@@ -432,6 +455,10 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const rk = this._roundKeys;
       let state = this._loadBlock(block);
@@ -451,6 +478,10 @@
       return this._storeBlock(state);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const rk = this._roundKeys;
       let state = this._loadBlock(block);

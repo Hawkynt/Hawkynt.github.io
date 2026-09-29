@@ -69,16 +69,26 @@ class Shacal2 extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {Shacal2Instance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new Shacal2Instance(this, isInverse);
   }
 }
 
 class Shacal2Instance extends IBlockCipherInstance {
+  /**
+   * @param {Shacal2} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
     this.BlockSize = 32;
     this.KeySize = 0;
@@ -97,6 +107,9 @@ class Shacal2Instance extends IBlockCipherInstance {
     ]);
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -113,6 +126,9 @@ class Shacal2Instance extends IBlockCipherInstance {
     this._keySchedule();
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() {
     return this._key ? [...this._key] : null;
   }
@@ -168,6 +184,10 @@ class Shacal2Instance extends IBlockCipherInstance {
     return OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x, 6), OpCodes.RotR32(x, 11)), OpCodes.RotR32(x, 25));
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(block) {
     let [A, B, C, D, E, F, G, H] = [
       OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
@@ -221,6 +241,10 @@ class Shacal2Instance extends IBlockCipherInstance {
     ];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(block) {
     let A = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
     let B = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
@@ -293,6 +317,7 @@ class Shacal2Instance extends IBlockCipherInstance {
       throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
       const block = this.inputBuffer.slice(i, i + this.BlockSize);

@@ -285,6 +285,9 @@
     for (let round = 8; round >= 0; round--) doRoundDecrypt(round, round, round + 1, round);
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildTables(keyBytes) {
     const kx = keyBytes.slice(0, 10);
     const ky = keyBytes.slice(10, 20);
@@ -362,22 +365,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptREDOC2Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptREDOC2Instance(this, isInverse);
     }
   }
 
   class DarkCryptREDOC2Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptREDOC2Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 0;
       this._tables = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; return; }
       if (keyBytes.length !== 20)
@@ -387,6 +403,9 @@
       this._tables = buildTables(Uint8Array.from(this._key));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -401,6 +420,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       const t = this._tables;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

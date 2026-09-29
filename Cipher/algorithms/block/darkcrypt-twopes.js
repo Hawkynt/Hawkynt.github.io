@@ -215,22 +215,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptTWOPESInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptTWOPESInstance(this, isInverse);
     }
   }
 
   class DarkCryptTWOPESInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptTWOPESAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._sub = null;       // [ pass0 subkeys, pass1 subkeys ]
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._sub = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -246,6 +259,9 @@
       this._sub = [expandHalf(half0), expandHalf(half1)];
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -260,6 +276,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -269,6 +286,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _blockToState(block) {
       return [
         OpCodes.Pack16LE(block[0], block[1]),
@@ -287,12 +307,20 @@
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let s = this._blockToState(block);
       for (let p = 0; p < PASSES; ++p) s = encPass(this._sub[p], s);
       return this._stateToBlock(s);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let s = this._blockToState(block);
       for (let p = PASSES - 1; p >= 0; --p) s = decPass(this._sub[p], s);

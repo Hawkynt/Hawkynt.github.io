@@ -125,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Sm4Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -184,7 +184,7 @@
   class Sm4Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Sm4Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -193,6 +193,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -259,6 +260,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -338,6 +340,10 @@
     }
 
     // Encrypt 128-bit block (following Bouncy Castle C# reference exactly)
+    /**
+     * @param {uint8[]} plaintext - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(plaintext) {
       if (plaintext.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');
@@ -368,6 +374,10 @@
     }
 
     // Decrypt 128-bit block (SM4 is symmetric - use encryption with reversed key schedule)
+    /**
+     * @param {uint8[]} ciphertext - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(ciphertext) {
       if (ciphertext.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');

@@ -125,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XTEAInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -142,7 +142,7 @@
   class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XTEAAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -150,6 +150,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -227,6 +228,10 @@
 
 
     // Encrypt 64-bit block - Bouncy Castle C# reference implementation
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');
@@ -254,6 +259,10 @@
     }
 
     // Decrypt 64-bit block - Bouncy Castle C# reference implementation
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');

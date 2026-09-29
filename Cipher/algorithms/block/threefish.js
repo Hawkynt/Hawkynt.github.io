@@ -616,6 +616,7 @@
       this._tweak = null;
       this.key = null;
       this.extendedKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 64; // bytes (512 bits)
       this.KeySize = 0;    // will be set when key is assigned
@@ -708,6 +709,7 @@
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
       // Process complete blocks
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 

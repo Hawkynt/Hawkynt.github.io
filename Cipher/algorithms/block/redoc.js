@@ -147,7 +147,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {REDOC2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -164,7 +164,7 @@
   class REDOC2Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {REDOC2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -172,6 +172,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 20;
@@ -193,6 +194,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -264,6 +268,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -273,6 +278,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 10) {
         throw new Error('REDOC II requires 10-byte blocks');
@@ -289,6 +298,10 @@
       return data;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 10) {
         throw new Error('REDOC II requires 10-byte blocks');
@@ -417,7 +430,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {REDOC3Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -434,7 +447,7 @@
   class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {REDOC3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -442,6 +455,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 32;
@@ -463,6 +477,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} value - Key bytes, or null to clear
+     */
     set key(value) {
       if (!value) {
         this._key = null;
@@ -537,6 +554,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       while (this.inputBuffer.length >= this.BlockSize) {
         const block = this.inputBuffer.splice(0, this.BlockSize);
@@ -546,6 +564,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('REDOC III requires 16-byte blocks');
@@ -562,6 +584,10 @@
       return data;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       if (block.length !== 16) {
         throw new Error('REDOC III requires 16-byte blocks');

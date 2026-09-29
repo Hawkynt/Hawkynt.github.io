@@ -144,6 +144,9 @@
     return [r0, r1, r2, r3];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function blockToWords(block) {
     return [
       OpCodes.Pack16LE(block[0], block[1]),
@@ -166,6 +169,9 @@
   // into two 8-byte halves and repeatedly run each half through the
   // forward round sequence, folding 48 bits of ciphertext into the round
   // key array on every pass, until all 96 words have been mixed twice.
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function expandKey(keyBytes) {
     const ek = new Array(KSIZE).fill(0);
     const halves = [keyBytes.slice(0, 8), keyBytes.slice(8, 16)];
@@ -235,22 +241,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptMacGuffinInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptMacGuffinInstance(this, isInverse);
     }
   }
 
   class DarkCryptMacGuffinInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptMacGuffinAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
@@ -260,6 +279,9 @@
       this._roundKeys = expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -274,6 +296,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -284,11 +307,19 @@
     }
 
     // DarkCrypt "crypt": Blaze's reverse (decrypt-direction) round-key sequence.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       return wordsToBlock(reverseRounds(blockToWords(block), this._roundKeys));
     }
 
     // DarkCrypt "decrypt": Blaze's forward (encrypt-direction) round-key sequence.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       return wordsToBlock(forwardRounds(blockToWords(block), this._roundKeys));
     }

@@ -190,22 +190,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptGostInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptGostInstance(this, isInverse);
     }
   }
 
   class DarkCryptGostInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptGostAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.subkeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.subkeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 32)
@@ -215,6 +228,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -229,6 +245,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -238,6 +255,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const k = new Array(8);
       for (let i = 0; i < 8; i++) {
@@ -249,6 +269,10 @@
 
     // Feistel state: A = first word, B = second word.
     // Round i (0-based): B ^= f(A,k[i]); A ^= f(B,k[i+1]) — pairs consumed two-at-a-time.
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block, k) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -267,6 +291,10 @@
       return [...OpCodes.Unpack32LE(B), ...OpCodes.Unpack32LE(A)];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block, k) {
       let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
       let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);

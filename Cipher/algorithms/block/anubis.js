@@ -396,7 +396,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AnubisInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -433,7 +433,7 @@
   class AnubisInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AnubisAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -443,6 +443,7 @@
       this.key = null;
       this.roundKeyEnc = null;
       this.roundKeyDec = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16; // 128 bits
       this.KeySize = 0;
@@ -516,6 +517,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const roundKey = this.isInverse ? this.roundKeyDec : this.roundKeyEnc;
 
@@ -533,6 +535,10 @@
     }
 
     // Core encryption/decryption function
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _crypt(bytes, roundKey) {
       if (bytes.length !== 16) {
         throw new Error('Anubis requires exactly 16-byte blocks');

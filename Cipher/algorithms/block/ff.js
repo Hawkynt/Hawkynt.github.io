@@ -341,7 +341,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FF1Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -358,14 +358,16 @@
   class FF1Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FF1Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 0; // Variable size for FF1
       this.KeySize = 0;
@@ -855,7 +857,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FF3Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -872,7 +874,7 @@
   class FF3Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FF3Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -880,6 +882,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 0; // Variable size for FF3
       this.KeySize = 0;
@@ -1102,6 +1105,9 @@
 
     // CIPH_REVB(K): AES-ECB encryption of one block under the byte-reversed
     // key, as SP 800-38G Algorithm 9 step 4c requires.
+    /**
+     * @param {uint8[]} block - Input block
+     */
     _aesEncrypt(block) {
       if (!this._key || this._key.length === 0) {
         throw new Error("AES key not set for FF3 encryption");

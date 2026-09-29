@@ -230,7 +230,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SKINNY128Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -251,14 +251,16 @@
   class SKINNY128Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SKINNY128Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.keySchedule = null;
     }
@@ -300,6 +302,7 @@
 
     /**
      * Expand key into round keys (key schedule)
+     * @param {uint8[]} keyBytes - Key bytes
      */
     _expandKey(keyBytes) {
       const keySize = keyBytes.length;
@@ -448,6 +451,7 @@
       if (this.inputBuffer.length % blockSize !== 0)
         throw new Error("Input length must be multiple of " + blockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process complete blocks
@@ -464,6 +468,8 @@
 
     /**
      * Encrypt a single 16-byte block
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
       // Load state
@@ -606,6 +612,8 @@
     /**
      * Decrypt a single 16-byte block
      * Following the exact C reference implementation pattern
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
       // Load state

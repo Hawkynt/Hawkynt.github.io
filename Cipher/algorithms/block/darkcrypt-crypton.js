@@ -186,23 +186,36 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptCryptonInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptCryptonInstance(this, isInverse);
     }
   }
 
   class DarkCryptCryptonInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptCryptonAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.encRoundKeys = null;
       this.decRoundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -219,6 +232,9 @@
       this._generateRoundKeys(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -233,6 +249,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       const rk = this.isInverse ? this.decRoundKeys : this.encRoundKeys;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -245,6 +262,9 @@
 
     // Builds both the encrypt and decrypt 52-word round-key schedules from the
     // 32-byte key, exactly mirroring the DarkCrypt plugin's key-setup computation.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateRoundKeys(keyBytes) {
       const K = new Array(8);
       for (let i = 0; i < 8; i++)
@@ -324,6 +344,10 @@
 
     // Shared round function for both encryption and decryption; only the round-key
     // schedule passed in differs.
+    /**
+     * @param {uint8[]} bytes - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(bytes, rk) {
       let w = [
         OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),

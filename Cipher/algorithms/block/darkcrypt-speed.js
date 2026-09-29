@@ -168,22 +168,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptSpeedInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptSpeedInstance(this, isInverse);
     }
   }
 
   class DarkCryptSpeedInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptSpeedAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.expandedKey = null; // 64 x 16-bit round-key words
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -199,6 +212,9 @@
       this.expandedKey = this._expandKey(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -213,6 +229,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -224,6 +241,9 @@
 
     // Expands the 16 raw 16-bit key words into a 64-word round-key schedule via a
     // 3-word nonlinear (majority + rotate) shift register seeded from fixed constants.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const rawWords = new Array(16);
       for (let i = 0; i < 16; i++)
@@ -243,6 +263,10 @@
       return words;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let q = new Array(8);
       for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));
@@ -261,6 +285,10 @@
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let q = new Array(8);
       for (let i = 0; i < 8; i++) q[i] = OpCodes.Or32(block[i * 2], OpCodes.Shl32(block[i * 2 + 1], 8));

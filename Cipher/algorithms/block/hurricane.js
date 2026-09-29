@@ -129,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HurricaneInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -146,7 +146,7 @@
   class HurricaneInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HurricaneAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -154,6 +154,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Hurricane-specific state
@@ -244,6 +245,9 @@
       return checksum;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _expandKey(keyBytes) {
       const minLength = 16;
       if (keyBytes.length >= minLength) {
@@ -370,6 +374,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     _encrypt(data) {
       if (data.length < 1) return [];
 
@@ -398,6 +406,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} data - Input block
+     * @returns {uint8[]} Output block
+     */
     _decrypt(data) {
       if (data.length < 1) return [];
 

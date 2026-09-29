@@ -120,6 +120,9 @@
     new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
   ];
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildTablesOnce(keyBytes) {
     const seed = pack32LE(keyBytes, 64);
     const rng = makeRng();
@@ -192,6 +195,9 @@
   // mutually consistent while distinct keys still see the real call-order
   // dependent leftover state on their first use.
   const tablesCache = new Map();
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function buildTables(keyBytes) {
     const cacheKey = Array.from(keyBytes).join(',');
     let tables = tablesCache.get(cacheKey);
@@ -262,22 +268,35 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptKhufu512Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptKhufu512Instance(this, isInverse);
     }
   }
 
   class DarkCryptKhufu512Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptKhufu512Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
       this._tables = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._tables = null; return; }
       if (keyBytes.length !== 68)
@@ -287,6 +306,9 @@
       this._tables = buildTables(Uint8Array.from(this._key));
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -301,6 +323,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       const t = this._tables;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {

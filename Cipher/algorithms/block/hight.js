@@ -205,7 +205,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HIGHTInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -222,14 +222,16 @@
   class HIGHTInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HIGHTAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this.roundKeys = new Array(136); // 136-byte round key schedule
     }
@@ -331,6 +333,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = 8;
       if (this.inputBuffer.length % blockSize !== 0)
@@ -347,6 +350,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _processBlock(block) {
       const xx = new Array(8);
 

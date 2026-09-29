@@ -313,6 +313,10 @@
     }
 
     // Encrypt a 512-byte block using 6-round Feistel network
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     encryptBlock(block, key, tweak) {
       if (block.length !== this.BLOCK_SIZE) {
         throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
@@ -346,6 +350,10 @@
     }
 
     // Decrypt a 512-byte block (reverse Feistel network)
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     decryptBlock(block, key, tweak) {
       if (block.length !== this.BLOCK_SIZE) {
         throw new Error("Block must be exactly " + this.BLOCK_SIZE + " bytes");
@@ -382,7 +390,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MercyInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -401,14 +409,16 @@
   class MercyInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MercyAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
       this._tweak = null;
       this.BlockSize = 512; // 4096 bits = 512 bytes
@@ -510,6 +520,7 @@
       }
 
       // Process each block
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);

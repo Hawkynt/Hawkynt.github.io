@@ -292,6 +292,9 @@
         _keySet: false,
 
         // Key setter that calls algorithm's KeySetup
+        /**
+         * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+         */
         set key(keyBytes) {
           if (keyBytes) {
             self.KeySetup(keyBytes);

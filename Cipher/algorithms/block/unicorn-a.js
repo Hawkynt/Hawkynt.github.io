@@ -76,16 +76,26 @@ class UnicornA extends BlockCipherAlgorithm {
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {UnicornAInstance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new UnicornAInstance(this, isInverse);
   }
 }
 
 class UnicornAInstance extends IBlockCipherInstance {
+  /**
+   * @param {UnicornA} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
+    /** @type {uint8[]|null} */
     this._key = null;
     this._roundKeys = null;
 
@@ -126,6 +136,9 @@ class UnicornAInstance extends IBlockCipherInstance {
     ];
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
@@ -145,6 +158,9 @@ class UnicornAInstance extends IBlockCipherInstance {
     this._roundKeys = this._expandKey(keyBytes);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() { return this._key ? [...this._key] : null; }
 
   Feed(data) {
@@ -157,6 +173,7 @@ class UnicornAInstance extends IBlockCipherInstance {
     if (!this._key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+    /** @type {uint8[]} */
     const output = [];
     const blockSize = 16;
 
@@ -200,6 +217,10 @@ class UnicornAInstance extends IBlockCipherInstance {
     return roundKeys;
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _encryptBlock(data) {
     let left = new Uint8Array(data.slice(0, 8));
     let right = new Uint8Array(data.slice(8, 16));
@@ -214,6 +235,10 @@ class UnicornAInstance extends IBlockCipherInstance {
     return new Uint8Array([...left, ...right]);
   }
 
+  /**
+   * @param {uint8[]} data - Input block
+   * @returns {uint8[]} Output block
+   */
   _decryptBlock(data) {
     let left = new Uint8Array(data.slice(0, 8));
     let right = new Uint8Array(data.slice(8, 16));

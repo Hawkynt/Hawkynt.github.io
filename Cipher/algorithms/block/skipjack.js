@@ -146,7 +146,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SkipjackInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,7 +163,7 @@
   class SkipjackInstance extends AlgorithmFramework.IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SkipjackAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
@@ -172,6 +172,7 @@
       this.isInverse = isInverse;
       this.key = null;
       this.keyBytes = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -304,6 +305,8 @@
 
     /**
      * Encrypt 64-bit block (following BouncyCastle implementation)
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     EncryptBlock(block) {
       if (block.length !== 8) {
@@ -358,6 +361,8 @@
 
     /**
      * Decrypt 64-bit block (following BouncyCastle implementation)
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
      */
     DecryptBlock(block) {
       if (block.length !== 8) {

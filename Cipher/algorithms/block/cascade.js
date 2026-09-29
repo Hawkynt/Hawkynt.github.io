@@ -142,7 +142,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CascadeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -159,13 +159,14 @@
   class CascadeInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CascadeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Cipher instances
@@ -175,6 +176,7 @@
       this.cipher2Algorithm = null;
 
       // Key management
+      /** @type {uint8[]|null} */
       this._key = null;
       this.key1 = null;
       this.key2 = null;

@@ -227,7 +227,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RC2Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -235,6 +235,9 @@
     }
 
     // Generate expanded key following RFC 2268 specification
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     static generateWorkingKey(keyBytes, effectiveBits) {
       if (!keyBytes || keyBytes.length === 0) {
         throw new Error('Key is required');
@@ -290,15 +293,17 @@
   class RC2Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RC2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.expandedKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -383,6 +388,7 @@
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -588,7 +594,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RC5Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -608,15 +614,17 @@
   class RC5Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RC5Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.expandedKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
@@ -682,6 +690,7 @@
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const output = [];
       const blockSize = this.BlockSize;
 
@@ -851,7 +860,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RC6Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -872,15 +881,17 @@
   class RC6Instance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RC6Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.keySchedule = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
@@ -944,6 +955,7 @@
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
@@ -959,6 +971,9 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     */
     _generateKeySchedule(keyBytes) {
       const c = Math.floor((keyBytes.length + 3) / 4);
 

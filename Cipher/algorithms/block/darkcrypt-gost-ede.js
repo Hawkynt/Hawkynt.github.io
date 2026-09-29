@@ -145,6 +145,9 @@
     return OpCodes.RotL32(combined, 11);
   }
 
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   */
   function darkCryptGostExpandKey(keyBytes, offset) {
     const k = new Array(8);
     for (let i = 0; i < 8; i++) {
@@ -158,6 +161,9 @@
   // K0..K7 x3 forward then K7..K0 once for encrypt, inverse for decrypt.
   // Takes/returns an 8-byte block (little-endian words), identical in
   // behaviour to darkcrypt-gost.js's _encryptBlock/_decryptBlock.
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function darkCryptGostCoreEncrypt(block, k) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -176,6 +182,9 @@
     return [...OpCodes.Unpack32LE(B), ...OpCodes.Unpack32LE(A)];
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   */
   function darkCryptGostCoreDecrypt(block, k) {
     let A = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
     let B = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
@@ -248,24 +257,37 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptGostEdeInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptGostEdeInstance(this, isInverse);
     }
   }
 
   class DarkCryptGostEdeInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptGostEdeAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
       this.k1 = null;
       this.k2 = null;
       this.k3 = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.k1 = null; this.k2 = null; this.k3 = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 96)
@@ -277,6 +299,9 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -291,6 +316,7 @@
       if (this.inputBuffer.length % this.BlockSize !== 0)
         throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -301,6 +327,10 @@
     }
 
     // crypt(block) = Encrypt(Decrypt(Encrypt(block,K1),K2),K3)
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       let stage = darkCryptGostCoreEncrypt(block, this.k1);
       stage = darkCryptGostCoreDecrypt(stage, this.k2);
@@ -309,6 +339,10 @@
     }
 
     // decrypt(block) = Decrypt(Encrypt(Decrypt(block,K3),K2),K1)
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       let stage = darkCryptGostCoreDecrypt(block, this.k3);
       stage = darkCryptGostCoreEncrypt(stage, this.k2);
