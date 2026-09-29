@@ -84,9 +84,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create new MAC instance
+   * @param {boolean} [isInverse=false] - True asks for the inverse, which a MAC does not have
+   * @returns {F9Instance} New MAC instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -102,25 +102,46 @@
  */
 
   class F9Instance extends IMacInstance {
+    /**
+     * Initialize an F9 instance
+     * @param {F9Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {int32} */
       this._tagSize = 4; // Default tag size (4 bytes as per 3GPP spec)
+      /** @type {IBlockCipherInstance} */
       this.blockCipher = null;
+      /** @type {uint8[]} */
       this.modifiedKey = null;
+      /** @type {uint8[]} */
       this.IV = null;
+      /** @type {uint8[]} */
       this.ACC = null;
+      /** @type {int32} */
       this.buflen = 0;
+      /** @type {int32} */
       this.blockSize = 8; // KASUMI block size
     }
 
+    /**
+     * Truncate the tag
+     * @param {int32} size - Tag size in bytes, 4..8
+     * @throws {Error} If size is outside 4..8
+     */
     set tagSize(size) {
       if (size < 4 || size > 8) {
-        throw new Error(`Invalid tag size: ${size} bytes (expected 4-8)`);
+        throw new Error('Invalid tag size: ' + size + ' bytes (expected 4-8)');
       }
       this._tagSize = size;
     }
 
+    /**
+     * Tag size in bytes
+     * @returns {int32} Tag size in bytes
+     */
     get tagSize() {
       return this._tagSize;
     }
@@ -140,7 +161,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16)`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (expected 16)');
       }
 
       this._key = [...keyBytes];
@@ -192,11 +213,13 @@
         // When buffer is full, process the block
         if (this.buflen === this.blockSize) {
           // Create fresh cipher instance for ECB encryption
+          /** @type {IBlockCipherInstance} */
           const cipher = kasumiAlgo.CreateInstance(false);
           cipher.key = this._key;
 
           // Encrypt IV in place
           cipher.Feed(Array.from(this.IV));
+          /** @type {uint8[]} */
           const encrypted = cipher.Result();
 
           // Replace IV with encrypted version
@@ -228,11 +251,13 @@
       // Process final partial block if present
       if (this.buflen !== 0) {
         // Create fresh cipher for encryption
+        /** @type {IBlockCipherInstance} */
         const cipher = kasumiAlgo.CreateInstance(false);
         cipher.key = this._key;
 
         // Encrypt IV
         cipher.Feed(Array.from(this.IV));
+        /** @type {uint8[]} */
         const encrypted = cipher.Result();
 
         for (let i = 0; i < this.blockSize; ++i) {
@@ -246,11 +271,13 @@
       }
 
       // Re-key cipher with modified key
+      /** @type {IBlockCipherInstance} */
       const finalCipher = kasumiAlgo.CreateInstance(false);
       finalCipher.key = this.modifiedKey;
 
       // Encrypt accumulator to get final MAC
       finalCipher.Feed(Array.from(this.ACC));
+      /** @type {uint8[]} */
       const fullTag = finalCipher.Result();
 
       // Reset for next operation
