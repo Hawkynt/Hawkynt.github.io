@@ -174,13 +174,26 @@
       return output;
     }
 
+    /**
+     * Split the key into its two little-endian words
+     * @returns {uint32[]} Low and high key word
+     */
     _keyWords() {
       // First four key bytes -> low 32 bits (key bit index 0..31); last four -> high 32 bits (32..63). Little-endian words.
       const keyLow = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
       const keyHigh = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
-      return { keyLow, keyHigh };
+      /** @type {uint32[]} */
+      const kw = [keyLow, keyHigh];
+      return kw;
     }
 
+    /**
+     * Key bit for round i (round-robin over the 64-bit key)
+     * @param {uint32} keyLow - Key bits 0..31
+     * @param {uint32} keyHigh - Key bits 32..63
+     * @param {int32} i - Round index
+     * @returns {uint32} The key bit (0 or 1)
+     */
     _keyBit(keyLow, keyHigh, i) {
       const idx = i % 64;
       return idx < 32
@@ -188,6 +201,11 @@
         : OpCodes.And32(OpCodes.Shr32(keyHigh, idx - 32), 1);
     }
 
+    /**
+     * Non-linear function lookup
+     * @param {uint32} idx - 5-bit index
+     * @returns {uint32} The function bit (0 or 1)
+     */
     _nlf(idx) {
       return OpCodes.And32(OpCodes.Shr32(NLF, idx), 1);
     }
@@ -198,7 +216,12 @@
      */
     _encryptBlock(block) {
       let state = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      const { keyLow, keyHigh } = this._keyWords();
+      /** @type {uint32[]} */
+      const kw = this._keyWords();
+      /** @type {uint32} */
+      const keyLow = kw[0];
+      /** @type {uint32} */
+      const keyHigh = kw[1];
 
       for (let i = 0; i < ROUNDS; ++i) {
         const b1 = OpCodes.And32(OpCodes.Shr32(state, 1), 1);
@@ -227,7 +250,12 @@
      */
     _decryptBlock(block) {
       let state = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      const { keyLow, keyHigh } = this._keyWords();
+      /** @type {uint32[]} */
+      const kw = this._keyWords();
+      /** @type {uint32} */
+      const keyLow = kw[0];
+      /** @type {uint32} */
+      const keyHigh = kw[1];
 
       for (let i = ROUNDS - 1; i >= 0; --i) {
         const b0 = OpCodes.And32(state, 1);
