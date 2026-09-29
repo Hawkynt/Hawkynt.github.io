@@ -30,7 +30,7 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Differential Cryptanalysis](https://link.springer.com/chapter/10.1007/3-540-48658-5_33) | Severity: Critical. Khufu can be broken using differential cryptanalysis with 2^43 chosen plaintexts | — |
+| [Differential Cryptanalysis](https://link.springer.com/chapter/10.1007/3-540-48658-5_33) | Critical: Khufu can be broken using differential cryptanalysis with 2^43 chosen plaintexts | — |
 
 ## Documentation
 

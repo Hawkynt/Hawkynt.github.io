@@ -57,50 +57,77 @@
   // Lucifer components as specified by Sorkin, CRYPTOLOGIA 8(1), 1984.
 
   // The two 4-bit substitution boxes
-  const SBOX0 = Object.freeze([12, 15, 7, 10, 14, 13, 11, 0, 2, 6, 3, 1, 9, 4, 5, 8]);
-  const SBOX1 = Object.freeze([7, 2, 14, 9, 3, 11, 0, 4, 12, 13, 1, 10, 6, 15, 8, 5]);
+  const SBOX0 = OpCodes.Hex8ToBytes("0c0f070a0e0d0b000206030109040508");
+  Object.freeze(SBOX0);
+  const SBOX1 = OpCodes.Hex8ToBytes("07020e09030b00040c0d010a060f0805");
+  Object.freeze(SBOX1);
 
   // Bit permutation applied after substitution and to the key bytes
-  const PBITS = Object.freeze([3, 5, 0, 4, 2, 1, 7, 6]);
-  const SMASK = Object.freeze([128, 64, 32, 16, 8, 4, 2, 1]);
+  const PBITS = OpCodes.Hex8ToBytes("0305000402010706"); // 3, 5, 0, 4, 2, 1, 7, 6
+  Object.freeze(PBITS);
+  const SMASK = OpCodes.Hex8ToBytes("8040201008040201"); // 128, 64, ..., 1
+  Object.freeze(SMASK);
 
   // Diffusion pattern: the base row rotated right once per S-box position
-  const BASE_DIFFUSION = Object.freeze([4, 16, 32, 2, 1, 8, 64, 128]);
-  const DIFFUSION = Object.freeze((function () {
+  const BASE_DIFFUSION = OpCodes.Hex8ToBytes("0410200201084080"); // 4, 16, 32, 2, 1, 8, 64, 128
+  Object.freeze(BASE_DIFFUSION);
+
+  /**
+   * Build the eight diffusion rows (the base row rotated right once per row)
+   * @returns {uint8[][]} Frozen diffusion rows
+   */
+  function buildDiffusion() {
+    /** @type {uint8[][]} */
     const rows = [];
     for (let r = 0; r < 8; r++) {
-      const row = new Array(8);
-      for (let m = 0; m < 8; m++) row[m] = BASE_DIFFUSION[(m - r + 8) % 8];
-      rows.push(Object.freeze(row));
+      /** @type {uint8[]} */
+      const pattern = [];
+      for (let m = 0; m < 8; m++) pattern.push(BASE_DIFFUSION[(m - r + 8) % 8]);
+      rows.push(Object.freeze(pattern));
     }
     return rows;
-  })());
+  }
+  /** @type {uint8[][]} */
+  const DIFFUSION = buildDiffusion();
+  Object.freeze(DIFFUSION);
+
+  /**
+   * Bit permutation applied to key bytes and to the S-box output byte.
+   * @param {uint8} b - Input byte
+   * @returns {uint8} Permuted byte
+   */
+  function permuteByte(b) {
+    /** @type {uint8} */
+    let out = 0;
+    for (let i = 0; i < 8; i++) if (OpCodes.And8(b, SMASK[i]) !== 0) out = OpCodes.Or8(out, SMASK[PBITS[i]]);
+    return out;
+  }
 
   // Combined substitute-and-permute tables. The transfer control bit decides
   // which of the two S-boxes sees which nibble, so TCB1 is TCB0 with the input
   // nibbles exchanged.
-  const TCB0 = new Array(256);
-  const TCB1 = new Array(256);
-  (function () {
-    const permute = function (b) {
-      let out = 0;
-      for (let i = 0; i < 8; i++) if (b&SMASK[i]) out |= SMASK[PBITS[i]];
-      return out;
-    };
+  /**
+   * Build one substitute-and-permute table
+   * @param {boolean} exchanged - False: S0 sees the high nibble (TCB0); true: the nibbles are exchanged (TCB1)
+   * @returns {uint8[]} 256-entry table
+   */
+  function buildTcb(exchanged) {
+    const table = OpCodes.CreateArray(256, 0);
     for (let x = 0; x < 256; x++) {
-      const hi = OpCodes.Shr32(x, 4)&0x0F;
-      const lo = x&0x0F;
-      TCB0[x] = permute(OpCodes.Shl32(SBOX0[hi]&0x0F, 4)|(SBOX1[lo]&0x0F));
-      TCB1[x] = permute(OpCodes.Shl32(SBOX0[lo]&0x0F, 4)|(SBOX1[hi]&0x0F));
+      const hi = OpCodes.And32(OpCodes.Shr32(x, 4), 0x0F);
+      const lo = OpCodes.And32(x, 0x0F);
+      const s0In = exchanged ? lo : hi;
+      const s1In = exchanged ? hi : lo;
+      table[x] = permuteByte(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(SBOX0[s0In], 0x0F), 4), OpCodes.And32(SBOX1[s1In], 0x0F)));
     }
-    Object.freeze(TCB0);
-    Object.freeze(TCB1);
-  })();
+    return table;
+  }
+  const TCB0 = buildTcb(false);
+  const TCB1 = buildTcb(true);
+  Object.freeze(TCB0);
+  Object.freeze(TCB1);
 
-// Define classes only if AlgorithmFramework is available
-let LuciferAlgorithm, LuciferInstance;
-
-  LuciferAlgorithm = class extends BlockCipherAlgorithm {
+  class LuciferAlgorithm extends BlockCipherAlgorithm {
   constructor() {
     super();
     
@@ -181,40 +208,61 @@ let LuciferAlgorithm, LuciferInstance;
     ];
   }
 
+  /**
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   * @returns {LuciferInstance} New instance
+   */
   CreateInstance(isInverse = false) {
     return new LuciferInstance(this, isInverse);
   }
-  };
+  }
 
   // Instance class for actual encryption/decryption
-  LuciferInstance = class extends IBlockCipherInstance {
+  class LuciferInstance extends IBlockCipherInstance {
+  /**
+   * @param {LuciferAlgorithm} algorithm - Parent algorithm
+   * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+   */
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    /** @type {uint8[]|null} */
+    this._key = null;
+    /** @type {uint8[]|null} */
+    this.controlBytes = null;
+    /** @type {uint8[][]|null} */
+    this.roundKeyBytes = null;
     this.key = null;
+    /** @type {uint8[]} */
     this.inputBuffer = [];
     this.BlockSize = 16; // 128-bit blocks
     this.KeySize = 0;
-    this.subKeys = null;
   }
 
+  /**
+   * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+   */
   set key(keyBytes) {
     if (!keyBytes) {
       this._key = null;
-      this.subKeys = null;
+      this.controlBytes = null;
+      this.roundKeyBytes = null;
       this.KeySize = 0;
       return;
     }
 
     if (keyBytes.length !== 16) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error("Invalid key size: " + keyBytes.length + " bytes");
     }
 
     this._key = [...keyBytes];
     this.KeySize = keyBytes.length;
-    this.subKeys = this._generateSubKeys(this._key);
+    this._generateSubKeys(this._key);
   }
 
+  /**
+   * @returns {uint8[]|null} Copy of the key, or null
+   */
   get key() {
     return this._key ? [...this._key] : null;
   }
@@ -226,16 +274,23 @@ let LuciferAlgorithm, LuciferInstance;
    * counter supplies the eight transfer control bits, and eight consecutive
    * bit-permuted key bytes are XORed into the S-box outputs. Encryption walks
    * the key register forwards in steps of seven; decryption walks it backwards.
+   * The results go to this.controlBytes and this.roundKeyBytes.
+   * @param {uint8[]} masterKey - 16 key bytes
    */
   _generateSubKeys(masterKey) {
+    /** @type {uint8[]} */
     const controlBytes = new Array(16);
+    /** @type {uint8[][]} */
     const keyBytes = new Array(16);
-    const permuted = masterKey.map(LuciferInstance._permuteByte);
+    /** @type {uint8[]} */
+    const permuted = [];
+    for (let i = 0; i < masterKey.length; i++) permuted.push(permuteByte(masterKey[i]));
 
     let kc = this.isInverse ? 8 : 0;
     for (let round = 0; round < 16; round++) {
       if (this.isInverse) kc = (kc + 1)&15;
       controlBytes[round] = masterKey[kc];
+      /** @type {uint8[]} */
       const row = new Array(8);
       for (let j = 0; j < 8; j++) {
         row[j] = permuted[kc];
@@ -244,36 +299,39 @@ let LuciferAlgorithm, LuciferInstance;
       keyBytes[round] = row;
     }
 
-    return { controlBytes, keyBytes };
+    this.controlBytes = controlBytes;
+    this.roundKeyBytes = keyBytes;
   }
 
   /**
    * Bit permutation applied to key bytes and to the S-box output byte.
+   * @param {uint8} b - Input byte
+   * @returns {uint8} Permuted byte
    */
   static _permuteByte(b) {
-    let out = 0;
-    for (let i = 0; i < 8; i++) if (b&SMASK[i]) out |= SMASK[PBITS[i]];
-    return out;
+    return permuteByte(b);
   }
 
   /**
    * Sixteen rounds of Lucifer over a 16-byte block. Each round confuses the
    * upper half through the two S-boxes and diffuses the result into the lower
    * half, then the halves exchange roles.
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _transform(block) {
     const b = block.slice();
     let lower = 0, upper = 8;
 
     for (let round = 0; round < 16; round++) {
-      const tcb = this.subKeys.controlBytes[round];
-      const keyRow = this.subKeys.keyBytes[round];
+      const tcb = this.controlBytes[round];
+      const keyRow = this.roundKeyBytes[round];
 
       for (let j = 0; j < 8; j++) {
-        let val = (tcb&SMASK[j]) ? TCB1[b[upper + j]] : TCB0[b[upper + j]];
-        val ^= keyRow[j];
+        let val = OpCodes.And8(tcb, SMASK[j]) !== 0 ? TCB1[b[upper + j]] : TCB0[b[upper + j]];
+        val = OpCodes.Xor8(val, keyRow[j]);
         const pattern = DIFFUSION[j];
-        for (let m = 0; m < 8; m++) b[lower + m] ^= (val&pattern[m]);
+        for (let m = 0; m < 8; m++) b[lower + m] = OpCodes.Xor8(b[lower + m], OpCodes.And8(val, pattern[m]));
       }
 
       const swap = lower;
@@ -291,19 +349,26 @@ let LuciferAlgorithm, LuciferInstance;
     return b;
   }
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   */
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!this.key) throw new Error("Key not set");
     for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
   }
 
+  /**
+   * @returns {uint8[]} Processed output bytes
+   */
   Result() {
     if (!this.key) throw new Error("Key not set");
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
     if (this.inputBuffer.length % this.BlockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
     }
 
+    /** @type {uint8[]} */
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
       const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -319,6 +384,8 @@ let LuciferAlgorithm, LuciferInstance;
 
   /**
    * Encrypt a 128-bit block
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _encryptBlock(block) {
     return this._transform(block);
@@ -326,11 +393,14 @@ let LuciferAlgorithm, LuciferInstance;
 
   /**
    * Decrypt a 128-bit block (same transform driven by the reversed key schedule)
+   * @param {uint8[]} block - Input block
+   * @returns {uint8[]} Output block
    */
   _decryptBlock(block) {
     return this._transform(block);
   }
-  };
+  }
+
 
   // ===== REGISTRATION =====
 

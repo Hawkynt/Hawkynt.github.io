@@ -69,33 +69,51 @@
   const BLOCK_BYTES = 32;
   const KEY_BYTES = 64;
   const ROUNDS = 48;
+  /** @type {uint32} */
   const PI_CONST = 0x243F6A89;
 
   // Rotates each laneBits-wide lane of a 32-bit word left by n bits (0 <= n < laneBits),
   // independently across all (32/laneBits) lanes -- the SWAR "byte-lane"/"nibble-lane"/etc
   // rotation primitive this cipher's round function uses six times per round (with
   // laneBits of 8, 16, 4, 8, 16, 2).
+  /**
+   * @param {uint32} x - Input word
+   * @param {uint32} n - Rotation amount (reduced modulo laneBits)
+   * @param {int32} laneBits - Lane width 2, 4, 8 or 16
+   * @returns {uint32} Word with every lane rotated left
+   */
   function laneRotL(x, n, laneBits) {
-    n &= (laneBits - 1);
-    if (n === 0) return OpCodes.ToUint32(x);
+    const k = OpCodes.And32(n, laneBits - 1);
+    if (k === 0) return OpCodes.ToUint32(x);
     const numLanes = 32 / laneBits;
-    const laneMask = OpCodes.Shl32(1, laneBits) - 1;
+    const laneMask = OpCodes.Sub32(OpCodes.Shl32(1, laneBits), 1);
+    /** @type {uint32} */
     let result = 0;
     for (let i = 0; i < numLanes; i++) {
       const shift = i * laneBits;
       const lane = OpCodes.And32(OpCodes.Shr32(x, shift), laneMask);
-      const rotated = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(lane, n), OpCodes.Shr32(lane, laneBits - n)), laneMask);
+      const rotated = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(lane, k), OpCodes.Shr32(lane, OpCodes.Sub32(laneBits, k))), laneMask);
       result = OpCodes.Or32(result, OpCodes.Shl32(rotated, shift));
     }
     return OpCodes.ToUint32(result);
   }
+  /**
+   * @param {uint32} x - Input word
+   * @param {uint32} n - Rotation amount (reduced modulo laneBits)
+   * @param {int32} laneBits - Lane width 2, 4, 8 or 16
+   * @returns {uint32} Word with every lane rotated right
+   */
   function laneRotR(x, n, laneBits) {
-    return laneRotL(x, (laneBits - OpCodes.And32(n, laneBits - 1)) % laneBits, laneBits);
+    return laneRotL(x, OpCodes.Sub32(laneBits, OpCodes.And32(n, laneBits - 1)) % laneBits, laneBits);
   }
 
   // Key schedule: builds the 64-word buffer (16 key words + 48 zero words), mixes it for
   // 144 iterations via the six-tap additive lagged generator, and splits it into the 48-word
   // round-subkey table and the 16-word whitening table.
+  /**
+   * @param {uint8[]} key - 64 key bytes
+   * @returns {uint32[][]} [48 round subkeys, 16 whitening words]
+   */
   function buildSchedule(key) {
     const buffer = new Uint32Array(64);
     for (let i = 0; i < 16; i++)
@@ -103,18 +121,22 @@
 
     let tapA = 3, tapB = 11, tapC = 31, tapD = 53, tapE = 57, tapF = 62, outPos = 0;
     for (let it = 0; it < 144; it++) {
-      const val1 = OpCodes.ToUint32(buffer[OpCodes.And32(tapA, 63)] + PI_CONST);
+      const val1 = OpCodes.Add32(buffer[OpCodes.And32(tapA, 63)], PI_CONST);
       const val2 = OpCodes.RotL32(buffer[OpCodes.And32(tapB, 63)], 3);
       const val3 = OpCodes.RotL32(buffer[OpCodes.And32(tapC, 63)], 15);
       const val4 = OpCodes.RotL32(buffer[OpCodes.And32(tapD, 63)], 13);
       const val5 = OpCodes.RotL32(buffer[OpCodes.And32(tapE, 63)], 7);
       const val6 = OpCodes.RotL32(buffer[OpCodes.And32(tapF, 63)], 1);
-      const acc = OpCodes.ToUint32(val1 + val2 + val3 + val4 + val5 + val6);
-      buffer[OpCodes.And32(outPos, 63)] = OpCodes.ToUint32(buffer[OpCodes.And32(outPos, 63)] + acc);
+      const acc = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(val1, val2), val3), val4), val5), val6);
+      buffer[OpCodes.And32(outPos, 63)] = OpCodes.Add32(buffer[OpCodes.And32(outPos, 63)], acc);
       outPos++; tapA++; tapB++; tapC++; tapD++; tapE++; tapF++;
     }
 
-    return { table1: buffer.slice(0, 48), table2: buffer.slice(48, 64) };
+    /** @type {uint32[][]} */
+    const tables = [];
+    tables.push(buffer.slice(0, 48));
+    tables.push(buffer.slice(48, 64));
+    return tables;
   }
 
   class DarkCryptParanoiaAlgorithm extends BlockCipherAlgorithm {
@@ -168,31 +190,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptParanoiaInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptParanoiaInstance(this, isInverse);
     }
   }
 
   class DarkCryptParanoiaInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptParanoiaAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._sched = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Paranoia (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Paranoia (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._sched = buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -205,8 +244,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -216,16 +256,21 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const sched = this._sched;
-      const W = new Array(8);
+      /** @type {uint32[]} */
+      const words = new Array(8);
       for (let i = 0; i < 8; i++)
-        W[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
-      for (let i = 0; i < 8; i++) W[i] = OpCodes.Xor32(W[i], sched.table2[i]);
+        words[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
+      for (let i = 0; i < 8; i++) words[i] = OpCodes.Xor32(words[i], sched[1][i]);
 
       for (let g = 0; g < ROUNDS; g++) {
         const revIdx = ROUNDS - 1 - g;
-        const acc = OpCodes.ToUint32(sched.table1[revIdx] + W[7]);
+        const acc = OpCodes.Add32(sched[0][revIdx], words[7]);
         const idx1 = OpCodes.And32(OpCodes.Shr32(acc, 26), 7);
         const r1 = OpCodes.And32(OpCodes.Shr32(acc, 10), 31);
         const idx2 = OpCodes.And32(OpCodes.Shr32(acc, 19), 0xF);
@@ -236,43 +281,49 @@
         const r3 = OpCodes.And32(acc, 31);
         const idx7 = OpCodes.And32(OpCodes.Shr32(acc, 31), 1);
 
-        let v = laneRotL(OpCodes.ToUint32(OpCodes.ToUint32(W[0] + PI_CONST) + W[1]), idx1, 8);
-        v = OpCodes.RotL32(OpCodes.Xor32(v, W[2]), r1);
+        let v = laneRotL(OpCodes.Add32(OpCodes.Add32(words[0], PI_CONST), words[1]), idx1, 8);
+        v = OpCodes.RotL32(OpCodes.Xor32(v, words[2]), r1);
         v = laneRotL(v, idx2, 16);
-        v = OpCodes.ToUint32(v + W[3]);
+        v = OpCodes.Add32(v, words[3]);
         v = laneRotL(v, idx3, 4);
-        v = OpCodes.RotL32(OpCodes.Xor32(v, W[4]), r2);
+        v = OpCodes.RotL32(OpCodes.Xor32(v, words[4]), r2);
         v = laneRotL(v, idx4, 8);
-        v = OpCodes.ToUint32(v + W[5]);
+        v = OpCodes.Add32(v, words[5]);
         v = laneRotL(v, idx6, 16);
-        v = OpCodes.RotL32(OpCodes.Xor32(v, W[6]), r3);
+        v = OpCodes.RotL32(OpCodes.Xor32(v, words[6]), r3);
         v = laneRotL(v, idx7, 2);
-        const newW7 = OpCodes.ToUint32(v + sched.table1[g]);
+        const newW7 = OpCodes.Add32(v, sched[0][g]);
 
-        W[0] = W[1]; W[1] = W[2]; W[2] = W[3]; W[3] = W[4];
-        W[4] = W[5]; W[5] = W[6]; W[6] = W[7]; W[7] = newW7;
+        words[0] = words[1]; words[1] = words[2]; words[2] = words[3]; words[3] = words[4];
+        words[4] = words[5]; words[5] = words[6]; words[6] = words[7]; words[7] = newW7;
       }
 
-      for (let i = 0; i < 8; i++) W[i] = OpCodes.Xor32(W[i], sched.table2[8 + i]);
+      for (let i = 0; i < 8; i++) words[i] = OpCodes.Xor32(words[i], sched[1][8 + i]);
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(W[i]));
+      for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(words[i]));
       return out;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const sched = this._sched;
-      const W = new Array(8);
+      /** @type {uint32[]} */
+      const words = new Array(8);
       for (let i = 0; i < 8; i++)
-        W[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
-      for (let i = 0; i < 8; i++) W[i] = OpCodes.Xor32(W[i], sched.table2[8 + i]);
+        words[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
+      for (let i = 0; i < 8; i++) words[i] = OpCodes.Xor32(words[i], sched[1][8 + i]);
 
       for (let g = ROUNDS - 1; g >= 0; g--) {
         const revIdx = ROUNDS - 1 - g;
-        const oldW1 = W[0], oldW2 = W[1], oldW3 = W[2], oldW4 = W[3];
-        const oldW5 = W[4], oldW6 = W[5], oldW7 = W[6], newW7 = W[7];
+        const oldW1 = words[0], oldW2 = words[1], oldW3 = words[2], oldW4 = words[3];
+        const oldW5 = words[4], oldW6 = words[5], oldW7 = words[6], newW7 = words[7];
 
-        const acc = OpCodes.ToUint32(sched.table1[revIdx] + oldW7);
+        const acc = OpCodes.Add32(sched[0][revIdx], oldW7);
         const idx1 = OpCodes.And32(OpCodes.Shr32(acc, 26), 7);
         const r1 = OpCodes.And32(OpCodes.Shr32(acc, 10), 31);
         const idx2 = OpCodes.And32(OpCodes.Shr32(acc, 19), 0xF);
@@ -283,28 +334,29 @@
         const r3 = OpCodes.And32(acc, 31);
         const idx7 = OpCodes.And32(OpCodes.Shr32(acc, 31), 1);
 
-        let v = OpCodes.ToUint32(newW7 - sched.table1[g]);
+        let v = OpCodes.Sub32(newW7, sched[0][g]);
         v = laneRotR(v, idx7, 2);
         v = OpCodes.Xor32(OpCodes.RotR32(v, r3), oldW6);
         v = laneRotR(v, idx6, 16);
-        v = OpCodes.ToUint32(v - oldW5);
+        v = OpCodes.Sub32(v, oldW5);
         v = laneRotR(v, idx4, 8);
         v = OpCodes.Xor32(OpCodes.RotR32(v, r2), oldW4);
         v = laneRotR(v, idx3, 4);
-        v = OpCodes.ToUint32(v - oldW3);
+        v = OpCodes.Sub32(v, oldW3);
         v = laneRotR(v, idx2, 16);
         v = OpCodes.Xor32(OpCodes.RotR32(v, r1), oldW2);
         v = laneRotR(v, idx1, 8);
-        const oldW0 = OpCodes.ToUint32(OpCodes.ToUint32(v - PI_CONST) - oldW1);
+        const oldW0 = OpCodes.Sub32(OpCodes.Sub32(v, PI_CONST), oldW1);
 
-        W[0] = oldW0; W[1] = oldW1; W[2] = oldW2; W[3] = oldW3;
-        W[4] = oldW4; W[5] = oldW5; W[6] = oldW6; W[7] = oldW7;
+        words[0] = oldW0; words[1] = oldW1; words[2] = oldW2; words[3] = oldW3;
+        words[4] = oldW4; words[5] = oldW5; words[6] = oldW6; words[7] = oldW7;
       }
 
-      for (let i = 0; i < 8; i++) W[i] = OpCodes.Xor32(W[i], sched.table2[i]);
+      for (let i = 0; i < 8; i++) words[i] = OpCodes.Xor32(words[i], sched[1][i]);
 
+      /** @type {uint8[]} */
       const out = [];
-      for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(W[i]));
+      for (let i = 0; i < 8; i++) out.push(...OpCodes.Unpack32LE(words[i]));
       return out;
     }
   }

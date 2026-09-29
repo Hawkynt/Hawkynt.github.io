@@ -75,6 +75,7 @@
   const LFSR_POLY = 0x100001b;        // x^24+x^4+x^3+x+1
 
   // sbox: FOX/IDEA-NXT non-linear byte permutation (Lai-Massey of S1/S2/S3), from Appendix B of the SAC 2004 paper.
+  /** @type {uint8[]} */
   const SBOX = [
     0x5d,0xde,0x00,0xb7,0xd3,0xca,0x3c,0x0d,0xc3,0xf8,0xcb,0x8d,0x76,0x89,0xaa,0x12,
     0x88,0x22,0x4f,0xdb,0x6d,0x47,0xe4,0x4c,0x78,0x9a,0x49,0x93,0xc4,0xc0,0x86,0x13,
@@ -98,15 +99,25 @@
   // In the DarkCrypt implementation, however, the key schedule's pad buffer is never
   // populated before use and stays all-zero, so this port reproduces that as-built
   // behavior (an all-zero pad) rather than the published constant.
-  const PAD = new Array(32).fill(0);
+  /** @type {uint8[]} */
+  const PAD = new Array(32);
+  PAD.fill(0);
 
   // GF(2^8) multiplication by alpha (the field generator, represented as 0x02) and its inverse,
   // reducing modulo P(alpha) = alpha^8+alpha^7+alpha^6+alpha^5+alpha^4+alpha^3+1 (0x1F9).
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x * alpha
+   */
   function mulAlpha(x) {
     const shifted = OpCodes.And32(OpCodes.Shl32(x, 1), 0xFF);
     return OpCodes.And32(x, 0x80) ? OpCodes.Xor32(shifted, IRRED_POLY_LOW) : shifted;
   }
 
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x / alpha
+   */
   function divAlpha(x) {
     if (OpCodes.And32(x, 1))
       return OpCodes.And32(OpCodes.Shr32(OpCodes.Xor32(x, IRRED_POLY_FULL), 1), 0xFF);
@@ -115,15 +126,44 @@
 
   // Multiplication-by-constant helpers for the mu8 (and mu4) MDS matrix elements:
   //   a = alpha+1, b = alpha^-1+alpha^-2, c = alpha, d = alpha^2, e = alpha^-1, f = alpha^-2
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant a
+   */
   function mulByA(x) { return OpCodes.Xor32(x, mulAlpha(x)); }
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant c
+   */
   function mulByC(x) { return mulAlpha(x); }
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant d
+   */
   function mulByD(x) { return mulAlpha(mulAlpha(x)); }
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant e
+   */
   function mulByE(x) { return divAlpha(x); }
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant f
+   */
   function mulByF(x) { return divAlpha(divAlpha(x)); }
+  /**
+   * @param {uint32} x - Field element (byte)
+   * @returns {uint32} x times the mu8 constant b
+   */
   function mulByB(x) { return OpCodes.Xor32(mulByE(x), mulByF(x)); }
 
   // mu8: the (8,8) MDS linear multipermutation used by f64 and the key schedule's NL128 stage.
+  /**
+   * @param {uint8[]} X - 8 input bytes
+   * @returns {uint8[]} 8 output bytes
+   */
   function mu8(X) {
+    /** @type {uint8[]} */
     const Y = new Array(8);
     Y[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(X[0], X[1]), X[2]), X[3]), X[4]), X[5]), X[6]), mulByA(X[7]));
     Y[1] = OpCodes.Xor32(X[0], OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(mulByA(X[1]), mulByB(X[2])), OpCodes.Xor32(mulByC(X[3]), mulByD(X[4]))), OpCodes.Xor32(OpCodes.Xor32(mulByE(X[5]), mulByF(X[6])), X[7])));
@@ -133,93 +173,166 @@
     Y[5] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(mulByD(X[0]), mulByE(X[1])), OpCodes.Xor32(OpCodes.Xor32(mulByF(X[2]), X[3]), OpCodes.Xor32(mulByA(X[4]), mulByB(X[5])))), OpCodes.Xor32(mulByC(X[6]), X[7]));
     Y[6] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(mulByE(X[0]), mulByF(X[1])), X[2]), OpCodes.Xor32(OpCodes.Xor32(mulByA(X[3]), mulByB(X[4])), OpCodes.Xor32(mulByC(X[5]), mulByD(X[6])))), X[7]);
     Y[7] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(mulByF(X[0]), X[1]), OpCodes.Xor32(mulByA(X[2]), mulByB(X[3]))), OpCodes.Xor32(OpCodes.Xor32(mulByC(X[4]), mulByD(X[5])), OpCodes.Xor32(mulByE(X[6]), X[7])));
-    for (let i = 0; i < 8; ++i) Y[i] &= 0xFF;
+    for (let i = 0; i < 8; ++i) Y[i] = OpCodes.And32(Y[i], 0xFF);
     return Y;
   }
 
   // sigma8 (applied per-byte; also used at 32-bit granularity as "SIGMA" in the key schedule).
-  function sigmaBytes(bytes) { return bytes.map(b => SBOX[b]); }
+  /**
+   * @param {uint8[]} bytes - Bytes to substitute
+   * @returns {uint8[]} Substituted bytes
+   */
+  function sigmaBytes(bytes) {
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < bytes.length; ++i) out.push(SBOX[bytes[i]]);
+    return out;
+  }
+  /**
+   * @param {uint32} word - Word
+   * @returns {uint32} Word with every byte substituted
+   */
   function sigmaWord(word) {
     const b = OpCodes.Unpack32BE(word);
     return OpCodes.Pack32BE(SBOX[b[0]], SBOX[b[1]], SBOX[b[2]], SBOX[b[3]]);
   }
 
   // mu8(sigma8(x||y)) split into its first and second 32-bit halves (no key mixing).
+  /**
+   * @param {uint32} x - First word
+   * @param {uint32} y - Second word
+   * @returns {uint32[]} The two output words
+   */
   function sigmaMu8(x, y) {
-    const bytes = OpCodes.Unpack32BE(x).concat(OpCodes.Unpack32BE(y));
+    /** @type {uint8[]} */
+    const bytes = [...OpCodes.Unpack32BE(x), ...OpCodes.Unpack32BE(y)];
     const diffused = mu8(sigmaBytes(bytes));
-    return [
+    /** @type {uint32[]} */
+    const words = [
       OpCodes.Pack32BE(diffused[0], diffused[1], diffused[2], diffused[3]),
       OpCodes.Pack32BE(diffused[4], diffused[5], diffused[6], diffused[7])
     ];
+    return words;
   }
 
   // f64(X0,X1, RK) = sigma8(mu8(sigma8(X0||X1 ^ RK0)) ^ RK1) ^ RK0, RK = [RK0a,RK0b,RK1a,RK1b] (four 32-bit words).
+  /**
+   * @param {uint32} X0 - Left word
+   * @param {uint32} X1 - Right word
+   * @param {uint32[]} rk - Round key [RK0a, RK0b, RK1a, RK1b]
+   * @returns {uint32[]} The two output words
+   */
   function f64(X0, X1, rk) {
     const t0 = OpCodes.Xor32(X0, rk[0]);
     const t1 = OpCodes.Xor32(X1, rk[1]);
-    const [smu0, smu1] = sigmaMu8(t0, t1);
+    const smu = sigmaMu8(t0, t1);
+    const smu0 = smu[0], smu1 = smu[1];
 
-    const rk1Bytes = OpCodes.Unpack32BE(rk[2]).concat(OpCodes.Unpack32BE(rk[3]));
-    const smuBytes = OpCodes.Unpack32BE(smu0).concat(OpCodes.Unpack32BE(smu1));
-    const xored = smuBytes.map((b, i) => OpCodes.Xor32(b, rk1Bytes[i]));
+    /** @type {uint8[]} */
+    const rk1Bytes = [...OpCodes.Unpack32BE(rk[2]), ...OpCodes.Unpack32BE(rk[3])];
+    /** @type {uint8[]} */
+    const smuBytes = [...OpCodes.Unpack32BE(smu0), ...OpCodes.Unpack32BE(smu1)];
+    /** @type {uint8[]} */
+    const xored = [];
+    for (let i = 0; i < smuBytes.length; ++i) xored.push(OpCodes.Xor32(smuBytes[i], rk1Bytes[i]));
     const substituted = sigmaBytes(xored);
 
-    const rk0Bytes = OpCodes.Unpack32BE(rk[0]).concat(OpCodes.Unpack32BE(rk[1]));
-    const out = substituted.map((b, i) => OpCodes.Xor32(b, rk0Bytes[i]));
+    /** @type {uint8[]} */
+    const rk0Bytes = [...OpCodes.Unpack32BE(rk[0]), ...OpCodes.Unpack32BE(rk[1])];
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < substituted.length; ++i) out.push(OpCodes.Xor32(substituted[i], rk0Bytes[i]));
 
-    return [
+    /** @type {uint32[]} */
+    const words = [
       OpCodes.Pack32BE(out[0], out[1], out[2], out[3]),
       OpCodes.Pack32BE(out[4], out[5], out[6], out[7])
     ];
+    return words;
   }
 
   // The 32-bit orthomorphism "or" (a one-round Feistel with the identity as round function) and its inverse "io".
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} or(x)
+   */
   function orthomorphism(x) {
     return OpCodes.Xor32(OpCodes.Xor32((OpCodes.Shl32(x, 16)), OpCodes.Shr32(x, 16)), OpCodes.And32(x, 0x0000FFFF));
   }
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} io(x)
+   */
   function orthomorphismInv(x) {
     return OpCodes.Xor32(OpCodes.Xor32((OpCodes.Shl32(x, 16)), OpCodes.Shr32(x, 16)), OpCodes.And32(x, 0xFFFF0000));
   }
 
   // elmor128 / elmid128 / elmio128: the Extended Lai-Massey round functions on the 128-bit state [x0,x1,x2,x3].
+  /**
+   * @param {uint32[]} state - 128-bit state [x0, x1, x2, x3]
+   * @param {uint32[]} rk - Round key (four words)
+   * @returns {uint32[]} New state
+   */
   function elmor128(state, rk) {
     const fl = OpCodes.Xor32(state[0], state[1]);
     const fr = OpCodes.Xor32(state[2], state[3]);
-    const [f0, f1] = f64(fl, fr, rk);
-    return [
+    const fOut = f64(fl, fr, rk);
+    const f0 = fOut[0], f1 = fOut[1];
+    /** @type {uint32[]} */
+    const next = [
       orthomorphism(OpCodes.Xor32(state[0], f0)),
       OpCodes.Xor32(state[1], f0),
       orthomorphism(OpCodes.Xor32(state[2], f1)),
       OpCodes.Xor32(state[3], f1)
     ];
+    return next;
   }
 
+  /**
+   * @param {uint32[]} state - 128-bit state [x0, x1, x2, x3]
+   * @param {uint32[]} rk - Round key (four words)
+   * @returns {uint32[]} New state
+   */
   function elmid128(state, rk) {
     const fl = OpCodes.Xor32(state[0], state[1]);
     const fr = OpCodes.Xor32(state[2], state[3]);
-    const [f0, f1] = f64(fl, fr, rk);
-    return [
+    const fOut = f64(fl, fr, rk);
+    const f0 = fOut[0], f1 = fOut[1];
+    /** @type {uint32[]} */
+    const next = [
       OpCodes.Xor32(state[0], f0),
       OpCodes.Xor32(state[1], f0),
       OpCodes.Xor32(state[2], f1),
       OpCodes.Xor32(state[3], f1)
     ];
+    return next;
   }
 
+  /**
+   * @param {uint32[]} state - 128-bit state [x0, x1, x2, x3]
+   * @param {uint32[]} rk - Round key (four words)
+   * @returns {uint32[]} New state
+   */
   function elmio128(state, rk) {
     const fl = OpCodes.Xor32(state[0], state[1]);
     const fr = OpCodes.Xor32(state[2], state[3]);
-    const [f0, f1] = f64(fl, fr, rk);
-    return [
+    const fOut = f64(fl, fr, rk);
+    const f0 = fOut[0], f1 = fOut[1];
+    /** @type {uint32[]} */
+    const next = [
       orthomorphismInv(OpCodes.Xor32(state[0], f0)),
       OpCodes.Xor32(state[1], f0),
       orthomorphismInv(OpCodes.Xor32(state[2], f1)),
       OpCodes.Xor32(state[3], f1)
     ];
+    return next;
   }
 
   // 24-bit LFSR (primitive polynomial x^24+x^4+x^3+x+1) driving the key schedule's D-part.
+  /**
+   * @param {uint32} reg - 24-bit LFSR state
+   * @returns {uint32} State after one clock (bit 24 folded back)
+   */
   function lfsrClock(reg) {
     let r = OpCodes.Shl32(reg, 1);
     if (OpCodes.And32(r, 0x1000000)) r = OpCodes.Xor32(r, LFSR_POLY);
@@ -227,10 +340,17 @@
   }
 
   // dnl128: D-part (LFSR-masked key) + NL128 (sigma8/mu8/mix128 non-linear mixing) producing one 128-bit round key.
-  // Returns { rk: [w0,w1,w2,w3], reg: <updated LFSR state> }.
-  function dnl128(mkey, reg, eq) {
+  // Returns the round key [w0,w1,w2,w3]; regState[0] holds the LFSR state and is advanced in place.
+  /**
+   * @param {uint8[]} mkey - 32-byte master key
+   * @param {uint32[]} regState - [LFSR state], updated in place
+   * @param {boolean} eq - Flip condition (k == ek)
+   * @returns {uint32[]} The round key
+   */
+  function dnl128(mkey, regState, eq) {
+    /** @type {uint32[]} */
     const dkey = new Array(32);
-    let r = reg;
+    let r = regState[0];
 
     for (let i = 0; i < 10; ++i) {
       r = lfsrClock(r);
@@ -242,18 +362,21 @@
     dkey[30] = OpCodes.Xor32(mkey[30], OpCodes.And32(OpCodes.Shr32(r, 16), 0xFF));
     dkey[31] = OpCodes.Xor32(mkey[31], OpCodes.And32(OpCodes.Shr32(r, 8), 0xFF));
 
+    /** @type {uint32[]} */
     const dkey32 = new Array(8);
     for (let i = 0; i < 8; ++i)
       dkey32[i] = OpCodes.Pack32BE(dkey[4 * i], dkey[4 * i + 1], dkey[4 * i + 2], dkey[4 * i + 3]);
 
+    /** @type {uint32[]} */
     const t1 = new Array(8);
     for (let g = 0; g < 4; ++g) {
-      const [w0, w1] = sigmaMu8(dkey32[2 * g], dkey32[2 * g + 1]);
-      t1[2 * g] = w0;
-      t1[2 * g + 1] = w1;
+      const w = sigmaMu8(dkey32[2 * g], dkey32[2 * g + 1]);
+      t1[2 * g] = w[0];
+      t1[2 * g + 1] = w[1];
     }
 
     // MIX128: each output quarter is the XOR of the three quarters other than its own.
+    /** @type {uint32[]} */
     const t0 = [
       OpCodes.Xor32(OpCodes.Xor32(t1[2], t1[4]), t1[6]),
       OpCodes.Xor32(OpCodes.Xor32(t1[3], t1[5]), t1[7]),
@@ -265,6 +388,7 @@
       OpCodes.Xor32(OpCodes.Xor32(t1[1], t1[3]), t1[5])
     ];
 
+    /** @type {uint32[]} */
     const padWords = new Array(8);
     for (let i = 0; i < 8; ++i)
       padWords[i] = OpCodes.Pack32BE(PAD[4 * i], PAD[4 * i + 1], PAD[4 * i + 2], PAD[4 * i + 3]);
@@ -279,30 +403,46 @@
     const x2 = OpCodes.Xor32(sigmaWord(t0[2]), sigmaWord(t0[6]));
     const x3 = OpCodes.Xor32(sigmaWord(t0[3]), sigmaWord(t0[7]));
 
+    /** @type {uint32[]} */
     let state = [x0, x1, x2, x3];
-    state = elmor128(state, [dkey32[0], dkey32[1], dkey32[2], dkey32[3]]);
-    state = elmid128(state, [dkey32[4], dkey32[5], dkey32[6], dkey32[7]]);
+    /** @type {uint32[]} */
+    const k0 = [dkey32[0], dkey32[1], dkey32[2], dkey32[3]];
+    /** @type {uint32[]} */
+    const k1 = [dkey32[4], dkey32[5], dkey32[6], dkey32[7]];
+    state = elmor128(state, k0);
+    state = elmid128(state, k1);
 
-    return { rk: state, reg: r };
+    regState[0] = r;
+    return state;
   }
 
   // Full key schedule for a 256-bit key (ek = k = 256, so the P/M padding/mixing stages are skipped
   // and the flip condition "eq" (k == ek) is always true).
+  /**
+   * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[][]} ROUNDS round keys of four words
+   */
   function keySchedule(keyBytes) {
     let reg = OpCodes.Or32(OpCodes.Or32(0x006a0000, OpCodes.And32(OpCodes.Shl32(ROUNDS, 8), 0x0000FF00)), OpCodes.And32((~ROUNDS), 0x000000FF));
     if (OpCodes.And32(reg, 1)) reg = OpCodes.Xor32(reg, LFSR_POLY);
     reg = OpCodes.Shr32(reg, 1);
 
+    /** @type {uint32[]} */
+    const regState = [reg];
+    /** @type {uint32[][]} */
     const roundKeys = new Array(ROUNDS);
-    for (let i = 0; i < ROUNDS; ++i) {
-      const { rk, reg: nextReg } = dnl128(keyBytes, reg, true);
-      roundKeys[i] = rk;
-      reg = nextReg;
-    }
+    for (let i = 0; i < ROUNDS; ++i)
+      roundKeys[i] = dnl128(keyBytes, regState, true);
     return roundKeys;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint32[][]} roundKeys - Round keys
+   * @returns {uint8[]} Output block
+   */
   function encryptBlock(block, roundKeys) {
+    /** @type {uint32[]} */
     let state = [
       OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
       OpCodes.Pack32BE(block[4], block[5], block[6], block[7]),
@@ -313,15 +453,23 @@
       state = elmor128(state, roundKeys[i]);
     state = elmid128(state, roundKeys[ROUNDS - 1]);
 
-    return [].concat(
-      OpCodes.Unpack32BE(state[0]),
-      OpCodes.Unpack32BE(state[1]),
-      OpCodes.Unpack32BE(state[2]),
-      OpCodes.Unpack32BE(state[3])
-    );
+    /** @type {uint8[]} */
+    const out = [
+      ...OpCodes.Unpack32BE(state[0]),
+      ...OpCodes.Unpack32BE(state[1]),
+      ...OpCodes.Unpack32BE(state[2]),
+      ...OpCodes.Unpack32BE(state[3])
+    ];
+    return out;
   }
 
+  /**
+   * @param {uint8[]} block - Input block
+   * @param {uint32[][]} roundKeys - Round keys
+   * @returns {uint8[]} Output block
+   */
   function decryptBlock(block, roundKeys) {
+    /** @type {uint32[]} */
     let state = [
       OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
       OpCodes.Pack32BE(block[4], block[5], block[6], block[7]),
@@ -332,12 +480,14 @@
       state = elmio128(state, roundKeys[i]);
     state = elmid128(state, roundKeys[0]);
 
-    return [].concat(
-      OpCodes.Unpack32BE(state[0]),
-      OpCodes.Unpack32BE(state[1]),
-      OpCodes.Unpack32BE(state[2]),
-      OpCodes.Unpack32BE(state[3])
-    );
+    /** @type {uint8[]} */
+    const out = [
+      ...OpCodes.Unpack32BE(state[0]),
+      ...OpCodes.Unpack32BE(state[1]),
+      ...OpCodes.Unpack32BE(state[2]),
+      ...OpCodes.Unpack32BE(state[3])
+    ];
+    return out;
   }
 
   class DarkCryptIdeaNxtAlgorithm extends BlockCipherAlgorithm {
@@ -394,31 +544,48 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptIdeaNxtInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptIdeaNxtInstance(this, isInverse);
     }
   }
 
   class DarkCryptIdeaNxtInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptIdeaNxtAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[][]|null} */
       this._roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = BLOCK_BYTES;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. IDEA-NXT (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. IDEA-NXT (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this._roundKeys = keySchedule(this._key);
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -431,8 +598,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);

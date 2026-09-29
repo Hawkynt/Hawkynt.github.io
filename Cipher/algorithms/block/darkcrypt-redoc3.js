@@ -62,6 +62,7 @@
   // Fixed constant occupying bits 16-31 of the per-key-byte LCG reseed value.
   const SEED_GARBAGE = 0x04F70000;
   // Fixed step table used to walk table indices during key setup (1 followed by the first 34 odd primes).
+  /** @type {uint8[]} */
   const STEP_TABLE = [1, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
                        73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149];
 
@@ -117,40 +118,66 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptREDOC3Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptREDOC3Instance(this, isInverse);
     }
   }
 
   class DarkCryptREDOC3Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptREDOC3Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 10;
       this.KeySize = 0;
+      /** @type {uint8[]|null} */
       this._table = null;
+      /** @type {uint8[]|null} */
       this._subkey = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this.KeySize = 0; this._table = null; this._subkey = null; return; }
       if (keyBytes.length !== KEY_BYTES)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. REDOC III (DarkCrypt) requires exactly ${KEY_BYTES} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. REDOC III (DarkCrypt) requires exactly " + KEY_BYTES + " bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._table = this._buildTable(this._key);
       this._subkey = this._foldSubkey(this._table);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     // Classic LCG (Borland/Turbo C runtime rand()): seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF
+    /**
+     * Build the key-dependent substitution table
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {uint8[]} Table of TABLE_SIZE bytes
+     */
     _buildTable(key) {
       const table = new Uint8Array(TABLE_SIZE);
       for (let edi = 1; edi <= KEY_BYTES; edi++) {
-        let b0, b1;
+        /** @type {uint8} */
+        let b0 = 0;
+        /** @type {uint8} */
+        let b1 = 0;
         if (edi === KEY_BYTES) {
           b0 = key[KEY_BYTES - 1];
           b1 = key[0];
@@ -158,15 +185,16 @@
           b0 = key[edi - 1];
           b1 = key[edi];
         }
-        let seed = OpCodes.ToUint32(b0 | OpCodes.Shl32(b1, 8) | SEED_GARBAGE);
+        let seed = OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), SEED_GARBAGE);
         let pos = 0;
+        /** @type {int32} */
         const step = STEP_TABLE[edi];
         for (let i = 0; i < TABLE_SIZE; i++) {
           pos = (pos + step) % TABLE_SIZE;
           seed = OpCodes.ToUint32(Math.imul(seed, LCG_MULT) + LCG_INC);
-          const rv = OpCodes.AndN(OpCodes.Shr32(seed, 16), 0x7FFF);
-          const lo = OpCodes.AndN(rv, 0xFF);
-          const hi = OpCodes.AndN(OpCodes.Shr32(rv, 8), 0xFF);
+          const rv = OpCodes.And32(OpCodes.Shr32(seed, 16), 0x7FFF);
+          const lo = OpCodes.And32(rv, 0xFF);
+          const hi = OpCodes.And32(OpCodes.Shr32(rv, 8), 0xFF);
           table[pos] = lo;
           const pos2 = pos + 1;
           if (pos2 === TABLE_SIZE - 1) table[0] = hi;
@@ -176,6 +204,11 @@
       return table;
     }
 
+    /**
+     * Fold the table into the 16-byte subkey
+     * @param {uint8[]} table - Substitution table
+     * @returns {uint8[]} 16 subkey bytes
+     */
     _foldSubkey(table) {
       const subkey = new Uint8Array(16);
       let pos = 0;
@@ -196,8 +229,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -207,37 +241,45 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const table = this._table, subkey = this._subkey;
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.XorN(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
       for (let si = 0; si < TRANSFORMED_BYTES; si++) {
-        const idx = OpCodes.XorN(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si + 8], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
 
       return [...data, block[8], block[9]];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const table = this._table, subkey = this._subkey;
       const data = block.slice(0, TRANSFORMED_BYTES);
 
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.XorN(subkey[si + 8], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si + 8], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
       for (let si = TRANSFORMED_BYTES - 1; si >= 0; si--) {
-        const idx = OpCodes.XorN(subkey[si], data[si]) * TRANSFORMED_BYTES;
+        const idx = OpCodes.Mul32(OpCodes.Xor32(subkey[si], data[si]), TRANSFORMED_BYTES);
         for (let di = 0; di < TRANSFORMED_BYTES; di++)
-          if (di !== si) data[di] = OpCodes.XorN(data[di], table[idx + di]);
+          if (di !== si) data[di] = OpCodes.Xor32(data[di], table[OpCodes.Add32(idx, di)]);
       }
 
       return [...data, block[8], block[9]];

@@ -56,6 +56,7 @@
   const KEY_SCHEDULE_WARMUP = 3; // first 3 iterations are discarded, remaining 16 are captured
 
   // 1024-entry 32-bit lookup table, as used by the DarkCrypt implementation.
+  /** @type {uint32[]} */
   const Q128_TABLE = [
     0xd6d92632,0x5e84404d,0x4f341282,0x71654b06,0xd48d6a0b,0x245becc4,0xc8f84d80,0x22c620c9,
     0x66aa8b02,0x0ac697ff,0x8b755a36,0x2577931c,0x438d17b6,0xbb7b1bd1,0xe0a8f51e,0xf4fd583d,
@@ -238,31 +239,49 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptQ128Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptQ128Instance(this, isInverse);
     }
   }
 
   class DarkCryptQ128Instance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptQ128Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
       this._roundKeys = null;
+
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
       if (!keyBytes) { this._key = null; this._roundKeys = null; this.KeySize = 0; return; }
       if (keyBytes.length !== 16)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Q128 (DarkCrypt) requires exactly 16 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Q128 (DarkCrypt) requires exactly 16 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
       this._roundKeys = this._expandKey(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -275,8 +294,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -286,15 +306,25 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint32[]} Four little-endian words
+     */
     _blockToWords(block) {
-      return [
+      /** @type {uint32[]} */
+      const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
         OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
+      return w;
     }
 
+    /**
+     * @param {uint32[]} w - Four words
+     * @returns {uint8[]} Little-endian bytes
+     */
     _wordsToBlock(w) {
       return [
         ...OpCodes.Unpack32LE(w[0]), ...OpCodes.Unpack32LE(w[1]),
@@ -305,8 +335,14 @@
     // Runs the key through the same 4-step spread network used by encryption (see file header),
     // but with right rotations and no round-key addition; the state after each of the last 16
     // of 19 iterations becomes that round's 4-word round key.
+    /**
+     * @param {uint8[]} keyBytes - Key bytes
+     * @returns {uint32[]} Round keys
+     */
     _expandKey(keyBytes) {
-      let [a, b, c, d] = this._blockToWords(keyBytes);
+      const w = this._blockToWords(keyBytes);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
+      /** @type {uint32[]} */
       const rk = [];
 
       for (let round = KEY_SCHEDULE_ITERATIONS; round >= 1; round--) {
@@ -319,15 +355,26 @@
         a = OpCodes.Xor32(a, Q128_TABLE[OpCodes.And32(d, 0x3FF)]);
         d = OpCodes.RotR32(d, 10);
 
-        if (round <= ROUNDS) rk.push(a, b, c, d);
+        if (round <= ROUNDS) {
+          rk.push(a);
+          rk.push(b);
+          rk.push(c);
+          rk.push(d);
+        }
+
       }
 
       return rk; // 64 words = 16 rounds * 4
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
       const rk = this._roundKeys;
-      let [a, b, c, d] = this._blockToWords(block);
+      const w = this._blockToWords(block);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
 
       for (let r = 0; r < ROUNDS; r++) {
         const rk0 = rk[4 * r], rk1 = rk[4 * r + 1], rk2 = rk[4 * r + 2], rk3 = rk[4 * r + 3];
@@ -344,12 +391,19 @@
         a = newA; b = bRot; c = cRot; d = dRot;
       }
 
-      return this._wordsToBlock([a, b, c, d]);
+      /** @type {uint32[]} */
+      const words = [a, b, c, d];
+      return this._wordsToBlock(words);
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
       const rk = this._roundKeys;
-      let [a, b, c, d] = this._blockToWords(block);
+      const w = this._blockToWords(block);
+      let a = w[0], b = w[1], c = w[2], d = w[3];
 
       for (let r = ROUNDS - 1; r >= 0; r--) {
         const rk0 = rk[4 * r], rk1 = rk[4 * r + 1], rk2 = rk[4 * r + 2], rk3 = rk[4 * r + 3];
@@ -366,7 +420,9 @@
         a = aOrig; b = bOrig; c = cOrig; d = dOrig;
       }
 
-      return this._wordsToBlock([a, b, c, d]);
+      /** @type {uint32[]} */
+      const words = [a, b, c, d];
+      return this._wordsToBlock(words);
     }
   }
 

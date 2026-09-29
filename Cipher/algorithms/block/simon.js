@@ -59,7 +59,7 @@
    * @class
    * @extends {BlockCipherAlgorithm}
    */
-  class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  class SimonCipher extends BlockCipherAlgorithm {
     constructor() {
       super();
 
@@ -68,35 +68,35 @@
       this.description = "NSA's lightweight block cipher family designed for resource-constrained environments. Simon64/128 variant uses 64-bit blocks with 128-bit keys and 44 rounds. Optimized for hardware implementation.";
       this.inventor = "NSA (National Security Agency)";
       this.year = 2013;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.BASIC;
-      this.country = AlgorithmFramework.CountryCode.US;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BASIC;
+      this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 0) // Simon64/128: 128-bit keys only
+        new KeySize(16, 16, 0) // Simon64/128: 128-bit keys only
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 0) // Fixed 64-bit blocks
+        new KeySize(8, 8, 0) // Fixed 64-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("The Simon and Speck Families of Lightweight Block Ciphers", "https://eprint.iacr.org/2013/404.pdf"),
-        new AlgorithmFramework.LinkItem("NSA Simon and Speck Specification", "https://nsacyber.github.io/simon-speck/"),
-        new AlgorithmFramework.LinkItem("Lightweight Cryptography Standardization", "https://csrc.nist.gov/projects/lightweight-cryptography")
+        new LinkItem("The Simon and Speck Families of Lightweight Block Ciphers", "https://eprint.iacr.org/2013/404.pdf"),
+        new LinkItem("NSA Simon and Speck Specification", "https://nsacyber.github.io/simon-speck/"),
+        new LinkItem("Lightweight Cryptography Standardization", "https://csrc.nist.gov/projects/lightweight-cryptography")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("NSA Reference Implementation", "https://github.com/nsacyber/simon-speck-supercop"),
-        new AlgorithmFramework.LinkItem("Cryptanalysis of Simon variants", "https://eprint.iacr.org/2014/448.pdf"),
-        new AlgorithmFramework.LinkItem("NIST Lightweight Cryptography", "https://csrc.nist.gov/Projects/Lightweight-Cryptography")
+        new LinkItem("NSA Reference Implementation", "https://github.com/nsacyber/simon-speck-supercop"),
+        new LinkItem("Cryptanalysis of Simon variants", "https://eprint.iacr.org/2014/448.pdf"),
+        new LinkItem("NIST Lightweight Cryptography", "https://csrc.nist.gov/Projects/Lightweight-Cryptography")
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Reduced-round attacks", "Various attacks exist against reduced-round variants (not full 44 rounds)", "Use full-round implementation and consider alternatives for high-security applications")
+        new Vulnerability("Reduced-round attacks", "Various attacks exist against reduced-round variants (not full 44 rounds)", "Use full-round implementation and consider alternatives for high-security applications")
       ];
 
       // Test vectors from NSA specification
@@ -132,8 +132,11 @@
       ];
 
       // Simon64/128 Constants
+      /** @type {int32} */
       this.ROUNDS = 44;       // NSA standard: 44 rounds for 64/128 variant
+      /** @type {int32} */
       this.WORD_SIZE = 32;    // 32-bit words (64-bit block = 2 words)
+      /** @type {int32} */
       this.m = 4;            // Number of key words for Simon64/128
     }
 
@@ -155,9 +158,11 @@
       // Z3 sequence for Simon64/128 configuration (62 bits)
       // Source: NSA specification, Table 3.1
       // 11011011101011000110010111100000010010001010011100110100001111
-      return [1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0,
+      /** @type {uint8[]} */
+      const z3 = [1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0,
               1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0,
               1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1];
+      return z3;
     }
 
     /**
@@ -171,7 +176,7 @@
       const rot8 = OpCodes.RotL32(x, 8);
       const rot2 = OpCodes.RotL32(x, 2);
 
-      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(rot1, rot8), rot2));
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(rot1, rot8), rot2));
     }
   }
 
@@ -180,7 +185,7 @@
    * @class
    * @extends {IBlockCipherInstance}
    */
-  class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class SimonInstance extends IBlockCipherInstance {
     /**
      * Initialize Simon cipher instance
      * @param {SimonCipher} algorithm - Parent algorithm instance
@@ -189,9 +194,20 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {int32} */
+      this._rounds = algorithm.ROUNDS;
+      /** @type {int32} */
+      this._keyWords = algorithm.m;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint32[]|null} */
       this.roundKeys = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]} */
       this.outputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
       this.KeySize = 0;
@@ -211,13 +227,18 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      let isValidSize = false;
+      for (let i = 0; i < this._keySizes.length; i++) {
+        const ks = this._keySizes[i];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -240,7 +261,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
 
@@ -257,13 +278,13 @@
      * @returns {uint8[]} Processed output bytes
      */
     Result() {
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
       // Feed consumes whole blocks as they arrive, so whatever is still in the
       // input buffer is a trailing partial block. A raw block cipher has nothing
       // correct to do with one - completing it is a padding scheme's job - so it
       // is refused rather than dropped.
       if (this.inputBuffer.length !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       if (this.outputBuffer.length === 0) throw new Error("No data fed");
 
       const result = [...this.outputBuffer];
@@ -299,8 +320,8 @@
       // Simon encryption: 44 rounds of Feistel-like operations
       // Round function: (x, y) -> (y XOR F(x) XOR k_i, x)
       // where F(x) = ((x rotL 1) AND (x rotL 8)) XOR (x rotL 2)
-      for (let i = 0; i < this.algorithm.ROUNDS; i++) {
-        const temp = OpCodes.XorN(OpCodes.XorN(y, SimonCipher.roundFunction(x)), this.roundKeys[i]);
+      for (let i = 0; i < this._rounds; i++) {
+        const temp = OpCodes.Xor32(OpCodes.Xor32(y, SimonCipher.roundFunction(x)), this.roundKeys[i]);
         y = x;
         x = temp;
       }
@@ -330,10 +351,10 @@
       // Simon decryption: reverse the encryption process
       // Inverse operations in reverse order:
       // (x, y) -> (y, x XOR F(y) XOR k_i)
-      for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
+      for (let i = this._rounds - 1; i >= 0; i--) {
         const temp = x;
         x = y;
-        y = OpCodes.XorN(OpCodes.XorN(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
+        y = OpCodes.Xor32(OpCodes.Xor32(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
       }
 
       // Convert back to bytes (little-endian, lower word first)
@@ -358,30 +379,32 @@
       ];
 
       // Expand key to 44 round keys using Simon key schedule
-      const roundKeys = new Array(this.algorithm.ROUNDS);
+      /** @type {uint32[]} */
+      const schedule = new Array(this._rounds);
 
       // Initialize first 4 round keys directly from master key
-      for (let i = 0; i < this.algorithm.m; i++) {
-        roundKeys[i] = k[i];
+      for (let i = 0; i < this._keyWords; i++) {
+        schedule[i] = k[i];
       }
 
       // Generate remaining round keys using Simon key schedule for m=4
       // k_i = c XOR (z3)_{i-m} XOR k_{i-m} XOR ((k_{i-1} rotR 3) XOR k_{i-3} XOR ((k_{i-1} rotR 3) XOR k_{i-3}) rotR 1)
       const c = 0xfffffffc;  // OpCodes.Xor32(2, 32) - 4
+      /** @type {uint8[]} */
       const z3Sequence = SimonCipher.getZ3Sequence();
 
-      for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {
-        let tmp = OpCodes.RotR32(roundKeys[i - 1], 3);
-        tmp = OpCodes.XorN(tmp, roundKeys[i - 3]);
-        tmp = OpCodes.XorN(tmp, OpCodes.RotR32(tmp, 1));
-        tmp = OpCodes.XorN(tmp, roundKeys[i - this.algorithm.m]);
-        tmp = OpCodes.XorN(tmp, c);
-        tmp = OpCodes.XorN(tmp, z3Sequence[i - this.algorithm.m]);
+      for (let i = this._keyWords; i < this._rounds; i++) {
+        let tmp = OpCodes.RotR32(schedule[i - 1], 3);
+        tmp = OpCodes.Xor32(tmp, schedule[i - 3]);
+        tmp = OpCodes.Xor32(tmp, OpCodes.RotR32(tmp, 1));
+        tmp = OpCodes.Xor32(tmp, schedule[i - this._keyWords]);
+        tmp = OpCodes.Xor32(tmp, c);
+        tmp = OpCodes.Xor32(tmp, z3Sequence[i - this._keyWords]);
 
-        roundKeys[i] = OpCodes.ToUint32(tmp);
+        schedule[i] = OpCodes.ToUint32(tmp);
       }
 
-      return roundKeys;
+      return schedule;
     }
   }
 

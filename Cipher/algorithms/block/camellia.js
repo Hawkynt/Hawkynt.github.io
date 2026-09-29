@@ -149,7 +149,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CamelliaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -166,30 +166,43 @@
   class CamelliaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CamelliaAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {KeySize[]} */
+      this._keySizes = algorithm.SupportedKeySizes;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {boolean} */
       this._keyIs128 = false;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
       
       // Key schedule arrays matching C# structure
+      /** @type {uint32[]} */
       this.subkey = new Array(24 * 4);  // Round keys
+      /** @type {uint32[]} */
       this.kw = new Array(4 * 2);       // Whitening keys 
+      /** @type {uint32[]} */
       this.ke = new Array(6 * 2);       // FL/FLINV keys
 
       // Initialize Camellia constants
       this._initConstants();
     }
 
+    /**
+     * Set the SIGMA constants and the four S-box tables
+     */
     _initConstants() {
       // SIGMA constants from Bouncy Castle C# reference
+      /** @type {uint32[]} */
       this.SIGMA = [
         0xA09E667F, 0x3BCC908B, 0xB67AE858, 0x4CAA73B2,
         0xC6EF372F, 0xE94F82BE, 0x54FF53A5, 0xF1D36F1C,
@@ -197,6 +210,7 @@
       ];
 
       // S-box tables from Bouncy Castle C# reference  
+      /** @type {uint32[]} */
       this.SBOX1_1110 = [
         0x70707000, 0x82828200, 0x2c2c2c00, 0xececec00, 0xb3b3b300, 0x27272700,
         0xc0c0c000, 0xe5e5e500, 0xe4e4e400, 0x85858500, 0x57575700, 0x35353500,
@@ -243,6 +257,7 @@
         0x77777700, 0xc7c7c700, 0x80808000, 0x9e9e9e00
       ];
 
+      /** @type {uint32[]} */
       this.SBOX2_0222 = [
         0x00e0e0e0, 0x00050505, 0x00585858, 0x00d9d9d9, 0x00676767, 0x004e4e4e,
         0x00818181, 0x00cbcbcb, 0x00c9c9c9, 0x000b0b0b, 0x00aeaeae, 0x006a6a6a,
@@ -289,6 +304,7 @@
         0x00eeeeee, 0x008f8f8f, 0x00010101, 0x003d3d3d
       ];
 
+      /** @type {uint32[]} */
       this.SBOX3_3033 = [
         0x38003838, 0x41004141, 0x16001616, 0x76007676, 0xd900d9d9, 0x93009393,
         0x60006060, 0xf200f2f2, 0x72007272, 0xc200c2c2, 0xab00abab, 0x9a009a9a,
@@ -335,6 +351,7 @@
         0xbb00bbbb, 0xe300e3e3, 0x40004040, 0x4f004f4f
       ];
 
+      /** @type {uint32[]} */
       this.SBOX4_4404 = [
         0x70700070, 0x2c2c002c, 0xb3b300b3, 0xc0c000c0, 0xe4e400e4, 0x57570057,
         0xeaea00ea, 0xaeae00ae, 0x23230023, 0x6b6b006b, 0x45450045, 0xa5a500a5,
@@ -396,13 +413,18 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      let isValidSize = false;
+      for (let i = 0; i < this._keySizes.length; i++) {
+        const ks = this._keySizes[i];
+        if (keyBytes.length < ks.minSize || keyBytes.length > ks.maxSize) continue;
+        if (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -422,10 +444,18 @@
 
 
 
+    /**
+     * @param {boolean} forEncryption - Build the encryption (true) or decryption schedule
+     * @param {uint8[]} key - 16, 24 or 32 key bytes
+     */
     _setKey(forEncryption, key) {
+      /** @type {uint32[]} */
       const k = new Array(8);
+      /** @type {uint32[]} */
       const ka = new Array(4);
+      /** @type {uint32[]} */
       const kb = new Array(4);
+      /** @type {uint32[]} */
       const t = new Array(4);
 
       // Convert key bytes to 32-bit words
@@ -441,8 +471,8 @@
           for (let i = 0; i < 6; i++) {
             k[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
           }
-          k[6] = ~k[4];
-          k[7] = ~k[5];
+          k[6] = OpCodes.Not32(k[4]);
+          k[7] = OpCodes.Not32(k[5]);
           this._keyIs128 = false;
           break;
         case 32:
@@ -457,11 +487,11 @@
 
       // Generate KA
       for (let i = 0; i < 4; i++) {
-        ka[i] = OpCodes.XorN(k[i], k[i + 4]);
+        ka[i] = OpCodes.Xor32(k[i], k[i + 4]);
       }
       this._camelliaF2(ka, this.SIGMA, 0);
       for (let i = 0; i < 4; i++) {
-        ka[i] = OpCodes.XorN(ka[i], k[i]);
+        ka[i] = OpCodes.Xor32(ka[i], k[i]);
       }
       this._camelliaF2(ka, this.SIGMA, 4);
 
@@ -508,7 +538,7 @@
       } else {
         // 192/256-bit key schedule
         for (let i = 0; i < 4; i++) {
-          kb[i] = OpCodes.XorN(ka[i], k[i + 4]);
+          kb[i] = OpCodes.Xor32(ka[i], k[i + 4]);
         }
         this._camelliaF2(kb, this.SIGMA, 8);
         
@@ -560,121 +590,173 @@
       }
     }
 
+    /**
+     * @param {int32} rot - Rotation amount of the 128-bit quantity
+     * @param {uint32[]} ki - Source words (rotated in place)
+     * @param {int32} ioff - Offset into ki
+     * @param {uint32[]} ko - Destination words
+     * @param {int32} ooff - Offset into ko
+     */
     _roldq(rot, ki, ioff, ko, ooff) {
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
       ki[0 + ioff] = ko[0 + ooff];
       ki[1 + ioff] = ko[1 + ooff];
       ki[2 + ioff] = ko[2 + ooff];
       ki[3 + ioff] = ko[3 + ooff];
     }
 
+    /**
+     * @param {int32} rot - Rotation amount of the 128-bit quantity
+     * @param {uint32[]} ki - Source words (rotated in place)
+     * @param {int32} ioff - Offset into ki
+     * @param {uint32[]} ko - Destination words
+     * @param {int32} ooff - Offset into ko
+     */
     _decroldq(rot, ki, ioff, ko, ooff) {
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], rot), OpCodes.Shr32(ki[1 + ioff], (32 - rot))));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], rot), OpCodes.Shr32(ki[2 + ioff], (32 - rot))));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], rot), OpCodes.Shr32(ki[3 + ioff], (32 - rot))));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], rot), OpCodes.Shr32(ki[0 + ioff], (32 - rot))));
       ki[0 + ioff] = ko[2 + ooff];
       ki[1 + ioff] = ko[3 + ooff];
       ki[2 + ioff] = ko[0 + ooff];
       ki[3 + ioff] = ko[1 + ooff];
     }
 
+    /**
+     * @param {int32} rot - Rotation amount of the 128-bit quantity
+     * @param {uint32[]} ki - Source words (rotated in place)
+     * @param {int32} ioff - Offset into ki
+     * @param {uint32[]} ko - Destination words
+     * @param {int32} ooff - Offset into ko
+     */
     _roldqo32(rot, ki, ioff, ko, ooff) {
       const leftShift = rot - 32;
       const rightShift = 32 - leftShift;
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
       ki[0 + ioff] = ko[0 + ooff];
       ki[1 + ioff] = ko[1 + ooff];
       ki[2 + ioff] = ko[2 + ooff];
       ki[3 + ioff] = ko[3 + ooff];
     }
 
+    /**
+     * @param {int32} rot - Rotation amount of the 128-bit quantity
+     * @param {uint32[]} ki - Source words (rotated in place)
+     * @param {int32} ioff - Offset into ki
+     * @param {uint32[]} ko - Destination words
+     * @param {int32} ooff - Offset into ko
+     */
     _decroldqo32(rot, ki, ioff, ko, ooff) {
       const leftShift = rot - 32;
       const rightShift = 32 - leftShift;
-      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
-      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
-      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
-      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
+      ko[2 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[1 + ioff], leftShift), OpCodes.Shr32(ki[2 + ioff], rightShift)));
+      ko[3 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[2 + ioff], leftShift), OpCodes.Shr32(ki[3 + ioff], rightShift)));
+      ko[0 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[3 + ioff], leftShift), OpCodes.Shr32(ki[0 + ioff], rightShift)));
+      ko[1 + ooff] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(ki[0 + ioff], leftShift), OpCodes.Shr32(ki[1 + ioff], rightShift)));
       ki[0 + ioff] = ko[2 + ooff];
       ki[1 + ioff] = ko[3 + ooff];
       ki[2 + ioff] = ko[0 + ooff];
       ki[3 + ioff] = ko[1 + ooff];
     }
 
+    /**
+     * @param {uint32[]} s - Four state words, updated in place
+     * @param {uint32[]} skey - Subkey words
+     * @param {int32} keyoff - Offset of the four subkey words
+     */
     _camelliaF2(s, skey, keyoff) {
-      let t1, t2, u, v;
+      /** @type {uint32} */
+      let t1 = 0;
+      /** @type {uint32} */
+      let t2 = 0;
+      /** @type {uint32} */
+      let u = 0;
+      /** @type {uint32} */
+      let v = 0;
 
-      t1 = OpCodes.XorN(s[0], skey[0 + keyoff]);
-      u = this.SBOX4_4404[OpCodes.AndN(t1, 0xff)];
-      u = OpCodes.XorN(u, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t1, 8), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t1, 16), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX1_1110[OpCodes.AndN(OpCodes.Shr32(t1, 24), 0xff)]);
-      t2 = OpCodes.XorN(s[1], skey[1 + keyoff]);
-      v = this.SBOX1_1110[OpCodes.AndN(t2, 0xff)];
-      v = OpCodes.XorN(v, this.SBOX4_4404[OpCodes.AndN(OpCodes.Shr32(t2, 8), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t2, 16), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t2, 24), 0xff)]);
+      t1 = OpCodes.Xor32(s[0], skey[0 + keyoff]);
+      u = this.SBOX4_4404[OpCodes.And32(t1, 0xff)];
+      u = OpCodes.Xor32(u, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t1, 8), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t1, 16), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX1_1110[OpCodes.And32(OpCodes.Shr32(t1, 24), 0xff)]);
+      t2 = OpCodes.Xor32(s[1], skey[1 + keyoff]);
+      v = this.SBOX1_1110[OpCodes.And32(t2, 0xff)];
+      v = OpCodes.Xor32(v, this.SBOX4_4404[OpCodes.And32(OpCodes.Shr32(t2, 8), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t2, 16), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t2, 24), 0xff)]);
 
-      s[2] = OpCodes.XorN(s[2], OpCodes.XorN(u, v));
-      s[3] = OpCodes.XorN(s[3], OpCodes.XorN(OpCodes.XorN(u, v), OpCodes.RotR32(u, 8)));
+      s[2] = OpCodes.Xor32(s[2], OpCodes.Xor32(u, v));
+      s[3] = OpCodes.Xor32(s[3], OpCodes.Xor32(OpCodes.Xor32(u, v), OpCodes.RotR32(u, 8)));
 
-      t1 = OpCodes.XorN(s[2], skey[2 + keyoff]);
-      u = this.SBOX4_4404[OpCodes.AndN(t1, 0xff)];
-      u = OpCodes.XorN(u, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t1, 8), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t1, 16), 0xff)]);
-      u = OpCodes.XorN(u, this.SBOX1_1110[OpCodes.AndN(OpCodes.Shr32(t1, 24), 0xff)]);
-      t2 = OpCodes.XorN(s[3], skey[3 + keyoff]);
-      v = this.SBOX1_1110[OpCodes.AndN(t2, 0xff)];
-      v = OpCodes.XorN(v, this.SBOX4_4404[OpCodes.AndN(OpCodes.Shr32(t2, 8), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX3_3033[OpCodes.AndN(OpCodes.Shr32(t2, 16), 0xff)]);
-      v = OpCodes.XorN(v, this.SBOX2_0222[OpCodes.AndN(OpCodes.Shr32(t2, 24), 0xff)]);
+      t1 = OpCodes.Xor32(s[2], skey[2 + keyoff]);
+      u = this.SBOX4_4404[OpCodes.And32(t1, 0xff)];
+      u = OpCodes.Xor32(u, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t1, 8), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t1, 16), 0xff)]);
+      u = OpCodes.Xor32(u, this.SBOX1_1110[OpCodes.And32(OpCodes.Shr32(t1, 24), 0xff)]);
+      t2 = OpCodes.Xor32(s[3], skey[3 + keyoff]);
+      v = this.SBOX1_1110[OpCodes.And32(t2, 0xff)];
+      v = OpCodes.Xor32(v, this.SBOX4_4404[OpCodes.And32(OpCodes.Shr32(t2, 8), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX3_3033[OpCodes.And32(OpCodes.Shr32(t2, 16), 0xff)]);
+      v = OpCodes.Xor32(v, this.SBOX2_0222[OpCodes.And32(OpCodes.Shr32(t2, 24), 0xff)]);
 
-      s[0] = OpCodes.XorN(s[0], OpCodes.XorN(u, v));
-      s[1] = OpCodes.XorN(s[1], OpCodes.XorN(OpCodes.XorN(u, v), OpCodes.RotR32(u, 8)));
+      s[0] = OpCodes.Xor32(s[0], OpCodes.Xor32(u, v));
+      s[1] = OpCodes.Xor32(s[1], OpCodes.Xor32(OpCodes.Xor32(u, v), OpCodes.RotR32(u, 8)));
     }
 
+    /**
+     * @param {uint32[]} s - Four state words, updated in place
+     * @param {uint32[]} fkey - FL/FLINV key words
+     * @param {int32} keyoff - Offset of the four key words
+     */
     _camelliaFLs(s, fkey, keyoff) {
-      s[1] = OpCodes.XorN(s[1], OpCodes.RotL32(OpCodes.AndN(s[0], fkey[0 + keyoff]), 1));
-      s[0] = OpCodes.XorN(s[0], OpCodes.OrN(fkey[1 + keyoff], s[1]));
+      s[1] = OpCodes.Xor32(s[1], OpCodes.RotL32(OpCodes.And32(s[0], fkey[0 + keyoff]), 1));
+      s[0] = OpCodes.Xor32(s[0], OpCodes.Or32(fkey[1 + keyoff], s[1]));
 
-      s[2] = OpCodes.XorN(s[2], OpCodes.OrN(fkey[3 + keyoff], s[3]));
-      s[3] = OpCodes.XorN(s[3], OpCodes.RotL32(OpCodes.AndN(fkey[2 + keyoff], s[2]), 1));
+      s[2] = OpCodes.Xor32(s[2], OpCodes.Or32(fkey[3 + keyoff], s[3]));
+      s[3] = OpCodes.Xor32(s[3], OpCodes.RotL32(OpCodes.And32(fkey[2 + keyoff], s[2]), 1));
     }
 
+    /**
+     * @param {uint8[]} input - 16-byte block
+     * @returns {uint8[]} Processed block
+     */
     _processBlock128(input) {
-      const state = new Array(4);
+      /** @type {uint32[]} */
+      const words4 = new Array(4);
       
       // Pack input into 32-bit words
       for (let i = 0; i < 4; i++) {
-        state[i] = OpCodes.XorN(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
+        words4[i] = OpCodes.Xor32(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
       }
 
-      this._camelliaF2(state, this.subkey, 0);
-      this._camelliaF2(state, this.subkey, 4);
-      this._camelliaF2(state, this.subkey, 8);
-      this._camelliaFLs(state, this.ke, 0);
-      this._camelliaF2(state, this.subkey, 12);
-      this._camelliaF2(state, this.subkey, 16);
-      this._camelliaF2(state, this.subkey, 20);
-      this._camelliaFLs(state, this.ke, 4);
-      this._camelliaF2(state, this.subkey, 24);
-      this._camelliaF2(state, this.subkey, 28);
-      this._camelliaF2(state, this.subkey, 32);
+      this._camelliaF2(words4, this.subkey, 0);
+      this._camelliaF2(words4, this.subkey, 4);
+      this._camelliaF2(words4, this.subkey, 8);
+      this._camelliaFLs(words4, this.ke, 0);
+      this._camelliaF2(words4, this.subkey, 12);
+      this._camelliaF2(words4, this.subkey, 16);
+      this._camelliaF2(words4, this.subkey, 20);
+      this._camelliaFLs(words4, this.ke, 4);
+      this._camelliaF2(words4, this.subkey, 24);
+      this._camelliaF2(words4, this.subkey, 28);
+      this._camelliaF2(words4, this.subkey, 32);
 
       // Unpack to output bytes with final whitening
+      /** @type {uint8[]} */
       const output = new Array(16);
+      /** @type {uint32[]} */
       const words = [
-        OpCodes.XorN(state[2], this.kw[4]),
-        OpCodes.XorN(state[3], this.kw[5]),
-        OpCodes.XorN(state[0], this.kw[6]),
-        OpCodes.XorN(state[1], this.kw[7])
+        OpCodes.Xor32(words4[2], this.kw[4]),
+        OpCodes.Xor32(words4[3], this.kw[5]),
+        OpCodes.Xor32(words4[0], this.kw[6]),
+        OpCodes.Xor32(words4[1], this.kw[7])
       ];
       
       for (let i = 0; i < 4; i++) {
@@ -688,37 +770,44 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - 16-byte block
+     * @returns {uint8[]} Processed block
+     */
     _processBlock192or256(input) {
-      const state = new Array(4);
+      /** @type {uint32[]} */
+      const words4 = new Array(4);
       
       // Pack input into 32-bit words
       for (let i = 0; i < 4; i++) {
-        state[i] = OpCodes.XorN(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
+        words4[i] = OpCodes.Xor32(OpCodes.Pack32BE(input[i*4], input[i*4+1], input[i*4+2], input[i*4+3]), this.kw[i]);
       }
 
-      this._camelliaF2(state, this.subkey, 0);
-      this._camelliaF2(state, this.subkey, 4);
-      this._camelliaF2(state, this.subkey, 8);
-      this._camelliaFLs(state, this.ke, 0);
-      this._camelliaF2(state, this.subkey, 12);
-      this._camelliaF2(state, this.subkey, 16);
-      this._camelliaF2(state, this.subkey, 20);
-      this._camelliaFLs(state, this.ke, 4);
-      this._camelliaF2(state, this.subkey, 24);
-      this._camelliaF2(state, this.subkey, 28);
-      this._camelliaF2(state, this.subkey, 32);
-      this._camelliaFLs(state, this.ke, 8);
-      this._camelliaF2(state, this.subkey, 36);
-      this._camelliaF2(state, this.subkey, 40);
-      this._camelliaF2(state, this.subkey, 44);
+      this._camelliaF2(words4, this.subkey, 0);
+      this._camelliaF2(words4, this.subkey, 4);
+      this._camelliaF2(words4, this.subkey, 8);
+      this._camelliaFLs(words4, this.ke, 0);
+      this._camelliaF2(words4, this.subkey, 12);
+      this._camelliaF2(words4, this.subkey, 16);
+      this._camelliaF2(words4, this.subkey, 20);
+      this._camelliaFLs(words4, this.ke, 4);
+      this._camelliaF2(words4, this.subkey, 24);
+      this._camelliaF2(words4, this.subkey, 28);
+      this._camelliaF2(words4, this.subkey, 32);
+      this._camelliaFLs(words4, this.ke, 8);
+      this._camelliaF2(words4, this.subkey, 36);
+      this._camelliaF2(words4, this.subkey, 40);
+      this._camelliaF2(words4, this.subkey, 44);
 
       // Unpack to output bytes with final whitening
+      /** @type {uint8[]} */
       const output = new Array(16);
+      /** @type {uint32[]} */
       const words = [
-        OpCodes.XorN(state[2], this.kw[4]),
-        OpCodes.XorN(state[3], this.kw[5]),
-        OpCodes.XorN(state[0], this.kw[6]),
-        OpCodes.XorN(state[1], this.kw[7])
+        OpCodes.Xor32(words4[2], this.kw[4]),
+        OpCodes.Xor32(words4[3], this.kw[5]),
+        OpCodes.Xor32(words4[0], this.kw[6]),
+        OpCodes.Xor32(words4[1], this.kw[7])
       ];
       
       for (let i = 0; i < 4; i++) {
@@ -732,8 +821,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} plaintext - Input block
+     * @returns {uint8[]} Output block
+     */
     EncryptBlock(plaintext) {
-      if (!this.key) {
+      if (!this._key) {
         throw new Error('Key not set');
       }
       
@@ -744,13 +837,18 @@
       }
     }
 
+    /**
+     * @param {uint8[]} ciphertext - Input block
+     * @returns {uint8[]} Output block
+     */
     DecryptBlock(ciphertext) {
       // For decryption, we need to set up the key schedule for decryption
       // Store current key and re-setup for decryption
       const savedKey = [...this._key];
       this._setKey(false, savedKey);
       
-      let result;
+      /** @type {uint8[]} */
+      let result = [];
       if (this._keyIs128) {
         result = this._processBlock128(ciphertext);
       } else {

@@ -46,6 +46,7 @@
 
   // S-boxes (substitution tables) from RFC 8891 Section 4.1
   // id-tc26-gost-28147-param-Z S-box set
+  /** @type {uint8[][]} */
   const SBOX = [
     [12, 4, 6, 2, 10, 5, 11, 9, 14, 8, 13, 7, 0, 3, 15, 1],
     [6, 8, 2, 3, 9, 10, 5, 12, 1, 14, 4, 7, 11, 13, 0, 15],
@@ -58,28 +59,44 @@
   ];
 
   // Transformation t: apply S-boxes to 32-bit value (RFC 8891 Section 4.1)
+  /**
+   * @param {uint32} input - 32-bit word
+   * @returns {uint32} Word with every nibble substituted
+   */
   function transformT(input) {
+    /** @type {uint32} */
     let output = 0;
     for (let i = 0; i < 8; ++i) {
-      const nibble = OpCodes.AndN(OpCodes.Shr32(input, 4 * i), 0x0F);
+      const nibble = OpCodes.And32(OpCodes.Shr32(input, 4 * i), 0x0F);
       const substituted = SBOX[i][nibble];
-      output = OpCodes.OrN(output, OpCodes.Shl32(substituted, 4 * i));
+      output = OpCodes.Or32(output, OpCodes.Shl32(substituted, 4 * i));
     }
     return OpCodes.Shr32(output, 0);
   }
 
   // Transformation g: t followed by 11-bit left rotation (RFC 8891 Section 4.1)
+  /**
+   * @param {uint32} k - Round key
+   * @param {uint32} a - Half block
+   * @returns {uint32} g[k](a)
+   */
   function transformG(k, a) {
-    const sum = OpCodes.Shr32(k + a, 0); // Addition modulo OpCodes.Xor32(2, 32)
+    const sum = OpCodes.Add32(k, a); // Addition modulo 2^32
     const afterT = transformT(sum);
     return OpCodes.RotL32(afterT, 11);
   }
 
   // Key schedule: generates 32 round keys from 256-bit key
+  /**
+   * @param {uint8[]} key - 32-byte key
+   * @returns {uint32[]} The 32 round keys in application order
+   */
   function keySchedule(key) {
-    const keys = new Array(32);
+    /** @type {uint32[]} */
+    const roundWords = new Array(32);
 
     // Split 256-bit key into eight 32-bit words (big-endian per RFC 8891)
+    /** @type {uint32[]} */
     const K = new Array(8);
     for (let i = 0; i < 8; ++i) {
       K[i] = OpCodes.Pack32BE(
@@ -94,20 +111,26 @@
     // K_1..K_24 use keys in order (3 repetitions of K_1..K_8)
     // K_25..K_32 use keys in reverse order (K_8..K_1)
     for (let i = 0; i < 24; ++i) {
-      keys[i] = K[i % 8];
+      roundWords[i] = K[i % 8];
     }
     for (let i = 0; i < 8; ++i) {
-      keys[24 + i] = K[7 - i];
+      roundWords[24 + i] = K[7 - i];
     }
 
-    return keys;
+    return roundWords;
   }
 
   // Decryption key schedule (reverse of encryption)
+  /**
+   * @param {uint8[]} key - 32-byte key
+   * @returns {uint32[]} The 32 round keys in application order
+   */
   function decryptionKeySchedule(key) {
-    const keys = new Array(32);
+    /** @type {uint32[]} */
+    const roundWords = new Array(32);
 
     // Split key into eight 32-bit words (big-endian per RFC 8891)
+    /** @type {uint32[]} */
     const K = new Array(8);
     for (let i = 0; i < 8; ++i) {
       K[i] = OpCodes.Pack32BE(
@@ -122,13 +145,13 @@
     // K_1..K_8 use keys in order
     // K_9..K_32 use keys in reverse order (3 repetitions of K_8..K_1)
     for (let i = 0; i < 8; ++i) {
-      keys[i] = K[i];
+      roundWords[i] = K[i];
     }
     for (let i = 0; i < 24; ++i) {
-      keys[8 + i] = K[7 - (i % 8)];
+      roundWords[8 + i] = K[7 - (i % 8)];
     }
 
-    return keys;
+    return roundWords;
   }
 
   /**
@@ -188,7 +211,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MagmaInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -205,16 +228,19 @@
   class MagmaInstance extends IBlockCipherInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Magma} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
-      this._roundKeys = null;
+      /** @type {uint32[]|null} */
+      this._roundWords = null;
     }
 
     /**
@@ -226,16 +252,16 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this._roundKeys = null;
+        this._roundWords = null;
         return;
       }
 
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 32 bytes)");
       }
 
       this._key = [...keyBytes];
-      this._roundKeys = this.isInverse ?
+      this._roundWords = this.isInverse ?
         decryptionKeySchedule(new Uint8Array(this._key)) :
         keySchedule(new Uint8Array(this._key));
     }
@@ -271,9 +297,10 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % 8 !== 0) {
-        throw new Error(`Invalid input length: ${this.inputBuffer.length} bytes (must be multiple of 8)`);
+        throw new Error("Invalid input length: " + this.inputBuffer.length + " bytes (must be multiple of 8)");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       const numBlocks = this.inputBuffer.length / 8;
 
@@ -287,6 +314,10 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     processBlock(block) {
       // RFC 8891: block is (a_1, a_0) where a_1 is first 32 bits, a_0 is last 32 bits
       // Load as big-endian 32-bit words per RFC 8891
@@ -297,14 +328,15 @@
       for (let i = 0; i < 31; ++i) {
         const temp = a1;
         a1 = a0;
-        a0 = OpCodes.XorN(transformG(this._roundKeys[i], a0), temp);
+        a0 = OpCodes.Xor32(transformG(this._roundWords[i], a0), temp);
       }
 
       // Final round G*[k](a_1, a_0) = (g[k](a_0) XOR a_1, a_0)
-      const finalOutput1 = OpCodes.XorN(transformG(this._roundKeys[31], a0), a1);
+      const finalOutput1 = OpCodes.Xor32(transformG(this._roundWords[31], a0), a1);
       const finalOutput0 = a0;
 
       // Convert back to bytes (big-endian per RFC 8891): output is (finalOutput1, finalOutput0)
+      /** @type {uint8[]} */
       const result = new Array(8);
       const bytes1 = OpCodes.Unpack32BE(finalOutput1);
       const bytes0 = OpCodes.Unpack32BE(finalOutput0);

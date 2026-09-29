@@ -188,22 +188,41 @@
   );
 
   const ROUNDS = 16;
+  /** @type {uint32} */
   const CONST_A = 0xB7E15163;
+  /** @type {uint32} */
   const DELTA = 0x9E3779B9;
 
-  function sbox(row, col) { return SBOX[OpCodes.And32(row, 0x3F) * 256 + OpCodes.And32(col, 0xFF)]; }
+  /**
+   * @param {uint32} row - S-box row (low 6 bits used)
+   * @param {uint32} col - S-box column (low 8 bits used)
+   * @returns {uint8} S-box byte
+   */
+  function sbox(row, col) { return SBOX[OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(row, 0x3F), 8), OpCodes.And32(col, 0xFF))]; }
 
   // f(x) = ROL(x,16) + ((x<<6) ^ (x>>>8))
+  /**
+   * @param {uint32} x - Word
+   * @returns {uint32} f(x)
+   */
   function roundF(x) {
     return OpCodes.ToUint32(OpCodes.RotL32(x, 16) + OpCodes.Xor32(OpCodes.Shl32(x, 6), OpCodes.Shr32(x, 8)));
   }
 
+  /**
+   * @param {uint32} w - Word whose bytes select the columns
+   * @param {uint32} r0 - Row for the most significant byte
+   * @param {uint32} r1 - Row for the second byte
+   * @param {uint32} r2 - Row for the third byte
+   * @param {uint32} r3 - Row for the least significant byte
+   * @returns {uint32} The four substituted bytes, big-endian
+   */
   function sboxMix(w, r0, r1, r2, r3) {
     const b0 = sbox(r0, OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF));
     const b1 = sbox(r1, OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF));
     const b2 = sbox(r2, OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF));
     const b3 = sbox(r3, OpCodes.And32(w, 0xFF));
-    return OpCodes.ToUint32(OpCodes.Shl32(b0, 24) | OpCodes.Shl32(b1, 16) | OpCodes.Shl32(b2, 8) | b3);
+    return OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(b0, 24), OpCodes.Shl32(b1, 16)), OpCodes.Shl32(b2, 8)), b3);
   }
 
   class DarkCryptGTEA21KSAlgorithm extends BlockCipherAlgorithm {
@@ -257,30 +276,50 @@
       ];
     }
 
+    /**
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     * @returns {DarkCryptGTEA21KSInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DarkCryptGTEA21KSInstance(this, isInverse);
     }
   }
 
   class DarkCryptGTEA21KSInstance extends IBlockCipherInstance {
+    /**
+     * @param {DarkCryptGTEA21KSAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decrypt instead of encrypt
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint32[]|null} */
+      this._roundWords = null;
+      /** @type {uint32[]|null} */
+      this._whiten = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 16;
       this.KeySize = 0;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - Key bytes, or null to clear
+     */
     set key(keyBytes) {
-      if (!keyBytes) { this._key = null; this.KeySize = 0; this._sched = null; return; }
+      if (!keyBytes) { this._key = null; this.KeySize = 0; this._roundWords = null; this._whiten = null; return; }
       if (keyBytes.length !== 64)
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. GTEA 2.1KS (DarkCrypt) requires exactly 64 bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. GTEA 2.1KS (DarkCrypt) requires exactly 64 bytes");
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._sched = this._buildSchedule(this._key);
+      this._buildSchedule(this._key);
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the key, or null
+     */
     get key() { return this._key ? [...this._key] : null; }
 
     Feed(data) {
@@ -293,8 +332,9 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
       if (this.inputBuffer.length % this.BlockSize !== 0)
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
 
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
@@ -304,7 +344,12 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} key - 64 key bytes
+     * @returns {uint32[]} 16 little-endian key words
+     */
     _keyWords(key) {
+      /** @type {uint32[]} */
       const words = new Array(16);
       for (let i = 0; i < 16; i++)
         words[i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
@@ -313,8 +358,13 @@
 
     // Builds the 64-entry round-key schedule (two S-box mixing passes per entry) and
     // the 8 whitening words from the 512-bit key.
+    /**
+     * Fill _RK and _W from the key
+     * @param {uint8[]} key - 64 key bytes
+     */
     _buildSchedule(key) {
       const k = this._keyWords(key);
+      /** @type {uint32[]} */
       const RK = new Array(64);
       let B = DELTA;
       let ACCU = CONST_A;
@@ -340,13 +390,22 @@
 
         ACCU = OpCodes.ToUint32(ACCU + CONST_A);
       }
+      /** @type {uint32[]} */
       const W = new Array(8);
       for (let i = 0; i < 8; i++) W[i] = OpCodes.ToUint32(k[i] + k[i + 8]);
-      return { RK, W };
+      this._roundWords = RK;
+      this._whiten = W;
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _encryptBlock(block) {
-      const { RK, W } = this._sched;
+      /** @type {uint32[]} */
+      const RK = this._roundWords;
+      /** @type {uint32[]} */
+      const W = this._whiten;
       let v0 = OpCodes.ToUint32(W[0] + OpCodes.Pack32LE(block[0], block[1], block[2], block[3]));
       let v1 = OpCodes.ToUint32(W[1] + OpCodes.Pack32LE(block[4], block[5], block[6], block[7]));
       let v2 = OpCodes.ToUint32(W[2] + OpCodes.Pack32LE(block[8], block[9], block[10], block[11]));
@@ -369,28 +428,39 @@
         const newV3 = OpCodes.Xor32(OpCodes.RotL32(m2, 13), v3);
 
         v0 = newV1; v1 = newV3; v2 = x; v3 = z;
-        idx1 = OpCodes.ToUint32(idx1 + 2);
-        idx2 = OpCodes.ToUint32(idx2 + 2);
+        idx1 += 2;
+        idx2 += 2;
       }
 
+      const o0 = OpCodes.Xor32(v0, W[4]);
+      const o1 = OpCodes.Xor32(v1, W[5]);
+      const o2 = OpCodes.Xor32(v2, W[6]);
+      const o3 = OpCodes.Xor32(v3, W[7]);
       return [
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v0, W[4])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v1, W[5])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v2, W[6])),
-        ...OpCodes.Unpack32LE(OpCodes.Xor32(v3, W[7]))
+        ...OpCodes.Unpack32LE(o0),
+        ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2),
+        ...OpCodes.Unpack32LE(o3)
       ];
     }
 
+    /**
+     * @param {uint8[]} block - Input block
+     * @returns {uint8[]} Output block
+     */
     _decryptBlock(block) {
-      const { RK, W } = this._sched;
+      /** @type {uint32[]} */
+      const RK = this._roundWords;
+      /** @type {uint32[]} */
+      const W = this._whiten;
       let newV1 = OpCodes.Xor32(OpCodes.Pack32LE(block[0], block[1], block[2], block[3]), W[4]);
       let newV3 = OpCodes.Xor32(OpCodes.Pack32LE(block[4], block[5], block[6], block[7]), W[5]);
       let x = OpCodes.Xor32(OpCodes.Pack32LE(block[8], block[9], block[10], block[11]), W[6]);
       let z = OpCodes.Xor32(OpCodes.Pack32LE(block[12], block[13], block[14], block[15]), W[7]);
 
       for (let r = ROUNDS - 1; r >= 0; r--) {
-        const idx1 = OpCodes.ToUint32(2 * r);
-        const idx2 = OpCodes.ToUint32(32 + 2 * r);
+        const idx1 = 2 * r;
+        const idx2 = 32 + 2 * r;
 
         const y1 = OpCodes.RotR32(OpCodes.ToUint32(roundF(z) + RK[idx2]), OpCodes.Shr32(x, 27));
         const y2 = OpCodes.RotR32(OpCodes.ToUint32(roundF(newV1) + RK[idx2 + 1]), OpCodes.Shr32(z, 27));
@@ -412,11 +482,15 @@
         newV1 = v0; newV3 = v1; x = v2; z = v3;
       }
 
+      const o0 = OpCodes.Sub32(newV1, W[0]);
+      const o1 = OpCodes.Sub32(newV3, W[1]);
+      const o2 = OpCodes.Sub32(x, W[2]);
+      const o3 = OpCodes.Sub32(z, W[3]);
       return [
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(newV1 - W[0])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(newV3 - W[1])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(x - W[2])),
-        ...OpCodes.Unpack32LE(OpCodes.ToUint32(z - W[3]))
+        ...OpCodes.Unpack32LE(o0),
+        ...OpCodes.Unpack32LE(o1),
+        ...OpCodes.Unpack32LE(o2),
+        ...OpCodes.Unpack32LE(o3)
       ];
     }
   }
