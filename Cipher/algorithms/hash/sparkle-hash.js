@@ -32,9 +32,10 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // Sparkle round constants
+  /** @type {uint32[]} */
   const RCON = [
     0xB7E15162, 0xBF715880, 0x38B4DA56, 0x324E7738,
     0xBB1185EB, 0x4F7C7B57, 0xCFBFA1C8, 0xC2B3293D
@@ -50,40 +51,43 @@
 
   /**
    * ARXBox operation: ADD, ROTATE, XOR
-   * @param {number} rc - Round constant
-   * @param {number} s00 - First state word
-   * @param {number} s01 - Second state word
-   * @returns {Object} {s00, s01} - Updated state words
+   * @param {uint32} rc - Round constant
+   * @param {uint32[]} branch - The two state words [s00, s01], updated in place
+   * @returns {void}
    */
-  function ArxBox(rc, s00, s01) {
-    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 31));
+  function ArxBox(rc, branch) {
+    let s00 = branch[0];
+    let s01 = branch[1];
+    s00 = OpCodes.Add32(s00, OpCodes.RotR32(s01, 31));
     s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 24));
     s00 = OpCodes.Xor32(s00, rc);
-    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 17));
+    s00 = OpCodes.Add32(s00, OpCodes.RotR32(s01, 17));
     s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 17));
     s00 = OpCodes.Xor32(s00, rc);
-    s00 = OpCodes.ToUint32(s00 + s01);
+    s00 = OpCodes.Add32(s00, s01);
     s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 31));
     s00 = OpCodes.Xor32(s00, rc);
-    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 24));
+    s00 = OpCodes.Add32(s00, OpCodes.RotR32(s01, 24));
     s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 16));
     s00 = OpCodes.Xor32(s00, rc);
-    return { s00: OpCodes.ToUint32(s00), s01: OpCodes.ToUint32(s01) };
+    branch[0] = s00;
+    branch[1] = s01;
   }
 
   /**
    * ELL function: Linear layer mixing operation
-   * @param {number} x - Input word
-   * @returns {number} Mixed word
+   * @param {uint32} x - Input word
+   * @returns {uint32} Mixed word
    */
   function ELL(x) {
-    return OpCodes.Xor32(OpCodes.RotR32(x, 16), (x&0xFFFF));
+    return OpCodes.Xor32(OpCodes.RotR32(x, 16), OpCodes.And32(x, 0xFFFF));
   }
 
   /**
    * Sparkle permutation for 384-bit state (12 words)
-   * @param {Array<number>} state - 12-word state array
-   * @param {number} steps - Number of steps (7 or 11)
+   * @param {uint32[]} state - 12-word state array (modified in place)
+   * @param {int32} steps - Number of steps (7 or 11)
+   * @returns {void}
    */
   function SparkleOpt12(state, steps) {
     let s00 = state[0];
@@ -98,6 +102,8 @@
     let s09 = state[9];
     let s10 = state[10];
     let s11 = state[11];
+    /** @type {uint32[]} */
+    const branch = [0, 0];
 
     for (let step = 0; step < steps; ++step) {
       // Add round constant
@@ -105,30 +111,35 @@
       s03 = OpCodes.Xor32(s03, step);
 
       // ARXBox layer
-      let result;
-      result = ArxBox(RCON[0], s00, s01);
-      s00 = result.s00;
-      s01 = result.s01;
+      branch[0] = s00; branch[1] = s01;
+      ArxBox(RCON[0], branch);
+      s00 = branch[0];
+      s01 = branch[1];
 
-      result = ArxBox(RCON[1], s02, s03);
-      s02 = result.s00;
-      s03 = result.s01;
+      branch[0] = s02; branch[1] = s03;
+      ArxBox(RCON[1], branch);
+      s02 = branch[0];
+      s03 = branch[1];
 
-      result = ArxBox(RCON[2], s04, s05);
-      s04 = result.s00;
-      s05 = result.s01;
+      branch[0] = s04; branch[1] = s05;
+      ArxBox(RCON[2], branch);
+      s04 = branch[0];
+      s05 = branch[1];
 
-      result = ArxBox(RCON[3], s06, s07);
-      s06 = result.s00;
-      s07 = result.s01;
+      branch[0] = s06; branch[1] = s07;
+      ArxBox(RCON[3], branch);
+      s06 = branch[0];
+      s07 = branch[1];
 
-      result = ArxBox(RCON[4], s08, s09);
-      s08 = result.s00;
-      s09 = result.s01;
+      branch[0] = s08; branch[1] = s09;
+      ArxBox(RCON[4], branch);
+      s08 = branch[0];
+      s09 = branch[1];
 
-      result = ArxBox(RCON[5], s10, s11);
-      s10 = result.s00;
-      s11 = result.s01;
+      branch[0] = s10; branch[1] = s11;
+      ArxBox(RCON[5], branch);
+      s10 = branch[0];
+      s11 = branch[1];
 
       // Linear layer
       const t024 = ELL(OpCodes.Xor32(OpCodes.Xor32(s00, s02), s04));
@@ -190,7 +201,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.AT;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -260,7 +271,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SparkleHashInstance} New hash instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -276,23 +287,39 @@
  */
 
   class SparkleHashInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a SparkleHash instance
+     * @param {SparkleHash} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // State is 12 words (384 bits)
-      this.state = new Array(STATE_WORDS).fill(0);
-      this.buffer = new Array(RATE_BYTES).fill(0);
+      /** @type {uint32[]} */
+      this.state = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      /** @type {uint8[]} */
+      this.buffer = OpCodes.CreateArray(RATE_BYTES, 0);
+      /** @type {int32} */
       this.bufferPos = 0;
+      /** @type {int32} */
       this._outputSize = DIGEST_BYTES;
     }
 
+    /**
+     * Set the digest size (only 32 bytes is supported)
+     * @param {int32} size - Digest size in bytes
+     */
     set outputSize(size) {
       if (size !== DIGEST_BYTES) {
-        throw new Error(`Invalid output size: ${size} bytes (only 32 supported for Esch256)`);
+        throw new Error('Invalid output size: ' + size + ' bytes (only 32 supported for Esch256)');
       }
       this._outputSize = size;
     }
 
+    /**
+     * Digest size in bytes
+     * @returns {int32} Always 32
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -300,7 +327,7 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
    */
 
     Feed(data) {
@@ -323,7 +350,7 @@
 
     Result() {
       // Addition of constant M1 or M2 to the state
-      const midStateIndex = OpCodes.Shr32(STATE_WORDS, 1) - 1; // 12/2 - 1 = 5
+      const midStateIndex = OpCodes.Sub32(OpCodes.Shr32(STATE_WORDS, 1), 1); // 12/2 - 1 = 5
       if (this.bufferPos < RATE_BYTES) {
         // M1: incomplete block
         this.state[midStateIndex] = OpCodes.Xor32(this.state[midStateIndex], OpCodes.Shl32(1, 24));
@@ -342,6 +369,7 @@
       this._processBlock(this.buffer, SPARKLE_STEPS_BIG);
 
       // Extract first rate-sized output (16 bytes)
+      /** @type {uint8[]} */
       const output = new Array(DIGEST_BYTES);
       for (let i = 0; i < RATE_WORDS; ++i) {
         const word = this.state[i];
@@ -371,9 +399,10 @@
 
     /**
      * Process a block of data
-     * @param {Array<number>} block - RATE_BYTES block
-     * @param {number} steps - Number of permutation steps
+     * @param {uint8[]} block - RATE_BYTES block
+     * @param {int32} steps - Number of permutation steps
      * @private
+     * @returns {void}
      */
     _processBlock(block, steps) {
       // Unpack block to words (little-endian)
