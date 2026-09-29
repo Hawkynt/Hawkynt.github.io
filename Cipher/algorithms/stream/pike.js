@@ -185,9 +185,9 @@
           const ivWord = global.OpCodes.Pack32LE(
             iv[i * 4], iv[i * 4 + 1], iv[i * 4 + 2], iv[i * 4 + 3]
           );
-          lfgA[i] = global.OpCodes.XorN(lfgA[i], ivWord);
-          lfgB[i] = global.OpCodes.XorN(lfgB[i], ivWord);
-          lfgC[i] = global.OpCodes.XorN(lfgC[i], ivWord);
+          lfgA[i] = global.OpCodes.Xor32(lfgA[i], ivWord);
+          lfgB[i] = global.OpCodes.Xor32(lfgB[i], ivWord);
+          lfgC[i] = global.OpCodes.Xor32(lfgC[i], ivWord);
         }
       }
 
@@ -213,10 +213,10 @@
         lfgC[posC % this.LAG_C] = mixC;
 
         // Generate keystream by combining all three
-        const keystreamWord = global.OpCodes.ToUint32(global.OpCodes.XorN(global.OpCodes.XorN(global.OpCodes.XorN(mixA, mixB), mixC), (i * 0x9E3779B9)));
-        const keystreamByte = global.OpCodes.AndN((keystreamWord + i), 0xFF);
+        const keystreamWord = global.OpCodes.Xor32(global.OpCodes.Xor32(global.OpCodes.Xor32(mixA, mixB), mixC), (i * 0x9E3779B9));
+        const keystreamByte = global.OpCodes.And32((keystreamWord + i), 0xFF);
 
-        output.push(global.OpCodes.XorN(data[i], keystreamByte));
+        output.push(global.OpCodes.Xor32(data[i], keystreamByte));
 
         // Advance positions
         posA = (posA + 1) % this.LAG_A;
@@ -234,8 +234,8 @@
       }
 
       const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
-      iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
-      iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
+      iv[0] = global.OpCodes.And32(blockIndex, 0xFF);
+      iv[1] = global.OpCodes.And32(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
       return this.educationalPike(this.key, iv, plaintext);
     },
@@ -246,8 +246,8 @@
       }
 
       const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
-      iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
-      iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
+      iv[0] = global.OpCodes.And32(blockIndex, 0xFF);
+      iv[1] = global.OpCodes.And32(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
       return this.educationalPike(this.key, iv, ciphertext);
     },
@@ -296,8 +296,8 @@
           }
 
           // Use default key/iv if not provided
-          const key = this._key || OpCodes.CreateArray(PIKE.KEY_SIZE, 0);
-          const iv = this._iv || OpCodes.CreateArray(PIKE.IV_SIZE, 0);
+          const key = this._key ? this._key : OpCodes.CreateArray(PIKE.KEY_SIZE, 0);
+          const iv = this._iv ? this._iv : OpCodes.CreateArray(PIKE.IV_SIZE, 0);
 
           return PIKE.educationalPike(key, iv, this._inputData);
         }
