@@ -110,7 +110,7 @@
       this.hashBits = hashBitLength;
       /** @type {uint8[]} */
       this.buffer = [];
-      /** @type {int32} */
+      /** @type {uint64} Message length in bytes */
       this.totalLength = 0;
 
       // Initialize state with HAVAL IV (from reference implementation)
@@ -373,7 +373,6 @@
 
       const PASSES = this.passes;  // Number of passes (3, 4, or 5)
       const olen = Math.floor(this.hashBits / 32);  // Output length in 32-bit words
-      const MSGLEN = OpCodes.Shl32(msgLen, 3);  // Message length in bits, low 32 bits
 
       // Byte 118: VERSION (always 0x01)|(PASSES * 8)
       this.buffer.push(OpCodes.Or8(0x01, PASSES * 8));
@@ -381,19 +380,17 @@
       // Byte 119: olen * 8 (output length in words, multiplied by 8)
       this.buffer.push(OpCodes.ToByte(olen * 8));
 
-      // Append MSGLEN in little-endian 64-bit format
-      // Note: JavaScript bitwise operators work on 32 bits, so we handle low and high separately
-      for (let i = 0; i < 4; i++) {
-        this.buffer.push(OpCodes.GetByte(MSGLEN, i));
-      }
-      // High 32 bits are always 0 for reasonable message sizes
-      for (let i = 0; i < 4; i++) {
-        this.buffer.push(0x00);
+      // Bytes 120-127: the whole 64-bit bit length, little-endian
+      /** @type {uint8[]} */
+      const lengthBytes = OpCodes.EncodeMsgLength64LE(msgLen * 8);
+      for (let i = 0; i < 8; i++) {
+        this.buffer.push(lengthBytes[i]);
       }
 
-      // Process final block
-      if (this.buffer.length === 128) {
-        this.processBlock(this.buffer);
+      // Process the final block, or the final two when the message left 118
+      // or more bytes in its last block and the footer spilled into a new one
+      for (let offset = 0; offset < this.buffer.length; offset += 128) {
+        this.processBlock(this.buffer.slice(offset, offset + 128));
       }
 
       // Fold output to desired length
@@ -459,7 +456,7 @@
      */
     mix160_3(x5, x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x5, 0x00000FC0), OpCodes.And32(x6, 0x0007F000)), OpCodes.And32(x7, 0x01F80000));
-      return OpCodes.RotL32(tmp, 6);
+      return OpCodes.Shr32(tmp, 6);
     }
 
     /**
@@ -470,7 +467,7 @@
      */
     mix160_4(x5, x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x5, 0x0007F000), OpCodes.And32(x6, 0x01F80000)), OpCodes.And32(x7, 0xFE000000));
-      return OpCodes.RotL32(tmp, 12);
+      return OpCodes.Shr32(tmp, 12);
     }
 
     /**
@@ -499,7 +496,7 @@
      */
     mix192_2(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x000003E0), OpCodes.And32(x7, 0x0000FC00));
-      return OpCodes.RotL32(tmp, 5);
+      return OpCodes.Shr32(tmp, 5);
     }
 
     /**
@@ -509,7 +506,7 @@
      */
     mix192_3(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x0000FC00), OpCodes.And32(x7, 0x001F0000));
-      return OpCodes.RotL32(tmp, 10);
+      return OpCodes.Shr32(tmp, 10);
     }
 
     /**
@@ -519,7 +516,7 @@
      */
     mix192_4(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x001F0000), OpCodes.And32(x7, 0x03E00000));
-      return OpCodes.RotL32(tmp, 16);
+      return OpCodes.Shr32(tmp, 16);
     }
 
     /**
@@ -529,7 +526,7 @@
      */
     mix192_5(x6, x7) {
       const tmp = OpCodes.Or32(OpCodes.And32(x6, 0x03E00000), OpCodes.And32(x7, 0xFC000000));
-      return OpCodes.RotL32(tmp, 21);
+      return OpCodes.Shr32(tmp, 21);
     }
 
     /**
@@ -660,8 +657,141 @@
             expected: OpCodes.Hex8ToBytes("BE417BB4DD5CFB76C7126F4F8EEB1553A449039307B1A3CD451DBFDC0FBBE330"),
             passes: 5,
             hashBits: 256
+          },
+          // The 160 and 192-bit folds, from the published php-src HAVAL values
+          {
+            text: "Empty string - HAVAL-160/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes(""),
+            expected: OpCodes.Hex8ToBytes("D353C3AE22A25401D257643836D7231A9A95F953"),
+            passes: 3,
+            hashBits: 160
+          },
+          {
+            text: "Empty string - HAVAL-192/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes(""),
+            expected: OpCodes.Hex8ToBytes("4839D0626F95935E17EE2FC4509387BBE2CC46CB382FFE85"),
+            passes: 5,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-160/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("B21E876C4D391E2A897661149D83576B5530A089"),
+            passes: 3,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-160/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("77ACA22F5B12CC09010AFC9C0797308638B1CB9B"),
+            passes: 4,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-160/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("AE646B04845E3351F00C5161D138940E1FA0C11C"),
+            passes: 5,
+            hashBits: 160
+          },
+          {
+            text: "String 'abc' - HAVAL-192/3",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("A7B14C9EF3092319B0E75E3B20B957D180BF20745629E8DE"),
+            passes: 3,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-192/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("7E29881ED05C915903DD5E24A8E81CDE5D910142AE66207C"),
+            passes: 4,
+            hashBits: 192
+          },
+          {
+            text: "String 'abc' - HAVAL-192/5",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abc"),
+            expected: OpCodes.Hex8ToBytes("D12091104555B00119A8D07808A3380BF9E60018915B9025"),
+            passes: 5,
+            hashBits: 192
+          },
+          {
+            text: "String 'a..z A..Z 0..9' (61 chars) x3 - HAVAL-160/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789"),
+            expected: OpCodes.Hex8ToBytes("3444E38CC2A132B818B554CED8F7D9592DF28F57"),
+            passes: 4,
+            hashBits: 160
+          },
+          {
+            text: "String 'a..z A..Z 0..9' (61 chars) x3 - HAVAL-192/4",
+            uri: "https://github.com/php/php-src/blob/master/ext/hash/tests/haval.phpt",
+            input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMOPQRSTUVWXYZ0123456789"),
+            expected: OpCodes.Hex8ToBytes("0CA58F140ED92828A27913CE5636611ABCADA220FCCF3AF7"),
+            passes: 4,
+            hashBits: 192
+          },
+          // Tail lengths around 118 mod 128, where the 10-byte footer stops fitting
+          // behind the padding. No published list reaches these lengths; the values
+          // come from HashLib4CSharp, which reproduces all 45 php-src values above.
+          {
+            text: "117 x 'a' - HAVAL-224/3 (117 bytes, the longest tail the footer still fits behind)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(117, 0x61),
+            expected: OpCodes.Hex8ToBytes("365601A3C875AEAE81F92D0029F1C8AB837148DAE077E28FD0A192EA"),
+            passes: 3,
+            hashBits: 224
+          },
+          {
+            text: "118 x 'a' - HAVAL-128/3 (118 bytes, the shortest tail that pushes the footer into a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(118, 0x61),
+            expected: OpCodes.Hex8ToBytes("1065C6B9296279E1286C9B248BCF3208"),
+            passes: 3,
+            hashBits: 128
+          },
+          {
+            text: "122 x 'a' - HAVAL-192/4 (122 bytes, footer in a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(122, 0x61),
+            expected: OpCodes.Hex8ToBytes("D29CA0A0AED203918DF5F7F1EA47CDAAE598B2E0CF9BC39E"),
+            passes: 4,
+            hashBits: 192
+          },
+          {
+            text: "127 x 'a' - HAVAL-256/5 (127 bytes, the longest tail that needs a second block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(127, 0x61),
+            expected: OpCodes.Hex8ToBytes("F7EABEEC467C8B56AF40F90E799EA878D8EA7EFF260D49982209364AD0E0C39D"),
+            passes: 5,
+            hashBits: 256
+          },
+          {
+            text: "128 x 'a' - HAVAL-256/5 (128 bytes, one full block and a padding block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(128, 0x61),
+            expected: OpCodes.Hex8ToBytes("93390552A2D23DF530A5918C95D095E3914CF476CD1D95BEDE099C7674B31EFE"),
+            passes: 5,
+            hashBits: 256
+          },
+          {
+            text: "246 x 'a' - HAVAL-160/4 (246 bytes, 118 bytes past a full block)",
+            uri: "https://www.nuget.org/packages/HashLib4CSharp",
+            input: OpCodes.CreateArray(246, 0x61),
+            expected: OpCodes.Hex8ToBytes("A1CA5BFDF2E7BC4BA833D8F6EC047D801B1D99A2"),
+            passes: 4,
+            hashBits: 160
           }
         ];
+
 
         // For test suite compatibility
         /** @type {TestCase[]} */
@@ -799,5 +929,5 @@
 
   // ===== EXPORTS =====
 
-  return { Haval, HavalInstance };
+  return { Haval, HavalInstance, HavalHasher };
 }));
