@@ -54,14 +54,22 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const { CBOX_ENC } = SharkCBoxes;
+  // C-boxes: 8 boxes x 256 entries of one 64-bit word as [high32, low32]
+  /** @type {uint32[][][]} */
+  const CBOX_ENC = SharkCBoxes.CBOX_ENC;
 
   // GF(2^8) multiplication with SHARK's irreducible polynomial (x^8+x^7+x^6+x^5+x^4+x^2+1, 0x1F5 in
   // the "bit 8 implied" convention used by OpCodes.GFMul).
+  /**
+   * @param {uint8} a - First factor
+   * @param {uint8} b - Second factor
+   * @returns {uint8} Product in GF(2^8) mod 0x1F5
+   */
   function gfMul(a, b) { return OpCodes.GFMul(a, b, 0x1F5, 8); }
 
   // ===== Encryption S-box (identical to the classic SHARK S-box) =====
-  const SBOX_ENC = Object.freeze([
+  /** @type {uint8[]} */
+  const SBOX_ENC = [
     177,206,195,149, 90,173,231,  2, 77, 68,251,145, 12,135,161, 80,
     203,103, 84,221, 70,143,225, 78,240,253,252,235,249,196, 26,110,
      94,245,204,141, 28, 86, 67,254,  7, 97,248,117, 89,255,  3, 34,
@@ -78,17 +86,25 @@
     191,186,111,100,217,243, 62,180,170,220,213,  6,192,126,246,102,
     108,132,113, 56,185, 29,127,157, 72,139, 42,218,165, 51,130, 57,
     214,120,134,250,228, 43,169, 30,137, 96,107,234, 85, 76,247,226
-  ]);
+  ];
+  Object.freeze(SBOX_ENC);
 
-  const SBOX_DEC = Object.freeze((function () {
+  /**
+   * @returns {uint8[]} Inverse of SBOX_ENC
+   */
+  function buildSboxDec() {
+    /** @type {uint8[]} */
     const t = new Array(256);
     for (let i = 0; i < 256; ++i) t[SBOX_ENC[i]] = i;
     return t;
-  })());
+  }
+  const SBOX_DEC = buildSboxDec();
+  Object.freeze(SBOX_DEC);
 
   // Static 8x8 GF(2^8) matrix used by the DarkCrypt round-table generator.
   // Distinct from the classic SHARK G/iG matrices.
-  const MATRIX_M = Object.freeze([
+  /** @type {uint8[][]} */
+  const MATRIX_M = [
     [206,149, 87,130,138, 25,176,  1],
     [231,254,  5,210, 82,193,136,241],
     [185,218, 77,209,158, 23,131,134],
@@ -97,11 +113,14 @@
     [135, 40, 58, 90,244, 51, 11,108],
     [116, 81, 21,207,  9,164, 98,  9],
     [ 11, 49,127,134,190,  5,131, 52]
-  ].map(row => Object.freeze(row)));
+  ];
+  for (let r = 0; r < MATRIX_M.length; ++r) Object.freeze(MATRIX_M[r]);
+  Object.freeze(MATRIX_M);
 
   // Inverse of the classic SHARK MDS matrix G; used both to finish the key-schedule
   // bootstrap keys and to build the final round's diffusion matrix.
-  const MATRIX_IG = Object.freeze([
+  /** @type {uint8[][]} */
+  const MATRIX_IG = [
     [231, 48,144,133,208, 75,145, 65],
     [ 83,149,155,165,150,188,161,104],
     [  2, 69,247,101, 92, 31,182, 82],
@@ -110,10 +129,13 @@
     [ 36, 69,162,207, 47, 34,193, 14],
     [161,241,113, 64,145, 39, 24,165],
     [ 86,244,175, 50,210,164,220,113]
-  ].map(row => Object.freeze(row)));
+  ];
+  for (let r = 0; r < MATRIX_IG.length; ++r) Object.freeze(MATRIX_IG[r]);
+  Object.freeze(MATRIX_IG);
 
   // Fixed CFB "seed" keys for the key-schedule bootstrap cipher (cbox[0][0..6] of the classic SHARK
   // C-boxes; the 7th is later transformed by MATRIX_IG).
+  /** @type {uint32[][]} */
   const INIT_KEYS_RAW = [
     [0x060d838f, 0x16f3a365],
     [0xa68857ee, 0x5cae56f6],
@@ -124,61 +146,132 @@
     [0x88d9e104, 0xa237b530]
   ];
 
-  const GF_INV = Object.freeze((function () {
-    const t = new Array(256).fill(0);
+  /**
+   * @returns {uint8[]} Multiplicative inverses in GF(2^8) (0 maps to 0)
+   */
+  function buildGfInv() {
+    /** @type {uint8[]} */
+    const t = new Array(256);
+    t.fill(0);
     for (let a = 1; a < 256; ++a)
       for (let b = 1; b < 256; ++b)
         if (gfMul(a, b) === 1) { t[a] = b; break; }
     return t;
-  })());
-
-  function xorBytes(a, b) { return a.map((x, i) => OpCodes.Xor32(x, b[i])); }
-
-  function packBE(bytes) {
-    return [OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]),
-            OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7])];
   }
+  const GF_INV = buildGfInv();
+  Object.freeze(GF_INV);
+
+  /**
+   * @param {uint8[]} a - First bytes
+   * @param {uint8[]} b - Second bytes (at least as long as a)
+   * @returns {uint8[]} Byte-wise XOR, as long as a
+   */
+  function xorBytes(a, b) {
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < a.length; ++i) out.push(OpCodes.Xor32(a[i], b[i]));
+    return out;
+  }
+
+  /**
+   * @param {uint8[]} bytes - 8 bytes, MSB first
+   * @returns {uint32[]} [high32, low32]
+   */
+  function packBE(bytes) {
+    /** @type {uint32[]} */
+    const word = [OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]),
+                  OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7])];
+    return word;
+  }
+  /**
+   * @param {uint32[]} word - [high32, low32]
+   * @returns {uint8[]} 8 bytes, MSB first
+   */
   function unpackBE(word) {
-    return [...OpCodes.Unpack32BE(word[0]), ...OpCodes.Unpack32BE(word[1])];
+    /** @type {uint8[]} */
+    const bytes = [...OpCodes.Unpack32BE(word[0]), ...OpCodes.Unpack32BE(word[1])];
+    return bytes;
   }
 
   // Multiply an 8-byte (MSB-first) vector by an 8x8 GF(2^8) matrix.
+  /**
+   * @param {uint8[]} bytesBE - 8 bytes, MSB first
+   * @param {uint8[][]} matrix - 8x8 GF(2^8) matrix
+   * @returns {uint8[]} Matrix times bytes
+   */
   function transformWord8(bytesBE, matrix) {
-    const out = new Array(8).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(8);
+    out.fill(0);
     for (let i = 0; i < 8; ++i)
       for (let j = 0; j < 8; ++j)
-        out[i] ^= gfMul(matrix[i][j], bytesBE[j]);
+        out[i] = OpCodes.Xor32(out[i], gfMul(matrix[i][j], bytesBE[j]));
     return out;
   }
+  /**
+   * @param {uint32[]} word - [high32, low32]
+   * @param {uint8[][]} matrix - 8x8 GF(2^8) matrix
+   * @returns {uint32[]} Transformed word
+   */
   function transformWord(word, matrix) { return packBE(transformWord8(unpackBE(word), matrix)); }
 
   // Classic SHARK C-box round: 8 independent table lookups XORed together (S-box substitution
   // fused with an MDS matrix multiply), used only by the key-schedule bootstrap cipher.
+  // The words are XORed into the next key before any other use, so the unsigned
+  // Xor32 result equals the former signed XOR-assign result for every consumer.
+  /**
+   * @param {uint8[]} bytesBE - 8 state bytes, MSB first
+   * @returns {uint32[]} [high32, low32]
+   */
   function cboxRoundBE(bytesBE) {
-    let hi = 0, lo = 0;
+    /** @type {uint32} */
+    let hi = 0;
+    /** @type {uint32} */
+    let lo = 0;
     for (let i = 0; i < 8; ++i) {
       const e = CBOX_ENC[i][bytesBE[i]];
-      hi ^= e[0]; lo ^= e[1];
+      hi = OpCodes.Xor32(hi, e[0]); lo = OpCodes.Xor32(lo, e[1]);
     }
-    return [hi, lo];
+    /** @type {uint32[]} */
+    const word = [hi, lo];
+    return word;
   }
 
   // Fixed initialization keys for the bootstrap cipher (7th entry transformed by MATRIX_IG).
-  const BOOTSTRAP_INIT_KEYS = (function () {
-    const keys = INIT_KEYS_RAW.map(w => [w[0], w[1]]);
+  /**
+   * @returns {uint32[][]} The seven bootstrap round keys
+   */
+  function buildBootstrapInitKeys() {
+    /** @type {uint32[][]} */
+    const keys = [];
+    for (let i = 0; i < INIT_KEYS_RAW.length; ++i) {
+      const w = INIT_KEYS_RAW[i];
+      /** @type {uint32[]} */
+      const pair = [w[0], w[1]];
+      keys.push(pair);
+    }
     keys[6] = transformWord(keys[6], MATRIX_IG);
     return keys;
-  })();
+  }
+  const BOOTSTRAP_INIT_KEYS = buildBootstrapInitKeys();
 
   // Fixed 6-round classic-SHARK-structured cipher used purely to stretch/whiten key material
   // during the DarkCrypt key schedule (5 C-box rounds + 1 S-box-only final round).
+  /**
+   * @param {uint32[]} feedbackWord - [high32, low32]
+   * @returns {uint32[]} Encrypted word
+   */
   function bootstrapEncrypt(feedbackWord) {
+    /** @type {uint32[]} */
     let tmp = [OpCodes.Xor32(feedbackWord[0], BOOTSTRAP_INIT_KEYS[0][0]), OpCodes.Xor32(feedbackWord[1], BOOTSTRAP_INIT_KEYS[0][1])];
     for (let round = 1; round < 6; ++round) {
       const c = cboxRoundBE(unpackBE(tmp));
       tmp = [OpCodes.Xor32(c[0], BOOTSTRAP_INIT_KEYS[round][0]), OpCodes.Xor32(c[1], BOOTSTRAP_INIT_KEYS[round][1])];
     }
-    const sboxed = unpackBE(tmp).map(b => SBOX_ENC[b]);
+    const tmpBytes = unpackBE(tmp);
+    /** @type {uint8[]} */
+    const sboxed = [];
+    for (let i = 0; i < tmpBytes.length; ++i) sboxed.push(SBOX_ENC[tmpBytes[i]]);
     tmp = packBE(sboxed);
     tmp = [OpCodes.Xor32(tmp[0], BOOTSTRAP_INIT_KEYS[6][0]), OpCodes.Xor32(tmp[1], BOOTSTRAP_INIT_KEYS[6][1])];
     return tmp;
@@ -186,9 +279,12 @@
 
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} blockIndex - Index of the 8-byte block of the cycled key
+   * @returns {uint32[]} The block as [high32, low32]
    */
   function keyBufBlock(keyBytes, blockIndex) {
     const n = keyBytes.length;
+    /** @type {uint8[]} */
     const bytes = [];
     let idx = (blockIndex * 8) % n;
     for (let i = 0; i < 8; ++i) { bytes.push(keyBytes[idx]); idx = (idx + 1) % n; }
@@ -196,10 +292,15 @@
   }
 
   // A candidate round key is only accepted when the bitwise AND of all 8 bytes is non-zero.
+  /**
+   * @param {uint32[]} word - [high32, low32]
+   * @returns {boolean} True when every byte shares at least one set bit
+   */
   function isValidCandidate(word) {
     const bytes = unpackBE(word);
+    /** @type {uint32} */
     let and = 0xFF;
-    for (let i = 0; i < 8; ++i) and &= bytes[i];
+    for (let i = 0; i < 8; ++i) and = OpCodes.And32(and, bytes[i]);
     return and !== 0;
   }
 
@@ -208,14 +309,17 @@
   // diffusion matrices; RK[13] feeds the final round's diffusion-matrix construction).
   /**
    * @param {uint8[]} keyBytes - Key bytes
+   * @returns {uint32[][]} The 14 round-key words
    */
   function deriveRoundKeys(keyBytes) {
-    /** @type {uint8[]} */
+    /** @type {uint32[]} */
     let feedback = [0, 0];
+    /** @type {uint32[][]} */
     const RK = [];
     for (let block = 0; block < 7; ++block) {
       const enc = bootstrapEncrypt(feedback);
       const plain = keyBufBlock(keyBytes, block);
+      /** @type {uint32[]} */
       const cipher = [OpCodes.Xor32(plain[0], enc[0]), OpCodes.Xor32(plain[1], enc[1])];
       RK.push(cipher);
       feedback = cipher;
@@ -226,6 +330,7 @@
     while (ch < 14) {
       const enc = bootstrapEncrypt(feedback);
       const buf = keyBufBlock(keyBytes, ch);
+      /** @type {uint32[]} */
       const candidate = [OpCodes.Xor32(buf[0], enc[0]), OpCodes.Xor32(buf[1], enc[1])];
       feedback = candidate;
       ++ch;
@@ -241,12 +346,22 @@
 
   // Byte-wise (MSB-first) representation of a round-key word, matching the byte
   // order the block state is processed in.
+  /**
+   * @param {uint32[]} word - [high32, low32]
+   * @returns {uint8[]} Its 8 bytes, least significant first
+   */
   function toStateBytes(word) { return unpackBE(word).reverse(); }
 
   // Round diffusion column for rounds 0-4: each output byte k of the column for state-byte
   // position `box` is MATRIX_M[7-k][7-box] scaled (GF multiplied) by round-key byte k.
+  /**
+   * @param {uint8[]} roundKeyBytes - Round-key bytes
+   * @param {int32} box - State-byte position 0..7
+   * @returns {uint8[]} The column
+   */
   function columnSimple(roundKeyBytes, box) {
     const colIndex = 7 - box;
+    /** @type {uint8[]} */
     const col = new Array(8);
     for (let k = 0; k < 8; ++k) col[k] = gfMul(MATRIX_M[7 - k][colIndex], roundKeyBytes[k]);
     return col;
@@ -254,69 +369,127 @@
 
   // Round diffusion column for the final round: a genuine matrix-matrix product of MATRIX_IG
   // (scaled row-wise by RK[13]'s bytes) and MATRIX_M.
+  /**
+   * @param {uint8[]} rk13Bytes - Bytes of RK[13]
+   * @param {int32} box - State-byte position 0..7
+   * @returns {uint8[]} The column
+   */
   function columnFinal(rk13Bytes, box) {
     const colIndex = 7 - box;
+    /** @type {uint8[]} */
     const col = new Array(8);
     for (let k = 0; k < 8; ++k) {
+      /** @type {uint8} */
       let acc = 0;
       for (let j = 0; j < 8; ++j)
-        acc ^= gfMul(gfMul(MATRIX_IG[7 - k][j], rk13Bytes[7 - j]), MATRIX_M[j][colIndex]);
+        acc = OpCodes.Xor32(acc, gfMul(gfMul(MATRIX_IG[7 - k][j], rk13Bytes[7 - j]), MATRIX_M[j][colIndex]));
       col[k] = acc;
     }
     return col;
   }
 
-  // Assemble the 8x8 GF(2^8) round matrix A[k][box] from a column-generating function.
-  function buildRoundMatrix(colsFn) {
+  // Assemble the 8x8 GF(2^8) round matrix A[k][box] column by column, from columnFinal
+  // when isFinal is set, otherwise from columnSimple.
+  /**
+   * @param {uint8[]} keyBytes - Round-key bytes feeding the column function
+   * @param {boolean} isFinal - Use columnFinal instead of columnSimple
+   * @returns {uint8[][]} The 8x8 matrix
+   */
+  function buildRoundMatrix(keyBytes, isFinal) {
+    /** @type {uint8[][]} */
     const A = [];
-    for (let k = 0; k < 8; ++k) A.push(new Array(8));
+    for (let k = 0; k < 8; ++k) {
+      /** @type {uint8[]} */
+      const row = new Array(8);
+      A.push(row);
+    }
     for (let box = 0; box < 8; ++box) {
-      const col = colsFn(box);
+      /** @type {uint8[]} */
+      let col = null;
+      if (isFinal) col = columnFinal(keyBytes, box);
+      else col = columnSimple(keyBytes, box);
       for (let k = 0; k < 8; ++k) A[k][box] = col[k];
     }
     return A;
   }
 
+  /**
+   * @param {uint8[][]} A - 8x8 matrix
+   * @param {uint8[]} v - 8 bytes
+   * @returns {uint8[]} A times v
+   */
   function matVec(A, v) {
-    const out = new Array(8).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(8);
+    out.fill(0);
     for (let k = 0; k < 8; ++k)
       for (let j = 0; j < 8; ++j)
-        out[k] ^= gfMul(A[k][j], v[j]);
+        out[k] = OpCodes.Xor32(out[k], gfMul(A[k][j], v[j]));
     return out;
   }
 
   // Gauss-Jordan inversion of an 8x8 matrix over GF(2^8) (used only to build the decryption path).
+  /**
+   * @param {uint8[][]} A - Invertible 8x8 matrix
+   * @returns {uint8[][]} Its inverse
+   */
   function gfMatrixInverse(A) {
     const n = 8;
-    const M = A.map(row => row.slice());
+    /** @type {uint8[][]} */
+    const M = [];
+    for (let i = 0; i < A.length; ++i) M.push(A[i].slice());
+    /** @type {uint8[][]} */
     const I = [];
-    for (let i = 0; i < n; ++i) { I.push(new Array(n).fill(0)); I[i][i] = 1; }
+    for (let i = 0; i < n; ++i) {
+      /** @type {uint8[]} */
+      const row = new Array(n);
+      row.fill(0);
+      I.push(row);
+      I[i][i] = 1;
+    }
     for (let col = 0; col < n; ++col) {
       let pivot = -1;
       for (let r = col; r < n; ++r) if (M[r][col] !== 0) { pivot = r; break; }
       if (pivot < 0) throw new Error('SHARK-A: singular round matrix (unexpected)');
-      [M[col], M[pivot]] = [M[pivot], M[col]];
-      [I[col], I[pivot]] = [I[pivot], I[col]];
+      const mSwap = M[col]; M[col] = M[pivot]; M[pivot] = mSwap;
+      const iSwap = I[col]; I[col] = I[pivot]; I[pivot] = iSwap;
       const inv = GF_INV[M[col][col]];
       for (let c = 0; c < n; ++c) { M[col][c] = gfMul(M[col][c], inv); I[col][c] = gfMul(I[col][c], inv); }
       for (let r = 0; r < n; ++r) {
         if (r === col) continue;
         const factor = M[r][col];
         if (factor === 0) continue;
-        for (let c = 0; c < n; ++c) { M[r][c] ^= gfMul(factor, M[col][c]); I[r][c] ^= gfMul(factor, I[col][c]); }
+        for (let c = 0; c < n; ++c) { M[r][c] = OpCodes.Xor32(M[r][c], gfMul(factor, M[col][c])); I[r][c] = OpCodes.Xor32(I[r][c], gfMul(factor, I[col][c])); }
       }
     }
     return I;
   }
 
+  /**
+   * @param {uint8[]} stateBytes - 8 state bytes
+   * @param {uint8[][]} A - Round matrix
+   * @param {uint8[]} foldBytes - Round-key bytes XORed afterwards
+   * @returns {uint8[]} New state
+   */
   function roundApply(stateBytes, A, foldBytes) {
-    const sv = stateBytes.map(v => SBOX_ENC[v]);
+    /** @type {uint8[]} */
+    const sv = [];
+    for (let i = 0; i < stateBytes.length; ++i) sv.push(SBOX_ENC[stateBytes[i]]);
     return xorBytes(matVec(A, sv), foldBytes);
   }
+  /**
+   * @param {uint8[]} stateBytes - 8 state bytes
+   * @param {uint8[][]} Ainv - Inverse round matrix
+   * @param {uint8[]} foldBytes - Round-key bytes XORed first
+   * @returns {uint8[]} Previous state
+   */
   function roundApplyInverse(stateBytes, Ainv, foldBytes) {
     const xored = xorBytes(stateBytes, foldBytes);
     const sv = matVec(Ainv, xored);
-    return sv.map(x => SBOX_DEC[x]);
+    /** @type {uint8[]} */
+    const out = [];
+    for (let i = 0; i < sv.length; ++i) out.push(SBOX_DEC[sv[i]]);
+    return out;
   }
 
   class SharkADarkCryptAlgorithm extends BlockCipherAlgorithm {
@@ -396,10 +569,15 @@
       this.KeySize = 0;
 
       // Precomputed per-key schedule state.
+      /** @type {uint8[]|null} */
       this._rk0 = null;
+      /** @type {uint8[]|null} */
       this._rk7 = null;
+      /** @type {uint8[][][]|null} */
       this._roundA = null;      // A[0..5]: 8x8 GF(2^8) diffusion matrices
+      /** @type {uint8[][][]|null} */
       this._roundAInv = null;   // inverse matrices (built lazily, only needed for decryption)
+      /** @type {uint8[][]|null} */
       this._roundFold = null;   // fold[0..5]: 8-byte round-key XOR applied after diffusion
     }
 
@@ -409,7 +587,7 @@
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null; this.KeySize = 0;
-        this._rk0 = this._rk7 = this._roundA = this._roundAInv = this._roundFold = null;
+        this._rk0 = null; this._rk7 = null; this._roundA = null; this._roundAInv = null; this._roundFold = null;
         return;
       }
       if (keyBytes.length !== 16)
@@ -427,7 +605,9 @@
 
     _setupSchedule() {
       const RK = deriveRoundKeys(this._key);
-      const rkBytes = RK.map(toStateBytes);
+      /** @type {uint8[][]} */
+      const rkBytes = [];
+      for (let i = 0; i < RK.length; ++i) rkBytes.push(toStateBytes(RK[i]));
 
       this._rk0 = rkBytes[0];
       this._rk7 = rkBytes[7];
@@ -437,19 +617,23 @@
 
       for (let r = 0; r < 5; ++r) {
         this._roundFold[r] = rkBytes[r + 1];
-        this._roundA[r] = buildRoundMatrix(box => columnSimple(rkBytes[r + 8], box));
+        this._roundA[r] = buildRoundMatrix(rkBytes[r + 8], false);
       }
 
       const finalFold = toStateBytes(transformWord(RK[6], MATRIX_IG));
       this._roundFold[5] = finalFold;
-      this._roundA[5] = buildRoundMatrix(box => columnFinal(rkBytes[13], box));
+      this._roundA[5] = buildRoundMatrix(rkBytes[13], true);
 
       this._roundAInv = null; // built lazily on first decrypt
     }
 
     _ensureInverseMatrices() {
-      if (this._roundAInv) return;
-      this._roundAInv = this._roundA.map(gfMatrixInverse);
+      if (!this._roundAInv) {
+        /** @type {uint8[][][]} */
+        const inverses = [];
+        for (let r = 0; r < this._roundA.length; ++r) inverses.push(gfMatrixInverse(this._roundA[r]));
+        this._roundAInv = inverses;
+      }
     }
 
     Feed(data) {
@@ -482,6 +666,7 @@
     _encryptBlock(block) {
       // Initial whitening: byte-wise GF(2^8) multiplication of the plaintext with RK[7],
       // XORed with RK[0].
+      /** @type {uint8[]} */
       const gfw = new Array(8);
       for (let i = 0; i < 8; ++i) gfw[i] = gfMul(block[i], this._rk7[i]);
       let W = xorBytes(this._rk0, gfw);
@@ -504,6 +689,7 @@
         W = roundApplyInverse(W, this._roundAInv[r], this._roundFold[r]);
 
       const gfw = xorBytes(W, this._rk0);
+      /** @type {uint8[]} */
       const pt = new Array(8);
       for (let i = 0; i < 8; ++i) {
         const rk = this._rk7[i];
