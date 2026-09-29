@@ -836,7 +836,7 @@
 
         // Categories that require perfect round-trip
         const perfectRoundTripCategories = [
-            'Cipher', 'Block Cipher', 'Stream Cipher', 'Asymmetric', 'MAC', 'AEAD', 'Cipher Modes', 'Padding'
+            'Cipher', 'Block Cipher', 'Stream Cipher', 'Asymmetric', 'Authenticated Encryption', 'Cipher Modes', 'Padding'
         ];
 
         // Check if category name matches (handle both string and object categories)
