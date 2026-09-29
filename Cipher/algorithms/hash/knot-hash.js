@@ -37,11 +37,12 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== ROUND CONSTANTS =====
 
   // Round constants for 7-bit variant (used by KNOT-256 and KNOT-384)
+  /** @type {uint8[]} */
   const RC7 = [
     0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x41, 0x03, 0x06, 0x0c, 0x18, 0x30,
     0x61, 0x42, 0x05, 0x0a, 0x14, 0x28, 0x51, 0x23, 0x47, 0x0f, 0x1e, 0x3c,
@@ -55,6 +56,7 @@
   ];
 
   // Round constants for 8-bit variant (used by KNOT-512)
+  /** @type {uint8[]} */
   const RC8 = [
     0x01, 0x02, 0x04, 0x08, 0x11, 0x23, 0x47, 0x8e, 0x1c, 0x38, 0x71, 0xe2,
     0xc4, 0x89, 0x12, 0x25, 0x4b, 0x97, 0x2e, 0x5c, 0xb8, 0x70, 0xe0, 0xc0,
@@ -76,7 +78,7 @@
    * 64-bit rotation helper using pairs of 32-bit words [low, high]
    * @param {uint32} low - Low 32 bits
    * @param {uint32} high - High 32 bits
-   * @param {number} positions - Rotation amount
+   * @param {int32} positions - Rotation amount
    * @returns {uint32[]} Rotated [low, high] pair
    */
   function rotl64(low, high, positions) {
@@ -143,7 +145,8 @@
    * KNOT-256 permutation with 7-bit round constants
    * State is 4 × 64-bit words stored as byte array (little-endian)
    * @param {uint8[]} stateBytes - 32-byte state array
-   * @param {number} rounds - Number of rounds to perform
+   * @param {int32} rounds - Number of rounds to perform
+   * @returns {void}
    */
   function knot256Permute(stateBytes, rounds) {
     // Load state as four 64-bit words (little-endian)
@@ -244,11 +247,14 @@
    * @param {uint32} low64_l - Low 32 bits of 64-bit part
    * @param {uint32} low64_h - High 32 bits of 64-bit part
    * @param {uint32} high32 - 32-bit part
-   * @param {number} bits - Rotation amount
+   * @param {int32} bits - Rotation amount
    * @returns {uint32[]} [a0_low, a0_high, a1]
    */
   function rotl96Short(low64_l, low64_h, high32, bits) {
-    var b0_shift_low, b0_shift_high;
+    /** @type {uint32} */
+    var b0_shift_low;
+    /** @type {uint32} */
+    var b0_shift_high;
     if (bits === 0) {
       b0_shift_low = low64_l;
       b0_shift_high = low64_h;
@@ -266,6 +272,7 @@
 
     var a1_from_b1 = OpCodes.Shl32(high32, bits);
     var shift_right = 64 - bits;
+    /** @type {uint32} */
     var a1_from_b0;
     if (shift_right >= 32) {
       a1_from_b0 = OpCodes.Shr32(low64_h, (shift_right - 32));
@@ -283,7 +290,7 @@
    * @param {uint32} low64_l - Low 32 bits of 64-bit part
    * @param {uint32} low64_h - High 32 bits of 64-bit part
    * @param {uint32} high32 - 32-bit part
-   * @param {number} bits - Rotation amount
+   * @param {int32} bits - Rotation amount
    * @returns {uint32[]} [a0_low, a0_high, a1]
    */
   function rotl96Long(low64_l, low64_h, high32, bits) {
@@ -312,7 +319,8 @@
    * KNOT-384 permutation with 7-bit round constants
    * State is 4 × 96-bit words stored as byte array (little-endian)
    * @param {uint8[]} stateBytes - 48-byte state array
-   * @param {number} rounds - Number of rounds to perform
+   * @param {int32} rounds - Number of rounds to perform
+   * @returns {void}
    */
   function knot384Permute(stateBytes, rounds) {
     // Load state matching C reference implementation
@@ -424,39 +432,53 @@
   // ===== KNOT-512 PERMUTATION (8 × 64-bit words) =====
 
   /**
+   * 64-bit left shift of a [low, high] word pair
+   * @param {uint32} low - Low 32 bits
+   * @param {uint32} high - High 32 bits
+   * @param {int32} bits - Shift amount (0..63)
+   * @returns {uint32[]} Shifted [low, high] pair
+   */
+  function shift64L(low, high, bits) {
+    if (bits === 0) return [low, high];
+    if (bits >= 32) {
+      return [0, OpCodes.Shl32(low, (bits - 32))];
+    }
+    return [
+      OpCodes.Shl32(low, bits),
+      OpCodes.Or32(OpCodes.Shl32(high, bits), OpCodes.Shr32(low, (32 - bits)))
+    ];
+  }
+
+  /**
+   * 64-bit right shift of a [low, high] word pair
+   * @param {uint32} low - Low 32 bits
+   * @param {uint32} high - High 32 bits
+   * @param {int32} bits - Shift amount (0..63)
+   * @returns {uint32[]} Shifted [low, high] pair
+   */
+  function shift64R(low, high, bits) {
+    if (bits === 0) return [low, high];
+    if (bits >= 32) {
+      return [OpCodes.Shr32(high, (bits - 32)), 0];
+    }
+    return [
+      OpCodes.Or32(OpCodes.Shr32(low, bits), OpCodes.Shl32(high, (32 - bits))),
+      OpCodes.Shr32(high, bits)
+    ];
+  }
+
+  /**
    * 128-bit rotation helper
    * @param {uint32} b0_l - Low 32 bits of first 64-bit word
    * @param {uint32} b0_h - High 32 bits of first 64-bit word
    * @param {uint32} b1_l - Low 32 bits of second 64-bit word
    * @param {uint32} b1_h - High 32 bits of second 64-bit word
-   * @param {number} bits - Rotation amount
+   * @param {int32} bits - Rotation amount
    * @returns {uint32[]} [a0_low32, a0_high32, a1_low32, a1_high32]
    */
   function rotl128(b0_l, b0_h, b1_l, b1_h, bits) {
     if (bits === 0) {
       return [b0_l, b0_h, b1_l, b1_h];
-    }
-
-    function shift64L(low, high, bits) {
-      if (bits === 0) return [low, high];
-      if (bits >= 32) {
-        return [0, OpCodes.Shl32(low, (bits - 32))];
-      }
-      return [
-        OpCodes.Shl32(low, bits),
-        OpCodes.Or32(OpCodes.Shl32(high, bits), OpCodes.Shr32(low, (32 - bits)))
-      ];
-    }
-
-    function shift64R(low, high, bits) {
-      if (bits === 0) return [low, high];
-      if (bits >= 32) {
-        return [OpCodes.Shr32(high, (bits - 32)), 0];
-      }
-      return [
-        OpCodes.Or32(OpCodes.Shr32(low, bits), OpCodes.Shl32(high, (32 - bits))),
-        OpCodes.Shr32(high, bits)
-      ];
     }
 
     var b0_shifted = shift64L(b0_l, b0_h, bits);
@@ -521,7 +543,8 @@
    * KNOT-512 permutation with 8-bit round constants
    * State is 8 × 64-bit words stored as byte array (little-endian)
    * @param {uint8[]} stateBytes - 64-byte state array
-   * @param {number} rounds - Number of rounds to perform
+   * @param {int32} rounds - Number of rounds to perform
+   * @returns {void}
    */
   function knot512Permute(stateBytes, rounds) {
     // Load state as eight 64-bit words (little-endian)
@@ -659,7 +682,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.CN;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -752,7 +775,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.CN;
 
-      this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(32, 32, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -868,7 +891,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.CN;
 
-      this.SupportedOutputSizes = [{ minSize: 48, maxSize: 48, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(48, 48, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -984,7 +1007,7 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.CN;
 
-      this.SupportedOutputSizes = [{ minSize: 64, maxSize: 64, stepSize: 1 }];
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)];
 
       this.documentation = [
         new LinkItem(
@@ -1095,11 +1118,16 @@
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {int32} */
       this.STATE_SIZE = 32; // 256 bits
+      /** @type {int32} */
       this.RATE = 4;        // 4 bytes
+      /** @type {int32} */
       this.ROUNDS = 68;     // Number of rounds
 
+      /** @type {uint8[]} */
       this.state = new Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = [];
 
       this.Reset();
@@ -1107,6 +1135,7 @@
 
     /**
      * Reset hash state
+     * @returns {void}
      */
     Reset() {
       for (var i = 0; i < this.STATE_SIZE; i++) {
@@ -1118,6 +1147,7 @@
     /**
      * Feed data for hashing
      * @param {uint8[]} data - Input byte array
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -1155,6 +1185,7 @@
       knot256Permute(this.state, this.ROUNDS);
 
       // Squeeze first half (16 bytes)
+      /** @type {uint8[]} */
       var output = [];
       for (var i = 0; i < 16; i++) {
         output.push(this.state[i]);
@@ -1186,11 +1217,16 @@
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {int32} */
       this.STATE_SIZE = 48; // 384 bits
+      /** @type {int32} */
       this.RATE = 16;       // 16 bytes
+      /** @type {int32} */
       this.ROUNDS = 80;     // Number of rounds
 
+      /** @type {uint8[]} */
       this.state = new Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = [];
 
       this.Reset();
@@ -1198,6 +1234,7 @@
 
     /**
      * Reset hash state
+     * @returns {void}
      */
     Reset() {
       for (var i = 0; i < this.STATE_SIZE; i++) {
@@ -1213,6 +1250,7 @@
     /**
      * Feed data for hashing
      * @param {uint8[]} data - Input byte array
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -1250,6 +1288,7 @@
       knot384Permute(this.state, this.ROUNDS);
 
       // Squeeze first half (16 bytes)
+      /** @type {uint8[]} */
       var output = [];
       for (var i = 0; i < 16; i++) {
         output.push(this.state[i]);
@@ -1281,11 +1320,16 @@
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {int32} */
       this.STATE_SIZE = 48; // 384 bits
+      /** @type {int32} */
       this.RATE = 6;        // 6 bytes
+      /** @type {int32} */
       this.ROUNDS = 104;    // Number of rounds
 
+      /** @type {uint8[]} */
       this.state = new Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = [];
 
       this.Reset();
@@ -1293,6 +1337,7 @@
 
     /**
      * Reset hash state
+     * @returns {void}
      */
     Reset() {
       for (var i = 0; i < this.STATE_SIZE; i++) {
@@ -1307,6 +1352,7 @@
     /**
      * Feed data for hashing
      * @param {uint8[]} data - Input byte array
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -1344,6 +1390,7 @@
       knot384Permute(this.state, this.ROUNDS);
 
       // Squeeze first half (24 bytes)
+      /** @type {uint8[]} */
       var output = [];
       for (var i = 0; i < 24; i++) {
         output.push(this.state[i]);
@@ -1375,11 +1422,16 @@
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {int32} */
       this.STATE_SIZE = 64; // 512 bits
+      /** @type {int32} */
       this.RATE = 8;        // 8 bytes
+      /** @type {int32} */
       this.ROUNDS = 140;    // Number of rounds
 
+      /** @type {uint8[]} */
       this.state = new Array(this.STATE_SIZE);
+      /** @type {uint8[]} */
       this.buffer = [];
 
       this.Reset();
@@ -1387,6 +1439,7 @@
 
     /**
      * Reset hash state
+     * @returns {void}
      */
     Reset() {
       for (var i = 0; i < this.STATE_SIZE; i++) {
@@ -1398,6 +1451,7 @@
     /**
      * Feed data for hashing
      * @param {uint8[]} data - Input byte array
+     * @returns {void}
      */
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -1435,6 +1489,7 @@
       knot512Permute(this.state, this.ROUNDS);
 
       // Squeeze first half (32 bytes)
+      /** @type {uint8[]} */
       var output = [];
       for (var i = 0; i < 32; i++) {
         output.push(this.state[i]);

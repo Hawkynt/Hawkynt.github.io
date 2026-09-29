@@ -47,10 +47,15 @@
 
   class EksBlowfish {
     constructor() {
+      /** @type {uint32[]} */
       this.pBox = null;
+      /** @type {uint32[]} */
       this.sBox1 = null;
+      /** @type {uint32[]} */
       this.sBox2 = null;
+      /** @type {uint32[]} */
       this.sBox3 = null;
+      /** @type {uint32[]} */
       this.sBox4 = null;
 
       this._initConstants();
@@ -58,6 +63,7 @@
 
     _initConstants() {
       // Initial P-box constants (digits of pi in hexadecimal)
+      /** @type {uint32[]} */
       this.PBOX_INIT = [
         0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0,
         0x082efa98, 0xec4e6c89, 0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c,
@@ -65,6 +71,7 @@
       ];
 
       // S-box 1 - first 256 entries from pi
+      /** @type {uint32[]} */
       this.SBOX1_INIT = [
         0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,
         0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16,
@@ -112,6 +119,7 @@
       ];
 
       // S-box 2
+      /** @type {uint32[]} */
       this.SBOX2_INIT = [
         0x4b7a70e9, 0xb5b32944, 0xdb75092e, 0xc4192623, 0xad6ea6b0, 0x49a7df7d,
         0x9cee60b8, 0x8fedb266, 0xecaa8c71, 0x699a17ff, 0x5664526c, 0xc2b19ee1,
@@ -159,6 +167,7 @@
       ];
 
       // S-box 3
+      /** @type {uint32[]} */
       this.SBOX3_INIT = [
         0xe93d5a68, 0x948140f7, 0xf64c261c, 0x94692934, 0x411520f7, 0x7602d4f7,
         0xbcf46b2e, 0xd4a20068, 0xd4082471, 0x3320f46a, 0x43b7d4b7, 0x500061af,
@@ -206,6 +215,7 @@
       ];
 
       // S-box 4
+      /** @type {uint32[]} */
       this.SBOX4_INIT = [
         0x3a39ce37, 0xd3faf5cf, 0xabc27737, 0x5ac52d1b, 0x5cb0679e, 0x4fa33742,
         0xd3822740, 0x99bc9bbe, 0xd5118e9d, 0xbf0f7315, 0xd62d1c7e, 0xc700c47b,
@@ -255,13 +265,21 @@
 
     // Salted Blowfish key schedule (initial setup only)
     // This is called by NewSaltedCipher
+    /**
+     * Reset the boxes to pi and run the salted key expansion
+     * @param {uint8[]} password - Key bytes
+     * @param {int32} passwordLen - Number of key bytes to cycle through
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} saltLen - Number of salt bytes to cycle through
+     * @returns {void}
+     */
     saltedSetKey(password, passwordLen, salt, saltLen) {
       // Initialize with original constants
-      this.pBox = [...this.PBOX_INIT];
-      this.sBox1 = [...this.SBOX1_INIT];
-      this.sBox2 = [...this.SBOX2_INIT];
-      this.sBox3 = [...this.SBOX3_INIT];
-      this.sBox4 = [...this.SBOX4_INIT];
+      this.pBox = this.PBOX_INIT.slice();
+      this.sBox1 = this.SBOX1_INIT.slice();
+      this.sBox2 = this.SBOX2_INIT.slice();
+      this.sBox3 = this.SBOX3_INIT.slice();
+      this.sBox4 = this.SBOX4_INIT.slice();
 
       // Initial key expansion with salt
       this._expandKeyWithSalt(password, passwordLen, salt, saltLen);
@@ -269,6 +287,15 @@
 
     // Expensive key schedule (used in bcrypt hash)
     // This does the 64 rounds of ExpandKey
+    /**
+     * 2^cost rounds of ExpandKey(salt) then ExpandKey(password)
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} saltLen - Number of salt bytes to cycle through
+     * @param {uint8[]} password - Key bytes
+     * @param {int32} passwordLen - Number of key bytes to cycle through
+     * @param {int32} cost - Log2 of the round count
+     * @returns {void}
+     */
     expensiveKeySchedule(salt, saltLen, password, passwordLen, cost) {
       const rounds = OpCodes.Shl32(1, cost);  // 2 raised to cost iterations (typically 64 for cost=6)
 
@@ -281,47 +308,58 @@
       }
     }
 
-    // Expand key with salt (initial salted setup)
+    /**
+     * Expand key with salt (initial salted setup)
+     * @param {uint8[]} key - Key bytes
+     * @param {int32} keyLen - Number of key bytes to cycle through
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} saltLen - Number of salt bytes to cycle through
+     * @returns {void}
+     */
     _expandKeyWithSalt(key, keyLen, salt, saltLen) {
       // XOR P-box with key
       let keyIndex = 0;
       for (let i = 0; i < 18; i++) {
-        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex)));
+        this.pBox[i] = OpCodes.Xor32(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex));
         keyIndex = (keyIndex + 4) % keyLen;
       }
 
       // Update P-box and S-boxes with salted encryption
+      /** @type {uint32} */
       let left = 0;
+      /** @type {uint32} */
       let right = 0;
       let saltIndex = 0;
 
       // Update P-box
       for (let i = 0; i < 18; i += 2) {
-        left = OpCodes.ToUint32(OpCodes.XorN(left, this._packKeyMaterial(salt, saltLen, saltIndex)));
+        left = OpCodes.Xor32(left, this._packKeyMaterial(salt, saltLen, saltIndex));
         saltIndex = (saltIndex + 4) % saltLen;
-        right = OpCodes.ToUint32(OpCodes.XorN(right, this._packKeyMaterial(salt, saltLen, saltIndex)));
+        right = OpCodes.Xor32(right, this._packKeyMaterial(salt, saltLen, saltIndex));
         saltIndex = (saltIndex + 4) % saltLen;
 
         const encrypted = this._encryptPair(left, right);
-        left = encrypted.left;
-        right = encrypted.right;
+        left = encrypted[0];
+        right = encrypted[1];
 
         this.pBox[i] = left;
         this.pBox[i + 1] = right;
       }
 
       // Update S-boxes
+      /** @type {uint32[][]} */
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
-      for (const sBox of sBoxes) {
+      for (let s = 0; s < 4; s++) {
+        const sBox = sBoxes[s];
         for (let i = 0; i < 256; i += 2) {
-          left = OpCodes.ToUint32(OpCodes.XorN(left, this._packKeyMaterial(salt, saltLen, saltIndex)));
+          left = OpCodes.Xor32(left, this._packKeyMaterial(salt, saltLen, saltIndex));
           saltIndex = (saltIndex + 4) % saltLen;
-          right = OpCodes.ToUint32(OpCodes.XorN(right, this._packKeyMaterial(salt, saltLen, saltIndex)));
+          right = OpCodes.Xor32(right, this._packKeyMaterial(salt, saltLen, saltIndex));
           saltIndex = (saltIndex + 4) % saltLen;
 
           const encrypted = this._encryptPair(left, right);
-          left = encrypted.left;
-          right = encrypted.right;
+          left = encrypted[0];
+          right = encrypted[1];
 
           sBox[i] = left;
           sBox[i + 1] = right;
@@ -331,35 +369,45 @@
 
     // Standard key expansion (used during bcrypt rounds)
     // This is the ExpandKey function from standard Blowfish
+    /**
+     * ExpandKey without salt
+     * @param {uint8[]} key - Key bytes
+     * @param {int32} keyLen - Number of key bytes to cycle through
+     * @returns {void}
+     */
     _expandKey0(key, keyLen) {
       // First XOR all P-box entries with key material
       let keyIndex = 0;
       for (let i = 0; i < 18; i++) {
-        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex)));
+        this.pBox[i] = OpCodes.Xor32(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex));
         keyIndex = (keyIndex + 4) % keyLen;
       }
 
       // Then encrypt P-box and S-boxes with chained encryption
+      /** @type {uint32} */
       let left = 0;
+      /** @type {uint32} */
       let right = 0;
 
       // Update P-box
       for (let i = 0; i < 18; i += 2) {
         const encrypted = this._encryptPair(left, right);
-        left = encrypted.left;
-        right = encrypted.right;
+        left = encrypted[0];
+        right = encrypted[1];
 
         this.pBox[i] = left;
         this.pBox[i + 1] = right;
       }
 
       // Update S-boxes
+      /** @type {uint32[][]} */
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
-      for (const sBox of sBoxes) {
+      for (let s = 0; s < 4; s++) {
+        const sBox = sBoxes[s];
         for (let i = 0; i < 256; i += 2) {
           const encrypted = this._encryptPair(left, right);
-          left = encrypted.left;
-          right = encrypted.right;
+          left = encrypted[0];
+          right = encrypted[1];
 
           sBox[i] = left;
           sBox[i + 1] = right;
@@ -367,19 +415,33 @@
       }
     }
 
+    /**
+     * Big-endian word of four key bytes, cycling through the key
+     * @param {uint8[]} key - Key bytes
+     * @param {int32} keyLen - Number of key bytes to cycle through
+     * @param {int32} offset - Index of the first byte
+     * @returns {uint32} The word
+     */
     _packKeyMaterial(key, keyLen, offset) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < 4; ++i) {
-        result = OpCodes.OrN(OpCodes.Shl32(result, 8), key[(offset + i) % keyLen]);
+        result = OpCodes.Or32(OpCodes.Shl32(result, 8), key[(offset + i) % keyLen]);
       }
-      return OpCodes.ToUint32(result);
+      return result;
     }
 
+    /**
+     * Encrypt one 64-bit block given as two words (16 Feistel rounds)
+     * @param {uint32} left - Left word
+     * @param {uint32} right - Right word
+     * @returns {uint32[]} [left, right] of the ciphertext
+     */
     _encryptPair(left, right) {
       // 16 rounds of Feistel network
       for (let i = 0; i < 16; ++i) {
-        left = OpCodes.XorN(left, this.pBox[i]);
-        right = OpCodes.XorN(right, this._f(left));
+        left = OpCodes.Xor32(left, this.pBox[i]);
+        right = OpCodes.Xor32(right, this._f(left));
 
         // Swap
         const temp = left;
@@ -393,32 +455,43 @@
       right = temp;
 
       // Final XOR
-      right = OpCodes.XorN(right, this.pBox[16]);
-      left = OpCodes.XorN(left, this.pBox[17]);
+      right = OpCodes.Xor32(right, this.pBox[16]);
+      left = OpCodes.Xor32(left, this.pBox[17]);
 
-      return { left: OpCodes.ToUint32(left), right: OpCodes.ToUint32(right) };
+      /** @type {uint32[]} */
+      const out = [left, right];
+      return out;
     }
 
+    /**
+     * Blowfish F function using four S-boxes
+     * @param {uint32} x - Input word
+     * @returns {uint32} ((S1[a] + S2[b]) XOR S3[c]) + S4[d]
+     */
     _f(x) {
-      // Blowfish F function using four S-boxes
-      const a = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
-      const b = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
-      const c = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
-      const d = OpCodes.AndN(x, 0xFF);
+      const a = OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF);
+      const b = OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF);
+      const c = OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF);
+      const d = OpCodes.And32(x, 0xFF);
 
-      const result = OpCodes.ToUint32(OpCodes.XorN(OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]), this.sBox3[c]));
-      return OpCodes.ToUint32(result + this.sBox4[d]);
+      const result = OpCodes.Xor32(OpCodes.Add32(this.sBox1[a], this.sBox2[b]), this.sBox3[c]);
+      return OpCodes.Add32(result, this.sBox4[d]);
     }
 
-    // Encrypt 8 bytes (Blowfish block size)
+    /**
+     * Encrypt 8 bytes (Blowfish block size) in place
+     * @param {uint8[]} data - Buffer holding the block
+     * @param {int32} offset - Index of the block
+     * @returns {void}
+     */
     encryptBlock(data, offset) {
-      let left = OpCodes.Pack32BE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
-      let right = OpCodes.Pack32BE(data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]);
+      const left = OpCodes.Pack32BE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
+      const right = OpCodes.Pack32BE(data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]);
 
       const encrypted = this._encryptPair(left, right);
 
-      const leftBytes = OpCodes.Unpack32BE(encrypted.left);
-      const rightBytes = OpCodes.Unpack32BE(encrypted.right);
+      const leftBytes = OpCodes.Unpack32BE(encrypted[0]);
+      const rightBytes = OpCodes.Unpack32BE(encrypted[1]);
 
       data[offset] = leftBytes[0];
       data[offset + 1] = leftBytes[1];
@@ -434,32 +507,44 @@
   // ===== SHA-512 HELPER =====
   // Uses the existing SHA-512 implementation from the framework
 
+  /**
+   * Find the registered SHA-512 algorithm ('SHA-512', else 'SHA512')
+   * @returns {Algorithm} The algorithm, or null
+   */
+  function findSHA512() {
+    /** @type {Algorithm} */
+    let algo = AlgorithmFramework.Find('SHA-512');
+    if (!algo) algo = AlgorithmFramework.Find('SHA512');
+    return algo;
+  }
+
+  /**
+   * SHA-512 of a byte array, loading sha512.js when it is not registered yet
+   * @param {uint8[]} data - Message bytes
+   * @returns {uint8[]} 64-byte digest
+   * @throws {Error} When SHA-512 is not available
+   */
   function getSHA512Hash(data) {
     // Find SHA-512 algorithm from registry
-    const sha512Algo = AlgorithmFramework.Find('SHA-512') || AlgorithmFramework.Find('SHA512');
+    let sha512Algo = findSHA512();
     if (!sha512Algo) {
       // Load SHA-512 if not already loaded
-      if (typeof require !== 'undefined') {
-        try {
-          require('../hash/sha512.js');
-          const loadedSha = AlgorithmFramework.Find('SHA-512') || AlgorithmFramework.Find('SHA512');
-          if (!loadedSha) {
-            throw new Error('SHA-512 algorithm not found after loading');
-          }
-          const instance = loadedSha.CreateInstance();
-          instance.Feed(data);
-          return instance.Result();
-        } catch (err) {
-          throw new Error(`Failed to load SHA-512: ${err.message}`);
-        }
-      } else {
+      if (typeof require === 'undefined') {
         throw new Error('SHA-512 algorithm not available');
+      }
+      require('../hash/sha512.js');
+      sha512Algo = findSHA512();
+      if (!sha512Algo) {
+        throw new Error('Failed to load SHA-512: SHA-512 algorithm not found after loading');
       }
     }
 
+    /** @type {IAlgorithmInstance} */
     const instance = sha512Algo.CreateInstance();
     instance.Feed(data);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return digest;
   }
 
   // ===== BCRYPT-PBKDF ALGORITHM =====
@@ -481,7 +566,7 @@
 
       // KDF-specific properties
       this.SaltRequired = true;
-      this.SupportedOutputSizes = [1, 1024]; // 1 to 1024 bytes
+      this.SupportedOutputSizes = [new KeySize(1, 1024, 1)]; // 1 to 1024 bytes
 
       // Documentation and references
       this.documentation = [
@@ -576,9 +661,9 @@
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * Create a new bcrypt-pbkdf instance
+   * @param {boolean} [isInverse=false] - A KDF has no inverse: true yields null
+   * @returns {BcryptPBKDFInstance} New instance, or null for the inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -590,31 +675,42 @@
   }
 
   /**
- * BcryptPBKDF cipher instance implementing Feed/Result pattern
+ * BcryptPBKDF instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IKdfInstance}
  */
 
   class BcryptPBKDFInstance extends IKdfInstance {
+    /**
+     * Initialize a bcrypt-pbkdf instance
+     * @param {BcryptPBKDFAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
       this.OutputSize = 32; // Default 256-bit output
       this.Iterations = 32; // Default secure round count for 2025
+      /** @type {uint8[]} */
       this.salt = null;
+      /** @type {uint8[]} */
       this._inputData = null;
     }
 
     // Property aliases for test vector compatibility
+    /** @returns {int32} Output size in bytes */
     get outputSize() { return this.OutputSize; }
+    /** @param {int32} value - Output size in bytes */
     set outputSize(value) { this.OutputSize = value; }
 
+    /** @returns {int32} Round count */
     get iterations() { return this.Iterations; }
+    /** @param {int32} value - Round count */
     set iterations(value) { this.Iterations = value; }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * Append password bytes
+   * @param {uint8[]} data - Password bytes
+   * @returns {void}
+   * @throws {Error} If data is not an array
    */
 
     Feed(data) {
@@ -629,9 +725,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Derive the key from the fed password, then wipe the password
+   * @returns {uint8[]} Derived key bytes
+   * @throws {Error} If no password was fed, the salt is missing, or size/rounds are invalid
    */
 
     Result() {
@@ -644,7 +740,7 @@
       }
 
       if (this.OutputSize <= 0 || this.OutputSize > 10 * 1024 * 1024) {
-        throw new Error(`BcryptPBKDFInstance.Result: Invalid output size ${this.OutputSize}`);
+        throw new Error('BcryptPBKDFInstance.Result: Invalid output size ' + this.OutputSize);
       }
 
       if (this.Iterations <= 0) {
@@ -665,38 +761,38 @@
       return result;
     }
 
+    /**
+     * bcrypt_pbkdf: per 32-byte block, rounds of bcrypt over SHA-512 hashes, output interleaved
+     * @param {uint8[]} password - Password bytes
+     * @param {uint8[]} salt - Salt bytes
+     * @param {int32} rounds - Round count
+     * @param {int32} outputLen - Derived key length in bytes
+     * @returns {uint8[]} Derived key
+     */
     _deriveKey(password, salt, rounds, outputLen) {
       const BCRYPT_BLOCK_SIZE = 32;
-      const BCRYPT_PBKDF_WORKFACTOR = 6; // Fixed cost factor for bcrypt primitive
 
-      // Magic constant "OxychromaticBlowfishSwatDynamite"
-      const BCRYPT_MAGIC = [
-        0x4F, 0x78, 0x79, 0x63, 0x68, 0x72, 0x6F, 0x6D,
-        0x61, 0x74, 0x69, 0x63, 0x42, 0x6C, 0x6F, 0x77,
-        0x66, 0x69, 0x73, 0x68, 0x53, 0x77, 0x61, 0x74,
-        0x44, 0x79, 0x6E, 0x61, 0x6D, 0x69, 0x74, 0x65
-      ];
-
+      /** @type {int32} */
       const blocks = Math.ceil(outputLen / BCRYPT_BLOCK_SIZE);
+      /** @type {uint8[]} */
       const output = new Array(outputLen);
 
       // Hash password once with SHA-512
+      /** @type {uint8[]} */
       const passHash = getSHA512Hash(password);
 
       // Process each block
       for (let blockNum = 1; blockNum <= blocks; blockNum++) {
         // Hash salt with block number (append as 32-bit big-endian)
-        const saltWithBlock = [
-          ...salt,
-          OpCodes.AndN(OpCodes.Shr32(blockNum, 24), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(blockNum, 16), 0xFF),
-          OpCodes.AndN(OpCodes.Shr32(blockNum, 8), 0xFF),
-          OpCodes.AndN(blockNum, 0xFF)
-        ];
+        /** @type {uint8[]} */
+        const saltWithBlock = salt.concat(OpCodes.Unpack32BE(blockNum));
+        /** @type {uint8[]} */
         let saltHash = getSHA512Hash(saltWithBlock);
 
         // Initialize accumulator and temp buffer
+        /** @type {uint8[]} */
         const out = new Array(BCRYPT_BLOCK_SIZE);
+        /** @type {uint8[]} */
         const tmp = new Array(BCRYPT_BLOCK_SIZE);
 
         // First round
@@ -715,7 +811,7 @@
 
           // XOR into accumulator
           for (let i = 0; i < BCRYPT_BLOCK_SIZE; i++) {
-            out[i] = OpCodes.XorN(out[i], tmp[i]);
+            out[i] = OpCodes.Xor8(out[i], tmp[i]);
           }
         }
 
@@ -731,8 +827,16 @@
       return output;
     }
 
-    // Bcrypt hash function (core primitive)
+    /**
+     * Bcrypt hash function (core primitive) of bcrypt_pbkdf
+     * @param {uint8[]} out - 32-byte buffer receiving the hash
+     * @param {uint8[]} passHash - SHA-512 of the password
+     * @param {uint8[]} saltHash - SHA-512 of the salt material
+     * @returns {void}
+     */
     _bcryptHash(out, passHash, saltHash) {
+      // Magic constant "OxychromaticBlowfishSwatDynamite"
+      /** @type {uint8[]} */
       const BCRYPT_MAGIC = [
         0x4F, 0x78, 0x79, 0x63, 0x68, 0x72, 0x6F, 0x6D,
         0x61, 0x74, 0x69, 0x63, 0x42, 0x6C, 0x6F, 0x77,

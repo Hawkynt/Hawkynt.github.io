@@ -49,39 +49,66 @@
 
   // ===== SM3 PERMUTATION FUNCTIONS =====
 
-  // P0 permutation: X^ROL(X, 9)^ROL(X, 17)
+  /**
+   * P0 permutation: X^ROL(X, 9)^ROL(X, 17)
+   * @param {uint32} X - Word
+   * @returns {uint32} Permuted word
+   */
   function P0(X) {
-    return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 9), OpCodes.RotL32(X, 17)));
+    return OpCodes.Xor32(X, OpCodes.Xor32(OpCodes.RotL32(X, 9), OpCodes.RotL32(X, 17)));
   }
 
-  // P1 permutation: X^ROL(X, 15)^ROL(X, 23)
+  /**
+   * P1 permutation: X^ROL(X, 15)^ROL(X, 23)
+   * @param {uint32} X - Word
+   * @returns {uint32} Permuted word
+   */
   function P1(X) {
-    return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 15), OpCodes.RotL32(X, 23)));
+    return OpCodes.Xor32(X, OpCodes.Xor32(OpCodes.RotL32(X, 15), OpCodes.RotL32(X, 23)));
   }
 
-  // Message expansion function
-  function EE(W0, W7, W13, W3, W10) {
-    return OpCodes.XorN(P1(OpCodes.XorN(W0, OpCodes.XorN(W7, OpCodes.RotL32(W13, 15)))), OpCodes.XorN(OpCodes.RotL32(W3, 7), W10));
-  }
-
-  // FF function for rounds 0-15
+  /**
+   * FF function for rounds 0-15
+   * @param {uint32} X - Word
+   * @param {uint32} Y - Word
+   * @param {uint32} Z - Word
+   * @returns {uint32} X^Y^Z
+   */
   function FF1(X, Y, Z) {
-    return OpCodes.XorN(X, OpCodes.XorN(Y, Z));
+    return OpCodes.Xor32(X, OpCodes.Xor32(Y, Z));
   }
 
-  // FF function for rounds 16-63
+  /**
+   * FF function for rounds 16-63
+   * @param {uint32} X - Word
+   * @param {uint32} Y - Word
+   * @param {uint32} Z - Word
+   * @returns {uint32} Majority of X, Y, Z
+   */
   function FF2(X, Y, Z) {
-    return OpCodes.OrN(OpCodes.AndN(X, Y), OpCodes.AndN(OpCodes.OrN(X, Y), Z));
+    return OpCodes.Or32(OpCodes.And32(X, Y), OpCodes.And32(OpCodes.Or32(X, Y), Z));
   }
 
-  // GG function for rounds 0-15
+  /**
+   * GG function for rounds 0-15
+   * @param {uint32} X - Word
+   * @param {uint32} Y - Word
+   * @param {uint32} Z - Word
+   * @returns {uint32} X^Y^Z
+   */
   function GG1(X, Y, Z) {
-    return OpCodes.XorN(X, OpCodes.XorN(Y, Z));
+    return OpCodes.Xor32(X, OpCodes.Xor32(Y, Z));
   }
 
-  // GG function for rounds 16-63
+  /**
+   * GG function for rounds 16-63
+   * @param {uint32} X - Word
+   * @param {uint32} Y - Word
+   * @param {uint32} Z - Word
+   * @returns {uint32} Choice of Y or Z by X
+   */
   function GG2(X, Y, Z) {
-    return OpCodes.XorN(Z, OpCodes.AndN(X, OpCodes.XorN(Y, Z)));
+    return OpCodes.Xor32(Z, OpCodes.And32(X, OpCodes.Xor32(Y, Z)));
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -174,7 +201,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SM3Instance} New hash instance (null for the inverse)
    */
 
     CreateInstance(isInverse = false) {
@@ -194,20 +221,29 @@
  */
 
   class SM3Instance extends IHashFunctionInstance {
+    /**
+     * Initialize an SM3 instance
+     * @param {SM3Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // SM3 state: 8 x 32-bit words (256 bits)
+      /** @type {uint32[]} */
       this.state = new Array(8);
 
       // Message buffer
+      /** @type {BlockAbsorber} */
       this._absorber = new BlockAbsorber(64, block => this._processBlock(block));
 
       // Initialize state
       this._initializeState();
     }
 
-    // Initialize SM3 state with IV
+    /**
+     * Initialize SM3 state with IV
+     * @returns {void}
+     */
     _initializeState() {
       // SM3 initial values (different from SHA-256)
       this.state[0] = 0x7380166f;
@@ -224,7 +260,8 @@
     /**
    * Feed data to cipher for processing
    * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @returns {void}
+   * @throws {Error} If the input is not a byte array
    */
 
     Feed(data) {
@@ -236,9 +273,14 @@
       this._absorber.Absorb(data);
     }
 
-    // Process a single 512-bit block
+    /**
+     * Process a single 512-bit block
+     * @param {uint8[]} block - 64-byte block
+     * @returns {void}
+     */
     _processBlock(block) {
       // Load block as 16 big-endian 32-bit words
+      /** @type {uint32[]} */
       const W = new Array(68); // Extended to 68 words for SM3
       for (let i = 0; i < 16; ++i) {
         const offset = i * 4;
@@ -247,8 +289,8 @@
 
       // Expand message schedule (W[16] through W[67])
       for (let i = 16; i < 68; ++i) {
-        W[i] = OpCodes.XorN(P1(OpCodes.XorN(W[i - 16], OpCodes.XorN(W[i - 9], OpCodes.RotL32(W[i - 3], 15)))),
-               OpCodes.XorN(OpCodes.RotL32(W[i - 13], 7), W[i - 6]));
+        W[i] = OpCodes.Xor32(P1(OpCodes.Xor32(W[i - 16], OpCodes.Xor32(W[i - 9], OpCodes.RotL32(W[i - 3], 15)))),
+               OpCodes.Xor32(OpCodes.RotL32(W[i - 13], 7), W[i - 6]));
       }
 
       // Initialize working variables
@@ -269,28 +311,30 @@
 
         // Compute W'[j] = W[j]^W[j+4]
         const Wj = W[j];
-        const Wjp = OpCodes.XorN(Wj, W[j + 4]);
+        const Wjp = OpCodes.Xor32(Wj, W[j + 4]);
 
         // Compute SS1, SS2, TT1, TT2
         const A12 = OpCodes.RotL32(A, 12);
-        const SS1 = OpCodes.RotL32(A12 + E + TJrot, 7);
-        const SS2 = OpCodes.XorN(SS1, A12);
+        const SS1 = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(A12, E), TJrot), 7);
+        const SS2 = OpCodes.Xor32(SS1, A12);
 
-        let TT1, TT2;
+        /** @type {uint32} */
+        let TT1;
+        /** @type {uint32} */
+        let TT2;
         if (j < 16) {
-          TT1 = FF1(A, B, C) + D + SS2 + Wjp;
-          TT2 = GG1(E, F, G) + H + SS1 + Wj;
+          TT1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(FF1(A, B, C), D), SS2), Wjp);
+          TT2 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(GG1(E, F, G), H), SS1), Wj);
         } else {
-          TT1 = FF2(A, B, C) + D + SS2 + Wjp;
-          TT2 = GG2(E, F, G) + H + SS1 + Wj;
+          TT1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(FF2(A, B, C), D), SS2), Wjp);
+          TT2 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(GG2(E, F, G), H), SS1), Wj);
         }
 
         // Update working variables
         D = C;
         C = OpCodes.RotL32(B, 9);
         B = A;
-        // NOTE: >>> 0 is JavaScript idiom for unsigned 32-bit conversion, not a bit shift operation
-        A = OpCodes.ToUint32(TT1); // Ensure 32-bit unsigned
+        A = TT1;
 
         H = G;
         G = OpCodes.RotL32(F, 19);
@@ -299,14 +343,14 @@
       }
 
       // Update state (XOR with working variables as per SM3 spec)
-      this.state[0] = OpCodes.XorN(this.state[0], A);
-      this.state[1] = OpCodes.XorN(this.state[1], B);
-      this.state[2] = OpCodes.XorN(this.state[2], C);
-      this.state[3] = OpCodes.XorN(this.state[3], D);
-      this.state[4] = OpCodes.XorN(this.state[4], E);
-      this.state[5] = OpCodes.XorN(this.state[5], F);
-      this.state[6] = OpCodes.XorN(this.state[6], G);
-      this.state[7] = OpCodes.XorN(this.state[7], H);
+      this.state[0] = OpCodes.Xor32(this.state[0], A);
+      this.state[1] = OpCodes.Xor32(this.state[1], B);
+      this.state[2] = OpCodes.Xor32(this.state[2], C);
+      this.state[3] = OpCodes.Xor32(this.state[3], D);
+      this.state[4] = OpCodes.Xor32(this.state[4], E);
+      this.state[5] = OpCodes.Xor32(this.state[5], F);
+      this.state[6] = OpCodes.Xor32(this.state[6], G);
+      this.state[7] = OpCodes.Xor32(this.state[7], H);
     }
 
     // Get the hash result
@@ -323,13 +367,14 @@
       // The state is snapshotted so that Result() stays repeatable, which it
       // was before this change. Finish() hands out a copy of the held bytes and
       // does not advance the absorber, so the snapshot is all that is needed.
-      const stateCopy = [...this.state];
+      const stateCopy = this.state.slice();
       this._absorber.Finish((held, pending, total) => {
         for (const block of MerkleDamgardBlocks(held, pending, total, { blockSize: 64, lengthBytes: 8 }))
           this._processBlock(block);
       });
 
       // Convert state to bytes (big-endian)
+      /** @type {uint8[]} */
       const hash = [];
       for (let i = 0; i < 8; ++i) {
         const bytes = OpCodes.Unpack32BE(this.state[i]);

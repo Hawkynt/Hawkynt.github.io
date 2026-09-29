@@ -48,11 +48,12 @@
 
   /**
    * Helper function to repeat a byte pattern
-   * @param {Array} pattern - Pattern to repeat
-   * @param {number} count - Number of times to repeat
-   * @returns {Array} Repeated pattern
+   * @param {uint8[]} pattern - Pattern to repeat
+   * @param {int32} count - Number of times to repeat
+   * @returns {uint8[]} Repeated pattern
    */
   function repeatBytes(pattern, count) {
+    /** @type {uint8[]} */
     const result = new Array(pattern.length * count);
     for (let i = 0; i < count; i++) {
       for (let j = 0; j < pattern.length; j++) {
@@ -69,11 +70,27 @@
    * Supports both little-endian and big-endian variants
    */
   class PanamaCore {
+    /**
+     * @param {boolean} isLittleEndian - true for Panama-LE, false for Panama-BE
+     */
     constructor(isLittleEndian) {
+      /** @type {boolean} */
       this.isLE = isLittleEndian;
+      /** @type {uint32[]} */
+      this.a = null;
+      /** @type {uint32[][]} */
+      this.b = null;
+      /** @type {int32} */
+      this.bstart = 0;
+      /** @type {uint8[]} */
+      this.buffer = null;
       this.reset();
     }
 
+    /**
+     * Clear mill, belt and message buffer
+     * @returns {void}
+     */
     reset() {
       // Mill state: 17 words
       this.a = new Uint32Array(17);
@@ -92,6 +109,8 @@
      * State indexing with reordering for optimization
      * a(i) = a[((i)*13+16) % 17]
      * Inverse of 4 mod 17 is 13 (used for SSE2 optimization alignment)
+     * @param {int32} i - Logical mill word index
+     * @returns {int32} Storage index
      */
     _aIndex(i) {
       return (i * 13 + 16) % 17;
@@ -99,8 +118,9 @@
 
     /**
      * Main iteration function - performs one round of belt-and-mill operation
-     * @param {Uint32Array|null} input - 8-word input block (null for pull phase)
-     * @param {Array|null} output - Output buffer for keystream (null if no output needed)
+     * @param {uint32[]} input - 8-word input block (null for pull phase)
+     * @param {uint8[]} output - Output buffer for keystream (null if no output needed)
+     * @returns {void}
      */
     _iterate(input, output) {
       const cPtr = new Uint32Array(17);
@@ -152,7 +172,7 @@
 
         // Gamma: a[i]^(a[i+1]|~a[i+2])
         const notAi2 = OpCodes.ToUint32(~ai2);
-        const orResult = ai1|notAi2;
+        const orResult = OpCodes.Or32(ai1, notAi2);
         const gamma = OpCodes.Xor32(ai, OpCodes.ToUint32(orResult));
 
         // Pi: rotation based on position
@@ -192,6 +212,7 @@
 
     /**
      * Convert buffered bytes to final hash output
+     * @returns {uint8[]} 32-byte digest
      */
     finalize() {
       // Pad to block boundary (Panama uses 0x01 padding)
@@ -221,17 +242,17 @@
           const byteOffset = offset + i * 4;
           if (this.isLE) {
             block[i] = OpCodes.Pack32LE(
-              this.buffer[byteOffset] || 0,
-              this.buffer[byteOffset + 1] || 0,
-              this.buffer[byteOffset + 2] || 0,
-              this.buffer[byteOffset + 3] || 0
+              this.buffer[byteOffset],
+              this.buffer[byteOffset + 1],
+              this.buffer[byteOffset + 2],
+              this.buffer[byteOffset + 3]
             );
           } else {
             block[i] = OpCodes.Pack32BE(
-              this.buffer[byteOffset] || 0,
-              this.buffer[byteOffset + 1] || 0,
-              this.buffer[byteOffset + 2] || 0,
-              this.buffer[byteOffset + 3] || 0
+              this.buffer[byteOffset],
+              this.buffer[byteOffset + 1],
+              this.buffer[byteOffset + 2],
+              this.buffer[byteOffset + 3]
             );
           }
         }
@@ -244,6 +265,7 @@
       }
 
       // Final iteration to extract output
+      /** @type {uint8[]} */
       const output = [];
       this._iterate(null, output);
 
@@ -312,7 +334,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PanamaLEInstance} New instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -328,8 +350,12 @@
  */
 
   class PanamaLEInstance extends IHashFunctionInstance {
+    /**
+     * @param {PanamaLEAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {PanamaCore} */
       this.core = new PanamaCore(true);
     }
 
@@ -353,7 +379,9 @@
    */
 
     Result() {
-      return this.core.finalize();
+      /** @type {uint8[]} */
+      const result = this.core.finalize();
+      return result;
     }
   }
 
@@ -417,7 +445,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PanamaBEInstance} New instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -433,8 +461,12 @@
  */
 
   class PanamaBEInstance extends IHashFunctionInstance {
+    /**
+     * @param {PanamaBEAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {PanamaCore} */
       this.core = new PanamaCore(false);
     }
 
@@ -458,7 +490,9 @@
    */
 
     Result() {
-      return this.core.finalize();
+      /** @type {uint8[]} */
+      const result = this.core.finalize();
+      return result;
     }
   }
 
@@ -519,7 +553,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PanamaLEMACInstance} New instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -535,10 +569,16 @@
  */
 
   class PanamaLEMACInstance extends IMacInstance {
+    /**
+     * @param {PanamaLEMACAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {PanamaCore} */
       this.core = new PanamaCore(true);
+      /** @type {boolean} */
       this.keyed = false;
     }
 
@@ -553,7 +593,7 @@
         this._key = null;
         return;
       }
-      this._key = [...keyBytes];
+      this._key = keyBytes.slice();
       this.keyed = false;
     }
 
@@ -563,7 +603,12 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      if (!this._key) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const copy = this._key.slice();
+      return copy;
     }
 
     /**
@@ -598,6 +643,7 @@
         }
         this.keyed = true;
       }
+      /** @type {uint8[]} */
       const result = this.core.finalize();
       this.keyed = false;
       return result;
@@ -661,7 +707,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PanamaBEMACInstance} New instance, null for the (nonexistent) inverse
    */
 
     CreateInstance(isInverse = false) {
@@ -677,10 +723,16 @@
  */
 
   class PanamaBEMACInstance extends IMacInstance {
+    /**
+     * @param {PanamaBEMACAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {PanamaCore} */
       this.core = new PanamaCore(false);
+      /** @type {boolean} */
       this.keyed = false;
     }
 
@@ -695,7 +747,7 @@
         this._key = null;
         return;
       }
-      this._key = [...keyBytes];
+      this._key = keyBytes.slice();
       this.keyed = false;
     }
 
@@ -705,7 +757,12 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      if (!this._key) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const copy = this._key.slice();
+      return copy;
     }
 
     /**
@@ -740,6 +797,7 @@
         }
         this.keyed = true;
       }
+      /** @type {uint8[]} */
       const result = this.core.finalize();
       this.keyed = false;
       return result;

@@ -43,7 +43,7 @@
   if (!OpCodes) throw new Error('OpCodes dependency is required');
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== THREEFISH-512 CORE (DarkCrypt variant) =====
 
@@ -67,15 +67,29 @@
 
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
+  /**
+   * Rotate left and XOR for mixing: rotl64(x, n) xor xor, both reduced to 64 bits
+   * @param {BigInt} x - word to rotate (may exceed 64 bits)
+   * @param {int32} n - rotation count
+   * @param {BigInt} xor - word to XOR in (may exceed 64 bits)
+   * @returns {BigInt} 64-bit result
+   */
   function rotlXor64(x, n, xor) {
-    x = OpCodes.AndN(BigInt(x), MASK64);
-    xor = OpCodes.AndN(BigInt(xor), MASK64);
-    n = OpCodes.AndN(Number(n), 63);
-    return OpCodes.AndN(OpCodes.XorN(OpCodes.RotL64n(x, n), xor), MASK64);
+    const word = OpCodes.AndN(x, MASK64);
+    const other = OpCodes.AndN(xor, MASK64);
+    const count = OpCodes.And32(n, 63);
+    return OpCodes.AndN(OpCodes.XorN(OpCodes.RotL64n(word, count), other), MASK64);
   }
 
-  // Threefish-512 encryption (DarkCrypt variant: deprecated rotations + custom parity)
+  /**
+   * Threefish-512 encryption (DarkCrypt variant: deprecated rotations + custom parity)
+   * @param {BigInt[]} key - eight 64-bit key words
+   * @param {BigInt[]} tweak - two 64-bit tweak words
+   * @param {BigInt[]} block - eight 64-bit plaintext words
+   * @returns {BigInt[]} eight 64-bit ciphertext words
+   */
   function threefish512Encrypt(key, tweak, block) {
+    /** @type {BigInt[]} */
     const kw = new Array(17);
     let knw = C_PARITY;
     for (let i = 0; i < 8; i++) {
@@ -83,8 +97,11 @@
       knw = OpCodes.XorN(knw, kw[i]);
     }
     kw[8] = knw;
-    for (let i = 0; i < 8; i++) kw[9 + i] = kw[i];
+    for (let i = 0; i < 8; i++) {
+      kw[9 + i] = kw[i];
+    }
 
+    /** @type {BigInt[]} */
     const t = new Array(5);
     t[0] = OpCodes.AndN(BigInt(tweak[0]), MASK64);
     t[1] = OpCodes.AndN(BigInt(tweak[1]), MASK64);
@@ -173,10 +190,12 @@
       b7 += kw[dm9 + 8] + BigInt(d + 1);
     }
 
-    return [
+    /** @type {BigInt[]} */
+    const out = [
       OpCodes.AndN(b0, MASK64), OpCodes.AndN(b1, MASK64), OpCodes.AndN(b2, MASK64), OpCodes.AndN(b3, MASK64),
       OpCodes.AndN(b4, MASK64), OpCodes.AndN(b5, MASK64), OpCodes.AndN(b6, MASK64), OpCodes.AndN(b7, MASK64)
     ];
+    return out;
   }
 
   // ===== SKEIN-512 UBI MODE (standard) =====
@@ -188,21 +207,46 @@
   const T1_FINAL = OpCodes.ShiftLn(1n, 63);
   const T1_FIRST = OpCodes.ShiftLn(1n, 62);
 
+  /**
+   * Unique Block Iteration over the DarkCrypt Threefish-512
+   * @class
+   */
   class SkeinUBI {
+    /**
+     * @param {int32} blockSize - bytes per block (64 for Skein-512)
+     */
     constructor(blockSize) {
+      /** @type {int32} */
       this.blockSize = blockSize;
+      /** @type {uint8[]} */
       this.currentBlock = new Uint8Array(blockSize);
+      /** @type {int32} */
       this.currentOffset = 0;
+      /** @type {BigInt[]} */
       this.tweak = [0n, 0n];
+      /** @type {BigInt[]} */
       this.message = new Array(8);
     }
 
+    /**
+     * Start a new UBI invocation of the given type
+     * @param {int32} type - block type (config, message, output)
+     * @returns {void}
+     */
     reset(type) {
       this.tweak[0] = 0n;
       this.tweak[1] = OpCodes.OrN(OpCodes.ShiftLn(BigInt(type), 56), T1_FIRST);
       this.currentOffset = 0;
     }
 
+    /**
+     * Absorb bytes, compressing every block that is followed by more data
+     * @param {uint8[]} data - source bytes
+     * @param {int32} offset - first byte to take
+     * @param {int32} length - number of bytes to take
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     update(data, offset, length, chain) {
       let copied = 0;
       while (copied < length) {
@@ -222,6 +266,11 @@
       }
     }
 
+    /**
+     * Compress the current block into the chaining value
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     processBlock(chain) {
       for (let i = 0; i < 8; i++) {
         const off = i * 8;
@@ -232,6 +281,7 @@
         this.message[i] = w;
       }
 
+      /** @type {BigInt[]} */
       const output = threefish512Encrypt(chain, this.tweak, this.message);
 
       for (let i = 0; i < 8; i++) {
@@ -239,8 +289,15 @@
       }
     }
 
+    /**
+     * Zero-pad and compress the last block with the final flag set
+     * @param {BigInt[]} chain - chaining value, updated in place
+     * @returns {void}
+     */
     doFinal(chain) {
-      for (let i = this.currentOffset; i < this.blockSize; i++) this.currentBlock[i] = 0;
+      for (let i = this.currentOffset; i < this.blockSize; i++) {
+        this.currentBlock[i] = 0;
+      }
       this.tweak[1] = OpCodes.OrN(this.tweak[1], T1_FINAL);
       this.processBlock(chain);
     }
@@ -248,17 +305,33 @@
 
   // ===== SKEIN HASH FUNCTION (DarkCrypt variant, 512-bit output) =====
 
+  /**
+   * DarkCrypt Skein-512 with a configurable output length
+   * @class
+   */
   class SkeinHasher {
+    /**
+     * @param {int32} outputBits - digest length in bits
+     */
     constructor(outputBits) {
+      /** @type {int32} */
       this.outputBits = outputBits;
+      /** @type {int32} */
       this.blockSize = 64;
-      this.chain = new Array(8).fill(0n);
+      /** @type {BigInt[]} */
+      this.chain = [0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n];
+      /** @type {SkeinUBI} */
       this.ubi = new SkeinUBI(this.blockSize);
 
       this.processConfig();
-      this.initialState = [...this.chain];
+      /** @type {BigInt[]} */
+      this.initialState = this.chain.slice();
     }
 
+    /**
+     * Chain the configuration block (UBI type 4) into the zero state
+     * @returns {void}
+     */
     processConfig() {
       // Configuration block: "SHA3" (4 bytes) + version (2 bytes) + reserved (2 bytes)
       // + output length in bits (8 bytes), zero-padded to the 64-byte block size.
@@ -272,7 +345,9 @@
 
       const outBits = BigInt(this.outputBits);
       for (let i = 0; i < 8; i++) {
-        config[8 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(outBits, BigInt(i * 8)), 0xFFn));
+        /** @type {uint8} */
+        const lengthByte = Number(OpCodes.AndN(OpCodes.ShiftRn(outBits, i * 8), 0xFFn));
+        config[8 + i] = lengthByte;
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
@@ -280,11 +355,19 @@
       this.ubi.doFinal(this.chain);
     }
 
+    /**
+     * Absorb message bytes
+     * @param {uint8[]} data - message bytes
+     * @returns {void}
+     */
     update(data) {
-      if (typeof data === 'string') data = OpCodes.AnsiToBytes(data);
       this.ubi.update(data, 0, data.length, this.chain);
     }
 
+    /**
+     * Finish the message and run the output transformation
+     * @returns {uint8[]} outputBits/8 digest bytes (a Uint8Array)
+     */
     finalize() {
       this.ubi.doFinal(this.chain);
 
@@ -295,7 +378,8 @@
       this.ubi.reset(PARAM_TYPE_OUTPUT);
       this.ubi.update(counter, 0, 8, this.chain);
 
-      const outputWords = [...this.chain];
+      /** @type {BigInt[]} */
+      const outputWords = this.chain.slice();
       this.ubi.doFinal(outputWords);
 
       const wordsNeeded = Math.ceil(outputBytes / 8);
@@ -303,15 +387,23 @@
         const word = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(j * 8)), 0xFFn));
+          /** @type {uint8} */
+          const digestByte = Number(OpCodes.AndN(OpCodes.ShiftRn(word, j * 8), 0xFFn));
+          result[i * 8 + j] = digestByte;
         }
       }
 
       return result;
     }
 
+    /**
+     * Back to the initial chaining value
+     * @returns {void}
+     */
     reset() {
-      for (let i = 0; i < 8; i++) this.chain[i] = this.initialState[i];
+      for (let i = 0; i < 8; i++) {
+        this.chain[i] = this.initialState[i];
+      }
       this.ubi.reset(PARAM_TYPE_MESSAGE);
     }
   }
@@ -332,8 +424,10 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [64]; // 512 bits
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits
+      /** @type {int32} */
       this.blockSize = 64;
+      /** @type {int32} */
       this.outputSize = 64;
 
       this.documentation = [
@@ -370,6 +464,11 @@
       ];
     }
 
+    /**
+     * Create new hash instance
+     * @param {boolean} [isInverse=false] - unused, hashes have no inverse
+     * @returns {DarkCryptSkeinInstance} New hash instance, null for the (nonexistent) inverse
+     */
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new DarkCryptSkeinInstance(this);
@@ -377,28 +476,55 @@
   }
 
   class DarkCryptSkeinInstance extends IHashFunctionInstance {
+    /**
+     * @param {DarkCryptSkeinAlgorithm} algorithm - parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {SkeinHasher} */
       this.hasher = new SkeinHasher(512);
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
     }
 
+    /**
+     * Feed data to the hash. Successive calls extend the message.
+     * @param {uint8[]} data - Input data bytes
+     * @returns {void}
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       this.hasher.update(data);
     }
 
+    /**
+     * Finish the message and return the digest
+     * @returns {uint8[]} 64-byte digest
+     */
     Result() {
-      return this.hasher.finalize();
+      /** @type {uint8[]} */
+      const digest = this.hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Hash one whole message from the initial state
+     * @param {uint8[]} input - message bytes
+     * @param {uint8[]} key - unused
+     * @returns {uint8[]} digest
+     */
     ProcessData(input, key) {
       this.hasher.reset();
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
       this.hasher.update(input);
-      return this.hasher.finalize();
+      /** @type {uint8[]} */
+      const digest = this.hasher.finalize();
+      return digest;
     }
 
+    /**
+     * Start over with a fresh hasher
+     * @returns {void}
+     */
     Reset() {
       this.hasher = new SkeinHasher(512);
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);

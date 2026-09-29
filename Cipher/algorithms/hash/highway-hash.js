@@ -55,24 +55,42 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {BigInt} */
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+  /** @type {BigInt} */
   const MASK32 = 0xFFFFFFFFn;
+  /** @type {int32} */
   const PACKET_SIZE = 32;
 
   // Initial multipliers from the reference HighwayHashReset()
-  const INIT_MUL0 = Object.freeze([
+  /** @type {BigInt[]} */
+  const INIT_MUL0 = [
     0xdbe6d5d5fe4cce2fn, 0xa4093822299f31d0n, 0x13198a2e03707344n, 0x243f6a8885a308d3n
-  ]);
-  const INIT_MUL1 = Object.freeze([
+  ];
+  /** @type {BigInt[]} */
+  const INIT_MUL1 = [
     0x3bd39e10cb0ef593n, 0xc0acf169b5f18a8cn, 0xbe5466cf34e90c6cn, 0x452821e638d01377n
-  ]);
+  ];
 
-  const m64 = v => OpCodes.AndN(v, MASK64);
+  /**
+   * Reduce to 64 bits
+   * @param {BigInt} v - Any BigInt
+   * @returns {BigInt} v mod 2^64
+   */
+  function m64(v) {
+    return OpCodes.AndN(v, MASK64);
+  }
 
   /**
    * ZipperMergeAndAdd: adds the byte-shuffled combination of (v0, v1) into the
    * two supplied accumulator lanes, exactly as in the reference implementation.
    * @private
+   * @param {BigInt} v1 - High input lane
+   * @param {BigInt} v0 - Low input lane
+   * @param {BigInt[]} acc - Accumulator lanes, updated in place
+   * @param {int32} idx1 - Index of the lane receiving add1
+   * @param {int32} idx0 - Index of the lane receiving add0
+   * @returns {void}
    */
   function zipperMergeAndAdd(v1, v0, acc, idx1, idx0) {
     const add0 = OpCodes.OrN(
@@ -108,14 +126,29 @@
   /**
    * HighwayHash state: 4 lanes each of v0, v1, mul0, mul1.
    * @private
+   * @class
    */
   class HighwayHashState {
-    constructor(keyWords) {
-      this.mul0 = new Array(4);
-      this.mul1 = new Array(4);
-      this.v0 = new Array(4);
-      this.v1 = new Array(4);
+    /**
+     * Create an all-zero state; reset() keys it.
+     */
+    constructor() {
+      /** @type {BigInt[]} */
+      this.mul0 = [0n, 0n, 0n, 0n];
+      /** @type {BigInt[]} */
+      this.mul1 = [0n, 0n, 0n, 0n];
+      /** @type {BigInt[]} */
+      this.v0 = [0n, 0n, 0n, 0n];
+      /** @type {BigInt[]} */
+      this.v1 = [0n, 0n, 0n, 0n];
+    }
 
+    /**
+     * HighwayHashReset: key the state
+     * @param {BigInt[]} keyWords - Four 64-bit key words
+     * @returns {void}
+     */
+    reset(keyWords) {
       for (let i = 0; i < 4; i++) {
         this.mul0[i] = INIT_MUL0[i];
         this.mul1[i] = INIT_MUL1[i];
@@ -125,15 +158,23 @@
       }
     }
 
-    clone() {
-      const c = Object.create(HighwayHashState.prototype);
-      c.mul0 = this.mul0.slice();
-      c.mul1 = this.mul1.slice();
-      c.v0 = this.v0.slice();
-      c.v1 = this.v1.slice();
-      return c;
+    /**
+     * Become an independent copy of another state
+     * @param {HighwayHashState} other - State to copy
+     * @returns {void}
+     */
+    copyFrom(other) {
+      this.mul0 = other.mul0.slice();
+      this.mul1 = other.mul1.slice();
+      this.v0 = other.v0.slice();
+      this.v1 = other.v1.slice();
     }
 
+    /**
+     * Absorb four 64-bit lanes
+     * @param {BigInt[]} lanes - Four input lanes
+     * @returns {void}
+     */
     update(lanes) {
       for (let i = 0; i < 4; i++) {
         this.v1[i] = m64(this.v1[i] + this.mul0[i] + lanes[i]);
@@ -150,7 +191,14 @@
       zipperMergeAndAdd(this.v0[3], this.v0[2], this.v1, 3, 2);
     }
 
+    /**
+     * Absorb one 32-byte packet
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} offset - Index of the first byte
+     * @returns {void}
+     */
     updatePacket(bytes, offset) {
+      /** @type {BigInt[]} */
       const lanes = new Array(4);
       for (let i = 0; i < 4; i++) lanes[i] = readLE64(bytes, offset + i * 8);
       this.update(lanes);
@@ -159,16 +207,20 @@
     /**
      * Rotate each 32-bit half of every v1 lane left by `count` bits.
      * @private
+     * @param {int32} count - Rotation count (taken mod 32)
+     * @returns {void}
      */
     rotate32By(count) {
-      const c = BigInt(OpCodes.AndN(count, 31));
+      /** @type {int32} */
+      const c = OpCodes.And32(count, 31);
       for (let i = 0; i < 4; i++) {
         const half0 = OpCodes.AndN(this.v1[i], MASK32);
         const half1 = OpCodes.AndN(OpCodes.ShiftRn(this.v1[i], 32), MASK32);
-        let r0 = half0, r1 = half1;
-        if (c !== 0n) {
-          r0 = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(half0, c), OpCodes.ShiftRn(half0, 32n - c)), MASK32);
-          r1 = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(half1, c), OpCodes.ShiftRn(half1, 32n - c)), MASK32);
+        let r0 = half0;
+        let r1 = half1;
+        if (c !== 0) {
+          r0 = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(half0, c), OpCodes.ShiftRn(half0, 32 - c)), MASK32);
+          r1 = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(half1, c), OpCodes.ShiftRn(half1, 32 - c)), MASK32);
         }
         this.v1[i] = m64(OpCodes.OrN(r0, OpCodes.ShiftLn(r1, 32)));
       }
@@ -177,9 +229,14 @@
     /**
      * Absorb the final 0..31 trailing bytes.
      * @private
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} offset - Index of the first trailing byte
+     * @param {int32} sizeMod32 - Number of trailing bytes
+     * @returns {void}
      */
     updateRemainder(bytes, offset, sizeMod32) {
-      const sizeMod4 = OpCodes.AndN(sizeMod32, 3);
+      /** @type {int32} */
+      const sizeMod4 = OpCodes.And32(sizeMod32, 3);
       const wholeWords = sizeMod32 - sizeMod4;
       const remOffset = offset + wholeWords;
 
@@ -188,44 +245,68 @@
       }
       this.rotate32By(sizeMod32);
 
-      const packet = new Array(PACKET_SIZE).fill(0);
+      const packet = OpCodes.CreateArray(PACKET_SIZE, 0);
       for (let i = 0; i < wholeWords; i++) packet[i] = bytes[offset + i];
 
-      if (OpCodes.AndN(sizeMod32, 16) !== 0) {
+      if (OpCodes.And32(sizeMod32, 16) !== 0) {
         for (let i = 0; i < 4; i++) packet[28 + i] = bytes[remOffset + i + sizeMod4 - 4];
       } else if (sizeMod4 !== 0) {
+        /** @type {int32} */
+        const half = OpCodes.Shr32(sizeMod4, 1);
         packet[16] = bytes[remOffset];
-        packet[17] = bytes[remOffset + OpCodes.Shr32(sizeMod4, 1)];
+        packet[17] = bytes[remOffset + half];
         packet[18] = bytes[remOffset + sizeMod4 - 1];
       }
 
       this.updatePacket(packet, 0);
     }
 
+    /**
+     * PermuteAndUpdate
+     * @returns {void}
+     */
     permuteAndUpdate() {
       // Each lane of v0 has its 32-bit halves swapped, and the lanes are
       // rotated by two positions before being fed back in.
-      this.update([
+      /** @type {BigInt[]} */
+      const permuted = [
         OpCodes.RotR64n(this.v0[2], 32),
         OpCodes.RotR64n(this.v0[3], 32),
         OpCodes.RotR64n(this.v0[0], 32),
         OpCodes.RotR64n(this.v0[1], 32)
-      ]);
+      ];
+      this.update(permuted);
     }
 
+    /**
+     * Finalize64
+     * @returns {BigInt[]} One 64-bit word
+     */
     finalize64() {
       for (let i = 0; i < 4; i++) this.permuteAndUpdate();
-      return [m64(this.v0[0] + this.v1[0] + this.mul0[0] + this.mul1[0])];
+      /** @type {BigInt[]} */
+      const words = [m64(this.v0[0] + this.v1[0] + this.mul0[0] + this.mul1[0])];
+      return words;
     }
 
+    /**
+     * Finalize128
+     * @returns {BigInt[]} Two 64-bit words
+     */
     finalize128() {
       for (let i = 0; i < 6; i++) this.permuteAndUpdate();
-      return [
+      /** @type {BigInt[]} */
+      const words = [
         m64(this.v0[0] + this.mul0[0] + this.v1[2] + this.mul1[2]),
         m64(this.v0[1] + this.mul0[1] + this.v1[3] + this.mul1[3])
       ];
+      return words;
     }
 
+    /**
+     * Finalize256
+     * @returns {BigInt[]} Four 64-bit words
+     */
     finalize256() {
       for (let i = 0; i < 10; i++) this.permuteAndUpdate();
       const lo = modularReduction(
@@ -234,7 +315,9 @@
       const hi = modularReduction(
         m64(this.v1[3] + this.mul1[3]), m64(this.v1[2] + this.mul1[2]),
         m64(this.v0[3] + this.mul0[3]), m64(this.v0[2] + this.mul0[2]));
-      return [lo[0], lo[1], hi[0], hi[1]];
+      /** @type {BigInt[]} */
+      const words = [lo[0], lo[1], hi[0], hi[1]];
+      return words;
     }
   }
 
@@ -242,6 +325,11 @@
    * Reduce a 256-bit value modulo the irreducible polynomial used by the
    * 256-bit finalizer. Returns [m0, m1].
    * @private
+   * @param {BigInt} a3Unmasked - Word 3 (top two bits are dropped)
+   * @param {BigInt} a2 - Word 2
+   * @param {BigInt} a1 - Word 1
+   * @param {BigInt} a0 - Word 0
+   * @returns {BigInt[]} [m0, m1]
    */
   function modularReduction(a3Unmasked, a2, a1, a0) {
     const a3 = OpCodes.AndN(a3Unmasked, 0x3FFFFFFFFFFFFFFFn);
@@ -251,21 +339,56 @@
     const m0 = m64(OpCodes.XorN(
       OpCodes.XorN(a0, m64(OpCodes.ShiftLn(a2, 1))),
       m64(OpCodes.ShiftLn(a2, 2))));
-    return [m0, m1];
+    /** @type {BigInt[]} */
+    const words = [m0, m1];
+    return words;
   }
 
+  /**
+   * Little-endian 64-bit read
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} offset - Index of the first byte
+   * @returns {BigInt} The word
+   */
   function readLE64(bytes, offset) {
+    /** @type {BigInt} */
     let r = 0n;
     for (let i = 7; i >= 0; i--) {
-      r = OpCodes.OrN(OpCodes.ShiftLn(r, 8), BigInt(OpCodes.AndN(bytes[offset + i] || 0, 0xFF)));
+      r = OpCodes.OrN(OpCodes.ShiftLn(r, 8), BigInt(OpCodes.And32(bytes[offset + i], 0xFF)));
     }
     return r;
   }
 
+  /**
+   * Append a 64-bit word little-endian
+   * @param {BigInt} word - The word
+   * @param {uint8[]} out - Destination, appended to
+   * @returns {void}
+   */
   function writeLE64(word, out) {
     for (let i = 0; i < 8; i++) {
-      out.push(Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn)));
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(OpCodes.ShiftRn(word, i * 8), 0xFFn));
+      out.push(b);
     }
+  }
+
+  /**
+   * Hex string of the bytes 00 01 .. (n-1), used to spell the test inputs
+   * @param {int32} n - Number of bytes
+   * @returns {string} Hex string
+   */
+  function seq(n) {
+    /** @type {string} */
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      /** @type {string} */
+      const h = i.toString(16);
+      /** @type {string} */
+      const padded = h.padStart(2, '0');
+      s += padded;
+    }
+    return s;
   }
 
   /**
@@ -290,7 +413,7 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [8, 16, 32]; // 64, 128, 256 bits
+      this.SupportedOutputSizes = [new KeySize(8, 8, 1), new KeySize(16, 16, 1), new KeySize(32, 32, 1)]; // 64, 128, 256 bits
       this.RequiresKey = true; // HighwayHash requires a 256-bit key
 
       // Performance and technical specifications
@@ -325,12 +448,6 @@
       // tables hold the golden values; they are serialized here little-endian per
       // 64-bit word, which is the natural byte order of the algorithm.
       const testKey = OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F");
-
-      const seq = n => {
-        let s = '';
-        for (let i = 0; i < n; i++) s += i.toString(16).padStart(2, '0');
-        return s;
-      };
 
       const V64 = "https://github.com/google/highwayhash/blob/master/highwayhash/highwayhash_test.cc";
 
@@ -394,7 +511,7 @@
     /**
    * Create new hash instance
    * @param {boolean} [isInverse=false] - Unused; hash functions have no inverse
-   * @returns {Object} New hash instance
+   * @returns {HighwayHashAlgorithmInstance} New hash instance
    */
 
     CreateInstance(isInverse = false) {
@@ -412,7 +529,7 @@
   class HighwayHashAlgorithmInstance extends IHashFunctionInstance {
     /**
    * Initialize HighwayHash instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HighwayHashAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Unused
    */
 
@@ -422,50 +539,55 @@
       this.OutputSize = 8; // Default 64-bit output
 
       // Default key: the all-zero 256-bit key. Callers should always supply one.
-      this._key = new Array(32).fill(0);
+      /** @type {uint8[]} */
+      this._key = OpCodes.CreateArray(32, 0);
+      /** @type {HighwayHashState} */
       this._state = null;
-      this._packet = new Array(PACKET_SIZE).fill(0);
+      /** @type {uint8[]} */
+      this._packet = OpCodes.CreateArray(PACKET_SIZE, 0);
+      /** @type {int32} */
       this._packetLength = 0;
     }
 
     /**
      * Set the 256-bit key and restart the message.
+     * @param {uint8[]} k - 32 key bytes
      */
     set key(k) {
       this.KeySetup(k);
     }
 
+    /**
+     * Copy of the current key
+     * @returns {uint8[]} The key, or null when none is set
+     */
     get key() {
-      return this._key ? this._key.slice() : null;
+      if (!this._key) return null;
+      return this._key.slice();
     }
 
     /**
      * Initialize (or re-initialize) the state from the current key.
+     * @returns {void}
      */
     Init() {
+      /** @type {BigInt[]} */
       const keyWords = new Array(4);
       for (let i = 0; i < 4; i++) keyWords[i] = readLE64(this._key, i * 8);
-      this._state = new HighwayHashState(keyWords);
-      this._packet = new Array(PACKET_SIZE).fill(0);
+      this._state = new HighwayHashState();
+      this._state.reset(keyWords);
+      this._packet = OpCodes.CreateArray(PACKET_SIZE, 0);
       this._packetLength = 0;
     }
 
     /**
      * Add data to the hash calculation
-     * @param {Array} data - Data to hash as byte array
+     * @param {uint8[]} data - Data to hash as byte array
+     * @returns {void}
      */
     Update(data) {
       if (!data || data.length === 0) return;
       if (!this._state) this.Init();
-
-      // Convert string to byte array if needed
-      if (typeof data === 'string') {
-        const bytes = [];
-        for (let i = 0; i < data.length; i++) {
-          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
-        }
-        data = bytes;
-      }
 
       let offset = 0;
       let remaining = data.length;
@@ -498,22 +620,25 @@
     /**
      * Finalize the hash calculation and return the digest as a byte array.
      * Serialization is little-endian per 64-bit output word.
-     * @returns {Array} Hash digest as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Final() {
       if (!this._state) this.Init();
 
       // Finalizing must not destroy the state, so work on a copy
-      const st = this._state.clone();
+      const st = new HighwayHashState();
+      st.copyFrom(this._state);
       if (this._packetLength !== 0) {
         st.updateRemainder(this._packet, 0, this._packetLength);
       }
 
+      /** @type {BigInt[]} */
       let words;
       if (this.OutputSize === 16) words = st.finalize128();
       else if (this.OutputSize === 32) words = st.finalize256();
       else words = st.finalize64();
 
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < words.length; i++) writeLE64(words[i], out);
       return out;
@@ -521,8 +646,8 @@
 
     /**
      * Hash a complete message in one operation
-     * @param {Array} message - Message to hash as byte array
-     * @returns {Array} Hash digest as byte array
+     * @param {uint8[]} message - Message to hash as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Hash(message) {
       this.Init();
@@ -532,6 +657,8 @@
 
     /**
      * Install the 256-bit key.
+     * @param {uint8[]} key - 32 key bytes
+     * @returns {boolean} Always true
      */
     KeySetup(key) {
       if (!key || key.length !== 32) {
@@ -542,22 +669,31 @@
       return true;
     }
 
+    /**
+     * Select the digest size
+     * @param {int32} size - 8, 16 or 32 bytes
+     * @returns {void}
+     */
     SetOutputSize(size) {
-      if (![8, 16, 32].includes(size)) {
+      if (size !== 8 && size !== 16 && size !== 32) {
         throw new Error('HighwayHash supports only 8, 16, or 32 byte output sizes');
       }
       this.OutputSize = size;
     }
 
-    // Lower-case alias: this is the setter name the test engine looks for when a
-    // vector carries an "outputSize" property.
+    /**
+     * Lower-case alias: this is the setter name the test engine looks for when a
+     * vector carries an "outputSize" property.
+     * @param {int32} size - 8, 16 or 32 bytes
+     * @returns {void}
+     */
     setOutputSize(size) {
       this.SetOutputSize(size);
     }
 
     /**
      * Feed method required by test suite - processes input data
-     * @param {Array} data - Input data as byte array
+     * @param {uint8[]} data - Input data as byte array
      */
     Feed(data) {
       if (!this._state) this.Init();
@@ -566,7 +702,7 @@
 
     /**
      * Result method required by test suite - returns final hash
-     * @returns {Array} Hash digest as byte array
+     * @returns {uint8[]} Hash digest as byte array
      */
     Result() {
       return this.Final();

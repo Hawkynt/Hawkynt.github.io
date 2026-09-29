@@ -49,14 +49,15 @@
   const RATE_BYTES = OpCodes.Shr32(1600 - OpCodes.Shl32(STRENGTH, 1), 3);  // Rate = 168 bytes
 
   // Keccak round constants (24 total, we use the last 12 for Kangaroo12)
-  const KECCAK_RC = Object.freeze([
+  /** @type {BigInt[]} */
+  const KECCAK_RC = [
     0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
     0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
     0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
     0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
     0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
     0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n
-  ]);
+  ];
 
   // Domain separation bytes and markers. The three domain separators are
   // applied by the padding, not absorbed as data, so that they merge with the
@@ -64,72 +65,70 @@
   const SINGLE_DOMAIN = 0x07;              // Single node domain separator
   const LEAF_DOMAIN = 0x0B;                // Intermediate leaf domain separator
   const FINAL_DOMAIN = 0x06;               // Final node domain separator
-  const FINAL_MARKER = [0xFF, 0xFF];       // Final node marker, ahead of its domain
-  const FIRST = [3, 0, 0, 0, 0, 0, 0, 0];  // First node marker
+  /** @type {uint8[]} Final node marker, ahead of its domain */
+  const FINAL_MARKER = [0xFF, 0xFF];
+  /** @type {uint8[]} First node marker */
+  const FIRST = [3, 0, 0, 0, 0, 0, 0, 0];
+  /** @type {BigInt} */
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   // ===== HELPER FUNCTIONS =====
 
   /**
    * Right-encode a length value (variable-length encoding)
-   * @param {number} strLen - Length to encode
-   * @returns {Array} Encoded length as byte array
+   * @param {uint32} strLen - Length to encode
+   * @returns {uint8[]} Encoded length as byte array
    */
   function rightEncode(strLen) {
+    /** @type {uint8[]} */
+    const result = [];
     if (strLen === 0) {
-      return [0];
+      result.push(0);
+      return result;
     }
 
     let n = 0;
     let v = strLen;
     while (v > 0) {
       n++;
-      v = Math.floor(v / 256);
+      v = OpCodes.Shr32(v, 8);
     }
-
-    const result = new Array(n + 1);
-    result[n] = n;
 
     for (let i = 0; i < n; i++) {
-      result[i] = OpCodes.ToByte(OpCodes.Shr32(strLen, 8 * (n - i - 1)));
+      result.push(OpCodes.GetByte(strLen, n - i - 1));
     }
+    result.push(n);
 
     return result;
   }
 
   /**
    * Pack 8 bytes into a 64-bit BigInt (little-endian)
-   * @param {Array} bytes - Byte array
-   * @param {number} offset - Starting offset
+   * @param {uint8[]} bytes - Byte array
+   * @param {int32} offset - Starting offset
    * @returns {BigInt} 64-bit value
    */
   function pack64LE(bytes, offset) {
-    return (
-      OpCodes.ShiftLn(BigInt(bytes[offset + 7]), 56) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 48) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 40) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 32) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 24) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 16) |
-      OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 8) |
-      BigInt(bytes[offset])
-    );
+    let value = BigInt(bytes[offset]);
+    for (let k = 1; k < 8; k++) {
+      value = OpCodes.OrN(value, OpCodes.ShiftLn(BigInt(bytes[offset + k]), 8 * k));
+    }
+    return value;
   }
 
   /**
    * Unpack 64-bit BigInt into 8 bytes (little-endian)
    * @param {BigInt} value - 64-bit value
-   * @param {Array} bytes - Output byte array
-   * @param {number} offset - Starting offset
+   * @param {uint8[]} bytes - Output byte array
+   * @param {int32} offset - Starting offset
+   * @returns {void}
    */
   function unpack64LE(value, bytes, offset) {
-    bytes[offset] = Number(OpCodes.AndN(value, 0xFFn));
-    bytes[offset + 1] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn));
-    bytes[offset + 2] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn));
-    bytes[offset + 3] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn));
-    bytes[offset + 4] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn));
-    bytes[offset + 5] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn));
-    bytes[offset + 6] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48), 0xFFn));
-    bytes[offset + 7] = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56), 0xFFn));
+    for (let k = 0; k < 8; k++) {
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8 * k), 0xFFn));
+      bytes[offset + k] = b;
+    }
   }
 
   /**
@@ -145,21 +144,48 @@
     return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, b), c), d), e);
   }
 
+  /**
+   * Keccak chi term (NOT a) AND b for 64-bit lanes
+   * @param {BigInt} a - Lane to complement (0 .. 2^64-1)
+   * @param {BigInt} b - Lane (0 .. 2^64-1)
+   * @returns {BigInt} (~a) & b within 64 bits
+   */
+  function andNot64(a, b) {
+    return OpCodes.AndN(OpCodes.XorN(a, MASK64), b);
+  }
+
   // ===== KECCAK SPONGE IMPLEMENTATION =====
 
   /**
    * KangarooSponge - Keccak-p[1600, rounds] sponge construction
+   * @class
    */
   class KangarooSponge {
+    /**
+     * Initialize an empty sponge
+     * @param {int32} strength - Security strength in bits (capacity / 2)
+     * @param {int32} rounds - Keccak-p rounds
+     */
     constructor(strength, rounds) {
+      /** @type {int32} Rate in bytes */
       this.rateBytes = OpCodes.Shr32(1600 - OpCodes.Shl32(strength, 1), 3);
+      /** @type {int32} */
       this.rounds = rounds;
-      this.state = new Array(25).fill(0n);
-      this.queue = new Array(this.rateBytes).fill(0);
+      /** @type {BigInt[]} */
+      this.state = new Array(25);
+      /** @type {uint8[]} */
+      this.queue = new Array(this.rateBytes);
+      /** @type {int32} */
       this.bytesInQueue = 0;
+      /** @type {boolean} */
       this.squeezing = false;
+      this.initSponge();
     }
 
+    /**
+     * Reset to the empty sponge
+     * @returns {void}
+     */
     initSponge() {
       this.state.fill(0n);
       this.queue.fill(0);
@@ -167,6 +193,13 @@
       this.squeezing = false;
     }
 
+    /**
+     * Absorb bytes
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} off - First byte
+     * @param {int32} len - Number of bytes
+     * @returns {void}
+     */
     absorb(data, off, len) {
       if (this.squeezing) {
         throw new Error("Cannot absorb while squeezing");
@@ -196,11 +229,17 @@
       }
     }
 
+    /**
+     * XOR one rate block into the state and permute
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} off - First byte of the block
+     * @returns {void}
+     */
     absorbBlock(data, off) {
       const count = OpCodes.Shr32(this.rateBytes, 3);
       let offset = off;
       for (let i = 0; i < count; i++) {
-        this.state[i] ^= pack64LE(data, offset);
+        this.state[i] = OpCodes.XorN(this.state[i], pack64LE(data, offset));
         offset += 8;
       }
       this.keccakPermutation();
@@ -215,7 +254,8 @@
      * block and the padding then spills into a whole extra block, which is a
      * different - and wrong - message. This is the same collision that was
      * repaired in sha3.js and shake.js.
-     * @param {number} domainByte - 0x07 single node, 0x0B leaf, 0x06 final node
+     * @param {uint8} domainByte - 0x07 single node, 0x0B leaf, 0x06 final node
+     * @returns {void}
      */
     padAndSwitchToSqueezingPhase(domainByte) {
       if (typeof domainByte !== 'number') {
@@ -227,8 +267,8 @@
         this.queue[i] = 0;
       }
 
-      this.queue[this.bytesInQueue] ^= domainByte;
-      this.queue[this.rateBytes - 1] ^= 0x80;
+      this.queue[this.bytesInQueue] = OpCodes.Xor8(this.queue[this.bytesInQueue], domainByte);
+      this.queue[this.rateBytes - 1] = OpCodes.Xor8(this.queue[this.rateBytes - 1], 0x80);
 
       this.absorbBlock(this.queue, 0);
 
@@ -237,6 +277,13 @@
       this.squeezing = true;
     }
 
+    /**
+     * Squeeze bytes
+     * @param {uint8[]} output - Destination
+     * @param {int32} offset - First destination index
+     * @param {int32} outputLength - Number of bytes
+     * @returns {void}
+     */
     squeeze(output, offset, outputLength) {
       if (!this.squeezing) {
         // The domain separator is not known at this level, so squeezing an
@@ -262,6 +309,10 @@
       }
     }
 
+    /**
+     * Copy the rate part of the state into the queue
+     * @returns {void}
+     */
     extract() {
       const count = OpCodes.Shr32(this.rateBytes, 3);
       for (let i = 0; i < count; i++) {
@@ -269,8 +320,12 @@
       }
     }
 
+    /**
+     * Keccak-p[1600, rounds] on the state (the last rounds of Keccak-f)
+     * @returns {void}
+     */
     keccakPermutation() {
-      let A = this.state;
+      const A = this.state;
 
       const myBase = KECCAK_RC.length - this.rounds;
 
@@ -288,11 +343,13 @@
         const d3 = OpCodes.XorN(OpCodes.RotL64n(c4, 1), c2);
         const d4 = OpCodes.XorN(OpCodes.RotL64n(c0, 1), c3);
 
-        A[0] ^= d0; A[5] ^= d0; A[10] ^= d0; A[15] ^= d0; A[20] ^= d0;
-        A[1] ^= d1; A[6] ^= d1; A[11] ^= d1; A[16] ^= d1; A[21] ^= d1;
-        A[2] ^= d2; A[7] ^= d2; A[12] ^= d2; A[17] ^= d2; A[22] ^= d2;
-        A[3] ^= d3; A[8] ^= d3; A[13] ^= d3; A[18] ^= d3; A[23] ^= d3;
-        A[4] ^= d4; A[9] ^= d4; A[14] ^= d4; A[19] ^= d4; A[24] ^= d4;
+        for (let y = 0; y < 25; y += 5) {
+          A[y] = OpCodes.XorN(A[y], d0);
+          A[y + 1] = OpCodes.XorN(A[y + 1], d1);
+          A[y + 2] = OpCodes.XorN(A[y + 2], d2);
+          A[y + 3] = OpCodes.XorN(A[y + 3], d3);
+          A[y + 4] = OpCodes.XorN(A[y + 4], d4);
+        }
 
         // Rho and Pi combined
         const c1_temp = OpCodes.RotL64n(A[1], 1);
@@ -329,15 +386,15 @@
           const a3 = A[y + 3];
           const a4 = A[y + 4];
 
-          A[y] = OpCodes.XorN(a0, OpCodes.AndN(~a1, a2));
-          A[y + 1] = OpCodes.XorN(a1, OpCodes.AndN(~a2, a3));
-          A[y + 2] = OpCodes.XorN(a2, OpCodes.AndN(~a3, a4));
-          A[y + 3] = OpCodes.XorN(a3, OpCodes.AndN(~a4, a0));
-          A[y + 4] = OpCodes.XorN(a4, OpCodes.AndN(~a0, a1));
+          A[y] = OpCodes.XorN(a0, andNot64(a1, a2));
+          A[y + 1] = OpCodes.XorN(a1, andNot64(a2, a3));
+          A[y + 2] = OpCodes.XorN(a2, andNot64(a3, a4));
+          A[y + 3] = OpCodes.XorN(a3, andNot64(a4, a0));
+          A[y + 4] = OpCodes.XorN(a4, andNot64(a0, a1));
         }
 
         // Iota
-        A[0] ^= KECCAK_RC[myBase + round];
+        A[0] = OpCodes.XorN(A[0], KECCAK_RC[myBase + round]);
       }
     }
   }
@@ -346,10 +403,11 @@
 
   /**
    * Build standard test buffer (pattern of 00-FA repeating, i % 251)
-   * @param {number} length - Buffer length
-   * @returns {Array} Test buffer
+   * @param {int32} length - Buffer length
+   * @returns {uint8[]} Test buffer
    */
   function buildStandardBuffer(length) {
+    /** @type {uint8[]} */
     const result = new Array(length);
     for (let i = 0; i < length; i++) {
       result[i] = i % 251;
@@ -590,26 +648,45 @@
 
   /**
    * KangarooTwelve Instance
+   * @class
+   * @extends {IHashFunctionInstance}
    */
   class KangarooTwelveInstance extends IHashFunctionInstance {
+    /**
+     * Initialize a KangarooTwelve instance
+     * @param {KangarooTwelveAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {KangarooSponge} */
       this.treeSponge = new KangarooSponge(STRENGTH, ROUNDS);
+      /** @type {KangarooSponge} */
       this.leafSponge = new KangarooSponge(STRENGTH, ROUNDS);
-      this.chainLen = OpCodes.Shr32(STRENGTH, 2); // 32 bytes for K12
+      /** @type {int32} 32 bytes for K12 */
+      this.chainLen = OpCodes.Shr32(STRENGTH, 2);
 
+      /** @type {int32} */
       this._outputSize = DIGESTLEN;
+      /** @type {uint8[]} */
       this._personalization = null;
+      /** @type {uint8[]} */
       this.personalBytes = [];
 
+      /** @type {boolean} */
       this.squeezing = false;
+      /** @type {uint32} */
       this.currNode = 0;
+      /** @type {int32} */
       this.processed = 0;
 
       this.buildPersonal(null);
     }
 
+    /**
+     * Set the output length
+     * @param {int32} size - Output length in bytes (at least 1)
+     */
     set outputSize(size) {
       if (size < 1) {
         throw new Error("Output size must be at least 1 byte");
@@ -617,50 +694,69 @@
       this._outputSize = size;
     }
 
+    /**
+     * The output length
+     * @returns {int32} Output length in bytes
+     */
     get outputSize() {
       return this._outputSize;
     }
 
+    /**
+     * Set the customization string (null clears it)
+     * @param {uint8[]} pers - Customization bytes
+     */
     set personalization(pers) {
-      this._personalization = pers ? [...pers] : null;
+      if (pers === null || pers === undefined) {
+        this._personalization = null;
+      } else {
+        this._personalization = pers.slice();
+      }
       this.buildPersonal(this._personalization);
     }
 
+    /**
+     * The customization string
+     * @returns {uint8[]} Copy of it, or null when unset
+     */
     get personalization() {
-      return this._personalization ? [...this._personalization] : null;
-    }
-
-    buildPersonal(personal) {
-      const myLen = personal ? personal.length : 0;
-      const myEnc = rightEncode(myLen);
-
-      this.personalBytes = new Array(myLen + myEnc.length);
-      if (personal) {
-        for (let i = 0; i < myLen; i++) {
-          this.personalBytes[i] = personal[i];
-        }
-      }
-      for (let i = 0; i < myEnc.length; i++) {
-        this.personalBytes[myLen + i] = myEnc[i];
-      }
+      if (this._personalization === null) return null;
+      return this._personalization.slice();
     }
 
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
+     * Precompute C || length_encode(|C|)
+     * @param {uint8[]} personal - Customization bytes, or null
+     * @returns {void}
+     */
+    buildPersonal(personal) {
+      const myLen = personal !== null ? personal.length : 0;
+      const myEnc = rightEncode(myLen);
 
+      /** @type {uint8[]} */
+      const bytes = [];
+      for (let i = 0; i < myLen; i++) {
+        bytes.push(personal[i]);
+      }
+      for (let i = 0; i < myEnc.length; i++) {
+        bytes.push(myEnc[i]);
+      }
+      this.personalBytes = bytes;
+    }
+
+    /**
+     * Feed message bytes
+     * @param {uint8[]} data - Input data bytes
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       this.processData(data, 0, data.length);
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
+     * Finish the message and squeeze outputSize bytes; starts a new message
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       // Switch to squeezing if not already
       if (!this.squeezing) {
@@ -668,6 +764,7 @@
       }
 
       // Squeeze output
+      /** @type {uint8[]} */
       const output = new Array(this._outputSize);
       this.treeSponge.squeeze(output, 0, this._outputSize);
 
@@ -677,6 +774,13 @@
       return output;
     }
 
+    /**
+     * Absorb bytes into the current node, opening leaves at chunk boundaries
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} inOffset - First byte
+     * @param {int32} len - Number of bytes
+     * @returns {void}
+     */
     processData(data, inOffset, len) {
       if (this.squeezing) {
         throw new Error("Cannot absorb while squeezing");
@@ -712,6 +816,12 @@
       }
     }
 
+    /**
+     * Close the current chunk: the first chunk gets the FIRST marker, a leaf is
+     * finished and its chaining value absorbed into the tree
+     * @param {boolean} moreToCome - Whether another chunk follows
+     * @returns {void}
+     */
     switchLeaf(moreToCome) {
       if (this.currNode === 0) {
         // First node - absorb FIRST marker
@@ -719,6 +829,7 @@
       } else {
         // Intermediate node - pad with the leaf domain separator, then squeeze
         this.leafSponge.padAndSwitchToSqueezingPhase(LEAF_DOMAIN);
+        /** @type {uint8[]} */
         const hash = new Array(this.chainLen);
         this.leafSponge.squeeze(hash, 0, this.chainLen);
         this.treeSponge.absorb(hash, 0, this.chainLen);
@@ -731,6 +842,10 @@
       this.processed = 0;
     }
 
+    /**
+     * Absorb the customization, finish the tree and pad
+     * @returns {void}
+     */
     switchToSqueezing() {
       // Absorb personalization
       this.processData(this.personalBytes, 0, this.personalBytes.length);
@@ -754,6 +869,10 @@
       this.squeezing = true;
     }
 
+    /**
+     * Start a new message (the customization is kept)
+     * @returns {void}
+     */
     reset() {
       this.treeSponge.initSponge();
       this.leafSponge.initSponge();
