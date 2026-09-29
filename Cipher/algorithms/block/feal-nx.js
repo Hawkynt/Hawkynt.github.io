@@ -173,15 +173,20 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.key = null;
+      /** @type {uint8[]|null} */
       this.roundKeys = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       this.BlockSize = 8; // 64-bit blocks
       this.KeySize = 0;   // will be set when key is assigned
+      /** @type {int32} */
       this._rounds = 32;  // Default to secure 32 rounds
     }
 
-    // Property setter for rounds
+    /**
+     * Set the number of rounds
+     * @param {int32} numRounds - Round count (at least 4)
+     */
     set rounds(numRounds) {
       if (numRounds < 4) {
         throw new Error("Invalid rounds: " + numRounds + " (minimum 4 rounds required)");
@@ -194,6 +199,9 @@
       }
     }
 
+    /**
+     * @returns {int32} Round count
+     */
     get rounds() {
       return this._rounds;
     }
@@ -283,16 +291,32 @@
       return output;
     }
 
-    // FEAL S-box functions (same as FEAL-8)
+    /**
+     * FEAL S-box S0 (same as FEAL-8)
+     * @param {uint8} a - Byte a
+     * @param {uint8} b - Byte b
+     * @returns {uint8} RotL8((a + b) mod 256, 2)
+     */
     _S0(a, b) {
-      return OpCodes.RotL8(OpCodes.And32((a + b), 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32(OpCodes.Add32(a, b), 0xFF), 2);
     }
 
+    /**
+     * FEAL S-box S1 (same as FEAL-8)
+     * @param {uint8} a - Byte a
+     * @param {uint8} b - Byte b
+     * @returns {uint8} RotL8((a + b + 1) mod 256, 2)
+     */
     _S1(a, b) {
-      return OpCodes.RotL8(OpCodes.And32((a + b + 1), 0xFF), 2);
+      return OpCodes.RotL8(OpCodes.And32(OpCodes.Add32(OpCodes.Add32(a, b), 1), 0xFF), 2);
     }
 
-    // FEAL F-function - takes 4 bytes data and 2 bytes key
+    /**
+     * FEAL F-function - takes 4 bytes data and 2 bytes key
+     * @param {uint8[]} data - 4 data bytes
+     * @param {uint8[]} key - 2 subkey bytes
+     * @returns {uint8[]} 4 output bytes
+     */
     _F(data, key) {
       // data is 4 bytes [a[0], a[1], a[2], a[3]]
       // key is 2 bytes [b[0], b[1]]
@@ -302,8 +326,8 @@
       // FEAL F-function as per specification
       /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
-      const T = OpCodes.Xor32(OpCodes.XorN(a[3], a[2]), b[1]);
-      ret[1] = this._S1(OpCodes.Xor32(OpCodes.XorN(a[0], a[1]), b[0]), T);
+      const T = OpCodes.Xor32(OpCodes.Xor32(a[3], a[2]), b[1]);
+      ret[1] = this._S1(OpCodes.Xor32(OpCodes.Xor32(a[0], a[1]), b[0]), T);
       ret[0] = this._S0(a[0], ret[1]);
       ret[2] = this._S0(T, ret[1]);
       ret[3] = this._S1(ret[2], a[3]);
@@ -311,16 +335,21 @@
       return ret;
     }
 
-    // FEAL Fk function for key schedule - takes 4 bytes a and 4 bytes b
+    /**
+     * FEAL Fk function for key schedule - takes 4 bytes a and 4 bytes b
+     * @param {uint8[]} a - 4 bytes
+     * @param {uint8[]} b - 4 bytes
+     * @returns {uint8[]} 4 output bytes
+     */
     _Fk(a, b) {
       // a and b are 4-byte arrays
       /** @type {uint8[]} */
       const ret = [0, 0, 0, 0];
 
       // FEAL Fk function as per specification
-      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.Xor32(OpCodes.XorN(b[0], a[2]), a[3]));
+      ret[1] = this._S1(OpCodes.Xor32(a[0], a[1]), OpCodes.Xor32(OpCodes.Xor32(b[0], a[2]), a[3]));
       ret[0] = this._S0(a[0], OpCodes.Xor32(b[2], ret[1]));
-      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.Xor32(OpCodes.XorN(b[0], a[2]), a[3]))));
+      ret[2] = this._S0(OpCodes.Xor32(a[2], a[3]), OpCodes.Xor32(b[1], this._S1(OpCodes.Xor32(a[0], a[1]), OpCodes.Xor32(OpCodes.Xor32(b[0], a[2]), a[3]))));
       ret[3] = this._S1(a[3], OpCodes.Xor32(b[3], ret[2]));
 
       return ret;
@@ -330,10 +359,15 @@
     // Returns byte array of subkeys: 2*(numberOfRounds+4) bytes
     /**
      * @param {uint8[]} keyBytes - Key bytes
+     * @param {int32} numRounds - Round count
+     * @returns {uint8[]} Subkey bytes
      */
     _generateRoundKeys(keyBytes, numRounds) {
-      // Total subkeys needed: 2*(numberOfRounds+4) bytes
-      const subKeys = new Array(2 * (numRounds + 4));
+      // Subkeys needed: 2*(numberOfRounds+4) bytes; the loop below writes four
+      // bytes per iteration, so the array holds 4*numIterations bytes
+      const numIterations = Math.floor(numRounds / 2) + 4;
+      /** @type {uint8[]} */
+      const subKeys = new Array(4 * numIterations);
       for (let i = 0; i < subKeys.length; i++) {
         subKeys[i] = 0;
       }
@@ -349,10 +383,12 @@
       let XORTemp = [0, 0, 0, 0];
 
       // Core loop - generate subkeys
-      const numIterations = Math.floor(numRounds / 2) + 4;
+
       for (let i = 0; i < numIterations; i++) {
         // Compute XOR based on position (i % 3)
+        /** @type {uint8[]} */
         let XORResult;
+
         if (i % 3 === 0) {
           XORResult = OpCodes.XorArrays(BCurrent, KRX);
         } else if (i % 3 === 1) {
