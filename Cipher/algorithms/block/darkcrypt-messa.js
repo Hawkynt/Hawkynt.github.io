@@ -208,22 +208,59 @@
   const STACK_4018D0 = 0x30000;
   const STACK_CRYPT = 0x40000;
 
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} addr - Byte address
+   * @returns {uint8} The byte
+   */
   function rd8(mem, addr) { return mem[addr]; }
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} addr - Byte address
+   * @param {uint32} v - Value (low byte stored)
+   */
   function wr8(mem, addr, v) { mem[addr] = OpCodes.And32(v, 0xFF); }
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {int32} addr - Byte address
+   * @returns {uint32} Little-endian word
+   */
   function rd32(mem, addr) { return OpCodes.Pack32LE(mem[addr], mem[addr + 1], mem[addr + 2], mem[addr + 3]); }
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {int32} addr - Byte address
+   * @param {uint32} v - Word stored little-endian
+   */
   function wr32(mem, addr, v) {
     const b = OpCodes.Unpack32LE(v);
     mem[addr] = b[0]; mem[addr + 1] = b[1]; mem[addr + 2] = b[2]; mem[addr + 3] = b[3];
   }
 
+  /**
+   * 64-by-32-bit unsigned division (x86 DIV)
+   * @param {uint32} edx - High dividend word
+   * @param {uint32} eax - Low dividend word
+   * @param {uint32} divisor - Divisor
+   * @returns {uint32[]} [low 32 bits of quotient, remainder]
+   */
   function divmod(edx, eax, divisor) {
-    const dividend = (OpCodes.ShiftLn(BigInt(OpCodes.Shr32(edx, 0)), 32n)) | BigInt(OpCodes.Shr32(eax, 0));
+    const dividend = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.Shr32(edx, 0)), 32n), BigInt(OpCodes.Shr32(eax, 0)));
     const d = BigInt(OpCodes.Shr32(divisor, 0));
     const q = dividend / d, r = dividend % d;
-    return { q: OpCodes.Shr32(Number(OpCodes.AndN(q, 0xFFFFFFFFn)), 0), r: OpCodes.Shr32(Number(OpCodes.AndN(r, 0xFFFFFFFFn)), 0) };
+    /** @type {uint32} */
+    const qLow = Number(OpCodes.AndN(q, 0xFFFFFFFFn));
+    /** @type {uint32} */
+    const rLow = Number(OpCodes.AndN(r, 0xFFFFFFFFn));
+    /** @type {uint32[]} */
+    const result = [OpCodes.Shr32(qLow, 0), OpCodes.Shr32(rLow, 0)];
+    return result;
   }
 
+  /**
+   * @returns {uint8[]} Fresh working buffer with the fixed tables in place
+   */
   function makeMem() {
+    /** @type {uint8[]} */
     const mem = new Uint8Array(MEM_SIZE);
     mem.set(T1, 0x900c);
     mem.set(T2, 0x910c);
@@ -236,9 +273,15 @@
 
   // F(x, n): byte-substitute each of the 4 bytes of x through FSBOX1..4, repack
   // big-endian (top byte's substitute -> top byte of result), rotate left n.
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} eax - Input word
+   * @param {uint32} edx - Rotation amount (low byte)
+   * @returns {uint32} Substituted, rotated word
+   */
   function F(mem, eax, edx) {
     const b3 = OpCodes.And32((OpCodes.Shr32(eax, 24)), 0xFF), b2 = OpCodes.And32((OpCodes.Shr32(eax, 16)), 0xFF), b1 = OpCodes.And32((OpCodes.Shr32(eax, 8)), 0xFF), b0 = OpCodes.And32(eax, 0xFF);
-    const combined = OpCodes.Pack32BE(rd8(mem, 0xb10c + b3), rd8(mem, 0xb20c + b2), rd8(mem, 0xb30c + b1), rd8(mem, 0xb40c + b0));
+    const combined = OpCodes.Pack32BE(rd8(mem, OpCodes.Add32(0xb10c, b3)), rd8(mem, OpCodes.Add32(0xb20c, b2)), rd8(mem, OpCodes.Add32(0xb30c, b1)), rd8(mem, OpCodes.Add32(0xb40c, b0)));
     return OpCodes.RotL32(combined, OpCodes.And32(edx, 0xFF));
   }
 
@@ -247,136 +290,155 @@
   // in the key (via `edxIn`, a pointer into the caller's key buffer) and a
   // running hash accumulator (`eaxIn`, carried across successive calls), ending
   // in a long fixed post-mix. Returns the updated hash accumulator.
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} eaxIn - Hash accumulator
+   * @param {uint32} edxIn - Key pointer
+   * @returns {uint32} Updated hash accumulator
+   */
   function func401070(mem, eaxIn, edxIn) {
-    let eax = eaxIn, ebx = 0, ecx = 0, edx = edxIn, esi = 0, edi = 0, ebp = 0, esp = STACK_401070;
-    function rd32L(a) { return rd32(mem, a); }
-    function wr32L(a, v) { wr32(mem, a, v); }
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ecx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, esi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebp);
+    /** @type {uint32} */
+    let eax = eaxIn;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = edxIn;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let edi = 0;
+    /** @type {uint32} */
+    let ebp = 0;
+    /** @type {uint32} */
+    let esp = STACK_401070;
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ecx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, esi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebp);
       esp = OpCodes.Shr32(((esp - 0x34)), 0);
       edi = OpCodes.Shr32((eax), 0);
-      wr32L((OpCodes.Shr32(((esp)+0x10), 0)), edx);
+      wr32(mem, (OpCodes.Shr32(((esp)+0x10), 0)), edx);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, eax))), 0);
-      wr32L((OpCodes.Shr32(((esp)+0xc), 0)), eax);
+      wr32(mem, (OpCodes.Shr32(((esp)+0xc), 0)), eax);
       eax = OpCodes.Shr32(((OpCodes.Shr32(((eax)+0x0), 0))), 0);
       edx = OpCodes.Shr32(((OpCodes.Shr32(((edx)+0x0), 0))), 0);
 
       do {
           edx = OpCodes.Shr32(((OpCodes.Xor32(edx, edx))), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0xc), 0)))), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x18), 0)), edx);
-          wr32L((OpCodes.Shr32(((esp)+0x20), 0)), edx);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x18), 0)), edx);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x20), 0)), edx);
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-          edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+          edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
           eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
           edx = OpCodes.Shr32(((edx + eax)), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x2c), 0)), edx);
-          wr32L((OpCodes.Shr32(((esp)+0x14), 0)), eax);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x2c), 0)), edx);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x14), 0)), eax);
           eax = OpCodes.Shr32(((OpCodes.Shr32(((eax)+0x0), 0))), 0);
           edx = OpCodes.Shr32(((OpCodes.Shr32(((edx)), 0))), 0);
 
         do {
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x18), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x18), 0)))), 0);
             eax = OpCodes.Shr32(((eax + 1)), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x1c), 0)), eax);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x14), 0)))), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x30), 0)), eax);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x20), 0)))), 0);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x1c), 0)), eax);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x14), 0)))), 0);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x30), 0)), eax);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x20), 0)))), 0);
             eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
             esi = OpCodes.Shr32((eax), 0);
             eax = OpCodes.Shr32(((0 - eax)), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x28), 0)), 0xdeadbeef);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x28), 0)), 0xdeadbeef);
             eax = OpCodes.Shr32(((eax + 0xfc)), 0);
             ebx = OpCodes.Shr32(((OpCodes.Xor32(ebx, ebx))), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x24), 0)), eax);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x24), 0)), eax);
 
           do {
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
               edx = OpCodes.Shr32((OpCodes.Shr32(edx, 0x9)), 0);
               eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esi)+0xc000), 0)))), 0);
               edx = OpCodes.Shr32(((edx + eax)), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x30), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x30), 0)))), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(ebx, 0xFF))), 0xFF))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               ebp = OpCodes.Shr32((edi), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
               ebp = OpCodes.Shr32(((OpCodes.And32(ebp, 0x7))), 0);
               eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xff))), 0);
               ebp = OpCodes.Shr32((OpCodes.Shl32(ebp, 0xa)), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x4), 0)), edx);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(eax*4)+0x910c), 0)))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
-              ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), edx);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(ebp, OpCodes.Mul32(eax, 4)), 0x910c)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
+              ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32(((OpCodes.Shr32(((edx)+(ecx)), 0))), 0);
               edx = OpCodes.Shr32((0xb), 0);
               eax = F(mem, eax, edx);
               eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x10)), 0);
-              wr32L((OpCodes.Shr32(((esp)), 0)), eax);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x30), 0)))), 0);
+              wr32(mem, (OpCodes.Shr32(((esp)), 0)), eax);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x30), 0)))), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(ebx, 0xFF))), 0xFF))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
               ecx = OpCodes.Shr32((eax), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xff))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(ecx*4)+0x910c), 0)))), 0);
-              ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(ebp, OpCodes.Mul32(ecx, 4)), 0x910c)), 0)))), 0);
+              ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32(((OpCodes.Shr32(((edx)+(ecx)), 0))), 0);
               edx = OpCodes.Shr32((0xb), 0);
               eax = F(mem, eax, edx);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)), 0)))), 0);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
               edx = OpCodes.Shr32(((edx | eax)), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x30), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x30), 0)))), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(ebx, 0xFF))), 0xFF))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
               ecx = OpCodes.Shr32((eax), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xff))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x8), 0)), edx);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(ecx*4)+0x910c), 0)))), 0);
-              ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
+              wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), edx);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(ebp, OpCodes.Mul32(ecx, 4)), 0x910c)), 0)))), 0);
+              ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32(((OpCodes.Shr32(((edx)+(ecx)), 0))), 0);
               edx = OpCodes.Shr32((0xb), 0);
               eax = F(mem, eax, edx);
               eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
-              wr32L((OpCodes.Shr32(((esp)), 0)), eax);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x30), 0)))), 0);
+              wr32(mem, (OpCodes.Shr32(((esp)), 0)), eax);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x30), 0)))), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(ebx, 0xFF))), 0xFF))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
               ecx = OpCodes.Shr32((eax), 0);
               ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xff))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
-              edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(ecx*4)+0x910c), 0)))), 0);
-              ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x2c), 0)))), 0);
+              edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(ebp, OpCodes.Mul32(ecx, 4)), 0x910c)), 0)))), 0);
+              ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
               eax = OpCodes.Shr32(((OpCodes.Shr32(((edx)+(ebp)), 0))), 0);
               edx = OpCodes.Shr32((0xb), 0);
               eax = F(mem, eax, edx);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
-              eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((esp)), 0)))))), 0);
-              eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x8), 0))))), 0);
+              eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((esp)), 0)))))), 0);
+              eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0))))), 0);
               edx = OpCodes.Shr32((0xb), 0);
-              eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x4), 0))))), 0);
+              eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0))))), 0);
               eax = F(mem, eax, edx);
-              wr32L((OpCodes.Shr32(((esi)+0xc000), 0)), eax);
+              wr32(mem, (OpCodes.Shr32(((esi)+0xc000), 0)), eax);
               edx = OpCodes.Shr32((edi), 0);
               eax = OpCodes.Shr32((edi), 0);
               edx = OpCodes.Shr32((OpCodes.Shl32(edx, 0x6)), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
               eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
-              ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x1c), 0)))), 0);
+              ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x1c), 0)))), 0);
               edx = OpCodes.Shr32(((OpCodes.Shr32(((edi)+(eax)), 0))), 0);
               ecx = OpCodes.Shr32((Math.imul(ecx|0, edi|0)), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x8), 0)), edx);
+              wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), edx);
               edx = OpCodes.Shr32((0xb), 0);
               eax = OpCodes.Shr32((ecx), 0);
               eax = F(mem, eax, edx);
@@ -392,64 +454,64 @@
               eax = F(mem, eax, edx);
               eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
               edx = OpCodes.Shr32((0xb), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x4), 0)), eax);
+              wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), eax);
               eax = OpCodes.Shr32((ecx), 0);
               eax = F(mem, eax, edx);
-              ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+              ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
               eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
               edx = OpCodes.Shr32(((OpCodes.Xor32(edx, edx))), 0);
               ecx = OpCodes.Shr32(((OpCodes.Xor32(ecx, eax))), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x24), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x24), 0)))), 0);
               ecx = OpCodes.Shr32(((ecx + ebp)), 0);
               ebp = OpCodes.Shr32((0xfffffffe), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
-              { const _q = divmod(edx, eax, ebp); eax = _q.q; edx = _q.r; }
-              ecx = OpCodes.Shr32(((ecx + rd32L((OpCodes.Shr32(((esp)+0x28), 0))))), 0);
-              ecx = OpCodes.Shr32(((ecx + rd32L((OpCodes.Shr32(((esi)+0xc000), 0))))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
+              { const qr = divmod(edx, eax, ebp); eax = qr[0]; edx = qr[1]; }
+              ecx = OpCodes.Shr32(((ecx + rd32(mem, (OpCodes.Shr32(((esp)+0x28), 0))))), 0);
+              ecx = OpCodes.Shr32(((ecx + rd32(mem, (OpCodes.Shr32(((esi)+0xc000), 0))))), 0);
               ebp = OpCodes.Shr32(((OpCodes.Shr32(((edx)+0x1), 0))), 0);
               eax = OpCodes.Shr32((ecx), 0);
               edx = OpCodes.Shr32(((OpCodes.Xor32(edx, edx))), 0);
-              { const _q = divmod(edx, eax, ebp); eax = _q.q; edx = _q.r; }
-              wr32L((OpCodes.Shr32(((esp)+0x20), 0)), (rd32L((OpCodes.Shr32(((esp)+0x20), 0))) + 1));
+              { const qr = divmod(edx, eax, ebp); eax = qr[0]; edx = qr[1]; }
+              wr32(mem, (OpCodes.Shr32(((esp)+0x20), 0)), (rd32(mem, (OpCodes.Shr32(((esp)+0x20), 0))) + 1));
               esi = OpCodes.Shr32(((esi + 0x4)), 0);
               ebx = OpCodes.Shr32(((ebx + 0x8)), 0);
               eax = OpCodes.Shr32((edx), 0);
               edx = OpCodes.Shr32((0xb), 0);
               eax = OpCodes.Shr32(((OpCodes.Xor32(eax, 0xfedababa))), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x24), 0)), (rd32L((OpCodes.Shr32(((esp)+0x24), 0))) - 0x4));
+              wr32(mem, (OpCodes.Shr32(((esp)+0x24), 0)), (rd32(mem, (OpCodes.Shr32(((esp)+0x24), 0))) - 0x4));
               eax = F(mem, eax, edx);
-              eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x8), 0))))), 0);
-              wr32L((OpCodes.Shr32(((esp)+0x28), 0)), (rd32L((OpCodes.Shr32(((esp)+0x28), 0))) - 0x21524111));
+              eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0))))), 0);
+              wr32(mem, (OpCodes.Shr32(((esp)+0x28), 0)), (rd32(mem, (OpCodes.Shr32(((esp)+0x28), 0))) - 0x21524111));
               edi = OpCodes.Shr32(((edi + eax)), 0);
               // (flags not needed - loop bound handled by wrapping JS loop)
 
           } while (ebx !== 0x20);
-            ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x18), 0)))), 0);
+            ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x18), 0)))), 0);
             ebx = OpCodes.Shr32(((ebx + 1)), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x14), 0)), (rd32L((OpCodes.Shr32(((esp)+0x14), 0))) + 0x4));
-            wr32L((OpCodes.Shr32(((esp)+0x18), 0)), ebx);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x14), 0)), (rd32(mem, (OpCodes.Shr32(((esp)+0x14), 0))) + 0x4));
+            wr32(mem, (OpCodes.Shr32(((esp)+0x18), 0)), ebx);
             // (flags not needed - loop bound handled by wrapping JS loop)
 
         } while (ebx !== 0x10);
-          ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0xc), 0)))), 0);
+          ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0)))), 0);
           ebp = OpCodes.Shr32(((ebp + 1)), 0);
-          wr32L((OpCodes.Shr32(((esp)+0xc), 0)), ebp);
+          wr32(mem, (OpCodes.Shr32(((esp)+0xc), 0)), ebp);
           // (flags not needed - loop bound handled by wrapping JS loop)
 
       } while (ebp !== 0x40);
       edx = OpCodes.Shr32((0xb), 0);
       eax = OpCodes.Shr32((edi), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx)+(eax*4)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ecx, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -458,16 +520,16 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, ebx))), 0);
@@ -479,13 +541,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -497,13 +559,13 @@
       eax = OpCodes.Shr32(((eax + esi)), 0);
       ebp = OpCodes.Shr32((esi), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, esi))), 0);
@@ -520,14 +582,14 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
       ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x10)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((ebx), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -537,13 +599,13 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebx)+(eax*4)), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ebx, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, ebx))), 0);
@@ -561,13 +623,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -578,13 +640,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ebp)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -597,13 +659,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebp = OpCodes.Shr32((OpCodes.Shl32(ebp, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -612,13 +674,13 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)+(eax*4)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(esi, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       esi = OpCodes.Shr32(((OpCodes.Xor32(esi, eax))), 0);
@@ -630,18 +692,18 @@
       edx = OpCodes.Shr32((0xb), 0);
       ecx = OpCodes.Shr32(((OpCodes.Xor32(ecx, eax))), 0);
       eax = OpCodes.Shr32((edi), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(eax*4)), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ebp, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebp = OpCodes.Shr32((OpCodes.Shl32(ebp, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -652,17 +714,17 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       esi = OpCodes.Shr32(((OpCodes.Xor32(esi, eax))), 0);
-      eax = OpCodes.Shr32(((OpCodes.Shr32(((esi)+(ebp)+0xdeadbeef), 0))), 0);
+      eax = OpCodes.Shr32(((OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(esi, ebp), 0xdeadbeef)), 0))), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       edx = OpCodes.Shr32((0xb), 0);
       eax = OpCodes.Shr32(((eax + edi)), 0);
@@ -674,17 +736,17 @@
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebp = OpCodes.Shr32((OpCodes.Shl32(ebp, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -696,13 +758,13 @@
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       esi = OpCodes.Shr32((ecx), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, ecx))), 0);
@@ -713,13 +775,13 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx)+(eax*4)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ecx, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -730,13 +792,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, esi))), 0);
@@ -750,17 +812,17 @@
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -771,13 +833,13 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       ecx = OpCodes.Shr32(((OpCodes.Xor32(ecx, eax))), 0);
@@ -789,20 +851,20 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      wr32L((OpCodes.Shr32(((esp)+0x8), 0)), eax);
+      wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), eax);
       eax = OpCodes.Shr32((edi), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ebp = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+(eax*4)), 0)))), 0);
+      ebp = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ebp, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + ecx)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ebp = OpCodes.Shr32((OpCodes.Shl32(ebp, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -814,13 +876,13 @@
       eax = OpCodes.Shr32(((eax + ecx)), 0);
       esi = OpCodes.Shr32((ecx), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, ecx))), 0);
@@ -832,7 +894,7 @@
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
@@ -840,21 +902,21 @@
       eax = OpCodes.Shr32(((eax + esi)), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       esi = OpCodes.Shr32((OpCodes.Shr32(esi, 0x10)), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       esi = OpCodes.Shr32(((esi | ecx)), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx)+(eax*4)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(ecx, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       ebp = OpCodes.Shr32(((ebp - 0x21524111)), 0);
@@ -868,17 +930,17 @@
       esi = OpCodes.Shr32(((esi - 0x21524111)), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
       esi = OpCodes.Shr32((OpCodes.Shr32(esi, 0x9)), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       ebp = OpCodes.Shr32(((OpCodes.Xor32(ebp, esi))), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x10), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0)))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
       eax = OpCodes.Shr32(((eax + esi)), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x10)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
       edx = OpCodes.Shr32((0xb), 0);
@@ -887,13 +949,13 @@
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       edx = OpCodes.Shr32((0xb), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)+(eax*4)), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(esi, OpCodes.Mul32(eax, 4))), 0)))), 0);
       eax = OpCodes.Shr32((edi), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32(((OpCodes.And32(eax, 0xf))), 0);
       eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
-      eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)+0x10), 0))))), 0);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)), 0)))), 0);
+      eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)+0x10), 0))))), 0);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)), 0)))), 0);
       esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, esi))), 0);
@@ -904,14 +966,14 @@
       eax = OpCodes.Shr32(((eax + edi)), 0);
       eax = F(mem, eax, edx);
       eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
-      eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((esp)+0x8), 0)))))), 0);
+      eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))))), 0);
       eax = OpCodes.Shr32(((eax + ebx)), 0);
       esp = OpCodes.Shr32(((esp + 0x34)), 0);
-      ebp = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      edi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      esi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      ecx = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      ebx = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebp = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      edi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      esi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ecx = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebx = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
 
     return eax;
   }
@@ -920,18 +982,35 @@
   // 256-byte scratch window (this function's own local stack), keyed by the
   // 64-byte buffer pointed to by `eaxIn`, over 1024 iterations; folds its
   // final state back into the round table (0xc000..0xc100) via F(., 11).
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} eaxIn - Buffer pointer
+   */
   function func4018d0(mem, eaxIn) {
-    let eax = eaxIn, ebx = 0, ecx = 0, edx = 0, esi = 0, edi = 0, ebp = 0, esp = STACK_4018D0;
-    function rd32L(a) { return rd32(mem, a); }
-    function wr32L(a, v) { wr32(mem, a, v); }
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ecx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, esi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebp);
+    /** @type {uint32} */
+    let eax = eaxIn;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = 0;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let edi = 0;
+    /** @type {uint32} */
+    let ebp = 0;
+    /** @type {uint32} */
+    let esp = STACK_4018D0;
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ecx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, esi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebp);
       esp = OpCodes.Shr32(((esp - 0x10)), 0);
-      wr32L((OpCodes.Shr32(((esp)+0xc), 0)), eax);
+      wr32(mem, (OpCodes.Shr32(((esp)+0xc), 0)), eax);
       ebx = OpCodes.Shr32((0x1), 0);
       edi = OpCodes.Shr32(((OpCodes.Xor32(edi, edi))), 0);
       eax = OpCodes.Shr32(((OpCodes.Shr32(((eax)+0x0), 0))), 0);
@@ -942,25 +1021,25 @@
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x3f))), 0);
           eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x2)), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x4), 0)), eax);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), eax);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
           eax = F(mem, eax, edx);
           ecx = OpCodes.Shr32((eax), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
           ecx = OpCodes.Shr32((OpCodes.Shl32(ecx, 0x10)), 0);
           eax = F(mem, eax, edx);
           eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
           ecx = OpCodes.Shr32(((ecx | eax)), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
           eax = F(mem, eax, edx);
           esi = OpCodes.Shr32((eax), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((eax)+0xc000), 0)))), 0);
           esi = OpCodes.Shr32((OpCodes.Shl32(esi, 0x6)), 0);
           eax = F(mem, eax, edx);
           eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
@@ -968,44 +1047,44 @@
           ebp = OpCodes.Shr32((ebx), 0);
           ecx = OpCodes.Shr32(((ecx + eax)), 0);
           esi = OpCodes.Shr32(((OpCodes.Shr32(((ebx)+0x1), 0))), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x8), 0)), ecx);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), ecx);
           ecx = OpCodes.Shr32((esi), 0);
           ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0x3f))), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx*4)+0xc000), 0)))), 0);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ecx, 4), 0xc000)), 0)))), 0);
           eax = F(mem, eax, edx);
           eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x10)), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x4), 0)), eax);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx*4)+0xc000), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), eax);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ecx, 4), 0xc000)), 0)))), 0);
           eax = F(mem, eax, edx);
-          edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+          edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
           eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
           edx = OpCodes.Shr32(((edx | eax)), 0);
-          wr32L((OpCodes.Shr32(((esp)), 0)), edx);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx*4)+0xc000), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)), 0)), edx);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ecx, 4), 0xc000)), 0)))), 0);
           edx = OpCodes.Shr32((0xb), 0);
           eax = F(mem, eax, edx);
           eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x4), 0)), eax);
-          eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx*4)+0xc000), 0)))), 0);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), eax);
+          eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ecx, 4), 0xc000)), 0)))), 0);
           ebp = OpCodes.Shr32(((OpCodes.And32(ebp, 0x3f))), 0);
           eax = F(mem, eax, edx);
           eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
           ebx = OpCodes.Shr32(((OpCodes.And32(ebx, 0xf))), 0);
-          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((esp)+0x4), 0)))))), 0);
+          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))))), 0);
           ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x2)), 0);
-          eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((esp)), 0))))), 0);
-          ebx = OpCodes.Shr32(((ebx + rd32L((OpCodes.Shr32(((esp)+0xc), 0))))), 0);
-          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((esp)+0x8), 0)))))), 0);
+          eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((esp)), 0))))), 0);
+          ebx = OpCodes.Shr32(((ebx + rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0))))), 0);
+          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))))), 0);
           ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32((0xb), 0xFF))), 0);
-          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((ebx)), 0)))))), 0);
+          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((ebx)), 0)))))), 0);
           edx = OpCodes.Shr32((0x8), 0);
           eax = OpCodes.Shr32((OpCodes.RotL32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
-          eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((ebp*4)+0xc000), 0))))), 0);
+          eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ebp, 4), 0xc000)), 0))))), 0);
           eax = F(mem, eax, edx);
-          wr32L((OpCodes.Shr32(((ebp*4)+0xc000), 0)), eax);
+          wr32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ebp, 4), 0xc000)), 0)), eax);
           ebx = OpCodes.Shr32((esi), 0);
           edi = OpCodes.Shr32(((edi + 1)), 0);
 
@@ -1013,27 +1092,44 @@
 
   }
 
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint8[]} keyBytes64 - 64 key bytes
+   */
   function setup(mem, keyBytes64) {
-    let eax = 0, ebx = 0, ecx = 0, edx = 0, esi = 0, edi = 0, ebp = 0, esp = STACK_SETUP;
-    function rd32L(a) { return rd32(mem, a); }
-    function wr32L(a, v) { wr32(mem, a, v); }
+    /** @type {uint32} */
+    let eax = 0;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = 0;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let edi = 0;
+    /** @type {uint32} */
+    let ebp = 0;
+    /** @type {uint32} */
+    let esp = STACK_SETUP;
     const KEYSRC = 0x50000;
     for (let i = 0; i < 64; i++) wr8(mem, KEYSRC + i, keyBytes64[i]);
-    wr32L(esp + 4, KEYSRC); // pass the key-pointer argument on the working stack
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, esi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebp);
+    wr32(mem, esp + 4, KEYSRC); // pass the key-pointer argument on the working stack
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, esi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebp);
       esp = OpCodes.Shr32(((esp - 0x40)), 0);
-      edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x54), 0)))), 0);
+      edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x54), 0)))), 0);
       eax = OpCodes.Shr32(((OpCodes.Xor32(eax, eax))), 0);
       eax = OpCodes.Shr32(((OpCodes.Shr32(((eax)), 0))), 0);
 
       do {
           eax = OpCodes.Shr32(((eax + 1)), 0);
-          ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((edx)), 0)))), 0);
+          ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((edx)), 0)))), 0);
           edx = OpCodes.Shr32(((edx + 0x4)), 0);
-          wr32L((OpCodes.Shr32(((esp)+(eax*4)-0x4), 0)), ecx);
+          wr32(mem, (OpCodes.Shr32((OpCodes.Sub32(OpCodes.Add32(esp, OpCodes.Mul32(eax, 4)), 0x4)), 0)), ecx);
           // (flags not needed - loop bound handled by wrapping JS loop)
 
       } while (eax !== 0x10);
@@ -1043,7 +1139,7 @@
       edx = OpCodes.Shr32(((OpCodes.Shr32(((edx)+0x0), 0))), 0);
 
       do {
-          wr32L((OpCodes.Shr32(((edx)+0xc000), 0)), eax);
+          wr32(mem, (OpCodes.Shr32(((edx)+0xc000), 0)), eax);
           eax = OpCodes.Shr32(((eax + 1)), 0);
           edx = OpCodes.Shr32(((edx + 0x4)), 0);
           // (flags not needed - loop bound handled by wrapping JS loop)
@@ -1058,14 +1154,14 @@
           ecx = OpCodes.Shr32(((OpCodes.Xor32(ecx, ecx))), 0);
 
         do {
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx)+0xc000), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((ecx)+0xc000), 0)))), 0);
             eax = OpCodes.Shr32(((OpCodes.And32(eax, ebp))), 0);
             eax = OpCodes.Shr32((rd8(mem, (OpCodes.Shr32(((eax)+0x900c), 0)))), 0);
             edx = OpCodes.Shr32((edi), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebx)+(eax*4)+0x910c), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Add32(ebx, OpCodes.Mul32(eax, 4)), 0x910c)), 0)))), 0);
             ecx = OpCodes.Shr32(((ecx + 0x4)), 0);
             eax = F(mem, eax, edx);
-            wr32L((OpCodes.Shr32(((ecx)+0xbffc), 0)), eax);
+            wr32(mem, (OpCodes.Shr32(((ecx)+0xbffc), 0)), eax);
 
         } while (ecx !== 0x100);
           esi = OpCodes.Shr32(((esi + 0x400)), 0);
@@ -1091,19 +1187,19 @@
         if (round !== 9) {
           if (round !== 0) { ecx = 0; do {
               edx = OpCodes.Shr32((edi), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
               ecx = OpCodes.Shr32(((ecx + 0x4)), 0);
               eax = F(mem, eax, edx);
-              wr32L((OpCodes.Shr32(((esp)+(ecx)-0x4), 0)), eax);
+              wr32(mem, (OpCodes.Shr32((OpCodes.Sub32(OpCodes.Add32(esp, ecx), 0x4)), 0)), eax);
 
           } while (ecx !== 0x40); }
           eax = esp; func4018d0(mem, eax);
           ecx = 0; do {
               edx = OpCodes.Shr32((edi), 0);
-              eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+              eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
               ecx = OpCodes.Shr32(((ecx + 0x4)), 0);
               eax = F(mem, eax, edx);
-              wr32L((OpCodes.Shr32(((esp)+(ecx)-0x4), 0)), eax);
+              wr32(mem, (OpCodes.Shr32((OpCodes.Sub32(OpCodes.Add32(esp, ecx), 0x4)), 0)), eax);
 
           } while (ecx !== 0x40);
         }
@@ -1114,13 +1210,13 @@
       ebp = 0x0B;
       for (let j = 0; j < 10; j++) {
         ecx = 0; do {
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             edx = OpCodes.Shr32((OpCodes.Shl32(edx, 0x10)), 0);
             eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
-            ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             edx = OpCodes.Shr32(((edx | eax)), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             ebx = OpCodes.Shr32((OpCodes.Shr32(ebx, 0x9)), 0);
             eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
             eax = OpCodes.Shr32(((OpCodes.Xor32(eax, ebx))), 0);
@@ -1128,19 +1224,19 @@
             edx = OpCodes.Shr32((ebp), 0);
             ecx = OpCodes.Shr32(((ecx + 0x4)), 0);
             eax = F(mem, eax, edx);
-            wr32L((OpCodes.Shr32(((esp)+(ecx)-0x4), 0)), eax);
+            wr32(mem, (OpCodes.Shr32((OpCodes.Sub32(OpCodes.Add32(esp, ecx), 0x4)), 0)), eax);
             // (flags not needed - loop bound handled by wrapping JS loop)
 
         } while (ecx !== 0x40);
         eax = esp; func4018d0(mem, eax);
         ecx = 0; do {
-            ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             ebx = OpCodes.Shr32((OpCodes.Shl32(ebx, 0x10)), 0);
             eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x10)), 0);
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             ebx = OpCodes.Shr32(((ebx | eax)), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+(ecx)), 0)))), 0);
             edx = OpCodes.Shr32((OpCodes.Shl32(edx, 0x6)), 0);
             eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
             eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
@@ -1148,7 +1244,7 @@
             eax = OpCodes.Shr32(((eax + ebx)), 0);
             ecx = OpCodes.Shr32(((ecx + 0x4)), 0);
             eax = F(mem, eax, edx);
-            wr32L((OpCodes.Shr32(((esp)+(ecx)-0x4), 0)), eax);
+            wr32(mem, (OpCodes.Shr32((OpCodes.Sub32(OpCodes.Add32(esp, ecx), 0x4)), 0)), eax);
             // (flags not needed - loop bound handled by wrapping JS loop)
 
         } while (ecx !== 0x40);
@@ -1162,23 +1258,40 @@
 
   }
 
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} blockPtr - Address of the 8-byte block, encrypted in place
+   */
   function crypt(mem, blockPtr) {
-    let eax = 0, ebx = 0, ecx = 0, edx = 0, esi = 0, edi = 0, ebp = 0, esp = STACK_CRYPT;
-    function rd32L(a) { return rd32(mem, a); }
-    function wr32L(a, v) { wr32(mem, a, v); }
-    wr32L(esp + 4, blockPtr);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, esi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebp);
+    /** @type {uint32} */
+    let eax = 0;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = 0;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let edi = 0;
+    /** @type {uint32} */
+    let ebp = 0;
+    /** @type {uint32} */
+    let esp = STACK_CRYPT;
+    wr32(mem, esp + 4, blockPtr);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, esi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebp);
       esp = OpCodes.Shr32(((esp - 0x10)), 0);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x24), 0)))), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x24), 0)))), 0);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x24), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x24), 0)))), 0);
       edi = OpCodes.Shr32(((OpCodes.Xor32(edi, edi))), 0);
       ebp = OpCodes.Shr32((0x80), 0);
-      wr32L((OpCodes.Shr32(((esp)+0xc), 0)), edi);
-      ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ecx)+0x4), 0)))), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebx)), 0)))), 0);
+      wr32(mem, (OpCodes.Shr32(((esp)+0xc), 0)), edi);
+      ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((ecx)+0x4), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((ebx)), 0)))), 0);
 
       do {
           edx = OpCodes.Shr32((ebx), 0);
@@ -1188,8 +1301,8 @@
           eax = OpCodes.Shr32((ebx), 0);
           esi = OpCodes.Shr32(((OpCodes.Xor32(esi, edx))), 0);
           edx = OpCodes.Shr32(((OpCodes.Shr32(((ebx)+(esi)), 0))), 0);
-          esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0xc), 0)))), 0);
-          edx = OpCodes.Shr32(((edx + rd32L((OpCodes.Shr32(((esi)+0xc000), 0))))), 0);
+          esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0)))), 0);
+          edx = OpCodes.Shr32(((edx + rd32(mem, (OpCodes.Shr32(((esi)+0xc000), 0))))), 0);
           esi = OpCodes.Shr32((edx), 0);
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1f))), 0);
           esi = OpCodes.Shr32(((OpCodes.Xor32(esi, ecx))), 0);
@@ -1199,30 +1312,30 @@
           esi = OpCodes.Shr32((eax), 0);
           ecx = OpCodes.Shr32((eax), 0);
           eax = OpCodes.Shr32((OpCodes.Shl32(eax, 0x6)), 0);
-          wr32L((OpCodes.Shr32(((esp)), 0)), eax);
+          wr32(mem, (OpCodes.Shr32(((esp)), 0)), eax);
           eax = OpCodes.Shr32((esi), 0);
           eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
-          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32L((OpCodes.Shr32(((esp)), 0)))))), 0);
+          eax = OpCodes.Shr32(((OpCodes.Xor32(eax, rd32(mem, (OpCodes.Shr32(((esp)), 0)))))), 0);
           edx = OpCodes.Shr32(((OpCodes.Shr32(((esi)+(eax)), 0))), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x8), 0)), edx);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), edx);
           eax = OpCodes.Shr32((edx), 0);
-          edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0xc), 0)))), 0);
-          eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((edx)+0xc004), 0))))), 0);
+          edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0)))), 0);
+          eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((edx)+0xc004), 0))))), 0);
           edx = OpCodes.Shr32((0xb), 0);
           eax = F(mem, eax, edx);
           ebx = OpCodes.Shr32(((OpCodes.Xor32(ebx, eax))), 0);
 
           eax = OpCodes.Shr32((edi), 0);
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1))), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x4), 0)), eax);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), eax);
           eax = OpCodes.Shr32((esi), 0);
-          edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+          edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1f))), 0);
           // (flags not needed - loop bound handled by wrapping JS loop)
 
         if (edx === 1) {
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x8), 0)))), 0);
-            ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax*4)+0xc000), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))), 0);
+            ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(eax, 4), 0xc000)), 0)))), 0);
             ecx = OpCodes.Shr32(((ecx + edx)), 0);
             ebx = OpCodes.Shr32(((ebx + ecx)), 0);
             ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(eax, 0xFF))), 0xFF))), 0);
@@ -1236,13 +1349,13 @@
             ebx = OpCodes.Shr32((eax), 0);
             ecx = OpCodes.Shr32(((ecx + eax)), 0);
             eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1f))), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax*4)+0xc000), 0)))), 0);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(eax, 4), 0xc000)), 0)))), 0);
             edx = OpCodes.Shr32((0xb), 0);
             eax = OpCodes.Shr32(((eax + ecx)), 0);
 
         } else {
-            ecx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x8), 0)))), 0);
-            ecx = OpCodes.Shr32(((ecx + rd32L((OpCodes.Shr32(((ebp)+0xc000), 0))))), 0);
+            ecx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))), 0);
+            ecx = OpCodes.Shr32(((ecx + rd32(mem, (OpCodes.Shr32(((ebp)+0xc000), 0))))), 0);
             ebx = OpCodes.Shr32(((ebx + ecx)), 0);
             ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0xFFFFFF00))|(OpCodes.And32(((OpCodes.And32(eax, 0xFF))), 0xFF))), 0);
             eax = OpCodes.Shr32((ebx), 0);
@@ -1255,14 +1368,14 @@
             ecx = OpCodes.Shr32(((OpCodes.Xor32(ecx, edx))), 0);
             eax = OpCodes.Shr32(((eax + ecx)), 0);
             edx = OpCodes.Shr32((0xb), 0);
-            eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((ebp)+0xc004), 0))))), 0);
+            eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((ebp)+0xc004), 0))))), 0);
             ebp = OpCodes.Shr32(((ebp + 0x8)), 0);
 
         }
           eax = F(mem, eax, edx);
           ecx = OpCodes.Shr32(((OpCodes.Shr32(((esi)+(eax)), 0))), 0);
 
-          wr32L((OpCodes.Shr32(((esp)+0xc), 0)), (rd32L((OpCodes.Shr32(((esp)+0xc), 0))) + 0x4));
+          wr32(mem, (OpCodes.Shr32(((esp)+0xc), 0)), (rd32(mem, (OpCodes.Shr32(((esp)+0xc), 0))) + 0x4));
           eax = OpCodes.Shr32((ebx), 0);
           edi = OpCodes.Shr32(((edi + 1)), 0);
           ebx = OpCodes.Shr32((ecx), 0);
@@ -1270,35 +1383,52 @@
           // (flags not needed - loop bound handled by wrapping JS loop)
 
       } while (edi !== 0x1F);
-      edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x24), 0)))), 0);
-      wr32L((OpCodes.Shr32(((edx)+0x4), 0)), eax);
-      wr32L((OpCodes.Shr32(((edx)), 0)), ebx);
+      edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x24), 0)))), 0);
+      wr32(mem, (OpCodes.Shr32(((edx)+0x4), 0)), eax);
+      wr32(mem, (OpCodes.Shr32(((edx)), 0)), ebx);
       esp = OpCodes.Shr32(((esp + 0x10)), 0);
-      ebp = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      edi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      esi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      ebx = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebp = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      edi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      esi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebx = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
 
 
   }
 
+  /**
+   * @param {uint8[]} mem - Working buffer
+   * @param {uint32} blockPtr - Address of the 8-byte block, decrypted in place
+   */
   function decrypt(mem, blockPtr) {
-    let eax = 0, ebx = 0, ecx = 0, edx = 0, esi = 0, edi = 0, ebp = 0, esp = STACK_CRYPT;
-    function rd32L(a) { return rd32(mem, a); }
-    function wr32L(a, v) { wr32(mem, a, v); }
-    wr32L(esp + 4, blockPtr);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebx);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, esi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, edi);
-      esp = OpCodes.Shr32((esp - 4), 0); wr32L(esp, ebp);
+    /** @type {uint32} */
+    let eax = 0;
+    /** @type {uint32} */
+    let ebx = 0;
+    /** @type {uint32} */
+    let ecx = 0;
+    /** @type {uint32} */
+    let edx = 0;
+    /** @type {uint32} */
+    let esi = 0;
+    /** @type {uint32} */
+    let edi = 0;
+    /** @type {uint32} */
+    let ebp = 0;
+    /** @type {uint32} */
+    let esp = STACK_CRYPT;
+    wr32(mem, esp + 4, blockPtr);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebx);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, esi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, edi);
+      esp = OpCodes.Shr32((esp - 4), 0); wr32(mem, esp, ebp);
       esp = OpCodes.Shr32(((esp - 0xc)), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x20), 0)))), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x20), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x20), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x20), 0)))), 0);
       edi = OpCodes.Shr32((0x1e), 0);
-      wr32L((OpCodes.Shr32(((esp)+0x8), 0)), 0x100);
+      wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), 0x100);
       ebp = OpCodes.Shr32((0x78), 0);
-      ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebx)+0x4), 0)))), 0);
-      esi = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esi)), 0)))), 0);
+      ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((ebx)+0x4), 0)))), 0);
+      esi = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esi)), 0)))), 0);
       eax = OpCodes.Shr32(((OpCodes.Shr32(((eax)+0x0), 0))), 0);
       edx = OpCodes.Shr32(((OpCodes.Shr32(((edx)), 0))), 0);
 
@@ -1307,20 +1437,20 @@
           esi = OpCodes.Shr32((ebx), 0);
           edx = OpCodes.Shr32((esi), 0);
           edx = OpCodes.Shr32((OpCodes.Shr32(edx, 0x9)), 0);
-          wr32L((OpCodes.Shr32(((esp)), 0)), edx);
+          wr32(mem, (OpCodes.Shr32(((esp)), 0)), edx);
           edx = OpCodes.Shr32((esi), 0);
           edx = OpCodes.Shr32((OpCodes.Shl32(edx, 0x6)), 0);
           eax = OpCodes.Shr32((edi), 0);
-          edx = OpCodes.Shr32(((OpCodes.Xor32(edx, rd32L((OpCodes.Shr32(((esp)), 0)))))), 0);
+          edx = OpCodes.Shr32(((OpCodes.Xor32(edx, rd32(mem, (OpCodes.Shr32(((esp)), 0)))))), 0);
           eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1))), 0);
           edx = OpCodes.Shr32(((edx + esi)), 0);
           ebx = OpCodes.Shr32((ecx), 0);
-          wr32L((OpCodes.Shr32(((esp)+0x4), 0)), edx);
+          wr32(mem, (OpCodes.Shr32(((esp)+0x4), 0)), edx);
 
         if (eax === 1) {
             eax = OpCodes.Shr32((esi), 0);
             eax = OpCodes.Shr32(((OpCodes.And32(eax, 0x1f))), 0);
-            ebx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((eax*4)+0xc000), 0)))), 0);
+            ebx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(eax, 4), 0xc000)), 0)))), 0);
             eax = OpCodes.Shr32(((OpCodes.Shr32(((edx)+(ebx)), 0))), 0);
             edx = OpCodes.Shr32((0xb), 0);
             ebx = OpCodes.Shr32((ecx), 0);
@@ -1335,15 +1465,15 @@
             ecx = OpCodes.Shr32((ebx), 0);
             ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0x1f))), 0);
             eax = OpCodes.Shr32((esi), 0);
-            edx = OpCodes.Shr32(((edx + rd32L((OpCodes.Shr32(((ecx*4)+0xc000), 0))))), 0);
+            edx = OpCodes.Shr32(((edx + rd32(mem, (OpCodes.Shr32((OpCodes.Add32(OpCodes.Mul32(ecx, 4), 0xc000)), 0))))), 0);
             eax = OpCodes.Shr32((OpCodes.RotR32(eax, (OpCodes.And32(ecx, 0xFF)))), 0);
 
         } else {
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x8), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))), 0);
             edx = OpCodes.Shr32(((edx - 0x8)), 0);
-            eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x4), 0)))), 0);
-            eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((edx)+0xc004), 0))))), 0);
-            wr32L((OpCodes.Shr32(((esp)+0x8), 0)), edx);
+            eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x4), 0)))), 0);
+            eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((edx)+0xc004), 0))))), 0);
+            wr32(mem, (OpCodes.Shr32(((esp)+0x8), 0)), edx);
             edx = OpCodes.Shr32((0xb), 0);
             eax = F(mem, eax, edx);
             ebx = OpCodes.Shr32(((ebx - eax)), 0);
@@ -1352,10 +1482,10 @@
             edx = OpCodes.Shr32((OpCodes.Shl32(edx, 0x6)), 0);
             eax = OpCodes.Shr32((OpCodes.Shr32(eax, 0x9)), 0);
             eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x8), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x8), 0)))), 0);
             ecx = OpCodes.Shr32((ebx), 0);
             eax = OpCodes.Shr32(((eax + ebx)), 0);
-            edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((edx)+0xc000), 0)))), 0);
+            edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((edx)+0xc000), 0)))), 0);
             ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0x1f))), 0);
             edx = OpCodes.Shr32(((edx + eax)), 0);
             eax = OpCodes.Shr32((esi), 0);
@@ -1371,7 +1501,7 @@
           eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
           eax = OpCodes.Shr32(((eax + ebx)), 0);
           edx = OpCodes.Shr32((0xb), 0);
-          eax = OpCodes.Shr32(((eax + rd32L((OpCodes.Shr32(((ebp)+0xc004), 0))))), 0);
+          eax = OpCodes.Shr32(((eax + rd32(mem, (OpCodes.Shr32(((ebp)+0xc004), 0))))), 0);
           eax = F(mem, eax, edx);
           esi = OpCodes.Shr32(((OpCodes.Xor32(esi, eax))), 0);
           eax = OpCodes.Shr32((esi), 0);
@@ -1380,7 +1510,7 @@
           edx = OpCodes.Shr32((OpCodes.Shr32(edx, 0x9)), 0);
           ecx = OpCodes.Shr32((esi), 0);
           eax = OpCodes.Shr32(((OpCodes.Xor32(eax, edx))), 0);
-          edx = OpCodes.Shr32((rd32L((OpCodes.Shr32(((ebp)+0xc000), 0)))), 0);
+          edx = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((ebp)+0xc000), 0)))), 0);
           eax = OpCodes.Shr32(((eax + esi)), 0);
           ecx = OpCodes.Shr32(((OpCodes.And32(ecx, 0x1f))), 0);
           edx = OpCodes.Shr32(((edx + eax)), 0);
@@ -1392,14 +1522,14 @@
           ebx = OpCodes.Shr32(((OpCodes.Xor32(ebx, edx))), 0);
 
       } while (edi !== 0xFFFFFFFF);
-      eax = OpCodes.Shr32((rd32L((OpCodes.Shr32(((esp)+0x20), 0)))), 0);
-      wr32L((OpCodes.Shr32(((eax)+0x4), 0)), ebx);
-      wr32L((OpCodes.Shr32(((eax)), 0)), esi);
+      eax = OpCodes.Shr32((rd32(mem, (OpCodes.Shr32(((esp)+0x20), 0)))), 0);
+      wr32(mem, (OpCodes.Shr32(((eax)+0x4), 0)), ebx);
+      wr32(mem, (OpCodes.Shr32(((eax)), 0)), esi);
       esp = OpCodes.Shr32(((esp + 0xc)), 0);
-      ebp = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      edi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      esi = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
-      ebx = OpCodes.Shr32((rd32L(esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebp = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      edi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      esi = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
+      ebx = OpCodes.Shr32((rd32(mem, esp)), 0); esp = OpCodes.Shr32((esp + 4), 0);
 
 
   }
@@ -1474,6 +1604,7 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._mem = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -1529,6 +1660,7 @@
       const BLOCK_ADDR = 0x51000;
       for (let i = 0; i < 8; i++) wr8(this._mem, BLOCK_ADDR + i, block[i]);
       crypt(this._mem, BLOCK_ADDR);
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(rd8(this._mem, BLOCK_ADDR + i));
       return out;
@@ -1542,6 +1674,7 @@
       const BLOCK_ADDR = 0x51000;
       for (let i = 0; i < 8; i++) wr8(this._mem, BLOCK_ADDR + i, block[i]);
       decrypt(this._mem, BLOCK_ADDR);
+      /** @type {uint8[]} */
       const out = [];
       for (let i = 0; i < 8; i++) out.push(rd8(this._mem, BLOCK_ADDR + i));
       return out;
