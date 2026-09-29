@@ -58,20 +58,45 @@
   // ---- GF(2^29) normal-basis arithmetic, transliterated from the WG paper's reference
   // ---- C implementation (Appendix D/E). Elements occupy the top 29 bits of a
   // ---- 32-bit word (mask 0xFFFFFFF8); the low 3 bits are always 0.
+  /** @type {uint32} */
   const FIELD_MASK = 0xFFFFFFF8;
+  /** @type {uint32} */
   const GAMMA = 0x7F3FC9B0; // gamma constant used by the LFSR's tap-11 multiplier
 
+  /**
+   * @param {uint32} v
+   * @param {int32} n
+   * @returns {uint32}
+   */
   function rotl29(v, n) {
     v = OpCodes.ToUint32(v);
     return OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(v, n), OpCodes.Shr32(v, (29 - n))), FIELD_MASK);
   }
+  /**
+   * @param {uint32} v
+   * @param {int32} n
+   * @returns {uint32}
+   */
   function rotr29(v, n) { return rotl29(v, 29 - n); }
+  /**
+   * @param {uint32} v
+   * @returns {uint32}
+   */
   function complement29(v) { return OpCodes.Xor32(v, FIELD_MASK); }
 
+  /**
+   * @param {uint32} a
+   * @param {uint32} b
+   * @returns {uint32}
+   */
   function gfMult(a, b) {
-    const A = new Array(29), B = new Array(29);
+    /** @type {uint32[]} */
+    const A = new Array(29);
+    /** @type {uint32[]} */
+    const B = new Array(29);
     A[0] = OpCodes.And32(a, FIELD_MASK); B[0] = OpCodes.And32(b, FIELD_MASK);
     for (let i = 1; i < 29; ++i) { A[i] = rotl29(A[0], i); B[i] = rotl29(B[0], i); }
+    /** @type {uint32} */
     let c = 0;
     c ^= OpCodes.And32(A[0], B[1]);
     c ^= OpCodes.And32(A[1], OpCodes.Xor32(B[0], B[21]));
@@ -105,6 +130,10 @@
     return OpCodes.ToUint32(c);
   }
 
+  /**
+   * @param {uint32} a
+   * @returns {uint32}
+   */
   function gfInverse(a) {
     let b = OpCodes.ToUint32(a);
     b = rotl29(b, 16);
@@ -119,32 +148,53 @@
     return OpCodes.ToUint32(b);
   }
 
+  /**
+   * @param {uint32} v
+   * @returns {uint32}
+   */
   function parity29(v) {
-    let x = OpCodes.And32(v, FIELD_MASK), p = 0;
+    /** @type {uint32} */
+    let x = OpCodes.And32(v, FIELD_MASK);
+    /** @type {uint32} */
+    let p = 0;
     while (x) { p ^= OpCodes.And32(x, 1); x = OpCodes.Shr32(x, 1); }
     return p;
   }
 
-  // WG transformation F(2^29) -> F(2). Returns {bit, combined}; combined is the
-  // DarkCrypt-specific pre-parity 29-bit value x ^ q1 ^ q2 ^ q3 ^ q4 (see file header).
+  // WG transformation F(2^29) -> F(2), before its final parity: returns the
+  // DarkCrypt-specific pre-parity 29-bit value x ^ q1 ^ q2 ^ q3 ^ q4 (see file header);
+  // parity29() of it is the WG output bit.
+  /**
+   * @param {uint32} x
+   * @returns {uint32}
+   */
   function wgTransform(x) {
+    /** @type {uint32} */
     const I = complement29(x);
+    /** @type {uint32} */
     const Iinv = gfInverse(I);
+    /** @type {uint32} */
     const t1 = gfMult(rotr29(I, 19), I);
+    /** @type {uint32} */
     const q1 = gfMult(t1, rotr29(I, 9));
+    /** @type {uint32} */
     const q2 = gfMult(t1, rotr29(Iinv, 9));
+    /** @type {uint32} */
     const t2 = gfMult(rotr29(I, 19), rotr29(I, 10));
+    /** @type {uint32} */
     const q3 = gfMult(t2, Iinv);
+    /** @type {uint32} */
     const q4 = gfMult(rotr29(I, 10), I);
-    const combined = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x, q1), q2), q3), q4);
-    return { bit: parity29(combined), combined };
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x, q1), q2), q3), q4);
   }
 
+  /** @type {int32[][]} */
   const KEY_LAYOUT = [ // [stateIndex, byteIndex, shift]
     [0, 0, 24], [0, 1, 16], [1, 2, 24], [2, 3, 24], [2, 4, 16], [3, 5, 24],
     [4, 6, 24], [4, 7, 16], [5, 8, 24], [6, 9, 24], [6, 10, 16], [7, 11, 24],
     [8, 12, 24], [8, 13, 16], [9, 14, 24], [10, 15, 24]
   ];
+  /** @type {int32[][]} */
   const IV_LAYOUT = [
     [0, 0, 8], [1, 1, 16], [1, 2, 8], [2, 3, 8], [3, 4, 16], [3, 5, 8],
     [4, 6, 8], [5, 7, 16], [5, 8, 8], [6, 9, 8], [7, 10, 16], [7, 11, 8],
@@ -220,7 +270,8 @@
       this._key = null;
       /** @type {uint8[]|null} */
       this._iv = null;
-      this._state = null;
+      /** @type {uint32[]|null} */
+      this._lfsr = null;
     }
 
     /**
@@ -258,7 +309,7 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this._state) throw new Error("Key and IV not set");
+      if (!this._lfsr) throw new Error("Key and IV not set");
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
 
@@ -266,7 +317,7 @@
      * @returns {uint8[]}
      */
     Result() {
-      if (!this._state) throw new Error("Key and IV not set");
+      if (!this._lfsr) throw new Error("Key and IV not set");
       if (this.inputBuffer.length === 0) {
         throw new Error("No data fed");
       }
@@ -281,39 +332,61 @@
     }
 
     _tryInitialize() {
-      if (!this._key || !this._iv) return;
-
-      const S = OpCodes.CreateArray(11, 0);
-      for (const [idx, byteIdx, shift] of KEY_LAYOUT)
-        S[idx] = OpCodes.Xor32(S[idx], OpCodes.Shl32(OpCodes.And32(this._key[byteIdx], 0xFF), shift));
-      for (const [idx, byteIdx, shift] of IV_LAYOUT)
-        S[idx] = OpCodes.Xor32(S[idx], OpCodes.Shl32(OpCodes.And32(this._iv[byteIdx], 0xFF), shift));
-
-      for (let round = 0; round < INIT_ROUNDS; round++) {
-        const wg = wgTransform(S[10]);
-        const gammaTerm = gfMult(S[10], GAMMA);
-        const tapSum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gammaTerm, S[9]), S[7]), S[4]), S[1]), S[0]);
-        const feedback = OpCodes.Xor32(tapSum, wg.combined);
-        this._shiftIn(S, feedback);
+      if (!this._key || !this._iv) {
+        return;
       }
 
-      this._state = S;
+      /** @type {uint32[]} */
+      const lfsr = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      for (let t = 0; t < KEY_LAYOUT.length; t++) {
+        /** @type {int32[]} */
+        const e = KEY_LAYOUT[t];
+        lfsr[e[0]] = OpCodes.Xor32(lfsr[e[0]], OpCodes.Shl32(OpCodes.And32(this._key[e[1]], 0xFF), e[2]));
+      }
+      for (let t = 0; t < IV_LAYOUT.length; t++) {
+        /** @type {int32[]} */
+        const e = IV_LAYOUT[t];
+        lfsr[e[0]] = OpCodes.Xor32(lfsr[e[0]], OpCodes.Shl32(OpCodes.And32(this._iv[e[1]], 0xFF), e[2]));
+      }
+
+      for (let round = 0; round < INIT_ROUNDS; round++) {
+        /** @type {uint32} */
+        const wg = wgTransform(lfsr[10]);
+        const gammaTerm = gfMult(lfsr[10], GAMMA);
+        const tapSum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gammaTerm, lfsr[9]), lfsr[7]), lfsr[4]), lfsr[1]), lfsr[0]);
+        const feedback = OpCodes.Xor32(tapSum, wg);
+        this._shiftIn(lfsr, feedback);
+      }
+
+      this._lfsr = lfsr;
     }
 
-    _shiftIn(S, feedback) {
-      for (let k = 10; k >= 1; k--) S[k] = S[k - 1];
-      S[0] = feedback;
+    /**
+     * @param {uint32[]} lfsr
+     * @param {uint32} feedback
+     */
+    _shiftIn(lfsr, feedback) {
+      for (let k = 10; k >= 1; k--) lfsr[k] = lfsr[k - 1];
+      lfsr[0] = feedback;
     }
 
+    /**
+     * @returns {uint32}
+     */
     _generateKeystreamBit() {
-      const S = this._state;
-      const gammaTerm = gfMult(S[10], GAMMA);
-      const tapSum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gammaTerm, S[9]), S[7]), S[4]), S[1]), S[0]);
-      this._shiftIn(S, tapSum); // S[10] is now the pre-clock S[9] (i.e. LFSR output tap S(11))
-      return wgTransform(S[10]).bit;
+      /** @type {uint32[]} */
+      const lfsr = this._lfsr;
+      const gammaTerm = gfMult(lfsr[10], GAMMA);
+      const tapSum = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(gammaTerm, lfsr[9]), lfsr[7]), lfsr[4]), lfsr[1]), lfsr[0]);
+      this._shiftIn(lfsr, tapSum); // lfsr[10] is now the pre-clock lfsr[9] (i.e. LFSR output tap S(11))
+      return parity29(wgTransform(lfsr[10]));
     }
 
+    /**
+     * @returns {uint8}
+     */
     _generateKeystreamByte() {
+      /** @type {uint32} */
       let byte = 0;
       for (let i = 0; i < 8; i++)
         byte |= OpCodes.Shl32(this._generateKeystreamBit(), (7 - i));
