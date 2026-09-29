@@ -35,22 +35,121 @@
           MacAlgorithm, IMacInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   // TTMAC parameters
+  /** @type {int32} */
   const BLOCK_SIZE = 64;  // bytes
+  /** @type {int32} */
   const DIGEST_SIZE = 20; // bytes (160 bits)
+  /** @type {int32} */
   const KEY_SIZE = 20;    // bytes (160 bits)
 
-  // RIPEMD-160 round constants
+  // RIPEMD-160 round constants (left line K[0..4], right line K[5..9])
+  /** @type {uint32[]} */
   const K = [
     0x00000000, 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xa953fd4e,
     0x50a28be6, 0x5c4dd124, 0x6d703ef3, 0x7a6d76e9, 0x00000000
   ];
 
-  // RIPEMD-160 boolean functions
-  function F(x, y, z) { return OpCodes.Xor32(OpCodes.Xor32(x, y), z); }
-  function G(x, y, z) { return OpCodes.Xor32(z, (x&OpCodes.Xor32(y, z))); }
-  function H(x, y, z) { return OpCodes.Xor32(z, (x|~y)); }
-  function I(x, y, z) { return OpCodes.Xor32(y, (z&OpCodes.Xor32(x, y))); }
-  function J(x, y, z) { return OpCodes.Xor32(x, (y|~z)); }
+  // RIPEMD-160 message word selection, left and right lines
+  /** @type {int32[]} */
+  const R_LEFT = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8,
+    3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12,
+    1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2,
+    4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13
+  ];
+  /** @type {int32[]} */
+  const R_RIGHT = [
+    5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12,
+    6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2,
+    15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13,
+    8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14,
+    12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11
+  ];
+
+  // RIPEMD-160 rotation amounts, left and right lines
+  /** @type {int32[]} */
+  const S_LEFT = [
+    11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8,
+    7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12,
+    11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5,
+    11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12,
+    9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6
+  ];
+  /** @type {int32[]} */
+  const S_RIGHT = [
+    8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6,
+    9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11,
+    9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5,
+    15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8,
+    8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
+  ];
+
+  /**
+   * RIPEMD-160 boolean function of one round group
+   * @param {int32} round - 0..4 selects F, G, H, I, J
+   * @param {uint32} x - First word
+   * @param {uint32} y - Second word
+   * @param {uint32} z - Third word
+   * @returns {uint32} f(x, y, z)
+   */
+  function boolFn(round, x, y, z) {
+    switch (round) {
+      case 0: return OpCodes.Xor32(OpCodes.Xor32(x, y), z);                  // F
+      case 1: return OpCodes.Xor32(z, OpCodes.And32(x, OpCodes.Xor32(y, z))); // G
+      case 2: return OpCodes.Xor32(z, OpCodes.Or32(x, OpCodes.Not32(y)));     // H
+      case 3: return OpCodes.Xor32(y, OpCodes.And32(z, OpCodes.Xor32(x, y))); // I
+      default: return OpCodes.Xor32(x, OpCodes.Or32(y, OpCodes.Not32(z)));    // J
+    }
+  }
+
+  /**
+   * One RIPEMD-160 line (80 steps) over the five words in v
+   * @param {uint32[]} v - Working words a, b, c, d, e (updated in place)
+   * @param {uint32[]} X - 16 message words
+   * @param {boolean} right - true for the right line (J..F, K[5..9])
+   * @returns {void}
+   */
+  function ripemdLine(v, X, right) {
+    let a = v[0];
+    let b = v[1];
+    let c = v[2];
+    let d = v[3];
+    let e = v[4];
+    for (let j = 0; j < 80; ++j) {
+      const group = Math.floor(j / 16);
+      /** @type {uint32} */
+      let f = 0;
+      /** @type {uint32} */
+      let k = 0;
+      /** @type {int32} */
+      let r = 0;
+      /** @type {int32} */
+      let s = 0;
+      if (right) {
+        f = boolFn(4 - group, b, c, d);
+        k = K[5 + group];
+        r = R_RIGHT[j];
+        s = S_RIGHT[j];
+      } else {
+        f = boolFn(group, b, c, d);
+        k = K[group];
+        r = R_LEFT[j];
+        s = S_LEFT[j];
+      }
+      const t = OpCodes.Add32(OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(a, f), X[r]), k), s), e);
+      a = e;
+      e = d;
+      d = OpCodes.RotL32(c, 10);
+      c = b;
+      b = t;
+    }
+    v[0] = a;
+    v[1] = b;
+    v[2] = c;
+    v[3] = d;
+    v[4] = e;
+  }
 
   class TTMACAlgorithm extends MacAlgorithm {
     constructor() {
@@ -142,8 +241,8 @@
 
     /**
    * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @param {boolean} [isInverse=false] - True for the inverse, which a MAC does not have
+   * @returns {TTMACInstance} New MAC instance (null for the inverse)
    */
 
     CreateInstance(isInverse = false) {
@@ -153,21 +252,31 @@
   }
 
   /**
- * TTMAC cipher instance implementing Feed/Result pattern
+ * TTMAC instance implementing the Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IMacInstance}
  */
 
   class TTMACInstance extends IMacInstance {
+    /**
+     * @param {TTMACAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint32[]} */
       this._key = null;
+      /** @type {uint32[]} */
+      this.digest = null;
+      /** @type {uint8[]} */
+      this.buffer = [];
+      /** @type {uint64} */
+      this.bitCount = 0;
       this.reset();
     }
 
     /**
-   * Set encryption/decryption key
-   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * Set the key
+   * @param {uint8[]} keyBytes - 20-byte key or null to clear
    * @throws {Error} If key size is invalid
    */
 
@@ -178,58 +287,65 @@
       }
 
       if (keyBytes.length !== KEY_SIZE) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected ${KEY_SIZE})`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected " + KEY_SIZE + ")");
       }
 
       // Convert key to little-endian words
-      this._key = new Uint32Array(5);
+      /** @type {uint32[]} */
+      const keyWords = new Array(5);
       for (let i = 0; i < 5; ++i) {
-        this._key[i] = OpCodes.Pack32LE(
+        keyWords[i] = OpCodes.Pack32LE(
           keyBytes[i * 4],
           keyBytes[i * 4 + 1],
           keyBytes[i * 4 + 2],
           keyBytes[i * 4 + 3]
         );
       }
+      this._key = keyWords;
 
       this.reset();
     }
 
     /**
    * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * @returns {uint8[]} Copy of key bytes or null
    */
 
     get key() {
-      if (!this._key) return null;
-      const keyBytes = new Uint8Array(KEY_SIZE);
+      if (!this._key) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const keyBytes = [];
       for (let i = 0; i < 5; ++i) {
         const bytes = OpCodes.Unpack32LE(this._key[i]);
-        keyBytes[i * 4] = bytes[0];
-        keyBytes[i * 4 + 1] = bytes[1];
-        keyBytes[i * 4 + 2] = bytes[2];
-        keyBytes[i * 4 + 3] = bytes[3];
+        for (let j = 0; j < 4; ++j) keyBytes.push(bytes[j]);
       }
-      return Array.from(keyBytes);
+      return keyBytes;
     }
 
+    /**
+     * Restart the MAC: both tracks start from the key (zero without a key)
+     * @returns {void}
+     */
     reset() {
+      /** @type {uint32[]} */
+      const d = new Array(10);
+      for (let i = 0; i < 10; ++i) d[i] = 0;
       if (this._key) {
         // Initialize digest with key (two tracks)
-        this.digest = new Uint32Array(10);
         for (let i = 0; i < 5; ++i) {
-          this.digest[i] = this._key[i];      // Track A
-          this.digest[i + 5] = this._key[i];  // Track B
+          d[i] = this._key[i];      // Track A
+          d[i + 5] = this._key[i];  // Track B
         }
-      } else {
-        this.digest = new Uint32Array(10);
       }
+      this.digest = d;
       this.buffer = [];
       this.bitCount = 0;
     }
 
     /**
-   * Feed data to cipher for processing
+   * Feed message bytes
    * @param {uint8[]} data - Input data bytes
    * @throws {Error} If key not set
    */
@@ -248,174 +364,66 @@
       }
     }
 
+    /**
+     * Two-track RIPEMD-160 style compression of one 64-byte block
+     * @param {uint8[]} blockBytes - 64-byte block
+     * @param {boolean} isLast - true for the block carrying the length
+     * @returns {void}
+     */
     _transform(blockBytes, isLast) {
       // Convert block to little-endian words
-      const X = new Uint32Array(16);
+      /** @type {uint32[]} */
+      const X = new Array(16);
       for (let i = 0; i < 16; ++i) {
-        X[i] = OpCodes.Pack32LE(
-          blockBytes[i * 4] || 0,
-          blockBytes[i * 4 + 1] || 0,
-          blockBytes[i * 4 + 2] || 0,
-          blockBytes[i * 4 + 3] || 0
-        );
+        X[i] = OpCodes.Pack32LE(blockBytes[i * 4], blockBytes[i * 4 + 1], blockBytes[i * 4 + 2], blockBytes[i * 4 + 3]);
       }
 
       // Determine which track is A and which is B
-      let trackA, trackB;
-      if (!isLast) {
-        trackA = 0;  // digest[0..4]
-        trackB = 5;  // digest[5..9]
-      } else {
+      /** @type {int32} */
+      let trackA = 0;  // digest[0..4]
+      /** @type {int32} */
+      let trackB = 5;  // digest[5..9]
+      if (isLast) {
         trackB = 0;  // swap for final block
         trackA = 5;
       }
 
-      // Initialize working variables
-      let a1 = this.digest[trackA];
-      let b1 = this.digest[trackA + 1];
-      let c1 = this.digest[trackA + 2];
-      let d1 = this.digest[trackA + 3];
-      let e1 = this.digest[trackA + 4];
-      let a2 = this.digest[trackB];
-      let b2 = this.digest[trackB + 1];
-      let c2 = this.digest[trackB + 2];
-      let d2 = this.digest[trackB + 3];
-      let e2 = this.digest[trackB + 4];
+      // Working variables of both lines
+      const v1 = this.digest.slice(trackA, trackA + 5);
+      const v2 = this.digest.slice(trackB, trackB + 5);
 
-      // Helper for subround
-      const subround = (fn, s, a, b, c, d, e, x, k) => {
-        const temp = OpCodes.ToUint32(a + fn(b, c, d) + x + k);
-        a = OpCodes.ToUint32(OpCodes.RotL32(temp, s) + e);
-        c = OpCodes.RotL32(c, 10);
-        return [a, c];
-      };
-
-      // Track 1: 80 rounds (5 groups of 16)
-      // Round 1: F function
-      [a1, c1] = subround(F, 11, a1, b1, c1, d1, e1, X[ 0], K[0]); [e1, b1] = subround(F, 14, e1, a1, b1, c1, d1, X[ 1], K[0]);
-      [d1, a1] = subround(F, 15, d1, e1, a1, b1, c1, X[ 2], K[0]); [c1, e1] = subround(F, 12, c1, d1, e1, a1, b1, X[ 3], K[0]);
-      [b1, d1] = subround(F,  5, b1, c1, d1, e1, a1, X[ 4], K[0]); [a1, c1] = subround(F,  8, a1, b1, c1, d1, e1, X[ 5], K[0]);
-      [e1, b1] = subround(F,  7, e1, a1, b1, c1, d1, X[ 6], K[0]); [d1, a1] = subround(F,  9, d1, e1, a1, b1, c1, X[ 7], K[0]);
-      [c1, e1] = subround(F, 11, c1, d1, e1, a1, b1, X[ 8], K[0]); [b1, d1] = subround(F, 13, b1, c1, d1, e1, a1, X[ 9], K[0]);
-      [a1, c1] = subround(F, 14, a1, b1, c1, d1, e1, X[10], K[0]); [e1, b1] = subround(F, 15, e1, a1, b1, c1, d1, X[11], K[0]);
-      [d1, a1] = subround(F,  6, d1, e1, a1, b1, c1, X[12], K[0]); [c1, e1] = subround(F,  7, c1, d1, e1, a1, b1, X[13], K[0]);
-      [b1, d1] = subround(F,  9, b1, c1, d1, e1, a1, X[14], K[0]); [a1, c1] = subround(F,  8, a1, b1, c1, d1, e1, X[15], K[0]);
-
-      // Round 2: G function
-      [e1, b1] = subround(G,  7, e1, a1, b1, c1, d1, X[ 7], K[1]); [d1, a1] = subround(G,  6, d1, e1, a1, b1, c1, X[ 4], K[1]);
-      [c1, e1] = subround(G,  8, c1, d1, e1, a1, b1, X[13], K[1]); [b1, d1] = subround(G, 13, b1, c1, d1, e1, a1, X[ 1], K[1]);
-      [a1, c1] = subround(G, 11, a1, b1, c1, d1, e1, X[10], K[1]); [e1, b1] = subround(G,  9, e1, a1, b1, c1, d1, X[ 6], K[1]);
-      [d1, a1] = subround(G,  7, d1, e1, a1, b1, c1, X[15], K[1]); [c1, e1] = subround(G, 15, c1, d1, e1, a1, b1, X[ 3], K[1]);
-      [b1, d1] = subround(G,  7, b1, c1, d1, e1, a1, X[12], K[1]); [a1, c1] = subround(G, 12, a1, b1, c1, d1, e1, X[ 0], K[1]);
-      [e1, b1] = subround(G, 15, e1, a1, b1, c1, d1, X[ 9], K[1]); [d1, a1] = subround(G,  9, d1, e1, a1, b1, c1, X[ 5], K[1]);
-      [c1, e1] = subround(G, 11, c1, d1, e1, a1, b1, X[ 2], K[1]); [b1, d1] = subround(G,  7, b1, c1, d1, e1, a1, X[14], K[1]);
-      [a1, c1] = subround(G, 13, a1, b1, c1, d1, e1, X[11], K[1]); [e1, b1] = subround(G, 12, e1, a1, b1, c1, d1, X[ 8], K[1]);
-
-      // Round 3: H function
-      [d1, a1] = subround(H, 11, d1, e1, a1, b1, c1, X[ 3], K[2]); [c1, e1] = subround(H, 13, c1, d1, e1, a1, b1, X[10], K[2]);
-      [b1, d1] = subround(H,  6, b1, c1, d1, e1, a1, X[14], K[2]); [a1, c1] = subround(H,  7, a1, b1, c1, d1, e1, X[ 4], K[2]);
-      [e1, b1] = subround(H, 14, e1, a1, b1, c1, d1, X[ 9], K[2]); [d1, a1] = subround(H,  9, d1, e1, a1, b1, c1, X[15], K[2]);
-      [c1, e1] = subround(H, 13, c1, d1, e1, a1, b1, X[ 8], K[2]); [b1, d1] = subround(H, 15, b1, c1, d1, e1, a1, X[ 1], K[2]);
-      [a1, c1] = subround(H, 14, a1, b1, c1, d1, e1, X[ 2], K[2]); [e1, b1] = subround(H,  8, e1, a1, b1, c1, d1, X[ 7], K[2]);
-      [d1, a1] = subround(H, 13, d1, e1, a1, b1, c1, X[ 0], K[2]); [c1, e1] = subround(H,  6, c1, d1, e1, a1, b1, X[ 6], K[2]);
-      [b1, d1] = subround(H,  5, b1, c1, d1, e1, a1, X[13], K[2]); [a1, c1] = subround(H, 12, a1, b1, c1, d1, e1, X[11], K[2]);
-      [e1, b1] = subround(H,  7, e1, a1, b1, c1, d1, X[ 5], K[2]); [d1, a1] = subround(H,  5, d1, e1, a1, b1, c1, X[12], K[2]);
-
-      // Round 4: I function
-      [c1, e1] = subround(I, 11, c1, d1, e1, a1, b1, X[ 1], K[3]); [b1, d1] = subround(I, 12, b1, c1, d1, e1, a1, X[ 9], K[3]);
-      [a1, c1] = subround(I, 14, a1, b1, c1, d1, e1, X[11], K[3]); [e1, b1] = subround(I, 15, e1, a1, b1, c1, d1, X[10], K[3]);
-      [d1, a1] = subround(I, 14, d1, e1, a1, b1, c1, X[ 0], K[3]); [c1, e1] = subround(I, 15, c1, d1, e1, a1, b1, X[ 8], K[3]);
-      [b1, d1] = subround(I,  9, b1, c1, d1, e1, a1, X[12], K[3]); [a1, c1] = subround(I,  8, a1, b1, c1, d1, e1, X[ 4], K[3]);
-      [e1, b1] = subround(I,  9, e1, a1, b1, c1, d1, X[13], K[3]); [d1, a1] = subround(I, 14, d1, e1, a1, b1, c1, X[ 3], K[3]);
-      [c1, e1] = subround(I,  5, c1, d1, e1, a1, b1, X[ 7], K[3]); [b1, d1] = subround(I,  6, b1, c1, d1, e1, a1, X[15], K[3]);
-      [a1, c1] = subround(I,  8, a1, b1, c1, d1, e1, X[14], K[3]); [e1, b1] = subround(I,  6, e1, a1, b1, c1, d1, X[ 5], K[3]);
-      [d1, a1] = subround(I,  5, d1, e1, a1, b1, c1, X[ 6], K[3]); [c1, e1] = subround(I, 12, c1, d1, e1, a1, b1, X[ 2], K[3]);
-
-      // Round 5: J function
-      [b1, d1] = subround(J,  9, b1, c1, d1, e1, a1, X[ 4], K[4]); [a1, c1] = subround(J, 15, a1, b1, c1, d1, e1, X[ 0], K[4]);
-      [e1, b1] = subround(J,  5, e1, a1, b1, c1, d1, X[ 5], K[4]); [d1, a1] = subround(J, 11, d1, e1, a1, b1, c1, X[ 9], K[4]);
-      [c1, e1] = subround(J,  6, c1, d1, e1, a1, b1, X[ 7], K[4]); [b1, d1] = subround(J,  8, b1, c1, d1, e1, a1, X[12], K[4]);
-      [a1, c1] = subround(J, 13, a1, b1, c1, d1, e1, X[ 2], K[4]); [e1, b1] = subround(J, 12, e1, a1, b1, c1, d1, X[10], K[4]);
-      [d1, a1] = subround(J,  5, d1, e1, a1, b1, c1, X[14], K[4]); [c1, e1] = subround(J, 12, c1, d1, e1, a1, b1, X[ 1], K[4]);
-      [b1, d1] = subround(J, 13, b1, c1, d1, e1, a1, X[ 3], K[4]); [a1, c1] = subround(J, 14, a1, b1, c1, d1, e1, X[ 8], K[4]);
-      [e1, b1] = subround(J, 11, e1, a1, b1, c1, d1, X[11], K[4]); [d1, a1] = subround(J,  8, d1, e1, a1, b1, c1, X[ 6], K[4]);
-      [c1, e1] = subround(J,  5, c1, d1, e1, a1, b1, X[15], K[4]); [b1, d1] = subround(J,  6, b1, c1, d1, e1, a1, X[13], K[4]);
-
-      // Track 2: 80 rounds (5 groups of 16) - reverse order
-      [a2, c2] = subround(J,  8, a2, b2, c2, d2, e2, X[ 5], K[5]); [e2, b2] = subround(J,  9, e2, a2, b2, c2, d2, X[14], K[5]);
-      [d2, a2] = subround(J,  9, d2, e2, a2, b2, c2, X[ 7], K[5]); [c2, e2] = subround(J, 11, c2, d2, e2, a2, b2, X[ 0], K[5]);
-      [b2, d2] = subround(J, 13, b2, c2, d2, e2, a2, X[ 9], K[5]); [a2, c2] = subround(J, 15, a2, b2, c2, d2, e2, X[ 2], K[5]);
-      [e2, b2] = subround(J, 15, e2, a2, b2, c2, d2, X[11], K[5]); [d2, a2] = subround(J,  5, d2, e2, a2, b2, c2, X[ 4], K[5]);
-      [c2, e2] = subround(J,  7, c2, d2, e2, a2, b2, X[13], K[5]); [b2, d2] = subround(J,  7, b2, c2, d2, e2, a2, X[ 6], K[5]);
-      [a2, c2] = subround(J,  8, a2, b2, c2, d2, e2, X[15], K[5]); [e2, b2] = subround(J, 11, e2, a2, b2, c2, d2, X[ 8], K[5]);
-      [d2, a2] = subround(J, 14, d2, e2, a2, b2, c2, X[ 1], K[5]); [c2, e2] = subround(J, 14, c2, d2, e2, a2, b2, X[10], K[5]);
-      [b2, d2] = subround(J, 12, b2, c2, d2, e2, a2, X[ 3], K[5]); [a2, c2] = subround(J,  6, a2, b2, c2, d2, e2, X[12], K[5]);
-
-      [e2, b2] = subround(I,  9, e2, a2, b2, c2, d2, X[ 6], K[6]); [d2, a2] = subround(I, 13, d2, e2, a2, b2, c2, X[11], K[6]);
-      [c2, e2] = subround(I, 15, c2, d2, e2, a2, b2, X[ 3], K[6]); [b2, d2] = subround(I,  7, b2, c2, d2, e2, a2, X[ 7], K[6]);
-      [a2, c2] = subround(I, 12, a2, b2, c2, d2, e2, X[ 0], K[6]); [e2, b2] = subround(I,  8, e2, a2, b2, c2, d2, X[13], K[6]);
-      [d2, a2] = subround(I,  9, d2, e2, a2, b2, c2, X[ 5], K[6]); [c2, e2] = subround(I, 11, c2, d2, e2, a2, b2, X[10], K[6]);
-      [b2, d2] = subround(I,  7, b2, c2, d2, e2, a2, X[14], K[6]); [a2, c2] = subround(I,  7, a2, b2, c2, d2, e2, X[15], K[6]);
-      [e2, b2] = subround(I, 12, e2, a2, b2, c2, d2, X[ 8], K[6]); [d2, a2] = subround(I,  7, d2, e2, a2, b2, c2, X[12], K[6]);
-      [c2, e2] = subround(I,  6, c2, d2, e2, a2, b2, X[ 4], K[6]); [b2, d2] = subround(I, 15, b2, c2, d2, e2, a2, X[ 9], K[6]);
-      [a2, c2] = subround(I, 13, a2, b2, c2, d2, e2, X[ 1], K[6]); [e2, b2] = subround(I, 11, e2, a2, b2, c2, d2, X[ 2], K[6]);
-
-      [d2, a2] = subround(H,  9, d2, e2, a2, b2, c2, X[15], K[7]); [c2, e2] = subround(H,  7, c2, d2, e2, a2, b2, X[ 5], K[7]);
-      [b2, d2] = subround(H, 15, b2, c2, d2, e2, a2, X[ 1], K[7]); [a2, c2] = subround(H, 11, a2, b2, c2, d2, e2, X[ 3], K[7]);
-      [e2, b2] = subround(H,  8, e2, a2, b2, c2, d2, X[ 7], K[7]); [d2, a2] = subround(H,  6, d2, e2, a2, b2, c2, X[14], K[7]);
-      [c2, e2] = subround(H,  6, c2, d2, e2, a2, b2, X[ 6], K[7]); [b2, d2] = subround(H, 14, b2, c2, d2, e2, a2, X[ 9], K[7]);
-      [a2, c2] = subround(H, 12, a2, b2, c2, d2, e2, X[11], K[7]); [e2, b2] = subround(H, 13, e2, a2, b2, c2, d2, X[ 8], K[7]);
-      [d2, a2] = subround(H,  5, d2, e2, a2, b2, c2, X[12], K[7]); [c2, e2] = subround(H, 14, c2, d2, e2, a2, b2, X[ 2], K[7]);
-      [b2, d2] = subround(H, 13, b2, c2, d2, e2, a2, X[10], K[7]); [a2, c2] = subround(H, 13, a2, b2, c2, d2, e2, X[ 0], K[7]);
-      [e2, b2] = subround(H,  7, e2, a2, b2, c2, d2, X[ 4], K[7]); [d2, a2] = subround(H,  5, d2, e2, a2, b2, c2, X[13], K[7]);
-
-      [c2, e2] = subround(G, 15, c2, d2, e2, a2, b2, X[ 8], K[8]); [b2, d2] = subround(G,  5, b2, c2, d2, e2, a2, X[ 6], K[8]);
-      [a2, c2] = subround(G,  8, a2, b2, c2, d2, e2, X[ 4], K[8]); [e2, b2] = subround(G, 11, e2, a2, b2, c2, d2, X[ 1], K[8]);
-      [d2, a2] = subround(G, 14, d2, e2, a2, b2, c2, X[ 3], K[8]); [c2, e2] = subround(G, 14, c2, d2, e2, a2, b2, X[11], K[8]);
-      [b2, d2] = subround(G,  6, b2, c2, d2, e2, a2, X[15], K[8]); [a2, c2] = subround(G, 14, a2, b2, c2, d2, e2, X[ 0], K[8]);
-      [e2, b2] = subround(G,  6, e2, a2, b2, c2, d2, X[ 5], K[8]); [d2, a2] = subround(G,  9, d2, e2, a2, b2, c2, X[12], K[8]);
-      [c2, e2] = subround(G, 12, c2, d2, e2, a2, b2, X[ 2], K[8]); [b2, d2] = subround(G,  9, b2, c2, d2, e2, a2, X[13], K[8]);
-      [a2, c2] = subround(G, 12, a2, b2, c2, d2, e2, X[ 9], K[8]); [e2, b2] = subround(G,  5, e2, a2, b2, c2, d2, X[ 7], K[8]);
-      [d2, a2] = subround(G, 15, d2, e2, a2, b2, c2, X[10], K[8]); [c2, e2] = subround(G,  8, c2, d2, e2, a2, b2, X[14], K[8]);
-
-      [b2, d2] = subround(F,  8, b2, c2, d2, e2, a2, X[12], K[9]); [a2, c2] = subround(F,  5, a2, b2, c2, d2, e2, X[15], K[9]);
-      [e2, b2] = subround(F, 12, e2, a2, b2, c2, d2, X[10], K[9]); [d2, a2] = subround(F,  9, d2, e2, a2, b2, c2, X[ 4], K[9]);
-      [c2, e2] = subround(F, 12, c2, d2, e2, a2, b2, X[ 1], K[9]); [b2, d2] = subround(F,  5, b2, c2, d2, e2, a2, X[ 5], K[9]);
-      [a2, c2] = subround(F, 14, a2, b2, c2, d2, e2, X[ 8], K[9]); [e2, b2] = subround(F,  6, e2, a2, b2, c2, d2, X[ 7], K[9]);
-      [d2, a2] = subround(F,  8, d2, e2, a2, b2, c2, X[ 6], K[9]); [c2, e2] = subround(F, 13, c2, d2, e2, a2, b2, X[ 2], K[9]);
-      [b2, d2] = subround(F,  6, b2, c2, d2, e2, a2, X[13], K[9]); [a2, c2] = subround(F,  5, a2, b2, c2, d2, e2, X[14], K[9]);
-      [e2, b2] = subround(F, 15, e2, a2, b2, c2, d2, X[ 0], K[9]); [d2, a2] = subround(F, 13, d2, e2, a2, b2, c2, X[ 3], K[9]);
-      [c2, e2] = subround(F, 11, c2, d2, e2, a2, b2, X[ 9], K[9]); [b2, d2] = subround(F, 11, b2, c2, d2, e2, a2, X[11], K[9]);
+      ripemdLine(v1, X, false);  // Track 1: F, G, H, I, J
+      ripemdLine(v2, X, true);   // Track 2: J, I, H, G, F
 
       // Update state
-      a1 = OpCodes.ToUint32(a1 - this.digest[trackA]);
-      b1 = OpCodes.ToUint32(b1 - this.digest[trackA + 1]);
-      c1 = OpCodes.ToUint32(c1 - this.digest[trackA + 2]);
-      d1 = OpCodes.ToUint32(d1 - this.digest[trackA + 3]);
-      e1 = OpCodes.ToUint32(e1 - this.digest[trackA + 4]);
-      a2 = OpCodes.ToUint32(a2 - this.digest[trackB]);
-      b2 = OpCodes.ToUint32(b2 - this.digest[trackB + 1]);
-      c2 = OpCodes.ToUint32(c2 - this.digest[trackB + 2]);
-      d2 = OpCodes.ToUint32(d2 - this.digest[trackB + 3]);
-      e2 = OpCodes.ToUint32(e2 - this.digest[trackB + 4]);
+      const a1 = OpCodes.Sub32(v1[0], this.digest[trackA]);
+      const b1 = OpCodes.Sub32(v1[1], this.digest[trackA + 1]);
+      const c1 = OpCodes.Sub32(v1[2], this.digest[trackA + 2]);
+      const d1 = OpCodes.Sub32(v1[3], this.digest[trackA + 3]);
+      const e1 = OpCodes.Sub32(v1[4], this.digest[trackA + 4]);
+      const a2 = OpCodes.Sub32(v2[0], this.digest[trackB]);
+      const b2 = OpCodes.Sub32(v2[1], this.digest[trackB + 1]);
+      const c2 = OpCodes.Sub32(v2[2], this.digest[trackB + 2]);
+      const d2 = OpCodes.Sub32(v2[3], this.digest[trackB + 3]);
+      const e2 = OpCodes.Sub32(v2[4], this.digest[trackB + 4]);
 
       if (!isLast) {
-        this.digest[trackA] = OpCodes.ToUint32((b1 + e1) - d2);
-        this.digest[trackA + 1] = OpCodes.ToUint32(c1 - e2);
-        this.digest[trackA + 2] = OpCodes.ToUint32(d1 - a2);
-        this.digest[trackA + 3] = OpCodes.ToUint32(e1 - b2);
-        this.digest[trackA + 4] = OpCodes.ToUint32(a1 - c2);
-        this.digest[trackB] = OpCodes.ToUint32(d1 - e2);
-        this.digest[trackB + 1] = OpCodes.ToUint32((e1 + c1) - a2);
-        this.digest[trackB + 2] = OpCodes.ToUint32(a1 - b2);
-        this.digest[trackB + 3] = OpCodes.ToUint32(b1 - c2);
-        this.digest[trackB + 4] = OpCodes.ToUint32(c1 - d2);
+        this.digest[trackA] = OpCodes.Sub32(OpCodes.Add32(b1, e1), d2);
+        this.digest[trackA + 1] = OpCodes.Sub32(c1, e2);
+        this.digest[trackA + 2] = OpCodes.Sub32(d1, a2);
+        this.digest[trackA + 3] = OpCodes.Sub32(e1, b2);
+        this.digest[trackA + 4] = OpCodes.Sub32(a1, c2);
+        this.digest[trackB] = OpCodes.Sub32(d1, e2);
+        this.digest[trackB + 1] = OpCodes.Sub32(OpCodes.Add32(e1, c1), a2);
+        this.digest[trackB + 2] = OpCodes.Sub32(a1, b2);
+        this.digest[trackB + 3] = OpCodes.Sub32(b1, c2);
+        this.digest[trackB + 4] = OpCodes.Sub32(c1, d2);
       } else {
-        this.digest[trackB] = OpCodes.ToUint32(a2 - a1);
-        this.digest[trackB + 1] = OpCodes.ToUint32(b2 - b1);
-        this.digest[trackB + 2] = OpCodes.ToUint32(c2 - c1);
-        this.digest[trackB + 3] = OpCodes.ToUint32(d2 - d1);
-        this.digest[trackB + 4] = OpCodes.ToUint32(e2 - e1);
+        this.digest[trackB] = OpCodes.Sub32(a2, a1);
+        this.digest[trackB + 1] = OpCodes.Sub32(b2, b1);
+        this.digest[trackB + 2] = OpCodes.Sub32(c2, c1);
+        this.digest[trackB + 3] = OpCodes.Sub32(d2, d1);
+        this.digest[trackB + 4] = OpCodes.Sub32(e2, e1);
         this.digest[trackA] = 0;
         this.digest[trackA + 1] = 0;
         this.digest[trackA + 2] = 0;
@@ -425,9 +433,9 @@
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
+   * Get the MAC of everything fed so far
+   * @returns {uint8[]} 20-byte MAC
+   * @throws {Error} If key not set
    */
 
     Result() {
@@ -442,9 +450,12 @@
 
       // Append bit count (little-endian 64-bit)
       const bitCountLo = OpCodes.ToUint32(this.bitCount);
+      /** @type {uint32} */
       const bitCountHi = OpCodes.ToUint32(Math.floor(this.bitCount / 0x100000000));
-      this.buffer.push(OpCodes.ToByte(bitCountLo), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 24)));
-      this.buffer.push(OpCodes.ToByte(bitCountHi), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 24)));
+      const loBytes = OpCodes.Unpack32LE(bitCountLo);
+      const hiBytes = OpCodes.Unpack32LE(bitCountHi);
+      for (let i = 0; i < 4; ++i) this.buffer.push(loBytes[i]);
+      for (let i = 0; i < 4; ++i) this.buffer.push(hiBytes[i]);
 
       // When the message tail leaves fewer than eight free bytes in its block the
       // padding spills into a second block. Only the block carrying the length is
@@ -458,17 +469,15 @@
       this._transform(this.buffer, true);
 
       // Extract MAC (from digest[0..4] after final transform)
-      const mac = new Uint8Array(DIGEST_SIZE);
+      /** @type {uint8[]} */
+      const mac = [];
       for (let i = 0; i < 5; ++i) {
         const bytes = OpCodes.Unpack32LE(this.digest[i]);
-        mac[i * 4] = bytes[0];
-        mac[i * 4 + 1] = bytes[1];
-        mac[i * 4 + 2] = bytes[2];
-        mac[i * 4 + 3] = bytes[3];
+        for (let j = 0; j < 4; ++j) mac.push(bytes[j]);
       }
 
       this.reset();
-      return Array.from(mac);
+      return mac;
     }
   }
 
