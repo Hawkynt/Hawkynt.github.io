@@ -24,7 +24,7 @@
  * keystream words (little-endian); consequently encryption and decryption
  * are the same self-inverse operation.
  *
- * 128-bit key, 128-bit block. Test vector verified against the DarkCrypt
+ * 128-bit key, 128-bit block. Test vectors verified against the DarkCrypt
  * implementation.
  * Educational only.
  */
@@ -234,7 +234,7 @@
         new Vulnerability("Non-standard exposure", "Exposed as a single-block primitive via a stream-cipher interface that discards the requested length; the underlying keystream generator is unanalyzed as reconstructed here and not recommended for real use.", "Use a vetted stream or block cipher.")
       ];
 
-      // Test vector verified against the DarkCrypt implementation.
+      // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
         {
           text: "DarkCrypt Leviathan — zero block, incrementing key",
@@ -242,6 +242,20 @@
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           expected: OpCodes.Hex8ToBytes("3d2a20bbae89b73ffc9e78598186ef31")
+        },
+        {
+          text: "DarkCrypt Leviathan — mixed key, non-zero block (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0"),
+          expected: OpCodes.Hex8ToBytes("fd76bbdecbf577ca8cc541067323f9e7")
+        },
+        {
+          text: "DarkCrypt Leviathan — all-0xFF key, two incrementing blocks continue the keystream (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("b4a2c6b7ffce411e2e2aa6b5015d2ac03cb79098609bda1896aaf3a20cdb7151")
         }
       ];
     }
