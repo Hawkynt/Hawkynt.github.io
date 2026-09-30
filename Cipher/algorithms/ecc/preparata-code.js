@@ -142,12 +142,17 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._m = 4; // Default: (16,11) Preparata code
 
       // Generate codebook
+      /** @type {uint8[][]} */
       this.codebook = null;
     }
 
+    /**
+     * @param {int32} value - Field exponent m (3..5)
+     */
     set m(value) {
       if (value < 3 || value > 5) {
         throw new Error('PreparataCodeInstance.m: Must be between 3 and 5');
@@ -156,6 +161,9 @@
       this.codebook = null; // Invalidate codebook
     }
 
+    /**
+     * @returns {int32} Field exponent m
+     */
     get m() {
       return this._m;
     }
@@ -196,13 +204,18 @@
       return this.result;
     }
 
+    /**
+     * @returns {uint8[][]} Codewords; entry i is the codeword of message i
+     */
     generateCodebook() {
       // Preparata code construction using cosets of RM(1,m)
       const m = this._m;
+      /** @type {int32} */
       const n = OpCodes.Shl32(1, m); // 2^m
+      /** @type {int32} */
       const k = n - 2 * m - 1; // Number of information bits
 
-      /** @type {uint8[]} */
+      /** @type {uint8[][]} */
       const codebook = [];
 
       // For simplified implementation, use construction similar to Nordstrom-Robinson
@@ -215,23 +228,29 @@
       for (let msg = 0; msg < (OpCodes.Shl32(1, k)); ++msg) {
         // Map k-bit message to n-bit codeword
         // Use first rmK bits for RM encoding, rest for coset selection
-        const rmBits = msg&((OpCodes.Shl32(1, rmK)) - 1);
+        /** @type {uint32} */
+        const rmBits = OpCodes.And32(msg, OpCodes.Sub32(OpCodes.Shl32(1, rmK), 1));
+        /** @type {uint32} */
         const cosetBits = OpCodes.Shr32(msg, rmK);
 
+        /** @type {uint8[]} */
         const rmCodeword = this.rmEncode(rmBits, m);
 
         // Apply coset leaders based on cosetBits
+        /** @type {uint8[]} */
         const codeword = this.applyCoset(rmCodeword, cosetBits, m);
 
-        codebook.push({
-          message: msg,
-          codeword: codeword
-        });
+        codebook.push(codeword);
       }
 
       return codebook;
     }
 
+    /**
+     * @param {uint32} msg - RM(1,m) message bits
+     * @param {int32} m - Field exponent
+     * @returns {uint8[]} RM(1,m) codeword
+     */
     rmEncode(msg, m) {
       // First-order Reed-Muller encoding
       const n = OpCodes.Shl32(1, m);
@@ -239,7 +258,7 @@
       const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term
-      if (msg&1) {
+      if (OpCodes.And32(msg, 1)) {
         for (let i = 0; i < n; ++i) {
           codeword[i] = OpCodes.Xor32(codeword[i], 1);
         }
@@ -247,9 +266,9 @@
 
       // Linear terms
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        if ((OpCodes.Shr32(msg, var_idx + 1))&1) {
+        if (OpCodes.And32(OpCodes.Shr32(msg, var_idx + 1), 1)) {
           for (let i = 0; i < n; ++i) {
-            if ((OpCodes.Shr32(i, m - 1 - var_idx))&1) {
+            if (OpCodes.And32(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
               codeword[i] = OpCodes.Xor32(codeword[i], 1);
             }
           }
@@ -259,19 +278,28 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} codeword - RM(1,m) codeword
+     * @param {uint32} cosetBits - Coset selection bits
+     * @param {int32} m - Field exponent
+     * @returns {uint8[]} Codeword moved to the selected coset
+     */
     applyCoset(codeword, cosetBits, m) {
       // Apply coset transformation based on cosetBits
+      /** @type {int32} */
       const n = OpCodes.Shl32(1, m);
       /** @type {uint8[]} */
       const result = codeword.slice();
 
       // Simplified coset application
       // Real Preparata uses complex coset structure
+      /** @type {int32} */
       const numCosetBits = n - 2 * m - 1 - (1 + m);
 
       for (let i = 0; i < numCosetBits && i < n; ++i) {
-        if ((OpCodes.Shr32(cosetBits, i))&1) {
+        if (OpCodes.And32(OpCodes.Shr32(cosetBits, i), 1)) {
           // Apply i-th coset leader (simplified)
+          /** @type {int32} */
           const pattern = (i * 17 + 5) % n; // Pseudo-random pattern
           result[pattern] = OpCodes.Xor32(result[pattern], 1);
           result[(pattern + n / 2) % n] = OpCodes.Xor32(result[(pattern + n / 2) % n], 1);
@@ -286,7 +314,10 @@
      * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
-      const k = OpCodes.Shl32(1, this._m) - 2 * this._m - 1;
+      /** @type {int32} */
+      const n = OpCodes.Shl32(1, this._m);
+      /** @type {int32} */
+      const k = n - 2 * this._m - 1;
 
       if (data.length !== k) {
         throw new Error("Preparata encode: Input must be exactly " + k + " bits for m=" + this._m);
@@ -303,7 +334,9 @@
         throw new Error("Preparata encode: Index " + index + " out of range");
       }
 
-      return [...this.codebook[index].codeword];
+      /** @type {uint8[]} */
+      const codeword = this.codebook[index].slice();
+      return codeword;
     }
 
     /**
@@ -311,7 +344,9 @@
      * @returns {uint8[]} Decoded message symbols
      */
     decode(data) {
+      /** @type {int32} */
       const n = OpCodes.Shl32(1, this._m);
+      /** @type {int32} */
       const k = n - 2 * this._m - 1;
 
       if (data.length !== n) {
@@ -319,13 +354,16 @@
       }
 
       // Minimum distance decoding
+      /** @type {float64} */
       let minDistance = Infinity;
+      /** @type {int32} */
       let bestIndex = 0;
 
       for (let i = 0; i < this.codebook.length; ++i) {
+        /** @type {int32} */
         let distance = 0;
         for (let j = 0; j < n; ++j) {
-          if (data[j] !== this.codebook[i].codeword[j]) {
+          if (data[j] !== this.codebook[i][j]) {
             ++distance;
           }
         }
@@ -340,7 +378,7 @@
       /** @type {uint8[]} */
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
-        decoded.push((OpCodes.Shr32(bestIndex, i))&1);
+        decoded.push(OpCodes.And32(OpCodes.Shr32(bestIndex, i), 1));
       }
 
       return decoded;
@@ -351,6 +389,7 @@
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
+      /** @type {int32} */
       const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;
 
@@ -358,7 +397,7 @@
       for (let i = 0; i < this.codebook.length; ++i) {
         let matches = true;
         for (let j = 0; j < n; ++j) {
-          if (data[j] !== this.codebook[i].codeword[j]) {
+          if (data[j] !== this.codebook[i][j]) {
             matches = false;
             break;
           }
