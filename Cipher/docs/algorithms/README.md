@@ -1148,7 +1148,7 @@ _Stream-based symmetric encryption_
 | [A5/1](stream-ciphers/a5-1.md) | ❌ Broken | GSM stream cipher using three irregularly clocked LFSRs with majority voting. Educational implementation demonstrating telecommunications s… |
 | [A5/2](stream-ciphers/a5-2.md) | ❌ Broken | Weakened GSM stream cipher using four irregularly clocked LFSRs. Intentionally weakened export version with severe cryptographic vulnerabil… |
 | [A5/3](stream-ciphers/a5-3.md) | — | Stream cipher used in 3G/UMTS mobile communications based on KASUMI block cipher. More secure replacement for A5/1 and A5/2. Uses 128-bit k… |
-| [Achterbahn-128/80](stream-ciphers/achterbahn-128-80.md) | ❌ Broken | NLFSR-based stream cipher from eSTREAM project. BROKEN - multiple cryptanalytic attacks exist. DO NOT USE in production. Supports 80-bit an… |
+| [Achterbahn-128/80](stream-ciphers/achterbahn-128-80.md) | ❌ Broken | NLFSR-based stream cipher from the eSTREAM project: 13 nonlinear feedback shift registers of lengths 21 to 33 feed a Boolean combining func… |
 | [ACORN-128](stream-ciphers/acorn-128.md) | 🛡️ Secure | Production-grade authenticated encryption with associated data (AEAD) stream cipher. CAESAR competition winner for lightweight cryptography… |
 | [AEGIS-128](stream-ciphers/aegis-128.md) | 🎓 Educational Only | High-performance authenticated encryption with associated data (AEAD) using AES round function. Winner of CAESAR competition high-performan… |
 | [AES-GCM-SIV](stream-ciphers/aes-gcm-siv.md) | 🎓 Educational Only | Simplified educational implementation of nonce-misuse resistant AEAD. Demonstrates synthetic IV generation and stream encryption principles… |

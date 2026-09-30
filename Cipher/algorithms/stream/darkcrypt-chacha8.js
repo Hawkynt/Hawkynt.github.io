@@ -91,6 +91,14 @@
           nonce: OpCodes.Hex8ToBytes("0000000000000000"),
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           expected: OpCodes.Hex8ToBytes("4014b08c6a17ad6dd1e16c703dc81c3ce79e053484a7cf582a7234cce3a1a0d4dfbf8f157bace81c47697f9759b0bed2bfb22f14f385e9a48b80d7b9049f68e9")
+        },
+        {
+          text: "DarkCrypt Chacha — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186"),
+          nonce: OpCodes.Hex8ToBytes("073c71a6db10457a"),
+          expected: OpCodes.Hex8ToBytes("c780deb2dce10c46831e3be1b2d5fc1957a129b37138fb0cb9d3605f0377185ce95b8209dbebe62aed8dd8a19b5bd87f")
         }
       ];
     }

@@ -136,6 +136,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
           expected: OpCodes.Hex8ToBytes("e831012d6e709dbc7c8aaed9cd08b421f97c50dfa31d9748a0fc378c6d36088f09e18e34ae8372ef15934c7a9cbb56764caf6e62ff1bc637b3bc0c61b3382f7d")
+        },
+        {
+          text: "DarkCrypt Mir — non-zero key and IV, 64-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c39567390adcae704213e5b7895b2cfec0926"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457a"),
+          expected: OpCodes.Hex8ToBytes("58296e532629cee10d4b22d0fc8d128a7acf2737aa101af6b8e0a117c0a9de1c178e23af20880990375d8f559de7874cff32dcacd493b2cb875f146dc681579d")
         }
       ];
     }

@@ -91,6 +91,14 @@
           key: OpCodes.Hex8ToBytes("00010203040506070809"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000"),
           expected: OpCodes.Hex8ToBytes("4e97d39afa496ce633326b66c7f70522e37ce28e2cfa3f46b8c6664908dd6079413322f39cae89271ac8a7144b69b646f9737669c6d910bcf7b7225ad5a93097")
+        },
+        {
+          text: "DarkCrypt Trivium — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e3358"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4"),
+          expected: OpCodes.Hex8ToBytes("8aaf51f506c4a9f661bd704454646957f12b5268bd2eeaca9714081fe2788b03af48b40438aed09f06c24747a4131b62")
         }
       ];
     }
