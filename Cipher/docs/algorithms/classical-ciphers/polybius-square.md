@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Each letter always maps to same coordinate pair, preserving frequency patterns](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Educational use only - provides no security by modern standards |
-| [Identical plaintext produces identical coordinate patterns making analysis easy](https://en.wikipedia.org/wiki/Pattern_recognition) | — | Historical demonstration cipher only |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Each letter always maps to same coordinate pair, preserving frequency patterns | Educational use only - provides no security by modern standards |
+| [Pattern Recognition](https://en.wikipedia.org/wiki/Pattern_recognition) | Identical plaintext produces identical coordinate patterns making analysis easy | Historical demonstration cipher only |
 
 ## Documentation
 

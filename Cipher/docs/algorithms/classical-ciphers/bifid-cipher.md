@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [While more resistant than monoalphabetic ciphers, still vulnerable to frequency analysis with sufficient text](https://en.wikipedia.org/wiki/Bifid_cipher#Cryptanalysis) | — | Use variable block sizes and longer keywords |
-| [Custom keyword grids can sometimes be recovered through cryptanalysis](https://practicalcryptography.com/ciphers/classical-era/bifid/) | — | Educational use only - not suitable for actual security |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Bifid_cipher#Cryptanalysis) | While more resistant than monoalphabetic ciphers, still vulnerable to frequency analysis with sufficient text | Use variable block sizes and longer keywords |
+| [Grid Recovery](https://practicalcryptography.com/ciphers/classical-era/bifid/) | Custom keyword grids can sometimes be recovered through cryptanalysis | Educational use only - not suitable for actual security |
 
 ## Documentation
 
