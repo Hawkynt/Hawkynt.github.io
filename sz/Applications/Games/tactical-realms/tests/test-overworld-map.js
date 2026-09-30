@@ -552,4 +552,44 @@
       assert.ok(foundLeader, 'should sometimes generate leader variant with higher level');
     });
   });
+  describe('OverworldMap — Start Is Never Trapped', () => {
+
+    // Flood-fills passable tiles from the start; true if the walk leaves the box.
+    function escapes(map, radius) {
+      const seen = new Set(['0,0']);
+      const queue = [[0, 0]];
+      while (queue.length > 0) {
+        const [c, r] = queue.shift();
+        if (Math.abs(c) >= radius || Math.abs(r) >= radius)
+          return true;
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nc = c + dc, nr = r + dr;
+          const key = nc + ',' + nr;
+          if (seen.has(key) || !map.isPassable(nc, nr))
+            continue;
+          seen.add(key);
+          queue.push([nc, nr]);
+        }
+      }
+      return false;
+    }
+
+    it('the party can walk away from Home Camp on every world seed', () => {
+      const trapped = [];
+      for (let i = 1; i <= 300; ++i) {
+        const seed = Math.imul(i, 2654435761) >>> 0;
+        if (!escapes(new OverworldMap(seed), 40))
+          trapped.push(seed);
+      }
+      assert.deepEqual(trapped, [], `trapped on ${trapped.length} of 300 seeds`);
+    });
+
+    it('roads stay walkable across water and mountains', () => {
+      for (let i = 1; i <= 50; ++i) {
+        const map = new OverworldMap(Math.imul(i, 40503) >>> 0);
+        const path = map.findPath({ col: 0, row: 0 }, { col: 5, row: -3 }, 60);
+        assert.ok(path, `seed ${i}: no path from Home Camp to its first dungeon`);
+      }
+    });
+  });
 })();

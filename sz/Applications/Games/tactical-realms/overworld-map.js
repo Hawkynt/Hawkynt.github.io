@@ -113,6 +113,15 @@
     return noise2d(col, row, seed + 48611, 12);
   }
 
+  // Home Camp and the four locations around it; type indexes LOCATION_TYPES.
+  const STARTING_LOCATIONS = Object.freeze([
+    Object.freeze({ col: 0, row: 0, type: null }),
+    Object.freeze({ col: 5, row: -3, type: 0 }),
+    Object.freeze({ col: -4, row: 4, type: 20 }),
+    Object.freeze({ col: 8, row: 5, type: 3 }),
+    Object.freeze({ col: -6, row: -5, type: 1 }),
+  ]);
+
   class OverworldMap {
     #worldSeed;
     #chunks;
@@ -142,11 +151,10 @@
       if (loc2)
         return loc2.tile;
 
-      if (this.#roads.has(key)) {
-        const base = this.#baseTerrain(col, row);
-        if (base !== Tile.WATER && base !== Tile.MOUNTAIN)
-          return Tile.ROAD;
-      }
+      // Roads always win: across water they are causeways, through mountains
+      // passes, so every location stays reachable.
+      if (this.#roads.has(key))
+        return Tile.ROAD;
 
       return this.#baseTerrain(col, row);
     }
@@ -243,6 +251,17 @@
           this.#drawRoad(baseCol, baseRow, nearest.col, nearest.row);
       }
 
+      // Cells around the start always link to the starting area; otherwise
+      // they only link to cells generated before them, which can leave the
+      // start cut off from the rest of the road network.
+      if (Math.abs(gcx) <= 1 && Math.abs(gcy) <= 1) {
+        const home = STARTING_LOCATIONS.reduce((best, p) => {
+          const d = Math.abs(p.col - baseCol) + Math.abs(p.row - baseRow);
+          return d < best.d ? { d, p } : best;
+        }, { d: Infinity, p: null }).p;
+        this.#drawRoad(baseCol, baseRow, home.col, home.row);
+      }
+
       const centerCol = Math.round(LOCATION_SPACING / 2);
       const centerRow = Math.round(LOCATION_SPACING / 2);
       this.#drawRoad(baseCol, baseRow,
@@ -257,29 +276,15 @@
       }));
       this.#clearTerrainAround(0, 0);
 
-      this.#locations.set(this.#locationKey(5, -3), Object.freeze({
-        ...LOCATION_TYPES[0], col: 5, row: -3
-      }));
-      this.#clearTerrainAround(5, -3);
-      this.#drawRoad(0, 0, 5, -3);
-
-      this.#locations.set(this.#locationKey(-4, 4), Object.freeze({
-        ...LOCATION_TYPES[20], col: -4, row: 4
-      }));
-      this.#clearTerrainAround(-4, 4);
-      this.#drawRoad(0, 0, -4, 4);
-
-      this.#locations.set(this.#locationKey(8, 5), Object.freeze({
-        ...LOCATION_TYPES[3], col: 8, row: 5
-      }));
-      this.#clearTerrainAround(8, 5);
-      this.#drawRoad(0, 0, 8, 5);
-
-      this.#locations.set(this.#locationKey(-6, -5), Object.freeze({
-        ...LOCATION_TYPES[1], col: -6, row: -5
-      }));
-      this.#clearTerrainAround(-6, -5);
-      this.#drawRoad(0, 0, -6, -5);
+      for (const p of STARTING_LOCATIONS) {
+        if (p.type === null)
+          continue;
+        this.#locations.set(this.#locationKey(p.col, p.row), Object.freeze({
+          ...LOCATION_TYPES[p.type], col: p.col, row: p.row
+        }));
+        this.#clearTerrainAround(p.col, p.row);
+        this.#drawRoad(0, 0, p.col, p.row);
+      }
     }
 
     #pickLocationType(rng, dist) {
