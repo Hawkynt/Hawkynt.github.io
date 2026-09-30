@@ -70,26 +70,38 @@
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const XOR = OpCodes.Xor32;
-  const AND = OpCodes.And32;
-  const OR = OpCodes.Or32;
-  const NOT = OpCodes.Not32;
-  const SHL = OpCodes.Shl32;
-  const SHR = OpCodes.Shr32;
-
-  /** Bit i of a byte string, least significant bit of each byte first. */
+  /**
+   * Bit i of a byte string, least significant bit of each byte first.
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} i - i
+   * @returns {int32} Result
+   */
   function GetBit(bytes, i) {
-    return AND(SHR(bytes[SHR(i, 3)], AND(i, 7)), 1);
+    return OpCodes.And32(OpCodes.Shr32(bytes[OpCodes.Shr32(i, 3)], OpCodes.And32(i, 7)), 1);
   }
 
+  /**
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} i - i
+   * @param {int32} bit - bit
+   */
   function SetBit(bytes, i, bit) {
-    const index = SHR(i, 3);
-    const mask = SHL(1, AND(i, 7));
-    bytes[index] = bit ? OR(bytes[index], mask) : AND(bytes[index], AND(NOT(mask), 0xFF));
+    const index = OpCodes.Shr32(i, 3);
+    const mask = OpCodes.Shl32(1, OpCodes.And32(i, 7));
+    bytes[index] = bit ? OpCodes.Or32(bytes[index], mask) : OpCodes.And32(bytes[index], OpCodes.And32(OpCodes.Not32(mask), 0xFF));
   }
 
+  /**
+   * @param {uint8[]} a - a
+   * @param {int32} aOff - aOff
+   * @param {uint8[]} b - b
+   * @param {int32} bOff - bOff
+   * @param {uint8[]} out - out
+   * @param {int32} outOff - outOff
+   * @param {int32} len - len
+   */
   function XorBytes(a, aOff, b, bOff, out, outOff, len) {
-    for (let i = 0; i < len; ++i) out[outOff + i] = XOR(a[aOff + i], b[bOff + i]);
+    for (let i = 0; i < len; ++i) out[outOff + i] = OpCodes.Xor32(a[aOff + i], b[bOff + i]);
   }
 
   // ===== KECCAK / SHAKE =====
@@ -98,6 +110,7 @@
   // at word 2i. That is also the byte order of the sponge, so absorbing and
   // squeezing move whole little-endian words.
 
+  /** @type {uint32[]} */
   const KECCAK_RC = [
     0x00000001, 0x00000000, 0x00008082, 0x00000000, 0x0000808A, 0x80000000,
     0x80008000, 0x80000000, 0x0000808B, 0x00000000, 0x80000001, 0x00000000,
@@ -109,101 +122,152 @@
     0x00008080, 0x80000000, 0x80000001, 0x00000000, 0x80008008, 0x80000000
   ];
 
+  /** @type {int32[]} */
   const KECCAK_ROTATION = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
   ];
 
   // Where rho-pi sends lane x + 5y: to lane y + 5((2x + 3y) mod 5).
-  const KECCAK_TARGET = (function () {
+  /**
+   * @returns {int32[]} where rho-pi sends each lane
+   */
+  function BuildKeccakTarget() {
+    /** @type {int32[]} */
     const t = new Array(25);
     for (let x = 0; x < 5; ++x)
       for (let y = 0; y < 5; ++y)
         t[x + 5 * y] = y + 5 * ((2 * x + 3 * y) % 5);
     return t;
-  })();
+  }
+
+  const KECCAK_TARGET = BuildKeccakTarget();
 
   const keccakB = new Uint32Array(50);
   const keccakC = new Uint32Array(10);
 
+  /**
+   * @param {Uint32Array} s - s
+   */
   function KeccakPermute(s) {
-    const B = keccakB, C = keccakC;
+    /** @type {Uint32Array} */
+    const B = keccakB;
+    /** @type {Uint32Array} */
+    const C = keccakC;
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
-        C[2 * x] = XOR(XOR(XOR(s[2 * x], s[2 * x + 10]), XOR(s[2 * x + 20], s[2 * x + 30])), s[2 * x + 40]);
-        C[2 * x + 1] = XOR(XOR(XOR(s[2 * x + 1], s[2 * x + 11]), XOR(s[2 * x + 21], s[2 * x + 31])), s[2 * x + 41]);
+        C[2 * x] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[2 * x], s[2 * x + 10]), OpCodes.Xor32(s[2 * x + 20], s[2 * x + 30])), s[2 * x + 40]);
+        C[2 * x + 1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[2 * x + 1], s[2 * x + 11]), OpCodes.Xor32(s[2 * x + 21], s[2 * x + 31])), s[2 * x + 41]);
       }
       for (let x = 0; x < 5; ++x) {
-        const n = 2 * ((x + 1) % 5), p = 2 * ((x + 4) % 5);
-        const dLo = XOR(C[p], OR(SHL(C[n], 1), SHR(C[n + 1], 31)));
-        const dHi = XOR(C[p + 1], OR(SHL(C[n + 1], 1), SHR(C[n], 31)));
+        /** @type {int32} */
+        const n = 2 * ((x + 1) % 5);
+        /** @type {int32} */
+        const p = 2 * ((x + 4) % 5);
+        const dLo = OpCodes.Xor32(C[p], OpCodes.Or32(OpCodes.Shl32(C[n], 1), OpCodes.Shr32(C[n + 1], 31)));
+        const dHi = OpCodes.Xor32(C[p + 1], OpCodes.Or32(OpCodes.Shl32(C[n + 1], 1), OpCodes.Shr32(C[n], 31)));
         for (let y = 0; y < 25; y += 5) {
-          s[2 * (x + y)] = XOR(s[2 * (x + y)], dLo);
-          s[2 * (x + y) + 1] = XOR(s[2 * (x + y) + 1], dHi);
+          s[2 * (x + y)] = OpCodes.Xor32(s[2 * (x + y)], dLo);
+          s[2 * (x + y) + 1] = OpCodes.Xor32(s[2 * (x + y) + 1], dHi);
         }
       }
       for (let i = 0; i < 25; ++i) {
         const r = KECCAK_ROTATION[i];
-        const lo = s[2 * i], hi = s[2 * i + 1];
+        /** @type {uint32} */
+        const lo = s[2 * i];
+        /** @type {uint32} */
+        const hi = s[2 * i + 1];
         const t = 2 * KECCAK_TARGET[i];
         if (r === 0) {
           B[t] = lo; B[t + 1] = hi;
         } else if (r < 32) {
-          B[t] = OR(SHL(lo, r), SHR(hi, 32 - r));
-          B[t + 1] = OR(SHL(hi, r), SHR(lo, 32 - r));
+          B[t] = OpCodes.Or32(OpCodes.Shl32(lo, r), OpCodes.Shr32(hi, 32 - r));
+          B[t + 1] = OpCodes.Or32(OpCodes.Shl32(hi, r), OpCodes.Shr32(lo, 32 - r));
         } else if (r === 32) {
           B[t] = hi; B[t + 1] = lo;
         } else {
           const q = r - 32;
-          B[t] = OR(SHL(hi, q), SHR(lo, 32 - q));
-          B[t + 1] = OR(SHL(lo, q), SHR(hi, 32 - q));
+          B[t] = OpCodes.Or32(OpCodes.Shl32(hi, q), OpCodes.Shr32(lo, 32 - q));
+          B[t + 1] = OpCodes.Or32(OpCodes.Shl32(lo, q), OpCodes.Shr32(hi, 32 - q));
         }
       }
       for (let y = 0; y < 25; y += 5) {
         for (let x = 0; x < 5; ++x) {
-          const i = 2 * (x + y), n = 2 * ((x + 1) % 5 + y), a = 2 * ((x + 2) % 5 + y);
-          s[i] = XOR(B[i], AND(NOT(B[n]), B[a]));
-          s[i + 1] = XOR(B[i + 1], AND(NOT(B[n + 1]), B[a + 1]));
+          /** @type {int32} */
+          const i = 2 * (x + y);
+          /** @type {int32} */
+          const n = 2 * ((x + 1) % 5 + y);
+          /** @type {int32} */
+          const a = 2 * ((x + 2) % 5 + y);
+          s[i] = OpCodes.Xor32(B[i], OpCodes.And32(OpCodes.Not32(B[n]), B[a]));
+          s[i + 1] = OpCodes.Xor32(B[i + 1], OpCodes.And32(OpCodes.Not32(B[n + 1]), B[a + 1]));
         }
       }
-      s[0] = XOR(s[0], KECCAK_RC[2 * round]);
-      s[1] = XOR(s[1], KECCAK_RC[2 * round + 1]);
+      s[0] = OpCodes.Xor32(s[0], KECCAK_RC[2 * round]);
+      s[1] = OpCodes.Xor32(s[1], KECCAK_RC[2 * round + 1]);
     }
   }
 
   /**
    * An incremental SHAKE sponge: absorb, finalise once, then squeeze on demand.
-   * @param {number} rate - 168 for SHAKE128, 136 for SHAKE256
+   * @param {int32} rate - 168 for SHAKE128, 136 for SHAKE256
    */
   function Shake(rate) {
+    /** @type {int32} */
     this.rate = rate;
+    /** @type {Uint32Array} */
     this.state = new Uint32Array(50);
+    /** @type {Uint8Array} */
     this.buf = new Uint8Array(rate);
+    /** @type {int32} */
     this.pos = 0;
+    /** @type {boolean} */
     this.squeezing = false;
   }
 
+  /** Absorb the full buffer into the state. */
   Shake.prototype._absorbBlock = function () {
-    const s = this.state, b = this.buf;
-    for (let i = 0; i < this.rate; i += 4)
-      s[SHR(i, 2)] = XOR(s[SHR(i, 2)], OpCodes.Pack32LE(b[i], b[i + 1], b[i + 2], b[i + 3]));
+    /** @type {Uint32Array} */
+    const s = this.state;
+    /** @type {Uint8Array} */
+    const b = this.buf;
+    for (let i = 0; i < this.rate; i += 4) {
+      /** @type {uint32} */
+      const lane = s[OpCodes.Shr32(i, 2)];
+      s[OpCodes.Shr32(i, 2)] = OpCodes.Xor32(lane, OpCodes.Pack32LE(b[i], b[i + 1], b[i + 2], b[i + 3]));
+    }
     KeccakPermute(s);
   };
 
+  /** Copy the rate part of the state into the buffer. */
   Shake.prototype._extract = function () {
-    const s = this.state, b = this.buf;
+    /** @type {Uint32Array} */
+    const s = this.state;
+    /** @type {Uint8Array} */
+    const b = this.buf;
     for (let i = 0; i < this.rate; i += 4) {
-      const w = s[SHR(i, 2)];
-      b[i] = AND(w, 0xFF);
-      b[i + 1] = AND(SHR(w, 8), 0xFF);
-      b[i + 2] = AND(SHR(w, 16), 0xFF);
-      b[i + 3] = SHR(w, 24);
+      /** @type {uint32} */
+      const w = s[OpCodes.Shr32(i, 2)];
+      b[i] = OpCodes.And32(w, 0xFF);
+      b[i + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      b[i + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF);
+      b[i + 3] = OpCodes.Shr32(w, 24);
     }
   };
 
+  /**
+   * Absorb len octets of data from off, or all of data when off is undefined.
+   * @param {uint8[]} data - the octets
+   * @param {int32} off - where they start
+   * @param {int32} len - how many
+   * @returns {Shake} this sponge
+   */
   Shake.prototype.update = function (data, off, len) {
     if (off === undefined) { off = 0; len = data.length; }
-    const b = this.buf, rate = this.rate;
+    /** @type {Uint8Array} */
+    const b = this.buf;
+    /** @type {int32} */
+    const rate = this.rate;
     for (let i = 0; i < len; ++i) {
       b[this.pos++] = data[off + i];
       if (this.pos === rate) {
@@ -214,6 +278,10 @@
     return this;
   };
 
+  /**
+   * @param {int32} value - one octet to absorb
+   * @returns {Shake} this sponge
+   */
   Shake.prototype.updateByte = function (value) {
     this.buf[this.pos++] = value;
     if (this.pos === this.rate) {
@@ -223,11 +291,16 @@
     return this;
   };
 
+  /**
+   * Pad, absorb the last block and switch to squeezing.
+   * @returns {Shake} this sponge
+   */
   Shake.prototype.finalize = function () {
+    /** @type {Uint8Array} */
     const b = this.buf;
     b.fill(0, this.pos);
-    b[this.pos] = XOR(b[this.pos], 0x1F);
-    b[this.rate - 1] = XOR(b[this.rate - 1], 0x80);
+    b[this.pos] = OpCodes.Xor32(b[this.pos], 0x1F);
+    b[this.rate - 1] = OpCodes.Xor32(b[this.rate - 1], 0x80);
     this._absorbBlock();
     this._extract();
     this.pos = 0;
@@ -235,6 +308,10 @@
     return this;
   };
 
+  /**
+   * @param {int32} len - how many octets to squeeze
+   * @returns {Uint8Array} the octets
+   */
   Shake.prototype.squeeze = function (len) {
     const out = new Uint8Array(len);
     for (let i = 0; i < len; ++i) {
@@ -248,6 +325,9 @@
     return out;
   };
 
+  /**
+   * @returns {Shake} an independent copy of this sponge
+   */
   Shake.prototype.clone = function () {
     const copy = new Shake(this.rate);
     copy.state.set(this.state);
@@ -257,9 +337,34 @@
     return copy;
   };
 
-  /** The hash every FAEST oracle is built on: SHAKE128 at lambda 128, SHAKE256 above. */
+  /**
+   * The hash every FAEST oracle is built on: SHAKE128 at lambda 128, SHAKE256 above.
+   * @param {int32} lambda - lambda
+   * @returns {Shake} Result
+   */
   function NewHash(lambda) {
     return new Shake(lambda === 128 ? 168 : 136);
+  }
+
+  /**
+   * @param {Shake} h - a finalised sponge
+   * @param {int32} len - how many octets to squeeze
+   * @returns {Uint8Array} the octets
+   */
+  function ShakeSqueeze(h, len) {
+    /** @type {Uint8Array} */
+    const out = h.squeeze(len);
+    return out;
+  }
+
+  /**
+   * @param {Shake} h - a sponge
+   * @returns {Shake} an independent copy of it
+   */
+  function ShakeClone(h) {
+    /** @type {Shake} */
+    const copy = h.clone();
+    return copy;
   }
 
   // ===== AES AND RIJNDAEL =====
@@ -275,37 +380,52 @@
   const T2 = new Uint32Array(256);
   const T3 = new Uint32Array(256);
 
-  /** Multiplication in GF(2^8) modulo x^8 + x^4 + x^3 + x + 1. */
+  /**
+   * Multiplication in GF(2^8) modulo x^8 + x^4 + x^3 + x + 1.
+   * @param {int32} a - a
+   * @param {int32} b - b
+   * @returns {int32} Result
+   */
   function Gf8Mul(a, b) {
+    /** @type {uint32} */
     let result = 0;
     for (let i = 0; i < 8; ++i) {
-      if (AND(b, 1)) result = XOR(result, a);
-      const carry = AND(a, 0x80);
-      a = AND(SHL(a, 1), 0xFF);
-      if (carry) a = XOR(a, 0x1B);
-      b = SHR(b, 1);
+      if (OpCodes.And32(b, 1)) result = OpCodes.Xor32(result, a);
+      const carry = OpCodes.And32(a, 0x80);
+      a = OpCodes.And32(OpCodes.Shl32(a, 1), 0xFF);
+      if (carry) a = OpCodes.Xor32(a, 0x1B);
+      b = OpCodes.Shr32(b, 1);
     }
     return result;
   }
 
-  /** Inverse in GF(2^8), with 0 mapped to 0: a^254. */
+  /**
+   * Inverse in GF(2^8), with 0 mapped to 0: a^254.
+   * @param {int32} a - a
+   * @returns {int32} Result
+   */
   function Gf8Inv(a) {
-    let result = 1, base = a, e = 254;
+    /** @type {int32} */
+    let result = 1;
+    /** @type {int32} */
+    let base = a;
+    /** @type {uint32} */
+    let e = 254;
     while (e > 0) {
-      if (AND(e, 1)) result = Gf8Mul(result, base);
+      if (OpCodes.And32(e, 1)) result = Gf8Mul(result, base);
       base = Gf8Mul(base, base);
-      e = SHR(e, 1);
+      e = OpCodes.Shr32(e, 1);
     }
     return a === 0 ? 0 : result;
   }
 
-  (function BuildAesTables() {
+  function BuildAesTables() {
     for (let x = 0; x < 256; ++x) {
       const inv = Gf8Inv(x);
       let s = inv;
       for (let r = 1; r < 5; ++r)
-        s = XOR(s, AND(OR(SHL(inv, r), SHR(inv, 8 - r)), 0xFF));
-      SBOX[x] = XOR(s, 0x63);
+        s = OpCodes.Xor32(s, OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(inv, r), OpCodes.Shr32(inv, 8 - r)), 0xFF));
+      SBOX[x] = OpCodes.Xor32(s, 0x63);
     }
     for (let x = 0; x < 256; ++x) {
       const s = SBOX[x];
@@ -315,21 +435,33 @@
       T2[x] = OpCodes.RotL32(t, 16);
       T3[x] = OpCodes.RotL32(t, 24);
     }
-  })();
+  }
 
+  BuildAesTables();
+
+  /** @type {int32[]} */
   const RCON = [
     0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a,
     0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91
   ];
 
+  /**
+   * @param {uint32} w - w
+   * @returns {uint32} Result
+   */
   function SubWord(w) {
-    return OpCodes.Pack32LE(SBOX[AND(w, 0xFF)], SBOX[AND(SHR(w, 8), 0xFF)],
-      SBOX[AND(SHR(w, 16), 0xFF)], SBOX[SHR(w, 24)]);
+    return OpCodes.Pack32LE(SBOX[OpCodes.And32(w, 0xFF)], SBOX[OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF)],
+      SBOX[OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF)], SBOX[OpCodes.Shr32(w, 24)]);
   }
 
   /**
    * The Rijndael key schedule for any key and block width, as FIPS 197 extends
    * it: nk key words, nb block words, rounds + 1 round keys of nb words each.
+   * @param {uint8[]} key - key
+   * @param {int32} keyOff - keyOff
+   * @param {int32} nk - nk
+   * @param {int32} nb - nb
+   * @param {int32} rounds - rounds
    * @returns {Uint32Array} the round-key words
    */
   function ExpandKey(key, keyOff, nk, nb, rounds) {
@@ -340,19 +472,37 @@
     for (let i = nk; i < total; ++i) {
       let t = w[i - 1];
       if (i % nk === 0)
-        t = XOR(SubWord(OpCodes.RotR32(t, 8)), RCON[i / nk - 1]);
+        t = OpCodes.Xor32(SubWord(OpCodes.RotR32(t, 8)), RCON[i / nk - 1]);
       else if (nk > 6 && i % nk === 4)
         t = SubWord(t);
-      w[i] = XOR(w[i - nk], t);
+      w[i] = OpCodes.Xor32(w[i - nk], t);
     }
     return w;
   }
 
   const ROUNDS_FOR_KEY = { 4: 10, 6: 12, 8: 14 };
 
-  /** ShiftRows offsets: 1, 2, 3 for four and six word blocks, 1, 3, 4 for eight. */
+  /**
+   * @param {int32} nk - the key length in words
+   * @returns {int32} the number of AES rounds for that key length
+   */
+  function RoundsForKey(nk) {
+    /** @type {int32} */
+    const rounds = ROUNDS_FOR_KEY[nk];
+    return rounds;
+  }
+
+  /**
+   * ShiftRows offsets: 1, 2, 3 for four and six word blocks, 1, 3, 4 for eight.
+   * @param {int32} nb - nb
+   * @returns {int32[]} Result
+   */
   function ShiftOffsets(nb) {
-    return nb === 8 ? [0, 1, 3, 4] : [0, 1, 2, 3];
+    /** @type {int32[]} */
+    const eight = [0, 1, 3, 4];
+    /** @type {int32[]} */
+    const other = [0, 1, 2, 3];
+    return nb === 8 ? eight : other;
   }
 
   const aesState = new Uint32Array(8);
@@ -360,36 +510,60 @@
 
   /**
    * Encrypt one block of nb words in place of out.
+   * @param {Uint32Array} rk - rk
+   * @param {int32} nb - nb
+   * @param {int32} rounds - rounds
+   * @param {uint8[]} input - input
+   * @param {int32} inOff - inOff
+   * @param {uint8[]} out - out
+   * @param {int32} outOff - outOff
    */
   function RijndaelEncrypt(rk, nb, rounds, input, inOff, out, outOff) {
-    const s = aesState, t = aesNext;
+    /** @type {Uint32Array} */
+    const s = aesState;
+    /** @type {Uint32Array} */
+    const t = aesNext;
     const sh = ShiftOffsets(nb);
-    const s1 = sh[1], s2 = sh[2], s3 = sh[3];
+    /** @type {int32} */
+    const s1 = sh[1];
+    /** @type {int32} */
+    const s2 = sh[2];
+    /** @type {int32} */
+    const s3 = sh[3];
     for (let c = 0; c < nb; ++c)
-      s[c] = XOR(OpCodes.Pack32LE(input[inOff + 4 * c], input[inOff + 4 * c + 1], input[inOff + 4 * c + 2], input[inOff + 4 * c + 3]), rk[c]);
+      s[c] = OpCodes.Xor32(OpCodes.Pack32LE(input[inOff + 4 * c], input[inOff + 4 * c + 1], input[inOff + 4 * c + 2], input[inOff + 4 * c + 3]), rk[c]);
     for (let round = 1; round < rounds; ++round) {
       const base = round * nb;
       for (let c = 0; c < nb; ++c) {
-        t[c] = XOR(XOR(XOR(T0[AND(s[c], 0xFF)], T1[AND(SHR(s[(c + s1) % nb], 8), 0xFF)]),
-          XOR(T2[AND(SHR(s[(c + s2) % nb], 16), 0xFF)], T3[SHR(s[(c + s3) % nb], 24)])), rk[base + c]);
+        t[c] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(T0[OpCodes.And32(s[c], 0xFF)], T1[OpCodes.And32(OpCodes.Shr32(s[(c + s1) % nb], 8), 0xFF)]),
+          OpCodes.Xor32(T2[OpCodes.And32(OpCodes.Shr32(s[(c + s2) % nb], 16), 0xFF)], T3[OpCodes.Shr32(s[(c + s3) % nb], 24)])), rk[base + c]);
       }
       for (let c = 0; c < nb; ++c) s[c] = t[c];
     }
     const base = rounds * nb;
     for (let c = 0; c < nb; ++c) {
-      const w = XOR(OpCodes.Pack32LE(SBOX[AND(s[c], 0xFF)], SBOX[AND(SHR(s[(c + s1) % nb], 8), 0xFF)],
-        SBOX[AND(SHR(s[(c + s2) % nb], 16), 0xFF)], SBOX[SHR(s[(c + s3) % nb], 24)]), rk[base + c]);
-      out[outOff + 4 * c] = AND(w, 0xFF);
-      out[outOff + 4 * c + 1] = AND(SHR(w, 8), 0xFF);
-      out[outOff + 4 * c + 2] = AND(SHR(w, 16), 0xFF);
-      out[outOff + 4 * c + 3] = SHR(w, 24);
+      const w = OpCodes.Xor32(OpCodes.Pack32LE(SBOX[OpCodes.And32(s[c], 0xFF)], SBOX[OpCodes.And32(OpCodes.Shr32(s[(c + s1) % nb], 8), 0xFF)],
+        SBOX[OpCodes.And32(OpCodes.Shr32(s[(c + s2) % nb], 16), 0xFF)], SBOX[OpCodes.Shr32(s[(c + s3) % nb], 24)]), rk[base + c]);
+      out[outOff + 4 * c] = OpCodes.And32(w, 0xFF);
+      out[outOff + 4 * c + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      out[outOff + 4 * c + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF);
+      out[outOff + 4 * c + 3] = OpCodes.Shr32(w, 24);
     }
   }
 
-  /** AES with a lambda-bit key on one 16-byte block. */
+  /**
+   * AES with a lambda-bit key on one 16-byte block.
+   * @param {uint8[]} key - key
+   * @param {int32} keyOff - keyOff
+   * @param {int32} keyBits - keyBits
+   * @param {uint8[]} input - input
+   * @param {int32} inOff - inOff
+   * @param {uint8[]} out - out
+   * @param {int32} outOff - outOff
+   */
   function AesEncryptBlock(key, keyOff, keyBits, input, inOff, out, outOff) {
     const nk = keyBits / 32;
-    const rounds = ROUNDS_FOR_KEY[nk];
+    const rounds = RoundsForKey(nk);
     RijndaelEncrypt(ExpandKey(key, keyOff, nk, 4, rounds), 4, rounds, input, inOff, out, outOff);
   }
 
@@ -397,19 +571,29 @@
    * The FAEST pseudorandom generator: AES-lambda in counter mode. The tweak is
    * added to the top 32-bit little-endian word of the IV, and the counter is the
    * bottom 32-bit little-endian word, incremented modulo 2^32.
+   * @param {uint8[]} key - key
+   * @param {int32} keyOff - keyOff
+   * @param {uint8[]} iv - iv
+   * @param {uint32} tweak - tweak
+   * @param {int32} outLen - outLen
+   * @param {int32} lambda - lambda
+   * @param {Uint8Array} out - out
+   * @param {int32} outOff - outOff
    * @returns {Uint8Array} outLen pseudorandom bytes
    */
   function Prg(key, keyOff, iv, tweak, outLen, lambda, out, outOff) {
     if (!out) { out = new Uint8Array(outLen); outOff = 0; }
     const nk = lambda / 32;
-    const rounds = ROUNDS_FOR_KEY[nk];
+    const rounds = RoundsForKey(nk);
     const rk = ExpandKey(key, keyOff, nk, 4, rounds);
     const ctr = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) ctr[i] = iv[i];
+    /** @type {uint32} */
     let upper = OpCodes.Pack32LE(ctr[12], ctr[13], ctr[14], ctr[15]);
     upper = OpCodes.ToUint32(upper + tweak);
-    ctr[12] = AND(upper, 0xFF); ctr[13] = AND(SHR(upper, 8), 0xFF);
-    ctr[14] = AND(SHR(upper, 16), 0xFF); ctr[15] = SHR(upper, 24);
+    ctr[12] = OpCodes.And32(upper, 0xFF); ctr[13] = OpCodes.And32(OpCodes.Shr32(upper, 8), 0xFF);
+    ctr[14] = OpCodes.And32(OpCodes.Shr32(upper, 16), 0xFF); ctr[15] = OpCodes.Shr32(upper, 24);
+    /** @type {uint32} */
     let counter = OpCodes.Pack32LE(ctr[0], ctr[1], ctr[2], ctr[3]);
     const block = new Uint8Array(16);
     let done = 0;
@@ -419,8 +603,8 @@
       for (let i = 0; i < take; ++i) out[outOff + done + i] = block[i];
       done += take;
       counter = OpCodes.ToUint32(counter + 1);
-      ctr[0] = AND(counter, 0xFF); ctr[1] = AND(SHR(counter, 8), 0xFF);
-      ctr[2] = AND(SHR(counter, 16), 0xFF); ctr[3] = SHR(counter, 24);
+      ctr[0] = OpCodes.And32(counter, 0xFF); ctr[1] = OpCodes.And32(OpCodes.Shr32(counter, 8), 0xFF);
+      ctr[2] = OpCodes.And32(OpCodes.Shr32(counter, 16), 0xFF); ctr[3] = OpCodes.Shr32(counter, 24);
     }
     return out;
   }
@@ -434,110 +618,387 @@
   // - that is how the 64-bit universal-hash keys and the leaf-hash inputs are
   // multiplied into larger fields.
 
-  function MakeField(bits, modulus) {
-    const nw = bits / 32;
-    const reduce = new Uint32Array(16);
-    for (let c = 0; c < 16; ++c) {
-      let r = 0;
-      for (let b = 0; b < 4; ++b)
-        if (AND(SHR(c, b), 1)) r = XOR(r, SHL(modulus, b));
-      reduce[c] = r;
-    }
-    const table = new Uint32Array(16 * nw);
-    const bytes = bits / 8;
+  /**
+   * GF(2^n) for n a multiple of 32; its operations are the closures below,
+   * own properties of each field, in the order the object literal held them.
+   */
+  class GfField {
+    /**
+     * @param {int32} bits - the degree, a multiple of 32
+     * @param {uint32} modulus - the low word of the reduction polynomial
+     */
+    constructor(bits, modulus) {
+      /** @type {int32} */
+      const nw = bits / 32;
+      const reduce = new Uint32Array(16);
+      for (let c = 0; c < 16; ++c) {
+        /** @type {uint32} */
+        let r = 0;
+        for (let b = 0; b < 4; ++b)
+          if (OpCodes.And32(OpCodes.Shr32(c, b), 1)) r = OpCodes.Xor32(r, OpCodes.Shl32(modulus, b));
+        reduce[c] = r;
+      }
+      const table = new Uint32Array(16 * nw);
+      const bytes = bits / 8;
 
-    const F = {
-      bits: bits,
-      words: nw,
-      bytes: bytes,
-      zero: function () { return new Uint32Array(nw); },
-      one: function () { const r = new Uint32Array(nw); r[0] = 1; return r; },
-      fromBit: function (bit) { const r = new Uint32Array(nw); r[0] = AND(bit, 1); return r; },
-      copy: function (a) { return new Uint32Array(a); },
-      add: function (a, b) {
+      /** @type {int32} */
+      this.bits = bits;
+      /** @type {int32} */
+      this.words = nw;
+      /** @type {int32} */
+      this.bytes = bytes;
+      /**
+       * @returns {Uint32Array} zero
+       */
+      function zero() { return new Uint32Array(nw); }
+
+      /**
+       * @returns {Uint32Array} one
+       */
+      function one() { const r = new Uint32Array(nw); r[0] = 1; return r; }
+
+      /**
+       * @param {int32} bit - the bit, only its lowest bit counts
+       * @returns {Uint32Array} the bit as an element
+       */
+      function fromBit(bit) { const r = new Uint32Array(nw); r[0] = OpCodes.And32(bit, 1); return r; }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @returns {Uint32Array} a copy of it
+       */
+      function copy(a) { return new Uint32Array(a); }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @param {Uint32Array} b - an element
+       * @returns {Uint32Array} a + b, a new element
+       */
+      function add(a, b) {
         const r = new Uint32Array(nw);
-        for (let i = 0; i < nw; ++i) r[i] = XOR(a[i], b[i]);
+        for (let i = 0; i < nw; ++i) r[i] = OpCodes.Xor32(a[i], b[i]);
         return r;
-      },
-      addInto: function (acc, a) {
-        for (let i = 0; i < nw; ++i) acc[i] = XOR(acc[i], a[i]);
+      }
+
+      /**
+       * @param {Uint32Array} acc - the element added to, in place
+       * @param {Uint32Array} a - an element
+       * @returns {Uint32Array} acc
+       */
+      function addInto(acc, a) {
+        for (let i = 0; i < nw; ++i) acc[i] = OpCodes.Xor32(acc[i], a[i]);
         return acc;
-      },
-      isZero: function (a) {
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @returns {boolean} whether it is zero
+       */
+      function isZero(a) {
+        /** @type {uint32} */
         let d = 0;
-        for (let i = 0; i < nw; ++i) d = OR(d, a[i]);
+        for (let i = 0; i < nw; ++i) d = OpCodes.Or32(d, a[i]);
         return d === 0;
-      },
-      equals: function (a, b) {
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @param {Uint32Array} b - an element
+       * @returns {boolean} whether they are equal
+       */
+      function equals(a, b) {
+        /** @type {uint32} */
         let d = 0;
-        for (let i = 0; i < nw; ++i) d = OR(d, XOR(a[i], b[i]));
+        for (let i = 0; i < nw; ++i) d = OpCodes.Or32(d, OpCodes.Xor32(a[i], b[i]));
         return d === 0;
-      },
-      dbl: function (a) {
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @returns {Uint32Array} X * a
+       */
+      function dbl(a) {
         const r = new Uint32Array(nw);
-        const top = SHR(a[nw - 1], 31);
-        for (let i = nw - 1; i > 0; --i) r[i] = OR(SHL(a[i], 1), SHR(a[i - 1], 31));
-        r[0] = SHL(a[0], 1);
-        if (top) r[0] = XOR(r[0], modulus);
+        const top = OpCodes.Shr32(a[nw - 1], 31);
+        for (let i = nw - 1; i > 0; --i) r[i] = OpCodes.Or32(OpCodes.Shl32(a[i], 1), OpCodes.Shr32(a[i - 1], 31));
+        r[0] = OpCodes.Shl32(a[0], 1);
+        if (top) r[0] = OpCodes.Xor32(r[0], modulus);
         return r;
-      },
-      mulBit: function (a, bit) {
-        return AND(bit, 1) ? new Uint32Array(a) : new Uint32Array(nw);
-      },
-      mul: function (a, b) {
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @param {int32} bit - the bit, only its lowest bit counts
+       * @returns {Uint32Array} a copy of a, or zero
+       */
+      function mulBit(a, bit) {
+        return OpCodes.And32(bit, 1) ? new Uint32Array(a) : new Uint32Array(nw);
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @param {Uint32Array} b - an element, or a shorter operand
+       * @returns {Uint32Array} a * b
+       */
+      function mul(a, b) {
         const T = table;
         for (let i = 0; i < nw; ++i) { T[i] = 0; T[nw + i] = a[i]; }
         for (let j = 2; j < 16; j += 2) {
           // T[j] = X * T[j/2], T[j+1] = T[j] + a
-          const src = (j / 2) * nw, dst = j * nw;
-          const top = SHR(T[src + nw - 1], 31);
-          for (let i = nw - 1; i > 0; --i) T[dst + i] = OR(SHL(T[src + i], 1), SHR(T[src + i - 1], 31));
-          T[dst] = SHL(T[src], 1);
-          if (top) T[dst] = XOR(T[dst], modulus);
-          for (let i = 0; i < nw; ++i) T[dst + nw + i] = XOR(T[dst + i], a[i]);
+          const src = (j / 2) * nw;
+          const dst = j * nw;
+          const top = OpCodes.Shr32(T[src + nw - 1], 31);
+          for (let i = nw - 1; i > 0; --i) T[dst + i] = OpCodes.Or32(OpCodes.Shl32(T[src + i], 1), OpCodes.Shr32(T[src + i - 1], 31));
+          T[dst] = OpCodes.Shl32(T[src], 1);
+          if (top) T[dst] = OpCodes.Xor32(T[dst], modulus);
+          for (let i = 0; i < nw; ++i) T[dst + nw + i] = OpCodes.Xor32(T[dst + i], a[i]);
         }
         const acc = new Uint32Array(nw);
         for (let wi = b.length - 1; wi >= 0; --wi) {
+          /** @type {uint32} */
           const word = b[wi];
           for (let shift = 28; shift >= 0; shift -= 4) {
-            const top = SHR(acc[nw - 1], 28);
-            for (let i = nw - 1; i > 0; --i) acc[i] = OR(SHL(acc[i], 4), SHR(acc[i - 1], 28));
-            acc[0] = XOR(SHL(acc[0], 4), reduce[top]);
-            const nib = AND(SHR(word, shift), 15) * nw;
+            const top = OpCodes.Shr32(acc[nw - 1], 28);
+            for (let i = nw - 1; i > 0; --i) acc[i] = OpCodes.Or32(OpCodes.Shl32(acc[i], 4), OpCodes.Shr32(acc[i - 1], 28));
+            acc[0] = OpCodes.Xor32(OpCodes.Shl32(acc[0], 4), reduce[top]);
+            const nib = OpCodes.And32(OpCodes.Shr32(word, shift), 15) * nw;
             if (nib !== 0)
-              for (let i = 0; i < nw; ++i) acc[i] = XOR(acc[i], T[nib + i]);
+              for (let i = 0; i < nw; ++i) acc[i] = OpCodes.Xor32(acc[i], T[nib + i]);
           }
         }
         return acc;
-      },
-      load: function (src, off) {
+      }
+
+      /**
+       * @param {uint8[]} src - little-endian octets
+       * @param {int32} off - where the element starts, 0 when undefined
+       * @returns {Uint32Array} the element
+       */
+      function load(src, off) {
         off = off || 0;
         const r = new Uint32Array(nw);
         for (let i = 0; i < nw; ++i)
           r[i] = OpCodes.Pack32LE(src[off + 4 * i], src[off + 4 * i + 1], src[off + 4 * i + 2], src[off + 4 * i + 3]);
         return r;
-      },
-      store: function (a, out, off) {
+      }
+
+      /**
+       * @param {Uint32Array} a - an element
+       * @param {Uint8Array} out - where to write it, or undefined for a new array
+       * @param {int32} off - where in out
+       * @returns {Uint8Array} the octets written to
+       */
+      function store(a, out, off) {
         if (!out) { out = new Uint8Array(bytes); off = 0; }
         for (let i = 0; i < nw; ++i) {
+          /** @type {uint32} */
           const w = a[i];
-          out[off + 4 * i] = AND(w, 0xFF);
-          out[off + 4 * i + 1] = AND(SHR(w, 8), 0xFF);
-          out[off + 4 * i + 2] = AND(SHR(w, 16), 0xFF);
-          out[off + 4 * i + 3] = SHR(w, 24);
+          out[off + 4 * i] = OpCodes.And32(w, 0xFF);
+          out[off + 4 * i + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+          out[off + 4 * i + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF);
+          out[off + 4 * i + 3] = OpCodes.Shr32(w, 24);
         }
         return out;
       }
-    };
 
-    /** sum_i xs[off + i] X^i over the field's width, by Horner's rule. */
-    F.sumPoly = function (xs, off) {
-      let r = F.copy(xs[off + bits - 1]);
-      for (let i = 1; i < bits; ++i) r = F.addInto(F.dbl(r), xs[off + bits - 1 - i]);
-      return r;
-    };
+      this.zero = zero;
+      this.one = one;
+      this.fromBit = fromBit;
+      this.copy = copy;
+      this.add = add;
+      this.addInto = addInto;
+      this.isZero = isZero;
+      this.equals = equals;
+      this.dbl = dbl;
+      this.mulBit = mulBit;
+      this.mul = mul;
+      this.load = load;
+      this.store = store;
+      const F = this;
 
-    return F;
+      /**
+       * sum_i xs[off + i] X^i over the field's width, by Horner's rule.
+       * @param {Uint32Array[]} xs - the coefficients
+       * @param {int32} off - where they start
+       * @returns {Uint32Array} the sum
+       */
+      this.sumPoly = function (xs, off) {
+        let r = F.copy(xs[off + bits - 1]);
+        for (let i = 1; i < bits; ++i) r = F.addInto(F.dbl(r), xs[off + bits - 1 - i]);
+        return r;
+      };
+    }
+  }
+
+  /**
+   * GF(2^bits) with the given low word of the reduction polynomial.
+   * @param {int32} bits - the degree, a multiple of 32
+   * @param {uint32} modulus - the low word of the reduction polynomial
+   * @returns {GfField} the field
+   */
+  function MakeField(bits, modulus) {
+    return new GfField(bits, modulus);
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @returns {Uint32Array} zero
+   */
+  function FieldZero(F) {
+    /** @type {Uint32Array} */
+    const r = F.zero();
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @returns {Uint32Array} one
+   */
+  function FieldOne(F) {
+    /** @type {Uint32Array} */
+    const r = F.one();
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {int32} bit - the bit, only its lowest bit counts
+   * @returns {Uint32Array} the bit as a field element
+   */
+  function FieldFromBit(F, bit) {
+    /** @type {Uint32Array} */
+    const r = F.fromBit(bit);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @returns {Uint32Array} a copy of it
+   */
+  function FieldCopy(F, a) {
+    /** @type {Uint32Array} */
+    const r = F.copy(a);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @param {Uint32Array} b - an element
+   * @returns {Uint32Array} a + b, a new element
+   */
+  function FieldAdd(F, a, b) {
+    /** @type {Uint32Array} */
+    const r = F.add(a, b);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} acc - the element added to, in place
+   * @param {Uint32Array} a - an element
+   * @returns {Uint32Array} acc
+   */
+  function FieldAddInto(F, acc, a) {
+    /** @type {Uint32Array} */
+    const r = F.addInto(acc, a);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @returns {boolean} whether it is zero
+   */
+  function FieldIsZero(F, a) {
+    /** @type {boolean} */
+    const r = F.isZero(a);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @param {Uint32Array} b - an element
+   * @returns {boolean} whether they are equal
+   */
+  function FieldEquals(F, a, b) {
+    /** @type {boolean} */
+    const r = F.equals(a, b);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @returns {Uint32Array} X * a
+   */
+  function FieldDbl(F, a) {
+    /** @type {Uint32Array} */
+    const r = F.dbl(a);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @param {int32} bit - the bit, only its lowest bit counts
+   * @returns {Uint32Array} a copy of a, or zero
+   */
+  function FieldMulBit(F, a, bit) {
+    /** @type {Uint32Array} */
+    const r = F.mulBit(a, bit);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @param {Uint32Array} b - an element, or a shorter operand
+   * @returns {Uint32Array} a * b
+   */
+  function FieldMul(F, a, b) {
+    /** @type {Uint32Array} */
+    const r = F.mul(a, b);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint8Array} src - little-endian octets
+   * @param {int32} off - where the element starts
+   * @returns {Uint32Array} the element
+   */
+  function FieldLoad(F, src, off) {
+    /** @type {Uint32Array} */
+    const r = F.load(src, off);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array} a - an element
+   * @param {Uint8Array} out - where to write it, or undefined for a new array
+   * @param {int32} off - where in out
+   * @returns {Uint8Array} the octets written to
+   */
+  function FieldStore(F, a, out, off) {
+    /** @type {Uint8Array} */
+    const r = F.store(a, out, off);
+    return r;
+  }
+
+  /**
+   * @param {GfField} F - the field
+   * @param {Uint32Array[]} xs - the coefficients
+   * @param {int32} off - where they start
+   * @returns {Uint32Array} sum_i xs[off + i] X^i
+   */
+  function FieldSumPoly(F, xs, off) {
+    /** @type {Uint32Array} */
+    const r = F.sumPoly(xs, off);
+    return r;
   }
 
   const GF64 = MakeField(64, 0x1B);
@@ -551,6 +1012,26 @@
     192: MakeField(576, 0x2019),
     256: MakeField(768, 0xA0011)
   };
+
+  /**
+   * @param {int32} lambda - 128, 192 or 256
+   * @returns {GfField} GF(2^lambda)
+   */
+  function FieldFor(lambda) {
+    /** @type {GfField} */
+    const f = FIELDS[lambda];
+    return f;
+  }
+
+  /**
+   * @param {int32} lambda - 128, 192 or 256
+   * @returns {GfField} GF(2^(3 lambda)), the field of the leaf commitments
+   */
+  function WideFieldFor(lambda) {
+    /** @type {GfField} */
+    const f = WIDE_FIELDS[lambda];
+    return f;
+  }
 
   // The images of x^1 .. x^7 under the embedding of GF(2^8) (the AES field) into
   // GF(2^lambda) that the specification fixes, least significant byte first.
@@ -578,66 +1059,181 @@
     ]
   };
 
+  /**
+   * @param {int32} lambda - lambda
+   * @returns {Uint32Array[]} Result
+   */
   function MakeAlphas(lambda) {
-    const F = FIELDS[lambda];
-    return ALPHA_HEX[lambda].map(h => F.load(OpCodes.Hex8ToBytes(h), 0));
+    const F = FieldFor(lambda);
+    /** @type {string[]} */
+    const hex = ALPHA_HEX[lambda];
+    return hex.map(h => FieldLoad(F, OpCodes.Hex8ToBytes(h), 0));
   }
 
   const ALPHAS = { 128: MakeAlphas(128), 192: MakeAlphas(192), 256: MakeAlphas(256) };
 
   /**
+   * @param {int32} lambda - 128, 192 or 256
+   * @returns {Uint32Array[]} the images of x^1 .. x^7 in GF(2^lambda)
+   */
+  function AlphasFor(lambda) {
+    /** @type {Uint32Array[]} */
+    const a = ALPHAS[lambda];
+    return a;
+  }
+
+  /**
    * The byte-level helpers of the constraint system for one field: lifting a
    * byte, given as eight bits or as eight field elements, into GF(2^lambda),
-   * with or without first squaring it in GF(2^8).
+   * with or without first squaring it in GF(2^8). The field and the images of
+   * x^1 .. x^7 are held here; the helpers are the Byte* functions below.
+   */
+  class FaestByteOps {
+    /**
+     * @param {int32} lambda - 128, 192 or 256
+     */
+    constructor(lambda) {
+      /** @type {GfField} */
+      this.F = FieldFor(lambda);
+      /** @type {Uint32Array[]} */
+      this.alpha = AlphasFor(lambda);
+    }
+  }
+
+  /**
+   * @param {int32} lambda - 128, 192 or 256
+   * @returns {FaestByteOps} the byte helpers for that field
    */
   function MakeByteOps(lambda) {
-    const F = FIELDS[lambda];
-    const A = ALPHAS[lambda];
+    return new FaestByteOps(lambda);
+  }
 
-    function Combine(x, off) {
-      let r = F.copy(x[off]);
-      for (let i = 1; i < 8; ++i) r = F.addInto(r, F.mul(x[off + i], A[i - 1]));
-      return r;
-    }
+  /**
+   * A byte given as eight field elements, lifted into the field.
+   * @param {FaestByteOps} B - the byte helpers
+   * @param {Uint32Array[]} x - the eight elements, least significant first
+   * @param {int32} off - where they start
+   * @returns {Uint32Array} the lifted byte
+   */
+  function ByteCombine(B, x, off) {
+    const F = B.F;
+    const A = B.alpha;
+    let r = FieldCopy(F, x[off]);
+    for (let i = 1; i < 8; ++i) r = FieldAddInto(F, r, FieldMul(F, x[off + i], A[i - 1]));
+    return r;
+  }
 
-    function CombineBits(x, off) {
-      const r = F.fromBit(x[off]);
-      for (let i = 1; i < 8; ++i) if (x[off + i]) F.addInto(r, A[i - 1]);
-      return r;
-    }
+  /**
+   * A byte given as eight bits, lifted into the field.
+   * @param {FaestByteOps} B - the byte helpers
+   * @param {uint8[]} x - the eight bits, least significant first
+   * @param {int32} off - where they start
+   * @returns {Uint32Array} the lifted byte
+   */
+  function ByteCombineBits(B, x, off) {
+    const F = B.F;
+    const A = B.alpha;
+    const r = FieldFromBit(F, x[off]);
+    for (let i = 1; i < 8; ++i) if (x[off + i]) FieldAddInto(F, r, A[i - 1]);
+    return r;
+  }
 
-    // Squaring in GF(2^8) is linear over GF(2); these are the bit equations.
-    function SquareBits(x, off) {
-      const x0 = x[off], x1 = x[off + 1], x2 = x[off + 2], x3 = x[off + 3];
-      const x4 = x[off + 4], x5 = x[off + 5], x6 = x[off + 6], x7 = x[off + 7];
-      return [
-        XOR(XOR(x0, x4), x6), XOR(XOR(x4, x6), x7), XOR(x1, x5), XOR(XOR(x4, x5), XOR(x6, x7)),
-        XOR(XOR(x2, x4), x7), XOR(x5, x6), XOR(x3, x5), XOR(x6, x7)
-      ];
-    }
+  /**
+   * Squaring in GF(2^8) is linear over GF(2); these are the bit equations.
+   * @param {uint8[]} x - the eight bits, least significant first
+   * @param {int32} off - where they start
+   * @returns {uint8[]} the bits of the square
+   */
+  function ByteSquareBits(x, off) {
+    /** @type {uint8} */
+    const x0 = x[off];
+    /** @type {uint8} */
+    const x1 = x[off + 1];
+    /** @type {uint8} */
+    const x2 = x[off + 2];
+    /** @type {uint8} */
+    const x3 = x[off + 3];
+    /** @type {uint8} */
+    const x4 = x[off + 4];
+    /** @type {uint8} */
+    const x5 = x[off + 5];
+    /** @type {uint8} */
+    const x6 = x[off + 6];
+    /** @type {uint8} */
+    const x7 = x[off + 7];
+    /** @type {uint8[]} */
+    const out = [
+      OpCodes.Xor32(OpCodes.Xor32(x0, x4), x6), OpCodes.Xor32(OpCodes.Xor32(x4, x6), x7), OpCodes.Xor32(x1, x5), OpCodes.Xor32(OpCodes.Xor32(x4, x5), OpCodes.Xor32(x6, x7)),
+      OpCodes.Xor32(OpCodes.Xor32(x2, x4), x7), OpCodes.Xor32(x5, x6), OpCodes.Xor32(x3, x5), OpCodes.Xor32(x6, x7)
+    ];
+    return out;
+  }
 
-    function SquareTags(x, off) {
-      const a = function (i) { return x[off + i]; };
-      return [
-        F.add(F.add(a(0), a(4)), a(6)), F.add(F.add(a(4), a(6)), a(7)), F.add(a(1), a(5)),
-        F.add(F.add(a(4), a(5)), F.add(a(6), a(7))), F.add(F.add(a(2), a(4)), a(7)),
-        F.add(a(5), a(6)), F.add(a(3), a(5)), F.add(a(6), a(7))
-      ];
-    }
+  /**
+   * The same bit equations on eight field elements.
+   * @param {FaestByteOps} B - the byte helpers
+   * @param {Uint32Array[]} x - the eight elements, least significant first
+   * @param {int32} off - where they start
+   * @returns {Uint32Array[]} the eight elements of the square
+   */
+  function ByteSquareTags(B, x, off) {
+    const F = B.F;
+    /** @type {Uint32Array} */
+    const a0 = x[off];
+    /** @type {Uint32Array} */
+    const a1 = x[off + 1];
+    /** @type {Uint32Array} */
+    const a2 = x[off + 2];
+    /** @type {Uint32Array} */
+    const a3 = x[off + 3];
+    /** @type {Uint32Array} */
+    const a4 = x[off + 4];
+    /** @type {Uint32Array} */
+    const a5 = x[off + 5];
+    /** @type {Uint32Array} */
+    const a6 = x[off + 6];
+    /** @type {Uint32Array} */
+    const a7 = x[off + 7];
+    /** @type {Uint32Array[]} */
+    const out = [
+      FieldAdd(F, FieldAdd(F, a0, a4), a6), FieldAdd(F, FieldAdd(F, a4, a6), a7), FieldAdd(F, a1, a5),
+      FieldAdd(F, FieldAdd(F, a4, a5), FieldAdd(F, a6, a7)), FieldAdd(F, FieldAdd(F, a2, a4), a7),
+      FieldAdd(F, a5, a6), FieldAdd(F, a3, a5), FieldAdd(F, a6, a7)
+    ];
+    return out;
+  }
 
-    return {
-      F: F,
-      alpha: A,
-      combine: Combine,
-      combineBits: CombineBits,
-      combineSq: function (x, off) { return Combine(SquareTags(x, off), 0); },
-      combineBitsSq: function (x, off) { return CombineBits(SquareBits(x, off), 0); },
-      squareBits: SquareBits,
-      squareTags: SquareTags
-    };
+  /**
+   * @param {FaestByteOps} B - the byte helpers
+   * @param {Uint32Array[]} x - the eight elements, least significant first
+   * @param {int32} off - where they start
+   * @returns {Uint32Array} the square of the byte, lifted
+   */
+  function ByteCombineSq(B, x, off) {
+    return ByteCombine(B, ByteSquareTags(B, x, off), 0);
+  }
+
+  /**
+   * @param {FaestByteOps} B - the byte helpers
+   * @param {uint8[]} x - the eight bits, least significant first
+   * @param {int32} off - where they start
+   * @returns {Uint32Array} the square of the byte, lifted
+   */
+  function ByteCombineBitsSq(B, x, off) {
+    return ByteCombineBits(B, ByteSquareBits(x, off), 0);
   }
 
   const BYTE_OPS = { 128: MakeByteOps(128), 192: MakeByteOps(192), 256: MakeByteOps(256) };
+
+  /**
+   * @param {int32} lambda - 128, 192 or 256
+   * @returns {FaestByteOps} the byte helpers for that field
+   */
+  function ByteOpsFor(lambda) {
+    /** @type {FaestByteOps} */
+    const b = BYTE_OPS[lambda];
+    return b;
+  }
 
   // ===== PARAMETER SETS =====
   //
@@ -648,44 +1244,368 @@
   // encryption, C the number of constraints. Signature sizes are the
   // specification's; the derived values k, tau0, tau1 and L follow it.
 
-  const PARAMETER_TABLE = [
-    // name,           em,    lambda, tau, w,  T_open, ell,  R,  Nwd, Ske, Senc, Lke, Lenc, C,   sig
-    ['FAEST-128s',     false, 128,    11,  7,  102,    1280, 10, 4,   40,  160,  448, 832,  321, 4506],
-    ['FAEST-128f',     false, 128,    16,  8,  110,    1280, 10, 4,   40,  160,  448, 832,  321, 5924],
-    ['FAEST-192s',     false, 192,    16,  12, 162,    2496, 12, 4,   32,  192,  448, 1024, 641, 11260],
-    ['FAEST-192f',     false, 192,    24,  8,  163,    2496, 12, 4,   32,  192,  448, 1024, 641, 14948],
-    ['FAEST-256s',     false, 256,    22,  6,  245,    3104, 14, 4,   52,  224,  672, 1216, 777, 20696],
-    ['FAEST-256f',     false, 256,    32,  8,  246,    3104, 14, 4,   52,  224,  672, 1216, 777, 26548],
-    ['FAEST-EM-128s',  true,  128,    11,  7,  103,    960,  10, 4,   0,   160,  128, 832,  241, 3906],
-    ['FAEST-EM-128f',  true,  128,    16,  8,  112,    960,  10, 4,   0,   160,  128, 832,  241, 5060],
-    ['FAEST-EM-192s',  true,  192,    16,  8,  162,    1728, 12, 6,   0,   288,  192, 1536, 433, 9340],
-    ['FAEST-EM-192f',  true,  192,    24,  8,  176,    1728, 12, 6,   0,   288,  192, 1536, 433, 12380],
-    ['FAEST-EM-256s',  true,  256,    22,  6,  218,    2688, 14, 8,   0,   448,  256, 2432, 673, 17984],
-    ['FAEST-EM-256f',  true,  256,    32,  8,  234,    2688, 14, 8,   0,   448,  256, 2432, 673, 23476]
-  ];
+  /**
+   * One parameter set: the table's values and the ones derived from them, in
+   * the order the object literal held them.
+   */
+  class FaestParams {
+    /**
+     * @param {string} name - the set's name
+     * @param {boolean} em - whether it is FAEST-EM
+     * @param {int32} lambda - the security level in bits
+     * @param {int32} tau - the VOLE repetitions
+     * @param {int32} w - the grinding width
+     * @param {int32} tOpen - the budget of opened tree nodes
+     * @param {int32} ell - the witness length in bits
+     * @param {int32} R - the rounds
+     * @param {int32} nwd - the block width in words
+     * @param {int32} ske - the key-schedule S-boxes
+     * @param {int32} senc - the encryption S-boxes
+     * @param {int32} lke - the key-schedule witness bits
+     * @param {int32} lenc - the encryption witness bits
+     * @param {int32} c - the constraints
+     * @param {int32} sigSize - the signature size in octets
+     */
+    constructor(name, em, lambda, tau, w, tOpen, ell, R, nwd, ske, senc, lke, lenc, c, sigSize) {
+      const k = Math.floor((lambda - w) / tau) + 1;
+      const tau1 = (lambda - w) % tau;
+      const tau0 = tau - tau1;
+      const lambdaBytes = lambda / 8;
+      const owfInputSize = em ? lambdaBytes : 16;
+      const owfOutputSize = em ? lambdaBytes : (lambda === 128 ? 16 : 32);
+      /** @type {string} */
+      this.name = name;
+      /** @type {boolean} */
+      this.em = em;
+      /** @type {int32} */
+      this.lambda = lambda;
+      /** @type {int32} */
+      this.lambdaBytes = lambdaBytes;
+      /** @type {int32} */
+      this.tau = tau;
+      /** @type {int32} */
+      this.w = w;
+      /** @type {int32} */
+      this.tOpen = tOpen;
+      /** @type {int32} */
+      this.ell = ell;
+      /** @type {int32} */
+      this.R = R;
+      /** @type {int32} */
+      this.nwd = nwd;
+      /** @type {int32} */
+      this.ske = ske;
+      /** @type {int32} */
+      this.senc = senc;
+      /** @type {int32} */
+      this.lke = lke;
+      /** @type {int32} */
+      this.lenc = lenc;
+      /** @type {int32} */
+      this.c = c;
+      /** @type {int32} */
+      this.sigSize = sigSize;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.tau0 = tau0;
+      /** @type {int32} */
+      this.tau1 = tau1;
+      /** @type {int32} */
+      this.L = tau1 * Math.pow(2, k) + tau0 * Math.pow(2, k - 1);
+      /** @type {int32} */
+      this.beta = em ? 1 : (lambda === 128 ? 1 : 2);
+      /** @type {int32} */
+      this.owfInputSize = owfInputSize;
+      /** @type {int32} */
+      this.owfOutputSize = owfOutputSize;
+      /** @type {int32} */
+      this.pkSize = owfInputSize + owfOutputSize;
+      /** @type {int32} */
+      this.skSize = owfInputSize + lambdaBytes;
+      /** @type {int32} */
+      this.ellHatBytes = ell / 8 + 3 * lambdaBytes + 2;
+      /** @type {int32} */
+      this.comSize = (em ? 2 : 3) * lambdaBytes;
+    }
+  }
 
-  const PARAMETER_SETS = {};
-  for (const row of PARAMETER_TABLE) {
-    const [name, em, lambda, tau, w, tOpen, ell, R, nwd, ske, senc, lke, lenc, c, sigSize] = row;
-    const k = Math.floor((lambda - w) / tau) + 1;
-    const tau1 = (lambda - w) % tau;
-    const tau0 = tau - tau1;
-    const lambdaBytes = lambda / 8;
-    const owfInputSize = em ? lambdaBytes : 16;
-    const owfOutputSize = em ? lambdaBytes : (lambda === 128 ? 16 : 32);
-    PARAMETER_SETS[name] = {
-      name: name, em: em, lambda: lambda, lambdaBytes: lambdaBytes, tau: tau, w: w, tOpen: tOpen,
-      ell: ell, R: R, nwd: nwd, ske: ske, senc: senc, lke: lke, lenc: lenc, c: c, sigSize: sigSize,
-      k: k, tau0: tau0, tau1: tau1,
-      L: tau1 * Math.pow(2, k) + tau0 * Math.pow(2, k - 1),
-      beta: em ? 1 : (lambda === 128 ? 1 : 2),
-      owfInputSize: owfInputSize,
-      owfOutputSize: owfOutputSize,
-      pkSize: owfInputSize + owfOutputSize,
-      skSize: owfInputSize + lambdaBytes,
-      ellHatBytes: ell / 8 + 3 * lambdaBytes + 2,
-      comSize: (em ? 2 : 3) * lambdaBytes
-    };
+  /**
+   * @returns {FaestParams[]} the twelve parameter sets, in table order
+   */
+  function ParameterTable() {
+    /** @type {FaestParams[]} */
+    const table = [
+      // name,                          em,    lambda, tau, w,  T_open, ell,  R,  Nwd, Ske, Senc, Lke, Lenc, C,   sig
+      new FaestParams('FAEST-128s', false, 128, 11, 7, 102, 1280, 10, 4, 40, 160, 448, 832, 321, 4506),
+      new FaestParams('FAEST-128f', false, 128, 16, 8, 110, 1280, 10, 4, 40, 160, 448, 832, 321, 5924),
+      new FaestParams('FAEST-192s', false, 192, 16, 12, 162, 2496, 12, 4, 32, 192, 448, 1024, 641, 11260),
+      new FaestParams('FAEST-192f', false, 192, 24, 8, 163, 2496, 12, 4, 32, 192, 448, 1024, 641, 14948),
+      new FaestParams('FAEST-256s', false, 256, 22, 6, 245, 3104, 14, 4, 52, 224, 672, 1216, 777, 20696),
+      new FaestParams('FAEST-256f', false, 256, 32, 8, 246, 3104, 14, 4, 52, 224, 672, 1216, 777, 26548),
+      new FaestParams('FAEST-EM-128s', true, 128, 11, 7, 103, 960, 10, 4, 0, 160, 128, 832, 241, 3906),
+      new FaestParams('FAEST-EM-128f', true, 128, 16, 8, 112, 960, 10, 4, 0, 160, 128, 832, 241, 5060),
+      new FaestParams('FAEST-EM-192s', true, 192, 16, 8, 162, 1728, 12, 6, 0, 288, 192, 1536, 433, 9340),
+      new FaestParams('FAEST-EM-192f', true, 192, 24, 8, 176, 1728, 12, 6, 0, 288, 192, 1536, 433, 12380),
+      new FaestParams('FAEST-EM-256s', true, 256, 22, 6, 218, 2688, 14, 8, 0, 448, 256, 2432, 673, 17984),
+      new FaestParams('FAEST-EM-256f', true, 256, 32, 8, 234, 2688, 14, 8, 0, 448, 256, 2432, 673, 23476)
+    ];
+    return table;
+  }
+
+  /**
+   * @returns {Object} the parameter sets by name
+   */
+  function BuildParameterSets() {
+    const sets = {};
+    const table = ParameterTable();
+    for (let i = 0; i < table.length; ++i) {
+      const p = table[i];
+      sets[p.name] = p;
+    }
+    return sets;
+  }
+
+  const PARAMETER_SETS = BuildParameterSets();
+
+  /**
+   * The parameter set of a name, a plain property read of the table.
+   * @param {string} name - the set's name
+   * @returns {FaestParams} the entry
+   */
+  function ParameterSetEntry(name) {
+    /** @type {FaestParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  // ===== RESULT RECORDS =====
+
+  /** What BavcCommit returns. */
+  class BavcCommitment {
+    /**
+     * @param {Uint8Array} h - the commitment hash
+     * @param {Uint8Array} nodes - every node of the GGM tree
+     * @param {Uint8Array} com - the leaf commitments
+     * @param {Uint8Array} sd - the leaf seeds
+     */
+    constructor(h, nodes, com, sd) {
+      /** @type {Uint8Array} */
+      this.h = h;
+      /** @type {Uint8Array} */
+      this.nodes = nodes;
+      /** @type {Uint8Array} */
+      this.com = com;
+      /** @type {Uint8Array} */
+      this.sd = sd;
+    }
+  }
+
+  /** What BavcReconstruct returns. */
+  class BavcReconstruction {
+    /**
+     * @param {Uint8Array} h - the recomputed commitment hash
+     * @param {Uint8Array} s - the revealed seeds in leaf order
+     */
+    constructor(h, s) {
+      /** @type {Uint8Array} */
+      this.h = h;
+      /** @type {Uint8Array} */
+      this.s = s;
+    }
+  }
+
+  /** What ConvertToVole returns. */
+  class VoleExpansion {
+    /**
+     * @param {int32} depth - the tree depth of the repetition
+     * @param {Uint8Array} u - the folded value
+     * @param {Uint8Array[]} v - the depth rows
+     */
+    constructor(depth, u, v) {
+      /** @type {int32} */
+      this.depth = depth;
+      /** @type {Uint8Array} */
+      this.u = u;
+      /** @type {Uint8Array[]} */
+      this.v = v;
+    }
+  }
+
+  /** What VoleCommit returns. */
+  class VoleCommitment {
+    /**
+     * @param {BavcCommitment} bavc - the vector commitment
+     * @param {Uint8Array} c - the corrections
+     * @param {Uint8Array} u - the first repetition's u
+     * @param {Uint8Array[]} V - the lambda rows
+     */
+    constructor(bavc, c, u, V) {
+      /** @type {BavcCommitment} */
+      this.bavc = bavc;
+      /** @type {Uint8Array} */
+      this.c = c;
+      /** @type {Uint8Array} */
+      this.u = u;
+      /** @type {Uint8Array[]} */
+      this.V = V;
+    }
+  }
+
+  /** What VoleReconstruct returns. */
+  class VoleReconstruction {
+    /**
+     * @param {Uint8Array} h - the recomputed commitment hash
+     * @param {Uint8Array[]} Q - the lambda rows
+     */
+    constructor(h, Q) {
+      /** @type {Uint8Array} */
+      this.h = h;
+      /** @type {Uint8Array[]} */
+      this.Q = Q;
+    }
+  }
+
+  /** Bits and their tags, or tags alone with bits null. */
+  class BitsAndTags {
+    /**
+     * @param {Uint8Array} bits - the bits, or null
+     * @param {Uint32Array[]} tags - the tags
+     */
+    constructor(bits, tags) {
+      /** @type {Uint8Array} */
+      this.bits = bits;
+      /** @type {Uint32Array[]} */
+      this.tags = tags;
+    }
+  }
+
+  /** The conjugates of an inverse norm: values (or null entries) and tags. */
+  class NormConjugates {
+    /**
+     * @param {Uint32Array[]} val - the values
+     * @param {Uint32Array[]} tag - the tags
+     */
+    constructor(val, tag) {
+      /** @type {Uint32Array[]} */
+      this.val = val;
+      /** @type {Uint32Array[]} */
+      this.tag = tag;
+    }
+  }
+
+  /** The prover's key-schedule constraints. */
+  class ProverKeyConstraints {
+    /**
+     * @param {Uint32Array[]} zDeg0 - the degree 0 coefficients
+     * @param {Uint32Array[]} zDeg1 - the degree 1 coefficients
+     * @param {BitsAndTags} k - the expanded key
+     */
+    constructor(zDeg0, zDeg1, k) {
+      /** @type {Uint32Array[]} */
+      this.zDeg0 = zDeg0;
+      /** @type {Uint32Array[]} */
+      this.zDeg1 = zDeg1;
+      /** @type {BitsAndTags} */
+      this.k = k;
+    }
+  }
+
+  /** The prover's constraints, by degree. */
+  class ProverConstraints {
+    /**
+     * @param {Uint32Array[]} z0 - the degree 0 coefficients
+     * @param {Uint32Array[]} z1 - the degree 1 coefficients
+     * @param {Uint32Array[]} z2 - the degree 2 coefficients
+     */
+    constructor(z0, z1, z2) {
+      /** @type {Uint32Array[]} */
+      this.z0 = z0;
+      /** @type {Uint32Array[]} */
+      this.z1 = z1;
+      /** @type {Uint32Array[]} */
+      this.z2 = z2;
+    }
+  }
+
+  /** The verifier's key-schedule constraints. */
+  class VerifierKeyConstraints {
+    /**
+     * @param {Uint32Array[]} z - the constraint keys
+     * @param {Uint32Array[]} k - the expanded key's tags
+     */
+    constructor(z, k) {
+      /** @type {Uint32Array[]} */
+      this.z = z;
+      /** @type {Uint32Array[]} */
+      this.k = k;
+    }
+  }
+
+  /** What AesProve returns. */
+  class AesProof {
+    /**
+     * @param {Uint8Array} a0 - the degree 0 hash
+     * @param {Uint8Array} a1 - the degree 1 hash
+     * @param {Uint8Array} a2 - the degree 2 hash
+     */
+    constructor(a0, a1, a2) {
+      /** @type {Uint8Array} */
+      this.a0 = a0;
+      /** @type {Uint8Array} */
+      this.a1 = a1;
+      /** @type {Uint8Array} */
+      this.a2 = a2;
+    }
+  }
+
+  /** Where each part of a signature starts. */
+  class SignatureLayout {
+    /**
+     * @param {int32} c - the VOLE corrections
+     * @param {int32} uTilde - the masked hash
+     * @param {int32} d - the masked witness
+     * @param {int32} a1 - the proof value a1
+     * @param {int32} a2 - the proof value a2
+     * @param {int32} decom - the opening
+     * @param {int32} chall3 - the challenge
+     * @param {int32} ivPre - the IV seed
+     * @param {int32} ctr - the grinding counter
+     */
+    constructor(c, uTilde, d, a1, a2, decom, chall3, ivPre, ctr) {
+      /** @type {int32} */
+      this.c = c;
+      /** @type {int32} */
+      this.uTilde = uTilde;
+      /** @type {int32} */
+      this.d = d;
+      /** @type {int32} */
+      this.a1 = a1;
+      /** @type {int32} */
+      this.a2 = a2;
+      /** @type {int32} */
+      this.decom = decom;
+      /** @type {int32} */
+      this.chall3 = chall3;
+      /** @type {int32} */
+      this.ivPre = ivPre;
+      /** @type {int32} */
+      this.ctr = ctr;
+    }
+  }
+
+  /** What KeypairFromDrbg returns. */
+  class FaestKeyPair {
+    /**
+     * @param {Uint8Array} sk - the secret key
+     * @param {Uint8Array} pk - the public key
+     */
+    constructor(sk, pk) {
+      /** @type {Uint8Array} */
+      this.sk = sk;
+      /** @type {Uint8Array} */
+      this.pk = pk;
+    }
   }
 
   // ===== THE RANDOM ORACLES =====
@@ -694,12 +1614,22 @@
   // separator: 0 for H0, 1 for H1, 8 + i for the four uses of H2, 3 for H3 and
   // 4 for H4.
 
+  /**
+   * @param {int32} lambda - lambda
+   * @param {Uint8Array[]} parts - parts
+   * @param {int32} domain - domain
+   * @param {int32} outLen - outLen
+   * @returns {Uint8Array} Result
+   */
   function HashOnce(lambda, parts, domain, outLen) {
     const h = NewHash(lambda);
-    for (const p of parts) h.update(p, 0, p.length);
+    for (let i = 0; i < parts.length; ++i) {
+      const part = parts[i];
+      h.update(part, 0, part.length);
+    }
     h.updateByte(domain);
     h.finalize();
-    return h.squeeze(outLen);
+    return ShakeSqueeze(h, outLen);
   }
 
   // ===== THE ONE-WAY FUNCTION =====
@@ -708,15 +1638,21 @@
    * FAEST: y = AES_k(x), and for the 192 and 256 bit levels also AES_k(x xor 1)
    * so that the output is at least lambda bits. FAEST-EM: y = Rijndael_x(k) xor k,
    * the block as wide as the key.
+   * @param {FaestParams} p - p
+   * @param {uint8[]} key - key
+   * @param {int32} keyOff - keyOff
+   * @param {uint8[]} input - input
+   * @param {int32} inOff - inOff
+   * @returns {Uint8Array} Result
    */
   function Owf(p, key, keyOff, input, inOff) {
     const out = new Uint8Array(p.owfOutputSize);
     const nk = p.lambda / 32;
-    const rounds = ROUNDS_FOR_KEY[nk];
+    const rounds = RoundsForKey(nk);
     if (p.em) {
       const rk = ExpandKey(input, inOff, nk, nk, rounds);
       RijndaelEncrypt(rk, nk, rounds, key, keyOff, out, 0);
-      for (let i = 0; i < p.lambdaBytes; ++i) out[i] = XOR(out[i], key[keyOff + i]);
+      for (let i = 0; i < p.lambdaBytes; ++i) out[i] = OpCodes.Xor32(out[i], key[keyOff + i]);
       return out;
     }
     const rk = ExpandKey(key, keyOff, nk, 4, rounds);
@@ -724,7 +1660,7 @@
     if (p.beta === 2) {
       const second = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) second[i] = input[inOff + i];
-      second[0] = XOR(second[0], 1);
+      second[0] = OpCodes.Xor32(second[0], 1);
       RijndaelEncrypt(rk, 4, rounds, second, 0, out, 16);
     }
     return out;
@@ -732,18 +1668,35 @@
 
   // ===== THE BATCH ALL-BUT-ONE VECTOR COMMITMENT =====
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {int32} i - i
+   * @returns {int32} Result
+   */
   function MaxDepth(p, i) {
     return i < p.tau1 ? p.k : p.k - 1;
   }
 
-  /** Which node of the one big GGM tree is leaf j of repetition i. */
+  /**
+   * Which node of the one big GGM tree is leaf j of repetition i.
+   * @param {FaestParams} p - p
+   * @param {int32} i - i
+   * @param {int32} j - j
+   * @returns {int32} Result
+   */
   function PosInTree(p, i, j) {
     const half = Math.pow(2, p.k - 1);
     if (j < half) return p.L - 1 + p.tau * j + i;
     return p.L - 1 + p.tau * half + p.tau1 * (j % half) + i;
   }
 
-  /** Expand a root seed into the 2L - 1 nodes of the GGM tree. */
+  /**
+   * Expand a root seed into the 2L - 1 nodes of the GGM tree.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} rootKey - rootKey
+   * @param {Uint8Array} iv - iv
+   * @returns {Uint8Array} Result
+   */
   function GenerateTree(p, rootKey, iv) {
     const lb = p.lambdaBytes;
     const nodes = new Uint8Array((2 * p.L - 1) * lb);
@@ -757,6 +1710,15 @@
    * One leaf's commitment. FAEST expands the leaf key into a seed and a
    * universal-hash input and commits with the hash; FAEST-EM keeps the key as
    * the seed and commits with the generator directly.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} keys - keys
+   * @param {int32} keyOff - keyOff
+   * @param {Uint8Array} iv - iv
+   * @param {int32} tweak - tweak
+   * @param {Uint8Array} uhash - uhash
+   * @param {Uint8Array} sdOut - sdOut
+   * @param {int32} sdOff - sdOff
+   * @returns {Uint8Array} Result
    */
   function LeafCommit(p, keys, keyOff, iv, tweak, uhash, sdOut, sdOff) {
     const lb = p.lambdaBytes;
@@ -767,12 +1729,18 @@
     const buffer = Prg(keys, keyOff, iv, tweak, 4 * lb, p.lambda);
     for (let i = 0; i < lb; ++i) sdOut[sdOff + i] = buffer[i];
     // com = u * x0 + x1 in GF(2^(3 lambda)), x0 the first lambda bits of the buffer
-    const W = WIDE_FIELDS[p.lambda];
-    const F = FIELDS[p.lambda];
-    const product = W.mul(W.load(uhash, 0), F.load(buffer, 0));
-    return W.store(W.addInto(product, W.load(buffer, lb)));
+    const W = WideFieldFor(p.lambda);
+    const F = FieldFor(p.lambda);
+    const product = FieldMul(W, FieldLoad(W, uhash, 0), FieldLoad(F, buffer, 0));
+    return FieldStore(W, FieldAddInto(W, product, FieldLoad(W, buffer, lb)));
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} rootKey - rootKey
+   * @param {Uint8Array} iv - iv
+   * @returns {BavcCommitment} Result
+   */
   function BavcCommit(p, rootKey, iv) {
     const lb = p.lambdaBytes;
     const nodes = GenerateTree(p, rootKey, iv);
@@ -788,7 +1756,7 @@
     const top = NewHash(p.lambda);
     let offset = 0;
     for (let i = 0; i < p.tau; ++i) {
-      const uhash = uhashCtx ? uhashCtx.squeeze(3 * lb) : null;
+      const uhash = uhashCtx ? ShakeSqueeze(uhashCtx, 3 * lb) : null;
       const h1 = NewHash(p.lambda);
       const n = Math.pow(2, MaxDepth(p, i));
       for (let j = 0; j < n; ++j, ++offset) {
@@ -799,17 +1767,20 @@
       }
       h1.updateByte(1);
       h1.finalize();
-      top.update(h1.squeeze(2 * lb), 0, 2 * lb);
+      top.update(ShakeSqueeze(h1, 2 * lb), 0, 2 * lb);
     }
     top.updateByte(1);
     top.finalize();
-    return { h: top.squeeze(2 * lb), nodes: nodes, com: com, sd: sd };
+    return new BavcCommitment(ShakeSqueeze(top, 2 * lb), nodes, com, sd);
   }
 
   /**
    * Open every leaf but the one per repetition the challenge selects: the
    * commitment of each hidden leaf, then the co-path nodes that let the
    * verifier regrow the rest. Fails when the co-path exceeds T_open.
+   * @param {FaestParams} p - p
+   * @param {BavcCommitment} vc - vc
+   * @param {int32[]} iDelta - iDelta
    * @returns {Uint8Array|null} decom_i, zero padded, or null
    */
   function BavcOpen(p, vc, iDelta) {
@@ -838,8 +1809,8 @@
     }
     for (let i = p.L - 2; i >= 0; --i) {
       const left = marked[2 * i + 1], right = marked[2 * i + 2];
-      marked[i] = OR(left, right);
-      if (XOR(left, right) === 1) {
+      marked[i] = OpCodes.Or32(left, right);
+      if (OpCodes.Xor32(left, right) === 1) {
         const alpha = 2 * i + 1 + left;
         out.set(vc.nodes.subarray(alpha * lb, (alpha + 1) * lb), pos);
         pos += lb;
@@ -851,7 +1822,12 @@
   /**
    * Regrow every leaf but the hidden ones from decom_i and recompute the
    * commitment. Fails on a co-path of the wrong length or non-zero padding.
-   * @returns {object|null} { h, s } with s the revealed seeds in leaf order
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} decom - decom
+   * @param {int32} decomOff - decomOff
+   * @param {int32[]} iDelta - iDelta
+   * @param {Uint8Array} iv - iv
+   * @returns {BavcReconstruction|null} { h, s } with s the revealed seeds in leaf order
    */
   function BavcReconstruct(p, decom, decomOff, iDelta, iv) {
     const lb = p.lambdaBytes;
@@ -862,8 +1838,8 @@
     for (let i = 0; i < p.tau; ++i) marked[PosInTree(p, i, iDelta[i])] = 1;
     for (let i = p.L - 2; i >= 0; --i) {
       const left = marked[2 * i + 1], right = marked[2 * i + 2];
-      marked[i] = OR(left, right);
-      if (XOR(left, right) === 1) {
+      marked[i] = OpCodes.Or32(left, right);
+      if (OpCodes.Xor32(left, right) === 1) {
         if (pos === end) return null;
         const alpha = 2 * i + 1 + left;
         for (let b = 0; b < lb; ++b) keys[alpha * lb + b] = decom[pos + b];
@@ -885,7 +1861,7 @@
     const top = NewHash(p.lambda);
     let offset = 0;
     for (let i = 0; i < p.tau; ++i) {
-      const uhash = uhashCtx ? uhashCtx.squeeze(p.comSize) : null;
+      const uhash = uhashCtx ? ShakeSqueeze(uhashCtx, p.comSize) : null;
       const h1 = NewHash(p.lambda);
       const n = Math.pow(2, MaxDepth(p, i));
       for (let j = 0; j < n; ++j) {
@@ -900,11 +1876,11 @@
       }
       h1.updateByte(1);
       h1.finalize();
-      top.update(h1.squeeze(2 * lb), 0, 2 * lb);
+      top.update(ShakeSqueeze(h1, 2 * lb), 0, 2 * lb);
     }
     top.updateByte(1);
     top.finalize();
-    return { h: top.squeeze(2 * lb), s: s };
+    return new BavcReconstruction(ShakeSqueeze(top, 2 * lb), s);
   }
 
   // ===== VOLE =====
@@ -913,57 +1889,80 @@
    * ConvertToVole: expand the leaf seeds of one repetition and fold them
    * level by level into u and the depth rows of v. With sd0Bot the first seed
    * is unknown (the verifier's hidden leaf) and counts as zero.
-   * @returns {object} { depth, u, v } with v an array of depth rows
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} iv - iv
+   * @param {Uint8Array} sd - sd
+   * @param {int32} sdOff - sdOff
+   * @param {boolean} sd0Bot - sd0Bot
+   * @param {int32} i - i
+   * @param {int32} outLen - outLen
+   * @returns {VoleExpansion} { depth, u, v } with v an array of depth rows
    */
   function ConvertToVole(p, iv, sd, sdOff, sd0Bot, i, outLen) {
     const depth = MaxDepth(p, i);
     const n = Math.pow(2, depth);
     const lb = p.lambdaBytes;
-    const tweak = OpCodes.ToUint32(XOR(i, 0x80000000));
+    const tweak = OpCodes.ToUint32(OpCodes.Xor32(i, 0x80000000));
+    /** @type {Uint8Array[]} */
     let r = new Array(n);
     r[0] = sd0Bot ? new Uint8Array(outLen) : Prg(sd, sdOff, iv, tweak, outLen, p.lambda);
     for (let j = 1; j < n; ++j) r[j] = Prg(sd, sdOff + lb * j, iv, tweak, outLen, p.lambda);
+    /** @type {Uint8Array[]} */
     const v = new Array(depth);
     for (let j = 0; j < depth; ++j) {
       const row = new Uint8Array(outLen);
       const half = n / Math.pow(2, j + 1);
+      /** @type {Uint8Array[]} */
       const next = new Array(half);
       for (let idx = 0; idx < half; ++idx) {
         const a = r[2 * idx], b = r[2 * idx + 1];
         const folded = new Uint8Array(outLen);
         for (let t = 0; t < outLen; ++t) {
-          row[t] = XOR(row[t], b[t]);
-          folded[t] = XOR(a[t], b[t]);
+          row[t] = OpCodes.Xor32(row[t], b[t]);
+          folded[t] = OpCodes.Xor32(a[t], b[t]);
         }
         next[idx] = folded;
       }
       v[j] = row;
       r = next;
     }
-    return { depth: depth, u: r[0], v: v };
+    return new VoleExpansion(depth, r[0], v);
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} rootKey - rootKey
+   * @param {Uint8Array} iv - iv
+   * @returns {VoleCommitment} Result
+   */
   function VoleCommit(p, rootKey, iv) {
     const lb = p.lambdaBytes;
     const len = p.ellHatBytes;
     const bavc = BavcCommit(p, rootKey, iv);
+    /** @type {Uint8Array[]} */
     const V = [];
     const c = new Uint8Array((p.tau - 1) * len);
     let u = null;
     let sdOff = 0;
     for (let i = 0; i < p.tau; ++i) {
       const cv = ConvertToVole(p, iv, bavc.sd, sdOff, false, i, len);
-      for (const row of cv.v) V.push(row);
+      for (let r = 0; r < cv.v.length; ++r) V.push(cv.v[r]);
       if (i === 0) u = cv.u;
       else XorBytes(u, 0, cv.u, 0, c, (i - 1) * len, len);
       sdOff += lb * Math.pow(2, MaxDepth(p, i));
     }
     while (V.length < p.lambda) V.push(new Uint8Array(len));
-    return { bavc: bavc, c: c, u: u, V: V };
+    return new VoleCommitment(bavc, c, u, V);
   }
 
-  /** DecodeAllChall_3: the hidden leaf of every repetition, read off the challenge bits. */
+  /**
+   * DecodeAllChall_3: the hidden leaf of every repetition, read off the challenge bits.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} chall - chall
+   * @returns {int32[]} Result
+   */
   function DecodeChallenge(p, chall) {
+    /** @type {int32[]} */
     const out = new Array(p.tau);
     let bit = 0;
     for (let i = 0; i < p.tau; ++i) {
@@ -976,12 +1975,25 @@
     return out;
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} iv - iv
+   * @param {Uint8Array} chall3 - chall3
+   * @param {Uint8Array} decom - decom
+   * @param {int32} decomOff - decomOff
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @returns {VoleReconstruction|null} Result
+   */
   function VoleReconstruct(p, iv, chall3, decom, decomOff, c, cOff) {
     const lb = p.lambdaBytes;
     const len = p.ellHatBytes;
     const iDelta = DecodeChallenge(p, chall3);
     const rec = BavcReconstruct(p, decom, decomOff, iDelta, iv);
-    if (!rec) return null;
+    if (!rec) {
+      return null;
+    }
+    /** @type {Uint8Array[]} */
     const Q = [];
     let sdOff = 0;
     for (let i = 0; i < p.tau; ++i) {
@@ -990,20 +2002,20 @@
       for (let j = 0; j < n; ++j) {
         if (j === iDelta[i]) continue;
         const src = j < iDelta[i] ? j : j - 1;
-        const dst = XOR(j, iDelta[i]);
+        const dst = OpCodes.Xor32(j, iDelta[i]);
         for (let b = 0; b < lb; ++b) sd[dst * lb + b] = rec.s[sdOff + src * lb + b];
       }
       const cv = ConvertToVole(p, iv, sd, 0, true, i, len);
       for (let d = 0; d < cv.depth; ++d) {
         const row = cv.v[d];
-        if (i > 0 && AND(SHR(iDelta[i], d), 1))
+        if (i > 0 && OpCodes.And32(OpCodes.Shr32(iDelta[i], d), 1))
           XorBytes(row, 0, c, cOff + (i - 1) * len, row, 0, len);
         Q.push(row);
       }
       sdOff += lb * (n - 1);
     }
     while (Q.length < p.lambda) Q.push(new Uint8Array(len));
-    return { h: rec.h, Q: Q };
+    return new VoleReconstruction(rec.h, Q);
   }
 
   // ===== UNIVERSAL HASHES =====
@@ -1012,84 +2024,107 @@
    * VOLEHash: compress an ell-hat bit row to lambda + 16 bits keyed by chall_1.
    * A polynomial hash in GF(2^lambda) and one in GF(2^64) over the first
    * ell + 2 lambda bits, combined linearly, masks the last lambda + 16 bits.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} chall1 - chall1
+   * @param {Uint8Array} x - x
+   * @returns {Uint8Array} Result
    */
   function VoleHash(p, chall1, x) {
     const lambda = p.lambda, lb = p.lambdaBytes, ell = p.ell;
-    const F = FIELDS[lambda];
+    const F = FieldFor(lambda);
     const blocks = Math.floor((ell + 3 * lambda - 1) / lambda);
     const tail = (ell + lambda) % lambda === 0 ? lb : ((ell + lambda) % lambda) / 8;
     const tmp = new Uint8Array(lb);
     for (let i = 0; i < tail; ++i) tmp[i] = x[(blocks - 1) * lb + i];
 
-    const s = F.load(chall1, 4 * lb);
-    let h0 = F.load(tmp, 0);
-    let running = F.copy(s);
+    const s = FieldLoad(F, chall1, 4 * lb);
+    let h0 = FieldLoad(F, tmp, 0);
+    let running = FieldCopy(F, s);
     for (let i = 1; i < blocks; ++i) {
-      F.addInto(h0, F.mul(running, F.load(x, (blocks - 1 - i) * lb)));
-      running = F.mul(running, s);
+      FieldAddInto(F, h0, FieldMul(F, running, FieldLoad(F, x, (blocks - 1 - i) * lb)));
+      running = FieldMul(F, running, s);
     }
 
-    const t = GF64.load(chall1, 5 * lb);
-    let h1 = GF64.zero();
-    let rt = GF64.one();
+    const t = FieldLoad(GF64, chall1, 5 * lb);
+    let h1 = FieldZero(GF64);
+    let rt = FieldOne(GF64);
     let i = 0;
     for (; i < lb; i += 8) {
-      GF64.addInto(h1, GF64.mul(rt, GF64.load(tmp, lb - i - 8)));
-      rt = GF64.mul(rt, t);
+      FieldAddInto(GF64, h1, FieldMul(GF64, rt, FieldLoad(GF64, tmp, lb - i - 8)));
+      rt = FieldMul(GF64, rt, t);
     }
     for (; i < blocks * lb; i += 8) {
-      GF64.addInto(h1, GF64.mul(rt, GF64.load(x, blocks * lb - i - 8)));
-      rt = GF64.mul(rt, t);
+      FieldAddInto(GF64, h1, FieldMul(GF64, rt, FieldLoad(GF64, x, blocks * lb - i - 8)));
+      rt = FieldMul(GF64, rt, t);
     }
 
-    const h2 = F.add(F.mul(F.load(chall1, 0), h0), F.mul(F.load(chall1, lb), h1));
-    const h3 = F.add(F.mul(F.load(chall1, 2 * lb), h0), F.mul(F.load(chall1, 3 * lb), h1));
+    const h2 = FieldAdd(F, FieldMul(F, FieldLoad(F, chall1, 0), h0), FieldMul(F, FieldLoad(F, chall1, lb), h1));
+    const h3 = FieldAdd(F, FieldMul(F, FieldLoad(F, chall1, 2 * lb), h0), FieldMul(F, FieldLoad(F, chall1, 3 * lb), h1));
     const out = new Uint8Array(lb + 2);
-    F.store(h2, out, 0);
-    const h3Bytes = F.store(h3);
+    FieldStore(F, h2, out, 0);
+    const h3Bytes = FieldStore(F, h3);
     out[lb] = h3Bytes[0];
     out[lb + 1] = h3Bytes[1];
     const x1 = (ell + 2 * lambda) / 8;
-    for (let b = 0; b < lb + 2; ++b) out[b] = XOR(out[b], x[x1 + b]);
+    for (let b = 0; b < lb + 2; ++b) out[b] = OpCodes.Xor32(out[b], x[x1 + b]);
     return out;
   }
 
-  /** ZKHash: fold the constraint values with keys r0, r1, s, t taken from chall_2. */
+  /**
+   * ZKHash: fold the constraint values with keys r0, r1, s, t taken from chall_2.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint32Array[]} values - values
+   * @param {Uint32Array} x1 - x1
+   * @returns {Uint8Array} Result
+   */
   function ZkHash(p, chall2, values, x1) {
     const lb = p.lambdaBytes;
-    const F = FIELDS[p.lambda];
-    const s = F.load(chall2, 2 * lb);
-    const t = GF64.load(chall2, 3 * lb);
-    let h0 = F.zero(), h1 = F.zero();
+    const F = FieldFor(p.lambda);
+    const s = FieldLoad(F, chall2, 2 * lb);
+    const t = FieldLoad(GF64, chall2, 3 * lb);
+    let h0 = FieldZero(F), h1 = FieldZero(F);
     for (let i = 0; i < values.length; ++i) {
-      h0 = F.addInto(F.mul(h0, s), values[i]);
-      h1 = F.addInto(F.mul(h1, t), values[i]);
+      h0 = FieldAddInto(F, FieldMul(F, h0, s), values[i]);
+      h1 = FieldAddInto(F, FieldMul(F, h1, t), values[i]);
     }
-    const r = F.add(F.mul(F.load(chall2, 0), h0), F.mul(F.load(chall2, lb), h1));
-    return F.store(F.addInto(r, x1));
+    const r = FieldAdd(F, FieldMul(F, FieldLoad(F, chall2, 0), h0), FieldMul(F, FieldLoad(F, chall2, lb), h1));
+    return FieldStore(F, FieldAddInto(F, r, x1));
   }
 
   // ===== THE EXTENDED WITNESS =====
 
+  /**
+   * @param {int32} x - x
+   * @returns {int32} Result
+   */
   function InvNorm(x) {
     const inv = Gf8Inv(x);
     let x17 = inv;
     for (let i = 0; i < 4; ++i) x17 = Gf8Mul(x17, x17);
     x17 = Gf8Mul(x17, inv);
-    return OR(OR(AND(x17, 1), SHL(AND(SHR(x17, 6), 1), 1)),
-      OR(SHL(AND(SHR(x17, 7), 1), 2), SHL(AND(SHR(x17, 2), 1), 3)));
+    return OpCodes.Or32(OpCodes.Or32(OpCodes.And32(x17, 1), OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(x17, 6), 1), 1)),
+      OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(x17, 7), 1), 2), OpCodes.Shl32(OpCodes.And32(OpCodes.Shr32(x17, 2), 1), 3)));
   }
 
+  /**
+   * @param {Uint8Array} state - state
+   * @param {int32} nb - nb
+   */
   function MixColumnBytes(state, nb) {
     for (let c = 0; c < nb; ++c) {
       const a0 = state[4 * c], a1 = state[4 * c + 1], a2 = state[4 * c + 2], a3 = state[4 * c + 3];
-      state[4 * c] = XOR(XOR(Gf8Mul(a0, 2), Gf8Mul(a1, 3)), XOR(a2, a3));
-      state[4 * c + 1] = XOR(XOR(a0, Gf8Mul(a1, 2)), XOR(Gf8Mul(a2, 3), a3));
-      state[4 * c + 2] = XOR(XOR(a0, a1), XOR(Gf8Mul(a2, 2), Gf8Mul(a3, 3)));
-      state[4 * c + 3] = XOR(XOR(Gf8Mul(a0, 3), a1), XOR(a2, Gf8Mul(a3, 2)));
+      state[4 * c] = OpCodes.Xor32(OpCodes.Xor32(Gf8Mul(a0, 2), Gf8Mul(a1, 3)), OpCodes.Xor32(a2, a3));
+      state[4 * c + 1] = OpCodes.Xor32(OpCodes.Xor32(a0, Gf8Mul(a1, 2)), OpCodes.Xor32(Gf8Mul(a2, 3), a3));
+      state[4 * c + 2] = OpCodes.Xor32(OpCodes.Xor32(a0, a1), OpCodes.Xor32(Gf8Mul(a2, 2), Gf8Mul(a3, 3)));
+      state[4 * c + 3] = OpCodes.Xor32(OpCodes.Xor32(Gf8Mul(a0, 3), a1), OpCodes.Xor32(a2, Gf8Mul(a3, 2)));
     }
   }
 
+  /**
+   * @param {Uint8Array} state - state
+   * @param {int32} nb - nb
+   */
   function ShiftRowBytes(state, nb) {
     const sh = ShiftOffsets(nb);
     const old = state.slice();
@@ -1097,12 +2132,18 @@
       for (let r = 1; r < 4; ++r) state[4 * c + r] = old[4 * ((c + sh[r]) % nb) + r];
   }
 
+  /**
+   * @param {Uint32Array} rk - rk
+   * @param {int32} round - round
+   * @param {int32} nb - nb
+   * @returns {Uint8Array} Result
+   */
   function RoundKeyBytes(rk, round, nb) {
     const out = new Uint8Array(4 * nb);
     for (let c = 0; c < nb; ++c) {
       const w = rk[round * nb + c];
-      out[4 * c] = AND(w, 0xFF); out[4 * c + 1] = AND(SHR(w, 8), 0xFF);
-      out[4 * c + 2] = AND(SHR(w, 16), 0xFF); out[4 * c + 3] = SHR(w, 24);
+      out[4 * c] = OpCodes.And32(w, 0xFF); out[4 * c + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      out[4 * c + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF); out[4 * c + 3] = OpCodes.Shr32(w, 24);
     }
     return out;
   }
@@ -1111,6 +2152,10 @@
    * The witness the proof commits to: the key schedule words that pass
    * through an S-box (or, for FAEST-EM, the secret itself), then per round the
    * inverse norms of the odd rounds' S-box inputs and the even rounds' states.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} owfKey - owfKey
+   * @param {Uint8Array} owfInput - owfInput
+   * @returns {Uint8Array} Result
    */
   function ExtendWitness(p, owfKey, owfInput) {
     const w = new Uint8Array(p.ell / 8);
@@ -1124,8 +2169,8 @@
     if (!p.em) {
       // the key itself, then every schedule word that went through SubWord
       const storeWord = function (word) {
-        w[pos++] = AND(word, 0xFF); w[pos++] = AND(SHR(word, 8), 0xFF);
-        w[pos++] = AND(SHR(word, 16), 0xFF); w[pos++] = SHR(word, 24);
+        w[pos++] = OpCodes.And32(word, 0xFF); w[pos++] = OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF);
+        w[pos++] = OpCodes.And32(OpCodes.Shr32(word, 16), 0xFF); w[pos++] = OpCodes.Shr32(word, 24);
       };
       for (let i = 0; i < nk; ++i) storeWord(rk[i]);
       let ik = nk;
@@ -1140,13 +2185,13 @@
     for (let b = 0; b < p.beta; ++b) {
       const state = new Uint8Array(4 * nb);
       for (let i = 0; i < 4 * nb; ++i) state[i] = input[i];
-      if (b === 1) state[0] = XOR(state[0], 1);
+      if (b === 1) state[0] = OpCodes.Xor32(state[0], 1);
       const k0 = RoundKeyBytes(rk, 0, nb);
-      for (let i = 0; i < 4 * nb; ++i) state[i] = XOR(state[i], k0[i]);
+      for (let i = 0; i < 4 * nb; ++i) state[i] = OpCodes.Xor32(state[i], k0[i]);
       for (let round = 1; round < p.R; ++round) {
         if (round % 2 === 1) {
           for (let i = 0; i < 4 * nb; i += 2)
-            w[pos++] = OR(SHL(InvNorm(state[i + 1]), 4), InvNorm(state[i]));
+            w[pos++] = OpCodes.Or32(OpCodes.Shl32(InvNorm(state[i + 1]), 4), InvNorm(state[i]));
         }
         for (let i = 0; i < 4 * nb; ++i) state[i] = SBOX[state[i]];
         ShiftRowBytes(state, nb);
@@ -1154,7 +2199,7 @@
           for (let i = 0; i < 4 * nb; ++i) w[pos++] = state[i];
         MixColumnBytes(state, nb);
         const kr = RoundKeyBytes(rk, round, nb);
-        for (let i = 0; i < 4 * nb; ++i) state[i] = XOR(state[i], kr[i]);
+        for (let i = 0; i < 4 * nb; ++i) state[i] = OpCodes.Xor32(state[i], kr[i]);
       }
     }
     return w;
@@ -1169,11 +2214,29 @@
   // line for line, so that the verifier's key is the prover's polynomial at
   // Delta whenever the witness is honest.
 
+  /** @type {uint8[]} */
   const SBOX_AFFINE = [0x05, 0x09, 0xf9, 0x25, 0xf4, 0x01, 0xb5, 0x8f, 0x63];
+  /** @type {uint8[]} */
   const SBOX_AFFINE_SQ = [0x11, 0x41, 0x07, 0x7d, 0x56, 0x01, 0xfc, 0xcf, 0xc2];
 
+  /** The prover and verifier of one parameter set's constraint system. */
+  class FaestConstraintSystem {
+    /**
+     * @param {function(Uint8Array, Uint32Array[], Uint8Array, Uint8Array): ProverConstraints} prover - ConstraintsProver
+     * @param {function(Uint32Array[], Uint8Array, Uint8Array, Uint32Array): Uint32Array[]} verifier - ConstraintsVerifier
+     */
+    constructor(prover, verifier) {
+      this.ConstraintsProver = prover;
+      this.ConstraintsVerifier = verifier;
+    }
+  }
+
+  /**
+   * @param {FaestParams} p - p
+   * @returns {FaestConstraintSystem} Result
+   */
   function MakeConstraintSystem(p) {
-    const B = BYTE_OPS[p.lambda];
+    const B = ByteOpsFor(p.lambda);
     const F = B.F;
     const nst = p.nwd;
     const nstBits = 32 * nst;
@@ -1182,75 +2245,119 @@
     const nk = lambda / 32;
     const R = p.R;
 
+    /**
+     * @param {int32} value - value
+     * @returns {Uint8Array} Result
+     */
     function ByteBits(value) {
       const bits = new Uint8Array(8);
-      for (let j = 0; j < 8; ++j) bits[j] = AND(SHR(value, j), 1);
+      for (let j = 0; j < 8; ++j) bits[j] = OpCodes.And32(OpCodes.Shr32(value, j), 1);
       return bits;
     }
 
-    const affineC = SBOX_AFFINE.map(v => B.combineBits(ByteBits(v), 0));
-    const affineCSq = SBOX_AFFINE_SQ.map(v => B.combineBits(ByteBits(v), 0));
-    const v1 = B.combineBits(ByteBits(1), 0);
-    const v2 = B.combineBits(ByteBits(2), 0);
-    const v3 = B.combineBits(ByteBits(3), 0);
-    const mixV = [[v1, v2, v3], [F.mul(v1, v1), F.mul(v2, v2), F.mul(v3, v3)]];
+    const affineC = SBOX_AFFINE.map(v => ByteCombineBits(B, ByteBits(v), 0));
+    const affineCSq = SBOX_AFFINE_SQ.map(v => ByteCombineBits(B, ByteBits(v), 0));
+    const v1 = ByteCombineBits(B, ByteBits(1), 0);
+    const v2 = ByteCombineBits(B, ByteBits(2), 0);
+    const v3 = ByteCombineBits(B, ByteBits(3), 0);
+    const mixV = [[v1, v2, v3], [FieldMul(F, v1, v1), FieldMul(F, v2, v2), FieldMul(F, v3, v3)]];
 
-    const beta4 = F.add(B.alpha[5], B.alpha[3]);
-    const normBetas = (function () {
+    const beta4 = FieldAdd(F, B.alpha[5], B.alpha[3]);
+    /**
+     * @returns {Uint32Array[][]} beta_4 and its companions, squared once per norm bit
+     */
+    function BuildNormBetas() {
+      /** @type {Uint32Array[][]} */
       const out = [];
-      let bs = F.copy(beta4), bs1 = F.mul(beta4, beta4), bc = F.mul(F.mul(beta4, beta4), beta4);
+      let bs = FieldCopy(F, beta4), bs1 = FieldMul(F, beta4, beta4), bc = FieldMul(F, FieldMul(F, beta4, beta4), beta4);
       for (let i = 0; i < 4; ++i) {
         out.push([bs, bs1, bc]);
-        bs = F.mul(bs, bs); bs1 = F.mul(bs1, bs1); bc = F.mul(bc, bc);
+        bs = FieldMul(F, bs, bs); bs1 = FieldMul(F, bs1, bs1); bc = FieldMul(F, bc, bc);
       }
       return out;
-    })();
+    }
+
+    /** @type {Uint32Array[][]} */
+    const normBetas = BuildNormBetas();
 
     // --- shared bit-level and byte-level moves ---
 
+    /**
+     * @param {int32} r - r
+     * @param {int32} c - c
+     * @returns {int32} Result
+     */
     function ShiftRowsIndex(r, c) {
       return (nst !== 8 || r <= 1) ? 4 * ((c + r) % nst) + r : 4 * ((c + r + 1) % nst) + r;
     }
 
+    /**
+     * @param {int32} r - r
+     * @param {int32} c - c
+     * @returns {int32} Result
+     */
     function InverseShiftRowsIndex(r, c) {
       return (nst !== 8 || r <= 1) ? 4 * ((c + nst - r) % nst) + r : 4 * ((c + nst - r - 1) % nst) + r;
     }
 
+    /**
+     * @param {Uint32Array[]} arr - arr
+     * @returns {Uint32Array[]} Result
+     */
     function ShiftRows(arr) {
+      /** @type {Uint32Array[]} */
       const out = new Array(nstBytes);
       for (let r = 0; r < 4; ++r)
         for (let c = 0; c < nst; ++c) out[4 * c + r] = arr[ShiftRowsIndex(r, c)];
       return out;
     }
 
+    /**
+     * @param {Uint32Array[]} arr - arr
+     * @param {int32} sq - sq
+     * @returns {Uint32Array[]} Result
+     */
     function MixColumns(arr, sq) {
       const m = mixV[sq ? 1 : 0];
       const V1 = m[0], V2 = m[1], V3 = m[2];
+      /** @type {Uint32Array[]} */
       const out = new Array(nstBytes);
       for (let c = 0; c < nst; ++c) {
         const i0 = arr[4 * c], i1 = arr[4 * c + 1], i2 = arr[4 * c + 2], i3 = arr[4 * c + 3];
-        out[4 * c] = F.add(F.add(F.mul(i0, V2), F.mul(i1, V3)), F.add(F.mul(i2, V1), F.mul(i3, V1)));
-        out[4 * c + 1] = F.add(F.add(F.mul(i0, V1), F.mul(i1, V2)), F.add(F.mul(i2, V3), F.mul(i3, V1)));
-        out[4 * c + 2] = F.add(F.add(F.mul(i0, V1), F.mul(i1, V1)), F.add(F.mul(i2, V2), F.mul(i3, V3)));
-        out[4 * c + 3] = F.add(F.add(F.mul(i0, V3), F.mul(i1, V1)), F.add(F.mul(i2, V1), F.mul(i3, V2)));
+        out[4 * c] = FieldAdd(F, FieldAdd(F, FieldMul(F, i0, V2), FieldMul(F, i1, V3)), FieldAdd(F, FieldMul(F, i2, V1), FieldMul(F, i3, V1)));
+        out[4 * c + 1] = FieldAdd(F, FieldAdd(F, FieldMul(F, i0, V1), FieldMul(F, i1, V2)), FieldAdd(F, FieldMul(F, i2, V3), FieldMul(F, i3, V1)));
+        out[4 * c + 2] = FieldAdd(F, FieldAdd(F, FieldMul(F, i0, V1), FieldMul(F, i1, V1)), FieldAdd(F, FieldMul(F, i2, V2), FieldMul(F, i3, V3)));
+        out[4 * c + 3] = FieldAdd(F, FieldAdd(F, FieldMul(F, i0, V3), FieldMul(F, i1, V1)), FieldAdd(F, FieldMul(F, i2, V1), FieldMul(F, i3, V2)));
       }
       return out;
     }
 
+    /**
+     * @param {Uint32Array[]} inArr - inArr
+     * @param {int32} sq - sq
+     * @returns {Uint32Array[]} Result
+     */
     function SboxAffine(inArr, sq) {
       const C = sq ? affineCSq : affineC;
       const t = sq ? 1 : 0;
+      /** @type {Uint32Array[]} */
       const out = new Array(nstBytes);
       for (let i = 0; i < nstBytes; ++i) {
-        const acc = F.zero();
-        for (let ci = 0; ci < 8; ++ci) F.addInto(acc, F.mul(C[ci], inArr[8 * i + (ci + t) % 8]));
+        const acc = FieldZero(F);
+        for (let ci = 0; ci < 8; ++ci) FieldAddInto(F, acc, FieldMul(F, C[ci], inArr[8 * i + (ci + t) % 8]));
         out[i] = acc;
       }
       return out;
     }
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {Uint32Array[]} tags - tags
+     * @returns {BitsAndTags} Result
+     */
     function InverseShiftRowsBits(bits, tags) {
       const outBits = new Uint8Array(nstBits);
+      /** @type {Uint32Array[]} */
       const outTags = new Array(nstBits);
       for (let r = 0; r < 4; ++r)
         for (let c = 0; c < nst; ++c) {
@@ -1260,106 +2367,164 @@
             outTags[8 * (4 * c + r) + b] = tags[8 * i + b];
           }
         }
-      return { bits: outBits, tags: outTags };
+      return new BitsAndTags(outBits, outTags);
     }
 
     // y_i = x_{i-1} + x_{i-3} + x_{i-6} + c_i, with c = 0x05
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {int32} bOff - bOff
+     * @param {Uint32Array[]} tags - tags
+     * @param {int32} tOff - tOff
+     * @param {Uint8Array} outBits - outBits
+     * @param {Uint32Array[]} outTags - outTags
+     * @param {int32} oOff - oOff
+     * @param {Uint32Array} delta - delta
+     */
     function InverseAffineByte(bits, bOff, tags, tOff, outBits, outTags, oOff, delta) {
       for (let i = 0; i < 8; ++i) {
         const c = (i === 0 || i === 2) ? 1 : 0;
         const a = (i + 7) % 8, b = (i + 5) % 8, d = (i + 2) % 8;
-        if (bits) outBits[oOff + i] = XOR(XOR(XOR(bits[bOff + a], bits[bOff + b]), bits[bOff + d]), c);
-        const tag = F.add(F.add(tags[tOff + a], tags[tOff + b]), tags[tOff + d]);
-        if (delta && c) F.addInto(tag, delta);
+        if (bits) outBits[oOff + i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(bits[bOff + a], bits[bOff + b]), bits[bOff + d]), c);
+        const tag = FieldAdd(F, FieldAdd(F, tags[tOff + a], tags[tOff + b]), tags[tOff + d]);
+        if (delta && c) FieldAddInto(F, tag, delta);
         outTags[oOff + i] = tag;
       }
     }
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {Uint32Array[]} tags - tags
+     * @param {Uint32Array} delta - delta
+     * @returns {BitsAndTags} Result
+     */
     function InverseAffine(bits, tags, delta) {
       const outBits = bits ? new Uint8Array(nstBits) : null;
+      /** @type {Uint32Array[]} */
       const outTags = new Array(nstBits);
       for (let i = 0; i < nstBytes; ++i)
         InverseAffineByte(bits, 8 * i, tags, 8 * i, outBits, outTags, 8 * i, delta);
-      return { bits: outBits, tags: outTags };
+      return new BitsAndTags(outBits, outTags);
     }
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {Uint32Array[]} tags - tags
+     * @returns {BitsAndTags} Result
+     */
     function BitwiseMixColumn(bits, tags) {
       const outBits = bits ? new Uint8Array(nstBits) : null;
+      /** @type {Uint32Array[]} */
       const outTags = new Array(nstBits);
       for (let c = 0; c < nst; ++c) {
-        const aB = [], aT = [], bB = [], bT = [];
+        /** @type {uint8[][]} */
+        const aB = [];
+        /** @type {Uint32Array[][]} */
+        const aT = [];
+        /** @type {uint8[][]} */
+        const bB = [];
+        /** @type {Uint32Array[][]} */
+        const bT = [];
         for (let r = 0; r < 4; ++r) {
-          const ab = [], at = [];
+          /** @type {uint8[]} */
+          const ab = [];
+          /** @type {Uint32Array[]} */
+          const at = [];
           for (let i = 0; i < 8; ++i) {
             if (bits) ab.push(bits[32 * c + 8 * r + i]);
             at.push(tags[32 * c + 8 * r + i]);
           }
           aB.push(ab); aT.push(at);
           if (bits)
-            bB.push([ab[7], XOR(ab[0], ab[7]), ab[1], XOR(ab[2], ab[7]), XOR(ab[3], ab[7]), ab[4], ab[5], ab[6]]);
-          bT.push([at[7], F.add(at[0], at[7]), at[1], F.add(at[2], at[7]), F.add(at[3], at[7]), at[4], at[5], at[6]]);
+            bB.push([ab[7], OpCodes.Xor32(ab[0], ab[7]), ab[1], OpCodes.Xor32(ab[2], ab[7]), OpCodes.Xor32(ab[3], ab[7]), ab[4], ab[5], ab[6]]);
+          bT.push([at[7], FieldAdd(F, at[0], at[7]), at[1], FieldAdd(F, at[2], at[7]), FieldAdd(F, at[3], at[7]), at[4], at[5], at[6]]);
         }
         for (let i = 0; i < 8; ++i) {
           for (let r = 0; r < 4; ++r) {
             const r1 = (r + 1) % 4, r2 = (r + 2) % 4, r3 = (r + 3) % 4;
             // out_r = b_r + a_{r+3} + a_{r+2} + b_{r+1} + a_{r+1}
             if (bits)
-              outBits[8 * (4 * c + r) + i] = XOR(XOR(XOR(bB[r][i], aB[r3][i]), XOR(aB[r2][i], bB[r1][i])), aB[r1][i]);
-            outTags[8 * (4 * c + r) + i] = F.add(F.add(F.add(bT[r][i], aT[r3][i]), F.add(aT[r2][i], bT[r1][i])), aT[r1][i]);
+              outBits[8 * (4 * c + r) + i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(bB[r][i], aB[r3][i]), OpCodes.Xor32(aB[r2][i], bB[r1][i])), aB[r1][i]);
+            outTags[8 * (4 * c + r) + i] = FieldAdd(F, FieldAdd(F, FieldAdd(F, bT[r][i], aT[r3][i]), FieldAdd(F, aT[r2][i], bT[r1][i])), aT[r1][i]);
           }
         }
       }
-      return { bits: outBits, tags: outTags };
+      return new BitsAndTags(outBits, outTags);
     }
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @returns {Uint32Array[]} Result
+     */
     function ConjugatesBits(bits) {
+      /** @type {Uint32Array[]} */
       const out = new Array(8 * nstBytes);
       for (let i = 0; i < nstBytes; ++i) {
         let x = Array.prototype.slice.call(bits, 8 * i, 8 * i + 8);
         for (let j = 0; j < 7; ++j) {
-          out[8 * i + j] = B.combineBits(x, 0);
-          x = B.squareBits(x, 0);
+          out[8 * i + j] = ByteCombineBits(B, x, 0);
+          x = ByteSquareBits(x, 0);
         }
-        out[8 * i + 7] = B.combineBits(x, 0);
+        out[8 * i + 7] = ByteCombineBits(B, x, 0);
       }
       return out;
     }
 
+    /**
+     * @param {Uint32Array[]} tags - tags
+     * @returns {Uint32Array[]} Result
+     */
     function ConjugatesTags(tags) {
+      /** @type {Uint32Array[]} */
       const out = new Array(8 * nstBytes);
       for (let i = 0; i < nstBytes; ++i) {
         let x = tags.slice(8 * i, 8 * i + 8);
         for (let j = 0; j < 7; ++j) {
-          out[8 * i + j] = B.combine(x, 0);
-          x = B.squareTags(x, 0);
+          out[8 * i + j] = ByteCombine(B, x, 0);
+          x = ByteSquareTags(B, x, 0);
         }
-        out[8 * i + 7] = B.combine(x, 0);
+        out[8 * i + 7] = ByteCombine(B, x, 0);
       }
       return out;
     }
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {Uint32Array[]} tags - tags
+     * @param {int32} off - off
+     * @returns {NormConjugates} Result
+     */
     function InvNormToConjugates(bits, tags, off) {
-      const val = new Array(4), tag = new Array(4);
+      /** @type {Uint32Array[]} */
+      const val = new Array(4);
+      /** @type {Uint32Array[]} */
+      const tag = new Array(4);
       for (let i = 0; i < 4; ++i) {
         const nb = normBetas[i];
         if (bits) {
-          const v = F.fromBit(bits[off]);
-          if (bits[off + 1]) F.addInto(v, nb[0]);
-          if (bits[off + 2]) F.addInto(v, nb[1]);
-          if (bits[off + 3]) F.addInto(v, nb[2]);
+          const v = FieldFromBit(F, bits[off]);
+          if (bits[off + 1]) FieldAddInto(F, v, nb[0]);
+          if (bits[off + 2]) FieldAddInto(F, v, nb[1]);
+          if (bits[off + 3]) FieldAddInto(F, v, nb[2]);
           val[i] = v;
         }
-        tag[i] = F.add(F.add(tags[off], F.mul(nb[0], tags[off + 1])),
-          F.add(F.mul(nb[1], tags[off + 2]), F.mul(nb[2], tags[off + 3])));
+        tag[i] = FieldAdd(F, FieldAdd(F, tags[off], FieldMul(F, nb[0], tags[off + 1])),
+          FieldAdd(F, FieldMul(F, nb[1], tags[off + 2]), FieldMul(F, nb[2], tags[off + 3])));
       }
-      return { val: val, tag: tag };
+      return new NormConjugates(val, tag);
     }
 
     // --- the key schedule ---
 
+    /**
+     * @param {Uint8Array} bits - bits
+     * @param {Uint32Array[]} tags - tags
+     * @returns {BitsAndTags} Result
+     */
     function KeyExpForward(bits, tags) {
       const size = 32 * 4 * (R + 1);
       const yBits = bits ? new Uint8Array(size) : null;
+      /** @type {Uint32Array[]} */
       const yTags = new Array(size);
       for (let i = 0; i < lambda; ++i) {
         if (bits) yBits[i] = bits[i];
@@ -1375,31 +2540,42 @@
           iwd += 32;
         } else {
           for (let b = 0; b < 32; ++b) {
-            if (bits) yBits[32 * j + b] = XOR(yBits[32 * (j - nk) + b], yBits[32 * (j - 1) + b]);
-            yTags[32 * j + b] = F.add(yTags[32 * (j - nk) + b], yTags[32 * (j - 1) + b]);
+            if (bits) yBits[32 * j + b] = OpCodes.Xor32(yBits[32 * (j - nk) + b], yBits[32 * (j - 1) + b]);
+            yTags[32 * j + b] = FieldAdd(F, yTags[32 * (j - nk) + b], yTags[32 * (j - 1) + b]);
           }
         }
       }
-      return { bits: yBits, tags: yTags };
+      return new BitsAndTags(yBits, yTags);
     }
 
+    /**
+     * @param {Uint8Array} xBits - xBits
+     * @param {Uint32Array[]} xTags - xTags
+     * @param {int32} xOff - xOff
+     * @param {Uint8Array} kBits - kBits
+     * @param {Uint32Array[]} kTags - kTags
+     * @param {Uint32Array} delta - delta
+     * @returns {BitsAndTags} Result
+     */
     function KeyExpBackward(xBits, xTags, xOff, kBits, kTags, delta) {
       const yBits = xBits ? new Uint8Array(8 * p.ske) : null;
+      /** @type {Uint32Array[]} */
       const yTags = new Array(8 * p.ske);
       let iwd = 0;
       let rmvRcon = true;
       const tb = xBits ? new Uint8Array(8) : null;
+      /** @type {Uint32Array[]} */
       const tt = new Array(8);
       for (let j = 0; j < p.ske; ++j) {
         const rcon = RCON[lambda === 256 ? Math.floor(j / 8) : Math.floor(j / 4)];
         for (let b = 0; b < 8; ++b) {
           const ki = iwd + (j % 4) * 8 + b;
-          if (xBits) tb[b] = XOR(xBits[xOff + 8 * j + b], kBits[ki]);
-          tt[b] = F.add(xTags[xOff + 8 * j + b], kTags[ki]);
+          if (xBits) tb[b] = OpCodes.Xor32(xBits[xOff + 8 * j + b], kBits[ki]);
+          tt[b] = FieldAdd(F, xTags[xOff + 8 * j + b], kTags[ki]);
           if (rmvRcon && j % 4 === 0) {
-            const bit = AND(SHR(rcon, b), 1);
-            if (xBits) tb[b] = XOR(tb[b], bit);
-            if (delta && bit) F.addInto(tt[b], delta);
+            const bit = OpCodes.And32(OpCodes.Shr32(rcon, b), 1);
+            if (xBits) tb[b] = OpCodes.Xor32(tb[b], bit);
+            if (delta && bit) FieldAddInto(F, tt[b], delta);
           }
         }
         InverseAffineByte(tb, 0, tt, 0, yBits, yTags, 8 * j, delta);
@@ -1412,104 +2588,157 @@
           }
         }
       }
-      return { bits: yBits, tags: yTags };
+      return new BitsAndTags(yBits, yTags);
     }
 
     // --- prover ---
 
+    /**
+     * @param {Uint8Array} w - w
+     * @param {Uint32Array[]} wTag - wTag
+     * @returns {ProverKeyConstraints} Result
+     */
     function ExpKeyConstraintsProver(w, wTag) {
       const k = KeyExpForward(w, wTag);
       const wf = KeyExpBackward(w, wTag, lambda, k.bits, k.tags, null);
-      const zDeg0 = [], zDeg1 = [];
+      /** @type {Uint32Array[]} */
+      const zDeg0 = [];
+      /** @type {Uint32Array[]} */
+      const zDeg1 = [];
       let iwd = 32 * (nk - 1);
       let doRotWord = true;
       for (let j = 0; j < p.ske / 4; ++j) {
-        const kHat = [], kHatSq = [], wHat = [], wHatSq = [];
-        const kHatTag = [], kHatTagSq = [], wHatTag = [], wHatTagSq = [];
+        /** @type {Uint32Array[]} */
+        const kHat = [];
+        /** @type {Uint32Array[]} */
+        const kHatSq = [];
+        /** @type {Uint32Array[]} */
+        const wHat = [];
+        /** @type {Uint32Array[]} */
+        const wHatSq = [];
+        /** @type {Uint32Array[]} */
+        const kHatTag = [];
+        /** @type {Uint32Array[]} */
+        const kHatTagSq = [];
+        /** @type {Uint32Array[]} */
+        const wHatTag = [];
+        /** @type {Uint32Array[]} */
+        const wHatTagSq = [];
         for (let r = 0; r < 4; ++r) {
           const rp = doRotWord ? (r + 3) % 4 : r;
-          kHat[rp] = B.combineBits(k.bits, iwd + 8 * r);
-          kHatSq[rp] = B.combineBitsSq(k.bits, iwd + 8 * r);
-          wHat[r] = B.combineBits(wf.bits, 32 * j + 8 * r);
-          wHatSq[r] = B.combineBitsSq(wf.bits, 32 * j + 8 * r);
-          kHatTag[rp] = B.combine(k.tags, iwd + 8 * r);
-          kHatTagSq[rp] = B.combineSq(k.tags, iwd + 8 * r);
-          wHatTag[r] = B.combine(wf.tags, 32 * j + 8 * r);
-          wHatTagSq[r] = B.combineSq(wf.tags, 32 * j + 8 * r);
+          kHat[rp] = ByteCombineBits(B, k.bits, iwd + 8 * r);
+          kHatSq[rp] = ByteCombineBitsSq(B, k.bits, iwd + 8 * r);
+          wHat[r] = ByteCombineBits(B, wf.bits, 32 * j + 8 * r);
+          wHatSq[r] = ByteCombineBitsSq(B, wf.bits, 32 * j + 8 * r);
+          kHatTag[rp] = ByteCombine(B, k.tags, iwd + 8 * r);
+          kHatTagSq[rp] = ByteCombineSq(B, k.tags, iwd + 8 * r);
+          wHatTag[r] = ByteCombine(B, wf.tags, 32 * j + 8 * r);
+          wHatTagSq[r] = ByteCombineSq(B, wf.tags, 32 * j + 8 * r);
         }
         if (lambda === 256) doRotWord = !doRotWord;
         for (let r = 0; r < 4; ++r) {
-          zDeg1[8 * j + 2 * r] = F.add(F.add(F.mul(kHatSq[r], wHatTag[r]), F.mul(kHatTagSq[r], wHat[r])), kHatTag[r]);
-          zDeg1[8 * j + 2 * r + 1] = F.add(F.add(F.mul(kHat[r], wHatTagSq[r]), F.mul(kHatTag[r], wHatSq[r])), wHatTag[r]);
-          zDeg0[8 * j + 2 * r] = F.mul(kHatTagSq[r], wHatTag[r]);
-          zDeg0[8 * j + 2 * r + 1] = F.mul(kHatTag[r], wHatTagSq[r]);
+          zDeg1[8 * j + 2 * r] = FieldAdd(F, FieldAdd(F, FieldMul(F, kHatSq[r], wHatTag[r]), FieldMul(F, kHatTagSq[r], wHat[r])), kHatTag[r]);
+          zDeg1[8 * j + 2 * r + 1] = FieldAdd(F, FieldAdd(F, FieldMul(F, kHat[r], wHatTagSq[r]), FieldMul(F, kHatTag[r], wHatSq[r])), wHatTag[r]);
+          zDeg0[8 * j + 2 * r] = FieldMul(F, kHatTagSq[r], wHatTag[r]);
+          zDeg0[8 * j + 2 * r + 1] = FieldMul(F, kHatTag[r], wHatTagSq[r]);
         }
         iwd += lambda === 192 ? 192 : 128;
       }
-      return { zDeg0: zDeg0, zDeg1: zDeg1, k: k };
+      return new ProverKeyConstraints(zDeg0, zDeg1, k);
     }
 
+    /**
+     * @param {Uint8Array} inBits - inBits
+     * @param {Uint32Array[]} inTags - inTags
+     * @param {Uint8Array} outBits - outBits
+     * @param {Uint32Array[]} outTags - outTags
+     * @param {int32} outOff - outOff
+     * @param {Uint8Array} w - w
+     * @param {Uint32Array[]} wTag - wTag
+     * @param {int32} wOff - wOff
+     * @param {Uint8Array} kBits - kBits
+     * @param {Uint32Array[]} kTags - kTags
+     * @returns {ProverConstraints} Result
+     */
     function EncConstraintsProver(inBits, inTags, outBits, outTags, outOff, w, wTag, wOff, kBits, kTags) {
       const nEnc = 3 * p.senc / 2;
-      const z0 = new Array(nEnc), z1 = new Array(nEnc), z2 = new Array(nEnc);
+      /** @type {Uint32Array[]} */
+      const z0 = new Array(nEnc);
+      /** @type {Uint32Array[]} */
+      const z1 = new Array(nEnc);
+      /** @type {Uint32Array[]} */
+      const z2 = new Array(nEnc);
       let stateBits = new Uint8Array(nstBits);
+      /** @type {Uint32Array[]} */
       let stateTags = new Array(nstBits);
       for (let i = 0; i < nstBits; ++i) {
-        stateBits[i] = XOR(inBits[i], kBits[i]);
-        stateTags[i] = F.add(inTags[i], kTags[i]);
+        stateBits[i] = OpCodes.Xor32(inBits[i], kBits[i]);
+        stateTags[i] = FieldAdd(F, inTags[i], kTags[i]);
       }
       for (let r = 0; r < R / 2; ++r) {
         const conj = ConjugatesBits(stateBits);
         const conjTag = ConjugatesTags(stateTags);
         const normOff = wOff + 3 * nstBits * r / 2;
-        const dash2 = new Array(8 * nstBytes), dash1 = new Array(8 * nstBytes), dash0 = new Array(8 * nstBytes);
+        /** @type {Uint32Array[]} */
+        const dash2 = new Array(8 * nstBytes);
+        /** @type {Uint32Array[]} */
+        const dash1 = new Array(8 * nstBytes);
+        /** @type {Uint32Array[]} */
+        const dash0 = new Array(8 * nstBytes);
         for (let i = 0; i < nstBytes; ++i) {
           const y = InvNormToConjugates(w, wTag, normOff + 4 * i);
           const yv = y.val[0], yt = y.tag[0];
           const c1 = conj[8 * i + 1], c4 = conj[8 * i + 4], t1 = conjTag[8 * i + 1], t4 = conjTag[8 * i + 4];
           const zi = 3 * r * nstBytes + i;
-          z0[zi] = F.mul(F.mul(yt, t1), t4);
-          z1[zi] = F.add(F.add(F.mul(F.mul(yv, t1), t4), F.mul(F.mul(yt, t1), c4)), F.mul(F.mul(yt, c1), t4));
-          z2[zi] = F.add(F.add(F.add(F.mul(F.mul(yv, c1), t4), F.mul(F.mul(yv, t1), c4)), F.mul(F.mul(yt, c1), c4)), conjTag[8 * i]);
+          z0[zi] = FieldMul(F, FieldMul(F, yt, t1), t4);
+          z1[zi] = FieldAdd(F, FieldAdd(F, FieldMul(F, FieldMul(F, yv, t1), t4), FieldMul(F, FieldMul(F, yt, t1), c4)), FieldMul(F, FieldMul(F, yt, c1), t4));
+          z2[zi] = FieldAdd(F, FieldAdd(F, FieldAdd(F, FieldMul(F, FieldMul(F, yv, c1), t4), FieldMul(F, FieldMul(F, yv, t1), c4)), FieldMul(F, FieldMul(F, yt, c1), c4)), conjTag[8 * i]);
           for (let j = 0; j < 8; ++j) {
             const ci = 8 * i + (j + 4) % 8, yi = j % 4;
-            dash2[8 * i + j] = F.mul(conj[ci], y.val[yi]);
-            dash1[8 * i + j] = F.add(F.mul(conj[ci], y.tag[yi]), F.mul(conjTag[ci], y.val[yi]));
-            dash0[8 * i + j] = F.mul(conjTag[ci], y.tag[yi]);
+            dash2[8 * i + j] = FieldMul(F, conj[ci], y.val[yi]);
+            dash1[8 * i + j] = FieldAdd(F, FieldMul(F, conj[ci], y.tag[yi]), FieldMul(F, conjTag[ci], y.val[yi]));
+            dash0[8 * i + j] = FieldMul(F, conjTag[ci], y.tag[yi]);
           }
         }
-        const k0Deg1 = new Array(nstBytes), k0Deg0 = new Array(nstBytes);
+        /** @type {Uint32Array[]} */
+        const k0Deg1 = new Array(nstBytes);
+        /** @type {Uint32Array[]} */
+        const k0Deg0 = new Array(nstBytes);
         const kOff = (2 * r + 1) * nstBits;
         for (let i = 0; i < nstBytes; ++i) {
-          k0Deg1[i] = B.combineBits(kBits, kOff + 8 * i);
-          k0Deg0[i] = B.combine(kTags, kOff + 8 * i);
+          k0Deg1[i] = ByteCombineBits(B, kBits, kOff + 8 * i);
+          k0Deg0[i] = ByteCombine(B, kTags, kOff + 8 * i);
         }
+        /** @type {Uint32Array[][][]} */
         const st = [];
         for (let b = 0; b < 2; ++b) {
           let d0 = SboxAffine(dash0, b), d1 = SboxAffine(dash1, b), d2 = SboxAffine(dash2, b);
           const cst = (b ? affineCSq : affineC)[8];
-          for (let i = 0; i < nstBytes; ++i) F.addInto(d2[i], cst);
+          for (let i = 0; i < nstBytes; ++i) FieldAddInto(F, d2[i], cst);
           d0 = MixColumns(ShiftRows(d0), b);
           d1 = MixColumns(ShiftRows(d1), b);
           d2 = MixColumns(ShiftRows(d2), b);
           for (let i = 0; i < nstBytes; ++i) {
             if (b === 0) {
-              F.addInto(d1[i], k0Deg0[i]);
-              F.addInto(d2[i], k0Deg1[i]);
+              FieldAddInto(F, d1[i], k0Deg0[i]);
+              FieldAddInto(F, d2[i], k0Deg1[i]);
             } else {
-              F.addInto(d0[i], F.mul(k0Deg0[i], k0Deg0[i]));
-              F.addInto(d2[i], F.mul(k0Deg1[i], k0Deg1[i]));
+              FieldAddInto(F, d0[i], FieldMul(F, k0Deg0[i], k0Deg0[i]));
+              FieldAddInto(F, d2[i], FieldMul(F, k0Deg1[i], k0Deg1[i]));
             }
           }
           st.push([d0, d1, d2]);
         }
-        let sTildeBits, sTildeTags;
+        /** @type {Uint8Array} */
+        let sTildeBits;
+        /** @type {Uint32Array[]} */
+        let sTildeTags;
         if (r === R / 2 - 1) {
           sTildeBits = new Uint8Array(nstBits);
           sTildeTags = new Array(nstBits);
           for (let i = 0; i < nstBits; ++i) {
-            sTildeBits[i] = XOR(outBits[outOff + i], kBits[R * nstBits + i]);
-            sTildeTags[i] = F.add(outTags[outOff + i], kTags[R * nstBits + i]);
+            sTildeBits[i] = OpCodes.Xor32(outBits[outOff + i], kBits[R * nstBits + i]);
+            sTildeTags[i] = FieldAdd(F, outTags[outOff + i], kTags[R * nstBits + i]);
           }
         } else {
           const from = wOff + nstBits / 2 + (nstBits / 2) * 3 * r;
@@ -1519,19 +2748,19 @@
         const sdd = InverseShiftRowsBits(sTildeBits, sTildeTags);
         const s = InverseAffine(sdd.bits, sdd.tags, null);
         for (let bi = 0; bi < nstBytes; ++bi) {
-          const sDeg1 = B.combineBits(s.bits, 8 * bi);
-          const sDeg0 = B.combine(s.tags, 8 * bi);
-          const sSqDeg1 = B.combineBitsSq(s.bits, 8 * bi);
-          const sSqDeg0 = B.combineSq(s.tags, 8 * bi);
+          const sDeg1 = ByteCombineBits(B, s.bits, 8 * bi);
+          const sDeg0 = ByteCombine(B, s.tags, 8 * bi);
+          const sSqDeg1 = ByteCombineBitsSq(B, s.bits, 8 * bi);
+          const sSqDeg0 = ByteCombineSq(B, s.tags, 8 * bi);
           const idx = (3 * r + 1) * nstBytes + 2 * bi;
           const a0 = st[0][0][bi], a1 = st[0][1][bi], a2 = st[0][2][bi];
           const b0 = st[1][0][bi], b1 = st[1][1][bi], b2 = st[1][2][bi];
-          z0[idx] = F.mul(sSqDeg0, a0);
-          z1[idx] = F.add(F.mul(sSqDeg0, a1), F.mul(sSqDeg1, a0));
-          z2[idx] = F.add(F.add(F.mul(sSqDeg0, a2), F.mul(sSqDeg1, a1)), sDeg0);
-          z0[idx + 1] = F.mul(sDeg0, b0);
-          z1[idx + 1] = F.add(F.add(F.mul(sDeg0, b1), F.mul(sDeg1, b0)), a0);
-          z2[idx + 1] = F.add(F.add(F.mul(sDeg0, b2), F.mul(sDeg1, b1)), a1);
+          z0[idx] = FieldMul(F, sSqDeg0, a0);
+          z1[idx] = FieldAdd(F, FieldMul(F, sSqDeg0, a1), FieldMul(F, sSqDeg1, a0));
+          z2[idx] = FieldAdd(F, FieldAdd(F, FieldMul(F, sSqDeg0, a2), FieldMul(F, sSqDeg1, a1)), sDeg0);
+          z0[idx + 1] = FieldMul(F, sDeg0, b0);
+          z1[idx + 1] = FieldAdd(F, FieldAdd(F, FieldMul(F, sDeg0, b1), FieldMul(F, sDeg1, b0)), a0);
+          z2[idx + 1] = FieldAdd(F, FieldAdd(F, FieldMul(F, sDeg0, b2), FieldMul(F, sDeg1, b1)), a1);
         }
         if (r !== R / 2 - 1) {
           const mixed = BitwiseMixColumn(sTildeBits, sTildeTags);
@@ -1539,49 +2768,72 @@
           stateBits = new Uint8Array(nstBits);
           stateTags = new Array(nstBits);
           for (let i = 0; i < nstBits; ++i) {
-            stateBits[i] = XOR(mixed.bits[i], kBits[nOff + i]);
-            stateTags[i] = F.add(mixed.tags[i], kTags[nOff + i]);
+            stateBits[i] = OpCodes.Xor32(mixed.bits[i], kBits[nOff + i]);
+            stateTags[i] = FieldAdd(F, mixed.tags[i], kTags[nOff + i]);
           }
         }
       }
-      return { z0: z0, z1: z1, z2: z2 };
+      return new ProverConstraints(z0, z1, z2);
     }
 
+    /**
+     * @param {Uint8Array} w - w
+     * @param {Uint32Array[]} wTag - wTag
+     * @param {Uint8Array} owfIn - owfIn
+     * @param {Uint8Array} owfOut - owfOut
+     * @returns {ProverConstraints} Result
+     */
     function ConstraintsProver(w, wTag, owfIn, owfOut) {
-      const z0 = [], z1 = [], z2 = [];
+      /** @type {Uint32Array[]} */
+      const z0 = [];
+      /** @type {Uint32Array[]} */
+      const z1 = [];
+      /** @type {Uint32Array[]} */
+      const z2 = [];
       const blocksize = nstBits;
-      z0.push(F.zero());
-      z1.push(F.mul(wTag[0], wTag[1]));
-      z2.push(F.add(F.mulBit(wTag[0], w[1]), F.mulBit(wTag[1], w[0])));
+      z0.push(FieldZero(F));
+      z1.push(FieldMul(F, wTag[0], wTag[1]));
+      z2.push(FieldAdd(F, FieldMulBit(F, wTag[0], w[1]), FieldMulBit(F, wTag[1], w[0])));
 
-      let inBits, inTags, outBits, outTags, kBits, kTags;
+      /** @type {Uint8Array} */
+      let inBits;
+      /** @type {Uint32Array[]} */
+      let inTags;
+      /** @type {Uint8Array} */
+      let outBits;
+      /** @type {Uint32Array[]} */
+      let outTags;
+      /** @type {Uint8Array} */
+      let kBits;
+      /** @type {Uint32Array[]} */
+      let kTags;
       if (p.em) {
         const rk = ExpandKey(owfIn, 0, nk, nk, R);
         kBits = new Uint8Array((R + 1) * blocksize);
         kTags = new Array((R + 1) * blocksize);
         for (let i = 0; i < rk.length; ++i)
           for (let b = 0; b < 32; ++b) {
-            kBits[32 * i + b] = AND(SHR(rk[i], b), 1);
-            kTags[32 * i + b] = F.zero();
+            kBits[32 * i + b] = OpCodes.And32(OpCodes.Shr32(rk[i], b), 1);
+            kTags[32 * i + b] = FieldZero(F);
           }
         inBits = w.slice(0, blocksize);
         inTags = wTag.slice(0, blocksize);
         outBits = new Uint8Array(blocksize);
         outTags = new Array(blocksize);
         for (let i = 0; i < blocksize; ++i) {
-          outBits[i] = XOR(w[i], GetBit(owfOut, i));
+          outBits[i] = OpCodes.Xor32(w[i], GetBit(owfOut, i));
           outTags[i] = wTag[i];
         }
       } else {
         inBits = new Uint8Array(blocksize);
         inTags = new Array(blocksize);
-        for (let i = 0; i < blocksize; ++i) { inBits[i] = GetBit(owfIn, i); inTags[i] = F.zero(); }
+        for (let i = 0; i < blocksize; ++i) { inBits[i] = GetBit(owfIn, i); inTags[i] = FieldZero(F); }
         outBits = new Uint8Array(p.beta * blocksize);
         outTags = new Array(p.beta * blocksize);
-        for (let i = 0; i < p.beta * blocksize; ++i) { outBits[i] = GetBit(owfOut, i); outTags[i] = F.zero(); }
+        for (let i = 0; i < p.beta * blocksize; ++i) { outBits[i] = GetBit(owfOut, i); outTags[i] = FieldZero(F); }
         const ks = ExpKeyConstraintsProver(w, wTag);
         for (let i = 0; i < 2 * p.ske; ++i) {
-          z0.push(F.zero());
+          z0.push(FieldZero(F));
           z1.push(ks.zDeg0[i]);
           z2.push(ks.zDeg1[i]);
         }
@@ -1589,76 +2841,105 @@
         kTags = ks.k.tags;
       }
       for (let b = 0; b < p.beta; ++b) {
-        if (b === 1) inBits[0] = XOR(inBits[0], 1);
+        if (b === 1) inBits[0] = OpCodes.Xor32(inBits[0], 1);
         const e = EncConstraintsProver(inBits, inTags, outBits, outTags, b * blocksize,
           w, wTag, p.lke + b * p.lenc, kBits, kTags);
         for (let i = 0; i < e.z0.length; ++i) {
           z0.push(e.z0[i]); z1.push(e.z1[i]); z2.push(e.z2[i]);
         }
       }
-      return { z0: z0, z1: z1, z2: z2 };
+      return new ProverConstraints(z0, z1, z2);
     }
 
     // --- verifier ---
 
+    /**
+     * @param {Uint32Array[]} wKey - wKey
+     * @param {Uint32Array} delta - delta
+     * @returns {VerifierKeyConstraints} Result
+     */
     function ExpKeyConstraintsVerifier(wKey, delta) {
       const k = KeyExpForward(null, wKey);
       const wf = KeyExpBackward(null, wKey, lambda, null, k.tags, delta);
+      /** @type {Uint32Array[]} */
       const z = [];
       let iwd = 32 * (nk - 1);
       let doRotWord = true;
       for (let j = 0; j < p.ske / 4; ++j) {
-        const kHat = [], kHatSq = [], wHat = [], wHatSq = [];
+        /** @type {Uint32Array[]} */
+        const kHat = [];
+        /** @type {Uint32Array[]} */
+        const kHatSq = [];
+        /** @type {Uint32Array[]} */
+        const wHat = [];
+        /** @type {Uint32Array[]} */
+        const wHatSq = [];
         for (let r = 0; r < 4; ++r) {
           const rp = doRotWord ? (r + 3) % 4 : r;
-          kHat[rp] = B.combine(k.tags, iwd + 8 * r);
-          kHatSq[rp] = B.combineSq(k.tags, iwd + 8 * r);
-          wHat[r] = B.combine(wf.tags, 32 * j + 8 * r);
-          wHatSq[r] = B.combineSq(wf.tags, 32 * j + 8 * r);
+          kHat[rp] = ByteCombine(B, k.tags, iwd + 8 * r);
+          kHatSq[rp] = ByteCombineSq(B, k.tags, iwd + 8 * r);
+          wHat[r] = ByteCombine(B, wf.tags, 32 * j + 8 * r);
+          wHatSq[r] = ByteCombineSq(B, wf.tags, 32 * j + 8 * r);
         }
         if (lambda === 256) doRotWord = !doRotWord;
         for (let r = 0; r < 4; ++r) {
-          z[8 * j + 2 * r] = F.add(F.mul(kHatSq[r], wHat[r]), F.mul(delta, kHat[r]));
-          z[8 * j + 2 * r + 1] = F.add(F.mul(kHat[r], wHatSq[r]), F.mul(delta, wHat[r]));
+          z[8 * j + 2 * r] = FieldAdd(F, FieldMul(F, kHatSq[r], wHat[r]), FieldMul(F, delta, kHat[r]));
+          z[8 * j + 2 * r + 1] = FieldAdd(F, FieldMul(F, kHat[r], wHatSq[r]), FieldMul(F, delta, wHat[r]));
         }
         iwd += lambda === 192 ? 192 : 128;
       }
-      return { z: z, k: k.tags };
+      return new VerifierKeyConstraints(z, k.tags);
     }
 
+    /**
+     * @param {Uint32Array[]} inKey - inKey
+     * @param {Uint32Array[]} outKey - outKey
+     * @param {int32} outOff - outOff
+     * @param {Uint32Array[]} wKey - wKey
+     * @param {int32} wOff - wOff
+     * @param {Uint32Array[]} rkeys - rkeys
+     * @param {Uint32Array} delta - delta
+     * @returns {Uint32Array[]} Result
+     */
     function EncConstraintsVerifier(inKey, outKey, outOff, wKey, wOff, rkeys, delta) {
       const nEnc = 3 * p.senc / 2;
+      /** @type {Uint32Array[]} */
       const z = new Array(nEnc);
-      const deltaSq = F.mul(delta, delta);
+      const deltaSq = FieldMul(F, delta, delta);
+      /** @type {Uint32Array[]} */
       let state = new Array(nstBits);
-      for (let i = 0; i < nstBits; ++i) state[i] = F.add(inKey[i], rkeys[i]);
+      for (let i = 0; i < nstBits; ++i) state[i] = FieldAdd(F, inKey[i], rkeys[i]);
       for (let r = 0; r < R / 2; ++r) {
         const conj = ConjugatesTags(state);
         const normOff = wOff + 3 * nstBits * r / 2;
+        /** @type {Uint32Array[]} */
         const dash = new Array(8 * nstBytes);
         for (let i = 0; i < nstBytes; ++i) {
           const y = InvNormToConjugates(null, wKey, normOff + 4 * i).tag;
-          z[3 * r * nstBytes + i] = F.add(F.mul(F.mul(y[0], conj[8 * i + 1]), conj[8 * i + 4]),
-            F.mul(conj[8 * i], deltaSq));
-          for (let j = 0; j < 8; ++j) dash[8 * i + j] = F.mul(conj[8 * i + (j + 4) % 8], y[j % 4]);
+          z[3 * r * nstBytes + i] = FieldAdd(F, FieldMul(F, FieldMul(F, y[0], conj[8 * i + 1]), conj[8 * i + 4]),
+            FieldMul(F, conj[8 * i], deltaSq));
+          for (let j = 0; j < 8; ++j) dash[8 * i + j] = FieldMul(F, conj[8 * i + (j + 4) % 8], y[j % 4]);
         }
         const kOff = (2 * r + 1) * nstBits;
+        /** @type {Uint32Array[]} */
         const k0 = new Array(nstBytes);
-        for (let i = 0; i < nstBytes; ++i) k0[i] = B.combine(rkeys, kOff + 8 * i);
+        for (let i = 0; i < nstBytes; ++i) k0[i] = ByteCombine(B, rkeys, kOff + 8 * i);
+        /** @type {Uint32Array[][]} */
         const st = [];
         for (let b = 0; b < 2; ++b) {
           let d = SboxAffine(dash, b);
-          const cst = F.mul((b ? affineCSq : affineC)[8], deltaSq);
-          for (let i = 0; i < nstBytes; ++i) F.addInto(d[i], cst);
+          const cst = FieldMul(F, (b ? affineCSq : affineC)[8], deltaSq);
+          for (let i = 0; i < nstBytes; ++i) FieldAddInto(F, d[i], cst);
           d = MixColumns(ShiftRows(d), b);
           for (let i = 0; i < nstBytes; ++i)
-            F.addInto(d[i], b === 0 ? F.mul(k0[i], delta) : F.mul(k0[i], k0[i]));
+            FieldAddInto(F, d[i], b === 0 ? FieldMul(F, k0[i], delta) : FieldMul(F, k0[i], k0[i]));
           st.push(d);
         }
+        /** @type {Uint32Array[]} */
         let sTilde;
         if (r === R / 2 - 1) {
           sTilde = new Array(nstBits);
-          for (let i = 0; i < nstBits; ++i) sTilde[i] = F.add(outKey[outOff + i], rkeys[R * nstBits + i]);
+          for (let i = 0; i < nstBits; ++i) sTilde[i] = FieldAdd(F, outKey[outOff + i], rkeys[R * nstBits + i]);
         } else {
           const from = wOff + nstBits / 2 + (nstBits / 2) * 3 * r;
           sTilde = wKey.slice(from, from + nstBits);
@@ -1666,115 +2947,172 @@
         const sdd = InverseShiftRowsBits(null, sTilde);
         const s = InverseAffine(null, sdd.tags, delta);
         for (let bi = 0; bi < nstBytes; ++bi) {
-          const sKey = B.combine(s.tags, 8 * bi);
-          const sSqKey = B.combineSq(s.tags, 8 * bi);
+          const sKey = ByteCombine(B, s.tags, 8 * bi);
+          const sSqKey = ByteCombineSq(B, s.tags, 8 * bi);
           const idx = (3 * r + 1) * nstBytes + 2 * bi;
-          z[idx] = F.add(F.mul(sSqKey, st[0][bi]), F.mul(delta, F.mul(delta, sKey)));
-          z[idx + 1] = F.add(F.mul(sKey, st[1][bi]), F.mul(delta, st[0][bi]));
+          z[idx] = FieldAdd(F, FieldMul(F, sSqKey, st[0][bi]), FieldMul(F, delta, FieldMul(F, delta, sKey)));
+          z[idx + 1] = FieldAdd(F, FieldMul(F, sKey, st[1][bi]), FieldMul(F, delta, st[0][bi]));
         }
         if (r !== R / 2 - 1) {
           const mixed = BitwiseMixColumn(null, sTilde);
           const nOff = (2 * r + 2) * nstBits;
           state = new Array(nstBits);
-          for (let i = 0; i < nstBits; ++i) state[i] = F.add(mixed.tags[i], rkeys[nOff + i]);
+          for (let i = 0; i < nstBits; ++i) state[i] = FieldAdd(F, mixed.tags[i], rkeys[nOff + i]);
         }
       }
       return z;
     }
 
+    /**
+     * @param {Uint32Array[]} wKey - wKey
+     * @param {Uint8Array} owfIn - owfIn
+     * @param {Uint8Array} owfOut - owfOut
+     * @param {Uint32Array} delta - delta
+     * @returns {Uint32Array[]} Result
+     */
     function ConstraintsVerifier(wKey, owfIn, owfOut, delta) {
+      /** @type {Uint32Array[]} */
       const z = [];
       const blocksize = nstBits;
-      z.push(F.mul(delta, F.mul(wKey[0], wKey[1])));
-      let inKey, outKey, rkeys;
+      z.push(FieldMul(F, delta, FieldMul(F, wKey[0], wKey[1])));
+      /** @type {Uint32Array[]} */
+      let inKey;
+      /** @type {Uint32Array[]} */
+      let outKey;
+      /** @type {Uint32Array[]} */
+      let rkeys;
       if (p.em) {
         const rk = ExpandKey(owfIn, 0, nk, nk, R);
         rkeys = new Array((R + 1) * blocksize);
         for (let i = 0; i < rk.length; ++i)
-          for (let b = 0; b < 32; ++b) rkeys[32 * i + b] = F.mulBit(delta, SHR(rk[i], b));
+          for (let b = 0; b < 32; ++b) rkeys[32 * i + b] = FieldMulBit(F, delta, OpCodes.Shr32(rk[i], b));
         inKey = wKey.slice(0, blocksize);
         outKey = new Array(blocksize);
-        for (let i = 0; i < blocksize; ++i) outKey[i] = F.add(wKey[i], F.mulBit(delta, GetBit(owfOut, i)));
+        for (let i = 0; i < blocksize; ++i) outKey[i] = FieldAdd(F, wKey[i], FieldMulBit(F, delta, GetBit(owfOut, i)));
       } else {
         inKey = new Array(blocksize);
-        for (let i = 0; i < blocksize; ++i) inKey[i] = F.mulBit(delta, GetBit(owfIn, i));
+        for (let i = 0; i < blocksize; ++i) inKey[i] = FieldMulBit(F, delta, GetBit(owfIn, i));
         outKey = new Array(p.beta * blocksize);
-        for (let i = 0; i < p.beta * blocksize; ++i) outKey[i] = F.mulBit(delta, GetBit(owfOut, i));
+        for (let i = 0; i < p.beta * blocksize; ++i) outKey[i] = FieldMulBit(F, delta, GetBit(owfOut, i));
         const ks = ExpKeyConstraintsVerifier(wKey, delta);
-        for (let i = 0; i < 2 * p.ske; ++i) z.push(F.mul(delta, ks.z[i]));
+        for (let i = 0; i < 2 * p.ske; ++i) z.push(FieldMul(F, delta, ks.z[i]));
         rkeys = ks.k;
       }
       for (let b = 0; b < p.beta; ++b) {
-        if (b === 1) inKey[0] = F.add(inKey[0], delta);
+        if (b === 1) inKey[0] = FieldAdd(F, inKey[0], delta);
         const e = EncConstraintsVerifier(inKey, outKey, b * blocksize, wKey, p.lke + b * p.lenc, rkeys, delta);
         for (let i = 0; i < e.length; ++i) z.push(e[i]);
       }
       return z;
     }
 
-    return { ConstraintsProver: ConstraintsProver, ConstraintsVerifier: ConstraintsVerifier };
+    return new FaestConstraintSystem(ConstraintsProver, ConstraintsVerifier);
   }
 
   const constraintSystems = {};
+  /**
+   * @param {FaestParams} p - p
+   * @returns {FaestConstraintSystem} Result
+   */
   function ConstraintSystem(p) {
     if (!constraintSystems[p.name]) constraintSystems[p.name] = MakeConstraintSystem(p);
-    return constraintSystems[p.name];
+    /** @type {FaestConstraintSystem} */
+    const system = constraintSystems[p.name];
+    return system;
   }
 
-  /** Transpose the lambda VOLE columns into one field element per witness row. */
+  /**
+   * Transpose the lambda VOLE columns into one field element per witness row.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array[]} columns - columns
+   * @param {int32} rows - rows
+   * @returns {Uint32Array[]} Result
+   */
   function RowsToField(p, columns, rows) {
-    const F = FIELDS[p.lambda];
+    const F = FieldFor(p.lambda);
+    /** @type {Uint32Array[]} */
     const out = new Array(rows);
-    for (let r = 0; r < rows; ++r) out[r] = F.zero();
+    for (let r = 0; r < rows; ++r) out[r] = FieldZero(F);
     for (let col = 0; col < p.lambda; ++col) {
       const column = columns[col];
-      const word = SHR(col, 5), mask = SHL(1, AND(col, 31));
+      const word = OpCodes.Shr32(col, 5), mask = OpCodes.Shl32(1, OpCodes.And32(col, 31));
       for (let by = 0; by < rows / 8; ++by) {
+        /** @type {uint8} */
         const v = column[by];
         if (v === 0) continue;
         for (let b = 0; b < 8; ++b)
-          if (AND(SHR(v, b), 1)) out[8 * by + b][word] = OR(out[8 * by + b][word], mask);
+          if (OpCodes.And32(OpCodes.Shr32(v, b), 1)) out[8 * by + b][word] = OpCodes.Or32(out[8 * by + b][word], mask);
       }
     }
     return out;
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} w - w
+   * @param {Uint8Array} u - u
+   * @param {Uint8Array[]} V - V
+   * @param {Uint8Array} owfIn - owfIn
+   * @param {Uint8Array} owfOut - owfOut
+   * @param {Uint8Array} chall2 - chall2
+   * @returns {AesProof} Result
+   */
   function AesProve(p, w, u, V, owfIn, owfOut, chall2) {
-    const F = FIELDS[p.lambda];
+    const F = FieldFor(p.lambda);
     const lambda = p.lambda, ell = p.ell;
     const wBits = new Uint8Array(ell);
     for (let i = 0; i < ell; ++i) wBits[i] = GetBit(w, i);
     const wTag = RowsToField(p, V, ell + 2 * lambda);
+    /** @type {Uint32Array[]} */
     const uBits = new Array(2 * lambda);
-    for (let i = 0; i < 2 * lambda; ++i) uBits[i] = F.fromBit(GetBit(u, ell + i));
-    const uStar0 = F.sumPoly(uBits, 0), uStar1 = F.sumPoly(uBits, lambda);
-    const vStar0 = F.sumPoly(wTag, ell), vStar1 = F.sumPoly(wTag, ell + lambda);
+    for (let i = 0; i < 2 * lambda; ++i) uBits[i] = FieldFromBit(F, GetBit(u, ell + i));
+    const uStar0 = FieldSumPoly(F, uBits, 0), uStar1 = FieldSumPoly(F, uBits, lambda);
+    const vStar0 = FieldSumPoly(F, wTag, ell), vStar1 = FieldSumPoly(F, wTag, ell + lambda);
+    /** @type {ProverConstraints} */
     const z = ConstraintSystem(p).ConstraintsProver(wBits, wTag, owfIn, owfOut);
-    return {
-      a0: ZkHash(p, chall2, z.z0, vStar0),
-      a1: ZkHash(p, chall2, z.z1, F.add(uStar0, vStar1)),
-      a2: ZkHash(p, chall2, z.z2, uStar1)
-    };
+    return new AesProof(
+      ZkHash(p, chall2, z.z0, vStar0),
+      ZkHash(p, chall2, z.z1, FieldAdd(F, uStar0, vStar1)),
+      ZkHash(p, chall2, z.z2, uStar1)
+    );
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} d - d
+   * @param {Uint8Array[]} Q - Q
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} chall3 - chall3
+   * @param {Uint8Array} a1 - a1
+   * @param {Uint8Array} a2 - a2
+   * @param {Uint8Array} owfIn - owfIn
+   * @param {Uint8Array} owfOut - owfOut
+   * @returns {Uint8Array} Result
+   */
   function AesVerify(p, d, Q, chall2, chall3, a1, a2, owfIn, owfOut) {
-    const F = FIELDS[p.lambda];
+    const F = FieldFor(p.lambda);
     const lambda = p.lambda, ell = p.ell;
-    const delta = F.load(chall3, 0);
-    const deltaSq = F.mul(delta, delta);
+    const delta = FieldLoad(F, chall3, 0);
+    const deltaSq = FieldMul(F, delta, delta);
     const qKey = RowsToField(p, Q, ell + 2 * lambda);
-    const qStar = F.add(F.sumPoly(qKey, ell), F.mul(delta, F.sumPoly(qKey, ell + lambda)));
+    const qStar = FieldAdd(F, FieldSumPoly(F, qKey, ell), FieldMul(F, delta, FieldSumPoly(F, qKey, ell + lambda)));
+    /** @type {Uint32Array[]} */
     const wKey = new Array(ell);
-    for (let i = 0; i < ell; ++i) wKey[i] = GetBit(d, i) ? F.add(qKey[i], delta) : qKey[i];
+    for (let i = 0; i < ell; ++i) wKey[i] = GetBit(d, i) ? FieldAdd(F, qKey[i], delta) : qKey[i];
+    /** @type {Uint32Array[]} */
     const z = ConstraintSystem(p).ConstraintsVerifier(wKey, owfIn, owfOut, delta);
-    const qTilde = F.load(ZkHash(p, chall2, z, qStar), 0);
-    F.addInto(qTilde, F.mul(F.load(a1, 0), delta));
-    F.addInto(qTilde, F.mul(F.load(a2, 0), deltaSq));
-    return F.store(qTilde);
+    const qTilde = FieldLoad(F, ZkHash(p, chall2, z, qStar), 0);
+    FieldAddInto(F, qTilde, FieldMul(F, FieldLoad(F, a1, 0), delta));
+    FieldAddInto(F, qTilde, FieldMul(F, FieldLoad(F, a2, 0), deltaSq));
+    return FieldStore(F, qTilde);
   }
 
   // ===== SIGNING AND VERIFICATION =====
 
+  /**
+   * @param {FaestParams} p - p
+   * @returns {SignatureLayout} Result
+   */
   function Layout(p) {
     const lb = p.lambdaBytes;
     const cBytes = (p.tau - 1) * p.ellHatBytes;
@@ -1784,18 +3122,38 @@
     const a2 = a1 + lb;
     const decom = a2 + lb;
     const chall3 = p.sigSize - 4 - 16 - lb;
-    return { c: 0, uTilde: uTilde, d: d, a1: a1, a2: a2, decom: decom, chall3: chall3, ivPre: chall3 + lb, ctr: chall3 + lb + 16 };
+    return new SignatureLayout(0, uTilde, d, a1, a2, decom, chall3, chall3 + lb, chall3 + lb + 16);
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} chall3 - chall3
+   * @returns {boolean} Result
+   */
   function ChallengeGrindOk(p, chall3) {
     for (let i = p.lambda - p.w; i < p.lambda; ++i) if (GetBit(chall3, i)) return false;
     return true;
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} owfIn - owfIn
+   * @param {Uint8Array} owfOut - owfOut
+   * @param {Uint8Array} msg - msg
+   * @returns {Uint8Array} Result
+   */
   function HashMu(p, owfIn, owfOut, msg) {
     return HashOnce(p.lambda, [owfIn, owfOut, msg], 8, 2 * p.lambdaBytes);
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} mu - mu
+   * @param {Uint8Array} hcom - hcom
+   * @param {Uint8Array} sig - sig
+   * @param {Uint8Array} iv - iv
+   * @returns {Uint8Array} Result
+   */
   function HashChall1(p, mu, hcom, sig, iv) {
     const h = NewHash(p.lambda);
     h.update(mu, 0, mu.length);
@@ -1804,9 +3162,17 @@
     h.update(iv, 0, 16);
     h.updateByte(9);
     h.finalize();
-    return h.squeeze(5 * p.lambdaBytes + 8);
+    return ShakeSqueeze(h, 5 * p.lambdaBytes + 8);
   }
 
+  /**
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} a0 - a0
+   * @param {Uint8Array} sig - sig
+   * @param {SignatureLayout} lay - lay
+   * @returns {Shake} Result
+   */
   function Chall3Context(p, chall2, a0, sig, lay) {
     const lb = p.lambdaBytes;
     const h = NewHash(p.lambda);
@@ -1819,7 +3185,7 @@
 
   /**
    * FAEST.Sign.
-   * @param {object} p - parameter set
+   * @param {FaestParams} p - parameter set
    * @param {Uint8Array} sk - owf input followed by owf key
    * @param {Uint8Array} msg - the message
    * @param {Uint8Array} rho - the signer's randomness, possibly empty
@@ -1840,8 +3206,8 @@
     if (rho && rho.length) h3.update(rho, 0, rho.length);
     h3.updateByte(3);
     h3.finalize();
-    const rootKey = h3.squeeze(lb);
-    const ivPre = h3.squeeze(16);
+    const rootKey = ShakeSqueeze(h3, lb);
+    const ivPre = ShakeSqueeze(h3, 16);
     sig.set(ivPre, lay.ivPre);
     const iv = HashOnce(p.lambda, [ivPre], 4, 16);
 
@@ -1862,7 +3228,7 @@
     h2.update(sig, lay.d, p.ell / 8);
     h2.updateByte(10);
     h2.finalize();
-    const chall2 = h2.squeeze(3 * lb + 8);
+    const chall2 = ShakeSqueeze(h2, 3 * lb + 8);
 
     const a = AesProve(p, w, vc.u, vc.V, owfIn, owfOut, chall2);
     sig.set(a.a1, lay.a1);
@@ -1871,13 +3237,13 @@
     const ctx = Chall3Context(p, chall2, a.a0, sig, lay);
     const ctrBytes = new Uint8Array(4);
     for (let ctr = 0; ; ++ctr) {
-      ctrBytes[0] = AND(ctr, 0xFF); ctrBytes[1] = AND(SHR(ctr, 8), 0xFF);
-      ctrBytes[2] = AND(SHR(ctr, 16), 0xFF); ctrBytes[3] = SHR(ctr, 24);
-      const h = ctx.clone();
+      ctrBytes[0] = OpCodes.And32(ctr, 0xFF); ctrBytes[1] = OpCodes.And32(OpCodes.Shr32(ctr, 8), 0xFF);
+      ctrBytes[2] = OpCodes.And32(OpCodes.Shr32(ctr, 16), 0xFF); ctrBytes[3] = OpCodes.Shr32(ctr, 24);
+      const h = ShakeClone(ctx);
       h.update(ctrBytes, 0, 4);
       h.updateByte(11);
       h.finalize();
-      const chall3 = h.squeeze(lb);
+      const chall3 = ShakeSqueeze(h, lb);
       if (!ChallengeGrindOk(p, chall3)) continue;
       const decom = BavcOpen(p, vc.bavc, DecodeChallenge(p, chall3));
       if (!decom) continue;
@@ -1891,6 +3257,10 @@
 
   /**
    * FAEST.Verify.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} pk - pk
+   * @param {Uint8Array} msg - msg
+   * @param {Uint8Array} sig - sig
    * @returns {boolean} whether sig is a valid signature on msg under pk
    */
   function Verify(p, pk, msg, sig) {
@@ -1919,7 +3289,7 @@
     h2.update(sig, lay.d, p.ell / 8);
     h2.updateByte(10);
     h2.finalize();
-    const chall2 = h2.squeeze(3 * lb + 8);
+    const chall2 = ShakeSqueeze(h2, 3 * lb + 8);
 
     const a0 = AesVerify(p, sig.subarray(lay.d, lay.d + p.ell / 8), rec.Q, chall2, chall3,
       sig.subarray(lay.a1, lay.a1 + lb), sig.subarray(lay.a2, lay.a2 + lb), owfIn, owfOut);
@@ -1927,13 +3297,19 @@
     h.update(sig, lay.ctr, 4);
     h.updateByte(11);
     h.finalize();
-    const expected = h.squeeze(lb);
+    const expected = ShakeSqueeze(h, lb);
+    /** @type {uint32} */
     let diff = 0;
-    for (let i = 0; i < lb; ++i) diff = OR(diff, XOR(expected[i], chall3[i]));
+    for (let i = 0; i < lb; ++i) diff = OpCodes.Or32(diff, OpCodes.Xor32(expected[i], chall3[i]));
     return diff === 0;
   }
 
-  /** The public key of a secret key: the OWF input followed by its image. */
+  /**
+   * The public key of a secret key: the OWF input followed by its image.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} sk - sk
+   * @returns {Uint8Array} Result
+   */
   function PublicKeyOf(p, sk) {
     const pk = new Uint8Array(p.pkSize);
     pk.set(sk.subarray(0, p.owfInputSize), 0);
@@ -1941,10 +3317,15 @@
     return pk;
   }
 
-  /** A secret key is usable when the first two bits of the OWF key are not both set. */
+  /**
+   * A secret key is usable when the first two bits of the OWF key are not both set.
+   * @param {FaestParams} p - p
+   * @param {Uint8Array} sk - sk
+   * @returns {boolean} Result
+   */
   function ValidOwfKey(p, sk) {
     const first = sk[p.owfInputSize];
-    return AND(AND(first, 1), AND(SHR(first, 1), 1)) === 0;
+    return OpCodes.And32(OpCodes.And32(first, 1), OpCodes.And32(OpCodes.Shr32(first, 1), 1)) === 0;
   }
 
   // ===== THE NIST GENERATOR =====
@@ -1953,6 +3334,9 @@
   // of the Known Answer Tests: key generation draws the OWF key until it is
   // valid, then the OWF input, and signing draws rho.
 
+  /**
+   * @param {Uint8Array} v - v
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -1960,22 +3344,32 @@
     }
   }
 
+  /**
+   * @param {Uint8Array} entropy - entropy
+   */
   function Drbg(entropy) {
     let key = new Uint8Array(32);
     const v = new Uint8Array(16);
     const block = new Uint8Array(16);
+    /**
+     * @param {Uint8Array} provided - 48 octets to mix in, or null
+     */
     const update = function (provided) {
       const temp = new Uint8Array(48);
       for (let i = 0; i < 3; ++i) {
         IncrementCounter(v);
         AesEncryptBlock(key, 0, 256, v, 0, temp, 16 * i);
       }
-      if (provided) for (let i = 0; i < 48; ++i) temp[i] = XOR(temp[i], provided[i]);
+      if (provided) for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], provided[i]);
       key = temp.slice(0, 32);
       for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
     };
     update(entropy);
     return {
+      /**
+       * @param {int32} count - how many octets to draw
+       * @returns {Uint8Array} the octets
+       */
       read: function (count) {
         const out = new Uint8Array(count);
         let produced = 0;
@@ -1991,20 +3385,34 @@
   }
 
   /**
+   * @param {Object} drbg - a generator Drbg returned
+   * @param {int32} count - how many octets to draw
+   * @returns {Uint8Array} the octets
+   */
+  function DrbgRead(drbg, count) {
+    /** @type {Uint8Array} */
+    const out = drbg.read(count);
+    return out;
+  }
+
+  /**
    * Replay the harness: crypto_sign_keypair then the randomness of crypto_sign.
-   * @returns {object} { sk, pk, rho }
+   * @param {FaestParams} p - p
+   * @param {Object} drbg - drbg
+   * @returns {FaestKeyPair} { sk, pk, rho }
    */
   function KeypairFromDrbg(p, drbg) {
     const lb = p.lambdaBytes;
+    /** @type {Uint8Array} */
     let owfKey;
     do {
-      owfKey = drbg.read(lb);
-    } while (AND(AND(owfKey[0], 1), AND(SHR(owfKey[0], 1), 1)) !== 0);
-    const owfIn = drbg.read(p.owfInputSize);
+      owfKey = DrbgRead(drbg, lb);
+    } while (OpCodes.And32(OpCodes.And32(owfKey[0], 1), OpCodes.And32(OpCodes.Shr32(owfKey[0], 1), 1)) !== 0);
+    const owfIn = DrbgRead(drbg, p.owfInputSize);
     const sk = new Uint8Array(p.skSize);
     sk.set(owfIn, 0);
     sk.set(owfKey, p.owfInputSize);
-    return { sk: sk, pk: PublicKeyOf(p, sk) };
+    return new FaestKeyPair(sk, PublicKeyOf(p, sk));
   }
 
   // ===== KAT DATA =====
@@ -4581,27 +5989,43 @@
   const DEFAULT_BY_SECRET_KEY = { 32: 'FAEST-128f', 40: 'FAEST-192f', 48: 'FAEST-256f', 64: 'FAEST-EM-256f' };
   const DEFAULT_BY_PUBLIC_KEY = { 32: 'FAEST-128f', 48: 'FAEST-192f', 64: 'FAEST-EM-256f' };
 
+  /**
+   * @param {string} h - h
+   * @returns {uint8[]} Result
+   */
   function Hex(h) {
     return OpCodes.Hex8ToBytes(h);
   }
 
+  /**
+   * @param {uint8[]} a - a
+   * @param {uint8[]} b - b
+   * @returns {uint8[]} Result
+   */
   function Concat(a, b) {
+    /** @type {uint8[]} */
     const out = new Array(a.length + b.length);
     for (let i = 0; i < a.length; ++i) out[i] = a[i];
     for (let i = 0; i < b.length; ++i) out[a.length + i] = b[i];
     return out;
   }
 
+  /**
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} index - index
+   * @param {int32} bit - bit
+   * @returns {uint8[]} Result
+   */
   function FlipBit(bytes, index, bit) {
     const out = bytes.slice();
-    out[index] = XOR(out[index], SHL(1, bit));
+    out[index] = OpCodes.Xor32(out[index], OpCodes.Shl32(1, bit));
     return out;
   }
 
   function BuildVectors() {
     const vectors = [];
     for (const e of KAT) {
-      const p = PARAMETER_SETS[e.set];
+      const p = ParameterSetEntry(e.set);
       const msg = Hex(e.msg);
       const sm = Concat(msg, Hex(e.sig));
       vectors.push({
@@ -4633,7 +6057,7 @@
     const sig = Hex(first.sig);
     const sm = Concat(msg, sig);
     const pk = Hex(first.pk);
-    const p = PARAMETER_SETS[first.set];
+    const p = ParameterSetEntry(first.set);
     const lay = Layout(p);
     const verdict = function (text, input, publicKey, parameterSet, expected) {
       return {
@@ -4706,7 +6130,7 @@
 
       // Every parameter set, with its sizes, for a caller choosing one.
       this.parameterSets = SET_NAMES.map(name => {
-        const p = PARAMETER_SETS[name];
+        const p = ParameterSetEntry(name);
         return { name: name, secretKeySize: p.skSize, publicKeySize: p.pkSize, signatureSize: p.sigSize };
       });
 
@@ -4803,10 +6227,13 @@
       this.inputBuffer = [];
     }
 
-    /** The parameter set by name, e.g. 'FAEST-128s' or 'FAEST-EM-256f'. */
+    /**
+     * The parameter set by name, e.g. 'FAEST-128s' or 'FAEST-EM-256f'.
+     * @param {string} name - the set's name, or null
+     */
     set parameterSet(name) {
       if (name === null || name === undefined) { this._set = null; return; }
-      if (!PARAMETER_SETS[name])
+      if (!ParameterSetEntry(name))
         throw new Error('FAEST: unknown parameter set ' + name + '; one of ' + SET_NAMES.join(', '));
       this._set = name;
     }
@@ -4823,8 +6250,9 @@
       if (!keyData) { this._keyData = null; return; }
       if (typeof keyData.length !== 'number' || !DEFAULT_BY_SECRET_KEY[keyData.length])
         throw new Error('FAEST: a secret key is 32, 40, 48 or 64 octets');
+      /** @type {uint8[]} */
       const copy = new Array(keyData.length);
-      for (let i = 0; i < keyData.length; ++i) copy[i] = AND(keyData[i], 0xFF);
+      for (let i = 0; i < keyData.length; ++i) copy[i] = OpCodes.And32(keyData[i], 0xFF);
       this._keyData = copy;
     }
 
@@ -4836,7 +6264,10 @@
       return this._keyData;
     }
 
-    /** Verify against a public key alone. */
+    /**
+     * Verify against a public key alone.
+     * @param {uint8[]} value - the public key, or null
+     */
     set publicKey(value) {
       if (!value) { this._publicKey = null; return; }
       if (!DEFAULT_BY_PUBLIC_KEY[value.length])
@@ -4855,7 +6286,10 @@
       return Array.from(PublicKeyOf(p, Uint8Array.from(this._keyData)));
     }
 
-    /** The 48-octet seed of the NIST harness, to replay a Known Answer Test. */
+    /**
+     * The 48-octet seed of the NIST harness, to replay a Known Answer Test.
+     * @param {uint8[]} value - the seed, or null
+     */
     set drbgSeed(value) {
       if (!value) { this._drbgSeed = null; return; }
       if (value.length !== 48) throw new Error('FAEST: the harness seed is 48 octets');
@@ -4866,7 +6300,10 @@
       return this._drbgSeed;
     }
 
-    /** The signer's randomness rho; empty (deterministic signing) by default. */
+    /**
+     * The signer's randomness rho; empty (deterministic signing) by default.
+     * @param {uint8[]} value - rho, or null
+     */
     set randomness(value) {
       this._randomness = value ? Array.from(value) : null;
     }
@@ -4875,7 +6312,10 @@
       return this._randomness;
     }
 
-    /** Setting the message turns the inverse direction into a verdict. */
+    /**
+     * Setting the message turns the inverse direction into a verdict.
+     * @param {uint8[]} value - the message, or null
+     */
     set message(value) {
       this._message = value ? Array.from(value) : null;
     }
@@ -4884,10 +6324,15 @@
       return this._message;
     }
 
+    /**
+     * @param {int32} length - the key length
+     * @param {Object} defaults - the default set name by key length
+     * @returns {FaestParams} the named set, or the default for the length
+     */
     _resolve(length, defaults) {
       const name = this._set || defaults[length];
       if (!name) throw new Error('FAEST: no parameter set takes a key of ' + length + ' octets');
-      return PARAMETER_SETS[name];
+      return ParameterSetEntry(name);
     }
 
     /**
@@ -4897,7 +6342,7 @@
      */
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(AND(data.charCodeAt(i), 0xFF));
+        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else if (typeof data === 'number') {
@@ -4915,22 +6360,28 @@
       return this.isInverse ? this._open(input) : this._sign(input);
     }
 
+    /**
+     * @param {Uint8Array} message - the message
+     * @returns {uint8[]} the message followed by the signature
+     */
     _sign(message) {
       let sk = this._keyData ? Uint8Array.from(this._keyData) : null;
       let rho = this._randomness ? Uint8Array.from(this._randomness) : new Uint8Array(0);
+      /** @type {FaestParams} */
       let p;
       if (this._drbgSeed) {
-        p = this._set ? PARAMETER_SETS[this._set]
+        p = this._set ? ParameterSetEntry(this._set)
           : this._resolve(sk ? sk.length : 32, DEFAULT_BY_SECRET_KEY);
+        /** @type {Object} */
         const drbg = Drbg(Uint8Array.from(this._drbgSeed));
         const pair = KeypairFromDrbg(p, drbg);
         if (sk) {
           let diff = sk.length !== pair.sk.length ? 1 : 0;
-          for (let i = 0; i < pair.sk.length && !diff; ++i) diff = OR(diff, XOR(sk[i], pair.sk[i]));
+          for (let i = 0; i < pair.sk.length && !diff; ++i) diff = OpCodes.Or32(diff, OpCodes.Xor32(sk[i], pair.sk[i]));
           if (diff) throw new Error(p.name + ': the harness seed does not generate this secret key');
         }
         sk = pair.sk;
-        rho = drbg.read(p.lambdaBytes);
+        rho = DrbgRead(drbg, p.lambdaBytes);
       } else {
         if (!sk) throw new Error('FAEST: signing needs a secret key');
         p = this._resolve(sk.length, DEFAULT_BY_SECRET_KEY);
@@ -4943,8 +6394,15 @@
       return Concat(Array.from(message), Array.from(signature));
     }
 
+    /**
+     * @param {Uint8Array} sm - the signed message
+     * @returns {uint8[]} the message, or the verdict [1] or [0]
+     */
     _open(sm) {
-      let pk, p;
+      /** @type {Uint8Array} */
+      let pk;
+      /** @type {FaestParams} */
+      let p;
       if (this._publicKey) {
         pk = Uint8Array.from(this._publicKey);
         p = this._resolve(pk.length, DEFAULT_BY_PUBLIC_KEY);
@@ -4957,7 +6415,10 @@
       } else {
         throw new Error('FAEST: opening needs a public key or the secret key that makes one');
       }
-      let accepted = false, message = null;
+      /** @type {boolean} */
+      let accepted = false;
+      /** @type {Uint8Array} */
+      let message = null;
       if (pk.length === p.pkSize && sm.length >= p.sigSize) {
         message = sm.subarray(0, sm.length - p.sigSize);
         accepted = Verify(p, pk, message, sm.subarray(sm.length - p.sigSize));
