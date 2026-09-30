@@ -106,7 +106,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FireCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -123,13 +123,17 @@
   class FireCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FireCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Fire code parameters: can correct burst of length b
@@ -138,6 +142,9 @@
       this._polynomial = 0b100101; // Example irreducible polynomial p(x) = x^5 + x^2 + 1
     }
 
+    /**
+     * @param {int32} b - Correctable burst length 1..16
+     */
     set burstLength(b) {
       if (b < 1 || b > 16) {
         throw new Error('FireCodeInstance.burstLength: Must be between 1 and 16');
@@ -145,10 +152,16 @@
       this._burstLength = b;
     }
 
+    /**
+     * @returns {int32} Correctable burst length
+     */
     get burstLength() {
       return this._burstLength;
     }
 
+    /**
+     * @param {int32} value - Degree c of the x^c + 1 factor, 1..32
+     */
     set c(value) {
       if (value < 1 || value > 32) {
         throw new Error('FireCodeInstance.c: Must be between 1 and 32');
@@ -156,6 +169,9 @@
       this._c = value;
     }
 
+    /**
+     * @returns {int32} Degree c of the x^c + 1 factor
+     */
     get c() {
       return this._c;
     }
@@ -196,6 +212,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Fire code encoding using generator G(x) = (x^c + 1) * p(x)
       // For simplicity, we add check bits based on syndrome calculation
@@ -204,6 +224,7 @@
       const encoded = [...data];
 
       // Append check bits (simplified syndrome-based)
+      /** @type {uint32} */
       let syndrome = 0;
       for (let i = 0; i < data.length; ++i) {
         if (data[i]) {
@@ -218,6 +239,10 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Fire code decoding with burst error correction
       const checkBits = this._burstLength + this._c - 1;
@@ -231,6 +256,7 @@
       const receivedCheck = data.slice(messageLength);
 
       // Calculate expected check bits
+      /** @type {uint32} */
       let syndrome = 0;
       for (let i = 0; i < messageLength; ++i) {
         if (message[i]) {
@@ -239,6 +265,7 @@
       }
 
       // Compare with received check bits
+      /** @type {uint32} */
       let receivedSyndrome = 0;
       for (let i = 0; i < checkBits; ++i) {
         receivedSyndrome = OpCodes.Xor32(receivedSyndrome, OpCodes.Shl32(receivedCheck[i], i));
@@ -247,7 +274,9 @@
       const errorSyndrome = OpCodes.Xor32(syndrome, receivedSyndrome);
 
       if (errorSyndrome !== 0) {
-        console.log(`Fire code: Burst error detected (syndrome: ${errorSyndrome.toString(2)})`);
+        /** @type {string} */
+        const syndromeBits = errorSyndrome.toString(2);
+        console.log("Fire code: Burst error detected (syndrome: " + syndromeBits + ")");
 
         // Attempt to correct burst error (simplified)
         // In full implementation, would use polynomial division to locate burst
@@ -256,6 +285,10 @@
       return message;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const checkBits = this._burstLength + this._c - 1;
 
@@ -265,6 +298,7 @@
       const message = data.slice(0, messageLength);
       const receivedCheck = data.slice(messageLength);
 
+      /** @type {uint32} */
       let syndrome = 0;
       for (let i = 0; i < messageLength; ++i) {
         if (message[i]) {
@@ -272,6 +306,7 @@
         }
       }
 
+      /** @type {uint32} */
       let receivedSyndrome = 0;
       for (let i = 0; i < checkBits; ++i) {
         receivedSyndrome = OpCodes.Xor32(receivedSyndrome, OpCodes.Shl32(receivedCheck[i], i));

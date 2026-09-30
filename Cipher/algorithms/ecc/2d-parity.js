@@ -123,7 +123,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TwoDParityInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -140,18 +140,25 @@
   class TwoDParityInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TwoDParityAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._rows = 3; // Default 3x3 grid
+      /** @type {int32} */
       this._cols = 3;
     }
 
+    /**
+     * @param {int32} value - Data rows (1..16)
+     */
     set rows(value) {
       if (value < 1 || value > 16) {
         throw new Error('TwoDParityInstance.rows: Must be between 1 and 16');
@@ -159,10 +166,16 @@
       this._rows = value;
     }
 
+    /**
+     * @returns {int32} Data rows
+     */
     get rows() {
       return this._rows;
     }
 
+    /**
+     * @param {int32} value - Data columns (1..16)
+     */
     set cols(value) {
       if (value < 1 || value > 16) {
         throw new Error('TwoDParityInstance.cols: Must be between 1 and 16');
@@ -170,6 +183,9 @@
       this._cols = value;
     }
 
+    /**
+     * @returns {int32} Data columns
+     */
     get cols() {
       return this._cols;
     }
@@ -205,16 +221,21 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const rows = this._rows;
       const cols = this._cols;
 
       if (data.length !== rows * cols) {
-        throw new Error(`2D Parity encode: Input must be exactly ${rows * cols} bits for ${rows}x${cols} grid`);
+        throw new Error("2D Parity encode: Input must be exactly " + (rows * cols) + " bits for " + rows + "x" + cols + " grid");
       }
 
       // Create (rows+1) x (cols+1) output grid
-      const encoded = new Array((rows + 1) * (cols + 1)).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray((rows + 1) * (cols + 1), 0);
 
       // Copy data into grid
       for (let r = 0; r < rows; ++r) {
@@ -225,39 +246,46 @@
 
       // Calculate row parity
       for (let r = 0; r < rows; ++r) {
+        /** @type {uint32} */
         let parity = 0;
         for (let c = 0; c < cols; ++c) {
-          parity = OpCodes.XorN(parity, encoded[r * (cols + 1) + c]);
+          parity = OpCodes.Xor32(parity, encoded[r * (cols + 1) + c]);
         }
         encoded[r * (cols + 1) + cols] = parity;
       }
 
       // Calculate column parity
       for (let c = 0; c < cols; ++c) {
+        /** @type {uint32} */
         let parity = 0;
         for (let r = 0; r < rows; ++r) {
-          parity = OpCodes.XorN(parity, encoded[r * (cols + 1) + c]);
+          parity = OpCodes.Xor32(parity, encoded[r * (cols + 1) + c]);
         }
         encoded[rows * (cols + 1) + c] = parity;
       }
 
       // Calculate overall parity (bottom-right corner)
+      /** @type {uint32} */
       let overallParity = 0;
       for (let r = 0; r < rows; ++r) {
-        overallParity = OpCodes.XorN(overallParity, encoded[r * (cols + 1) + cols]);
+        overallParity = OpCodes.Xor32(overallParity, encoded[r * (cols + 1) + cols]);
       }
       encoded[rows * (cols + 1) + cols] = overallParity;
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const rows = this._rows;
       const cols = this._cols;
       const totalSize = (rows + 1) * (cols + 1);
 
       if (data.length !== totalSize) {
-        throw new Error(`2D Parity decode: Input must be exactly ${totalSize} bits for ${rows}x${cols} grid`);
+        throw new Error("2D Parity decode: Input must be exactly " + totalSize + " bits for " + rows + "x" + cols + " grid");
       }
 
       const received = [...data];
@@ -265,9 +293,10 @@
       // Check row parity syndromes
       let errorRow = -1;
       for (let r = 0; r < rows; ++r) {
+        /** @type {uint32} */
         let syndrome = 0;
         for (let c = 0; c <= cols; ++c) {
-          syndrome = OpCodes.XorN(syndrome, received[r * (cols + 1) + c]);
+          syndrome = OpCodes.Xor32(syndrome, received[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) {
           errorRow = r;
@@ -277,9 +306,10 @@
       // Check column parity syndromes
       let errorCol = -1;
       for (let c = 0; c < cols; ++c) {
+        /** @type {uint32} */
         let syndrome = 0;
         for (let r = 0; r <= rows; ++r) {
-          syndrome = OpCodes.XorN(syndrome, received[r * (cols + 1) + c]);
+          syndrome = OpCodes.Xor32(syndrome, received[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) {
           errorCol = c;
@@ -288,13 +318,14 @@
 
       // Single-bit error correction
       if (errorRow !== -1 && errorCol !== -1) {
-        console.log(`2D Parity: Error detected at position (${errorRow}, ${errorCol}), correcting...`);
-        received[errorRow * (cols + 1) + errorCol] = OpCodes.XorN(received[errorRow * (cols + 1) + errorCol], 1);
+        console.log("2D Parity: Error detected at position (" + errorRow + ", " + errorCol + "), correcting...");
+        received[errorRow * (cols + 1) + errorCol] = OpCodes.Xor32(received[errorRow * (cols + 1) + errorCol], 1);
       } else if (errorRow !== -1 || errorCol !== -1) {
         console.warn('2D Parity: Parity error in row/column parity bits');
       }
 
       // Extract data (remove parity bits)
+      /** @type {uint8[]} */
       const decoded = [];
       for (let r = 0; r < rows; ++r) {
         for (let c = 0; c < cols; ++c) {
@@ -305,6 +336,10 @@
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const rows = this._rows;
       const cols = this._cols;
@@ -314,18 +349,20 @@
 
       // Check all row parities
       for (let r = 0; r <= rows; ++r) {
+        /** @type {uint32} */
         let syndrome = 0;
         for (let c = 0; c <= cols; ++c) {
-          syndrome = OpCodes.XorN(syndrome, data[r * (cols + 1) + c]);
+          syndrome = OpCodes.Xor32(syndrome, data[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) return true;
       }
 
       // Check all column parities
       for (let c = 0; c <= cols; ++c) {
+        /** @type {uint32} */
         let syndrome = 0;
         for (let r = 0; r <= rows; ++r) {
-          syndrome = OpCodes.XorN(syndrome, data[r * (cols + 1) + c]);
+          syndrome = OpCodes.Xor32(syndrome, data[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) return true;
       }

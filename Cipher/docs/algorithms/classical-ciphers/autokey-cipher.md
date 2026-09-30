@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [If portion of plaintext is known, can recover key and decrypt remainder of message](https://en.wikipedia.org/wiki/Known-plaintext_attack) | — | Avoid predictable beginnings or known phrases |
-| [While more secure than Vigenère, still vulnerable to advanced statistical attacks](https://en.wikipedia.org/wiki/Autokey_cipher#Cryptanalysis) | — | Educational use only |
+| [Probable Plaintext Attack](https://en.wikipedia.org/wiki/Known-plaintext_attack) | If portion of plaintext is known, can recover key and decrypt remainder of message | Avoid predictable beginnings or known phrases |
+| [Statistical Analysis](https://en.wikipedia.org/wiki/Autokey_cipher#Cryptanalysis) | While more secure than Vigenère, still vulnerable to advanced statistical attacks | Educational use only |
 
 ## Documentation
 

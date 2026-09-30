@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {VarshamovTenengoltsInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,18 +141,25 @@
   class VarshamovTenengoltsInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VarshamovTenengoltsAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._n = 7; // Default length
+      /** @type {int32} */
       this._a = 0; // Default parameter (0 gives highest rate)
     }
 
+    /**
+     * @param {int32} value - Code length (1..31)
+     */
     set n(value) {
       if (value < 1 || value > 31) {
         throw new Error('VarshamovTenengoltsInstance.n: Must be between 1 and 31');
@@ -160,17 +167,26 @@
       this._n = value;
     }
 
+    /**
+     * @returns {int32} Code length
+     */
     get n() {
       return this._n;
     }
 
+    /**
+     * @param {int32} value - Residue parameter a (0..n)
+     */
     set a(value) {
       if (value < 0 || value >= this._n + 1) {
-        throw new Error(`VarshamovTenengoltsInstance.a: Must be between 0 and ${this._n}`);
+        throw new Error("VarshamovTenengoltsInstance.a: Must be between 0 and " + this._n);
       }
       this._a = value;
     }
 
+    /**
+     * @returns {int32} Residue parameter a
+     */
     get a() {
       return this._a;
     }
@@ -206,47 +222,73 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Word
+     * @returns {float64} Sum of (i+1)*x[i] modulo n+1
+     */
     calculateChecksum(data) {
       // VT checksum: sum of (i+1) * x[i] mod (n+1)
+      /** @type {float64} */
       let sum = 0;
       for (let i = 0; i < data.length; ++i) {
-        sum += (i + 1) * data[i];
+        /** @type {float64} */
+        const symbol = data[i];
+        sum += (i + 1) * symbol;
       }
       return sum % (this._n + 1);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== this._n) {
-        throw new Error(`VT encode: Input must be exactly ${this._n} bits`);
+        throw new Error("VT encode: Input must be exactly " + this._n + " bits");
       }
 
       // Check if data satisfies VT constraint
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
-        throw new Error(`VT encode: Input checksum ${checksum} doesn't match parameter a=${this._a}. Not a valid VT codeword.`);
+        throw new Error("VT encode: Input checksum " + checksum + " doesn't match parameter a=" + this._a + ". Not a valid VT codeword.");
       }
 
       // VT codes are systematic - codeword equals message
-      return [...data];
+      /** @type {uint8[]} */
+      const codeword = data.slice();
+      return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // For VT codes, decoding handles insertion/deletion errors
       // Simplified implementation: verify checksum
 
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
-        console.warn(`VT decode: Checksum mismatch (got ${checksum}, expected ${this._a}). Error detected but simplified decoder cannot correct.`);
+        console.warn("VT decode: Checksum mismatch (got " + checksum + ", expected " + this._a + "). Error detected but simplified decoder cannot correct.");
       }
 
       // Return received word (real decoder would correct insertion/deletion)
-      return [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      return received;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Check if checksum matches parameter a
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
       return (checksum !== this._a);
     }

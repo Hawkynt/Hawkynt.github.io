@@ -46,19 +46,24 @@
    * SplitMix64 seeding algorithm
    * Used to initialize RomuMono state from a single 64-bit seed
    * Based on standard SplitMix64 implementation
+   * @param {BigInt} seedState - State before the step
+   * @returns {BigInt} Mixed output of the advanced state
    */
-  function SplitMix64(state) {
+  function SplitMix64(seedState) {
+    /** @type {BigInt} */
     const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
+    /** @type {BigInt} */
+    const advanced = OpCodes.ToQWord(seedState + GOLDEN_GAMMA);
 
-    let z = state;
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
     z = OpCodes.ToQWord(z * 0x94D049BB133111EBn);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: state };
+    return z;
   }
 
   class RomuMonoAlgorithm extends RandomGenerationAlgorithm {
@@ -168,7 +173,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RomuMonoInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -186,13 +191,20 @@
  */
 
   class RomuMonoInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {RomuMonoAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // RomuMono algorithm constant
+      /** @type {BigInt} */
       this.ROMU_MULTIPLIER = 0xD3833E804F4C574Bn; // 15241094284759029579
 
       // RomuMono state: single 64-bit value (using BigInt)
+      /** @type {BigInt} */
       this._xState = 0n;
       this._ready = false;
     }
@@ -200,6 +212,7 @@
     /**
      * Set seed value
      * Accepts 8 bytes for a single 64-bit seed value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -208,6 +221,7 @@
       }
 
       // Initialize state from seed bytes (little-endian)
+      /** @type {BigInt} */
       this._xState = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         this._xState = OpCodes.OrN(this._xState, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
@@ -216,6 +230,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -250,8 +267,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -259,19 +276,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, i * 8);
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -302,19 +324,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes (4 x 64-bit values)
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**

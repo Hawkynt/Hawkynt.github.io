@@ -61,12 +61,36 @@
   const INIT_MODULUS = 2147483563; // ICONS from FORTRAN
 
   // Luxury level definitions (p-values and skip counts)
+  /**
+   * One luxury level: block length p and the values skipped per block
+   * @class
+   */
+  class LuxuryLevel {
+    /**
+     * @param {int32} level - Level number
+     * @param {int32} p - Values per block
+     * @param {int32} nskip - Values discarded per block
+     * @param {string} description - Quality note
+     */
+    constructor(level, p, nskip, description) {
+      /** @type {int32} */
+      this.level = level;
+      /** @type {int32} */
+      this.p = p;
+      /** @type {int32} */
+      this.nskip = nskip;
+      /** @type {string} */
+      this.description = description;
+    }
+  }
+
+  /** @type {LuxuryLevel[]} */
   const LUXURY_LEVELS = [
-    { level: 0, p: 24,  nskip: 0,   description: 'Original RCARRY (fails tests)' },
-    { level: 1, p: 48,  nskip: 24,  description: 'Passes gap test' },
-    { level: 2, p: 97,  nskip: 73,  description: 'Passes known tests' },
-    { level: 3, p: 223, nskip: 199, description: 'Default luxury (GSL ranlux)' },
-    { level: 4, p: 389, nskip: 365, description: 'Highest luxury (GSL ranlux389)' }
+    new LuxuryLevel(0, 24, 0, 'Original RCARRY (fails tests)'),
+    new LuxuryLevel(1, 48, 24, 'Passes gap test'),
+    new LuxuryLevel(2, 97, 73, 'Passes known tests'),
+    new LuxuryLevel(3, 223, 199, 'Default luxury (GSL ranlux)'),
+    new LuxuryLevel(4, 389, 365, 'Highest luxury (GSL ranlux389)')
   ];
 
   class RanluxAlgorithm extends RandomGenerationAlgorithm {
@@ -190,7 +214,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RanluxInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -208,19 +232,34 @@
  */
 
   class RanluxInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {RanluxAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // RANLUX state
-      this._state = new Array(STATE_SIZE);  // 24 state values (24-bit integers)
+      /** @type {int32[]} */
+      this._state = OpCodes.CreateArray(STATE_SIZE, 0);  // 24 state values (24-bit integers)
+      /** @type {int32} */
       this._i = 23;                         // Current index (counts backwards)
+      /** @type {int32} */
       this._j = 9;                          // Lagged index (i - 10, circular)
+      /** @type {int32} */
       this._carry = 0;                      // Borrow/carry bit
+      /** @type {int32} */
       this._count = 0;                      // Counter for luxury level skipping
+      /** @type {int32} */
       this._luxuryLevel = 3;                // Default luxury level
+      /** @type {int32} */
       this._nskip = LUXURY_LEVELS[3].nskip; // Skip count for luxury level 3
+      /** @type {boolean} */
       this._initialized = false;
+      /** @type {int32} */
       this._outputSize = 32;                // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;                  // Number of bytes to skip before generating output
     }
 
@@ -228,7 +267,7 @@
      * Initialize the generator with a 32-bit seed
      * Uses multiplicative congruential method from FORTRAN implementation
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -237,25 +276,30 @@
       }
 
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
+        seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
       seedValue = OpCodes.ToUint32(seedValue); // Ensure unsigned
 
       // Initialize state using multiplicative congruential generator
       // Based on F. James FORTRAN implementation
+      // (every intermediate stays below 2^32 in magnitude and is exact as a double)
+      /** @type {float64} */
+      let lcg = seedValue;
       for (let i = 0; i < STATE_SIZE; ++i) {
-        const k = Math.floor(seedValue / INIT_DIVISOR);
-        seedValue = INIT_MULTIPLIER * (seedValue - k * INIT_DIVISOR) - k * INIT_SUBTRACT;
+        /** @type {float64} */
+        const k = Math.floor(lcg / INIT_DIVISOR);
+        lcg = INIT_MULTIPLIER * (lcg - k * INIT_DIVISOR) - k * INIT_SUBTRACT;
 
         // Wrap to modulus
-        if (seedValue < 0) {
-          seedValue += INIT_MODULUS;
+        if (lcg < 0) {
+          lcg += INIT_MODULUS;
         }
 
         // Mask to 24 bits
-        this._state[i] = OpCodes.ToUint32(OpCodes.AndN(seedValue, MASK_24BIT));
+        this._state[i] = OpCodes.ToUint32(OpCodes.And32(lcg, MASK_24BIT));
       }
 
       // Initialize indices
@@ -264,11 +308,14 @@
       this._count = 0;
 
       // Set carry based on MSB of last state element
-      this._carry = OpCodes.AndN(this._state[23], 0x800000) ? 1 : 0;
+      this._carry = OpCodes.And32(this._state[23], 0x800000) ? 1 : 0;
 
       this._initialized = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -277,7 +324,7 @@
      * Set luxury level (0-4)
      * Controls the fraction of numbers discarded for better quality
      *
-     * @param {number} level - Luxury level (0-4)
+     * @param {int32} level - Luxury level (0-4)
      */
     set luxuryLevel(level) {
       if (level < 0 || level > 4) {
@@ -287,6 +334,9 @@
       this._nskip = LUXURY_LEVELS[level].nskip;
     }
 
+    /**
+     * @returns {int32} Luxury level (0-4)
+     */
     get luxuryLevel() {
       return this._luxuryLevel;
     }
@@ -296,7 +346,7 @@
      * Implements the core RANLUX recurrence: x_n = x_{n-10} - x_{n-24} - c_{n-1}
      * In GSL code: delta = state[j] - state[i] - carry (where i=23, j=9 initially)
      *
-     * @returns {number} 24-bit unsigned random value
+     * @returns {uint32} 24-bit unsigned random value
      */
     _next24() {
       if (!this._initialized) {
@@ -305,6 +355,7 @@
 
       // Subtract-with-borrow: delta = state[j] - state[i] - carry
       // This computes x_{n-10} - x_{n-24} - c_{n-1}
+      /** @type {int32} */
       let delta = this._state[this._j] - this._state[this._i] - this._carry;
 
       // Handle borrow
@@ -316,7 +367,8 @@
       }
 
       // Update state
-      this._state[this._i] = OpCodes.AndN(delta, MASK_24BIT);
+      this._state[this._i] = OpCodes.And32(delta, MASK_24BIT);
+      /** @type {uint32} */
       const result = this._state[this._i];
 
       // Decrement indices (circular, counting backwards)
@@ -330,6 +382,7 @@
         // Skip nskip values for luxury level
         for (let skip = 0; skip < this._nskip; ++skip) {
           // Generate and discard values
+          /** @type {int32} */
           let deltaSkip = this._state[this._j] - this._state[this._i] - this._carry;
           if (deltaSkip < 0) {
             deltaSkip += MODULUS;
@@ -337,7 +390,7 @@
           } else {
             this._carry = 0;
           }
-          this._state[this._i] = OpCodes.AndN(deltaSkip, MASK_24BIT);
+          this._state[this._i] = OpCodes.And32(deltaSkip, MASK_24BIT);
           this._i = (this._i === 0) ? 23 : this._i - 1;
           this._j = (this._j === 0) ? 23 : this._j - 1;
         }
@@ -350,8 +403,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first) from 24-bit values
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -359,9 +412,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 24-bit values (3 bytes each)
@@ -369,9 +425,9 @@
       for (let i = 0; i < fullValues; ++i) {
         const value = this._next24();
         // Output in little-endian format (3 bytes)
-        output.push(OpCodes.AndN(value, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.And32(value, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 3)
@@ -379,7 +435,7 @@
       if (remainingBytes > 0) {
         const value = this._next24();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 
@@ -416,11 +472,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -428,11 +488,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

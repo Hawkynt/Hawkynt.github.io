@@ -116,7 +116,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GoppaCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -133,17 +133,20 @@
   class GoppaCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GoppaCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Simplified Goppa code implementation
       // Using generator matrix for [7,3] code
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 0, 1, 0, 1, 1],
         [0, 1, 0, 1, 1, 1, 0],
@@ -151,6 +154,7 @@
       ];
 
       // Parity check matrix
+      /** @type {uint8[][]} */
       this.parityCheck = [
         [1, 1, 0, 1, 0, 0, 0],
         [0, 1, 1, 0, 1, 0, 0],
@@ -190,6 +194,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Goppa codes are often non-systematic or require complex encoding
       // This implementation validates Goppa codeword property
@@ -199,61 +207,85 @@
 
       // Check if data satisfies parity check equations
       for (let i = 0; i < this.parityCheck.length; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.parityCheck[i][j]));
         }
         if (sum !== 0) {
-          throw new Error(`Goppa encode: Input violates parity check ${i+1}`);
+          throw new Error("Goppa encode: Input violates parity check " + (i+1));
         }
       }
 
       // Valid Goppa codeword
-      return [...data];
+      return data.slice();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 7) {
         throw new Error('Goppa decode: Input must be exactly 7 bits');
       }
 
       // Calculate syndrome using parity check matrix
-      const syndrome = new Array(this.parityCheck.length).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.parityCheck.length, 0);
 
       for (let i = 0; i < this.parityCheck.length; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.parityCheck[i][j]));
         }
         syndrome[i] = sum;
       }
 
       // Check if syndrome is zero (no errors)
-      const hasError = syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let s = 0; s < syndrome.length; s++) {
+        if (syndrome[s] !== 0) hasError = true;
+      }
 
       if (hasError) {
         console.warn('Goppa decode: Syndrome non-zero - errors detected');
         // Simplified decoding - real implementation uses Patterson algorithm
       }
 
-      return [...data];
+      return data.slice();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 7) return true;
+      if (data.length !== 7) {
+        return true;
+      }
 
       // Calculate syndrome
-      const syndrome = new Array(this.parityCheck.length).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.parityCheck.length, 0);
 
       for (let i = 0; i < this.parityCheck.length; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.parityCheck[i][j]));
         }
         syndrome[i] = sum;
       }
 
-      return syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let s = 0; s < syndrome.length; s++) {
+        if (syndrome[s] !== 0) hasError = true;
+      }
+      return hasError;
     }
   }
 

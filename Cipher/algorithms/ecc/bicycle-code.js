@@ -47,13 +47,17 @@
    * Circulant matrix generator for bicycle codes
    * A circulant matrix is fully defined by its first row
    * Each subsequent row is a cyclic right shift of the previous row
+   * @param {uint8[]} firstRow - First row
+   * @returns {uint8[][]} Circulant matrix
    */
   function createCirculantMatrix(firstRow) {
     const n = firstRow.length;
+    /** @type {uint8[][]} */
     const matrix = [];
 
     for (let i = 0; i < n; ++i) {
-      const row = new Array(n);
+      /** @type {uint8[]} */
+      const row = OpCodes.CreateArray(n, 0);
       for (let j = 0; j < n; ++j) {
         // Cyclic right shift: row[j] = firstRow[(j - i + n) % n]
         row[j] = firstRow[(j - i + n) % n];
@@ -66,14 +70,18 @@
 
   /**
    * Transpose a matrix
+   * @param {uint8[][]} matrix - Matrix
+   * @returns {uint8[][]} Transpose
    */
   function transposeMatrix(matrix) {
     const rows = matrix.length;
     const cols = matrix[0].length;
+    /** @type {uint8[][]} */
     const transposed = [];
 
     for (let j = 0; j < cols; ++j) {
-      const row = new Array(rows);
+      /** @type {uint8[]} */
+      const row = OpCodes.CreateArray(rows, 0);
       for (let i = 0; i < rows; ++i) {
         row[i] = matrix[i][j];
       }
@@ -85,15 +93,21 @@
 
   /**
    * Concatenate two matrices horizontally [A|B]
+   * @param {uint8[][]} A - Left block
+   * @param {uint8[][]} B - Right block
+   * @returns {uint8[][]} [A|B]
    */
   function concatenateMatrices(A, B) {
     if (A.length !== B.length) {
       throw new Error('Matrices must have same number of rows');
     }
 
+    /** @type {uint8[][]} */
     const result = [];
     for (let i = 0; i < A.length; ++i) {
-      result.push([...A[i], ...B[i]]);
+      /** @type {uint8[]} */
+      const row = A[i].concat(B[i]);
+      result.push(row);
     }
 
     return result;
@@ -104,12 +118,17 @@
   // First row of A chosen to satisfy A·A^T = A^T·A (commutation property)
   // Construction: [1, 1, 0] circulant ensures CSS condition
 
+  /** @type {uint8[]} */
   const CIRCULANT_FIRST_ROW_6_2_2 = [1, 1, 0];
+  /** @type {uint8[][]} */
   const A_6_2_2 = createCirculantMatrix(CIRCULANT_FIRST_ROW_6_2_2);
+  /** @type {uint8[][]} */
   const AT_6_2_2 = transposeMatrix(A_6_2_2);
 
   // Bicycle code structure: H_X = H_Z = (A|A^T)
+  /** @type {uint8[][]} */
   const H_X_6_2_2 = concatenateMatrices(A_6_2_2, AT_6_2_2);
+  /** @type {uint8[][]} */
   const H_Z_6_2_2 = concatenateMatrices(A_6_2_2, AT_6_2_2);
 
   // Code parameters [[n,k,d]]
@@ -123,14 +142,78 @@
   // Selected from the 16 valid codewords that satisfy H·c = 0
   // Chosen to maximize minimum distance between computational basis states
   // Reference: Computed from stabilizer nullspace of H = (A|A^T)
-  const LOGICAL_CODEWORDS_6_2_2 = {
-    0b00: [0, 0, 0, 0, 0, 0],  // |00⟩_L - all zeros
-    0b01: [0, 0, 0, 1, 1, 1],  // |01⟩_L - valid codeword
-    0b10: [1, 1, 1, 0, 0, 0],  // |10⟩_L - valid codeword
-    0b11: [1, 1, 1, 1, 1, 1]   // |11⟩_L - all ones
-  };
+  // Indexed by the two-bit logical state
+  /** @type {uint8[]} */
+  const LOGICAL_00 = [0, 0, 0, 0, 0, 0];  // |00⟩_L - all zeros
+  /** @type {uint8[]} */
+  const LOGICAL_01 = [0, 0, 0, 1, 1, 1];  // |01⟩_L - valid codeword
+  /** @type {uint8[]} */
+  const LOGICAL_10 = [1, 1, 1, 0, 0, 0];  // |10⟩_L - valid codeword
+  /** @type {uint8[]} */
+  const LOGICAL_11 = [1, 1, 1, 1, 1, 1];  // |11⟩_L - all ones
+  /** @type {uint8[][]} */
+  const LOGICAL_CODEWORDS_6_2_2 = [LOGICAL_00, LOGICAL_01, LOGICAL_10, LOGICAL_11];
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * Circulant structure as reported by getCirculantMatrix()
+   * @class
+   */
+  class CirculantStructure {
+    /**
+     * @param {uint8[]} firstRow - First row of A
+     * @param {uint8[][]} A - Circulant matrix
+     * @param {uint8[][]} AT - Its transpose
+     * @param {uint8[][]} H_X - X stabilizers
+     * @param {uint8[][]} H_Z - Z stabilizers
+     */
+    constructor(firstRow, A, AT, H_X, H_Z) {
+      /** @type {uint8[]} */
+      this.firstRow = firstRow;
+      /** @type {uint8[][]} */
+      this.A = A;
+      /** @type {uint8[][]} */
+      this.AT = AT;
+      /** @type {uint8[][]} */
+      this.H_X = H_X;
+      /** @type {uint8[][]} */
+      this.H_Z = H_Z;
+      /** @type {string} */
+      this.description = 'Bicycle code structure: H_X = H_Z = (A|A^T) with circulant A';
+    }
+  }
+
+  /**
+   * Code parameters as reported by getCodeParameters()
+   * @class
+   */
+  class BicycleParameters {
+    /**
+     * @param {int32} n - Physical qubits
+     * @param {int32} k - Logical qubits
+     * @param {int32} d - Minimum distance
+     * @param {int32} circulantSize - Circulant size
+     */
+    constructor(n, k, d, circulantSize) {
+      /** @type {int32} */
+      this.n = n;  // Physical qubits
+      /** @type {int32} */
+      this.k = k;  // Logical qubits
+      /** @type {int32} */
+      this.d = d;  // Minimum distance
+      /** @type {int32} */
+      this.t = 0;       // Error correction capability (d=2 → detect only)
+      /** @type {string} */
+      this.type = 'Bicycle Code (Quantum LDPC)';
+      /** @type {string} */
+      this.structure = 'CSS with H_X = H_Z = (A|A^T)';
+      /** @type {int32} */
+      this.circulantSize = circulantSize;
+      /** @type {int32} */
+      this.sparseWeight = 2;  // Each row of A has weight 2
+    }
+  }
 
   class BicycleCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
@@ -232,7 +315,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BicycleCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -249,13 +332,17 @@
   class BicycleCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BicycleCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // [[6,2,2]] bicycle code parameters
@@ -264,7 +351,9 @@
       this.d = CODE_D_6_2_2;
 
       // Stabilizer generator matrices
+      /** @type {uint8[][]} */
       this.H_X = H_X_6_2_2;
+      /** @type {uint8[][]} */
       this.H_Z = H_Z_6_2_2;
     }
 
@@ -308,27 +397,31 @@
      * Encode logical qubits to physical qubits using [[6,2,2]] bicycle code
      * Maps 2 logical qubits → 6 physical qubits
      * Classical simulation: |00⟩, |01⟩, |10⟩, |11⟩ → codewords
+     * @param {uint8[]} logicalQubits - Logical qubits, k per block
+     * @returns {uint8[]} Physical qubits
      */
     encode(logicalQubits) {
       if (logicalQubits.length % this.k !== 0) {
-        throw new Error(`Bicycle code encode: Input must be multiple of ${this.k} logical qubits`);
+        throw new Error("Bicycle code encode: Input must be multiple of " + this.k + " logical qubits");
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
 
       // Process k logical qubits at a time
       for (let i = 0; i < logicalQubits.length; i += this.k) {
-        const q0 = OpCodes.AndN(logicalQubits[i], 1);
-        const q1 = OpCodes.AndN(logicalQubits[i + 1], 1);
+        const q0 = OpCodes.And32(logicalQubits[i], 1);
+        const q1 = OpCodes.And32(logicalQubits[i + 1], 1);
 
         // Pack two logical qubits into index
-        const logicalState = OpCodes.OrN(OpCodes.Shl32(q0, 1), q1);
+        const logicalState = OpCodes.Or32(OpCodes.Shl32(q0, 1), q1);
 
         // Lookup codeword from logical basis
+        /** @type {uint8[]} */
         const codeword = LOGICAL_CODEWORDS_6_2_2[logicalState];
 
         if (!codeword) {
-          throw new Error(`Invalid logical state: ${logicalState}`);
+          throw new Error("Invalid logical state: " + logicalState);
         }
 
         for (let _i = 0; _i < codeword.length; _i++) encoded.push(codeword[_i]);
@@ -341,25 +434,32 @@
      * Decode physical qubits with error detection
      * Measures X and Z stabilizers to detect errors
      * [[6,2,2]] code with d=2 can detect 1 error but not correct it
+     * @param {uint8[]} physicalQubits - Physical qubits, n per block
+     * @returns {uint8[]} Logical qubits
      */
     decode(physicalQubits) {
       if (physicalQubits.length % this.n !== 0) {
-        throw new Error(`Bicycle code decode: Input must be multiple of ${this.n} physical qubits`);
+        throw new Error("Bicycle code decode: Input must be multiple of " + this.n + " physical qubits");
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
 
       // Process n-qubit blocks
       for (let i = 0; i < physicalQubits.length; i += this.n) {
+        /** @type {uint8[]} */
         const block = physicalQubits.slice(i, i + this.n);
 
         // Measure X-stabilizers (detect Z errors / phase-flips)
+        /** @type {uint8[]} */
         const syndromeX = this.measureSyndrome(block, this.H_X);
 
         // Measure Z-stabilizers (detect X errors / bit-flips)
+        /** @type {uint8[]} */
         const syndromeZ = this.measureSyndrome(block, this.H_Z);
 
         // Check for errors
+        /** @type {boolean} */
         const hasError = this.checkSyndrome(syndromeX) || this.checkSyndrome(syndromeZ);
 
         if (hasError) {
@@ -372,10 +472,11 @@
         const logicalState = this.extractLogicalQubits(block);
 
         // Unpack logical state to two qubits
-        const q0 = OpCodes.AndN(OpCodes.Shr32(logicalState, 1), 1);
-        const q1 = OpCodes.AndN(logicalState, 1);
+        const q0 = OpCodes.And32(OpCodes.Shr32(logicalState, 1), 1);
+        const q1 = OpCodes.And32(logicalState, 1);
 
-        decoded.push(q0, q1);
+        decoded.push(q0);
+        decoded.push(q1);
       }
 
       return decoded;
@@ -384,17 +485,22 @@
     /**
      * Measure syndrome using parity-check matrix (stabilizer generators)
      * Returns syndrome vector indicating which stabilizers are violated
+     * @param {uint8[]} qubits - One block
+     * @param {uint8[][]} parityMatrix - Stabilizer generators
+     * @returns {uint8[]} Syndrome
      */
     measureSyndrome(qubits, parityMatrix) {
-      const syndrome = new Array(parityMatrix.length).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(parityMatrix.length, 0);
 
       for (let i = 0; i < parityMatrix.length; ++i) {
+        /** @type {uint32} */
         let parity = 0;
 
         // Compute parity check (GF(2) addition = XOR)
         for (let j = 0; j < this.n; ++j) {
           if (parityMatrix[i][j] === 1) {
-            parity = OpCodes.XorN(parity, qubits[j]);
+            parity = OpCodes.Xor32(parity, qubits[j]);
           }
         }
 
@@ -407,6 +513,8 @@
     /**
      * Check if syndrome indicates error
      * Non-zero syndrome means at least one stabilizer is violated
+     * @param {uint8[]} syndrome - Syndrome
+     * @returns {boolean} True when non-zero
      */
     checkSyndrome(syndrome) {
       for (let i = 0; i < syndrome.length; ++i) {
@@ -420,19 +528,25 @@
     /**
      * Extract logical qubits by finding closest valid codeword
      * Uses minimum Hamming distance to logical basis states
+     * @param {uint8[]} qubits - One block
+     * @returns {int32} Closest logical state (two bits)
      */
     extractLogicalQubits(qubits) {
+      /** @type {float64} */
       let minDistance = Infinity;
+      /** @type {int32} */
       let closestState = 0b00;
 
       // Check distance to each logical codeword
-      for (const state in LOGICAL_CODEWORDS_6_2_2) {
-        const codeword = LOGICAL_CODEWORDS_6_2_2[state];
+      for (let s = 0; s < LOGICAL_CODEWORDS_6_2_2.length; ++s) {
+        /** @type {uint8[]} */
+        const codeword = LOGICAL_CODEWORDS_6_2_2[s];
+        /** @type {int32} */
         const distance = this.hammingDistance(qubits, codeword);
 
         if (distance < minDistance) {
           minDistance = distance;
-          closestState = parseInt(state, 10);
+          closestState = s;
         }
       }
 
@@ -441,6 +555,9 @@
 
     /**
      * Compute Hamming distance between two bit arrays
+     * @param {uint8[]} a - Bits
+     * @param {uint8[]} b - Bits
+     * @returns {int32} Differing positions
      */
     hammingDistance(a, b) {
       if (a.length !== b.length) {
@@ -460,6 +577,8 @@
     /**
      * Detect if error is present (public API for testing)
      * Measures both X and Z syndromes
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -467,28 +586,37 @@
       }
 
       // Measure both X and Z stabilizers
+      /** @type {uint8[]} */
       const syndromeX = this.measureSyndrome(data, this.H_X);
+      /** @type {uint8[]} */
       const syndromeZ = this.measureSyndrome(data, this.H_Z);
 
-      return this.checkSyndrome(syndromeX) || this.checkSyndrome(syndromeZ);
+      /** @type {boolean} */
+      const hasError = this.checkSyndrome(syndromeX) || this.checkSyndrome(syndromeZ);
+      return hasError;
     }
 
     /**
      * Introduce quantum error for testing (educational purposes)
      * errorType: 'X' (bit-flip), 'Z' (phase-flip), 'Y' (both)
      * position: qubit index 0-5
+     * @param {uint8[]} qubits - One block
+     * @param {string} errorType - "X", "Z" or "Y"
+     * @param {int32} position - Qubit index
+     * @returns {uint8[]} Block with the error applied
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'X':
           // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         case 'Z':
@@ -499,11 +627,11 @@
 
         case 'Y':
           // Y gate: both bit-flip and phase-flip (iXZ)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}. Use 'X', 'Z', or 'Y'`);
+          throw new Error("Unknown error type: " + errorType + ". Use 'X', 'Z', or 'Y'");
       }
 
       return result;
@@ -511,32 +639,18 @@
 
     /**
      * Get circulant matrix structure (educational reference)
+     * @returns {CirculantStructure} Circulant structure
      */
     getCirculantMatrix() {
-      return {
-        firstRow: CIRCULANT_FIRST_ROW_6_2_2,
-        A: A_6_2_2,
-        AT: AT_6_2_2,
-        H_X: this.H_X,
-        H_Z: this.H_Z,
-        description: 'Bicycle code structure: H_X = H_Z = (A|A^T) with circulant A'
-      };
+      return new CirculantStructure(CIRCULANT_FIRST_ROW_6_2_2, A_6_2_2, AT_6_2_2, this.H_X, this.H_Z);
     }
 
     /**
      * Get code parameters (educational reference)
+     * @returns {BicycleParameters} Code parameters
      */
     getCodeParameters() {
-      return {
-        n: this.n,  // Physical qubits
-        k: this.k,  // Logical qubits
-        d: this.d,  // Minimum distance
-        t: 0,       // Error correction capability (d=2 → detect only)
-        type: 'Bicycle Code (Quantum LDPC)',
-        structure: 'CSS with H_X = H_Z = (A|A^T)',
-        circulantSize: CIRCULANT_FIRST_ROW_6_2_2.length,
-        sparseWeight: 2  // Each row of A has weight 2
-      };
+      return new BicycleParameters(this.n, this.k, this.d, CIRCULANT_FIRST_ROW_6_2_2.length);
     }
   }
 

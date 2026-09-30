@@ -232,7 +232,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SFC64Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -250,13 +250,24 @@
  */
 
   class SFC64Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {SFC64Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // SFC64 uses 3x 64-bit state variables plus 1 counter (all BigInt)
+      /** @type {BigInt} */
       this._a = 0n;
+      /** @type {BigInt} */
       this._b = 0n;
+      /** @type {BigInt} */
       this._c = 0n;
+      /** @type {BigInt} */
       this._counter = 0n;
       this._ready = false;
     }
@@ -265,6 +276,7 @@
      * Set seed value (1-24 bytes)
      * Seed format: up to 24 bytes mapped to three 64-bit words (a, b, c) + counter
      * Default initialization if seed is shorter than 24 bytes
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -273,9 +285,13 @@
       }
 
       // Initialize with default values
+      /** @type {BigInt} */
       this._a = 0n;
+      /** @type {BigInt} */
       this._b = 0n;
+      /** @type {BigInt} */
       this._c = 0n;
+      /** @type {BigInt} */
       this._counter = 1n; // Counter typically starts at 1
 
       // Override with provided seed bytes (big-endian)
@@ -284,20 +300,21 @@
       // Read 'a' (first 8 bytes)
       if (seedBytes.length >= 8) {
         this._a = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         )), 32);
         this._a |= BigInt(OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         ));
         offset = 8;
       } else if (seedBytes.length > 0) {
         // For seeds < 8 bytes, pack what we have into a
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0, 0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -311,16 +328,16 @@
       // Read 'b' (next 8 bytes)
       if (seedBytes.length >= 16) {
         this._b = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         )), 32);
         this._b |= BigInt(OpCodes.Pack32BE(
-          seedBytes[12] || 0,
-          seedBytes[13] || 0,
-          seedBytes[14] || 0,
-          seedBytes[15] || 0
+          (seedBytes[12] ? seedBytes[12] : 0),
+          (seedBytes[13] ? seedBytes[13] : 0),
+          (seedBytes[14] ? seedBytes[14] : 0),
+          (seedBytes[15] ? seedBytes[15] : 0)
         ));
         offset = 16;
       }
@@ -328,16 +345,16 @@
       // Read 'c' (next 8 bytes)
       if (seedBytes.length >= 24) {
         this._c = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
-          seedBytes[16] || 0,
-          seedBytes[17] || 0,
-          seedBytes[18] || 0,
-          seedBytes[19] || 0
+          (seedBytes[16] ? seedBytes[16] : 0),
+          (seedBytes[17] ? seedBytes[17] : 0),
+          (seedBytes[18] ? seedBytes[18] : 0),
+          (seedBytes[19] ? seedBytes[19] : 0)
         )), 32);
         this._c |= BigInt(OpCodes.Pack32BE(
-          seedBytes[20] || 0,
-          seedBytes[21] || 0,
-          seedBytes[22] || 0,
-          seedBytes[23] || 0
+          (seedBytes[20] ? seedBytes[20] : 0),
+          (seedBytes[21] ? seedBytes[21] : 0),
+          (seedBytes[22] ? seedBytes[22] : 0),
+          (seedBytes[23] ? seedBytes[23] : 0)
         ));
         offset = 24;
       }
@@ -345,27 +362,31 @@
       // Read 'counter' (optional, if provided beyond 24 bytes)
       if (seedBytes.length >= 32) {
         this._counter = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
-          seedBytes[24] || 0,
-          seedBytes[25] || 0,
-          seedBytes[26] || 0,
-          seedBytes[27] || 0
+          (seedBytes[24] ? seedBytes[24] : 0),
+          (seedBytes[25] ? seedBytes[25] : 0),
+          (seedBytes[26] ? seedBytes[26] : 0),
+          (seedBytes[27] ? seedBytes[27] : 0)
         )), 32);
         this._counter |= BigInt(OpCodes.Pack32BE(
-          seedBytes[28] || 0,
-          seedBytes[29] || 0,
-          seedBytes[30] || 0,
-          seedBytes[31] || 0
+          (seedBytes[28] ? seedBytes[28] : 0),
+          (seedBytes[29] ? seedBytes[29] : 0),
+          (seedBytes[30] ? seedBytes[30] : 0),
+          (seedBytes[31] ? seedBytes[31] : 0)
         ));
       }
 
       // Ensure counter is at least 1 to avoid weak initial states
       if (this._counter === 0n) {
+        /** @type {BigInt} */
         this._counter = 1n;
       }
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -380,16 +401,19 @@
      * b = c + (OpCodes.Shl32(c, 3))
      * c = ROL(c, 24) + tmp
      * return tmp
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
         throw new Error('SFC64 not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       const MASK_64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Step 1: tmp = a + b + counter
-      let tmp = OpCodes.AndN(this._a + this._b + this._counter, MASK_64);
+      /** @type {BigInt} */
+      const tmp = OpCodes.AndN(this._a + this._b + this._counter, MASK_64);
 
       // Step 2: Increment counter
       this._counter = OpCodes.AndN(this._counter + 1n, MASK_64);
@@ -409,8 +433,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -418,14 +442,18 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order)
@@ -433,7 +461,9 @@
 
         // Convert BigInt to bytes manually (big-endian)
         for (let i = 0; i < bytesToExtract; ++i) {
-          const shift = BigInt((7 - i) * 8);
+          /** @type {int32} */
+          const shift = (7 - i) * 8;
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, shift), 0xFFn));
           output.push(byte);
         }
@@ -464,7 +494,7 @@
 
     Result() {
       // Use specified output size or default to 64 bytes
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -480,24 +510,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

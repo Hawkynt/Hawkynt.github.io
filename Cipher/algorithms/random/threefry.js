@@ -52,13 +52,18 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // Threefry2x64-20 constants from Random123 library
+  /** @type {BigInt} */
   const SKEIN_KS_PARITY_64 = 0x1BD11BDAA9FC1A22n; // Key schedule parity constant
 
   // Rotation constants for Threefry2x64 (8 constants, applied in groups during 20 rounds)
+  /** @type {int32[]} */
   const ROTATION_CONSTANTS = [16, 42, 12, 31, 16, 32, 24, 21];
 
   /**
    * Helper: Convert 8 bytes to 64-bit BigInt (little-endian)
+   * @param {uint8[]} bytes - Source bytes
+   * @param {int32} offset - Index of the least significant byte
+   * @returns {BigInt} 64-bit value
    */
   function bytesToBigInt64LE(bytes, offset) {
     return (
@@ -68,73 +73,89 @@
 
   /**
    * Helper: Convert 64-bit BigInt to 8 bytes (little-endian)
+   * @param {BigInt} value - 64-bit value
+   * @returns {uint8[]} 8 bytes, least significant first
    */
   function bigInt64ToBytes(value) {
+    /** @type {BigInt} */
     const mask = 0xFFn;
-    return [
-      Number(OpCodes.AndN(value, mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48n), mask)),
-      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56n), mask))
-    ];
+    /** @type {uint8[]} */
+    const result = [];
+    for (let i = 0; i < 8; ++i) {
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), mask));
+      result.push(b);
+    }
+    return result;
   }
 
   /**
    * Single Threefry2x64 round function
    * Implements the Threefish-based round: Add, Rotate, XOR
+   * @param {BigInt} x0 - First word
+   * @param {BigInt} x1 - Second word
+   * @param {int32} rotation - Rotation amount
+   * @returns {BigInt[]} Updated [x0, x1]
    */
   function threefry2x64Round(x0, x1, rotation) {
     // Add operation
-    x0 = OpCodes.AndN(x0 + x1, 0xFFFFFFFFFFFFFFFFn);
+    /** @type {BigInt} */
+    const y0 = OpCodes.AndN(x0 + x1, 0xFFFFFFFFFFFFFFFFn);
 
-    // Rotate x1 using OpCodes
-    x1 = OpCodes.RotL64n(x1, rotation);
+    // Rotate x1 using OpCodes, then XOR with the new x0
+    /** @type {BigInt} */
+    const y1 = OpCodes.XorN(OpCodes.RotL64n(x1, rotation), y0);
 
-    // XOR with x0
-    x1 = OpCodes.XorN(x1, x0);
-
-    return [x0, x1];
+    return [y0, y1];
   }
 
   /**
    * Threefry2x64-20: 20 rounds of the Threefry transformation
    *
-   * @param {Array} counter - [c0, c1] as BigInt values
-   * @param {Array} key - [k0, k1] as BigInt values
-   * @returns {Array} [result0, result1] as BigInt values
+   * @param {BigInt} c0 - Counter word 0
+   * @param {BigInt} c1 - Counter word 1
+   * @param {BigInt} k0 - Key word 0
+   * @param {BigInt} k1 - Key word 1
+   * @returns {BigInt[]} [result0, result1] as BigInt values
    */
-  function threefry2x64_20(counter, key) {
+  function threefry2x64_20(c0, c1, k0, k1) {
+    /** @type {BigInt} */
     const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
     // Key schedule setup
+    /** @type {BigInt[]} */
     const ks = [
-      OpCodes.AndN(key[0], mask64),
-      OpCodes.AndN(key[1], mask64),
-      OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(key[0], key[1]), SKEIN_KS_PARITY_64), mask64)
+      OpCodes.AndN(k0, mask64),
+      OpCodes.AndN(k1, mask64),
+      OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k0, k1), SKEIN_KS_PARITY_64), mask64)
     ];
 
-    let x0 = OpCodes.AndN(counter[0], mask64);
-    let x1 = OpCodes.AndN(counter[1], mask64);
+    /** @type {BigInt} */
+    let x0 = OpCodes.AndN(c0, mask64);
+    /** @type {BigInt} */
+    let x1 = OpCodes.AndN(c1, mask64);
 
     // 20 rounds, with key injection every 4 rounds
     for (let round = 0; round < 20; ++round) {
       // Key injection at rounds 0, 4, 8, 12, 16
       if (round % 4 === 0) {
+        /** @type {int32} */
         const s = round / 4;
         x0 = OpCodes.AndN(x0 + ks[s % 3], mask64);
         x1 = OpCodes.AndN(x1 + ks[(s + 1) % 3] + BigInt(s), mask64);
       }
 
       // Apply round function with appropriate rotation constant
+      /** @type {int32} */
       const rotation = ROTATION_CONSTANTS[round % 8];
-      [x0, x1] = threefry2x64Round(x0, x1, rotation);
+      /** @type {BigInt[]} */
+      const pair = threefry2x64Round(x0, x1, rotation);
+      x0 = pair[0];
+      x1 = pair[1];
     }
 
     // Final key injection (round 20)
+    /** @type {int32} */
     const s = 5; // 20 / 4
     x0 = OpCodes.AndN(x0 + ks[s % 3], mask64);
     x1 = OpCodes.AndN(x1 + ks[(s + 1) % 3] + BigInt(s), mask64);
@@ -239,7 +260,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ThreefryInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -257,23 +278,32 @@
  */
 
   class ThreefryInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ThreefryAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Key (2x 64-bit words as BigInt)
       this._key = [0n, 0n];
+      /** @type {boolean} */
       this._ready = false;
 
       // Counter state (2x 64-bit words as BigInt)
       this._counter = [0n, 0n];
 
       // Buffer for partial output
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._bufferPos = 0;
     }
 
     /**
      * Set key value (16 bytes = 2x 64-bit words, little-endian)
+     * @param {uint8[]|null} keyBytes - 16-byte key
      */
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -282,7 +312,7 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       // Parse key as little-endian 64-bit words
@@ -303,6 +333,7 @@
     /**
      * Set counter value (16 bytes = 2x 64-bit words, little-endian)
      * For counter-based PRNGs, the "seed" is actually the initial counter value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -311,7 +342,7 @@
       }
 
       if (seedBytes.length !== 16) {
-        throw new Error(`Invalid counter size: ${seedBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid counter size: " + seedBytes.length + " bytes (expected 16 bytes)");
       }
 
       // Parse counter as little-endian 64-bit words
@@ -323,14 +354,19 @@
       this._bufferPos = 0;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed/counter
     }
 
     /**
      * Increment the counter (for sequential generation)
+     * @returns {void}
      */
     _incrementCounter() {
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Increment as a 128-bit little-endian integer
@@ -342,6 +378,7 @@
 
     /**
      * Generate one block (16 bytes) from current counter
+     * @returns {uint8[]} 16 output bytes
      */
     _generateBlock() {
       if (!this._ready) {
@@ -349,13 +386,17 @@
       }
 
       // Apply Threefry2x64-20 to current counter
-      const result = threefry2x64_20(this._counter, this._key);
+      /** @type {BigInt[]} */
+      const result = threefry2x64_20(this._counter[0], this._counter[1], this._key[0], this._key[1]);
 
       // Convert result to bytes (little-endian)
-      const bytes = [
-        ...bigInt64ToBytes(result[0]),
-        ...bigInt64ToBytes(result[1])
-      ];
+      /** @type {uint8[]} */
+      const bytes = bigInt64ToBytes(result[0]);
+      /** @type {uint8[]} */
+      const high = bigInt64ToBytes(result[1]);
+      for (let i = 0; i < high.length; ++i) {
+        bytes.push(high[i]);
+      }
 
       // Increment counter for next block
       this._incrementCounter();
@@ -365,6 +406,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -372,9 +415,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = length;
 
@@ -420,16 +466,22 @@
    */
 
     Result() {
-      const size = this._outputSize || 16; // Default to one block
+      const size = (this._outputSize ? this._outputSize : 16); // Default to one block
       return this.NextBytes(size);
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 16;
+      return (this._outputSize ? this._outputSize : 16);
     }
   }
 

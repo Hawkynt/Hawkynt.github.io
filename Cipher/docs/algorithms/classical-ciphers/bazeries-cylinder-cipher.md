@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [As transposition cipher, preserves letter frequencies making frequency analysis effective](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Historical significance only - not suitable for modern security applications |
-| [Knowledge of plaintext portion reveals transposition pattern and allows key recovery](https://en.wikipedia.org/wiki/Known-plaintext_attack) | — | Avoid predictable message formats and standard headers |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | As transposition cipher, preserves letter frequencies making frequency analysis effective | Historical significance only - not suitable for modern security applications |
+| [Known Plaintext Attack](https://en.wikipedia.org/wiki/Known-plaintext_attack) | Knowledge of plaintext portion reveals transposition pattern and allows key recovery | Avoid predictable message formats and standard headers |
 
 ## Documentation
 
