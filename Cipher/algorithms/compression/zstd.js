@@ -5,11 +5,13 @@
  *
  * Genuinely interoperable implementation of the Zstandard frame format.
  *
- * Encoder: emits a fully standard-compliant frame using only Raw_Block and
- * RLE_Block (RFC 8878 Section 3.1.1.2.2). This is legal, spec-compliant
- * Zstandard output — the standard explicitly permits storing literal bytes
- * uncompressed inside a valid frame — and is read correctly by facebook/zstd,
- * the zstd CLI, and Node's zlib.zstdDecompressSync.
+ * Encoder: emits a standard-compliant frame in which each block is the
+ * smallest of Raw_Block, RLE_Block or a genuine Compressed_Block (RFC 8878
+ * Section 3.1.1.2.2): an LZ77 hash-chain match finder, sequences FSE-coded
+ * with the predefined distribution tables, and Huffman-coded literals with a
+ * directly described tree whose last weight is implied rather than sent
+ * (Section 4.2.1.3). Its output is read correctly by Node's
+ * zlib.zstdDecompressSync, which the interop tests check in both directions.
  *
  * Decoder: implements the full block/section grammar needed to read frames
  * produced by real Zstd encoders (Node's zlib.zstdCompressSync, the zstd
