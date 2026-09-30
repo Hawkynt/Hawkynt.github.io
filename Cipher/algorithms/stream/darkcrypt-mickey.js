@@ -145,6 +145,14 @@
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("ca57d22f48edc874deddca0de2da15db4e5035764971203325e6bc7c39d5939a82079ec059b44597815a73ea1a175c27607c6cfd34e3cf1f5dfe9196ef108529")
+        },
+        {
+          text: "DarkCrypt Mickey — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("521c75c6cfb378c51664a3cb60d3a392dc666b8fb241b05522f5f010667a7439b805ea0a547682feae328605e979fc43")
         }
       ];
     }
