@@ -192,7 +192,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FCSRInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -210,8 +210,13 @@
  */
 
   class FCSRInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {FCSRAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Default connection integer (polynomial) from C# implementation
       // Binary: 1000_1101__0101_1101__1100_1011__1101_1011__0110_0111__1100_1010__1101_1011__0110_0111
@@ -234,6 +239,7 @@
      * Set seed value (1-8 bytes)
      * Seed initializes the 64-bit FCSR state and carry bit
      * The LSB of the seed initializes the carry bit
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -252,16 +258,21 @@
 
       if (seedBytes.length <= 4) {
         // Seed is 4 bytes or less - pack into low word
-        const bytes = seedBytes.concat(Array(4 - seedBytes.length).fill(0));
+        /** @type {uint8[]} */
+        const bytes = seedBytes.concat(OpCodes.CreateArray(4 - seedBytes.length, 0));
         this._stateLow = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
       } else {
         // Seed is more than 4 bytes - pack into low and high words
         // Low word: first 4 bytes
+        /** @type {uint8[]} */
         const lowBytes = seedBytes.slice(0, 4);
         this._stateLow = OpCodes.Pack32LE(lowBytes[0], lowBytes[1], lowBytes[2], lowBytes[3]);
 
         // High word: next 4 bytes
-        const highBytes = seedBytes.slice(4, 8).concat([0, 0, 0, 0]).slice(0, 4);
+        /** @type {uint8[]} */
+        const padding = [0, 0, 0, 0];
+        /** @type {uint8[]} */
+        const highBytes = seedBytes.slice(4, 8).concat(padding).slice(0, 4);
         this._stateHigh = OpCodes.Pack32LE(highBytes[0], highBytes[1], highBytes[2], highBytes[3]);
       }
 
@@ -271,6 +282,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -278,7 +292,7 @@
     /**
      * Set custom connection integer (optional)
      * The connection integer determines the feedback pattern
-     * @param {Array} bytes - 8-byte array representing 64-bit connection integer
+     * @param {uint8[]} bytes - 8-byte array representing 64-bit connection integer
      */
     set connectionInteger(bytes) {
       if (!bytes || bytes.length < 8) {
@@ -289,9 +303,14 @@
       this._connectionHigh = OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]);
     }
 
+    /**
+     * @returns {uint8[]} 8-byte connection integer, little-endian
+     */
     get connectionInteger() {
       // Unpack to byte array
+      /** @type {uint8[]} */
       const lowBytes = OpCodes.Unpack32LE(this._connectionLow);
+      /** @type {uint8[]} */
       const highBytes = OpCodes.Unpack32LE(this._connectionHigh);
       return lowBytes.concat(highBytes);
     }
@@ -304,6 +323,7 @@
      * - XOR-reduce all bits to get single feedback bit (parity)
      *
      * Matches C# implementation (lines 40-48)
+     * @returns {uint32} Feedback bit
      */
     _calculateFeedback() {
       // Perform AND operation on both words
@@ -341,13 +361,15 @@
      * 4. Output current LSB of state
      * 5. Shift state right by 1
      * 6. Insert (sum&1) at bit 63
+     * @returns {uint32} Output bit
      */
     _stepFCSR() {
       // Calculate feedback bit from current state (C# line 25)
+      /** @type {uint32} */
       const feedbackBit = this._calculateFeedback();
 
       // Add feedback bit and carry (C# line 26)
-      const feedbackCarrySum = feedbackBit + this._carryBit;
+      const feedbackCarrySum = OpCodes.Add32(feedbackBit, this._carryBit);
 
       // Extract new carry bit (bit 1 of sum) (C# line 27)
       this._carryBit = OpCodes.And32(OpCodes.Shr32(feedbackCarrySum, 1), 1);
@@ -371,6 +393,7 @@
      * Generate next 64-bit value (8 bytes)
      * Accumulates 64 FCSR steps into a single output value
      * Matches C# implementation (lines 16-22)
+     * @returns {uint8[]} Next 8 output bytes
      */
     _next64() {
       if (!this._ready) {
@@ -378,11 +401,13 @@
       }
 
       // Accumulate 64 bits (8 bytes)
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0, 0, 0, 0, 0];
 
       // Generate 8 bytes (64 bits total)
       // Each byte contains 8 bits accumulated from FCSR steps
       for (let byteIdx = 0; byteIdx < 8; ++byteIdx) {
+        /** @type {uint32} */
         let byte = 0;
         // Generate 8 bits for this byte (C# line 19: qword |= (ulong)GetNextBit() << i)
         for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
@@ -397,8 +422,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -406,13 +431,17 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate in 8-byte (64-bit) chunks
       while (output.length < length) {
+        /** @type {uint8[]} */
         const chunk = this._next64();
         const bytesNeeded = Math.min(8, length - output.length);
         for (let i = 0; i < bytesNeeded; ++i) {
@@ -443,19 +472,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RepetitionCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,12 +132,13 @@
   class RepetitionCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RepetitionCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.inputBuffer = [];
       this.repetitionCount = 3; // Default: triple modular redundancy
@@ -174,6 +175,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!data || data.length === 0) return false;
       if (data.length % this.repetitionCount !== 0) return true;
@@ -185,7 +190,7 @@
         // Count ones and zeros
         let onesCount = 0;
         for (let j = 0; j < group.length; j++) {
-          if (OpCodes.AndN(group[j], 1)) onesCount++;
+          if (OpCodes.And32(group[j], 1)) onesCount++;
         }
 
         // If votes are tied or corrupted beyond correction capability
@@ -196,13 +201,19 @@
       return false;
     }
 
+    /**
+     * @returns {uint8[]} Every buffered bit repeated
+     */
     _encode() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
+      /** @type {uint8[]} */
       const result = [];
 
       // Repeat each bit N times
       for (let i = 0; i < data.length; i++) {
-        const bit = OpCodes.AndN(data[i], 1); // Get least significant bit
+        /** @type {uint32} */
+        const bit = OpCodes.And32(data[i], 1); // Get least significant bit
         for (let j = 0; j < this.repetitionCount; j++) {
           result.push(bit);
         }
@@ -212,13 +223,18 @@
       return result;
     }
 
+    /**
+     * @returns {uint8[]} Majority of every repetition group
+     */
     _decode() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
 
       if (data.length % this.repetitionCount !== 0) {
-        throw new Error(`Encoded data length must be multiple of ${this.repetitionCount}`);
+        throw new Error("Encoded data length must be multiple of " + this.repetitionCount);
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process each repetition group using majority voting
@@ -228,7 +244,7 @@
         // Count ones
         let onesCount = 0;
         for (let j = 0; j < group.length; j++) {
-          if (OpCodes.AndN(group[j], 1)) onesCount++;
+          if (OpCodes.And32(group[j], 1)) onesCount++;
         }
 
         // Majority vote: Q = AB ∨ BC ∨ AC
@@ -241,7 +257,11 @@
       return result;
     }
 
-    // Set repetition count (must be odd number >= 3)
+    /**
+     * Set repetition count (must be odd number >= 3)
+     * @param {int32} count - Repetitions per bit
+     * @returns {void}
+     */
     setRepetitionCount(count) {
       if (count < 1 || count % 2 === 0) {
         throw new Error('Repetition count must be odd number (1, 3, 5, 7, ...)');

@@ -163,7 +163,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ICGInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -181,23 +181,38 @@
  */
 
   class ICGInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ICGAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // ICG state
+      /** @type {BigInt} */
       this._state = 0n;
 
       // ICG parameters (default values match C# implementation)
+      /** @type {BigInt} */
       this._multiplier = 6364136223846793005n;
+      /** @type {BigInt} */
       this._increment = 1442695040888963407n;
+      /** @type {BigInt} */
       this._modulo = 18446744073709551557n; // 2^64 - 59 (large prime)
 
       // Internal state
+      /** @type {boolean} */
       this._ready = false;
+      /** @type {int32} */
+      this._skipCount = 0;
     }
 
     /**
      * Set seed value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -206,6 +221,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -217,20 +233,26 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
 
     /**
      * Set multiplier parameter (a)
+     * @param {uint8[]} multiplierBytes - Multiplier, big-endian
      */
     set multiplier(multiplierBytes) {
       if (!multiplierBytes || multiplierBytes.length === 0) {
+        /** @type {BigInt} */
         this._multiplier = 6364136223846793005n; // Default
         return;
       }
 
       // Convert multiplier bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let multiplierValue = 0n;
       for (let i = 0; i < multiplierBytes.length; ++i) {
         multiplierValue = OpCodes.OrN(OpCodes.ShiftLn(multiplierValue, 8n), BigInt(multiplierBytes[i]));
@@ -239,20 +261,26 @@
       this._multiplier = multiplierValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get multiplier() {
       return null;
     }
 
     /**
      * Set increment parameter (c)
+     * @param {uint8[]} incrementBytes - Increment, big-endian
      */
     set increment(incrementBytes) {
       if (!incrementBytes || incrementBytes.length === 0) {
+        /** @type {BigInt} */
         this._increment = 1442695040888963407n; // Default
         return;
       }
 
       // Convert increment bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let incrementValue = 0n;
       for (let i = 0; i < incrementBytes.length; ++i) {
         incrementValue = OpCodes.OrN(OpCodes.ShiftLn(incrementValue, 8n), BigInt(incrementBytes[i]));
@@ -261,6 +289,9 @@
       this._increment = incrementValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get increment() {
       return null;
     }
@@ -268,14 +299,17 @@
     /**
      * Set modulo parameter (m)
      * Should be a large prime for best statistical properties
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
      */
     set modulo(moduloBytes) {
       if (!moduloBytes || moduloBytes.length === 0) {
+        /** @type {BigInt} */
         this._modulo = 18446744073709551557n; // Default
         return;
       }
 
       // Convert modulo bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let moduloValue = 0n;
       for (let i = 0; i < moduloBytes.length; ++i) {
         moduloValue = OpCodes.OrN(OpCodes.ShiftLn(moduloValue, 8n), BigInt(moduloBytes[i]));
@@ -284,24 +318,32 @@
       this._modulo = moduloValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get modulo() {
       return null;
     }
 
     /**
      * Set count parameter (for skipping ahead to nth value)
+     * @param {int32} skipCount - Output index to start at
      */
     set count(skipCount) {
       this._skipCount = skipCount;
     }
 
+    /**
+     * @returns {int32} Output index to start at
+     */
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
      * Generate next value using ICG formula: X(n+1) = (a * X(n)^(-1) + c) mod m
      * Matches C# implementation logic
+     * @returns {BigInt} Next state
      */
     _next() {
       if (!this._ready) {
@@ -314,10 +356,12 @@
         this._state = this._increment % this._modulo;
       } else {
         // Compute modular multiplicative inverse
+        /** @type {BigInt} */
         const inverse = ModInverse(this._state, this._modulo);
 
         // Apply ICG formula with proper positive modulo
-        let result = (this._multiplier * inverse + this._increment) % this._modulo;
+        /** @type {BigInt} */
+        const result = (this._multiplier * inverse + this._increment) % this._modulo;
         // Ensure result is positive (JavaScript modulo can return negative)
         this._state = result < 0n ? result + this._modulo : result;
       }
@@ -329,8 +373,8 @@
      * Generate random bytes
      * Outputs values packed based on modulo size (8-bit for m<256, 16-bit for m<65536, etc.)
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -338,7 +382,9 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       // If count is set, skip ahead to the nth value
@@ -346,12 +392,14 @@
         for (let i = 1; i < this._skipCount; ++i) {
           this._next();
         }
-        this._skipCount = null; // Clear after use
+        this._skipCount = 0; // Clear after use
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Determine bytes per value based on modulo size
+      /** @type {int32} */
       let bytesPerValue;
       if (this._modulo <= 0x100n) {
         bytesPerValue = 1; // 8-bit
@@ -364,12 +412,15 @@
       }
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         // Pack value as big-endian with appropriate byte width
         for (let i = (bytesPerValue - 1) * 8; i >= 0; i -= 8) {
           if (output.length < length) {
-            output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i)), 0xFFn)));
+            /** @type {uint8} */
+            const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i), 0xFFn));
+            output.push(b);
           }
         }
       }
@@ -397,19 +448,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

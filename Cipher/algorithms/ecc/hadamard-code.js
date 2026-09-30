@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HadamardCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,17 @@
   class HadamardCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HadamardCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
     }
 
@@ -178,24 +182,31 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const k = data.length;
       const n = OpCodes.Shl32(1, k); // 2^k
 
       // Convert data bits to index
+      /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = OpCodes.OrN(OpCodes.Shl32(index, 1), data[i]);
+        index = OpCodes.Or32(OpCodes.Shl32(index, 1), data[i]);
       }
 
       // Generate Hadamard codeword using Walsh functions
+      /** @type {uint8[]} */
       const codeword = new Array(n);
       for (let i = 0; i < n; ++i) {
         // Walsh function evaluation: count bits in (index AND i)
+        /** @type {uint32} */
         let dotProduct = 0;
-        let temp = OpCodes.AndN(index, i);
+        let temp = OpCodes.And32(index, i);
         while (temp > 0) {
-          dotProduct = OpCodes.XorN(dotProduct, OpCodes.AndN(temp, 1));
+          dotProduct = OpCodes.Xor32(dotProduct, OpCodes.And32(temp, 1));
           temp = OpCodes.Shr32(temp, 1);
         }
         codeword[i] = dotProduct;
@@ -204,28 +215,34 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const n = data.length;
 
       // Verify n is power of 2
-      if (OpCodes.AndN(n, n - 1) !== 0) {
+      if (OpCodes.And32(n, n - 1) !== 0) {
         throw new Error('Hadamard decode: Input length must be power of 2');
       }
 
       const k = Math.log2(n);
 
       // Fast Hadamard Transform for decoding
-      const correlations = new Array(n).fill(0);
+      /** @type {int32[]} */
+      const correlations = OpCodes.CreateArray(n, 0);
 
       // Calculate correlation with all Walsh functions
       for (let index = 0; index < n; ++index) {
         let correlation = 0;
         for (let i = 0; i < n; ++i) {
           // Walsh function evaluation
+          /** @type {uint32} */
           let dotProduct = 0;
-          let temp = OpCodes.AndN(index, i);
+          let temp = OpCodes.And32(index, i);
           while (temp > 0) {
-            dotProduct = OpCodes.XorN(dotProduct, OpCodes.AndN(temp, 1));
+            dotProduct = OpCodes.Xor32(dotProduct, OpCodes.And32(temp, 1));
             temp = OpCodes.Shr32(temp, 1);
           }
 
@@ -237,6 +254,7 @@
 
       // Find maximum correlation (most likely codeword)
       let maxCorr = correlations[0];
+      /** @type {uint32} */
       let decodedIndex = 0;
       for (let i = 1; i < n; ++i) {
         if (correlations[i] > maxCorr) {
@@ -246,18 +264,23 @@
       }
 
       // Convert index back to bits
+      /** @type {uint8[]} */
       const decoded = new Array(k);
       for (let i = k - 1; i >= 0; --i) {
-        decoded[i] = OpCodes.AndN(decodedIndex, 1);
+        decoded[i] = OpCodes.And32(decodedIndex, 1);
         decodedIndex = OpCodes.Shr32(decodedIndex, 1);
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = data.length;
-      if (OpCodes.AndN(n, n - 1) !== 0) return true;
+      if (OpCodes.And32(n, n - 1) !== 0) return true;
 
       const k = Math.log2(n);
 
@@ -266,6 +289,7 @@
         const decoded = this.decode(data);
         const tempInstance = new HadamardCodeInstance(this.algorithm, false);
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         // Check if matches original

@@ -104,20 +104,57 @@
       ];
 
       // For test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
 
       // Standard alphabet without J (merged with I)
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TwoSquareInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new TwoSquareInstance(this, isInverse);
+    }
+
+  }
+
+  /**
+   * The two keywords of a Two-Square key
+   * @class
+   */
+  class TwoSquareKeywords {
+    /**
+     * @param {string} key1 - Keyword of the first square
+     * @param {string} key2 - Keyword of the second square
+     */
+    constructor(key1, key2) {
+      /** @type {string} */
+      this.key1 = key1;
+      /** @type {string} */
+      this.key2 = key2;
+    }
+  }
+
+  /**
+   * Row and column of a letter in a square
+   * @class
+   */
+  class SquarePosition {
+    /**
+     * @param {int32} row - Row 0..4
+     * @param {int32} col - Column 0..4
+     */
+    constructor(row, col) {
+      /** @type {int32} */
+      this.row = row;
+      /** @type {int32} */
+      this.col = col;
     }
   }
 
@@ -130,47 +167,62 @@
   class TwoSquareInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TwoSquareCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
+      /** @type {string} */
+      this.alphabet = algorithm.ALPHABET;
+
+      // Initialize with default squares
+      /** @type {string[][]} */
       this.square1 = this.createStandardSquare();
+      /** @type {string[][]} */
       this.square2 = this.createStandardSquare();
     }
 
+    /**
+     * Two keywords separated by comma, colon, space or semicolon
+     * @param {string|uint8[]} keyData - Key text or its bytes
+     */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
       // Use default test key if none provided or invalid format
-      if (!keyString || keyString.length === 0 || 
-          (!keyString.includes(',') && !keyString.includes(':') && 
+      if (!keyString || keyString.length === 0 ||
+          (!keyString.includes(',') && !keyString.includes(':') &&
            !keyString.includes(' ') && !keyString.includes(';'))) {
         keyString = 'EXAMPLE,KEYWORD'; // Default key pair for testing
       }
 
-      try {
-        const parsed = this.parseKey(keyString);
-        this.square1 = this.createKeySquare(parsed.key1);
-        this.square2 = this.createKeySquare(parsed.key2);
-        this._key = keyString;
-      } catch (error) {
-        throw new Error('Invalid key format: ' + error.message);
-      }
+      /** @type {TwoSquareKeywords} */
+      const parsed = this.parseKey(keyString);
+
+      this.square1 = this.createKeySquare(parsed.key1);
+      this.square2 = this.createKeySquare(parsed.key2);
+
+      this._key = keyString;
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key text
+   * @returns {string|null} Key text or null
    */
 
     get key() {
@@ -179,7 +231,7 @@
 
     /**
    * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
+   * @param {string|uint8[]} data - Input text, or its bytes
    * @throws {Error} If key not set
    */
 
@@ -187,11 +239,14 @@
       if (!data || data.length === 0) return;
 
       // Convert bytes to string for classical cipher
+      /** @type {string} */
       let text = '';
       if (typeof data === 'string') {
         text = data;
       } else {
-        text = String.fromCharCode(...data);
+        /** @type {uint8[]} */
+        const bytes = data;
+        text = String.fromCharCode(...bytes);
       }
 
       this.inputBuffer.push(text);
@@ -204,80 +259,143 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (this.inputBuffer.length === 0) return output;
 
+      /** @type {string} */
       const text = this.inputBuffer.join('');
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decryptText(text) : 
+      /** @type {string} */
+      const result = this.isInverse ?
+        this.decryptText(text) :
         this.encryptText(text);
 
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      // Convert string result to bytes (all letters)
+      for (let i = 0; i < result.length; i++) output.push(result.charCodeAt(i));
+      return output;
     }
 
-    createStandardSquare() {
-      const square = [];
-      for (let row = 0; row < 5; row++) {
-        square[row] = [];
-        for (let col = 0; col < 5; col++) {
-          square[row][col] = this.algorithm.ALPHABET[row * 5 + col];
-        }
-      }
-      return square;
-    }
-
+    /**
+     * Create 5x5 key square from keyword
+     * @param {string} keyword - Keyword
+     * @returns {string[][]} Square
+     */
     createKeySquare(keyword) {
-      const cleanKey = keyword.toUpperCase()
-        .replace(/[^A-Z]/g, '')
-        .replace(/J/g, 'I')
-        .split('')
-        .filter((char, index, arr) => arr.indexOf(char) === index)
-        .join('');
-
-      let remainingAlphabet = this.algorithm.ALPHABET;
-      for (let i = 0; i < cleanKey.length; i++) {
-        remainingAlphabet = remainingAlphabet.replace(cleanKey[i], '');
+      // Remove duplicates and J (merge with I)
+      /** @type {string} */
+      const upper = keyword.toUpperCase();
+      /** @type {string} */
+      const letters = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string} */
+      let cleanKey = '';
+      for (let i = 0; i < letters.length; i++) {
+        /** @type {string} */
+        const letter = letters.charAt(i);
+        // keep the first occurrence of each letter
+        if (letters.indexOf(letter) === i) cleanKey += letter;
       }
 
+      // Create alphabet without used letters
+      /** @type {string} */
+      let remainingAlphabet = this.alphabet;
+      for (let i = 0; i < cleanKey.length; i++) {
+        remainingAlphabet = remainingAlphabet.replace(cleanKey.charAt(i), '');
+      }
+
+      // Combine key with remaining alphabet
+      /** @type {string} */
       const fullAlphabet = cleanKey + remainingAlphabet;
+
+      // Create 5x5 matrix
+      /** @type {string[][]} */
       const square = [];
       for (let row = 0; row < 5; row++) {
-        square[row] = [];
+        /** @type {string[]} */
+        const cells = [];
         for (let col = 0; col < 5; col++) {
-          square[row][col] = fullAlphabet[row * 5 + col];
+          /** @type {string} */
+          const cell = fullAlphabet[row * 5 + col];
+          cells.push(cell);
         }
+        square.push(cells);
       }
 
       return square;
     }
 
-    parseKey(key) {
-      const parts = key.split(/[\s,:;]+/);
-      if (parts.length < 2) {
-        throw new Error('Two-Square cipher requires two keywords separated by comma, space, colon, or semicolon');
+    /**
+     * Create standard alphabet square
+     * @returns {string[][]} Square
+     */
+    createStandardSquare() {
+      /** @type {string[][]} */
+      const square = [];
+      for (let row = 0; row < 5; row++) {
+        /** @type {string[]} */
+        const cells = [];
+        for (let col = 0; col < 5; col++) {
+          /** @type {string} */
+          const cell = this.alphabet[row * 5 + col];
+          cells.push(cell);
+        }
+        square.push(cells);
       }
-
-      return { key1: parts[0], key2: parts[1] };
+      return square;
     }
 
+    /**
+     * Find position of character in square
+     * @param {string[][]} square - Square
+     * @param {string} char - Character
+     * @returns {SquarePosition|null} Its position, or null when absent
+     */
     findPosition(square, char) {
       for (let row = 0; row < 5; row++) {
         for (let col = 0; col < 5; col++) {
           if (square[row][col] === char) {
-            return { row: row, col: col };
+            return new SquarePosition(row, col);
           }
         }
       }
       return null;
     }
 
-    normalizeText(text) {
-      return text.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+    /**
+     * Parse key string to extract two keywords
+     * Support formats: "key1,key2", "key1:key2", "key1 key2", or "key1;key2"
+     * @param {string} text - Key text
+     * @returns {TwoSquareKeywords} The two keywords
+     */
+    parseKey(text) {
+      /** @type {string[]} */
+      const parts = text.split(/[\s,:;]+/);
+      if (parts.length < 2) {
+        throw new Error('Two-Square cipher requires two keywords separated by comma, space, colon, or semicolon');
+      }
+
+      return new TwoSquareKeywords(parts[0], parts[1]);
     }
 
+    /**
+     * Normalize text to uppercase letters only, merge J with I
+     * @param {string} text - Text
+     * @returns {string} Normalized letters
+     */
+    normalizeText(text) {
+      /** @type {string} */
+      const upper = text.toUpperCase();
+      return upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+    }
+
+    /**
+     * Prepare text for digraph processing
+     * @param {string} text - Text
+     * @returns {string} Normalized letters, padded with X to an even length
+     */
     prepareText(text) {
+      /** @type {string} */
       const normalized = this.normalizeText(text);
 
       // Add X if odd length
@@ -288,17 +406,27 @@
       return normalized;
     }
 
+    /**
+     * @param {string} plaintext - Text
+     * @returns {string} Ciphertext
+     */
     encryptText(plaintext) {
+      /** @type {string} */
       const preparedText = this.prepareText(plaintext);
+      /** @type {string} */
       let result = '';
 
       // Process text in digraphs (pairs)
       for (let i = 0; i < preparedText.length; i += 2) {
-        const char1 = preparedText[i];
-        const char2 = preparedText[i + 1];
+        /** @type {string} */
+        const char1 = preparedText.charAt(i);
+        /** @type {string} */
+        const char2 = preparedText.charAt(i + 1);
 
         // Find positions in squares
+        /** @type {SquarePosition|null} */
         const pos1 = this.findPosition(this.square1, char1);
+        /** @type {SquarePosition|null} */
         const pos2 = this.findPosition(this.square2, char2);
 
         if (!pos1 || !pos2) {
@@ -308,7 +436,9 @@
         }
 
         // Two-square rule: use same row, opposite square's column
+        /** @type {string} */
         const cipher1 = this.square1[pos1.row][pos2.col];
+        /** @type {string} */
         const cipher2 = this.square2[pos2.row][pos1.col];
 
         result += cipher1 + cipher2;
@@ -317,17 +447,29 @@
       return result;
     }
 
+    /**
+     * @param {string} ciphertext - Text
+     * @returns {string} Plaintext
+     */
     decryptText(ciphertext) {
+      /** @type {string} */
       const normalizedText = this.normalizeText(ciphertext);
+      /** @type {string} */
       let result = '';
 
       // Process text in digraphs (pairs)
       for (let i = 0; i < normalizedText.length; i += 2) {
-        const cipher1 = normalizedText[i];
-        const cipher2 = normalizedText[i + 1] || 'X'; // Handle odd length
+        /** @type {string} */
+        const cipher1 = normalizedText.charAt(i);
+        /** @type {string} */
+        const next = normalizedText.charAt(i + 1);
+        /** @type {string} */
+        const cipher2 = next ? next : 'X'; // Handle odd length
 
         // Find positions in squares
+        /** @type {SquarePosition|null} */
         const pos1 = this.findPosition(this.square1, cipher1);
+        /** @type {SquarePosition|null} */
         const pos2 = this.findPosition(this.square2, cipher2);
 
         if (!pos1 || !pos2) {
@@ -337,7 +479,9 @@
         }
 
         // Reverse the encryption process
+        /** @type {string} */
         const plain1 = this.square1[pos1.row][pos2.col];
+        /** @type {string} */
         const plain2 = this.square2[pos2.row][pos1.col];
 
         result += plain1 + plain2;

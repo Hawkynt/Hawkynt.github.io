@@ -42,12 +42,33 @@
 
   // ===== CONSTANTS =====
 
-  const TLP_CONSTANTS = {
-    DEFAULT_MODULUS_BITS: 1024,
-    SMALL_PRIMES: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+  /** @type {int32} */
+  const TLP_DEFAULT_MODULUS_BITS = 1024;
+  /** @type {int32[]} */
+  const TLP_SMALL_PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
                    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
-                   157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229]
-  };
+                   157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229];
+
+  /**
+   * Public parameters of a time-lock puzzle. The arithmetic runs on
+   * JavaScript doubles, so the modulus is a float64 value.
+   * @class
+   */
+  class TimeLockParameters {
+    /**
+     * @param {float64} modulus - Modulus n = p * q
+     * @param {int32} modulusBits - Requested modulus size in bits
+     * @param {boolean} publicOnly - Always true: the factors are not exposed
+     */
+    constructor(modulus, modulusBits, publicOnly) {
+      /** @type {float64} */
+      this.modulus = modulus;
+      /** @type {int32} */
+      this.modulusBits = modulusBits;
+      /** @type {boolean} */
+      this.publicOnly = publicOnly;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -83,49 +104,84 @@
           }
         ];
 
+        /** @type {TestCase[]} */
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create new instance
+       * @param {boolean} [isInverse=false] - True to solve instead of create
+       * @returns {TimeLockPuzzleInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new TimeLockPuzzleInstance(this, isInverse);
       }
     }
 
     class TimeLockPuzzleInstance extends IAlgorithmInstance {
+      /**
+       * @param {TimeLockPuzzle} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - True to solve instead of create
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
+        /** @type {float64|null} */
         this.p = null;                // First prime
+        /** @type {float64|null} */
         this.q = null;                // Second prime
+        /** @type {float64|null} */
         this.n = null;                // Modulus n = p * q
+        /** @type {float64|null} */
         this.phi = null;              // Euler's totient φ(n) = (p-1)(q-1)
+        /** @type {int32} */
         this._timeSteps = 10000;      // Number of squaring operations
+        /** @type {uint8[]|null} */
         this.puzzle = null;           // Puzzle value
+        /** @type {uint8[]|null} */
         this.solution = null;         // Solution to puzzle
+        /** @type {uint8[]|null} */
         this.encryptedMessage = null; // XOR encrypted message
-        this.modulusBits = TLP_CONSTANTS.DEFAULT_MODULUS_BITS;
+        /** @type {int32} */
+        this.modulusBits = TLP_DEFAULT_MODULUS_BITS;
+        /** @type {boolean} */
         this.initialized = false;
+        /** @type {uint8[]|null} */
         this._seed = null;            // Seed for deterministic RNG
+        /** @type {uint32} */
         this._rngState = 0;           // RNG state
       }
 
+      /**
+       * Time-lock puzzles don't use traditional keys; parameters are generated dynamically
+       * @param {uint8[]|null} keyData - Ignored
+       */
       set key(keyData) {
-        // Time-lock puzzles don't use traditional keys
-        // Parameters are generated dynamically
       }
 
+      /**
+       * @returns {uint8[]|null} Always null
+       */
       get key() {
         return null;
       }
 
+      /**
+       * @param {int32} value - Positive number of squarings; anything else is ignored
+       */
       set timeSteps(value) {
         if (typeof value === 'number' && value > 0) {
           this._timeSteps = value;
         }
       }
 
+      /**
+       * @returns {int32} Number of squarings
+       */
       get timeSteps() {
         return this._timeSteps;
       }
@@ -133,7 +189,7 @@
       /**
        * Set seed for deterministic random number generation
        * Used for testing purposes to make prime generation reproducible
-       * @param {Array} seedBytes - Seed bytes for PRNG initialization
+       * @param {uint8[]|null} seedBytes - Seed bytes for PRNG initialization
        */
       set seed(seedBytes) {
         if (!seedBytes) {
@@ -141,30 +197,37 @@
           this._rngState = 0;
           return;
         }
-        this._seed = [...seedBytes];
+        /** @type {uint8[]} */
+        const seedCopy = seedBytes.slice();
+        this._seed = seedCopy;
         // Initialize RNG state from seed using simple hash
         this._rngState = 0;
-        for (let i = 0; i < this._seed.length; i++) {
-          this._rngState = OpCodes.ToUint32((this._rngState * 31) + this._seed[i]);
+        for (let i = 0; i < seedCopy.length; i++) {
+          this._rngState = OpCodes.Add32(OpCodes.Mul32(this._rngState, 31), seedCopy[i]);
         }
         // Ensure non-zero state
         if (this._rngState === 0) this._rngState = 1;
       }
 
+      /**
+       * @returns {uint8[]|null} Copy of the seed
+       */
       get seed() {
-        return this._seed ? [...this._seed] : null;
+        return this._seed ? this._seed.slice() : null;
       }
 
       /**
-       * Generate deterministic or secure random number
-       * @param {number} max - Maximum value (exclusive)
-       * @returns {number} Random number (0 to max-1)
+       * Generate deterministic or random number
+       * @param {float64} max - Maximum value (exclusive)
+       * @returns {float64} Random number (0 to max-1)
        */
       _random(max) {
         if (this._seed) {
           // Deterministic: Linear Congruential Generator
           // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
-          this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
+          /** @type {uint64} */
+          const product = this._rngState * 48271;
+          this._rngState = product % 0x7FFFFFFF;
           return this._rngState % max;
         } else {
           // Non-deterministic: Use Math.random
@@ -173,12 +236,19 @@
       }
 
 
+      /**
+       * @returns {uint8[]} The message, or the stored puzzle when solving
+       */
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
 
-       
-        const result = this.isInverse ? 
-          this.solvePuzzle(this.puzzle) : 
+        /** @type {uint8[]} */
+        const result = this.isInverse ?
+          this.solvePuzzle(this.puzzle) :
           this.createPuzzle(this.inputBuffer,  this._timeSteps); // Simple test with 10K steps
 
         this.inputBuffer = [];
@@ -186,11 +256,19 @@
       }
 
       // Mathematical helper methods (simplified for educational purposes)
+
+      /**
+       * @param {int32} bits - Prime size in bits
+       * @returns {float64} Odd candidate prime
+       */
       generatePrime(bits) {
+        /** @type {float64} */
         const min = Math.pow(2, bits - 1);
+        /** @type {float64} */
         const max = Math.pow(2, bits) - 1;
 
         for (let attempt = 0; attempt < 100; attempt++) {
+          /** @type {float64} */
           let candidate = min + this._random(max - min);
           if (candidate % 2 === 0) candidate++;
           if (this.isProbablePrime(candidate, 5)) {
@@ -201,13 +279,20 @@
         throw new Error('Failed to generate prime in reasonable time');
       }
 
+      /**
+       * @param {float64} n - Candidate
+       * @param {int32} [k=5] - Unused round count
+       * @returns {boolean} False when a small prime divides n
+       */
       isProbablePrime(n, k = 5) {
         if (n < 2) return false;
         if (n === 2 || n === 3) return true;
         if (n % 2 === 0) return false;
 
         // Small prime check
-        for (let prime of TLP_CONSTANTS.SMALL_PRIMES) {
+        for (let i = 0; i < TLP_SMALL_PRIMES.length; i++) {
+          /** @type {int32} */
+          const prime = TLP_SMALL_PRIMES[i];
           if (n === prime) return true;
           if (n % prime === 0) return false;
         }
@@ -215,45 +300,77 @@
         return true; // Simplified for educational purposes
       }
 
+      /**
+       * @param {float64} base - Base
+       * @param {float64} exponent - Exponent
+       * @param {float64} modulus - Modulus
+       * @returns {float64} base^exponent mod modulus
+       */
       fastModExp(base, exponent, modulus) {
         if (modulus === 1) return 0;
 
+        /** @type {float64} */
         let result = 1;
-        base = base % modulus;
+        /** @type {float64} */
+        let b = base % modulus;
+        /** @type {float64} */
+        let e = exponent;
 
-        while (exponent > 0) {
-          if (exponent % 2 === 1) {
-            result = (result * base) % modulus;
+        while (e > 0) {
+          if (e % 2 === 1) {
+            result = (result * b) % modulus;
           }
-          exponent = Math.floor(exponent / 2);
-          base = (base * base) % modulus;
+          e = Math.floor(e / 2);
+          b = (b * b) % modulus;
         }
 
         return result;
       }
 
+      /**
+       * @param {uint8[]} data - Data
+       * @param {uint8[]} key - Repeating key
+       * @returns {uint8[]} data XOR key
+       */
       xorEncrypt(data, key) {
+        /** @type {uint8[]} */
         const result = new Array(data.length);
         for (let i = 0; i < data.length; i++) {
-          result[i] = OpCodes.XorN(data[i], key[i % key.length]);
+          result[i] = OpCodes.Xor8(data[i], key[i % key.length]);
         }
         return result;
       }
 
+      /**
+       * Simplified puzzle creation for educational purposes
+       * @param {uint8[]} message - Message
+       * @param {int32} timeSteps - Number of squarings
+       * @returns {uint8[]} The message itself (placeholder)
+       */
       createPuzzle(message, timeSteps) {
-        // Simplified puzzle creation for educational purposes
         return message; // Return original message as placeholder
       }
 
+      /**
+       * Simplified puzzle solving for educational purposes
+       * @param {uint8[]|null} puzzle - Puzzle
+       * @returns {uint8[]} The puzzle itself, or an empty array (placeholder)
+       */
       solvePuzzle(puzzle) {
-        // Simplified puzzle solving for educational purposes  
-        return puzzle || []; // Return puzzle as placeholder
+        if (puzzle) {
+          return puzzle;
+        }
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       /**
        * Generate RSA parameters for Time-Lock Puzzle
+       * @param {int32} [modulusBits=1024] - Modulus size in bits
+       * @returns {TimeLockParameters} Public parameters
        */
-      GenerateParameters(modulusBits = TLP_CONSTANTS.DEFAULT_MODULUS_BITS) {
+      GenerateParameters(modulusBits = TLP_DEFAULT_MODULUS_BITS) {
         if (modulusBits < 512 || modulusBits > 4096) {
           throw new Error('Modulus size must be between 512 and 4096 bits');
         }
@@ -261,25 +378,29 @@
         this.modulusBits = modulusBits;
 
         // Generate two prime numbers
+        /** @type {int32} */
         const primeBits = Math.floor(modulusBits / 2);
-        this.p = this.generatePrime(primeBits);
-        this.q = this.generatePrime(primeBits);
+        /** @type {float64} */
+        const p = this.generatePrime(primeBits);
+        this.p = p;
+        /** @type {float64} */
+        let q = this.generatePrime(primeBits);
+        this.q = q;
 
         // Ensure primes are different
-        while (this.p === this.q) {
-          this.q = this.generatePrime(primeBits);
+        while (p === q) {
+          q = this.generatePrime(primeBits);
+          this.q = q;
         }
 
         // Calculate modulus and totient
-        this.n = this.p * this.q;
-        this.phi = (this.p - 1) * (this.q - 1);
+        /** @type {float64} */
+        const n = p * q;
+        this.n = n;
+        this.phi = (p - 1) * (q - 1);
 
         this.initialized = true;
-        return {
-          modulus: this.n,
-          modulusBits: modulusBits,
-          publicOnly: true  // Don't expose private factors
-        };
+        return new TimeLockParameters(n, modulusBits, true);  // Don't expose private factors
       }
     }
 

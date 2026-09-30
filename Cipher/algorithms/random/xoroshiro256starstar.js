@@ -41,16 +41,27 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   /**
+   * SplitMix64 state advance: add the golden gamma
+   * @param {BigInt} current - State before the step
+   * @returns {BigInt} Advanced state
+   */
+  function SplitMix64Advance(current) {
+    /** @type {BigInt} */
+    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+    return OpCodes.ToQWord(current + GOLDEN_GAMMA);
+  }
+
+  /**
    * SplitMix64 seeding algorithm
    * Used to initialize xoroshiro256** state from a single 64-bit seed
    * Matches C# ref parameter behavior: the output VALUE becomes the next state
    * Based on http://prng.di.unimi.it/splitmix64.c
+   * @param {BigInt} advanced - Advanced state (see SplitMix64Advance)
+   * @returns {BigInt} Mixed output
    */
-  function SplitMix64(state) {
-    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
-
-    let z = state;
+  function SplitMix64Mix(advanced) {
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
@@ -58,7 +69,7 @@
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
     // Return the mixed value, and use it as next state (matching C# ref behavior)
-    return { value: z, nextState: z };
+    return z;
   }
 
   class Xoroshiro256StarStarAlgorithm extends RandomGenerationAlgorithm {
@@ -169,7 +180,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Xoroshiro256StarStarInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -187,13 +198,22 @@
  */
 
   class Xoroshiro256StarStarInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {Xoroshiro256StarStarAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Xoroshiro256** state: four 64-bit values (using BigInt)
+      /** @type {BigInt} */
       this._s0 = 0n;
+      /** @type {BigInt} */
       this._s1 = 0n;
+      /** @type {BigInt} */
       this._s2 = 0n;
+      /** @type {BigInt} */
       this._s3 = 0n;
       this._ready = false;
     }
@@ -201,6 +221,7 @@
     /**
      * Set seed value (64-bit)
      * Uses SplitMix64 to initialize the four state values
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -209,32 +230,37 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (little-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
       }
 
       // Initialize state using SplitMix64
-      let state = seedValue;
+      /** @type {BigInt} */
+      let mixState = seedValue;
 
-      let result = SplitMix64(state);
-      this._s0 = result.value;
-      state = result.nextState;
+      mixState = SplitMix64Advance(mixState);
+      this._s0 = SplitMix64Mix(mixState);
+      mixState = this._s0;
 
-      result = SplitMix64(state);
-      this._s1 = result.value;
-      state = result.nextState;
+      mixState = SplitMix64Advance(mixState);
+      this._s1 = SplitMix64Mix(mixState);
+      mixState = this._s1;
 
-      result = SplitMix64(state);
-      this._s2 = result.value;
-      state = result.nextState;
+      mixState = SplitMix64Advance(mixState);
+      this._s2 = SplitMix64Mix(mixState);
+      mixState = this._s2;
 
-      result = SplitMix64(state);
-      this._s3 = result.value;
+      mixState = SplitMix64Advance(mixState);
+      this._s3 = SplitMix64Mix(mixState);
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -302,8 +328,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -311,19 +337,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -354,19 +385,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes (4 x 64-bit values)
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
@@ -383,9 +419,13 @@
         0x39abdc4529b1661cn
       ];
 
+      /** @type {BigInt} */
       let s0 = 0n;
+      /** @type {BigInt} */
       let s1 = 0n;
+      /** @type {BigInt} */
       let s2 = 0n;
+      /** @type {BigInt} */
       let s3 = 0n;
 
       for (let i = 0; i < JUMP.length; ++i) {
@@ -421,9 +461,13 @@
         0x39109bb02acbe635n
       ];
 
+      /** @type {BigInt} */
       let s0 = 0n;
+      /** @type {BigInt} */
       let s1 = 0n;
+      /** @type {BigInt} */
       let s2 = 0n;
+      /** @type {BigInt} */
       let s3 = 0n;
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {

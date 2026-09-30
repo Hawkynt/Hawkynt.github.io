@@ -47,14 +47,20 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
 
   // The two jokers, which carry no letter and count 53 apiece
-  const JOKER_A = 53, JOKER_B = 54;
+  /** @type {int32} */
+  const JOKER_A = 53;
+  /** @type {int32} */
+  const JOKER_B = 54;
 
   /**
    * Printable stand-in for a byte, for use in an error message.
-   * @param {number} byte - Offending byte
+   * @param {uint8} byte - Offending byte
    * @returns {string} The character itself when it is printable ASCII, else '?'
    */
   function DescribeByte(byte) {
@@ -68,10 +74,15 @@
    */
   function RequireLetters(message) {
     for (let i = 0; i < message.length; i++) {
+      /** @type {uint8} */
       const byte = message[i];
-      if (byte < UPPER_A || byte > UPPER_Z)
-        throw new Error(`SolitaireInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
-          + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the deck encodes`);
+      if (byte < UPPER_A || byte > UPPER_Z) {
+        /** @type {string} */
+        let hex = byte.toString(16);
+        while (hex.length < 2) hex = '0' + hex;
+        throw new Error("SolitaireInstance.Result: byte 0x" + hex
+          + " ('" + DescribeByte(byte) + "') at position " + i + " is outside the A-Z alphabet the deck encodes");
+      }
     }
   }
 
@@ -139,13 +150,14 @@
       ];
 
       // For test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SolitaireInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -162,24 +174,36 @@
   class SolitaireInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SolitaireCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
+      /** @type {uint32[]} */
+      this.deck = [];
       this.initializeDeck();
     }
 
+    /**
+     * Passphrase, given as a string or as its ASCII bytes
+     * @param {string|uint8[]} keyData - Passphrase; empty keeps the unkeyed deck
+     */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
       if (keyString && keyString.length > 0) {
@@ -189,8 +213,8 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the passphrase
+   * @returns {string|null} Passphrase or null
    */
 
     get key() {
@@ -205,8 +229,13 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const message = this.inputBuffer;
 
       // Anything the deck cannot carry is refused by name and position, and
@@ -219,13 +248,18 @@
       this.inputBuffer = [];
 
       // One keystream letter per message letter
+      /** @type {uint8[]} */
       const output = new Array(message.length);
       for (let i = 0; i < message.length; i++) {
+        /** @type {int32} */
         const byte = message[i];
+        /** @type {int32} */
         const keyValue = this.nextKeystreamValue();
+        /** @type {int32} */
         const letter = byte - UPPER_A;
 
         // Encryption adds the card value, decryption takes it away again
+        /** @type {int32} */
         const result = this.isInverse
           ? (letter - keyValue + 26) % 26
           : (letter + keyValue) % 26;
@@ -236,9 +270,14 @@
       return output;
     }
 
+    /**
+     * @returns {void}
+     */
     initializeDeck() {
       // Standard 54-card deck (52 cards + 2 jokers)
-      this.deck = [];
+      /** @type {uint32[]} */
+      const fresh = [];
+      this.deck = fresh;
       for (let i = 1; i <= 54; i++) {
         this.deck.push(i);
       }
@@ -248,11 +287,13 @@
     /**
      * Move a joker down the deck, treating it as circular over the 53 cards
      * below the top: a joker at the very bottom comes back as the second card.
-     * @param {number} joker - JOKER_A (53) or JOKER_B (54)
-     * @param {number} places - How many places to move it down
+     * @param {uint32} joker - JOKER_A (53) or JOKER_B (54)
+     * @param {int32} places - How many places to move it down
+     * @returns {void}
      */
     moveJokerDown(joker, places) {
       for (let step = 0; step < places; step++) {
+        /** @type {int32} */
         const at = this.deck.indexOf(joker);
         if (at === this.deck.length - 1) {
           this.deck.splice(at, 1);
@@ -268,11 +309,15 @@
      * Triple cut: swap everything above the topmost joker with everything
      * below the bottommost joker, leaving the jokers and the cards between
      * them where they are.
+     * @returns {void}
      */
     tripleCut() {
+      /** @type {int32} */
       const first = Math.min(this.deck.indexOf(JOKER_A), this.deck.indexOf(JOKER_B));
+      /** @type {int32} */
       const last = Math.max(this.deck.indexOf(JOKER_A), this.deck.indexOf(JOKER_B));
 
+      /** @type {uint32[]} */
       const rebuilt = [];
       for (let i = last + 1; i < this.deck.length; i++) rebuilt.push(this.deck[i]);
       for (let i = first; i <= last; i++) rebuilt.push(this.deck[i]);
@@ -284,12 +329,15 @@
     /**
      * Count cut: take the number of cards given by 'count' off the top and
      * put them just above the bottom card, which never moves.
-     * @param {number} count - Cards to move, 0 to 53
+     * @param {int32} count - Cards to move, 0 to 53
+     * @returns {void}
      */
     countCut(count) {
       if (count <= 0 || count >= this.deck.length) return;
 
+      /** @type {uint32} */
       const bottom = this.deck[this.deck.length - 1];
+      /** @type {uint32[]} */
       const rebuilt = [];
       for (let i = count; i < this.deck.length - 1; i++) rebuilt.push(this.deck[i]);
       for (let i = 0; i < count; i++) rebuilt.push(this.deck[i]);
@@ -301,8 +349,8 @@
     /**
      * The value a card counts for: either joker counts 53, and any other card
      * counts its own face number.
-     * @param {number} card - Card 1 to 54
-     * @returns {number} Counting value
+     * @param {uint32} card - Card 1 to 54
+     * @returns {uint32} Counting value
      */
     cardValue(card) {
       return card >= JOKER_A ? JOKER_A : card;
@@ -311,6 +359,7 @@
     /**
      * Steps 1 to 4 of the published algorithm: both joker moves, the triple
      * cut and the count cut driven by the bottom card.
+     * @returns {void}
      */
     advanceDeck() {
       this.moveJokerDown(JOKER_A, 1);
@@ -329,16 +378,21 @@
      * with its neighbour and a read of the top card, which produced a
      * keystream unrelated to Solitaire: an unkeyed deck enciphered AAAAA to
      * BBBBB rather than Schneier's published EXKYI.
-     * @returns {number} Keystream offset 1 to 26
+     * @returns {int32} Keystream offset 1 to 26
      */
     nextKeystreamValue() {
       for (;;) {
         this.advanceDeck();
+        /** @type {uint32} */
         const output = this.deck[this.cardValue(this.deck[0])];
 
         // Clubs 1-13, diamonds 14-26, hearts 27-39 and spades 40-52 fold onto
         // the 26 letters in that order, so card 27 and card 1 both count A.
-        if (output < JOKER_A) return ((output - 1) % 26) + 1;
+        if (output < JOKER_A) {
+          /** @type {int32} */
+          const card = output;
+          return ((card - 1) % 26) + 1;
+        }
       }
     }
 
@@ -347,11 +401,15 @@
      * run steps 1 to 4 once per key letter, then follow each with a further
      * count cut by that letter's position in the alphabet.
      * @param {string} key - Passphrase, letters only are used
+     * @returns {void}
      */
     setupWithKey(key) {
       this.initializeDeck();
 
-      const letters = key.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = key.toUpperCase();
+      /** @type {string} */
+      const letters = upper.replace(/[^A-Z]/g, '');
       for (let i = 0; i < letters.length; i++) {
         this.advanceDeck();
         this.countCut(letters.charCodeAt(i) - UPPER_A + 1);
