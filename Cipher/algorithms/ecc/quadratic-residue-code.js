@@ -142,12 +142,16 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._p = 7; // Default: (7,4) QR code
 
       // Pre-compute generator polynomial for default p
       this.updateGenerator();
     }
 
+    /**
+     * @param {int32} value - Prime length p = +-1 (mod 8)
+     */
     set p(value) {
       // Check if p is prime and p ≡ ±1 (mod 8)
       /** @type {uint8[]} */
@@ -159,13 +163,20 @@
       this.updateGenerator();
     }
 
+    /**
+     * @returns {int32} Prime length p
+     */
     get p() {
       return this._p;
     }
 
+    /**
+     * @returns {void}
+     */
     updateGenerator() {
       // Compute quadratic residues modulo p
       const p = this._p;
+      /** @type {int32[]} */
       const qr = this.computeQuadraticResidues(p);
 
       // Generator polynomial g(x) has roots at α^i where i ∈ QR
@@ -187,14 +198,29 @@
       }
     }
 
+    /**
+     * @param {int32} p - Prime modulus
+     * @returns {int32[]} Distinct quadratic residues in ascending order
+     */
     computeQuadraticResidues(p) {
       // Compute set of quadratic residues modulo p
-      const qr = new Set();
+      /** @type {int32[]} */
+      const qr = [];
       for (let i = 1; i < p; ++i) {
+        /** @type {int32} */
         const residue = (i * i) % p;
-        qr.add(residue);
+        if (qr.indexOf(residue) < 0) {
+          // Insert in ascending position
+          let j = qr.length;
+          qr.push(residue);
+          while (j > 0 && qr[j - 1] > residue) {
+            qr[j] = qr[j - 1];
+            --j;
+          }
+          qr[j] = residue;
+        }
       }
-      return Array.from(qr).sort((a, b) => a - b);
+      return qr;
     }
 
     /**
@@ -241,19 +267,25 @@
       }
 
       // Cyclic code encoding using polynomial division
-      const message = [...data];
+      /** @type {uint8[]} */
+      const message = data.slice();
       const n = p;
       const r = this.generator.length - 1;
 
       // Shift message by r positions (multiply by x^r)
       /** @type {uint8[]} */
-      const dividend = [...message, ...new Array(r).fill(0)];
+      const dividend = message.slice();
+      for (let i = 0; i < r; ++i) dividend.push(0);
 
       // Polynomial division
+      /** @type {uint8[]} */
       const remainder = this.polyDivide(dividend, this.generator);
 
       // Systematic encoding: message|remainder
-      return [...message, ...remainder];
+      /** @type {uint8[]} */
+      const codeword = message.slice();
+      for (let i = 0; i < remainder.length; ++i) codeword.push(remainder[i]);
+      return codeword;
     }
 
     /**
@@ -269,8 +301,13 @@
       }
 
       // Calculate syndrome
+      /** @type {uint8[]} */
       const syndrome = this.polyDivide(data, this.generator);
-      const hasError = syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) hasError = true;
+      }
 
       if (hasError) {
         console.warn('QR Code: Errors detected, simplified decoding may not correct all errors');
@@ -280,6 +317,11 @@
       return data.slice(0, k);
     }
 
+    /**
+     * @param {uint8[]} dividend - Dividend coefficients, high to low
+     * @param {uint8[]} divisor - Divisor coefficients, high to low
+     * @returns {uint8[]} Remainder
+     */
     polyDivide(dividend, divisor) {
       /** @type {uint8[]} */
       const quotient = dividend.slice();
@@ -288,7 +330,7 @@
       for (let i = 0; i <= quotient.length - divisorLen; ++i) {
         if (quotient[i] === 1) {
           for (let j = 0; j < divisorLen; ++j) {
-            quotient[i + j] ^= divisor[j];
+            quotient[i + j] = OpCodes.ToInt(OpCodes.Xor32(quotient[i + j], divisor[j]));
           }
         }
       }
@@ -306,8 +348,12 @@
       if (data.length !== p) return true;
 
       // Calculate syndrome
+      /** @type {uint8[]} */
       const syndrome = this.polyDivide(data, this.generator);
-      return syndrome.some(s => s !== 0);
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) return true;
+      }
+      return false;
     }
   }
 
