@@ -140,48 +140,78 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {PackBitsInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new PackBitsInstance(this, isInverse);
       }
     }
 
     class PackBitsInstance extends IAlgorithmInstance {
+      /**
+       * @param {PackBitsAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
-        // PackBits constants
+        // PackBits parameters
+        /** @type {int32} */
         this.MAX_RUN_LENGTH = 128; // Maximum run length
+        /** @type {int32} */
         this.MAX_LITERAL_LENGTH = 128; // Maximum literal sequence length
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        /** @type {uint8[]} */
+        let result = [];
+        if (this.inputBuffer.length === 0) {
+          return result;
+        }
 
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
-          this.compress(this.inputBuffer);
+        if (this.isInverse) {
+          result = this.decompress(this.inputBuffer);
+        } else {
+          result = this.compress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} PackBits stream
+       */
       compress(data) {
-        if (!data || data.length === 0) return [];
-
+        /** @type {uint8[]} */
         const output = [];
-        let i = 0;
+        if (!data || data.length === 0) {
+          return output;
+        }
 
-        // Use OpCodes for consistent operations
-        const clearOutput = () => OpCodes.ClearArray(output);
+        /** @type {int32} */
+        let i = 0;
 
         while (i < data.length) {
           // Check for run of identical bytes
+          /** @type {int32} */
           let runLength = 1;
-          while (i + runLength < data.length && 
-                 data[i + runLength] === data[i] && 
+          while (i + runLength < data.length &&
+                 data[i + runLength] === data[i] &&
                  runLength < this.MAX_RUN_LENGTH) {
             runLength++;
           }
@@ -194,14 +224,17 @@
             i += runLength;
           } else {
             // Collect literal sequence
+            /** @type {int32} */
             const literalStart = i;
+            /** @type {int32} */
             let literalLength = 0;
 
             while (i < data.length && literalLength < this.MAX_LITERAL_LENGTH) {
               // Check if we're about to hit a run of 3+ identical bytes
+              /** @type {int32} */
               let nextRunLength = 1;
-              while (i + nextRunLength < data.length && 
-                     data[i + nextRunLength] === data[i] && 
+              while (i + nextRunLength < data.length &&
+                     data[i + nextRunLength] === data[i] &&
                      nextRunLength < 3) {
                 nextRunLength++;
               }
@@ -228,20 +261,27 @@
         return output;
       }
 
+      /**
+       * @param {uint8[]} data - PackBits stream
+       * @returns {uint8[]} Expanded bytes
+       */
       decompress(data) {
-        if (!data || data.length === 0) return [];
-
+        /** @type {uint8[]} */
         const output = [];
+        if (!data || data.length === 0) {
+          return output;
+        }
+
+        /** @type {int32} */
         let i = 0;
 
-        // Use OpCodes for consistent operations
-        const clearOutput = () => OpCodes.ClearArray(output);
-
         while (i < data.length) {
+          /** @type {int32} */
           const controlByte = data[i++];
 
           if (controlByte >= 0 && controlByte <= 127) {
             // Literal sequence: copy next (controlByte + 1) bytes
+            /** @type {int32} */
             const literalLength = controlByte + 1;
             for (let j = 0; j < literalLength && i < data.length; j++) {
               output.push(data[i++]);
@@ -249,7 +289,9 @@
           } else if (controlByte >= 128 && controlByte <= 255) {
             // Run: repeat next byte (257 - controlByte) times
             if (i < data.length) {
+              /** @type {int32} */
               const runLength = 257 - controlByte;
+              /** @type {uint8} */
               const value = data[i++];
               for (let j = 0; j < runLength; j++) {
                 output.push(value);

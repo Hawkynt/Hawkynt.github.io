@@ -71,6 +71,7 @@
         this.country = CountryCode.IL;
 
         // LZ78 Configuration parameters
+        /** @type {int32} */
         this.MAX_DICTIONARY_SIZE = 4096; // Maximum number of dictionary entries
 
         this.documentation = [
@@ -154,119 +155,221 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LZ78Instance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LZ78Instance(this, isInverse);
       }
     }
 
+    /**
+     * One LZ78 token: a dictionary index and the byte that follows it, or
+     * -1 for the terminal token that has no following byte
+     */
+    class LZ78Token {
+      /**
+       * @param {int32} index - Dictionary entry
+       * @param {int32} value - Following byte, or -1 when there is none
+       */
+      constructor(index, value) {
+        /** @type {int32} */
+        this.index = index;
+        /** @type {int32} */
+        this.byte = value;
+      }
+    }
+
     class LZ78Instance extends IAlgorithmInstance {
+      /**
+       * @param {LZ78Algorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {boolean} */
         this.hasBeenFed = false;
+        /** @type {int32} */
+        this.maxDictionarySize = algorithm.MAX_DICTIONARY_SIZE;
       }
 
+      /**
+       * Collect input bytes
+       * @param {uint8[]} data - Input bytes
+       */
       Feed(data) {
         this.hasBeenFed = true;
-        if (!data || data.length === 0) return;
-        for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
+        if (!data || data.length === 0) {
+          return;
+        }
+        for (let k = 0; k < data.length; k++) {
+          this.inputBuffer.push(data[k]);
+        }
       }
 
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (!this.hasBeenFed) {
           throw new Error('No data fed to algorithm');
         }
 
         // Process using existing compression logic
-        const result = this.isInverse ?
-          this.decompress(this.inputBuffer) :
-          this.compress(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this.decompress(this.inputBuffer);
+        } else {
+          result = this.compress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         this.hasBeenFed = false;
         return result;
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Serialized tokens
+       */
       compress(data) {
+        /** @type {LZ78Token[]} */
         const tokens = [];
 
-        if (!data || data.length === 0) return this._serializeTokens(tokens);
+        if (!data || data.length === 0) {
+          return this._serializeTokens(tokens);
+        }
 
-        // Trie stored as parentIndex -> Map(childByte -> entryIndex).
-        // Entry 0 is the root (empty string).
-        const trie = new Map();
+        // Trie as per-entry child lists: the first child of each entry, the
+        // next sibling of each child and the byte leading to it. Entry 0 is
+        // the root (empty string); children are entries >= 1, so 0 marks
+        // "no child"/"no sibling".
+        /** @type {int32} */
+        const maxEntries = this.maxDictionarySize;
+        /** @type {int32[]} */
+        const firstChild = new Int32Array(maxEntries);
+        /** @type {int32[]} */
+        const nextSibling = new Int32Array(maxEntries);
+        /** @type {uint8[]} */
+        const childByte = new Uint8Array(maxEntries);
+        /** @type {int32} */
         let nextIndex = 1; // next dictionary entry index to assign
+        /** @type {int32} */
         let currentIndex = 0; // current node in the trie (0 = root)
-        const maxEntries = this.algorithm.MAX_DICTIONARY_SIZE;
 
         for (let i = 0; i < data.length; i++) {
-          const symbol = OpCodes.AndN(data[i], 0xFF);
-          let children = trie.get(currentIndex);
-          const childIndex = children ? children.get(symbol) : undefined;
+          /** @type {uint32} */
+          const symbol = OpCodes.And32(data[i], 0xFF);
 
-          if (childIndex !== undefined) {
+          /** @type {int32} */
+          let childIndex = firstChild[currentIndex];
+          while (childIndex !== 0 && childByte[childIndex] !== symbol) {
+            childIndex = nextSibling[childIndex];
+          }
+
+          if (childIndex !== 0) {
             // Extend the current match.
             currentIndex = childIndex;
             continue;
           }
 
           // Mismatch: emit token and add new entry.
-          tokens.push({ index: currentIndex, byte: symbol });
+          tokens.push(new LZ78Token(currentIndex, symbol));
 
-          if (!children) {
-            children = new Map();
-            trie.set(currentIndex, children);
-          }
-          children.set(symbol, nextIndex);
+          childByte[nextIndex] = symbol;
+          nextSibling[nextIndex] = firstChild[currentIndex];
+          firstChild[currentIndex] = nextIndex;
           ++nextIndex;
           currentIndex = 0;
 
           // Reset dictionary when it reaches maximum size.
-          if (nextIndex < maxEntries) continue;
+          if (nextIndex < maxEntries) {
+            continue;
+          }
 
-          trie.clear();
+          firstChild.fill(0);
           nextIndex = 1;
         }
 
         // If we ended mid-match, emit a terminal token.
-        if (currentIndex > 0) tokens.push({ index: currentIndex, byte: null });
+        if (currentIndex > 0) {
+          tokens.push(new LZ78Token(currentIndex, -1));
+        }
 
         return this._serializeTokens(tokens);
       }
 
+      /**
+       * @param {uint8[]} data - Serialized tokens
+       * @returns {uint8[]} Decoded bytes
+       */
       decompress(data) {
-        if (!data || data.length === 0) return [];
+        /** @type {uint8[]} */
+        const output = [];
+        if (!data || data.length === 0) {
+          return output;
+        }
 
         // Deserialize tokens
+        /** @type {LZ78Token[]} */
         const tokens = this._deserializeTokens(data);
 
         // Rebuild dictionary and output during decompression.
         // Dictionary entry 0 = empty byte array (root).
-        let dictionary = [[]];
-        const output = [];
-        const maxEntries = this.algorithm.MAX_DICTIONARY_SIZE;
+        /** @type {uint8[][]} */
+        let dictionary = [];
+        /** @type {uint8[]} */
+        const root = [];
+        dictionary.push(root);
+        /** @type {int32} */
+        const maxEntries = this.maxDictionarySize;
 
-        for (const token of tokens) {
+        for (let t = 0; t < tokens.length; t++) {
+          /** @type {LZ78Token} */
+          const token = tokens[t];
           if (token.index < 0 || token.index >= dictionary.length) {
             throw new Error('Invalid dictionary index in compressed data');
           }
 
+          /** @type {uint8[]} */
           const prefix = dictionary[token.index];
 
-          if (token.byte !== null) {
+          if (token.byte >= 0) {
             // Normal token: prefix + next byte.
-            const entry = prefix.concat([token.byte]);
-            for (let _i = 0; _i < entry.length; _i++) output.push(entry[_i]);
+            /** @type {uint8[]} */
+            const entry = prefix.slice();
+            entry.push(token.byte);
+            for (let k = 0; k < entry.length; k++) {
+              output.push(entry[k]);
+            }
             dictionary.push(entry);
 
             // Reset dictionary when it reaches maximum size.
-            if (dictionary.length < maxEntries) continue;
+            if (dictionary.length < maxEntries) {
+              continue;
+            }
 
-            dictionary = [[]];
+            /** @type {uint8[][]} */
+            const restarted = [];
+            /** @type {uint8[]} */
+            const emptyRoot = [];
+            restarted.push(emptyRoot);
+            dictionary = restarted;
           } else {
             // Terminal token: emit prefix only, no new dictionary entry.
-            for (let _i = 0; _i < prefix.length; _i++) output.push(prefix[_i]);
+            for (let k = 0; k < prefix.length; k++) {
+              output.push(prefix[k]);
+            }
           }
         }
 
@@ -283,18 +386,26 @@
        * with no literal byte (3-byte token, only ever the last token in the
        * stream, emitted when the input ends mid-match).
        * @private
+       * @param {LZ78Token[]} tokens - Tokens
+       * @returns {uint8[]} Serialized bytes
        */
       _serializeTokens(tokens) {
+        /** @type {uint8[]} */
         const bytes = [];
 
-        for (const token of tokens) {
+        for (let t = 0; t < tokens.length; t++) {
+          /** @type {LZ78Token} */
+          const token = tokens[t];
           // Index (2 bytes, little-endian) using OpCodes
+          /** @type {uint8[]} */
           const indexBytes = OpCodes.Unpack16LE(token.index);
-          bytes.push(indexBytes[0], indexBytes[1]);
+          bytes.push(indexBytes[0]);
+          bytes.push(indexBytes[1]);
 
           // Flag byte + optional literal byte
-          if (token.byte !== null) {
-            bytes.push(0, OpCodes.AndN(token.byte, 0xFF));
+          if (token.byte >= 0) {
+            bytes.push(0);
+            bytes.push(OpCodes.And32(token.byte, 0xFF));
           } else {
             bytes.push(1);
           }
@@ -306,11 +417,16 @@
       /**
        * Deserialize tokens from compressed format
        * @private
+       * @param {uint8[]} compressedData - Serialized bytes
+       * @returns {LZ78Token[]} Tokens
        */
       _deserializeTokens(compressedData) {
+        /** @type {uint8[]} */
         const bytes = compressedData;
+        /** @type {LZ78Token[]} */
         const tokens = [];
 
+        /** @type {int32} */
         let pos = 0;
         while (pos < bytes.length) {
           if (pos + 3 > bytes.length) {
@@ -318,17 +434,19 @@
           }
 
           // Read index (2 bytes, little-endian) using OpCodes
+          /** @type {int32} */
           const index = OpCodes.Pack16LE(bytes[pos], bytes[pos + 1]);
+          /** @type {uint8} */
           const flag = bytes[pos + 2];
 
           if (flag === 0) {
             if (pos + 4 > bytes.length) {
               throw new Error('Invalid compressed data: truncated token');
             }
-            tokens.push({ index: index, byte: bytes[pos + 3] });
+            tokens.push(new LZ78Token(index, bytes[pos + 3]));
             pos += 4;
           } else {
-            tokens.push({ index: index, byte: null });
+            tokens.push(new LZ78Token(index, -1));
             pos += 3;
           }
         }
@@ -337,15 +455,26 @@
       }
 
       // Utility functions
+
+      /**
+       * @param {string} str - Text
+       * @returns {uint8[]} Low byte of each character
+       */
       _stringToBytes(str) {
+        /** @type {uint8[]} */
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(OpCodes.AndN(str.charCodeAt(i), 0xFF));
+          bytes.push(OpCodes.And32(str.charCodeAt(i), 0xFF));
         }
         return bytes;
       }
 
+      /**
+       * @param {uint8[]} bytes - Bytes
+       * @returns {string} One character per byte
+       */
       _bytesToString(bytes) {
+        /** @type {string} */
         let str = "";
         for (let i = 0; i < bytes.length; i++) {
           str += String.fromCharCode(bytes[i]);

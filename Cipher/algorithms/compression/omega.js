@@ -104,76 +104,176 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decode
+       * @returns {OmegaCodingInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new OmegaCodingInstance(this, isInverse);
       }
     }
 
+    /**
+     * MSB-first bit writer appending to a byte array
+     */
+    class OmegaBitWriter {
+      /**
+       * @param {uint8[]} output - Byte array the completed bytes are appended to
+       */
+      constructor(output) {
+        /** @type {uint8[]} */
+        this.output = output;
+        /** @type {uint32} */
+        this.bitBuffer = 0;
+        /** @type {int32} */
+        this.bitsInBuffer = 0;
+      }
+
+      /**
+       * Append one bit
+       * @param {uint32} bit - 0 or 1
+       */
+      writeBit(bit) {
+        this.bitBuffer = OpCodes.Or32(this.bitBuffer, OpCodes.Shl32(bit, 7 - this.bitsInBuffer));
+        ++this.bitsInBuffer;
+        if (this.bitsInBuffer === 8) {
+          this.output.push(this.bitBuffer);
+          this.bitBuffer = 0;
+          this.bitsInBuffer = 0;
+        }
+      }
+
+      /** Append the partial last byte, if any */
+      flush() {
+        if (this.bitsInBuffer > 0) {
+          this.output.push(this.bitBuffer);
+        }
+      }
+    }
+
+    /**
+     * MSB-first bit reader over a byte array; bits past the end read as 0
+     */
+    class OmegaBitReader {
+      /**
+       * @param {uint8[]} data - Bytes to read
+       * @param {int32} bytePos - Index of the first byte
+       */
+      constructor(data, bytePos) {
+        /** @type {uint8[]} */
+        this.data = data;
+        /** @type {int32} */
+        this.bytePos = bytePos;
+        /** @type {int32} */
+        this.bitPos = 0;
+      }
+
+      /**
+       * Read one bit
+       * @returns {uint32} 0 or 1
+       */
+      readBit() {
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(this.data[this.bytePos], 7 - this.bitPos), 1);
+        ++this.bitPos;
+        if (this.bitPos === 8) {
+          this.bitPos = 0;
+          ++this.bytePos;
+        }
+        return bit;
+      }
+    }
+
     class OmegaCodingInstance extends IAlgorithmInstance {
+      /**
+       * @param {OmegaCodingAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decode
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decode, false = encode
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Encode or decode the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ?
-          (this.inputBuffer.length === 0 ? [] : this.decode(this.inputBuffer)) :
-          this.encode(this.inputBuffer); // even empty input yields the 4-byte length header
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            result = empty;
+          } else {
+            result = this.decode(this.inputBuffer);
+          }
+        } else {
+          result = this.encode(this.inputBuffer); // even empty input yields the 4-byte length header
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // Matches CompressionWorkbench's OmegaBuildingBlock.Compress:
       //   4 bytes original length (little-endian); if 0, no payload follows.
       //   Otherwise, MSB-first bit-packed Elias Omega codes for (byte + 1).
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Length header and Omega codes
+       */
       encode(data) {
+        /** @type {uint8[]} */
         const result = OpCodes.Unpack32LE(data.length);
-        if (data.length === 0) return result;
+        if (data.length === 0) {
+          return result;
+        }
 
-        let bitBuffer = 0, bitsInBuffer = 0;
-        const writeBit = (bit) => {
-          bitBuffer = OpCodes.OrN(bitBuffer, OpCodes.Shl32(bit, 7 - bitsInBuffer));
-          ++bitsInBuffer;
-          if (bitsInBuffer === 8) {
-            result.push(bitBuffer);
-            bitBuffer = 0;
-            bitsInBuffer = 0;
-          }
-        };
+        /** @type {OmegaBitWriter} */
+        const writer = new OmegaBitWriter(result);
 
-        for (const byte of data)
-          this._encodeOmega(writeBit, byte + 1);
+        for (let k = 0; k < data.length; k++) {
+          /** @type {int32} */
+          const value = data[k] + 1;
+          this._encodeOmega(writer, value);
+        }
 
-        if (bitsInBuffer > 0)
-          result.push(bitBuffer);
+        writer.flush();
 
         return result;
       }
 
       // Matches CompressionWorkbench's OmegaBuildingBlock.Decompress
+      /**
+       * @param {uint8[]} data - Length header and Omega codes
+       * @returns {uint8[]} Decoded bytes
+       */
       decode(data) {
-        const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-        if (originalLength === 0) return [];
-
-        let bytePos = 4, bitPos = 0;
-        const readBit = () => {
-          const bit = OpCodes.AndN(OpCodes.Shr32(data[bytePos], 7 - bitPos), 1);
-          ++bitPos;
-          if (bitPos === 8) {
-            bitPos = 0;
-            ++bytePos;
-          }
-          return bit;
-        };
-
+        /** @type {uint8[]} */
         const decodedBytes = [];
+        /** @type {uint32} */
+        const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+        if (originalLength === 0) {
+          return decodedBytes;
+        }
+
+        /** @type {OmegaBitReader} */
+        const reader = new OmegaBitReader(data, 4);
+
         for (let i = 0; i < originalLength; ++i) {
-          const value = this._decodeOmega(readBit);
-          if (value < 1 || value > 256)
+          /** @type {int32} */
+          const value = this._decodeOmega(reader);
+          if (value < 1 || value > 256) {
             throw new Error('Invalid Omega code in compressed data');
+          }
           decodedBytes.push(value - 1);
         }
 
@@ -184,8 +284,14 @@
       // (N -> bit-length(N) - 1, repeated until N == 1), then emit them from
       // the innermost (smallest) group outward, MSB-first, followed by a
       // terminating zero bit.
-      _encodeOmega(writeBit, value) {
+      /**
+       * @param {OmegaBitWriter} writer - Output bits
+       * @param {int32} value - Positive integer
+       */
+      _encodeOmega(writer, value) {
+        /** @type {int32[]} */
         const chain = [];
+        /** @type {int32} */
         let n = value;
         while (n > 1) {
           chain.push(n);
@@ -193,36 +299,56 @@
         }
 
         for (let i = chain.length - 1; i >= 0; --i) {
+          /** @type {int32} */
           const group = chain[i];
+          /** @type {int32} */
           const length = this._bitLength(group);
-          for (let b = length - 1; b >= 0; --b)
-            writeBit(OpCodes.AndN(OpCodes.Shr32(group, b), 1));
+          for (let b = length - 1; b >= 0; --b) {
+            writer.writeBit(OpCodes.And32(OpCodes.Shr32(group, b), 1));
+          }
         }
 
-        writeBit(0);
+        writer.writeBit(0);
       }
 
       // Canonical Elias Omega decode: start with N = 1; if the next bit is 0,
       // stop; otherwise read N further bits (with an implicit leading 1) to
-      // form the new value of N.
-      _decodeOmega(readBit) {
+      // form the new value of N. The group is kept as a signed 32-bit value.
+      /**
+       * @param {OmegaBitReader} reader - Input bits
+       * @returns {int32} Decoded value
+       */
+      _decodeOmega(reader) {
+        /** @type {int32} */
         let n = 1;
         for (;;) {
-          const bit = readBit();
-          if (bit === 0) return n;
+          /** @type {uint32} */
+          const bit = reader.readBit();
+          if (bit === 0) {
+            return n;
+          }
 
+          /** @type {int32} */
           let group = 1;
-          for (let i = 0; i < n; ++i)
-            group = OpCodes.OrN(OpCodes.Shl32(group, 1), readBit());
+          for (let i = 0; i < n; ++i) {
+            group = OpCodes.ToInt(OpCodes.Or32(OpCodes.Shl32(group, 1), reader.readBit()));
+          }
           n = group;
         }
       }
 
+      /**
+       * @param {int32} value - Non-negative value
+       * @returns {int32} Number of significant bits
+       */
       _bitLength(value) {
+        /** @type {int32} */
         let len = 0;
-        while (value > 0) {
+        /** @type {uint32} */
+        let v = value;
+        while (v > 0) {
           ++len;
-          value = OpCodes.Shr32(value, 1);
+          v = OpCodes.Shr32(v, 1);
         }
         return len;
       }

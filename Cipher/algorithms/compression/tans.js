@@ -66,22 +66,43 @@
 
   // ===== tANS CONSTANTS =====
 
+  /** @type {int32} */
   const TABLE_LOG = 11;
+  /** @type {int32} */
   const TABLE_SIZE = 2048;   // 2^TABLE_LOG
+  /** @type {int32} */
   const MAX_BITS_PER_SYMBOL = TABLE_LOG;
 
-  // Powers of two up to 2^12, so splitting the state never needs a shift.
-  const POW2 = (() => {
+  /**
+   * @returns {int32[]} Powers of two 2^0 .. 2^(TABLE_LOG + 1)
+   */
+  function buildPowersOfTwo() {
+    /** @type {int32[]} */
     const powers = new Array(TABLE_LOG + 2);
     powers[0] = 1;
-    for (let i = 1; i < powers.length; i++) powers[i] = powers[i - 1] * 2;
+    for (let i = 1; i < powers.length; i++) {
+      powers[i] = powers[i - 1] * 2;
+    }
     return powers;
-  })();
+  }
 
+  // Powers of two up to 2^12, so splitting the state never needs a shift.
+  /** @type {int32[]} */
+  const POW2 = buildPowersOfTwo();
+
+  /**
+   * @param {int32} value - Positive value
+   * @returns {int32} Index of the highest set bit
+   */
   function highBit(value) {
+    /** @type {int32} */
     let bit = 0;
+    /** @type {int32} */
     let remaining = value;
-    while (remaining > 1) { remaining = Math.floor(remaining / 2); bit++; }
+    while (remaining > 1) {
+      remaining = Math.floor(remaining / 2);
+      bit++;
+    }
     return bit;
   }
 
@@ -91,22 +112,66 @@
   // Every symbol that occurs keeps at least one slot; the slots left over after
   // flooring go to the symbols with the largest fractional parts, ties broken
   // by ascending byte value so encoder and decoder always agree.
+  /**
+   * @param {int32[]} rawFreq - Raw count per byte value
+   * @param {int32[]} symbols - Used symbols in ascending order
+   * @param {int32} totalCount - Sum of the raw counts
+   * @param {int32} tableSize - Number of table slots
+   * @returns {int32[]} Normalized frequency per byte value
+   */
   function normalizeFrequencies(rawFreq, symbols, totalCount, tableSize) {
-    const norm = new Array(256).fill(0);
-    const remainder = new Array(256).fill(0);
+    /** @type {int32[]} */
+    const norm = new Array(256);
+    /** @type {float64[]} */
+    const remainder = new Array(256);
+    for (let i = 0; i < 256; i++) {
+      norm[i] = 0;
+      remainder[i] = 0;
+    }
+    /** @type {int32} */
     let assigned = 0;
 
-    for (const symbol of symbols) {
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const symbol = symbols[n];
+      /** @type {float64} */
       const ideal = rawFreq[symbol] * tableSize / totalCount;
+      /** @type {int32} */
       let nf = Math.floor(ideal);
-      if (nf < 1) nf = 1;
+      if (nf < 1) {
+        nf = 1;
+      }
       norm[symbol] = nf;
       remainder[symbol] = ideal - nf;
       assigned += nf;
     }
 
-    const ranked = symbols.slice().sort((a, b) => (remainder[b] - remainder[a]) || (a - b));
+    // Ranking: larger fractional part first, equal parts by ascending symbol
+    // (a total order, sorted here by insertion).
+    /** @type {int32[]} */
+    const ranked = [];
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const symbol = symbols[n];
+      /** @type {int32} */
+      let at = ranked.length;
+      ranked.push(symbol);
+      while (at > 0) {
+        /** @type {int32} */
+        const before = ranked[at - 1];
+        /** @type {boolean} */
+        const higher = remainder[symbol] > remainder[before] ||
+          (remainder[symbol] === remainder[before] && symbol < before);
+        if (!higher) {
+          break;
+        }
+        ranked[at] = before;
+        at--;
+      }
+      ranked[at] = symbol;
+    }
 
+    /** @type {int32} */
     let give = 0;
     while (assigned < tableSize) {
       norm[ranked[give % ranked.length]]++;
@@ -114,8 +179,10 @@
       give++;
     }
 
+    /** @type {int32} */
     let take = ranked.length - 1;
     while (assigned > tableSize) {
+      /** @type {int32} */
       const symbol = ranked[take];
       if (norm[symbol] > 1) {
         norm[symbol]--;
@@ -130,39 +197,119 @@
   // Duda's precise initialization. A symbol owning f slots claims the keys
   // (2k+1)/(2f) for k = 0..f-1; sorting all tableSize keys and reading them off
   // in order spreads every symbol as evenly as the integer table permits.
+  // The claims are ordered by key, equal keys by ascending symbol, with a
+  // stable merge sort (entries equal in both keep their claiming order).
+  /**
+   * @param {int32[]} norm - Normalized frequency per symbol
+   * @param {int32[]} symbols - Symbols in table order
+   * @param {int32} tableSize - Number of table slots
+   * @returns {int32[]} Symbol per slot
+   */
   function buildSpreadTable(norm, symbols, tableSize) {
-    const claims = new Array(tableSize);
-    let count = 0;
+    /** @type {float64[]} */
+    let claimKey = [];
+    /** @type {int32[]} */
+    let claimSymbol = [];
 
-    for (const symbol of symbols) {
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const symbol = symbols[n];
+      /** @type {int32} */
       const f = norm[symbol];
       for (let k = 0; k < f; k++) {
-        claims[count++] = { key: (2 * k + 1) / (2 * f), symbol: symbol };
+        claimKey.push((2 * k + 1) / (2 * f));
+        claimSymbol.push(symbol);
       }
     }
 
-    claims.sort((a, b) => (a.key - b.key) || (a.symbol - b.symbol));
+    /** @type {int32} */
+    const count = claimKey.length;
+    /** @type {float64[]} */
+    let otherKey = new Array(count);
+    /** @type {int32[]} */
+    let otherSymbol = new Array(count);
+    for (let width = 1; width < count; width *= 2) {
+      for (let lo = 0; lo < count; lo += 2 * width) {
+        /** @type {int32} */
+        const mid = Math.min(lo + width, count);
+        /** @type {int32} */
+        const hi = Math.min(lo + 2 * width, count);
+        /** @type {int32} */
+        let a = lo;
+        /** @type {int32} */
+        let b = mid;
+        for (let k = lo; k < hi; k++) {
+          /** @type {boolean} */
+          let takeA = a < mid;
+          if (takeA && b < hi) {
+            // b goes first only when it is strictly smaller
+            /** @type {boolean} */
+            const bFirst = claimKey[b] < claimKey[a] ||
+              (claimKey[b] === claimKey[a] && claimSymbol[b] < claimSymbol[a]);
+            takeA = !bFirst;
+          }
+          if (takeA) {
+            otherKey[k] = claimKey[a];
+            otherSymbol[k] = claimSymbol[a];
+            a++;
+          } else {
+            otherKey[k] = claimKey[b];
+            otherSymbol[k] = claimSymbol[b];
+            b++;
+          }
+        }
+      }
+      /** @type {float64[]} */
+      const swapKey = claimKey;
+      claimKey = otherKey;
+      otherKey = swapKey;
+      /** @type {int32[]} */
+      const swapSymbol = claimSymbol;
+      claimSymbol = otherSymbol;
+      otherSymbol = swapSymbol;
+    }
 
+    // A frequency table claiming fewer slots than the table holds leaves the
+    // table short; reading the first missing claim fails exactly as reading a
+    // missing claim record always did.
+    if (count < tableSize) {
+      throw new TypeError("Cannot read properties of undefined (reading 'symbol')");
+    }
+
+    /** @type {int32[]} */
     const table = new Array(tableSize);
-    for (let i = 0; i < tableSize; i++) table[i] = claims[i].symbol;
+    for (let i = 0; i < tableSize; i++) {
+      table[i] = claimSymbol[i];
+    }
     return table;
   }
 
   // Per-symbol renormalization constants. Encoding symbol s from state x emits
   // maxBits-1 bits when x is below minStatePlus and maxBits bits otherwise,
   // which is exactly what drives floor(x / 2^nbBits) into the range [f, 2f).
-  function buildSymbolTransforms(norm, symbols, tableLog) {
-    const maxBits = new Array(256).fill(0);
-    const minStatePlus = new Array(256).fill(0);
+  /**
+   * @param {int32[]} norm - Normalized frequency per symbol
+   * @param {int32[]} symbols - Used symbols
+   * @param {int32} tableLog - log2 of the table size
+   * @param {int32[]} maxBits - Receives the larger bit count per symbol
+   * @param {int32[]} minStatePlus - Receives the state threshold per symbol
+   */
+  function buildSymbolTransforms(norm, symbols, tableLog, maxBits, minStatePlus) {
+    for (let i = 0; i < 256; i++) {
+      maxBits[i] = 0;
+      minStatePlus[i] = 0;
+    }
 
-    for (const symbol of symbols) {
+    for (let n = 0; n < symbols.length; n++) {
+      /** @type {int32} */
+      const symbol = symbols[n];
+      /** @type {int32} */
       const f = norm[symbol];
+      /** @type {int32} */
       const bits = tableLog - highBit(f);
       maxBits[symbol] = bits;
       minStatePlus[symbol] = f * POW2[bits];
     }
-
-    return { maxBits, minStatePlus };
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -249,147 +396,262 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {TANSInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new TANSInstance(this, isInverse);
     }
   }
 
   class TANSInstance extends IAlgorithmInstance {
+    /**
+     * @param {TANSAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
         // A compressed stream always carries at least the 4-byte length
         // header, so an empty buffer is not a valid compressed message.
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decompress();
       }
       return this._compress();
     }
 
+    /**
+     * @returns {uint8[]} Header, frequency table, final state and bitstream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
-      if (data.length === 0) return output;
-
-      const rawFreq = new Array(256).fill(0);
-      for (let i = 0; i < data.length; i++) rawFreq[data[i]]++;
-
-      const symbols = [];
-      for (let i = 0; i < 256; i++) {
-        if (rawFreq[i] > 0) symbols.push(i);
+      if (data.length === 0) {
+        return output;
       }
 
+      /** @type {int32[]} */
+      const rawFreq = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        rawFreq[i] = 0;
+      }
+      for (let i = 0; i < data.length; i++) {
+        rawFreq[data[i]]++;
+      }
+
+      /** @type {int32[]} */
+      const symbols = [];
+      for (let i = 0; i < 256; i++) {
+        if (rawFreq[i] > 0) {
+          symbols.push(i);
+        }
+      }
+
+      /** @type {int32[]} */
       const norm = normalizeFrequencies(rawFreq, symbols, data.length, TABLE_SIZE);
+      /** @type {int32[]} */
       const spread = buildSpreadTable(norm, symbols, TABLE_SIZE);
-      const transforms = buildSymbolTransforms(norm, symbols, TABLE_LOG);
+      /** @type {int32[]} */
+      const maxBits = new Int32Array(256);
+      /** @type {int32[]} */
+      const minStatePlus = new Int32Array(256);
+      buildSymbolTransforms(norm, symbols, TABLE_LOG, maxBits, minStatePlus);
 
       // Encoding table: the k-th slot a symbol owns, in increasing slot order,
       // is the state reached when its reduced state equals f + k.
+      /** @type {int32[][]} */
       const encodeTable = new Array(256);
-      for (const symbol of symbols) encodeTable[symbol] = new Array(norm[symbol]);
-      const seen = new Array(256).fill(0);
+      for (let n = 0; n < symbols.length; n++) {
+        /** @type {int32} */
+        const symbol = symbols[n];
+        encodeTable[symbol] = new Int32Array(norm[symbol]);
+      }
+      /** @type {int32[]} */
+      const seen = new Int32Array(256);
       for (let slot = 0; slot < TABLE_SIZE; slot++) {
+        /** @type {int32} */
         const symbol = spread[slot];
-        encodeTable[symbol][seen[symbol]++] = slot + TABLE_SIZE;
+        /** @type {int32[]} */
+        const row = encodeTable[symbol];
+        row[seen[symbol]++] = slot + TABLE_SIZE;
       }
 
       // Bit sink. A symbol never costs more than tableLog bits.
+      /** @type {uint8[]} */
       const packed = new Uint8Array(Math.ceil(MAX_BITS_PER_SYMBOL * data.length / 8) + 8);
+      /** @type {int32} */
       let bitCount = 0;
 
+      /** @type {int32} */
       let state = TABLE_SIZE;
       for (let i = data.length - 1; i >= 0; i--) {
+        /** @type {uint8} */
         const symbol = data[i];
-        const bits = state < transforms.minStatePlus[symbol]
-          ? transforms.maxBits[symbol] - 1
-          : transforms.maxBits[symbol];
+        /** @type {int32} */
+        let bits = maxBits[symbol];
+        if (state < minStatePlus[symbol]) {
+          bits = bits - 1;
+        }
 
+        /** @type {int32} */
         const unit = POW2[bits];
+        /** @type {int32} */
         const low = state % unit;
+        /** @type {int32} */
         const reduced = Math.floor(state / unit);
 
         for (let j = 0; j < bits; j++) {
           if (Math.floor(low / POW2[j]) % 2 === 1) {
+            /** @type {int32} */
             const index = Math.floor(bitCount / 8);
             packed[index] = OpCodes.SetBit(packed[index], 7 - (bitCount % 8), true);
           }
           bitCount++;
         }
 
-        state = encodeTable[symbol][reduced - norm[symbol]];
+        /** @type {int32[]} */
+        const row = encodeTable[symbol];
+        state = row[reduced - norm[symbol]];
       }
 
       output.push(TABLE_LOG);
 
+      /** @type {uint8[]} */
       const countBytes = OpCodes.Unpack16LE(symbols.length);
-      output.push(countBytes[0], countBytes[1]);
+      output.push(countBytes[0]);
+      output.push(countBytes[1]);
 
-      for (const symbol of symbols) {
+      for (let n = 0; n < symbols.length; n++) {
+        /** @type {int32} */
+        const symbol = symbols[n];
         output.push(symbol);
+        /** @type {uint8[]} */
         const freqBytes = OpCodes.Unpack16LE(norm[symbol]);
-        output.push(freqBytes[0], freqBytes[1]);
+        output.push(freqBytes[0]);
+        output.push(freqBytes[1]);
       }
 
+      /** @type {uint8[]} */
       const stateBytes = OpCodes.Unpack16LE(state - TABLE_SIZE);
-      output.push(stateBytes[0], stateBytes[1]);
+      output.push(stateBytes[0]);
+      output.push(stateBytes[1]);
 
+      /** @type {uint8[]} */
       const bitCountBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(bitCount));
-      output.push(bitCountBytes[0], bitCountBytes[1], bitCountBytes[2], bitCountBytes[3]);
+      for (let n = 0; n < 4; n++) {
+        output.push(bitCountBytes[n]);
+      }
 
+      /** @type {int32} */
       const usedBytes = Math.ceil(bitCount / 8);
-      for (let i = 0; i < usedBytes; i++) output.push(packed[i]);
+      for (let i = 0; i < usedBytes; i++) {
+        output.push(packed[i]);
+      }
 
       return output;
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
-      if (data.length < 4) return [];
+      /** @type {uint8[]} */
+      const empty = [];
+      if (data.length < 4) {
+        return empty;
+      }
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalLength === 0) return [];
+      if (originalLength === 0) {
+        return empty;
+      }
 
+      /** @type {int32} */
       let offset = 4;
+      /** @type {uint8} */
       const tableLog = data[offset++];
+      /** @type {int32} */
       const tableSize = POW2[tableLog];
 
+      /** @type {uint16} */
       const symbolCount = OpCodes.Pack16LE(data[offset], data[offset + 1]);
       offset += 2;
 
-      const norm = new Array(256).fill(0);
+      /** @type {int32[]} */
+      const norm = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        norm[i] = 0;
+      }
+      /** @type {int32[]} */
       const symbols = [];
       for (let i = 0; i < symbolCount; i++) {
+        /** @type {uint8} */
         const symbol = data[offset++];
         symbols.push(symbol);
         norm[symbol] = OpCodes.Pack16LE(data[offset], data[offset + 1]);
         offset += 2;
       }
 
-      let state = OpCodes.Pack16LE(data[offset], data[offset + 1]) + tableSize;
+      /** @type {uint16} */
+      const finalState = OpCodes.Pack16LE(data[offset], data[offset + 1]);
+      /** @type {int32} */
+      let state = finalState + tableSize;
       offset += 2;
 
+      /** @type {uint32} */
       const bitCount = OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
       offset += 4;
 
+      /** @type {int32[]} */
       const spread = buildSpreadTable(norm, symbols, tableSize);
 
       // Decoding table: slot -> (symbol, bits to read, base state).
+      /** @type {int32[]} */
       const slotSymbol = new Array(tableSize);
+      /** @type {int32[]} */
       const slotBits = new Array(tableSize);
+      /** @type {int32[]} */
       const slotBase = new Array(tableSize);
-      const seen = new Array(256).fill(0);
+      /** @type {int32[]} */
+      const seen = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        seen[i] = 0;
+      }
       for (let slot = 0; slot < tableSize; slot++) {
+        /** @type {int32} */
         const symbol = spread[slot];
+        /** @type {int32} */
         const reduced = norm[symbol] + seen[symbol]++;
+        /** @type {int32} */
         const bits = tableLog - highBit(reduced);
         slotSymbol[slot] = symbol;
         slotBits[slot] = bits;
@@ -398,17 +660,23 @@
 
       // The encoder appended each symbol's bits as it walked the message
       // backwards, so the decoder consumes them from the far end backwards.
+      /** @type {int32} */
       let readPosition = bitCount;
+      /** @type {uint8[]} */
       const output = new Array(originalLength);
 
       for (let i = 0; i < originalLength; i++) {
+        /** @type {int32} */
         const slot = state - tableSize;
         output[i] = slotSymbol[slot];
 
+        /** @type {int32} */
         const bits = slotBits[slot];
+        /** @type {int32} */
         let low = 0;
         for (let j = 0; j < bits; j++) {
           readPosition--;
+          /** @type {uint8} */
           const byte = data[offset + Math.floor(readPosition / 8)];
           low = low * 2 + (OpCodes.GetBit(byte, 7 - (readPosition % 8)) ? 1 : 0);
         }

@@ -80,16 +80,7 @@
       this.knownVulnerabilities = [];
 
       // Test vectors with bit-perfect accuracy
-      this.tests = this.createTestVectors();
-    }
-
-    createTestVectors() {
-      // Ensure OpCodes is available
-      if (!OpCodes) {
-        return [];
-      }
-
-      return [
+      this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes(""),
           OpCodes.AnsiToBytes(""),
@@ -138,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {UUEncodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,14 +146,18 @@
   class UUEncodeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {UUEncodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
     }
 
     /**
@@ -181,8 +176,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -195,37 +196,61 @@
       if (!this._feedBuffer) {
         throw new Error('UUEncodeInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
-    encode(data) {
-      if (data.length === 0) {
-        return [];
-      }
+    /**
+     * Six-bit value of a UUencoded character (space offset removed)
+     * @param {uint8} code - Character code
+     * @returns {uint32} Its 6-bit value
+     */
+    sixBits(code) {
+      return OpCodes.And32(OpCodes.Sub32(code, 0x20), 0x3F);
+    }
 
+    /**
+     * UUencode bytes (no line framing)
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} UUencoded characters
+     */
+    encode(data) {
+      /** @type {uint8[]} */
       const result = [];
+      if (data.length === 0) {
+        return result;
+      }
 
       // Process in groups of 3 bytes
       for (let i = 0; i < data.length; i += 3) {
-        const group = [];
+        /** @type {int32} */
         const groupSize = Math.min(3, data.length - i);
 
         // Get the 3-byte group (pad with zeros if necessary)
-        for (let j = 0; j < 3; j++) {
-          group.push(i + j < data.length ? data[i + j] : 0);
-        }
+        /** @type {uint8} */
+        const g0 = data[i];
+        /** @type {uint8} */
+        const g1 = i + 1 < data.length ? data[i + 1] : 0;
+        /** @type {uint8} */
+        const g2 = i + 2 < data.length ? data[i + 2] : 0;
 
         // Convert 3 bytes to 4 characters
-        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(group[0], 16), OpCodes.Shl32(group[1], 8)), group[2]);
+        /** @type {uint32} */
+        const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(g0, 16), OpCodes.Shl32(g1, 8)), g2);
 
         // Extract 6-bit values and add space offset (0x20)
-        const char1 = OpCodes.AndN(OpCodes.Shr32(combined, 18), 0x3F) + 0x20;
-        const char2 = OpCodes.AndN(OpCodes.Shr32(combined, 12), 0x3F) + 0x20;
-        const char3 = OpCodes.AndN(OpCodes.Shr32(combined, 6), 0x3F) + 0x20;
-        const char4 = OpCodes.AndN(combined, 0x3F) + 0x20;
+        /** @type {uint8} */
+        const char1 = OpCodes.Add32(OpCodes.And32(OpCodes.Shr32(combined, 18), 0x3F), 0x20);
+        /** @type {uint8} */
+        const char2 = OpCodes.Add32(OpCodes.And32(OpCodes.Shr32(combined, 12), 0x3F), 0x20);
+        /** @type {uint8} */
+        const char3 = OpCodes.Add32(OpCodes.And32(OpCodes.Shr32(combined, 6), 0x3F), 0x20);
+        /** @type {uint8} */
+        const char4 = OpCodes.Add32(OpCodes.And32(combined, 0x3F), 0x20);
 
         // A 1-byte group always needs 2 output characters (8 data bits need
         // two 6-bit symbols) and a 2-byte group always needs 3 (16 data
@@ -247,45 +272,47 @@
       return result;
     }
 
+    /**
+     * Decode UUencoded characters (no line framing)
+     * @param {uint8[]} data - UUencoded characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
-      if (data.length === 0) {
-        return [];
-      }
-
+      /** @type {uint8[]} */
       const result = [];
+      if (data.length === 0) {
+        return result;
+      }
 
       // Process in groups of 4 characters
       for (let i = 0; i < data.length; i += 4) {
+        /** @type {int32} */
         const groupSize = Math.min(4, data.length - i);
 
         if (groupSize === 1) {
           // Single character, decode as one byte
-          const val = OpCodes.AndN((data[i] - 0x20), 0x3F);
-          result.push(val);
+          result.push(this.sixBits(data[i]));
         } else if (groupSize === 2) {
           // Two characters, decode as one byte
-          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
-          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
-          const combined = OpCodes.OrN(OpCodes.Shl32(val1, 6), val2);
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 4), 0xFF));
+          /** @type {uint32} */
+          const combined = OpCodes.Or32(OpCodes.Shl32(this.sixBits(data[i]), 6), this.sixBits(data[i + 1]));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 4), 0xFF));
         } else if (groupSize === 3) {
           // Three characters, decode as two bytes
-          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
-          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
-          const val3 = OpCodes.AndN((data[i + 2] - 0x20), 0x3F);
-          const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 12), OpCodes.Shl32(val2, 6)), val3);
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 10), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 2), 0xFF));
+          /** @type {uint32} */
+          const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(this.sixBits(data[i]), 12),
+            OpCodes.Shl32(this.sixBits(data[i + 1]), 6)), this.sixBits(data[i + 2]));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 10), 0xFF));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 2), 0xFF));
         } else if (groupSize === 4) {
           // Four characters, decode as three bytes
-          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
-          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
-          const val3 = OpCodes.AndN((data[i + 2] - 0x20), 0x3F);
-          const val4 = OpCodes.AndN((data[i + 3] - 0x20), 0x3F);
-          const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 0xFF));
-          result.push(OpCodes.AndN(combined, 0xFF));
+          /** @type {uint32} */
+          const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(this.sixBits(data[i]), 18),
+            OpCodes.Shl32(this.sixBits(data[i + 1]), 12)), OpCodes.Shl32(this.sixBits(data[i + 2]), 6)),
+            this.sixBits(data[i + 3]));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 16), 0xFF));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 8), 0xFF));
+          result.push(OpCodes.And32(combined, 0xFF));
         }
       }
 
@@ -293,14 +320,29 @@
     }
 
     // Utility methods for string encoding
+
+    /**
+     * UUencode a string (one byte per character)
+     * @param {string} str - Input text
+     * @returns {string} UUencoded text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * Decode UUencoded text to a string (one character per byte)
+     * @param {string} str - UUencoded text
+     * @returns {string} Decoded text
+     */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToChars(decoded);
     }

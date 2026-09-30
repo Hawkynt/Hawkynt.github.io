@@ -62,10 +62,15 @@
       this.country = CountryCode.AU;
 
       // LZRW1 constants
+      /** @type {int32} */
       this.HASH_TABLE_SIZE = 4096;    // 2^12 hash table entries
+      /** @type {int32} */
       this.MIN_MATCH_LENGTH = 3;      // Minimum match length
+      /** @type {int32} */
       this.MAX_MATCH_LENGTH = 18;     // Maximum match length (3 + 15)
+      /** @type {int32} */
       this.MAX_OFFSET = 4095;         // Maximum backward offset
+      /** @type {int32} */
       this.ITEMS_PER_GROUP = 16;      // Items per control byte
 
       // Documentation and references
@@ -117,7 +122,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZRW1Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -128,108 +133,144 @@
   /**
  * LZRW1 cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LZRW1Instance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
+     * @param {LZRW1Compression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
+      this.hashTableSize = algorithm.HASH_TABLE_SIZE;
+      /** @type {int32} */
+      this.minMatchLength = algorithm.MIN_MATCH_LENGTH;
+      /** @type {int32} */
+      this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
+      /** @type {int32} */
+      this.maxOffset = algorithm.MAX_OFFSET;
+      /** @type {int32} */
+      this.itemsPerGroup = algorithm.ITEMS_PER_GROUP;
     }
 
-
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._decompress();
       }
 
-      // Compression always emits the 4-byte length header, even for empty
-      // input (matching the CompressionWorkbench reference building block).
+      // Compression (always emits a 4-byte length header, even for empty
+      // input, so decompression can distinguish empty from missing data)
       return this._compress();
     }
 
     /**
-     * Hash function for 3-byte sequences. Matches CompressionWorkbench's
-     * Lzrw1Compressor.Hash: value * 2654435761 (Knuth's multiplicative hash
-     * constant), keeping bits 20-31 of the 32-bit product.
+     * Hash of three bytes into the 12-bit table index
+     * @param {uint8} p0 - First byte
+     * @param {uint8} p1 - Second byte
+     * @param {uint8} p2 - Third byte
+     * @returns {uint32} Table index 0..4095
      */
     _hash(p0, p1, p2) {
-      const value = p0|OpCodes.Shl32(p1, 8)|OpCodes.Shl32(p2, 16);
-      const h = Math.imul(value, 2654435761);
-      return OpCodes.Shr32(h, 20)&0xFFF;
+      /** @type {uint32} */
+      const value = OpCodes.Or32(OpCodes.Or32(p0, OpCodes.Shl32(p1, 8)), OpCodes.Shl32(p2, 16));
+      /** @type {uint32} */
+      const h = OpCodes.Mul32(value, 2654435761);
+      return OpCodes.And32(OpCodes.Shr32(h, 20), 0xFFF);
     }
 
     /**
-     * Compress data using LZRW1 algorithm
+     * Compress: 4-byte LE length, then groups of a 16-bit control word
+     * followed by up to 16 literal bytes or 16-bit copy words.
+     * @returns {uint8[]} Compressed bytes
      */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(input.length);
+      /** @type {uint8[]} */
       const result = [];
 
       if (input.length === 0) {
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return header;
       }
 
-      // Hash table stores positions of 3-byte sequences
-      const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
+      // Hash table: stores the position of the last occurrence of each hash
+      /** @type {int32[]} */
+      const hashTable = new Array(this.hashTableSize);
+      for (let i = 0; i < this.hashTableSize; i++) {
+        hashTable[i] = -1;
+      }
 
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < input.length) {
-        // Process items in groups of 16 for control word (16 bits)
+        // Reserve space for control word (16 bits = 2 bytes)
+        /** @type {int32} */
         const controlWordPos = result.length;
-        result.push(0, 0); // Placeholder for 16-bit control word
+        result.push(0); // Placeholder for 16-bit control word
+        result.push(0);
+        /** @type {uint32} */
         let controlWord = 0;
+        /** @type {int32} */
         let itemsInGroup = 0;
 
-        while (itemsInGroup < this.algorithm.ITEMS_PER_GROUP && pos < input.length) {
+        while (itemsInGroup < this.itemsPerGroup && pos < input.length) {
+          /** @type {boolean} */
           let matchFound = false;
+          /** @type {int32} */
           let matchLength = 0;
+          /** @type {int32} */
           let matchOffset = 0;
 
-          // Try to find a match if we have at least 3 bytes remaining
-          if (pos + this.algorithm.MIN_MATCH_LENGTH - 1 < input.length) {
+          // Try to find a match (need at least MIN_MATCH_LENGTH bytes)
+          if (pos + this.minMatchLength - 1 < input.length) {
+            /** @type {uint8} */
             const p0 = input[pos];
-            const p1 = input[pos + 1] || 0;
-            const p2 = input[pos + 2] || 0;
+            /** @type {uint8} */
+            const p1 = input[pos + 1];
+            /** @type {uint8} */
+            const p2 = input[pos + 2];
 
-            // Only try to match if we actually have 3 bytes
-            if (pos + this.algorithm.MIN_MATCH_LENGTH <= input.length) {
+            // Only hash if we have enough bytes
+            if (pos + this.minMatchLength <= input.length) {
+              /** @type {uint32} */
               const hashValue = this._hash(p0, p1, p2);
+              /** @type {int32} */
               const hashPos = hashTable[hashValue];
 
-              // Check if hash entry is valid and within range
-              if (hashPos >= 0 && pos - hashPos <= this.algorithm.MAX_OFFSET) {
-                // Calculate match length
+              // Check if we have a valid match
+              if (hashPos >= 0 && pos - hashPos <= this.maxOffset) {
+                // Verify match and find length
+                /** @type {int32} */
                 let len = 0;
-                const maxLen = Math.min(
-                  this.algorithm.MAX_MATCH_LENGTH,
-                  input.length - pos
-                );
+                /** @type {int32} */
+                const maxLen = Math.min(this.maxMatchLength, input.length - pos);
 
                 while (len < maxLen && input[hashPos + len] === input[pos + len]) {
                   len++;
                 }
 
-                if (len >= this.algorithm.MIN_MATCH_LENGTH) {
+                if (len >= this.minMatchLength) {
                   matchFound = true;
                   matchLength = len;
                   matchOffset = pos - hashPos;
@@ -242,22 +283,25 @@
           }
 
           if (matchFound) {
-            // Set control bit for copy item
-            controlWord |= OpCodes.Shl16(1, itemsInGroup);
+            // Set bit in control word (copy item)
+            controlWord = OpCodes.Or32(controlWord, OpCodes.Shl16(1, itemsInGroup));
 
-            // Encode copy item: 16-bit word
-            // High 4 bits: length - 3 (0-15 represents 3-18 bytes)
-            // Low 12 bits: offset - 1 (0-4094 represents 1-4095)
-            const lengthCode = (matchLength - this.algorithm.MIN_MATCH_LENGTH)&0x0F;
-            const offsetCode = (matchOffset - 1)&0x0FFF;
-            const copyWord = OpCodes.Shl16(lengthCode, 12)|offsetCode;
+            // Encode copy item as 16-bit word:
+            // Bits 15-12: length - 3 (0-15, representing lengths 3-18)
+            // Bits 11-0: offset - 1 (0-4095, representing offsets 1-4096)
+            /** @type {uint32} */
+            const lengthCode = OpCodes.And32(matchLength - this.minMatchLength, 0x0F);
+            /** @type {uint32} */
+            const offsetCode = OpCodes.And32(matchOffset - 1, 0x0FFF);
+            /** @type {uint32} */
+            const copyWord = OpCodes.Or32(OpCodes.Shl16(lengthCode, 12), offsetCode);
 
-            result.push(OpCodes.Shr16(copyWord, 8)&0xFF);
-            result.push(copyWord&0xFF);
+            result.push(OpCodes.And32(OpCodes.Shr16(copyWord, 8), 0xFF));
+            result.push(OpCodes.And32(copyWord, 0xFF));
 
             pos += matchLength;
           } else {
-            // Literal byte (control bit already 0)
+            // Literal item (control bit = 0)
             result.push(input[pos]);
             pos++;
           }
@@ -265,75 +309,101 @@
           itemsInGroup++;
         }
 
-        // Write 16-bit control word (big-endian)
-        result[controlWordPos] = OpCodes.Shr16(controlWord, 8)&0xFF;
-        result[controlWordPos + 1] = controlWord&0xFF;
+        // Write control word (big-endian for compatibility)
+        result[controlWordPos] = OpCodes.And32(OpCodes.Shr16(controlWord, 8), 0xFF);
+        result[controlWordPos + 1] = OpCodes.And32(controlWord, 0xFF);
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return header.concat(result);
     }
 
     /**
-     * Decompress LZRW1 compressed data
+     * Decompress the format written by _compress()
+     * @returns {uint8[]} Original bytes
      */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
+      const result = [];
       if (input.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        return result;
       }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       if (originalLength === 0) {
-        this.inputBuffer = [];
-        return [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        return result;
       }
 
-      const result = [];
+      /** @type {int32} */
       let pos = 4;
 
       while (result.length < originalLength) {
-        // Read 16-bit control word (big-endian)
-        if (pos + 1 >= input.length) break;
+        // Read control word (16 bits, big-endian)
+        if (pos + 1 >= input.length) {
+          break;
+        }
+        /** @type {uint16} */
         const controlWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
         pos += 2;
 
-        // Process up to 16 items based on control word
-        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && result.length < originalLength; i++) {
-          const isCopyItem = (controlWord&OpCodes.Shl16(1, i)) !== 0;
+        // Process up to ITEMS_PER_GROUP items
+        for (let i = 0; i < this.itemsPerGroup && result.length < originalLength; i++) {
+          /** @type {boolean} */
+          const isCopyItem = OpCodes.And32(controlWord, OpCodes.Shl16(1, i)) !== 0;
 
           if (isCopyItem) {
-            // Copy item: read 16-bit word
-            if (pos + 1 >= input.length) break;
+            // Copy item: read 16-bit copy word
+            if (pos + 1 >= input.length) {
+              break;
+            }
 
+            /** @type {uint16} */
             const copyWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
             pos += 2;
 
-            const length = (OpCodes.Shr16(copyWord, 12)&0x0F) + this.algorithm.MIN_MATCH_LENGTH;
-            const offset = (copyWord&0x0FFF) + 1;
+            /** @type {int32} */
+            const length = OpCodes.And32(OpCodes.Shr16(copyWord, 12), 0x0F) + this.minMatchLength;
+            /** @type {int32} */
+            const offset = OpCodes.And32(copyWord, 0x0FFF) + 1;
 
-            // Copy bytes from history
+            // Copy from previous output
+            /** @type {int32} */
             const copyStart = result.length - offset;
             for (let j = 0; j < length; j++) {
-              // An offset outside the output produced so far means the stream is
-              // not one this decoder wrote. Substituting a zero used to hide
-              // that: the caller received plausible bytes of the right length
-              // and no indication anything was wrong.
-              if (copyStart + j < 0 || copyStart + j >= result.length)
+              // An offset reaching back before the start of the output is corrupt
+              // input, not a zero byte: substituting 0 (the old `|| 0`) silently
+              // fabricated data. The source is always behind the write position,
+              // so overlapping copies stay well defined.
+              if (copyStart + j < 0 || copyStart + j >= result.length) {
                 throw new Error('LZRW1: match at offset ' + offset
                   + ' points outside the ' + result.length + ' bytes decoded so far');
+              }
               result.push(result[copyStart + j]);
             }
           } else {
-            // Literal byte
-            if (pos >= input.length) break;
+            // Literal item
+            if (pos >= input.length) {
+              break;
+            }
             result.push(input[pos++]);
           }
         }
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
   }

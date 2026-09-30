@@ -69,9 +69,13 @@
       this.country = CountryCode.AU;
 
       // LZRW3 constants
+      /** @type {int32} */
       this.HASH_TABLE_SIZE = 4096;    // 2^12 hash table entries
+      /** @type {int32} */
       this.MIN_MATCH_LENGTH = 3;      // Minimum match length
+      /** @type {int32} */
       this.MAX_MATCH_LENGTH = 18;     // Maximum match length (3 + 15)
+      /** @type {int32} */
       this.ITEMS_PER_GROUP = 16;      // Items per control word
 
       // Documentation and references
@@ -151,7 +155,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZRW3Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -162,20 +166,30 @@
   /**
  * LZRW3 cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LZRW3Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZRW3Compression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
+      this.hashTableSize = algorithm.HASH_TABLE_SIZE;
+      /** @type {int32} */
+      this.minMatchLength = algorithm.MIN_MATCH_LENGTH;
+      /** @type {int32} */
+      this.maxMatchLength = algorithm.MAX_MATCH_LENGTH;
+      /** @type {int32} */
+      this.itemsPerGroup = algorithm.ITEMS_PER_GROUP;
     }
 
 
@@ -195,6 +209,8 @@
 
     /**
      * Append a 32-bit little-endian value.
+     * @param {uint8[]} output - Destination
+     * @param {uint32} value - Value
      */
     _writeU32LE(output, value) {
       output.push(OpCodes.And32(value, 0xFF));
@@ -205,6 +221,9 @@
 
     /**
      * Read a 32-bit little-endian value.
+     * @param {uint8[]} input - Source
+     * @param {int32} pos - Offset
+     * @returns {uint32} Value
      */
     _readU32LE(input, pos) {
       return OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
@@ -214,11 +233,17 @@
      * Hash function for 3-byte sequences.
      * Packs the 3-byte window little-endian, multiplies by Knuth's 32-bit golden-ratio
      * constant (2654435761) and keeps the top bits, masked to the 4096-entry table.
+     * @param {uint8} p0 - First byte
+     * @param {uint8} p1 - Second byte
+     * @param {uint8} p2 - Third byte
+     * @returns {uint32} Table index
      */
     _hash(p0, p1, p2) {
+      /** @type {uint32} */
       const value = OpCodes.Pack32LE(p0, p1, p2, 0);
+      /** @type {uint32} */
       const scrambled = OpCodes.Mul32(value, 2654435761);
-      return OpCodes.And32(OpCodes.Shr32(scrambled, 20), this.algorithm.HASH_TABLE_SIZE - 1);
+      return OpCodes.And32(OpCodes.Shr32(scrambled, 20), this.hashTableSize - 1);
     }
 
     /**
@@ -228,9 +253,14 @@
      * hash tables stay byte-for-byte identical at every point in the stream -
      * a match token may only reference a hash entry that the decompressor
      * could have produced from bytes it has already emitted.
+     * @param {int32[]} pending - Queued positions, oldest first
+     * @param {int32[]} hashTable - Hash table
+     * @param {uint8[]} data - Bytes the windows are read from
+     * @param {int32} currentPos - Number of bytes available
      */
     _flushPending(pending, hashTable, data, currentPos) {
       while (pending.length > 0 && pending[0] + 2 < currentPos) {
+        /** @type {int32} */
         const p = pending.shift();
         hashTable[this._hash(data[p], data[p + 1], data[p + 2])] = p;
       }
@@ -242,64 +272,86 @@
      * Hash table insertions are deferred behind a queue and only committed once their
      * 3-byte window is fully available, so the decompressor can reproduce the exact
      * same table contents from already-emitted output (see _flushPending).
+     * @returns {uint8[]} Compressed bytes
      */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {uint8[]} */
+      const fresh = [];
 
       // 4-byte little-endian uncompressed size header
       this._writeU32LE(result, input.length);
 
       if (input.length === 0) {
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // Hash table stores positions of 3-byte sequences
-      const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
+      /** @type {int32[]} */
+      const hashTable = new Array(this.hashTableSize);
+      for (let i = 0; i < this.hashTableSize; i++) {
+        hashTable[i] = -1;
+      }
 
       // Queue of positions awaiting hash-table insertion (see _flushPending)
+      /** @type {int32[]} */
       const pending = [];
 
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < input.length) {
         // Process items in groups of 16 for control word (16 bits)
+        /** @type {int32} */
         const controlWordPos = result.length;
-        result.push(0, 0); // Placeholder for 16-bit control word
+        result.push(0); // Placeholder for 16-bit control word
+        result.push(0);
+        /** @type {uint32} */
         let controlWord = 0;
+        /** @type {int32} */
         let itemsInGroup = 0;
 
-        while (itemsInGroup < this.algorithm.ITEMS_PER_GROUP && pos < input.length) {
+        while (itemsInGroup < this.itemsPerGroup && pos < input.length) {
           this._flushPending(pending, hashTable, input, pos);
 
+          /** @type {boolean} */
           let matchFound = false;
+          /** @type {int32} */
           let matchLength = 0;
+          /** @type {uint32} */
           let matchHashIndex = 0;
 
           // Try to find a match if we have at least 3 bytes remaining
-          if (pos + this.algorithm.MIN_MATCH_LENGTH <= input.length) {
+          if (pos + this.minMatchLength <= input.length) {
+            /** @type {uint8} */
             const p0 = input[pos];
+            /** @type {uint8} */
             const p1 = input[pos + 1];
+            /** @type {uint8} */
             const p2 = input[pos + 2];
 
+            /** @type {uint32} */
             const hashValue = this._hash(p0, p1, p2);
+            /** @type {int32} */
             const hashPos = hashTable[hashValue];
 
             // Check if hash entry is valid and verify actual match
             if (hashPos >= 0 && hashPos < pos) {
               // Calculate match length
+              /** @type {int32} */
               let len = 0;
-              const maxLen = Math.min(
-                this.algorithm.MAX_MATCH_LENGTH,
-                input.length - pos
-              );
+              /** @type {int32} */
+              const maxLen = Math.min(this.maxMatchLength, input.length - pos);
 
               while (len < maxLen && input[hashPos + len] === input[pos + len]) {
                 len++;
               }
 
-              if (len >= this.algorithm.MIN_MATCH_LENGTH) {
+              if (len >= this.minMatchLength) {
                 matchFound = true;
                 matchLength = len;
                 matchHashIndex = hashValue; // Transmit hash index, not offset
@@ -312,17 +364,20 @@
 
           if (matchFound) {
             // Set control bit for copy item
-            controlWord = OpCodes.OrN(controlWord, OpCodes.Shl16(1, itemsInGroup));
+            controlWord = OpCodes.Or32(controlWord, OpCodes.Shl16(1, itemsInGroup));
 
             // Encode copy item: 16-bit word
             // High 4 bits: length - 3 (0-15 represents 3-18 bytes)
             // Low 12 bits: hash table index (0-4095)
-            const lengthCode = OpCodes.AndN(matchLength - this.algorithm.MIN_MATCH_LENGTH, 0x0F);
-            const hashIndex = OpCodes.AndN(matchHashIndex, 0x0FFF);
-            const copyWord = OpCodes.OrN(OpCodes.Shl16(lengthCode, 12), hashIndex);
+            /** @type {uint32} */
+            const lengthCode = OpCodes.And32(matchLength - this.minMatchLength, 0x0F);
+            /** @type {uint32} */
+            const hashIndex = OpCodes.And32(matchHashIndex, 0x0FFF);
+            /** @type {uint32} */
+            const copyWord = OpCodes.Or32(OpCodes.Shl16(lengthCode, 12), hashIndex);
 
-            result.push(OpCodes.AndN(OpCodes.Shr16(copyWord, 8), 0xFF));
-            result.push(OpCodes.AndN(copyWord, 0xFF));
+            result.push(OpCodes.And32(OpCodes.Shr16(copyWord, 8), 0xFF));
+            result.push(OpCodes.And32(copyWord, 0xFF));
 
             pos += matchLength;
           } else {
@@ -335,11 +390,11 @@
         }
 
         // Write 16-bit control word (big-endian)
-        result[controlWordPos] = OpCodes.AndN(OpCodes.Shr16(controlWord, 8), 0xFF);
-        result[controlWordPos + 1] = OpCodes.AndN(controlWord, 0xFF);
+        result[controlWordPos] = OpCodes.And32(OpCodes.Shr16(controlWord, 8), 0xFF);
+        result[controlWordPos + 1] = OpCodes.And32(controlWord, 0xFF);
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
@@ -349,58 +404,81 @@
      * a position's 3-byte window only becomes an eligible hash entry once it is fully
      * present in the already-reconstructed output, which keeps this table byte-for-byte
      * identical to the compressor's table at every point in the stream.
+     * @returns {uint8[]} Decoded bytes
      */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {uint8[]} */
+      const fresh = [];
 
       if (input.length < 4) {
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // 4-byte little-endian uncompressed size header
+      /** @type {uint32} */
       const originalLength = this._readU32LE(input, 0);
+      /** @type {int32} */
       let pos = 4;
 
       if (originalLength === 0) {
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // Hash table for decompression (must match compressor's table)
-      const hashTable = new Array(this.algorithm.HASH_TABLE_SIZE).fill(-1);
+      /** @type {int32[]} */
+      const hashTable = new Array(this.hashTableSize);
+      for (let i = 0; i < this.hashTableSize; i++) {
+        hashTable[i] = -1;
+      }
 
       // Queue of positions awaiting hash-table insertion (see _flushPending)
+      /** @type {int32[]} */
       const pending = [];
 
       while (result.length < originalLength) {
         // Read 16-bit control word (big-endian)
-        if (pos + 1 >= input.length) break;
+        if (pos + 1 >= input.length) {
+          break;
+        }
+        /** @type {uint16} */
         const controlWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
         pos += 2;
 
         // Process up to 16 items based on control word
-        for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && result.length < originalLength; i++) {
+        for (let i = 0; i < this.itemsPerGroup && result.length < originalLength; i++) {
           this._flushPending(pending, hashTable, result, result.length);
 
-          const isCopyItem = OpCodes.AndN(controlWord, OpCodes.Shl16(1, i)) !== 0;
+          /** @type {boolean} */
+          const isCopyItem = OpCodes.And32(controlWord, OpCodes.Shl16(1, i)) !== 0;
 
           if (isCopyItem) {
             // Copy item: read 16-bit word
-            if (pos + 1 >= input.length) break;
+            if (pos + 1 >= input.length) {
+              break;
+            }
 
+            /** @type {uint16} */
             const copyWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
             pos += 2;
 
-            const length = OpCodes.AndN(OpCodes.Shr16(copyWord, 12), 0x0F) + this.algorithm.MIN_MATCH_LENGTH;
-            const hashIndex = OpCodes.AndN(copyWord, 0x0FFF);
+            /** @type {int32} */
+            const length = OpCodes.And32(OpCodes.Shr16(copyWord, 12), 0x0F) + this.minMatchLength;
+            /** @type {uint32} */
+            const hashIndex = OpCodes.And32(copyWord, 0x0FFF);
 
             // Get position from hash table
+            /** @type {int32} */
             const copyStart = hashTable[hashIndex];
 
             if (copyStart >= 0 && copyStart < result.length) {
               // Store start position for hash update
+              /** @type {int32} */
               const phraseStart = result.length;
 
               // Copy bytes from history
@@ -409,28 +487,31 @@
               }
 
               // Queue this phrase's hash entry - inserted only once its window is available
-              if (phraseStart + this.algorithm.MIN_MATCH_LENGTH <= originalLength) {
+              if (phraseStart + this.minMatchLength <= originalLength) {
                 pending.push(phraseStart);
               }
             } else {
               // Invalid hash index - should not happen with valid compressed data
-              throw new Error(`LZRW3 decompression error: invalid hash index ${hashIndex}`);
+              throw new Error("LZRW3 decompression error: invalid hash index " + hashIndex);
             }
           } else {
             // Literal byte
-            if (pos >= input.length) break;
+            if (pos >= input.length) {
+              break;
+            }
+            /** @type {int32} */
             const bytePos = result.length;
             result.push(input[pos++]);
 
             // Queue this position's hash entry - inserted only once its window is available
-            if (bytePos + this.algorithm.MIN_MATCH_LENGTH <= originalLength) {
+            if (bytePos + this.minMatchLength <= originalLength) {
               pending.push(bytePos);
             }
           }
         }
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return result;
     }
   }
