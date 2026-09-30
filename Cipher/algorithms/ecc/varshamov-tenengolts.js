@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {VarshamovTenengoltsInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,13 +141,15 @@
   class VarshamovTenengoltsInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VarshamovTenengoltsAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._n = 7; // Default length
       this._a = 0; // Default parameter (0 gives highest rate)
@@ -166,7 +168,7 @@
 
     set a(value) {
       if (value < 0 || value >= this._n + 1) {
-        throw new Error(`VarshamovTenengoltsInstance.a: Must be between 0 and ${this._n}`);
+        throw new Error("VarshamovTenengoltsInstance.a: Must be between 0 and " + this._n);
       }
       this._a = value;
     }
@@ -215,22 +217,30 @@
       return sum % (this._n + 1);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== this._n) {
-        throw new Error(`VT encode: Input must be exactly ${this._n} bits`);
+        throw new Error("VT encode: Input must be exactly " + this._n + " bits");
       }
 
       // Check if data satisfies VT constraint
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
-        throw new Error(`VT encode: Input checksum ${checksum} doesn't match parameter a=${this._a}. Not a valid VT codeword.`);
+        throw new Error("VT encode: Input checksum " + checksum + " doesn't match parameter a=" + this._a + ". Not a valid VT codeword.");
       }
 
       // VT codes are systematic - codeword equals message
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // For VT codes, decoding handles insertion/deletion errors
       // Simplified implementation: verify checksum
@@ -238,13 +248,17 @@
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
-        console.warn(`VT decode: Checksum mismatch (got ${checksum}, expected ${this._a}). Error detected but simplified decoder cannot correct.`);
+        console.warn("VT decode: Checksum mismatch (got " + checksum + ", expected " + this._a + "). Error detected but simplified decoder cannot correct.");
       }
 
       // Return received word (real decoder would correct insertion/deletion)
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Check if checksum matches parameter a
       const checksum = this.calculateChecksum(data);

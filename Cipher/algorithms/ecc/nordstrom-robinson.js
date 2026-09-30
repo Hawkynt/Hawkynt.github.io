@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {NordstromRobinsonInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class NordstromRobinsonInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NordstromRobinsonAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Pre-generate codebook using coset construction
@@ -276,24 +278,33 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== 8) {
         throw new Error('Nordstrom-Robinson encode: Input must be exactly 8 bits');
       }
 
       // Convert 8-bit data to 8-bit index (0-255)
+      /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < 8; ++i) {
         index = OpCodes.ToUint32(OpCodes.Shl32(index, 1)+(data[i]&1));
       }
 
       if (index >= this.codebook.length) {
-        throw new Error(`Nordstrom-Robinson encode: Index ${index} out of range`);
+        throw new Error("Nordstrom-Robinson encode: Index " + index + " out of range");
       }
 
       return [...this.codebook[index].codeword];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 16) {
         throw new Error('Nordstrom-Robinson decode: Input must be exactly 16 bits');
@@ -301,6 +312,7 @@
 
       // Minimum distance decoding
       let minDistance = Infinity;
+      /** @type {uint32} */
       let bestIndex = 0;
 
       for (let i = 0; i < this.codebook.length; ++i) {
@@ -327,6 +339,10 @@
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 16) return true;
 

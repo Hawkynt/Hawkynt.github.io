@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HermitianCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -153,13 +153,15 @@
   class HermitianCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HermitianCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Hermitian [8,3] code over GF(4) = GF(2^2)
@@ -235,7 +237,7 @@
     // Primitive polynomial: x^2 + x + 1
     gf4Add(a, b) {
       // Addition in GF(2^m) is XOR using OpCodes
-      return OpCodes.XorN(a, b);
+      return OpCodes.Xor32(a, b);
     }
 
     gf4Multiply(a, b) {
@@ -271,13 +273,13 @@
      */
     encode(message) {
       if (message.length !== this.k) {
-        throw new Error(`Hermitian encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("Hermitian encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < message.length; ++i) {
         if (message[i] < 0 || message[i] > 3 || !Number.isInteger(message[i])) {
-          throw new Error(`Hermitian encode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Hermitian encode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -303,13 +305,13 @@
      */
     decode(received) {
       if (received.length !== this.n) {
-        throw new Error(`Hermitian decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("Hermitian decode: Input must be exactly " + this.n + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < received.length; ++i) {
         if (received[i] < 0 || received[i] > 3 || !Number.isInteger(received[i])) {
-          throw new Error(`Hermitian decode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Hermitian decode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -389,7 +391,7 @@
 
     /**
      * Detects if codeword contains errors
-     * @param {Array} data - Received codeword
+     * @param {uint8[]} data - Received codeword
      * @returns {boolean} - True if errors detected
      */
     DetectError(data) {

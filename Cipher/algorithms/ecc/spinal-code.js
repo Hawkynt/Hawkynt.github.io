@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SpinalCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,13 +141,15 @@
   class SpinalCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpinalCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Spinal code configuration
@@ -223,7 +225,7 @@
      */
     encode(messageBits) {
       if (messageBits.length !== this.k) {
-        throw new Error(`Spinal encode: Input must be exactly ${this.k} bits`);
+        throw new Error("Spinal encode: Input must be exactly " + this.k + " bits");
       }
 
       // Convert message bits to integer
@@ -258,7 +260,7 @@
     decode(received) {
       if (received.length !== (this.numPasses * this.symbolsPerPass)) {
         throw new Error(
-          `Spinal decode: Input must be exactly ${this.numPasses * this.symbolsPerPass} symbols`
+          "Spinal decode: Input must be exactly " + (this.numPasses * this.symbolsPerPass) + " symbols"
         );
       }
 
@@ -405,6 +407,7 @@
      * @returns {number} - Integer value
      */
     _bitsToInt(bits) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < bits.length; ++i) {
         // Note: Structural bit packing

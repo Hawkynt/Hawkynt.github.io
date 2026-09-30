@@ -123,7 +123,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TurboCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -140,13 +140,17 @@
   class TurboCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TurboCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Standard turbo code configuration (LTE-like)
@@ -205,6 +209,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Turbo encoding: parallel concatenation of two RSC encoders
       // Output format: [systematic bits, parity1 bits, parity2 bits]
@@ -236,21 +244,22 @@
       // Recursive Systematic Convolutional encoder
       // Using generators (13, 15) octal for K=4
       const parity = [];
+      /** @type {uint32} */
       let state = 0; // K-1 = 3 bits of state
       const stateMask = OpCodes.Shl32(1, (this._constraintLength - 1)) - 1;
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = OpCodes.AndN(data[i], 1);
+        const inputBit = OpCodes.And32(data[i], 1);
 
         // Compute parity output before state update
-        const fullState = OpCodes.OrN(state, OpCodes.Shl32(inputBit, (this._constraintLength - 1)));
+        const fullState = OpCodes.Or32(state, OpCodes.Shl32(inputBit, (this._constraintLength - 1)));
         const parityBit = this.convolve(fullState, this._generator2);
 
         // Feedback through generator1
         const feedbackBit = this.convolve(fullState, this._generator1);
 
         // Update state with feedback
-        state = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), feedbackBit), stateMask);
+        state = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(state, 1), feedbackBit), stateMask);
 
         parity.push(parityBit);
       }
@@ -260,11 +269,12 @@
 
     convolve(state, generator) {
       // XOR all bits where generator polynomial is 1
+      /** @type {uint32} */
       let result = 0;
-      let temp = OpCodes.AndN(state, generator);
+      let temp = OpCodes.And32(state, generator);
 
       while (temp) {
-        result = OpCodes.XorN(result, OpCodes.AndN(temp, 1));
+        result = OpCodes.Xor32(result, OpCodes.And32(temp, 1));
         temp = OpCodes.Shr32(temp, 1);
       }
 

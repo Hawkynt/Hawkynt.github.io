@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CortexCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,13 +139,15 @@
   class CortexCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CortexCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default parameters for (16,8) code - educational implementation
@@ -290,9 +292,13 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`CortexCodeInstance.DetectError: Input must be ${this.n}-bit array`);
+        throw new Error("CortexCodeInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
       try {
@@ -318,7 +324,7 @@
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
-        throw new Error(`Cortex encode: Input must be exactly ${this.k} bits`);
+        throw new Error("Cortex encode: Input must be exactly " + this.k + " bits");
       }
 
       // Layer 0: Input layer (information bits)
@@ -344,6 +350,7 @@
 
       // For each output neuron
       for (let j = 0; j < outputSize; ++j) {
+        /** @type {uint32} */
         let sum = 0;
 
         // Sum inputs from connected neurons
@@ -371,7 +378,7 @@
       const outputSize = connectivity[0].length;
 
       if (output.length !== outputSize) {
-        throw new Error(`Backward layer: Expected ${outputSize} output bits, got ${output.length}`);
+        throw new Error("Backward layer: Expected " + outputSize + " output bits, got " + output.length);
       }
 
       // Solve the linear system: connectivity * input = output (in GF(2))
@@ -451,7 +458,7 @@
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.n) {
-        throw new Error(`Cortex decode: Input must be exactly ${this.n} bits`);
+        throw new Error("Cortex decode: Input must be exactly " + this.n + " bits");
       }
 
       // For error-free decoding, propagate backward through layers

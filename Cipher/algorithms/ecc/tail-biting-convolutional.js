@@ -129,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TailBitingConvolutionalInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -146,13 +146,17 @@
   class TailBitingConvolutionalInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TailBitingConvolutionalAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default: K=3, rate 1/2, generators (7,5) octal = (111, 101) binary
@@ -213,8 +217,8 @@
      * Encodes using tail-biting convolutional code
      * The key difference from standard convolutional encoding:
      * Initial state is set so that final state equals initial state
-     * @param {Array} data - Input bit array
-     * @returns {Array} - Encoded bits
+     * @param {uint8[]} data - Input bit array
+     * @returns {uint8[]} - Encoded bits
      */
     encode(data) {
       const n = data.length;
@@ -254,7 +258,7 @@
       // blocks shorter than the constraint length
       for (let j = constraintLength - 1; j >= 1; --j) {
         const index = ((n - j) % n + n) % n;
-        const inputBit = OpCodes.AndN(data[index], 1);
+        const inputBit = OpCodes.And32(data[index], 1);
         state = this.advanceState(state, inputBit, constraintLength, stateMask);
       }
 
@@ -272,8 +276,8 @@
      * @returns {number} - Next state
      */
     advanceState(state, inputBit, constraintLength, stateMask) {
-      const fullRegister = OpCodes.OrN(OpCodes.Shl32(inputBit, constraintLength - 1), state);
-      return OpCodes.AndN(OpCodes.Shr32(fullRegister, 1), stateMask);
+      const fullRegister = OpCodes.Or32(OpCodes.Shl32(inputBit, constraintLength - 1), state);
+      return OpCodes.And32(OpCodes.Shr32(fullRegister, 1), stateMask);
     }
 
     /**
@@ -287,19 +291,19 @@
       const output = [];
       const constraintLength = this._constraintLength;
       const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1; // Structural: mask for (K-1) state bits
-      let state = OpCodes.AndN(initialState, stateMask);
+      let state = OpCodes.And32(initialState, stateMask);
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = OpCodes.AndN(data[i], 1);
+        const inputBit = OpCodes.And32(data[i], 1);
 
         // Present the input bit above the history, then emit the parities
-        const fullRegister = OpCodes.OrN(OpCodes.Shl32(inputBit, constraintLength - 1), state); // Structural bit packing
+        const fullRegister = OpCodes.Or32(OpCodes.Shl32(inputBit, constraintLength - 1), state); // Structural bit packing
         const out1 = this.convolve(fullRegister, this._generator1);
         const out2 = this.convolve(fullRegister, this._generator2);
 
         output.push(out1, out2);
 
-        state = OpCodes.AndN(OpCodes.Shr32(fullRegister, 1), stateMask);
+        state = OpCodes.And32(OpCodes.Shr32(fullRegister, 1), stateMask);
       }
 
       return output;
@@ -315,12 +319,13 @@
      */
     convolve(state, generator) {
       // Compute GF(2) inner product: XOR of all (state AND generator) bits
+      /** @type {uint32} */
       let result = 0;
-      let temp = OpCodes.AndN(state, generator); // Polynomial coefficient selection
+      let temp = OpCodes.And32(state, generator); // Polynomial coefficient selection
 
       // Parity calculation (GF(2) sum)
       while (temp) {
-        result = OpCodes.XorN(result, OpCodes.AndN(temp, 1)); // GF(2) addition (XOR)
+        result = OpCodes.Xor32(result, OpCodes.And32(temp, 1)); // GF(2) addition (XOR)
         temp = OpCodes.Shr32(temp, 1); // Structural right shift
       }
 
@@ -337,7 +342,7 @@
      */
     decode(received) {
       if (received.length % this._rate !== 0) {
-        throw new Error(`Tail-biting Viterbi decode: Input length must be multiple of ${this._rate}`);
+        throw new Error("Tail-biting Viterbi decode: Input length must be multiple of " + this._rate);
       }
 
       const numStates = OpCodes.Shl32(1, this._constraintLength - 1); // Structural: 2^(K-1)
@@ -385,8 +390,8 @@
 
       // Process each received symbol
       for (let t = 0; t < numBits; ++t) {
-        const r1 = OpCodes.AndN(received[t * this._rate], 1);
-        const r2 = OpCodes.AndN(received[t * this._rate + 1], 1);
+        const r1 = OpCodes.And32(received[t * this._rate], 1);
+        const r2 = OpCodes.And32(received[t * this._rate + 1], 1);
 
         const nextMetrics = new Array(numStates).fill(Infinity);
         const enteredWith = new Array(numStates).fill(0);
@@ -400,14 +405,14 @@
           for (let inputBit = 0; inputBit <= 1; ++inputBit) {
             // Expected output for this branch, using the encoder's register
             // layout, and the state the branch leads to
-            const fullRegister = OpCodes.OrN(OpCodes.Shl32(inputBit, constraintLength - 1), state); // Structural bit packing
-            const nextState = OpCodes.AndN(OpCodes.Shr32(fullRegister, 1), stateMask); // Structural shift-and-mask
+            const fullRegister = OpCodes.Or32(OpCodes.Shl32(inputBit, constraintLength - 1), state); // Structural bit packing
+            const nextState = OpCodes.And32(OpCodes.Shr32(fullRegister, 1), stateMask); // Structural shift-and-mask
             const e1 = this.convolve(fullRegister, this._generator1);
             const e2 = this.convolve(fullRegister, this._generator2);
 
             // Calculate Hamming distance (branch metric)
             // Using GF(2) subtraction (XOR) and counting differences
-            const branchMetric = OpCodes.XorN(r1, e1) + OpCodes.XorN(r2, e2); // GF(2) difference + weight
+            const branchMetric = OpCodes.Xor32(r1, e1) + OpCodes.Xor32(r2, e2); // GF(2) difference + weight
             const candidate = pathMetrics[state] + branchMetric;
 
             // Keep the better of the two paths merging into nextState
@@ -454,10 +459,10 @@
     getFinalState(data, initialState) {
       const constraintLength = this._constraintLength;
       const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1; // Structural: mask for (K-1) state bits
-      let state = OpCodes.AndN(initialState, stateMask);
+      let state = OpCodes.And32(initialState, stateMask);
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = OpCodes.AndN(data[i], 1); // Structural: extract LSB (ensure bit value)
+        const inputBit = OpCodes.And32(data[i], 1); // Structural: extract LSB (ensure bit value)
         state = this.advanceState(state, inputBit, constraintLength, stateMask);
       }
 

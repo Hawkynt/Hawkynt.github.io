@@ -121,7 +121,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ParvareshVardyInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -138,13 +138,15 @@
   class ParvareshVardyInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ParvareshVardyAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Parvaresh-Vardy code parameters
@@ -193,6 +195,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data)) {
         throw new Error('ParvareshVardyInstance.DetectError: Input must be symbol array');
@@ -207,6 +213,10 @@
       return this.hasError(data);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Parvaresh-Vardy encoding
       // Input: k coefficients for polynomial f(x)
@@ -214,13 +224,13 @@
       // Total output: 2n symbols (n from f, n from h)
 
       if (data.length !== this.k) {
-        throw new Error(`Parvaresh-Vardy encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("Parvaresh-Vardy encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols are in field range
       for (let symbol of data) {
         if (symbol < 0 || symbol >= this.field) {
-          throw new Error(`Parvaresh-Vardy: Symbol ${symbol} out of range [0, ${this.field-1}]`);
+          throw new Error("Parvaresh-Vardy: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -243,19 +253,23 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Parvaresh-Vardy decoding with error detection
       // Input: 2n symbols (possibly with errors)
       // Output: k coefficients (data symbols)
 
       if (data.length !== this.n * 2) {
-        throw new Error(`Parvaresh-Vardy decode: Input must be exactly ${this.n * 2} symbols`);
+        throw new Error("Parvaresh-Vardy decode: Input must be exactly " + (this.n * 2) + " symbols");
       }
 
       // Validate symbols
       for (let symbol of data) {
         if (symbol < 0 || symbol >= this.field) {
-          throw new Error(`Parvaresh-Vardy: Symbol ${symbol} out of range [0, ${this.field-1}]`);
+          throw new Error("Parvaresh-Vardy: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -310,13 +324,14 @@
       this.gfLog = new Array(this.field);
       this.gfAntilog = new Array(this.field);
 
+      /** @type {uint8} */
       let x = 1;
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
         x = OpCodes.Shl8(x, 1);
-        if (OpCodes.AndN(x, this.field) !== 0) {
-          x = OpCodes.XorN(x, this.primitive);
+        if (OpCodes.And32(x, this.field) !== 0) {
+          x = OpCodes.Xor32(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
@@ -330,7 +345,7 @@
 
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
-      return OpCodes.XorN(a, b);
+      return OpCodes.Xor32(a, b);
     }
 
     gfDivide(a, b) {

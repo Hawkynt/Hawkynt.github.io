@@ -114,7 +114,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ReedSolomonInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -131,13 +131,15 @@
   class ReedSolomonInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ReedSolomonAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Reed-Solomon (7,3) parameters for GF(2^8)
@@ -185,25 +187,33 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`ReedSolomonInstance.DetectError: Input must be ${this.n}-symbol array`);
+        throw new Error("ReedSolomonInstance.DetectError: Input must be " + this.n + "-symbol array");
       }
 
       const syndromes = this.calculateSyndromes(data);
       return syndromes.some(s => s !== 0);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Reed-Solomon systematic encoding
       if (data.length !== this.k) {
-        throw new Error(`Reed-Solomon encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("Reed-Solomon encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols are in field range
       for (let symbol of data) {
         if (symbol < 0 || symbol >= this.field) {
-          throw new Error(`Reed-Solomon: Symbol ${symbol} out of range [0, ${this.field-1}]`);
+          throw new Error("Reed-Solomon: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -223,10 +233,14 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Simplified Reed-Solomon decoding
       if (data.length !== this.n) {
-        throw new Error(`Reed-Solomon decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("Reed-Solomon decode: Input must be exactly " + this.n + " symbols");
       }
 
       const received = [...data];
@@ -247,7 +261,7 @@
         // Correct errors (simplified)
         for (let loc of errorLocations) {
           if (loc < this.n) {
-            received[loc] = OpCodes.XorN(received[loc], syndromes[0]); // Simplified correction
+            received[loc] = OpCodes.Xor32(received[loc], syndromes[0]); // Simplified correction
           }
         }
       } else {
@@ -262,13 +276,14 @@
       this.gfLog = new Array(this.field);
       this.gfAntilog = new Array(this.field);
 
+      /** @type {uint32} */
       let x = 1;
       for (let i = 0; i < this.field - 1; i++) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
         x = OpCodes.Shl32(x, 1);
-        if (OpCodes.AndN(x, this.field)) {
-          x = OpCodes.XorN(x, this.primitive);
+        if (OpCodes.And32(x, this.field)) {
+          x = OpCodes.Xor32(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
@@ -297,8 +312,8 @@
 
         // Multiply by (x - α^i)
         for (let j = 0; j < gen.length; j++) {
-          newGen[j] = OpCodes.XorN(newGen[j], this.gfMultiply(gen[j], alpha_i));
-          newGen[j + 1] = OpCodes.XorN(newGen[j + 1], gen[j]);
+          newGen[j] = OpCodes.Xor32(newGen[j], this.gfMultiply(gen[j], alpha_i));
+          newGen[j + 1] = OpCodes.Xor32(newGen[j + 1], gen[j]);
         }
         gen = newGen;
       }
@@ -311,11 +326,11 @@
       const parity = new Array(this.n - this.k).fill(0);
 
       for (let i = 0; i < this.k; i++) {
-        const coeff = OpCodes.XorN(data[i], parity[0]);
+        const coeff = OpCodes.Xor32(data[i], parity[0]);
 
         // Shift parity symbols
         for (let j = 0; j < this.n - this.k - 1; j++) {
-          parity[j] = OpCodes.XorN(parity[j + 1], this.gfMultiply(this.generator[j], coeff));
+          parity[j] = OpCodes.Xor32(parity[j + 1], this.gfMultiply(this.generator[j], coeff));
         }
         parity[this.n - this.k - 1] = this.gfMultiply(this.generator[this.n - this.k - 1], coeff);
       }
@@ -333,7 +348,7 @@
         let alpha_power = 1;
 
         for (let j = 0; j < this.n; j++) {
-          syndromes[i] = OpCodes.XorN(syndromes[i], this.gfMultiply(data[j], alpha_power));
+          syndromes[i] = OpCodes.Xor32(syndromes[i], this.gfMultiply(data[j], alpha_power));
           alpha_power = this.gfMultiply(alpha_power, alpha_i);
         }
       }

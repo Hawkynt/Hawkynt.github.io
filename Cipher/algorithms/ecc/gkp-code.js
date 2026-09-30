@@ -215,7 +215,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GKPCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -232,13 +232,15 @@
   class GKPCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GKPCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // GKP code parameters
@@ -426,7 +428,7 @@
         return this._correctDisplacementErrors(data);
       }
 
-      throw new Error(`_encode: Invalid input size ${data.length}, expected 1 or ${this._gridSize * this._gridSize}`);
+      throw new Error("_encode: Invalid input size " + data.length + ", expected 1 or " + (this._gridSize * this._gridSize));
     }
 
     _encodeLogicalBit(bit) {
@@ -463,7 +465,7 @@
       const gridSize = this._gridSize;
 
       if (data.length !== gridSize * gridSize) {
-        throw new Error(`_decode: Expected ${gridSize * gridSize} bytes for grid size ${gridSize}`);
+        throw new Error("_decode: Expected " + (gridSize * gridSize) + " bytes for grid size " + gridSize);
       }
 
       // Apply error correction first
@@ -668,7 +670,7 @@
           return this._encodeLogicalBit(0);
 
         default:
-          throw new Error(`_applyGate: Unsupported gate type ${this._gateType}`);
+          throw new Error("_applyGate: Unsupported gate type " + this._gateType);
       }
     }
 
@@ -743,7 +745,7 @@
       const gridSize = this._gridSize;
 
       if (data.length !== gridSize * gridSize) {
-        throw new Error(`_measureStabilizerOperation: Expected ${gridSize * gridSize} bytes`);
+        throw new Error("_measureStabilizerOperation: Expected " + (gridSize * gridSize) + " bytes");
       }
 
       if (this._measureStabilizer === 'position') {
@@ -773,6 +775,10 @@
       return this._decode(processed);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Detect if displacement error exceeds correction bound
       if (data.length !== this._gridSize * this._gridSize) {
@@ -798,7 +804,7 @@
         epsilon: this._epsilon,
         gridSize: this._gridSize,
         correctionBound: this._sqrtPi / 2,
-        description: `Square-lattice GKP code with spacing ${this._twoSqrtPi.toFixed(3)}`
+        description: "Square-lattice GKP code with spacing " + (this._twoSqrtPi.toFixed(3))
       };
     }
   }

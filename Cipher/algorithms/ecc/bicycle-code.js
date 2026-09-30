@@ -232,7 +232,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BicycleCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -249,13 +249,17 @@
   class BicycleCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BicycleCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // [[6,2,2]] bicycle code parameters
@@ -311,24 +315,24 @@
      */
     encode(logicalQubits) {
       if (logicalQubits.length % this.k !== 0) {
-        throw new Error(`Bicycle code encode: Input must be multiple of ${this.k} logical qubits`);
+        throw new Error("Bicycle code encode: Input must be multiple of " + this.k + " logical qubits");
       }
 
       const encoded = [];
 
       // Process k logical qubits at a time
       for (let i = 0; i < logicalQubits.length; i += this.k) {
-        const q0 = OpCodes.AndN(logicalQubits[i], 1);
-        const q1 = OpCodes.AndN(logicalQubits[i + 1], 1);
+        const q0 = OpCodes.And32(logicalQubits[i], 1);
+        const q1 = OpCodes.And32(logicalQubits[i + 1], 1);
 
         // Pack two logical qubits into index
-        const logicalState = OpCodes.OrN(OpCodes.Shl32(q0, 1), q1);
+        const logicalState = OpCodes.Or32(OpCodes.Shl32(q0, 1), q1);
 
         // Lookup codeword from logical basis
         const codeword = LOGICAL_CODEWORDS_6_2_2[logicalState];
 
         if (!codeword) {
-          throw new Error(`Invalid logical state: ${logicalState}`);
+          throw new Error("Invalid logical state: " + logicalState);
         }
 
         for (let _i = 0; _i < codeword.length; _i++) encoded.push(codeword[_i]);
@@ -344,7 +348,7 @@
      */
     decode(physicalQubits) {
       if (physicalQubits.length % this.n !== 0) {
-        throw new Error(`Bicycle code decode: Input must be multiple of ${this.n} physical qubits`);
+        throw new Error("Bicycle code decode: Input must be multiple of " + this.n + " physical qubits");
       }
 
       const decoded = [];
@@ -372,8 +376,8 @@
         const logicalState = this.extractLogicalQubits(block);
 
         // Unpack logical state to two qubits
-        const q0 = OpCodes.AndN(OpCodes.Shr32(logicalState, 1), 1);
-        const q1 = OpCodes.AndN(logicalState, 1);
+        const q0 = OpCodes.And32(OpCodes.Shr32(logicalState, 1), 1);
+        const q1 = OpCodes.And32(logicalState, 1);
 
         decoded.push(q0, q1);
       }
@@ -389,12 +393,13 @@
       const syndrome = new Array(parityMatrix.length).fill(0);
 
       for (let i = 0; i < parityMatrix.length; ++i) {
+        /** @type {uint32} */
         let parity = 0;
 
         // Compute parity check (GF(2) addition = XOR)
         for (let j = 0; j < this.n; ++j) {
           if (parityMatrix[i][j] === 1) {
-            parity = OpCodes.XorN(parity, qubits[j]);
+            parity = OpCodes.Xor32(parity, qubits[j]);
           }
         }
 
@@ -460,6 +465,8 @@
     /**
      * Detect if error is present (public API for testing)
      * Measures both X and Z syndromes
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -480,7 +487,7 @@
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
       const result = [...qubits];
@@ -488,7 +495,7 @@
       switch (errorType) {
         case 'X':
           // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         case 'Z':
@@ -499,11 +506,11 @@
 
         case 'Y':
           // Y gate: both bit-flip and phase-flip (iXZ)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}. Use 'X', 'Z', or 'Y'`);
+          throw new Error("Unknown error type: " + errorType + ". Use 'X', 'Z', or 'Y'");
       }
 
       return result;

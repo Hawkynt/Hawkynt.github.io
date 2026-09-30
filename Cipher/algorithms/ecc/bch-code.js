@@ -109,7 +109,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BCHCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -126,13 +126,15 @@
   class BCHCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BCHCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // BCH(7,4) generator polynomial: x^3 + x + 1 (octal 013 = binary 1011)
@@ -170,6 +172,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // BCH(7,4) encoding using polynomial division
       if (data.length !== 4) {
@@ -193,6 +199,10 @@
       return [...message, ...remainder];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // BCH(7,4) decoding with single error correction
       if (data.length !== 7) {
@@ -208,14 +218,14 @@
       const hasError = syndrome.some(bit => bit !== 0);
 
       if (hasError) {
-        console.log(`BCH: Error detected, syndrome = ${syndrome.join('')}`);
+        console.log("BCH: Error detected, syndrome = " + (syndrome.join('')));
 
         // For BCH(7,4), we can use simple error location
         // Find error position using syndrome
         const errorPos = this.findErrorPosition(syndrome);
         if (errorPos >= 0 && errorPos < 7) {
-          received[errorPos] = OpCodes.XorN(received[errorPos], 1);
-          console.log(`BCH: Corrected error at position ${errorPos}`);
+          received[errorPos] = OpCodes.Xor32(received[errorPos], 1);
+          console.log("BCH: Corrected error at position " + errorPos);
         }
       }
 
@@ -231,7 +241,7 @@
       for (let i = 0; i <= result.length - divisorLen; ++i) {
         if (result[i] === 1) {
           for (let j = 0; j < divisorLen; ++j) {
-            result[i + j] = OpCodes.XorN(result[i + j], divisor[j]);
+            result[i + j] = OpCodes.Xor32(result[i + j], divisor[j]);
           }
         }
       }
@@ -265,6 +275,10 @@
       return positionTable[syndromeValue] !== undefined ? positionTable[syndromeValue] : -1;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 7) return true;
 

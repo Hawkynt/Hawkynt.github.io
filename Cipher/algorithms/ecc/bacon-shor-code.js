@@ -92,8 +92,8 @@
   const LOGICAL_Z = [0, 3, 6]; // Left column
 
   // Classical encoding for educational simulation
-  // OpCodes.OrN(Logical, 0)⟩ encoded OpCodes.OrN(as, 000) 000 000⟩
-  // OpCodes.OrN(Logical, 1)⟩ encoded OpCodes.OrN(as, 111) 000 000⟩ (logical X applied)
+  // OpCodes.Or32(Logical, 0)⟩ encoded OpCodes.Or32(as, 000) 000 000⟩
+  // OpCodes.Or32(Logical, 1)⟩ encoded OpCodes.Or32(as, 111) 000 000⟩ (logical X applied)
   const LOGICAL_ZERO_9 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const LOGICAL_ONE_9  = [1, 1, 1, 0, 0, 0, 0, 0, 0];
 
@@ -166,18 +166,18 @@
       // Based on Error Correction Zoo and theoretical construction
       // Using classical representation for educational demonstration
       this.tests = [
-        // Encode OpCodes.OrN(logical, 0)⟩ to 9-qubit codeword
+        // Encode OpCodes.Or32(logical, 0)⟩ to 9-qubit codeword
         new TestCase(
           [0], // Logical 0
-          [0, 0, 0, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.OrN(as, 000) 000 000⟩
-          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 0)⟩",
+          [0, 0, 0, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.Or32(as, 000) 000 000⟩
+          "Bacon-Shor [[9,1,3]] encode OpCodes.Or32(logical, 0)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
-        // Encode OpCodes.OrN(logical, 1)⟩ to 9-qubit codeword
+        // Encode OpCodes.Or32(logical, 1)⟩ to 9-qubit codeword
         new TestCase(
           [1], // Logical 1
-          [1, 1, 1, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.OrN(as, 111) 000 000⟩ (logical X on top row)
-          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 1)⟩",
+          [1, 1, 1, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.Or32(as, 111) 000 000⟩ (logical X on top row)
+          "Bacon-Shor [[9,1,3]] encode OpCodes.Or32(logical, 1)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
         // Encode multiple logical qubits
@@ -193,7 +193,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BaconShorCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -210,12 +210,13 @@
   class BaconShorCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BaconShorCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.inputBuffer = [];
     }
@@ -266,8 +267,8 @@
         const logicalBit = this.inputBuffer[i]&1;
 
         // Encode using [[9,1,3]] Bacon-Shor code
-        // OpCodes.OrN(Logical, 0)⟩ → [0,0,0,0,0,0,0,0,0]
-        // OpCodes.OrN(Logical, 1)⟩ → [1,1,1,0,0,0,0,0,0] (logical X applied to top row)
+        // OpCodes.Or32(Logical, 0)⟩ → [0,0,0,0,0,0,0,0,0]
+        // OpCodes.Or32(Logical, 1)⟩ → [1,1,1,0,0,0,0,0,0] (logical X applied to top row)
         if (logicalBit === 0) {
           for (let _i = 0; _i < LOGICAL_ZERO_9.length; _i++) result.push(LOGICAL_ZERO_9[_i]);
         } else {
@@ -456,12 +457,16 @@
       const topRow = codeword.slice(0, 3);
       const ones = topRow.filter(b => b === 1).length;
 
-      // Majority vote: if at least 2 of 3 qubits in top row are 1, decode OpCodes.OrN(as, 1)⟩
+      // Majority vote: if at least 2 of 3 qubits in top row are 1, decode OpCodes.Or32(as, 1)⟩
       return ones >= 2 ? 1 : 0;
     }
 
     // ===== ERROR DETECTION =====
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!data || data.length < 9) return true;
 
