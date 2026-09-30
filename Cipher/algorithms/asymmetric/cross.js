@@ -95,54 +95,65 @@
   // sponge is kept here with an incremental absorb and squeeze. The state is 25
   // lanes held as pairs of 32 bit halves, low half first.
 
+  /** @type {uint32[]} */
   const RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
     0x8000808B, 0x0000008B, 0x00008089, 0x00008003, 0x00008002, 0x00000080,
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
+  /** @type {uint32[]} */
   const RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000, 0x80000000,
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x00000000, 0x80000000
   ];
+  /** @type {int32[]} */
   const RHO = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
   ];
   // Where the pi step moves lane x + 5y: to y + 5((2x + 3y) mod 5).
-  const PI_TARGET = (function () {
+  /**
+   * @returns {int32[]} the pi target of every lane
+   */
+  function BuildPiTarget() {
+    /** @type {int32[]} */
     const t = new Array(25);
     for (let x = 0; x < 5; ++x)
       for (let y = 0; y < 5; ++y)
         t[x + 5 * y] = y + 5 * ((2 * x + 3 * y) % 5);
     return t;
-  })();
+  }
+
+  const PI_TARGET = BuildPiTarget();
 
   const kB = new Int32Array(50);
   const kC = new Int32Array(10);
 
+  /**
+   * Keccak-f[1600] over 25 lanes held as low/high 32 bit halves.
+   * @param {Int32Array} s - 50 words, modified in place
+   */
   function KeccakF(s) {
-    const Xor = OpCodes.Xor32, Or = OpCodes.Or32, And = OpCodes.And32, Not = OpCodes.Not32;
-    const Shl = OpCodes.Shl32, Shr = OpCodes.Shr32;
     const b = kB, c = kC;
 
     for (let round = 0; round < 24; ++round) {
       // theta
       for (let x = 0; x < 5; ++x) {
         const i = 2 * x;
-        c[i] = Xor(Xor(Xor(s[i], s[i + 10]), Xor(s[i + 20], s[i + 30])), s[i + 40]);
-        c[i + 1] = Xor(Xor(Xor(s[i + 1], s[i + 11]), Xor(s[i + 21], s[i + 31])), s[i + 41]);
+        c[i] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[i], s[i + 10]), OpCodes.Xor32(s[i + 20], s[i + 30])), s[i + 40]);
+        c[i + 1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[i + 1], s[i + 11]), OpCodes.Xor32(s[i + 21], s[i + 31])), s[i + 41]);
       }
       for (let x = 0; x < 5; ++x) {
         const n = 2 * ((x + 1) % 5), p = 2 * ((x + 4) % 5);
-        const dl = Xor(c[p], Or(Shl(c[n], 1), Shr(c[n + 1], 31)));
-        const dh = Xor(c[p + 1], Or(Shl(c[n + 1], 1), Shr(c[n], 31)));
+        const dl = OpCodes.Xor32(c[p], OpCodes.Or32(OpCodes.Shl32(c[n], 1), OpCodes.Shr32(c[n + 1], 31)));
+        const dh = OpCodes.Xor32(c[p + 1], OpCodes.Or32(OpCodes.Shl32(c[n + 1], 1), OpCodes.Shr32(c[n], 31)));
         for (let y = 0; y < 25; y += 5) {
           const i = 2 * (x + y);
-          s[i] = Xor(s[i], dl);
-          s[i + 1] = Xor(s[i + 1], dh);
+          s[i] = OpCodes.Xor32(s[i], dl);
+          s[i + 1] = OpCodes.Xor32(s[i + 1], dh);
         }
       }
       // rho and pi
@@ -153,43 +164,57 @@
         if (r === 0) {
           b[t] = lo; b[t + 1] = hi;
         } else if (r < 32) {
-          b[t] = Or(Shl(lo, r), Shr(hi, 32 - r));
-          b[t + 1] = Or(Shl(hi, r), Shr(lo, 32 - r));
+          b[t] = OpCodes.Or32(OpCodes.Shl32(lo, r), OpCodes.Shr32(hi, 32 - r));
+          b[t + 1] = OpCodes.Or32(OpCodes.Shl32(hi, r), OpCodes.Shr32(lo, 32 - r));
         } else if (r === 32) {
           b[t] = hi; b[t + 1] = lo;
         } else {
           const q = r - 32;
-          b[t] = Or(Shl(hi, q), Shr(lo, 32 - q));
-          b[t + 1] = Or(Shl(lo, q), Shr(hi, 32 - q));
+          b[t] = OpCodes.Or32(OpCodes.Shl32(hi, q), OpCodes.Shr32(lo, 32 - q));
+          b[t + 1] = OpCodes.Or32(OpCodes.Shl32(lo, q), OpCodes.Shr32(hi, 32 - q));
         }
       }
       // chi
       for (let y = 0; y < 25; y += 5) {
         for (let x = 0; x < 5; ++x) {
           const i = 2 * (x + y), n = 2 * ((x + 1) % 5 + y), a = 2 * ((x + 2) % 5 + y);
-          s[i] = Xor(b[i], And(Not(b[n]), b[a]));
-          s[i + 1] = Xor(b[i + 1], And(Not(b[n + 1]), b[a + 1]));
+          s[i] = OpCodes.Xor32(b[i], OpCodes.And32(OpCodes.Not32(b[n]), b[a]));
+          s[i + 1] = OpCodes.Xor32(b[i + 1], OpCodes.And32(OpCodes.Not32(b[n + 1]), b[a + 1]));
         }
       }
       // iota
-      s[0] = Xor(s[0], RC_LOW[round]);
-      s[1] = Xor(s[1], RC_HIGH[round]);
+      s[0] = OpCodes.Xor32(s[0], RC_LOW[round]);
+      s[1] = OpCodes.Xor32(s[1], RC_HIGH[round]);
     }
   }
 
   // The word of the state and the bit offset in it that hold octet i of a
   // block: lane i/8, low half for octets 0-3 of the lane, high for 4-7.
-  const OCTET_WORD = new Uint8Array(200);
-  const OCTET_SHIFT = new Uint8Array(200);
-  for (let i = 0; i < 200; ++i) {
-    OCTET_WORD[i] = 2 * Math.floor(i / 8) + (i % 8 >= 4 ? 1 : 0);
-    OCTET_SHIFT[i] = 8 * (i % 4);
+  /**
+   * @returns {Uint8Array} the state word holding each octet of a block
+   */
+  function BuildOctetWord() {
+    const table = new Uint8Array(200);
+    for (let i = 0; i < 200; ++i) table[i] = 2 * Math.floor(i / 8) + (i % 8 >= 4 ? 1 : 0);
+    return table;
   }
+
+  /**
+   * @returns {Uint8Array} the bit offset of each octet of a block in its word
+   */
+  function BuildOctetShift() {
+    const table = new Uint8Array(200);
+    for (let i = 0; i < 200; ++i) table[i] = 8 * (i % 4);
+    return table;
+  }
+
+  const OCTET_WORD = BuildOctetWord();
+  const OCTET_SHIFT = BuildOctetShift();
 
   /**
    * An incremental SHAKE: absorb any number of times, then squeeze any number
    * of times, the squeezed octets forming one continuous stream.
-   * @param {number} rate - 168 for SHAKE128, 136 for SHAKE256
+   * @param {int32} rate - 168 for SHAKE128, 136 for SHAKE256
    */
   function Shake(rate) {
     this.rate = rate;
@@ -247,6 +272,46 @@
     return out;
   };
 
+  // Typed entry points to the sponge above, which stays a constructor function
+  // because it is exported as one.
+
+  /**
+   * @param {Shake} x - the sponge
+   * @param {uint8[]|Uint8Array} data - octets to absorb
+   */
+  function ShakeAbsorb(x, data) {
+    x.absorb(data);
+  }
+
+  /**
+   * @param {Shake} x - the sponge
+   * @returns {Shake} the same sponge, ready to squeeze
+   */
+  function ShakeFinalize(x) {
+    return x.finalize();
+  }
+
+  /**
+   * @param {Shake} x - the sponge
+   * @param {int32} length - octets wanted
+   * @returns {Uint8Array} the octets
+   */
+  function ShakeSqueeze(x, length) {
+    /** @type {Uint8Array} */
+    const out = x.squeeze(length);
+    return out;
+  }
+
+  /**
+   * @param {Shake} x - the sponge
+   * @param {Uint8Array} out - destination
+   * @param {int32} offset - where to write
+   * @param {int32} length - octets wanted
+   */
+  function ShakeSqueezeInto(x, out, offset, length) {
+    x.squeezeInto(out, offset, length);
+  }
+
   // ===== the NIST generator, for the harness messages only =====
   //
   // The KAT generator draws each record's seed and message from the AES-256
@@ -273,13 +338,23 @@
     return aesAlgorithm;
   }
 
+  /**
+   * @param {Uint8Array} key - 32 key octets
+   * @param {Uint8Array} block - 16 plaintext octets
+   * @returns {uint8[]} 16 ciphertext octets
+   */
   function Aes256Ecb(key, block) {
     const instance = FindAes().CreateInstance(false);
     instance.key = Array.from(key);
     instance.Feed(Array.from(block));
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
+  /**
+   * @param {Uint8Array} v - 16 octet big-endian counter, incremented in place
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -332,135 +407,442 @@
   // a tuning choice: each sampler reads exactly that many octets from its
   // stream, and whatever reads the stream next depends on it.
 
+  /**
+   * One TREE row: [off, npl, lpl, leafStart, leafCount, nodesToStore].
+   * @param {int32[]} off - per-level offsets
+   * @param {int32[]} npl - nodes per level
+   * @param {int32[]} lpl - leaves per level
+   * @param {int32[]} leafStart - first leaf of each leaf run
+   * @param {int32[]} leafCount - length of each leaf run
+   * @param {int32} nodesToStore - worst-case published nodes
+   * @returns {Array} the row
+   */
+  function TreeRowOf(off, npl, lpl, leafStart, leafCount, nodesToStore) {
+    return [off, npl, lpl, leafStart, leafCount, nodesToStore];
+  }
+
   const TREE = {
     'RSDP-1-fast':      null,
-    'RSDP-1-balanced':  [[0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 108],
-    'RSDP-1-small':     [[0,0,0,0,0,16,16,16,16,16,16], [1,2,4,8,16,16,32,64,128,256,512], [0,0,0,0,8,0,0,0,0,0,512], [527,23], [512,8], 129],
+    'RSDP-1-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 108),
+    'RSDP-1-small':     TreeRowOf([0,0,0,0,0,16,16,16,16,16,16], [1,2,4,8,16,16,32,64,128,256,512], [0,0,0,0,8,0,0,0,0,0,512], [527,23], [512,8], 129),
     'RSDP-3-fast':      null,
-    'RSDP-3-balanced':  [[0,0,0,0,0,0,0,0,0,256], [1,2,4,8,16,32,64,128,256,256], [0,0,0,0,0,0,0,0,128,256], [511,383], [256,128], 165],
-    'RSDP-3-small':     [[0,0,0,0,0,8,8,8,8,136,136], [1,2,4,8,16,24,48,96,192,256,512], [0,0,0,0,4,0,0,0,64,0,512], [647,327,27], [512,64,4], 184],
+    'RSDP-3-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0,256], [1,2,4,8,16,32,64,128,256,256], [0,0,0,0,0,0,0,0,128,256], [511,383], [256,128], 165),
+    'RSDP-3-small':     TreeRowOf([0,0,0,0,0,8,8,8,8,136,136], [1,2,4,8,16,24,48,96,192,256,512], [0,0,0,0,4,0,0,0,64,0,512], [647,327,27], [512,64,4], 184),
     'RSDP-5-fast':      null,
-    'RSDP-5-balanced':  [[0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 220],
-    'RSDP-5-small':     [[0,0,0,0,0,0,0,0,0,128,128], [1,2,4,8,16,32,64,128,256,384,768], [0,0,0,0,0,0,0,0,64,0,768], [895,447], [768,64], 251],
+    'RSDP-5-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 220),
+    'RSDP-5-small':     TreeRowOf([0,0,0,0,0,0,0,0,0,128,128], [1,2,4,8,16,32,64,128,256,384,768], [0,0,0,0,0,0,0,0,64,0,768], [895,447], [768,64], 251),
     'RSDPG-1-fast':     null,
-    'RSDPG-1-balanced': [[0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 101],
-    'RSDPG-1-small':    [[0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 117],
+    'RSDPG-1-balanced': TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 101),
+    'RSDPG-1-small':    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 117),
     'RSDPG-3-fast':     null,
-    'RSDPG-3-balanced': [[0,0,0,0,0,8,24,24,24,24], [1,2,4,8,16,24,32,64,128,256], [0,0,0,0,4,8,0,0,0,256], [279,47,27], [256,8,4], 138],
-    'RSDPG-3-small':    [[0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 165],
+    'RSDPG-3-balanced': TreeRowOf([0,0,0,0,0,8,24,24,24,24], [1,2,4,8,16,24,32,64,128,256], [0,0,0,0,4,8,0,0,0,256], [279,47,27], [256,8,4], 138),
+    'RSDPG-3-small':    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 165),
     'RSDPG-5-fast':     null,
-    'RSDPG-5-balanced': [[0,0,0,0,0,0,8,8,8,200], [1,2,4,8,16,32,56,112,224,256], [0,0,0,0,0,4,0,0,96,256], [455,359,59], [256,96,4], 185],
-    'RSDPG-5-small':    [[0,0,0,0,4,4,4,4,4,4,260], [1,2,4,8,12,24,48,96,192,384,512], [0,0,0,2,0,0,0,0,0,128,512], [771,643,13], [512,128,2], 220]
+    'RSDPG-5-balanced': TreeRowOf([0,0,0,0,0,0,8,8,8,200], [1,2,4,8,16,32,56,112,224,256], [0,0,0,0,0,4,0,0,96,256], [455,359,59], [256,96,4], 185),
+    'RSDPG-5-small':    TreeRowOf([0,0,0,0,4,4,4,4,4,4,260], [1,2,4,8,12,24,48,96,192,384,512], [0,0,0,2,0,0,0,0,0,128,512], [771,643,13], [512,128,2], 220)
   };
 
-  // [lambda, n, k, m, t, w, bits for an F_p vector, for the F_p* challenge, for
-  //  the matrix V, for the E vector (or E_G vector), for W (RSDP(G) only), for
-  //  the fixed-weight string]
-  const SETS = [
-    ['RSDP-1-fast',      128, 127,  76,  0, 157,  82, 1127, 1421,  28028,  717,     0,  3656],
-    ['RSDP-1-balanced',  128, 127,  76,  0, 256, 215, 1127, 2170,  28028,  717,     0,  4776],
-    ['RSDP-1-small',     128, 127,  76,  0, 520, 488, 1127, 4130,  28028,  717,     0, 10390],
-    ['RSDP-3-fast',      192, 187, 111,  0, 239, 125, 1673, 2163,  60711, 1065,     0,  5264],
-    ['RSDP-3-balanced',  192, 187, 111,  0, 384, 321, 1673, 3255,  60711, 1065,     0,  8586],
-    ['RSDP-3-small',     192, 187, 111,  0, 580, 527, 1673, 4718,  60711, 1065,     0, 12880],
-    ['RSDP-5-fast',      256, 251, 150,  0, 321, 167, 2247, 2905, 108689, 1431,     0,  8343],
-    ['RSDP-5-balanced',  256, 251, 150,  0, 512, 427, 2247, 4347, 108689, 1431,     0, 10746],
-    ['RSDP-5-small',     256, 251, 150,  0, 832, 762, 2247, 6734, 108689, 1431,     0, 18150],
-    ['RSDPG-1-fast',     128,  55,  36, 25, 147,  76,  729, 1647,   6624,  343,  5677,  3472],
-    ['RSDPG-1-balanced', 128,  55,  36, 25, 256, 220,  729, 2682,   6624,  343,  5677,  4776],
-    ['RSDPG-1-small',    128,  55,  36, 25, 512, 484,  729, 5085,   6624,  343,  5677,  9153],
-    ['RSDPG-3-fast',     192,  79,  48, 40, 224, 119, 1071, 2502,  14211,  539, 11655,  5128],
-    ['RSDPG-3-balanced', 192,  79,  48, 40, 268, 196, 1071, 2925,  14211,  539, 11655,  6444],
-    ['RSDPG-3-small',    192,  79,  48, 40, 512, 463, 1071, 5238,  14211,  539, 11655,  9981],
-    ['RSDPG-5-fast',     256, 106,  69, 48, 300, 153, 1431, 3357,  24192,  679, 20594,  7929],
-    ['RSDPG-5-balanced', 256, 106,  69, 48, 356, 258, 1431, 3897,  24192,  679, 20594,  8937],
-    ['RSDPG-5-small',    256, 106,  69, 48, 642, 575, 1431, 6597,  24192,  679, 20594, 15140]
-  ];
+  /** The shape of a truncated tree, read from its TREE row. */
+  class CrossTree {
+    /**
+     * @param {int32[]} off - per-level offsets
+     * @param {int32[]} npl - nodes per level
+     * @param {int32[]} lpl - leaves per level
+     * @param {int32[]} leafStart - first leaf of each leaf run
+     * @param {int32[]} leafCount - length of each leaf run
+     * @param {int32} nodesToStore - worst-case published nodes
+     */
+    constructor(off, npl, lpl, leafStart, leafCount, nodesToStore) {
+      /** @type {int32[]} */
+      this.off = off;
+      /** @type {int32[]} */
+      this.npl = npl;
+      /** @type {int32[]} */
+      this.lpl = lpl;
+      /** @type {int32[]} */
+      this.leafStart = leafStart;
+      /** @type {int32[]} */
+      this.leafCount = leafCount;
+      /** @type {int32} */
+      this.nodesToStore = nodesToStore;
+    }
+  }
 
-  function BitLength(v) {
+  /**
+   * A parameter set of parameters.h with its derived constants, in the field
+   * order the plain object always had.
+   */
+  class CrossParams {
+    /**
+     * @param {string} key - the TREE key, such as 'RSDP-1-fast'
+     * @param {int32} lambda - security level in bits
+     * @param {int32} n - code length
+     * @param {int32} k - code dimension
+     * @param {int32} m - dimension of the restricted subgroup, RSDP(G) only
+     * @param {int32} t - rounds
+     * @param {int32} w - rounds that open the seed
+     * @param {int32} bitsFpVec - sampler bits for an F_p vector
+     * @param {int32} bitsChall1 - sampler bits for the F_p* challenge
+     * @param {int32} bitsV - sampler bits for V
+     * @param {int32} bitsFz - sampler bits for the E vector
+     * @param {int32} bitsW - sampler bits for W
+     * @param {int32} bitsCw - sampler bits for the fixed-weight string
+     */
+    constructor(key, lambda, n, k, m, t, w, bitsFpVec, bitsChall1, bitsV, bitsFz, bitsW, bitsCw) {
+      const g = key.indexOf('RSDPG') === 0;
+      /** @type {string} */
+      this.key = key;
+      /** @type {string} */
+      this.name = 'CROSS-' + (g ? 'RSDPG' : 'RSDP') + '-' + lambda + '-' + key.split('-')[2];
+      /** @type {boolean} */
+      this.rsdpg = g;
+      /** @type {int32} */
+      this.lambda = lambda;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.m = m;
+      /** @type {int32} */
+      this.t = t;
+      /** @type {int32} */
+      this.w = w;
+      /** @type {int32} */
+      this.bitsFpVec = bitsFpVec;
+      /** @type {int32} */
+      this.bitsChall1 = bitsChall1;
+      /** @type {int32} */
+      this.bitsV = bitsV;
+      /** @type {int32} */
+      this.bitsFz = bitsFz;
+      /** @type {int32} */
+      this.bitsW = bitsW;
+      /** @type {int32} */
+      this.bitsCw = bitsCw;
+      /** @type {int32} */
+      this.P = g ? 509 : 127;
+      /** @type {int32} */
+      this.Z = g ? 127 : 7;
+      /** @type {int32} */
+      this.G = g ? 16 : 2;
+      const row = TreeRow(key);
+      /** @type {boolean} */
+      this.fast = row === null;
+      /** @type {Array|null} */
+      this.tree = row;
+      /** @type {int32} */
+      this.rate = this.lambda === 128 ? 168 : 136;
+      /** @type {int32} */
+      this.seedBytes = this.lambda / 8;
+      /** @type {int32} */
+      this.keySeedBytes = 2 * this.seedBytes;
+      /** @type {int32} */
+      this.hashBytes = 2 * this.seedBytes;
+      /** @type {int32} */
+      this.saltBytes = 2 * this.seedBytes;
+      /** @type {int32} */
+      this.bitsP = BitLength(this.P - 1);
+      /** @type {int32} */
+      this.bitsPm1 = BitLength(this.P - 2);
+      /** @type {int32} */
+      this.bitsZ = BitLength(this.Z - 1);
+      /** @type {int32} */
+      this.fpVecBytes = PackedSize(this.n, this.bitsP);
+      /** @type {int32} */
+      this.fpSynBytes = PackedSize(this.n - this.k, this.bitsP);
+      /** @type {int32} */
+      this.fzVecBytes = PackedSize(g ? this.m : this.n, this.bitsZ);
+      /** @type {int32} */
+      this.log2t = BitLength(this.t - 1);
+      /** @type {int32} */
+      this.nodesToStore = this.fast ? this.w : TreeShapeOfRow(row).nodesToStore;
+      /** @type {int32} */
+      this.pkBytes = this.keySeedBytes + this.fpSynBytes;
+      /** @type {int32} */
+      this.skBytes = this.keySeedBytes;
+      /** @type {int32} */
+      this.respBytes = this.fpVecBytes + this.fzVecBytes;
+      /** @type {int32} */
+      this.offPath = 3 * this.hashBytes;
+      /** @type {int32} */
+      this.offProof = this.offPath + this.nodesToStore * this.seedBytes;
+      /** @type {int32} */
+      this.offResp1 = this.offProof + this.nodesToStore * this.hashBytes;
+      /** @type {int32} */
+      this.offResp0 = this.offResp1 + (this.t - this.w) * this.hashBytes;
+      /** @type {int32} */
+      this.sigBytes = this.offResp0 + (this.t - this.w) * this.respBytes;
+      // Domain separators: the round counters take t values from 2t - 1, the
+      // key and challenge expansions sit just above them.
+      /** @type {int32} */
+      this.dscChall1 = 3 * this.t - 1;
+      /** @type {int32} */
+      this.dscFixedWeight = 3 * this.t;
+      /** @type {int32} */
+      this.dscSeedSk = 3 * this.t + 1;
+      /** @type {int32} */
+      this.dscSeedPk = 3 * this.t + 2;
+      /** @type {int32} */
+      this.dscSeedE = 3 * this.t + 3;
+      /** @type {Uint16Array} */
+      this.gPow = new Uint16Array(this.Z + 1);
+      /** @type {int32} */
+      let acc = 1;
+      for (let i = 0; i <= this.Z; ++i) { this.gPow[i] = acc; acc = (acc * this.G) % this.P; }
+    }
+  }
+
+  /**
+   * The TREE row of a set, or null for the fast corner.
+   * @param {string} key - the TREE key
+   * @returns {Array|null} [off, npl, lpl, leafStart, leafCount, nodesToStore]
+   */
+  function TreeRow(key) {
+    /** @type {Array|null} */
+    const row = TREE[key];
+    return row;
+  }
+
+  /**
+   * A typed view of a TREE row; the arrays are the row's own.
+   * @param {Array} row - [off, npl, lpl, leafStart, leafCount, nodesToStore]
+   * @returns {CrossTree} the view
+   */
+  function TreeShapeOfRow(row) {
+    return new CrossTree(row[0], row[1], row[2], row[3], row[4], row[5]);
+  }
+
+  /**
+   * @param {CrossParams} p - a tree-based parameter set
+   * @returns {CrossTree} the shape of its trees
+   */
+  function TreeShapeOf(p) {
+    return TreeShapeOfRow(p.tree);
+  }
+
+  /**
+   * @param {int32} value - value
+   * @returns {int32} Result
+   */
+  function BitLength(value) {
+    let v = value;
     let bits = 0;
     while (v > 0) { v = Math.floor(v / 2); ++bits; }
     return bits === 0 ? 1 : bits;
   }
 
+  /**
+   * @param {int32} count - count
+   * @param {int32} bits - bits
+   * @returns {int32} Result
+   */
   function PackedSize(count, bits) {
     return Math.ceil(count * bits / 8);
   }
 
-  function BuildParams(row) {
-    const key = row[0];
-    const g = key.indexOf('RSDPG') === 0;
-    const p = {
-      key: key,
-      name: 'CROSS-' + (g ? 'RSDPG' : 'RSDP') + '-' + row[1] + '-' + key.split('-')[2],
-      rsdpg: g,
-      lambda: row[1], n: row[2], k: row[3], m: row[4], t: row[5], w: row[6],
-      bitsFpVec: row[7], bitsChall1: row[8], bitsV: row[9], bitsFz: row[10], bitsW: row[11], bitsCw: row[12],
-      P: g ? 509 : 127,
-      Z: g ? 127 : 7,
-      G: g ? 16 : 2
-    };
-    p.fast = TREE[key] === null;
-    p.tree = TREE[key];
-    p.rate = p.lambda === 128 ? 168 : 136;
-    p.seedBytes = p.lambda / 8;
-    p.keySeedBytes = 2 * p.seedBytes;
-    p.hashBytes = 2 * p.seedBytes;
-    p.saltBytes = 2 * p.seedBytes;
-    p.bitsP = BitLength(p.P - 1);
-    p.bitsPm1 = BitLength(p.P - 2);
-    p.bitsZ = BitLength(p.Z - 1);
-    p.fpVecBytes = PackedSize(p.n, p.bitsP);
-    p.fpSynBytes = PackedSize(p.n - p.k, p.bitsP);
-    p.fzVecBytes = PackedSize(g ? p.m : p.n, p.bitsZ);
-    p.log2t = BitLength(p.t - 1);
-    p.nodesToStore = p.fast ? p.w : p.tree[5];
-    p.pkBytes = p.keySeedBytes + p.fpSynBytes;
-    p.skBytes = p.keySeedBytes;
-    p.respBytes = p.fpVecBytes + p.fzVecBytes;
-    p.offPath = 3 * p.hashBytes;
-    p.offProof = p.offPath + p.nodesToStore * p.seedBytes;
-    p.offResp1 = p.offProof + p.nodesToStore * p.hashBytes;
-    p.offResp0 = p.offResp1 + (p.t - p.w) * p.hashBytes;
-    p.sigBytes = p.offResp0 + (p.t - p.w) * p.respBytes;
-    // Domain separators: the round counters take t values from 2t - 1, the
-    // key and challenge expansions sit just above them.
-    p.dscChall1 = 3 * p.t - 1;
-    p.dscFixedWeight = 3 * p.t;
-    p.dscSeedSk = 3 * p.t + 1;
-    p.dscSeedPk = 3 * p.t + 2;
-    p.dscSeedE = 3 * p.t + 3;
-    p.gPow = new Uint16Array(p.Z + 1);
-    let acc = 1;
-    for (let i = 0; i <= p.Z; ++i) { p.gPow[i] = acc; acc = (acc * p.G) % p.P; }
-    return p;
+  // [lambda, n, k, m, t, w, bits for an F_p vector, for the F_p* challenge, for
+  //  the matrix V, for the E vector (or E_G vector), for W (RSDP(G) only), for
+  //  the fixed-weight string]
+  /** @type {CrossParams[]} */
+  const PARAMETER_SET_LIST = [
+    new CrossParams('RSDP-1-fast',      128, 127,  76,  0, 157,  82, 1127, 1421,  28028,  717,     0,  3656),
+    new CrossParams('RSDP-1-balanced',  128, 127,  76,  0, 256, 215, 1127, 2170,  28028,  717,     0,  4776),
+    new CrossParams('RSDP-1-small',     128, 127,  76,  0, 520, 488, 1127, 4130,  28028,  717,     0, 10390),
+    new CrossParams('RSDP-3-fast',      192, 187, 111,  0, 239, 125, 1673, 2163,  60711, 1065,     0,  5264),
+    new CrossParams('RSDP-3-balanced',  192, 187, 111,  0, 384, 321, 1673, 3255,  60711, 1065,     0,  8586),
+    new CrossParams('RSDP-3-small',     192, 187, 111,  0, 580, 527, 1673, 4718,  60711, 1065,     0, 12880),
+    new CrossParams('RSDP-5-fast',      256, 251, 150,  0, 321, 167, 2247, 2905, 108689, 1431,     0,  8343),
+    new CrossParams('RSDP-5-balanced',  256, 251, 150,  0, 512, 427, 2247, 4347, 108689, 1431,     0, 10746),
+    new CrossParams('RSDP-5-small',     256, 251, 150,  0, 832, 762, 2247, 6734, 108689, 1431,     0, 18150),
+    new CrossParams('RSDPG-1-fast',     128,  55,  36, 25, 147,  76,  729, 1647,   6624,  343,  5677,  3472),
+    new CrossParams('RSDPG-1-balanced', 128,  55,  36, 25, 256, 220,  729, 2682,   6624,  343,  5677,  4776),
+    new CrossParams('RSDPG-1-small',    128,  55,  36, 25, 512, 484,  729, 5085,   6624,  343,  5677,  9153),
+    new CrossParams('RSDPG-3-fast',     192,  79,  48, 40, 224, 119, 1071, 2502,  14211,  539, 11655,  5128),
+    new CrossParams('RSDPG-3-balanced', 192,  79,  48, 40, 268, 196, 1071, 2925,  14211,  539, 11655,  6444),
+    new CrossParams('RSDPG-3-small',    192,  79,  48, 40, 512, 463, 1071, 5238,  14211,  539, 11655,  9981),
+    new CrossParams('RSDPG-5-fast',     256, 106,  69, 48, 300, 153, 1431, 3357,  24192,  679, 20594,  7929),
+    new CrossParams('RSDPG-5-balanced', 256, 106,  69, 48, 356, 258, 1431, 3897,  24192,  679, 20594,  8937),
+    new CrossParams('RSDPG-5-small',    256, 106,  69, 48, 642, 575, 1431, 6597,  24192,  679, 20594, 15140)
+  ];
+
+  /**
+   * The sets by name, in the order of the list.
+   * @returns {Object} name to parameter set
+   */
+  function BuildParameterSets() {
+    const table = {};
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) table[PARAMETER_SET_LIST[i].name] = PARAMETER_SET_LIST[i];
+    return table;
   }
 
-  const PARAMETER_SETS = {};
-  const SET_NAMES = [];
-  for (let i = 0; i < SETS.length; ++i) {
-    const p = BuildParams(SETS[i]);
-    PARAMETER_SETS[p.name] = p;
-    SET_NAMES.push(p.name);
+  /**
+   * @returns {string[]} the set names, in the order of the list
+   */
+  function BuildSetNames() {
+    /** @type {string[]} */
+    const names = [];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) names.push(PARAMETER_SET_LIST[i].name);
+    return names;
+  }
+
+  const PARAMETER_SETS = BuildParameterSets();
+  const SET_NAMES = BuildSetNames();
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {CrossParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {CrossParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
   }
 
   const HASH_DSC = 32768;
 
-  // ===== CSPRNG and hash =====
+  // ===== result records =====
 
-  function CsprngInit(p, parts, dsc) {
-    const x = new Shake(p.rate);
-    for (let i = 0; i < parts.length; ++i) x.absorb(parts[i]);
-    x.absorb([dsc % 256, Math.floor(dsc / 256)]);
-    return x.finalize();
+  class CrossUnpacked {
+    /**
+     * @param {Uint16Array} values - the unpacked values
+     * @param {boolean} ok - whether the padding bits are zero
+     */
+    constructor(values, ok) {
+      /** @type {Uint16Array} */
+      this.values = values;
+      /** @type {boolean} */
+      this.ok = ok;
+    }
   }
 
+  class CrossMatrices {
+    /**
+     * @param {Uint16Array} V - the parity-check part
+     * @param {Uint16Array|null} W - the RSDP(G) generator part
+     */
+    constructor(V, W) {
+      /** @type {Uint16Array} */
+      this.V = V;
+      /** @type {Uint16Array|null} */
+      this.W = W;
+    }
+  }
+
+  class CrossSecretKey {
+    /**
+     * @param {Uint8Array} seedPk - the public seed
+     * @param {Uint16Array} V - the parity-check part
+     * @param {Uint16Array|null} W - the RSDP(G) generator part
+     * @param {Uint16Array} eBar - the secret restricted vector
+     * @param {Uint16Array|null} eGBar - its RSDP(G) coordinates
+     */
+    constructor(seedPk, V, W, eBar, eGBar) {
+      /** @type {Uint8Array} */
+      this.seedPk = seedPk;
+      /** @type {Uint16Array} */
+      this.V = V;
+      /** @type {Uint16Array|null} */
+      this.W = W;
+      /** @type {Uint16Array} */
+      this.eBar = eBar;
+      /** @type {Uint16Array|null} */
+      this.eGBar = eGBar;
+    }
+  }
+
+  class CrossSeeds {
+    /**
+     * @param {Uint8Array} seeds - the round seeds
+     * @param {boolean} ok - whether the padding is zero
+     */
+    constructor(seeds, ok) {
+      /** @type {Uint8Array} */
+      this.seeds = seeds;
+      /** @type {boolean} */
+      this.ok = ok;
+    }
+  }
+
+  class CrossRoot {
+    /**
+     * @param {Uint8Array} root - the Merkle root
+     * @param {boolean} ok - whether the padding is zero
+     */
+    constructor(root, ok) {
+      /** @type {Uint8Array} */
+      this.root = root;
+      /** @type {boolean} */
+      this.ok = ok;
+    }
+  }
+
+  class CrossFirstChallenge {
+    /**
+     * @param {Uint8Array} digest - the challenge digest
+     * @param {Uint16Array} chall1 - the t challenge values
+     */
+    constructor(digest, chall1) {
+      /** @type {Uint8Array} */
+      this.digest = digest;
+      /** @type {Uint16Array} */
+      this.chall1 = chall1;
+    }
+  }
+
+  class CrossHarnessRandomness {
+    /**
+     * @param {Uint8Array} seedSk - the key-pair seed
+     * @param {Uint8Array} rootSeed - the root seed
+     * @param {Uint8Array} salt - the salt
+     */
+    constructor(seedSk, rootSeed, salt) {
+      /** @type {Uint8Array} */
+      this.seedSk = seedSk;
+      /** @type {Uint8Array} */
+      this.rootSeed = rootSeed;
+      /** @type {Uint8Array} */
+      this.salt = salt;
+    }
+  }
+
+  // ===== CSPRNG and hash =====
+
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array[]} parts - parts
+   * @param {int32} dsc - dsc
+   * @returns {Shake} Result
+   */
+  function CsprngInit(p, parts, dsc) {
+    const x = new Shake(p.rate);
+    for (let i = 0; i < parts.length; ++i) ShakeAbsorb(x, parts[i]);
+    /** @type {uint8[]} */
+    const separator = [dsc % 256, Math.floor(dsc / 256)];
+    ShakeAbsorb(x, separator);
+    return ShakeFinalize(x);
+  }
+
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array[]} parts - parts
+   * @param {int32} dsc - dsc
+   * @returns {Uint8Array} Result
+   */
   function Hash(p, parts, dsc) {
-    return CsprngInit(p, parts, dsc).squeeze(p.hashBytes);
+    return ShakeSqueeze(CsprngInit(p, parts, dsc), p.hashBytes);
   }
 
   // The samplers read the stream as one little-endian bit string, a few bits
   // per candidate, with the octets beyond the drawn buffer reading as zero.
+  /**
+   * @param {Uint8Array} buf - buf
+   * @param {int32} bitPos - bitPos
+   * @param {int32} count - count
+   * @returns {int32} Result
+   */
   function ReadBits(buf, bitPos, count) {
     const idx = Math.floor(bitPos / 8);
     const len = buf.length;
@@ -473,9 +855,16 @@
   /**
    * Draw count values below bound, each from `bits` bits of a buffer of
    * ceil(bufferBits / 8) octets, rejecting out-of-range candidates.
+   * @param {Shake} state - state
+   * @param {int32} count - count
+   * @param {int32} bits - bits
+   * @param {int32} bound - bound
+   * @param {int32} bufferBits - bufferBits
+   * @param {boolean} plusOne - plusOne
+   * @returns {Uint16Array} Result
    */
   function SampleUniform(state, count, bits, bound, bufferBits, plusOne) {
-    const buf = state.squeeze(Math.ceil(bufferBits / 8));
+    const buf = ShakeSqueeze(state, Math.ceil(bufferBits / 8));
     const out = new Uint16Array(count);
     let placed = 0, pos = 0;
     while (placed < count) {
@@ -486,16 +875,46 @@
     return out;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Shake} state - state
+   * @returns {Uint16Array} Result
+   */
   function SampleFpVec(p, state) { return SampleUniform(state, p.n, p.bitsP, p.P, p.bitsFpVec, false); }
+  /**
+   * @param {CrossParams} p - p
+   * @param {Shake} state - state
+   * @returns {Uint16Array} Result
+   */
   function SampleChall1(p, state) { return SampleUniform(state, p.t, p.bitsPm1, p.P, p.bitsChall1, true); }
+  /**
+   * @param {CrossParams} p - p
+   * @param {Shake} state - state
+   * @returns {Uint16Array} Result
+   */
   function SampleV(p, state) { return SampleUniform(state, p.k * (p.n - p.k), p.bitsP, p.P, p.bitsV, false); }
+  /**
+   * @param {CrossParams} p - p
+   * @param {Shake} state - state
+   * @returns {Uint16Array} Result
+   */
   function SampleFzVec(p, state) { return SampleUniform(state, p.rsdpg ? p.m : p.n, p.bitsZ, p.Z, p.bitsFz, false); }
+  /**
+   * @param {CrossParams} p - p
+   * @param {Shake} state - state
+   * @returns {Uint16Array} Result
+   */
   function SampleW(p, state) { return SampleUniform(state, p.m * (p.n - p.m), p.bitsZ, p.Z, p.bitsW, false); }
 
-  /** The second challenge: t positions, exactly w of them ones, by Fisher-Yates. */
+  /**
+   * The second challenge: t positions, exactly w of them ones, by Fisher-Yates.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} digest - digest
+   * @returns {Uint8Array} Result
+   */
   function ExpandFixedWeight(p, digest) {
     const state = CsprngInit(p, [digest], p.dscFixedWeight);
-    const buf = state.squeeze(Math.ceil(p.bitsCw / 8));
+    const buf = ShakeSqueeze(state, Math.ceil(p.bitsCw / 8));
     const out = new Uint8Array(p.t);
     for (let i = 0; i < p.w; ++i) out[i] = 1;
     let pos = 0, curr = 0;
@@ -517,6 +936,13 @@
   // Vectors are packed as one little-endian bit string of fixed-width values,
   // padded with zero bits to a whole octet.
 
+  /**
+   * @param {Uint16Array} values - values
+   * @param {int32} count - count
+   * @param {int32} bits - bits
+   * @param {Uint8Array} out - out
+   * @param {int32} offset - offset
+   */
   function Pack(values, count, bits, out, offset) {
     const bytes = PackedSize(count, bits);
     for (let i = 0; i < bytes; ++i) out[offset + i] = 0;
@@ -535,6 +961,11 @@
    * padding bits are zero, checked as the reference checks them: for the
    * 7 and 9 bit packings, and not at all for the 3 bit one, whose check in the
    * reference reduces to a constant.
+   * @param {Uint8Array} src - src
+   * @param {int32} offset - offset
+   * @param {int32} count - count
+   * @param {int32} bits - bits
+   * @returns {CrossUnpacked} Result
    */
   function Unpack(src, offset, count, bits) {
     const bytes = PackedSize(count, bits);
@@ -545,12 +976,18 @@
     const used = (count * bits) % 8;
     if (bits !== 3 && used !== 0)
       ok = Math.floor(buf[bytes - 1] / Math.pow(2, used)) === 0;
-    return { values: out, ok: ok };
+    return new CrossUnpacked(out, ok);
   }
 
   // ===== arithmetic =====
 
-  /** s = e H^T for H = [V I], e given as F_p values. */
+  /**
+   * s = e H^T for H = [V I], e given as F_p values.
+   * @param {CrossParams} p - p
+   * @param {Uint16Array} e - e
+   * @param {Uint16Array} V - V
+   * @returns {Uint16Array} Result
+   */
   function FpVecByMatrix(p, e, V) {
     const nk = p.n - p.k, P = p.P;
     const acc = new Float64Array(nk);
@@ -566,7 +1003,13 @@
     return res;
   }
 
-  /** The restricted vector e_G M_G for M_G = [W I], exponents modulo z. */
+  /**
+   * The restricted vector e_G M_G for M_G = [W I], exponents modulo z.
+   * @param {CrossParams} p - p
+   * @param {Uint16Array} eG - eG
+   * @param {Uint16Array} W - W
+   * @returns {Uint16Array} Result
+   */
   function FzInfByMatrix(p, eG, W) {
     const nm = p.n - p.m, Z = p.Z;
     const res = new Uint16Array(p.n);
@@ -582,6 +1025,11 @@
     return res;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint16Array} e - e
+   * @returns {Uint16Array} Result
+   */
   function RestrToFp(p, e) {
     const out = new Uint16Array(e.length);
     for (let i = 0; i < e.length; ++i) out[i] = p.gPow[e[i] % p.Z];
@@ -590,30 +1038,48 @@
 
   // ===== key expansion =====
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} seedPk - seedPk
+   * @returns {CrossMatrices} Result
+   */
   function ExpandPk(p, seedPk) {
     const state = CsprngInit(p, [seedPk], p.dscSeedPk);
     const W = p.rsdpg ? SampleW(p, state) : null;
     const V = SampleV(p, state);
-    return { V: V, W: W };
+    return new CrossMatrices(V, W);
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} seedSk - seedSk
+   * @returns {CrossSecretKey} Result
+   */
   function ExpandSk(p, seedSk) {
-    const seeds = CsprngInit(p, [seedSk], p.dscSeedSk).squeeze(2 * p.keySeedBytes);
+    const seeds = ShakeSqueeze(CsprngInit(p, [seedSk], p.dscSeedSk), 2 * p.keySeedBytes);
     const seedE = seeds.subarray(0, p.keySeedBytes);
     const seedPk = seeds.subarray(p.keySeedBytes, 2 * p.keySeedBytes);
     const mats = ExpandPk(p, seedPk);
     const stateE = CsprngInit(p, [seedE], p.dscSeedE);
-    let eBar, eGBar = null;
+    /** @type {Uint16Array} */
+    let eBar = null;
+    /** @type {Uint16Array|null} */
+    let eGBar = null;
     if (p.rsdpg) {
       eGBar = SampleFzVec(p, stateE);
       eBar = FzInfByMatrix(p, eGBar, mats.W);
     } else {
       eBar = SampleFzVec(p, stateE);
     }
-    return { seedPk: seedPk, V: mats.V, W: mats.W, eBar: eBar, eGBar: eGBar };
+    return new CrossSecretKey(seedPk, mats.V, mats.W, eBar, eGBar);
   }
 
-  /** crypto_sign_keypair from a key-pair seed: the public key. */
+  /**
+   * crypto_sign_keypair from a key-pair seed: the public key.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} seedSk - seedSk
+   * @returns {Uint8Array} Result
+   */
   function PublicKeyFromSeed(p, seedSk) {
     const sk = ExpandSk(p, seedSk);
     const s = FpVecByMatrix(p, RestrToFp(p, sk.eBar), sk.V);
@@ -625,36 +1091,61 @@
 
   // ===== trees =====
 
+  /**
+   * @param {int32} i - i
+   * @returns {int32} Result
+   */
   function Parent(i) { return i % 2 ? (i - 1) / 2 : (i - 2) / 2; }
+  /**
+   * @param {int32} i - i
+   * @returns {int32} Result
+   */
   function Sibling(i) { return i % 2 ? i + 1 : i - 1; }
 
+  /**
+   * @param {CrossParams} p - p
+   * @returns {Uint16Array} Result
+   */
   function LeafIndex(p) {
-    const tr = p.tree, idx = new Uint16Array(p.t);
+    const tr = TreeShapeOf(p), idx = new Uint16Array(p.t);
     let cnt = 0;
-    for (let i = 0; i < tr[3].length; ++i)
-      for (let j = 0; j < tr[4][i]; ++j) idx[cnt++] = tr[3][i] + j;
+    for (let i = 0; i < tr.leafStart.length; ++i)
+      for (let j = 0; j < tr.leafCount[i]; ++j) idx[cnt++] = tr.leafStart[i] + j;
     return idx;
   }
 
-  /** Round seeds of the fast corner, which has no tree. */
+  /**
+   * Round seeds of the fast corner, which has no tree.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} rootSeed - rootSeed
+   * @param {Uint8Array} salt - salt
+   * @returns {Uint8Array} Result
+   */
   function SeedLeavesFlat(p, rootSeed, salt) {
     const S = p.seedBytes, t = p.t;
-    const quad = CsprngInit(p, [rootSeed, salt], 0).squeeze(4 * S);
+    const quad = ShakeSqueeze(CsprngInit(p, [rootSeed, salt], 0), 4 * S);
+    /** @type {int32[]} */
     const rem = [t % 4 > 0 ? 1 : 0, t % 4 > 1 ? 1 : 0, t % 4 > 2 ? 1 : 0, 0];
     const quarter = Math.floor(t / 4);
     const seeds = new Uint8Array(t * S);
     let offset = 0;
     for (let i = 0; i < 4; ++i) {
       const st = CsprngInit(p, [quad.subarray(i * S, (i + 1) * S), salt], i + 1);
-      st.squeezeInto(seeds, (quarter * i + offset) * S, (quarter + rem[i]) * S);
+      ShakeSqueezeInto(st, seeds, (quarter * i + offset) * S, (quarter + rem[i]) * S);
       offset += rem[i];
     }
     return seeds;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} rootSeed - rootSeed
+   * @param {Uint8Array} salt - salt
+   * @returns {Uint8Array} Result
+   */
   function GenSeedTree(p, rootSeed, salt) {
-    const S = p.seedBytes, tr = p.tree;
-    const off = tr[0], npl = tr[1], lpl = tr[2];
+    const S = p.seedBytes, tr = TreeShapeOf(p);
+    const off = tr.off, npl = tr.npl, lpl = tr.lpl;
     const tree = new Uint8Array((2 * p.t - 1) * S);
     tree.set(rootSeed, 0);
     let start = 0;
@@ -662,14 +1153,19 @@
       for (let j = 0; j < npl[level] - lpl[level]; ++j) {
         const father = start + j;
         const left = 2 * father + 1 - off[level];
-        CsprngInit(p, [tree.subarray(father * S, (father + 1) * S), salt], father)
-          .squeezeInto(tree, left * S, 2 * S);
+        ShakeSqueezeInto(CsprngInit(p, [tree.subarray(father * S, (father + 1) * S), salt], father),
+          tree, left * S, 2 * S);
       }
       start += npl[level];
     }
     return tree;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} tree - tree
+   * @returns {Uint8Array} Result
+   */
   function SeedLeavesFromTree(p, tree) {
     const S = p.seedBytes, idx = LeafIndex(p);
     const seeds = new Uint8Array(p.t * S);
@@ -677,13 +1173,18 @@
     return seeds;
   }
 
-  /** Flags of the seed tree nodes whose whole subtree is to be revealed. */
+  /**
+   * Flags of the seed tree nodes whose whole subtree is to be revealed.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} chall2 - chall2
+   * @returns {Uint8Array} Result
+   */
   function SeedsToPublish(p, chall2) {
-    const tr = p.tree, off = tr[0], npl = tr[1];
+    const tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const flags = new Uint8Array(2 * p.t - 1);
     const idx = LeafIndex(p);
     for (let i = 0; i < p.t; ++i) flags[idx[i]] = chall2[i];
-    let start = tr[3][0];
+    let start = tr.leafStart[0];
     for (let level = p.log2t; level > 0; --level) {
       for (let i = npl[level] - 2; i >= 0; i -= 2) {
         const cur = start + i;
@@ -695,8 +1196,15 @@
     return flags;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} tree - tree
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} sig - sig
+   * @param {int32} offset - offset
+   */
   function SeedPath(p, tree, chall2, sig, offset) {
-    const S = p.seedBytes, tr = p.tree, off = tr[0], npl = tr[1];
+    const S = p.seedBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const flags = SeedsToPublish(p, chall2);
     let start = 1, published = 0;
     for (let level = 1; level <= p.log2t; ++level) {
@@ -712,9 +1220,17 @@
     }
   }
 
-  /** Rebuild the round seeds a signature reveals; null if its padding is not zero. */
+  /**
+   * Rebuild the round seeds a signature reveals; null if its padding is not zero.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} sig - sig
+   * @param {int32} offset - offset
+   * @param {Uint8Array} salt - salt
+   * @returns {CrossSeeds} Result
+   */
   function RebuildSeedTree(p, chall2, sig, offset, salt) {
-    const S = p.seedBytes, tr = p.tree, off = tr[0], npl = tr[1], lpl = tr[2];
+    const S = p.seedBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl, lpl = tr.lpl;
     const flags = SeedsToPublish(p, chall2);
     const tree = new Uint8Array((2 * p.t - 1) * S);
     let used = 0, start = 1;
@@ -728,19 +1244,26 @@
           ++used;
         }
         if (flags[cur] === 1 && j < npl[level] - lpl[level]) {
-          CsprngInit(p, [tree.subarray(cur * S, (cur + 1) * S), salt], cur)
-            .squeezeInto(tree, left * S, 2 * S);
+          ShakeSqueezeInto(CsprngInit(p, [tree.subarray(cur * S, (cur + 1) * S), salt], cur),
+            tree, left * S, 2 * S);
         }
       }
       start += npl[level];
     }
+    /** @type {uint32} */
     let pad = 0;
     for (let i = used * S; i < p.nodesToStore * S; ++i) pad = OpCodes.Or32(pad, sig[offset + i]);
-    return { seeds: SeedLeavesFromTree(p, tree), ok: pad === 0 };
+    return new CrossSeeds(SeedLeavesFromTree(p, tree), pad === 0);
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} cmt0 - cmt0
+   * @returns {Uint8Array} Result
+   */
   function MerkleRootFlat(p, cmt0) {
     const H = p.hashBytes, t = p.t;
+    /** @type {int32[]} */
     const rem = [t % 4 > 0 ? 1 : 0, t % 4 > 1 ? 1 : 0, t % 4 > 2 ? 1 : 0, 0];
     const quarter = Math.floor(t / 4);
     const input = new Uint8Array(4 * H);
@@ -753,12 +1276,17 @@
     return Hash(p, [input], HASH_DSC);
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} cmt0 - cmt0
+   * @returns {Uint8Array} Result
+   */
   function MerkleTree(p, cmt0) {
-    const H = p.hashBytes, tr = p.tree, off = tr[0], npl = tr[1];
+    const H = p.hashBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const tree = new Uint8Array((2 * p.t - 1) * H);
     const idx = LeafIndex(p);
     for (let i = 0; i < p.t; ++i) tree.set(cmt0.subarray(i * H, (i + 1) * H), idx[i] * H);
-    let start = tr[3][0];
+    let start = tr.leafStart[0];
     for (let level = p.log2t; level > 0; --level) {
       for (let i = npl[level] - 2; i >= 0; i -= 2) {
         const cur = start + i;
@@ -770,12 +1298,19 @@
     return tree;
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} tree - tree
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} sig - sig
+   * @param {int32} offset - offset
+   */
   function MerkleProof(p, tree, chall2, sig, offset) {
-    const H = p.hashBytes, tr = p.tree, off = tr[0], npl = tr[1];
+    const H = p.hashBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const flags = new Uint8Array(2 * p.t - 1);
     const idx = LeafIndex(p);
     for (let i = 0; i < p.t; ++i) if (chall2[i] === 0) flags[idx[i]] = 1;
-    let start = tr[3][0], published = 0;
+    let start = tr.leafStart[0], published = 0;
     for (let level = p.log2t; level > 0; --level) {
       for (let i = npl[level] - 2; i >= 0; i -= 2) {
         const cur = start + i, sib = Sibling(cur);
@@ -794,8 +1329,16 @@
     }
   }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} cmt0 - cmt0
+   * @param {Uint8Array} chall2 - chall2
+   * @param {Uint8Array} sig - sig
+   * @param {int32} offset - offset
+   * @returns {CrossRoot} Result
+   */
   function MerkleRecompute(p, cmt0, chall2, sig, offset) {
-    const H = p.hashBytes, tr = p.tree, off = tr[0], npl = tr[1];
+    const H = p.hashBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const tree = new Uint8Array((2 * p.t - 1) * H);
     const flags = new Uint8Array(2 * p.t - 1);
     const idx = LeafIndex(p);
@@ -804,7 +1347,7 @@
       if (chall2[i] === 0) flags[idx[i]] = 1;
     }
     const input = new Uint8Array(2 * H);
-    let start = tr[3][0], published = 0;
+    let start = tr.leafStart[0], published = 0;
     for (let level = p.log2t; level > 0; --level) {
       for (let i = npl[level] - 2; i >= 0; i -= 2) {
         const cur = start + i, sib = Sibling(cur);
@@ -819,25 +1362,38 @@
       }
       start -= npl[level - 1];
     }
+    /** @type {uint32} */
     let pad = 0;
     for (let i = published * H; i < p.nodesToStore * H; ++i) pad = OpCodes.Or32(pad, sig[offset + i]);
-    return { root: tree.subarray(0, H), ok: pad === 0 };
+    return new CrossRoot(tree.subarray(0, H), pad === 0);
   }
 
   // ===== signing =====
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} m - m
+   * @returns {int32} Result
+   */
   function Mod(a, m) { return ((a % m) + m) % m; }
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} message - message
+   * @param {Uint8Array} digestCmt - digestCmt
+   * @param {Uint8Array} salt - salt
+   * @returns {CrossFirstChallenge} Result
+   */
   function FirstChallenge(p, message, digestCmt, salt) {
     const digestMsg = Hash(p, [message], HASH_DSC);
     const digestChall1 = Hash(p, [digestMsg, digestCmt, salt], HASH_DSC);
     const chall1 = SampleChall1(p, CsprngInit(p, [digestChall1], p.dscChall1));
-    return { digest: digestChall1, chall1: chall1 };
+    return new CrossFirstChallenge(digestChall1, chall1);
   }
 
   /**
    * CROSS signing.
-   * @param {object} p - parameter set
+   * @param {CrossParams} p - parameter set
    * @param {Uint8Array} seedSk - the secret key
    * @param {Uint8Array} message - the message
    * @param {Uint8Array} rootSeed - L/8 octets of randomness
@@ -850,7 +1406,10 @@
     const sig = new Uint8Array(p.sigBytes);
     sig.set(salt, 0);
 
-    let tree = null, seeds;
+    /** @type {Uint8Array|null} */
+    let tree = null;
+    /** @type {Uint8Array} */
+    let seeds = null;
     if (p.fast) {
       seeds = SeedLeavesFlat(p, rootSeed, salt);
     } else {
@@ -865,12 +1424,22 @@
     cmt1Input.set(salt, S);
     const cmt0 = new Uint8Array(t * H);
     const cmt1 = new Uint8Array(t * H);
-    const ePrime = new Array(t), uPrime = new Array(t), vBarAll = new Array(t);
+    /** @type {Uint16Array[]} */
+    const ePrime = new Array(t);
+    /** @type {Uint16Array[]} */
+    const uPrime = new Array(t);
+    /** @type {Uint16Array[]} */
+    const vBarAll = new Array(t);
 
     for (let i = 0; i < t; ++i) {
       const seed = seeds.subarray(i * S, (i + 1) * S);
       const state = CsprngInit(p, [seed, salt], i + 2 * t - 1);
-      let eBarPrime, vBar, vPacked;
+      /** @type {Uint16Array} */
+      let eBarPrime = null;
+      /** @type {Uint16Array} */
+      let vBar = null;
+      /** @type {Uint16Array} */
+      let vPacked = null;
       if (p.rsdpg) {
         const eGPrime = SampleFzVec(p, state);
         const vG = new Uint16Array(p.m);
@@ -898,7 +1467,10 @@
       vBarAll[i] = vPacked;
     }
 
-    let merkle = null, root;
+    /** @type {Uint8Array|null} */
+    let merkle = null;
+    /** @type {Uint8Array} */
+    let root = null;
     if (p.fast) {
       root = MerkleRootFlat(p, cmt0);
     } else {
@@ -910,6 +1482,7 @@
 
     const first = FirstChallenge(p, message, digestCmt, salt);
     const ys = new Uint8Array(t * p.fpVecBytes);
+    /** @type {Uint16Array[]} */
     const y = new Array(t);
     for (let i = 0; i < t; ++i) {
       const g = RestrToFp(p, ePrime[i]);
@@ -950,6 +1523,10 @@
 
   /**
    * CROSS verification.
+   * @param {CrossParams} p - p
+   * @param {Uint8Array} pk - pk
+   * @param {Uint8Array} message - message
+   * @param {Uint8Array} sig - sig
    * @returns {boolean} whether the signature verifies under the public key
    */
   function Verify(p, pk, message, sig) {
@@ -966,7 +1543,8 @@
     const first = FirstChallenge(p, message, digestCmt, salt);
     const chall2 = ExpandFixedWeight(p, digestChall2);
 
-    let seeds;
+    /** @type {Uint8Array} */
+    let seeds = null;
     if (p.fast) {
       seeds = new Uint8Array(t * S);
       let pub = 0;
@@ -1031,7 +1609,8 @@
       }
     }
 
-    let root;
+    /** @type {Uint8Array} */
+    let root = null;
     if (p.fast) {
       let pub = 0;
       for (let i = 0; i < t; ++i)
@@ -1048,6 +1627,7 @@
     const digestCmtPrime = Hash(p, [root, Hash(p, [cmt1], HASH_DSC)], HASH_DSC);
     const digestChall2Prime = Hash(p, [ys, first.digest], HASH_DSC);
 
+    /** @type {uint32} */
     let diff = 0;
     for (let i = 0; i < H; ++i) {
       diff = OpCodes.Or32(diff, OpCodes.Xor32(digestCmtPrime[i], digestCmt[i]));
@@ -1062,18 +1642,22 @@
   // every randombytes call of the whole response file, in order: per record
   // the key-pair seed, then the root seed, then the salt.
 
+  /**
+   * @param {CrossParams} p - p
+   * @param {int32} count - count
+   * @returns {CrossHarnessRandomness} Result
+   */
   function HarnessRandomness(p, count) {
     const entropy = new Uint8Array(48);
     for (let i = 0; i < 48; ++i) entropy[i] = i;
     const stream = CsprngInit(p, [entropy], 0);
     const perRecord = p.keySeedBytes + p.seedBytes + p.saltBytes;
     const skip = new Uint8Array(perRecord);
-    for (let i = 0; i < count; ++i) stream.squeezeInto(skip, 0, perRecord);
-    return {
-      seedSk: stream.squeeze(p.keySeedBytes),
-      rootSeed: stream.squeeze(p.seedBytes),
-      salt: stream.squeeze(p.saltBytes)
-    };
+    for (let i = 0; i < count; ++i) ShakeSqueezeInto(stream, skip, 0, perRecord);
+    const seedSk = ShakeSqueeze(stream, p.keySeedBytes);
+    const rootSeed = ShakeSqueeze(stream, p.seedBytes);
+    const salt = ShakeSqueeze(stream, p.saltBytes);
+    return new CrossHarnessRandomness(seedSk, rootSeed, salt);
   }
 
   // ===== KAT DATA =====
@@ -1091,14 +1675,55 @@
 
   const KAT_URI = 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/submission-pkg/cross-submission-round2.zip';
 
+  /** One record of a rebuilt response file. */
+  class CrossKatRecord {
+    /**
+     * @param {string} set - parameter set name
+     * @param {string} file - response file
+     * @param {int32} count - record number
+     * @param {string} sk - secret key, hex
+     * @param {string} pk - public key, hex
+     * @param {string} msg - message, hex
+     * @param {string} sm - signed message, hex
+     * @param {boolean} keygen - also drive key generation from the harness
+     * @param {boolean} negatives - also add the rejection cases
+     * @param {string|null} otherPk - another record's public key, for the rejection cases
+     */
+    constructor(set, file, count, sk, pk, msg, sm, keygen, negatives, otherPk) {
+      /** @type {string} */
+      this.set = set;
+      /** @type {string} */
+      this.file = file;
+      /** @type {int32} */
+      this.count = count;
+      /** @type {string} */
+      this.sk = sk;
+      /** @type {string} */
+      this.pk = pk;
+      /** @type {string} */
+      this.msg = msg;
+      /** @type {string} */
+      this.sm = sm;
+      /** @type {boolean} */
+      this.keygen = keygen;
+      /** @type {boolean} */
+      this.negatives = negatives;
+      /** @type {string|null} */
+      this.otherPk = otherPk;
+    }
+  }
+
+  /** @type {CrossKatRecord[]} */
   const KAT = [
-    {
-      set: 'CROSS-RSDP-128-fast', file: 'PQCsignKAT_77_18432.rsp', count: 0,
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: '843A0CCA82D1B761EC4AF1ACB0473A18DE5FD2143A6A7520E61BB703B4270B2D2271CB06D9766AB1EC9D1632222D5EED6048010002E0DE320143C82070894D2D' +
+    new CrossKatRecord(
+      'CROSS-RSDP-128-fast',
+      'PQCsignKAT_77_18432.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      '843A0CCA82D1B761EC4AF1ACB0473A18DE5FD2143A6A7520E61BB703B4270B2D2271CB06D9766AB1EC9D1632222D5EED6048010002E0DE320143C82070894D2D' +
         'C2251C44670A6F81CE22E74E01',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6A44C4ABA59E5A8FADFE29917D8FE5DACCF3096CF98A7806EF569191C351F4A37C8EA113990294A6194F7D6F9073B6AEACE2FD98A343053DC1E3E8B1C2506D41' +
         '042EDC5C75C4C1ADCAF395D3FDC4C50117E09BB33EEF5D52BC5BA61C7E24ACD2FE6AEA5024539A3FA291AA0FE052B3CFE668A0D28AFC371C3CEE019ACAA96F7B' +
         '8B2F93BA83B01457BC181C9B339D2389E17DE586EC233237EF9927DE9A3A62A48FCE97BF0501FCC583D3B61911E808B266DE53AE17BBFE14FCF68B999EB11666' +
@@ -1386,15 +2011,19 @@
         'AE8B3ACB38C68C7ECBA90ABB6E6CC68600C9340C8B0B2D80D5408020C6B13A8BF44A55611C694B6148148B0250B10C748A41D4C64AE426A0AE5B654090A14434' +
         '02413B0DCFCF1F23176D48EF1A892805B9484D4597F7116DAAC3E18220AA9AF796F37F580E8ACBFC69BC1BC4EF96F0925285220DE1E4C0474E672162178C97B6' +
         '542565D49AF54DA4222979079858E42A3542DDC1984E88457E362C660A17C03C4B45DCFDBE20A8F82E1B4463428CBC8A01333588CD1C4E4BCC02AECDC4AE9C8A' +
-        '45355A29178831EC96569A159367A27630B9DB0C0534412280E805E806299E4704'
-    },
-    {
-      set: 'CROSS-RSDP-128-balanced', file: 'PQCsignKAT_77_13152.rsp', count: 0,
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: '4390C28ABC4E13D1E9DED0AA28FEB731419D32482902951F96C5E20E6653F77E98956956B00CEF6B0146202D55E5FC4447CB3758F24B6CBAED0F783F227062A9' +
+        '45355A29178831EC96569A159367A27630B9DB0C0534412280E805E806299E4704',
+      false,
+      false,
+      null),
+    new CrossKatRecord(
+      'CROSS-RSDP-128-balanced',
+      'PQCsignKAT_77_13152.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      '4390C28ABC4E13D1E9DED0AA28FEB731419D32482902951F96C5E20E6653F77E98956956B00CEF6B0146202D55E5FC4447CB3758F24B6CBAED0F783F227062A9' +
         '66F26A5BBEB566AF07A97BE00E',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6A3AC3B9E5656CB0ED41075F5B18ED44E749655B073A6229818AFE71795660AD5080A39CC70A3A1A5185B277843400977BF59B02AF2C0DFF7143696D88290C6F' +
         'FA3F8E574CCA58917180D94E106D079CED6F5AB70229AA890A158EB7C8E973EA94829E5BBEFBCF245DF543801E529C5783EEDA54FB33B7AFA4EA7D95B77ACBE5' +
         'DE1FB5388FAFC56F3D13EA6DF728AAFB7F76000FC0A8AB5D4769CD13B61B9D561DE19F37B309363BD542ABAE33CC0F3DE6374BDDB4E3D75993E38CB8C247A8BA' +
@@ -1600,19 +2229,19 @@
         '558A9018802A608BB293164ED61472AA94D14519ABE55AA509940D8C3965DE9C11146F72B93A8560BB80EB5D45BA48D2AB3D0C6A5C60512714C9E08BDCC880D0' +
         '02959340368315C0D7F9FDE62255F03BA40C36795AD7665C0003D18032F279872DAB238E08121714ED782412478DD73E2939F8F6D200A2347A93E05FE0C08A4B' +
         '4BBD452184B7678DA5AC480D0C7583A1011E5CB1093217B3415A00603056A78124538F835296AC989549350BE858CFA6C9B21B842DA8A766A01D8F5517497665' +
-        '05'
-    },
-    {
-      set: 'CROSS-RSDP-128-small', file: 'PQCsignKAT_77_12432.rsp', count: 0,
-      keygen: true,
-      negatives: true,
-      otherPk: '8AF918C08898CB3159CB2433A4AEE4EAB1D5E532C15234AC3BD482A7FD844FDA07F110697CE1F307B198CD0ABDB434B7C3A548305B5631A1E640BEECFBC6C8B1' +
-        '5F66435435F1FD213C9232FE08',
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: '6BB2B7EB6676EB4781CEB3EB1CAD7D26230EFCA6528FDAB15F4D76FF61DB8079196978CBB196A8A2AD4456BB002DEB062A8E14B59389264D51BB93C8AAE43A23' +
+        '05',
+      false,
+      false,
+      null),
+    new CrossKatRecord(
+      'CROSS-RSDP-128-small',
+      'PQCsignKAT_77_12432.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      '6BB2B7EB6676EB4781CEB3EB1CAD7D26230EFCA6528FDAB15F4D76FF61DB8079196978CBB196A8A2AD4456BB002DEB062A8E14B59389264D51BB93C8AAE43A23' +
         'E315B20C4225B70690DE42E70C',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6AE48558D064C36A2D049FA36C4C551E6FA2F773B773726809B65D1B63BEAB9B245250C996F4CBA481A1ACC770A0E335177AB940EF8840B011B4A675FF13E20A' +
         'D4122559C8EDB2E441864508BB32E3BC9400A4A88FE50F019EB6E257A072B0CD6480DE16E98C97112230E6BBE3BBFD40687FF435E8B8324A9E34CA3DD406F79C' +
         '5F904FA490BA33F428E70365E65BD2D4F275F6BE0F57111435A80F849A69FA722D362F9AB8E5C9707BC1E789E4EDD6221CA7430210C6F3403F30F31D2A4EA857' +
@@ -1806,14 +2435,19 @@
         'B2686552B3C7A8F3075FF40511EC2F81962F01851C02E391C777CD7C1E3654900150002405902AA1C26AAB1569025AAEAA365732072094405A5D38DA5A55650B' +
         'B44E23AC314B806AF03813D2346225060F63AEEEE1548C7B4211004D950BFACE7C7F097F7C18063C0CA94CF581FCFE6D222729D5CADF37F07E5222DB97882A5A' +
         'D1C05B6C716D075D55C659AB5A05050D6F15E36811E571E62069D19EBA0C32577187160202BFBAC7722DA71B97D57AC97D378ABE63E4E130320550E0E94A86A8' +
-        '003430C970C1094B85D6336956482AA49961758B24974EE6644115295414C38335C0A42BB41C120EB6E4851957AB04341B'
-    },
-    {
-      set: 'CROSS-RSDPG-128-fast', file: 'PQCsignKAT_54_11980.rsp', count: 0,
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: '451EEAC52604474BB5281F3B5CFD91436FF8B94AC65ABFDDD0DA3CCA66AE73901D5048BD4E4897B4733AE4C069ECEAC98BA1E8260006',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+        '003430C970C1094B85D6336956482AA49961758B24974EE6644115295414C38335C0A42BB41C120EB6E4851957AB04341B',
+      true,
+      true,
+      '8AF918C08898CB3159CB2433A4AEE4EAB1D5E532C15234AC3BD482A7FD844FDA07F110697CE1F307B198CD0ABDB434B7C3A548305B5631A1E640BEECFBC6C8B1' +
+        '5F66435435F1FD213C9232FE08'),
+    new CrossKatRecord(
+      'CROSS-RSDPG-128-fast',
+      'PQCsignKAT_54_11980.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      '451EEAC52604474BB5281F3B5CFD91436FF8B94AC65ABFDDD0DA3CCA66AE73901D5048BD4E4897B4733AE4C069ECEAC98BA1E8260006',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6A178BABFD3CF38B5B64649A20E19B55CE4F43DC682E95F9500638B36D1ED56CF62BEF0878E2D8B54929116BBBA35C45BE739CE1FE1BC84ABF064BFF142E0938' +
         '0097E66E76A2167C025A976791ADC1EA8BF14949FBE0B66DE74023F18A291226C22EDC5C75C4C1ADCAF395D3FDC4C501176AEA5024539A3FA291AA0FE052B3CF' +
         'E642B17EE91D436307E668BDD94562CF087C7C73C6BD1DAE861BAE65D69A86113B182E4BB2E37A9C46F7B13BA63062BD177DE586EC233237EF9927DE9A3A62A4' +
@@ -2000,14 +2634,18 @@
         '793AD8680969536ACBD3E15E96EBC3F4A9FC4FF998C1812401C8AB60F9EBE42A87C8BEE590300DD4F43DECD01ED67C3F44C25AB7F5256E23807264B162E6E771' +
         'CDA8D5A51C3123C2DCFA2A23EFF00C72D930B6A02428332B86529BE086FF9D4EA71A54301FC658456C6EE8853BCD54A6F2EADE7243281A672A25D8C88FFC0325' +
         'E78511BE9715AB3B33591E594F8E41D7CE8C8FAFFE2D0EEF47AC911037AAF421E17DF2B8875838FDCDF9C9C3517316E2BDC35CCACFA2C468676F1C686AC10B36' +
-        'CBC08B068831ED80779E0F31E0076247E64AE3E947CC6D93DDCC40C28AE6B64A927E21F408F7AD22DDADCC220D'
-    },
-    {
-      set: 'CROSS-RSDPG-128-balanced', file: 'PQCsignKAT_54_9120.rsp', count: 0,
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: '4390C28ABC4E13D1E9DED0AA28FEB731419D32482902951F96C5E20E6653F77ED69054C2C0EF0C5EE2E6250F0B60CB82E5C7AA19DF01',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+        'CBC08B068831ED80779E0F31E0076247E64AE3E947CC6D93DDCC40C28AE6B64A927E21F408F7AD22DDADCC220D',
+      false,
+      false,
+      null),
+    new CrossKatRecord(
+      'CROSS-RSDPG-128-balanced',
+      'PQCsignKAT_54_9120.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      '4390C28ABC4E13D1E9DED0AA28FEB731419D32482902951F96C5E20E6653F77ED69054C2C0EF0C5EE2E6250F0B60CB82E5C7AA19DF01',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6A3A87ADA1B47F28FC7A9F04635B68A40D57E7C339186A4B85B76B18102E97A31816960528533B6CDD21BAFC93D0BE877CDB1B6D5E4C1528075935424C52E12B' +
         'B05FC2A030F25D480314F117FE41386C07829E5BBEFBCF245DF543801E529C578334424365F01A71DBE9CA1C31CFF8FD562B1728D6B0D30B3E3B7F22979D1443' +
         'BC870192DB7CF5C17EEC597886A8E66B8E730ACBCD6370403C9AFB338818584C4437DACA6882A8E402F65BCDE5B00CF00B1553B76646CF74D894CA3C438AB12F' +
@@ -2150,16 +2788,18 @@
         'DBAC33F7F12B94EFF47B641DC8C51E2C11FA562BA57228034932C2062B8F4551A71E6E082FB9416D01B51932A596B927F1ECCD92C320ACE9BCBFCEFB0A47449F' +
         '2954729EA75143E0457F322A22598BA8F20BD50DBA3B613FC156373B942F70AD35180BE3C8E31B9E56B932F16FAE4A0AA339FA37EEB3CE91CD752CC2B1429520' +
         '7D6478A951A5E48E224C0A68CDF9D7DDC91AA3E50AE18E92DE17AE1CD9D70E58BBF3C34962BB1D3560B460A8D04E08675466872494630191B88C648049871401' +
-        '71'
-    },
-    {
-      set: 'CROSS-RSDPG-128-small', file: 'PQCsignKAT_54_8960.rsp', count: 0,
-      negatives: true,
-      otherPk: '59082419DC5CEEC427AF8C1959E0DC5F86E6A04EF445A2AAB07DF0E5640FA592AE2E9B4DCE0C59E23D4EA36130C8CCC326BA2E290800',
-      sk: '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
-      pk: 'BF045FFF4FCB0A9DE8F2470DF666D355FED55FCF0C6DE0FCD8295DD1875F51E9F7E7DF370E629EE5509A6110FFDB055BFC97C32D1B01',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
+        '71',
+      false,
+      false,
+      null),
+    new CrossKatRecord(
+      'CROSS-RSDPG-128-small',
+      'PQCsignKAT_54_8960.rsp',
+      0,
+      '08B491D9C18B8B33BB3CB17AC74574543152A6C140B79648873B84D5A742C70E',
+      'BF045FFF4FCB0A9DE8F2470DF666D355FED55FCF0C6DE0FCD8295DD1875F51E9F7E7DF370E629EE5509A6110FFDB055BFC97C32D1B01',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC868F468C0122C00AE15F7AB0410BEF08F932D20F2B2FC7E907B3C091DCEE7A5' +
         '6AF83E3D658BC2B44E6854A8FE752B134008BE68FE27A671523DEC919F524136711684CAE4AAA5C9EB394F4D5CACED6B4BDED67CC0EB2B79174CB59D898C48F0' +
         '47E2283C79983540872E1DCC703E56B45A5FC2A030F25D480314F117FE41386C076C8FE9BE66AA360DDF8A162DE3454A0134424365F01A71DBE9CA1C31CFF8FD' +
         '562B1728D6B0D30B3E3B7F22979D1443BCAE5C7DC10DFA93EEFA647690D365BB3CEE52B98FBA89EFB1B42B5C045392C8816DEE4385537EE0ECC22372F21701E7' +
@@ -2299,16 +2939,19 @@
         'D7E8538BADC633A1915A13E3D5E7721DC8136A9D730CFCD7EACB5E370F6F35A61D7F2892FD2FA3121ED850FA8AAF05EDCEA226FC48810F5C2586578FA43BEF78' +
         '9CA88FB4DE8F4F0FDBCDFA8005CC106F151DE7D0D34125C3CCFC74A56D31C131B759B715497784B4EB88F2B1C44AF08725B6EC183F3A6F667B45C22FA419876E' +
         'F223E2E050FA28002DEA642A2EB7961BC2865DD78211FF60E952D2AA7EC802B29A9D13B50AE188F6905AB6D9485D05784D0ED2FADD07483EC0BCB2C7AB64D2E8' +
-        '929D25FD3E4B9C14AAA53D308AE6B9D48016ACF2F8E3F44F4316A5A950C8F72740'
-    },
-    {
-      set: 'CROSS-RSDPG-128-small', file: 'PQCsignKAT_54_8960.rsp', count: 1,
-      keygen: true,
-      sk: '0F238A0238DC0FE23D24E60E8DD9434B08ADFF5A312E9FF8261FE26983A0C4DF',
-      pk: '59082419DC5CEEC427AF8C1959E0DC5F86E6A04EF445A2AAB07DF0E5640FA592AE2E9B4DCE0C59E23D4EA36130C8CCC326BA2E290800',
-      msg: '225D5CE2CEAC61930A07503FB59F7C2F936A3E075481DA3CA299A80F8C5DF9223A073E7B90E02EBF98CA2227EBA38C1AB2568209E46DBA961869C6F83983B17D' +
+        '929D25FD3E4B9C14AAA53D308AE6B9D48016ACF2F8E3F44F4316A5A950C8F72740',
+      false,
+      true,
+      '59082419DC5CEEC427AF8C1959E0DC5F86E6A04EF445A2AAB07DF0E5640FA592AE2E9B4DCE0C59E23D4EA36130C8CCC326BA2E290800'),
+    new CrossKatRecord(
+      'CROSS-RSDPG-128-small',
+      'PQCsignKAT_54_8960.rsp',
+      1,
+      '0F238A0238DC0FE23D24E60E8DD9434B08ADFF5A312E9FF8261FE26983A0C4DF',
+      '59082419DC5CEEC427AF8C1959E0DC5F86E6A04EF445A2AAB07DF0E5640FA592AE2E9B4DCE0C59E23D4EA36130C8CCC326BA2E290800',
+      '225D5CE2CEAC61930A07503FB59F7C2F936A3E075481DA3CA299A80F8C5DF9223A073E7B90E02EBF98CA2227EBA38C1AB2568209E46DBA961869C6F83983B17D' +
         'CD49',
-      sm: '225D5CE2CEAC61930A07503FB59F7C2F936A3E075481DA3CA299A80F8C5DF9223A073E7B90E02EBF98CA2227EBA38C1AB2568209E46DBA961869C6F83983B17D' +
+      '225D5CE2CEAC61930A07503FB59F7C2F936A3E075481DA3CA299A80F8C5DF9223A073E7B90E02EBF98CA2227EBA38C1AB2568209E46DBA961869C6F83983B17D' +
         'CD49D354487E60CDC663323D39874526ACABA29B8BFB86C2F121ACB17057C18BB44DB0DFBCE3CCD339635C219C822F48F08A2809FF3819DAEB80751CD765F102' +
         'AD32AA589C195EAF39EA53D6FB99D5746182110A0BA18EE09F8134C59C08B07CC5A6B46A1543204BBBA25FF0D810FF3D3E827694EF51DCE84CC3BCCCA51424CE' +
         '42120913AD8CCF4C8D65822B2979656C011B1D19E99A2EBC71FF25B2404AB0BE46120461E138743A79E65CF44E7F42C6DA72E00B5E1E8F48E86D2CDD9BC79839' +
@@ -2449,15 +3092,19 @@
         '3BEE44168C185528A00477CC0C4658387A196563D33BFAD9B125C1F74EAF1C6A694C9C0927EF229693C0826631F5B1D2FA1CB869C599D35840D56CC023E45D78' +
         '3EEB466379468D6E0E5CF8A5EA48950B8B32041ED1DDE647A0599E5DA1AB946A63EF0545E44273CE166C2A0E1E3A5A0F80381E89F280929CDB8DC56A52A2D9D3' +
         '0704175E56103DF5C36F70866985822A49B24B19A280014A6A2BB76FB639D9D72F49E753E567000BF4A43A15582713582540BBCCDF57E17A351FB7A556B36A1F' +
-        '3C5A'
-    },
-    {
-      set: 'CROSS-RSDPG-256-small', file: 'PQCsignKAT_106_36454.rsp', count: 0,
-      sk: '72C91341F2C9C1840BC341B6FA3C0DA7A9002121E041766F921AE42A212330C06CC05EE53E805AE7053205D1F41F9029B5614F11E8517915B4EE048F0699BB2D',
-      pk: '5B7E438CFF2C1D097B82DFE5369C0F99E83DAECC0B8FBCF98EBE3F596360B86221B61729BA29310DC32DBA0DB1530FB44B2D36C6FB8A8CA7B7DE0C616AA4BA13' +
+        '3C5A',
+      true,
+      false,
+      null),
+    new CrossKatRecord(
+      'CROSS-RSDPG-256-small',
+      'PQCsignKAT_106_36454.rsp',
+      0,
+      '72C91341F2C9C1840BC341B6FA3C0DA7A9002121E041766F921AE42A212330C06CC05EE53E805AE7053205D1F41F9029B5614F11E8517915B4EE048F0699BB2D',
+      '5B7E438CFF2C1D097B82DFE5369C0F99E83DAECC0B8FBCF98EBE3F596360B86221B61729BA29310DC32DBA0DB1530FB44B2D36C6FB8A8CA7B7DE0C616AA4BA13' +
         '46D2E1B17649AD3668283D92B6B24E9E670DAEED44D3B4C5573AEAAE2A06E0441FB526D59BC68706721A',
-      msg: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-      sm: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8B6AC2461A7E8FDAD811D9F4DFFFE26725B179F7BEA3EC399C3168C6307207C' +
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8B6AC2461A7E8FDAD811D9F4DFFFE26725B179F7BEA3EC399C3168C6307207C' +
         'A350DD0A4D1B69ED4D67903B52E59B8A7FB34D8E03E0BA45E7E3FEC196E5199F28EF251CA86BFAD15E710A874849412EB22931E2B5841F5714C75D09C7114927' +
         '37E89345F50037333F79506AB9D1E8D060D2DE85A50CB0A855449F46D040A11AAD546BA805235916DEE5FDD208FB5AF164FF8C34DAB1FDE16C4794D1F14D8A1C' +
         'C6C81843D5FB496B13962E12B59DD886288B1CE87444F4AFDBDF76D34D1D20D9B0BB958C705553362CD3150F2E05956B21E44E9A92B7FBB336018DC5A9FC4F9B' +
@@ -3027,19 +3674,43 @@
         '57611BA96F559DAB620F5BA8E5713E571DE997EFB4D7B9CCA0B03B39779B500711121EF679195EA80033B9173F416CC98BC4099A3D76B968C7501FDFA4ECCFCB' +
         '25A1D40DA9FF2ACB4E801902B0A1A6E3E8462978DEEE4BEBD5E846646437FAE06D137475AA2131114BBC805F08A3D58EA0F7D9F3AB4C34EF78DE3D7CEA40F8E5' +
         '086580DC6C326184CBCDD778D0B896CB3E9DCFBDC83A104822554B9C00D85AB4E34EED7E17525BA02A99F491CDC31F379BC34E2A13105E254E5A36416DE0BB73' +
-        '12DE653FCEDF42'
-    }
+        '12DE653FCEDF42',
+      false,
+      false,
+      null)
   ];
 
   // ===== ALGORITHM =====
 
+  /**
+   * @param {int32} length - length
+   * @returns {CrossParams|null} Result
+   */
   function FindSetByKeyLength(length) {
     // Default: the RSDP small set of the category the key length implies.
     const lambda = length * 4;
     const name = 'CROSS-RSDP-' + lambda + '-small';
-    return PARAMETER_SETS[name] || null;
+    const found = ParameterSetEntry(name);
+    return found ? found : null;
   }
 
+  /**
+   * The key-pair seed length a public key length implies.
+   * @param {int32} length - public key octets
+   * @returns {int32} 32, 48 or 64, or undefined for any other length
+   */
+  function KeyLengthOfPublicKey(length) {
+    if (length === 77) return 32;
+    if (length === 115) return 48;
+    if (length === 153) return 64;
+    return undefined;
+  }
+
+  /**
+   * @param {string} hex - hexadecimal octets
+   * @param {int32} octet - which octet to flip bit 0 of
+   * @returns {uint8[]} the octets
+   */
   function Flip(hex, octet) {
     const bytes = OpCodes.Hex8ToBytes(hex);
     bytes[octet] = OpCodes.Xor32(bytes[octet], 1);
@@ -3235,7 +3906,7 @@
    */
   class CrossInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {CrossAlgorithm} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - verification mode flag
      */
     constructor(algorithm, isInverse = false) {
@@ -3245,6 +3916,7 @@
       this._keyData = null;
       this._publicKey = null;
       this._derivedPublicKey = null;
+      /** @type {int32|null} */
       this._katCount = null;
       this._message = null;
       this.inputBuffer = [];
@@ -3258,7 +3930,7 @@
     /** @param {string} name - one of the algorithm's parameterSets */
     set parameterSet(name) {
       if (name === null || name === undefined) { this._parameterSet = null; return; }
-      if (!PARAMETER_SETS[name])
+      if (!ParameterSetEntry(name))
         throw new Error('CROSS: unknown parameter set ' + name + '; expected one of ' + SET_NAMES.join(', '));
       this._parameterSet = name;
       this._derivedPublicKey = null;
@@ -3272,6 +3944,7 @@
       if (!keyData) { this._keyData = null; this._derivedPublicKey = null; return; }
       if (typeof keyData.length !== 'number' || [32, 48, 64].indexOf(keyData.length) < 0)
         throw new Error('CROSS: the secret key is a key-pair seed of 32, 48 or 64 octets, not ' + keyData.length);
+      /** @type {uint8[]} */
       const copy = new Array(keyData.length);
       for (let i = 0; i < keyData.length; ++i) copy[i] = keyData[i];
       this._keyData = copy;
@@ -3281,7 +3954,7 @@
     set key(keyData) { this.KeySetup(keyData); }
     get key() { return this._keyData; }
 
-    /** @param {number} count - replay the randomness of this record of the KAT generator */
+    /** @param {int32} count - replay the randomness of this record of the KAT generator */
     set katCount(count) {
       if (count === null || count === undefined) { this._katCount = null; return; }
       if (!(count >= 0 && Math.floor(count) === count))
@@ -3297,16 +3970,21 @@
     /**
      * The parameter set in force: the one named, else the RSDP small set of
      * the category the key length implies.
+     * @returns {CrossParams} Result
      */
     _params() {
-      if (this._parameterSet) return PARAMETER_SETS[this._parameterSet];
+      if (this._parameterSet) return ParameterSetEntry(this._parameterSet);
       const length = this._keyData ? this._keyData.length
-        : (this._publicKey ? { 77: 32, 115: 48, 153: 64 }[this._publicKey.length] : 0);
+        : (this._publicKey ? KeyLengthOfPublicKey(this._publicKey.length) : 0);
       const p = length ? FindSetByKeyLength(length) : null;
       if (!p) throw new Error('CROSS: set parameterSet or a key to choose a parameter set');
       return p;
     }
 
+    /**
+     * @param {CrossParams} p - p
+     * @returns {Uint8Array|null} Result
+     */
     _secretKey(p) {
       if (this._keyData) {
         if (this._keyData.length !== p.skBytes)
@@ -3378,18 +4056,23 @@
 
       const sk = this._secretKey(p);
       if (!sk) throw new Error(p.name + ': signing needs a secret key');
-      let rootSeed, salt;
+      /** @type {Uint8Array} */
+      let rootSeed = null;
+      /** @type {Uint8Array} */
+      let salt = null;
       if (this._katCount !== null) {
         const r = HarnessRandomness(p, this._katCount);
         rootSeed = r.rootSeed;
         salt = r.salt;
       } else {
+        /** @type {uint8[]} */
         const label = [0x43, 0x52, 0x4F, 0x53, 0x53];
         const st = CsprngInit(p, [label, sk, input], 0xFFFF);
-        rootSeed = st.squeeze(p.seedBytes);
-        salt = st.squeeze(p.saltBytes);
+        rootSeed = ShakeSqueeze(st, p.seedBytes);
+        salt = ShakeSqueeze(st, p.saltBytes);
       }
       const sig = Sign(p, sk, input, rootSeed, salt);
+      /** @type {uint8[]} */
       const out = new Array(input.length + sig.length);
       for (let i = 0; i < input.length; ++i) out[i] = input[i];
       for (let i = 0; i < sig.length; ++i) out[input.length + i] = sig[i];
