@@ -202,6 +202,14 @@
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           expected: OpCodes.Hex8ToBytes("1199a01aa7f6eb759d09b9ae4d8afa02abd8c84adaa6377835e2e7a8076da82b43ca8567aac8bd45b34b06fe69948a77db7e67ad206ed751c7c8cc7bebda382d")
+        },
+        {
+          text: "DarkCrypt Lili2 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("60a4bc025c0938ea737f073a2f733852f4477ffd3f4f8d67984fafa637417bd90ee480ca40d2d0c40b378496e6a1d422")
         }
       ];
     }
