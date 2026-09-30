@@ -107,7 +107,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ConcatenatedCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -124,13 +124,17 @@
   class ConcatenatedCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ConcatenatedCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Code configuration
@@ -190,6 +194,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Concatenated encoding: apply outer code, then inner code to each symbol
 
@@ -209,6 +217,10 @@
       return finalEncoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Concatenated decoding: decode inner codewords, then outer code
 
@@ -250,7 +262,7 @@
 
         // Majority vote bit by bit
         for (let j = 0; j < 4; ++j) {
-          const sum = (block1[j] || 0) + (block2[j] || 0) + (block3[j] || 0);
+          const sum = ((block1[j] ? block1[j] : 0)) + ((block2[j] ? block2[j] : 0)) + ((block3[j] ? block3[j] : 0));
           decoded.push(sum >= 2 ? 1 : 0);
         }
       }

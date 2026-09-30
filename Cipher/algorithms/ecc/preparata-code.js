@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PreparataCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class PreparataCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PreparataCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._m = 4; // Default: (16,11) Preparata code
 
@@ -276,32 +278,41 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const k = OpCodes.Shl32(1, this._m) - 2 * this._m - 1;
 
       if (data.length !== k) {
-        throw new Error(`Preparata encode: Input must be exactly ${k} bits for m=${this._m}`);
+        throw new Error("Preparata encode: Input must be exactly " + k + " bits for m=" + this._m);
       }
 
       // Convert data to index
+      /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < k; ++i) {
         index = OpCodes.Shl32(index, 1)|data[i];
       }
 
       if (index >= this.codebook.length) {
-        throw new Error(`Preparata encode: Index ${index} out of range`);
+        throw new Error("Preparata encode: Index " + index + " out of range");
       }
 
       return [...this.codebook[index].codeword];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const n = OpCodes.Shl32(1, this._m);
       const k = n - 2 * this._m - 1;
 
       if (data.length !== n) {
-        throw new Error(`Preparata decode: Input must be exactly ${n} bits`);
+        throw new Error("Preparata decode: Input must be exactly " + n + " bits");
       }
 
       // Minimum distance decoding
@@ -331,6 +342,10 @@
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;

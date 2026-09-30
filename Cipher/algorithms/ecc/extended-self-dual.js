@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ExtendedSelfDualInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,17 +132,20 @@
   class ExtendedSelfDualInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ExtendedSelfDualAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Generator matrix for Extended Hamming [8,4,4] self-dual code
       // G = [I_4|P] where the code is self-dual
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 0, 0, 1, 1, 0, 1],
         [0, 1, 0, 0, 1, 0, 1, 1],
@@ -182,18 +185,24 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== 4) {
         throw new Error('Extended Self-Dual encode: Input must be exactly 4 bits');
       }
 
       // Matrix multiplication: c = m * G
-      const codeword = new Array(8).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(8, 0);
 
       for (let i = 0; i < 8; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 4; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -201,43 +210,55 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 8) {
         throw new Error('Extended Self-Dual decode: Input must be exactly 8 bits');
       }
 
       // Since G = H (self-dual), use G as parity-check matrix
-      const syndrome = new Array(4).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(4, 0);
 
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 8; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[i][j]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[i][j]));
         }
         syndrome[i] = sum;
       }
 
       // Check for errors
-      const hasError = syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let s = 0; s < syndrome.length; s++) {
+        if (syndrome[s] !== 0) hasError = true;
+      }
 
       if (hasError) {
         console.log('Extended Self-Dual: Error detected, attempting correction...');
 
         // Calculate overall parity
+        /** @type {uint32} */
         let overallParity = 0;
         for (let i = 0; i < 8; ++i) {
-          overallParity = OpCodes.XorN(overallParity, data[i]);
+          overallParity = OpCodes.Xor32(overallParity, data[i]);
         }
 
         // SECDED logic: syndrome gives error position
+        /** @type {uint32} */
         let syndromeVal = 0;
         for (let i = 0; i < 4; ++i) {
-          syndromeVal = OpCodes.OrN(syndromeVal, OpCodes.Shl32(syndrome[i], i));
+          syndromeVal = OpCodes.Or32(syndromeVal, OpCodes.Shl32(syndrome[i], i));
         }
 
         if (syndromeVal !== 0 && overallParity !== 0) {
           // Single-bit error - correct it (simplified)
-          console.log(`Correcting error at position indicated by syndrome ${syndromeVal}`);
+          console.log("Correcting error at position indicated by syndrome " + syndromeVal);
         }
       }
 
@@ -245,21 +266,34 @@
       return data.slice(0, 4);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 8) return true;
+      if (data.length !== 8) {
+        return true;
+      }
 
       // Calculate syndrome using generator matrix (= parity check for self-dual)
-      const syndrome = new Array(4).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(4, 0);
 
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 8; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[i][j]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[i][j]));
         }
         syndrome[i] = sum;
       }
 
-      return syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let s = 0; s < syndrome.length; s++) {
+        if (syndrome[s] !== 0) hasError = true;
+      }
+      return hasError;
     }
   }
 

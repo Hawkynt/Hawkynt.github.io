@@ -122,7 +122,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TopologicalColorCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,13 +139,15 @@
   class TopologicalColorCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TopologicalColorCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Color code [[7,1,3]] parameters
@@ -266,7 +268,7 @@
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
-        throw new Error(`Color code encode: Input must be exactly ${this.k} logical qubit (as classical bit)`);
+        throw new Error("Color code encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
       const logical = logicalQubit[0];
@@ -286,7 +288,7 @@
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
-        throw new Error(`Color code decode: Input must be exactly ${this.n} physical qubits (as classical bits)`);
+        throw new Error("Color code decode: Input must be exactly " + this.n + " physical qubits (as classical bits)");
       }
 
       // Copy to avoid modifying input
@@ -318,6 +320,7 @@
       const syndrome = [];
 
       for (let i = 0; i < stabilizers.length; ++i) {
+        /** @type {uint8} */
         let measurement = 0;
         for (let j = 0; j < this.n; ++j) {
           if (stabilizers[i][j] === 1) {
@@ -386,6 +389,8 @@
 
     /**
      * Detect if error is present (public API)
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -409,7 +414,7 @@
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
       const result = [...qubits];
@@ -432,7 +437,7 @@
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}. Use 'X', 'Z', or 'Y'`);
+          throw new Error("Unknown error type: " + errorType + ". Use 'X', 'Z', or 'Y'");
       }
 
       return result;

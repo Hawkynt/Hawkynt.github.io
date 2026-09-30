@@ -116,7 +116,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {QuantumLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -133,13 +133,15 @@
   class QuantumLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {QuantumLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // [[7,1,3]] Quantum LDPC code parameters
@@ -211,7 +213,7 @@
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
-        throw new Error(`QLDPC encode: Input must be exactly ${this.k} logical qubit (as classical bit)`);
+        throw new Error("QLDPC encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
       const logical = logicalQubit[0];
@@ -231,7 +233,7 @@
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
-        throw new Error(`QLDPC decode: Input must be exactly ${this.n} physical qubits (as classical bits)`);
+        throw new Error("QLDPC decode: Input must be exactly " + this.n + " physical qubits (as classical bits)");
       }
 
       // Copy to avoid modifying input
@@ -243,7 +245,7 @@
       // Correct X errors (bit-flips)
       const errorPosX = this.syndromeToErrorPosition(syndromeX);
       if (errorPosX !== -1) {
-        received[errorPosX] = OpCodes.XorN(received[errorPosX], 1);
+        received[errorPosX] = OpCodes.Xor32(received[errorPosX], 1);
       }
 
       // Measure X-stabilizers to detect Z errors (phase-flips)
@@ -272,11 +274,12 @@
       const syndrome = new Array(parityMatrix.length).fill(0);
 
       for (let i = 0; i < parityMatrix.length; ++i) {
+        /** @type {uint32} */
         let parity = 0;
         // Sparse matrix: only sum where matrix entry is 1
         for (let j = 0; j < this.n; ++j) {
           if (parityMatrix[i][j] === 1) {
-            parity = OpCodes.XorN(parity, qubits[j]);
+            parity = OpCodes.Xor32(parity, qubits[j]);
           }
         }
         syndrome[i] = parity;
@@ -292,10 +295,11 @@
      */
     syndromeToErrorPosition(syndrome) {
       // Convert syndrome to integer using OpCodes
+      /** @type {uint32} */
       let syndromeValue = 0;
       for (let i = 0; i < syndrome.length; ++i) {
         if (syndrome[i] === 1) {
-          syndromeValue = OpCodes.OrN(syndromeValue, OpCodes.Shl32(1, i));
+          syndromeValue = OpCodes.Or32(syndromeValue, OpCodes.Shl32(1, i));
         }
       }
 
@@ -326,6 +330,8 @@
     /**
      * Detect if error is present (public API for testing)
      * Measures both X and Z syndromes
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -334,16 +340,18 @@
 
       // Check X errors via Z-stabilizers
       const syndromeX = this.measureSyndrome(data, this.H_Z);
+      /** @type {uint32} */
       let syndromeValueX = 0;
       for (let i = 0; i < syndromeX.length; ++i) {
-        syndromeValueX = OpCodes.OrN(syndromeValueX, OpCodes.Shl32(syndromeX[i], i));
+        syndromeValueX = OpCodes.Or32(syndromeValueX, OpCodes.Shl32(syndromeX[i], i));
       }
 
       // Check Z errors via X-stabilizers
       const syndromeZ = this.measureSyndrome(data, this.H_X);
+      /** @type {uint32} */
       let syndromeValueZ = 0;
       for (let i = 0; i < syndromeZ.length; ++i) {
-        syndromeValueZ = OpCodes.OrN(syndromeValueZ, OpCodes.Shl32(syndromeZ[i], i));
+        syndromeValueZ = OpCodes.Or32(syndromeValueZ, OpCodes.Shl32(syndromeZ[i], i));
       }
 
       return syndromeValueX !== 0 || syndromeValueZ !== 0;
@@ -356,7 +364,7 @@
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
       const result = [...qubits];
@@ -364,7 +372,7 @@
       switch (errorType) {
         case 'X':
           // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         case 'Z':
@@ -374,11 +382,11 @@
 
         case 'Y':
           // Y gate: both bit-flip and phase-flip (iXZ)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}. Use 'X', 'Z', or 'Y'`);
+          throw new Error("Unknown error type: " + errorType + ". Use 'X', 'Z', or 'Y'");
       }
 
       return result;

@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {WozencraftEnsembleInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,17 +132,20 @@
   class WozencraftEnsembleInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {WozencraftEnsembleAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Specific generator matrix for Wozencraft [4,2] code
       // In practice, this would be randomly generated
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 1, 1],  // First basis vector
         [0, 1, 1, 0]   // Second basis vector
@@ -180,18 +183,24 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== 2) {
         throw new Error('Wozencraft encode: Input must be exactly 2 bits');
       }
 
       // Linear encoding: c = m * G
-      const codeword = new Array(4).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(4, 0);
 
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 2; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -199,6 +208,10 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 4) {
         throw new Error('Wozencraft decode: Input must be exactly 4 bits');
@@ -206,10 +219,12 @@
 
       // Maximum likelihood decoding (try all 2^2 = 4 messages)
       let minDistance = Infinity;
+      /** @type {uint8[]} */
       let bestMessage = [0, 0];
 
       for (let m = 0; m < 4; ++m) {
-        const message = [OpCodes.AndN(OpCodes.Shr32(m, 1), 1), OpCodes.AndN(m, 1)];
+        /** @type {uint8[]} */
+        const message = [OpCodes.And32(OpCodes.Shr32(m, 1), 1), OpCodes.And32(m, 1)];
         const testCodeword = this.encode(message);
 
         // Calculate Hamming distance
@@ -229,22 +244,28 @@
       return bestMessage;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 4) return true;
-
-      try {
-        const decoded = this.decode(data);
-        const reencoded = this.encode(decoded);
-
-        for (let i = 0; i < 4; ++i) {
-          if (data[i] !== reencoded[i]) {
-            return true;
-          }
-        }
-        return false;
-      } catch (e) {
+      // decode() and encode() only throw for lengths other than 4 and 2,
+      // which this check and decode() rule out
+      if (data.length !== 4) {
         return true;
       }
+
+      /** @type {uint8[]} */
+      const decoded = this.decode(data);
+      /** @type {uint8[]} */
+      const reencoded = this.encode(decoded);
+
+      for (let i = 0; i < 4; ++i) {
+        if (data[i] !== reencoded[i]) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 

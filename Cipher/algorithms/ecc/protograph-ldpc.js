@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ProtographLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,13 +156,15 @@
   class ProtographLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ProtographLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Simplified rate 1/2 repetition-based protograph for educational purposes
@@ -230,7 +232,7 @@
             for (let col = 0; col < this.N; ++col) {
               const expandedRow = i * this.N + row;
               const expandedCol = j * this.N + col;
-              H[expandedRow][expandedCol] = OpCodes.AndN(OpCodes.XorN(H[expandedRow][expandedCol], submatrix[row][col]), 1);
+              H[expandedRow][expandedCol] = OpCodes.And32(OpCodes.Xor32(H[expandedRow][expandedCol], submatrix[row][col]), 1);
             }
           }
         }
@@ -261,7 +263,7 @@
         // Create circulant permutation matrix with this shift
         for (let row = 0; row < size; ++row) {
           const col = (row + shift) % size;
-          submatrix[row][col] = OpCodes.AndN(OpCodes.XorN(submatrix[row][col], 1), 1);
+          submatrix[row][col] = OpCodes.And32(OpCodes.Xor32(submatrix[row][col], 1), 1);
         }
       }
 
@@ -368,7 +370,7 @@
           if (row !== col && augmented[row][col] === 1) {
             // XOR with pivot row
             for (let c = 0; c < augmented[row].length; ++c) {
-              augmented[row][c] = OpCodes.XorN(augmented[row][c], augmented[col][c]);
+              augmented[row][c] = OpCodes.Xor32(augmented[row][c], augmented[col][c]);
             }
           }
         }
@@ -416,6 +418,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
         throw new Error('ProtographLDPCInstance.DetectError: Input must be ' + this.n + '-bit array');
@@ -428,6 +434,8 @@
     /**
      * Encode information bits using protograph LDPC structure
      * Uses precomputed parity matrix for systematic encoding
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
       if (data.length !== this.k) {
@@ -440,22 +448,23 @@
 
       // Copy systematic bits to first k positions
       for (let i = 0; i < this.k; ++i) {
-        codeword[i] = OpCodes.AndN(data[i], 1);
+        codeword[i] = OpCodes.And32(data[i], 1);
       }
 
       // Compute parity bits using precomputed parity matrix
       // For each parity bit position
       for (let parityIdx = 0; parityIdx < (this.n - this.k); ++parityIdx) {
+        /** @type {uint32} */
         let parityBit = 0;
 
         // XOR contributions from all systematic bits
         for (let sysIdx = 0; sysIdx < this.k; ++sysIdx) {
           if (data[sysIdx] === 1) {
-            parityBit = OpCodes.XorN(parityBit, this.parityMatrix[sysIdx][parityIdx]);
+            parityBit = OpCodes.Xor32(parityBit, this.parityMatrix[sysIdx][parityIdx]);
           }
         }
 
-        codeword[this.k + parityIdx] = OpCodes.AndN(parityBit, 1);
+        codeword[this.k + parityIdx] = OpCodes.And32(parityBit, 1);
       }
 
       return codeword;
@@ -505,6 +514,7 @@
         }
 
         // Find bit with highest score and flip it
+        /** @type {uint8} */
         let maxScore = 0;
         let maxBit = -1;
 
@@ -516,7 +526,7 @@
         }
 
         if (maxBit >= 0 && maxScore > 0) {
-          decoded[maxBit] = OpCodes.XorN(decoded[maxBit], 1);
+          decoded[maxBit] = OpCodes.Xor32(decoded[maxBit], 1);
         } else {
           // Cannot improve further
           break;
@@ -535,14 +545,15 @@
       const syndrome = new Array(this.m);
 
       for (let i = 0; i < this.m; ++i) {
+        /** @type {uint32} */
         let sum = 0;
 
         for (let j = 0; j < this.n; ++j) {
           // XOR multiplication for GF(2)
-          sum = OpCodes.XorN(sum, (this.parityCheckMatrix[i][j] * codeword[j]));
+          sum = OpCodes.Xor32(sum, (this.parityCheckMatrix[i][j] * codeword[j]));
         }
 
-        syndrome[i] = OpCodes.AndN(sum, 1);
+        syndrome[i] = OpCodes.And32(sum, 1);
       }
 
       return syndrome;

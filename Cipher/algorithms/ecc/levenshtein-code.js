@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LevenshteinCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,17 @@
   class LevenshteinCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LevenshteinCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
     }
 
@@ -178,6 +182,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @returns {boolean} True when it holds as many ones as zeros
+     */
     isBalanced(data) {
       // Check if sequence has equal 0s and 1s
       let onesCount = 0;
@@ -187,6 +195,10 @@
       return (onesCount * 2 === data.length);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Levenshtein codes are balanced sequences
       // Check if input is balanced
@@ -202,6 +214,10 @@
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // For Levenshtein codes, decoding handles deletion errors
       // Simplified implementation: verify balance and return
@@ -218,6 +234,10 @@
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Check if sequence is balanced
       if (data.length % 2 !== 0) return true;

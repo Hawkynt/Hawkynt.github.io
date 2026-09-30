@@ -108,7 +108,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HsiaoCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -125,13 +125,15 @@
   class HsiaoCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HsiaoCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
     }
 
@@ -166,6 +168,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Hsiao (8,4) encoding - similar to SECDED but with odd-weight columns
       if (data.length !== 4) {
@@ -182,17 +188,21 @@
       encoded[7] = d4;
 
       // Hsiao parity bits (odd-weight columns optimization)
-      encoded[1] = OpCodes.XorN(OpCodes.XorN(d1, d2), d4);
-      encoded[2] = OpCodes.XorN(OpCodes.XorN(d1, d3), d4);
-      encoded[4] = OpCodes.XorN(OpCodes.XorN(d2, d3), d4);
+      encoded[1] = OpCodes.Xor32(OpCodes.Xor32(d1, d2), d4);
+      encoded[2] = OpCodes.Xor32(OpCodes.Xor32(d1, d3), d4);
+      encoded[4] = OpCodes.Xor32(OpCodes.Xor32(d2, d3), d4);
 
       // Overall parity bit (position 0)
-      encoded[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(encoded[1], encoded[2]), encoded[3]), encoded[4]),
+      encoded[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(encoded[1], encoded[2]), encoded[3]), encoded[4]),
                    encoded[5]), encoded[6]), encoded[7]);
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Hsiao (8,4) decoding with SEC-DED
       if (data.length !== 8) {
@@ -202,13 +212,15 @@
       const received = [...data];
 
       // Calculate syndrome (positions 1-7)
-      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[1], received[3]), received[5]), received[7]);
-      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[2], received[3]), received[6]), received[7]);
-      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[4], received[5]), received[6]), received[7]);
+      const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[1], received[3]), received[5]), received[7]);
+      const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[2], received[3]), received[6]), received[7]);
+      const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[4], received[5]), received[6]), received[7]);
       const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
 
       // Calculate overall parity
-      const overallParity = received.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
+      /** @type {uint32} */
+      let overallParity = 0;
+      for (let pi = 0; pi < received.length; ++pi) overallParity = OpCodes.Xor32(overallParity, received[pi]);
 
       // Error detection logic
       if (syndrome === 0 && overallParity === 0) {
@@ -216,16 +228,16 @@
       } else if (syndrome === 0 && overallParity !== 0) {
         // Error in overall parity bit
         console.log('Hsiao: Parity bit error detected and corrected');
-        received[0] = OpCodes.XorN(received[0], 1);
+        received[0] = OpCodes.Xor32(received[0], 1);
       } else {
         // Count 1s in syndrome (Hsiao's odd-weight column property)
         const syndromeWeight = (syndrome.toString(2).match(/1/g) || []).length;
 
         if (overallParity !== 0 && syndromeWeight % 2 === 1) {
           // Single bit error (correctable) - odd syndrome weight + odd parity
-          console.log(`Hsiao: Single error at position ${syndrome}, correcting...`);
+          console.log("Hsiao: Single error at position " + syndrome + ", correcting...");
           if (syndrome >= 1 && syndrome <= 7) {
-            received[syndrome] = OpCodes.XorN(received[syndrome], 1);
+            received[syndrome] = OpCodes.Xor32(received[syndrome], 1);
           }
         } else if (overallParity === 0 || syndromeWeight % 2 === 0) {
           // Double bit error (detectable, not correctable) - even syndrome weight or even parity
@@ -237,15 +249,21 @@
       return [received[3], received[5], received[6], received[7]];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 8) return true;
 
-      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[1], data[3]), data[5]), data[7]);
-      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[2], data[3]), data[6]), data[7]);
-      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[4], data[5]), data[6]), data[7]);
+      const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[1], data[3]), data[5]), data[7]);
+      const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[2], data[3]), data[6]), data[7]);
+      const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[4], data[5]), data[6]), data[7]);
       const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
 
-      const overallParity = data.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
+      /** @type {uint32} */
+      let overallParity = 0;
+      for (let pi = 0; pi < data.length; ++pi) overallParity = OpCodes.Xor32(overallParity, data[pi]);
 
       return syndrome !== 0 || overallParity !== 0;
     }

@@ -128,7 +128,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RepeatAccumulateCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -145,13 +145,17 @@
   class RepeatAccumulateCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RepeatAccumulateCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Standard RA code configuration
@@ -227,12 +231,20 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // RA codes don't have simple syndrome-based error detection
       // Error detection requires full iterative decoding
       return false; // Educational implementation - full decoding needed
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // RA Code Encoding: Repeat → Interleave → Accumulate
       // Rate = K / (q*K) = 1/q where q is repetition factor
@@ -348,7 +360,7 @@
       const k = n / this._repetitionFactor;
 
       if (n % this._repetitionFactor !== 0) {
-        throw new Error(`RA decode: Input length ${n} not multiple of repetition factor ${this._repetitionFactor}`);
+        throw new Error("RA decode: Input length " + n + " not multiple of repetition factor " + this._repetitionFactor);
       }
 
       // Generate same interleaver used for encoding
