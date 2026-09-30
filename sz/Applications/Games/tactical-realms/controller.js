@@ -759,8 +759,9 @@
       const camX = this.#renderer.camera.x;
       const camY = this.#renderer.camera.y;
       let drawnSprite = false;
+      const leaderClass = (this.#party && this.#party[0] && this.#party[0].class) || 'paladin';
       if (TR.spriteResolver) {
-        const sprite = TR.spriteResolver.resolve('paladin', 'party');
+        const sprite = TR.spriteResolver.resolve(leaderClass, 'party');
         if (sprite) {
           const ctx = this.#renderer.bufCtx;
           ctx.imageSmoothingEnabled = false;
@@ -776,7 +777,7 @@
       }
       if (!drawnSprite) {
         const assets = this.#renderer.assets;
-        const playerSprite = (TR.resolveSprite && TR.resolveSprite('paladin', 'party')) || TR.PLAYER_SPRITE;
+        const playerSprite = (TR.resolveSprite && TR.resolveSprite(leaderClass, 'party')) || TR.PLAYER_SPRITE;
         const playerSheet = (playerSprite && playerSprite.sheet) || 'dungeon';
         if (assets && assets.ready && assets.has(playerSheet) && playerSprite)
           drawnSprite = assets.drawSprite(this.#renderer.bufCtx, playerSheet, playerSprite, px - camX + 2, py - camY + 2, ts - 4);
