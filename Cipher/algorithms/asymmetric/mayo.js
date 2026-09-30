@@ -434,7 +434,7 @@
   /**
    * Look up a registered algorithm, complaining usefully when it is absent.
    * @param {string} name - Registered algorithm name
-   * @returns {IAlgorithm} The algorithm
+   * @returns {Algorithm} The algorithm
    */
   function requireAlgorithm(name) {
     loadPrimitives();
