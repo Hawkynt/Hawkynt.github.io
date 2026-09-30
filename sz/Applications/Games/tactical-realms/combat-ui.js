@@ -221,7 +221,9 @@
       const hpPct = Math.max(0, unit.currentHp / unit.maxHp * 100);
       const hpColor = hpPct > 50 ? '#4a4' : hpPct > 25 ? '#aa4' : '#a44';
       const factionColor = unit.faction === 'party' ? '#6af' : '#f66';
+      const portrait = TR.ScreenArt ? TR.ScreenArt.portraitURL(unit, 40) : null;
       this.#activeCharOverlay.innerHTML =
+        (portrait ? `<img class="fwin-ac-portrait" src="${portrait}" alt="">` : '') +
         `<span style="color:${factionColor};font-weight:bold">${unit.logName}</span>` +
         `<span class="fwin-ac-stat">HP:${unit.currentHp}/${unit.maxHp}</span>` +
         `<span class="fwin-ac-stat">AC:${unit.ac}</span>` +
@@ -258,7 +260,9 @@
         const fClass = isDead ? 'init-dead' : unit.faction === 'party' ? 'init-party' : 'init-enemy';
         const activeClass = isActive ? ' init-active' : '';
         const name = unit.name.length > 8 ? unit.name.substring(0, 7) + '\u2026' : unit.name;
-        html += `<span class="init-unit ${fClass}${activeClass}" title="${unit.logName} HP:${unit.currentHp}/${unit.maxHp}">${name}</span>`;
+        const face = TR.ScreenArt ? TR.ScreenArt.portraitURL(unit, 20) : null;
+        const img = face ? `<img src="${face}" alt="">` : '';
+        html += `<span class="init-unit ${fClass}${activeClass}" title="${unit.logName} HP:${unit.currentHp}/${unit.maxHp}">${img}${name}</span>`;
         ++idx;
       }
 
