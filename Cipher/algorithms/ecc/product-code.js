@@ -268,7 +268,8 @@
         throw new Error("Product code encode: Input must be " + dataRows + "x" + dataCols + " = " + (dataRows * dataCols) + " bits");
       }
 
-      const encoded = new Array(encodedRows * encodedCols).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(encodedRows * encodedCols, 0);
 
       // Copy data bits
       for (let r = 0; r < dataRows; ++r) {

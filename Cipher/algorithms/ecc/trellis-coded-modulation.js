@@ -229,6 +229,7 @@
         throw new Error("TCM encode: Input length must be multiple of " + this._inputBitsPerSymbol + " bits");
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
       this._state = 0; // Reset encoder state
 
@@ -285,6 +286,7 @@
       const numSymbols = receivedBits.length / this._outputBitsPerSymbol;
 
       // Convert received bits to symbols (structural bit packing)
+      /** @type {uint8[]} */
       const receivedSymbols = [];
       for (let i = 0; i < numSymbols; ++i) {
         const idx = i * this._outputBitsPerSymbol;
@@ -296,6 +298,7 @@
       const decodedInput = this._viterbiDecode(receivedSymbols);
 
       // Convert decoded input symbols to bit stream (structural bit extraction)
+      /** @type {uint8[]} */
       const decodedBits = [];
       for (let i = 0; i < decodedInput.length; ++i) {
         const inputSymbol = decodedInput[i];
@@ -318,6 +321,7 @@
 
       // Initialize path metrics (log-likelihood)
       // Start from state 0 with metric 0
+      /** @type {float64[]} */
       let pathMetrics = new Array(numStates).fill(Infinity);
       pathMetrics[0] = 0;
 
@@ -327,8 +331,10 @@
       // Trellis traversal
       for (let t = 0; t < numSymbols; ++t) {
         const receivedSymbol = receivedSymbols[t];
+        /** @type {float64[]} */
         const newMetrics = new Array(numStates).fill(Infinity);
-        const newSurvivors = new Array(numStates).fill(0);
+        /** @type {uint8[]} */
+        const newSurvivors = OpCodes.CreateArray(numStates, 0);
 
         // For each current state
         for (let state = 0; state < numStates; ++state) {

@@ -281,7 +281,8 @@
         }
       }
 
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Matrix-vector multiplication over GF(2): c = m * G
       // Note: Uses XOR for GF(2) field addition
@@ -391,12 +392,14 @@
       // For educational implementation, use maximum likelihood decoding
       // Real expander code decoding uses message-passing on bipartite graph
       let minDistance = Infinity;
-      let bestMessage = new Array(this.k).fill(0);
+      /** @type {float64[]} */
+      let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Exhaustive search over all 2^k possible messages (feasible for small k)
       const totalMessages = Math.pow(2, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
+        /** @type {float64[]} */
         const message = [];
         let temp = msgIndex;
 

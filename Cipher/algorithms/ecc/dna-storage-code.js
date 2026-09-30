@@ -213,6 +213,7 @@
       this.symbolToBase = ['A', 'C', 'G', 'T'];
 
       // GC bases (for content checking)
+      /** @type {uint8[]} */
       this.gcBases = [1, 2]; // C=1, G=2
 
       // Initialize GF(4) arithmetic tables
@@ -288,6 +289,7 @@
 
       // Division: a / b = a * b^(-1)
       // In GF(4), multiplicative inverses: 1^(-1)=1, 2^(-1)=3, 3^(-1)=2
+      /** @type {uint8[]} */
       const inverse = [0, 1, 3, 2]; // inverses of {0,1,2,3}
       return this.gfMultiply(a, inverse[b]);
     }
@@ -298,12 +300,14 @@
      */
     computeGenerator() {
       // Start with g(x) = 1
+      /** @type {uint8[]} */
       let gen = [1];
 
       // Multiply by (x - α^i) for i = 0 to n-k-1
       for (let i = 0; i < this.n - this.k; ++i) {
         const alpha_i = this.gfAntilog[i % 3]; // α^i (cycle every 3)
-        const newGen = new Array(gen.length + 1).fill(0);
+        /** @type {uint8[]} */
+        const newGen = OpCodes.CreateArray(gen.length + 1, 0);
 
         // Multiply: g(x) * (x - α^i)
         for (let j = 0; j < gen.length; ++j) {
@@ -396,7 +400,8 @@
      * @returns {Array} n-k parity symbols
      */
     calculateParity(data) {
-      const parity = new Array(this.n - this.k).fill(0);
+      /** @type {uint8[]} */
+      const parity = OpCodes.CreateArray(this.n - this.k, 0);
 
       // Polynomial division: data(x) * x^(n-k) / g(x)
       for (let i = 0; i < this.k; ++i) {

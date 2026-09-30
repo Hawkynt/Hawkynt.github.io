@@ -248,6 +248,7 @@
         throw new Error('Stabilizer code requires at least 1 bit of logical data');
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process each input bit as a logical qubit
@@ -279,6 +280,7 @@
         throw new Error('Stabilizer code requires data in 5-qubit blocks');
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process 5-bit blocks
@@ -455,6 +457,7 @@
     }
 
     _getBitPositions(value) {
+      /** @type {int32[]} */
       const positions = [];
       for (let i = 0; i < 5; i++) {
         if (OpCodes.ToUint32(value&OpCodes.Shl32(1, i))) {

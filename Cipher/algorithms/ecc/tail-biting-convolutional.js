@@ -288,6 +288,7 @@
      * @returns {Array} - Encoded output bits
      */
     encodeWithInitialState(data, initialState) {
+      /** @type {uint8[]} */
       const output = [];
       const constraintLength = this._constraintLength;
       const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1; // Structural: mask for (K-1) state bits
@@ -347,6 +348,7 @@
 
       const numStates = OpCodes.Shl32(1, this._constraintLength - 1); // Structural: 2^(K-1)
 
+      /** @type {int32[]} */
       let bestPath = [];
       let bestMetric = Infinity;
 
@@ -378,6 +380,7 @@
       const numStates = OpCodes.Shl32(1, constraintLength - 1); // Structural: 2^(K-1) encoder states
       const stateMask = numStates - 1; // Structural mask for state bits
 
+      /** @type {float64[]} */
       let pathMetrics = new Array(numStates).fill(Infinity);
 
       // Initialize: only start from specified state
@@ -385,7 +388,9 @@
 
       // Survivor decisions: for each stage, the input bit that entered a state
       // and the predecessor state it came from
+      /** @type {uint8[][]} */
       const decisionBit = [];
+      /** @type {uint8[][]} */
       const decisionFrom = [];
 
       // Process each received symbol
@@ -393,9 +398,12 @@
         const r1 = OpCodes.And32(received[t * this._rate], 1);
         const r2 = OpCodes.And32(received[t * this._rate + 1], 1);
 
+        /** @type {float64[]} */
         const nextMetrics = new Array(numStates).fill(Infinity);
-        const enteredWith = new Array(numStates).fill(0);
-        const cameFrom = new Array(numStates).fill(0);
+        /** @type {uint8[]} */
+        const enteredWith = OpCodes.CreateArray(numStates, 0);
+        /** @type {uint8[]} */
+        const cameFrom = OpCodes.CreateArray(numStates, 0);
 
         // For each current state
         for (let state = 0; state < numStates; ++state) {
@@ -436,7 +444,8 @@
       }
 
       // Trace the survivor path back to recover the information bits
-      const decoded = new Array(numBits).fill(0);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(numBits, 0);
       let state = startState;
       for (let t = numBits - 1; t >= 0; --t) {
         decoded[t] = decisionBit[t][state];

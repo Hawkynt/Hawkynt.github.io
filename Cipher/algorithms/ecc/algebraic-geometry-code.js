@@ -306,6 +306,7 @@
       }
 
       // Inverse table: 1^(-1)=1, α^(-1)=α+1, (α+1)^(-1)=α
+      /** @type {uint8[]} */
       const invTable = [0, 1, 3, 2];
       return invTable[a % 4];
     }
@@ -358,7 +359,8 @@
         }
       }
 
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Matrix-vector multiplication over GF(4): c = m * G
       // Each codeword symbol is linear combination of message symbols
@@ -413,12 +415,14 @@
       // 2. Guruswami-Sudan list decoding
       // 3. Fundamental polytope decoding
       let minDistance = Infinity;
-      let bestMessage = new Array(this.k).fill(0);
+      /** @type {float64[]} */
+      let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       const totalMessages = Math.pow(4, this.k); // 4^k possible messages
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
         // Convert index to GF(4)^k message vector
+        /** @type {float64[]} */
         const message = [];
         let temp = msgIndex;
         for (let i = 0; i < this.k; ++i) {
@@ -450,6 +454,7 @@
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
+        /** @type {float64[]} */
         const message = [];
         let temp = msgIndex;
         for (let i = 0; i < this.k; ++i) {
@@ -475,7 +480,8 @@
      */
     computeSyndrome(received) {
       const syndromeLength = this.parityCheckMatrix.length;
-      const syndrome = new Array(syndromeLength).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(syndromeLength, 0);
 
       for (let i = 0; i < syndromeLength; ++i) {
         let sum = 0;

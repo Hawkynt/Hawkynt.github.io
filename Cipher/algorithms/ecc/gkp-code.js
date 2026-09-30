@@ -434,7 +434,8 @@
     _encodeLogicalBit(bit) {
       const gridSize = this._gridSize;
       const totalQubits = gridSize * gridSize;
-      const grid = new Array(totalQubits).fill(0);
+      /** @type {uint8[]} */
+      const grid = OpCodes.CreateArray(totalQubits, 0);
       const center = Math.floor(gridSize / 2);
 
       // GKP |0> state: peaks at even multiples of sqrt(pi)
@@ -520,7 +521,8 @@
 
       const gridSize = this._gridSize;
       const center = Math.floor(gridSize / 2);
-      const corrected = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const corrected = OpCodes.CreateArray(grid.length, 0);
 
       // The two logical basis states occupy distinct lattice sites: |0> leaves the
       // grid unmarked (peak at the centre), while |1> carries its peak one grid
@@ -611,7 +613,8 @@
 
       if (shiftAmount === 0) return grid;
 
-      const corrected = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const corrected = OpCodes.CreateArray(grid.length, 0);
 
       for (let i = 0; i < grid.length; ++i) {
         const row = Math.floor(i / gridSize);
@@ -627,7 +630,8 @@
     _applyFiniteEnergyDamping(grid) {
       // Apply finite-energy damping: exp(-ε n̂)
       // Each peak gets exponentially damped based on photon number
-      const damped = [...grid];
+      /** @type {uint8[]} */
+      const damped = grid.slice();
       const center = Math.floor(this._gridSize / 2);
 
       for (let i = 0; i < damped.length; ++i) {
@@ -690,7 +694,8 @@
         return grid.slice();
       }
 
-      const shifted = new Array(grid.length).fill(0);
+      /** @type {int32[]} */
+      const shifted = OpCodes.CreateArray(grid.length, 0);
 
       // Find non-zero positions and shift them
       for (let i = 0; i < grid.length; ++i) {
@@ -717,7 +722,8 @@
       // Rotate grid in phase space (position-momentum space)
       // Simplified: Hadamard swaps position and momentum
       const gridSize = this._gridSize;
-      const rotated = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const rotated = OpCodes.CreateArray(grid.length, 0);
       const center = Math.floor(gridSize / 2);
 
       for (let i = 0; i < grid.length; ++i) {

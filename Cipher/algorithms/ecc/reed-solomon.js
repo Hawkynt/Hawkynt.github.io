@@ -304,11 +304,13 @@
 
     computeGenerator() {
       // Compute generator polynomial (x-α^0)(x-α^1)...(x-α^(n-k-1))
+      /** @type {uint8[]} */
       let gen = [1]; // Start with polynomial "1"
 
       for (let i = 0; i < this.n - this.k; i++) {
         const alpha_i = this.gfAntilog[i];
-        const newGen = new Array(gen.length + 1).fill(0);
+        /** @type {uint8[]} */
+        const newGen = OpCodes.CreateArray(gen.length + 1, 0);
 
         // Multiply by (x - α^i)
         for (let j = 0; j < gen.length; j++) {
@@ -323,7 +325,8 @@
 
     calculateParity(data) {
       // Calculate parity symbols using polynomial division
-      const parity = new Array(this.n - this.k).fill(0);
+      /** @type {uint8[]} */
+      const parity = OpCodes.CreateArray(this.n - this.k, 0);
 
       for (let i = 0; i < this.k; i++) {
         const coeff = OpCodes.Xor32(data[i], parity[0]);
@@ -358,6 +361,7 @@
 
     findErrorLocations(syndromes) {
       // Simplified error location (real implementation uses Berlekamp-Massey + Chien search)
+      /** @type {int32[]} */
       const locations = [];
 
       // For educational purposes, assume single error at position indicated by syndrome ratio

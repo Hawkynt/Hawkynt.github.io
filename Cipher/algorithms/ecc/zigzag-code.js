@@ -260,6 +260,7 @@
         throw new Error("Zigzag Code: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       const numBlocks = data.length / blockSize;
 
@@ -267,9 +268,10 @@
         const offset = block * blockSize;
 
         // Create matrix from input data (row-major order)
+        /** @type {uint8[][]} */
         const matrix = [];
         for (let r = 0; r < this._rows; ++r) {
-          matrix[r] = [];
+          matrix[r] = OpCodes.CreateArray(0, 0);
           for (let c = 0; c < this._cols; ++c) {
             matrix[r][c] = data[offset + r * this._cols + c];
           }
@@ -293,6 +295,7 @@
         throw new Error("Zigzag Decode: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
+      /** @type {uint8[]} */
       const result = [];
       const numBlocks = data.length / blockSize;
 
@@ -301,6 +304,7 @@
         const blockData = data.slice(offset, offset + blockSize);
 
         // Create empty matrix
+        /** @type {uint8[][]} */
         const matrix = [];
         for (let r = 0; r < this._rows; ++r) {
           matrix[r] = new Array(this._cols);
@@ -327,6 +331,7 @@
     _readAscendingDiagonals(matrix) {
       // Read diagonals from bottom-left to top-right (ascending)
       // Pattern: (0,0), (1,0)-(0,1), (2,0)-(1,1)-(0,2), ...
+      /** @type {uint8[]} */
       const result = [];
       const rows = this._rows;
       const cols = this._cols;
@@ -359,6 +364,7 @@
     _readDescendingDiagonals(matrix) {
       // Read diagonals from top-left to bottom-right (descending)
       // Pattern: (0,0), (0,1)-(1,0), (0,2)-(1,1)-(2,0), ...
+      /** @type {uint8[]} */
       const result = [];
       const rows = this._rows;
       const cols = this._cols;

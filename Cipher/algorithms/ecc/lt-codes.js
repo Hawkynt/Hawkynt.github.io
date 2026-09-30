@@ -150,6 +150,7 @@
       /** @type {boolean} */
       this.isInverse = isInverse;
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
       this.decodedSymbols = null;
 
@@ -326,12 +327,15 @@
     // Belief Propagation Decoder (simplified)
     _beliefPropagationDecode(receivedSymbols, encodingGraph) {
       const numReceived = receivedSymbols.length;
+      /** @type {uint8[]} */
       const decoded = new Array(this.k).fill(null);
+      /** @type {boolean[]} */
       const symbolStatus = new Array(this.k).fill(false); // false = unknown, true = decoded
 
       // Work with a copy of the graph
       const workingGraph = encodingGraph.clone();
-      const workingSymbols = [...receivedSymbols];
+      /** @type {uint8[]} */
+      const workingSymbols = receivedSymbols.slice();
 
       let decodedCount = 0;
       let iterationCount = 0;
@@ -402,6 +406,7 @@
     getDegreeStats() {
       if (!this.graph) return null;
 
+      /** @type {int32[]} */
       const degrees = [];
       for (let i = 0; i < this.graph.rightNodes; i++) {
         degrees.push(this.graph.getDegree(i));
