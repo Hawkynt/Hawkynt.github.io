@@ -137,7 +137,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BlumMicaliInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,8 +155,13 @@
  */
 
   class BlumMicaliInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {BlumMicaliAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Blum-Micali state
       this._p = null;           // Large prime modulus
@@ -169,6 +174,7 @@
     /**
      * Set the prime modulus p
      * Should be a large prime for cryptographic security
+     * @param {BigInt} value - Prime p (a number is accepted too)
      */
     set p(value) {
       if (typeof value === 'number') {
@@ -183,6 +189,9 @@
       this._threshold = (value - 1n) / 2n;
     }
 
+    /**
+     * @returns {BigInt} Prime p
+     */
     get p() {
       return this._p;
     }
@@ -190,6 +199,7 @@
     /**
      * Set the generator g (primitive root modulo p)
      * Should be a primitive root for proper distribution
+     * @param {BigInt} value - Generator g (a number is accepted too)
      */
     set g(value) {
       if (typeof value === 'number') {
@@ -203,6 +213,9 @@
       this._g = value;
     }
 
+    /**
+     * @returns {BigInt} Generator g
+     */
     get g() {
       return this._g;
     }
@@ -210,6 +223,7 @@
     /**
      * Set seed value (initial state)
      * Seed must be in range [2, p-1]
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -226,6 +240,7 @@
       }
 
       // Convert seed bytes to BigInt
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -241,6 +256,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -267,6 +285,7 @@
      * Generate a single byte (8 bits)
      */
     _generateByte() {
+      /** @type {uint8} */
       let byte = 0;
 
       for (let i = 0; i < 8; ++i) {
@@ -279,8 +298,8 @@
     /**
      * Generate random bytes
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -288,9 +307,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < length; ++i) {
@@ -321,19 +343,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

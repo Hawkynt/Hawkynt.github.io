@@ -49,20 +49,32 @@
   // All shift/mask/xor operations on those BigInt words go through OpCodes.ShiftLn/ShiftRn/
   // AndN/XorN (the BigInt equivalents of OpCodes' 32-bit primitives) instead of raw operators.
 
-  // Helper function to convert BigInt to little-endian byte array
+  /**
+   * Convert BigInt to little-endian byte array
+   * @param {BigInt} value - 64-bit value
+   * @returns {uint8[]} 8 bytes, least significant first
+   */
   function BigIntToBytes64LE(value) {
+    /** @type {uint8[]} */
     const bytes = [];
     for (let i = 0; i < 8; ++i) {
-      bytes.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
+      /** @type {uint8} */
+      const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+      bytes.push(b);
     }
     return bytes;
   }
 
-  // Helper function to convert little-endian byte array to BigInt
+  /**
+   * Convert little-endian byte array to BigInt
+   * @param {uint8[]} bytes - Up to 8 bytes, least significant first
+   * @returns {BigInt} 64-bit value
+   */
   function BytesToBigInt64LE(bytes) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < Math.min(bytes.length, 8); ++i) {
-      value |= OpCodes.ShiftLn(BigInt(OpCodes.And32(bytes[i], 0xFF)), i * 8);
+      value = OpCodes.OrN(value, OpCodes.ShiftLn(BigInt(OpCodes.And32(bytes[i], 0xFF)), i * 8));
     }
     return value;
   }
@@ -70,15 +82,23 @@
   // MT19937-64 algorithm constants (from official C implementation)
   const NN = 312;                                      // State vector length
   const MM = 156;                                      // Period parameter
+  /** @type {BigInt} */
   const MATRIX_A = 0xB5026F5AA96619E9n;               // Constant vector a
+  /** @type {BigInt} */
   const UPPER_MASK = 0xFFFFFFFF80000000n;             // Most significant 33 bits
+  /** @type {BigInt} */
   const LOWER_MASK = 0x7FFFFFFFn;                     // Least significant 31 bits
+  /** @type {BigInt} */
   const DEFAULT_SEED = 5489n;                         // MT19937-64 default seed
+  /** @type {BigInt} */
   const INIT_MULTIPLIER = 6364136223846793005n;       // Initialization multiplier
 
   // Tempering masks (from official implementation)
+  /** @type {BigInt} */
   const TEMPER_MASK_1 = 0x5555555555555555n;          // Used OpCodes.Shr32(with, 29)
+  /** @type {BigInt} */
   const TEMPER_MASK_2 = 0x71D67FFFEDA60000n;          // Used OpCodes.Shl32(with, 17)
+  /** @type {BigInt} */
   const TEMPER_MASK_3 = 0xFFF7EEE000000000n;          // Used OpCodes.Shl32(with, 37)
 
   class MersenneTwister64Algorithm extends RandomGenerationAlgorithm {
@@ -193,7 +213,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MersenneTwister64Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -211,14 +231,24 @@
  */
 
   class MersenneTwister64Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {MersenneTwister64Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // MT19937-64 state (using BigInt for 64-bit operations)
-      this._state = new Array(NN);  // State array of 64-bit integers
+      /** @type {BigInt[]} */
+      this._state = OpCodes.CreateArray(NN, 0n);  // State array of 64-bit integers
+      /** @type {int32} */
       this._index = NN + 1;         // Index into state array (NN+1 means uninitialized)
+      /** @type {BigInt[]} */
       this._mag01 = [0n, MATRIX_A]; // mag01[x] = x * MATRIX_A for x=0,1
+      /** @type {int32} */
       this._outputSize = 64;        // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;          // Number of bytes to skip before generating output
     }
 
@@ -226,7 +256,7 @@
      * Initialize the generator with a 64-bit seed
      * Based on init_genrand64() from the reference implementation
      *
-     * @param {Array} seedBytes - 8-byte array containing 64-bit seed (little-endian)
+     * @param {uint8[]|null} seedBytes - 8-byte array containing 64-bit seed (little-endian)
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -235,6 +265,7 @@
       }
 
       // Convert seed bytes to 64-bit unsigned integer (little-endian)
+      /** @type {BigInt} */
       const seedValue = BytesToBigInt64LE(seedBytes);
 
       // Initialize state array using the reference implementation's algorithm
@@ -243,8 +274,11 @@
 
       for (this._index = 1; this._index < NN; ++this._index) {
         // mt[i] = (6364136223846793005ULL * (mt[i-1]^(mt[i-1] >> 62)) + i)
+        /** @type {BigInt} */
         const prev = this._state[this._index - 1];
+        /** @type {BigInt} */
         const xored = OpCodes.XorN(prev, OpCodes.ShiftRn(prev, 62));
+        /** @type {BigInt} */
         const mult = INIT_MULTIPLIER * xored;
         this._state[this._index] = OpCodes.AndN(mult + BigInt(this._index), 0xFFFFFFFFFFFFFFFFn);
       }
@@ -253,6 +287,9 @@
       this._index = NN;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -275,6 +312,7 @@
       }
 
       // Get value from state array
+      /** @type {BigInt} */
       let x = this._state[this._index++];
 
       // Tempering transformations (exact sequence from reference implementation)
@@ -289,26 +327,37 @@
     /**
      * Generate NN words at one time (twist operation)
      * Based on the twist logic in genrand64_int64() from reference implementation
+     * @returns {void}
      */
     _twist() {
+      /** @type {int32} */
       let i;
 
       // First loop: i from 0 to NN-MM-1
       for (i = 0; i < NN - MM; ++i) {
+        /** @type {BigInt} */
         const x = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
-        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + MM], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
+        /** @type {int32} */
+        const bit = Number(OpCodes.AndN(x, 1n));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + MM], OpCodes.ShiftRn(x, 1)), this._mag01[bit]);
       }
 
       // Second loop: i from NN-MM to NN-2
       for (; i < NN - 1; ++i) {
+        /** @type {BigInt} */
         const x = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
-        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + (MM - NN)], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
+        /** @type {int32} */
+        const bit = Number(OpCodes.AndN(x, 1n));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + (MM - NN)], OpCodes.ShiftRn(x, 1)), this._mag01[bit]);
       }
 
       // Final element
       {
+        /** @type {BigInt} */
         const x = OpCodes.OrN(OpCodes.AndN(this._state[NN - 1], UPPER_MASK), OpCodes.AndN(this._state[0], LOWER_MASK));
-        this._state[NN - 1] = OpCodes.XorN(OpCodes.XorN(this._state[MM - 1], OpCodes.ShiftRn(x, 1)), this._mag01[Number(OpCodes.AndN(x, 1n))]);
+        /** @type {int32} */
+        const bit = Number(OpCodes.AndN(x, 1n));
+        this._state[NN - 1] = OpCodes.XorN(OpCodes.XorN(this._state[MM - 1], OpCodes.ShiftRn(x, 1)), this._mag01[bit]);
       }
 
       this._index = 0;
@@ -318,8 +367,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first) to match test vectors
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (this._index > NN) {
@@ -327,27 +376,36 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 64-bit words
       const fullWords = Math.floor(length / 8);
       for (let i = 0; i < fullWords; ++i) {
+        /** @type {BigInt} */
         const value = this._next64();
         // Output in little-endian format (LSB first)
         for (let j = 0; j < 8; ++j) {
-          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, j * 8), 0xFFn)));
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, j * 8), 0xFFn));
+          output.push(b);
         }
       }
 
       // Handle remaining bytes (if length not multiple of 8)
       const remainingBytes = length % 8;
       if (remainingBytes > 0) {
+        /** @type {BigInt} */
         const value = this._next64();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+          output.push(b);
         }
       }
 
@@ -385,11 +443,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -397,11 +459,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

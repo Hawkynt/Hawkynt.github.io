@@ -109,7 +109,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BCHCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -126,16 +126,19 @@
   class BCHCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BCHCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // BCH(7,4) generator polynomial: x^3 + x + 1 (octal 013 = binary 1011)
+      /** @type {uint8[]} */
       this.generatorPoly = [1, 0, 1, 1]; // coefficients from high to low
     }
 
@@ -170,6 +173,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // BCH(7,4) encoding using polynomial division
       if (data.length !== 4) {
@@ -178,44 +185,59 @@
 
       // Systematic encoding: codeword = [data, parity]
       // Multiply data by x^(n-k) and divide by generator polynomial
-      const message = [...data];
+      /** @type {uint8[]} */
+      const message = data.slice();
       const n = 7;
       const k = 4;
       const parityBits = n - k; // 3
 
       // message * x^3 (shift left by 3)
-      const dividend = [...message, 0, 0, 0];
+      /** @type {uint8[]} */
+      const dividend = message.slice();
+      for (let i = 0; i < parityBits; ++i) dividend.push(0);
 
       // Polynomial division to get remainder
+      /** @type {uint8[]} */
       const remainder = this.polyDiv(dividend, this.generatorPoly);
 
       // Codeword = message + remainder
-      return [...message, ...remainder];
+      /** @type {uint8[]} */
+      const codeword = message.slice();
+      for (let i = 0; i < remainder.length; ++i) codeword.push(remainder[i]);
+      return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // BCH(7,4) decoding with single error correction
       if (data.length !== 7) {
         throw new Error('BCH decode: Input must be exactly 7 bits');
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
 
       // Calculate syndrome by dividing received by generator
+      /** @type {uint8[]} */
       const syndrome = this.polySyndrome(received, this.generatorPoly);
 
       // Check if syndrome is zero (no error)
-      const hasError = syndrome.some(bit => bit !== 0);
+      /** @type {boolean} */
+      const hasError = this._isNonZero(syndrome);
 
       if (hasError) {
-        console.log(`BCH: Error detected, syndrome = ${syndrome.join('')}`);
+        console.log("BCH: Error detected, syndrome = " + (syndrome.join('')));
 
         // For BCH(7,4), we can use simple error location
         // Find error position using syndrome
+        /** @type {int32} */
         const errorPos = this.findErrorPosition(syndrome);
         if (errorPos >= 0 && errorPos < 7) {
-          received[errorPos] = OpCodes.XorN(received[errorPos], 1);
-          console.log(`BCH: Corrected error at position ${errorPos}`);
+          received[errorPos] = OpCodes.Xor32(received[errorPos], 1);
+          console.log("BCH: Corrected error at position " + errorPos);
         }
       }
 
@@ -224,14 +246,20 @@
     }
 
     // Polynomial division in GF(2)
+    /**
+     * @param {uint8[]} dividend - Dividend coefficients, high to low
+     * @param {uint8[]} divisor - Divisor coefficients, high to low
+     * @returns {uint8[]} Remainder
+     */
     polyDiv(dividend, divisor) {
-      const result = [...dividend];
+      /** @type {uint8[]} */
+      const result = dividend.slice();
       const divisorLen = divisor.length;
 
       for (let i = 0; i <= result.length - divisorLen; ++i) {
         if (result[i] === 1) {
           for (let j = 0; j < divisorLen; ++j) {
-            result[i + j] = OpCodes.XorN(result[i + j], divisor[j]);
+            result[i + j] = OpCodes.Xor32(result[i + j], divisor[j]);
           }
         }
       }
@@ -241,35 +269,57 @@
     }
 
     // Calculate syndrome
+    /**
+     * @param {uint8[]} codeword - Received codeword
+     * @param {uint8[]} generator - Generator polynomial
+     * @returns {uint8[]} Syndrome bits
+     */
     polySyndrome(codeword, generator) {
       return this.polyDiv(codeword, generator);
     }
 
     // Simple error position finding for BCH(7,4)
+    /**
+     * @param {uint8[]} syndrome - Syndrome bits
+     * @returns {int32} Error position, -1 when the syndrome names none
+     */
     findErrorPosition(syndrome) {
       // For BCH(7,4), map syndrome to error position
       // This is a simplified lookup - full BCH would use Chien search
-      const syndromeValue = parseInt(syndrome.join(''), 2);
+      /** @type {string} */
+      const syndromeBits = syndrome.join('');
+      /** @type {int32} */
+      const syndromeValue = parseInt(syndromeBits, 2);
 
-      // Error position lookup table for BCH(7,4)
-      const positionTable = {
-        3: 0,   // 011 -> position 0
-        6: 1,   // 110 -> position 1
-        7: 2,   // 111 -> position 2
-        5: 3,   // 101 -> position 3
-        1: 4,   // 001 -> position 4
-        2: 5,   // 010 -> position 5
-        4: 6    // 100 -> position 6
-      };
+      // Error position lookup table for BCH(7,4), indexed by syndrome value:
+      // 001 -> 4, 010 -> 5, 011 -> 0, 100 -> 6, 101 -> 3, 110 -> 1, 111 -> 2
+      /** @type {int32[]} */
+      const positionTable = [-1, 4, 5, 0, 6, 3, 1, 2];
 
-      return positionTable[syndromeValue] !== undefined ? positionTable[syndromeValue] : -1;
+      return syndromeValue >= 1 && syndromeValue <= 7 ? positionTable[syndromeValue] : -1;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 7) return true;
 
+      /** @type {uint8[]} */
       const syndrome = this.polySyndrome(data, this.generatorPoly);
-      return syndrome.some(bit => bit !== 0);
+      return this._isNonZero(syndrome);
+    }
+
+    /**
+     * @param {uint8[]} bits - Syndrome bits
+     * @returns {boolean} True when any entry is non-zero
+     */
+    _isNonZero(bits) {
+      for (let i = 0; i < bits.length; ++i) {
+        if (bits[i] !== 0) return true;
+      }
+      return false;
     }
   }
 

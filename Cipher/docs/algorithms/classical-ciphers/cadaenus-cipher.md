@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Position-dependent nature complicates but doesn't prevent key recovery with sufficient known plaintext](https://en.wikipedia.org/wiki/Known-plaintext_attack) | — | Use longer keys and for educational purposes only |
-| [Multi-stage transformation provides better diffusion than simple substitution but still vulnerable to advanced cryptanalysis](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Educational use only - not suitable for actual security |
+| [Known Plaintext Attack](https://en.wikipedia.org/wiki/Known-plaintext_attack) | Position-dependent nature complicates but doesn't prevent key recovery with sufficient known plaintext | Use longer keys and for educational purposes only |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Multi-stage transformation provides better diffusion than simple substitution but still vulnerable to advanced cryptanalysis | Educational use only - not suitable for actual security |
 
 ## Documentation
 

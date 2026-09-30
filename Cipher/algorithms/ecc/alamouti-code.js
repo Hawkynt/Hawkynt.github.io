@@ -148,7 +148,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AlamoutiCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -165,24 +165,34 @@
   class AlamoutiCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AlamoutiCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Channel state information for decoding (default: identity channels)
+      /** @type {float64} */
       this._h1 = 1.0; // Channel gain from TX antenna 1 to RX
+      /** @type {float64} */
       this._h2 = 1.0; // Channel gain from TX antenna 2 to RX
 
       // Noise variance for soft decision decoding (optional)
+      /** @type {float64} */
       this._noiseVariance = 0.0;
     }
 
     // Configuration properties for channel parameters
+    /**
+     * @param {float64} value - Channel gain from TX antenna 1
+     */
     set h1(value) {
       if (typeof value !== 'number') {
         throw new Error('AlamoutiCodeInstance.h1: Must be a number (channel gain)');
@@ -190,10 +200,16 @@
       this._h1 = value;
     }
 
+    /**
+     * @returns {float64} Channel gain from TX antenna 1
+     */
     get h1() {
       return this._h1;
     }
 
+    /**
+     * @param {float64} value - Channel gain from TX antenna 2
+     */
     set h2(value) {
       if (typeof value !== 'number') {
         throw new Error('AlamoutiCodeInstance.h2: Must be a number (channel gain)');
@@ -201,10 +217,16 @@
       this._h2 = value;
     }
 
+    /**
+     * @returns {float64} Channel gain from TX antenna 2
+     */
     get h2() {
       return this._h2;
     }
 
+    /**
+     * @param {float64} value - Non-negative noise variance
+     */
     set noiseVariance(value) {
       if (typeof value !== 'number' || value < 0) {
         throw new Error('AlamoutiCodeInstance.noiseVariance: Must be a non-negative number');
@@ -212,6 +234,9 @@
       this._noiseVariance = value;
     }
 
+    /**
+     * @returns {float64} Noise variance
+     */
     get noiseVariance() {
       return this._noiseVariance;
     }
@@ -273,21 +298,27 @@
      * Note: For educational purposes, using real-valued symbols.
      * Production implementation would use complex symbols with conjugation.
      *
-     * @param {Array<number>} symbols - Input symbols (must have even length)
-     * @returns {Array<number>} Space-time encoded matrix in row-major order
+     * @param {float64[]} symbols - Input symbols (must have even length)
+     * @returns {float64[]} Space-time encoded matrix in row-major order
      */
     encode(symbols) {
+      /** @type {float64[]} */
       const encoded = [];
 
       // Process symbols in pairs
       for (let i = 0; i < symbols.length; i += 2) {
+        /** @type {float64} */
         const s1 = symbols[i];
+        /** @type {float64} */
         const s2 = symbols[i + 1];
 
         // Alamouti encoding matrix (row-major):
         // [s1,  s2]
         // [-s2, s1]
-        encoded.push(s1, s2, -s2, s1);
+        encoded.push(s1);
+        encoded.push(s2);
+        encoded.push(-s2);
+        encoded.push(s1);
       }
 
       return encoded;
@@ -309,15 +340,19 @@
      * - Perfect channel knowledge assumed
      * - Simplified without noise modeling
      *
-     * @param {Array<number>} received - Received signal matrix [r1_t1, r1_t2, r2_t1, r2_t2]
-     * @returns {Array<number>} Decoded symbols
+     * @param {float64[]} received - Received signal matrix [r1_t1, r1_t2, r2_t1, r2_t2]
+     * @returns {float64[]} Decoded symbols
      */
     decode(received) {
+      /** @type {float64[]} */
       const decoded = [];
+      /** @type {float64} */
       const h1 = this._h1;
+      /** @type {float64} */
       const h2 = this._h2;
 
       // Normalization factor (channel energy)
+      /** @type {float64} */
       const norm = h1 * h1 + h2 * h2;
 
       if (norm === 0) {
@@ -330,9 +365,13 @@
         // row is one time slot and each column is one transmit antenna:
         //   time slot 1: [x11, x12]
         //   time slot 2: [x21, x22]
+        /** @type {float64} */
         const x11 = received[i];     // Time slot 1, TX antenna 1
+        /** @type {float64} */
         const x12 = received[i + 1]; // Time slot 1, TX antenna 2
+        /** @type {float64} */
         const x21 = received[i + 2]; // Time slot 2, TX antenna 1
+        /** @type {float64} */
         const x22 = received[i + 3]; // Time slot 2, TX antenna 2
 
         // The receiver sees one composite sample per time slot, both antennas
@@ -340,18 +379,23 @@
         // combiner below was being fed raw matrix entries as though they were
         // already received samples, and it paired them across the wrong slots,
         // so it reconstructed (s1 - s2)/2 and (s2 - s1)/2 instead of s1 and s2.
+        /** @type {float64} */
         const r1 = h1 * x11 + h2 * x12;
+        /** @type {float64} */
         const r2 = h1 * x21 + h2 * x22;
 
         // Maximum likelihood combining (simplified for real symbols).
         // Substituting r1 = h1*s1 + h2*s2 and r2 = -h1*s2 + h2*s1 makes both
         // numerators collapse to (h1^2 + h2^2) times the wanted symbol, so this
         // is exact for any channel gains, not only the unit-gain default.
+        /** @type {float64} */
         const s1_hat = (h1 * r1 + h2 * r2) / norm;
+        /** @type {float64} */
         const s2_hat = (h2 * r1 - h1 * r2) / norm;
 
         // Hard decision (round to nearest symbol)
-        decoded.push(Math.round(s1_hat), Math.round(s2_hat));
+        decoded.push(Math.round(s1_hat));
+        decoded.push(Math.round(s2_hat));
       }
 
       return decoded;

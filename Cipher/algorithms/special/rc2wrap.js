@@ -57,15 +57,21 @@
   // Helper to calculate CMS Key Checksum using the SHA-1 algorithm
   // CMS Key Checksum: first 8 bytes of SHA-1 hash (RFC 3852)
   class SHA1Helper {
-    static cmsKeyChecksum(key) {
+    /**
+     * @param {uint8[]} data - Key material to checksum
+     * @returns {uint8[]} First 8 bytes of its SHA-1 digest
+     */
+    static cmsKeyChecksum(data) {
       // Use the registered SHA-1 algorithm
       const sha1Algo = AlgorithmFramework.Find('SHA-1');
       if (!sha1Algo) {
         throw new Error('SHA-1 algorithm not found - ensure sha1.js is loaded');
       }
 
-      const sha1 = sha1Algo.CreateInstance();
-      sha1.Feed(key);
+      /** @type {IHashFunctionInstance} */
+      const sha1 = sha1Algo.CreateInstance(false);
+      sha1.Feed(data);
+      /** @type {uint8[]} */
       const hash = sha1.Result();
 
       // Return first 8 bytes
@@ -75,8 +81,14 @@
 
   // ===== HELPER: RC2 CIPHER ACCESS =====
 
-  // Helper to get RC2 algorithm instance for CBC mode encryption/decryption
-  function getRC2Cipher(key, effectiveBits) {
+  /**
+   * Get an RC2 instance for CBC mode encryption/decryption
+   * @param {uint8[]} kek - Key-encryption key
+   * @param {int32} effectiveBits - RC2 effective key bits
+   * @param {boolean} decrypt - True for a decrypting instance
+   * @returns {IBlockCipherInstance} Keyed RC2 instance
+   */
+  function getRC2Cipher(kek, effectiveBits, decrypt) {
     // Load RC2 algorithm (required dependency)
     if (typeof require !== 'undefined') {
       try {
@@ -91,15 +103,33 @@
       throw new Error('RC2 algorithm not found - ensure rc2.js is loaded');
     }
 
-    const cipher = rc2Algo.CreateInstance(false);
-    cipher.key = key;
+    /** @type {IBlockCipherInstance} */
+    const cipher = rc2Algo.CreateInstance(decrypt);
+    cipher.key = kek;
 
-    // Set effective bits if specified
-    if (effectiveBits !== undefined && effectiveBits !== null) {
+    // Set effective bits if specified (the unwrapping direction always sets them)
+    if (decrypt || (effectiveBits !== undefined && effectiveBits !== null)) {
       cipher.effectiveBits = effectiveBits;
     }
 
     return cipher;
+  }
+
+  /**
+   * Run one 8-byte block through RC2
+   * @param {uint8[]} kek - Key-encryption key
+   * @param {int32} effectiveBits - RC2 effective key bits
+   * @param {boolean} decrypt - True to decrypt
+   * @param {uint8[]} block - 8-byte block
+   * @returns {uint8[]} Processed block
+   */
+  function rc2Block(kek, effectiveBits, decrypt, block) {
+    /** @type {IBlockCipherInstance} */
+    const cipher = getRC2Cipher(kek, effectiveBits, decrypt);
+    cipher.Feed(block);
+    /** @type {uint8[]} */
+    const output = cipher.Result();
+    return output;
   }
 
   // Load dependencies
@@ -181,7 +211,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RC2WrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -199,28 +229,42 @@
   class RC2WrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RC2WrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]|null} */
       this._pad = null; // Optional specific padding bytes (for test vectors)
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this._effectiveBits = 40; // RFC 3217 test uses 40-bit effective key size
 
       // IV2 constant from RFC 3217
+      /** @type {uint8[]} */
       this.IV2 = [0x4a, 0xdd, 0xa2, 0x2c, 0x79, 0xe8, 0x21, 0x05];
     }
 
-    // Property setter for effective bits
+    /**
+     * @param {int32} bits - RC2 effective key bits
+     */
     set effectiveBits(bits) {
       this._effectiveBits = bits;
     }
 
+    /**
+     * @returns {int32} RC2 effective key bits
+     */
     get effectiveBits() {
       return this._effectiveBits;
     }
@@ -239,15 +283,22 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
-
-      if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
       }
 
-      this._key = [...keyBytes];
+      if (!isValidSize) {
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
+      }
+
+      this._key = keyBytes.slice();
     }
 
     /**
@@ -256,7 +307,7 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
     // Property setter for IV
@@ -273,10 +324,10 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes (must be 8)`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes (must be 8)");
       }
 
-      this._iv = [...ivBytes];
+      this._iv = ivBytes.slice();
     }
 
     /**
@@ -285,23 +336,27 @@
    */
 
     get iv() {
-      return this._iv ? [...this._iv] : null;
+      return this._iv ? this._iv.slice() : null;
     }
 
-    // Property setter for pad (optional - for test vectors)
+    /**
+     * Specific pad bytes (optional - for test vectors)
+     * @param {uint8[]|null} padBytes - Pad bytes or null to clear
+     */
     set pad(padBytes) {
       if (!padBytes) {
         this._pad = null;
         return;
       }
-      this._pad = [...padBytes];
+      this._pad = padBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the pad bytes or null
+     */
     get pad() {
-      return this._pad ? [...this._pad] : null;
+      return this._pad ? this._pad.slice() : null;
     }
-
-    // Feed data to wrap/unwrap
 
     // Get the result of wrapping/unwrapping
     /**
@@ -314,6 +369,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = this.isInverse
         ? this._unwrap(this.inputBuffer)
         : this._wrap(this.inputBuffer);
@@ -324,14 +380,82 @@
       return result;
     }
 
-    // Private method for wrapping
+    /**
+     * CBC-encrypt data in place
+     * @param {uint8[]} data - Data, a multiple of 8 bytes long; overwritten
+     * @param {uint8[]} iv - 8-byte IV
+     * @returns {void}
+     */
+    _cbcEncryptInPlace(data, iv) {
+      /** @type {uint8[]} */
+      let prevBlock = iv.slice();
+      /** @type {int32} */
+      const numBlocks = data.length / 8;
+      for (let i = 0; i < numBlocks; ++i) {
+        /** @type {uint8[]} */
+        const block = data.slice(i * 8, i * 8 + 8);
+
+        // XOR with previous ciphertext (CBC mode)
+        for (let j = 0; j < 8; ++j) {
+          block[j] = OpCodes.Xor8(block[j], prevBlock[j]);
+        }
+
+        // Encrypt using RC2
+        /** @type {uint8[]} */
+        const encrypted = rc2Block(this._key, this._effectiveBits, false, block);
+
+        for (let j = 0; j < 8; ++j) {
+          data[i * 8 + j] = encrypted[j];
+        }
+
+        prevBlock = encrypted;
+      }
+    }
+
+    /**
+     * CBC-decrypt data in place
+     * @param {uint8[]} data - Data, a multiple of 8 bytes long; overwritten
+     * @param {uint8[]} iv - 8-byte IV
+     * @returns {void}
+     */
+    _cbcDecryptInPlace(data, iv) {
+      /** @type {uint8[]} */
+      let prevCipher = iv.slice();
+      /** @type {int32} */
+      const numBlocks = data.length / 8;
+      for (let i = 0; i < numBlocks; ++i) {
+        /** @type {uint8[]} */
+        const block = data.slice(i * 8, i * 8 + 8);
+        /** @type {uint8[]} */
+        const encrypted = block.slice();
+
+        // Decrypt using RC2
+        /** @type {uint8[]} */
+        const decrypted = rc2Block(this._key, this._effectiveBits, true, block);
+
+        // XOR with previous ciphertext (CBC mode)
+        for (let j = 0; j < 8; ++j) {
+          data[i * 8 + j] = OpCodes.Xor8(decrypted[j], prevCipher[j]);
+        }
+
+        prevCipher = encrypted;
+      }
+    }
+
+    /**
+     * Wrap a content-encryption key
+     * @param {uint8[]} plainKey - Key to wrap
+     * @returns {uint8[]} Wrapped key
+     */
     _wrap(plainKey) {
       // Step 1: Pad key to 8-byte boundary
+      /** @type {int32} */
       let length = plainKey.length + 1; // +1 for length byte
       if ((length % 8) !== 0) {
         length += 8 - (length % 8);
       }
 
+      /** @type {uint8[]} */
       const keyToBeWrapped = new Array(length);
       keyToBeWrapped[0] = plainKey.length; // First byte is original length
 
@@ -340,6 +464,7 @@
       }
 
       // Fill remaining with padding bytes
+      /** @type {int32} */
       const padLength = length - plainKey.length - 1;
       if (padLength > 0) {
         if (this._pad && this._pad.length >= padLength) {
@@ -357,74 +482,42 @@
       }
 
       // Step 2: Calculate CMS Key Checksum
+      /** @type {uint8[]} */
       const CKS = SHA1Helper.cmsKeyChecksum(keyToBeWrapped);
 
       // Step 3: WKCKS = WK || CKS
-      const WKCKS = [...keyToBeWrapped, ...CKS];
-
       // Step 4: Encrypt WKCKS in CBC mode with KEK and IV
-      let TEMP1 = [...WKCKS];
+      /** @type {uint8[]} */
+      const TEMP1 = keyToBeWrapped.slice();
+      for (let i = 0; i < CKS.length; ++i) TEMP1.push(CKS[i]);
 
-      const iv1 = this._iv || [0, 0, 0, 0, 0, 0, 0, 0];
-      const numBlocks = TEMP1.length / 8;
-
-      // CBC encryption with first IV
-      let prevBlock = [...iv1];
-      for (let i = 0; i < numBlocks; ++i) {
-        const block = TEMP1.slice(i * 8, i * 8 + 8);
-
-        // XOR with previous ciphertext (CBC mode)
-        for (let j = 0; j < 8; ++j) {
-          block[j] ^= prevBlock[j];
-        }
-
-        // Encrypt using RC2
-        const cipher = getRC2Cipher(this._key, this._effectiveBits);
-        cipher.Feed(block);
-        const encrypted = cipher.Result();
-
-        for (let j = 0; j < 8; ++j) {
-          TEMP1[i * 8 + j] = encrypted[j];
-        }
-
-        prevBlock = encrypted;
-      }
+      /** @type {uint8[]} */
+      const iv1 = this._iv ? this._iv : OpCodes.CreateArray(8, 0);
+      this._cbcEncryptInPlace(TEMP1, iv1);
 
       // Step 5: TEMP2 = IV || TEMP1
-      const TEMP2 = [...iv1, ...TEMP1];
+      /** @type {uint8[]} */
+      const TEMP2 = iv1.slice();
+      for (let i = 0; i < TEMP1.length; ++i) TEMP2.push(TEMP1[i]);
 
       // Step 6: Reverse the order of octets in TEMP2
+      /** @type {uint8[]} */
       const TEMP3 = new Array(TEMP2.length);
       for (let i = 0; i < TEMP2.length; ++i) {
         TEMP3[i] = TEMP2[TEMP2.length - 1 - i];
       }
 
       // Step 7: Encrypt TEMP3 with KEK and IV2
-      prevBlock = [...this.IV2];
-      for (let i = 0; i < (TEMP3.length / 8); ++i) {
-        const block = TEMP3.slice(i * 8, i * 8 + 8);
-
-        // XOR with previous ciphertext (CBC mode)
-        for (let j = 0; j < 8; ++j) {
-          block[j] ^= prevBlock[j];
-        }
-
-        // Encrypt using RC2
-        const cipher = getRC2Cipher(this._key, this._effectiveBits);
-        cipher.Feed(block);
-        const encrypted = cipher.Result();
-
-        for (let j = 0; j < 8; ++j) {
-          TEMP3[i * 8 + j] = encrypted[j];
-        }
-
-        prevBlock = encrypted;
-      }
+      this._cbcEncryptInPlace(TEMP3, this.IV2);
 
       return TEMP3;
     }
 
-    // Private method for unwrapping
+    /**
+     * Unwrap a wrapped key
+     * @param {uint8[]} wrappedKey - Wrapped key
+     * @returns {uint8[]} Content-encryption key
+     */
     _unwrap(wrappedKey) {
       // Validate input length
       if (wrappedKey.length % 8 !== 0) {
@@ -432,68 +525,37 @@
       }
 
       // Step 1: Decrypt with KEK and IV2
-      let TEMP3 = [...wrappedKey];
-
-      let prevCipher = [...this.IV2];
-      for (let i = 0; i < (TEMP3.length / 8); ++i) {
-        const block = TEMP3.slice(i * 8, i * 8 + 8);
-        const encrypted = [...block];
-
-        // Decrypt using RC2
-        const rc2Algo = AlgorithmFramework.Find('RC2');
-        const decipher = rc2Algo.CreateInstance(true);
-        decipher.key = this._key;
-        decipher.effectiveBits = this._effectiveBits;
-        decipher.Feed(block);
-        const decrypted = decipher.Result();
-
-        // XOR with previous ciphertext (CBC mode)
-        for (let j = 0; j < 8; ++j) {
-          TEMP3[i * 8 + j] = decrypted[j]^prevCipher[j];  // Scalar XOR for CBC mode
-        }
-
-        prevCipher = encrypted;
-      }
+      /** @type {uint8[]} */
+      const TEMP3 = wrappedKey.slice();
+      this._cbcDecryptInPlace(TEMP3, this.IV2);
 
       // Step 2: Reverse the order of octets
+      /** @type {uint8[]} */
       const TEMP2 = new Array(TEMP3.length);
       for (let i = 0; i < TEMP3.length; ++i) {
         TEMP2[i] = TEMP3[TEMP3.length - 1 - i];
       }
 
       // Step 3: Decompose TEMP2 into IV and TEMP1
+      /** @type {uint8[]} */
       const extractedIV = TEMP2.slice(0, 8);
-      let TEMP1 = TEMP2.slice(8);
+      /** @type {uint8[]} */
+      const TEMP1 = TEMP2.slice(8);
 
       // Step 4: Decrypt TEMP1 with KEK and extracted IV
-      prevCipher = [...extractedIV];
-      for (let i = 0; i < (TEMP1.length / 8); ++i) {
-        const block = TEMP1.slice(i * 8, i * 8 + 8);
-        const encrypted = [...block];
-
-        // Decrypt using RC2
-        const rc2AlgoInner = AlgorithmFramework.Find('RC2');
-        const decipherInner = rc2AlgoInner.CreateInstance(true);
-        decipherInner.key = this._key;
-        decipherInner.effectiveBits = this._effectiveBits;
-        decipherInner.Feed(block);
-        const decrypted = decipherInner.Result();
-
-        // XOR with previous ciphertext (CBC mode)
-        for (let j = 0; j < 8; ++j) {
-          TEMP1[i * 8 + j] = decrypted[j]^prevCipher[j];  // Scalar XOR for CBC mode
-        }
-
-        prevCipher = encrypted;
-      }
+      this._cbcDecryptInPlace(TEMP1, extractedIV);
 
       // Step 5: Decompose WKCKS into WK and CKS
+      /** @type {uint8[]} */
       const WK = TEMP1.slice(0, TEMP1.length - 8);
+      /** @type {uint8[]} */
       const extractedCKS = TEMP1.slice(TEMP1.length - 8);
 
       // Step 6: Verify CMS Key Checksum
+      /** @type {uint8[]} */
       const calculatedCKS = SHA1Helper.cmsKeyChecksum(WK);
 
+      /** @type {boolean} */
       let checksumMatch = true;
       for (let i = 0; i < 8; ++i) {
         if (calculatedCKS[i] !== extractedCKS[i]) {
@@ -507,19 +569,19 @@
       }
 
       // Step 7: Extract original key
-      const keyLength = WK[0];
+      /** @type {int32} */
+      const cekLength = WK[0];
 
-      if (keyLength > WK.length - 1) {
+      if (cekLength > WK.length - 1) {
         throw new Error("Invalid key length in wrapped data");
       }
 
       // Check pad bytes are reasonable
-      if ((WK.length - (keyLength + 1)) > 7) {
+      if ((WK.length - (cekLength + 1)) > 7) {
         throw new Error("Too many pad bytes - wrapped data is invalid");
       }
 
-      const CEK = WK.slice(1, 1 + keyLength);
-      return CEK;
+      return WK.slice(1, 1 + cekLength);
     }
   }
 

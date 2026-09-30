@@ -74,7 +74,9 @@
       this.SupportedKeySizes = [
         new KeySize(32, 32, 32)  // 256-bit key (32 bytes)
       ];
-      this.SupportedTagSizes = [16]; // 128-bit authentication tag
+      this.SupportedTagSizes = [
+        new KeySize(16, 16, 0) // 128-bit authentication tag
+      ];
       this.SupportsDetached = false;
 
       this.documentation = [
@@ -111,7 +113,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AesSivAlgorithmInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -128,20 +130,34 @@
   class AesSivAlgorithmInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AesSivAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]} */
       this.key1 = [];             // First half of key (for authentication)
+      /** @type {uint8[]} */
       this.key2 = [];             // Second half of key (for encryption)
-      this.aadArray = [];         // Associated data
+      /** @type {uint8[][]} */
+      this.aadArray = [];         // Associated data strings
+      /** @type {int32} */
       this.tagSize = 16;          // 128-bit tag
     }
 
+    /**
+     * Set the key; its first half authenticates, its second half encrypts
+     * @param {uint8[]|null} keyData - Key bytes or null to clear
+     */
     set key(keyData) {
       if (!keyData) {
         this._key = null;
@@ -151,21 +167,28 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyData.length >= ks.minSize && keyData.length <= ks.maxSize &&
-        (keyData.length - ks.minSize) % ks.stepSize === 0
-      );
-
-      if (!isValidSize) {
-        const msg = OpCodes.AnsiToBytes(`Invalid key size: ${keyData.length} bytes`);
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyData.length >= ks.minSize && keyData.length <= ks.maxSize &&
+            (keyData.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
       }
 
-      // Convert to byte array if needed
-      let keyBytes = Array.isArray(keyData) ? keyData : [...keyData];
+      if (!isValidSize) {
+        throw new Error("Invalid key size: " + keyData.length + " bytes");
+      }
+
+      /** @type {uint8[]} */
+      const keyBytes = keyData.slice();
 
       // Split key in half
-      const halfLen = keyBytes.length / 2;
+      /** @type {int32} */
+      const halfLen = Math.floor(keyBytes.length / 2);
       this.key1 = keyBytes.slice(0, halfLen);      // First half for authentication
       this.key2 = keyBytes.slice(halfLen);         // Second half for encryption
 
@@ -178,11 +201,31 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * Set the associated data. S2V takes one MAC input per element of the
+     * array, so each byte of a byte array counts as its own (empty) string;
+     * a missing value counts as one empty string.
+     * @param {uint8[]|null} aad - Associated data
+     * @returns {void}
+     */
     setAAD(aad) {
-      this.aadArray = Array.isArray(aad) ? aad : [aad || []];
+      /** @type {uint8[][]} */
+      const strings = [];
+      if (aad) {
+        for (let i = 0; i < aad.length; i++) {
+          /** @type {uint8[]} */
+          const empty = [];
+          strings.push(empty);
+        }
+      } else {
+        /** @type {uint8[]} */
+        const empty = [];
+        strings.push(empty);
+      }
+      this.aadArray = strings;
     }
 
 
@@ -193,13 +236,13 @@
    */
 
     Result() {
-      if (!this.key) {
-        const msg = OpCodes.AnsiToBytes("Key not set");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+      if (!this._key) {
+        throw new Error("Key not set");
       }
 
-      const result = this.isInverse ? 
-        this.decrypt(this.inputBuffer, this.aadArray) : 
+      /** @type {uint8[]} */
+      const result = this.isInverse ?
+        this.decrypt(this.inputBuffer, this.aadArray) :
         this.encrypt(this.inputBuffer, this.aadArray);
 
       this.inputBuffer = [];
@@ -208,31 +251,42 @@
 
     /**
      * Simplified block cipher for educational purposes
-     * @param {Array} data - 16-byte block
-     * @param {Array} key - 16-byte key
-     * @returns {Array} Encrypted 16-byte block
+     * @param {uint8[]} data - 16-byte block
+     * @param {uint8[]} blockKey - 16-byte key
+     * @returns {uint8[]} Encrypted 16-byte block
      */
-    _simpleBlockCipher(data, key) {
-      const result = [...data];
+    _simpleBlockCipher(data, blockKey) {
+      /** @type {uint8[]} */
+      const result = data.slice();
+      /** @type {uint8[]} */
+      let rk = blockKey;
 
       // Ensure 16-byte blocks
       while (result.length < 16) result.push(0);
-      while (key.length < 16) key = [...key, ...key.slice(0, 16 - key.length)];
+      while (rk.length < 16) {
+        /** @type {uint8[]} */
+        const extended = rk.slice();
+        /** @type {uint8[]} */
+        const head = rk.slice(0, 16 - rk.length);
+        for (let i = 0; i < head.length; i++) extended.push(head[i]);
+        rk = extended;
+      }
 
       // Simple rounds using OpCodes operations
       for (let round = 0; round < 4; round++) {
         // Add round key
         for (let i = 0; i < 16; i++) {
-          result[i] = OpCodes.XorN(OpCodes.XorN(result[i], key[i]), round);
+          result[i] = OpCodes.Xor8(OpCodes.Xor8(result[i], rk[i]), round);
         }
 
         // Simple substitution and permutation
         for (let i = 0; i < 16; i++) {
-          result[i] = OpCodes.AndN(OpCodes.RotL8(OpCodes.XorN(result[i], i + 1), (round + 1) % 8), 0xFF);
+          result[i] = OpCodes.RotL8(OpCodes.Xor8(result[i], i + 1), (round + 1) % 8);
         }
 
         // Simple mixing
         for (let i = 0; i < 16; i += 4) {
+          /** @type {uint8} */
           const temp = result[i];
           result[i] = result[i + 1];
           result[i + 1] = result[i + 2];
@@ -246,30 +300,32 @@
 
     /**
      * Simplified MAC computation
-     * @param {Array} key - Authentication key
-     * @param {Array} data - Data to authenticate
-     * @returns {Array} 16-byte MAC
+     * @param {uint8[]} macKey - Authentication key
+     * @param {uint8[]} data - Data to authenticate
+     * @returns {uint8[]} 16-byte MAC
      */
-    _computeMAC(key, data) {
+    _computeMAC(macKey, data) {
+      /** @type {int32} */
       const blockSize = 16;
-      let mac = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      let mac = OpCodes.CreateArray(16, 0);
 
       // Process data in 16-byte blocks
       for (let i = 0; i < data.length; i += blockSize) {
+        /** @type {uint8[]} */
         const block = data.slice(i, i + blockSize);
-        while (block.length < blockSize) {
+        if (block.length < blockSize) {
           block.push(0x80); // Padding
           while (block.length < blockSize) block.push(0);
-          break;
         }
 
         // XOR with previous MAC
         for (let j = 0; j < blockSize; j++) {
-          block[j] = OpCodes.XorN(block[j], mac[j]);
+          block[j] = OpCodes.Xor8(block[j], mac[j]);
         }
 
         // Encrypt with key
-        mac = this._simpleBlockCipher(block, key);
+        mac = this._simpleBlockCipher(block, macKey);
       }
 
       return mac;
@@ -277,21 +333,24 @@
 
     /**
      * S2V (String-to-Vector) function - simplified
-     * @param {Array} strings - Array of byte arrays to authenticate
-     * @returns {Array} 16-byte SIV
+     * @param {uint8[][]} strings - Byte arrays to authenticate
+     * @returns {uint8[]} 16-byte SIV
      */
     _s2v(strings) {
       // Start with MAC of zero block
-      const zeroBlock = new Array(16).fill(0);
-      let v = this._computeMAC(this.key1, zeroBlock);
+      /** @type {uint8[]} */
+      const zeroBlock = OpCodes.CreateArray(16, 0);
+      /** @type {uint8[]} */
+      const v = this._computeMAC(this.key1, zeroBlock);
 
       // Process all strings
       for (let i = 0; i < strings.length; i++) {
+        /** @type {uint8[]} */
         const mac = this._computeMAC(this.key1, strings[i]);
 
         // v = (v * 2) XOR MAC(string) - simplified multiplication
         for (let j = 0; j < 16; j++) {
-          v[j] = OpCodes.XorN(OpCodes.RotL8(v[j], 1), mac[j]);
+          v[j] = OpCodes.Xor8(OpCodes.RotL8(v[j], 1), mac[j]);
         }
       }
 
@@ -300,30 +359,34 @@
 
     /**
      * Simple counter mode encryption
-     * @param {Array} data - Data to encrypt/decrypt
-     * @param {Array} siv - 16-byte initialization vector
-     * @returns {Array} Encrypted/decrypted data
+     * @param {uint8[]} data - Data to encrypt/decrypt
+     * @param {uint8[]} siv - 16-byte initialization vector
+     * @returns {uint8[]} Encrypted/decrypted data
      */
     _counterMode(data, siv) {
+      /** @type {uint8[]} */
       const result = [];
-      let counter = [...siv];
+      /** @type {uint8[]} */
+      const counter = siv.slice();
 
       // Clear the high bit for counter mode
-      counter[15] &= 0x7F;
+      counter[15] = OpCodes.And8(counter[15], 0x7F);
 
       for (let i = 0; i < data.length; i += 16) {
         // Generate keystream
+        /** @type {uint8[]} */
         const keystream = this._simpleBlockCipher(counter, this.key2);
 
         // XOR with data
+        /** @type {int32} */
         const blockSize = Math.min(16, data.length - i);
         for (let j = 0; j < blockSize; j++) {
-          result.push(OpCodes.XorN(data[i + j], keystream[j]));
+          result.push(OpCodes.Xor8(data[i + j], keystream[j]));
         }
 
         // Increment counter
         for (let j = 15; j >= 0; j--) {
-          counter[j] = OpCodes.AndN(counter[j] + 1, 0xFF);
+          counter[j] = OpCodes.ToByte(counter[j] + 1);
           if (counter[j] !== 0) break;
         }
       }
@@ -333,51 +396,62 @@
 
     /**
      * Encrypt plaintext with associated data
-     * @param {Array} plaintext - Data to encrypt as byte array
-     * @param {Array} aadArray - Array of associated data
-     * @returns {Array} SIV || Ciphertext as byte array
+     * @param {uint8[]} plaintext - Data to encrypt as byte array
+     * @param {uint8[][]} [aadArray=[]] - Associated data strings
+     * @returns {uint8[]} SIV || Ciphertext as byte array
      */
     encrypt(plaintext, aadArray = []) {
       // Prepare S2V input: AAD + plaintext
-      const s2vInput = [...aadArray, plaintext];
+      /** @type {uint8[][]} */
+      const s2vInput = aadArray.slice();
+      s2vInput.push(plaintext);
 
       // Compute SIV using S2V
+      /** @type {uint8[]} */
       const siv = this._s2v(s2vInput);
 
       // Encrypt plaintext using counter mode with SIV as IV
+      /** @type {uint8[]} */
       const ciphertext = this._counterMode(plaintext, siv);
 
       // Return SIV || Ciphertext
-      return [...siv, ...ciphertext];
+      /** @type {uint8[]} */
+      const output = siv.slice();
+      for (let i = 0; i < ciphertext.length; i++) output.push(ciphertext[i]);
+      return output;
     }
 
     /**
      * Decrypt ciphertext and verify authenticity
-     * @param {Array} ciphertextWithSIV - SIV || Ciphertext as byte array
-     * @param {Array} aadArray - Array of associated data
-     * @returns {Array} Decrypted plaintext as byte array
+     * @param {uint8[]} ciphertextWithSIV - SIV || Ciphertext as byte array
+     * @param {uint8[][]} [aadArray=[]] - Associated data strings
+     * @returns {uint8[]} Decrypted plaintext as byte array
      */
     decrypt(ciphertextWithSIV, aadArray = []) {
       if (ciphertextWithSIV.length < this.tagSize) {
-        const msg = OpCodes.AnsiToBytes("Ciphertext must include SIV tag");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("Ciphertext must include SIV tag");
       }
 
       // Split SIV and ciphertext
+      /** @type {uint8[]} */
       const siv = ciphertextWithSIV.slice(0, this.tagSize);
+      /** @type {uint8[]} */
       const ciphertext = ciphertextWithSIV.slice(this.tagSize);
 
       // Decrypt ciphertext using counter mode
+      /** @type {uint8[]} */
       const plaintext = this._counterMode(ciphertext, siv);
 
       // Verify SIV by recomputing S2V
-      const s2vInput = [...aadArray, plaintext];
+      /** @type {uint8[][]} */
+      const s2vInput = aadArray.slice();
+      s2vInput.push(plaintext);
+      /** @type {uint8[]} */
       const expectedSIV = this._s2v(s2vInput);
 
       // Constant-time comparison
       if (!OpCodes.SecureCompare(siv, expectedSIV)) {
-        const msg = OpCodes.AnsiToBytes("Authentication verification failed");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("Authentication verification failed");
       }
 
       return plaintext;

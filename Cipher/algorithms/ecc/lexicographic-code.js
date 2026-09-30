@@ -123,7 +123,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LexicographicCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -140,19 +140,27 @@
   class LexicographicCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LexicographicCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._n = 7; // Default: length 7
+      /** @type {int32} */
       this._d = 3; // Default: minimum distance 3
+      /** @type {uint8[][]} */
       this.codebook = null;
     }
 
+    /**
+     * @param {int32} value - Code length (3..16)
+     */
     set n(value) {
       if (value < 3 || value > 16) {
         throw new Error('LexicographicCodeInstance.n: Must be between 3 and 16');
@@ -161,18 +169,27 @@
       this.codebook = null; // Invalidate codebook
     }
 
+    /**
+     * @returns {int32} Code length
+     */
     get n() {
       return this._n;
     }
 
+    /**
+     * @param {int32} value - Minimum distance (1..n)
+     */
     set d(value) {
       if (value < 1 || value > this._n) {
-        throw new Error(`LexicographicCodeInstance.d: Must be between 1 and ${this._n}`);
+        throw new Error("LexicographicCodeInstance.d: Must be between 1 and " + this._n);
       }
       this._d = value;
       this.codebook = null; // Invalidate codebook
     }
 
+    /**
+     * @returns {int32} Minimum distance
+     */
     get d() {
       return this._d;
     }
@@ -213,27 +230,36 @@
       return this.result;
     }
 
+    /**
+     * @returns {uint8[][]} Greedy lexicode codewords in lexicographic order
+     */
     generateCodebook() {
       // Greedy lexicographic construction
+      /** @type {uint8[][]} */
       const codebook = [];
       const n = this._n;
       const d = this._d;
 
       // Always include all-zeros codeword
-      codebook.push(new Array(n).fill(0));
+      /** @type {uint8[]} */
+      const zeros = [];
+      for (let i = 0; i < n; ++i) zeros.push(0);
+      codebook.push(zeros);
 
       // Try adding codewords in lexicographic order
       for (let candidate = 1; candidate < OpCodes.Shl32(1, n); ++candidate) {
         // Convert candidate to bit array
+        /** @type {uint8[]} */
         const codeword = [];
         for (let i = n - 1; i >= 0; --i) {
-          codeword.push(OpCodes.AndN(OpCodes.Shr32(candidate, i), 1));
+          codeword.push(OpCodes.And32(OpCodes.Shr32(candidate, i), 1));
         }
 
         // Check if this codeword has minimum distance d from all existing codewords
         let validCodeword = true;
-        for (let existing of codebook) {
-          const distance = this.hammingDistance(codeword, existing);
+        for (let e = 0; e < codebook.length; ++e) {
+          /** @type {int32} */
+          const distance = this.hammingDistance(codeword, codebook[e]);
           if (distance < d) {
             validCodeword = false;
             break;
@@ -248,7 +274,13 @@
       return codebook;
     }
 
+    /**
+     * @param {uint8[]} a - First word
+     * @param {uint8[]} b - Second word
+     * @returns {int32} Number of differing positions
+     */
     hammingDistance(a, b) {
+      /** @type {int32} */
       let distance = 0;
       for (let i = 0; i < a.length; ++i) {
         if (a[i] !== b[i]) ++distance;
@@ -256,6 +288,10 @@
       return distance;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();
@@ -265,36 +301,46 @@
       const k = Math.floor(Math.log2(this.codebook.length));
 
       if (data.length !== k) {
-        throw new Error(`Lexicographic encode: Input must be exactly ${k} bits for (${this._n}, ${this._d}) code`);
+        throw new Error("Lexicographic encode: Input must be exactly " + k + " bits for (" + this._n + ", " + this._d + ") code");
       }
 
       // Convert data to index
+      /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = OpCodes.OrN(OpCodes.Shl32(index, 1), data[i]);
+        index = OpCodes.Or32(OpCodes.Shl32(index, 1), data[i]);
       }
 
       if (index >= this.codebook.length) {
-        throw new Error(`Lexicographic encode: Index ${index} out of range (codebook size: ${this.codebook.length})`);
+        throw new Error("Lexicographic encode: Index " + index + " out of range (codebook size: " + this.codebook.length + ")");
       }
 
-      return [...this.codebook[index]];
+      /** @type {uint8[]} */
+      const codeword = this.codebook[index].slice();
+      return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();
       }
 
       if (data.length !== this._n) {
-        throw new Error(`Lexicographic decode: Input must be exactly ${this._n} bits`);
+        throw new Error("Lexicographic decode: Input must be exactly " + this._n + " bits");
       }
 
       // Minimum distance decoding
+      /** @type {float64} */
       let minDistance = Infinity;
+      /** @type {int32} */
       let bestIndex = 0;
 
       for (let i = 0; i < this.codebook.length; ++i) {
+        /** @type {int32} */
         const distance = this.hammingDistance(data, this.codebook[i]);
         if (distance < minDistance) {
           minDistance = distance;
@@ -304,14 +350,19 @@
 
       // Convert index back to bit array
       const k = Math.floor(Math.log2(this.codebook.length));
+      /** @type {uint8[]} */
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
-        decoded.push(OpCodes.AndN(OpCodes.Shr32(bestIndex, i), 1));
+        decoded.push(OpCodes.And32(OpCodes.Shr32(bestIndex, i), 1));
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();
@@ -320,7 +371,9 @@
       if (data.length !== this._n) return true;
 
       // Check if received word is valid codeword
-      for (let codeword of this.codebook) {
+      for (let w = 0; w < this.codebook.length; ++w) {
+        /** @type {uint8[]} */
+        const codeword = this.codebook[w];
         let matches = true;
         for (let i = 0; i < this._n; ++i) {
           if (data[i] !== codeword[i]) {

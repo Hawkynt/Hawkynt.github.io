@@ -78,18 +78,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Known Plaintext Attack",
-          text: "If enough plaintext-ciphertext pairs are known, the key matrix can be recovered using linear algebra",
-          uri: "https://en.wikipedia.org/wiki/Known-plaintext_attack",
-          mitigation: "Requires n known plaintext blocks for n×n matrix, but still vulnerable"
-        },
-        {
-          type: "Frequency Analysis",
-          text: "While more resistant than monoalphabetic ciphers, still vulnerable to advanced frequency analysis",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Educational use only - modern ciphers provide much better security"
-        }
+        new Vulnerability(
+          "Known Plaintext Attack",
+          "If enough plaintext-ciphertext pairs are known, the key matrix can be recovered using linear algebra",
+          "Requires n known plaintext blocks for n×n matrix, but still vulnerable",
+          "https://en.wikipedia.org/wiki/Known-plaintext_attack"
+        ),
+        new Vulnerability(
+          "Frequency Analysis",
+          "While more resistant than monoalphabetic ciphers, still vulnerable to advanced frequency analysis",
+          "Educational use only - modern ciphers provide much better security",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        )
       ];
 
       // Test vectors using byte arrays
@@ -124,7 +124,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -132,11 +133,28 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {HillCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new HillCipherInstance(this, isInverse);
+    }
+  }
+
+  /**
+   * A parsed key matrix
+   * @class
+   */
+  class HillKeyMatrix {
+    /**
+     * @param {int32[][]} matrix - Key matrix, entries reduced mod 26 (sign kept)
+     * @param {int32} size - Matrix dimension, 2 or 3
+     */
+    constructor(matrix, size) {
+      /** @type {int32[][]} */
+      this.matrix = matrix;
+      /** @type {int32} */
+      this.size = size;
     }
   }
 
@@ -150,33 +168,46 @@
   class HillCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {HillCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32|null} */
       this.originalLength = null; // Track original length for round-trip
 
       // Character sets
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      /** @type {int32} */
       this.MOD = 26;
 
       // Default to 2x2 identity matrix
+      /** @type {int32[][]} */
       this.matrix = [[1, 0], [0, 1]];
+      /** @type {int32[][]|null} */
       this.inverse = [[1, 0], [0, 1]];
+      /** @type {int32} */
       this.size = 2;
     }
 
-    // Property setter for key
+    /**
+     * Key: 4 (2x2) or 9 (3x3) integers
+     * @param {uint8[]|null} keyData - Key text bytes
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         throw new Error("Hill cipher requires a key");
       }
 
+      /** @type {string} */
       const keyStr = String.fromCharCode.apply(null, keyData);
+      /** @type {HillKeyMatrix} */
       const parsed = this.parseKey(keyStr);
       this.matrix = parsed.matrix;
       this.size = parsed.size;
@@ -196,65 +227,106 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key matrix
+   * @returns {int32[][]} Key matrix
    */
 
     get key() {
       return this.matrix;
     }
 
-    // Parse key string to matrix
-    parseKey(key) {
-      // Support formats: "a,b,c,d" for 2x2 or "a,b,c,d,e,f,g,h,i" for 3x3
-      const numbers = key.replace(/[^\d,\-]/g, ' ').split(/[\s,:;]+/).map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+    /**
+     * Parse key string to matrix
+     * Support formats: "a,b,c,d" for 2x2 or "a,b,c,d,e,f,g,h,i" for 3x3
+     * @param {string} text - Key text
+     * @returns {HillKeyMatrix} Matrix and size
+     */
+    parseKey(text) {
+      /** @type {string} */
+      const cleaned = text.replace(/[^\d,\-]/g, ' ');
+      /** @type {string[]} */
+      const fields = cleaned.split(/[\s,:;]+/);
+      /** @type {int32[]} */
+      const numbers = [];
+      for (let k = 0; k < fields.length; k++) {
+        /** @type {int32} */
+        const n = parseInt(fields[k], 10);
+        /** @type {boolean} */
+        const notANumber = isNaN(n);
+        if (!notANumber) numbers.push(n);
+      }
 
       if (numbers.length === 4) {
         // 2x2 matrix
+        /** @type {int32[][]} */
         const matrix = [
           [numbers[0] % this.MOD, numbers[1] % this.MOD],
           [numbers[2] % this.MOD, numbers[3] % this.MOD]
         ];
-        return { matrix: matrix, size: 2 };
+        return new HillKeyMatrix(matrix, 2);
       } else if (numbers.length === 9) {
         // 3x3 matrix
+        /** @type {int32[][]} */
         const matrix = [
           [numbers[0] % this.MOD, numbers[1] % this.MOD, numbers[2] % this.MOD],
           [numbers[3] % this.MOD, numbers[4] % this.MOD, numbers[5] % this.MOD],
           [numbers[6] % this.MOD, numbers[7] % this.MOD, numbers[8] % this.MOD]
         ];
-        return { matrix: matrix, size: 3 };
+        return new HillKeyMatrix(matrix, 3);
       } else {
         throw new Error('Hill cipher key must contain 4 numbers (2x2) or 9 numbers (3x3). Got: ' + numbers.length);
       }
     }
 
-    // Calculate GCD using Euclidean algorithm
+    /**
+     * Calculate GCD using Euclidean algorithm
+     * @param {int32} a - Value
+     * @param {int32} b - Value
+     * @returns {int32} gcd(|a|, |b|)
+     */
     gcd(a, b) {
-      a = Math.abs(a);
-      b = Math.abs(b);
-      while (b !== 0) {
-        const temp = b;
-        b = a % b;
-        a = temp;
+      /** @type {int32} */
+      let x = Math.abs(a);
+      /** @type {int32} */
+      let y = Math.abs(b);
+      while (y !== 0) {
+        /** @type {int32} */
+        const temp = y;
+        y = x % y;
+        x = temp;
       }
-      return a;
+      return x;
     }
 
-    // Calculate modular multiplicative inverse using Extended Euclidean Algorithm
+    /**
+     * Calculate modular multiplicative inverse using Extended Euclidean Algorithm
+     * @param {int32} a - Value
+     * @param {int32} m - Modulus
+     * @returns {int32|null} a^-1 mod m, or null when none exists
+     */
     modInverse(a, m) {
-      a = ((a % m) + m) % m;
-      if (this.gcd(a, m) !== 1) {
+      /** @type {int32} */
+      let r = ((a % m) + m) % m;
+      if (this.gcd(r, m) !== 1) {
         return null; // No inverse exists
       }
 
-      let m0 = m, x0 = 0, x1 = 1;
+      /** @type {int32} */
+      let mod = m;
+      /** @type {int32} */
+      const m0 = m;
+      /** @type {int32} */
+      let x0 = 0;
+      /** @type {int32} */
+      let x1 = 1;
 
-      while (a > 1) {
-        const q = Math.floor(a / m);
-        let t = m;
-        m = a % m;
-        a = t;
+      while (r > 1) {
+        /** @type {int32} */
+        const q = Math.floor(r / mod);
+        /** @type {int32} */
+        let t = mod;
+        mod = r % mod;
+        r = t;
         t = x0;
         x0 = x1 - q * x0;
         x1 = t;
@@ -263,21 +335,33 @@
       return x1 < 0 ? x1 + m0 : x1;
     }
 
-    // Calculate 2x2 matrix determinant mod 26
+    /**
+     * Calculate 2x2 matrix determinant mod 26
+     * @param {int32[][]} matrix - Matrix
+     * @returns {int32} Determinant in 0..25
+     */
     determinant2x2(matrix) {
+      /** @type {int32} */
       const det = (matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]) % this.MOD;
       return ((det % this.MOD) + this.MOD) % this.MOD;
     }
 
-    // Calculate 2x2 matrix inverse mod 26
+    /**
+     * Calculate 2x2 matrix inverse mod 26
+     * @param {int32[][]} matrix - Matrix
+     * @returns {int32[][]|null} Inverse, or null when the matrix is singular mod 26
+     */
     inverse2x2(matrix) {
+      /** @type {int32} */
       const det = this.determinant2x2(matrix);
+      /** @type {int32|null} */
       const detInv = this.modInverse(det, this.MOD);
 
       if (detInv === null) {
         return null; // Matrix is not invertible
       }
 
+      /** @type {int32[][]} */
       const inverse = [
         [ (matrix[1][1] * detInv) % this.MOD, (-matrix[0][1] * detInv) % this.MOD],
         [(-matrix[1][0] * detInv) % this.MOD,  (matrix[0][0] * detInv) % this.MOD]
@@ -293,48 +377,104 @@
       return inverse;
     }
 
-    // Calculate 3x3 matrix determinant mod 26.
     // parseKey has always accepted nine numbers and reported size 3, but this
     // and inverse3x3 threw "not yet implemented" from the key setter, so every
     // 3x3 key - including Hill's own published one - was rejected outright.
+    /**
+     * Calculate 3x3 matrix determinant mod 26.
+     * @param {int32[][]} matrix - Matrix
+     * @returns {int32} Determinant in 0..25
+     */
     determinant3x3(matrix) {
-      const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
+      /** @type {int32} */
+      const a = matrix[0][0];
+      /** @type {int32} */
+      const b = matrix[0][1];
+      /** @type {int32} */
+      const c = matrix[0][2];
+      /** @type {int32} */
+      const d = matrix[1][0];
+      /** @type {int32} */
+      const e = matrix[1][1];
+      /** @type {int32} */
+      const f = matrix[1][2];
+      /** @type {int32} */
+      const g = matrix[2][0];
+      /** @type {int32} */
+      const h = matrix[2][1];
+      /** @type {int32} */
+      const i = matrix[2][2];
+      /** @type {int32} */
       const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
       return ((det % this.MOD) + this.MOD) % this.MOD;
     }
 
-    // Calculate 3x3 matrix inverse mod 26 as det^-1 times the adjugate
+    /**
+     * Calculate 3x3 matrix inverse mod 26 as det^-1 times the adjugate
+     * @param {int32[][]} matrix - Matrix
+     * @returns {int32[][]|null} Inverse, or null when the matrix is singular mod 26
+     */
     inverse3x3(matrix) {
+      /** @type {int32} */
       const det = this.determinant3x3(matrix);
+      /** @type {int32|null} */
       const detInv = this.modInverse(det, this.MOD);
 
       if (detInv === null) {
         return null; // Matrix is not invertible
       }
 
-      const [[a, b, c], [d, e, f], [g, h, i]] = matrix;
+      /** @type {int32} */
+      const a = matrix[0][0];
+      /** @type {int32} */
+      const b = matrix[0][1];
+      /** @type {int32} */
+      const c = matrix[0][2];
+      /** @type {int32} */
+      const d = matrix[1][0];
+      /** @type {int32} */
+      const e = matrix[1][1];
+      /** @type {int32} */
+      const f = matrix[1][2];
+      /** @type {int32} */
+      const g = matrix[2][0];
+      /** @type {int32} */
+      const h = matrix[2][1];
+      /** @type {int32} */
+      const i = matrix[2][2];
 
       // Cofactor matrix, transposed in place to give the adjugate
+      /** @type {int32[][]} */
       const adjugate = [
         [e * i - f * h, c * h - b * i, b * f - c * e],
         [f * g - d * i, a * i - c * g, c * d - a * f],
         [d * h - e * g, b * g - a * h, a * e - b * d]
       ];
 
+      /** @type {int32[][]} */
       const inverse = [];
       for (let row = 0; row < 3; row++) {
-        inverse[row] = [];
+        /** @type {int32[]} */
+        const cells = [];
         for (let col = 0; col < 3; col++)
-          inverse[row][col] = (((adjugate[row][col] * detInv) % this.MOD) + this.MOD) % this.MOD;
+          cells.push((((adjugate[row][col] * detInv) % this.MOD) + this.MOD) % this.MOD);
+        inverse.push(cells);
       }
 
       return inverse;
     }
 
-    // Matrix-vector multiplication mod 26
+    /**
+     * Matrix-vector multiplication mod 26
+     * @param {int32[][]} matrix - Matrix
+     * @param {int32[]} vector - Vector
+     * @returns {int32[]} Product mod 26
+     */
     matrixVectorMult(matrix, vector) {
+      /** @type {int32[]} */
       const result = [];
       for (let i = 0; i < matrix.length; i++) {
+        /** @type {int32} */
         let sum = 0;
         for (let j = 0; j < vector.length; j++) {
           sum += matrix[i][j] * vector[j];
@@ -344,8 +484,6 @@
       return result;
     }
 
-    // Feed data to the cipher
-
     // Get the result of the transformation
     /**
    * Get cipher result (encrypted or decrypted data)
@@ -354,15 +492,20 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const output = [];
+      /** @type {string} */
       const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
       // Normalize input to uppercase letters only
-      let normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = inputStr.toUpperCase();
+      /** @type {string} */
+      let normalizedInput = upper.replace(/[^A-Z]/g, '');
 
       // For encryption, store original length; for decryption, use stored length
       if (!this.isInverse) {
@@ -375,26 +518,31 @@
       }
 
       // Choose the appropriate matrix
+      /** @type {int32[][]} */
       const useMatrix = this.isInverse ? this.inverse : this.matrix;
 
+      /** @type {string} */
       let processedText = '';
 
       // Process text in blocks
       for (let i = 0; i < normalizedInput.length; i += this.size) {
-        const block = normalizedInput.substr(i, this.size);
+        /** @type {string} */
+        const block = normalizedInput.substring(i, i + this.size);
 
         // Convert to numeric vector
+        /** @type {int32[]} */
         const vector = [];
         for (let j = 0; j < block.length; j++) {
-          vector.push(this.ALPHABET.indexOf(block[j]));
+          vector.push(this.ALPHABET.indexOf(block.charAt(j)));
         }
 
         // Multiply by matrix
+        /** @type {int32[]} */
         const processed = this.matrixVectorMult(useMatrix, vector);
 
         // Convert back to letters
         for (let j = 0; j < processed.length; j++) {
-          processedText += this.ALPHABET[processed[j]];
+          processedText += this.ALPHABET.charAt(processed[j]);
         }
       }
 
@@ -405,6 +553,7 @@
         while (processedText.length > 1 && processedText.endsWith('X')) {
           // Check if removing this X would make length not a multiple of block size
           // If the original was not a multiple of block size, removing X is probably correct
+          /** @type {string} */
           const withoutLastX = processedText.substring(0, processedText.length - 1);
           if (withoutLastX.length % this.size !== 0) {
             processedText = withoutLastX;
@@ -416,9 +565,9 @@
         }
       }
 
-      // Convert to byte array
-      for (const char of processedText) {
-        output.push(char.charCodeAt(0));
+      // Convert to byte array (all letters)
+      for (let k = 0; k < processedText.length; k++) {
+        output.push(processedText.charCodeAt(k));
       }
 
       // Clear input buffer for next operation
@@ -433,11 +582,6 @@
 
   // Register the algorithm immediately
   RegisterAlgorithm(algorithm);
-
-  // Export for Node.js compatibility
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = algorithm;
-  }
 
   // ===== REGISTRATION =====
 
