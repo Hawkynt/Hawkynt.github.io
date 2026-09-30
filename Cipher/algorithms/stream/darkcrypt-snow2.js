@@ -16,7 +16,7 @@
  * constants; the FSM diffusion table is derived from the standard AES
  * S-box at load time.
  *
- * This DarkCrypt build differs from the published specification in two
+ * This DarkCrypt build differs from the published specification in these
  * ways:
  *
  * 1. Each keystream call XORs precisely 64 hardcoded bytes (16 keystream
@@ -30,9 +30,9 @@
  *    empirically by comparing against the DarkCrypt implementation's own
  *    output and is preserved here to remain bit-exact with it.
  *
- * IV folding (s9/s10/s12/s15) was validated against the DarkCrypt
- * implementation using an all-zero IV; non-zero-IV behavior follows the
- * same data flow but has not been independently confirmed.
+ * 3. The 16 IV bytes are read as four little-endian 32-bit words, while the
+ *    key bytes are read as big-endian words. IV word 0 (bytes 0..3) is
+ *    XORed into s9, word 1 into s10, word 2 into s12 and word 3 into s15.
  */
 
 (function (root, factory) {
@@ -230,6 +230,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("7aa50c9511abd33a3260cbd6ce9c241596cbec4f1027ba1f8d712da619b63e1639a80b69bcf71ad11d18cc01cdaa1f5a627b1d27fa250cd65e9229177f6a59d0")
+        },
+        {
+          text: "DarkCrypt Snow2 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("4bae18bd936344c514bd42c47fb027c524a979c348414905825829ac086d21cb16652c119bcd87e34cfb34b408db9343")
         }
       ];
     }
@@ -342,12 +350,12 @@
         const o = i * 4;
         k[i] = OpCodes.Pack32BE(this._key[o], this._key[o + 1], this._key[o + 2], this._key[o + 3]);
       }
-      // Load 4 big-endian 32-bit IV words iv0..iv3
+      // Load 4 little-endian 32-bit IV words iv0..iv3 (unlike the key words, which are big-endian)
       /** @type {uint32[]} */
       const iv = new Array(4);
       for (let i = 0; i < 4; i++) {
         const o = i * 4;
-        iv[i] = OpCodes.Pack32BE(this._iv[o], this._iv[o + 1], this._iv[o + 2], this._iv[o + 3]);
+        iv[i] = OpCodes.Pack32LE(this._iv[o], this._iv[o + 1], this._iv[o + 2], this._iv[o + 3]);
       }
 
       // Standard SNOW 2.0 256-bit key loading: s_i = ~k_(7-i) for i=0..7, s_(8+i) = k_(7-i) for i=0..7
