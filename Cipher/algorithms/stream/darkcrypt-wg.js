@@ -246,6 +246,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("ae0823bb22d5594af91eea84ca6d95eb52f62f9597e3ad4a287dd5f89ba9145f0c75d654081fd3771372558b6de58d73f5883c648804dc910b184c315f163182")
+        },
+        {
+          text: "DarkCrypt Wg — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("299f3e49ff5277cacff07d90b2a78dbd37db99097024cbbb7fea22580ea666bd80ad32bd6c3bab73ee7135a0e1094fa8")
         }
       ];
     }

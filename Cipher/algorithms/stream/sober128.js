@@ -266,6 +266,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.CreateArray(16, 0),
           expected: OpCodes.Hex8ToBytes("f0358083f35a4656b17341aeca5e5c0bb355f42a0518e368ed0cd9b40d6a7198c9ddacb9423bd2ce0f05245af4bc97b88a528810a694ec75320a556f4f033fa8")
+        },
+        {
+          text: "DarkCrypt Sober-128 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("5151082d2cfaea538cfab05da62df5ca34be696dce37f701b5d640ce7fe7ab59c4181db3c5b8038221167a9b28dda377")
         }
       ];
     }

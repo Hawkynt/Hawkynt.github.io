@@ -12,6 +12,8 @@
  *   - setup(key,iv): standard AES-128 key schedule from a 128-bit key; the
  *     internal 128-bit state S is initialized as S0 = AES_K(IV) using an
  *     ordinary, textbook AES-128 encryption (round 10 has no MixColumns).
+ *     The IV is loaded as four little-endian 32-bit words, so each 4-byte
+ *     group of the IV enters the AES state byte-reversed.
  *   - crypt(): keystream is produced in 40-byte bursts. Each burst runs the
  *     state S through 10 rounds of SubBytes/ShiftRows/MixColumns/AddRoundKey
  *     -- unlike textbook AES, MixColumns is applied in EVERY round including
@@ -265,6 +267,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("d26b4189b6f1a37f294592c67ddcb89e12339d6ac40b7e8bcc51ad605c972a21d391b7e63a0b9cb1c7f4f80a4e7f4458c1425fce89482061de40389c0890c953")
+        },
+        {
+          text: "DarkCrypt Lex — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("e83589883910ea1b5b93415b9d3d50bf5649590240763c482d21093d931ea6abfb327c2194061391d3a6cf73003a8780")
         }
       ];
     }
@@ -362,7 +372,11 @@
       this._rk = keyExpansion128(this._key);
       /** @type {uint8[]} */
       const iv = this._iv ? this._iv : OpCodes.CreateArray(16, 0);
-      this._state = aes128Encrypt(iv, this._rk); // S0 = AES_K(IV)
+      // The IV enters the AES state as four little-endian words: each 4-byte group is byte-reversed
+      /** @type {uint8[]} */
+      const block = [];
+      for (let w = 0; w < 16; w += 4) block.push(...rev4(iv.slice(w, w + 4)));
+      this._state = aes128Encrypt(block, this._rk); // S0 = AES_K(IV)
       this._keystreamBuffer = [];
       this._keystreamPos = 0;
     }
