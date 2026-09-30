@@ -14,6 +14,7 @@ function makeFakeCtx2d() {
     fillText: noop, measureText: () => ({ width: 0 }),
     moveTo: noop, lineTo: noop, roundRect: noop, rect: noop,
     clip: noop, translate: noop, closePath: noop, setTransform: noop,
+    ellipse: noop, strokeText: noop, scale: noop, rotate: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
     createLinearGradient: () => ({ addColorStop: noop }),
     createRadialGradient: () => ({ addColorStop: noop }),
     imageSmoothingEnabled: true, globalCompositeOperation: 'source-over',
@@ -57,7 +58,9 @@ load('save-crypto.js');
 load('save-manager.js');
 load('input-handler.js');
 load('sprite-compositor.js');
+load('../../shared/game-effects.js');
 load('renderer.js');
+load('combat-fx.js');
 
 // Shared enums (load before all data files)
 load('data/enums.js');
@@ -198,6 +201,7 @@ loadTest('test-save-crypto.js');
 loadTest('test-save-manager.js');
 loadTest('test-input-handler.js');
 loadTest('test-renderer.js');
+loadTest('test-combat-fx.js');
 loadTest('test-character.js');
 loadTest('test-roster.js');
 loadTest('test-terrain.js');

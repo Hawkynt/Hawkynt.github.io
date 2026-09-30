@@ -65,7 +65,7 @@
     #walkPath;
     #combatAnim;
     #enemyQueue;
-    #combatFloats;
+    #combatFx;
     #combatMovePath;
     #combatMoveUnit;
     #combatMoveIdx;
@@ -127,7 +127,7 @@
       this.#walkPath = null;
       this.#combatAnim = null;
       this.#enemyQueue = [];
-      this.#combatFloats = [];
+      this.#combatFx = TR.CombatFx ? new TR.CombatFx() : null;
       this.#combatMovePath = null;
       this.#combatMoveUnit = null;
       this.#combatMoveIdx = 0;
@@ -484,12 +484,8 @@
       if (this.#encounterTimer > 0)
         this.#encounterTimer = Math.max(0, this.#encounterTimer - dt);
 
-      for (let i = this.#combatFloats.length - 1; i >= 0; --i) {
-        this.#combatFloats[i].timer -= dt;
-        this.#combatFloats[i].y -= 30 * dt;
-        if (this.#combatFloats[i].timer <= 0)
-          this.#combatFloats.splice(i, 1);
-      }
+      if (this.#combatFx)
+        this.#combatFx.update(dt);
 
       if (this.#combatMovePath) {
         this.#combatMoveProgress += dt / COMBAT_MOVE_STEP_DUR;
@@ -928,6 +924,10 @@
       const ts = this.#combatTileSize;
       let ox = this.#combatOffsetX;
       let oy = this.#combatOffsetY;
+      const cfx = this.#combatFx;
+      const bctx = this.#renderer.bufCtx;
+      if (cfx && bctx)
+        cfx.beginShake(bctx);
 
       if (this.#overworldCombat && this.#overworldMap) {
         const origin = this.#overworldCombatOrigin || this.#playerPos;
@@ -1019,7 +1019,9 @@
         if (this.#combatMovePath && this.#combatMoveUnit === u.id) continue;
         const isActive = eng.currentUnit && eng.currentUnit.id === u.id;
         const pos = (isActive && this.#combatTentativePos) ? this.#combatTentativePos : u.position;
-        this.#renderer.drawUnitToken(pos.col, pos.row, u, ts, ox, oy, { active: isActive, dead: !u.isAlive });
+        this.#renderer.drawUnitToken(pos.col, pos.row, u, ts, ox, oy, {
+          active: isActive, dead: !u.isAlive, fx: cfx ? cfx.unitState(u.id, ts) : null, time: this.#combatTime,
+        });
       }
 
       if (this.#combatMovePath && this.#combatMoveUnit) {
@@ -1032,7 +1034,7 @@
           const vc = from.col + (to.col - from.col) * t;
           const vr = from.row + (to.row - from.row) * t;
           const isActive = eng.currentUnit && eng.currentUnit.id === u.id;
-          this.#renderer.drawUnitTokenAt(vc, vr, u, ts, ox, oy, { active: isActive });
+          this.#renderer.drawUnitTokenAt(vc, vr, u, ts, ox, oy, { active: isActive, time: this.#combatTime });
         }
       }
 
@@ -1062,8 +1064,11 @@
         }
       }
 
-      for (const f of this.#combatFloats)
-        this.#renderer.drawScreenText(f.x, f.y, f.text, { color: f.color, font: 'bold 16px monospace', align: 'center' });
+      if (cfx && bctx) {
+        cfx.drawParticles(bctx);
+        cfx.drawNumbers(bctx);
+        cfx.endShake(bctx);
+      }
 
       // Canvas-rendered panels removed — now handled by CombatUI HTML overlays
 
@@ -1174,6 +1179,8 @@
     }
 
     #startCombat(enemies, biome, aiTier) {
+      if (this.#combatFx)
+        this.#combatFx.clear();
       if (TR.spriteResolver)
         TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
 
@@ -1214,6 +1221,8 @@
     }
 
     #startOverworldCombat(enemies, biome, aiTier) {
+      if (this.#combatFx)
+        this.#combatFx.clear();
       if (TR.spriteResolver)
         TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
 
@@ -1347,30 +1356,15 @@
           const crit = attackEvent.critical;
           const hit = attackEvent.result.hit;
 
-          if (hit) {
-            this.#combatFloats.push({
-              x: ox + pos.col * ts + ts / 2,
-              y: oy + pos.row * ts,
-              text: crit ? `CRIT -${dmg}!` : `-${dmg}`,
-              color: crit ? '#ffd700' : '#ff4444',
-              timer: 1.0,
-            });
-          } else {
-            this.#combatFloats.push({
-              x: ox + pos.col * ts + ts / 2,
-              y: oy + pos.row * ts,
-              text: 'MISS',
-              color: '#888',
-              timer: 0.8,
-            });
-          }
-
           this.#combatAnim = {
             type: 'enemy_attack',
             timer: 2.0,
             duration: 2.0,
             attacker: unit,
             defender: def,
+            impacts: [hit
+              ? { kind: 'hit', unit: def, from: unit, amount: dmg, crit }
+              : { kind: 'miss', unit: def, from: unit }],
             result: {
               hit,
               damage: dmg,
@@ -1408,6 +1402,8 @@
 
     #finishCombatAnim() {
       const animType = this.#combatAnim ? this.#combatAnim.type : null;
+      if (this.#combatAnim)
+        this.#playImpacts(this.#combatAnim.impacts);
       this.#combatAnim = null;
       this.#combatTentativePos = null;
       this.#combatOriginalPos = null;
@@ -1429,35 +1425,42 @@
         this.#processEnemyTurns();
     }
 
+    #unitScreenCenter(unit) {
+      const ts = this.#combatTileSize;
+      const pos = unit.position;
+      return { x: this.#combatOffsetX + pos.col * ts + ts / 2, y: this.#combatOffsetY + pos.row * ts + ts / 2 };
+    }
+
+    // Grid feedback for one resolved action, played when its cut-in ends.
+    #playImpacts(impacts) {
+      const fx = this.#combatFx;
+      if (!fx || !impacts)
+        return;
+      for (const imp of impacts) {
+        const u = imp.unit;
+        if (!u || !u.position)
+          continue;
+        const c = this.#unitScreenCenter(u);
+        const src = imp.from && imp.from.position && imp.from !== u ? this.#unitScreenCenter(imp.from) : null;
+        if (imp.kind === 'hit') {
+          fx.hit(u.id, c.x, c.y, imp.amount, { crit: !!imp.crit, fromX: src ? src.x : null, fromY: src ? src.y : null, color: imp.color || null });
+          if (imp.spell)
+            fx.spell(c.x, c.y, imp.color);
+        } else if (imp.kind === 'miss')
+          fx.miss(u.id, c.x, c.y);
+        else if (imp.kind === 'heal')
+          fx.heal(u.id, c.x, c.y, imp.amount);
+        if (!u.isAlive && !fx.isDying(u.id))
+          fx.death(u.id, c.x, c.y);
+      }
+    }
+
     #startAttackAnim(attackerId, defenderId, result) {
       const eng = this.#combatEngine;
       const attacker = eng.unitById(attackerId);
       const defender = eng.unitById(defenderId);
       if (!attacker || !defender)
         return;
-
-      const pos = defender.position;
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
-
-      if (result.hit) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: result.critical ? `CRIT -${result.damage}!` : `-${result.damage}`,
-          color: result.critical ? '#ffd700' : '#ff4444',
-          timer: 1.2,
-        });
-      } else {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: 'MISS',
-          color: '#888888',
-          timer: 0.8,
-        });
-      }
 
       this.#combatAnim = {
         type: 'player_attack',
@@ -1466,6 +1469,9 @@
         attacker,
         defender,
         result,
+        impacts: [result.hit
+          ? { kind: 'hit', unit: defender, from: attacker, amount: result.damage, crit: result.critical }
+          : { kind: 'miss', unit: defender, from: attacker }],
       };
     }
 
@@ -1473,31 +1479,13 @@
       if (!caster || !target)
         return;
 
-      const pos = target.position;
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
       const spell = result.spell;
       const spellName = spell ? spell.name : 'Spell';
-
-      if (result.damage > 0) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: `-${result.damage}`,
-          color: '#bb44ff',
-          timer: 1.2,
-        });
-      }
-      if (result.heal > 0) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: `+${result.heal}`,
-          color: '#44ff88',
-          timer: 1.2,
-        });
-      }
+      const impacts = [];
+      if (result.damage > 0)
+        impacts.push({ kind: 'hit', unit: target, from: caster, amount: result.damage, color: '#c070ff', spell: true });
+      if (result.heal > 0)
+        impacts.push({ kind: 'heal', unit: target, amount: result.heal });
 
       this.#combatAnim = {
         type: 'spell_cast',
@@ -1505,6 +1493,7 @@
         duration: 2.0,
         attacker: caster,
         defender: target,
+        impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName },
       };
     }
@@ -1513,21 +1502,18 @@
       if (!caster || !result || !result.targets)
         return;
 
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
       const eng = this.#combatEngine;
       const spell = result.spell;
       const spellName = spell ? spell.name : 'AoE Spell';
 
+      const impacts = [];
       for (const t of result.targets) {
         const u = eng ? eng.unitById(t.unitId) : null;
         if (!u) continue;
-        const pos = u.position;
         if (t.damage > 0)
-          this.#combatFloats.push({ x: ox + pos.col * ts + ts / 2, y: oy + pos.row * ts, text: `-${t.damage}`, color: '#bb44ff', timer: 1.2 });
+          impacts.push({ kind: 'hit', unit: u, from: caster, amount: t.damage, color: '#c070ff', spell: true });
         if (t.heal > 0)
-          this.#combatFloats.push({ x: ox + pos.col * ts + ts / 2, y: oy + pos.row * ts, text: `+${t.heal}`, color: '#44ff88', timer: 1.2 });
+          impacts.push({ kind: 'heal', unit: u, amount: t.heal });
       }
 
       const firstTarget = result.targets.length > 0 ? (eng ? eng.unitById(result.targets[0].unitId) : null) : null;
@@ -1537,6 +1523,7 @@
         duration: 2.0,
         attacker: caster,
         defender: firstTarget || caster,
+        impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName: `${spellName} (${result.targets.length} hit)` },
       };
     }
@@ -2138,7 +2125,8 @@
 
       if (total >= dc) {
         eng.combatLog.push(`${unit.logName} flees! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - SUCCESS)`);
-        this.#combatFloats.push({ x: fx, y: fy, text: 'Fled!', color: '#4c4', timer: 1.0 });
+        if (this.#combatFx)
+          this.#combatFx.number(fx, fy, 'Fled!', { color: '#5dd65d', size: 18 });
         // Map the fleeing unit's combat grid position back to overworld coordinates
         if (this.#overworldCombatOrigin && eng.grid) {
           const gridCenterCol = Math.floor(eng.grid.cols / 2);
@@ -2159,7 +2147,8 @@
         this.#sm.transition(GameState.OVERWORLD);
       } else {
         const modStr = dexMod >= 0 ? `+${dexMod}` : `${dexMod}`;
-        this.#combatFloats.push({ x: fx, y: fy, text: `Flee failed! (${roll}${modStr}=${total} vs DC ${dc})`, color: '#c44', timer: 1.5 });
+        if (this.#combatFx)
+          this.#combatFx.number(fx, fy, `Flee failed! (${roll}${modStr}=${total} vs DC ${dc})`, { color: '#e05050', size: 15 });
         eng.combatLog.push(`${unit.logName} fails to flee! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - FAIL)`);
         eng.selectWait();
         eng.nextTurn();
