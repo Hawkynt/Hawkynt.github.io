@@ -311,14 +311,14 @@
       // Real Gabidulin decoding uses Welch-Berlekamp-like algorithms for rank metric
 
       let minRankDistance = Infinity;
-      /** @type {float64[]} */
+      /** @type {uint8[]} */
       let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Try all 4^k possible messages (feasible for small k)
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
-        /** @type {float64[]} */
+        /** @type {uint8[]} */
         const message = [];
         let temp = msgIndex;
 

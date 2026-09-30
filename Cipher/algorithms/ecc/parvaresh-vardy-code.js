@@ -44,6 +44,19 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Best candidate found by the subset search
+   * @class
+   */
+  class CandidateSearch {
+    constructor() {
+      /** @type {uint8[]} */
+      this.best = null;
+      /** @type {int32} */
+      this.bestScore = -1;
+    }
+  }
+
   class ParvareshVardyAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -229,7 +242,9 @@
       }
 
       // Validate symbols are in field range
-      for (let symbol of data) {
+      for (let s = 0; s < data.length; ++s) {
+        /** @type {uint8} */
+        const symbol = data[s];
         if (symbol < 0 || symbol >= this.field) {
           throw new Error("Parvaresh-Vardy: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
@@ -237,20 +252,24 @@
 
       // Step 1: Construct polynomial f(x) from coefficients
       // f(x) = c0 + c1*x + ... + c(k-1)*x^(k-1)
-      const f = [...data];
+      /** @type {uint8[]} */
+      const f = data.slice();
 
       // Step 2: Evaluate f at all evaluation points
+      /** @type {uint8[]} */
       const fEvals = this.evaluatePolynomial(f);
 
       // Step 3: Compute h(x) = f(x)^2
+      /** @type {uint8[]} */
       const h = this.multiplyPolynomial(f, f);
 
       // Step 4: Evaluate h at all evaluation points
+      /** @type {uint8[]} */
       const hEvals = this.evaluatePolynomial(h);
 
       // Step 5: Concatenate evaluations [f(α1), f(α2), ..., f(αn), h(α1), h(α2), ..., h(αn)]
       /** @type {uint8[]} */
-      const codeword = [...fEvals, ...hEvals];
+      const codeword = fEvals.concat(hEvals);
 
       return codeword;
     }
@@ -269,42 +288,34 @@
       }
 
       // Validate symbols
-      for (let symbol of data) {
+      for (let s = 0; s < data.length; ++s) {
+        /** @type {uint8} */
+        const symbol = data[s];
         if (symbol < 0 || symbol >= this.field) {
           throw new Error("Parvaresh-Vardy: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
       // Split received data
+      /** @type {uint8[]} */
       const fReceived = data.slice(0, this.n);
+      /** @type {uint8[]} */
       const hReceived = data.slice(this.n, this.n * 2);
 
       // Recover the message polynomial by interpolating through every k-subset
       // of evaluation points. Any subset untouched by errors reconstructs the
       // transmitted f exactly, so the candidate agreeing with the most received
       // symbols across both blocks is the maximum-likelihood choice.
-      const subset = new Array(this.k);
-      let best = null;
-      let bestScore = -1;
+      /** @type {int32[]} */
+      const subset = OpCodes.CreateArray(this.k, 0);
+      /** @type {CandidateSearch} */
+      const found = new CandidateSearch();
 
-      const search = (start, depth) => {
-        if (depth === this.k) {
-          const candidate = this.interpolatePolynomial(subset, fReceived);
-          const score = this.agreementScore(candidate, fReceived, hReceived);
-          if (score > bestScore) {
-            bestScore = score;
-            best = candidate;
-          }
-          return;
-        }
-
-        for (let i = start; i < this.n; ++i) {
-          subset[depth] = i;
-          search(i + 1, depth + 1);
-        }
-      };
-
-      search(0, 0);
+      this._searchSubsets(0, 0, subset, fReceived, hReceived, found);
+      /** @type {uint8[]} */
+      const best = found.best;
+      /** @type {int32} */
+      const bestScore = found.bestScore;
 
       // Distinct message polynomials of degree below k agree at no more than
       // k-1 evaluation points, so each block has minimum distance n-k+1. As
@@ -321,9 +332,43 @@
       return best;
     }
 
+    /**
+     * Try every k-subset of evaluation points, in lexicographic order
+     * @param {int32} start - First point index to try at this depth
+     * @param {int32} depth - Points chosen so far
+     * @param {int32[]} subset - Chosen point indices
+     * @param {uint8[]} fReceived - Received f block
+     * @param {uint8[]} hReceived - Received h block
+     * @param {CandidateSearch} found - Best candidate so far (updated)
+     * @returns {void}
+     */
+    _searchSubsets(start, depth, subset, fReceived, hReceived, found) {
+      if (depth === this.k) {
+        /** @type {uint8[]} */
+        const candidate = this.interpolatePolynomial(subset, fReceived);
+        /** @type {int32} */
+        const score = this.agreementScore(candidate, fReceived, hReceived);
+        if (score > found.bestScore) {
+          found.bestScore = score;
+          found.best = candidate;
+        }
+        return;
+      }
+
+      for (let i = start; i < this.n; ++i) {
+        subset[depth] = i;
+        this._searchSubsets(i + 1, depth + 1, subset, fReceived, hReceived, found);
+      }
+    }
+
+    /**
+     * @returns {void}
+     */
     initializeGaloisField() {
       // Initialize log and antilog tables for GF(16)
+      /** @type {int32[]} */
       this.gfLog = new Array(this.field);
+      /** @type {uint8[]} */
       this.gfAntilog = new Array(this.field);
 
       /** @type {uint8} */
@@ -339,17 +384,32 @@
       this.gfLog[0] = this.field - 1; // Special case for zero
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Field element
+     * @returns {uint8} a * b
+     */
     gfMultiply(a, b) {
       // Galois Field multiplication using log tables
       if (a === 0 || b === 0) return 0;
       return this.gfAntilog[(this.gfLog[a] + this.gfLog[b]) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Field element
+     * @returns {uint8} a + b
+     */
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
       return OpCodes.Xor32(a, b);
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Non-zero field element
+     * @returns {uint8} a / b
+     */
     gfDivide(a, b) {
       // Galois Field division using log tables
       if (b === 0) {
@@ -359,6 +419,11 @@
       return this.gfAntilog[(this.gfLog[a] - this.gfLog[b] + (this.field - 1)) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8} base - Field element
+     * @param {int32} exponent - Exponent
+     * @returns {uint8} base^exponent
+     */
     gfPower(base, exponent) {
       // Compute base^exponent in Galois Field
       if (base === 0) return 0;
@@ -366,14 +431,22 @@
       return this.gfAntilog[(this.gfLog[base] * exponent) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8[]} coefficients - coefficients[i] scales x^i
+     * @returns {uint8[]} Values at the n evaluation points
+     */
     evaluatePolynomial(coefficients) {
       // Evaluate polynomial with given coefficients at all evaluation points
       // coefficients[i] is coefficient of x^i
-      const results = new Array(this.n);
+      /** @type {uint8[]} */
+      const results = OpCodes.CreateArray(this.n, 0);
 
       for (let i = 0; i < this.n; ++i) {
+        /** @type {uint8} */
         const point = this.evalPoints[i];
+        /** @type {uint8} */
         let value = 0;
+        /** @type {uint8} */
         let pointPower = 1; // point^0 = 1
 
         for (let j = 0; j < coefficients.length; ++j) {
@@ -388,6 +461,11 @@
       return results;
     }
 
+    /**
+     * @param {uint8[]} poly1 - First factor
+     * @param {uint8[]} poly2 - Second factor
+     * @returns {uint8[]} Product coefficients
+     */
     multiplyPolynomial(poly1, poly2) {
       // Multiply two polynomials over GF(16)
       // Returns coefficients of product polynomial
@@ -404,6 +482,11 @@
       return result;
     }
 
+    /**
+     * @param {int32[]} indices - Evaluation point indices
+     * @param {uint8[]} values - Received values by point index
+     * @returns {uint8[]} Interpolated coefficients
+     */
     interpolatePolynomial(indices, values) {
       // Lagrange interpolation over GF(16). Recovers the unique polynomial of
       // degree below indices.length passing through the selected evaluation
@@ -412,23 +495,30 @@
       const coefficients = OpCodes.CreateArray(indices.length, 0);
 
       for (let a = 0; a < indices.length; ++a) {
+        /** @type {uint8} */
         const xa = this.evalPoints[indices[a]];
+        /** @type {uint8} */
         const ya = values[indices[a]];
 
         // Basis polynomial: product over b not equal to a of (x + xb),
         // normalised by the product of (xa + xb) so it is 1 at xa and 0 elsewhere
         /** @type {uint8[]} */
-        let basis = [1];
+        let basis = OpCodes.CreateArray(1, 1);
+        /** @type {uint8} */
         let denominator = 1;
 
         for (let b = 0; b < indices.length; ++b) {
           if (b === a) continue;
 
+          /** @type {uint8} */
           const xb = this.evalPoints[indices[b]];
-          basis = this.multiplyPolynomial(basis, [xb, 1]);
+          /** @type {uint8[]} */
+          const factor = [xb, 1];
+          basis = this.multiplyPolynomial(basis, factor);
           denominator = this.gfMultiply(denominator, this.gfAdd(xa, xb));
         }
 
+        /** @type {uint8} */
         const scale = this.gfDivide(ya, denominator);
         for (let j = 0; j < basis.length; ++j) {
           coefficients[j] = this.gfAdd(coefficients[j], this.gfMultiply(basis[j], scale));
@@ -438,12 +528,21 @@
       return coefficients;
     }
 
+    /**
+     * @param {uint8[]} coefficients - Candidate message
+     * @param {uint8[]} fReceived - Received f block
+     * @param {uint8[]} hReceived - Received h block
+     * @returns {int32} Matching symbols
+     */
     agreementScore(coefficients, fReceived, hReceived) {
       // Count how many of the 2n received symbols a candidate message
       // polynomial reproduces, across both the f block and the h block
+      /** @type {uint8[]} */
       const fEvals = this.evaluatePolynomial(coefficients);
+      /** @type {uint8[]} */
       const hEvals = this.evaluatePolynomial(this.multiplyPolynomial(coefficients, coefficients));
 
+      /** @type {int32} */
       let score = 0;
       for (let i = 0; i < this.n; ++i) {
         if (fEvals[i] === fReceived[i]) ++score;
@@ -453,11 +552,17 @@
       return score;
     }
 
+    /**
+     * @param {uint8[]} fEvals - f block
+     * @param {uint8[]} hEvals - h block
+     * @returns {boolean} True when h differs from f squared
+     */
     checkCorrelation(fEvals, hEvals) {
       // Check if h(αi) = f(αi)^2 for all evaluation points
       // Returns true if any correlation violation is detected (indicating error)
 
       for (let i = 0; i < this.n; ++i) {
+        /** @type {uint8} */
         const expectedH = this.gfMultiply(fEvals[i], fEvals[i]);
         if (expectedH !== hEvals[i]) {
           return true; // Correlation violated
@@ -467,13 +572,19 @@
       return false; // Correlation holds
     }
 
+    /**
+     * @param {uint8[]} data - Received word
+     * @returns {boolean} True when an error is detected
+     */
     hasError(data) {
       // Check if received data has errors based on correlation property
       if (data.length !== this.n * 2) {
         return true;
       }
 
+      /** @type {uint8[]} */
       const fEvals = data.slice(0, this.n);
+      /** @type {uint8[]} */
       const hEvals = data.slice(this.n, this.n * 2);
 
       return this.checkCorrelation(fEvals, hEvals);
