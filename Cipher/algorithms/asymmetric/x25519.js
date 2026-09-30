@@ -53,7 +53,9 @@
     // ==================== CURVE25519 FIELD ARITHMETIC ====================
 
     // Prime: p = 2^255 - 19
+    /** @type {BigInt} */
     const P = OpCodes.ShiftLn(1n, 255) - 19n;
+    /** @type {BigInt} */
     const P_MINUS_2 = P - 2n;
 
     // Base point u-coordinate for Curve25519
@@ -140,19 +142,20 @@
      * - Clear bits 0, 1, 2 of first byte
      * - Clear bit 7 of last byte
      * - Set bit 6 of last byte
-     * @param {Uint8Array} scalar - 32-byte scalar to clamp
+     * @param {uint8[]} scalar - 32-byte scalar to clamp
+     * @returns {uint8[]} Clamped copy of the scalar
      */
     function clampScalar(scalar) {
       const clamped = new Uint8Array(scalar);
-      clamped[0] = OpCodes.AndN(clamped[0], 0xF8);  // Clear bottom 3 bits
-      clamped[31] = OpCodes.AndN(clamped[31], 0x7F); // Clear top bit
-      clamped[31] = OpCodes.OrN(clamped[31], 0x40); // Set bit 254
+      clamped[0] = OpCodes.And8(clamped[0], 0xF8);  // Clear bottom 3 bits
+      clamped[31] = OpCodes.And8(clamped[31], 0x7F); // Clear top bit
+      clamped[31] = OpCodes.Or8(clamped[31], 0x40); // Set bit 254
       return clamped;
     }
 
     /**
      * Decode little-endian 32-byte array to BigInt
-     * @param {Uint8Array} bytes - 32-byte array
+     * @param {uint8[]} bytes - 32-byte array
      * @returns {BigInt} Decoded value
      */
     function decodeScalar(bytes) {
@@ -165,26 +168,28 @@
 
     /**
      * Decode u-coordinate (with clamping of top bit)
-     * @param {Uint8Array} bytes - 32-byte array
+     * @param {uint8[]} bytes - 32-byte array
      * @returns {BigInt} Decoded u-coordinate
      */
     function decodeUCoordinate(bytes) {
       const u = new Uint8Array(bytes);
-      u[31] = OpCodes.AndN(u[31], 0x7F); // Mask top bit as per RFC 7748
+      u[31] = OpCodes.And8(u[31], 0x7F); // Mask top bit as per RFC 7748
       return modP(decodeScalar(u));
     }
 
     /**
      * Encode BigInt to little-endian 32-byte array
      * @param {BigInt} value - Value to encode
-     * @returns {Uint8Array} 32-byte array
+     * @returns {uint8[]} 32-byte array
      */
     function encodeScalar(value) {
       const bytes = new Uint8Array(32);
       let v = modP(value);
 
       for (let i = 0; i < 32; ++i) {
-        bytes[i] = Number(OpCodes.AndN(v, 0xFFn));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(v, 0xFFn));
+        bytes[i] = b;
         v = OpCodes.ShiftRn(v, 8);
       }
 
@@ -254,9 +259,9 @@
 
     /**
      * X25519 scalar multiplication
-     * @param {Uint8Array} scalar - 32-byte scalar (will be clamped)
-     * @param {Uint8Array} uCoord - 32-byte u-coordinate
-     * @returns {Uint8Array} Resulting 32-byte u-coordinate
+     * @param {uint8[]} scalar - 32-byte scalar (will be clamped)
+     * @param {uint8[]} uCoord - 32-byte u-coordinate
+     * @returns {uint8[]} Resulting 32-byte u-coordinate
      */
     function x25519(scalar, uCoord) {
       // Clamp the scalar
@@ -275,8 +280,8 @@
 
     /**
      * X25519 base point multiplication (compute public key)
-     * @param {Uint8Array} scalar - 32-byte private key (will be clamped)
-     * @returns {Uint8Array} 32-byte public key
+     * @param {uint8[]} scalar - 32-byte private key (will be clamped)
+     * @returns {uint8[]} 32-byte public key
      */
     function x25519Base(scalar) {
       const basePoint = encodeScalar(BASE_POINT_U);
@@ -611,6 +616,9 @@
     }
 
     class X25519Instance extends IAlgorithmInstance {
+      /**
+       * @param {X25519Algorithm} algorithm - Owning algorithm
+       */
       constructor(algorithm) {
         super(algorithm);
         this._privateKey = null;
@@ -618,6 +626,9 @@
         this._iterations = 1; // For iterated tests
       }
 
+      /**
+       * @param {uint8[]} keyBytes - 32-byte private scalar
+       */
       set privateKey(keyBytes) {
         if (!keyBytes || keyBytes.length !== 32) {
           throw new Error("Private key must be 32 bytes");
@@ -629,6 +640,9 @@
         return this._privateKey ? new Uint8Array(this._privateKey) : null;
       }
 
+      /**
+       * @param {uint8[]} keyBytes - 32-byte public key (kept for validation)
+       */
       set publicKey(keyBytes) {
         // For test validation - computes public key from private key
         if (!keyBytes || keyBytes.length !== 32) {
@@ -638,6 +652,9 @@
         this._expectedPublicKey = new Uint8Array(keyBytes);
       }
 
+      /**
+       * @param {uint8[]} keyBytes - 32-byte peer public key
+       */
       set otherPublicKey(keyBytes) {
         if (!keyBytes || keyBytes.length !== 32) {
           throw new Error("Other public key must be 32 bytes");
@@ -649,6 +666,9 @@
         return this._otherPublicKey ? new Uint8Array(this._otherPublicKey) : null;
       }
 
+      /**
+       * @param {int32} count - Iteration count of the RFC 7748 iterated test
+       */
       set iterations(count) {
         this._iterations = count;
       }

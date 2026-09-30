@@ -57,9 +57,12 @@
    * @returns {BigInt} Parsed value
    */
   function hexToBigInt(hex) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < hex.length; ++i) {
-      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+      /** @type {int32} */
+      const digit = parseInt(hex.charAt(i), 16);
+      value = value * 16n + BigInt(digit);
     }
     return value;
   }
@@ -70,6 +73,7 @@
    * @returns {BigInt} Corresponding integer
    */
   function OS2IP(octets) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < octets.length; ++i) {
       value = value * 256n + BigInt(octets[i]);
@@ -84,7 +88,7 @@
    * needs fewer than xLen octets is left-padded rather than shortened.
    *
    * @param {BigInt} value - Integer to convert
-   * @param {number} xLen - Intended length of the octet string
+   * @param {int32} xLen - Intended length of the octet string
    * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
    */
   function I2OSP(value, xLen) {
@@ -92,10 +96,13 @@
       throw new Error('I2OSP: integer must be non-negative');
     }
 
+    /** @type {uint8[]} */
     const octets = new Array(xLen);
     let remaining = value;
     for (let i = xLen - 1; i >= 0; --i) {
-      octets[i] = Number(remaining % 256n);
+      /** @type {uint8} */
+      const octet = Number(remaining % 256n);
+      octets[i] = octet;
       remaining = remaining / 256n;
     }
 
@@ -163,7 +170,7 @@
   /**
    * Collect cryptographically strong random bytes, falling back to a weaker
    * source only where no such generator exists.
-   * @param {number} count - Number of bytes required
+   * @param {int32} count - Number of bytes required
    * @returns {uint8[]} Random bytes
    */
   function randomBytes(count) {
@@ -188,6 +195,7 @@
       }
     }
 
+    /** @type {uint8[]} */
     const result = new Array(count);
     for (let i = 0; i < count; ++i) {
       result[i] = buffer[i];
@@ -203,7 +211,9 @@
    */
   function randomBigInt(min, max) {
     const range = max - min + 1n;
-    const octets = Math.ceil(range.toString(16).length / 2) + 8;
+    /** @type {string} */
+    const rangeHex = range.toString(16);
+    const octets = Math.ceil(rangeHex.length / 2) + 8;
 
     // Sampling one extra byte beyond the range and reducing keeps the bias
     // below any practically detectable level while avoiding a rejection loop.
@@ -214,10 +224,11 @@
   /**
    * Generate a padding string of pseudo-randomly chosen non-zero octets
    * (RFC 8017 Section 7.2.1 step 2).
-   * @param {number} count - Length of the padding string
+   * @param {int32} count - Length of the padding string
    * @returns {uint8[]} Non-zero octets
    */
   function nonZeroPadding(count) {
+    /** @type {uint8[]} */
     const padding = new Array(count);
     let produced = 0;
 
@@ -237,7 +248,7 @@
   /**
    * EME-PKCS1-v1_5 encoding (RFC 8017 Section 7.2.1 steps 1-2)
    * @param {uint8[]} message - Message octets
-   * @param {number} emLen - Length of the encoded message
+   * @param {int32} emLen - Length of the encoded message
    * @returns {uint8[]} Encoded message of exactly emLen octets
    */
   function emeEncode(message, emLen) {
@@ -246,6 +257,7 @@
     }
 
     const padding = nonZeroPadding(emLen - message.length - 3);
+    /** @type {uint8[]} */
     const encoded = new Array(emLen);
     encoded[0] = 0x00;
     encoded[1] = 0x02;
@@ -298,80 +310,98 @@
   // demonstration material only, never a secret. What matters for correctness
   // is that it is fixed: an instance that encrypts and an instance that
   // decrypts must agree on y and x, and a key generated per instance never can.
-  const ELGAMAL_KEYS = {
-    1536: {
-      p: 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
-         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
-         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
-         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
-         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
-         '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF',
-      g: '02',
-      x: '2bbe1f724b173fac2786b5688eef84f57fe15f7920fad88287fb6ceb70165a26',
-      y: 'ea98fc68f7f84684154fb3e875c29cee444a1577be29aa879743e03d26d8dd76' +
-         '772956f7802456b1c0027fb99bf7402238745b5ea12f50587ec7ed33c48955eb' +
-         '3112a762aa310465c878c92610532186dfffdfce9af276846de4c830d0d720e1' +
-         '13265f206f50489be63574ae11f71f64cfdd19d2d897d306598cd76034327381' +
-         '817f182e2a42a71145c756ac554fe740e4de0ee2529556a77b13bea0ad9e0041' +
-         '08183bccea2e1891a5fe0a5c5c42a231ccd5d5df4ecbc372a4e329479f4dbed6'
-    },
-    2048: {
-      p: 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
-         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
-         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
-         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
-         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
-         '9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B' +
-         'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF695581718' +
-         '3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF',
-      g: '02',
-      x: 'dae9fa2100bbbb5eecdf258cb9957d07e5c509e0c31fb45db84cb3a4ca3a0d36',
-      y: 'ae132bcf91859e8020441a6ccdf18948f04c7d00d1a5f283b56aa7a7bd2c1428' +
-         'd5122d4500460feebfd23990178de9fd14afe2c6a0c1be17e5033b1707f3d8ef' +
-         '25c07eea50ef3bdab6b402233858ee4f5922b879892aebb5653f6286f8ec65de' +
-         '6f50a736191004c8c291b1c9616fb51f970a774d82f745cef41fdd64a8b76373' +
-         'be679531f7805aff3d8807d0110c18640877e647477fdb92d576d0e1ec290eaa' +
-         'c0b7d258f3817152f496724ce72e14e722dcae213c7aaa797640ef2056ca2a38' +
-         '36579374c0d02029cda6ff750034e87008051748a5cae852035fe5440d55a778' +
-         'c8494b77305690bb0d2c67718a5ea84e760810a37ba7d759c3ef320acf827a04'
-    }
-  };
-
+  /** @type {int32[]} */
   const SUPPORTED_KEY_SIZES = [1536, 2048];
+
+  // Group and key columns, one entry per size of SUPPORTED_KEY_SIZES.
+  /** @type {string[]} */
+  const ELGAMAL_KEYS_P = [
+    'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
+    '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
+    '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+    'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
+    '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
+    '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF',
+    'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
+    '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
+    '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+    'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
+    '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
+    '9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B' +
+    'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF695581718' +
+    '3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF'
+  ];
+  /** @type {string[]} */
+  const ELGAMAL_KEYS_G = [
+    '02',
+    '02'
+  ];
+  /** @type {string[]} */
+  const ELGAMAL_KEYS_X = [
+    '2bbe1f724b173fac2786b5688eef84f57fe15f7920fad88287fb6ceb70165a26',
+    'dae9fa2100bbbb5eecdf258cb9957d07e5c509e0c31fb45db84cb3a4ca3a0d36'
+  ];
+  /** @type {string[]} */
+  const ELGAMAL_KEYS_Y = [
+    'ea98fc68f7f84684154fb3e875c29cee444a1577be29aa879743e03d26d8dd76' +
+    '772956f7802456b1c0027fb99bf7402238745b5ea12f50587ec7ed33c48955eb' +
+    '3112a762aa310465c878c92610532186dfffdfce9af276846de4c830d0d720e1' +
+    '13265f206f50489be63574ae11f71f64cfdd19d2d897d306598cd76034327381' +
+    '817f182e2a42a71145c756ac554fe740e4de0ee2529556a77b13bea0ad9e0041' +
+    '08183bccea2e1891a5fe0a5c5c42a231ccd5d5df4ecbc372a4e329479f4dbed6',
+    'ae132bcf91859e8020441a6ccdf18948f04c7d00d1a5f283b56aa7a7bd2c1428' +
+    'd5122d4500460feebfd23990178de9fd14afe2c6a0c1be17e5033b1707f3d8ef' +
+    '25c07eea50ef3bdab6b402233858ee4f5922b879892aebb5653f6286f8ec65de' +
+    '6f50a736191004c8c291b1c9616fb51f970a774d82f745cef41fdd64a8b76373' +
+    'be679531f7805aff3d8807d0110c18640877e647477fdb92d576d0e1ec290eaa' +
+    'c0b7d258f3817152f496724ce72e14e722dcae213c7aaa797640ef2056ca2a38' +
+    '36579374c0d02029cda6ff750034e87008051748a5cae852035fe5440d55a778' +
+    'c8494b77305690bb0d2c67718a5ea84e760810a37ba7d759c3ef320acf827a04'
+  ];
 
   /**
    * Read a key size selector from whatever the caller supplied. Both spellings
    * used across this collection are accepted: decimal digits in ASCII, and a
    * big-endian 16-bit count of bits.
    * @param {uint8[]|string|number} keyData - Key selector
-   * @returns {number} Key size in bits
+   * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
     if (typeof keyData === 'number') {
-      return keyData;
+      /** @type {int32} */
+      const bits = keyData;
+      return bits;
     }
 
     if (typeof keyData === 'string') {
-      return parseInt(keyData, 10);
+      /** @type {string} */
+      const text = keyData;
+      /** @type {int32} */
+      const parsed = parseInt(text, 10);
+      return parsed;
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) {
           allDigits = false;
           break;
         }
-        digits += String.fromCharCode(keyData[i]);
+        digits += String.fromCharCode(bytes[i]);
       }
 
       if (allDigits) {
-        return parseInt(digits, 10);
+        /** @type {int32} */
+        const size = parseInt(digits, 10);
+        return size;
       }
 
-      if (keyData.length >= 2) {
-        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      if (bytes.length >= 2) {
+        return OpCodes.Pack16BE(bytes[0], bytes[1]);
       }
     }
 
@@ -491,21 +521,27 @@
   class ElGamalInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ElGamalCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 2048; // Bit length of the prime modulus
       this._publicKey = null;
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -538,6 +574,10 @@
     }
 
     // Initialize ElGamal with specified key size
+    /**
+     * @param {int32} keySize - Modulus size in bits
+     * @returns {boolean} True once the size is accepted
+     */
     Init(keySize) {
       if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
         throw new Error('ElGamal: no demonstration group of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
@@ -555,7 +595,9 @@
 
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -572,7 +614,9 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
@@ -580,24 +624,25 @@
           ? this._decrypt(this.inputBuffer)
           : this._encrypt(this.inputBuffer);
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     KeySetup(keyData) {
       this._keyData = keyData;
 
       this.Init(parseKeySize(keyData));
 
-      const material = ELGAMAL_KEYS[this.keySize];
-      const p = hexToBigInt(material.p);
-      const g = hexToBigInt(material.g);
-      const y = hexToBigInt(material.y);
+      const index = SUPPORTED_KEY_SIZES.indexOf(this.keySize);
+      const p = hexToBigInt(ELGAMAL_KEYS_P[index]);
+      const g = hexToBigInt(ELGAMAL_KEYS_G[index]);
+      const y = hexToBigInt(ELGAMAL_KEYS_Y[index]);
 
       this._publicKey = {
         p: p,
@@ -610,7 +655,7 @@
         p: p,
         g: g,
         y: y,
-        x: hexToBigInt(material.x),
+        x: hexToBigInt(ELGAMAL_KEYS_X[index]),
         keySize: this.keySize
       };
     }
@@ -618,7 +663,7 @@
     /**
      * Number of octets in the prime modulus.
      * @param {BigInt} p - Prime modulus
-     * @returns {number} Octet length
+     * @returns {int32} Octet length
      */
     _modulusLength(p) {
       let octets = 0;
@@ -644,7 +689,12 @@
         throw new Error('ElGamal public key not set. Assign a key first.');
       }
 
-      const { p, g, y } = this._publicKey;
+      /** @type {BigInt} */
+      const p = this._publicKey.p;
+      /** @type {BigInt} */
+      const g = this._publicKey.g;
+      /** @type {BigInt} */
+      const y = this._publicKey.y;
       const k = this._modulusLength(p);
 
       const encoded = emeEncode(message, k - 1);
@@ -659,6 +709,7 @@
       const c1Bytes = I2OSP(c1, k);
       const c2Bytes = I2OSP(c2, k);
 
+      /** @type {uint8[]} */
       const out = new Array(2 * k);
       for (let i = 0; i < k; ++i) {
         out[i] = c1Bytes[i];
@@ -677,7 +728,10 @@
         throw new Error('ElGamal private key not set. Assign a key first.');
       }
 
-      const { p, x } = this._privateKey;
+      /** @type {BigInt} */
+      const p = this._privateKey.p;
+      /** @type {BigInt} */
+      const x = this._privateKey.x;
       const k = this._modulusLength(p);
 
       if (ciphertext.length !== 2 * k) {
