@@ -47,11 +47,14 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
 
   /**
    * Printable stand-in for a byte, for use in an error message.
-   * @param {number} byte - Offending byte
+   * @param {uint8} byte - Offending byte
    * @returns {string} The character itself when it is printable ASCII, else '?'
    */
   function DescribeByte(byte) {
@@ -65,11 +68,16 @@
    */
   function RequireLetters(message) {
     for (let i = 0; i < message.length; i++) {
+      /** @type {uint8} */
       const byte = message[i];
-      if (byte < UPPER_A || byte > UPPER_Z)
-        throw new Error(`EnigmaMachineInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
-          + ` ('${DescribeByte(byte)}') at position ${i} is not one of the 26 letters A-Z`
+      if (byte < UPPER_A || byte > UPPER_Z) {
+        /** @type {string} */
+        let hex = byte.toString(16);
+        while (hex.length < 2) hex = '0' + hex;
+        throw new Error("EnigmaMachineInstance.Result: byte 0x" + hex
+          + " ('" + DescribeByte(byte) + "') at position " + i + " is not one of the 26 letters A-Z"
           + ' the machine has keys for');
+      }
     }
   }
 
@@ -110,18 +118,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "No Self-Encryption",
-          text: "No letter can encrypt to itself due to reflector design, reducing key space",
-          uri: "https://en.wikipedia.org/wiki/Enigma_machine#Reflector",
-          mitigation: "Historical design flaw - avoid for real cryptography"
-        },
-        {
-          type: "Rotor Stepping Patterns",
-          text: "Predictable rotor advancement patterns enable statistical cryptanalysis",
-          uri: "https://en.wikipedia.org/wiki/Cryptanalysis_of_the_Enigma",
-          mitigation: "Educational use only - demonstrates importance of proper design"
-        }
+        new Vulnerability(
+          "No Self-Encryption",
+          "No letter can encrypt to itself due to reflector design, reducing key space",
+          "Historical design flaw - avoid for real cryptography",
+          "https://en.wikipedia.org/wiki/Enigma_machine#Reflector"
+        ),
+        new Vulnerability(
+          "Rotor Stepping Patterns",
+          "Predictable rotor advancement patterns enable statistical cryptanalysis",
+          "Educational use only - demonstrates importance of proper design",
+          "https://en.wikipedia.org/wiki/Cryptanalysis_of_the_Enigma"
+        )
       ];
 
       // Test vectors using byte arrays.
@@ -158,7 +166,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -166,7 +175,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {EnigmaMachineInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -184,80 +193,135 @@
   class EnigmaMachineInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {EnigmaMachine} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Historical rotor wirings (simplified for education)
+      /** @type {string} */
       this.ROTOR_I = 'EKMFLGDQVZNTOWYHXUSPAIBRCJ';
+      /** @type {string} */
       this.ROTOR_II = 'AJDKSIRUXBLHWTMCQGZNPYFVOE';
+      /** @type {string} */
       this.ROTOR_III = 'BDFHJLCPRTXVZNYEIWGAKMUSQO';
 
       // Rotor notches (when the rotor steps the next one)
+      /** @type {string} */
       this.NOTCH_I = 'Q';
-      this.NOTCH_II = 'E'; 
+      /** @type {string} */
+      this.NOTCH_II = 'E';
+      /** @type {string} */
       this.NOTCH_III = 'V';
 
       // Reflector B wiring
+      /** @type {string} */
       this.REFLECTOR_B = 'YRUHQSLDPXNGOKMIEBFZCWVJAT';
 
       // Initialize with default configuration
+      /** @type {int32[]} */
       this.rotorPositions = [0, 0, 0]; // A, A, A
+      /** @type {int32[]} */
       this.rotorSelection = [1, 2, 3]; // I, II, III
+      /** @type {string[]} */
       this.rotorWirings = [];
+      /** @type {string[]} */
       this.rotorNotches = [];
+      /** @type {string} */
       this.reflectorWiring = this.REFLECTOR_B;
 
       this.setupRotors();
     }
 
-    // Property setter for key
+    /**
+     * Key "PPPSSS": three start positions A-Z and three rotor numbers 1-3
+     * @param {uint8[]|null} keyData - Key bytes; shorter than 6 selects "ABC123"
+     */
     set key(keyData) {
       if (!keyData || keyData.length < 6) {
         this.parseKey("ABC123"); // Default key
       } else {
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
         this.parseKey(keyStr);
       }
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the current setting
+   * @returns {string} Rotor positions as letters followed by the rotor numbers
    */
 
     get key() {
-      return this.rotorPositions.map(p => String.fromCharCode(p + 65)).join('') + 
-             this.rotorSelection.join('');
+      /** @type {string} */
+      let text = '';
+      for (let i = 0; i < this.rotorPositions.length; i++) text += String.fromCharCode(this.rotorPositions[i] + 65);
+      return text + this.rotorSelection.join('');
     }
 
-    // Parse the key configuration
+    /**
+     * Start position encoded by the key character at an index
+     * @param {string} setting - Upper-case key text
+     * @param {int32} index - Character index
+     * @returns {int32} Position 0..25 (A for a missing character)
+     */
+    _positionAt(setting, index) {
+      /** @type {int32} */
+      const code = setting.charCodeAt(index);
+      /** @type {int32} */
+      const letter = code ? code : 65;
+      return Math.max(0, Math.min(25, letter - 65));
+    }
+
+    /**
+     * Rotor number encoded by the key character at an index
+     * @param {string} setting - Upper-case key text
+     * @param {int32} index - Character index
+     * @param {int32} fallback - Rotor when the character is no digit (or 0)
+     * @returns {int32} Rotor number 1..3
+     */
+    _rotorAt(setting, index, fallback) {
+      /** @type {int32} */
+      const digit = parseInt(setting.charAt(index));
+      return Math.max(1, Math.min(3, digit ? digit : fallback));
+    }
+
+    /**
+     * Parse the key configuration
+     * @param {string} keyStr - Key text
+     * @returns {void}
+     */
     parseKey(keyStr) {
-      const key = keyStr.toUpperCase();
+      /** @type {string} */
+      const setting = keyStr.toUpperCase();
 
       // Parse rotor positions (first 3 chars)
       this.rotorPositions = [
-        Math.max(0, Math.min(25, (key.charCodeAt(0) || 65) - 65)),
-        Math.max(0, Math.min(25, (key.charCodeAt(1) || 65) - 65)),
-        Math.max(0, Math.min(25, (key.charCodeAt(2) || 65) - 65))
+        this._positionAt(setting, 0),
+        this._positionAt(setting, 1),
+        this._positionAt(setting, 2)
       ];
 
       // Parse rotor selection (next 3 chars)
       this.rotorSelection = [
-        Math.max(1, Math.min(3, parseInt(key[3]) || 1)),
-        Math.max(1, Math.min(3, parseInt(key[4]) || 2)),
-        Math.max(1, Math.min(3, parseInt(key[5]) || 3))
+        this._rotorAt(setting, 3, 1),
+        this._rotorAt(setting, 4, 2),
+        this._rotorAt(setting, 5, 3)
       ];
 
       this.setupRotors();
     }
 
-    // Setup rotor configurations
+    /**
+     * Setup rotor configurations
+     * @returns {void}
+     */
     setupRotors() {
       this.rotorWirings = [];
       this.rotorNotches = [];
@@ -298,13 +362,21 @@
     // own notch by stepping, and it never stepped. The machine degenerated
     // into a period-26 substitution and diverged from the real Enigma at the
     // 22nd letter of a message begun at AAA.
+    /**
+     * @returns {void}
+     */
     stepRotors() {
+      /** @type {int32} */
       const middleNotch = this.rotorNotches[1].charCodeAt(0) - 65;
+      /** @type {int32} */
       const rightNotch = this.rotorNotches[2].charCodeAt(0) - 65;
 
+      /** @type {boolean} */
       const middleAtNotch = this.rotorPositions[1] === middleNotch;
+      /** @type {boolean} */
       const rightAtNotch = this.rotorPositions[2] === rightNotch;
 
+      /** @type {boolean[]} */
       const step = [middleAtNotch, middleAtNotch || rightAtNotch, true];
 
       for (let i = 0; i < 3; i++) {
@@ -314,26 +386,44 @@
       }
     }
 
-    // Encode through a rotor (forward direction)
+    /**
+     * Encode through a rotor (forward direction)
+     * @param {int32} input - Letter 0..25
+     * @param {int32} rotorIndex - Rotor 0..2
+     * @returns {int32} Letter 0..25
+     */
     encodeRotorForward(input, rotorIndex) {
       // Adjust for rotor position
+      /** @type {int32} */
       const adjustedInput = (input + this.rotorPositions[rotorIndex]) % 26;
 
       // Get the wiring
-      const outputChar = this.rotorWirings[rotorIndex][adjustedInput];
+      /** @type {string} */
+      const wiring = this.rotorWirings[rotorIndex];
+      /** @type {string} */
+      const outputChar = wiring[adjustedInput];
+      /** @type {int32} */
       const output = outputChar.charCodeAt(0) - 65;
 
       // Adjust back for rotor position
       return (output - this.rotorPositions[rotorIndex] + 26) % 26;
     }
 
-    // Encode through a rotor (backward direction)
+    /**
+     * Encode through a rotor (backward direction)
+     * @param {int32} input - Letter 0..25
+     * @param {int32} rotorIndex - Rotor 0..2
+     * @returns {int32} Letter 0..25
+     */
     encodeRotorBackward(input, rotorIndex) {
       // Adjust for rotor position
+      /** @type {int32} */
       const adjustedInput = (input + this.rotorPositions[rotorIndex]) % 26;
 
       // Find the reverse mapping
+      /** @type {string} */
       const targetChar = String.fromCharCode(adjustedInput + 65);
+      /** @type {int32} */
       let output = this.rotorWirings[rotorIndex].indexOf(targetChar);
 
       if (output === -1) output = 0; // Fallback
@@ -342,17 +432,27 @@
       return (output - this.rotorPositions[rotorIndex] + 26) % 26;
     }
 
-    // Encode through reflector
+    /**
+     * Encode through reflector
+     * @param {int32} input - Letter 0..25
+     * @returns {int32} Reflected letter 0..25
+     */
     encodeReflector(input) {
+      /** @type {string} */
       const outputChar = this.reflectorWiring[input];
       return outputChar.charCodeAt(0) - 65;
     }
 
-    // Encrypt a single letter, given as its 0-25 position in the alphabet
+    /**
+     * Encrypt a single letter, given as its 0-25 position in the alphabet
+     * @param {int32} letter - Letter 0..25
+     * @returns {int32} Enciphered letter 0..25
+     */
     encryptLetter(letter) {
       // Step rotors before encryption
       this.stepRotors();
 
+      /** @type {int32} */
       let current = letter;
 
       // Forward through rotors (right to left)
@@ -371,8 +471,6 @@
       return current;
     }
 
-    // Feed data to the cipher
-
     // Get the result of the transformation
     /**
    * Get cipher result (encrypted or decrypted data)
@@ -382,9 +480,12 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const message = this.inputBuffer;
 
       // Anything the keyboard has no key for is refused by name and position,
@@ -399,6 +500,7 @@
       this.inputBuffer = [];
 
       // Process each letter (Enigma is reciprocal, so encryption=decryption)
+      /** @type {uint8[]} */
       const output = new Array(message.length);
       for (let i = 0; i < message.length; i++)
         output[i] = UPPER_A + this.encryptLetter(message[i] - UPPER_A);
@@ -406,7 +508,6 @@
       return output;
     }
   }
-
   // Register the algorithm immediately
 
   // ===== REGISTRATION =====

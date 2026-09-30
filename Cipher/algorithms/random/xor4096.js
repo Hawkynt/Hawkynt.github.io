@@ -152,7 +152,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XOR4096Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -170,12 +170,22 @@
  */
 
   class XOR4096Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {XOR4096Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // XOR4096 uses 128 × 32-bit state words (4096 bits total)
-      this._state = new Array(128);
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(128, 0);
+      /** @type {int32} */
       this._position = 0;
+      /** @type {boolean} */
       this._ready = false;
 
       // Optimized shift parameters from Brent's research
@@ -189,6 +199,7 @@
      * Set seed value (1-512 bytes)
      * Seed is expanded to fill 128-word state using Weyl sequence
      * Following Brent's reference implementation initialization
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -218,6 +229,7 @@
         const remaining = seedBytes.length % 4;
         if (remaining > 0) {
           const offset = seedBytes.length - remaining;
+          /** @type {uint8[]} */
           const bytes = [0, 0, 0, 0];
           for (let i = 0; i < remaining; ++i) {
             bytes[i] = seedBytes[offset + i];
@@ -232,10 +244,11 @@
       // Using 0x9e3779b9 = floor(2^32 / phi) as Weyl constant
       if (wordCount < 128) {
         const weylConstant = 0x9e3779b9;
-        let weylState = this._state[wordCount - 1] || 1;
+        /** @type {uint32} */
+        let weylState = (this._state[wordCount - 1] ? this._state[wordCount - 1] : 1);
 
         for (let i = wordCount; i < 128; ++i) {
-          weylState = OpCodes.ToUint32(weylState + weylConstant);
+          weylState = OpCodes.Add32(weylState, weylConstant);
           this._state[i] = weylState;
         }
       }
@@ -264,6 +277,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -309,8 +325,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -318,9 +334,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -362,7 +381,8 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -378,24 +398,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

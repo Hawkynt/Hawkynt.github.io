@@ -44,6 +44,43 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * One trellis branch: where an input leads and what it emits
+   * @class
+   */
+  class TrellisTransition {
+    /**
+     * @param {int32} nextState - Following encoder state
+     * @param {uint8} output - 3-bit output symbol
+     */
+    constructor(nextState, output) {
+      /** @type {int32} */
+      this.nextState = nextState;
+      /** @type {uint8} */
+      this.output = output;
+    }
+  }
+
+  /**
+   * An 8-PSK constellation point
+   * @class
+   */
+  class ConstellationPoint {
+    /**
+     * @param {float64} I - In-phase component
+     * @param {float64} Q - Quadrature component
+     * @param {int32} symbol - Symbol index
+     */
+    constructor(I, Q, symbol) {
+      /** @type {float64} */
+      this.I = I;
+      /** @type {float64} */
+      this.Q = Q;
+      /** @type {int32} */
+      this.symbol = symbol;
+    }
+  }
+
   class TrellisCodedModulationAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -124,7 +161,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TrellisCodedModulationInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,41 +178,56 @@
   class TrellisCodedModulationInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TrellisCodedModulationAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // 4-state 8-PSK TCM parameters (rate 2/3, K=3)
+      /** @type {int32} */
       this._numStates = 4; // 2^(K-1) states
+      /** @type {int32} */
       this._constraintLength = 3;
+      /** @type {int32} */
       this._inputBitsPerSymbol = 2; // Rate 2/3: 2 input bits
+      /** @type {int32} */
       this._outputBitsPerSymbol = 3; // 3 output bits map to 8-PSK
+      /** @type {int32} */
       this._constellationSize = 8; // 8-PSK modulation
 
       // Convolutional encoder generator polynomial (feedback, feedforward)
       // Generator for parity bit computation
+      /** @type {uint32} */
       this._generatorParity = 0b11; // G = [1, 1] - computes parity from current input + previous input
 
       // Current encoder state (2 bits for 4 states)
+      /** @type {uint32} */
       this._state = 0;
 
       // 8-PSK constellation mapping using Ungerboeck's set partitioning
       // Set partitioning increases minimum Euclidean distance
       // Bits [parity, uncoded1, uncoded2] map to constellation points
       // Using Gray coding on uncoded bits for better error resilience
+      /** @type {ConstellationPoint[]} */
       this._constellationMap = this._initialize8PSKConstellation();
 
       // Trellis structure for Viterbi decoding
       // trellis[state][input] = {nextState, output, constellationPoint}
+      /** @type {TrellisTransition[][]} */
       this._trellis = this._buildTrellis();
 
       // Path metrics for Viterbi decoder
+      /** @type {float64[]} */
       this._pathMetrics = null;
+      /** @type {uint8[][]} */
       this._survivors = null;
     }
 
@@ -217,20 +269,22 @@
 
     /**
      * Encodes input bits using TCM encoder
-     * @param {Array} inputBits - Input bit stream (must be multiple of 2)
-     * @returns {Array} - Encoded bit stream (3/2 rate expansion)
+     * @param {uint8[]} inputBits - Input bit stream (must be multiple of 2)
+     * @returns {uint8[]} - Encoded bit stream (3/2 rate expansion)
      */
     encode(inputBits) {
       if (inputBits.length % this._inputBitsPerSymbol !== 0) {
-        throw new Error(`TCM encode: Input length must be multiple of ${this._inputBitsPerSymbol} bits`);
+        throw new Error("TCM encode: Input length must be multiple of " + this._inputBitsPerSymbol + " bits");
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
       this._state = 0; // Reset encoder state
 
       // Process input in groups of 2 bits
       for (let i = 0; i < inputBits.length; i += this._inputBitsPerSymbol) {
         const inputPair = OpCodes.Or32(OpCodes.Shl32(inputBits[i], 1), inputBits[i + 1]); // 2-bit input symbol - structural bit packing
+        /** @type {uint8} */
         const outputSymbol = this._encodeSymbol(inputPair);
 
         // Output 3 bits per symbol (structural bit extraction)
@@ -245,8 +299,8 @@
     /**
      * Encodes a single 2-bit input symbol through convolutional encoder
      * Note: Bitwise operations used for trellis code structure (not cryptographic data)
-     * @param {number} inputSymbol - 2-bit input (0-3)
-     * @returns {number} - 3-bit output symbol (0-7)
+     * @param {uint32} inputSymbol - 2-bit input (0-3)
+     * @returns {uint8} - 3-bit output symbol (0-7)
      */
     _encodeSymbol(inputSymbol) {
       // Extract 2 input bits (structural bit extraction)
@@ -270,17 +324,18 @@
 
     /**
      * Decodes received symbols using Viterbi algorithm
-     * @param {Array} receivedBits - Received bit stream (must be multiple of 3)
-     * @returns {Array} - Decoded information bits
+     * @param {uint8[]} receivedBits - Received bit stream (must be multiple of 3)
+     * @returns {uint8[]} - Decoded information bits
      */
     decode(receivedBits) {
       if (receivedBits.length % this._outputBitsPerSymbol !== 0) {
-        throw new Error(`TCM decode: Input length must be multiple of ${this._outputBitsPerSymbol} bits`);
+        throw new Error("TCM decode: Input length must be multiple of " + this._outputBitsPerSymbol + " bits");
       }
 
       const numSymbols = receivedBits.length / this._outputBitsPerSymbol;
 
       // Convert received bits to symbols (structural bit packing)
+      /** @type {uint8[]} */
       const receivedSymbols = [];
       for (let i = 0; i < numSymbols; ++i) {
         const idx = i * this._outputBitsPerSymbol;
@@ -289,11 +344,14 @@
       }
 
       // Run Viterbi decoder
+      /** @type {uint8[]} */
       const decodedInput = this._viterbiDecode(receivedSymbols);
 
       // Convert decoded input symbols to bit stream (structural bit extraction)
+      /** @type {uint8[]} */
       const decodedBits = [];
       for (let i = 0; i < decodedInput.length; ++i) {
+        /** @type {uint8} */
         const inputSymbol = decodedInput[i];
         decodedBits.push(OpCodes.And32(OpCodes.Shr32(inputSymbol, 1), 1)); // MSB - structural extraction
         decodedBits.push(OpCodes.And32(inputSymbol, 1));        // LSB - structural extraction
@@ -305,8 +363,8 @@
     /**
      * Viterbi decoder for TCM
      * Note: Bitwise operations for trellis traversal (structural graph operations)
-     * @param {Array} receivedSymbols - Received 3-bit symbols
-     * @returns {Array} - Decoded 2-bit input symbols
+     * @param {uint8[]} receivedSymbols - Received 3-bit symbols
+     * @returns {uint8[]} - Decoded 2-bit input symbols
      */
     _viterbiDecode(receivedSymbols) {
       const numSymbols = receivedSymbols.length;
@@ -314,17 +372,23 @@
 
       // Initialize path metrics (log-likelihood)
       // Start from state 0 with metric 0
-      let pathMetrics = new Array(numStates).fill(Infinity);
+      /** @type {float64[]} */
+      let pathMetrics = this._infinities(numStates);
       pathMetrics[0] = 0;
 
       // Survivor paths: stores input symbol that led to each state
-      const survivors = Array.from({ length: numSymbols }, () => new Array(numStates).fill(0));
+      /** @type {uint8[][]} */
+      const survivors = [];
+      for (let t = 0; t < numSymbols; ++t) survivors.push(OpCodes.CreateArray(numStates, 0));
 
       // Trellis traversal
       for (let t = 0; t < numSymbols; ++t) {
+        /** @type {uint8} */
         const receivedSymbol = receivedSymbols[t];
-        const newMetrics = new Array(numStates).fill(Infinity);
-        const newSurvivors = new Array(numStates).fill(0);
+        /** @type {float64[]} */
+        const newMetrics = this._infinities(numStates);
+        /** @type {uint8[]} */
+        const newSurvivors = OpCodes.CreateArray(numStates, 0);
 
         // For each current state
         for (let state = 0; state < numStates; ++state) {
@@ -333,15 +397,20 @@
           // Try each possible input (0-3 for 2-bit input)
           for (let input = 0; input < OpCodes.Shl32(1, this._inputBitsPerSymbol); ++input) { // Structural calculation: 2^inputBits
             // Get expected output and next state from trellis
+            /** @type {TrellisTransition} */
             const transition = this._trellis[state][input];
+            /** @type {int32} */
             const nextState = transition.nextState;
+            /** @type {uint8} */
             const expectedOutput = transition.output;
 
             // Compute branch metric (Hamming distance for hard-decision)
             // In real TCM, this would be Euclidean distance on constellation
+            /** @type {int32} */
             const branchMetric = this._hammingDistance(receivedSymbol, expectedOutput);
 
             // Compute total metric
+            /** @type {float64} */
             const totalMetric = pathMetrics[state] + branchMetric;
 
             // Update if this path is better
@@ -358,6 +427,7 @@
 
       // Traceback: find best final state
       let bestState = 0;
+      /** @type {float64} */
       let bestMetric = pathMetrics[0];
       for (let state = 1; state < numStates; ++state) {
         if (pathMetrics[state] < bestMetric) {
@@ -367,10 +437,12 @@
       }
 
       // Reconstruct decoded sequence by tracing back through survivors
-      const decoded = new Array(numSymbols);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(numSymbols, 0);
       let currentState = bestState;
 
       for (let t = numSymbols - 1; t >= 0; --t) {
+        /** @type {uint8} */
         const inputSymbol = survivors[t][currentState];
         decoded[t] = inputSymbol;
 
@@ -390,14 +462,30 @@
     }
 
     /**
+     * @param {int32} count - Length
+     * @returns {float64[]} Array of Infinity
+     */
+    _infinities(count) {
+      /** @type {float64[]} */
+      const values = [];
+      for (let i = 0; i < count; ++i) values.push(Infinity);
+      return values;
+    }
+
+    /**
      * Builds trellis structure for 4-state 8-PSK TCM
      * Note: Bitwise shift for structural calculation (2^inputBits)
-     * @returns {Array} - Trellis structure [state][input] = {nextState, output}
+     * @returns {TrellisTransition[][]} - Trellis structure [state][input] = {nextState, output}
      */
     _buildTrellis() {
-      const trellis = Array.from({ length: this._numStates }, () =>
-        Array.from({ length: OpCodes.Shl32(1, this._inputBitsPerSymbol) }, () => ({})) // Structural: 2^inputBits
-      );
+      /** @type {TrellisTransition[][]} */
+      const trellis = [];
+      for (let state = 0; state < this._numStates; ++state) {
+        /** @type {TrellisTransition[]} */
+        const row = [];
+        for (let input = 0; input < OpCodes.Shl32(1, this._inputBitsPerSymbol); ++input) row.push(null); // Structural: 2^inputBits
+        trellis.push(row);
+      }
 
       // Build trellis transitions for each state and input
       for (let state = 0; state < this._numStates; ++state) {
@@ -405,13 +493,11 @@
           // Simulate encoding to get output and next state
           const savedState = this._state;
           this._state = state;
+          /** @type {uint8} */
           const output = this._encodeSymbol(input);
           const nextState = this._state;
 
-          trellis[state][input] = {
-            nextState: nextState,
-            output: output
-          };
+          trellis[state][input] = new TrellisTransition(nextState, output);
 
           this._state = savedState; // Restore state
         }
@@ -424,21 +510,18 @@
     /**
      * Initialize 8-PSK constellation with set partitioning
      * Maps 3-bit symbols to constellation points
-     * @returns {Array} - Constellation mapping [symbol] = {I, Q}
+     * @returns {ConstellationPoint[]} - Constellation mapping [symbol] = {I, Q}
      */
     _initialize8PSKConstellation() {
       // 8-PSK constellation on unit circle
       // Ungerboeck's set partitioning: parity bit determines subset
       // Two uncoded bits select point within subset
-      const constellation = new Array(8);
+      /** @type {ConstellationPoint[]} */
+      const constellation = [];
 
       for (let symbol = 0; symbol < 8; ++symbol) {
         const angle = (2 * Math.PI * symbol) / 8; // Evenly spaced around circle
-        constellation[symbol] = {
-          I: Math.cos(angle),
-          Q: Math.sin(angle),
-          symbol: symbol
-        };
+        constellation.push(new ConstellationPoint(Math.cos(angle), Math.sin(angle), symbol));
       }
 
       return constellation;
@@ -447,9 +530,9 @@
     /**
      * Computes Hamming distance between two symbols
      * Note: XOR for GF(2) difference, bitwise for popcount (structural operations)
-     * @param {number} symbol1 - First 3-bit symbol
-     * @param {number} symbol2 - Second 3-bit symbol
-     * @returns {number} - Hamming distance
+     * @param {uint8} symbol1 - First 3-bit symbol
+     * @param {uint8} symbol2 - Second 3-bit symbol
+     * @returns {int32} - Hamming distance
      */
     _hammingDistance(symbol1, symbol2) {
       let distance = 0;
@@ -466,12 +549,14 @@
 
     /**
      * Computes Euclidean distance between constellation points (for soft decisions)
-     * @param {number} symbol1 - First symbol index
-     * @param {number} symbol2 - Second symbol index
-     * @returns {number} - Squared Euclidean distance
+     * @param {int32} symbol1 - First symbol index
+     * @param {int32} symbol2 - Second symbol index
+     * @returns {float64} - Squared Euclidean distance
      */
     _euclideanDistance(symbol1, symbol2) {
+      /** @type {ConstellationPoint} */
       const point1 = this._constellationMap[symbol1];
+      /** @type {ConstellationPoint} */
       const point2 = this._constellationMap[symbol2];
 
       const deltaI = point1.I - point2.I;
@@ -482,7 +567,7 @@
 
     /**
      * Error detection by re-encoding and comparing
-     * @param {Array} receivedBits - Received bit sequence
+     * @param {uint8[]} receivedBits - Received bit sequence
      * @returns {boolean} - True if error detected
      */
     DetectError(receivedBits) {
@@ -491,7 +576,9 @@
       }
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(receivedBits);
+        /** @type {uint8[]} */
         const reencoded = this.encode(decoded);
 
         // Compute Hamming distance
@@ -513,6 +600,7 @@
 
     /**
      * Resets encoder state
+     * @returns {void}
      */
     reset() {
       this._state = 0;
@@ -521,7 +609,7 @@
 
     /**
      * Gets current encoder state (for debugging/testing)
-     * @returns {number} - Current state (0-3)
+     * @returns {uint32} - Current state (0-3)
      */
     getState() {
       return this._state;

@@ -197,7 +197,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SFC32Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -215,8 +215,15 @@
  */
 
   class SFC32Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {SFC32Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // SFC32 uses 3x 32-bit state variables plus 1 counter
       this._a = 0;
@@ -230,6 +237,7 @@
      * Set seed value (1-16 bytes)
      * Seed format: up to 16 bytes mapped to four 32-bit words (a, b, c, counter)
      * Default initialization if seed is shorter than 16 bytes
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -249,14 +257,15 @@
       // Read 'a' (first 4 bytes)
       if (seedBytes.length >= 4) {
         this._a = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into a
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -269,10 +278,10 @@
       // Read 'b' (next 4 bytes)
       if (seedBytes.length >= 8) {
         this._b = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
@@ -280,10 +289,10 @@
       // Read 'c' (next 4 bytes)
       if (seedBytes.length >= 12) {
         this._c = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
         offset = 12;
       }
@@ -291,10 +300,10 @@
       // Read 'counter' (last 4 bytes)
       if (seedBytes.length >= 16) {
         this._counter = OpCodes.Pack32BE(
-          seedBytes[12] || 0,
-          seedBytes[13] || 0,
-          seedBytes[14] || 0,
-          seedBytes[15] || 0
+          (seedBytes[12] ? seedBytes[12] : 0),
+          (seedBytes[13] ? seedBytes[13] : 0),
+          (seedBytes[14] ? seedBytes[14] : 0),
+          (seedBytes[15] ? seedBytes[15] : 0)
         );
       }
 
@@ -306,6 +315,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -327,7 +339,8 @@
       }
 
       // Step 1: tmp = a + b + counter
-      let tmp = OpCodes.ToUint32(this._a + this._b + this._counter);
+      /** @type {uint32} */
+      let tmp = OpCodes.Add32(OpCodes.Add32(this._a, this._b), this._counter);
 
       // Step 2: Increment counter
       this._counter = OpCodes.ToUint32(this._counter + 1);
@@ -347,8 +360,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -356,9 +369,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -400,7 +416,8 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -416,24 +433,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

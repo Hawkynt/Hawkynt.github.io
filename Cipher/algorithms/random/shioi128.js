@@ -47,18 +47,25 @@
    *   for (int i = 0; i < 2; i++)
    *     state[i] = seed = seed * 6364136223846793005 + 1442695040888963407;
    * }
+   * @param {BigInt} seed - 64-bit seed
+   * @returns {BigInt[]} The two state words
    */
   function InitSeed(seed) {
+    /** @type {BigInt} */
     const MULTIPLIER = 6364136223846793005n;
+    /** @type {BigInt} */
     const INCREMENT = 1442695040888963407n;
 
-    const state = [];
+    /** @type {BigInt[]} */
+    const words = [0n, 0n];
+    /** @type {BigInt} */
+    let current = seed;
     for (let i = 0; i < 2; ++i) {
-      seed = OpCodes.ToQWord(seed * MULTIPLIER + INCREMENT);
-      state.push(seed);
+      current = OpCodes.ToQWord(current * MULTIPLIER + INCREMENT);
+      words[i] = current;
     }
 
-    return state;
+    return words;
   }
 
   class Shioi128Algorithm extends RandomGenerationAlgorithm {
@@ -155,7 +162,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Shioi128Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -173,11 +180,18 @@
  */
 
   class Shioi128Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {Shioi128Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Shioi128 state: two 64-bit values (using BigInt)
+      /** @type {BigInt} */
       this._s0 = 0n;
+      /** @type {BigInt} */
       this._s1 = 0n;
       this._ready = false;
     }
@@ -185,6 +199,7 @@
     /**
      * Set seed value (64-bit)
      * Uses official Shioi128 init() function to initialize the two state values
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -193,19 +208,24 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (little-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
       }
 
       // Initialize state using official Shioi128 init() function
-      const state = InitSeed(seedValue);
-      this._s0 = state[0];
-      this._s1 = state[1];
+      /** @type {BigInt[]} */
+      const words = InitSeed(seedValue);
+      this._s0 = words[0];
+      this._s1 = words[1];
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -230,7 +250,9 @@
         throw new Error('Shioi128 not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+      /** @type {BigInt} */
       const MULTIPLIER = 0xD2B74407B1CE6E93n;
 
       const s0 = this._s0;
@@ -272,8 +294,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -281,19 +303,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, i * 8);
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -324,19 +351,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes (4 x 64-bit values)
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
@@ -355,6 +387,7 @@
         throw new Error('Shioi128 not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       const MASK64 = 0xFFFFFFFFFFFFFFFFn;
       const s0 = this._s0;
       const s1 = this._s1;
@@ -393,7 +426,9 @@
         0x7FFE925EEBD5615Bn
       ];
 
+      /** @type {BigInt} */
       let s0 = 0n;
+      /** @type {BigInt} */
       let s1 = 0n;
 
       for (let i = 0; i < JUMP.length; ++i) {
@@ -426,7 +461,9 @@
         0x7FFE925EEBD5615Bn
       ];
 
+      /** @type {BigInt} */
       let s0 = 0n;
+      /** @type {BigInt} */
       let s1 = 0n;
 
       for (let i = 0; i < JUMP.length; ++i) {

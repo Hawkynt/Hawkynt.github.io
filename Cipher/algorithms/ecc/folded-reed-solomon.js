@@ -128,7 +128,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FoldedReedSolomonInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -145,13 +145,15 @@
   class FoldedReedSolomonInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FoldedReedSolomonAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Folded Reed-Solomon parameters
@@ -160,9 +162,13 @@
       //
       // We use [16, 8] RS code over GF(256) with folding s=2
       // Result: [8, 4] code where each position holds 2 GF(256) symbols
+      /** @type {int32} */
       this.n = 16;       // Base RS code length
+      /** @type {int32} */
       this.k = 8;        // Base RS data symbols
+      /** @type {int32} */
       this.s = 2;        // Folding parameter (bundle pairs)
+      /** @type {int32} */
       this.field = 256;  // GF(256) = GF(2^8)
       this.primitive = 285; // Primitive polynomial: x^8 + x^4 + x^3 + x^2 + 1
 
@@ -175,6 +181,7 @@
       this.initializeGaloisField();
 
       // Compute generator polynomial for base [16,8] RS code
+      /** @type {uint8[]} */
       this.generator = this.computeGenerator();
     }
 
@@ -209,17 +216,27 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data)) {
         throw new Error('FoldedReedSolomonInstance.DetectError: Input must be symbol array');
       }
 
       // Unfold and check syndromes
+      /** @type {uint8[]} */
       const unfolded = this.unfold(data);
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(unfolded);
-      return syndromes.some(s => s !== 0);
+      return !this._allZero(syndromes);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Folded RS encoding
       // Input: k=8 GF(256) data symbols (foldedK=4 super-symbols of size s=2)
@@ -229,17 +246,18 @@
       // codeword can be interpreted as 8 super-symbols of 2 base symbols each
 
       if (data.length !== this.k) {
-        throw new Error(`Folded RS encode: Input must be exactly ${this.k} symbols (${this.foldedK} super-symbols of size ${this.superSymbolSize})`);
+        throw new Error("Folded RS encode: Input must be exactly " + this.k + " symbols (" + this.foldedK + " super-symbols of size " + this.superSymbolSize + ")");
       }
 
       // Validate symbols are in field range
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] >= this.field) {
-          throw new Error(`Folded RS: Symbol ${data[i]} at position ${i} out of range [0, ${this.field-1}]`);
+          throw new Error("Folded RS: Symbol " + data[i] + " at position " + i + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
       // Encode using base RS [16,8] code over GF(256)
+      /** @type {uint8[]} */
       const rsEncoded = this.encodeBaseRS(data);
 
       // The folding is implicit in the interpretation:
@@ -247,27 +265,32 @@
       return rsEncoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Folded RS decoding with error detection
       // Input: n=16 GF(256) symbols (foldedN=8 super-symbols)
       // Output: k=8 GF(256) data symbols (foldedK=4 super-symbols)
 
       if (data.length !== this.n) {
-        throw new Error(`Folded RS decode: Input must be exactly ${this.n} symbols (${this.foldedN} super-symbols)`);
+        throw new Error("Folded RS decode: Input must be exactly " + this.n + " symbols (" + this.foldedN + " super-symbols)");
       }
 
       // Validate symbols
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] >= this.field) {
-          throw new Error(`Folded RS: Symbol ${data[i]} at position ${i} out of range [0, ${this.field-1}]`);
+          throw new Error("Folded RS: Symbol " + data[i] + " at position " + i + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
       // Calculate syndromes on the received word
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(data);
 
       // Check if any errors exist
-      if (syndromes.every(s => s === 0)) {
+      if (this._allZero(syndromes)) {
         // No errors, extract data symbols
         return data.slice(0, this.k);
       }
@@ -277,36 +300,64 @@
       // Simplified error correction
       // Full list decoding would use Guruswami-Sudan algorithm
       // For educational purposes, we attempt basic correction
-      const corrected = this.correctErrors([...data], syndromes);
+      /** @type {uint8[]} */
+      const corrected = this.correctErrors(data.slice(), syndromes);
 
       // Extract data portion
       return corrected.slice(0, this.k);
     }
 
+    /**
+     * @param {uint8[]} values - Symbols
+     * @returns {boolean} True when every symbol is zero
+     */
+    _allZero(values) {
+      for (let i = 0; i < values.length; ++i) {
+        if (values[i] !== 0) return false;
+      }
+      return true;
+    }
+
+    /**
+     * @returns {void}
+     */
     initializeGaloisField() {
       // Initialize log and antilog tables for GF(256)
       // Using primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (285 in decimal)
+      /** @type {int32[]} */
       this.gfLog = new Array(this.field);
+      /** @type {uint8[]} */
       this.gfAntilog = new Array(this.field);
 
+      /** @type {uint32} */
       let x = 1;
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
         x = OpCodes.Shl32(x, 1);
-        if (OpCodes.AndN(x, this.field)) {
-          x = OpCodes.XorN(x, this.primitive);
+        if (OpCodes.And32(x, this.field)) {
+          x = OpCodes.Xor32(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Field element
+     * @returns {uint8} a * b
+     */
     gfMultiply(a, b) {
       // Galois Field multiplication using log tables
       if (a === 0 || b === 0) return 0;
       return this.gfAntilog[(this.gfLog[a] + this.gfLog[b]) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Non-zero field element
+     * @returns {uint8} a / b
+     */
     gfDivide(a, b) {
       // Galois Field division
       if (a === 0) return 0;
@@ -314,11 +365,21 @@
       return this.gfAntilog[(this.gfLog[a] - this.gfLog[b] + this.field - 1) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Field element
+     * @returns {uint8} a + b
+     */
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
-      return OpCodes.XorN(a, b);
+      return OpCodes.Xor32(a, b);
     }
 
+    /**
+     * @param {uint8} base - Field element
+     * @param {int32} exponent - Exponent
+     * @returns {uint8} base^exponent
+     */
     gfPower(base, exponent) {
       // Compute base^exponent in Galois Field
       if (base === 0) return 0;
@@ -326,14 +387,20 @@
       return this.gfAntilog[(this.gfLog[base] * exponent) % (this.field - 1)];
     }
 
+    /**
+     * @returns {uint8[]} Generator polynomial coefficients
+     */
     computeGenerator() {
       // Compute generator polynomial (x-α^0)(x-α^1)...(x-α^(n-k-1))
       // For [8,4] code, we need (n-k) = 4 roots
+      /** @type {uint8[]} */
       let gen = [1]; // Start with polynomial "1"
 
       for (let i = 0; i < this.n - this.k; ++i) {
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i % (this.field - 1)];
-        const newGen = new Array(gen.length + 1).fill(0);
+        /** @type {uint8[]} */
+        const newGen = OpCodes.CreateArray(gen.length + 1, 0);
 
         // Multiply by (x - α^i)
         for (let j = 0; j < gen.length; ++j) {
@@ -346,9 +413,14 @@
       return gen;
     }
 
+    /**
+     * @param {uint8[]} data - k data symbols
+     * @returns {uint8[]} n-symbol codeword
+     */
     encodeBaseRS(data) {
       // Systematic RS encoding for [16,8] code over GF(256)
-      const encoded = new Array(this.n);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(this.n, 0);
 
       // Copy data symbols to first k positions
       for (let i = 0; i < this.k; ++i) {
@@ -356,6 +428,7 @@
       }
 
       // Calculate parity symbols using polynomial division
+      /** @type {uint8[]} */
       const parity = this.calculateParity(data);
 
       // Append parity symbols
@@ -366,14 +439,20 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - k data symbols
+     * @returns {uint8[]} n-k parity symbols
+     */
     calculateParity(data) {
       // Calculate parity symbols using polynomial division
       // For [n,k] code, we have (n-k) parity symbols
       const parityCount = this.n - this.k;
-      const parity = new Array(parityCount).fill(0);
+      /** @type {uint8[]} */
+      const parity = OpCodes.CreateArray(parityCount, 0);
 
       // Process each data symbol
       for (let i = 0; i < this.k; ++i) {
+        /** @type {uint8} */
         const coeff = this.gfAdd(data[i], parity[0]);
 
         // Shift parity register and apply generator polynomial
@@ -388,13 +467,20 @@
       return parity;
     }
 
+    /**
+     * @param {uint8[]} data - Received word
+     * @returns {uint8[]} Syndromes
+     */
     calculateSyndromes(data) {
       // Calculate syndrome polynomial S(x)
-      const syndromes = new Array(this.n - this.k);
+      /** @type {uint8[]} */
+      const syndromes = OpCodes.CreateArray(this.n - this.k, 0);
 
       for (let i = 0; i < this.n - this.k; ++i) {
         syndromes[i] = 0;
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i % (this.field - 1)];
+        /** @type {uint8} */
         let alpha_power = 1;
 
         for (let j = 0; j < data.length; ++j) {
@@ -406,6 +492,11 @@
       return syndromes;
     }
 
+    /**
+     * @param {uint8[]} received - Received word
+     * @param {uint8[]} syndromes - Its syndromes
+     * @returns {uint8[]} Corrected word
+     */
     correctErrors(received, syndromes) {
       // Simplified error correction for educational purposes
       // Full implementation would use Guruswami-Sudan list decoding algorithm
@@ -417,12 +508,14 @@
         // This is a simplified approach - real list decoding is more complex
         for (let pos = 0; pos < received.length; ++pos) {
           // Try correcting at this position
-          const testReceived = [...received];
+          /** @type {uint8[]} */
+          const testReceived = received.slice();
           testReceived[pos] = this.gfAdd(testReceived[pos], syndromes[0]);
 
+          /** @type {uint8[]} */
           const testSyndromes = this.calculateSyndromes(testReceived);
-          if (testSyndromes.every(s => s === 0)) {
-            console.log(`Folded RS: Corrected error at position ${pos}`);
+          if (this._allZero(testSyndromes)) {
+            console.log("Folded RS: Corrected error at position " + pos);
             return testReceived;
           }
         }
@@ -432,12 +525,20 @@
       return received;
     }
 
+    /**
+     * @param {uint8[]} foldedData - Folded symbols
+     * @returns {uint8[]} Base symbols
+     */
     unfold(foldedData) {
       // Unfold super-symbols back to base RS symbols
       // In our representation, data is already unfolded
       return foldedData;
     }
 
+    /**
+     * @param {uint8[]} baseData - Base symbols
+     * @returns {uint8[]} Folded symbols
+     */
     fold(baseData) {
       // Fold base RS symbols into super-symbols
       // In our representation, this is implicit

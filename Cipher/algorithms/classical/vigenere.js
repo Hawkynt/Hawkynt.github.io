@@ -46,12 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
+  /** @type {int32} */
+  const LOWER_A = 97;
+  /** @type {int32} */
+  const LOWER_Z = 122;
 
   /**
    * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
-   * @param {number} byte - Input byte
-   * @returns {number} Character code of the letter's own 'A', or -1
+   * @param {uint8} byte - Input byte
+   * @returns {int32} Character code of the letter's own 'A', or -1
    */
   function LetterCaseBase(byte) {
     if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
@@ -90,18 +97,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Kasiski Examination",
-          text: "Repeated patterns in ciphertext reveal keyword length, enabling frequency analysis",
-          uri: "https://en.wikipedia.org/wiki/Kasiski_examination",
-          mitigation: "None - fundamental weakness of polyalphabetic substitution"
-        },
-        {
-          type: "Index of Coincidence",
-          text: "Statistical analysis can determine keyword length and enable cryptanalysis",
-          uri: "https://en.wikipedia.org/wiki/Index_of_coincidence",
-          mitigation: "Use only for educational demonstrations"
-        }
+        new Vulnerability(
+          "Kasiski Examination",
+          "Repeated patterns in ciphertext reveal keyword length, enabling frequency analysis",
+          "None - fundamental weakness of polyalphabetic substitution",
+          "https://en.wikipedia.org/wiki/Kasiski_examination"
+        ),
+        new Vulnerability(
+          "Index of Coincidence",
+          "Statistical analysis can determine keyword length and enable cryptanalysis",
+          "Use only for educational demonstrations",
+          "https://en.wikipedia.org/wiki/Index_of_coincidence"
+        )
       ];
 
       // Test vectors using byte arrays - classical educational examples
@@ -143,7 +150,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -151,7 +159,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {VigenereCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -169,28 +177,41 @@
   class VigenereCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {VigenereCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = [];
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string} */
+      this._processedKey = "A";
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
 
       // Character sets
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     }
 
-    // Property setter for key
+    /**
+     * Keyword; only its letters count, upper-cased
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "A"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._processedKey = "A"; // Default key
       } else {
         // Convert key bytes to uppercase letters only
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
-        this._processedKey = keyStr.toUpperCase().replace(/[^A-Z]/g, '');
+        /** @type {string} */
+        const upper = keyStr.toUpperCase();
+        this._processedKey = upper.replace(/[^A-Z]/g, '');
         if (this._processedKey.length === 0) {
           this._processedKey = "A"; // Fallback
         }
@@ -198,12 +219,12 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the keyword
+   * @returns {string} Upper-case keyword letters
    */
 
     get key() {
-      return this._processedKey || "A";
+      return this._processedKey ? this._processedKey : "A";
     }
 
     // Feed data to the cipher
@@ -217,11 +238,15 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const output = new Array(this.inputBuffer.length);
-      const processedKey = this.key;
+      /** @type {string} */
+      const processedKey = this._processedKey ? this._processedKey : "A";
 
       // Every byte is accounted for. A letter is enciphered in its own case
       // and consumes one keyword position; anything else is copied through
@@ -229,9 +254,12 @@
       // has always been worked by hand over a text that carries punctuation.
       // The earlier "uppercase and strip everything but A-Z" normalisation
       // silently shortened the message - five binary bytes came back as none.
+      /** @type {int32} */
       let keyPosition = 0;
       for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {uint8} */
         const byte = this.inputBuffer[i];
+        /** @type {int32} */
         const caseBase = LetterCaseBase(byte);
 
         if (caseBase < 0) {
@@ -239,11 +267,14 @@
           continue;
         }
 
+        /** @type {int32} */
         const textIndex = byte - caseBase;
-        const keyIndex = this.ALPHABET.indexOf(processedKey[keyPosition % processedKey.length]);
+        /** @type {int32} */
+        const keyIndex = this.ALPHABET.indexOf(processedKey.charAt(keyPosition % processedKey.length));
         ++keyPosition;
 
         // Vigenère: encryption (text + key) mod 26, decryption (cipher - key) mod 26
+        /** @type {int32} */
         const resultIndex = this.isInverse
           ? (textIndex - keyIndex + 26) % 26
           : (textIndex + keyIndex) % 26;
