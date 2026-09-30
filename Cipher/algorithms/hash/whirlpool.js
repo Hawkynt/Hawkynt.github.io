@@ -50,6 +50,7 @@
   // Whirlpool constants
   const WHIRLPOOL_BLOCKSIZE = 64;    // 512 bits = 64 bytes
   const WHIRLPOOL_ROUNDS = 10;       // Number of rounds
+  const WHIRLPOOL_LENGTHSIZE = 32;   // 256-bit message length field
 
   // Round constants from RHash reference implementation
   /** @type {BigInt[]} */
@@ -212,25 +213,64 @@
         new LinkItem("NESSIE Project", "https://www.cosic.esat.kuleuven.be/nessie/")
       ];
 
-      // Test vectors from ISO/IEC 10118-3
+      // ISO/IEC 10118-3 / NESSIE test vectors (as reproduced in Botan's test data)
+      // plus the published "quick brown fox" digest. The 32- and 43-byte messages
+      // leave too little room in the last block for the 256-bit length field, so
+      // they are the ones that exercise the extra padding block.
       this.tests = [
         {
-          text: "ISO/IEC Test Vector - Empty String",
-          uri: "https://www.iso.org/standard/39876.html",
+          text: "ISO/IEC 10118-3 Test Vector - Empty String",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
           input: [],
           expected: OpCodes.Hex8ToBytes("19fa61d75522a4669b44e39c1d2e1726c530232130d407f89afee0964997f7a73e83be698b288febcf88e3e03c4f0757ea8964e59b63d93708b138cc42a66eb3")
         },
         {
-          text: "ISO/IEC Test Vector - 'a'",
-          uri: "https://www.iso.org/standard/39876.html",
-          input: [97], // "a"
+          text: "ISO/IEC 10118-3 Test Vector - 'a'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("a"),
           expected: OpCodes.Hex8ToBytes("8aca2602792aec6f11a67206531fb7d7f0dff59413145e6973c45001d0087b42d11bc645413aeff63a42391a39145a591a92200d560195e53b478584fdae231a")
         },
         {
-          text: "ISO/IEC Test Vector - 'abc'",
-          uri: "https://www.iso.org/standard/39876.html",
-          input: [97, 98, 99], // "abc"
+          text: "ISO/IEC 10118-3 Test Vector - 'abc'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("abc"),
           expected: OpCodes.Hex8ToBytes("4e2448a4c6f486bb16b6562c73b4020bf3043e3a731bce721ae1b303d97e6d4c7181eebdb6c57e277d0e34957114cbd6c797fc9d95d8b582d225292076d4eef5")
+        },
+        {
+          text: "ISO/IEC 10118-3 Test Vector - 'message digest'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("message digest"),
+          expected: OpCodes.Hex8ToBytes("378c84a4126e2dc6e56dcc7458377aac838d00032230f53ce1f5700c0ffb4d3b8421557659ef55c106b4b52ac5a4aaa692ed920052838f3362e86dbd37a8903e")
+        },
+        {
+          text: "ISO/IEC 10118-3 Test Vector - lowercase alphabet",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+          expected: OpCodes.Hex8ToBytes("f1d754662636ffe92c82ebb9212a484a8d38631ead4238f5442ee13b8054e41b08bf2a9251c30b6a0b8aae86177ab4a6f68f673e7207865d5d9819a3dba4eb3b")
+        },
+        {
+          text: "ISO/IEC 10118-3 Test Vector - A-Z, a-z, 0-9",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+          expected: OpCodes.Hex8ToBytes("dc37e008cf9ee69bf11f00ed9aba26901dd7c28cdec066cc6af42e40f82f3a1e08eba26629129d8fb7cb57211b9281a65517cc879d7b962142c65f5a7af01467")
+        },
+        {
+          text: "ISO/IEC 10118-3 Test Vector - 8 times '1234567890'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
+          expected: OpCodes.Hex8ToBytes("466ef18babb0154d25b9d38a6414f5c08784372bccb204d6549c4afadb6014294d5bd8df2a6c44e538cd047b2681a51a2c60481e88c5a20b2c2a80cf3a9a083b")
+        },
+        {
+          text: "ISO/IEC 10118-3 Test Vector - 'abcdbcdecdefdefgefghfghighijhijk' (32 bytes, extra padding block)",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/hash/whirlpool.vec",
+          input: OpCodes.AnsiToBytes("abcdbcdecdefdefgefghfghighijhijk"),
+          expected: OpCodes.Hex8ToBytes("2a987ea40f917061f5d6f0a0e4644f488a7a5a52deee656207c562f988e95c6916bdc8031bc5be1b7b947639fe050b56939baaa0adff9ae6745b7b181c3be3fd")
+        },
+        {
+          text: "Wikipedia - 'The quick brown fox jumps over the lazy dog' (43 bytes, extra padding block)",
+          uri: "https://en.wikipedia.org/wiki/Whirlpool_(hash_function)",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes("b97de512e91e3828b40d2b0fdce9ceb3c4a71f9bea8d88e75c4fa854df36725fd2b52eb6544edcacd6f8beddfea403cb55ae31f03ad62a5ef54e42ee82c3fb35")
         },
         {
           text: "DarkCrypt Whirlpool - 64-byte incrementing message (00..3F)",
@@ -432,12 +472,12 @@
      * @returns {uint8[]} 64-byte digest
      */
     Final() {
-      // Whirlpool padding: 0x80 + zeros + 64-bit length (like reference)
+      // Whirlpool padding (ISO/IEC 10118-3): 0x80, zeros, then the message length
+      // in bits as a 256-bit big-endian integer filling the last 32 bytes.
       this.buffer[this.bufferLength++] = 0x80;
 
-      // Check if we need another block for the length
-      if (this.bufferLength > 56) {
-        // Fill current block with zeros and process it
+      // The 0x80 byte must leave room for the whole 256-bit length field
+      if (this.bufferLength > WHIRLPOOL_BLOCKSIZE - WHIRLPOOL_LENGTHSIZE) {
         while (this.bufferLength < WHIRLPOOL_BLOCKSIZE) {
           this.buffer[this.bufferLength++] = 0x00;
         }
@@ -445,20 +485,19 @@
         this.bufferLength = 0;
       }
 
-      // Fill with zeros up to length field
-      while (this.bufferLength < 56) {
+      // Zero-fill the rest, including the high bytes of the length field
+      while (this.bufferLength < WHIRLPOOL_BLOCKSIZE) {
         this.buffer[this.bufferLength++] = 0x00;
       }
 
-      // Append 64-bit length in big-endian format (like reference implementation)
+      // Only the low 8 bytes of the 256-bit length can be non-zero here
       /** @type {BigInt} */
-      const bitLength = BigInt(this.totalLength * 8);
+      const bitLength = BigInt(this.totalLength) * 8n;
       for (let i = 0; i < 8; i++) {
         /** @type {uint8} */
         const b = Number(OpCodes.AndN(OpCodes.ShiftRn(bitLength, 56 - i * 8), 0xFFn));
         this.buffer[56 + i] = b;
       }
-      this.bufferLength = 64;
 
       // Process final block
       this.processBlock(this.buffer);
@@ -555,6 +594,8 @@
    */
 
     Result() {
+      // The next Feed starts a new message
+      this._streamStarted = false;
       return this.Final();
     }
   }
