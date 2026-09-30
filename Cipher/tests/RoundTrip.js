@@ -618,11 +618,30 @@ function interopTargets() {
   return targets.filter(t => t.available);
 }
 
+/**
+ * Deterministic pseudo-random bytes drawn from the values 0 .. symbols-1.
+ * @param {number} length
+ * @param {number} symbols
+ * @returns {number[]}
+ */
+function smallAlphabet(length, symbols) {
+  let seed = 20260930 + symbols;
+  // the high bits: an LCG's low bits have short periods
+  return Array.from({ length }, () =>
+    Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 65536) % symbols);
+}
+
 function runInterop(algorithms) {
   const samples = [
     ['text', [...Buffer.from('the quick brown fox jumps over the lazy dog. '.repeat(8))]],
     ['repeated', new Array(512).fill(0x61)],
     ['binary', Array.from({ length: 512 }, (_, i) => (i * 37 + 11) & 0xff)],
+    // Few distinct literals give small Huffman trees, where an entropy coder's
+    // implicit last-symbol rules (e.g. RFC 8878 4.2.1.3) decide interop.
+    ['2 symbols', smallAlphabet(1000, 2)],
+    ['3 symbols', smallAlphabet(1000, 3)],
+    ['7 symbols', smallAlphabet(4096, 7)],
+    ['16 symbols', smallAlphabet(1000, 16)],
   ];
   const results = [];
   for (const target of interopTargets()) {
