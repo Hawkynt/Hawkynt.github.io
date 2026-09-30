@@ -49,31 +49,53 @@
 
   // ===== BZIP2 CONSTANTS =====
 
-  const BZ_CONSTANTS = {
-    BASE_BLOCK_SIZE: 100000,
-    MAX_ALPHA_SIZE: 258,
-    MAX_CODE_LEN: 20,
-    RUNA: 0,
-    RUNB: 1,
-    N_GROUPS: 6,
-    G_SIZE: 50,
-    N_ITERS: 4,
-    MAX_SELECTORS: 2 + Math.floor(900000 / 50),
+  const BZ_BASE_BLOCK_SIZE = 100000;
+  const BZ_MAX_CODE_LEN = 20;
+  const BZ_RUNA = 0;
+  const BZ_RUNB = 1;
+  const BZ_G_SIZE = 50;
 
-    // Magic numbers
-    BLOCK_HEADER_MAGIC: 0x314159265359, // π
-    STREAM_END_MAGIC: 0x177245385090,   // √π
+  // Magic numbers (48-bit, exact in double precision)
+  /** @type {float64} */
+  const BZ_BLOCK_HEADER_MAGIC = 0x314159265359; // π
+  /** @type {float64} */
+  const BZ_STREAM_END_MAGIC = 0x177245385090;   // √π
 
-    // File format
-    MAGIC_BZ: 0x425A,  // 'BZ'
-    VERSION: 0x68,     // 'h'
-  };
+  // File format
+  const BZ_MAGIC = 0x425A;  // 'BZ'
+  const BZ_VERSION = 0x68;  // 'h'
+
+  /**
+   * Lower-case hexadecimal digits of a non-negative integer, as toString(16)
+   * spells them.
+   * @param {float64} value - Non-negative integer below 2^53
+   * @returns {string} Hex digits without prefix or padding
+   */
+  function hexString(value) {
+    if (value === 0) {
+      return '0';
+    }
+    /** @type {string} */
+    let text = '';
+    /** @type {float64} */
+    let rest = value;
+    while (rest > 0) {
+      /** @type {int32} */
+      const digit = rest % 16;
+      text = String.fromCharCode(digit < 10 ? 48 + digit : 87 + digit) + text;
+      rest = Math.floor(rest / 16);
+    }
+    return text;
+  }
 
   // ===== CRC32 IMPLEMENTATION =====
 
   class BZip2CRC {
     constructor() {
+      /** @type {uint32} */
       this.value = 0xFFFFFFFF;
+      /** @type {uint32[]} */
+      this.table = new Uint32Array(256);
       this.initTable();
     }
 
@@ -82,6 +104,7 @@
       // (this differs from the zlib/PKZIP CRC-32 which is bit-reflected)
       this.table = new Uint32Array(256);
       for (let i = 0; i < 256; ++i) {
+        /** @type {uint32} */
         let crc = OpCodes.Shl32(i, 24);
         for (let j = 0; j < 8; ++j) {
           if (OpCodes.Shr32(crc, 31) === 1) {
@@ -98,17 +121,28 @@
       this.value = 0xFFFFFFFF;
     }
 
+    /**
+     * @param {uint8} byte - Next data byte
+     */
     update(byte) {
-      const index = OpCodes.Xor32(OpCodes.Shr32(this.value, 24), byte)&0xFF;
+      /** @type {uint32} */
+      const index = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(this.value, 24), byte), 0xFF);
       this.value = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(this.value, 8), this.table[index]));
     }
 
+    /**
+     * @param {uint8} byte - Repeated data byte
+     * @param {int32} length - Repeat count
+     */
     updateRun(byte, length) {
       for (let i = 0; i < length; ++i) {
         this.update(byte);
       }
     }
 
+    /**
+     * @returns {uint32} Final CRC
+     */
     getValue() {
       // Final complement only - no byte/bit reversal (RefOut=false for this CRC variant)
       return OpCodes.ToUint32(OpCodes.Xor32(this.value, 0xFFFFFFFF));
@@ -119,98 +153,244 @@
 
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.buffer = [];
+      /** @type {uint32} */
       this.current = 0;
+      /** @type {int32} */
       this.bitsLeft = 32;
     }
 
+    /**
+     * @param {uint32} bit - Bit to append (low bit used)
+     */
     writeBit(bit) {
       --this.bitsLeft;
-      this.current |= OpCodes.Shl32(bit&1, this.bitsLeft);
+      this.current = OpCodes.Or32(this.current, OpCodes.Shl32(OpCodes.And32(bit, 1), this.bitsLeft));
 
       if (this.bitsLeft <= 24) {
-        this.buffer.push(OpCodes.Shr32(this.current, 24)&0xFF);
+        this.buffer.push(OpCodes.And32(OpCodes.Shr32(this.current, 24), 0xFF));
         this.current = OpCodes.ToUint32(OpCodes.Shl32(this.current, 8));
         this.bitsLeft += 8;
       }
     }
 
+    /**
+     * @param {int32} n - Bit count, most significant first
+     * @param {uint32} value - Value whose low n bits are written
+     */
     writeBits(n, value) {
       for (let i = n - 1; i >= 0; --i) {
-        this.writeBit(OpCodes.Shr32(value, i)&1);
+        this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
       }
     }
 
+    /**
+     * @param {uint32} value - 32-bit value
+     */
     writeInt32(value) {
-      this.writeBits(16, (OpCodes.Shr32(value, 16))&0xFFFF);
-      this.writeBits(16, value&0xFFFF);
+      this.writeBits(16, OpCodes.And32(OpCodes.Shr32(value, 16), 0xFFFF));
+      this.writeBits(16, OpCodes.And32(value, 0xFFFF));
     }
 
+    /**
+     * @param {float64} value - 48-bit value
+     */
     writeLong48(value) {
       // Handle 48-bit value (JavaScript numbers are safe up to 53 bits)
-      this.writeBits(24, Math.floor(value / 16777216)&0xFFFFFF);
-      this.writeBits(24, value&0xFFFFFF);
+      this.writeBits(24, OpCodes.And32(Math.floor(value / 16777216), 0xFFFFFF));
+      this.writeBits(24, OpCodes.And32(value, 0xFFFFFF));
     }
 
     flush() {
       if (this.bitsLeft < 32) {
-        this.buffer.push(OpCodes.Shr32(this.current, 24)&0xFF);
+        this.buffer.push(OpCodes.And32(OpCodes.Shr32(this.current, 24), 0xFF));
       }
       this.current = 0;
       this.bitsLeft = 32;
     }
 
+    /**
+     * @returns {uint8[]} All bytes written
+     */
     getBytes() {
       return this.buffer;
     }
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} bytes - Input
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint8} */
       this.current = 0;
+      /** @type {int32} */
       this.bitsLeft = 0;
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
       if (this.bitsLeft === 0) {
-        if (this.pos >= this.bytes.length) throw new Error('Unexpected end of stream');
+        if (this.pos >= this.bytes.length) {
+          throw new Error('Unexpected end of stream');
+        }
         this.current = this.bytes[this.pos++];
         this.bitsLeft = 8;
       }
       --this.bitsLeft;
-      return OpCodes.Shr32(this.current, this.bitsLeft)&1;
+      return OpCodes.And32(OpCodes.Shr32(this.current, this.bitsLeft), 1);
     }
 
+    // Callers read at most 31 bits at once, so the value never reaches bit 31.
+    /**
+     * @param {int32} n - Bit count, most significant first
+     * @returns {uint32} Bits read
+     */
     readBits(n) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < n; ++i) {
-        result = OpCodes.Shl32(result, 1)|this.readBit();
+        /** @type {uint32} */
+        const bit = this.readBit();
+        result = OpCodes.Or32(OpCodes.Shl32(result, 1), bit);
       }
       return result;
     }
 
+    /**
+     * @returns {uint32} 32-bit value
+     */
     readInt32() {
-      // ToUint32 matters here: plain `|` forces a SIGNED int32 result in JS even though
-      // Shl32 itself returns unsigned, so values with bit 31 set (common for CRCs) would
-      // otherwise come back negative and fail strict comparison against unsigned CRCs.
-      return OpCodes.ToUint32(OpCodes.Shl32(this.readBits(16), 16)|this.readBits(16));
+      // The combination stays unsigned, so values with bit 31 set (common for
+      // CRCs) compare equal to the unsigned CRCs computed here.
+      /** @type {uint32} */
+      const high = this.readBits(16);
+      /** @type {uint32} */
+      const low = this.readBits(16);
+      return OpCodes.Or32(OpCodes.Shl32(high, 16), low);
     }
 
+    /**
+     * @returns {float64} 48-bit value
+     */
     readLong48() {
-      return this.readBits(24) * 16777216 + this.readBits(24);
+      /** @type {float64} */
+      const high = this.readBits(24);
+      /** @type {float64} */
+      const low = this.readBits(24);
+      return high * 16777216 + low;
     }
   }
 
   // ===== BURROWS-WHEELER TRANSFORM =====
+
+  /**
+   * Result of the forward transform.
+   */
+  class BwtResult {
+    /**
+     * @param {uint8[]} transformed - Last column
+     * @param {int32} primaryIndex - Row of the original string
+     */
+    constructor(transformed, primaryIndex) {
+      /** @type {uint8[]} */
+      this.transformed = transformed;
+      /** @type {int32} */
+      this.primaryIndex = primaryIndex;
+    }
+  }
+
+  /**
+   * Orders two positions by (rank, rank k further on or -1 past the end).
+   * @param {int32[]} rank - Rank per position
+   * @param {int32} k - Current doubling step
+   * @param {int32} m - Length of the doubled string
+   * @param {int32} a - First position
+   * @param {int32} b - Second position
+   * @returns {int32} Negative, zero or positive like a sort comparator
+   */
+  function compareRankPairs(rank, k, m, a, b) {
+    /** @type {int32} */
+    const ra = rank[a];
+    /** @type {int32} */
+    const rb = rank[b];
+    if (ra !== rb) {
+      return ra - rb;
+    }
+    /** @type {int32} */
+    const ra2 = a + k < m ? rank[a + k] : -1;
+    /** @type {int32} */
+    const rb2 = b + k < m ? rank[b + k] : -1;
+    return ra2 - rb2;
+  }
+
+  // Stable bottom-up merge sort by compareRankPairs: positions with equal keys
+  // keep their current relative order, exactly as the stable built-in sort did.
+  /**
+   * @param {int32[]} sa - Positions, sorted in place
+   * @param {int32[]} scratch - Work buffer of the same length
+   * @param {int32[]} rank - Rank per position
+   * @param {int32} k - Current doubling step
+   * @param {int32} m - Length of the doubled string
+   */
+  function stableSortByRankPairs(sa, scratch, rank, k, m) {
+    /** @type {int32[]} */
+    let src = sa;
+    /** @type {int32[]} */
+    let dst = scratch;
+    for (let width = 1; width < m; width *= 2) {
+      for (let lo = 0; lo < m; lo += 2 * width) {
+        /** @type {int32} */
+        const mid = Math.min(lo + width, m);
+        /** @type {int32} */
+        const hi = Math.min(lo + 2 * width, m);
+        /** @type {int32} */
+        let i = lo;
+        /** @type {int32} */
+        let j = mid;
+        /** @type {int32} */
+        let o = lo;
+        while (i < mid && j < hi) {
+          if (compareRankPairs(rank, k, m, src[j], src[i]) < 0) {
+            dst[o++] = src[j++];
+          } else {
+            dst[o++] = src[i++];
+          }
+        }
+        while (i < mid) {
+          dst[o++] = src[i++];
+        }
+        while (j < hi) {
+          dst[o++] = src[j++];
+        }
+      }
+      /** @type {int32[]} */
+      const swap = src;
+      src = dst;
+      dst = swap;
+    }
+    if (src !== sa) {
+      for (let i = 0; i < m; ++i) {
+        sa[i] = src[i];
+      }
+    }
+  }
 
   class BurrowsWheelerTransform {
     /**
      * Build the sorted order of all n cyclic rotations of data in O(n log^2 n).
      * Uses prefix-doubling suffix-array construction on the doubled string
      * (data concatenated with itself) so no sentinel character is needed and
-     * ties between genuinely-identical (periodic) rotations resolve consistently.
+     * ties between genuinely-identical (periodic) rotations resolve consistently:
+     * every round is a stable sort, so equal keys keep the order of the
+     * previous round.
      * A naive O(n) full-rotation comparator (as a plain sort comparator) is
      * pathological for repeat-heavy input (e.g. long runs of the same byte,
      * which is exactly the common case for compressible data) - this avoids that.
@@ -218,58 +398,96 @@
      * @returns {uint32[]} rotation start indices (0..n-1), sorted ascending by rotation content
      */
     static _sortedRotationOrder(data) {
+      /** @type {int32} */
       const n = data.length;
+      /** @type {int32} */
       const m = 2 * n;
 
-      let sa = new Int32Array(m);
-      for (let i = 0; i < m; ++i) sa[i] = i;
+      /** @type {int32[]} */
+      const sa = new Int32Array(m);
+      for (let i = 0; i < m; ++i) {
+        sa[i] = i;
+      }
 
+      /** @type {int32[]} */
       let rank = new Int32Array(m);
-      for (let i = 0; i < m; ++i) rank[i] = data[i % n];
+      for (let i = 0; i < m; ++i) {
+        rank[i] = data[i % n];
+      }
 
+      /** @type {int32[]} */
       let tmp = new Int32Array(m);
+      /** @type {int32[]} */
+      const scratch = new Int32Array(m);
 
       for (let k = 1; ; k *= 2) {
-        sa.sort((a, b) => {
-          const ra = rank[a], rb = rank[b];
-          if (ra !== rb) return ra - rb;
-          const ra2 = a + k < m ? rank[a + k] : -1;
-          const rb2 = b + k < m ? rank[b + k] : -1;
-          return ra2 - rb2;
-        });
+        stableSortByRankPairs(sa, scratch, rank, k, m);
 
         tmp[sa[0]] = 0;
+        /** @type {int32} */
         let classes = 1;
         for (let i = 1; i < m; ++i) {
-          const prev = sa[i - 1], cur = sa[i];
+          /** @type {int32} */
+          const prev = sa[i - 1];
+          /** @type {int32} */
+          const cur = sa[i];
+          /** @type {int32} */
           const prevRank2 = prev + k < m ? rank[prev + k] : -1;
+          /** @type {int32} */
           const curRank2 = cur + k < m ? rank[cur + k] : -1;
-          if (rank[prev] !== rank[cur] || prevRank2 !== curRank2) ++classes;
+          if (rank[prev] !== rank[cur] || prevRank2 !== curRank2) {
+            ++classes;
+          }
           tmp[cur] = classes - 1;
         }
 
-        const swapRank = rank; rank = tmp; tmp = swapRank;
+        /** @type {int32[]} */
+        const swapRank = rank;
+        rank = tmp;
+        tmp = swapRank;
 
-        if (classes >= m || k >= m) break;
+        if (classes >= m || k >= m) {
+          break;
+        }
       }
 
       // Keep only the starting positions of the first copy (0..n-1), already in sorted order.
+      /** @type {uint32[]} */
       const order = new Uint32Array(n);
+      /** @type {int32} */
       let oi = 0;
       for (let i = 0; i < m && oi < n; ++i) {
-        if (sa[i] < n) order[oi++] = sa[i];
+        if (sa[i] < n) {
+          order[oi++] = sa[i];
+        }
       }
       return order;
     }
 
+    /**
+     * @param {uint8[]} data - Block
+     * @returns {BwtResult} Last column and primary index
+     */
     static transform(data) {
-      if (data.length === 0) return { transformed: [], primaryIndex: 0 };
-      if (data.length === 1) return { transformed: [...data], primaryIndex: 0 };
+      if (data.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return new BwtResult(empty, 0);
+      }
+      if (data.length === 1) {
+        /** @type {uint8[]} */
+        const single = [];
+        single.push(data[0]);
+        return new BwtResult(single, 0);
+      }
 
+      /** @type {int32} */
       const n = data.length;
+      /** @type {uint32[]} */
       const order = BurrowsWheelerTransform._sortedRotationOrder(data);
 
       // Find primary index (where original string is)
+      /** @type {int32} */
       let primaryIndex = 0;
       for (let i = 0; i < n; ++i) {
         if (order[i] === 0) {
@@ -279,29 +497,56 @@
       }
 
       // Extract last column (L column)
-      const transformed = new Uint8Array(n);
+      /** @type {uint8[]} */
+      const column = new Uint8Array(n);
       for (let i = 0; i < n; ++i) {
+        /** @type {int32} */
         const start = order[i];
-        transformed[i] = data[(start + n - 1) % n];
+        column[i] = data[(start + n - 1) % n];
       }
 
-      return { transformed: Array.from(transformed), primaryIndex };
+      /** @type {uint8[]} */
+      const transformed = [];
+      for (let i = 0; i < n; ++i) {
+        transformed.push(column[i]);
+      }
+      return new BwtResult(transformed, primaryIndex);
     }
 
+    // A corrupt primary index or byte leaves undefined entries in the plain
+    // working arrays and zeros in the typed ones, exactly as before.
+    /**
+     * @param {uint8[]} data - Last column
+     * @param {uint32} primaryIndex - Row of the original string
+     * @returns {uint8[]} Original block
+     */
     static inverseTransform(data, primaryIndex) {
-      if (data.length === 0) return [];
-      if (data.length === 1) return [...data];
+      if (data.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      if (data.length === 1) {
+        /** @type {uint8[]} */
+        const single = [];
+        single.push(data[0]);
+        return single;
+      }
 
+      /** @type {int32} */
       const n = data.length;
 
       // Count frequency of each byte
+      /** @type {uint32[]} */
       const counts = new Uint32Array(256);
       for (let i = 0; i < n; ++i) {
         ++counts[data[i]];
       }
 
       // Calculate cumulative counts
+      /** @type {uint32[]} */
       const cumCounts = new Uint32Array(256);
+      /** @type {float64} */
       let sum = 0;
       for (let i = 0; i < 256; ++i) {
         cumCounts[i] = sum;
@@ -309,17 +554,24 @@
       }
 
       // Build transformation vector
+      /** @type {uint32[]} */
       const transform = new Uint32Array(n);
+      /** @type {uint32[]} */
       const tempCounts = new Uint32Array(256);
 
       for (let i = 0; i < n; ++i) {
+        /** @type {uint8} */
         const byte = data[i];
-        transform[cumCounts[byte] + tempCounts[byte]] = i;
+        /** @type {float64} */
+        const slot = cumCounts[byte] + tempCounts[byte];
+        transform[slot] = i;
         ++tempCounts[byte];
       }
 
       // Follow the transformation chain
+      /** @type {uint8[]} */
       const result = new Uint8Array(n);
+      /** @type {uint32} */
       let current = primaryIndex;
 
       for (let i = 0; i < n; ++i) {
@@ -327,42 +579,86 @@
         result[i] = data[current];
       }
 
-      return Array.from(result);
+      /** @type {uint8[]} */
+      const plain = [];
+      for (let i = 0; i < n; ++i) {
+        plain.push(result[i]);
+      }
+      return plain;
     }
   }
 
   // ===== MOVE-TO-FRONT ENCODING =====
 
   class MoveToFront {
+    /**
+     * @param {uint8[]} data - Bytes to code
+     * @param {boolean[]} inUse - Byte values present
+     * @returns {int32[]} Positions (-1 for a byte not in use)
+     */
     static encode(data, inUse) {
+      /** @type {int32[]} */
       const symbols = [];
       for (let i = 0; i < 256; ++i) {
-        if (inUse[i]) symbols.push(i);
+        if (inUse[i]) {
+          symbols.push(i);
+        }
       }
 
+      /** @type {int32[]} */
       const result = [];
-      for (const byte of data) {
-        const pos = symbols.indexOf(byte);
+      for (let d = 0; d < data.length; ++d) {
+        /** @type {uint8} */
+        const byte = data[d];
+        /** @type {int32} */
+        let pos = -1;
+        for (let s = 0; s < symbols.length; ++s) {
+          if (symbols[s] === byte) {
+            pos = s;
+            break;
+          }
+        }
         result.push(pos);
         if (pos > 0) {
-          symbols.splice(pos, 1);
-          symbols.unshift(byte);
+          for (let j = pos; j > 0; --j) {
+            symbols[j] = symbols[j - 1];
+          }
+          symbols[0] = byte;
         }
       }
 
       return result;
     }
 
+    // A position past the end removes nothing and still inserts its
+    // (undefined) byte at the front, as splice/unshift did.
+    /**
+     * @param {int32[]} data - Positions
+     * @param {int32[]} seqToUnseq - Initial symbol order
+     * @returns {int32[]} Decoded bytes
+     */
     static decode(data, seqToUnseq) {
-      const symbols = [...seqToUnseq];
+      /** @type {int32[]} */
+      const symbols = [];
+      for (let i = 0; i < seqToUnseq.length; ++i) {
+        symbols.push(seqToUnseq[i]);
+      }
+      /** @type {int32[]} */
       const result = [];
 
-      for (const pos of data) {
+      for (let d = 0; d < data.length; ++d) {
+        /** @type {int32} */
+        const pos = data[d];
+        /** @type {int32} */
         const byte = symbols[pos];
         result.push(byte);
         if (pos > 0) {
-          symbols.splice(pos, 1);
-          symbols.unshift(byte);
+          /** @type {int32} */
+          const from = Math.min(Math.trunc(pos), symbols.length);
+          for (let j = from; j > 0; --j) {
+            symbols[j] = symbols[j - 1];
+          }
+          symbols[0] = byte;
         }
       }
 
@@ -373,10 +669,20 @@
   // ===== HUFFMAN CODING =====
 
   class HuffmanCoding {
+    /**
+     * @param {int32[]} frequencies - Frequency per symbol
+     * @param {int32} maxLen - Longest allowed code
+     * @returns {int32[]} Code length per symbol
+     */
     static makeCodeLengths(frequencies, maxLen) {
+      /** @type {int32} */
       const alphaSize = frequencies.length;
-      const heap = [];
+      // 1-indexed binary heap; only positions 0..nHeap are ever read.
+      /** @type {int32[]} */
+      const heap = new Int32Array(alphaSize * 2 + 2);
+      /** @type {int32[]} */
       const weight = new Int32Array(alphaSize * 2);
+      /** @type {int32[]} */
       const parent = new Int32Array(alphaSize * 2);
 
       // Initialize weights
@@ -385,28 +691,27 @@
       }
 
       while (true) {
+        /** @type {int32} */
         let nNodes = alphaSize;
+        /** @type {int32} */
         let nHeap = 0;
 
-        heap.length = 0;
         heap[0] = 0;
         weight[0] = 0;
         parent[0] = -2;
 
-        // Build initial heap
-        // NOTE: this is a 1-indexed binary heap stored in a plain array; positions must be
-        // written by INDEX (heap[nHeap] = x), never with .push() - the heap shrinks and
-        // regrows as nodes are extracted/combined below, so .push() (which always appends
-        // at the current array length) desyncs from the logical heap position nHeap as soon
-        // as the array has been left "long" by an earlier extraction.
+        // Build initial heap (positions written by index; the heap shrinks and
+        // regrows as nodes are extracted and combined below)
         for (let i = 1; i <= alphaSize; ++i) {
           parent[i] = -1;
           ++nHeap;
           heap[nHeap] = i;
 
           // Sift up
+          /** @type {int32} */
           let zz = nHeap;
-          let tmp = heap[zz];
+          /** @type {int32} */
+          const tmp = heap[zz];
           while (weight[tmp] < weight[heap[OpCodes.Shr32(zz, 1)]]) {
             heap[zz] = heap[OpCodes.Shr32(zz, 1)];
             zz = OpCodes.Shr32(zz, 1);
@@ -417,23 +722,34 @@
         // Build Huffman tree
         while (nHeap > 1) {
           // Extract min
+          /** @type {int32} */
           const n1 = heap[1];
           heap[1] = heap[nHeap--];
 
           // Sift down
+          /** @type {int32} */
           let zz = 1;
+          /** @type {int32} */
           let tmp = heap[zz];
           while (true) {
+            /** @type {int32} */
             let yy = OpCodes.Shl32(zz, 1);
-            if (yy > nHeap) break;
-            if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) ++yy;
-            if (weight[tmp] < weight[heap[yy]]) break;
+            if (yy > nHeap) {
+              break;
+            }
+            if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) {
+              ++yy;
+            }
+            if (weight[tmp] < weight[heap[yy]]) {
+              break;
+            }
             heap[zz] = heap[yy];
             zz = yy;
           }
           heap[zz] = tmp;
 
           // Extract second min
+          /** @type {int32} */
           const n2 = heap[1];
           heap[1] = heap[nHeap--];
 
@@ -441,10 +757,17 @@
           zz = 1;
           tmp = heap[zz];
           while (true) {
+            /** @type {int32} */
             let yy = OpCodes.Shl32(zz, 1);
-            if (yy > nHeap) break;
-            if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) ++yy;
-            if (weight[tmp] < weight[heap[yy]]) break;
+            if (yy > nHeap) {
+              break;
+            }
+            if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) {
+              ++yy;
+            }
+            if (weight[tmp] < weight[heap[yy]]) {
+              break;
+            }
             heap[zz] = heap[yy];
             zz = yy;
           }
@@ -452,14 +775,20 @@
 
           // Combine nodes
           ++nNodes;
-          parent[n1] = parent[n2] = nNodes;
+          parent[n2] = nNodes;
+          parent[n1] = nNodes;
 
-          const w1 = weight[n1]&0xFFFFFF00;
-          const w2 = weight[n2]&0xFFFFFF00;
-          const d1 = weight[n1]&0xFF;
-          const d2 = weight[n2]&0xFF;
+          // Weights stay below 2^31, so the masks and the combination are exact.
+          /** @type {int32} */
+          const w1 = OpCodes.And32(weight[n1], 0xFFFFFF00);
+          /** @type {int32} */
+          const w2 = OpCodes.And32(weight[n2], 0xFFFFFF00);
+          /** @type {int32} */
+          const d1 = OpCodes.And32(weight[n1], 0xFF);
+          /** @type {int32} */
+          const d2 = OpCodes.And32(weight[n2], 0xFF);
 
-          weight[nNodes] = (w1 + w2)|(1 + (d1 > d2 ? d1 : d2));
+          weight[nNodes] = OpCodes.Or32(w1 + w2, 1 + (d1 > d2 ? d1 : d2));
           parent[nNodes] = -1;
           ++nHeap;
           heap[nHeap] = nNodes;
@@ -475,24 +804,38 @@
         }
 
         // Calculate code lengths
+        /** @type {uint8[]} */
         const lengths = new Uint8Array(alphaSize);
+        /** @type {boolean} */
         let tooLong = false;
 
         for (let i = 1; i <= alphaSize; ++i) {
+          /** @type {int32} */
           let j = 0;
+          /** @type {int32} */
           let k = i;
           while (parent[k] >= 0) {
             k = parent[k];
             ++j;
           }
           lengths[i - 1] = j;
-          if (j > maxLen) tooLong = true;
+          if (j > maxLen) {
+            tooLong = true;
+          }
         }
 
-        if (!tooLong) return Array.from(lengths);
+        if (!tooLong) {
+          /** @type {int32[]} */
+          const plain = [];
+          for (let i = 0; i < alphaSize; ++i) {
+            plain.push(lengths[i]);
+          }
+          return plain;
+        }
 
         // If too long, adjust weights and retry
         for (let i = 1; i <= alphaSize; ++i) {
+          /** @type {int32} */
           let j = OpCodes.Shr32(weight[i], 8);
           j = 1 + OpCodes.Shr32(j, 1);
           weight[i] = OpCodes.Shl32(j, 8);
@@ -500,8 +843,16 @@
       }
     }
 
+    /**
+     * @param {int32[]} lengths - Code length per symbol
+     * @param {int32} minLen - Shortest code length
+     * @param {int32} maxLen - Longest code length
+     * @returns {uint32[]} Canonical code per symbol
+     */
     static assignCodes(lengths, minLen, maxLen) {
+      /** @type {uint32[]} */
       const codes = new Uint32Array(lengths.length);
+      /** @type {uint32} */
       let code = 0;
 
       for (let len = minLen; len <= maxLen; ++len) {
@@ -609,6 +960,31 @@
   }
 
   /**
+   * Huffman decoding table of one coding group.
+   */
+  class BzDecodeTable {
+    /**
+     * @param {int32} minLen - Shortest code length
+     * @param {int32} maxLen - Longest code length
+     * @param {int32[]} limit - Code limit per length
+     * @param {int32[]} base - Code base per length
+     * @param {int32[]} perm - Symbols in code order
+     */
+    constructor(minLen, maxLen, limit, base, perm) {
+      /** @type {int32} */
+      this.minLen = minLen;
+      /** @type {int32} */
+      this.maxLen = maxLen;
+      /** @type {int32[]} */
+      this.limit = limit;
+      /** @type {int32[]} */
+      this.base = base;
+      /** @type {int32[]} */
+      this.perm = perm;
+    }
+  }
+
+  /**
  * BZIP2 cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -617,24 +993,33 @@
   class BZIP2Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BZIP2Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.blockSize100k = 9; // Default to highest compression
     }
 
+    /**
+     * @param {int32} size - Block size in units of 100k (1-9)
+     */
     set blockSize(size) {
       if (size < 1 || size > 9) {
-        throw new Error(`Invalid block size: ${size} (must be 1-9)`);
+        throw new Error('Invalid block size: ' + size + ' (must be 1-9)');
       }
       this.blockSize100k = size;
     }
 
+    /**
+     * @returns {int32} Block size in units of 100k
+     */
     get blockSize() {
       return this.blockSize100k;
     }
@@ -647,15 +1032,24 @@
    */
 
     Result() {
-      const result = this.isInverse ?
-        this.decompress(this.inputBuffer) :
-        this.compress(this.inputBuffer);
+      /** @type {uint8[]} */
+      let result = [];
+      if (this.isInverse) {
+        result = this.decompress(this.inputBuffer);
+      } else {
+        result = this.compress(this.inputBuffer);
+      }
 
       this.inputBuffer = [];
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @returns {uint8[]} bzip2 stream
+     */
     compress(data) {
+      /** @type {BitWriter} */
       const bw = new BitWriter();
 
       // File header: 'B' 'Z' 'h' <level digit>
@@ -664,42 +1058,67 @@
       bw.writeBits(8, 0x68);
       bw.writeBits(8, 0x30 + this.blockSize100k);
 
-      const maxBlockBytes = BZ_CONSTANTS.BASE_BLOCK_SIZE * this.blockSize100k;
+      /** @type {int32} */
+      const maxBlockBytes = BZ_BASE_BLOCK_SIZE * this.blockSize100k;
+      /** @type {int32} */
       const n = data.length;
+      /** @type {uint32} */
       let computedStreamCRC = 0;
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < n) {
+        /** @type {int32} */
         const blockStart = pos;
+        /** @type {uint8[]} */
         const rle1 = [];
 
         // Greedily consume runs (RLE1) until the encoded block would exceed the limit.
         while (pos < n) {
+          /** @type {uint8} */
           const byte = data[pos];
+          /** @type {int32} */
           const capRun = Math.min(n - pos, 259); // 4 literal + up to 255 in the length byte
+          /** @type {int32} */
           let runLen = 1;
-          while (runLen < capRun && data[pos + runLen] === byte) ++runLen;
+          while (runLen < capRun && data[pos + runLen] === byte) {
+            ++runLen;
+          }
 
+          /** @type {int32} */
           const addBytes = runLen < 4 ? runLen : 5;
-          if (rle1.length > 0 && rle1.length + addBytes > maxBlockBytes) break;
+          if (rle1.length > 0 && rle1.length + addBytes > maxBlockBytes) {
+            break;
+          }
 
           if (runLen < 4) {
-            for (let j = 0; j < runLen; ++j) rle1.push(byte);
+            for (let j = 0; j < runLen; ++j) {
+              rle1.push(byte);
+            }
           } else {
-            rle1.push(byte, byte, byte, byte, runLen - 4);
+            rle1.push(byte);
+            rle1.push(byte);
+            rle1.push(byte);
+            rle1.push(byte);
+            rle1.push(runLen - 4);
           }
           pos += runLen;
         }
 
+        /** @type {uint32} */
         const blockCRC = this.encodeBlock(bw, rle1, data, blockStart, pos);
-        computedStreamCRC = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(computedStreamCRC, 1)|OpCodes.Shr32(computedStreamCRC, 31), blockCRC));
+        /** @type {uint32} */
+        const rotated = OpCodes.Or32(OpCodes.Shl32(computedStreamCRC, 1), OpCodes.Shr32(computedStreamCRC, 31));
+        computedStreamCRC = OpCodes.Xor32(rotated, blockCRC);
       }
 
-      bw.writeLong48(BZ_CONSTANTS.STREAM_END_MAGIC);
+      bw.writeLong48(BZ_STREAM_END_MAGIC);
       bw.writeInt32(computedStreamCRC);
       bw.flush();
 
-      return bw.getBytes();
+      /** @type {uint8[]} */
+      const bytes = bw.getBytes();
+      return bytes;
     }
 
     /**
@@ -707,72 +1126,132 @@
      * @param {BitWriter} bw - output bit writer
      * @param {uint8[]} rle1Data - RLE1-encoded payload for this block
      * @param {uint8[]} originalData - full source buffer (for block CRC over the pre-RLE1 bytes)
-     * @param {number} blockStart - start offset (inclusive) of this block within originalData
-     * @param {number} blockEnd - end offset (exclusive) of this block within originalData
-     * @returns {number} the block CRC (also used to update the running stream CRC)
+     * @param {int32} blockStart - start offset (inclusive) of this block within originalData
+     * @param {int32} blockEnd - end offset (exclusive) of this block within originalData
+     * @returns {uint32} the block CRC (also used to update the running stream CRC)
      */
     encodeBlock(bw, rle1Data, originalData, blockStart, blockEnd) {
       // Block CRC is computed over the original (pre-RLE1) bytes belonging to this block
+      /** @type {BZip2CRC} */
       const crc = new BZip2CRC();
       crc.reset();
-      for (let i = blockStart; i < blockEnd; ++i) crc.update(originalData[i]);
+      for (let i = blockStart; i < blockEnd; ++i) {
+        crc.update(originalData[i]);
+      }
+      /** @type {uint32} */
       const blockCRC = crc.getValue();
 
-      const { transformed, primaryIndex } = BurrowsWheelerTransform.transform(rle1Data);
+      /** @type {BwtResult} */
+      const bwt = BurrowsWheelerTransform.transform(rle1Data);
+      /** @type {uint8[]} */
+      const transformed = bwt.transformed;
+      /** @type {int32} */
+      const primaryIndex = bwt.primaryIndex;
 
-      const inUse = new Array(256).fill(false);
-      for (let i = 0; i < transformed.length; ++i) inUse[transformed[i]] = true;
+      /** @type {boolean[]} */
+      const inUse = [];
+      for (let i = 0; i < 256; ++i) {
+        inUse.push(false);
+      }
+      for (let i = 0; i < transformed.length; ++i) {
+        inUse[transformed[i]] = true;
+      }
+      /** @type {int32[]} */
       const seqToUnseq = [];
-      for (let i = 0; i < 256; ++i) if (inUse[i]) seqToUnseq.push(i);
+      for (let i = 0; i < 256; ++i) {
+        if (inUse[i]) {
+          seqToUnseq.push(i);
+        }
+      }
 
+      /** @type {int32[]} */
       const mtfPositions = MoveToFront.encode(transformed, inUse);
 
+      /** @type {int32} */
       const alphaSize = seqToUnseq.length + 2; // + RUNA/RUNB..EOB
+      /** @type {int32} */
       const eobSymbol = alphaSize - 1;
+      /** @type {int32[]} */
       const mtfSymbols = this.encodeRLE2(mtfPositions, eobSymbol);
 
-      const freq = new Array(alphaSize).fill(0);
-      for (let i = 0; i < mtfSymbols.length; ++i) ++freq[mtfSymbols[i]];
-
-      const lengths = HuffmanCoding.makeCodeLengths(freq, BZ_CONSTANTS.MAX_CODE_LEN);
-      let minLen = BZ_CONSTANTS.MAX_CODE_LEN, maxLen = 1;
-      for (let i = 0; i < lengths.length; ++i) {
-        if (lengths[i] < minLen) minLen = lengths[i];
-        if (lengths[i] > maxLen) maxLen = lengths[i];
+      /** @type {int32[]} */
+      const freq = [];
+      for (let i = 0; i < alphaSize; ++i) {
+        freq.push(0);
       }
+      for (let i = 0; i < mtfSymbols.length; ++i) {
+        ++freq[mtfSymbols[i]];
+      }
+
+      /** @type {int32[]} */
+      const lengths = HuffmanCoding.makeCodeLengths(freq, BZ_MAX_CODE_LEN);
+      /** @type {int32} */
+      let minLen = BZ_MAX_CODE_LEN;
+      /** @type {int32} */
+      let maxLen = 1;
+      for (let i = 0; i < lengths.length; ++i) {
+        if (lengths[i] < minLen) {
+          minLen = lengths[i];
+        }
+        if (lengths[i] > maxLen) {
+          maxLen = lengths[i];
+        }
+      }
+      /** @type {uint32[]} */
       const codes = HuffmanCoding.assignCodes(lengths, minLen, maxLen);
 
       // Minimum legal number of tables is 2; use two identical tables and always
       // select table 0 (a legal, if not compression-optimal, encoding).
+      /** @type {int32} */
       const nGroups = 2;
-      const nSelectors = Math.max(1, Math.ceil(mtfSymbols.length / BZ_CONSTANTS.G_SIZE));
+      /** @type {int32} */
+      const nSelectors = Math.max(1, Math.ceil(mtfSymbols.length / BZ_G_SIZE));
 
       // ===== Block header =====
-      bw.writeLong48(BZ_CONSTANTS.BLOCK_HEADER_MAGIC);
+      bw.writeLong48(BZ_BLOCK_HEADER_MAGIC);
       bw.writeInt32(blockCRC);
       bw.writeBit(0); // not randomized
       bw.writeBits(24, primaryIndex);
 
       // Used-symbol bitmap (16 group bits + up to 16x16 detail bits)
-      const inUse16 = new Array(16).fill(false);
-      for (let i = 0; i < 256; ++i) if (inUse[i]) inUse16[Math.floor(i / 16)] = true;
-      for (let g = 0; g < 16; ++g) bw.writeBit(inUse16[g] ? 1 : 0);
+      /** @type {boolean[]} */
+      const inUse16 = [];
       for (let g = 0; g < 16; ++g) {
-        if (!inUse16[g]) continue;
-        for (let j = 0; j < 16; ++j) bw.writeBit(inUse[g * 16 + j] ? 1 : 0);
+        inUse16.push(false);
+      }
+      for (let i = 0; i < 256; ++i) {
+        if (inUse[i]) {
+          inUse16[Math.floor(i / 16)] = true;
+        }
+      }
+      for (let g = 0; g < 16; ++g) {
+        bw.writeBit(inUse16[g] ? 1 : 0);
+      }
+      for (let g = 0; g < 16; ++g) {
+        if (!inUse16[g]) {
+          continue;
+        }
+        for (let j = 0; j < 16; ++j) {
+          bw.writeBit(inUse[g * 16 + j] ? 1 : 0);
+        }
       }
 
       bw.writeBits(3, nGroups);
       bw.writeBits(15, nSelectors);
 
       // Selector list: all point at table 0, encoded as MTF value 0 (a single '0' bit each)
-      for (let i = 0; i < nSelectors; ++i) bw.writeBit(0);
+      for (let i = 0; i < nSelectors; ++i) {
+        bw.writeBit(0);
+      }
 
       // Huffman code-length tables (two identical copies)
-      for (let t = 0; t < nGroups; ++t) this.encodeHuffmanLengths(bw, lengths);
+      for (let t = 0; t < nGroups; ++t) {
+        this.encodeHuffmanLengths(bw, lengths);
+      }
 
       // Symbol stream
       for (let i = 0; i < mtfSymbols.length; ++i) {
+        /** @type {int32} */
         const sym = mtfSymbols[i];
         bw.writeBits(lengths[sym], codes[sym]);
       }
@@ -784,27 +1263,35 @@
      * RLE2 / zero-run coding: runs of MTF value 0 are coded via a bijective base-2
      * representation using RUNA(=1x)/RUNB(=2x) symbols; non-zero MTF position p becomes
      * symbol p+1 (0 and 1 are reserved for RUNA/RUNB). Terminated by the EOB symbol.
-     * @param {number[]} mtfPositions - MTF-encoded positions
-     * @param {number} eobSymbol - end-of-block symbol value (alphaSize - 1)
-     * @returns {number[]} Huffman-alphabet symbol stream
+     * @param {int32[]} mtfPositions - MTF-encoded positions
+     * @param {int32} eobSymbol - end-of-block symbol value (alphaSize - 1)
+     * @returns {int32[]} Huffman-alphabet symbol stream
      */
     encodeRLE2(mtfPositions, eobSymbol) {
+      /** @type {int32[]} */
       const result = [];
+      /** @type {int32} */
       let i = 0;
+      /** @type {int32} */
       const n = mtfPositions.length;
 
       while (i < n) {
         if (mtfPositions[i] === 0) {
+          /** @type {int32} */
           let runLen = 0;
-          while (i < n && mtfPositions[i] === 0) { ++runLen; ++i; }
+          while (i < n && mtfPositions[i] === 0) {
+            ++runLen;
+            ++i;
+          }
 
+          /** @type {int32} */
           let remaining = runLen;
           while (remaining > 0) {
             if (remaining % 2 === 1) {
-              result.push(BZ_CONSTANTS.RUNA);
+              result.push(BZ_RUNA);
               remaining = Math.floor((remaining - 1) / 2);
             } else {
-              result.push(BZ_CONSTANTS.RUNB);
+              result.push(BZ_RUNB);
               remaining = Math.floor((remaining - 2) / 2);
             }
           }
@@ -823,13 +1310,15 @@
      * length followed by, per symbol, a unary sequence of +1/-1 adjustments terminated
      * by a 0 marker bit. Mirrors decodeBlock's length-reading loop exactly.
      * @param {BitWriter} bw
-     * @param {number[]} lengths - code length per symbol (0..alphaSize-1)
+     * @param {int32[]} lengths - code length per symbol (0..alphaSize-1)
      */
     encodeHuffmanLengths(bw, lengths) {
+      /** @type {int32} */
       let curr = lengths[0];
       bw.writeBits(5, curr);
 
       for (let i = 0; i < lengths.length; ++i) {
+        /** @type {int32} */
         const target = lengths[i];
         if (curr === target) {
           bw.writeBit(0);
@@ -837,84 +1326,116 @@
         }
         bw.writeBit(1);
         while (true) {
-          if (curr < target) { bw.writeBit(0); ++curr; }
-          else { bw.writeBit(1); --curr; }
-          if (curr === target) { bw.writeBit(0); break; }
+          if (curr < target) {
+            bw.writeBit(0);
+            ++curr;
+          } else {
+            bw.writeBit(1);
+            --curr;
+          }
+          if (curr === target) {
+            bw.writeBit(0);
+            break;
+          }
           bw.writeBit(1);
         }
       }
     }
 
+    /**
+     * @param {uint8[]} compressedData - bzip2 stream
+     * @returns {uint8[]} Decompressed bytes
+     */
     decompress(compressedData) {
+      /** @type {BitReader} */
       const reader = new BitReader(compressedData);
 
       // Read and validate file header
-      const magic = OpCodes.Shl32(reader.readBits(8), 8)|reader.readBits(8);
-      if (magic !== BZ_CONSTANTS.MAGIC_BZ) {
+      /** @type {uint32} */
+      const magicHigh = reader.readBits(8);
+      /** @type {uint32} */
+      const magicLow = reader.readBits(8);
+      /** @type {uint32} */
+      const magic = OpCodes.Or32(OpCodes.Shl32(magicHigh, 8), magicLow);
+      if (magic !== BZ_MAGIC) {
         throw new Error('Invalid BZIP2 magic number');
       }
 
+      /** @type {uint32} */
       const version = reader.readBits(8);
-      if (version !== BZ_CONSTANTS.VERSION) {
-        throw new Error(`Unsupported BZIP2 version: ${String.fromCharCode(version)}`);
+      if (version !== BZ_VERSION) {
+        throw new Error('Unsupported BZIP2 version: ' + String.fromCharCode(version));
       }
 
+      /** @type {uint32} */
       const level = reader.readBits(8);
       if (level < 0x31 || level > 0x39) { // '1' to '9'
-        throw new Error(`Invalid BZIP2 level: ${String.fromCharCode(level)}`);
+        throw new Error('Invalid BZIP2 level: ' + String.fromCharCode(level));
       }
 
       this.blockSize100k = level - 0x30;
 
       // Decompress all blocks
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {BZip2CRC} */
       const streamCRC = new BZip2CRC();
       streamCRC.reset();
 
+      /** @type {uint32} */
       let computedStreamCRC = 0;
 
       while (true) {
         // Read block or stream end magic
+        /** @type {float64} */
         const blockMagic = reader.readLong48();
 
-        if (blockMagic === BZ_CONSTANTS.STREAM_END_MAGIC) {
+        if (blockMagic === BZ_STREAM_END_MAGIC) {
+          /** @type {uint32} */
           const expectedStreamCRC = reader.readInt32();
           if (expectedStreamCRC !== computedStreamCRC) {
-            throw new Error(`Stream CRC mismatch: expected ${expectedStreamCRC.toString(16)}, got ${computedStreamCRC.toString(16)}`);
+            throw new Error('Stream CRC mismatch: expected ' + hexString(expectedStreamCRC) + ', got ' + hexString(computedStreamCRC));
           }
           break;
         }
 
-        if (blockMagic !== BZ_CONSTANTS.BLOCK_HEADER_MAGIC) {
-          throw new Error(`Invalid block magic: ${blockMagic.toString(16)}`);
+        if (blockMagic !== BZ_BLOCK_HEADER_MAGIC) {
+          throw new Error('Invalid block magic: ' + hexString(blockMagic));
         }
 
         // Read block CRC
+        /** @type {uint32} */
         const blockCRC = reader.readInt32();
 
         // Read randomization flag (usually 0)
+        /** @type {uint32} */
         const randomized = reader.readBit();
         if (randomized) {
           throw new Error('Randomized blocks not supported');
         }
 
         // Decode block
+        /** @type {uint8[]} */
         const blockData = this.decodeBlock(reader);
 
         // Verify block CRC
+        /** @type {BZip2CRC} */
         const crc = new BZip2CRC();
         crc.reset();
-        for (const byte of blockData) {
-          crc.update(byte);
+        for (let i = 0; i < blockData.length; ++i) {
+          crc.update(blockData[i]);
         }
+        /** @type {uint32} */
         const computedCRC = crc.getValue();
 
         if (computedCRC !== blockCRC) {
-          throw new Error(`Block CRC mismatch: expected ${blockCRC.toString(16)}, got ${computedCRC.toString(16)}`);
+          throw new Error('Block CRC mismatch: expected ' + hexString(blockCRC) + ', got ' + hexString(computedCRC));
         }
 
         // Update stream CRC
-        computedStreamCRC = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(computedStreamCRC, 1)|OpCodes.Shr32(computedStreamCRC, 31), computedCRC));
+        /** @type {uint32} */
+        const rotated = OpCodes.Or32(OpCodes.Shl32(computedStreamCRC, 1), OpCodes.Shr32(computedStreamCRC, 31));
+        computedStreamCRC = OpCodes.Xor32(rotated, computedCRC);
 
         // Append block data without spread operator to avoid call stack issues with large arrays
         for (let i = 0; i < blockData.length; ++i) {
@@ -925,23 +1446,42 @@
       return output;
     }
 
+    // Corrupt streams can leave zero-length or out-of-range entries in the
+    // tables; the lookups below then read undefined and continue exactly as
+    // before.
+    /**
+     * @param {BitReader} reader - Input bits positioned after the block CRC and flag
+     * @returns {uint8[]} Decoded block
+     */
     decodeBlock(reader) {
       // Read original pointer
+      /** @type {uint32} */
       const origPtr = reader.readBits(24);
 
       // Read mapping table
+      /** @type {uint32[]} */
       const inUse16 = [];
       for (let i = 0; i < 16; ++i) {
-        inUse16.push(reader.readBit());
+        /** @type {uint32} */
+        const groupUsed = reader.readBit();
+        inUse16.push(groupUsed);
       }
 
-      const inUse = new Array(256).fill(false);
+      /** @type {boolean[]} */
+      const inUse = [];
+      for (let i = 0; i < 256; ++i) {
+        inUse.push(false);
+      }
+      /** @type {int32[]} */
       const seqToUnseq = [];
 
       for (let i = 0; i < 16; ++i) {
         if (inUse16[i]) {
           for (let j = 0; j < 16; ++j) {
-            if (reader.readBit()) {
+            /** @type {uint32} */
+            const used = reader.readBit();
+            if (used) {
+              /** @type {int32} */
               const symbol = i * 16 + j;
               inUse[symbol] = true;
               seqToUnseq.push(symbol);
@@ -950,54 +1490,82 @@
         }
       }
 
+      /** @type {int32} */
       const alphaSize = seqToUnseq.length + 2; // +2 for RUNA and RUNB
 
       // Read number of Huffman tables
+      /** @type {int32} */
       const nGroups = reader.readBits(3);
       if (nGroups < 2 || nGroups > 6) {
-        throw new Error(`Invalid number of Huffman groups: ${nGroups}`);
+        throw new Error('Invalid number of Huffman groups: ' + nGroups);
       }
 
       // Read number of selectors
+      /** @type {int32} */
       const nSelectors = reader.readBits(15);
 
       // Read selectors with MTF encoding
+      /** @type {int32[]} */
       const selectorMTF = [];
       for (let i = 0; i < nSelectors; ++i) {
+        /** @type {int32} */
         let j = 0;
-        while (reader.readBit()) ++j;
+        for (;;) {
+          /** @type {uint32} */
+          const more = reader.readBit();
+          if (!more) {
+            break;
+          }
+          ++j;
+        }
         selectorMTF.push(j);
       }
 
-      // Decode selectors using MTF
+      // Decode selectors using MTF (typed arrays: out-of-range reads give
+      // undefined, stored as 0; out-of-range writes are dropped)
+      /** @type {uint8[]} */
       const pos = new Uint8Array(nGroups);
-      for (let i = 0; i < nGroups; ++i) pos[i] = i;
+      for (let i = 0; i < nGroups; ++i) {
+        pos[i] = i;
+      }
 
+      /** @type {uint8[]} */
       const selectors = new Uint8Array(nSelectors);
       for (let i = 0; i < nSelectors; ++i) {
+        /** @type {int32} */
         const v = selectorMTF[i];
+        /** @type {uint8} */
         const tmp = pos[v];
-        for (let j = v; j > 0; --j) pos[j] = pos[j - 1];
+        for (let j = v; j > 0; --j) {
+          pos[j] = pos[j - 1];
+        }
         pos[0] = tmp;
         selectors[i] = tmp;
       }
 
       // Read Huffman code lengths
+      /** @type {uint8[][]} */
       const lengths = [];
       for (let t = 0; t < nGroups; ++t) {
+        /** @type {int32} */
         let curr = reader.readBits(5);
+        /** @type {uint8[]} */
         const tableLengths = new Uint8Array(alphaSize);
 
         for (let i = 0; i < alphaSize; ++i) {
           // Read code length using marker bit + 2-bit adjustment pattern
+          /** @type {uint32} */
           let markerBit = reader.readBit();
           while (markerBit !== 0) {
+            /** @type {uint32} */
             const nextTwoBits = reader.readBits(2);
-            curr += 1 - (nextTwoBits&2); // +1 if bit 1 is 0, -1 if bit 1 is 1
+            /** @type {int32} */
+            const step = OpCodes.And32(nextTwoBits, 2);
+            curr += 1 - step; // +1 if bit 1 is 0, -1 if bit 1 is 1
             if (curr < 1 || curr > 20) {
-              throw new Error(`Invalid Huffman code length: ${curr}`);
+              throw new Error('Invalid Huffman code length: ' + curr);
             }
-            markerBit = nextTwoBits&1; // bit 0 is the next marker
+            markerBit = OpCodes.And32(nextTwoBits, 1); // bit 0 is the next marker
           }
           tableLengths[i] = curr;
         }
@@ -1005,23 +1573,31 @@
       }
 
       // Build Huffman decoding tables
+      /** @type {BzDecodeTable[]} */
       const tables = this.createDecodingTables(lengths, alphaSize);
 
       // Decode MTF values using Huffman tables
+      /** @type {int32[]} */
       const mtfValues = [];
+      /** @type {int32} */
       let groupNo = 0;
-      let groupPos = BZ_CONSTANTS.G_SIZE - 1;
+      /** @type {int32} */
+      let groupPos = BZ_G_SIZE - 1;
 
-      const maxBlockSize = BZ_CONSTANTS.BASE_BLOCK_SIZE * this.blockSize100k;
+      /** @type {int32} */
+      const maxBlockSize = BZ_BASE_BLOCK_SIZE * this.blockSize100k;
 
       // Select initial table
+      /** @type {uint8} */
       let tableIdx = selectors[groupNo];
-      if (tableIdx === undefined || tableIdx >= tables.length) {
-        throw new Error(`Invalid table index: ${tableIdx}`);
+      if (groupNo >= selectors.length || tableIdx >= tables.length) {
+        throw new Error('Invalid table index: ' + tableIdx);
       }
+      /** @type {BzDecodeTable} */
       let table = tables[tableIdx];
 
       // Read first symbol
+      /** @type {int32} */
       let symbol = this.decodeSymbol(reader, table, lengths[tableIdx]);
 
       while (symbol !== alphaSize - 1) { // Loop until EOB marker
@@ -1037,10 +1613,10 @@
           if (groupNo >= nSelectors) {
             throw new Error('Not enough selectors');
           }
-          groupPos = BZ_CONSTANTS.G_SIZE;
+          groupPos = BZ_G_SIZE;
           tableIdx = selectors[groupNo];
-          if (tableIdx === undefined || tableIdx >= tables.length) {
-            throw new Error(`Invalid table index: ${tableIdx}`);
+          if (groupNo >= selectors.length || tableIdx >= tables.length) {
+            throw new Error('Invalid table index: ' + tableIdx);
           }
           table = tables[tableIdx];
         }
@@ -1051,35 +1627,60 @@
       }
 
       // Combined RLE2 + MTF decoding (as per bzip2 spec, these are interleaved)
+      /** @type {int32[]} */
       const decoded = this.decodeRLE2andMTF(mtfValues, seqToUnseq);
 
       // Inverse BWT
+      /** @type {uint8[]} */
       const bwtDecoded = BurrowsWheelerTransform.inverseTransform(decoded, origPtr);
 
       // RLE1 inverse decoding (final stage)
+      /** @type {uint8[]} */
       const result = this.decodeRLE1(bwtDecoded);
 
       return result;
     }
 
+    /**
+     * @param {uint8[][]} lengths - Code lengths per group
+     * @param {int32} alphaSize - Alphabet size
+     * @returns {BzDecodeTable[]} Decoding table per group
+     */
     createDecodingTables(lengths, alphaSize) {
+      /** @type {BzDecodeTable[]} */
       const tables = [];
 
-      for (const tableLengths of lengths) {
-        let minLen = 20, maxLen = 0;
-        for (const len of tableLengths) {
+      for (let t = 0; t < lengths.length; ++t) {
+        /** @type {uint8[]} */
+        const tableLengths = lengths[t];
+        /** @type {int32} */
+        let minLen = 20;
+        /** @type {int32} */
+        let maxLen = 0;
+        for (let s = 0; s < tableLengths.length; ++s) {
+          /** @type {int32} */
+          const len = tableLengths[s];
           if (len > 0) {
-            if (len < minLen) minLen = len;
-            if (len > maxLen) maxLen = len;
+            if (len < minLen) {
+              minLen = len;
+            }
+            if (len > maxLen) {
+              maxLen = len;
+            }
           }
         }
 
+        /** @type {int32[]} */
         const limit = new Int32Array(maxLen + 2);
+        /** @type {int32[]} */
         const base = new Int32Array(maxLen + 1);
+        /** @type {int32[]} */
         const perm = new Int32Array(alphaSize);
 
         // Build permutation array sorted by code length
+        /** @type {int32} */
         let pp = 0;
+        /** @type {int32} */
         let baseVal = 0;
         for (let i = minLen; i <= maxLen; ++i) {
           for (let j = 0; j < alphaSize; ++j) {
@@ -1092,51 +1693,76 @@
           baseVal += baseVal + pp; // Double and add pp
         }
 
-        tables.push({ minLen, maxLen, limit, base, perm });
+        tables.push(new BzDecodeTable(minLen, maxLen, limit, base, perm));
       }
 
       return tables;
     }
 
+    /**
+     * @param {BitReader} reader - Input bits
+     * @param {BzDecodeTable} table - Decoding table
+     * @param {uint8[]} lengths - Its code lengths (unused)
+     * @returns {int32} Decoded symbol
+     */
     decodeSymbol(reader, table, lengths) {
       // Read minimum length bits first
+      /** @type {int32} */
       let zn = table.minLen;
+      /** @type {uint32} */
       let zvec = reader.readBits(table.minLen);
 
       // Read additional bits until we find the code
       while (zvec >= table.limit[zn]) {
-        if (++zn > BZ_CONSTANTS.MAX_CODE_LEN) {
+        if (++zn > BZ_MAX_CODE_LEN) {
           throw new Error('Invalid Huffman code');
         }
-        zvec = OpCodes.Shl32(zvec, 1)|reader.readBit();
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        zvec = OpCodes.Or32(OpCodes.Shl32(zvec, 1), bit);
       }
 
+      /** @type {float64} */
       const permIndex = zvec - table.base[zn];
       if (permIndex < 0 || permIndex >= table.perm.length) {
-        throw new Error(`Invalid permutation index: ${permIndex}`);
+        throw new Error('Invalid permutation index: ' + permIndex);
       }
 
       return table.perm[permIndex];
     }
 
+    /**
+     * @param {int32[]} mtfValues - Huffman-decoded symbols
+     * @param {int32[]} seqToUnseq - Initial MTF order
+     * @returns {int32[]} Last column bytes
+     */
     decodeRLE2andMTF(mtfValues, seqToUnseq) {
       // Combined RLE2 + MTF decoding as per bzip2 specification
       // RLE2 and MTF are interleaved - RUNA/RUNB repeat yy[0] from MTF state
+      /** @type {int32[]} */
       const result = [];
-      const yy = [...seqToUnseq]; // MTF state
+      /** @type {int32[]} */
+      const yy = []; // MTF state
+      for (let s = 0; s < seqToUnseq.length; ++s) {
+        yy.push(seqToUnseq[s]);
+      }
+      /** @type {int32} */
       let i = 0;
 
       while (i < mtfValues.length) {
+        /** @type {int32} */
         const symbol = mtfValues[i++];
 
-        if (symbol === BZ_CONSTANTS.RUNA || symbol === BZ_CONSTANTS.RUNB) {
+        if (symbol === BZ_RUNA || symbol === BZ_RUNB) {
           // Decode run length using binary representation
+          /** @type {float64} */
           let runLength = 0;
+          /** @type {float64} */
           let power = 1;
 
           --i; // Back up to reprocess
-          while (i < mtfValues.length && (mtfValues[i] === BZ_CONSTANTS.RUNA || mtfValues[i] === BZ_CONSTANTS.RUNB)) {
-            if (mtfValues[i] === BZ_CONSTANTS.RUNA) {
+          while (i < mtfValues.length && (mtfValues[i] === BZ_RUNA || mtfValues[i] === BZ_RUNB)) {
+            if (mtfValues[i] === BZ_RUNA) {
               runLength += power;
             } else {
               runLength += 2 * power;
@@ -1146,13 +1772,16 @@
           }
 
           // Repeat yy[0] (most recent MTF character)
+          /** @type {int32} */
           const ch = yy[0];
           for (let j = 0; j < runLength; ++j) {
             result.push(ch);
           }
         } else {
           // Regular symbol: output yy[symbol-1] and update MTF state
+          /** @type {int32} */
           const pos = symbol - 1;
+          /** @type {int32} */
           const ch = yy[pos];
           result.push(ch);
 
@@ -1169,17 +1798,26 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - RLE1-coded bytes
+     * @returns {uint8[]} Decoded bytes
+     */
     decodeRLE1(data) {
       // RLE1 inverse decoding (final stage of bzip2 decompression)
       // When 4 identical bytes AAAA are seen, the next byte N indicates
       // to output N additional copies of A (so total is 4 + N copies)
       // The run length byte N is NOT output - it's metadata only
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {int32} */
       let i = 0;
+      /** @type {int32} */
       let prevByte = -1;
+      /** @type {int32} */
       let runCount = 0;
 
       while (i < data.length) {
+        /** @type {uint8} */
         const byte = data[i++];
 
         if (byte === prevByte) {
@@ -1190,6 +1828,7 @@
           } else if (runCount === 4) {
             // Fourth consecutive byte - next byte is run length (don't output this 4th byte yet)
             if (i < data.length) {
+              /** @type {int32} */
               const runLength = data[i++];  // Consume run length byte
               // Output runLength additional copies (we already output 3, not 4)
               for (let j = 0; j < runLength + 1; ++j) {  // +1 for the 4th byte we didn't output
@@ -1214,21 +1853,30 @@
       return result;
     }
 
+    /**
+     * @param {int32[]} mtfValues - Huffman-decoded symbols
+     * @returns {int32[]} MTF positions with zero runs expanded
+     */
     decodeRLE2(mtfValues) {
+      /** @type {int32[]} */
       const result = [];
+      /** @type {int32} */
       let i = 0;
 
       while (i < mtfValues.length) {
+        /** @type {int32} */
         const symbol = mtfValues[i++];
 
-        if (symbol === BZ_CONSTANTS.RUNA || symbol === BZ_CONSTANTS.RUNB) {
+        if (symbol === BZ_RUNA || symbol === BZ_RUNB) {
           // Decode run length
+          /** @type {float64} */
           let runLength = 0;
+          /** @type {float64} */
           let power = 1;
 
           --i; // Back up to reprocess
-          while (i < mtfValues.length && (mtfValues[i] === BZ_CONSTANTS.RUNA || mtfValues[i] === BZ_CONSTANTS.RUNB)) {
-            if (mtfValues[i] === BZ_CONSTANTS.RUNA) {
+          while (i < mtfValues.length && (mtfValues[i] === BZ_RUNA || mtfValues[i] === BZ_RUNB)) {
+            if (mtfValues[i] === BZ_RUNA) {
               runLength += power;
             } else {
               runLength += 2 * power;
@@ -1244,6 +1892,7 @@
               result.push(0);
             }
           } else {
+            /** @type {int32} */
             const lastSymbol = result[result.length - 1];
             for (let j = 0; j < runLength; ++j) {
               result.push(lastSymbol);

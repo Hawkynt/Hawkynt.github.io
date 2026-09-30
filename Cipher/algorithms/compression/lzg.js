@@ -66,14 +66,23 @@
 
   // ===== CONSTANTS =====
 
+  /** @type {int32} */
   const ESCAPE = 0xFF;
+  /** @type {int32} */
   const WINDOW_SIZE = 2048;
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_MATCH = 257;
+  /** @type {int32} */
   const HASH_BITS = 12;
+  /** @type {int32} */
   const HASH_SIZE = 4096;   // 2^HASH_BITS
+  /** @type {int32} */
   const HASH_MASK = 4095;   // HASH_SIZE - 1
+  /** @type {int32} */
   const MAX_CHAIN_STEPS = 32;
+  /** @type {int32} */
   const MAX_DISTANCE = 65535;
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -195,11 +204,27 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZGInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new LZGInstance(this, isInverse);
+    }
+  }
+
+  /**
+   * Best match found by the chain walk
+   */
+  class LZGMatch {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} offset - Distance back to the match source
+     */
+    constructor(length, offset) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.offset = offset;
     }
   }
 
@@ -212,13 +237,15 @@
   class LZGInstance extends IAlgorithmInstance {
     /**
    * Initialize LZG instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZGCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decompression mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -229,44 +256,63 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const fresh = [];
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0)
-          return [];
+        if (this.inputBuffer.length === 0) {
+          return fresh;
+        }
+        /** @type {uint8[]} */
         const decoded = this._decompress();
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return decoded;
       }
 
       // Compression always emits the 4-byte length header, even for empty
       // input (matching the reference building block).
+      /** @type {uint8[]} */
       const encoded = this._compress();
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return encoded;
     }
 
+    /**
+     * @returns {uint8[]} 4-byte LE length, then literals and escaped matches
+     */
     _compress() {
+      /** @type {uint8[]} */
       const src = this.inputBuffer;
+      /** @type {int32} */
       const length = src.length;
+      /** @type {uint8[]} */
       const out = OpCodes.Unpack32LE(length);
 
-      if (length === 0)
+      if (length === 0) {
         return out;
+      }
 
+      /** @type {int32[]} */
       const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       const chain = new Int32Array(length);
 
+      /** @type {int32} */
       let pos = 0;
       while (pos < length) {
+        /** @type {int32} */
         let bestLen = 0;
+        /** @type {int32} */
         let bestOff = 0;
         if (pos + MIN_MATCH <= length) {
+          /** @type {LZGMatch} */
           const found = this._findMatch(src, pos, hashHead, chain);
           bestLen = found.length;
           bestOff = found.offset;
         }
 
-        if (pos + 2 < length)
+        if (pos + 2 < length) {
           this._insertHash(src, pos, hashHead, chain);
+        }
 
         if (bestLen >= MIN_MATCH) {
           out.push(ESCAPE);
@@ -274,8 +320,9 @@
           out.push(OpCodes.And32(OpCodes.Shr32(bestOff, 8), 0xFF));
           out.push(OpCodes.And32(bestOff, 0xFF));
 
-          for (let i = 1; i < bestLen && pos + i + 2 < length; ++i)
+          for (let i = 1; i < bestLen && pos + i + 2 < length; ++i) {
             this._insertHash(src, pos + i, hashHead, chain);
+          }
 
           pos += bestLen;
         } else {
@@ -292,44 +339,63 @@
       return out;
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      if (data.length < 4)
+      if (data.length < 4) {
         throw new Error('LZG: input too small for header');
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0)
-        return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const dst = new Array(originalSize);
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let i = 4;
 
       while (pos < originalSize) {
-        if (i >= data.length)
+        if (i >= data.length) {
           throw new Error('LZG: unexpected end of stream');
+        }
 
         if (data[i] === ESCAPE) {
           ++i;
-          if (i >= data.length)
+          if (i >= data.length) {
             throw new Error('LZG: truncated escape sequence');
+          }
 
           if (data[i] === 0x00) {
             dst[pos++] = ESCAPE;
             ++i;
           } else {
-            if (i + 2 >= data.length)
+            if (i + 2 >= data.length) {
               throw new Error('LZG: truncated match token');
+            }
 
+            /** @type {int32} */
             const matchLength = data[i] + 2;
+            /** @type {int32} */
             const offset = OpCodes.Or32(OpCodes.Shl32(data[i + 1], 8), data[i + 2]);
             i += 3;
 
-            if (offset <= 0 || offset > pos)
+            if (offset <= 0 || offset > pos) {
               throw new Error('LZG: invalid offset ' + offset + ' at position ' + pos);
+            }
 
-            for (let k = 0; k < matchLength && pos < originalSize; ++k, ++pos)
+            for (let k = 0; k < matchLength && pos < originalSize; ++k, ++pos) {
               dst[pos] = dst[pos - offset];
+            }
           }
         } else {
           dst[pos++] = data[i++];
@@ -339,6 +405,11 @@
       return dst;
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position of the three hashed bytes
+     * @returns {uint32} Hash bucket
+     */
     _hash3(data, pos) {
       return OpCodes.And32(
         OpCodes.Xor32(
@@ -349,45 +420,72 @@
       );
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position entering the chains
+     * @param {int32[]} hashHead - Newest position per bucket (-1 = empty)
+     * @param {int32[]} chain - Previous position in the same bucket
+     */
     _insertHash(data, pos, hashHead, chain) {
+      /** @type {uint32} */
       const h = this._hash3(data, pos);
       chain[pos] = hashHead[h];
       hashHead[h] = pos;
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position to match
+     * @param {int32[]} hashHead - Newest position per bucket (-1 = empty)
+     * @param {int32[]} chain - Previous position in the same bucket
+     * @returns {LZGMatch} Best match
+     */
     _findMatch(data, pos, hashHead, chain) {
+      /** @type {uint32} */
       const h = this._hash3(data, pos);
+      /** @type {int32} */
       let candidate = hashHead[h];
+      /** @type {int32} */
       const minPos = Math.max(0, pos - WINDOW_SIZE);
+      /** @type {int32} */
       const maxLen = Math.min(MAX_MATCH, data.length - pos);
+      /** @type {int32} */
       let bestLen = 0;
+      /** @type {int32} */
       let bestOff = 0;
+      /** @type {int32} */
       let steps = MAX_CHAIN_STEPS;
 
       while (candidate >= minPos && steps-- > 0) {
         if (candidate < pos) {
+          /** @type {int32} */
           let len = 0;
-          while (len < maxLen && data[candidate + len] === data[pos + len])
+          while (len < maxLen && data[candidate + len] === data[pos + len]) {
             ++len;
+          }
 
           if (len >= MIN_MATCH && len > bestLen) {
+            /** @type {int32} */
             const dist = pos - candidate;
             if (dist <= MAX_DISTANCE) {
               bestLen = len;
               bestOff = dist;
-              if (bestLen === maxLen)
+              if (bestLen === maxLen) {
                 break;
+              }
             }
           }
         }
 
+        /** @type {int32} */
         const prev = chain[candidate];
-        if (prev >= candidate)
+        if (prev >= candidate) {
           break;
+        }
         candidate = prev;
       }
 
-      return { length: bestLen, offset: bestOff };
+      return new LZGMatch(bestLen, bestOff);
     }
   }
 

@@ -68,10 +68,30 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {uint8} */
   const TYPE_ID = 0x10;
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_MATCH = 3 + 0x0F;      // length nibble is 4 bits -> 3..18
+  /** @type {int32} */
   const MAX_DISP = 1 + 0x0FFF;     // 12-bit displacement field -> 1..4096
+
+  /**
+   * Longest match found at a position
+   */
+  class DSLZ77Match {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} distance - Distance back to the match source
+     */
+    constructor(length, distance) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.distance = distance;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -121,47 +141,92 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {DSLZ77Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DSLZ77Instance(this, isInverse);
     }
   }
 
   class DSLZ77Instance extends IAlgorithmInstance {
+    /**
+     * @param {DSLZ77Compression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(this.inputBuffer);
+      } else {
+        result = this._compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Type byte, 24-bit size and flag-grouped units
+     */
     _compress(input) {
+      /** @type {int32} */
       const n = input.length;
-      if (n === 0) return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (n === 0) {
+        return output;
+      }
 
+      /** @type {uint8[]} */
       const sizeBytes = OpCodes.Unpack32LE(n);
-      const output = [TYPE_ID, sizeBytes[0], sizeBytes[1], sizeBytes[2]];
+      output.push(TYPE_ID);
+      output.push(sizeBytes[0]);
+      output.push(sizeBytes[1]);
+      output.push(sizeBytes[2]);
 
+      /** @type {int32} */
       let pos = 0;
       while (pos < n) {
+        /** @type {uint32} */
         let flag = 0;
+        /** @type {uint8[]} */
         const units = [];
 
         for (let i = 0; i < 8 && pos < n; ++i) {
+          /** @type {DSLZ77Match} */
           const match = this._findMatch(input, pos);
 
           if (match.length >= MIN_MATCH) {
             flag = OpCodes.SetBit(flag, 7 - i, true);
+            /** @type {int32} */
             const lenField = match.length - MIN_MATCH;
+            /** @type {int32} */
             const dispField = match.distance - 1;
+            /** @type {uint32} */
             const byte0 = OpCodes.Or32(OpCodes.Shl32(lenField, 4), OpCodes.And32(OpCodes.Shr32(dispField, 8), 0x0F));
+            /** @type {uint32} */
             const byte1 = OpCodes.And32(dispField, 0xFF);
-            units.push(byte0, byte1);
+            units.push(byte0);
+            units.push(byte1);
             pos += match.length;
           } else {
             flag = OpCodes.SetBit(flag, 7 - i, false);
@@ -171,35 +236,58 @@
         }
 
         output.push(flag);
-        for (let i = 0; i < units.length; ++i) output.push(units[i]);
+        for (let i = 0; i < units.length; ++i) {
+          output.push(units[i]);
+        }
       }
 
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Type byte, 24-bit size and flag-grouped units
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(input) {
-      if (input.length === 0) return [];
-      if (input[0] !== TYPE_ID) throw new Error('DS-LZ77: invalid type byte in header');
-
-      const size = OpCodes.Pack32LE(input[1], input[2], input[3], 0);
+      /** @type {uint8[]} */
       const output = [];
+      if (input.length === 0) {
+        return output;
+      }
+      if (input[0] !== TYPE_ID) {
+        throw new Error('DS-LZ77: invalid type byte in header');
+      }
+
+      /** @type {uint32} */
+      const size = OpCodes.Pack32LE(input[1], input[2], input[3], 0);
+      /** @type {int32} */
       let pos = 4;
 
       while (output.length < size && pos < input.length) {
+        /** @type {uint8} */
         const flag = input[pos++];
 
         for (let i = 0; i < 8 && output.length < size; ++i) {
+          /** @type {boolean} */
           const bit = OpCodes.GetBit(flag, 7 - i);
 
           if (bit) {
+            /** @type {uint8} */
             const byte0 = input[pos++];
+            /** @type {uint8} */
             const byte1 = input[pos++];
+            /** @type {int32} */
             const length = MIN_MATCH + OpCodes.Shr32(byte0, 4);
+            /** @type {uint32} */
             const dispHigh = OpCodes.And32(byte0, 0x0F);
+            /** @type {int32} */
             const disp = 1 + OpCodes.Or32(OpCodes.Shl32(dispHigh, 8), byte1);
+            /** @type {int32} */
             const start = output.length - disp;
 
-            for (let k = 0; k < length; ++k) output.push(output[start + k]);
+            for (let k = 0; k < length; ++k) {
+              output.push(output[start + k]);
+            }
           } else {
             output.push(input[pos++]);
           }
@@ -209,19 +297,34 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @param {int32} pos - Position to match
+     * @returns {DSLZ77Match} Longest match (earliest candidate on ties)
+     */
     _findMatch(input, pos) {
+      /** @type {int32} */
       const n = input.length;
+      /** @type {int32} */
       const maxLen = Math.min(MAX_MATCH, n - pos);
+      /** @type {int32} */
       let bestLen = 0;
+      /** @type {int32} */
       let bestDist = 0;
 
-      if (maxLen < MIN_MATCH) return { length: 0, distance: 0 };
+      if (maxLen < MIN_MATCH) {
+        return new DSLZ77Match(0, 0);
+      }
 
+      /** @type {int32} */
       const windowStart = Math.max(0, pos - MAX_DISP);
 
       for (let cand = windowStart; cand < pos; ++cand) {
+        /** @type {int32} */
         let len = 0;
-        while (len < maxLen && input[cand + len] === input[pos + len]) ++len;
+        while (len < maxLen && input[cand + len] === input[pos + len]) {
+          ++len;
+        }
 
         if (len > bestLen) {
           bestLen = len;
@@ -229,7 +332,7 @@
         }
       }
 
-      return { length: bestLen, distance: bestDist };
+      return new DSLZ77Match(bestLen, bestDist);
     }
   }
 

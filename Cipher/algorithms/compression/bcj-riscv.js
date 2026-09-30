@@ -80,41 +80,79 @@
   // reference; NotAuipcPair/NotSpecialAuipc are the same bit-trick guards
   // used there to recognize which of the two AUIPC forms is present.
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Offset
+   * @returns {uint32} Little-endian word at pos
+   */
   function _riscvReadLE(data, pos) {
     return OpCodes.Pack32LE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
   }
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Offset
+   * @returns {uint32} Big-endian word at pos
+   */
   function _riscvReadBE(data, pos) {
     return OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
   }
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Offset
+   * @param {uint32} value - Word stored little-endian at pos
+   */
   function _riscvWriteLE(data, pos, value) {
+    /** @type {uint8[]} */
     const b = OpCodes.Unpack32LE(value);
     data[pos] = b[0]; data[pos + 1] = b[1]; data[pos + 2] = b[2]; data[pos + 3] = b[3];
   }
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Offset
+   * @param {uint32} value - Word stored big-endian at pos
+   */
   function _riscvWriteBE(data, pos, value) {
+    /** @type {uint8[]} */
     const b = OpCodes.Unpack32BE(value);
     data[pos] = b[0]; data[pos + 1] = b[1]; data[pos + 2] = b[2]; data[pos + 3] = b[3];
   }
 
   // Combines auipc shifted left 8 bits, XORed with (inst2 - 3), masked to
   // 0xF8003; a non-zero result means this is not a valid AUIPC pair.
+  /**
+   * @param {uint32} auipc - AUIPC word
+   * @param {uint32} inst2 - Following word
+   * @returns {uint32} Non-zero when the two words are not an AUIPC pair
+   */
   function _riscvNotAuipcPair(auipc, inst2) {
     const left = OpCodes.Shl32(auipc, 8);
-    const right = OpCodes.ToUint32(inst2 - 3);
+    const right = OpCodes.Sub32(inst2, 3);
     return OpCodes.And32(OpCodes.Xor32(left, right), 0xF8003);
   }
 
   // Compares (auipc - 0x3117) shifted left 18 bits against rs1 masked to
   // 0x1D; true means this is not the special bijective AUIPC form.
+  /**
+   * @param {uint32} auipc - AUIPC word
+   * @param {uint32} rs1 - Top five bits of the word
+   * @returns {boolean} True when this is not the special bijective AUIPC form
+   */
   function _riscvNotSpecialAuipc(auipc, rs1) {
-    const left = OpCodes.Shl32(OpCodes.ToUint32(auipc - 0x3117), 18);
+    const left = OpCodes.Shl32(OpCodes.Sub32(auipc, 0x3117), 18);
     const right = OpCodes.And32(rs1, 0x1D);
     return left >= right;
   }
 
+  /**
+   * @param {uint8[]} bytes - Machine code
+   * @returns {uint8[]} Filtered copy
+   */
   function _riscvEncode(bytes) {
     const data = bytes.slice();
     const n = data.length;
-    if (n < 8) return data;
+    if (n < 8) {
+      return data;
+    }
 
     const size = n - 8;
     let i = 0;
@@ -125,8 +163,13 @@
       if (b0 === 0xEF) {
         const b1 = data[i + 1];
         if (OpCodes.And32(b1, 0x0D) === 0) {
-          const b2 = data[i + 2], b3 = data[i + 3];
-          const pc = i;
+          /** @type {uint8} */
+          const b2 = data[i + 2];
+          /** @type {uint8} */
+          const b3 = data[i + 3];
+          /** @type {uint32} */
+          /** @type {uint32} */
+        const pc = i;
 
           let addr = OpCodes.Or32(OpCodes.Or32(
             OpCodes.Shl32(OpCodes.And32(b1, 0xF0), 8),
@@ -137,7 +180,7 @@
               OpCodes.Or32(
                 OpCodes.Shl32(OpCodes.And32(b3, 0x7F), 4),
                 OpCodes.Shl32(OpCodes.And32(b3, 0x80), 13))));
-          addr = OpCodes.ToUint32(addr + pc);
+          addr = OpCodes.Add32(addr, pc);
 
           data[i + 1] = OpCodes.ToByte(OpCodes.Or32(OpCodes.And32(b1, 0x0F), OpCodes.And32(OpCodes.Shr32(addr, 13), 0xF0)));
           data[i + 2] = OpCodes.ToByte(OpCodes.Shr32(addr, 9));
@@ -146,15 +189,16 @@
         }
       } else if (OpCodes.And32(b0, 0x7F) === 0x17) {
         const inst = _riscvReadLE(data, i);
+        /** @type {uint32} */
         const pc = i;
 
         if (OpCodes.And32(inst, 0xE80) !== 0) {
           const inst2 = _riscvReadLE(data, i + 4);
-          if (_riscvNotAuipcPair(inst, inst2) !== 0)
+          if (_riscvNotAuipcPair(inst, inst2) !== 0) {
             advance = 6;
-          else {
-            const diff = OpCodes.ToUint32(OpCodes.Shr32(inst2, 20) - OpCodes.And32(OpCodes.Shr32(inst2, 19), 0x1000));
-            const addr = OpCodes.ToUint32(OpCodes.And32(inst, 0xFFFFF000) + diff + pc);
+          } else {
+            const diff = OpCodes.Sub32(OpCodes.Shr32(inst2, 20), OpCodes.And32(OpCodes.Shr32(inst2, 19), 0x1000));
+            const addr = OpCodes.Add32(OpCodes.Add32(OpCodes.And32(inst, 0xFFFFF000), diff), pc);
             const newInst = OpCodes.Or32(0x17, OpCodes.Or32(OpCodes.Shl32(2, 7), OpCodes.Shl32(inst2, 12)));
             _riscvWriteLE(data, i, newInst);
             _riscvWriteBE(data, i + 4, addr);
@@ -162,9 +206,9 @@
           }
         } else {
           const rs1 = OpCodes.Shr32(inst, 27);
-          if (_riscvNotSpecialAuipc(inst, rs1))
+          if (_riscvNotSpecialAuipc(inst, rs1)) {
             advance = 4;
-          else {
+          } else {
             const fakeAddr = _riscvReadLE(data, i + 4);
             const fakeInst2 = OpCodes.Or32(OpCodes.Shr32(inst, 12), OpCodes.Shl32(fakeAddr, 20));
             const newInst = OpCodes.Or32(0x17, OpCodes.Or32(OpCodes.Shl32(rs1, 7), OpCodes.And32(fakeAddr, 0xFFFFF000)));
@@ -181,10 +225,16 @@
     return data;
   }
 
+  /**
+   * @param {uint8[]} bytes - Filtered machine code
+   * @returns {uint8[]} Restored copy
+   */
   function _riscvDecode(bytes) {
     const data = bytes.slice();
     const n = data.length;
-    if (n < 8) return data;
+    if (n < 8) {
+      return data;
+    }
 
     const size = n - 8;
     let i = 0;
@@ -195,14 +245,19 @@
       if (b0 === 0xEF) {
         const b1 = data[i + 1];
         if (OpCodes.And32(b1, 0x0D) === 0) {
-          const b2 = data[i + 2], b3 = data[i + 3];
-          const pc = i;
+          /** @type {uint8} */
+          const b2 = data[i + 2];
+          /** @type {uint8} */
+          const b3 = data[i + 3];
+          /** @type {uint32} */
+          /** @type {uint32} */
+        const pc = i;
 
           let addr = OpCodes.Or32(OpCodes.Or32(
             OpCodes.Shl32(OpCodes.And32(b1, 0xF0), 13),
             OpCodes.Shl32(b2, 9)),
             OpCodes.Shl32(b3, 1));
-          addr = OpCodes.ToUint32(addr - pc);
+          addr = OpCodes.Sub32(addr, pc);
 
           data[i + 1] = OpCodes.ToByte(OpCodes.Or32(OpCodes.And32(b1, 0x0F), OpCodes.And32(OpCodes.Shr32(addr, 8), 0xF0)));
           data[i + 2] = OpCodes.ToByte(OpCodes.Or32(OpCodes.Or32(
@@ -214,14 +269,15 @@
         }
       } else if (OpCodes.And32(b0, 0x7F) === 0x17) {
         const inst = _riscvReadLE(data, i);
+        /** @type {uint32} */
         const pc = i;
 
         if (OpCodes.And32(inst, 0xE80) !== 0) {
           const inst2 = _riscvReadLE(data, i + 4);
-          if (_riscvNotAuipcPair(inst, inst2) !== 0)
+          if (_riscvNotAuipcPair(inst, inst2) !== 0) {
             advance = 6;
-          else {
-            const addr = OpCodes.ToUint32(OpCodes.And32(inst, 0xFFFFF000) + OpCodes.Shr32(inst2, 20));
+          } else {
+            const addr = OpCodes.Add32(OpCodes.And32(inst, 0xFFFFF000), OpCodes.Shr32(inst2, 20));
             const newInst = OpCodes.Or32(0x17, OpCodes.Or32(OpCodes.Shl32(2, 7), OpCodes.Shl32(inst2, 12)));
             _riscvWriteLE(data, i, newInst);
             _riscvWriteLE(data, i + 4, addr);
@@ -229,13 +285,13 @@
           }
         } else {
           const rs1 = OpCodes.Shr32(inst, 27);
-          if (_riscvNotSpecialAuipc(inst, rs1))
+          if (_riscvNotSpecialAuipc(inst, rs1)) {
             advance = 4;
-          else {
+          } else {
             let addr = _riscvReadBE(data, i + 4);
-            addr = OpCodes.ToUint32(addr - pc);
+            addr = OpCodes.Sub32(addr, pc);
             const inst2 = OpCodes.Or32(OpCodes.Shr32(inst, 12), OpCodes.Shl32(addr, 20));
-            const newInst = OpCodes.Or32(0x17, OpCodes.Or32(OpCodes.Shl32(rs1, 7), OpCodes.And32(OpCodes.ToUint32(addr + 0x800), 0xFFFFF000)));
+            const newInst = OpCodes.Or32(0x17, OpCodes.Or32(OpCodes.Shl32(rs1, 7), OpCodes.And32(OpCodes.Add32(addr, 0x800), 0xFFFFF000)));
             _riscvWriteLE(data, i, newInst);
             _riscvWriteLE(data, i + 4, inst2);
             advance = 8;
@@ -319,22 +375,45 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjRiscVInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjRiscVInstance(this, isInverse);
     }
   }
 
   class BcjRiscVInstance extends IAlgorithmInstance {
+    /**
+     * @param {BcjRiscV} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Filter the collected input
+     * @returns {uint8[]} Filtered bytes
+     */
     Result() {
-      const output = this.isInverse ? _riscvDecode(this.inputBuffer) : _riscvEncode(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let output;
+      if (this.isInverse) {
+        output = _riscvDecode(this.inputBuffer);
+      } else {
+        output = _riscvEncode(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
   }

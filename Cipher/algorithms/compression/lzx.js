@@ -98,48 +98,99 @@
   const HASH_SIZE = 32768;
   const HASH_MASK = 32767;
 
+  /**
+   * @param {int32} size - Number of entries
+   * @param {int32} value - Initial value of every entry
+   * @returns {int32[]} Plain array filled with value
+   */
+  function filledArray(size, value) {
+    /** @type {int32[]} */
+    const arr = new Array(size);
+    arr.fill(value);
+    return arr;
+  }
+
   // ===== POSITION SLOTS =====
 
   // Slot 0..3 map straight to offsets 0..3; beyond that each pair of slots
   // adds one footer bit, so slot 2k has base 2^k and slot 2k+1 has base
   // 3 * 2^(k-1).
+  /**
+   * @param {int32} offset - Formatted offset (distance minus two)
+   * @returns {int32} Position slot
+   */
   function offsetToSlot(offset) {
-    if (offset < 4)
+    if (offset < 4) {
       return offset;
+    }
 
+    /** @type {int32} */
     let log2 = 0;
+    /** @type {int32} */
     let tmp = offset;
-    while (tmp > 1) { tmp = Math.floor(tmp / 2); ++log2; }
+    while (tmp > 1) {
+      tmp = Math.floor(tmp / 2);
+      ++log2;
+    }
 
+    /** @type {int32} */
     const halfBit = OpCodes.And32(OpCodes.Shr32(offset, log2 - 1), 1);
     return 2 * log2 + halfBit;
   }
 
-  function getSlotInfo(slot) {
-    if (slot < 4)
-      return { base: slot, footerBits: 0 };
-
+  /**
+   * @param {int32} slot - Position slot
+   * @returns {int32} Smallest formatted offset of the slot
+   */
+  function slotBase(slot) {
+    if (slot < 4) {
+      return slot;
+    }
+    /** @type {int32} */
     const k = Math.floor(slot / 2);
-    return {
-      base: slot % 2 === 0 ? OpCodes.Shl32(1, k) : OpCodes.Shl32(3, k - 1),
-      footerBits: k - 1
-    };
+    return slot % 2 === 0 ? OpCodes.Shl32(1, k) : OpCodes.Shl32(3, k - 1);
+  }
+
+  /**
+   * @param {int32} slot - Position slot
+   * @returns {int32} Footer bit count of the slot
+   */
+  function slotFooterBits(slot) {
+    if (slot < 4) {
+      return 0;
+    }
+    return Math.floor(slot / 2) - 1;
   }
 
   // ===== LZX BIT STREAM (MSB-first bits, 16-bit little-endian words) =====
 
   class LzxBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsUsed = 0;
     }
 
+    /**
+     * @param {uint32} value - Value whose low count bits are written
+     * @param {int32} count - Bit count, most significant first
+     */
     writeBits(value, count) {
-      if (count === 0)
+      if (count === 0) {
         return;
+      }
 
-      const mask = count === 32 ? 0xFFFFFFFF : OpCodes.Shl32(1, count) - 1;
+      /** @type {uint32} */
+      let mask = 0xFFFFFFFF;
+      if (count !== 32) {
+        /** @type {int32} */
+        const span = OpCodes.Shl32(1, count);
+        mask = span - 1;
+      }
+      /** @type {uint32} */
       const masked = OpCodes.And32(value, mask);
 
       this.buffer = OpCodes.Or32(OpCodes.Shl32(this.buffer, count), masked);
@@ -147,6 +198,7 @@
 
       while (this.bitsUsed >= 16) {
         this.bitsUsed -= 16;
+        /** @type {uint32} */
         const word = OpCodes.And32(OpCodes.Shr32(this.buffer, this.bitsUsed), 0xFFFF);
         this.bytes.push(OpCodes.And32(word, 0xFF));
         this.bytes.push(OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF));
@@ -157,6 +209,7 @@
     // decoder's lookahead never runs off the end of the byte stream.
     flush() {
       if (this.bitsUsed > 0) {
+        /** @type {uint32} */
         const word = OpCodes.And32(OpCodes.Shl32(this.buffer, 16 - this.bitsUsed), 0xFFFF);
         this.bytes.push(OpCodes.And32(word, 0xFF));
         this.bytes.push(OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF));
@@ -170,30 +223,50 @@
   }
 
   class LzxBitReader {
+    /**
+     * @param {uint8[]} bytes - Input
+     * @param {int32} start - First byte of the bit stream
+     */
     constructor(bytes, start) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.bitBuffer = 0;
+      /** @type {int32} */
       this.bitsLeft = 0;
+      /** @type {boolean} */
       this.endOfStream = false;
     }
 
+    /**
+     * @returns {int32} Next byte, -1 past the end
+     */
     readByte() {
-      return this.pos < this.bytes.length ? this.bytes[this.pos++] : -1;
+      if (this.pos < this.bytes.length) {
+        return this.bytes[this.pos++];
+      }
+      return -1;
     }
 
     // Pulls one 16-bit little-endian word into the accumulator. Past the end
     // of the byte stream the accumulator is padded with zero words, which is
     // what the trailing zero word written by the encoder guarantees anyway.
     fill() {
+      /** @type {int32} */
       const lo = this.readByte();
+      /** @type {int32} */
       let hi = this.readByte();
 
+      /** @type {uint32} */
       let word = 0;
       if (lo < 0) {
         this.endOfStream = true;
       } else {
-        if (hi < 0) hi = 0;
+        if (hi < 0) {
+          hi = 0;
+        }
         word = OpCodes.Or32(OpCodes.Shl32(hi, 8), lo);
       }
 
@@ -201,42 +274,74 @@
       this.bitsLeft += 16;
     }
 
+    /**
+     * @param {int32} count - Bits wanted in the accumulator
+     */
     ensureBits(count) {
-      while (this.bitsLeft < count)
+      while (this.bitsLeft < count) {
         this.fill();
+      }
     }
 
+    /**
+     * @param {int32} count - Bit count
+     * @returns {uint32} Next count bits, not consumed
+     */
     peekBits(count) {
+      /** @type {int32} */
+      const span = OpCodes.Shl32(1, count);
       return OpCodes.And32(
         OpCodes.Shr32(this.bitBuffer, this.bitsLeft - count),
-        OpCodes.Shl32(1, count) - 1
+        span - 1
       );
     }
 
+    /**
+     * @param {int32} count - Bits to consume
+     */
     removeBits(count) {
       this.bitsLeft -= count;
     }
 
+    /**
+     * @param {int32} count - Bit count
+     * @returns {uint32} Next count bits
+     */
     readBits(count) {
-      if (count === 0)
+      if (count === 0) {
         return 0;
+      }
 
       this.ensureBits(count);
+      /** @type {uint32} */
       const value = this.peekBits(count);
       this.removeBits(count);
       return value;
     }
 
     alignTo16Bits() {
+      /** @type {int32} */
       const mod = OpCodes.And32(this.bitsLeft, 15);
-      if (mod !== 0)
+      if (mod !== 0) {
         this.removeBits(mod);
+      }
     }
 
+    /**
+     * @returns {uint32} Little-endian 32-bit value read byte by byte
+     */
     readRawInt32LE() {
-      const b0 = this.readByte(), b1 = this.readByte(), b2 = this.readByte(), b3 = this.readByte();
-      if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0)
+      /** @type {int32} */
+      const b0 = this.readByte();
+      /** @type {int32} */
+      const b1 = this.readByte();
+      /** @type {int32} */
+      const b2 = this.readByte();
+      /** @type {int32} */
+      const b3 = this.readByte();
+      if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) {
         throw new Error('LZX: unexpected end of stream');
+      }
 
       return OpCodes.Pack32LE(b0, b1, b2, b3);
     }
@@ -246,65 +351,99 @@
 
   // Plain Huffman build with deterministic tie-breaking (lowest frequency
   // first, then insertion order), depth-clamped to maxBits and then
-  // Kraft-corrected.
+  // Kraft-corrected. The working list is kept sorted by (frequency,
+  // insertion number) - a total order, since insertion numbers are unique.
+  /**
+   * @param {int32[]} frequencies - Frequency per symbol
+   * @param {int32} numSymbols - Alphabet size
+   * @param {int32} maxBits - Longest allowed code
+   * @returns {int32[]} Code length per symbol
+   */
   function buildCodeLengths(frequencies, numSymbols, maxBits) {
-    const lengths = new Array(numSymbols).fill(0);
-    const symbols = [];
-    for (let i = 0; i < numSymbols; ++i)
-      if (frequencies[i] > 0) symbols.push({ symbol: i, freq: frequencies[i] });
-
-    if (symbols.length === 0)
-      return lengths;
-    if (symbols.length === 1) {
-      lengths[symbols[0].symbol] = 1;
-      return lengths;
-    }
-
-    const nodeCount = symbols.length * 2 - 1;
-    const leftChild = new Array(nodeCount).fill(-1);
-    const rightChild = new Array(nodeCount).fill(-1);
-    const nodeSym = new Array(nodeCount).fill(-1);
-
-    const sorted = [];
-    let tieBreaker = 0;
-    const insert = (freq, node) => {
-      const entry = { freq: freq, tie: tieBreaker++, node: node };
-      let lo = 0, hi = sorted.length;
-      while (lo < hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        const other = sorted[mid];
-        if (other.freq < entry.freq || (other.freq === entry.freq && other.tie < entry.tie))
-          lo = mid + 1;
-        else
-          hi = mid;
+    /** @type {int32[]} */
+    const lengths = filledArray(numSymbols, 0);
+    /** @type {int32[]} */
+    const symbolIds = [];
+    /** @type {float64[]} */
+    const symbolFreqs = [];
+    for (let i = 0; i < numSymbols; ++i) {
+      if (frequencies[i] > 0) {
+        symbolIds.push(i);
+        symbolFreqs.push(frequencies[i]);
       }
-      sorted.splice(lo, 0, entry);
-    };
-
-    for (let i = 0; i < symbols.length; ++i) {
-      nodeSym[i] = symbols[i].symbol;
-      insert(symbols[i].freq, i);
     }
 
-    let nextNode = symbols.length;
-    while (sorted.length > 1) {
-      const first = sorted.shift();
-      const second = sorted.shift();
+    if (symbolIds.length === 0) {
+      return lengths;
+    }
+    if (symbolIds.length === 1) {
+      lengths[symbolIds[0]] = 1;
+      return lengths;
+    }
+
+    /** @type {int32} */
+    const nodeCount = symbolIds.length * 2 - 1;
+    /** @type {int32[]} */
+    const leftChild = filledArray(nodeCount, -1);
+    /** @type {int32[]} */
+    const rightChild = filledArray(nodeCount, -1);
+    /** @type {int32[]} */
+    const nodeSym = filledArray(nodeCount, -1);
+
+    /** @type {float64[]} */
+    const sortedFreq = [];
+    /** @type {int32[]} */
+    const sortedTie = [];
+    /** @type {int32[]} */
+    const sortedNode = [];
+    /** @type {int32} */
+    let tieBreaker = 0;
+
+    for (let i = 0; i < symbolIds.length; ++i) {
+      nodeSym[i] = symbolIds[i];
+      tieBreaker = insertSorted(sortedFreq, sortedTie, sortedNode, symbolFreqs[i], tieBreaker, i);
+    }
+
+    /** @type {int32} */
+    let nextNode = symbolIds.length;
+    while (sortedNode.length > 1) {
+      /** @type {float64} */
+      const firstFreq = sortedFreq.shift();
+      sortedTie.shift();
+      /** @type {int32} */
+      const firstNode = sortedNode.shift();
+      /** @type {float64} */
+      const secondFreq = sortedFreq.shift();
+      sortedTie.shift();
+      /** @type {int32} */
+      const secondNode = sortedNode.shift();
+      /** @type {int32} */
       const parent = nextNode++;
-      leftChild[parent] = first.node;
-      rightChild[parent] = second.node;
-      insert(first.freq + second.freq, parent);
+      leftChild[parent] = firstNode;
+      rightChild[parent] = secondNode;
+      tieBreaker = insertSorted(sortedFreq, sortedTie, sortedNode, firstFreq + secondFreq, tieBreaker, parent);
     }
 
-    const stack = [[sorted[0].node, 0]];
-    while (stack.length > 0) {
-      const entry = stack.pop();
-      const node = entry[0], depth = entry[1];
+    /** @type {int32[]} */
+    const stackNode = [sortedNode[0]];
+    /** @type {int32[]} */
+    const stackDepth = [0];
+    while (stackNode.length > 0) {
+      /** @type {int32} */
+      const node = stackNode.pop();
+      /** @type {int32} */
+      const depth = stackDepth.pop();
       if (leftChild[node] === -1) {
         lengths[nodeSym[node]] = Math.max(1, Math.min(depth, maxBits));
       } else {
-        if (leftChild[node] >= 0) stack.push([leftChild[node], depth + 1]);
-        if (rightChild[node] >= 0) stack.push([rightChild[node], depth + 1]);
+        if (leftChild[node] >= 0) {
+          stackNode.push(leftChild[node]);
+          stackDepth.push(depth + 1);
+        }
+        if (rightChild[node] >= 0) {
+          stackNode.push(rightChild[node]);
+          stackDepth.push(depth + 1);
+        }
       }
     }
 
@@ -312,92 +451,216 @@
     return lengths;
   }
 
+  /**
+   * Inserts (freq, insertion number, node) into the sorted working list:
+   * after every entry with a lower frequency, or an equal frequency and a lower
+   * insertion number.
+   * @param {float64[]} sortedFreq - Frequencies, ascending
+   * @param {int32[]} sortedTie - Insertion numbers
+   * @param {int32[]} sortedNode - Nodes
+   * @param {float64} freq - New entry's frequency
+   * @param {int32} tie - New entry's insertion number
+   * @param {int32} node - New entry's node
+   * @returns {int32} Next insertion number
+   */
+  function insertSorted(sortedFreq, sortedTie, sortedNode, freq, tie, node) {
+    /** @type {int32} */
+    let lo = 0;
+    /** @type {int32} */
+    let hi = sortedNode.length;
+    while (lo < hi) {
+      /** @type {int32} */
+      const mid = Math.floor((lo + hi) / 2);
+      if (sortedFreq[mid] < freq || (sortedFreq[mid] === freq && sortedTie[mid] < tie)) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    sortedFreq.push(0);
+    sortedTie.push(0);
+    sortedNode.push(0);
+    for (let k = sortedNode.length - 1; k > lo; --k) {
+      sortedFreq[k] = sortedFreq[k - 1];
+      sortedTie[k] = sortedTie[k - 1];
+      sortedNode[k] = sortedNode[k - 1];
+    }
+    sortedFreq[lo] = freq;
+    sortedTie[lo] = tie;
+    sortedNode[lo] = node;
+    return tie + 1;
+  }
+
+  /**
+   * @param {int32[]} lengths - Code lengths, adjusted in place
+   * @param {int32} maxBits - Longest allowed code
+   */
   function fixKraftInequality(lengths, maxBits) {
+    /** @type {uint32} */
     const kraftMax = OpCodes.Shl32(1, maxBits);
+    /** @type {float64} */
     let kraftSum = 0;
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
+      }
+    }
 
     // Every pass that finds a code below maxBits strictly reduces the Kraft
     // sum; the guard stops a pathological all-maxBits input from spinning.
+    /** @type {int32} */
     let guard = lengths.length * maxBits + 1024;
-    while (kraftSum > kraftMax && guard-- > 0)
+    while (kraftSum > kraftMax && guard-- > 0) {
       for (let i = lengths.length - 1; i >= 0; --i) {
-        if (lengths[i] <= 0 || lengths[i] >= maxBits)
+        if (lengths[i] <= 0 || lengths[i] >= maxBits) {
           continue;
+        }
 
         kraftSum -= OpCodes.Shr32(kraftMax, lengths[i]);
         ++lengths[i];
         kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
-        if (kraftSum <= kraftMax)
+        if (kraftSum <= kraftMax) {
           break;
+        }
       }
+    }
   }
 
   // Canonical assignment, most-significant-bit first: shortest codes first,
   // symbols of equal length in ascending symbol order.
+  /**
+   * @param {int32[]} lengths - Code length per symbol
+   * @returns {int32[]} Code per symbol
+   */
   function buildCanonicalCodes(lengths) {
+    /** @type {int32} */
     let maxLen = 0;
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > maxLen) maxLen = lengths[i];
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > maxLen) {
+        maxLen = lengths[i];
+      }
+    }
 
-    const codes = new Array(lengths.length).fill(0);
-    if (maxLen === 0)
+    /** @type {int32[]} */
+    const codes = filledArray(lengths.length, 0);
+    if (maxLen === 0) {
       return codes;
+    }
 
-    const blCount = new Array(maxLen + 1).fill(0);
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) ++blCount[lengths[i]];
+    /** @type {int32[]} */
+    const blCount = filledArray(maxLen + 1, 0);
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        ++blCount[lengths[i]];
+      }
+    }
 
-    const nextCode = new Array(maxLen + 1).fill(0);
+    /** @type {int32[]} */
+    const nextCode = filledArray(maxLen + 1, 0);
+    /** @type {int32} */
     let code = 0;
     for (let b = 1; b <= maxLen; ++b) {
       code = OpCodes.Shl32(code + blCount[b - 1], 1);
       nextCode[b] = code;
     }
 
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) codes[i] = nextCode[lengths[i]]++;
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        codes[i] = nextCode[lengths[i]]++;
+      }
+    }
 
     return codes;
+  }
+
+  /**
+   * Canonical decoder: a single symbol with its nominal length, or first code
+   * and symbols per code length.
+   */
+  class LzxDecoder {
+    /**
+     * @param {int32} single - The only used symbol, -1 otherwise
+     * @param {int32} singleLength - Its code length
+     * @param {int32[]} firstCode - First code per length
+     * @param {int32[][]} symbolsByLength - Symbols per length in code order
+     */
+    constructor(single, singleLength, firstCode, symbolsByLength) {
+      /** @type {int32} */
+      this.single = single;
+      /** @type {int32} */
+      this.singleLength = singleLength;
+      /** @type {int32[]} */
+      this.firstCode = firstCode;
+      /** @type {int32[][]} */
+      this.symbolsByLength = symbolsByLength;
+    }
   }
 
   // Decoder counterpart of the canonical numbering above. A tree with a
   // single used symbol decodes any bit pattern as that symbol, consuming its
   // nominal code length, which is what the reference decode table does.
+  /**
+   * @param {int32[]} lengths - Code length per symbol
+   * @param {int32} numSymbols - Alphabet size
+   * @returns {LzxDecoder} Decoder
+   */
   function buildDecoder(lengths, numSymbols) {
-    const blCount = new Array(MAX_HUFFMAN_BITS + 1).fill(0);
+    /** @type {int32[]} */
+    const blCount = filledArray(MAX_HUFFMAN_BITS + 1, 0);
+    /** @type {int32} */
     let usedCount = 0;
+    /** @type {int32} */
     let singleSym = -1;
     for (let i = 0; i < numSymbols; ++i) {
+      /** @type {int32} */
       const len = lengths[i];
-      if (len <= 0 || len > MAX_HUFFMAN_BITS) continue;
+      if (len <= 0 || len > MAX_HUFFMAN_BITS) {
+        continue;
+      }
       ++blCount[len];
       ++usedCount;
       singleSym = i;
     }
 
-    if (usedCount === 1)
-      return { single: singleSym, singleLength: lengths[singleSym] };
+    if (usedCount === 1) {
+      /** @type {int32[][]} */
+      const noLists = [];
+      return new LzxDecoder(singleSym, lengths[singleSym], blCount, noLists);
+    }
 
-    const firstCode = new Array(MAX_HUFFMAN_BITS + 1).fill(0);
+    /** @type {int32[]} */
+    const firstCode = filledArray(MAX_HUFFMAN_BITS + 1, 0);
+    /** @type {int32} */
     let code = 0;
     for (let b = 1; b <= MAX_HUFFMAN_BITS; ++b) {
       code = OpCodes.Shl32(code + blCount[b - 1], 1);
       firstCode[b] = code;
     }
 
+    /** @type {int32[][]} */
     const symbolsByLength = [];
-    for (let b = 0; b <= MAX_HUFFMAN_BITS; ++b) symbolsByLength.push([]);
+    for (let b = 0; b <= MAX_HUFFMAN_BITS; ++b) {
+      /** @type {int32[]} */
+      const bucket = [];
+      symbolsByLength.push(bucket);
+    }
     for (let sym = 0; sym < numSymbols; ++sym) {
+      /** @type {int32} */
       const len = lengths[sym];
-      if (len <= 0 || len > MAX_HUFFMAN_BITS) continue;
+      if (len <= 0 || len > MAX_HUFFMAN_BITS) {
+        continue;
+      }
       symbolsByLength[len].push(sym);
     }
 
-    return { single: -1, firstCode: firstCode, symbolsByLength: symbolsByLength };
+    return new LzxDecoder(-1, 0, firstCode, symbolsByLength);
   }
 
+  /**
+   * @param {LzxBitReader} reader - Input bits
+   * @param {LzxDecoder} decoder - Canonical decoder
+   * @returns {int32} Decoded symbol
+   */
   function decodeSymbol(reader, decoder) {
     if (decoder.single >= 0) {
       reader.ensureBits(decoder.singleLength);
@@ -407,9 +670,12 @@
 
     for (let len = 1; len <= MAX_HUFFMAN_BITS; ++len) {
       reader.ensureBits(len);
+      /** @type {uint32} */
       const code = reader.peekBits(len);
+      /** @type {int32[]} */
       const list = decoder.symbolsByLength[len];
       if (list.length > 0) {
+        /** @type {float64} */
         const index = code - decoder.firstCode[len];
         if (index >= 0 && index < list.length) {
           reader.removeBits(len);
@@ -423,14 +689,43 @@
 
   // ===== MATCH FINDER =====
 
+  /**
+   * Match found by the hash-chain finder; length 0 when none.
+   */
+  class MatchResult {
+    /**
+     * @param {int32} distance - Backward distance
+     * @param {int32} length - Match length
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
   class HashChainMatchFinder {
+    /**
+     * @param {int32} windowSize - Chain window, a power of two
+     * @param {int32} maxChainDepth - Chain walk limit
+     */
     constructor(windowSize, maxChainDepth) {
+      /** @type {int32} */
       this.maxChainDepth = maxChainDepth;
+      /** @type {int32[]} */
       this.head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       this.prev = new Int32Array(windowSize);
+      /** @type {int32} */
       this.prevMask = windowSize - 1;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position of the three hashed bytes
+     * @returns {int32} Hash bucket
+     */
     static computeHash(data, position) {
       return OpCodes.And32(
         OpCodes.Xor32(
@@ -441,16 +736,31 @@
       );
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Current position, inserted into the chains
+     * @param {int32} maxDistance - Farthest allowed distance
+     * @param {int32} maxLength - Longest allowed match
+     * @param {int32} minLength - Shortest usable match
+     * @returns {MatchResult} Longest (nearest on ties) match
+     */
     findMatch(data, position, maxDistance, maxLength, minLength) {
-      if (position + 2 >= data.length)
-        return { distance: 0, length: 0 };
+      if (position + 2 >= data.length) {
+        return new MatchResult(0, 0);
+      }
 
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let bestLength = 0;
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
+      /** @type {int32} */
       let candidate = this.head[hash];
+      /** @type {int32} */
       let chainCount = 0;
+      /** @type {int32} */
       const windowStart = Math.max(0, position - maxDistance);
 
       while (candidate >= windowStart && chainCount < this.maxChainDepth) {
@@ -460,23 +770,28 @@
           continue;
         }
 
+        /** @type {int32} */
         const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
         if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          /** @type {int32} */
           let length = 0;
-          while (length < limit && data[candidate + length] === data[position + length])
+          while (length < limit && data[candidate + length] === data[position + length]) {
             ++length;
+          }
 
           if (length >= minLength && length > bestLength) {
             bestLength = length;
             bestDistance = position - candidate;
-            if (bestLength >= maxLength)
+            if (bestLength >= maxLength) {
               break;
+            }
           }
         }
 
         candidate = this.prev[OpCodes.And32(candidate, this.prevMask)];
-        if (candidate <= windowStart)
+        if (candidate <= windowStart) {
           break;
+        }
 
         ++chainCount;
       }
@@ -484,15 +799,22 @@
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
 
-      return bestLength >= minLength
-        ? { distance: bestDistance, length: bestLength }
-        : { distance: 0, length: 0 };
+      if (bestLength >= minLength) {
+        return new MatchResult(bestDistance, bestLength);
+      }
+      return new MatchResult(0, 0);
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position to insert into the chains
+     */
     insertPosition(data, position) {
-      if (position + 2 >= data.length)
+      if (position + 2 >= data.length) {
         return;
+      }
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
@@ -656,23 +978,123 @@
     }
   }
 
+  /**
+   * Repeat-offset registers r0..r2.
+   */
+  class RepeatOffsets {
+    /**
+     * @param {float64} r0 - Most recent offset
+     * @param {float64} r1 - Second offset
+     * @param {float64} r2 - Third offset
+     */
+    constructor(r0, r1, r2) {
+      /** @type {float64} */
+      this.r0 = r0;
+      /** @type {float64} */
+      this.r1 = r1;
+      /** @type {float64} */
+      this.r2 = r2;
+    }
+  }
+
+  /**
+   * Compressor state that persists across blocks.
+   */
+  class LzxEncodeState {
+    constructor() {
+      /** @type {RepeatOffsets} */
+      this.regs = new RepeatOffsets(1, 1, 1);
+      /** @type {int32[]} */
+      this.prevMainLengths = filledArray(NUM_MAIN_SYMBOLS, 0);
+      /** @type {int32[]} */
+      this.prevLengthLengths = filledArray(NUM_LENGTH_SYMBOLS, 0);
+    }
+  }
+
+  /**
+   * Decompressor state that persists across blocks.
+   */
+  class LzxDecodeState {
+    constructor() {
+      /** @type {int32} */
+      this.windowPos = 0;
+      /** @type {RepeatOffsets} */
+      this.regs = new RepeatOffsets(1, 1, 1);
+      /** @type {int32[]} */
+      this.mainLengths = filledArray(NUM_MAIN_SYMBOLS, 0);
+      /** @type {int32[]} */
+      this.lengthLengths = filledArray(NUM_LENGTH_SYMBOLS, 0);
+      /** @type {int32[]} */
+      this.alignedLengths = filledArray(NUM_ALIGNED_SYMBOLS, 0);
+      /** @type {LzxDecoder} */
+      this.mainDecoder = null;
+      /** @type {LzxDecoder} */
+      this.lengthDecoder = null;
+      /** @type {LzxDecoder} */
+      this.alignedDecoder = null;
+    }
+  }
+
+  /**
+   * Parsed tokens as parallel rows: a literal or a (length, distance) match.
+   */
+  class LzxTokens {
+    constructor() {
+      /** @type {boolean[]} */
+      this.isLiteral = [];
+      /** @type {int32[]} */
+      this.value = [];
+      /** @type {int32[]} */
+      this.matchLength = [];
+      /** @type {int32[]} */
+      this.offset = [];
+    }
+
+    /**
+     * @param {boolean} isLiteral - True for a literal
+     * @param {int32} value - Literal byte
+     * @param {int32} length - Match length
+     * @param {int32} offset - Match distance
+     */
+    add(isLiteral, value, length, offset) {
+      this.isLiteral.push(isLiteral);
+      this.value.push(value);
+      this.matchLength.push(length);
+      this.offset.push(offset);
+    }
+  }
+
   class LZXInstance extends IAlgorithmInstance {
+    /**
+     * @param {LZXCompression} algorithm - Owning algorithm
+     * @param {boolean} isInverse - True for decompression
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * @returns {uint8[]} Compressed or decompressed bytes
+     */
     Result() {
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0)
-          return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        /** @type {uint8[]} */
         const decoded = this._decompress();
         this.inputBuffer = [];
         return decoded;
       }
 
+      /** @type {uint8[]} */
       const encoded = this._compress();
       this.inputBuffer = [];
       return encoded;
@@ -680,36 +1102,48 @@
 
     // ===== COMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Size header followed by verbatim blocks
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
+      /** @type {uint8[]} */
       const out = OpCodes.Unpack32LE(data.length);
-      if (data.length === 0)
+      if (data.length === 0) {
         return out;
+      }
 
       // Compressor state that persists across blocks.
-      const state = {
-        r0: 1, r1: 1, r2: 1,
-        prevMainLengths: new Array(NUM_MAIN_SYMBOLS).fill(0),
-        prevLengthLengths: new Array(NUM_LENGTH_SYMBOLS).fill(0)
-      };
+      /** @type {LzxEncodeState} */
+      const state = new LzxEncodeState();
 
+      /** @type {LzxBitWriter} */
       const writer = new LzxBitWriter();
+      /** @type {LzxTokens} */
       const tokens = LZXInstance._tokenise(data, state);
+      /** @type {int32} */
+      const tokenCount = tokens.isLiteral.length;
 
+      /** @type {int32} */
       let tokenStart = 0;
-      while (tokenStart < tokens.length) {
+      while (tokenStart < tokenCount) {
+        /** @type {int32} */
         let blockBytes = 0;
+        /** @type {int32} */
         let blockTokenEnd = tokenStart;
-        while (blockTokenEnd < tokens.length) {
-          const tok = tokens[blockTokenEnd];
-          const tokBytes = tok.isLiteral ? 1 : tok.length;
-          if (blockBytes + tokBytes > DEFAULT_BLOCK_SIZE && blockBytes > 0)
+        while (blockTokenEnd < tokenCount) {
+          /** @type {int32} */
+          const tokBytes = tokens.isLiteral[blockTokenEnd] ? 1 : tokens.matchLength[blockTokenEnd];
+          if (blockBytes + tokBytes > DEFAULT_BLOCK_SIZE && blockBytes > 0) {
             break;
+          }
 
           blockBytes += tokBytes;
           ++blockTokenEnd;
-          if (blockBytes >= DEFAULT_BLOCK_SIZE)
+          if (blockBytes >= DEFAULT_BLOCK_SIZE) {
             break;
+          }
         }
 
         LZXInstance._emitVerbatimBlock(writer, tokens, tokenStart, blockTokenEnd, blockBytes, state);
@@ -717,45 +1151,71 @@
       }
 
       writer.flush();
-      for (let i = 0; i < writer.bytes.length; ++i) out.push(writer.bytes[i]);
+      for (let i = 0; i < writer.bytes.length; ++i) {
+        out.push(writer.bytes[i]);
+      }
       return out;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {LzxEncodeState} state - Initial repeat offsets
+     * @returns {LzxTokens} Greedy parse
+     */
     static _tokenise(data, state) {
-      const tokens = [];
+      /** @type {LzxTokens} */
+      const tokens = new LzxTokens();
+      /** @type {HashChainMatchFinder} */
       const finder = new HashChainMatchFinder(WINDOW_SIZE, CHAIN_DEPTH);
+      /** @type {int32} */
       let pos = 0;
-      let r0 = state.r0, r1 = state.r1, r2 = state.r2;
+      /** @type {float64} */
+      let r0 = state.regs.r0;
+      /** @type {float64} */
+      let r1 = state.regs.r1;
+      /** @type {float64} */
+      let r2 = state.regs.r2;
 
       while (pos < data.length) {
+        /** @type {MatchResult} */
         const match = finder.findMatch(data, pos, WINDOW_SIZE, MAX_MATCH, MIN_MATCH);
         if (match.length >= MIN_MATCH) {
+          /** @type {int32} */
           const distance = match.distance;
+          /** @type {boolean} */
           const isRepeat = distance === r0 || distance === r1 || distance === r2;
+          /** @type {boolean} */
           const canEncode = isRepeat || distance >= MIN_NON_REPEAT_DISTANCE;
 
           if (canEncode) {
-            tokens.push({ isLiteral: false, length: match.length, offset: distance });
+            tokens.add(false, 0, match.length, distance);
 
             if (!isRepeat) {
               r2 = r1;
               r1 = r0;
               r0 = distance;
             } else if (distance === r1) {
-              const t = r0; r0 = r1; r1 = t;
+              /** @type {float64} */
+              const t = r0;
+              r0 = r1;
+              r1 = t;
             } else if (distance === r2) {
-              const t = r0; r0 = r2; r2 = t;
+              /** @type {float64} */
+              const t = r0;
+              r0 = r2;
+              r2 = t;
             }
 
-            for (let i = 1; i < match.length && pos + i < data.length; ++i)
+            for (let i = 1; i < match.length && pos + i < data.length; ++i) {
               finder.insertPosition(data, pos + i);
+            }
 
             pos += match.length;
             continue;
           }
         }
 
-        tokens.push({ isLiteral: true, value: data[pos] });
+        tokens.add(true, data[pos], 0, 0);
         ++pos;
       }
 
@@ -764,20 +1224,33 @@
 
     // Returns the position slot for a distance, mutating the repeat-offset
     // registers held in `regs` as a side effect.
+    /**
+     * @param {int32} distance - Match distance
+     * @param {RepeatOffsets} regs - Repeat-offset registers, updated
+     * @returns {int32} Position slot
+     */
     static _positionSlot(distance, regs) {
-      if (distance === regs.r0)
+      if (distance === regs.r0) {
         return 0;
+      }
 
       if (distance === regs.r1) {
-        const t = regs.r0; regs.r0 = regs.r1; regs.r1 = t;
+        /** @type {float64} */
+        const t = regs.r0;
+        regs.r0 = regs.r1;
+        regs.r1 = t;
         return 1;
       }
 
       if (distance === regs.r2) {
-        const t = regs.r0; regs.r0 = regs.r2; regs.r2 = t;
+        /** @type {float64} */
+        const t = regs.r0;
+        regs.r0 = regs.r2;
+        regs.r2 = t;
         return 2;
       }
 
+      /** @type {int32} */
       const slot = offsetToSlot(distance - 2);
       regs.r2 = regs.r1;
       regs.r1 = regs.r0;
@@ -785,31 +1258,51 @@
       return slot;
     }
 
+    /**
+     * @param {LzxBitWriter} writer - Output bits
+     * @param {LzxTokens} tokens - All tokens
+     * @param {int32} tokenStart - First token of the block
+     * @param {int32} tokenEnd - End of the block's tokens
+     * @param {int32} blockUncompressedSize - Bytes the block covers
+     * @param {LzxEncodeState} state - Cross-block state, updated
+     */
     static _emitVerbatimBlock(writer, tokens, tokenStart, tokenEnd, blockUncompressedSize, state) {
-      const mainFreq = new Array(NUM_MAIN_SYMBOLS).fill(0);
-      const lengthFreq = new Array(NUM_LENGTH_SYMBOLS).fill(0);
-      let regs = { r0: state.r0, r1: state.r1, r2: state.r2 };
+      /** @type {int32[]} */
+      const mainFreq = filledArray(NUM_MAIN_SYMBOLS, 0);
+      /** @type {int32[]} */
+      const lengthFreq = filledArray(NUM_LENGTH_SYMBOLS, 0);
+      /** @type {RepeatOffsets} */
+      let regs = new RepeatOffsets(state.regs.r0, state.regs.r1, state.regs.r2);
 
       for (let i = tokenStart; i < tokenEnd; ++i) {
-        const tok = tokens[i];
-        if (tok.isLiteral) {
-          ++mainFreq[tok.value];
+        if (tokens.isLiteral[i]) {
+          ++mainFreq[tokens.value[i]];
           continue;
         }
 
-        const slot = LZXInstance._positionSlot(tok.offset, regs);
-        const lengthHeader = Math.min(tok.length - MIN_MATCH, NUM_LENGTH_HEADERS - 1);
+        /** @type {int32} */
+        const length = tokens.matchLength[i];
+        /** @type {int32} */
+        const slot = LZXInstance._positionSlot(tokens.offset[i], regs);
+        /** @type {int32} */
+        const lengthHeader = Math.min(length - MIN_MATCH, NUM_LENGTH_HEADERS - 1);
         ++mainFreq[NUM_CHARS + slot * NUM_LENGTH_HEADERS + lengthHeader];
-        if (lengthHeader !== NUM_LENGTH_HEADERS - 1)
+        if (lengthHeader !== NUM_LENGTH_HEADERS - 1) {
           continue;
+        }
 
-        const extraLen = tok.length - MIN_MATCH - (NUM_LENGTH_HEADERS - 1);
+        /** @type {int32} */
+        const extraLen = length - MIN_MATCH - (NUM_LENGTH_HEADERS - 1);
         ++lengthFreq[Math.max(0, Math.min(extraLen, NUM_LENGTH_SYMBOLS - 1))];
       }
 
+      /** @type {int32[]} */
       const mainLengths = buildCodeLengths(mainFreq, NUM_MAIN_SYMBOLS, MAX_HUFFMAN_BITS);
+      /** @type {int32[]} */
       const lengthLengths = buildCodeLengths(lengthFreq, NUM_LENGTH_SYMBOLS, MAX_HUFFMAN_BITS);
+      /** @type {int32[]} */
       const mainCodes = buildCanonicalCodes(mainLengths);
+      /** @type {int32[]} */
       const lengthCodes = buildCanonicalCodes(lengthLengths);
 
       writer.writeBits(BLOCK_TYPE_VERBATIM, 3);
@@ -824,136 +1317,200 @@
       LZXInstance._writeTreeWithPreTree(writer, mainLengths, NUM_CHARS, NUM_MAIN_SYMBOLS - NUM_CHARS, state.prevMainLengths);
       LZXInstance._writeTreeWithPreTree(writer, lengthLengths, 0, NUM_LENGTH_SYMBOLS, state.prevLengthLengths);
 
-      for (let i = 0; i < NUM_MAIN_SYMBOLS; ++i) state.prevMainLengths[i] = mainLengths[i];
-      for (let i = 0; i < NUM_LENGTH_SYMBOLS; ++i) state.prevLengthLengths[i] = lengthLengths[i];
+      for (let i = 0; i < NUM_MAIN_SYMBOLS; ++i) {
+        state.prevMainLengths[i] = mainLengths[i];
+      }
+      for (let i = 0; i < NUM_LENGTH_SYMBOLS; ++i) {
+        state.prevLengthLengths[i] = lengthLengths[i];
+      }
 
-      regs = { r0: state.r0, r1: state.r1, r2: state.r2 };
+      regs = new RepeatOffsets(state.regs.r0, state.regs.r1, state.regs.r2);
       for (let i = tokenStart; i < tokenEnd; ++i) {
-        const tok = tokens[i];
-        if (tok.isLiteral) {
-          writer.writeBits(mainCodes[tok.value], mainLengths[tok.value]);
+        if (tokens.isLiteral[i]) {
+          /** @type {int32} */
+          const literal = tokens.value[i];
+          writer.writeBits(mainCodes[literal], mainLengths[literal]);
           continue;
         }
 
-        const slot = LZXInstance._positionSlot(tok.offset, regs);
-        const lengthHeader = Math.min(tok.length - MIN_MATCH, NUM_LENGTH_HEADERS - 1);
+        /** @type {int32} */
+        const length = tokens.matchLength[i];
+        /** @type {int32} */
+        const offset = tokens.offset[i];
+        /** @type {int32} */
+        const slot = LZXInstance._positionSlot(offset, regs);
+        /** @type {int32} */
+        const lengthHeader = Math.min(length - MIN_MATCH, NUM_LENGTH_HEADERS - 1);
+        /** @type {int32} */
         const mainSym = NUM_CHARS + slot * NUM_LENGTH_HEADERS + lengthHeader;
         writer.writeBits(mainCodes[mainSym], mainLengths[mainSym]);
 
         if (lengthHeader === NUM_LENGTH_HEADERS - 1) {
-          const extraLen = Math.max(0, Math.min(tok.length - MIN_MATCH - (NUM_LENGTH_HEADERS - 1), NUM_LENGTH_SYMBOLS - 1));
+          /** @type {int32} */
+          const extraLen = Math.max(0, Math.min(length - MIN_MATCH - (NUM_LENGTH_HEADERS - 1), NUM_LENGTH_SYMBOLS - 1));
           writer.writeBits(lengthCodes[extraLen], lengthLengths[extraLen]);
         }
 
-        if (slot < 3)
+        if (slot < 3) {
           continue;
+        }
 
-        const info = getSlotInfo(slot);
-        if (info.footerBits <= 0)
+        /** @type {int32} */
+        const footerBits = slotFooterBits(slot);
+        if (footerBits <= 0) {
           continue;
+        }
 
-        writer.writeBits(tok.offset - 2 - info.base, info.footerBits);
+        writer.writeBits(offset - 2 - slotBase(slot), footerBits);
       }
 
-      state.r0 = regs.r0;
-      state.r1 = regs.r1;
-      state.r2 = regs.r2;
+      state.regs.r0 = regs.r0;
+      state.regs.r1 = regs.r1;
+      state.regs.r2 = regs.r2;
     }
 
     // Encodes one code-length list as a delta against the previous block's
     // lengths, run-length codes it and writes it behind a 20-symbol pre-tree.
+    /**
+     * @param {LzxBitWriter} writer - Output bits
+     * @param {int32[]} lengths - New code lengths
+     * @param {int32} start - First entry
+     * @param {int32} count - Number of entries
+     * @param {int32[]} prevLengths - Previous block's code lengths
+     */
     static _writeTreeWithPreTree(writer, lengths, start, count, prevLengths) {
-      const deltas = new Array(count).fill(0);
-      for (let i = 0; i < count; ++i)
+      /** @type {int32[]} */
+      const deltas = filledArray(count, 0);
+      for (let i = 0; i < count; ++i) {
         deltas[i] = (prevLengths[start + i] - lengths[start + i] + 17) % 17;
+      }
 
-      const preSymbols = [];
+      /** @type {int32[]} */
+      const preSym = [];
+      /** @type {int32[]} */
+      const preExtra = [];
+      /** @type {int32[]} */
+      const preExtraBits = [];
+      /** @type {int32} */
       let di = 0;
       while (di < count) {
+        /** @type {int32} */
         const sym = deltas[di];
 
         if (sym !== 0) {
-          preSymbols.push({ sym: sym, extra: 0, extraBits: 0 });
+          preSym.push(sym);
+          preExtra.push(0);
+          preExtraBits.push(0);
           ++di;
           continue;
         }
 
+        /** @type {int32} */
         let runLen = 0;
-        while (di + runLen < count && deltas[di + runLen] === 0) ++runLen;
+        while (di + runLen < count && deltas[di + runLen] === 0) {
+          ++runLen;
+        }
 
         while (runLen > 0) {
           if (runLen >= 20) {
+            /** @type {int32} */
             const thisRun = Math.min(runLen, 51);
-            preSymbols.push({ sym: 18, extra: thisRun - 20, extraBits: 5 });
+            preSym.push(18);
+            preExtra.push(thisRun - 20);
+            preExtraBits.push(5);
             di += thisRun;
             runLen -= thisRun;
           } else if (runLen >= 4) {
+            /** @type {int32} */
             const thisRun = Math.min(runLen, 19);
-            preSymbols.push({ sym: 17, extra: thisRun - 4, extraBits: 4 });
+            preSym.push(17);
+            preExtra.push(thisRun - 4);
+            preExtraBits.push(4);
             di += thisRun;
             runLen -= thisRun;
           } else {
-            preSymbols.push({ sym: 0, extra: 0, extraBits: 0 });
+            preSym.push(0);
+            preExtra.push(0);
+            preExtraBits.push(0);
             ++di;
             --runLen;
           }
         }
       }
 
-      const preFreq = new Array(NUM_PRE_TREE_SYMBOLS).fill(0);
-      for (let i = 0; i < preSymbols.length; ++i) ++preFreq[preSymbols[i].sym];
+      /** @type {int32[]} */
+      const preFreq = filledArray(NUM_PRE_TREE_SYMBOLS, 0);
+      for (let i = 0; i < preSym.length; ++i) {
+        ++preFreq[preSym[i]];
+      }
 
+      /** @type {int32[]} */
       const preLengths = buildCodeLengths(preFreq, NUM_PRE_TREE_SYMBOLS, MAX_HUFFMAN_BITS);
+      /** @type {int32[]} */
       const preCodes = buildCanonicalCodes(preLengths);
 
-      for (let i = 0; i < NUM_PRE_TREE_SYMBOLS; ++i)
+      for (let i = 0; i < NUM_PRE_TREE_SYMBOLS; ++i) {
         writer.writeBits(preLengths[i], PRE_TREE_BITS);
+      }
 
-      for (let i = 0; i < preSymbols.length; ++i) {
-        const entry = preSymbols[i];
+      for (let i = 0; i < preSym.length; ++i) {
+        /** @type {int32} */
+        const sym = preSym[i];
         // A zero-length code means the symbol never appears; a one-bit dummy
         // keeps the stream well-formed.
-        const plen = preLengths[entry.sym] === 0 ? 1 : preLengths[entry.sym];
-        writer.writeBits(preCodes[entry.sym], plen);
-        if (entry.extraBits > 0)
-          writer.writeBits(entry.extra, entry.extraBits);
+        /** @type {int32} */
+        const plen = preLengths[sym] === 0 ? 1 : preLengths[sym];
+        writer.writeBits(preCodes[sym], plen);
+        if (preExtraBits[i] > 0) {
+          writer.writeBits(preExtra[i], preExtraBits[i]);
+        }
       }
     }
 
     // ===== DECOMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Decompressed bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      if (data.length < 4)
+      if (data.length < 4) {
         throw new Error('LZX: input too small for header');
+      }
 
+      /** @type {uint32} */
       const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (uncompressedSize === 0)
-        return [];
+      if (uncompressedSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {LzxBitReader} */
       const reader = new LzxBitReader(data, 4);
+      /** @type {uint8[]} */
       const output = new Array(uncompressedSize);
-      const window = new Array(WINDOW_SIZE).fill(0);
-      const state = {
-        windowPos: 0,
-        r0: 1, r1: 1, r2: 1,
-        mainLengths: new Array(NUM_MAIN_SYMBOLS).fill(0),
-        lengthLengths: new Array(NUM_LENGTH_SYMBOLS).fill(0),
-        alignedLengths: new Array(NUM_ALIGNED_SYMBOLS).fill(0),
-        mainDecoder: null,
-        lengthDecoder: null,
-        alignedDecoder: null
-      };
+      /** @type {int32[]} */
+      const window = filledArray(WINDOW_SIZE, 0);
+      /** @type {LzxDecodeState} */
+      const state = new LzxDecodeState();
 
+      /** @type {float64} */
       let outPos = 0;
       while (outPos < uncompressedSize) {
+        /** @type {uint32} */
         const blockType = reader.readBits(3);
 
-        let blockSize;
-        if (reader.readBits(1) === 1)
+        /** @type {float64} */
+        let blockSize = 0;
+        /** @type {uint32} */
+        const defaultFlag = reader.readBits(1);
+        if (defaultFlag === 1) {
           blockSize = DEFAULT_BLOCK_SIZE;
-        else
+        } else {
           blockSize = reader.readBits(16);
+        }
 
         blockSize = Math.min(blockSize, uncompressedSize - outPos);
 
@@ -961,8 +1518,11 @@
           LZXInstance._readVerbatimBlockHeader(reader, state);
           LZXInstance._decodeBlock(reader, state, window, false, output, outPos, blockSize);
         } else if (blockType === BLOCK_TYPE_ALIGNED) {
-          for (let i = 0; i < NUM_ALIGNED_SYMBOLS; ++i)
-            state.alignedLengths[i] = reader.readBits(3);
+          for (let i = 0; i < NUM_ALIGNED_SYMBOLS; ++i) {
+            /** @type {int32} */
+            const len = reader.readBits(3);
+            state.alignedLengths[i] = len;
+          }
           state.alignedDecoder = buildDecoder(state.alignedLengths, NUM_ALIGNED_SYMBOLS);
           LZXInstance._readVerbatimBlockHeader(reader, state);
           LZXInstance._decodeBlock(reader, state, window, true, output, outPos, blockSize);
@@ -978,6 +1538,10 @@
       return output;
     }
 
+    /**
+     * @param {LzxBitReader} reader - Input bits
+     * @param {LzxDecodeState} state - Receives the main and length trees
+     */
     static _readVerbatimBlockHeader(reader, state) {
       LZXInstance._readPreTreeAndApply(reader, state.mainLengths, 0, NUM_CHARS);
       LZXInstance._readPreTreeAndApply(reader, state.mainLengths, NUM_CHARS, NUM_MAIN_SYMBOLS - NUM_CHARS);
@@ -987,43 +1551,86 @@
       state.lengthDecoder = buildDecoder(state.lengthLengths, NUM_LENGTH_SYMBOLS);
     }
 
+    /**
+     * @param {LzxBitReader} reader - Input bits
+     * @param {int32[]} lengths - Code lengths, updated by the deltas
+     * @param {int32} start - First entry
+     * @param {int32} count - Number of entries
+     */
     static _readPreTreeAndApply(reader, lengths, start, count) {
-      const preLengths = new Array(NUM_PRE_TREE_SYMBOLS).fill(0);
-      for (let i = 0; i < NUM_PRE_TREE_SYMBOLS; ++i)
-        preLengths[i] = reader.readBits(PRE_TREE_BITS);
+      /** @type {int32[]} */
+      const preLengths = filledArray(NUM_PRE_TREE_SYMBOLS, 0);
+      for (let i = 0; i < NUM_PRE_TREE_SYMBOLS; ++i) {
+        /** @type {int32} */
+        const len = reader.readBits(PRE_TREE_BITS);
+        preLengths[i] = len;
+      }
 
+      /** @type {LzxDecoder} */
       const preDecoder = buildDecoder(preLengths, NUM_PRE_TREE_SYMBOLS);
 
+      /** @type {int32} */
       let pos = start;
+      /** @type {int32} */
       const end = start + count;
       while (pos < end) {
+        /** @type {int32} */
         const sym = decodeSymbol(reader, preDecoder);
 
         if (sym < 17) {
           lengths[pos] = (lengths[pos] - sym + 17) % 17;
           ++pos;
         } else if (sym === 17) {
-          let runLen = 4 + reader.readBits(4);
-          while (runLen-- > 0 && pos < end) ++pos;
+          /** @type {int32} */
+          const field = reader.readBits(4);
+          /** @type {int32} */
+          let runLen = 4 + field;
+          while (runLen-- > 0 && pos < end) {
+            ++pos;
+          }
         } else if (sym === 18) {
-          let runLen = 20 + reader.readBits(5);
-          while (runLen-- > 0 && pos < end) ++pos;
+          /** @type {int32} */
+          const field = reader.readBits(5);
+          /** @type {int32} */
+          let runLen = 20 + field;
+          while (runLen-- > 0 && pos < end) {
+            ++pos;
+          }
         } else if (sym === 19) {
-          let runLen = 4 + reader.readBits(1);
+          /** @type {int32} */
+          const field = reader.readBits(1);
+          /** @type {int32} */
+          let runLen = 4 + field;
+          /** @type {int32} */
           const nextSym = decodeSymbol(reader, preDecoder);
+          /** @type {int32} */
           const newLen = (lengths[pos] - nextSym + 17) % 17;
-          while (runLen-- > 0 && pos < end) lengths[pos++] = newLen;
+          while (runLen-- > 0 && pos < end) {
+            lengths[pos++] = newLen;
+          }
         } else {
           throw new Error('LZX: invalid pre-tree symbol ' + sym);
         }
       }
     }
 
+    /**
+     * @param {LzxBitReader} reader - Input bits
+     * @param {LzxDecodeState} state - Trees, window position and repeat offsets
+     * @param {int32[]} window - Sliding window
+     * @param {boolean} isAligned - True for an aligned-offset block
+     * @param {uint8[]} output - Output buffer
+     * @param {float64} outPos - First output position of the block
+     * @param {float64} blockSize - Bytes in the block
+     */
     static _decodeBlock(reader, state, window, isAligned, output, outPos, blockSize) {
+      /** @type {float64} */
       const end = outPos + blockSize;
+      /** @type {float64} */
       let pos = outPos;
 
       while (pos < end) {
+        /** @type {int32} */
         const mainSym = decodeSymbol(reader, state.mainDecoder);
 
         if (mainSym < NUM_CHARS) {
@@ -1033,20 +1640,28 @@
           continue;
         }
 
+        /** @type {int32} */
         const matchSym = mainSym - NUM_CHARS;
+        /** @type {int32} */
         const positionSlot = Math.floor(matchSym / NUM_LENGTH_HEADERS);
+        /** @type {int32} */
         const lengthHeader = matchSym % NUM_LENGTH_HEADERS;
 
+        /** @type {int32} */
         let matchLength = lengthHeader + MIN_MATCH;
         if (lengthHeader === NUM_LENGTH_HEADERS - 1) {
+          /** @type {int32} */
           const lenSym = decodeSymbol(reader, state.lengthDecoder);
           matchLength = NUM_LENGTH_HEADERS - 1 + MIN_MATCH + lenSym;
         }
 
+        /** @type {float64} */
         const matchOffset = LZXInstance._decodeMatchOffset(reader, state, isAligned, positionSlot);
 
+        /** @type {int32} */
         let srcPos = OpCodes.And32(state.windowPos - matchOffset + WINDOW_SIZE, WINDOW_MASK);
         for (let i = 0; i < matchLength && pos < end; ++i) {
+          /** @type {int32} */
           const b = window[srcPos];
           output[pos++] = b;
           window[state.windowPos] = b;
@@ -1056,55 +1671,101 @@
       }
     }
 
+    /**
+     * @param {LzxBitReader} reader - Input bits
+     * @param {LzxDecodeState} state - Repeat offsets, updated
+     * @param {boolean} isAligned - True for an aligned-offset block
+     * @param {int32} positionSlot - Position slot
+     * @returns {float64} Match distance
+     */
     static _decodeMatchOffset(reader, state, isAligned, positionSlot) {
-      if (positionSlot === 0)
-        return state.r0;
+      /** @type {RepeatOffsets} */
+      const regs = state.regs;
+      if (positionSlot === 0) {
+        return regs.r0;
+      }
 
       if (positionSlot === 1) {
-        const t = state.r0; state.r0 = state.r1; state.r1 = t;
-        return state.r0;
+        /** @type {float64} */
+        const t = regs.r0;
+        regs.r0 = regs.r1;
+        regs.r1 = t;
+        return regs.r0;
       }
 
       if (positionSlot === 2) {
-        const t = state.r0; state.r0 = state.r2; state.r2 = t;
-        return state.r0;
+        /** @type {float64} */
+        const t = regs.r0;
+        regs.r0 = regs.r2;
+        regs.r2 = t;
+        return regs.r0;
       }
 
-      const info = getSlotInfo(positionSlot);
+      /** @type {float64} */
+      const base = slotBase(positionSlot);
+      /** @type {int32} */
+      const footerBits = slotFooterBits(positionSlot);
 
-      let footer;
-      if (isAligned && info.footerBits >= 3) {
-        const verbatimBits = info.footerBits - 3;
-        const verbatimValue = verbatimBits > 0 ? OpCodes.Shl32(reader.readBits(verbatimBits), 3) : 0;
+      /** @type {uint32} */
+      let footer = 0;
+      if (isAligned && footerBits >= 3) {
+        /** @type {int32} */
+        const verbatimBits = footerBits - 3;
+        /** @type {uint32} */
+        let verbatimValue = 0;
+        if (verbatimBits > 0) {
+          /** @type {uint32} */
+          const verbatim = reader.readBits(verbatimBits);
+          verbatimValue = OpCodes.Shl32(verbatim, 3);
+        }
+        /** @type {int32} */
         const alignedSym = decodeSymbol(reader, state.alignedDecoder);
         footer = OpCodes.Or32(verbatimValue, alignedSym);
-      } else {
-        footer = info.footerBits > 0 ? reader.readBits(info.footerBits) : 0;
+      } else if (footerBits > 0) {
+        footer = reader.readBits(footerBits);
       }
 
-      const matchOffset = info.base + footer + 2;
-      state.r2 = state.r1;
-      state.r1 = state.r0;
-      state.r0 = matchOffset;
+      /** @type {float64} */
+      const matchOffset = base + footer + 2;
+      regs.r2 = regs.r1;
+      regs.r1 = regs.r0;
+      regs.r0 = matchOffset;
       return matchOffset;
     }
 
+    /**
+     * @param {LzxBitReader} reader - Input bits
+     * @param {LzxDecodeState} state - Window position and repeat offsets
+     * @param {int32[]} window - Sliding window
+     * @param {uint8[]} output - Output buffer
+     * @param {float64} outPos - First output position of the block
+     * @param {float64} blockSize - Bytes in the block
+     */
     static _decodeUncompressedBlock(reader, state, window, output, outPos, blockSize) {
       reader.alignTo16Bits();
 
-      state.r0 = reader.readRawInt32LE();
-      state.r1 = reader.readRawInt32LE();
-      state.r2 = reader.readRawInt32LE();
+      /** @type {uint32} */
+      const r0 = reader.readRawInt32LE();
+      state.regs.r0 = r0;
+      /** @type {uint32} */
+      const r1 = reader.readRawInt32LE();
+      state.regs.r1 = r1;
+      /** @type {uint32} */
+      const r2 = reader.readRawInt32LE();
+      state.regs.r2 = r2;
 
       for (let i = 0; i < blockSize; ++i) {
+        /** @type {int32} */
         const b = reader.readByte();
-        if (b < 0)
+        if (b < 0) {
           throw new Error('LZX: unexpected end of stream');
+        }
         output[outPos + i] = b;
       }
 
-      if (OpCodes.And32(blockSize, 1) !== 0)
+      if (OpCodes.And32(blockSize, 1) !== 0) {
         reader.readByte();
+      }
 
       for (let i = 0; i < blockSize; ++i) {
         window[state.windowPos] = output[outPos + i];

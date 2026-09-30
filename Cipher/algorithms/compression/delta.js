@@ -109,22 +109,38 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {DeltaInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new DeltaInstance(this, isInverse);
       }
     }
 
     class DeltaInstance extends IAlgorithmInstance {
+      /**
+       * @param {DeltaCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
         if (this.isInverse) {
@@ -134,19 +150,24 @@
         }
       }
 
+      /**
+       * @returns {uint8[]} RLE-packed deltas
+       */
       _compress() {
+        /** @type {uint8[]} */
+        const deltaData = [];
         if (this.inputBuffer.length === 0) {
-          return [];
+          return deltaData;
         }
 
         // Apply delta transformation
-        const deltaData = [];
 
         // First byte stays the same
         deltaData.push(this.inputBuffer[0]);
 
         // Subsequent bytes are differences from previous
         for (let i = 1; i < this.inputBuffer.length; i++) {
+          /** @type {int32} */
           let delta = this.inputBuffer[i] - this.inputBuffer[i - 1];
 
           // Handle wraparound for signed differences
@@ -162,34 +183,43 @@
         }
 
         // Apply simple RLE compression to the delta data
+        /** @type {uint8[]} */
         const compressed = this._applyRLE(deltaData);
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return compressed;
       }
 
+      /**
+       * @returns {uint8[]} Restored bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
+        const result = [];
         if (this.inputBuffer.length === 0) {
-          return [];
+          return result;
         }
 
         // Decompress RLE first
+        /** @type {uint8[]} */
         const deltaData = this._decompressRLE(this.inputBuffer);
 
         if (deltaData.length === 0) {
-          return [];
+          return result;
         }
 
         // Apply inverse delta transformation
-        const result = [];
 
         // First byte stays the same
         result.push(deltaData[0]);
 
         // Reconstruct original values from deltas
         for (let i = 1; i < deltaData.length; i++) {
+          /** @type {int32} */
           let delta = deltaData[i];
 
           // Convert from unsigned to signed
@@ -198,6 +228,7 @@
           }
 
           // Add delta to previous value
+          /** @type {int32} */
           let value = result[i - 1] + delta;
 
           // Handle wraparound
@@ -206,16 +237,39 @@
         }
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return result;
       }
 
-      _applyRLE(data) {
-        if (data.length === 0) return data;
+      /**
+       * Append one (marker, count, value) run
+       * @param {uint8[]} result - Output
+       * @param {int32} count - Run length
+       * @param {uint8} value - Run value
+       */
+      _pushRun(result, count, value) {
+        result.push(255); // RLE marker
+        result.push(count);
+        result.push(value);
+      }
 
+      /**
+       * @param {uint8[]} data - Delta bytes
+       * @returns {uint8[]} Runs packed as 255, count, value
+       */
+      _applyRLE(data) {
+        if (data.length === 0) {
+          return data;
+        }
+
+        /** @type {uint8[]} */
         const result = [];
+        /** @type {int32} */
         let count = 1;
+        /** @type {uint8} */
         let current = data[0];
 
         for (let i = 1; i < data.length; i++) {
@@ -224,13 +278,11 @@
           } else {
             // Write run
             if (count > 1) {
-              result.push(255); // RLE marker
-              result.push(count);
-              result.push(current);
+              this._pushRun(result, count, current);
             } else {
               // Single occurrence, but avoid conflict with RLE marker
               if (current === 255) {
-                result.push(255, 1, 255); // Encoded single 255
+                this._pushRun(result, 1, 255); // Encoded single 255
               } else {
                 result.push(current);
               }
@@ -242,10 +294,10 @@
 
         // Handle final run
         if (count > 1) {
-          result.push(255, count, current);
+          this._pushRun(result, count, current);
         } else {
           if (current === 255) {
-            result.push(255, 1, 255);
+            this._pushRun(result, 1, 255);
           } else {
             result.push(current);
           }
@@ -254,16 +306,26 @@
         return result;
       }
 
+      /**
+       * @param {uint8[]} data - Runs packed as 255, count, value
+       * @returns {uint8[]} Delta bytes
+       */
       _decompressRLE(data) {
-        if (data.length === 0) return data;
+        if (data.length === 0) {
+          return data;
+        }
 
+        /** @type {uint8[]} */
         const result = [];
+        /** @type {int32} */
         let i = 0;
 
         while (i < data.length) {
           if (data[i] === 255 && i + 2 < data.length) {
             // RLE encoded run
+            /** @type {uint8} */
             const count = data[i + 1];
+            /** @type {uint8} */
             const value = data[i + 2];
 
             for (let j = 0; j < count; j++) {

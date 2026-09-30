@@ -67,22 +67,34 @@
 
   // ===== ALGORITHM CONSTANTS =====
 
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_MATCH = 2147483647 - MIN_MATCH; // gamma coding has no practical upper bound
+  /** @type {int32} */
   const HASH_BITS = 16;
+  /** @type {int32} */
   const HASH_SIZE = 65536; // 2^HASH_BITS
+  /** @type {int32} */
   const MAX_CHAIN_STEPS = 128;
+  /** @type {int32} */
   const MAX_WINDOW = 1048576; // 2^20
 
   // ===== BIT STREAM (byte-oriented, MSB-first) =====
 
   class GammaBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.current = 0;
+      /** @type {int32} */
       this.bitCount = 0;
     }
 
+    /**
+     * @param {uint32} bit - Bit (any non-zero value writes 1)
+     */
     writeBit(bit) {
       this.current = OpCodes.Or32(OpCodes.Shl32(this.current, 1), bit ? 1 : 0);
       this.bitCount++;
@@ -94,31 +106,46 @@
       }
     }
 
+    /**
+     * @param {uint8} value - Byte, written MSB-first
+     */
     writeByteBits(value) {
       // MSB-first: bit 7 down to bit 0
-      for (let i = 7; i >= 0; i--)
+      for (let i = 7; i >= 0; i--) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+      }
     }
 
+    /**
+     * @param {uint32} value - Value >= 1, written as an Elias-gamma code
+     */
     writeGamma(value) {
       // Elias-gamma, MSB-first, value >= 1.
       // bits = position of the highest set bit (floor(log2(value)))
+      /** @type {int32} */
       let bits = 0;
+      /** @type {uint32} */
       let v = value;
       while (v > 1) {
         v = OpCodes.Shr32(v, 1);
         bits++;
       }
 
-      for (let i = 0; i < bits; i++)
+      for (let i = 0; i < bits; i++) {
         this.writeBit(0);
+      }
 
-      for (let i = bits; i >= 0; i--)
+      for (let i = bits; i >= 0; i--) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+      }
     }
 
+    /**
+     * @returns {uint8[]} All bytes written, the last one zero-padded
+     */
     getBytes() {
       if (this.bitCount > 0) {
+        /** @type {int32} */
         const shift = 8 - this.bitCount;
         this.bytes.push(OpCodes.And32(OpCodes.Shl32(this.current, shift), 0xFF));
         this.current = 0;
@@ -130,13 +157,23 @@
   }
 
   class GammaBitReader {
+    /**
+     * @param {uint8[]} data - Bytes to read (zero bits past the end)
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint8} */
       this.current = 0;
+      /** @type {int32} */
       this.bitCount = 0;
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
       if (this.bitCount === 0) {
         this.current = this.pos < this.data.length ? this.data[this.pos++] : 0;
@@ -147,22 +184,37 @@
       return OpCodes.And32(OpCodes.Shr32(this.current, this.bitCount), 1);
     }
 
+    /**
+     * @returns {uint32} Next byte, MSB-first
+     */
     readByteBits() {
+      /** @type {uint32} */
       let value = 0;
-      for (let i = 0; i < 8; i++)
+      for (let i = 0; i < 8; i++) {
         value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
+      }
 
       return value;
     }
 
+    /**
+     * @returns {uint32} Next Elias-gamma coded value
+     */
     readGamma() {
+      /** @type {int32} */
       let zeros = 0;
-      while (this.readBit() === 0)
+      /** @type {uint32} */
+      let bit = this.readBit();
+      while (bit === 0) {
         zeros++;
+        bit = this.readBit();
+      }
 
+      /** @type {uint32} */
       let value = 1;
-      for (let i = 0; i < zeros; i++)
+      for (let i = 0; i < zeros; i++) {
         value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
+      }
 
       return value;
     }
@@ -171,23 +223,51 @@
   // ===== HASH-CHAIN MATCH FINDER =====
 
   /**
+   * Match found by the hash-chain search
+   */
+  class BriefLZMatch {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} offset - Distance back to the match source
+     */
+    constructor(length, offset) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.offset = offset;
+    }
+  }
+
+  /**
    * 3-byte Knuth-style multiplicative hash of data[pos..pos+2], matching
    * CompressionWorkbench's BriefLZ building block exactly: combine the
    * three bytes into a 24-bit big-endian value (byte0 shifted up 16,
    * byte1 shifted up 8, byte2 as-is, OR'd together), multiply unsigned
    * 32-bit by 2654435761, then take the top HASH_BITS bits of the product
    * (logical right shift by 32 - HASH_BITS).
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position of the three bytes
+   * @returns {uint32} Bucket
    */
   function hash3(data, pos) {
+    /** @type {uint32} */
     const triple = OpCodes.Or32(
       OpCodes.Or32(OpCodes.Shl32(data[pos], 16), OpCodes.Shl32(data[pos + 1], 8)),
       data[pos + 2]
     );
+    /** @type {uint32} */
     const product = OpCodes.Mul32(triple, 2654435761);
     return OpCodes.Shr32(product, 32 - HASH_BITS);
   }
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position entering its bucket
+   * @param {int32[]} hashHead - Newest position per bucket (-1 = empty)
+   * @param {int32[]} chain - Previous position per position
+   */
   function insertHash(data, pos, hashHead, chain) {
+    /** @type {uint32} */
     const h = hash3(data, pos);
     chain[pos] = hashHead[h];
     hashHead[h] = pos;
@@ -199,42 +279,64 @@
    * MAX_CHAIN_STEPS candidates, or once a `prev >= candidate` link is seen
    * (defensive cycle guard), or once the maximum encodable length for this
    * position is reached.
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position to match
+   * @param {int32[]} hashHead - Newest position per bucket (-1 = empty)
+   * @param {int32[]} chain - Previous position per position
+   * @returns {BriefLZMatch} Best match, or length 0 and offset 0
    */
   function findMatch(data, pos, hashHead, chain) {
+    /** @type {int32} */
     const length = data.length;
 
-    if (pos + MIN_MATCH > length)
-      return { length: 0, offset: 0 };
+    if (pos + MIN_MATCH > length) {
+      return new BriefLZMatch(0, 0);
+    }
 
+    /** @type {uint32} */
     const h = hash3(data, pos);
+    /** @type {int32} */
     let candidate = hashHead[h];
+    /** @type {int32} */
     const minPos = Math.max(0, pos - MAX_WINDOW);
+    /** @type {int32} */
     const maxLen = Math.min(MAX_MATCH, length - pos);
+    /** @type {int32} */
     let bestLen = 0;
+    /** @type {int32} */
     let bestOff = 0;
+    /** @type {int32} */
     let steps = MAX_CHAIN_STEPS;
 
     while (candidate >= minPos && steps-- > 0) {
       if (data[candidate + bestLen] === data[pos + bestLen] || bestLen === 0) {
+        /** @type {int32} */
         let len = 0;
-        while (len < maxLen && data[candidate + len] === data[pos + len])
+        while (len < maxLen && data[candidate + len] === data[pos + len]) {
           len++;
+        }
 
         if (len > bestLen) {
           bestLen = len;
           bestOff = pos - candidate;
-          if (len >= maxLen)
+          if (len >= maxLen) {
             break;
+          }
         }
       }
 
+      /** @type {int32} */
       const prev = chain[candidate];
-      if (prev >= candidate)
+      if (prev >= candidate) {
         break;
+      }
       candidate = prev;
     }
 
-    return bestLen >= MIN_MATCH ? { length: bestLen, offset: bestOff } : { length: 0, offset: 0 };
+    if (bestLen >= MIN_MATCH) {
+      return new BriefLZMatch(bestLen, bestOff);
+    }
+    return new BriefLZMatch(0, 0);
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -323,7 +425,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BriefLZInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -334,19 +436,21 @@
   /**
  * BriefLZ cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class BriefLZInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BriefLZCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -360,7 +464,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._decompress();
       }
@@ -370,62 +476,94 @@
       return this._compress();
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
+      const output = [];
+      /** @type {uint8[]} */
+      const fresh = [];
       if (this.inputBuffer.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
       // Read the 4-byte little-endian original-length header.
+      /** @type {uint32} */
       const targetSize = OpCodes.Pack32LE(
         this.inputBuffer[0], this.inputBuffer[1], this.inputBuffer[2], this.inputBuffer[3]
       );
 
       if (targetSize === 0) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
+      /** @type {GammaBitReader} */
       const reader = new GammaBitReader(this.inputBuffer.slice(4));
-      const output = [];
 
       while (output.length < targetSize) {
+        /** @type {uint32} */
         const tag = reader.readBit();
 
         if (tag === 0) {
-          output.push(reader.readByteBits());
+          /** @type {uint32} */
+          const literal = reader.readByteBits();
+          output.push(literal);
         } else {
-          const len = reader.readGamma() + MIN_MATCH - 1;
+          /** @type {float64} */
+          const lengthCode = reader.readGamma();
+          /** @type {float64} */
+          const len = lengthCode + MIN_MATCH - 1;
+          /** @type {uint32} */
           const off = reader.readGamma();
 
-          if (off <= 0 || off > output.length)
+          if (off <= 0 || off > output.length) {
             throw new Error("BriefLZ: match offset " + off + " invalid at position " + output.length + ".");
+          }
 
-          for (let i = 0; i < len && output.length < targetSize; i++)
-            output.push(output[output.length - off]);
+          for (let i = 0; i < len && output.length < targetSize; i++) {
+            /** @type {int32} */
+            const from = output.length - off;
+            output.push(output[from]);
+          }
         }
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
+    /**
+     * @returns {uint8[]} 4-byte LE length followed by the tag/literal/gamma bit stream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const src = this.inputBuffer;
+      /** @type {int32} */
       const originalLength = src.length;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(originalLength);
+      /** @type {uint8[]} */
+      const fresh = [];
 
       if (originalLength === 0) {
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return header;
       }
 
+      /** @type {GammaBitWriter} */
       const writer = new GammaBitWriter();
+      /** @type {int32[]} */
       const hashHead = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       const chain = new Int32Array(originalLength);
 
+      /** @type {int32} */
       let pos = 0;
       while (pos < originalLength) {
+        /** @type {BriefLZMatch} */
         const match = findMatch(src, pos, hashHead, chain);
 
         if (match.length >= MIN_MATCH) {
@@ -433,24 +571,29 @@
           writer.writeGamma(match.length - MIN_MATCH + 1);
           writer.writeGamma(match.offset);
 
+          /** @type {int32} */
           const end = Math.min(pos + match.length, originalLength - 2);
-          for (let i = pos; i < end; i++)
+          for (let i = pos; i < end; i++) {
             insertHash(src, i, hashHead, chain);
+          }
 
           pos += match.length;
         } else {
           writer.writeBit(0);
           writer.writeByteBits(src[pos]);
 
-          if (pos < originalLength - 2)
+          if (pos < originalLength - 2) {
             insertHash(src, pos, hashHead, chain);
+          }
 
           pos++;
         }
       }
 
-      this.inputBuffer = [];
-      return header.concat(writer.getBytes());
+      this.inputBuffer = fresh;
+      /** @type {uint8[]} */
+      const body = writer.getBytes();
+      return header.concat(body);
     }
   }
 

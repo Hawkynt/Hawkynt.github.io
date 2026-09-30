@@ -94,28 +94,49 @@
   const HASH_MASK = 32767;
   const MAX_CHAIN_DEPTH = 128;
 
+  /**
+   * @param {int32} size - Number of entries
+   * @returns {int32[]} Plain array of zeros
+   */
+  function zeroArray(size) {
+    /** @type {int32[]} */
+    const arr = new Array(size);
+    arr.fill(0);
+    return arr;
+  }
+
   // ===== BIT OUTPUT (most-significant-bit first through a 16-bit register) =====
 
   class ArjBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.bitBuf = 0;
+      /** @type {int32} */
       this.bitCount = 0;
     }
 
     // Emits the low `count` bits of `value`, most significant first. The register
     // holds only sixteen bits, so a write that would overflow it is finished from
     // `value` again once both whole bytes have been flushed.
+    /**
+     * @param {int32} count - Bit count
+     * @param {uint32} value - Value whose low count bits are written
+     */
     putBits(count, value) {
-      if (count === 0)
+      if (count === 0) {
         return;
+      }
 
+      /** @type {uint32} */
       const shifted = OpCodes.And32(OpCodes.Shl32(value, 16 - count), 0xFFFF);
       this.bitBuf = OpCodes.And32(OpCodes.Or32(this.bitBuf, OpCodes.Shr32(shifted, this.bitCount)), 0xFFFF);
       this.bitCount += count;
 
-      if (this.bitCount < 8)
+      if (this.bitCount < 8) {
         return;
+      }
 
       this.bytes.push(OpCodes.And32(OpCodes.Shr32(this.bitBuf, 8), 0xFF));
       this.bitCount -= 8;
@@ -130,9 +151,13 @@
       this.bitBuf = OpCodes.And32(OpCodes.Shl32(value, 16 - this.bitCount), 0xFFFF);
     }
 
+    /**
+     * @returns {uint8[]} All bytes written, the pending bits flushed
+     */
     flush() {
-      if (this.bitCount > 0)
+      if (this.bitCount > 0) {
         this.bytes.push(OpCodes.And32(OpCodes.Shr32(this.bitBuf, 8), 0xFF));
+      }
       return this.bytes;
     }
   }
@@ -140,22 +165,41 @@
   // ===== BIT INPUT (the original fillbuf/getbits pair) =====
 
   class ArjBitReader {
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} start - First byte of the bit stream
+     */
     constructor(data, start) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.bitBuf = 0;
+      /** @type {int32} */
       this.bitCount = 0;
+      /** @type {uint32} */
       this.byteBuf = 0;
       this.fillBuf(16);
     }
 
     // Past the end of the payload the reader yields zero bytes, which is what a
     // decoder positioned inside a larger archive would see as padding.
+    /**
+     * @returns {uint8} Next byte, zero past the end
+     */
     nextByte() {
-      return this.pos < this.data.length ? this.data[this.pos++] : 0;
+      if (this.pos < this.data.length) {
+        return this.data[this.pos++];
+      }
+      return 0;
     }
 
+    /**
+     * @param {int32} count - Bits to shift into the register
+     */
     fillBuf(count) {
+      /** @type {int32} */
       let n = count;
       while (this.bitCount < n) {
         this.bitBuf = OpCodes.And32(
@@ -178,11 +222,20 @@
       this.byteBuf = OpCodes.And32(OpCodes.Shl32(this.byteBuf, n), 0xFF);
     }
 
+    /**
+     * @param {int32} count - Bit count
+     * @returns {uint32} Top count bits of the register
+     */
     peekTop(count) {
       return OpCodes.Shr32(this.bitBuf, 16 - count);
     }
 
+    /**
+     * @param {int32} count - Bit count
+     * @returns {uint32} Top count bits, then consumed
+     */
     getBits(count) {
+      /** @type {uint32} */
       const value = this.peekTop(count);
       this.fillBuf(count);
       return value;
@@ -191,14 +244,27 @@
 
   // ===== HUFFMAN TREE CONSTRUCTION =====
 
+  /**
+   * @param {int32[]} heap - 1-indexed heap of nodes
+   * @param {int32} heapSize - Number of heap entries
+   * @param {int32} start - Position to sift down from
+   * @param {float64[]} freq - Weight per node
+   */
   function downHeap(heap, heapSize, start, freq) {
+    /** @type {int32} */
     let i = start;
+    /** @type {int32} */
     const k = heap[i];
+    /** @type {int32} */
     let j = 2 * i;
 
     while (j <= heapSize) {
-      if (j < heapSize && freq[heap[j]] > freq[heap[j + 1]]) ++j;
-      if (freq[k] <= freq[heap[j]]) break;
+      if (j < heapSize && freq[heap[j]] > freq[heap[j + 1]]) {
+        ++j;
+      }
+      if (freq[k] <= freq[heap[j]]) {
+        break;
+      }
 
       heap[i] = heap[j];
       i = j;
@@ -210,17 +276,31 @@
 
   // Canonical numbering over the finished lengths: shortest codes first, equal
   // lengths in ascending symbol order, kept inside sixteen bits.
+  /**
+   * @param {int32} n - Alphabet size
+   * @param {int32[]} len - Code length per symbol
+   * @param {int32[]} code - Receives the code per symbol
+   */
   function makeCode(n, len, code) {
-    const lenCnt = new Array(MAX_CODE_BITS + 1).fill(0);
-    for (let i = 0; i < n; ++i)
-      if (len[i] > 0) ++lenCnt[len[i]];
+    /** @type {int32[]} */
+    const lenCnt = zeroArray(MAX_CODE_BITS + 1);
+    for (let i = 0; i < n; ++i) {
+      if (len[i] > 0) {
+        ++lenCnt[len[i]];
+      }
+    }
 
-    const start = new Array(MAX_CODE_BITS + 2).fill(0);
-    for (let i = 1; i <= MAX_CODE_BITS; ++i)
+    /** @type {int32[]} */
+    const start = zeroArray(MAX_CODE_BITS + 2);
+    for (let i = 1; i <= MAX_CODE_BITS; ++i) {
       start[i + 1] = OpCodes.And32(OpCodes.Shl32(start[i] + lenCnt[i], 1), 0xFFFF);
+    }
 
-    for (let i = 0; i < n; ++i)
-      if (len[i] > 0) code[i] = start[len[i]]++;
+    for (let i = 0; i < n; ++i) {
+      if (len[i] > 0) {
+        code[i] = start[len[i]]++;
+      }
+    }
   }
 
   // Builds code lengths the way the original encoder did: a min-heap over the
@@ -230,40 +310,70 @@
   // sixteen bits and repaired until the Kraft sum is exact again. Returns the
   // root node index, which is at or above `n` when the tree has real structure
   // and is the single symbol itself otherwise.
+  /**
+   * @param {int32} n - Alphabet size
+   * @param {int32[]} freq - Frequency per symbol
+   * @param {int32[]} len - Receives the code length per symbol
+   * @param {int32[]} code - Receives the code per symbol
+   * @returns {int32} Root node
+   */
   function makeTree(n, freq, len, code) {
-    const heap = new Array(n + 1).fill(0);
+    /** @type {int32[]} */
+    const heap = zeroArray(n + 1);
+    /** @type {int32} */
     let heapSize = 0;
-    for (let i = 0; i < n; ++i) len[i] = 0;
+    for (let i = 0; i < n; ++i) {
+      len[i] = 0;
+    }
 
-    for (let i = 0; i < n; ++i)
-      if (freq[i] > 0) heap[++heapSize] = i;
+    for (let i = 0; i < n; ++i) {
+      if (freq[i] > 0) {
+        heap[++heapSize] = i;
+      }
+    }
 
     if (heapSize < 2) {
+      /** @type {int32} */
       const sym = heapSize > 0 ? heap[1] : 0;
       code[sym] = 0;
       return sym;
     }
 
-    const left = new Array(2 * n).fill(0);
-    const right = new Array(2 * n).fill(0);
-    const nodeFreq = new Array(2 * n).fill(0);
-    for (let i = 0; i < n; ++i) nodeFreq[i] = freq[i];
+    /** @type {int32[]} */
+    const left = zeroArray(2 * n);
+    /** @type {int32[]} */
+    const right = zeroArray(2 * n);
+    /** @type {float64[]} */
+    const nodeFreq = zeroArray(2 * n);
+    for (let i = 0; i < n; ++i) {
+      nodeFreq[i] = freq[i];
+    }
 
-    for (let i = Math.floor(heapSize / 2); i >= 1; --i)
+    for (let i = Math.floor(heapSize / 2); i >= 1; --i) {
       downHeap(heap, heapSize, i, nodeFreq);
+    }
 
+    /** @type {int32[]} */
     const sortOrder = [];
+    /** @type {int32} */
     let avail = n;
 
     while (heapSize > 1) {
+      /** @type {int32} */
       const i = heap[1];
-      if (i < n) sortOrder.push(i);
+      if (i < n) {
+        sortOrder.push(i);
+      }
       heap[1] = heap[heapSize--];
       downHeap(heap, heapSize, 1, nodeFreq);
 
+      /** @type {int32} */
       const j = heap[1];
-      if (j < n) sortOrder.push(j);
+      if (j < n) {
+        sortOrder.push(j);
+      }
 
+      /** @type {int32} */
       const k = avail++;
       nodeFreq[k] = nodeFreq[i] + nodeFreq[j];
       left[k] = i;
@@ -272,41 +382,58 @@
       downHeap(heap, heapSize, 1, nodeFreq);
     }
 
+    /** @type {int32} */
     const root = heap[1];
 
-    // Leaf depths, walked with an explicit stack so a maximally skewed tree
-    // cannot exhaust the call stack. Every leaf is written exactly once, so the
-    // traversal order does not matter.
-    const depth = new Array(avail).fill(0);
-    const stack = [[root, 0]];
-    while (stack.length > 0) {
-      const entry = stack.pop();
-      const node = entry[0];
-      const d = entry[1];
+    // Leaf depths, walked with an explicit stack (node and depth rows) so a
+    // maximally skewed tree cannot exhaust the call stack. Every leaf is
+    // written exactly once, so the traversal order does not matter.
+    /** @type {int32[]} */
+    const depth = zeroArray(avail);
+    /** @type {int32[]} */
+    const stackNode = [root];
+    /** @type {int32[]} */
+    const stackDepth = [0];
+    while (stackNode.length > 0) {
+      /** @type {int32} */
+      const node = stackNode.pop();
+      /** @type {int32} */
+      const d = stackDepth.pop();
       if (node < n) {
         depth[node] = d;
         continue;
       }
 
-      stack.push([left[node], d + 1]);
-      stack.push([right[node], d + 1]);
+      stackNode.push(left[node]);
+      stackDepth.push(d + 1);
+      stackNode.push(right[node]);
+      stackDepth.push(d + 1);
     }
 
-    const lenCnt = new Array(MAX_CODE_BITS + 1).fill(0);
-    for (let i = 0; i < sortOrder.length; ++i)
+    /** @type {int32[]} */
+    const lenCnt = zeroArray(MAX_CODE_BITS + 1);
+    for (let i = 0; i < sortOrder.length; ++i) {
       ++lenCnt[Math.min(depth[sortOrder[i]], MAX_CODE_BITS)];
+    }
 
     // Capping depths at sixteen can push the Kraft sum above one; move one code
     // down a level at a time until it is exact again.
+    /** @type {int32} */
     const kraftFull = OpCodes.Shl32(1, MAX_CODE_BITS);
+    /** @type {float64} */
     let cum = 0;
-    for (let i = MAX_CODE_BITS; i > 0; --i)
-      cum += lenCnt[i] * OpCodes.Shl32(1, MAX_CODE_BITS - i);
+    for (let i = MAX_CODE_BITS; i > 0; --i) {
+      /** @type {float64} */
+      const count = lenCnt[i];
+      cum += count * OpCodes.Shl32(1, MAX_CODE_BITS - i);
+    }
 
     while (cum !== kraftFull) {
       --lenCnt[MAX_CODE_BITS];
       for (let i = MAX_CODE_BITS - 1; i > 0; --i) {
-        if (lenCnt[i] === 0) continue;
+        if (lenCnt[i] === 0) {
+          continue;
+        }
 
         --lenCnt[i];
         lenCnt[i + 1] += 2;
@@ -315,11 +442,14 @@
       --cum;
     }
 
+    /** @type {int32} */
     let sortIdx = 0;
     for (let i = MAX_CODE_BITS; i > 0; --i) {
+      /** @type {int32} */
       let cnt = lenCnt[i];
-      while (--cnt >= 0)
+      while (--cnt >= 0) {
         len[sortOrder[sortIdx++]] = i;
+      }
     }
 
     makeCode(n, len, code);
@@ -328,14 +458,43 @@
 
   // ===== MATCH FINDER =====
 
+  /**
+   * Match found by the hash-chain finder; length 0 when none.
+   */
+  class MatchResult {
+    /**
+     * @param {int32} distance - Backward distance
+     * @param {int32} length - Match length
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
   class HashChainMatchFinder {
+    /**
+     * @param {int32} windowSize - Chain window
+     * @param {int32} maxChainDepth - Chain walk limit
+     */
     constructor(windowSize, maxChainDepth) {
+      /** @type {int32} */
       this.maxChainDepth = maxChainDepth;
+      /** @type {int32[]} */
       this.head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       this.prev = new Int32Array(windowSize);
+      /** @type {int32} */
       this.prevMask = windowSize - 1;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position of the three hashed bytes
+     * @returns {int32} Hash bucket
+     */
     static computeHash(data, position) {
       return OpCodes.And32(
         OpCodes.Xor32(
@@ -346,16 +505,31 @@
       );
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Current position, inserted into the chains
+     * @param {int32} maxDistance - Farthest allowed distance
+     * @param {int32} maxLength - Longest allowed match
+     * @param {int32} minLength - Shortest usable match
+     * @returns {MatchResult} Longest (nearest on ties) match
+     */
     findMatch(data, position, maxDistance, maxLength, minLength) {
-      if (position + 2 >= data.length)
-        return { distance: 0, length: 0 };
+      if (position + 2 >= data.length) {
+        return new MatchResult(0, 0);
+      }
 
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let bestLength = 0;
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
+      /** @type {int32} */
       let candidate = this.head[hash];
+      /** @type {int32} */
       let chainCount = 0;
+      /** @type {int32} */
       const windowStart = Math.max(0, position - maxDistance);
 
       while (candidate >= windowStart && chainCount < this.maxChainDepth) {
@@ -365,23 +539,28 @@
           continue;
         }
 
+        /** @type {int32} */
         const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
         if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          /** @type {int32} */
           let length = 0;
-          while (length < limit && data[candidate + length] === data[position + length])
+          while (length < limit && data[candidate + length] === data[position + length]) {
             ++length;
+          }
 
           if (length >= minLength && length > bestLength) {
             bestLength = length;
             bestDistance = position - candidate;
-            if (bestLength >= maxLength)
+            if (bestLength >= maxLength) {
               break;
+            }
           }
         }
 
         candidate = this.prev[OpCodes.And32(candidate, this.prevMask)];
-        if (candidate <= windowStart)
+        if (candidate <= windowStart) {
           break;
+        }
 
         ++chainCount;
       }
@@ -389,15 +568,22 @@
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
 
-      return bestLength >= minLength
-        ? { distance: bestDistance, length: bestLength }
-        : { distance: 0, length: 0 };
+      if (bestLength >= minLength) {
+        return new MatchResult(bestDistance, bestLength);
+      }
+      return new MatchResult(0, 0);
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position to insert into the chains
+     */
     insertPosition(data, position) {
-      if (position + 2 >= data.length)
+      if (position + 2 >= data.length) {
         return;
+      }
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
@@ -407,8 +593,14 @@
   // ===== ENCODER =====
 
   // Slot number of a distance: how many bits it takes to write it down.
+  /**
+   * @param {int32} distance - Distance minus one
+   * @returns {int32} Position slot
+   */
   function getPositionSlot(distance) {
+    /** @type {int32} */
     let slot = 0;
+    /** @type {uint32} */
     let d = distance;
     while (d > 0) {
       d = OpCodes.Shr32(d, 1);
@@ -419,74 +611,129 @@
 
   // Frequencies of the code-length tree's own symbols: 0 for a short zero run,
   // 1 for a medium one, 2 for a long one, and k + 2 for a code length of k.
+  /**
+   * @param {int32[]} cLen - Literal/length code lengths
+   * @param {int32} nc - Alphabet size
+   * @param {int32[]} tFreq - Receives the code-length tree frequencies
+   */
   function countTFreq(cLen, nc, tFreq) {
-    for (let i = 0; i < tFreq.length; ++i) tFreq[i] = 0;
+    for (let i = 0; i < tFreq.length; ++i) {
+      tFreq[i] = 0;
+    }
 
+    /** @type {int32} */
     let n = nc;
-    while (n > 0 && cLen[n - 1] === 0) --n;
+    while (n > 0 && cLen[n - 1] === 0) {
+      --n;
+    }
 
+    /** @type {int32} */
     let i = 0;
     while (i < n) {
+      /** @type {int32} */
       const k = cLen[i++];
       if (k !== 0) {
         ++tFreq[k + 2];
         continue;
       }
 
+      /** @type {int32} */
       let count = 1;
-      while (i < n && cLen[i] === 0) { ++i; ++count; }
+      while (i < n && cLen[i] === 0) {
+        ++i;
+        ++count;
+      }
 
-      if (count <= 2) tFreq[0] += count;
-      else if (count <= 18) ++tFreq[1];
-      else if (count === 19) { ++tFreq[0]; ++tFreq[1]; }
-      else ++tFreq[2];
+      if (count <= 2) {
+        tFreq[0] += count;
+      } else if (count <= 18) {
+        ++tFreq[1];
+      } else if (count === 19) {
+        ++tFreq[0];
+        ++tFreq[1];
+      } else {
+        ++tFreq[2];
+      }
     }
   }
 
   // Writes one of the two small trees: a count, then each length as three bits
   // when it fits in six, otherwise as (k - 4) one bits and a zero. The
   // code-length tree additionally carries a 2-bit skip count after symbol 2.
+  /**
+   * @param {ArjBitWriter} writer - Output bits
+   * @param {int32[]} ptLen - Code lengths
+   * @param {int32} count - Alphabet size
+   * @param {int32} nbit - Width of the count field
+   * @param {int32} iSpecial - Index after which the skip field follows (-1 for none)
+   */
   function writePtLen(writer, ptLen, count, nbit, iSpecial) {
+    /** @type {int32} */
     let n = count;
-    while (n > 0 && ptLen[n - 1] === 0) --n;
+    while (n > 0 && ptLen[n - 1] === 0) {
+      --n;
+    }
 
     writer.putBits(nbit, n);
+    /** @type {int32} */
     let i = 0;
     while (i < n) {
+      /** @type {int32} */
       const k = ptLen[i++];
-      if (k <= 6)
+      if (k <= 6) {
         writer.putBits(3, k);
-      else
+      } else {
         writer.putBits(k - 3, 0xFFFE);
+      }
 
-      if (i !== iSpecial)
+      if (i !== iSpecial) {
         continue;
+      }
 
-      while (i < 6 && ptLen[i] === 0) ++i;
+      while (i < 6 && ptLen[i] === 0) {
+        ++i;
+      }
       writer.putBits(2, i - 3);
     }
   }
 
   // Writes the literal/length code lengths through the code-length tree.
+  /**
+   * @param {ArjBitWriter} writer - Output bits
+   * @param {int32[]} cLen - Literal/length code lengths
+   * @param {int32} nc - Alphabet size
+   * @param {int32[]} ptLen - Code-length tree lengths
+   * @param {int32[]} ptCode - Code-length tree codes
+   */
   function writeCLen(writer, cLen, nc, ptLen, ptCode) {
+    /** @type {int32} */
     let n = nc;
-    while (n > 0 && cLen[n - 1] === 0) --n;
+    while (n > 0 && cLen[n - 1] === 0) {
+      --n;
+    }
 
     writer.putBits(C_BIT, n);
+    /** @type {int32} */
     let i = 0;
     while (i < n) {
+      /** @type {int32} */
       const k = cLen[i++];
       if (k !== 0) {
         writer.putBits(ptLen[k + 2], ptCode[k + 2]);
         continue;
       }
 
+      /** @type {int32} */
       let count = 1;
-      while (i < n && cLen[i] === 0) { ++i; ++count; }
+      while (i < n && cLen[i] === 0) {
+        ++i;
+        ++count;
+      }
 
       if (count <= 2) {
-        for (let j = 0; j < count; ++j)
+        for (let j = 0; j < count; ++j) {
           writer.putBits(ptLen[0], ptCode[0]);
+        }
       } else if (count <= 18) {
         writer.putBits(ptLen[1], ptCode[1]);
         writer.putBits(4, count - 3);
@@ -501,25 +748,37 @@
     }
   }
 
+  /**
+   * @param {uint8[]} input - Data to compress
+   * @returns {uint8[]} Size header followed by the block stream
+   */
   function arjCompress(input) {
-    const result = [
-      OpCodes.And32(input.length, 0xFF),
-      OpCodes.And32(OpCodes.Shr32(input.length, 8), 0xFF),
-      OpCodes.And32(OpCodes.Shr32(input.length, 16), 0xFF),
-      OpCodes.And32(OpCodes.Shr32(input.length, 24), 0xFF)
-    ];
-    if (input.length === 0)
+    /** @type {uint8[]} */
+    const result = [];
+    result.push(OpCodes.And32(input.length, 0xFF));
+    result.push(OpCodes.And32(OpCodes.Shr32(input.length, 8), 0xFF));
+    result.push(OpCodes.And32(OpCodes.Shr32(input.length, 16), 0xFF));
+    result.push(OpCodes.And32(OpCodes.Shr32(input.length, 24), 0xFF));
+    if (input.length === 0) {
       return result;
+    }
 
     // --- token collection ---
+    /** @type {HashChainMatchFinder} */
     const matchFinder = new HashChainMatchFinder(WINDOW_SIZE, MAX_CHAIN_DEPTH);
+    /** @type {boolean[]} */
     const isLiteral = [];
+    /** @type {int32[]} */
     const values = [];
+    /** @type {int32[]} */
     const lengths = [];
+    /** @type {int32[]} */
     const distances = [];
+    /** @type {int32} */
     let pos = 0;
 
     while (pos < input.length) {
+      /** @type {MatchResult} */
       const match = matchFinder.findMatch(input, pos, WINDOW_SIZE, MAX_MATCH, THRESHOLD);
 
       if (match.length >= THRESHOLD) {
@@ -527,8 +786,9 @@
         values.push(0);
         lengths.push(match.length);
         distances.push(match.distance - 1);
-        for (let i = 1; i < match.length && pos + i < input.length; ++i)
+        for (let i = 1; i < match.length && pos + i < input.length; ++i) {
           matchFinder.insertPosition(input, pos + i);
+        }
         pos += match.length;
         continue;
       }
@@ -540,15 +800,21 @@
       ++pos;
     }
 
+    /** @type {ArjBitWriter} */
     const writer = new ArjBitWriter();
+    /** @type {int32} */
     let tokenIdx = 0;
 
     while (tokenIdx < isLiteral.length) {
+      /** @type {int32} */
       const blockEnd = Math.min(tokenIdx + BLOCK_SIZE, isLiteral.length);
+      /** @type {int32} */
       const blockCount = blockEnd - tokenIdx;
 
-      const cFreq = new Array(NC).fill(0);
-      const pFreq = new Array(NP).fill(0);
+      /** @type {int32[]} */
+      const cFreq = zeroArray(NC);
+      /** @type {int32[]} */
+      const pFreq = zeroArray(NP);
       for (let i = tokenIdx; i < blockEnd; ++i) {
         if (isLiteral[i]) {
           ++cFreq[values[i]];
@@ -556,24 +822,35 @@
         }
 
         ++cFreq[lengths[i] - THRESHOLD + 256];
-        ++pFreq[getPositionSlot(distances[i])];
+        /** @type {int32} */
+        const slot = getPositionSlot(distances[i]);
+        ++pFreq[slot];
       }
 
-      const cLen = new Array(NC).fill(0);
-      const cCode = new Array(NC).fill(0);
+      /** @type {int32[]} */
+      const cLen = zeroArray(NC);
+      /** @type {int32[]} */
+      const cCode = zeroArray(NC);
+      /** @type {int32} */
       const cRoot = makeTree(NC, cFreq, cLen, cCode);
 
-      const ptLen = new Array(NP).fill(0);
-      const ptCode = new Array(NP).fill(0);
+      /** @type {int32[]} */
+      const ptLen = zeroArray(NP);
+      /** @type {int32[]} */
+      const ptCode = zeroArray(NP);
 
       writer.putBits(16, blockCount);
 
       if (cRoot >= NC) {
-        const tFreq = new Array(NT).fill(0);
+        /** @type {int32[]} */
+        const tFreq = zeroArray(NT);
         countTFreq(cLen, NC, tFreq);
 
-        const tLen = new Array(NT).fill(0);
-        const tCode = new Array(NT).fill(0);
+        /** @type {int32[]} */
+        const tLen = zeroArray(NT);
+        /** @type {int32[]} */
+        const tCode = zeroArray(NT);
+        /** @type {int32} */
         const tRoot = makeTree(NT, tFreq, tLen, tCode);
 
         if (tRoot >= NT) {
@@ -591,6 +868,7 @@
         writer.putBits(C_BIT, cRoot);  // its single symbol
       }
 
+      /** @type {int32} */
       const pRoot = makeTree(NP, pFreq, ptLen, ptCode);
       if (pRoot >= NP) {
         writePtLen(writer, ptLen, NP, P_BIT, -1);
@@ -601,61 +879,118 @@
 
       for (let i = tokenIdx; i < blockEnd; ++i) {
         if (isLiteral[i]) {
-          writer.putBits(cLen[values[i]], cCode[values[i]]);
+          /** @type {int32} */
+          const literal = values[i];
+          writer.putBits(cLen[literal], cCode[literal]);
           continue;
         }
 
+        /** @type {int32} */
         const lengthCode = lengths[i] - THRESHOLD + 256;
         writer.putBits(cLen[lengthCode], cCode[lengthCode]);
 
+        /** @type {int32} */
         const posSlot = getPositionSlot(distances[i]);
         writer.putBits(ptLen[posSlot], ptCode[posSlot]);
-        if (posSlot > 1)
+        if (posSlot > 1) {
           writer.putBits(posSlot - 1, distances[i]);
+        }
       }
 
       tokenIdx = blockEnd;
     }
 
+    /** @type {uint8[]} */
     const body = writer.flush();
-    for (let i = 0; i < body.length; ++i)
+    for (let i = 0; i < body.length; ++i) {
       result.push(body[i]);
+    }
     return result;
   }
 
   // ===== DECODER =====
 
+  /**
+   * Decoder tables: code lengths, lookup tables and the overflow tree rows.
+   * Corrupt streams may index past the ends of these plain arrays exactly as
+   * before.
+   */
+  class ArjDecodeState {
+    constructor() {
+      /** @type {int32[]} */
+      this.cLen = zeroArray(NC);
+      /** @type {int32[]} */
+      this.ptLen = zeroArray(Math.max(NT, NP));
+      /** @type {int32[]} */
+      this.cTable = zeroArray(C_TABLE_SIZE);
+      /** @type {int32[]} */
+      this.ptTable = zeroArray(P_TABLE_SIZE);
+      /** @type {int32[]} */
+      this.left = zeroArray(2 * NC);
+      /** @type {int32[]} */
+      this.right = zeroArray(2 * NC);
+    }
+  }
+
   // Decode tables: a code no longer than `tableBits` indexes the flat table
   // directly, a longer one continues through a binary tree in left/right.
+  /**
+   * @param {ArjDecodeState} state - Holds the overflow tree rows
+   * @param {int32} nchar - Alphabet size
+   * @param {int32[]} bitLen - Code length per symbol
+   * @param {int32} tableBits - Lookup width
+   * @param {int32[]} table - Lookup table, rebuilt
+   * @param {int32} tableSize - Lookup table size
+   */
   function makeTable(state, nchar, bitLen, tableBits, table, tableSize) {
-    const count = new Array(MAX_CODE_BITS + 1).fill(0);
-    for (let i = 0; i < nchar; ++i)
-      if (bitLen[i] > 0 && bitLen[i] <= MAX_CODE_BITS) ++count[bitLen[i]];
+    /** @type {int32[]} */
+    const count = zeroArray(MAX_CODE_BITS + 1);
+    for (let i = 0; i < nchar; ++i) {
+      if (bitLen[i] > 0 && bitLen[i] <= MAX_CODE_BITS) {
+        ++count[bitLen[i]];
+      }
+    }
 
-    const start = new Array(MAX_CODE_BITS + 2).fill(0);
-    for (let i = 1; i <= MAX_CODE_BITS; ++i)
+    /** @type {int32[]} */
+    const start = zeroArray(MAX_CODE_BITS + 2);
+    for (let i = 1; i <= MAX_CODE_BITS; ++i) {
       start[i + 1] = OpCodes.Shl32(start[i] + count[i], 1);
+    }
 
-    const code = new Array(nchar).fill(0);
-    for (let i = 0; i < nchar; ++i)
-      if (bitLen[i] > 0) code[i] = start[bitLen[i]]++;
+    /** @type {int32[]} */
+    const code = zeroArray(nchar);
+    for (let i = 0; i < nchar; ++i) {
+      if (bitLen[i] > 0) {
+        code[i] = start[bitLen[i]]++;
+      }
+    }
 
-    for (let i = 0; i < tableSize; ++i) table[i] = 0;
+    for (let i = 0; i < tableSize; ++i) {
+      table[i] = 0;
+    }
 
+    /** @type {int32} */
     let avail = nchar;
 
     for (let sym = 0; sym < nchar; ++sym) {
+      /** @type {int32} */
       const len = bitLen[sym];
-      if (len === 0) continue;
-
-      if (len <= tableBits) {
-        const prefix = OpCodes.Shl32(code[sym], tableBits - len);
-        const fillCount = OpCodes.Shl32(1, tableBits - len);
-        for (let j = 0; j < fillCount; ++j)
-          table[prefix + j] = sym;
+      if (len === 0) {
         continue;
       }
 
+      if (len <= tableBits) {
+        /** @type {int32} */
+        const prefix = OpCodes.Shl32(code[sym], tableBits - len);
+        /** @type {int32} */
+        const fillCount = OpCodes.Shl32(1, tableBits - len);
+        for (let j = 0; j < fillCount; ++j) {
+          table[prefix + j] = sym;
+        }
+        continue;
+      }
+
+      /** @type {int32} */
       const prefix = OpCodes.Shr32(code[sym], len - tableBits);
       if (table[prefix] === 0) {
         state.left[avail] = 0;
@@ -663,6 +998,7 @@
         table[prefix] = avail++;
       }
 
+      /** @type {int32} */
       let node = table[prefix];
       for (let bit = len - tableBits - 1; bit > 0; --bit) {
         if (OpCodes.And32(code[sym], OpCodes.Shl32(1, bit)) !== 0) {
@@ -682,15 +1018,26 @@
         }
       }
 
-      if (OpCodes.And32(code[sym], 1) !== 0)
+      if (OpCodes.And32(code[sym], 1) !== 0) {
         state.right[node] = sym;
-      else
+      } else {
         state.left[node] = sym;
+      }
     }
   }
 
+  /**
+   * @param {ArjDecodeState} state - Overflow tree rows
+   * @param {ArjBitReader} reader - Input bits (register inspected, not consumed)
+   * @param {int32} symbol - Table entry at or above limit
+   * @param {int32} limit - Alphabet size
+   * @param {int32} tableBits - Lookup width
+   * @returns {int32} Symbol reached
+   */
   function walkOverflow(state, reader, symbol, limit, tableBits) {
+    /** @type {int32} */
     let j = symbol;
+    /** @type {uint32} */
     let mask = OpCodes.Shl32(1, 16 - tableBits - 1);
     while (j >= limit) {
       j = OpCodes.And32(reader.bitBuf, mask) !== 0 ? state.right[j] : state.left[j];
@@ -699,21 +1046,38 @@
     return j;
   }
 
+  /**
+   * @param {ArjDecodeState} state - Receives the lengths and table
+   * @param {ArjBitReader} reader - Input bits
+   * @param {int32} nn - Alphabet size
+   * @param {int32} nbit - Width of the count field
+   * @param {int32} iSpecial - Index after which the skip field follows (-1 for none)
+   */
   function readPtLen(state, reader, nn, nbit, iSpecial) {
+    /** @type {int32} */
     const n = reader.getBits(nbit);
 
     if (n === 0) {
+      /** @type {int32} */
       const c = reader.getBits(nbit);
-      for (let i = 0; i < nn; ++i) state.ptLen[i] = 0;
-      for (let i = 0; i < P_TABLE_SIZE; ++i) state.ptTable[i] = c;
+      for (let i = 0; i < nn; ++i) {
+        state.ptLen[i] = 0;
+      }
+      for (let i = 0; i < P_TABLE_SIZE; ++i) {
+        state.ptTable[i] = c;
+      }
       return;
     }
 
+    /** @type {int32} */
     const limit = Math.min(n, nn);
+    /** @type {int32} */
     let idx = 0;
     while (idx < limit) {
+      /** @type {int32} */
       let c = reader.peekTop(3);
       if (c === 7) {
+        /** @type {uint32} */
         let mask = OpCodes.Shl32(1, 12);
         while (OpCodes.And32(reader.bitBuf, mask) !== 0) {
           mask = OpCodes.Shr32(mask, 1);
@@ -723,33 +1087,53 @@
       reader.fillBuf(c < 7 ? 3 : c - 3);
       state.ptLen[idx++] = c;
 
-      if (idx !== iSpecial)
+      if (idx !== iSpecial) {
         continue;
+      }
 
+      /** @type {int32} */
       let skip = reader.getBits(2);
-      while (--skip >= 0 && idx < nn)
+      while (--skip >= 0 && idx < nn) {
         state.ptLen[idx++] = 0;
+      }
     }
 
-    while (idx < nn) state.ptLen[idx++] = 0;
+    while (idx < nn) {
+      state.ptLen[idx++] = 0;
+    }
     makeTable(state, nn, state.ptLen, P_TABLE_BITS, state.ptTable, P_TABLE_SIZE);
   }
 
+  /**
+   * @param {ArjDecodeState} state - Receives the literal/length lengths and table
+   * @param {ArjBitReader} reader - Input bits
+   */
   function readCLen(state, reader) {
+    /** @type {int32} */
     const n = reader.getBits(C_BIT);
 
     if (n === 0) {
+      /** @type {int32} */
       const c = reader.getBits(C_BIT);
-      for (let i = 0; i < NC; ++i) state.cLen[i] = 0;
-      for (let i = 0; i < C_TABLE_SIZE; ++i) state.cTable[i] = c;
+      for (let i = 0; i < NC; ++i) {
+        state.cLen[i] = 0;
+      }
+      for (let i = 0; i < C_TABLE_SIZE; ++i) {
+        state.cTable[i] = c;
+      }
       return;
     }
 
+    /** @type {int32} */
     let idx = 0;
     while (idx < n) {
-      let c = state.ptTable[reader.peekTop(P_TABLE_BITS)];
-      if (c >= NT)
+      /** @type {uint32} */
+      const peek = reader.peekTop(P_TABLE_BITS);
+      /** @type {int32} */
+      let c = state.ptTable[peek];
+      if (c >= NT) {
         c = walkOverflow(state, reader, c, NT, P_TABLE_BITS);
+      }
       reader.fillBuf(state.ptLen[c]);
 
       if (c > 2) {
@@ -757,46 +1141,70 @@
         continue;
       }
 
-      let runLen;
-      if (c === 0) runLen = 1;
-      else if (c === 1) runLen = reader.getBits(4) + 3;
-      else runLen = reader.getBits(C_BIT) + 20;
+      /** @type {int32} */
+      let runLen = 0;
+      if (c === 0) {
+        runLen = 1;
+      } else if (c === 1) {
+        /** @type {int32} */
+        const field = reader.getBits(4);
+        runLen = field + 3;
+      } else {
+        /** @type {int32} */
+        const field = reader.getBits(C_BIT);
+        runLen = field + 20;
+      }
 
-      while (--runLen >= 0 && idx < NC)
+      while (--runLen >= 0 && idx < NC) {
         state.cLen[idx++] = 0;
+      }
     }
 
-    while (idx < NC) state.cLen[idx++] = 0;
+    while (idx < NC) {
+      state.cLen[idx++] = 0;
+    }
     makeTable(state, NC, state.cLen, C_TABLE_BITS, state.cTable, C_TABLE_SIZE);
   }
 
+  /**
+   * @param {uint8[]} input - Size header followed by the block stream
+   * @returns {uint8[]} Decompressed bytes
+   */
   function arjDecompress(input) {
-    if (input.length < 4)
-      return [];
+    if (input.length < 4) {
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
+    }
 
+    /** @type {uint32} */
     const originalSize = OpCodes.Or32(
       OpCodes.Or32(input[0], OpCodes.Shl32(input[1], 8)),
       OpCodes.Or32(OpCodes.Shl32(input[2], 16), OpCodes.Shl32(input[3], 24))
     );
-    if (originalSize === 0)
-      return [];
+    if (originalSize === 0) {
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
+    }
 
+    /** @type {ArjBitReader} */
     const reader = new ArjBitReader(input, 4);
-    const state = {
-      cLen: new Array(NC).fill(0),
-      ptLen: new Array(Math.max(NT, NP)).fill(0),
-      cTable: new Array(C_TABLE_SIZE).fill(0),
-      ptTable: new Array(P_TABLE_SIZE).fill(0),
-      left: new Array(2 * NC).fill(0),
-      right: new Array(2 * NC).fill(0)
-    };
+    /** @type {ArjDecodeState} */
+    const state = new ArjDecodeState();
 
-    const output = new Array(originalSize).fill(0);
+    /** @type {uint8[]} */
+    const output = new Array(originalSize);
+    output.fill(0);
     // The classic LZSS window starts filled with spaces, so a reference reaching
     // back before the first byte reads as blanks rather than as leftover memory.
+    /** @type {uint8[]} */
     const window = new Uint8Array(WINDOW_SIZE).fill(0x20);
+    /** @type {int32} */
     let windowPos = 0;
+    /** @type {float64} */
     let outPos = 0;
+    /** @type {int32} */
     let blockSize = 0;
 
     while (outPos < originalSize) {
@@ -808,9 +1216,13 @@
       }
       --blockSize;
 
-      let c = state.cTable[reader.peekTop(C_TABLE_BITS)];
-      if (c >= NC)
+      /** @type {uint32} */
+      const cPeek = reader.peekTop(C_TABLE_BITS);
+      /** @type {int32} */
+      let c = state.cTable[cPeek];
+      if (c >= NC) {
         c = walkOverflow(state, reader, c, NC, C_TABLE_BITS);
+      }
       reader.fillBuf(state.cLen[c]);
 
       if (c < 256) {
@@ -820,17 +1232,29 @@
         continue;
       }
 
+      /** @type {int32} */
       const length = c - 256 + THRESHOLD;
 
-      let p = state.ptTable[reader.peekTop(P_TABLE_BITS)];
-      if (p >= NP)
+      /** @type {uint32} */
+      const pPeek = reader.peekTop(P_TABLE_BITS);
+      /** @type {int32} */
+      let p = state.ptTable[pPeek];
+      if (p >= NP) {
         p = walkOverflow(state, reader, p, NP, P_TABLE_BITS);
+      }
       reader.fillBuf(state.ptLen[p]);
-      if (p !== 0)
-        p = OpCodes.Shl32(1, p - 1) + reader.getBits(p - 1);
+      if (p !== 0) {
+        /** @type {int32} */
+        const base = OpCodes.Shl32(1, p - 1);
+        /** @type {int32} */
+        const extra = reader.getBits(p - 1);
+        p = base + extra;
+      }
 
+      /** @type {int32} */
       let srcPos = ((windowPos - p - 1) % WINDOW_SIZE + WINDOW_SIZE) % WINDOW_SIZE;
       for (let j = 0; j < length && outPos < originalSize; ++j) {
+        /** @type {uint8} */
         const b = window[srcPos];
         output[outPos++] = b;
         window[windowPos] = b;
@@ -910,22 +1334,41 @@
   }
 
   class ArjInstance extends IAlgorithmInstance {
+    /**
+     * @param {ArjCompression} algorithm - Owning algorithm
+     * @param {boolean} isInverse - True for decompression
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
+    /**
+     * @param {uint8[]} data - Bytes to append
+     */
     Feed(data) {
-      if (!data || data.length === 0) return;
-      for (let i = 0; i < data.length; ++i)
+      if (!data || data.length === 0) {
+        return;
+      }
+      for (let i = 0; i < data.length; ++i) {
         this.inputBuffer.push(data[i]);
+      }
     }
 
+    /**
+     * @returns {uint8[]} Compressed or decompressed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
       this.inputBuffer = [];
-      return this.isInverse ? arjDecompress(data) : arjCompress(data);
+      if (this.isInverse) {
+        return arjDecompress(data);
+      }
+      return arjCompress(data);
     }
   }
 

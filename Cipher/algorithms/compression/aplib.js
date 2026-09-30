@@ -89,42 +89,66 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
+  /** @type {int32} */
   const MIN_NORMAL_MATCH = 2;
+  /** @type {int32} */
   const MAX_CHAIN = 64;
+  /** @type {int32} */
   const MAX_MATCH = 0x10000;
+  /** @type {int32} */
   const HASH_SIZE = 0x10000;
 
   // ===== BIT/BYTE STREAM HELPERS (interleaved tag stream, MSB first) =====
 
   class AplibWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.out = [];
+      /** @type {int32} */
       this.tagPos = -1;
+      /** @type {int32} */
       this.bitsInTag = 0;
     }
 
+    /**
+     * @param {int32} bit - Bit (any non-zero value is a 1)
+     */
     putBit(bit) {
       if (this.bitsInTag === 0) {
         this.tagPos = this.out.length;
         this.out.push(0);
       }
-      if (bit) {
+      if (bit !== 0) {
+        /** @type {uint8} */
         const mask = OpCodes.Shl8(1, 7 - this.bitsInTag);
         this.out[this.tagPos] = OpCodes.Or8(this.out[this.tagPos], mask);
       }
       this.bitsInTag = (this.bitsInTag + 1) % 8;
     }
 
+    /**
+     * @param {uint8} value - Byte appended at the current position
+     */
     putByte(value) {
       this.out.push(OpCodes.And8(value, 0xFF));
     }
 
+    /**
+     * @param {int32} value - Value, at least 2
+     */
     putGamma(value) {
-      if (value < 2) throw new Error('aPLib gamma coding requires a value of at least 2.');
+      if (value < 2) {
+        throw new Error('aPLib gamma coding requires a value of at least 2.');
+      }
 
+      /** @type {int32} */
       let msb = 0;
+      /** @type {int32} */
       let v = value;
-      while (v > 1) { msb++; v = Math.floor(v / 2); }
+      while (v > 1) {
+        msb++;
+        v = Math.floor(v / 2);
+      }
 
       for (let i = msb - 1; i >= 0; --i) {
         this.putBit(OpCodes.And32(OpCodes.Shr32(value, i), 1));
@@ -132,47 +156,83 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} Copy of the stream
+     */
     toArray() {
       return this.out.slice();
     }
   }
 
   class AplibReader {
+    /**
+     * @param {uint8[]} data - Stream
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.tag = 0;
+      /** @type {int32} */
       this.bitsLeft = 0;
     }
 
+    /**
+     * @returns {uint8} Next byte
+     */
     readByte() {
-      if (this.pos >= this.data.length) throw new Error('aPLib: unexpected end of stream.');
+      if (this.pos >= this.data.length) {
+        throw new Error('aPLib: unexpected end of stream.');
+      }
       return this.data[this.pos++];
     }
 
+    /**
+     * @returns {uint32} Next tag bit
+     */
     readBit() {
       if (this.bitsLeft === 0) {
         this.tag = this.readByte();
         this.bitsLeft = 8;
       }
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.tag, 7), 1);
       this.tag = OpCodes.And32(OpCodes.Shl32(this.tag, 1), 0xFF);
       this.bitsLeft--;
       return bit;
     }
 
+    /**
+     * Interlaced gamma value; a corrupt stream can make it arbitrarily
+     * large, so it is accumulated as an exact float64
+     * @returns {float64} Value, at least 2
+     */
     readGamma() {
+      /** @type {float64} */
       let result = 1;
+      /** @type {uint32} */
+      let more = 0;
       do {
-        result = result * 2 + this.readBit();
-      } while (this.readBit() === 1);
+        /** @type {uint32} */
+        const bit = this.readBit();
+        result = result * 2 + bit;
+        more = this.readBit();
+      } while (more === 1);
       return result;
     }
   }
 
   // ===== HASH-CHAIN MATCH FINDER =====
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position of the three hashed bytes
+   * @returns {uint32} Bucket
+   */
   function hash3(data, pos) {
+    /** @type {uint32} */
     const h = OpCodes.Xor32(
       OpCodes.Xor32(OpCodes.Shl32(data[pos], 8), OpCodes.Shl32(data[pos + 1], 4)),
       data[pos + 2]
@@ -180,53 +240,125 @@
     return OpCodes.And32(h, 0xFFFF);
   }
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position to insert
+   * @param {int32[]} head - Chain heads
+   * @param {int32[]} prev - Chain links
+   */
   function insertPos(data, pos, head, prev) {
-    if (pos + 2 >= data.length) return;
+    if (pos + 2 >= data.length) {
+      return;
+    }
+    /** @type {uint32} */
     const h = hash3(data, pos);
     prev[pos] = head[h];
     head[h] = pos;
   }
 
-  function findMatch(data, pos, head, prev) {
-    let bestOff = 0;
-    let bestLen = 0;
-    if (pos + 2 >= data.length) return { bestOff, bestLen };
+  /**
+   * Longest match found at a position
+   */
+  class AplibMatch {
+    /**
+     * @param {int32} bestOff - Distance back to the match source
+     * @param {int32} bestLen - Match length (0 when none)
+     */
+    constructor(bestOff, bestLen) {
+      /** @type {int32} */
+      this.bestOff = bestOff;
+      /** @type {int32} */
+      this.bestLen = bestLen;
+    }
+  }
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position to match
+   * @param {int32[]} head - Chain heads
+   * @param {int32[]} prev - Chain links
+   * @returns {AplibMatch} Longest match
+   */
+  function findMatch(data, pos, head, prev) {
+    /** @type {int32} */
+    let bestOff = 0;
+    /** @type {int32} */
+    let bestLen = 0;
+    if (pos + 2 >= data.length) {
+      return new AplibMatch(bestOff, bestLen);
+    }
+
+    /** @type {int32} */
     let idx = head[hash3(data, pos)];
+    /** @type {int32} */
     let chain = 0;
+    /** @type {int32} */
     const maxLen = Math.min(data.length - pos, MAX_MATCH);
 
     while (idx >= 0 && chain < MAX_CHAIN) {
+      /** @type {int32} */
       const off = pos - idx;
       if (data[idx] === data[pos] && data[idx + bestLen] === data[pos + bestLen]) {
+        /** @type {int32} */
         let len = 0;
-        while (len < maxLen && data[idx + len] === data[pos + len]) ++len;
+        while (len < maxLen && data[idx + len] === data[pos + len]) {
+          ++len;
+        }
         if (len > bestLen) {
           bestLen = len;
           bestOff = off;
-          if (len >= maxLen) break;
+          if (len >= maxLen) {
+            break;
+          }
         }
       }
       idx = prev[idx];
       chain++;
     }
 
-    return { bestOff, bestLen };
+    return new AplibMatch(bestOff, bestLen);
   }
 
   // aPLib's normal-match length carries decode-time bumps depending on the
   // offset magnitude; the encoded gamma length must be the actual length
-  // minus those bumps and stay at least 2 (the gamma minimum). Returns null
+  // minus those bumps and stay at least 2 (the gamma minimum). Returns -1
   // when a match is too short to encode at the given offset.
+  /**
+   * @param {int32} offset - Match distance
+   * @param {int32} length - Match length
+   * @returns {int32} Gamma length to write, or -1
+   */
   function tryEncodableLength(offset, length) {
-    const adjust = (offset >= 32000 ? 1 : 0) + (offset >= 1280 ? 1 : 0) + (offset < 128 ? 2 : 0);
+    /** @type {int32} */
+    let adjust = 0;
+    if (offset >= 32000) {
+      adjust += 1;
+    }
+    if (offset >= 1280) {
+      adjust += 1;
+    }
+    if (offset < 128) {
+      adjust += 2;
+    }
+    /** @type {int32} */
     const encodedLen = length - adjust;
     return encodedLen >= 2 ? encodedLen : -1;
   }
 
+  /**
+   * @param {uint8[]} output - Decoded bytes (fixed size)
+   * @param {int32} op - Write position
+   * @param {float64} offs - Match distance
+   * @param {float64} len - Match length
+   * @returns {int32} New write position
+   */
   function copyMatch(output, op, offs, len) {
-    if (offs <= 0 || offs > op) throw new Error('aPLib: match offset points before start of output.');
+    if (offs <= 0 || offs > op) {
+      throw new Error('aPLib: match offset points before start of output.');
+    }
+    /** @type {int32} */
     const src = op - offs;
+    /** @type {int32} */
     let o = op;
     for (let i = 0; i < len && o < output.length; ++i) {
       output[o] = output[src + i];
@@ -237,34 +369,62 @@
 
   // ===== BARE STREAM CODEC =====
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} Bare aPLib stream
+   */
   function compressBare(data) {
+    /** @type {AplibWriter} */
     const writer = new AplibWriter();
-    if (data.length === 0) return writer.toArray();
+    if (data.length === 0) {
+      /** @type {uint8[]} */
+      const nothing = writer.toArray();
+      return nothing;
+    }
 
     // First byte verbatim, matching the depacker's pre-loop copy.
     writer.putByte(data[0]);
 
-    const head = new Array(HASH_SIZE).fill(-1);
-    const prev = new Array(data.length);
+    /** @type {int32[]} */
+    const head = new Int32Array(HASH_SIZE).fill(-1);
+    /** @type {int32[]} */
+    const prev = new Int32Array(data.length);
     insertPos(data, 0, head, prev);
 
+    /** @type {int32} */
     let lwm = 0;
+    /** @type {int32} */
     let pos = 1;
     while (pos < data.length) {
-      const { bestOff, bestLen } = findMatch(data, pos, head, prev);
-      const encodedLen = bestLen >= MIN_NORMAL_MATCH ? tryEncodableLength(bestOff, bestLen) : -1;
+      /** @type {AplibMatch} */
+      const found = findMatch(data, pos, head, prev);
+      /** @type {int32} */
+      const bestOff = found.bestOff;
+      /** @type {int32} */
+      const bestLen = found.bestLen;
+      /** @type {int32} */
+      let encodedLen = -1;
+      if (bestLen >= MIN_NORMAL_MATCH) {
+        encodedLen = tryEncodableLength(bestOff, bestLen);
+      }
 
       if (encodedLen >= 2) {
         writer.putBit(1);
         writer.putBit(0);
-        const gammaOff = OpCodes.Shr32(bestOff, 8) + (lwm === 0 ? 3 : 2);
+        /** @type {int32} */
+        const high = OpCodes.Shr32(bestOff, 8);
+        /** @type {int32} */
+        const gammaOff = high + (lwm === 0 ? 3 : 2);
         writer.putGamma(gammaOff);
         writer.putByte(OpCodes.And32(bestOff, 0xFF));
         writer.putGamma(encodedLen);
         lwm = 1;
 
+        /** @type {int32} */
         const end = pos + bestLen;
-        for (let j = pos; j < end && j < data.length; ++j) insertPos(data, j, head, prev);
+        for (let j = pos; j < end && j < data.length; ++j) {
+          insertPos(data, j, head, prev);
+        }
         pos = end;
       } else {
         writer.putBit(0);
@@ -281,44 +441,80 @@
     writer.putBit(0);
     writer.putByte(0);
 
-    return writer.toArray();
+    /** @type {uint8[]} */
+    const stream = writer.toArray();
+    return stream;
   }
 
+  /**
+   * @param {uint8[]} compressed - Bare aPLib stream
+   * @param {uint32} maxOutputSize - Decompressed size
+   * @returns {uint8[]} Decoded bytes
+   */
   function decompressRaw(compressed, maxOutputSize) {
-    if (maxOutputSize < 0) throw new Error('aPLib: negative decompressed size.');
-    if (compressed.length === 0 || maxOutputSize === 0) return [];
+    if (maxOutputSize < 0) {
+      throw new Error('aPLib: negative decompressed size.');
+    }
+    if (compressed.length === 0 || maxOutputSize === 0) {
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
+    }
 
+    /** @type {uint8[]} */
     const output = new Array(maxOutputSize);
+    /** @type {AplibReader} */
     const reader = new AplibReader(compressed);
 
     // aPLib copies the first byte verbatim before the token loop starts.
+    /** @type {int32} */
     let op = 0;
-    output[op++] = reader.readByte();
+    /** @type {uint8} */
+    const firstByte = reader.readByte();
+    output[op++] = firstByte;
+    /** @type {int32} */
     let lwm = 0;
+    /** @type {float64} */
     let r0 = 0;
 
     while (op < output.length) {
-      if (reader.readBit() === 0) {
+      /** @type {uint32} */
+      const first = reader.readBit();
+      if (first === 0) {
         // Literal.
-        output[op++] = reader.readByte();
+        /** @type {uint8} */
+        const literal = reader.readByte();
+        output[op++] = literal;
         lwm = 0;
         continue;
       }
 
-      if (reader.readBit() === 0) {
+      /** @type {uint32} */
+      const second = reader.readBit();
+      if (second === 0) {
         // "10" - normal match.
+        /** @type {float64} */
         let offs = reader.readGamma();
-        let len;
+        /** @type {float64} */
+        let len = 0;
         if (lwm === 0 && offs === 2) {
           offs = r0;
           len = reader.readGamma();
         } else {
           offs -= lwm === 0 ? 3 : 2;
-          offs = offs * 256 + reader.readByte();
+          /** @type {uint8} */
+          const low = reader.readByte();
+          offs = offs * 256 + low;
           len = reader.readGamma();
-          if (offs >= 32000) len++;
-          if (offs >= 1280) len++;
-          if (offs < 128) len += 2;
+          if (offs >= 32000) {
+            len++;
+          }
+          if (offs >= 1280) {
+            len++;
+          }
+          if (offs < 128) {
+            len += 2;
+          }
           r0 = offs;
         }
         op = copyMatch(output, op, offs, len);
@@ -326,12 +522,19 @@
         continue;
       }
 
-      if (reader.readBit() === 0) {
+      /** @type {uint32} */
+      const third = reader.readBit();
+      if (third === 0) {
         // "110" - short match, or end-of-stream when offset is zero.
+        /** @type {uint8} */
         const b = reader.readByte();
-        if (b === 0) break;
+        if (b === 0) {
+          break;
+        }
 
+        /** @type {int32} */
         const len = 2 + OpCodes.And32(b, 1);
+        /** @type {int32} */
         const offs = OpCodes.Shr32(b, 1);
         op = copyMatch(output, op, offs, len);
         r0 = offs;
@@ -340,20 +543,31 @@
       }
 
       // "111" - 4-bit offset single byte, or literal zero.
+      /** @type {int32} */
       let shortOffs = 0;
-      for (let i = 0; i < 4; ++i) shortOffs = shortOffs * 2 + reader.readBit();
+      for (let i = 0; i < 4; ++i) {
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        shortOffs = shortOffs * 2 + bit;
+      }
       if (shortOffs === 0) {
         output[op++] = 0;
       } else {
-        if (shortOffs > op) throw new Error('aPLib: single-byte back-reference before start of output.');
+        if (shortOffs > op) {
+          throw new Error('aPLib: single-byte back-reference before start of output.');
+        }
         output[op] = output[op - shortOffs];
         op++;
       }
       lwm = 0;
     }
 
-    return op === output.length ? output : output.slice(0, op);
+    if (op === output.length) {
+      return output;
+    }
+    return output.slice(0, op);
   }
+
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -415,39 +629,86 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {APLibInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new APLibInstance(this, isInverse);
     }
   }
 
   class APLibInstance extends IAlgorithmInstance {
+    /**
+     * @param {APLibCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(this.inputBuffer);
+      } else {
+        result = this._compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Size header and aPLib stream
+     */
     _compress(input) {
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(input.length);
-      if (input.length === 0) return header;
+      if (input.length === 0) {
+        return header;
+      }
+      /** @type {uint8[]} */
       const body = compressBare(input);
-      return header.concat(body);
+      for (let i = 0; i < body.length; i++) {
+        header.push(body[i]);
+      }
+      return header;
     }
 
+    /**
+     * @param {uint8[]} input - Size header and aPLib stream
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(input) {
-      if (input.length < 4) throw new Error('aPLib: input smaller than 4-byte header.');
+      if (input.length < 4) {
+        throw new Error('aPLib: input smaller than 4-byte header.');
+      }
+      /** @type {uint32} */
       const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
-      if (targetSize === 0) return [];
-      return decompressRaw(input.slice(4), targetSize);
+      if (targetSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      /** @type {uint8[]} */
+      const decoded = decompressRaw(input.slice(4), targetSize);
+      return decoded;
     }
   }
+
 
   // ===== REGISTRATION =====
 

@@ -61,32 +61,58 @@
   // between the input byte and the input byte `distance` positions earlier.
   // The first `distance` bytes are copied unchanged. Matches
   // CompressionWorkbench's DeltaFilter.Encode(data, distance) exactly.
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @param {int32} distance - Delta distance
+   * @returns {uint8[]} Delta-filtered bytes
+   */
   function deltaFilterEncode(data, distance) {
+    /** @type {int32} */
     const n = data.length;
-    if (n === 0) return [];
-
+    /** @type {uint8[]} */
     const result = new Array(n);
-    const copyLen = Math.min(distance, n);
-    for (let i = 0; i < copyLen; i++) result[i] = OpCodes.ToByte(data[i]);
+    if (n === 0) {
+      return result;
+    }
 
-    for (let i = distance; i < n; i++)
+    /** @type {int32} */
+    const copyLen = Math.min(distance, n);
+    for (let i = 0; i < copyLen; i++) {
+      result[i] = OpCodes.ToByte(data[i]);
+    }
+
+    for (let i = distance; i < n; i++) {
       result[i] = OpCodes.ToByte(data[i] - data[i - distance]);
+    }
 
     return result;
   }
 
   // Decodes delta-filtered data back to the original. Matches
   // CompressionWorkbench's DeltaFilter.Decode(data, distance) exactly.
+  /**
+   * @param {uint8[]} data - Delta-filtered bytes
+   * @param {int32} distance - Delta distance
+   * @returns {uint8[]} Restored bytes
+   */
   function deltaFilterDecode(data, distance) {
+    /** @type {int32} */
     const n = data.length;
-    if (n === 0) return [];
-
+    /** @type {uint8[]} */
     const result = new Array(n);
-    const copyLen = Math.min(distance, n);
-    for (let i = 0; i < copyLen; i++) result[i] = OpCodes.ToByte(data[i]);
+    if (n === 0) {
+      return result;
+    }
 
-    for (let i = distance; i < n; i++)
+    /** @type {int32} */
+    const copyLen = Math.min(distance, n);
+    for (let i = 0; i < copyLen; i++) {
+      result[i] = OpCodes.ToByte(data[i]);
+    }
+
+    for (let i = distance; i < n; i++) {
       result[i] = OpCodes.ToByte(data[i] + result[i - distance]);
+    }
 
     return result;
   }
@@ -157,27 +183,47 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       * @returns {DeltaFilterInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new DeltaFilterInstance(this, isInverse);
       }
     }
 
     class DeltaFilterInstance extends IAlgorithmInstance {
+      /**
+       * @param {DeltaFilterCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {int32} */
         this.distance = 1;
       }
 
 
+      /**
+       * Transform the collected input
+       * @returns {uint8[]} Transformed bytes
+       */
       Result() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
-        return this.isInverse
-          ? deltaFilterDecode(data, this.distance)
-          : deltaFilterEncode(data, this.distance);
+        if (this.isInverse) {
+          return deltaFilterDecode(data, this.distance);
+        }
+        return deltaFilterEncode(data, this.distance);
       }
     }
 
