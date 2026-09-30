@@ -63,14 +63,23 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const LITERAL_EXTENDED = 15;
+  /** @type {int32} */
   const MATCH_EXTENDED = 14;
+  /** @type {int32} */
   const MATCH_NONE = 15;
+  /** @type {int32} */
   const MAX_DIRECT_LITERAL = 14;
+  /** @type {int32} */
   const MAX_DIRECT_MATCH = 13;
+  /** @type {int32} */
   const DISTANCE_TIER1_MAX = 128;
+  /** @type {int32} */
   const DISTANCE_TIER2_MAX = 32640;
+  /** @type {int32} */
   const DISTANCE_TIER3_MARKER = 0xFF;
 
   // ===== HASH CHAIN MATCH FINDER =====
@@ -81,19 +90,54 @@
   // onto the same slot when the window size is not a power of two. That
   // aliasing is part of the reference behavior and is reproduced faithfully.
 
+  /** @type {int32} */
   const HASH_BITS = 15;
+  /** @type {int32} */
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  /** @type {int32} */
   const HASH_MASK = HASH_SIZE - 1;
 
+  /**
+   * Match found by the hash-chain search
+   */
+  class LzvnMatch {
+    /**
+     * @param {int32} distance - Distance back to the match source (0 when none)
+     * @param {int32} length - Match length (0 when none)
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
   class HashChainMatchFinder {
-    constructor(windowSize, maxChainDepth) {
-      this.maxChainDepth = maxChainDepth || 128;
-      this.head = new Array(HASH_SIZE).fill(-1);
-      this.prevMask = (windowSize > 0 ? windowSize : 1) - 1;
-      this.prev = new Array(windowSize > 0 ? windowSize : 1).fill(0);
+    /**
+     * @param {int32} windowSize - Chain ring size
+     * @param {int32} [maxChainDepth=128] - Maximum chain nodes visited per search (0 means 128)
+     */
+    constructor(windowSize, maxChainDepth = 128) {
+      /** @type {int32} */
+      this.maxChainDepth = maxChainDepth === 0 ? 128 : maxChainDepth;
+      /** @type {int32[]} */
+      this.head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32} */
+      const size = windowSize > 0 ? windowSize : 1;
+      /** @type {int32} */
+      this.prevMask = size - 1;
+      /** @type {int32[]} */
+      this.prev = new Int32Array(size);
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} position - Position of the three hashed bytes
+     * @returns {uint32} Bucket
+     */
     _computeHash(data, position) {
+      /** @type {uint32} */
       const h = OpCodes.Xor32(
         OpCodes.Xor32(OpCodes.Shl32(data[position], 10), OpCodes.Shl32(data[position + 1], 5)),
         data[position + 2]
@@ -101,15 +145,32 @@
       return OpCodes.And32(h, HASH_MASK);
     }
 
+    /**
+     * Find the longest match at position and insert the position
+     * @param {uint8[]} data - Bytes
+     * @param {int32} position - Position to match
+     * @param {int32} maxDistance - Largest allowed distance
+     * @param {int32} maxLength - Largest match length
+     * @param {int32} minLength - Smallest useful match length
+     * @returns {LzvnMatch} Best match, or distance 0 and length 0
+     */
     findMatch(data, position, maxDistance, maxLength, minLength) {
-      if (position + 2 >= data.length) return { distance: 0, length: 0 };
+      if (position + 2 >= data.length) {
+        return new LzvnMatch(0, 0);
+      }
 
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let bestLength = 0;
 
+      /** @type {uint32} */
       const hash = this._computeHash(data, position);
+      /** @type {int32} */
       let candidate = this.head[hash];
+      /** @type {int32} */
       let chainCount = 0;
+      /** @type {int32} */
       const windowStart = Math.max(0, position - maxDistance);
 
       while (candidate >= windowStart && chainCount < this.maxChainDepth) {
@@ -119,30 +180,49 @@
           continue;
         }
 
+        /** @type {int32} */
         const distance = position - candidate;
+        /** @type {int32} */
         const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
+        /** @type {int32} */
         let length = 0;
-        while (length < limit && data[candidate + length] === data[position + length]) length++;
+        while (length < limit && data[candidate + length] === data[position + length]) {
+          length++;
+        }
 
         if (length >= minLength && length > bestLength) {
           bestLength = length;
           bestDistance = distance;
-          if (bestLength >= maxLength) break;
+          if (bestLength >= maxLength) {
+            break;
+          }
         }
 
         candidate = this.prev[OpCodes.And32(candidate, this.prevMask)];
-        if (candidate <= windowStart) break;
+        if (candidate <= windowStart) {
+          break;
+        }
         chainCount++;
       }
 
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
 
-      return bestLength >= minLength ? { distance: bestDistance, length: bestLength } : { distance: 0, length: 0 };
+      if (bestLength >= minLength) {
+        return new LzvnMatch(bestDistance, bestLength);
+      }
+      return new LzvnMatch(0, 0);
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} position - Position to insert
+     */
     insertPosition(data, position) {
-      if (position + 2 >= data.length) return;
+      if (position + 2 >= data.length) {
+        return;
+      }
+      /** @type {uint32} */
       const hash = this._computeHash(data, position);
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
@@ -151,25 +231,57 @@
 
   // ===== LZVN CODEC =====
 
+  /**
+   * @param {uint8[]} output - Token stream
+   * @param {int32} remainder - Length beyond the token field
+   */
   function writeExtended(output, remainder) {
-    while (remainder >= 255) {
+    /** @type {int32} */
+    let rest = remainder;
+    while (rest >= 255) {
       output.push(255);
-      remainder -= 255;
+      rest -= 255;
     }
-    output.push(remainder);
+    output.push(rest);
   }
 
-  function readExtended(data, posRef) {
-    let sum = 0;
-    let b;
-    do {
-      if (posRef.pos >= data.length) throw new Error('LZVN extended length truncated');
-      b = data[posRef.pos++];
-      sum += b;
-    } while (b === 255);
-    return sum;
+  /**
+   * Read position in a token stream being decoded
+   */
+  class LzvnReader {
+    /**
+     * @param {uint8[]} data - Token stream
+     */
+    constructor(data) {
+      /** @type {uint8[]} */
+      this.data = data;
+      /** @type {int32} */
+      this.pos = 0;
+    }
+
+    /**
+     * @returns {int32} Sum of a 255-continued length extension
+     */
+    readExtended() {
+      /** @type {int32} */
+      let sum = 0;
+      /** @type {uint8} */
+      let b = 0;
+      do {
+        if (this.pos >= this.data.length) {
+          throw new Error('LZVN extended length truncated');
+        }
+        b = this.data[this.pos++];
+        sum += b;
+      } while (b === 255);
+      return sum;
+    }
   }
 
+  /**
+   * @param {uint8[]} output - Token stream
+   * @param {int32} distance - Match distance
+   */
   function writeDistance(output, distance) {
     if (distance <= DISTANCE_TIER1_MAX) {
       output.push(distance - 1);
@@ -177,8 +289,11 @@
     }
 
     if (distance <= DISTANCE_TIER2_MAX) {
+      /** @type {int32} */
       const rem = distance - (DISTANCE_TIER1_MAX + 1);
+      /** @type {int32} */
       const hi = OpCodes.Shr32(rem, 8);
+      /** @type {uint32} */
       const lo = OpCodes.And32(rem, 0xFF);
       output.push(0x80 + hi);
       output.push(lo);
@@ -192,67 +307,127 @@
     output.push(OpCodes.ToByte(OpCodes.Shr32(distance, 24)));
   }
 
-  function readDistance(data, posRef) {
-    if (posRef.pos >= data.length) throw new Error('LZVN distance truncated');
-    const b0 = data[posRef.pos++];
-    if (b0 < 0x80) return b0 + 1;
-
-    if (b0 !== DISTANCE_TIER3_MARKER) {
-      if (posRef.pos >= data.length) throw new Error('LZVN distance truncated');
-      const b1 = data[posRef.pos++];
-      const hi = b0 - 0x80;
-      return DISTANCE_TIER1_MAX + 1 + OpCodes.Or32(OpCodes.Shl32(hi, 8), b1);
+  /**
+   * @param {LzvnReader} reader - Token stream reader
+   * @returns {uint32} Match distance
+   */
+  function readDistance(reader) {
+    /** @type {uint8[]} */
+    const data = reader.data;
+    if (reader.pos >= data.length) {
+      throw new Error('LZVN distance truncated');
+    }
+    /** @type {int32} */
+    const b0 = data[reader.pos++];
+    if (b0 < 0x80) {
+      return b0 + 1;
     }
 
-    if (posRef.pos + 4 > data.length) throw new Error('LZVN distance truncated');
-    const distance = OpCodes.Pack32LE(data[posRef.pos], data[posRef.pos + 1], data[posRef.pos + 2], data[posRef.pos + 3]);
-    posRef.pos += 4;
+    if (b0 !== DISTANCE_TIER3_MARKER) {
+      if (reader.pos >= data.length) {
+        throw new Error('LZVN distance truncated');
+      }
+      /** @type {uint8} */
+      const b1 = data[reader.pos++];
+      /** @type {int32} */
+      const hi = b0 - 0x80;
+      /** @type {int32} */
+      const rest = OpCodes.Or32(OpCodes.Shl32(hi, 8), b1);
+      return DISTANCE_TIER1_MAX + 1 + rest;
+    }
+
+    if (reader.pos + 4 > data.length) {
+      throw new Error('LZVN distance truncated');
+    }
+    /** @type {uint32} */
+    const distance = OpCodes.Pack32LE(data[reader.pos], data[reader.pos + 1], data[reader.pos + 2], data[reader.pos + 3]);
+    reader.pos += 4;
     return distance;
   }
 
+  /**
+   * @param {uint8[]} output - Token stream
+   * @param {uint8[]} data - Source bytes
+   * @param {int32} literalStart - First literal
+   * @param {int32} literalCount - Number of literals
+   * @param {int32} matchLength - Match length
+   * @param {int32} distance - Match distance
+   */
   function emitToken(output, data, literalStart, literalCount, matchLength, distance) {
+    /** @type {int32} */
     const literalField = literalCount < MAX_DIRECT_LITERAL + 1 ? literalCount : LITERAL_EXTENDED;
+    /** @type {int32} */
     const matchField = matchLength - MIN_MATCH;
+    /** @type {int32} */
     const matchNibble = matchField <= MAX_DIRECT_MATCH ? matchField : MATCH_EXTENDED;
 
     output.push(OpCodes.Or32(OpCodes.Shl32(literalField, 4), matchNibble));
 
-    if (literalField === LITERAL_EXTENDED) writeExtended(output, literalCount - (MAX_DIRECT_LITERAL + 1));
+    if (literalField === LITERAL_EXTENDED) {
+      writeExtended(output, literalCount - (MAX_DIRECT_LITERAL + 1));
+    }
 
-    for (let i = 0; i < literalCount; ++i) output.push(data[literalStart + i]);
+    for (let i = 0; i < literalCount; ++i) {
+      output.push(data[literalStart + i]);
+    }
 
-    if (matchNibble === MATCH_EXTENDED) writeExtended(output, matchField - MATCH_EXTENDED);
+    if (matchNibble === MATCH_EXTENDED) {
+      writeExtended(output, matchField - MATCH_EXTENDED);
+    }
 
     writeDistance(output, distance);
   }
 
+  /**
+   * @param {uint8[]} output - Token stream
+   * @param {uint8[]} data - Source bytes
+   * @param {int32} literalStart - First literal
+   * @param {int32} literalCount - Number of literals
+   */
   function emitFinalLiteralToken(output, data, literalStart, literalCount) {
+    /** @type {int32} */
     const literalField = literalCount < MAX_DIRECT_LITERAL + 1 ? literalCount : LITERAL_EXTENDED;
 
     output.push(OpCodes.Or32(OpCodes.Shl32(literalField, 4), MATCH_NONE));
 
-    if (literalField === LITERAL_EXTENDED) writeExtended(output, literalCount - (MAX_DIRECT_LITERAL + 1));
+    if (literalField === LITERAL_EXTENDED) {
+      writeExtended(output, literalCount - (MAX_DIRECT_LITERAL + 1));
+    }
 
-    for (let i = 0; i < literalCount; ++i) output.push(data[literalStart + i]);
+    for (let i = 0; i < literalCount; ++i) {
+      output.push(data[literalStart + i]);
+    }
   }
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} Size header and token stream
+   */
   function lzvnCompress(data) {
-    const output = [];
-    { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+    /** @type {uint8[]} */
+    const output = OpCodes.Unpack32LE(data.length);
 
-    if (data.length === 0) return output;
+    if (data.length === 0) {
+      return output;
+    }
 
+    /** @type {HashChainMatchFinder} */
     const finder = new HashChainMatchFinder(Math.max(data.length, 1));
 
+    /** @type {int32} */
     let pos = 0;
+    /** @type {int32} */
     let literalStart = 0;
 
     while (pos < data.length) {
       if (pos + MIN_MATCH <= data.length) {
+        /** @type {LzvnMatch} */
         const match = finder.findMatch(data, pos, data.length, data.length - pos, MIN_MATCH);
         if (match.length >= MIN_MATCH) {
           emitToken(output, data, literalStart, pos - literalStart, match.length, match.distance);
-          for (let i = 1; i < match.length; ++i) finder.insertPosition(data, pos + i);
+          for (let i = 1; i < match.length; ++i) {
+            finder.insertPosition(data, pos + i);
+          }
           pos += match.length;
           literalStart = pos;
           continue;
@@ -262,48 +437,94 @@
       ++pos;
     }
 
+    /** @type {int32} */
     const trailingLiteralCount = pos - literalStart;
-    if (trailingLiteralCount > 0) emitFinalLiteralToken(output, data, literalStart, trailingLiteralCount);
+    if (trailingLiteralCount > 0) {
+      emitFinalLiteralToken(output, data, literalStart, trailingLiteralCount);
+    }
 
     return output;
   }
 
+  /**
+   * @param {uint8[]} data - Size header and token stream
+   * @returns {uint8[]} Decoded bytes
+   */
   function lzvnDecompress(data) {
-    if (data.length < 4) throw new Error('LZVN stream too short for header');
+    if (data.length < 4) {
+      throw new Error('LZVN stream too short for header');
+    }
 
+    /** @type {uint32} */
     const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
+    /** @type {uint8[]} */
     const output = new Array(originalLength);
-    if (originalLength === 0) return [];
+    if (originalLength === 0) {
+      /** @type {uint8[]} */
+      const empty = [];
+      return empty;
+    }
 
-    const posRef = { pos: 4 };
+    /** @type {LzvnReader} */
+    const reader = new LzvnReader(data);
+    reader.pos = 4;
+    /** @type {int32} */
     let outPos = 0;
 
     while (outPos < originalLength) {
-      if (posRef.pos >= data.length) throw new Error('LZVN stream truncated at token');
+      if (reader.pos >= data.length) {
+        throw new Error('LZVN stream truncated at token');
+      }
 
-      const token = data[posRef.pos++];
+      /** @type {uint8} */
+      const token = data[reader.pos++];
+      /** @type {uint32} */
       const literalField = OpCodes.Shr32(token, 4);
+      /** @type {uint32} */
       const matchNibble = OpCodes.And32(token, 0x0F);
 
-      const literalCount = literalField < LITERAL_EXTENDED ? literalField : MAX_DIRECT_LITERAL + 1 + readExtended(data, posRef);
+      /** @type {int32} */
+      let literalCount = literalField;
+      if (literalField >= LITERAL_EXTENDED) {
+        /** @type {int32} */
+        const extra = reader.readExtended();
+        literalCount = MAX_DIRECT_LITERAL + 1 + extra;
+      }
 
-      if (posRef.pos + literalCount > data.length || outPos + literalCount > originalLength)
+      if (reader.pos + literalCount > data.length || outPos + literalCount > originalLength) {
         throw new Error('LZVN literal run overruns buffer');
-      for (let i = 0; i < literalCount; ++i) output[outPos + i] = data[posRef.pos + i];
-      posRef.pos += literalCount;
+      }
+      for (let i = 0; i < literalCount; ++i) {
+        output[outPos + i] = data[reader.pos + i];
+      }
+      reader.pos += literalCount;
       outPos += literalCount;
 
-      if (matchNibble === MATCH_NONE) continue;
+      if (matchNibble === MATCH_NONE) {
+        continue;
+      }
 
-      const matchField = matchNibble <= MAX_DIRECT_MATCH ? matchNibble : MATCH_EXTENDED + readExtended(data, posRef);
+      /** @type {int32} */
+      let matchField = matchNibble;
+      if (matchNibble > MAX_DIRECT_MATCH) {
+        /** @type {int32} */
+        const extra = reader.readExtended();
+        matchField = MATCH_EXTENDED + extra;
+      }
+      /** @type {int32} */
       const matchLength = matchField + MIN_MATCH;
 
-      const distance = readDistance(data, posRef);
-      if (distance <= 0 || distance > outPos || outPos + matchLength > originalLength)
+      /** @type {uint32} */
+      const distance = readDistance(reader);
+      if (distance <= 0 || distance > outPos || outPos + matchLength > originalLength) {
         throw new Error('LZVN match references invalid distance');
+      }
 
+      /** @type {int32} */
       const srcPos = outPos - distance;
-      for (let i = 0; i < matchLength; ++i) output[outPos + i] = output[srcPos + i];
+      for (let i = 0; i < matchLength; ++i) {
+        output[outPos + i] = output[srcPos + i];
+      }
       outPos += matchLength;
     }
 
@@ -408,25 +629,44 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LZVNInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LZVNInstance(this, isInverse);
       }
     }
 
     class LZVNInstance extends IAlgorithmInstance {
+      /**
+       * @param {LZVNAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ?
-          lzvnDecompress(this.inputBuffer) :
-          lzvnCompress(this.inputBuffer);
-
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = lzvnDecompress(this.inputBuffer);
+        } else {
+          result = lzvnCompress(this.inputBuffer);
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
     }
