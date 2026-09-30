@@ -44,6 +44,26 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * [n, k, d] of one recursion level
+   * @class
+   */
+  class PlotkinParameters {
+    /**
+     * @param {int32} length - Codeword length n
+     * @param {int32} dimension - Message length k
+     * @param {int32} distance - Minimum distance d
+     */
+    constructor(length, dimension, distance) {
+      /** @type {int32} */
+      this.n = length;
+      /** @type {int32} */
+      this.k = dimension;
+      /** @type {int32} */
+      this.d = distance;
+    }
+  }
+
   class PlotkinCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -225,10 +245,14 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._level = 1; // Default [4,3,2] code (level 1)
     }
 
     // Recursion level: 0=[2,2,1], 1=[4,3,2], 2=[8,5,4], 3=[16,9,8], etc.
+    /**
+     * @param {int32} value - Recursion level (0..4)
+     */
     set level(value) {
       if (value < 0 || value > 4) {
         throw new Error('PlotkinCodeInstance.level: Must be between 0 and 4');
@@ -236,6 +260,9 @@
       this._level = value;
     }
 
+    /**
+     * @returns {int32} Recursion level
+     */
     get level() {
       return this._level;
     }
@@ -272,12 +299,18 @@
     }
 
     // Get code parameters [n, k, d] for given level
+    /**
+     * @returns {PlotkinParameters} [n, k, d] for the current level
+     */
     getParameters() {
       const level = this._level;
+      /** @type {int32} */
       const n = OpCodes.Shl32(1, level + 1); // 2^(level+1)
+      /** @type {int32} */
       const k = n / 2 + 1;        // n/2 + 1
+      /** @type {int32} */
       const d = n / 2;            // n/2
-      return { n, k, d };
+      return new PlotkinParameters(n, k, d);
     }
 
     /**
@@ -285,7 +318,12 @@
      * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
-      const { n, k } = this.getParameters();
+      /** @type {PlotkinParameters} */
+      const params = this.getParameters();
+      /** @type {int32} */
+      const n = params.n;
+      /** @type {int32} */
+      const k = params.k;
 
       if (data.length !== k) {
         throw new Error("Plotkin encode: Input must be exactly " + k + " bits for level " + this._level);
@@ -293,7 +331,9 @@
 
       // Base case: level 0 is [2,2,1] repetition code (identity - just pass through)
       if (this._level === 0) {
-        return [...data];
+        /** @type {uint8[]} */
+        const copy = data.slice();
+        return copy;
       }
 
       // Recursive Plotkin construction: |u|u+v|
@@ -302,17 +342,21 @@
       //   First (n/2 + 1) bits encode u using [n, n/2+1, n/2] code
       //   Remaining bits encode v using same code
 
+      /** @type {int32} */
       const prevN = n / 2;
+      /** @type {int32} */
       const prevK = prevN / 2 + 1;
 
       // Split data: first prevK bits for u, rest for v
       // Special handling: when k = prevK + 1, we need to pad v
+      /** @type {uint8[]} */
       const uBits = data.slice(0, prevK);
       /** @type {uint8[]} */
       const vBits = [];
 
       // For v, we need prevK bits total
       // If we have k - prevK bits remaining, pad with zeros
+      /** @type {uint8[]} */
       const remainingBits = data.slice(prevK);
 
       for (let i = 0; i < prevK; ++i) {
@@ -324,13 +368,16 @@
       }
 
       // Recursively encode u and v
+      /** @type {PlotkinCodeInstance} */
       const tempInstance = new PlotkinCodeInstance(this.algorithm, false);
       tempInstance.level = this._level - 1;
 
       tempInstance.Feed(uBits);
+      /** @type {uint8[]} */
       const uEncoded = tempInstance.Result();
 
       tempInstance.Feed(vBits);
+      /** @type {uint8[]} */
       const vEncoded = tempInstance.Result();
 
       // Construct |u|u+v|
@@ -355,7 +402,12 @@
      * @returns {uint8[]} Decoded message symbols
      */
     decode(data) {
-      const { n, k } = this.getParameters();
+      /** @type {PlotkinParameters} */
+      const params = this.getParameters();
+      /** @type {int32} */
+      const n = params.n;
+      /** @type {int32} */
+      const k = params.k;
 
       if (data.length !== n) {
         throw new Error("Plotkin decode: Input must be exactly " + n + " bits for level " + this._level);
@@ -363,16 +415,22 @@
 
       // Base case: level 0 is [2,2,1] (identity)
       if (this._level === 0) {
-        return [...data];
+        /** @type {uint8[]} */
+        const copy = data.slice();
+        return copy;
       }
 
       // Split received word into two halves
+      /** @type {int32} */
       const halfN = n / 2;
+      /** @type {uint8[]} */
       const r1 = data.slice(0, halfN);
+      /** @type {uint8[]} */
       const r2 = data.slice(halfN);
 
       // Compute u = r1, v = r1 XOR r2
-      const uReceived = [...r1];
+      /** @type {uint8[]} */
+      const uReceived = r1.slice();
       /** @type {uint8[]} */
       const vReceived = [];
       for (let i = 0; i < halfN; ++i) {
@@ -380,17 +438,21 @@
       }
 
       // Recursively decode u and v
+      /** @type {PlotkinCodeInstance} */
       const tempInstance = new PlotkinCodeInstance(this.algorithm, true);
       tempInstance.level = this._level - 1;
 
       tempInstance.Feed(uReceived);
+      /** @type {uint8[]} */
       const uDecoded = tempInstance.Result();
 
       tempInstance.Feed(vReceived);
+      /** @type {uint8[]} */
       const vDecoded = tempInstance.Result();
 
       // Combine decoded bits
       // First k bits come from u, remaining from v
+      /** @type {int32} */
       const prevK = halfN / 2 + 1;
       /** @type {uint8[]} */
       const decoded = [];
@@ -400,6 +462,7 @@
       }
 
       // Add bits from v (excluding padding zeros)
+      /** @type {int32} */
       const numVBits = k - prevK;
       for (let i = 0; i < numVBits; ++i) {
         decoded.push(vDecoded[i]);
@@ -413,14 +476,20 @@
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
-      const { n } = this.getParameters();
+      /** @type {PlotkinParameters} */
+      const params = this.getParameters();
+      /** @type {int32} */
+      const n = params.n;
       if (data.length !== n) return true;
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(data);
+        /** @type {PlotkinCodeInstance} */
         const tempInstance = new PlotkinCodeInstance(this.algorithm, false);
         tempInstance.level = this._level;
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         for (let i = 0; i < n; ++i) {
@@ -435,11 +504,17 @@
     }
 
     // Calculate minimum distance using Hamming weight
+    /**
+     * @param {uint8[]} codeword1 - First codeword
+     * @param {uint8[]} codeword2 - Second codeword
+     * @returns {int32} Hamming distance
+     */
     getMinimumDistance(codeword1, codeword2) {
       if (codeword1.length !== codeword2.length) {
         throw new Error('Codewords must have same length');
       }
 
+      /** @type {int32} */
       let distance = 0;
       for (let i = 0; i < codeword1.length; ++i) {
         if (codeword1[i] !== codeword2[i]) {
