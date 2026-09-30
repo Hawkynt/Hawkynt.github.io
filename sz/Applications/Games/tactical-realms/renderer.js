@@ -223,9 +223,12 @@
                   srcImg = genSheet;
               }
             }
-            if (!rect && spriteMap)
+            if (!rect && spriteMap) {
               rect = spriteMap[TILE_NAMES[tile]];
-            if (rect) {
+              if (rect && rect.sheet)
+                srcImg = assets.get(rect.sheet);
+            }
+            if (rect && srcImg) {
               ctx.drawImage(srcImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tsDraw, tsDraw);
               drawn = true;
             }
@@ -1368,8 +1371,9 @@
           for (let c = 0; c < cols; ++c) {
             const idx = ((r * 7 + c * 13) ^ 0x5a5a) % tiles.length;
             const rect = spriteMap[tiles[idx]];
-            if (rect)
-              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, c * ts, r * ts, ts, ts);
+            const src = rect && rect.sheet ? assets.get(rect.sheet) : img;
+            if (rect && src)
+              ctx.drawImage(src, rect.x, rect.y, rect.w, rect.h, c * ts, r * ts, ts, ts);
           }
         ctx.globalAlpha = 1;
       }

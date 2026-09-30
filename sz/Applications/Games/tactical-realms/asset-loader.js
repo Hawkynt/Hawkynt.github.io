@@ -17,14 +17,18 @@
   const OVERWORLD_COLS = 57;
   const OVERWORLD_MARGIN = 1;
 
+  // Hand-drawn landmarks (pixel-art.js) replace tiles the Kenney sheet lacks.
+  const landmark = name => (TR.PixelArt ? TR.PixelArt.rect(name) : null);
+
+  // Indices verified against tools/sheet-preview.html.
   const OVERWORLD_TERRAIN_SPRITES = Object.freeze({
-    GRASS:    spriteRectM(5,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-    FOREST:   spriteRectM(528, OVERWORLD_COLS, OVERWORLD_MARGIN),
-    MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-    DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-    TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-    ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-    CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+    GRASS:    spriteRectM(5,   OVERWORLD_COLS, OVERWORLD_MARGIN),   // plain grass
+    FOREST:   spriteRectM(528, OVERWORLD_COLS, OVERWORLD_MARGIN),   // round tree
+    MOUNTAIN: landmark('peak') || spriteRectM(1308, OVERWORLD_COLS, OVERWORLD_MARGIN),
+    DUNGEON:  landmark('cave') || spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
+    TOWN:     landmark('town') || spriteRectM(207, OVERWORLD_COLS, OVERWORLD_MARGIN),
+    ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),   // paving stones
+    CAMP:     spriteRectM(470, OVERWORLD_COLS, OVERWORLD_MARGIN),   // campfire
     WATER:    spriteRectM(0,   OVERWORLD_COLS, OVERWORLD_MARGIN),
     SAND:     spriteRectM(8,   OVERWORLD_COLS, OVERWORLD_MARGIN),
   });
@@ -51,89 +55,94 @@
 
   const DUNGEON_COLS = 12;
 
+  // Indices verified against tools/sheet-preview.html. Outdoor terrain comes
+  // from the overworld sheet, underground terrain from the dungeon sheet.
+  const owRect = i => Object.freeze({ ...spriteRectM(i, OVERWORLD_COLS, OVERWORLD_MARGIN), sheet: 'overworld' });
+
   const COMBAT_TERRAIN_SPRITES = Object.freeze({
-    plains:        spriteRect(0, DUNGEON_COLS),
-    forest:        spriteRect(6, DUNGEON_COLS),
-    mountain:      spriteRect(24, DUNGEON_COLS),
-    ruins:         spriteRect(12, DUNGEON_COLS),
-    dungeon_floor: spriteRect(2, DUNGEON_COLS),
-    water:         spriteRect(8, DUNGEON_COLS),
-    swamp:         spriteRect(7, DUNGEON_COLS),
-    lava:          spriteRect(29, DUNGEON_COLS),
-    road:          spriteRect(1, DUNGEON_COLS),
-    cave:          spriteRect(3, DUNGEON_COLS),
-    wall:          spriteRect(36, DUNGEON_COLS),
+    plains:        owRect(5),                      // grass
+    forest:        owRect(528),                    // tree (overlay)
+    mountain:      owRect(1308),                   // mossy rocks (overlay)
+    ruins:         spriteRect(12, DUNGEON_COLS),   // cracked earth floor
+    dungeon_floor: spriteRect(0, DUNGEON_COLS),    // earth floor
+    water:         owRect(0),
+    swamp:         owRect(592),                    // reeds (overlay)
+    lava:          owRect(1084),                   // scorched ground
+    road:          owRect(121),                    // paving stones
+    cave:          spriteRect(0, DUNGEON_COLS),    // earth floor (darkened in TERRAIN_LAYERS)
+    wall:          spriteRect(40, DUNGEON_COLS),   // brick wall
+    sand:          owRect(8),
   });
 
   const PARTY_SPRITES = Object.freeze({
-    fighter:   spriteRect(88, DUNGEON_COLS),
-    wizard:    spriteRect(84, DUNGEON_COLS),
-    cleric:    spriteRect(100, DUNGEON_COLS),
-    rogue:     spriteRect(112, DUNGEON_COLS),
-    ranger:    spriteRect(112, DUNGEON_COLS),
-    paladin:   spriteRect(97, DUNGEON_COLS),
-    barbarian: spriteRect(110, DUNGEON_COLS),
-    bard:      spriteRect(99, DUNGEON_COLS),
-    warlock:   spriteRect(84, DUNGEON_COLS),
-    sorcerer:  spriteRect(98, DUNGEON_COLS),
+    fighter:   spriteRect(88, DUNGEON_COLS),   // bare-armed warrior
+    wizard:    spriteRect(84, DUNGEON_COLS),   // purple-hat wizard
+    cleric:    spriteRect(100, DUNGEON_COLS),  // grey-haired priest
+    rogue:     spriteRect(85, DUNGEON_COLS),   // light-clad youth
+    ranger:    spriteRect(112, DUNGEON_COLS),  // green bandana
+    paladin:   spriteRect(97, DUNGEON_COLS),   // open helm knight
+    barbarian: spriteRect(86, DUNGEON_COLS),   // bald brawler
+    bard:      spriteRect(99, DUNGEON_COLS),   // long-haired minstrel
+    warlock:   spriteRect(111, DUNGEON_COLS),  // hooded figure
+    sorcerer:  spriteRect(98, DUNGEON_COLS),   // young mage
   });
 
-  // Enemy sprites mapped to dungeon sheet character archetypes.
-  // Row 6 (72-83) = monster/creature sprites, row 7 cols 0-4 (84-88) = hero sprites.
-  // Combined with ENEMY_TINTS, every enemy type looks visually unique.
+  // Enemy fallbacks on the dungeon sheet when no creature icon exists.
+  // Monsters live at 108-112 and 120-124; heroes at 84-88 and 96-100.
+  // Combined with ENEMY_TINTS, enemies sharing a tile stay distinguishable.
   const ENEMY_SPRITES = Object.freeze({
-    // --- small humanoids (hooded figure archetype, row 7 col 2) ---
-    goblin:          spriteRect(86, DUNGEON_COLS),
+    // --- goblinoids and brigands (green bandana, row 9 col 4) ---
+    goblin:          spriteRect(112, DUNGEON_COLS),
+    bandit:          spriteRect(112, DUNGEON_COLS),
+    orc:             spriteRect(112, DUNGEON_COLS),
+    hobgoblin:       spriteRect(112, DUNGEON_COLS),
+    bugbear:         spriteRect(112, DUNGEON_COLS),
+    gnoll:           spriteRect(112, DUNGEON_COLS),
     kobold:          spriteRect(86, DUNGEON_COLS),
-    rat:             spriteRect(86, DUNGEON_COLS),
-    stirge:          spriteRect(86, DUNGEON_COLS),
-    cockatrice:      spriteRect(86, DUNGEON_COLS),
-    // --- armored warriors (row 7 col 4) ---
-    bandit:          spriteRect(88, DUNGEON_COLS),
-    orc:             spriteRect(88, DUNGEON_COLS),
-    hobgoblin:       spriteRect(88, DUNGEON_COLS),
-    bugbear:         spriteRect(88, DUNGEON_COLS),
-    // --- undead (row 6 col 0) ---
-    skeleton:        spriteRect(72, DUNGEON_COLS),
-    zombie:          spriteRect(72, DUNGEON_COLS),
-    ghoul:           spriteRect(72, DUNGEON_COLS),
-    wight:           spriteRect(72, DUNGEON_COLS),
-    wraith:          spriteRect(72, DUNGEON_COLS),
-    vampire_spawn:   spriteRect(72, DUNGEON_COLS),
-    // --- beasts/creatures (row 7 col 3) ---
-    wolf:            spriteRect(87, DUNGEON_COLS),
-    dire_wolf:       spriteRect(87, DUNGEON_COLS),
-    worg:            spriteRect(87, DUNGEON_COLS),
-    spider:          spriteRect(87, DUNGEON_COLS),
-    phase_spider:    spriteRect(87, DUNGEON_COLS),
-    basilisk:        spriteRect(87, DUNGEON_COLS),
-    owlbear:         spriteRect(87, DUNGEON_COLS),
-    manticore:       spriteRect(87, DUNGEON_COLS),
-    // --- large brutes (row 8 col 0) ---
-    troll:           spriteRect(96, DUNGEON_COLS),
-    ogre:            spriteRect(96, DUNGEON_COLS),
-    minotaur:        spriteRect(96, DUNGEON_COLS),
-    hill_giant:      spriteRect(96, DUNGEON_COLS),
-    frost_giant:     spriteRect(96, DUNGEON_COLS),
-    // --- robed casters (row 7 col 1) ---
-    dark_mage:       spriteRect(85, DUNGEON_COLS),
-    lich:            spriteRect(85, DUNGEON_COLS),
-    mind_flayer:     spriteRect(85, DUNGEON_COLS),
-    // --- winged/special (row 6 col 1) ---
-    harpy:           spriteRect(73, DUNGEON_COLS),
-    wyvern:          spriteRect(73, DUNGEON_COLS),
-    dragon_wyrmling: spriteRect(73, DUNGEON_COLS),
-    young_dragon:    spriteRect(73, DUNGEON_COLS),
-    // --- knight/armored elite (row 6 col 2) ---
-    gargoyle:        spriteRect(74, DUNGEON_COLS),
-    death_knight:    spriteRect(74, DUNGEON_COLS),
-    // --- fiends (row 6 col 3) ---
-    fire_elemental:  spriteRect(75, DUNGEON_COLS),
-    demon:           spriteRect(75, DUNGEON_COLS),
-    devil:           spriteRect(75, DUNGEON_COLS),
-    // --- scaled/reptilian (row 6 col 4) ---
-    lizardfolk:      spriteRect(76, DUNGEON_COLS),
-    gnoll:           spriteRect(76, DUNGEON_COLS),
+    // --- vermin (rat, row 10 col 3) ---
+    rat:             spriteRect(123, DUNGEON_COLS),
+    wolf:            spriteRect(123, DUNGEON_COLS),
+    dire_wolf:       spriteRect(123, DUNGEON_COLS),
+    worg:            spriteRect(123, DUNGEON_COLS),
+    owlbear:         spriteRect(123, DUNGEON_COLS),
+    manticore:       spriteRect(123, DUNGEON_COLS),
+    // --- spiders (row 10 col 2) ---
+    spider:          spriteRect(122, DUNGEON_COLS),
+    phase_spider:    spriteRect(122, DUNGEON_COLS),
+    // --- serpents and reptiles (row 10 col 4) ---
+    cockatrice:      spriteRect(124, DUNGEON_COLS),
+    basilisk:        spriteRect(124, DUNGEON_COLS),
+    lizardfolk:      spriteRect(124, DUNGEON_COLS),
+    // --- undead (ghost, row 10 col 1) ---
+    skeleton:        spriteRect(121, DUNGEON_COLS),
+    zombie:          spriteRect(121, DUNGEON_COLS),
+    ghoul:           spriteRect(121, DUNGEON_COLS),
+    wight:           spriteRect(121, DUNGEON_COLS),
+    wraith:          spriteRect(121, DUNGEON_COLS),
+    vampire_spawn:   spriteRect(121, DUNGEON_COLS),
+    // --- winged (bat, row 10 col 0) ---
+    stirge:          spriteRect(120, DUNGEON_COLS),
+    harpy:           spriteRect(120, DUNGEON_COLS),
+    wyvern:          spriteRect(120, DUNGEON_COLS),
+    dragon_wyrmling: spriteRect(120, DUNGEON_COLS),
+    young_dragon:    spriteRect(120, DUNGEON_COLS),
+    // --- giants and brutes (cyclops, row 9 col 1) ---
+    troll:           spriteRect(109, DUNGEON_COLS),
+    ogre:            spriteRect(109, DUNGEON_COLS),
+    minotaur:        spriteRect(109, DUNGEON_COLS),
+    hill_giant:      spriteRect(109, DUNGEON_COLS),
+    frost_giant:     spriteRect(109, DUNGEON_COLS),
+    // --- robed casters (hooded, row 9 col 3) ---
+    dark_mage:       spriteRect(111, DUNGEON_COLS),
+    lich:            spriteRect(111, DUNGEON_COLS),
+    mind_flayer:     spriteRect(111, DUNGEON_COLS),
+    // --- armoured (closed helm, row 8 col 0) ---
+    gargoyle:        spriteRect(96, DUNGEON_COLS),
+    death_knight:    spriteRect(96, DUNGEON_COLS),
+    // --- fiends and elementals (red horror, row 9 col 2) ---
+    fire_elemental:  spriteRect(110, DUNGEON_COLS),
+    demon:           spriteRect(110, DUNGEON_COLS),
+    devil:           spriteRect(110, DUNGEON_COLS),
   });
 
   const ITEM_SPRITES = Object.freeze({
@@ -200,65 +209,40 @@
     warlock: 'rgba(40,0,60,0.25)',
   });
 
-  // Phase C: Dimension terrain sprites -- each dimension maps tile type names
-  // to different tile indices from the overworld sheet for visual variety.
-  // Tile indices mapped from visual inspection of the Kenney Roguelike/RPG tileset.
+  // Dimension terrain sprites -- each plane swaps ground and vegetation for
+  // themed tiles of the overworld sheet; landmarks, roads and camps are shared.
+  // Indices verified against tools/sheet-preview.html.
   const DIMENSION_TERRAIN_SPRITES = Object.freeze({
     material: OVERWORLD_TERRAIN_SPRITES,
     feywild: Object.freeze({
-      GRASS:    spriteRectM(456, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      FOREST:   spriteRectM(529, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      WATER:    spriteRectM(2,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      SAND:     spriteRectM(9,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+      ...OVERWORLD_TERRAIN_SPRITES,
+      GRASS:  spriteRectM(402, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      FOREST: spriteRectM(529, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      SAND:   spriteRectM(65, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
     shadowfell: Object.freeze({
-      GRASS:    spriteRectM(10,  OVERWORLD_COLS, OVERWORLD_MARGIN),
-      FOREST:   spriteRectM(530, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      WATER:    spriteRectM(3,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      SAND:     spriteRectM(9,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+      ...OVERWORLD_TERRAIN_SPRITES,
+      GRASS:  spriteRectM(64, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      FOREST: spriteRectM(597, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      SAND:   spriteRectM(9, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
     nine_hells: Object.freeze({
-      GRASS:    spriteRectM(342, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      FOREST:   spriteRectM(531, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      WATER:    spriteRectM(285, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      SAND:     spriteRectM(343, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+      ...OVERWORLD_TERRAIN_SPRITES,
+      GRASS:  spriteRectM(1086, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      FOREST: spriteRectM(654, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      SAND:   spriteRectM(8, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
     underdark: Object.freeze({
-      GRASS:    spriteRectM(399, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      FOREST:   spriteRectM(532, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      WATER:    spriteRectM(3,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      SAND:     spriteRectM(400, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+      ...OVERWORLD_TERRAIN_SPRITES,
+      GRASS:  spriteRectM(9, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      FOREST: spriteRectM(276, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      SAND:   spriteRectM(7, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
     abyss: Object.freeze({
-      GRASS:    spriteRectM(285, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      FOREST:   spriteRectM(533, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      MOUNTAIN: spriteRectM(7,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      WATER:    spriteRectM(0,   OVERWORLD_COLS, OVERWORLD_MARGIN),
-      SAND:     spriteRectM(286, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      DUNGEON:  spriteRectM(150, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      TOWN:     spriteRectM(294, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      ROAD:     spriteRectM(121, OVERWORLD_COLS, OVERWORLD_MARGIN),
-      CAMP:     spriteRectM(13,  OVERWORLD_COLS, OVERWORLD_MARGIN),
+      ...OVERWORLD_TERRAIN_SPRITES,
+      GRASS:  spriteRectM(1257, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      FOREST: spriteRectM(530, OVERWORLD_COLS, OVERWORLD_MARGIN),
+      SAND:   spriteRectM(1086, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
   });
 
@@ -284,12 +268,12 @@
     dungeon_floor: Object.freeze([{ sprite: 'dungeon_floor' }]),
     water:         Object.freeze([{ sprite: 'water' }]),
     swamp:         Object.freeze([{ sprite: 'water' }, { sprite: 'swamp' }]),
-    desert:        Object.freeze([{ sprite: 'plains' }]),
-    snow:          Object.freeze([{ sprite: 'plains' }]),
+    desert:        Object.freeze([{ sprite: 'sand' }]),
+    snow:          Object.freeze([{ sprite: 'plains', tint: 'rgba(240,246,255,0.85)' }]),
     lava:          Object.freeze([{ sprite: 'lava' }]),
     bridge:        Object.freeze([{ sprite: 'water' }, { sprite: 'road' }]),
     road:          Object.freeze([{ sprite: 'road' }]),
-    cave:          Object.freeze([{ sprite: 'cave' }]),
+    cave:          Object.freeze([{ sprite: 'cave', tint: 'rgba(10,5,15,0.35)' }]),
     wall:          Object.freeze([{ sprite: 'wall' }]),
   });
 
@@ -325,8 +309,13 @@
     get total() { return this.#total; }
     get progress() { return this.#total > 0 ? this.#loaded / this.#total : 1; }
 
-    has(id) { return this.#images.has(id); }
-    get(id) { return this.#images.get(id) || null; }
+    // Generated sheets (pixel-art.js) are served alongside the loaded images.
+    has(id) { return this.#images.has(id) || !!this.#generated(id); }
+    get(id) { return this.#images.get(id) || this.#generated(id); }
+
+    #generated(id) {
+      return (TR.PixelArt && TR.PixelArt.get(id)) || null;
+    }
 
     async loadAll(onProgress) {
       const entries = Object.entries(ASSET_MANIFEST);
@@ -367,7 +356,7 @@
     }
 
     drawSprite(ctx, sheetId, rect, destX, destY, destSize) {
-      const img = this.#images.get(sheetId);
+      const img = this.get(rect && rect.sheet || sheetId);
       if (!img || !rect)
         return false;
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, destX, destY, destSize, destSize);
