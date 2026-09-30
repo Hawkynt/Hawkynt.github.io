@@ -153,6 +153,7 @@
       // Based on Hamming [7,4,3] code H matrix
       // Each row has weight 4, making this "low-density"
       // Reference: https://errorcorrectionzoo.org/c/steane
+      /** @type {uint32[][]} */
       this.H_X = [
         [0, 0, 0, 1, 1, 1, 1],
         [0, 1, 1, 0, 0, 1, 1],
@@ -162,6 +163,7 @@
       // Sparse parity-check matrix for Z-stabilizers (phase-flip detection)
       // For Steane-style QLDPC: H_Z = H_X (self-dual CSS code)
       // Reference: https://errorcorrectionzoo.org/c/steane
+      /** @type {uint32[][]} */
       this.H_Z = [
         [0, 0, 0, 1, 1, 1, 1],
         [0, 1, 1, 0, 0, 1, 1],
@@ -210,19 +212,24 @@
      * Encode logical qubit to 7 physical qubits using QLDPC [[7,1,3]]
      * Classical simulation: |0⟩ → |0000000⟩, |1⟩ → |1111111⟩
      * Real quantum: α|0⟩+β|1⟩ → α|0000000⟩+β|1111111⟩ (preserves superposition)
+     * @param {uint8[]} logicalQubit - One logical bit
+     * @returns {uint8[]} Seven physical bits
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
         throw new Error("QLDPC encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
+      /** @type {uint8} */
       const logical = logicalQubit[0];
 
       // Steane-style QLDPC logical codewords
       // Logical |0⟩ encoded as |0000000⟩ (even parity codeword)
       // Logical |1⟩ encoded as |1111111⟩ (odd parity codeword)
       // This satisfies all X and Z stabilizer constraints
-      const encoded = new Array(this.n).fill(logical);
+      /** @type {uint8[]} */
+      const encoded = [];
+      for (let i = 0; i < this.n; ++i) encoded.push(logical);
 
       return encoded;
     }
@@ -230,6 +237,8 @@
     /**
      * Decode physical qubits with quantum error correction
      * Uses separate X and Z syndrome measurements
+     * @param {uint8[]} physicalQubits - Seven physical bits
+     * @returns {uint8[]} One logical bit
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
@@ -241,9 +250,11 @@
       const received = physicalQubits.slice();
 
       // Measure Z-stabilizers to detect X errors (bit-flips)
+      /** @type {uint8[]} */
       const syndromeX = this.measureSyndrome(received, this.H_Z);
 
       // Correct X errors (bit-flips)
+      /** @type {int32} */
       const errorPosX = this.syndromeToErrorPosition(syndromeX);
       if (errorPosX !== -1) {
         received[errorPosX] = OpCodes.Xor32(received[errorPosX], 1);
@@ -252,7 +263,9 @@
       // Measure X-stabilizers to detect Z errors (phase-flips)
       // In classical simulation, phase-flips don't affect computational basis
       // Real quantum systems would need additional syndrome measurement
+      /** @type {uint8[]} */
       const syndromeZ = this.measureSyndrome(received, this.H_X);
+      /** @type {int32} */
       const errorPosZ = this.syndromeToErrorPosition(syndromeZ);
 
       // For classical simulation, we note phase errors but can't observe them
@@ -262,14 +275,20 @@
       }
 
       // Extract logical qubit using majority vote (classical approximation)
+      /** @type {uint8} */
       const logicalQubit = this.extractLogicalQubit(received);
 
-      return [logicalQubit];
+      /** @type {uint8[]} */
+      const decoded = [logicalQubit];
+      return decoded;
     }
 
     /**
      * Measure syndrome using sparse parity-check matrix
      * Utilizes low-density property for efficient computation
+     * @param {uint8[]} qubits - Physical bits
+     * @param {uint32[][]} parityMatrix - Stabilizer rows
+     * @returns {uint8[]} Syndrome bits
      */
     measureSyndrome(qubits, parityMatrix) {
       /** @type {uint8[]} */
@@ -294,6 +313,8 @@
      * Convert syndrome to error position using Hamming code lookup
      * Syndrome = 0 means no error
      * Syndrome ≠ 0 identifies error location
+     * @param {uint8[]} syndrome - Syndrome bits
+     * @returns {int32} Error position, -1 for none
      */
     syndromeToErrorPosition(syndrome) {
       // Convert syndrome to integer using OpCodes
@@ -311,15 +332,18 @@
 
       // Hamming code: syndrome directly gives error position (1-indexed)
       // Positions: 1,2,3,4,5,6,7 (convert to 0-indexed)
-      return syndromeValue - 1;
+      return OpCodes.ToInt(syndromeValue) - 1;
     }
 
     /**
      * Extract logical qubit using majority vote (classical approximation)
      * Real quantum systems measure logical Pauli operators
+     * @param {uint8[]} qubits - Physical bits
+     * @returns {uint8} Majority bit
      */
     extractLogicalQubit(qubits) {
       // Count ones using OpCodes (though simple addition works here)
+      /** @type {int32} */
       let ones = 0;
       for (let i = 0; i < this.n; ++i) {
         ones += qubits[i];
@@ -341,6 +365,7 @@
       }
 
       // Check X errors via Z-stabilizers
+      /** @type {uint8[]} */
       const syndromeX = this.measureSyndrome(data, this.H_Z);
       /** @type {uint32} */
       let syndromeValueX = 0;
@@ -349,6 +374,7 @@
       }
 
       // Check Z errors via X-stabilizers
+      /** @type {uint8[]} */
       const syndromeZ = this.measureSyndrome(data, this.H_X);
       /** @type {uint32} */
       let syndromeValueZ = 0;
@@ -363,6 +389,10 @@
      * Introduce quantum error for testing (educational purposes)
      * errorType: 'X' (bit-flip), 'Z' (phase-flip), 'Y' (both)
      * position: qubit index 0-6
+     * @param {uint8[]} qubits - Physical bits
+     * @param {string} errorType - 'X', 'Z' or 'Y'
+     * @param {int32} position - Qubit index
+     * @returns {uint8[]} Bits with the error applied
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
@@ -398,9 +428,13 @@
     /**
      * Check sparse matrix density (for validation)
      * Returns density as fraction of non-zero entries
+     * @param {uint32[][]} matrix - Parity-check matrix
+     * @returns {float64} Fraction of non-zero entries
      */
     getMatrixDensity(matrix) {
+      /** @type {int32} */
       let nonZeroCount = 0;
+      /** @type {int32} */
       let totalEntries = 0;
 
       for (let i = 0; i < matrix.length; ++i) {

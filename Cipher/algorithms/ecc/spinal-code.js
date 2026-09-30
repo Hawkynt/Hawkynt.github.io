@@ -44,6 +44,23 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * One decoder hypothesis and its distance to the received symbols
+   * @class
+   */
+  class SpinalCandidate {
+    /**
+     * @param {uint32} hypothesis - Candidate message as integer
+     * @param {int32} distance - Hamming distance to the received symbols
+     */
+    constructor(hypothesis, distance) {
+      /** @type {uint32} */
+      this.message = hypothesis;
+      /** @type {int32} */
+      this.metric = distance;
+    }
+  }
+
   class SpinalCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -153,7 +170,9 @@
       this.result = null;
 
       // Spinal code configuration
+      /** @type {int32} */
       this.k = 4; // Message bits
+      /** @type {int32} */
       this.numPasses = 3; // Number of encoding passes
       this.symbolsPerPass = 4; // Constellation symbols per pass
       this.stateSize = 2; // 2-bit state machine
@@ -165,6 +184,9 @@
       this.pruneThreshold = 0.5; // Pruning threshold for weak candidates
     }
 
+    /**
+     * @param {int32} bits - Message bits (1..32)
+     */
     set messageLength(bits) {
       if (bits < 1 || bits > 32) {
         throw new Error('SpinalCodeInstance.messageLength: Must be between 1 and 32 bits');
@@ -172,10 +194,16 @@
       this.k = bits;
     }
 
+    /**
+     * @returns {int32} Message bits
+     */
     get messageLength() {
       return this.k;
     }
 
+    /**
+     * @param {int32} count - Encoding passes (1..10)
+     */
     set passes(count) {
       if (count < 1 || count > 10) {
         throw new Error('SpinalCodeInstance.passes: Must be between 1 and 10');
@@ -183,6 +211,9 @@
       this.numPasses = count;
     }
 
+    /**
+     * @returns {int32} Encoding passes
+     */
     get passes() {
       return this.numPasses;
     }
@@ -220,8 +251,8 @@
 
     /**
      * Encodes message bits using spinal code with hash-based spine
-     * @param {Array} messageBits - k information bits
-     * @returns {Array} - Encoded symbols (numPasses * symbolsPerPass)
+     * @param {uint8[]} messageBits - k information bits
+     * @returns {uint8[]} - Encoded symbols (numPasses * symbolsPerPass)
      */
     encode(messageBits) {
       if (messageBits.length !== this.k) {
@@ -229,9 +260,11 @@
       }
 
       // Convert message bits to integer
+      /** @type {uint32} */
       const message = this._bitsToInt(messageBits);
 
       // Initialize spine state
+      /** @type {uint32} */
       let spineState = 0;
 
       // Generate coded symbols through multiple passes
@@ -245,6 +278,7 @@
         // Generate constellation symbols from spine state
         for (let sym = 0; sym < this.symbolsPerPass; ++sym) {
           // Extract symbol from spine state using pseudo-random mapping
+          /** @type {uint8} */
           const symbol = this._generateSymbol(spineState, sym);
           coded.push(symbol);
         }
@@ -255,8 +289,8 @@
 
     /**
      * Decodes received symbols using bubble decoder (sequential decoding)
-     * @param {Array} received - Received coded symbols
-     * @returns {Array} - Decoded message bits
+     * @param {uint8[]} received - Received coded symbols
+     * @returns {uint8[]} - Decoded message bits
      */
     decode(received) {
       if (received.length !== (this.numPasses * this.symbolsPerPass)) {
@@ -266,6 +300,7 @@
       }
 
       // Bubble decoder: explore likely message hypotheses using sequential decoding
+      /** @type {SpinalCandidate[]} */
       const candidates = this._bubbleDecoder(received);
 
       if (candidates.length === 0) {
@@ -273,17 +308,18 @@
       }
 
       // Return best candidate as bits
+      /** @type {uint32} */
       const bestMessage = candidates[0].message;
       return this._intToBits(bestMessage, this.k);
     }
 
     /**
      * Bubble decoder: sequential decoder exploring most likely candidates
-     * @param {Array} received - Received symbols
-     * @returns {Array} - Candidates [{message, metric}, ...] sorted by likelihood
+     * @param {uint8[]} received - Received symbols
+     * @returns {SpinalCandidate[]} - Candidates [{message, metric}, ...] sorted by likelihood
      */
     _bubbleDecoder(received) {
-      /** @type {uint8[]} */
+      /** @type {SpinalCandidate[]} */
       const candidates = [];
 
       // Generate all possible messages (brute-force for small k)
@@ -292,38 +328,56 @@
 
       for (let msg = 0; msg < totalMessages; ++msg) {
         // Compute expected coded sequence for this message
+        /** @type {uint8[]} */
         const expected = this._generateCodedSequence(msg);
 
         // Compute likelihood metric (Hamming distance or soft metric)
+        /** @type {int32} */
         let metric = 0;
         for (let i = 0; i < received.length; ++i) {
           metric += (received[i] !== expected[i]) ? 1 : 0;
         }
 
-        candidates.push({
-          message: msg,
-          metric: metric
-        });
+        candidates.push(new SpinalCandidate(msg, metric));
 
         // Prune if too many candidates
         if (candidates.length > this.maxBubbles) {
-          candidates.sort((a, b) => a.metric - b.metric);
+          this._sortByMetric(candidates);
           candidates.splice(this.maxBubbles);
         }
       }
 
       // Sort by metric (lower is better)
-      candidates.sort((a, b) => a.metric - b.metric);
+      this._sortByMetric(candidates);
 
       return candidates;
     }
 
     /**
+     * Stable ascending sort by metric (equal metrics keep their order)
+     * @param {SpinalCandidate[]} candidates - Sorted in place
+     * @returns {void}
+     */
+    _sortByMetric(candidates) {
+      for (let i = 1; i < candidates.length; ++i) {
+        /** @type {SpinalCandidate} */
+        const current = candidates[i];
+        let j = i - 1;
+        while (j >= 0 && candidates[j].metric > current.metric) {
+          candidates[j + 1] = candidates[j];
+          --j;
+        }
+        candidates[j + 1] = current;
+      }
+    }
+
+    /**
      * Generate complete coded sequence for a message
-     * @param {number} message - Message as integer
-     * @returns {Array} - Expected coded symbols
+     * @param {uint32} message - Message as integer
+     * @returns {uint8[]} - Expected coded symbols
      */
     _generateCodedSequence(message) {
+      /** @type {uint32} */
       let spineState = 0;
       /** @type {uint8[]} */
       const coded = [];
@@ -332,6 +386,7 @@
         spineState = this._updateSpine(spineState, message, pass);
 
         for (let sym = 0; sym < this.symbolsPerPass; ++sym) {
+          /** @type {uint8} */
           const symbol = this._generateSymbol(spineState, sym);
           coded.push(symbol);
         }
@@ -344,14 +399,15 @@
      * Update spine state using hash function
      * XOR-based hash for spine evolution to create pseudo-random symbols
      * Note: Uses bitwise operations for hash computation (structural, not cryptographic)
-     * @param {number} currentState - Current spine state
-     * @param {number} message - Message integer
-     * @param {number} pass - Current pass index
-     * @returns {number} - Updated spine state
+     * @param {uint32} currentState - Current spine state
+     * @param {uint32} message - Message integer
+     * @param {int32} pass - Current pass index
+     * @returns {uint32} - Updated spine state
      */
     _updateSpine(currentState, message, pass) {
       // Hash-based spine update: XOR previous state with message and pass
       // This creates deterministic but pseudo-random symbols based on message content
+      /** @type {uint32} */
       let hash = currentState;
 
       // Mix in message bits
@@ -373,8 +429,8 @@
     /**
      * Simple hash function (murmurhash-like)
      * Note: Uses bitwise operations for hash mixing (structural, not cryptographic)
-     * @param {number} value - Input value
-     * @returns {number} - Hashed value
+     * @param {uint32} value - Input value
+     * @returns {uint32} - Hashed value
      */
     _simpleHash(value) {
       // Murmurhash-inspired mixing function for spine state generation
@@ -392,22 +448,23 @@
     /**
      * Generate symbol from spine state using constellation mapping
      * Note: Uses bitwise operations for symbol extraction (structural)
-     * @param {number} spineState - Current spine state
-     * @param {number} symbolIndex - Index within pass
-     * @returns {number} - Symbol (0 or 1 for binary)
+     * @param {uint32} spineState - Current spine state
+     * @param {int32} symbolIndex - Index within pass
+     * @returns {uint8} - Symbol (0 or 1 for binary)
      */
     _generateSymbol(spineState, symbolIndex) {
       // Extract bit from spine state at pseudo-random position
       // Note: Shifts and mask for symbol position calculation (structural)
-      const bitPosition = OpCodes.And32(OpCodes.Shr32(spineState, symbolIndex) + OpCodes.Shr32(spineState, symbolIndex + 8), 31);
+      /** @type {uint32} */
+      const bitPosition = OpCodes.And32(OpCodes.Add32(OpCodes.Shr32(spineState, symbolIndex), OpCodes.Shr32(spineState, symbolIndex + 8)), 31);
       return OpCodes.GetBit(spineState, bitPosition) ? 1 : 0;
     }
 
     /**
      * Convert bit array to integer
      * Note: Uses bitwise operations for bit packing (structural)
-     * @param {Array} bits - Bit array
-     * @returns {number} - Integer value
+     * @param {uint8[]} bits - Bit array
+     * @returns {uint32} - Integer value
      */
     _bitsToInt(bits) {
       /** @type {uint32} */
@@ -423,9 +480,9 @@
     /**
      * Convert integer to bit array
      * Note: Uses bitwise operations for bit unpacking (structural)
-     * @param {number} value - Integer value
-     * @param {number} numBits - Number of bits to extract
-     * @returns {Array} - Bit array
+     * @param {uint32} value - Integer value
+     * @param {int32} numBits - Number of bits to extract
+     * @returns {uint8[]} - Bit array
      */
     _intToBits(value, numBits) {
       /** @type {uint8[]} */
@@ -439,7 +496,7 @@
 
     /**
      * Detects errors by comparing re-encoded sequence
-     * @param {Array} received - Received symbols
+     * @param {uint8[]} received - Received symbols
      * @returns {boolean} - True if error detected
      */
     DetectError(received) {
@@ -448,7 +505,9 @@
       }
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(received);
+        /** @type {uint8[]} */
         const reencoded = this._generateCodedSequence(this._bitsToInt(decoded));
 
         // Check if re-encoding matches received
