@@ -196,6 +196,14 @@
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           expected: OpCodes.Hex8ToBytes("18beb20101aa0ebc4620458276e0dea4f98b92a117b6f44a4bc74889801fdcd00b47fccbf928c37be953a25cd596fe017e9174f2ad4bf6ef54cdf12913dc404a")
+        },
+        {
+          text: "DarkCrypt Panama — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22578cc1f62b6095caff34699ed3083d72"),
+          expected: OpCodes.Hex8ToBytes("51696579a2eb522e3f583b213bdba819ccf024a8385436b4239264ffcaa8430162a9ac95789b7aaf03d7986fa221c8a8")
         }
       ];
     }

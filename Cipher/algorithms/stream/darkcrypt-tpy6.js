@@ -121,6 +121,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           expected: OpCodes.Hex8ToBytes("4ec12f0c0295bff2542946bafbcd0698bfce5781b6e730547a0bd653c438f778fa4150ff5a815d08d88e54a4d91584121ec60123ee8708f2fcafd257c677541e1fa9fa5182aeda7d0fe0ae338b4933f08ba020d559a5a0650e283efdfaff8bf2b3ed532b9882bc53749e1580469221cdc73489d2e9182ff380cda6b231e3eb66")
         },
+        {
+          text: "DarkCrypt TPy6 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186abd0f51a3f6489aed3f81d42678cb1d6fb20456a8fb4d9fe23486d92b7dc0126"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22578cc1f62b6095caff34699ed3083d72"),
+          expected: OpCodes.Hex8ToBytes("7679d9f05c072ee6d9bbb6ab8292ac4f908f6553b0aa8641c922d20bb3af6fbd1ca1c17e4fc4da6c5539d079a59252a0")
+        },
 
         ];
     }
