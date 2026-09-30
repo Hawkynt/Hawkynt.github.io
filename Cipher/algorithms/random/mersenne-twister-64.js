@@ -193,7 +193,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MersenneTwister64Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -211,8 +211,13 @@
  */
 
   class MersenneTwister64Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {MersenneTwister64Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // MT19937-64 state (using BigInt for 64-bit operations)
       this._state = new Array(NN);  // State array of 64-bit integers
@@ -226,7 +231,7 @@
      * Initialize the generator with a 64-bit seed
      * Based on init_genrand64() from the reference implementation
      *
-     * @param {Array} seedBytes - 8-byte array containing 64-bit seed (little-endian)
+     * @param {uint8[]|null} seedBytes - 8-byte array containing 64-bit seed (little-endian)
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -253,6 +258,9 @@
       this._index = NN;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -318,8 +326,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first) to match test vectors
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (this._index > NN) {
@@ -327,9 +335,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 64-bit words
@@ -385,11 +396,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }

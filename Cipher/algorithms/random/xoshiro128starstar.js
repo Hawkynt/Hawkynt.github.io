@@ -181,7 +181,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Xoshiro128StarStarInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -199,8 +199,13 @@
  */
 
   class Xoshiro128StarStarInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {Xoshiro128StarStarAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Xoshiro128** state: four 32-bit values
       this._s0 = 0;
@@ -213,6 +218,7 @@
     /**
      * Set seed value (1-4 bytes for 32-bit seed)
      * Uses SplitMix32 to initialize the four state values
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -248,6 +254,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -289,8 +298,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -298,9 +307,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
@@ -341,19 +353,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes (8 x 32-bit values)
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**

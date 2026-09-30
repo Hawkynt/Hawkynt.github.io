@@ -172,7 +172,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SFMTInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -190,8 +190,13 @@
  */
 
   class SFMTInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {SFMTAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // SFMT state - array of 128-bit integers represented as 4x32-bit words
       this._state = new Array(N32);      // State array (628 uint32 values)
@@ -208,7 +213,7 @@
      * Initialize the generator with a 32-bit seed
      * Based on SFMT init_gen_rand function
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -241,6 +246,9 @@
       this._index = N32;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -472,8 +480,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first) to match reference implementation
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (this._index > N32) {
@@ -481,9 +489,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -540,11 +551,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
