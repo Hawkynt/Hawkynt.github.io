@@ -4162,12 +4162,18 @@
      * @returns {uint8[]} Brotli stream
      */
     compress(input) {
-      // Empty in, empty out - matching the framework contract this codec is
-      // registered under. Every non-empty input becomes a real Brotli stream.
+      // Zero bytes is not a Brotli stream. An empty input still needs the window
+      // header and a final meta-block that is both last and empty (RFC 7932
+      // section 9.2), or no other decoder can read it; node's zlib rejects zero
+      // bytes with "unexpected end of file".
       if (input.length === 0) {
-        /** @type {uint8[]} */
-        const empty = [];
-        return empty;
+        /** @type {BitWriter} */
+        const emptyWriter = new BitWriter();
+        writeWindowBits(emptyWriter, computeWindowBits(0));
+        emptyWriter.writeBits(1, 1); // ISLAST = 1
+        emptyWriter.writeBits(1, 1); // ISLASTEMPTY = 1
+        emptyWriter.flush();
+        return emptyWriter.bytes;
       }
 
       /** @type {uint8[]} */
@@ -4418,7 +4424,9 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) {
+      // Decoding nothing yields nothing. Encoding nothing still has to produce
+      // a valid stream, so only the inverse direction may short-circuit.
+      if (this.isInverse && this.inputBuffer.length === 0) {
         this.inputBuffer = [];
         /** @type {uint8[]} */
         const empty = [];
