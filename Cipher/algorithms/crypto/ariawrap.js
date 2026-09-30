@@ -118,7 +118,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AriaWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -136,19 +136,27 @@
   class AriaWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AriaWrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {IBlockCipherInstance|null} */
       this.ariaEngine = null;
 
       // Default IV for RFC 3394
+      /** @type {uint8[]} */
       this.DEFAULT_IV = [0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6];
     }
 
@@ -167,13 +175,20 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -184,8 +199,10 @@
         throw new Error("ARIA block cipher not found in registry");
       }
 
-      this.ariaEngine = AriaAlgorithm.CreateInstance(false); // false = encryption for wrapping
-      this.ariaEngine.key = keyBytes;
+      /** @type {IBlockCipherInstance} */
+      const engine = AriaAlgorithm.CreateInstance(false); // false = encryption for wrapping
+      engine.key = keyBytes;
+      this.ariaEngine = engine;
     }
 
     /**
@@ -223,6 +240,13 @@
    */
 
     get iv() {
+      return this._currentIv();
+    }
+
+    /**
+     * @returns {uint8[]} Copy of the IV in use (the RFC 3394 default unless set)
+     */
+    _currentIv() {
       return this._iv ? [...this._iv] : [...this.DEFAULT_IV];
     }
 
@@ -251,6 +275,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = this.isInverse
         ? this._unwrap(this.inputBuffer)
         : this._wrap(this.inputBuffer);
@@ -259,7 +284,11 @@
       return result;
     }
 
-    // RFC 3394 Key Wrap implementation with ARIA
+    /**
+     * RFC 3394 Key Wrap implementation with ARIA
+     * @param {uint8[]} plaintext - Key data, a multiple of 8 bytes
+     * @returns {uint8[]} Wrapped data
+     */
     _wrap(plaintext) {
       // Validate input length (must be multiple of 8 bytes, minimum 16 bytes)
       if (plaintext.length < 16) {
@@ -269,15 +298,22 @@
         throw new Error("Plaintext length must be multiple of 8 bytes");
       }
 
+      /** @type {int32} */
       const n = plaintext.length / 8; // Number of 64-bit blocks
-      const iv = this.iv;
+      /** @type {uint8[]} */
+      const iv = this._currentIv();
+      /** @type {IBlockCipherInstance} */
+      const engine = this.ariaEngine;
 
       // Special case: wrapping single block (64 bits)
       if (n === 1) {
         // For single block, just encrypt IV || plaintext
+        /** @type {uint8[]} */
         const block = [...iv, ...plaintext];
-        this.ariaEngine.Feed(block);
-        return this.ariaEngine.Result();
+        engine.Feed(block);
+        /** @type {uint8[]} */
+        const single = engine.Result();
+        return single;
       }
 
       // Initialize registers
@@ -285,6 +321,7 @@
       let A = [...iv];
 
       // R[1..n] = plaintext blocks
+      /** @type {uint8[][]} */
       const R = [];
       for (let i = 0; i < n; ++i) {
         R[i] = plaintext.slice(i * 8, (i + 1) * 8);
@@ -295,8 +332,9 @@
         for (let i = 0; i < n; ++i) {
           // B = ARIA(K, A || R[i])
           const block = [...A, ...R[i]];
-          this.ariaEngine.Feed(block);
-          const B = this.ariaEngine.Result();
+          engine.Feed(block);
+          /** @type {uint8[]} */
+          const B = engine.Result();
 
           // A = MSB(64, B) XOR t where t = (n*j)+i+1
           A = B.slice(0, 8);
@@ -318,15 +356,20 @@
       }
 
       // Output: A || R[1] || R[2] || ... || R[n]
+      /** @type {uint8[]} */
       const result = [...A];
       for (let i = 0; i < n; ++i) {
-        result.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) result.push(R[i][b]);
       }
 
       return result;
     }
 
-    // RFC 3394 Key Unwrap implementation with ARIA
+    /**
+     * RFC 3394 Key Unwrap implementation with ARIA
+     * @param {uint8[]} ciphertext - Wrapped data, a multiple of 8 bytes
+     * @returns {uint8[]} Unwrapped key data
+     */
     _unwrap(ciphertext) {
       // Validate input length (must be multiple of 8 bytes, minimum 24 bytes)
       if (ciphertext.length < 24) {
@@ -336,18 +379,22 @@
         throw new Error("Ciphertext length must be multiple of 8 bytes");
       }
 
+      /** @type {int32} */
       const n = (ciphertext.length / 8) - 1; // Number of 64-bit data blocks
-      const expectedIV = this.iv;
+      /** @type {uint8[]} */
+      const expectedIV = this._currentIv();
 
       // Special case: unwrapping single block
       if (n === 1) {
         // Create ARIA decryption instance
-        const AriaAlgorithm = AlgorithmFramework.Find("ARIA");
-        const ariaDecrypt = AriaAlgorithm.CreateInstance(true); // true = decryption
-        ariaDecrypt.key = this._key;
+        const AriaSingle = AlgorithmFramework.Find("ARIA");
+        /** @type {IBlockCipherInstance} */
+        const ariaSingle = AriaSingle.CreateInstance(true); // true = decryption
+        ariaSingle.key = this._key;
 
-        ariaDecrypt.Feed(ciphertext);
-        const decrypted = ariaDecrypt.Result();
+        ariaSingle.Feed(ciphertext);
+        /** @type {uint8[]} */
+        const decrypted = ariaSingle.Result();
 
         // Verify IV
         const extractedIV = decrypted.slice(0, 8);
@@ -363,6 +410,7 @@
       let A = ciphertext.slice(0, 8);
 
       // R[1..n] = C[1..n]
+      /** @type {uint8[][]} */
       const R = [];
       for (let i = 0; i < n; ++i) {
         R[i] = ciphertext.slice((i + 1) * 8, (i + 2) * 8);
@@ -370,6 +418,7 @@
 
       // Create ARIA decryption instance
       const AriaAlgorithm = AlgorithmFramework.Find("ARIA");
+      /** @type {IBlockCipherInstance} */
       const ariaDecrypt = AriaAlgorithm.CreateInstance(true); // true = decryption
       ariaDecrypt.key = this._key;
 
@@ -393,6 +442,7 @@
           // B = ARIA_DECRYPT(K, A' || R[i])
           const block = [...A_prime, ...R[i]];
           ariaDecrypt.Feed(block);
+          /** @type {uint8[]} */
           const B = ariaDecrypt.Result();
 
           // A = MSB(64, B)
@@ -409,9 +459,10 @@
       }
 
       // Output: R[1] || R[2] || ... || R[n]
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < n; ++i) {
-        result.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) result.push(R[i][b]);
       }
 
       return result;
