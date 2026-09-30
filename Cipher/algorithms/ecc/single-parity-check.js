@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SingleParityCheckInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,21 +132,31 @@
   class SingleParityCheckInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SingleParityCheckAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._evenParity = true; // Even parity by default
     }
 
+    /**
+     * @param {boolean} value - True for even parity
+     */
     set evenParity(value) {
       this._evenParity = !!value;
     }
 
+    /**
+     * @returns {boolean} True for even parity
+     */
     get evenParity() {
       return this._evenParity;
     }
@@ -187,6 +197,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Count ones in data
       let onesCount = 0;
@@ -195,6 +209,7 @@
       }
 
       // Calculate parity bit
+      /** @type {float64} */
       let parityBit;
       if (this._evenParity) {
         // Even parity: parity bit makes total ones even
@@ -205,9 +220,16 @@
       }
 
       // Append parity bit
-      return [...data, parityBit];
+      /** @type {uint8[]} */
+      const codeword = data.slice();
+      codeword.push(parityBit);
+      return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length < 2) {
         throw new Error('SPC decode: Input must have at least 2 bits');
@@ -230,6 +252,10 @@
       return data.slice(0, -1);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length < 2) return true;
 

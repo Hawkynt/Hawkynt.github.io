@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Only 25 possible keys (shifts 1-25), making brute force trivial even by hand](https://en.wikipedia.org/wiki/Caesar_cipher#Breaking_the_cipher) | — | None - cipher is fundamentally insecure |
-| [Letter frequencies preserved, making frequency analysis immediately effective](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Use only for educational demonstrations of cryptanalysis |
+| [Brute Force Attack](https://en.wikipedia.org/wiki/Caesar_cipher#Breaking_the_cipher) | Only 25 possible keys (shifts 1-25), making brute force trivial even by hand | None - cipher is fundamentally insecure |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Letter frequencies preserved, making frequency analysis immediately effective | Use only for educational demonstrations of cryptanalysis |
 
 ## Documentation
 

@@ -112,27 +112,51 @@
         ];
 
         // Associate keys with test vectors
-        this.tests[0].key = new Array(12).fill(0); // All zeros key
+        this.tests[0].key = OpCodes.CreateArray(12, 0); // All zeros key
         this.tests[1].key = OpCodes.Hex8ToBytes("0123456789abcdef01234567"); // Pattern key
       }
 
+      /**
+       * Create new cipher instance
+       * @param {boolean} [isInverse=false] - True for decryption
+       * @returns {ThreeWayInstance} New cipher instance
+       */
       CreateInstance(isInverse = false) {
-        const instance = new ThreeWayInstance(this);
-        instance.isInverse = isInverse;
-        return instance;
+        return new ThreeWayInstance(this, isInverse);
       }
     }
 
+    // Correct 3-Way pi permutation table: pi sends bit i to bit PI_TABLE[i]
+    /** @type {int32[]} */
+    const PI_TABLE = [
+      0, 11, 22, 1, 12, 23, 2, 13, 24, 3, 14, 25, 4, 15, 26, 5,
+      16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9, 20, 31, 10, 21
+    ];
+
     class ThreeWayInstance extends IBlockCipherInstance {
+      /**
+       * @param {ThreeWayAlgorithm} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - Decryption mode flag
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {int32} */
         this.BlockSize = 12; // 96 bits
+        /** @type {uint8[]|null} */
         this._key = null;
+        /** @type {int32} */
         this.KeySize = 0;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {uint32[][]} */
+        this.roundKeys = [];
       }
 
+      /**
+       * @param {uint8[]|null} keyBytes - 12-byte key or null to clear
+       */
       set key(keyBytes) {
         if (!keyBytes) {
           this._key = null;
@@ -144,56 +168,63 @@
           throw new Error('3-Way requires exactly 96-bit (12-byte) key');
         }
 
-        this._key = [...keyBytes];
+        this._key = keyBytes.slice();
         this.KeySize = keyBytes.length;
 
         // Derive round keys
         this._generateRoundKeys();
       }
 
+      /**
+       * @returns {uint8[]|null} Copy of the key or null
+       */
       get key() {
-        return this._key ? [...this._key] : null;
+        return this._key ? this._key.slice() : null;
       }
 
+      /**
+       * Derive the 11 round keys
+       * @returns {void}
+       */
       _generateRoundKeys() {
         if (!this._key) return;
 
         // Convert key to three 32-bit words
         this.roundKeys = [];
         for (let round = 0; round <= 10; round++) {
+          /** @type {uint32[]} */
           const roundKey = [];
 
           if (round === 0) {
             // Initial key
             for (let i = 0; i < 3; i++) {
-              roundKey[i] = OpCodes.Pack32LE(
+              roundKey.push(OpCodes.Pack32LE(
                 this._key[i * 4],
-                this._key[i * 4 + 1], 
+                this._key[i * 4 + 1],
                 this._key[i * 4 + 2],
                 this._key[i * 4 + 3]
-              );
+              ));
             }
           } else {
-            // Generate round key using linear transformation
+            // Generate round key using linear transformation.
+            // The round constant 1 << (round - 1) was masked with a helper
+            // constant OpCodes does not define, so it has always been zero and
+            // the schedule applies theta alone.
+            /** @type {uint32[]} */
             const prevKey = this.roundKeys[round - 1];
-            roundKey[0] = prevKey[0];
-            roundKey[1] = prevKey[1];
-            roundKey[2] = prevKey[2];
-
-            // Apply round constant
-            const rcon = OpCodes.AndN(OpCodes.Shl32(1, round - 1), OpCodes.MASK32);
-            roundKey[0] = OpCodes.XorN(roundKey[0], rcon);
-
-            // Simple key schedule transformation
-            roundKey[0] = this._theta(roundKey[0]);
-            roundKey[1] = this._theta(roundKey[1]);
-            roundKey[2] = this._theta(roundKey[2]);
+            roundKey.push(this._theta(prevKey[0]));
+            roundKey.push(this._theta(prevKey[1]));
+            roundKey.push(this._theta(prevKey[2]));
           }
 
-          this.roundKeys[round] = roundKey;
+          this.roundKeys.push(roundKey);
         }
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {void}
+       */
       Feed(data) {
         if (!data || data.length === 0) return;
         if (!this._key) throw new Error("Key not set");
@@ -204,16 +235,22 @@
         for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
       }
 
+      /**
+       * @returns {uint8[]} Processed bytes, as many as were fed
+       */
       Result() {
         if (!this.inputBuffer || this.inputBuffer.length === 0) {
           throw new Error("No data to process");
         }
 
+        /** @type {int32} */
         const originalLength = this.inputBuffer.length;
+        /** @type {uint8[]} */
         const output = [];
 
         // Process in 12-byte blocks
         for (let i = 0; i < this.inputBuffer.length; i += 12) {
+          /** @type {uint8[]} */
           const block = this.inputBuffer.slice(i, i + 12);
 
           // Pad if necessary
@@ -221,6 +258,7 @@
             block.push(0);
           }
 
+          /** @type {uint8[]} */
           const processedBlock = this.isInverse ? this._processBlockInverse(block) : this._processBlock(block);
           for (let _i = 0; _i < processedBlock.length; _i++) output.push(processedBlock[_i]);
         }
@@ -229,75 +267,101 @@
         return output.slice(0, originalLength);
       }
 
+      /**
+       * @param {uint8[]} block - 12-byte block
+       * @returns {uint32[]} Three little-endian words
+       */
+      _toWords(block) {
+        /** @type {uint32[]} */
+        const w = [];
+        for (let i = 0; i < 3; i++) {
+          w.push(OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]));
+        }
+        return w;
+      }
+
+      /**
+       * @param {uint32[]} w - Three words
+       * @returns {uint8[]} 12 bytes, little-endian
+       */
+      _toBytes(w) {
+        /** @type {uint8[]} */
+        const result = [];
+        for (let i = 0; i < 3; i++) {
+          /** @type {uint8[]} */
+          const bytes = OpCodes.Unpack32LE(w[i]);
+          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
+        }
+        return result;
+      }
+
+      /**
+       * XOR a round key into the words
+       * @param {uint32[]} w - Three words, updated in place
+       * @param {int32} round - Round key index
+       * @returns {void}
+       */
+      _addRoundKey(w, round) {
+        /** @type {uint32[]} */
+        const rk = this.roundKeys[round];
+        w[0] = OpCodes.Xor32(w[0], rk[0]);
+        w[1] = OpCodes.Xor32(w[1], rk[1]);
+        w[2] = OpCodes.Xor32(w[2], rk[2]);
+      }
+
+      /**
+       * Encrypt one block
+       * @param {uint8[]} block - 12-byte block
+       * @returns {uint8[]} 12-byte block
+       */
       _processBlock(block) {
         // Convert to three 32-bit words
-        const state = [];
-        for (let i = 0; i < 3; i++) {
-          state[i] = OpCodes.Pack32LE(
-            block[i * 4] || 0,
-            block[i * 4 + 1] || 0,
-            block[i * 4 + 2] || 0,
-            block[i * 4 + 3] || 0
-          );
-        }
+        /** @type {uint32[]} */
+        const w = this._toWords(block);
 
         // Apply 11 rounds
         for (let round = 0; round < 11; round++) {
           // Add round key
-          state[0] ^= this.roundKeys[round][0];
-          state[1] ^= this.roundKeys[round][1];
-          state[2] ^= this.roundKeys[round][2];
+          this._addRoundKey(w, round);
 
           // Apply theta transformation
-          state[0] = this._theta(state[0]);
-          state[1] = this._theta(state[1]);
-          state[2] = this._theta(state[2]);
+          w[0] = this._theta(w[0]);
+          w[1] = this._theta(w[1]);
+          w[2] = this._theta(w[2]);
 
           // Apply pi permutation
           if (round < 10) {
-            state[0] = this._pi(state[0]);
-            state[1] = this._pi(state[1]);
-            state[2] = this._pi(state[2]);
+            w[0] = this._pi(w[0]);
+            w[1] = this._pi(w[1]);
+            w[2] = this._pi(w[2]);
 
             // Gamma substitution (simplified)
-            state[0] = this._gamma(state[0], state[1], state[2]);
-            state[1] = this._gamma(state[1], state[2], state[0]);
-            state[2] = this._gamma(state[2], state[0], state[1]);
+            w[0] = this._gamma(w[0], w[1], w[2]);
+            w[1] = this._gamma(w[1], w[2], w[0]);
+            w[2] = this._gamma(w[2], w[0], w[1]);
           }
         }
 
         // Final round key addition
-        state[0] ^= this.roundKeys[10][0];
-        state[1] ^= this.roundKeys[10][1];
-        state[2] ^= this.roundKeys[10][2];
+        this._addRoundKey(w, 10);
 
         // Convert back to bytes
-        const result = [];
-        for (let i = 0; i < 3; i++) {
-          const bytes = OpCodes.Unpack32LE(state[i]);
-          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-        }
-
-        return result;
+        return this._toBytes(w);
       }
 
       // Inverse of _processBlock: every forward step is a bijection, so the block
       // is recovered by replaying them in reverse with each one inverted.
+      /**
+       * Decrypt one block
+       * @param {uint8[]} block - 12-byte block
+       * @returns {uint8[]} 12-byte block
+       */
       _processBlockInverse(block) {
-        const state = [];
-        for (let i = 0; i < 3; i++) {
-          state[i] = OpCodes.Pack32LE(
-            block[i * 4] || 0,
-            block[i * 4 + 1] || 0,
-            block[i * 4 + 2] || 0,
-            block[i * 4 + 3] || 0
-          );
-        }
+        /** @type {uint32[]} */
+        const w = this._toWords(block);
 
         // Undo the final round key addition
-        state[0] ^= this.roundKeys[10][0];
-        state[1] ^= this.roundKeys[10][1];
-        state[2] ^= this.roundKeys[10][2];
+        this._addRoundKey(w, 10);
 
         for (let round = 10; round >= 0; round--) {
           if (round < 10) {
@@ -305,51 +369,60 @@
             // and leaves the other two words untouched, so it is an involution in
             // its own word. Replaying the same three assignments in the opposite
             // order therefore inverts the group exactly.
-            state[2] = this._gamma(state[2], state[0], state[1]);
-            state[1] = this._gamma(state[1], state[2], state[0]);
-            state[0] = this._gamma(state[0], state[1], state[2]);
+            w[2] = this._gamma(w[2], w[0], w[1]);
+            w[1] = this._gamma(w[1], w[2], w[0]);
+            w[0] = this._gamma(w[0], w[1], w[2]);
 
             // Undo the pi bit permutation
-            state[0] = this._piInverse(state[0]);
-            state[1] = this._piInverse(state[1]);
-            state[2] = this._piInverse(state[2]);
+            w[0] = this._piInverse(w[0]);
+            w[1] = this._piInverse(w[1]);
+            w[2] = this._piInverse(w[2]);
           }
 
           // Undo theta
-          state[0] = this._thetaInverse(state[0]);
-          state[1] = this._thetaInverse(state[1]);
-          state[2] = this._thetaInverse(state[2]);
+          w[0] = this._thetaInverse(w[0]);
+          w[1] = this._thetaInverse(w[1]);
+          w[2] = this._thetaInverse(w[2]);
 
           // Undo the round key addition
-          state[0] ^= this.roundKeys[round][0];
-          state[1] ^= this.roundKeys[round][1];
-          state[2] ^= this.roundKeys[round][2];
+          this._addRoundKey(w, round);
         }
 
-        const result = [];
-        for (let i = 0; i < 3; i++) {
-          const bytes = OpCodes.Unpack32LE(state[i]);
-          for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-        }
+        return this._toBytes(w);
+      }
 
+      /**
+       * Theta linear transformation
+       * @param {uint32} x - Word
+       * @returns {uint32} x ^ (x <<< 16) ^ (x <<< 8)
+       */
+      _theta(x) {
+        return OpCodes.Xor32(x, OpCodes.Xor32(OpCodes.RotL32(x, 16), OpCodes.RotL32(x, 8)));
+      }
+
+      /**
+       * Pi permutation
+       * @param {uint32} x - Word
+       * @returns {uint32} Bit-permuted word
+       */
+      _pi(x) {
+        /** @type {uint32} */
+        let result = 0;
+        for (let i = 0; i < 32; i++) {
+          /** @type {uint32} */
+          const bit = OpCodes.And32(OpCodes.Shr32(x, i), 1);
+          result = OpCodes.Or32(result, OpCodes.Shl32(bit, PI_TABLE[i]));
+        }
         return result;
       }
 
-      // Theta linear transformation
-      _theta(x) {
-        const y = OpCodes.XorN(x, OpCodes.XorN(OpCodes.RotL32(x, 16), OpCodes.RotL32(x, 8)));
-        return OpCodes.ToUint32(y);
-      }
-
-      // Pi permutation
-      _pi(x) {
-        let result = 0;
-        for (let i = 0; i < 32; i++) {
-          const bit = OpCodes.AndN(OpCodes.Shr32(x, i), 1);
-          const newPos = this._piTable[i];
-          result = OpCodes.OrN(result, OpCodes.Shl32(bit, newPos));
-        }
-        return OpCodes.ToUint32(result);
+      /**
+       * m(v) = (v <<< 8) ^ (v <<< 16), the nilpotent part of theta
+       * @param {uint32} v - Word
+       * @returns {uint32} m(v)
+       */
+      _thetaM(v) {
+        return OpCodes.Xor32(OpCodes.RotL32(v, 8), OpCodes.RotL32(v, 16));
       }
 
       // Inverse of theta.
@@ -362,38 +435,46 @@
       // so m is nilpotent of index 4 and the geometric series terminates:
       //   p^-1 = (1 + m)^-1 = 1 + m + m^2 + m^3
       // because (1 + m)(1 + m + m^2 + m^3) = 1 + m^4 = 1.
+      /**
+       * @param {uint32} x - Word
+       * @returns {uint32} theta^-1(x)
+       */
       _thetaInverse(x) {
-        const m = v => OpCodes.XorN(OpCodes.RotL32(v, 8), OpCodes.RotL32(v, 16));
-        const m1 = m(x);
-        const m2 = m(m1);
-        const m3 = m(m2);
-        const y = OpCodes.XorN(OpCodes.XorN(x, m1), OpCodes.XorN(m2, m3));
-        return OpCodes.ToUint32(y);
+        /** @type {uint32} */
+        const m1 = this._thetaM(x);
+        /** @type {uint32} */
+        const m2 = this._thetaM(m1);
+        /** @type {uint32} */
+        const m3 = this._thetaM(m2);
+        return OpCodes.Xor32(OpCodes.Xor32(x, m1), OpCodes.Xor32(m2, m3));
       }
 
-      // Inverse of the pi bit permutation: pi sends bit i to bit _piTable[i], so
-      // the inverse reads bit _piTable[i] back into bit i.
+      // Inverse of the pi bit permutation: pi sends bit i to bit PI_TABLE[i], so
+      // the inverse reads bit PI_TABLE[i] back into bit i.
+      /**
+       * @param {uint32} x - Word
+       * @returns {uint32} pi^-1(x)
+       */
       _piInverse(x) {
+        /** @type {uint32} */
         let result = 0;
-        const table = this._piTable;
         for (let i = 0; i < 32; i++) {
-          const bit = OpCodes.AndN(OpCodes.Shr32(x, table[i]), 1);
-          result = OpCodes.OrN(result, OpCodes.Shl32(bit, i));
+          /** @type {uint32} */
+          const bit = OpCodes.And32(OpCodes.Shr32(x, PI_TABLE[i]), 1);
+          result = OpCodes.Or32(result, OpCodes.Shl32(bit, i));
         }
-        return OpCodes.ToUint32(result);
+        return result;
       }
 
-      // Gamma substitution (simplified)
+      /**
+       * Gamma substitution (simplified)
+       * @param {uint32} a - Word updated
+       * @param {uint32} b - Second word
+       * @param {uint32} c - Third word
+       * @returns {uint32} a ^ (b | ~c)
+       */
       _gamma(a, b, c) {
-        return OpCodes.XorN(a, OpCodes.OrN(b, ~c));
-      }
-
-      get _piTable() {
-        // Correct 3-Way pi permutation table
-        return [
-          0, 11, 22, 1, 12, 23, 2, 13, 24, 3, 14, 25, 4, 15, 26, 5,
-          16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9, 20, 31, 10, 21
-        ];
+        return OpCodes.Xor32(a, OpCodes.Or32(b, OpCodes.Not32(c)));
       }
     }
     // Register the algorithm

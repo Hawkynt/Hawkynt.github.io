@@ -101,21 +101,39 @@
 
       }
 
+      /**
+       * Create new instance
+       * @param {boolean} [isInverse=false] - Decryption mode flag
+       * @returns {JeffersonWheelInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new JeffersonWheelInstance(this, isInverse);
       }
     }
 
     class JeffersonWheelInstance extends IAlgorithmInstance {
+      /**
+       * @param {JeffersonWheel} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - Decryption mode flag
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm, isInverse);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {int32} */
         this.wheelCount = 10;
+        /** @type {int32} */
         this.alignment = 0;
+        /** @type {string[]} */
         this.wheels = [];
+        /** @type {int32[]} */
         this.wheelPositions = [];
+        /** @type {boolean} */
         this.keyScheduled = false;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {uint8[]|null} */
+        this._key = null;
       }
 
       // The 25 documented wheel alphabets of the M-94, the US Army's
@@ -127,7 +145,17 @@
       // carried R twice and no L, and wheel 21 was 25 letters long. A wheel
       // that is not a permutation cannot be read backwards, so those three
       // wheels silently corrupted anything they touched.
+      /**
+       * @returns {string[]} The 25 M-94 wheel alphabets
+       */
       get defaultWheels() {
+        return this._wheelAlphabets();
+      }
+
+      /**
+       * @returns {string[]} The 25 M-94 wheel alphabets, a fresh array
+       */
+      _wheelAlphabets() {
         return [
           "ABCEIGDJFVUYMHTQKZOLRXSPWN", // Wheel 1
           "ACDEHFIJKTLMOUVYGZNPQXRWSB", // Wheel 2
@@ -157,6 +185,9 @@
         ];
       }
 
+      /**
+       * @returns {boolean} Always true
+       */
       Initialize() {
         this.wheels = [];
         this.wheelPositions = [];
@@ -171,40 +202,64 @@
         return true;
       }
 
-      // Property setter for key (test framework compatibility)
+      /**
+       * Key "count|alignment" (test framework compatibility); any other text
+       * selects as many wheels as it has characters
+       * @param {uint8[]|null} keyData - Key bytes
+       */
       set key(keyData) {
         this._key = keyData;
+        /** @type {string} */
         const keyString = keyData ? String.fromCharCode(...keyData) : "10|0";
 
         if (keyString.includes('|')) {
           // Parse key as wheel configuration
+          /** @type {string[]} */
           const parts = keyString.split('|');
-          this.wheelCount = parseInt(parts[0]) || 10;
-          this.alignment = parseInt(parts[1]) || 0;
+          /** @type {int32} */
+          const count = parseInt(parts[0]);
+          /** @type {int32} */
+          const offset = parseInt(parts[1]);
+          this.wheelCount = count ? count : 10;
+          this.alignment = offset ? offset : 0;
         } else {
           // Simple key - use wheel count
-          this.wheelCount = Math.max(1, Math.min(26, keyString.length || 10));
+          this.wheelCount = Math.max(1, Math.min(26, keyString.length > 0 ? keyString.length : 10));
           this.alignment = 0;
         }
 
         // Use default wheels
-        this.wheels = this.defaultWheels.slice(0, this.wheelCount);
+        this.wheels = this._wheelAlphabets().slice(0, this.wheelCount);
 
         // Initialize wheel positions
-        this.wheelPositions = new Array(this.wheelCount).fill(0);
+        this.wheelPositions = OpCodes.CreateArray(this.wheelCount, 0);
 
         this.keyScheduled = true;
       }
 
+      /**
+       * @returns {uint8[]|string} The key bytes, or "10|0" when none was set
+       */
       get key() {
-        return this._key || "10|0";
+        if (this._key) {
+          return this._key;
+        }
+        return "10|0";
       }
 
+      /**
+       * @param {uint8[]|null} key - Key bytes
+       * @returns {boolean} Always true
+       */
       SetKey(key) {
         this.key = key;
         return true;
       }
 
+      /**
+       * @param {int32[]} positions - One rotation per wheel
+       * @returns {void}
+       */
       setWheelPositions(positions) {
         if (positions && positions.length >= this.wheelCount) {
           for (let i = 0; i < this.wheelCount; i++) {
@@ -213,21 +268,36 @@
         }
       }
 
+      /**
+       * @param {int32} wheelIndex - Wheel
+       * @param {int32} position - Row
+       * @returns {string} Letter on that row (undefined for a negative row)
+       */
       getWheelChar(wheelIndex, position) {
         if (wheelIndex >= this.wheels.length) {
           throw new Error('Wheel index out of range');
         }
 
+        /** @type {string} */
         const wheel = this.wheels[wheelIndex];
-        return wheel[position % 26];
+        /** @type {string} */
+        const letter = wheel[position % 26];
+        return letter;
       }
 
+      /**
+       * @param {int32} wheelIndex - Wheel
+       * @param {string} char - Upper-case letter
+       * @returns {int32} Its row on the wheel, 0 when absent
+       */
       findCharOnWheel(wheelIndex, char) {
         if (wheelIndex >= this.wheels.length) {
           throw new Error('Wheel index out of range');
         }
 
+        /** @type {string} */
         const wheel = this.wheels[wheelIndex];
+        /** @type {int32} */
         const pos = wheel.indexOf(char);
         return pos >= 0 ? pos : 0;
       }
@@ -242,67 +312,105 @@
        * encipher rather than stand still, which is not how a Jefferson disk
        * works and disagreed with the published worked example.
        * @param {string} char - One plaintext character
-       * @param {number} wheelIndex - Which letter of the message this is
+       * @param {int32} wheelIndex - Which letter of the message this is
        * @returns {string} Enciphered character, case preserved
        */
       encryptChar(char, wheelIndex) {
+        /** @type {int32} */
         const charCode = char.charCodeAt(0);
+        /** @type {boolean} */
         const isUpper = charCode >= 65 && charCode <= 90;
+        /** @type {boolean} */
         const isLower = charCode >= 97 && charCode <= 122;
 
         if (!isUpper && !isLower) return char; // Return non-letters unchanged
 
+        /** @type {int32} */
         const wheel = wheelIndex % this.wheelCount;
+        /** @type {int32} */
         const row = this.findCharOnWheel(wheel, char.toUpperCase());
+        /** @type {int32} */
         const shifted = (row + this.alignment + this.wheelPositions[wheel]) % 26;
+        /** @type {string} */
         const result = this.getWheelChar(wheel, shifted);
 
-        return isUpper ? result : result.toLowerCase();
+        if (isUpper) {
+          return result;
+        }
+        /** @type {string} */
+        const lower = result.toLowerCase();
+        return lower;
       }
 
       /**
        * Read back up the same wheel by the same number of rows.
        * @param {string} char - One ciphertext character
-       * @param {number} wheelIndex - Which letter of the message this is
+       * @param {int32} wheelIndex - Which letter of the message this is
        * @returns {string} Deciphered character, case preserved
        */
       decryptChar(char, wheelIndex) {
+        /** @type {int32} */
         const charCode = char.charCodeAt(0);
+        /** @type {boolean} */
         const isUpper = charCode >= 65 && charCode <= 90;
+        /** @type {boolean} */
         const isLower = charCode >= 97 && charCode <= 122;
 
         if (!isUpper && !isLower) return char; // Return non-letters unchanged
 
+        /** @type {int32} */
         const wheel = wheelIndex % this.wheelCount;
+        /** @type {int32} */
         const row = this.findCharOnWheel(wheel, char.toUpperCase());
+        /** @type {int32} */
         const shifted = (row - this.alignment - this.wheelPositions[wheel] + 52) % 26;
+        /** @type {string} */
         const result = this.getWheelChar(wheel, shifted);
 
-        return isUpper ? result : result.toLowerCase();
+        if (isUpper) {
+          return result;
+        }
+        /** @type {string} */
+        const lower = result.toLowerCase();
+        return lower;
       }
 
       // Feed data to the cipher
 
       // Get the result of the transformation  
+      /**
+       * @returns {uint8[]} Processed bytes
+       */
       Result() {
         if (!this.inputBuffer || this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
         return this.Process(this.inputBuffer, !this.isInverse);
       }
 
+      /**
+       * @param {uint8[]} input - Data
+       * @param {boolean} [isEncryption=true] - Direction
+       * @returns {uint8[]} Processed bytes
+       */
       Process(input, isEncryption = true) {
         // Ensure key is set up (fallback to default)
         if (!this.keyScheduled) {
           this.key = OpCodes.AnsiToBytes("10|0");
         }
 
+        /** @type {uint8[]} */
         const result = [];
+        /** @type {int32} */
         let wheelIndex = 0;
 
         for (let i = 0; i < input.length; i++) {
+          /** @type {string} */
           const char = String.fromCharCode(input[i]);
+          /** @type {string} */
           const processed = isEncryption ? 
             this.encryptChar(char, wheelIndex) : 
             this.decryptChar(char, wheelIndex);
@@ -317,11 +425,12 @@
         return result;
       }
 
+      /**
+       * @returns {void}
+       */
       ClearData() {
-        if (OpCodes.ClearArray) {
-          OpCodes.ClearArray(this.wheels);
-          OpCodes.ClearArray(this.wheelPositions);
-        }
+        OpCodes.ClearArray(this.wheels);
+        OpCodes.ClearArray(this.wheelPositions);
         this.keyScheduled = false;
       }
 

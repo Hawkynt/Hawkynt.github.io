@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Digraph Frequency Analysis",
-          text: "Common digraph patterns in plaintext create patterns in ciphertext, enabling cryptanalysis",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Educational use only - use modern ciphers for real security"
-        },
-        {
-          type: "Known Plaintext Attack",
-          text: "If plaintext-ciphertext pairs are known, key matrix can be reconstructed",
-          uri: "https://en.wikipedia.org/wiki/Known-plaintext_attack",
-          mitigation: "Avoid using with predictable or repeated messages"
-        }
+        new Vulnerability(
+          "Digraph Frequency Analysis",
+          "Common digraph patterns in plaintext create patterns in ciphertext, enabling cryptanalysis",
+          "Educational use only - use modern ciphers for real security",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        ),
+        new Vulnerability(
+          "Known Plaintext Attack",
+          "If plaintext-ciphertext pairs are known, key matrix can be reconstructed",
+          "Avoid using with predictable or repeated messages",
+          "https://en.wikipedia.org/wiki/Known-plaintext_attack"
+        )
       ];
 
       // Test vectors using byte arrays - bit-perfect results from implementation
@@ -116,7 +116,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -124,11 +125,28 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PlayfairCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new PlayfairCipherInstance(this, isInverse);
+    }
+  }
+
+  /**
+   * Row and column of a letter in the key matrix
+   * @class
+   */
+  class MatrixPosition {
+    /**
+     * @param {int32} row - Row 0..4
+     * @param {int32} col - Column 0..4
+     */
+    constructor(row, col) {
+      /** @type {int32} */
+      this.row = row;
+      /** @type {int32} */
+      this.col = col;
     }
   }
 
@@ -142,112 +160,156 @@
   class PlayfairCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PlayfairCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = [];
+      /** @type {string[][]} */
+      this._keyMatrix = [];
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Playfair uses 5x5 grid (I=J)
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
     }
 
-    // Property setter for key
+    /**
+     * Keyword; only its letters count, upper-cased, J as I
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "KEYWORD"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._keyMatrix = this.createMatrix("KEYWORD"); // Default key
       } else {
         // Convert key bytes to uppercase letters only
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
-        const processedKey = keyStr.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
-        this._keyMatrix = this.createMatrix(processedKey || "KEYWORD");
+        /** @type {string} */
+        const upper = keyStr.toUpperCase();
+        /** @type {string} */
+        const processedKey = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+        this._keyMatrix = this.createMatrix(processedKey.length > 0 ? processedKey : "KEYWORD");
       }
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key matrix
+   * @returns {string[][]} 5x5 matrix of letters
    */
 
     get key() {
       return this._keyMatrix;
     }
 
-    // Create 5x5 Playfair key matrix
-    createMatrix(key) {
+    /**
+     * Create 5x5 Playfair key matrix
+     * @param {string} keyword - Keyword
+     * @returns {string[][]} Matrix
+     */
+    createMatrix(keyword) {
+      /** @type {string} */
       const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
-      const used = new Set();
+      /** @type {string[]} */
       const matrix = [];
 
       // Add unique characters from key first
-      for (const char of key) {
-        if (alphabet.includes(char) && !used.has(char)) {
+      for (let i = 0; i < keyword.length; i++) {
+        /** @type {string} */
+        const char = keyword.charAt(i);
+        if (alphabet.includes(char) && matrix.indexOf(char) < 0) {
           matrix.push(char);
-          used.add(char);
         }
       }
 
       // Fill remaining positions with unused alphabet letters
-      for (const char of alphabet) {
-        if (!used.has(char)) {
+      for (let i = 0; i < alphabet.length; i++) {
+        /** @type {string} */
+        const char = alphabet.charAt(i);
+        if (matrix.indexOf(char) < 0) {
           matrix.push(char);
         }
       }
 
       // Convert to 5x5 grid
+      /** @type {string[][]} */
       const grid = [];
       for (let i = 0; i < 5; i++) {
-        grid[i] = matrix.slice(i * 5, (i + 1) * 5);
+        grid.push(matrix.slice(i * 5, (i + 1) * 5));
       }
 
       return grid;
     }
 
-    // Find position of character in matrix
+    /**
+     * Find position of character in matrix
+     * @param {string} char - Letter
+     * @param {string[][]} matrix - Key matrix
+     * @returns {MatrixPosition|null} Its position, or null when absent
+     */
     findPosition(char, matrix) {
       for (let row = 0; row < 5; row++) {
         for (let col = 0; col < 5; col++) {
           if (matrix[row][col] === char) {
-            return {row, col};
+            return new MatrixPosition(row, col);
           }
         }
       }
       return null;
     }
 
-    // Process digraph according to Playfair rules
+    /**
+     * Process digraph according to Playfair rules
+     * @param {string} char1 - First letter
+     * @param {string} char2 - Second letter
+     * @param {string[][]} matrix - Key matrix
+     * @param {boolean} [encrypt=true] - True to encrypt
+     * @returns {string} Transformed digraph
+     */
     processDigraph(char1, char2, matrix, encrypt = true) {
+      /** @type {MatrixPosition|null} */
       const pos1 = this.findPosition(char1, matrix);
+      /** @type {MatrixPosition|null} */
       const pos2 = this.findPosition(char2, matrix);
 
       if (!pos1 || !pos2) return char1 + char2; // Fallback
 
-      let newPos1, newPos2;
+      /** @type {int32} */
+      let row1 = pos1.row;
+      /** @type {int32} */
+      let col1 = pos1.col;
+      /** @type {int32} */
+      let row2 = pos2.row;
+      /** @type {int32} */
+      let col2 = pos2.col;
 
       if (pos1.row === pos2.row) {
         // Same row - move horizontally
+        /** @type {int32} */
         const shift = encrypt ? 1 : -1;
-        newPos1 = {row: pos1.row, col: (pos1.col + shift + 5) % 5};
-        newPos2 = {row: pos2.row, col: (pos2.col + shift + 5) % 5};
+        col1 = (pos1.col + shift + 5) % 5;
+        col2 = (pos2.col + shift + 5) % 5;
       } else if (pos1.col === pos2.col) {
         // Same column - move vertically
+        /** @type {int32} */
         const shift = encrypt ? 1 : -1;
-        newPos1 = {row: (pos1.row + shift + 5) % 5, col: pos1.col};
-        newPos2 = {row: (pos2.row + shift + 5) % 5, col: pos2.col};
+        row1 = (pos1.row + shift + 5) % 5;
+        row2 = (pos2.row + shift + 5) % 5;
       } else {
         // Rectangle - swap columns
-        newPos1 = {row: pos1.row, col: pos2.col};
-        newPos2 = {row: pos2.row, col: pos1.col};
+        col1 = pos2.col;
+        col2 = pos1.col;
       }
 
-      return matrix[newPos1.row][newPos1.col] + matrix[newPos2.row][newPos2.col];
+      return matrix[row1][col1] + matrix[row2][col2];
     }
-
-    // Feed data to the cipher
 
     // Get the result of the transformation
     /**
@@ -257,30 +319,42 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const output = [];
-      const matrix = this.key;
+      /** @type {string[][]} */
+      const matrix = this._keyMatrix;
+      /** @type {string} */
       const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
       // Normalize input to uppercase letters only, replace J with I
-      let normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string} */
+      const upper = inputStr.toUpperCase();
+      /** @type {string} */
+      const normalizedInput = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
 
       if (!this.isInverse) {
         // ENCRYPTION - Prepare text for digraph processing (handle duplicate letters)
+        /** @type {string} */
         let processedText = '';
+        /** @type {int32} */
         let i = 0;
         while (i < normalizedInput.length) {
-          let char1 = normalizedInput[i];
-          let char2 = normalizedInput[i + 1];
+          /** @type {string} */
+          const char1 = normalizedInput.charAt(i);
 
-          if (char2 === undefined) {
+          if (i + 1 >= normalizedInput.length) {
             // Odd length - pad with X
             processedText += char1 + 'X';
             break;
-          } else if (char1 === char2) {
+          }
+
+          /** @type {string} */
+          const char2 = normalizedInput.charAt(i + 1);
+          if (char1 === char2) {
             // Same characters - insert X between them
             processedText += char1 + 'X';
             i++; // Move to next character (the duplicate will be processed in next iteration)
@@ -292,36 +366,43 @@
         }
 
         // Process each digraph
-        for (let i = 0; i < processedText.length; i += 2) {
-          const char1 = processedText[i];
-          const char2 = processedText[i + 1];
+        for (let p = 0; p < processedText.length; p += 2) {
+          /** @type {string} */
+          const result = this.processDigraph(processedText.charAt(p), processedText.charAt(p + 1), matrix, true);
 
-          const result = this.processDigraph(char1, char2, matrix, true);
-
-          for (const char of result) {
-            output.push(char.charCodeAt(0));
+          for (let k = 0; k < result.length; k++) {
+            output.push(result.charCodeAt(k));
           }
         }
       } else {
         // DECRYPTION - Process digraphs directly, then clean up
+        /** @type {string} */
         let decryptedText = '';
 
         // Process each digraph
-        for (let i = 0; i < normalizedInput.length; i += 2) {
-          const char1 = normalizedInput[i];
-          const char2 = normalizedInput[i + 1] || 'X'; // Handle odd length
+        for (let p = 0; p < normalizedInput.length; p += 2) {
+          /** @type {string} */
+          const char1 = normalizedInput.charAt(p);
+          /** @type {string} */
+          const next = normalizedInput.charAt(p + 1);
+          /** @type {string} */
+          const char2 = next ? next : 'X'; // Handle odd length
 
-          const result = this.processDigraph(char1, char2, matrix, false);
-          decryptedText += result;
+          decryptedText += this.processDigraph(char1, char2, matrix, false);
         }
 
         // Clean up decrypted text - remove inserted X's intelligently
+        /** @type {string} */
         let cleanedText = '';
+        /** @type {int32} */
         let i = 0;
         while (i < decryptedText.length) {
-          const char = decryptedText[i];
-          const nextChar = decryptedText[i + 1];
-          const prevChar = i > 0 ? decryptedText[i - 1] : '';
+          /** @type {string} */
+          const char = decryptedText.charAt(i);
+          /** @type {string} */
+          const nextChar = decryptedText.charAt(i + 1);
+          /** @type {string} */
+          const prevChar = i > 0 ? decryptedText.charAt(i - 1) : '';
 
           if (char === 'X') {
             // Check if this X was likely inserted during encryption
@@ -342,8 +423,8 @@
         }
 
         // Convert cleaned text to byte array
-        for (const char of cleanedText) {
-          output.push(char.charCodeAt(0));
+        for (let k = 0; k < cleanedText.length; k++) {
+          output.push(cleanedText.charCodeAt(k));
         }
       }
 
@@ -359,11 +440,6 @@
 
   // Register the algorithm immediately
   RegisterAlgorithm(algorithm);
-
-  // Export for Node.js compatibility
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = algorithm;
-  }
 
   // ===== REGISTRATION =====
 

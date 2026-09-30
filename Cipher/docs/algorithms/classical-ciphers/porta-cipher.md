@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Short keys create detectable repeating patterns vulnerable to Kasiski examination](https://en.wikipedia.org/wiki/Kasiski_examination) | — | Use longer, non-repeating keys |
-| [Only 13 effective substitution alphabets vs 26 in full polyalphabetic ciphers](https://en.wikipedia.org/wiki/Porta_cipher#Security) | — | Educational use only - not suitable for actual security |
+| [Period Analysis](https://en.wikipedia.org/wiki/Kasiski_examination) | Short keys create detectable repeating patterns vulnerable to Kasiski examination | Use longer, non-repeating keys |
+| [Limited Alphabets](https://en.wikipedia.org/wiki/Porta_cipher#Security) | Only 13 effective substitution alphabets vs 26 in full polyalphabetic ciphers | Educational use only - not suitable for actual security |
 
 ## Documentation
 
