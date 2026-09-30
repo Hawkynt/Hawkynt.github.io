@@ -46,360 +46,525 @@
 
   // ===== NUMBER THEORY UTILITIES FOR RABIN =====
 
-  const NumberTheory = {
+  /**
+   * The Bezout coefficients of a and b alongside their gcd.
+   */
+  class ExtendedGcdResult {
     /**
-     * Compute greatest common divisor using Euclidean algorithm
-     * @param {BigInt} a - First number
-     * @param {BigInt} b - Second number
-     * @returns {BigInt} GCD of a and b
+     * @param {BigInt} gcd - gcd(a, b)
+     * @param {BigInt} x - coefficient of a
+     * @param {BigInt} y - coefficient of b
      */
-    gcd: function(a, b) {
-      a = a < 0n ? -a : a;
-      b = b < 0n ? -b : b;
-      while (b !== 0n) {
-        const temp = b;
-        b = a % b;
-        a = temp;
+    constructor(gcd, x, y) {
+      /** @type {BigInt} */
+      this.gcd = gcd;
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {BigInt} */
+      this.y = y;
+    }
+  }
+
+  /**
+   * Compute greatest common divisor using Euclidean algorithm
+   * @param {BigInt} a - First number
+   * @param {BigInt} b - Second number
+   * @returns {BigInt} GCD of a and b
+   */
+  function gcd(a, b) {
+    a = a < 0n ? -a : a;
+    b = b < 0n ? -b : b;
+    while (b !== 0n) {
+      const temp = b;
+      b = a % b;
+      a = temp;
+    }
+    return a;
+  }
+
+  /**
+   * Extended Euclidean algorithm: find x, y such that ax + by = gcd(a,b)
+   * @param {BigInt} a - First number
+   * @param {BigInt} b - Second number
+   * @returns {ExtendedGcdResult} {gcd, x, y}
+   */
+  function extendedGcd(a, b) {
+    if (b === 0n) {
+      return new ExtendedGcdResult(a, 1n, 0n);
+    }
+
+    const result = extendedGcd(b, a % b);
+    const x = result.y;
+    const y = result.x - (a / b) * result.y;
+
+    return new ExtendedGcdResult(result.gcd, x, y);
+  }
+
+  /**
+   * Modular multiplicative inverse using extended Euclidean algorithm
+   * @param {BigInt} a - Number to invert
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} Inverse of a mod m, or throws if not invertible
+   */
+  function modInverse(a, m) {
+    const result = extendedGcd(a, m);
+    if (result.gcd !== 1n) {
+      throw new Error('Modular inverse does not exist');
+    }
+    // Ensure positive result
+    return ((result.x % m) + m) % m;
+  }
+
+  /**
+   * Modular exponentiation: compute (base^exp) mod m efficiently
+   * @param {BigInt} base - Base value
+   * @param {BigInt} exp - Exponent
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} (base^exp) mod m
+   */
+  function modExp(base, exp, m) {
+    if (m === 1n) return 0n;
+
+    /** @type {BigInt} */
+    let result = 1n;
+    base = base % m;
+
+    while (exp > 0n) {
+      if (exp % 2n === 1n) {
+        result = (result * base) % m;
       }
-      return a;
-    },
+      exp = OpCodes.ShiftRn(exp, 1n);
+      base = (base * base) % m;
+    }
 
-    /**
-     * Extended Euclidean algorithm: find x, y such that ax + by = gcd(a,b)
-     * @param {BigInt} a - First number
-     * @param {BigInt} b - Second number
-     * @returns {Object} {gcd, x, y}
-     */
-    extendedGcd: function(a, b) {
-      if (b === 0n) {
-        return { gcd: a, x: 1n, y: 0n };
-      }
+    return result;
+  }
 
-      const result = this.extendedGcd(b, a % b);
-      const x = result.y;
-      const y = result.x - (a / b) * result.y;
+  /**
+   * Compute Jacobi symbol (a/n)
+   * For Rabin, we need Jacobi symbol to determine quadratic residues
+   * @param {BigInt} a - Upper value
+   * @param {BigInt} n - Lower value (must be odd)
+   * @returns {int32} -1, 0, or 1
+   */
+  function jacobi(a, n) {
+    if (n <= 0n || n % 2n === 0n) {
+      throw new Error('Jacobi symbol: n must be odd and positive');
+    }
 
-      return { gcd: result.gcd, x: x, y: y };
-    },
+    a = a % n;
+    let result = 1;
 
-    /**
-     * Modular multiplicative inverse using extended Euclidean algorithm
-     * @param {BigInt} a - Number to invert
-     * @param {BigInt} m - Modulus
-     * @returns {BigInt} Inverse of a mod m, or throws if not invertible
-     */
-    modInverse: function(a, m) {
-      const result = this.extendedGcd(a, m);
-      if (result.gcd !== 1n) {
-        throw new Error('Modular inverse does not exist');
-      }
-      // Ensure positive result
-      return ((result.x % m) + m) % m;
-    },
-
-    /**
-     * Modular exponentiation: compute (base^exp) mod m efficiently
-     * @param {BigInt} base - Base value
-     * @param {BigInt} exp - Exponent
-     * @param {BigInt} m - Modulus
-     * @returns {BigInt} (base^exp) mod m
-     */
-    modExp: function(base, exp, m) {
-      if (m === 1n) return 0n;
-
-      let result = 1n;
-      base = base % m;
-
-      while (exp > 0n) {
-        if (exp % 2n === 1n) {
-          result = (result * base) % m;
+    while (a !== 0n) {
+      // Remove factors of 2
+      while (a % 2n === 0n) {
+        a = a / 2n;
+        /** @type {int32} */
+        const nMod8 = Number(n % 8n);
+        if (nMod8 === 3 || nMod8 === 5) {
+          result = -result;
         }
-        exp = OpCodes.ShiftRn(exp, 1n);
-        base = (base * base) % m;
       }
 
-      return result;
-    },
+      // Swap a and n
+      const temp = a;
+      a = n;
+      n = temp;
 
-    /**
-     * Compute Jacobi symbol (a/n)
-     * For Rabin, we need Jacobi symbol to determine quadratic residues
-     * @param {BigInt} a - Upper value
-     * @param {BigInt} n - Lower value (must be odd)
-     * @returns {number} -1, 0, or 1
-     */
-    jacobi: function(a, n) {
-      if (n <= 0n || n % 2n === 0n) {
-        throw new Error('Jacobi symbol: n must be odd and positive');
+      // Quadratic reciprocity
+      if (a % 4n === 3n && n % 4n === 3n) {
+        result = -result;
       }
 
       a = a % n;
-      let result = 1;
+    }
 
-      while (a !== 0n) {
-        // Remove factors of 2
-        while (a % 2n === 0n) {
-          a = a / 2n;
-          const nMod8 = Number(n % 8n);
-          if (nMod8 === 3 || nMod8 === 5) {
-            result = -result;
-          }
-        }
+    return n === 1n ? result : 0;
+  }
 
-        // Swap a and n
-        const temp = a;
-        a = n;
-        n = temp;
+  /**
+   * Tonelli-Shanks algorithm for computing modular square root
+   * Find x such that x^2 ≡ n (mod p) where p is prime
+   * @param {BigInt} n - Number to find square root of
+   * @param {BigInt} p - Prime modulus
+   * @returns {BigInt} Square root of n mod p
+   */
+  function modularSquareRoot(n, p) {
+    // Special case: p ≡ 3 (mod 4)
+    if (p % 4n === 3n) {
+      return modExp(n, (p + 1n) / 4n, p);
+    }
 
-        // Quadratic reciprocity
-        if (a % 4n === 3n && n % 4n === 3n) {
-          result = -result;
-        }
+    // Tonelli-Shanks for p ≡ 1 (mod 4)
+    // Factor p-1 = 2^s * q with q odd
+    /** @type {BigInt} */
+    let s = 0n;
+    /** @type {BigInt} */
+    let q = p - 1n;
+    while (q % 2n === 0n) {
+      q = q / 2n;
+      s = s + 1n;
+    }
 
-        a = a % n;
+    // Find a quadratic non-residue z
+    /** @type {BigInt} */
+    let z = 2n;
+    while (jacobi(z, p) !== -1) {
+      z = z + 1n;
+    }
+
+    /** @type {BigInt} */
+    let m = s;
+    /** @type {BigInt} */
+    let c = modExp(z, q, p);
+    /** @type {BigInt} */
+    let t = modExp(n, q, p);
+    /** @type {BigInt} */
+    let r = modExp(n, (q + 1n) / 2n, p);
+
+    while (t !== 1n) {
+      // Find least i such that t^(2^i) = 1
+      /** @type {BigInt} */
+      let i = 1n;
+      /** @type {BigInt} */
+      let temp = (t * t) % p;
+      while (temp !== 1n && i < m) {
+        temp = (temp * temp) % p;
+        i = i + 1n;
       }
 
-      return n === 1n ? result : 0;
-    },
+      // Update values
+      const b = modExp(c, modExp(2n, m - i - 1n, p - 1n), p);
+      m = i;
+      c = (b * b) % p;
+      t = (t * c) % p;
+      r = (r * b) % p;
+    }
 
-    /**
-     * Tonelli-Shanks algorithm for computing modular square root
-     * Find x such that x^2 ≡ n (mod p) where p is prime
-     * @param {BigInt} n - Number to find square root of
-     * @param {BigInt} p - Prime modulus
-     * @returns {BigInt} Square root of n mod p
-     */
-    modularSquareRoot: function(n, p) {
-      // Special case: p ≡ 3 (mod 4)
-      if (p % 4n === 3n) {
-        return this.modExp(n, (p + 1n) / 4n, p);
-      }
+    return r;
+  }
 
-      // Tonelli-Shanks for p ≡ 1 (mod 4)
-      // Factor p-1 = 2^s * q with q odd
-      let s = 0n;
-      let q = p - 1n;
-      while (q % 2n === 0n) {
-        q = q / 2n;
-        s = s + 1n;
-      }
+  /**
+   * Chinese Remainder Theorem: solve x ≡ a1 (mod n1), x ≡ a2 (mod n2)
+   * @param {BigInt} a1 - First remainder
+   * @param {BigInt} n1 - First modulus
+   * @param {BigInt} a2 - Second remainder
+   * @param {BigInt} n2 - Second modulus
+   * @param {BigInt} u - Precomputed n2^(-1) mod n1
+   * @returns {BigInt} Solution x
+   */
+  function crt(a1, n1, a2, n2, u) {
+    // x = a2 + n2 * ((a1 - a2) * u mod n1)
+    const diff = ((a1 - a2) % n1 + n1) % n1;
+    const mult = (diff * u) % n1;
+    return a2 + n2 * mult;
+  }
 
-      // Find a quadratic non-residue z
-      let z = 2n;
-      while (this.jacobi(z, p) !== -1) {
-        z = z + 1n;
-      }
-
-      let m = s;
-      let c = this.modExp(z, q, p);
-      let t = this.modExp(n, q, p);
-      let r = this.modExp(n, (q + 1n) / 2n, p);
-
-      while (t !== 1n) {
-        // Find least i such that t^(2^i) = 1
-        let i = 1n;
-        let temp = (t * t) % p;
-        while (temp !== 1n && i < m) {
-          temp = (temp * temp) % p;
-          i = i + 1n;
-        }
-
-        // Update values
-        const b = this.modExp(c, this.modExp(2n, m - i - 1n, p - 1n), p);
-        m = i;
-        c = (b * b) % p;
-        t = (t * c) % p;
-        r = (r * b) % p;
-      }
-
-      return r;
-    },
-
-    /**
-     * Chinese Remainder Theorem: solve x ≡ a1 (mod n1), x ≡ a2 (mod n2)
-     * @param {BigInt} a1 - First remainder
-     * @param {BigInt} n1 - First modulus
-     * @param {BigInt} a2 - Second remainder
-     * @param {BigInt} n2 - Second modulus
-     * @param {BigInt} u - Precomputed n2^(-1) mod n1
-     * @returns {BigInt} Solution x
-     */
-    crt: function(a1, n1, a2, n2, u) {
-      // x = a2 + n2 * ((a1 - a2) * u mod n1)
-      const diff = ((a1 - a2) % n1 + n1) % n1;
-      const mult = (diff * u) % n1;
-      return a2 + n2 * mult;
-    },
-
-    /**
-     * Miller-Rabin primality test (simplified)
-     * @param {BigInt} n - Number to test
-     * @param {number} k - Number of rounds (higher = more accurate)
-     * @returns {boolean} True if probably prime
-     */
-    isProbablyPrime: function(n, k = 20, source) {
-      if (n === 2n || n === 3n) return true;
-      if (n < 2n || n % 2n === 0n) return false;
-
-      // Write n-1 as 2^r * d
-      let r = 0n;
-      let d = n - 1n;
-      while (d % 2n === 0n) {
-        r = r + 1n;
-        d = d / 2n;
-      }
-
-      // Witness loop
-      for (let i = 0; i < k; ++i) {
-        // Pick random witness a in [2, n-2]
-        const a = this._randomBigInt(2n, n - 2n, source);
-
-        let x = this.modExp(a, d, n);
-
-        if (x === 1n || x === n - 1n) continue;
-
-        let continueWitnessLoop = false;
-        for (let j = 0n; j < r - 1n; ++j) {
-          x = (x * x) % n;
-          if (x === n - 1n) {
-            continueWitnessLoop = true;
-            break;
-          }
-        }
-
-        if (continueWitnessLoop) continue;
-
-        return false; // Composite
-      }
-
-      return true; // Probably prime
-    },
-
-    /**
-     * Generate random BigInt in range [min, max]
-     * @param {BigInt} min - Minimum value
-     * @param {BigInt} max - Maximum value
-     * @param {function} [source] - Optional deterministic bit source returning 0n or 1n
-     * @returns {BigInt} Random value
-     */
-    _randomBigInt: function(min, max, source) {
-      const range = max - min + 1n;
-      const bits = range.toString(2).length;
-      const nextBit = source || (() => BigInt(Math.random() < 0.5 ? 0 : 1));
-
-      let result;
-      do {
-        result = 0n;
-        for (let i = 0; i < bits; ++i) {
-          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), nextBit());
-        }
-      } while (result >= range);
-
-      return min + result;
-    },
-
-    /**
-     * Deterministic bit source for key generation.
-     *
-     * A key pair has to be a function of the key material and nothing else. The
-     * generator below is SplitMix64 (Steele, Lea and Flood, "Fast Splittable
-     * Pseudorandom Number Generators", OOPSLA 2014), seeded from the caller's
-     * key bytes, so the same key always yields the same p and q.
-     *
-     * @param {uint8[]} seedBytes - Key material to seed from
-     * @returns {function} Bit source returning 0n or 1n
-     */
-    deterministicBitSource: function(seedBytes) {
-      const MASK64 = 0xFFFFFFFFFFFFFFFFn;
-      let state = 0x243F6A8885A308D3n;   // pi, first 64 fractional bits
-      // FNV-1a over the key material, so every seed byte reaches the state
-      for (let i = 0; i < seedBytes.length; ++i)
-        state = OpCodes.AndN(OpCodes.XorN(state, BigInt(seedBytes[i] % 256)) * 0x100000001B3n, MASK64);
-
-      let reservoir = 0n;
-      let available = 0;
-      return function nextBit() {
-        if (available === 0) {
-          state = OpCodes.AndN(state + 0x9E3779B97F4A7C15n, MASK64);
-          let z = state;
-          z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30n)) * 0xBF58476D1CE4E5B9n, MASK64);
-          z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27n)) * 0x94D049BB133111EBn, MASK64);
-          reservoir = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31n));
-          available = 64;
-        }
-        const bit = OpCodes.AndN(reservoir, 1n);
-        reservoir = OpCodes.ShiftRn(reservoir, 1n);
-        --available;
-        return bit;
-      };
-    },
-
-    /**
-     * Odd primes below 1000, used to reject most candidates before any
-     * modular exponentiation is attempted.
-     *
-     * About three quarters of the odd numbers in a large interval have a
-     * factor in this list, and finding it costs one BigInt remainder each
-     * while a single Miller-Rabin round costs a full modular exponentiation.
-     * Without the sieve the search for one 2048-bit prime ran twenty
-     * exponentiations against every composite it drew.
-     */
-    SMALL_PRIMES: (function() {
-      const primes = [];
-      const sieve = new Uint8Array(1000);
-      for (let i = 3; i < 1000; i += 2) {
-        if (sieve[i]) continue;
-        primes.push(BigInt(i));
-        for (let j = i * i; j < 1000; j += i + i) sieve[j] = 1;
-      }
-      return primes;
-    })(),
-
-    /**
-     * Whether a candidate survives trial division by the small primes.
-     * @param {BigInt} n - Candidate
-     * @returns {boolean} False when a small prime divides it
-     */
-    _passesTrialDivision: function(n) {
-      for (let i = 0; i < this.SMALL_PRIMES.length; ++i) {
-        const p = this.SMALL_PRIMES[i];
-        if (n === p) return true;
-        if (n % p === 0n) return false;
-      }
+  /**
+   * Miller-Rabin primality test (simplified)
+   * @param {BigInt} n - Number to test
+   * @param {int32} k - Number of rounds (higher = more accurate)
+   * @param {function} [source] - Optional deterministic bit source
+   * @returns {boolean} True if probably prime
+   */
+  function isProbablyPrime(n, k = 20, source) {
+    if (n === 2n || n === 3n) {
       return true;
-    },
+    }
+    if (n < 2n || n % 2n === 0n) {
+      return false;
+    }
 
-    /**
-     * Generate random prime p ≡ 3 (mod 4) of specified bit length
-     * @param {number} bits - Bit length of prime
-     * @param {function} [source] - Optional deterministic bit source
-     * @returns {BigInt} Random prime
-     */
-    generatePrime3Mod4: function(bits, source) {
-      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
-      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
+    // Write n-1 as 2^r * d
+    /** @type {BigInt} */
+    let r = 0n;
+    /** @type {BigInt} */
+    let d = n - 1n;
+    while (d % 2n === 0n) {
+      r = r + 1n;
+      d = d / 2n;
+    }
 
-      for (;;) {
-        let candidate = this._randomBigInt(minValue, maxValue, source);
-        // Ensure candidate ≡ 3 (mod 4)
-        if (candidate % 4n !== 3n) {
-          candidate = candidate - (candidate % 4n) + 3n;
-          if (candidate < minValue) candidate += 4n;
+    // Witness loop
+    for (let i = 0; i < k; ++i) {
+      // Pick random witness a in [2, n-2]
+      const a = randomBigInt(2n, n - 2n, source);
+
+      let x = modExp(a, d, n);
+
+      if (x === 1n || x === n - 1n) continue;
+
+      let continueWitnessLoop = false;
+      for (let j = 0n; j < r - 1n; ++j) {
+        x = (x * x) % n;
+        if (x === n - 1n) {
+          continueWitnessLoop = true;
+          break;
         }
-        // Make sure it's odd
-        if (candidate % 2n === 0n) candidate += 4n;
+      }
 
-        // A candidate ≡ 3 (mod 4) stays that way under steps of 4, so the
-        // draw is walked forward rather than redrawn. Each draw costs as many
-        // BigInt shifts as the prime has bits, and the walk reuses one draw
-        // for a whole run of candidates.
-        for (let step = 0; step < 4096 && candidate <= maxValue; ++step, candidate += 4n) {
-          if (!this._passesTrialDivision(candidate)) continue;
-          if (this.isProbablyPrime(candidate, 20, source)) return candidate;
-        }
+      if (continueWitnessLoop) continue;
+
+      return false; // Composite
+    }
+
+    return true; // Probably prime
+  }
+
+  /**
+   * One uniformly random bit from Math.random, the default bit source.
+   * @returns {BigInt} 0n or 1n
+   */
+  function mathRandomBit() {
+    return BigInt(Math.random() < 0.5 ? 0 : 1);
+  }
+
+  /**
+   * Generate random BigInt in range [min, max]
+   * @param {BigInt} min - Minimum value
+   * @param {BigInt} max - Maximum value
+   * @param {function} [source] - Optional deterministic bit source returning 0n or 1n
+   * @returns {BigInt} Random value
+   */
+  function randomBigInt(min, max, source) {
+    const range = max - min + 1n;
+    /** @type {string} */
+    const rangeBits = range.toString(2);
+    const bits = rangeBits.length;
+    const nextBit = source || mathRandomBit;
+
+    /** @type {BigInt} */
+    let result;
+    do {
+      result = 0n;
+      for (let i = 0; i < bits; ++i) {
+        result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), nextBit());
+      }
+    } while (result >= range);
+
+    return min + result;
+  }
+
+  /**
+   * Deterministic bit source for key generation.
+   *
+   * A key pair has to be a function of the key material and nothing else. The
+   * generator below is SplitMix64 (Steele, Lea and Flood, "Fast Splittable
+   * Pseudorandom Number Generators", OOPSLA 2014), seeded from the caller's
+   * key bytes, so the same key always yields the same p and q.
+   *
+   * @param {uint8[]} seedBytes - Key material to seed from
+   * @returns {function} Bit source returning 0n or 1n
+   */
+  function deterministicBitSource(seedBytes) {
+    /** @type {BigInt} */
+    const MASK64 = 0xFFFFFFFFFFFFFFFFn;
+    /** @type {BigInt} */
+    let state = 0x243F6A8885A308D3n;   // pi, first 64 fractional bits
+    // FNV-1a over the key material, so every seed byte reaches the state
+    for (let i = 0; i < seedBytes.length; ++i)
+      state = OpCodes.AndN(OpCodes.XorN(state, BigInt(seedBytes[i] % 256)) * 0x100000001B3n, MASK64);
+
+    /** @type {BigInt} */
+    let reservoir = 0n;
+    let available = 0;
+    return function nextBit() {
+      if (available === 0) {
+        state = OpCodes.AndN(state + 0x9E3779B97F4A7C15n, MASK64);
+        /** @type {BigInt} */
+        let z = state;
+        z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30n)) * 0xBF58476D1CE4E5B9n, MASK64);
+        z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27n)) * 0x94D049BB133111EBn, MASK64);
+        reservoir = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31n));
+        available = 64;
+      }
+      const bit = OpCodes.AndN(reservoir, 1n);
+      reservoir = OpCodes.ShiftRn(reservoir, 1n);
+      --available;
+      return bit;
+    };
+  }
+
+  /**
+   * Odd primes below 1000, used to reject most candidates before any
+   * modular exponentiation is attempted.
+   *
+   * About three quarters of the odd numbers in a large interval have a
+   * factor in this list, and finding it costs one BigInt remainder each
+   * while a single Miller-Rabin round costs a full modular exponentiation.
+   * Without the sieve the search for one 2048-bit prime ran twenty
+   * exponentiations against every composite it drew.
+   * @returns {BigInt[]} the odd primes below 1000
+   */
+  function buildSmallPrimes() {
+    /** @type {BigInt[]} */
+    const primes = [];
+    const sieve = new Uint8Array(1000);
+    for (let i = 3; i < 1000; i += 2) {
+      if (sieve[i]) continue;
+      primes.push(BigInt(i));
+      for (let j = i * i; j < 1000; j += i + i) sieve[j] = 1;
+    }
+    return primes;
+  }
+
+  /** @type {BigInt[]} */
+  const SMALL_PRIMES = buildSmallPrimes();
+
+  /**
+   * Whether a candidate survives trial division by the small primes.
+   * @param {BigInt} n - Candidate
+   * @returns {boolean} False when a small prime divides it
+   */
+  function passesTrialDivision(n) {
+    for (let i = 0; i < SMALL_PRIMES.length; ++i) {
+      const p = SMALL_PRIMES[i];
+      if (n === p) return true;
+      if (n % p === 0n) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Generate random prime p ≡ 3 (mod 4) of specified bit length
+   * @param {int32} bits - Bit length of prime
+   * @param {function} [source] - Optional deterministic bit source
+   * @returns {BigInt} Random prime
+   */
+  function generatePrime3Mod4(bits, source) {
+    /** @type {BigInt} */
+    const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
+    /** @type {BigInt} */
+    const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
+
+    for (;;) {
+      /** @type {BigInt} */
+      let candidate = randomBigInt(minValue, maxValue, source);
+      // Ensure candidate ≡ 3 (mod 4)
+      if (candidate % 4n !== 3n) {
+        candidate = candidate - (candidate % 4n) + 3n;
+        if (candidate < minValue) candidate += 4n;
+      }
+      // Make sure it's odd
+      if (candidate % 2n === 0n) candidate += 4n;
+
+      // A candidate ≡ 3 (mod 4) stays that way under steps of 4, so the
+      // draw is walked forward rather than redrawn. Each draw costs as many
+      // BigInt shifts as the prime has bits, and the walk reuses one draw
+      // for a whole run of candidates.
+      for (let step = 0; step < 4096 && candidate <= maxValue; ++step, candidate += 4n) {
+        if (!passesTrialDivision(candidate)) continue;
+        if (isProbablyPrime(candidate, 20, source)) return candidate;
       }
     }
+  }
+
+  // The number theory above, under the names this module has always exported.
+  const NumberTheory = {
+    gcd: gcd,
+    extendedGcd: extendedGcd,
+    modInverse: modInverse,
+    modExp: modExp,
+    jacobi: jacobi,
+    modularSquareRoot: modularSquareRoot,
+    crt: crt,
+    isProbablyPrime: isProbablyPrime,
+    _randomBigInt: randomBigInt,
+    deterministicBitSource: deterministicBitSource,
+    SMALL_PRIMES: SMALL_PRIMES,
+    _passesTrialDivision: passesTrialDivision,
+    generatePrime3Mod4: generatePrime3Mod4
   };
+
+  /**
+   * A Rabin public key: the modulus and the two twist values.
+   */
+  class RabinPublicKey {
+    /**
+     * @param {BigInt} n - modulus p * q
+     * @param {BigInt} r - value with Jacobi(r, p) = 1, Jacobi(r, q) = -1
+     * @param {BigInt} s - value with Jacobi(s, p) = -1, Jacobi(s, q) = 1
+     * @param {int32} keySize - modulus size in bits
+     */
+    constructor(n, r, s, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.r = r;
+      /** @type {BigInt} */
+      this.s = s;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * A Rabin private key: the public values and the factorisation.
+   */
+  class RabinPrivateKey {
+    /**
+     * @param {BigInt} n - modulus p * q
+     * @param {BigInt} r - value with Jacobi(r, p) = 1, Jacobi(r, q) = -1
+     * @param {BigInt} s - value with Jacobi(s, p) = -1, Jacobi(s, q) = 1
+     * @param {BigInt} p - first prime, 3 mod 4
+     * @param {BigInt} q - second prime, 3 mod 4
+     * @param {BigInt} u - q^-1 mod p
+     * @param {int32} keySize - modulus size in bits
+     */
+    constructor(n, r, s, p, q, u, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.r = r;
+      /** @type {BigInt} */
+      this.s = s;
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.q = q;
+      /** @type {BigInt} */
+      this.u = u;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * A generated key pair.
+   */
+  class RabinKeyPair {
+    /**
+     * @param {RabinPublicKey} publicKey - public half
+     * @param {RabinPrivateKey} privateKey - private half
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {RabinPublicKey} */
+      this.publicKey = publicKey;
+      /** @type {RabinPrivateKey} */
+      this.privateKey = privateKey;
+    }
+  }
+
+  /**
+   * A field-by-field copy of a public key.
+   * @param {RabinPublicKey} key - key to copy
+   * @returns {RabinPublicKey} the copy
+   */
+  function copyPublicKey(key) {
+    return new RabinPublicKey(key.n, key.r, key.s, key.keySize);
+  }
+
+  /**
+   * A field-by-field copy of a private key.
+   * @param {RabinPrivateKey} key - key to copy
+   * @returns {RabinPrivateKey} the copy
+   */
+  function copyPrivateKey(key) {
+    return new RabinPrivateKey(key.n, key.r, key.s, key.p, key.q, key.u, key.keySize);
+  }
+
+  /** @type {int32[]} */
+  const KEY_SIZES = [1024, 2048, 3072, 4096];
 
   // A key pair is a pure function of the key material, so it is derived once and
   // reused. Without this every instance would pay for two probable-prime searches
@@ -499,21 +664,28 @@
   class RabinInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RabinCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 1024;
+      /** @type {RabinPublicKey|null} */
       this._publicKey = null;
+      /** @type {RabinPrivateKey|null} */
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this._keyData = null;
     }
 
     // Property setters/getters for compatibility
+    /**
+     * @param {uint8[]} keyData - modulus size selector (see KeySetup)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -527,6 +699,9 @@
       return this._keyData;
     }
 
+    /**
+     * @param {RabinPublicKey|null} keyData - public key
+     */
     set publicKey(keyData) {
       if (keyData) {
         this._publicKey = keyData;
@@ -535,10 +710,16 @@
       }
     }
 
+    /**
+     * @returns {RabinPublicKey|null} current public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {RabinPrivateKey|null} keyData - private key
+     */
     set privateKey(keyData) {
       if (keyData) {
         this._privateKey = keyData;
@@ -547,13 +728,20 @@
       }
     }
 
+    /**
+     * @returns {RabinPrivateKey|null} current private key
+     */
     get privateKey() {
       return this._privateKey;
     }
 
     // Initialize Rabin with specified key size
+    /**
+     * @param {int32} keySize - modulus size in bits
+     * @returns {boolean} true once the size is accepted
+     */
     Init(keySize) {
-      if (![1024, 2048, 3072, 4096].includes(keySize)) {
+      if (!KEY_SIZES.includes(keySize)) {
         throw new Error('Invalid Rabin key size. Use 1024, 2048, 3072, or 4096.');
       }
 
@@ -587,10 +775,13 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
+        /** @type {uint8[]} */
         let result;
         if (this.isInverse) {
           // Decrypt - returns one of four possible plaintexts
@@ -600,34 +791,46 @@
           result = this._encrypt(this.inputBuffer);
         }
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - modulus size: two big-endian bytes, one ASCII digit, a string or a number
+     */
     KeySetup(keyData) {
       this._keyData = keyData;
 
+      /** @type {int32} */
       let keySize = 1024; // Default
       if (Array.isArray(keyData)) {
-        if (keyData.length >= 2) {
-          keySize = OpCodes.Pack16BE(keyData[0], keyData[1]);
-        } else if (keyData.length >= 1) {
-          const keyStr = String.fromCharCode(...keyData);
-          keySize = parseInt(keyStr) || 1024;
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        if (bytes.length >= 2) {
+          keySize = OpCodes.Pack16BE(bytes[0], bytes[1]);
+        } else if (bytes.length >= 1) {
+          const keyStr = String.fromCharCode(...bytes);
+          /** @type {int32} */
+          const parsed = parseInt(keyStr);
+          keySize = parsed ? parsed : 1024;
         }
       } else if (typeof keyData === 'string') {
-        keySize = parseInt(keyData) || 1024;
+        /** @type {string} */
+        const text = keyData;
+        /** @type {int32} */
+        const parsed = parseInt(text);
+        keySize = parsed ? parsed : 1024;
       } else if (typeof keyData === 'number') {
-        keySize = keyData;
+        /** @type {int32} */
+        const bits = keyData;
+        keySize = bits;
       }
 
       // Ensure keySize is valid
-      if (![1024, 2048, 3072, 4096].includes(keySize)) {
+      if (!KEY_SIZES.includes(keySize)) {
         keySize = 1024;
       }
 
@@ -660,44 +863,63 @@
      * supply p and q, which is what the publicKey and privateKey setters are
      * for.
      *
-     * @returns {Object} {publicKey, privateKey}
+     * @returns {RabinKeyPair} {publicKey, privateKey}
      */
     _generateKeys() {
       // The key size is always part of the seed, so two sizes cannot share a
       // stream even when the caller passes the size in some other form.
-      const supplied = Array.isArray(this._keyData) ? this._keyData
-        : typeof this._keyData === 'string' ? this._keyData.split('').map(c => c.charCodeAt(0) % 256)
-        : [];
-      const seedMaterial = supplied.concat([this.keySize % 256, Math.floor(this.keySize / 256) % 256]);
+      /** @type {uint8[]} */
+      let supplied;
+      if (Array.isArray(this._keyData)) {
+        supplied = this._keyData;
+      } else if (typeof this._keyData === 'string') {
+        /** @type {string} */
+        const text = this._keyData;
+        supplied = [];
+        for (let i = 0; i < text.length; i++) supplied.push(text.charCodeAt(i) % 256);
+      } else {
+        supplied = [];
+      }
+      /** @type {uint8[]} */
+      const sizeBytes = [this.keySize % 256, Math.floor(this.keySize / 256) % 256];
+      const seedMaterial = supplied.concat(sizeBytes);
       const cacheKey = seedMaterial.join(',');
+      /** @type {RabinKeyPair} */
       const cached = KEY_PAIR_CACHE.get(cacheKey);
       // BigInt is immutable, so a shallow copy is enough to keep a caller's
       // ClearData from zeroing the cached pair out from under the next instance.
       if (cached)
-        return { publicKey: { ...cached.publicKey }, privateKey: { ...cached.privateKey } };
+        return new RabinKeyPair(copyPublicKey(cached.publicKey), copyPrivateKey(cached.privateKey));
 
       const primeBits = this.keySize / 2;
 
       // Generate two primes p, q ≡ 3 (mod 4). Two independent bit sources are
       // used so that p and q are drawn from different streams and cannot
       // coincide.
-      const p = NumberTheory.generatePrime3Mod4(primeBits,
-        NumberTheory.deterministicBitSource(seedMaterial.concat([0x70])));
-      const q = NumberTheory.generatePrime3Mod4(primeBits,
-        NumberTheory.deterministicBitSource(seedMaterial.concat([0x71])));
+      /** @type {uint8[]} */
+      const pTag = [0x70];
+      /** @type {uint8[]} */
+      const qTag = [0x71];
+      const p = generatePrime3Mod4(primeBits,
+        deterministicBitSource(seedMaterial.concat(pTag)));
+      const q = generatePrime3Mod4(primeBits,
+        deterministicBitSource(seedMaterial.concat(qTag)));
 
       const n = p * q;
 
       // Find r and s values
       // r: Jacobi(r, p) = 1 and Jacobi(r, q) = -1
       // s: Jacobi(s, p) = -1 and Jacobi(s, q) = 1
+      /** @type {BigInt|null} */
       let r = null;
+      /** @type {BigInt|null} */
       let s = null;
+      /** @type {BigInt} */
       let t = 2n;
 
       while (r === null || s === null) {
-        const jp = NumberTheory.jacobi(t, p);
-        const jq = NumberTheory.jacobi(t, q);
+        const jp = jacobi(t, p);
+        const jq = jacobi(t, q);
 
         if (r === null && jp === 1 && jq === -1) {
           r = t;
@@ -711,27 +933,14 @@
       }
 
       // Compute u = q^(-1) mod p for CRT
-      const u = NumberTheory.modInverse(q, p);
+      const u = modInverse(q, p);
 
-      const publicKey = {
-        n: n,
-        r: r,
-        s: s,
-        keySize: this.keySize
-      };
+      const publicKey = new RabinPublicKey(n, r, s, this.keySize);
 
-      const privateKey = {
-        n: n,
-        r: r,
-        s: s,
-        p: p,
-        q: q,
-        u: u,
-        keySize: this.keySize
-      };
+      const privateKey = new RabinPrivateKey(n, r, s, p, q, u, this.keySize);
 
-      KEY_PAIR_CACHE.set(cacheKey, { publicKey: { ...publicKey }, privateKey: { ...privateKey } });
-      return { publicKey, privateKey };
+      KEY_PAIR_CACHE.set(cacheKey, new RabinKeyPair(copyPublicKey(publicKey), copyPrivateKey(privateKey)));
+      return new RabinKeyPair(publicKey, privateKey);
     }
 
     /**
@@ -741,17 +950,20 @@
      * If m is odd: c = c * r mod n
      * If Jacobi(m, n) = -1: c = c * s mod n
      *
-     * @param {Array} message - Message bytes
-     * @returns {Array} Encrypted bytes
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Encrypted bytes
      */
     _encrypt(message) {
       if (!this._publicKey) {
         throw new Error('Rabin public key not set. Generate keys first.');
       }
 
-      const { n, r, s } = this._publicKey;
+      const n = this._publicKey.n;
+      const r = this._publicKey.r;
+      const s = this._publicKey.s;
 
       // Convert message to BigInt
+      /** @type {BigInt} */
       let m = 0n;
       for (let i = 0; i < message.length; ++i) {
         m = OpCodes.OrN(OpCodes.ShiftLn(m, 8n), BigInt(message[i]));
@@ -765,7 +977,7 @@
 
       // Apply transformations based on message properties
       const isOdd = (m % 2n) === 1n;
-      const jacobiValue = NumberTheory.jacobi(m, n);
+      const jacobiValue = jacobi(m, n);
 
       if (isOdd) {
         c = (c * r) % n;
@@ -790,17 +1002,23 @@
      *
      * Returns one of four possible square roots (plaintext disambiguation required)
      *
-     * @param {Array} ciphertext - Encrypted bytes
-     * @returns {Array} Decrypted bytes (one of four possibilities)
+     * @param {uint8[]} ciphertext - Encrypted bytes
+     * @returns {uint8[]} Decrypted bytes (one of four possibilities)
      */
     _decrypt(ciphertext) {
       if (!this._privateKey) {
         throw new Error('Rabin private key not set. Generate keys first.');
       }
 
-      const { n, r, s, p, q, u } = this._privateKey;
+      const n = this._privateKey.n;
+      const r = this._privateKey.r;
+      const s = this._privateKey.s;
+      const p = this._privateKey.p;
+      const q = this._privateKey.q;
+      const u = this._privateKey.u;
 
       // Convert ciphertext to BigInt
+      /** @type {BigInt} */
       let c = 0n;
       for (let i = 0; i < ciphertext.length; ++i) {
         c = OpCodes.OrN(OpCodes.ShiftLn(c, 8n), BigInt(ciphertext[i]));
@@ -810,7 +1028,7 @@
       c = c % n;
 
       // Blinding: generate random r_blind and compute c' = c * r_blind^2 mod n
-      const r_blind = NumberTheory._randomBigInt(1n, n - 1n);
+      const r_blind = randomBigInt(1n, n - 1n);
       const r_blind_sq = (r_blind * r_blind) % n;
       let c_blind = (c * r_blind_sq) % n;
 
@@ -822,36 +1040,36 @@
       // parity correction at the end can only tell m from n-m, so the wrong pair
       // survives to the output. The target symbol is
       // Jacobi(m * r_blind, n) = Jacobi(m, n) * Jacobi(r_blind, n).
-      const jBlind = NumberTheory.jacobi(r_blind, n);
+      const jBlind = jacobi(r_blind, n);
 
       // Compute cp = c_blind mod p, cq = c_blind mod q
       let cp = c_blind % p;
       let cq = c_blind % q;
 
       // Compute Jacobi symbols
-      const jp = NumberTheory.jacobi(cp, p);
-      const jq = NumberTheory.jacobi(cq, q);
+      const jp = jacobi(cp, p);
+      const jq = jacobi(cq, q);
 
       // Adjust for r value: if jq = -1, multiply by r^(-1)
       if (jq === -1) {
-        const r_inv_p = NumberTheory.modInverse(r, p);
-        const r_inv_q = NumberTheory.modInverse(r, q);
+        const r_inv_p = modInverse(r, p);
+        const r_inv_q = modInverse(r, q);
         cp = (cp * r_inv_p) % p;
         cq = (cq * r_inv_q) % q;
       }
 
       // Adjust for s value: if jp = -1, multiply by s^(-1)
       if (jp === -1) {
-        const s_inv_p = NumberTheory.modInverse(s, p);
-        const s_inv_q = NumberTheory.modInverse(s, q);
+        const s_inv_p = modInverse(s, p);
+        const s_inv_q = modInverse(s, q);
         cp = (cp * s_inv_p) % p;
         cq = (cq * s_inv_q) % q;
       }
 
       // Compute modular square roots
       // For p, q ≡ 3 (mod 4), we can use simple formula
-      cp = NumberTheory.modularSquareRoot(cp, p);
-      cq = NumberTheory.modularSquareRoot(cq, q);
+      cp = modularSquareRoot(cp, p);
+      cq = modularSquareRoot(cq, q);
 
       // Select the conjugate pair. modularSquareRoot returns the root that is
       // itself a residue mod p, so the combined root starts with Jacobi +1;
@@ -861,10 +1079,10 @@
       }
 
       // Use Chinese Remainder Theorem to combine
-      let m = NumberTheory.crt(cp, p, cq, q, u);
+      let m = crt(cp, p, cq, q, u);
 
       // Unblind: m = m / r_blind mod n
-      const r_blind_inv = NumberTheory.modInverse(r_blind, n);
+      const r_blind_inv = modInverse(r_blind, n);
       m = (m * r_blind_inv) % n;
 
       // Adjust sign based on Jacobi symbols
@@ -880,14 +1098,21 @@
     /**
      * Convert BigInt to byte array
      * @param {BigInt} value - BigInt value
-     * @returns {Array} Byte array
+     * @returns {uint8[]} Byte array
      */
     _bigIntToBytes(value) {
-      if (value === 0n) return [0];
+      if (value === 0n) {
+        /** @type {uint8[]} */
+        const zero = [0];
+        return zero;
+      }
 
+      /** @type {uint8[]} */
       const bytes = [];
       while (value > 0n) {
-        bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
+        /** @type {uint8} */
+        const low = Number(OpCodes.AndN(value, 0xFFn));
+        bytes.unshift(low);
         value = OpCodes.ShiftRn(value, 8n);
       }
       return bytes;

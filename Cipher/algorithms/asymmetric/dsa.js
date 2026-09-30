@@ -47,10 +47,15 @@
   /**
    * Modular exponentiation using BigInt (base^exponent mod modulus)
    * Uses square-and-multiply algorithm for efficiency
+   * @param {BigInt} base - Base
+   * @param {BigInt} exponent - Exponent
+   * @param {BigInt} modulus - Modulus
+   * @returns {BigInt} base^exponent mod modulus
    */
   function modPow(base, exponent, modulus) {
     if (modulus === 1n) return 0n;
 
+    /** @type {BigInt} */
     var result = 1n;
     base = base % modulus;
 
@@ -67,18 +72,24 @@
 
   /**
    * Modular multiplicative inverse using Extended Euclidean Algorithm
+   * @param {BigInt} a - Value to invert
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} a^-1 mod m
    */
   function modInverse(a, m) {
     a = ((a % m) + m) % m;
 
     var m0 = m;
+    /** @type {BigInt} */
     var x0 = 0n;
+    /** @type {BigInt} */
     var x1 = 1n;
 
     if (m === 1n) return 0n;
 
     while (a > 1n) {
       var q = a / m;
+      /** @type {BigInt} */
       var t = m;
 
       m = a % m;
@@ -96,6 +107,8 @@
 
   /**
    * Convert hex string to BigInt
+   * @param {string} hexStr - Hexadecimal digits, no prefix
+   * @returns {BigInt} The value, zero for an empty string
    */
   function hexToBigInt(hexStr) {
     if (!hexStr || hexStr.length === 0) return 0n;
@@ -104,8 +117,11 @@
 
   /**
    * Convert BigInt to hex string
+   * @param {BigInt} bigIntVal - Non-negative value
+   * @returns {string} Hexadecimal digits, an even number of them
    */
   function bigIntToHex(bigIntVal) {
+    /** @type {string} */
     var hex = bigIntVal.toString(16);
     if (hex.length % 2 !== 0) hex = '0' + hex;
     return hex;
@@ -113,10 +129,13 @@
 
   /**
    * Convert byte array to hex string
+   * @param {uint8[]} bytes - Octets
+   * @returns {string} Two hexadecimal digits per octet
    */
   function bytesToHex(bytes) {
     var hex = '';
     for (var i = 0; i < bytes.length; i++) {
+      /** @type {string} */
       var b = bytes[i].toString(16);
       hex += (b.length === 1 ? '0' + b : b);
     }
@@ -125,6 +144,9 @@
 
   /**
    * Convert BigInt to byte array
+   * @param {BigInt} bigIntVal - Non-negative value
+   * @param {int32} length - Minimum length in octets, or 0 for the natural length
+   * @returns {uint8[]} Big-endian octets
    */
   function bigIntToBytes(bigIntVal, length) {
     var hex = bigIntToHex(bigIntVal);
@@ -142,6 +164,8 @@
 
   /**
    * Convert byte array to BigInt
+   * @param {uint8[]} bytes - Big-endian octets
+   * @returns {BigInt} The value, zero for an empty array
    */
   function bytesToBigInt(bytes) {
     if (!bytes || bytes.length === 0) return 0n;
@@ -160,6 +184,10 @@
   // attributes an algorithm to whichever file was loading when it registered
   // would then file SHA-512 under asymmetric ciphers.
   var hashesLoaded = false;
+  /**
+   * Load the digest modules DSA needs, once.
+   * @returns {void}
+   */
   function loadHashes() {
     if (hashesLoaded) return;
     hashesLoaded = true;
@@ -174,14 +202,70 @@
     }
   }
 
+  /**
+   * Digest and HMAC block size of one hash.
+   */
+  class HashParams {
+    /**
+     * @param {int32} outLen - Digest length in octets
+     * @param {int32} blockLen - HMAC block length in octets
+     */
+    constructor(outLen, blockLen) {
+      /** @type {int32} */
+      this.outLen = outLen;
+      /** @type {int32} */
+      this.blockLen = blockLen;
+    }
+  }
+
+  /**
+   * A DSA signature (r, s).
+   */
+  class DSASignatureValue {
+    /**
+     * @param {BigInt} r - First half
+     * @param {BigInt} s - Second half
+     */
+    constructor(r, s) {
+      /** @type {BigInt} */
+      this.r = r;
+      /** @type {BigInt} */
+      this.s = s;
+    }
+  }
+
   // Digest and HMAC block sizes in octets for the hashes FIPS 186-4 approves.
   var HASH_PARAMS = {
-    'SHA-1':   { outLen: 20, blockLen: 64 },
-    'SHA-224': { outLen: 28, blockLen: 64 },
-    'SHA-256': { outLen: 32, blockLen: 64 },
-    'SHA-384': { outLen: 48, blockLen: 128 },
-    'SHA-512': { outLen: 64, blockLen: 128 }
+    'SHA-1':   new HashParams(20, 64),
+    'SHA-224': new HashParams(28, 64),
+    'SHA-256': new HashParams(32, 64),
+    'SHA-384': new HashParams(48, 128),
+    'SHA-512': new HashParams(64, 128)
   };
+
+  /**
+   * Read a domain parameter or key in any of the forms callers use.
+   * @param {string|uint8[]|BigInt} value - Hexadecimal digits, big-endian octets or a BigInt
+   * @returns {BigInt|null} The value, or null for any other form
+   */
+  function toBigIntOrNull(value) {
+    if (typeof value === 'string') {
+      /** @type {string} */
+      var text = value;
+      return hexToBigInt(text);
+    }
+    if (Array.isArray(value)) {
+      /** @type {uint8[]} */
+      var bytes = value;
+      return bytesToBigInt(bytes);
+    }
+    if (typeof value === 'bigint') {
+      /** @type {BigInt} */
+      var big = value;
+      return big;
+    }
+    return null;
+  }
 
   /**
    * Digest a byte array with a registered hash algorithm.
@@ -192,25 +276,30 @@
   function digest(hashName, bytes) {
     loadHashes();
 
+    /** @type {Algorithm} */
     var algorithm = AlgorithmFramework.Find(hashName);
     if (!algorithm) {
       throw new Error('DSA requires the hash ' + hashName + ', which is not registered');
     }
 
+    /** @type {IHashFunctionInstance} */
     var instance = algorithm.CreateInstance();
     instance.Feed(bytes);
-    return instance.Result();
+    /** @type {uint8[]} */
+    var hash = instance.Result();
+    return hash;
   }
 
   /**
    * Concatenate byte arrays without spreading them into an argument list.
-   * @param {...uint8[]} parts - Arrays to join
+   * @param {uint8[][]} parts - Arrays to join
    * @returns {uint8[]} Concatenation
    */
-  function concatBytes() {
+  function concatBytes(parts) {
+    /** @type {uint8[]} */
     var out = [];
-    for (var p = 0; p < arguments.length; ++p) {
-      var part = arguments[p];
+    for (var p = 0; p < parts.length; ++p) {
+      var part = parts[p];
       for (var i = 0; i < part.length; ++i) out.push(part[i]);
     }
     return out;
@@ -224,6 +313,7 @@
    * @returns {uint8[]} MAC octets
    */
   function hmac(hashName, key, message) {
+    /** @type {HashParams} */
     var params = HASH_PARAMS[hashName];
     if (!params) throw new Error('No HMAC block size known for ' + hashName);
 
@@ -231,28 +321,33 @@
     var k = key.length > blockLen ? digest(hashName, key) : key.slice();
     while (k.length < blockLen) k.push(0x00);
 
+    /** @type {uint8[]} */
     var innerPad = new Array(blockLen);
+    /** @type {uint8[]} */
     var outerPad = new Array(blockLen);
     for (var i = 0; i < blockLen; ++i) {
-      innerPad[i] = OpCodes.XorN(k[i], 0x36);
-      outerPad[i] = OpCodes.XorN(k[i], 0x5C);
+      innerPad[i] = OpCodes.Xor8(k[i], 0x36);
+      outerPad[i] = OpCodes.Xor8(k[i], 0x5C);
     }
 
-    var innerHash = digest(hashName, concatBytes(innerPad, message));
-    return digest(hashName, concatBytes(outerPad, innerHash));
+    var innerHash = digest(hashName, concatBytes([innerPad, message]));
+    return digest(hashName, concatBytes([outerPad, innerHash]));
   }
 
   /**
    * RFC 6979 section 2.3.3: render an integer as exactly rlen octets.
    * @param {BigInt} value - The integer
-   * @param {number} rlen - Output length in octets
+   * @param {int32} rlen - Output length in octets
    * @returns {uint8[]} Big-endian fixed-width octets
    */
   function intToOctets(value, rlen) {
+    /** @type {uint8[]} */
     var bytes = new Array(rlen);
     var v = value;
     for (var i = rlen - 1; i >= 0; --i) {
-      bytes[i] = Number(OpCodes.AndN(v, 0xFFn));
+      /** @type {uint8} */
+      var octet = Number(OpCodes.AndN(v, 0xFFn));
+      bytes[i] = octet;
       v = OpCodes.ShiftRn(v, 8);
     }
     return bytes;
@@ -264,7 +359,7 @@
    * q; reducing instead changes the digest whenever it exceeds q and the
    * signature then verifies nowhere else.
    * @param {uint8[]} bytes - Octets, normally a digest
-   * @param {number} qlen - Bit length of q
+   * @param {int32} qlen - Bit length of q
    * @returns {BigInt} The truncated integer
    */
   function bitsToInt(bytes, qlen) {
@@ -277,8 +372,8 @@
    * RFC 6979 section 2.3.4.
    * @param {uint8[]} bytes - Digest octets
    * @param {BigInt} q - Subgroup order
-   * @param {number} qlen - Bit length of q
-   * @param {number} rlen - Octet length used by the generator
+   * @param {int32} qlen - Bit length of q
+   * @param {int32} rlen - Octet length used by the generator
    * @returns {uint8[]} Octets of the reduced digest
    */
   function bitsToOctets(bytes, q, qlen, rlen) {
@@ -303,35 +398,51 @@
    * @returns {BigInt} A nonce in [1, q-1]
    */
   function deterministicNonce(hashName, q, x, h1) {
+    /** @type {HashParams} */
     var params = HASH_PARAMS[hashName];
     if (!params) throw new Error('No digest length known for ' + hashName);
 
     var hlen = params.outLen;
-    var qlen = q.toString(2).length;
+    /** @type {string} */
+    var qBits = q.toString(2);
+    var qlen = qBits.length;
     var rlen = Math.ceil(qlen / 8);
 
     var xOctets = intToOctets(x, rlen);
     var hOctets = bitsToOctets(h1, q, qlen, rlen);
 
-    var V = new Array(hlen).fill(0x01);
-    var K = new Array(hlen).fill(0x00);
+    /** @type {uint8[]} */
+    var V = new Array(hlen);
+    V.fill(0x01);
+    /** @type {uint8[]} */
+    var K = new Array(hlen);
+    K.fill(0x00);
+    /** @type {uint8[]} */
+    var zero = [0x00];
+    /** @type {uint8[]} */
+    var one = [0x01];
 
-    K = hmac(hashName, K, concatBytes(V, [0x00], xOctets, hOctets));
+    K = hmac(hashName, K, concatBytes([V, zero, xOctets, hOctets]));
     V = hmac(hashName, K, V);
-    K = hmac(hashName, K, concatBytes(V, [0x01], xOctets, hOctets));
+    K = hmac(hashName, K, concatBytes([V, one, xOctets, hOctets]));
     V = hmac(hashName, K, V);
 
     for (;;) {
+      /** @type {uint8[]} */
       var T = [];
       while (T.length * 8 < qlen) {
         V = hmac(hashName, K, V);
-        T = concatBytes(T, V);
+        T = concatBytes([T, V]);
       }
 
       var k = bitsToInt(T, qlen);
-      if (k >= 1n && k < q) return k;
+      if (k >= 1n && k < q) {
+        return k;
+      }
 
-      K = hmac(hashName, K, concatBytes(V, [0x00]));
+      /** @type {uint8[]} */
+      var retryZero = [0x00];
+      K = hmac(hashName, K, concatBytes([V, retryZero]));
       V = hmac(hashName, K, V);
     }
   }
@@ -710,97 +821,123 @@
   class DSAInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DSASignature} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // DSA domain parameters (p, q, g)
+      /** @type {BigInt|null} */
       this._p = null; // Prime modulus
+      /** @type {BigInt|null} */
       this._q = null; // Prime divisor (subgroup order)
+      /** @type {BigInt|null} */
       this._g = null; // Generator
 
       // DSA keys
+      /** @type {BigInt|null} */
       this._publicKey = null;  // y = g^x mod p
+      /** @type {BigInt|null} */
       this._privateKey = null; // x (private exponent)
 
       // Signature for verification
+      /** @type {DSASignatureValue|null} */
       this._signature = null;
 
       // Digest the signature is taken over. SHA-256 rather than the SHA-1 of
       // the original standard: against the 2048/256 parameter set a 160-bit
       // digest fills only 160 of the 256 bits of z, and a caller who never
       // sets this would get that weaker signature without being told.
+      /** @type {string} */
       this._hashAlgorithm = 'SHA-256';
     }
 
     // Property setters for test vector support
+    /**
+     * @param {string|uint8[]|BigInt} value - Prime modulus p
+     */
     set p(value) {
-      if (typeof value === 'string') {
-        this._p = hexToBigInt(value);
-      } else if (Array.isArray(value)) {
-        this._p = bytesToBigInt(value);
-      } else if (typeof value === 'bigint') {
-        this._p = value;
+      var parsed = toBigIntOrNull(value);
+      if (parsed !== null) {
+        this._p = parsed;
       }
     }
 
+    /**
+     * @returns {BigInt|null} Prime modulus p
+     */
     get p() { return this._p; }
 
+    /**
+     * @param {string|uint8[]|BigInt} value - Subgroup order q
+     */
     set q(value) {
-      if (typeof value === 'string') {
-        this._q = hexToBigInt(value);
-      } else if (Array.isArray(value)) {
-        this._q = bytesToBigInt(value);
-      } else if (typeof value === 'bigint') {
-        this._q = value;
+      var parsed = toBigIntOrNull(value);
+      if (parsed !== null) {
+        this._q = parsed;
       }
     }
 
+    /**
+     * @returns {BigInt|null} Subgroup order q
+     */
     get q() { return this._q; }
 
+    /**
+     * @param {string|uint8[]|BigInt} value - Generator g
+     */
     set g(value) {
-      if (typeof value === 'string') {
-        this._g = hexToBigInt(value);
-      } else if (Array.isArray(value)) {
-        this._g = bytesToBigInt(value);
-      } else if (typeof value === 'bigint') {
-        this._g = value;
+      var parsed = toBigIntOrNull(value);
+      if (parsed !== null) {
+        this._g = parsed;
       }
     }
 
+    /**
+     * @returns {BigInt|null} Generator g
+     */
     get g() { return this._g; }
 
+    /**
+     * @param {string|uint8[]|BigInt} value - Public key y = g^x mod p
+     */
     set y(value) {
       // Public key (y = g^x mod p)
-      if (typeof value === 'string') {
-        this._publicKey = hexToBigInt(value);
-      } else if (Array.isArray(value)) {
-        this._publicKey = bytesToBigInt(value);
-      } else if (typeof value === 'bigint') {
-        this._publicKey = value;
+      var parsed = toBigIntOrNull(value);
+      if (parsed !== null) {
+        this._publicKey = parsed;
       }
     }
 
+    /**
+     * @returns {BigInt|null} Public key y
+     */
     get y() { return this._publicKey; }
 
     // Private key x, in [1, q-1]. There was no way to set one before, which is
     // why signing could not reach the arithmetic below.
+    /**
+     * @param {string|uint8[]|BigInt} value - Private key x
+     */
     set x(value) {
       this.privateKey = value;
     }
 
+    /**
+     * @returns {BigInt|null} Private key x
+     */
     get x() { return this._privateKey; }
 
+    /**
+     * @param {string|uint8[]|BigInt|null} value - Private key x
+     */
     set privateKey(value) {
-      var x = null;
-      if (typeof value === 'string') x = hexToBigInt(value);
-      else if (Array.isArray(value)) x = bytesToBigInt(value);
-      else if (typeof value === 'bigint') x = value;
+      var x = toBigIntOrNull(value);
 
       if (x === null) { this._privateKey = null; return; }
 
@@ -817,11 +954,17 @@
       }
     }
 
+    /**
+     * @returns {BigInt|null} Private key x
+     */
     get privateKey() { return this._privateKey; }
 
     // Which digest the signature is taken over. FIPS 186-4 permits any
     // approved hash whose output is at least as long as q, and RFC 6979
     // derives the nonce from the same one.
+    /**
+     * @param {string} name - Registered hash name, e.g. "SHA-256"
+     */
     set hashAlgorithm(name) {
       if (!name) return;
       if (!HASH_PARAMS[name]) {
@@ -830,31 +973,48 @@
       this._hashAlgorithm = name;
     }
 
+    /**
+     * @returns {string} Registered hash name
+     */
     get hashAlgorithm() { return this._hashAlgorithm; }
 
+    /**
+     * @param {uint8[]|DSASignatureValue} value - r || s, or an object with r and s
+     */
     set signature(value) {
       if (Array.isArray(value)) {
+        /** @type {uint8[]} */
+        var bytes = value;
         // DSA signature format: r || s (each 20 bytes for DSA-1024 with SHA-1)
-        var halfLen = value.length / 2;
-        var rBytes = value.slice(0, halfLen);
-        var sBytes = value.slice(halfLen);
+        var halfLen = bytes.length / 2;
+        var rBytes = bytes.slice(0, halfLen);
+        var sBytes = bytes.slice(halfLen);
 
-        this._signature = {
-          r: bytesToBigInt(rBytes),
-          s: bytesToBigInt(sBytes)
-        };
+        this._signature = new DSASignatureValue(bytesToBigInt(rBytes), bytesToBigInt(sBytes));
       } else if (value && typeof value === 'object') {
-        this._signature = value;
+        /** @type {DSASignatureValue} */
+        var pair = value;
+        this._signature = pair;
       }
     }
 
+    /**
+     * @returns {DSASignatureValue|null} Signature to verify
+     */
     get signature() { return this._signature; }
 
+    /**
+     * @param {uint8[]} value - Expected result of a test vector
+     */
     set expected(value) {
       // For test vectors - expected result
+      /** @type {uint8[]} */
       this._expectedResult = value;
     }
 
+    /**
+     * @returns {uint8[]} Expected result of a test vector
+     */
     get expected() { return this._expectedResult; }
 
     // Feed data for signing/verification
@@ -883,6 +1043,7 @@
 
     Result() {
       try {
+        /** @type {uint8[]} */
         var result;
 
         // If signature is provided, always verify (regardless of isInverse)
@@ -895,11 +1056,9 @@
           result = this.Sign(this.inputBuffer);
         }
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
@@ -914,6 +1073,8 @@
      * 3. Compute r = (g^k mod p) mod q
      * 4. Compute s = k^-1 * (e + x*r) mod q
      * 5. Return (r, s)
+     * @param {uint8[]} message - Message octets
+     * @returns {uint8[]} r || s, each padded to the length of q
      */
     Sign(message) {
       if (!this._p || !this._q || !this._g) {
@@ -924,7 +1085,9 @@
         throw new Error("DSA private key not set");
       }
 
-      var qlen = this._q.toString(2).length;
+      /** @type {string} */
+      var qBits = this._q.toString(2);
+      var qlen = qBits.length;
 
       // Step 1: z = leftmost min(N, outlen) bits of Hash(M). The digest is
       // needed twice as the same octets: as the integer z that enters s, and
@@ -966,6 +1129,9 @@
      * 5. Compute u2 = r*w mod q
      * 6. Compute v = ((g^u1 * y^u2) mod p) mod q
      * 7. Return v == r
+     * @param {uint8[]} message - Message octets
+     * @param {DSASignatureValue} signature - Signature (r, s)
+     * @returns {uint8[]} [1] when the signature verifies, [0] otherwise
      */
     Verify(message, signature) {
       if (!this._p || !this._q || !this._g) {
@@ -985,13 +1151,17 @@
 
       // Step 1: Verify 0 < r < q and 0 < s < q
       if (r <= 0n || r >= this._q || s <= 0n || s >= this._q) {
-        return [0]; // Invalid signature - return false as byte array
+        /** @type {uint8[]} */
+        var rejected = [0];
+        return rejected; // Invalid signature - return false as byte array
       }
 
       // Step 2: z = leftmost min(N, outlen) bits of Hash(M). Treating the
       // message bytes as the digest, as this did, means a verifier that never
       // hashes anything and cannot agree with any signer.
-      var z = bitsToInt(digest(this._hashAlgorithm, message), this._q.toString(2).length);
+      /** @type {string} */
+      var qBits = this._q.toString(2);
+      var z = bitsToInt(digest(this._hashAlgorithm, message), qBits.length);
 
       // Step 3: Compute w = s^-1 mod q
       var w = modInverse(s, this._q);
@@ -1011,7 +1181,11 @@
       var isValid = (v === r);
 
       // Return as byte array for test framework compatibility
-      return isValid ? [1] : [0];
+      /** @type {uint8[]} */
+      var accepted = [1];
+      /** @type {uint8[]} */
+      var refused = [0];
+      return isValid ? accepted : refused;
     }
 
     // Clear sensitive data

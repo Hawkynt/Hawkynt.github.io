@@ -44,104 +44,159 @@
   // ===== ELLIPTIC CURVE MATHEMATICS =====
 
   /**
-   * Modular arithmetic operations using BigInt
+   * Modular subtraction.
+   * @param {BigInt} a - minuend
+   * @param {BigInt} b - subtrahend
+   * @param {BigInt} p - modulus
+   * @returns {BigInt} (a - b) mod p in [0, p)
    */
-  const ModMath = {
-    // Modular addition
-    add: (a, b, p) => (a + b) % p,
+  function ModSub(a, b, p) {
+    return ((a - b) % p + p) % p;
+  }
 
-    // Modular subtraction
-    sub: (a, b, p) => ((a - b) % p + p) % p,
+  /**
+   * Modular multiplication.
+   * @param {BigInt} a - first factor
+   * @param {BigInt} b - second factor
+   * @param {BigInt} p - modulus
+   * @returns {BigInt} a * b mod p
+   */
+  function ModMul(a, b, p) {
+    return (a * b) % p;
+  }
 
-    // Modular multiplication
-    mul: (a, b, p) => (a * b) % p,
+  /**
+   * Modular inverse using the extended Euclidean algorithm.
+   * @param {BigInt} value - the number to invert
+   * @param {BigInt} p - modulus
+   * @returns {BigInt} value^-1 mod p
+   */
+  function ModInv(value, p) {
+    /** @type {BigInt} */
+    const a = ((value % p) + p) % p;
+    if (a === 0n) throw new Error('Cannot compute inverse of 0');
 
-    // Modular inverse using Extended Euclidean Algorithm
-    inv: (a, p) => {
-      a = ((a % p) + p) % p;
-      if (a === 0n) throw new Error('Cannot compute inverse of 0');
+    /** @type {BigInt} */
+    let t = 0n;
+    /** @type {BigInt} */
+    let newT = 1n;
+    /** @type {BigInt} */
+    let r = p;
+    /** @type {BigInt} */
+    let newR = a;
 
-      let [t, newT] = [0n, 1n];
-      let [r, newR] = [p, a];
-
-      while (newR !== 0n) {
-        const quotient = r / newR;
-        [t, newT] = [newT, t - quotient * newT];
-        [r, newR] = [newR, r - quotient * newR];
-      }
-
-      if (r > 1n) throw new Error('Not invertible');
-      if (t < 0n) t += p;
-
-      return t;
-    },
-
-    // Modular exponentiation (for square roots)
-    pow: (base, exp, p) => {
-      if (exp === 0n) return 1n;
-      if (exp === 1n) return base % p;
-
-      let result = 1n;
-      base = base % p;
-
-      while (exp > 0n) {
-        if (OpCodes.AndN(exp, 1n)) result = (result * base) % p;
-        exp = OpCodes.ShiftRn(exp, 1n);
-        base = (base * base) % p;
-      }
-
-      return result;
+    while (newR !== 0n) {
+      const quotient = r / newR;
+      const nextT = t - quotient * newT;
+      t = newT;
+      newT = nextT;
+      const nextR = r - quotient * newR;
+      r = newR;
+      newR = nextR;
     }
-  };
+
+    if (r > 1n) throw new Error('Not invertible');
+    if (t < 0n) t += p;
+
+    return t;
+  }
 
   /**
    * Elliptic Curve Point representation (affine coordinates)
    */
   class ECPoint {
+    /**
+     * @param {BigInt} x - affine x
+     * @param {BigInt} y - affine y
+     * @param {boolean} [isInfinity=false] - true for the point at infinity
+     */
     constructor(x, y, isInfinity = false) {
+      /** @type {BigInt} */
       this.x = x;
+      /** @type {BigInt} */
       this.y = y;
+      /** @type {boolean} */
       this.isInfinity = isInfinity;
     }
 
+    /**
+     * @param {ECPoint} other - the point to compare with
+     * @returns {boolean} true when both are the same point
+     */
     equals(other) {
       if (this.isInfinity && other.isInfinity) return true;
       if (this.isInfinity || other.isInfinity) return false;
       return this.x === other.x && this.y === other.y;
     }
 
+    /**
+     * @returns {ECPoint} a fresh point at infinity
+     */
     static infinity() {
-      return new ECPoint(0n, 0n, true);
+      return PointAtInfinity();
     }
+  }
+
+  /**
+   * @returns {ECPoint} a fresh point at infinity
+   */
+  function PointAtInfinity() {
+    return new ECPoint(0n, 0n, true);
   }
 
   /**
    * Elliptic Curve over Fp (Weierstrass form: y^2 = x^3 + ax + b mod p)
    */
   class EllipticCurve {
+    /**
+     * @param {BigInt} p - prime field modulus
+     * @param {BigInt} a - curve parameter a
+     * @param {BigInt} b - curve parameter b
+     * @param {ECPoint} G - generator point
+     * @param {BigInt} n - order of G (prime)
+     * @param {BigInt} h - cofactor
+     * @param {string} name - curve name
+     */
     constructor(p, a, b, G, n, h, name) {
+      /** @type {BigInt} */
       this.p = p;    // Prime field modulus
+      /** @type {BigInt} */
       this.a = a;    // Curve parameter a
+      /** @type {BigInt} */
       this.b = b;    // Curve parameter b
+      /** @type {ECPoint} */
       this.G = G;    // Generator point
+      /** @type {BigInt} */
       this.n = n;    // Order of G (prime)
+      /** @type {BigInt} */
       this.h = h;    // Cofactor
+      /** @type {string} */
       this.name = name;
     }
 
-    // Check if point is on the curve
+    /**
+     * Check if point is on the curve
+     * @param {ECPoint} point - the point to test
+     * @returns {boolean} true when the point satisfies the curve equation
+     */
     isOnCurve(point) {
       if (point.isInfinity) return true;
 
-      const { x, y } = point;
-      const left = ModMath.mul(y, y, this.p);
-      const right = (ModMath.mul(ModMath.mul(x, x, this.p), x, this.p) +
-                     ModMath.mul(this.a, x, this.p) + this.b) % this.p;
+      const x = point.x;
+      const y = point.y;
+      const left = ModMul(y, y, this.p);
+      const right = (ModMul(ModMul(x, x, this.p), x, this.p) +
+                     ModMul(this.a, x, this.p) + this.b) % this.p;
 
       return left === right;
     }
 
-    // Point addition
+    /**
+     * Point addition
+     * @param {ECPoint} P - first summand
+     * @param {ECPoint} Q - second summand
+     * @returns {ECPoint} P + Q
+     */
     add(P, Q) {
       if (P.isInfinity) return Q;
       if (Q.isInfinity) return P;
@@ -150,51 +205,62 @@
         if (P.y === Q.y) {
           return this.double(P);
         } else {
-          return ECPoint.infinity();
+          return PointAtInfinity();
         }
       }
 
       // λ = (y2 - y1) / (x2 - x1) mod p
-      const numerator = ModMath.sub(Q.y, P.y, this.p);
-      const denominator = ModMath.sub(Q.x, P.x, this.p);
-      const lambda = ModMath.mul(numerator, ModMath.inv(denominator, this.p), this.p);
+      const numerator = ModSub(Q.y, P.y, this.p);
+      const denominator = ModSub(Q.x, P.x, this.p);
+      const lambda = ModMul(numerator, ModInv(denominator, this.p), this.p);
 
       // x3 = λ^2 - x1 - x2 mod p
-      const x3 = ModMath.sub(ModMath.sub(ModMath.mul(lambda, lambda, this.p), P.x, this.p), Q.x, this.p);
+      const x3 = ModSub(ModSub(ModMul(lambda, lambda, this.p), P.x, this.p), Q.x, this.p);
 
       // y3 = λ(x1 - x3) - y1 mod p
-      const y3 = ModMath.sub(ModMath.mul(lambda, ModMath.sub(P.x, x3, this.p), this.p), P.y, this.p);
+      const y3 = ModSub(ModMul(lambda, ModSub(P.x, x3, this.p), this.p), P.y, this.p);
 
       return new ECPoint(x3, y3);
     }
 
-    // Point doubling
+    /**
+     * Point doubling
+     * @param {ECPoint} P - the point
+     * @returns {ECPoint} 2P
+     */
     double(P) {
       if (P.isInfinity) return P;
-      if (P.y === 0n) return ECPoint.infinity();
+      if (P.y === 0n) return PointAtInfinity();
 
       // λ = (3x^2 + a) / (2y) mod p
-      const numerator = (ModMath.mul(3n, ModMath.mul(P.x, P.x, this.p), this.p) + this.a) % this.p;
-      const denominator = ModMath.mul(2n, P.y, this.p);
-      const lambda = ModMath.mul(numerator, ModMath.inv(denominator, this.p), this.p);
+      const numerator = (ModMul(3n, ModMul(P.x, P.x, this.p), this.p) + this.a) % this.p;
+      const denominator = ModMul(2n, P.y, this.p);
+      const lambda = ModMul(numerator, ModInv(denominator, this.p), this.p);
 
       // x3 = λ^2 - 2x mod p
-      const x3 = ModMath.sub(ModMath.mul(lambda, lambda, this.p), ModMath.mul(2n, P.x, this.p), this.p);
+      const x3 = ModSub(ModMul(lambda, lambda, this.p), ModMul(2n, P.x, this.p), this.p);
 
       // y3 = λ(x - x3) - y mod p
-      const y3 = ModMath.sub(ModMath.mul(lambda, ModMath.sub(P.x, x3, this.p), this.p), P.y, this.p);
+      const y3 = ModSub(ModMul(lambda, ModSub(P.x, x3, this.p), this.p), P.y, this.p);
 
       return new ECPoint(x3, y3);
     }
 
-    // Scalar multiplication using double-and-add algorithm
-    multiply(k, P) {
-      if (k === 0n) return ECPoint.infinity();
-      if (k === 1n) return P;
-      if (k < 0n) throw new Error('Negative scalar not supported');
+    /**
+     * Scalar multiplication using double-and-add algorithm
+     * @param {BigInt} scalar - non-negative multiplier
+     * @param {ECPoint} P - the point
+     * @returns {ECPoint} scalar * P
+     */
+    multiply(scalar, P) {
+      if (scalar === 0n) return PointAtInfinity();
+      if (scalar === 1n) return P;
+      if (scalar < 0n) throw new Error('Negative scalar not supported');
 
-      let result = ECPoint.infinity();
+      let result = PointAtInfinity();
       let addend = P;
+      /** @type {BigInt} */
+      let k = scalar;
 
       while (k > 0n) {
         if (OpCodes.AndN(k, 1n)) {
@@ -207,35 +273,51 @@
       return result;
     }
 
-    // Encode point to bytes (uncompressed format: 0x04 || x || y)
+    /**
+     * Encode point to bytes (uncompressed format: 0x04 || x || y)
+     * @param {ECPoint} point - the point
+     * @param {boolean} [compressed=false] - emit 0x02/0x03 || x instead
+     * @returns {uint8[]} the encoding
+     */
     encodePoint(point, compressed = false) {
       if (point.isInfinity) {
-        return [0x00];
+        /** @type {uint8[]} */
+        const infinity = [0x00];
+        return infinity;
       }
 
-      const coordSize = Math.ceil(this.p.toString(16).length / 2);
+      /** @type {string} */
+      const pHex = this.p.toString(16);
+      const coordSize = Math.ceil(pHex.length / 2);
 
       if (compressed) {
         // Compressed format: 0x02/0x03 || x
+        /** @type {uint8} */
         const prefix = OpCodes.AndN(point.y, 1n) === 0n ? 0x02 : 0x03;
-        return [prefix, ...this._bigIntToBytes(point.x, coordSize)];
+        /** @type {uint8[]} */
+        const head = [prefix];
+        return head.concat(this._bigIntToBytes(point.x, coordSize));
       } else {
         // Uncompressed format: 0x04 || x || y
-        return [
-          0x04,
-          ...this._bigIntToBytes(point.x, coordSize),
-          ...this._bigIntToBytes(point.y, coordSize)
-        ];
+        /** @type {uint8[]} */
+        const head = [0x04];
+        return head.concat(this._bigIntToBytes(point.x, coordSize), this._bigIntToBytes(point.y, coordSize));
       }
     }
 
-    // Decode point from bytes
+    /**
+     * Decode point from bytes
+     * @param {uint8[]} bytes - the encoding
+     * @returns {ECPoint} the point
+     */
     decodePoint(bytes) {
       if (bytes.length === 0 || bytes[0] === 0x00) {
-        return ECPoint.infinity();
+        return PointAtInfinity();
       }
 
-      const coordSize = Math.ceil(this.p.toString(16).length / 2);
+      /** @type {string} */
+      const pHex = this.p.toString(16);
+      const coordSize = Math.ceil(pHex.length / 2);
 
       if (bytes[0] === 0x04) {
         // Uncompressed point
@@ -260,19 +342,37 @@
       }
     }
 
+    /**
+     * @param {BigInt} value - non-negative integer
+     * @param {int32} size - minimum octet count
+     * @returns {uint8[]} big-endian octets, zero-padded to size
+     */
     _bigIntToBytes(value, size) {
+      /** @type {string} */
       const hex = value.toString(16).padStart(size * 2, '0');
+      /** @type {uint8[]} */
       const bytes = [];
       for (let i = 0; i < hex.length; i += 2) {
-        bytes.push(parseInt(hex.slice(i, i + 2), 16));
+        /** @type {uint8} */
+        const octet = parseInt(hex.slice(i, i + 2), 16);
+        bytes.push(octet);
       }
       return bytes;
     }
 
+    /**
+     * @param {uint8[]} bytes - big-endian octets
+     * @returns {BigInt} the integer they encode
+     */
     _bytesToBigInt(bytes) {
+      /** @type {string} */
       let hex = '';
       for (let i = 0; i < bytes.length; ++i) {
-        hex += bytes[i].toString(16).padStart(2, '0');
+        /** @type {int32} */
+        const b = bytes[i];
+        /** @type {string} */
+        const digits = b.toString(16);
+        hex += digits.padStart(2, '0');
       }
       return BigInt('0x' + hex);
     }
@@ -290,87 +390,129 @@
    * @returns {uint8[]} DER-encoded signature
    */
   function derSignature(rHex, sHex) {
-    const encodeLength = (length) => length < 0x80
-      ? [length]
-      : [0x81, length];
+    const body = DerVectorInteger(rHex).concat(DerVectorInteger(sHex));
+    /** @type {uint8[]} */
+    const head = [0x30];
+    return head.concat(DerVectorLength(body.length), body);
+  }
 
-    const encodeInteger = (hex) => {
-      let bytes = OpCodes.Hex8ToBytes(hex.length % 2 ? '0' + hex : hex);
-      while (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.AndN(bytes[1], 0x80) === 0) {
-        bytes = bytes.slice(1);
-      }
-      if (OpCodes.AndN(bytes[0], 0x80) !== 0) bytes = [0x00].concat(bytes);
-      return [0x02].concat(encodeLength(bytes.length), bytes);
-    };
+  /**
+   * The DER length octets of a test vector, which never exceed 255.
+   * @param {int32} length - content length
+   * @returns {uint8[]} short form below 128, else 0x81 and the length
+   */
+  function DerVectorLength(length) {
+    if (length < 0x80) {
+      /** @type {uint8[]} */
+      const short = [length];
+      return short;
+    }
+    /** @type {uint8[]} */
+    const long = [0x81, length];
+    return long;
+  }
 
-    const body = encodeInteger(rHex).concat(encodeInteger(sHex));
-    return [0x30].concat(encodeLength(body.length), body);
+  /**
+   * One minimally encoded DER INTEGER of a test vector.
+   * @param {string} hex - the integer, big-endian hexadecimal
+   * @returns {uint8[]} tag, length and content octets
+   */
+  function DerVectorInteger(hex) {
+    /** @type {uint8[]} */
+    let bytes = OpCodes.Hex8ToBytes(hex.length % 2 ? '0' + hex : hex);
+    while (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.And32(bytes[1], 0x80) === 0) {
+      bytes = bytes.slice(1);
+    }
+    if (OpCodes.And32(bytes[0], 0x80) !== 0) {
+      /** @type {uint8[]} */
+      const zero = [0x00];
+      bytes = zero.concat(bytes);
+    }
+    /** @type {uint8[]} */
+    const tag = [0x02];
+    return tag.concat(DerVectorLength(bytes.length), bytes);
   }
 
   // ===== STANDARD CURVE DEFINITIONS =====
 
+  // Bitcoin curve (Koblitz curve)
+  const SECP256K1 = new EllipticCurve(
+    BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F'),
+    0n,
+    7n,
+    new ECPoint(
+      BigInt('0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798'),
+      BigInt('0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8')
+    ),
+    BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'),
+    1n,
+    'secp256k1'
+  );
+
+  // NIST P-256 (secp256r1)
+  const SECP256R1 = new EllipticCurve(
+    BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF'),
+    BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC'),
+    BigInt('0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B'),
+    new ECPoint(
+      BigInt('0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296'),
+      BigInt('0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5')
+    ),
+    BigInt('0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551'),
+    1n,
+    'secp256r1'
+  );
+
+  // NIST P-384 (secp384r1)
+  const SECP384R1 = new EllipticCurve(
+    BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFF0000000000000000FFFFFFFF'),
+    BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFF0000000000000000FFFFFFFC'),
+    BigInt('0xB3312FA7E23EE7E4988E056BE3F82D19181D9C6EFE8141120314088F5013875AC656398D8A2ED19D2A85C8EDD3EC2AEF'),
+    new ECPoint(
+      BigInt('0xAA87CA22BE8B05378EB1C71EF320AD746E1D3B628BA79B9859F741E082542A385502F25DBF55296C3A545E3872760AB7'),
+      BigInt('0x3617DE4A96262C6F5D9E98BF9292DC29F8F41DBD289A147CE9DA3113B5F0B8C00A60B1CE1D7E819D7A431D7C90EA0E5F')
+    ),
+    BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973'),
+    1n,
+    'secp384r1'
+  );
+
+  // NIST P-521 (secp521r1)
+  const SECP521R1 = new EllipticCurve(
+    BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'),
+    BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC'),
+    BigInt('0x0051953EB9618E1C9A1F929A21A0B68540EEA2DA725B99B315F3B8B489918EF109E156193951EC7E937B1652C0BD3BB1BF073573DF883D2C34F1EF451FD46B503F00'),
+    new ECPoint(
+      BigInt('0x00C6858E06B70404E9CD9E3ECB662395B4429C648139053FB521F828AF606B4D3DBAA14B5E77EFE75928FE1DC127A2FFA8DE3348B3C1856A429BF97E7E31C2E5BD66'),
+      BigInt('0x011839296A789A3BC0045C8A5FB42C7D1BD998F54449579B446817AFBD17273E662C97EE72995EF42640C550B9013FAD0761353C7086A272C24088BE94769FD16650')
+    ),
+    BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409'),
+    1n,
+    'secp521r1'
+  );
+
+  // The curves by name, with the NIST aliases listed after the SEC names.
   const CURVES = {
-    // Bitcoin curve (Koblitz curve)
-    'secp256k1': new EllipticCurve(
-      BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F'),
-      0n,
-      7n,
-      new ECPoint(
-        BigInt('0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798'),
-        BigInt('0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8')
-      ),
-      BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'),
-      1n,
-      'secp256k1'
-    ),
-
-    // NIST P-256 (secp256r1)
-    'secp256r1': new EllipticCurve(
-      BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF'),
-      BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC'),
-      BigInt('0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B'),
-      new ECPoint(
-        BigInt('0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296'),
-        BigInt('0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5')
-      ),
-      BigInt('0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551'),
-      1n,
-      'secp256r1'
-    ),
-
-    // NIST P-384 (secp384r1)
-    'secp384r1': new EllipticCurve(
-      BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFF0000000000000000FFFFFFFF'),
-      BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFF0000000000000000FFFFFFFC'),
-      BigInt('0xB3312FA7E23EE7E4988E056BE3F82D19181D9C6EFE8141120314088F5013875AC656398D8A2ED19D2A85C8EDD3EC2AEF'),
-      new ECPoint(
-        BigInt('0xAA87CA22BE8B05378EB1C71EF320AD746E1D3B628BA79B9859F741E082542A385502F25DBF55296C3A545E3872760AB7'),
-        BigInt('0x3617DE4A96262C6F5D9E98BF9292DC29F8F41DBD289A147CE9DA3113B5F0B8C00A60B1CE1D7E819D7A431D7C90EA0E5F')
-      ),
-      BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973'),
-      1n,
-      'secp384r1'
-    ),
-
-    // NIST P-521 (secp521r1)
-    'secp521r1': new EllipticCurve(
-      BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'),
-      BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC'),
-      BigInt('0x0051953EB9618E1C9A1F929A21A0B68540EEA2DA725B99B315F3B8B489918EF109E156193951EC7E937B1652C0BD3BB1BF073573DF883D2C34F1EF451FD46B503F00'),
-      new ECPoint(
-        BigInt('0x00C6858E06B70404E9CD9E3ECB662395B4429C648139053FB521F828AF606B4D3DBAA14B5E77EFE75928FE1DC127A2FFA8DE3348B3C1856A429BF97E7E31C2E5BD66'),
-        BigInt('0x011839296A789A3BC0045C8A5FB42C7D1BD998F54449579B446817AFBD17273E662C97EE72995EF42640C550B9013FAD0761353C7086A272C24088BE94769FD16650')
-      ),
-      BigInt('0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409'),
-      1n,
-      'secp521r1'
-    )
+    'secp256k1': SECP256K1,
+    'secp256r1': SECP256R1,
+    'secp384r1': SECP384R1,
+    'secp521r1': SECP521R1,
+    'P-256': SECP256R1,
+    'P-384': SECP384R1,
+    'P-521': SECP521R1
   };
 
-  // Alias for common names
-  CURVES['P-256'] = CURVES['secp256r1'];
-  CURVES['P-384'] = CURVES['secp384r1'];
-  CURVES['P-521'] = CURVES['secp521r1'];
+  /**
+   * The curve listed under a name. A plain property read, so a name is
+   * accepted exactly when CURVES has a truthy property of it.
+   * @param {string} name - curve name such as 'secp256r1' or 'P-256'
+   * @returns {EllipticCurve} the curve, or a falsy value when unlisted
+   */
+  function CurveByName(name) {
+    /** @type {EllipticCurve} */
+    const curve = CURVES[name];
+    return curve;
+  }
 
   // ===== HASHING AND RFC 6979 =====
 
@@ -402,13 +544,38 @@
   // Digest and HMAC block sizes, in octets, for the hashes FIPS 186-4 approves
   // for ECDSA. Both are properties of the hash rather than of this file, so
   // they are listed once and read by name.
+  class HashParams {
+    /**
+     * @param {int32} outLen - digest octets
+     * @param {int32} blockLen - HMAC block octets
+     */
+    constructor(outLen, blockLen) {
+      /** @type {int32} */
+      this.outLen = outLen;
+      /** @type {int32} */
+      this.blockLen = blockLen;
+    }
+  }
+
   const HASH_PARAMS = {
-    'SHA-1':   { outLen: 20, blockLen: 64 },
-    'SHA-224': { outLen: 28, blockLen: 64 },
-    'SHA-256': { outLen: 32, blockLen: 64 },
-    'SHA-384': { outLen: 48, blockLen: 128 },
-    'SHA-512': { outLen: 64, blockLen: 128 }
+    'SHA-1':   new HashParams(20, 64),
+    'SHA-224': new HashParams(28, 64),
+    'SHA-256': new HashParams(32, 64),
+    'SHA-384': new HashParams(48, 128),
+    'SHA-512': new HashParams(64, 128)
   };
+
+  /**
+   * The digest parameters listed under a hash name. A plain property read, so
+   * a name is accepted exactly when HASH_PARAMS has a truthy property of it.
+   * @param {string} name - hash name such as 'SHA-256'
+   * @returns {HashParams} the parameters, or a falsy value when unlisted
+   */
+  function HashParamsByName(name) {
+    /** @type {HashParams} */
+    const params = HASH_PARAMS[name];
+    return params;
+  }
 
   /**
    * Digest a byte array with a registered hash algorithm.
@@ -421,23 +588,26 @@
 
     const algorithm = AlgorithmFramework.Find(hashName);
     if (!algorithm) {
-      throw new Error(`ECDSA requires the hash ${hashName}, which is not registered`);
+      throw new Error('ECDSA requires the hash ' + hashName + ', which is not registered');
     }
 
     const instance = algorithm.CreateInstance();
     instance.Feed(bytes);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
   /**
    * Concatenate byte arrays without spreading them into an argument list.
-   * @param {...uint8[]} parts - Arrays to join
+   * @param {uint8[][]} parts - Arrays to join
    * @returns {uint8[]} Concatenation
    */
-  function concatBytes() {
+  function concatBytes(parts) {
+    /** @type {uint8[]} */
     const out = [];
-    for (let p = 0; p < arguments.length; ++p) {
-      const part = arguments[p];
+    for (let p = 0; p < parts.length; ++p) {
+      const part = parts[p];
       for (let i = 0; i < part.length; ++i) out.push(part[i]);
     }
     return out;
@@ -452,22 +622,47 @@
    * @returns {uint8[]} MAC octets
    */
   function hmac(hashName, key, message) {
-    const params = HASH_PARAMS[hashName];
-    if (!params) throw new Error(`No HMAC block size known for ${hashName}`);
+    const params = HashParamsByName(hashName);
+    if (!params) throw new Error('No HMAC block size known for ' + hashName);
 
     const blockLen = params.blockLen;
+    /** @type {uint8[]} */
     const k = key.length > blockLen ? digest(hashName, key) : key.slice();
     while (k.length < blockLen) k.push(0x00);
 
+    /** @type {uint8[]} */
     const innerPad = new Array(blockLen);
+    /** @type {uint8[]} */
     const outerPad = new Array(blockLen);
     for (let i = 0; i < blockLen; ++i) {
-      innerPad[i] = OpCodes.XorN(k[i], 0x36);
-      outerPad[i] = OpCodes.XorN(k[i], 0x5C);
+      innerPad[i] = OpCodes.Xor32(k[i], 0x36);
+      outerPad[i] = OpCodes.Xor32(k[i], 0x5C);
     }
 
-    const innerHash = digest(hashName, concatBytes(innerPad, message));
-    return digest(hashName, concatBytes(outerPad, innerHash));
+    const innerHash = digest(hashName, concatBytes([innerPad, message]));
+    return digest(hashName, concatBytes([outerPad, innerHash]));
+  }
+
+  /**
+   * Bit length of a positive integer, from its binary rendering.
+   * @param {BigInt} value - the integer
+   * @returns {int32} number of binary digits
+   */
+  function BitLength(value) {
+    /** @type {string} */
+    const binary = value.toString(2);
+    return binary.length;
+  }
+
+  /**
+   * Hexadecimal digit count of a non-negative integer.
+   * @param {BigInt} value - the integer
+   * @returns {int32} number of hexadecimal digits
+   */
+  function HexDigits(value) {
+    /** @type {string} */
+    const hex = value.toString(16);
+    return hex.length;
   }
 
   /**
@@ -486,14 +681,17 @@
   /**
    * RFC 6979 section 2.3.3: render an integer as exactly rlen octets.
    * @param {BigInt} value - The integer
-   * @param {number} rlen - Output length in octets
+   * @param {int32} rlen - Output length in octets
    * @returns {uint8[]} Big-endian fixed-width octets
    */
   function intToOctets(value, rlen) {
+    /** @type {uint8[]} */
     const bytes = new Array(rlen);
     let v = value;
     for (let i = rlen - 1; i >= 0; --i) {
-      bytes[i] = Number(OpCodes.AndN(v, 0xFFn));
+      /** @type {uint8} */
+      const octet = Number(OpCodes.AndN(v, 0xFFn));
+      bytes[i] = octet;
       v = OpCodes.ShiftRn(v, 8);
     }
     return bytes;
@@ -505,7 +703,7 @@
    * group order - reducing instead changes the digest whenever it exceeds the
    * order, and the signature then fails to verify anywhere else.
    * @param {uint8[]} bytes - Octets, normally a digest
-   * @param {number} qlen - Bit length of the group order
+   * @param {int32} qlen - Bit length of the group order
    * @returns {BigInt} The truncated integer
    */
   function bitsToInt(bytes, qlen) {
@@ -518,8 +716,8 @@
    * RFC 6979 section 2.3.4.
    * @param {uint8[]} bytes - Digest octets
    * @param {BigInt} q - Group order
-   * @param {number} qlen - Bit length of q
-   * @param {number} rlen - Octet length used by the generator
+   * @param {int32} qlen - Bit length of q
+   * @param {int32} rlen - Octet length used by the generator
    * @returns {uint8[]} Octets of the reduced digest
    */
   function bitsToOctets(bytes, q, qlen, rlen) {
@@ -544,36 +742,88 @@
    * @returns {BigInt} A nonce in [1, q-1]
    */
   function deterministicNonce(hashName, q, x, h1) {
-    const params = HASH_PARAMS[hashName];
-    if (!params) throw new Error(`No digest length known for ${hashName}`);
+    const params = HashParamsByName(hashName);
+    if (!params) throw new Error('No digest length known for ' + hashName);
 
     const hlen = params.outLen;
-    const qlen = q.toString(2).length;
+    const qlen = BitLength(q);
     const rlen = Math.ceil(qlen / 8);
 
     const xOctets = intToOctets(x, rlen);
     const hOctets = bitsToOctets(h1, q, qlen, rlen);
+    /** @type {uint8[]} */
+    const zero = [0x00];
+    /** @type {uint8[]} */
+    const one = [0x01];
 
-    let V = new Array(hlen).fill(0x01);
-    let K = new Array(hlen).fill(0x00);
+    /** @type {uint8[]} */
+    let V = [];
+    /** @type {uint8[]} */
+    let K = [];
+    for (let i = 0; i < hlen; ++i) {
+      V.push(0x01);
+      K.push(0x00);
+    }
 
-    K = hmac(hashName, K, concatBytes(V, [0x00], xOctets, hOctets));
+    K = hmac(hashName, K, concatBytes([V, zero, xOctets, hOctets]));
     V = hmac(hashName, K, V);
-    K = hmac(hashName, K, concatBytes(V, [0x01], xOctets, hOctets));
+    K = hmac(hashName, K, concatBytes([V, one, xOctets, hOctets]));
     V = hmac(hashName, K, V);
 
     for (;;) {
+      /** @type {uint8[]} */
       let T = [];
       while (T.length * 8 < qlen) {
         V = hmac(hashName, K, V);
-        T = concatBytes(T, V);
+        T = concatBytes([T, V]);
       }
 
       const k = bitsToInt(T, qlen);
       if (k >= 1n && k < q) return k;
 
-      K = hmac(hashName, K, concatBytes(V, [0x00]));
+      K = hmac(hashName, K, concatBytes([V, zero]));
       V = hmac(hashName, K, V);
+    }
+  }
+
+  // ===== DER FIELDS =====
+
+  class DerLength {
+    /**
+     * @param {int32} length - content length
+     * @param {int32} next - offset after the length octets
+     */
+    constructor(length, next) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.next = next;
+    }
+  }
+
+  class DerInteger {
+    /**
+     * @param {BigInt} value - the INTEGER
+     * @param {int32} next - offset after it
+     */
+    constructor(value, next) {
+      /** @type {BigInt} */
+      this.value = value;
+      /** @type {int32} */
+      this.next = next;
+    }
+  }
+
+  class DerSignature {
+    /**
+     * @param {BigInt} r - signature r
+     * @param {BigInt} s - signature s
+     */
+    constructor(r, s) {
+      /** @type {BigInt} */
+      this.r = r;
+      /** @type {BigInt} */
+      this.s = s;
     }
   }
 
@@ -842,45 +1092,67 @@
 
   class ECDSAInstance extends IAlgorithmInstance {
     /**
-   * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
-   * @param {boolean} [isInverse=false] - Decryption mode flag
-   */
-
+     * Initialize Algorithm cipher instance
+     * @param {ECDSACipher} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      // The curve setter below creates these two; declaring them first keeps
+      // the same fields in the same order.
+      /** @type {EllipticCurve|null} */
+      this._curve = null;
+      /** @type {string|null} */
+      this._curveName = null;
       this.curve = null;
+      /** @type {BigInt|null} */
       this._privateKey = null;
+      /** @type {ECPoint|null} */
       this._publicKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this.messageHash = null;
+      /** @type {uint8[]|null} */
       this.signature = null;
+      /** @type {string} */
       this._hashAlgorithm = 'SHA-256';
     }
 
     // Which digest the signature is taken over. FIPS 186-4 permits any
     // approved hash, and RFC 6979 derives the nonce from the same one, so the
     // choice has to travel with the instance rather than be hard-coded.
+    /**
+     * @param {string} name - 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384' or 'SHA-512'; empty keeps the current one
+     */
     set hashAlgorithm(name) {
       if (!name) return;
-      if (!HASH_PARAMS[name]) {
+      if (!HashParamsByName(name)) {
         throw new Error(`Unsupported hash for ECDSA: ${name}`);
       }
       this._hashAlgorithm = name;
     }
 
+    /**
+     * @returns {string} the hash the signature is taken over
+     */
     get hashAlgorithm() {
       return this._hashAlgorithm;
     }
 
-    // Property setters/getters for compatibility
+    /**
+     * Property setters/getters for compatibility
+     * @param {string|null} curveName - a name listed in CURVES; anything else that is not a non-empty string clears the curve
+     */
     set curve(curveName) {
       if (curveName && typeof curveName === 'string') {
-        if (!CURVES[curveName]) {
-          throw new Error(`Unsupported curve: ${curveName}. Use secp256k1, secp256r1, secp384r1, or secp521r1.`);
+        const found = CurveByName(curveName);
+        if (!found) {
+          throw new Error('Unsupported curve: ' + curveName + '. Use secp256k1, secp256r1, secp384r1, or secp521r1.');
         }
-        this._curve = CURVES[curveName];
+        this._curve = found;
         this._curveName = curveName;
       } else {
         this._curve = null;
@@ -888,10 +1160,16 @@
       }
     }
 
+    /**
+     * @returns {string|null} the curve name as it was set
+     */
     get curve() {
       return this._curveName;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - encoded point; empty or missing clears the key
+     */
     set publicKey(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
         this._publicKey = null;
@@ -903,8 +1181,12 @@
       }
 
       try {
-        this._publicKey = this._curve.decodePoint(keyBytes);
-        if (!this._curve.isOnCurve(this._publicKey)) {
+        /** @type {ECPoint} */
+        const decoded = this._curve.decodePoint(keyBytes);
+        this._publicKey = decoded;
+        /** @type {boolean} */
+        const onCurve = this._curve.isOnCurve(decoded);
+        if (!onCurve) {
           throw new Error('Public key point not on curve');
         }
       } catch (error) {
@@ -912,11 +1194,19 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null} the public key as an uncompressed point
+     */
     get publicKey() {
       if (!this._publicKey || !this._curve) return null;
-      return this._curve.encodePoint(this._publicKey);
+      /** @type {uint8[]} */
+      const encoded = this._curve.encodePoint(this._publicKey, false);
+      return encoded;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - big-endian private scalar; empty or missing clears the key
+     */
     set privateKey(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
         this._privateKey = null;
@@ -941,15 +1231,22 @@
       this._privateKey = d;
 
       // Derive public key: Q = d * G
-      this._publicKey = this._curve.multiply(d, this._curve.G);
+      /** @type {ECPoint} */
+      const derived = this._curve.multiply(d, this._curve.G);
+      this._publicKey = derived;
     }
 
+    /**
+     * @returns {uint8[]|null} the private scalar, big-endian over the octets of n
+     */
     get privateKey() {
       if (this._privateKey === null) return null;
 
       // Convert BigInt to bytes
-      const keySize = Math.ceil(this._curve.n.toString(16).length / 2);
-      return this._curve._bigIntToBytes(this._privateKey, keySize);
+      const keySize = Math.ceil(HexDigits(this._curve.n) / 2);
+      /** @type {uint8[]} */
+      const encoded = this._curve._bigIntToBytes(this._privateKey, keySize);
+      return encoded;
     }
 
     // Feed data (message or signature)
@@ -972,7 +1269,11 @@
       if (this.signature && this.signature.length > 0 && this._publicKey) {
         // Verification mode - returns [1] for valid, [0] for invalid
         const isValid = this._verify();
-        return isValid ? [1] : [0];
+        /** @type {uint8[]} */
+        const accepted = [1];
+        /** @type {uint8[]} */
+        const rejected = [0];
+        return isValid ? accepted : rejected;
       } else if (this._privateKey) {
         // Signing mode - returns DER-encoded signature
         return this._sign();
@@ -981,7 +1282,10 @@
       }
     }
 
-    // Sign message with the RFC 6979 deterministic nonce
+    /**
+     * Sign message with the RFC 6979 deterministic nonce
+     * @returns {uint8[]} DER-encoded (r, s)
+     */
     _sign() {
       if (!this._privateKey) {
         throw new Error('Private key required for signing');
@@ -995,11 +1299,13 @@
       // The digest is needed twice and must be the same octets both times: as
       // the integer e that enters s, and as the input to the nonce generator.
       const h1 = digest(this._hashAlgorithm, message);
-      const e = bitsToInt(h1, this._curve.n.toString(2).length);
+      const e = bitsToInt(h1, BitLength(this._curve.n));
       const k = deterministicNonce(this._hashAlgorithm, this._curve.n, this._privateKey, h1);
 
       // Compute r = (k * G).x mod n
+      /** @type {ECPoint} */
       const kG = this._curve.multiply(k, this._curve.G);
+      /** @type {BigInt} */
       const r = kG.x % this._curve.n;
 
       if (r === 0n) {
@@ -1007,7 +1313,7 @@
       }
 
       // Compute s = k^-1 * (e + r * d) mod n
-      const kInv = ModMath.inv(k, this._curve.n);
+      const kInv = ModInv(k, this._curve.n);
       const s = (kInv * (e + r * this._privateKey)) % this._curve.n;
 
       if (s === 0n) {
@@ -1018,7 +1324,10 @@
       return this._encodeDER(r, s);
     }
 
-    // Verify signature
+    /**
+     * Verify signature
+     * @returns {boolean} true when the signature is valid DER and verifies
+     */
     _verify() {
       if (!this._publicKey) {
         throw new Error('Public key required for verification');
@@ -1034,9 +1343,14 @@
         // is not a signature. Recovering r and s from a malformed encoding and
         // verifying them anyway is what lets an attacker present many distinct
         // byte strings for one accepted signature.
-        let r, s;
+        /** @type {BigInt} */
+        let r = 0n;
+        /** @type {BigInt} */
+        let s = 0n;
         try {
-          ({ r, s } = this._decodeDER(this.signature));
+          const decoded = this._decodeDER(this.signature);
+          r = decoded.r;
+          s = decoded.s;
         } catch (error) {
           return false;
         }
@@ -1051,6 +1365,12 @@
       throw new Error('Signature not provided for verification');
     }
 
+    /**
+     * @param {BigInt} e - truncated digest
+     * @param {BigInt} r - signature r
+     * @param {BigInt} s - signature s
+     * @returns {boolean} true when (r, s) verifies against the public key
+     */
     _verifySignature(e, r, s) {
       const n = this._curve.n;
 
@@ -1060,9 +1380,10 @@
       }
 
       // Compute w = s^-1 mod n
-      let w;
+      /** @type {BigInt} */
+      let w = 0n;
       try {
-        w = ModMath.inv(s, n);
+        w = ModInv(s, n);
       } catch (error) {
         return false;
       }
@@ -1074,8 +1395,11 @@
       const u2 = (r * w) % n;
 
       // Compute point P = u1*G + u2*Q
+      /** @type {ECPoint} */
       const u1G = this._curve.multiply(u1, this._curve.G);
+      /** @type {ECPoint} */
       const u2Q = this._curve.multiply(u2, this._publicKey);
+      /** @type {ECPoint} */
       const P = this._curve.add(u1G, u2Q);
 
       if (P.isInfinity) {
@@ -1087,35 +1411,56 @@
       return v === r;
     }
 
-    // Digest the message and truncate it to the group order per FIPS 186-4
+    /**
+     * Digest the message and truncate it to the group order per FIPS 186-4
+     * @param {uint8[]} message - message octets
+     * @returns {BigInt} the truncated digest
+     */
     _hashMessage(message) {
-      return bitsToInt(digest(this._hashAlgorithm, message), this._curve.n.toString(2).length);
+      return bitsToInt(digest(this._hashAlgorithm, message), BitLength(this._curve.n));
     }
 
     // DER definite length: a single octet below 128, otherwise a count octet
     // with the high bit set followed by that many length octets. A P-521
     // signature is about 139 content octets, so the short form alone produced
     // a SEQUENCE header no other parser would accept.
+    /**
+     * @param {int32} length - content length, a non-negative array length
+     * @returns {uint8[]} DER length octets
+     */
     _encodeLength(length) {
-      if (length < 0x80) return [length];
+      if (length < 0x80) {
+        /** @type {uint8[]} */
+        const short = [length];
+        return short;
+      }
 
+      /** @type {uint8[]} */
       const lengthBytes = [];
       let remaining = length;
       while (remaining > 0) {
-        lengthBytes.unshift(Number(OpCodes.AndN(remaining, 0xFF)));
-        remaining = Number(OpCodes.ShiftRn(BigInt(remaining), 8));
+        lengthBytes.unshift(OpCodes.And32(remaining, 0xFF));
+        remaining = OpCodes.Shr32(remaining, 8);
       }
-      return [0x80 + lengthBytes.length].concat(lengthBytes);
+      /** @type {uint8[]} */
+      const head = [0x80 + lengthBytes.length];
+      return head.concat(lengthBytes);
     }
 
     // Read a DER definite length, returning the value and the octets consumed.
     // DER admits exactly one encoding per length: the short form below 128 and
     // the shortest long form above it. BER alternatives are rejected.
+    /**
+     * @param {uint8[]} der - the encoding
+     * @param {int32} pos - offset of the length octets
+     * @returns {DerLength} the length and the offset after it
+     */
     _decodeLength(der, pos) {
       if (pos >= der.length) throw new Error('Invalid DER signature: truncated length');
 
+      /** @type {int32} */
       const first = der[pos];
-      if (first < 0x80) return { length: first, next: pos + 1 };
+      if (first < 0x80) return new DerLength(first, pos + 1);
       if (first === 0x80) throw new Error('Invalid DER signature: indefinite length');
 
       const count = first - 0x80;
@@ -1126,20 +1471,28 @@
         throw new Error('Invalid DER signature: non-minimal length encoding');
       }
 
+      /** @type {int32} */
       let length = 0;
       for (let i = 0; i < count; ++i) {
-        length = length * 256 + der[pos + 1 + i];
+        /** @type {int32} */
+        const octet = der[pos + 1 + i];
+        length = length * 256 + octet;
       }
       if (length < 0x80) {
         throw new Error('Invalid DER signature: long form used for a short length');
       }
 
-      return { length, next: pos + 1 + count };
+      return new DerLength(length, pos + 1 + count);
     }
 
     // Read one DER INTEGER and return it as a non-negative BigInt. DER requires
     // the shortest two's-complement encoding, so a leading 0x00 is legal only
     // to keep a high bit from reading as a sign bit.
+    /**
+     * @param {uint8[]} der - the encoding
+     * @param {int32} pos - offset of the INTEGER tag
+     * @returns {DerInteger} the value and the offset after it
+     */
     _decodeInteger(der, pos) {
       if (der[pos] !== 0x02) {
         throw new Error('Invalid DER signature: expected an INTEGER');
@@ -1152,30 +1505,43 @@
       }
 
       const bytes = der.slice(header.next, end);
-      if (OpCodes.AndN(bytes[0], 0x80) !== 0) {
+      if (OpCodes.And32(bytes[0], 0x80) !== 0) {
         throw new Error('Invalid DER signature: negative INTEGER');
       }
-      if (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.AndN(bytes[1], 0x80) === 0) {
+      if (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.And32(bytes[1], 0x80) === 0) {
         throw new Error('Invalid DER signature: non-minimal INTEGER');
       }
 
-      return { value: this._bytesToInteger(bytes), next: end };
+      return new DerInteger(this._bytesToInteger(bytes), end);
     }
 
-    // Encode signature as DER
+    /**
+     * Encode signature as DER
+     * @param {BigInt} r - signature r
+     * @param {BigInt} s - signature s
+     * @returns {uint8[]} SEQUENCE of two INTEGERs
+     */
     _encodeDER(r, s) {
       const rBytes = this._integerToBytes(r);
       const sBytes = this._integerToBytes(s);
+      /** @type {uint8[]} */
+      const integerTag = [0x02];
+      /** @type {uint8[]} */
+      const sequenceTag = [0x30];
 
-      const body = [0x02].concat(this._encodeLength(rBytes.length), rBytes,
-                                 [0x02], this._encodeLength(sBytes.length), sBytes);
+      const body = integerTag.concat(this._encodeLength(rBytes.length), rBytes,
+                                     integerTag, this._encodeLength(sBytes.length), sBytes);
 
-      return [0x30].concat(this._encodeLength(body.length), body);
+      return sequenceTag.concat(this._encodeLength(body.length), body);
     }
 
     // Decode DER signature. The SEQUENCE must hold exactly two INTEGERs and
     // must end where the input ends: anything appended after s is a second
     // encoding of the same signature, which a verifier must not accept.
+    /**
+     * @param {uint8[]} der - the encoded signature
+     * @returns {DerSignature} r and s
+     */
     _decodeDER(der) {
       if (der.length < 2 || der[0] !== 0x30) {
         throw new Error('Invalid DER signature: missing SEQUENCE tag');
@@ -1193,30 +1559,47 @@
         throw new Error('Invalid DER signature: trailing data after s');
       }
 
-      return { r: rField.value, s: sField.value };
+      return new DerSignature(rField.value, sField.value);
     }
 
+    /**
+     * @param {BigInt} value - non-negative integer
+     * @returns {uint8[]} minimal DER INTEGER content octets
+     */
     _integerToBytes(value) {
+      /** @type {string} */
       let hex = value.toString(16);
-      if (OpCodes.AndN(hex.length, 1)) hex = '0' + hex;
+      if (OpCodes.And32(hex.length, 1)) {
+        hex = '0' + hex;
+      }
 
+      /** @type {uint8[]} */
       const bytes = [];
       for (let i = 0; i < hex.length; i += 2) {
-        bytes.push(parseInt(hex.slice(i, i + 2), 16));
+        /** @type {uint8} */
+        const octet = parseInt(hex.slice(i, i + 2), 16);
+        bytes.push(octet);
       }
 
       // Add leading 0x00 if high bit is set (DER encoding requirement)
-      if (OpCodes.AndN(bytes[0], 0x80)) {
+      if (OpCodes.And32(bytes[0], 0x80)) {
         bytes.unshift(0x00);
       }
 
       return bytes;
     }
 
+    /**
+     * @param {uint8[]} bytes - big-endian octets
+     * @returns {BigInt} the integer they encode
+     */
     _bytesToInteger(bytes) {
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < bytes.length; ++i) {
-        value = OpCodes.OrN(OpCodes.ShiftLn(value, 8n), BigInt(bytes[i]));
+        /** @type {int32} */
+        const octet = bytes[i];
+        value = OpCodes.OrN(OpCodes.ShiftLn(value, 8n), BigInt(octet));
       }
       return value;
     }
