@@ -70,15 +70,23 @@
 
   class BitWriter842 {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.cur = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} width - Number of bits, most significant first
+     */
     writeBits(value, width) {
       for (let i = width - 1; i >= 0; --i) {
-        const bit = OpCodes.AndN(OpCodes.Shr32(value, i), 1);
-        this.cur = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(this.cur, 1), bit), 0xFF);
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(value, i), 1);
+        this.cur = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(this.cur, 1), bit), 0xFF);
         this.nBits++;
         if (this.nBits === 8) {
           this.bytes.push(this.cur);
@@ -88,10 +96,14 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     flush() {
       if (this.nBits > 0) {
+        /** @type {int32} */
         const pad = 8 - this.nBits;
-        this.cur = OpCodes.AndN(OpCodes.Shl32(this.cur, pad), 0xFF);
+        this.cur = OpCodes.And32(OpCodes.Shl32(this.cur, pad), 0xFF);
         this.bytes.push(this.cur);
         this.cur = 0;
         this.nBits = 0;
@@ -101,25 +113,40 @@
   }
 
   class BitReader842 {
+    /**
+     * @param {uint8[]} bytes - Source bytes
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.cur = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {int32} width - Number of bits, most significant first
+     * @returns {uint32} Value read
+     */
     readBits(width) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < width; ++i) {
         if (this.nBits === 0) {
-          if (this.pos >= this.bytes.length) throw new Error('842: unexpected end of stream');
+          if (this.pos >= this.bytes.length) {
+            throw new Error('842: unexpected end of stream');
+          }
           this.cur = this.bytes[this.pos++];
           this.nBits = 8;
         }
-        const bit = OpCodes.AndN(OpCodes.Shr32(this.cur, 7), 1);
-        this.cur = OpCodes.AndN(OpCodes.Shl32(this.cur, 1), 0xFF);
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(this.cur, 7), 1);
+        this.cur = OpCodes.And32(OpCodes.Shl32(this.cur, 1), 0xFF);
         this.nBits--;
-        value = OpCodes.OrN(OpCodes.Shl32(value, 1), bit);
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bit);
       }
       return value;
     }
@@ -128,65 +155,131 @@
   // ===== TEMPLATE OPCODES (5-bit) =====
   // Mirrors CompressionWorkbench's Ibm842BuildingBlock template numbering.
 
+  /** @type {int32} */
   const OP_D8         = 0x00; // one 8-byte dictionary reference
+  /** @type {int32} */
   const OP_D4D4        = 0x01; // two 4-byte dictionary references
+  /** @type {int32} */
   const OP_D4D2D2       = 0x02; // 4-byte ref + two 2-byte refs (covering bytes 4..8)
+  /** @type {int32} */
   const OP_D2D2D4       = 0x03; // two 2-byte refs (covering bytes 0..4) + 4-byte ref
+  /** @type {int32} */
   const OP_D2D2D2D2      = 0x04; // four 2-byte dictionary references
+  /** @type {int32} */
   const OP_D4L4         = 0x05; // 4-byte ref + 4 literal bytes
+  /** @type {int32} */
   const OP_L4D4         = 0x06; // 4 literal bytes + 4-byte ref
+  /** @type {int32} */
   const OP_L8          = 0x07; // 8 literal bytes
+  /** @type {int32} */
   const OP_END         = 0x1F; // end of stream
 
+  /** @type {int32} */
   const OPCODE_BITS = 5;
+  /** @type {int32} */
   const IDX_BITS = 8; // all three ring buffers hold 256 entries
 
+  /** @type {int32} */
   const DICT2_SIZE = 256;
+  /** @type {int32} */
   const DICT4_SIZE = 256;
+  /** @type {int32} */
   const DICT8_SIZE = 256;
 
   // Big-endian field readers built from arithmetic only (no raw bit operators).
+  /**
+   * @param {uint8[]} bytes - Bytes
+   * @param {int32} offset - Position of the field
+   * @returns {uint32} Big-endian 16-bit value
+   */
   function be16(bytes, offset) {
-    return OpCodes.OrN(OpCodes.Shl32(bytes[offset], 8), bytes[offset + 1]);
+    return OpCodes.Or32(OpCodes.Shl32(bytes[offset], 8), bytes[offset + 1]);
   }
 
+  /**
+   * @param {uint8[]} bytes - Bytes
+   * @param {int32} offset - Position of the field
+   * @returns {uint32} Big-endian 32-bit value
+   */
   function be32(bytes, offset) {
-    return OpCodes.ToUint32(OpCodes.OrN(
-      OpCodes.OrN(OpCodes.Shl32(bytes[offset], 24), OpCodes.Shl32(bytes[offset + 1], 16)),
-      OpCodes.OrN(OpCodes.Shl32(bytes[offset + 2], 8), bytes[offset + 3])
-    ));
-  }
-
-  // 8-byte values only need to support equality/keying, so they are represented
-  // as a "hi:lo" string built from two 32-bit big-endian halves.
-  function be64Key(bytes, offset) {
-    return be32(bytes, offset) + ':' + be32(bytes, offset + 4);
+    return OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Shl32(bytes[offset], 24), OpCodes.Shl32(bytes[offset + 1], 16)),
+      OpCodes.Or32(OpCodes.Shl32(bytes[offset + 2], 8), bytes[offset + 3])
+    );
   }
 
   // Ring-buffer value dictionary: maps recently-seen N-byte values to their
   // circular slot index, evicting the value that previously occupied a slot
   // when it is overwritten (mirrors the reference's Dictionary+reverse-array
   // eviction, including that a duplicate value inserted at a later slot can
-  // shadow an older slot holding the same value).
+  // shadow an older slot holding the same value). A value is a pair of 32-bit
+  // halves (the high half is 0 for 2- and 4-byte values); "mapped" marks the
+  // one slot the value -> slot map points at, if any.
   class RingDict {
+    /**
+     * @param {int32} size - Number of slots
+     */
     constructor(size) {
+      /** @type {int32} */
       this.size = size;
-      this.forward = new Map(); // value -> slot index
-      this.reverse = new Array(size).fill(undefined); // slot index -> value
+      /** @type {uint32[]} */
+      this.hi = new Array(size);
+      /** @type {uint32[]} */
+      this.lo = new Array(size);
+      /** @type {boolean[]} */
+      this.used = new Array(size);
+      /** @type {boolean[]} */
+      this.mapped = new Array(size);
+      for (let i = 0; i < size; i++) {
+        this.hi[i] = 0;
+        this.lo[i] = 0;
+        this.used[i] = false;
+        this.mapped[i] = false;
+      }
+      /** @type {int32} */
       this.next = 0;
     }
 
-    find(value) {
-      const idx = this.forward.get(value);
-      return idx === undefined ? -1 : idx;
+    /**
+     * @param {uint32} hi - High half of the value
+     * @param {uint32} lo - Low half of the value
+     * @returns {int32} Slot the value maps to, or -1
+     */
+    find(hi, lo) {
+      for (let s = 0; s < this.size; s++) {
+        if (this.mapped[s] && this.hi[s] === hi && this.lo[s] === lo) {
+          return s;
+        }
+      }
+      return -1;
     }
 
-    insert(value) {
+    /**
+     * @param {uint32} hi - High half of the value
+     * @param {uint32} lo - Low half of the value
+     * @returns {int32} Slot written
+     */
+    insert(hi, lo) {
+      /** @type {int32} */
       const slot = this.next;
-      const old = this.reverse[slot];
-      if (old !== undefined) this.forward.delete(old);
-      this.reverse[slot] = value;
-      this.forward.set(value, slot);
+      if (this.used[slot]) {
+        // forget the evicted value, wherever its mapping points
+        /** @type {int32} */
+        const oldMapped = this.find(this.hi[slot], this.lo[slot]);
+        if (oldMapped >= 0) {
+          this.mapped[oldMapped] = false;
+        }
+      }
+      // the value now maps to this slot only
+      /** @type {int32} */
+      const previous = this.find(hi, lo);
+      if (previous >= 0) {
+        this.mapped[previous] = false;
+      }
+      this.hi[slot] = hi;
+      this.lo[slot] = lo;
+      this.used[slot] = true;
+      this.mapped[slot] = true;
       this.next = (this.next + 1) % this.size;
       return slot;
     }
@@ -252,57 +345,158 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {IBM842Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new IBM842Instance(this, isInverse);
     }
   }
 
+  /**
+   * Slot-indexed value store of the decoder (value halves plus a presence flag)
+   */
+  class SlotValues {
+    /**
+     * @param {int32} size - Number of slots
+     */
+    constructor(size) {
+      /** @type {uint32[]} */
+      this.hi = new Array(size);
+      /** @type {uint32[]} */
+      this.lo = new Array(size);
+      /** @type {boolean[]} */
+      this.present = new Array(size);
+      for (let i = 0; i < size; i++) {
+        this.hi[i] = 0;
+        this.lo[i] = 0;
+        this.present[i] = false;
+      }
+      /** @type {int32} */
+      this.size = size;
+      /** @type {int32} */
+      this.next = 0;
+    }
+
+    /**
+     * @param {uint32} hi - High half of the value
+     * @param {uint32} lo - Low half of the value
+     */
+    push(hi, lo) {
+      this.hi[this.next] = hi;
+      this.lo[this.next] = lo;
+      this.present[this.next] = true;
+      this.next = (this.next + 1) % this.size;
+    }
+  }
+
   class IBM842Instance extends IAlgorithmInstance {
+    /**
+     * @param {IBM842Compression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
-      if (this.isInverse) return this._decompress(data);
+      if (this.isInverse) {
+        return this._decompress(data);
+      }
       return this._compress(data);
     }
 
+    /**
+     * @param {BitWriter842} writer - Output bits
+     * @param {uint8[]} input - Source bytes
+     * @param {int32} start - First literal
+     * @param {int32} count - Number of literals
+     */
+    _writeLiterals(writer, input, start, count) {
+      for (let j = 0; j < count; ++j) {
+        writer.writeBits(input[start + j], 8);
+      }
+    }
+
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Size header and template stream
+     */
     _compress(input) {
+      /** @type {int32} */
       const n = input.length;
+      /** @type {uint8[]} */
       const out = [];
+      /** @type {uint32} */
       const len32 = OpCodes.ToUint32(n);
-      out.push(OpCodes.AndN(len32, 0xFF));
-      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
-      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
-      out.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+      out.push(OpCodes.And32(len32, 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(len32, 8), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(len32, 16), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(len32, 24), 0xFF));
 
-      if (n === 0) return out;
+      if (n === 0) {
+        return out;
+      }
 
+      /** @type {BitWriter842} */
       const writer = new BitWriter842();
+      /** @type {RingDict} */
       const dict2 = new RingDict(DICT2_SIZE);
+      /** @type {RingDict} */
       const dict4 = new RingDict(DICT4_SIZE);
+      /** @type {RingDict} */
       const dict8 = new RingDict(DICT8_SIZE);
 
+      /** @type {int32} */
       let pos = 0;
       while (pos < n) {
+        /** @type {int32} */
         const remaining = n - pos;
 
         if (remaining >= 8) {
-          const v8 = be64Key(input, pos);
-          const v4a = be32(input, pos), v4b = be32(input, pos + 4);
-          const v2a = be16(input, pos), v2b = be16(input, pos + 2);
-          const v2c = be16(input, pos + 4), v2d = be16(input, pos + 6);
+          /** @type {uint32} */
+          const v4a = be32(input, pos);
+          /** @type {uint32} */
+          const v4b = be32(input, pos + 4);
+          /** @type {uint32} */
+          const v2a = be16(input, pos);
+          /** @type {uint32} */
+          const v2b = be16(input, pos + 2);
+          /** @type {uint32} */
+          const v2c = be16(input, pos + 4);
+          /** @type {uint32} */
+          const v2d = be16(input, pos + 6);
 
-          const i8 = dict8.find(v8);
-          const i4a = dict4.find(v4a), i4b = dict4.find(v4b);
-          const i2a = dict2.find(v2a), i2b = dict2.find(v2b);
-          const i2c = dict2.find(v2c), i2d = dict2.find(v2d);
+          /** @type {int32} */
+          const i8 = dict8.find(v4a, v4b);
+          /** @type {int32} */
+          const i4a = dict4.find(0, v4a);
+          /** @type {int32} */
+          const i4b = dict4.find(0, v4b);
+          /** @type {int32} */
+          const i2a = dict2.find(0, v2a);
+          /** @type {int32} */
+          const i2b = dict2.find(0, v2b);
+          /** @type {int32} */
+          const i2c = dict2.find(0, v2c);
+          /** @type {int32} */
+          const i2d = dict2.find(0, v2d);
 
           if (i8 >= 0) {
             writer.writeBits(OP_D8, OPCODE_BITS);
@@ -330,143 +524,231 @@
           } else if (i4a >= 0) {
             writer.writeBits(OP_D4L4, OPCODE_BITS);
             writer.writeBits(i4a, IDX_BITS);
-            for (let j = 4; j < 8; ++j) writer.writeBits(input[pos + j], 8);
+            this._writeLiterals(writer, input, pos + 4, 4);
           } else if (i4b >= 0) {
             writer.writeBits(OP_L4D4, OPCODE_BITS);
-            for (let j = 0; j < 4; ++j) writer.writeBits(input[pos + j], 8);
+            this._writeLiterals(writer, input, pos, 4);
             writer.writeBits(i4b, IDX_BITS);
           } else {
             writer.writeBits(OP_L8, OPCODE_BITS);
-            for (let j = 0; j < 8; ++j) writer.writeBits(input[pos + j], 8);
+            this._writeLiterals(writer, input, pos, 8);
           }
 
-          dict8.insert(v8);
-          dict4.insert(v4a);
-          dict4.insert(v4b);
-          dict2.insert(v2a);
-          dict2.insert(v2b);
-          dict2.insert(v2c);
-          dict2.insert(v2d);
+          dict8.insert(v4a, v4b);
+          dict4.insert(0, v4a);
+          dict4.insert(0, v4b);
+          dict2.insert(0, v2a);
+          dict2.insert(0, v2b);
+          dict2.insert(0, v2c);
+          dict2.insert(0, v2d);
 
           pos += 8;
         } else {
           // Trailing partial chunk: literal template, zero-padded to 8 bytes.
           // The reference does not update the dictionaries for this tail chunk.
           writer.writeBits(OP_L8, OPCODE_BITS);
-          for (let j = 0; j < 8; ++j) writer.writeBits(j < remaining ? input[pos + j] : 0, 8);
+          for (let j = 0; j < 8; ++j) {
+            writer.writeBits(j < remaining ? input[pos + j] : 0, 8);
+          }
           pos += remaining;
         }
       }
 
       writer.writeBits(OP_END, OPCODE_BITS);
+      /** @type {uint8[]} */
       const body = writer.flush();
-      for (let i = 0; i < body.length; ++i) out.push(body[i]);
+      for (let i = 0; i < body.length; ++i) {
+        out.push(body[i]);
+      }
       return out;
     }
 
-    _decompress(input) {
-      if (input.length < 4) return [];
-      const originalSize = OpCodes.OrN(
-        OpCodes.OrN(OpCodes.OrN(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
-        OpCodes.Shl32(input[3], 24)
-      );
-      if (originalSize === 0) return [];
+    /**
+     * @param {BitReader842} reader - Input bits
+     * @returns {uint8} Next 8-bit field
+     */
+    _readByte(reader) {
+      /** @type {uint8} */
+      const value = reader.readBits(8);
+      return value;
+    }
 
+    /**
+     * @param {uint8[]} chunk - Eight output bytes
+     * @param {int32} offset - Position of the field
+     * @param {uint32} value - 16-bit value written big-endian
+     */
+    _put16(chunk, offset, value) {
+      chunk[offset] = OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF);
+      chunk[offset + 1] = OpCodes.And32(value, 0xFF);
+    }
+
+    /**
+     * @param {uint8[]} chunk - Eight output bytes
+     * @param {int32} offset - Position of the field
+     * @param {uint32} value - 32-bit value written big-endian
+     */
+    _put32(chunk, offset, value) {
+      chunk[offset] = OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF);
+      chunk[offset + 1] = OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF);
+      chunk[offset + 2] = OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF);
+      chunk[offset + 3] = OpCodes.And32(value, 0xFF);
+    }
+
+    /**
+     * @param {uint8[]} input - Size header and template stream
+     * @returns {uint8[]} Decoded bytes
+     */
+    _decompress(input) {
+      /** @type {uint8[]} */
+      const result = [];
+      if (input.length < 4) {
+        return result;
+      }
+      // The size is read as a signed 32-bit value, as in the reference.
+      /** @type {int32} */
+      const originalSize = OpCodes.ToInt(OpCodes.Or32(
+        OpCodes.Or32(OpCodes.Or32(input[0], OpCodes.Shl32(input[1], 8)), OpCodes.Shl32(input[2], 16)),
+        OpCodes.Shl32(input[3], 24)
+      ));
+      if (originalSize === 0) {
+        return result;
+      }
+
+      /** @type {BitReader842} */
       const reader = new BitReader842(input.slice(4));
 
       // Reverse dictionaries: slot index -> value (no reverse-lookup needed).
-      const dict2 = new Array(DICT2_SIZE);
-      const dict4 = new Array(DICT4_SIZE);
-      const dict8 = new Array(DICT8_SIZE);
-      let dict2Next = 0, dict4Next = 0, dict8Next = 0;
-
-      const result = [];
-
-      const put16 = (chunk, offset, value) => {
-        chunk[offset] = OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF);
-        chunk[offset + 1] = OpCodes.AndN(value, 0xFF);
-      };
-      const put32 = (chunk, offset, value) => {
-        chunk[offset] = OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF);
-        chunk[offset + 1] = OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF);
-        chunk[offset + 2] = OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF);
-        chunk[offset + 3] = OpCodes.AndN(value, 0xFF);
-      };
+      /** @type {SlotValues} */
+      const dict2 = new SlotValues(DICT2_SIZE);
+      /** @type {SlotValues} */
+      const dict4 = new SlotValues(DICT4_SIZE);
+      /** @type {SlotValues} */
+      const dict8 = new SlotValues(DICT8_SIZE);
 
       while (result.length < originalSize) {
+        /** @type {uint32} */
         const op = reader.readBits(OPCODE_BITS);
-        if (op === OP_END) break;
+        if (op === OP_END) {
+          break;
+        }
 
-        const chunk = new Array(8).fill(0);
+        /** @type {uint8[]} */
+        const chunk = [0, 0, 0, 0, 0, 0, 0, 0];
 
         if (op === OP_D8) {
+          /** @type {uint32} */
           const idx = reader.readBits(IDX_BITS);
-          const value = dict8[idx];
-          if (value === undefined) throw new Error('842: invalid 8-byte dictionary reference');
-          const [hi, lo] = value.split(':').map(Number);
-          put32(chunk, 0, hi);
-          put32(chunk, 4, lo);
+          if (!dict8.present[idx]) {
+            throw new Error('842: invalid 8-byte dictionary reference');
+          }
+          this._put32(chunk, 0, dict8.hi[idx]);
+          this._put32(chunk, 4, dict8.lo[idx]);
         } else if (op === OP_D4D4) {
-          const ia = reader.readBits(IDX_BITS), ib = reader.readBits(IDX_BITS);
-          if (dict4[ia] === undefined || dict4[ib] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
-          put32(chunk, 0, dict4[ia]);
-          put32(chunk, 4, dict4[ib]);
+          /** @type {uint32} */
+          const ia = reader.readBits(IDX_BITS);
+          /** @type {uint32} */
+          const ib = reader.readBits(IDX_BITS);
+          if (!dict4.present[ia] || !dict4.present[ib]) {
+            throw new Error('842: invalid 4-byte dictionary reference');
+          }
+          this._put32(chunk, 0, dict4.lo[ia]);
+          this._put32(chunk, 4, dict4.lo[ib]);
         } else if (op === OP_D4D2D2) {
-          const ia = reader.readBits(IDX_BITS), ic = reader.readBits(IDX_BITS), id = reader.readBits(IDX_BITS);
-          if (dict4[ia] === undefined || dict2[ic] === undefined || dict2[id] === undefined) throw new Error('842: invalid dictionary reference');
-          put32(chunk, 0, dict4[ia]);
-          put16(chunk, 4, dict2[ic]);
-          put16(chunk, 6, dict2[id]);
+          /** @type {uint32} */
+          const ia = reader.readBits(IDX_BITS);
+          /** @type {uint32} */
+          const ic = reader.readBits(IDX_BITS);
+          /** @type {uint32} */
+          const id = reader.readBits(IDX_BITS);
+          if (!dict4.present[ia] || !dict2.present[ic] || !dict2.present[id]) {
+            throw new Error('842: invalid dictionary reference');
+          }
+          this._put32(chunk, 0, dict4.lo[ia]);
+          this._put16(chunk, 4, dict2.lo[ic]);
+          this._put16(chunk, 6, dict2.lo[id]);
         } else if (op === OP_D2D2D4) {
-          const ia = reader.readBits(IDX_BITS), ib = reader.readBits(IDX_BITS), ic = reader.readBits(IDX_BITS);
-          if (dict2[ia] === undefined || dict2[ib] === undefined || dict4[ic] === undefined) throw new Error('842: invalid dictionary reference');
-          put16(chunk, 0, dict2[ia]);
-          put16(chunk, 2, dict2[ib]);
-          put32(chunk, 4, dict4[ic]);
+          /** @type {uint32} */
+          const ia = reader.readBits(IDX_BITS);
+          /** @type {uint32} */
+          const ib = reader.readBits(IDX_BITS);
+          /** @type {uint32} */
+          const ic = reader.readBits(IDX_BITS);
+          if (!dict2.present[ia] || !dict2.present[ib] || !dict4.present[ic]) {
+            throw new Error('842: invalid dictionary reference');
+          }
+          this._put16(chunk, 0, dict2.lo[ia]);
+          this._put16(chunk, 2, dict2.lo[ib]);
+          this._put32(chunk, 4, dict4.lo[ic]);
         } else if (op === OP_D2D2D2D2) {
-          const idx = [reader.readBits(IDX_BITS), reader.readBits(IDX_BITS), reader.readBits(IDX_BITS), reader.readBits(IDX_BITS)];
+          /** @type {uint32[]} */
+          const idx = [0, 0, 0, 0];
           for (let g = 0; g < 4; ++g) {
-            if (dict2[idx[g]] === undefined) throw new Error('842: invalid 2-byte dictionary reference');
-            put16(chunk, g * 2, dict2[idx[g]]);
+            /** @type {uint32} */
+            const index = reader.readBits(IDX_BITS);
+            idx[g] = index;
+          }
+          for (let g = 0; g < 4; ++g) {
+            if (!dict2.present[idx[g]]) {
+              throw new Error('842: invalid 2-byte dictionary reference');
+            }
+            this._put16(chunk, g * 2, dict2.lo[idx[g]]);
           }
         } else if (op === OP_D4L4) {
+          /** @type {uint32} */
           const ia = reader.readBits(IDX_BITS);
-          if (dict4[ia] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
-          put32(chunk, 0, dict4[ia]);
-          for (let j = 4; j < 8; ++j) chunk[j] = reader.readBits(8);
+          if (!dict4.present[ia]) {
+            throw new Error('842: invalid 4-byte dictionary reference');
+          }
+          this._put32(chunk, 0, dict4.lo[ia]);
+          for (let j = 4; j < 8; ++j) {
+            chunk[j] = this._readByte(reader);
+          }
         } else if (op === OP_L4D4) {
-          for (let j = 0; j < 4; ++j) chunk[j] = reader.readBits(8);
+          for (let j = 0; j < 4; ++j) {
+            chunk[j] = this._readByte(reader);
+          }
+          /** @type {uint32} */
           const ib = reader.readBits(IDX_BITS);
-          if (dict4[ib] === undefined) throw new Error('842: invalid 4-byte dictionary reference');
-          put32(chunk, 4, dict4[ib]);
+          if (!dict4.present[ib]) {
+            throw new Error('842: invalid 4-byte dictionary reference');
+          }
+          this._put32(chunk, 4, dict4.lo[ib]);
         } else if (op === OP_L8) {
-          for (let j = 0; j < 8; ++j) chunk[j] = reader.readBits(8);
+          for (let j = 0; j < 8; ++j) {
+            chunk[j] = this._readByte(reader);
+          }
         } else {
-          throw new Error(`842: unsupported template opcode ${op}`);
+          throw new Error('842: unsupported template opcode ' + op);
         }
 
         // Update dictionaries from the decoded chunk (mirrors the reference,
         // which always refreshes them - harmless for the padded tail chunk
         // since no further chunks follow it).
-        const v8 = be64Key(chunk, 0);
-        const v4a = be32(chunk, 0), v4b = be32(chunk, 4);
-        const v2a = be16(chunk, 0), v2b = be16(chunk, 2), v2c = be16(chunk, 4), v2d = be16(chunk, 6);
+        /** @type {uint32} */
+        const v4a = be32(chunk, 0);
+        /** @type {uint32} */
+        const v4b = be32(chunk, 4);
 
-        dict8[dict8Next] = v8; dict8Next = (dict8Next + 1) % DICT8_SIZE;
-        dict4[dict4Next] = v4a; dict4Next = (dict4Next + 1) % DICT4_SIZE;
-        dict4[dict4Next] = v4b; dict4Next = (dict4Next + 1) % DICT4_SIZE;
-        dict2[dict2Next] = v2a; dict2Next = (dict2Next + 1) % DICT2_SIZE;
-        dict2[dict2Next] = v2b; dict2Next = (dict2Next + 1) % DICT2_SIZE;
-        dict2[dict2Next] = v2c; dict2Next = (dict2Next + 1) % DICT2_SIZE;
-        dict2[dict2Next] = v2d; dict2Next = (dict2Next + 1) % DICT2_SIZE;
+        dict8.push(v4a, v4b);
+        dict4.push(0, v4a);
+        dict4.push(0, v4b);
+        dict2.push(0, be16(chunk, 0));
+        dict2.push(0, be16(chunk, 2));
+        dict2.push(0, be16(chunk, 4));
+        dict2.push(0, be16(chunk, 6));
 
+        /** @type {int32} */
         const toAdd = Math.min(8, originalSize - result.length);
-        for (let j = 0; j < toAdd; ++j) result.push(chunk[j]);
+        for (let j = 0; j < toAdd; ++j) {
+          result.push(chunk[j]);
+        }
       }
 
       return result;
     }
   }
+
 
   // ===== REGISTRATION =====
 

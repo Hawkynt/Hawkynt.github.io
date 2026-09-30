@@ -116,28 +116,51 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjArm64Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjArm64Instance(this, isInverse);
     }
   }
 
   class BcjArm64Instance extends IAlgorithmInstance {
+    /**
+     * @param {BcjArm64} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const output = this._transform(this.inputBuffer, !this.isInverse);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
     // Applies the ARM64 BCJ filter. Words are scanned 4-byte aligned. The
     // identifying opcode bits (top 6 bits for BL, bits 31/28-24 for ADRP) are
     // preserved by the rewrite, so encode and decode agree on which words match.
+    /**
+     * @param {uint8[]} bytes - Input bytes
+     * @param {boolean} encode - True to encode, false to decode
+     * @returns {uint8[]} Transformed copy
+     */
     _transform(bytes, encode) {
       const data = bytes.slice();
       const size = data.length - (data.length % 4);

@@ -129,30 +129,62 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LevenshteinCodingInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LevenshteinCodingInstance(this, isInverse);
       }
     }
 
     class LevenshteinCodingInstance extends IAlgorithmInstance {
+      /**
+       * @param {LevenshteinCodingAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress(this.inputBuffer);
+        } else {
+          result = this._compress(this.inputBuffer);
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
       // ----- Levenshtein code for a single non-negative integer -----
 
+      /**
+       * @param {int32} value - Positive value
+       * @returns {int32} floor(log2(value)), 0 for values up to 1
+       */
       _floorLog2(value) {
-        let result = 0, v = value;
-        while (v > 1) { result++; v = Math.floor(v / 2); }
+        /** @type {int32} */
+        let result = 0;
+        /** @type {int32} */
+        let v = value;
+        while (v > 1) {
+          result++;
+          v = Math.floor(v / 2);
+        }
         return result;
       }
 
@@ -160,39 +192,71 @@
       // iterated bit-lengths value -> floorLog2(value) -> ... -> 0, written as
       // a unary step count C (C ones then a zero) followed by each chain
       // entry from smallest to largest with its implicit leading 1 omitted.
+      /**
+       * @param {_BitStream} bitStream - Output bits
+       * @param {int32} value - Non-negative value
+       */
       _encodeValue(bitStream, value) {
-        if (value === 0) { bitStream.writeBit(0); return; }
+        if (value === 0) {
+          bitStream.writeBit(0);
+          return;
+        }
 
+        /** @type {int32[]} */
         const chain = [];
+        /** @type {int32} */
         let v = value;
         while (v > 0) {
           chain.push(v);
           v = this._floorLog2(v);
         }
 
+        /** @type {int32} */
         const c = chain.length;
-        for (let i = 0; i < c; i++) bitStream.writeBit(1);
+        for (let i = 0; i < c; i++) {
+          bitStream.writeBit(1);
+        }
         bitStream.writeBit(0);
 
         for (let i = chain.length - 1; i >= 0; i--) {
+          /** @type {int32} */
           const n = i < chain.length - 1 ? chain[i + 1] : 0;
+          /** @type {int32} */
           const entry = chain[i];
-          for (let b = n - 1; b >= 0; b--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(entry, b), 1));
+          for (let b = n - 1; b >= 0; b--) {
+            bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(entry, b), 1));
+          }
         }
       }
 
       // Reads one Levenshtein-coded value: a unary step count C, then C
       // chained length-prefixed reads, each with an implicit leading 1.
+      /**
+       * @param {_BitStream} bitStream - Input bits
+       * @returns {int32} Decoded value
+       */
       _decodeValue(bitStream) {
+        /** @type {int32} */
         let c = 0;
-        while (bitStream.readBit() === 1) c++;
+        /** @type {uint32} */
+        let bit = bitStream.readBit();
+        while (bit === 1) {
+          c++;
+          bit = bitStream.readBit();
+        }
 
-        if (c === 0) return 0;
+        if (c === 0) {
+          return 0;
+        }
 
+        /** @type {int32} */
         let n = 0;
         for (let i = 0; i < c; i++) {
+          /** @type {int32} */
           let value = 1;
-          for (let b = 0; b < n; b++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+          for (let b = 0; b < n; b++) {
+            value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitStream.readBit());
+          }
           n = value;
         }
 
@@ -205,25 +269,56 @@
       // block): a 4-byte little-endian original length, followed by the
       // Levenshtein-coded bitstream (MSB-first, zero-padded to a byte
       // boundary). Byte values are mapped to (value + 1) before encoding.
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Length header and Levenshtein codes
+       */
       _compress(data) {
         const bitStream = OpCodes.CreateBitStream();
         bitStream.writeUint32LE(data.length);
-        for (let i = 0; i < data.length; i++) this._encodeValue(bitStream, data[i] + 1);
-        return bitStream.toArray();
+        for (let i = 0; i < data.length; i++) {
+          /** @type {int32} */
+          const value = data[i] + 1;
+          this._encodeValue(bitStream, value);
+        }
+        /** @type {uint8[]} */
+        const bytes = bitStream.toArray();
+        return bytes;
       }
 
       // ----- Decompression -----
 
+      /**
+       * @param {uint8[]} data - Length header and Levenshtein codes
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 4) return [];
+        /** @type {uint8[]} */
+        const out = [];
+        if (data.length < 4) {
+          return out;
+        }
 
         const bitStream = OpCodes.CreateBitStream(data);
-        const originalLength = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
-        if (originalLength === 0) return [];
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const originalLength = OpCodes.Pack32LE(c0, c1, c2, c3);
+        if (originalLength === 0) {
+          return out;
+        }
 
-        const out = [];
-        for (let i = 0; i < originalLength; i++)
-          out.push(this._decodeValue(bitStream) - 1);
+        for (let i = 0; i < originalLength; i++) {
+          /** @type {int32} */
+          const value = this._decodeValue(bitStream) - 1;
+          out.push(value);
+        }
         return out;
       }
     }

@@ -62,8 +62,9 @@
   // conversion produced, in one linear pass over the input, and the reverse
   // regroups 7-bit digits back into bytes the same way.
 
-  // Indexed both by a bit offset within the accumulator and by a digit width,
-  // so it has to reach at least eight.
+  // Indexed by a digit width (the radix of the target digits), so it has to
+  // reach at least eight.
+  /** @type {int32[]} */
   const POWERS_OF_TWO = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
 
   /**
@@ -71,23 +72,29 @@
    * digits of another. Both sides are most significant first; the caller must
    * have stripped leading zero digits, and the result likewise carries none, so
    * it is the minimal representation of the same integer.
-   * @param {uint8[]|number[]} source - Source digits, most significant first
-   * @param {number} from - First index to read
-   * @param {number} sourceBits - Bits per source digit
-   * @param {number} targetBits - Bits per target digit
-   * @returns {number[]} Target digits, most significant first
+   * @param {uint8[]} source - Source digits, most significant first
+   * @param {int32} from - First index to read
+   * @param {int32} sourceBits - Bits per source digit
+   * @param {int32} targetBits - Bits per target digit
+   * @returns {uint8[]} Target digits, most significant first
    */
   function Regroup(source, from, sourceBits, targetBits) {
+    /** @type {int32} */
     const targetRadix = POWERS_OF_TWO[targetBits];
+    /** @type {uint8[]} */
     const reversed = [];
 
+    // The accumulator never holds more than sourceBits + targetBits bits
+    /** @type {int32} */
     let accumulator = 0;
+    /** @type {int32} */
     let bits = 0;
     for (let i = source.length - 1; i >= from; i--) {
-      accumulator += source[i] * POWERS_OF_TWO[bits];
+      accumulator += OpCodes.Shl32(source[i], bits);
       bits += sourceBits;
 
       while (bits >= targetBits) {
+        /** @type {int32} */
         const digit = accumulator % targetRadix;
         reversed.push(digit);
         accumulator = (accumulator - digit) / targetRadix;
@@ -97,12 +104,15 @@
 
     // Whatever is left is the most significant digit; if it is zero the digit
     // string is already minimal and nothing more belongs at the front.
-    if (accumulator > 0)
+    if (accumulator > 0) {
       reversed.push(accumulator);
+    }
 
+    /** @type {uint8[]} */
     const result = new Array(reversed.length);
-    for (let i = 0; i < reversed.length; i++)
+    for (let i = 0; i < reversed.length; i++) {
       result[i] = reversed[reversed.length - 1 - i];
+    }
 
     return result;
   }
@@ -185,6 +195,7 @@
       ];
 
       // Koremutake syllables (128 total)
+      /** @type {string[]} */
       this.syllables = [
         "ba", "be", "bi", "bo", "bu", "by", "da", "de", "di", "do", "du", "dy", "fa", "fe", "fi", "fo",
         "fu", "fy", "ga", "ge", "gi", "go", "gu", "gy", "ha", "he", "hi", "ho", "hu", "hy", "ja", "je",
@@ -197,63 +208,71 @@
         "fra", "fre", "fri", "fro", "fru", "fry", "gra", "gre", "gri", "gro", "gru", "gry", "pra", "pre"
       ];
 
-      this.decodeTable = null;
+      // Character codes per syllable, built by init(), so the encoder can
+      // write its output bytes straight out instead of building a
+      // multi-megabyte intermediate string
+      /** @type {uint8[][]|null} */
+      this.syllableCodes = null;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KoremutakeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new KoremutakeInstance(this, isInverse);
     }
 
+    /** Build the per-syllable character codes (once) */
     init() {
-      if (this.decodeTable !== null) {
+      if (this.syllableCodes !== null) {
         return;
       }
 
-      // Build decode lookup table
-      this.decodeTable = {};
+      /** @type {uint8[][]} */
+      const table = new Array(this.syllables.length);
       for (let i = 0; i < this.syllables.length; i++) {
-        this.decodeTable[this.syllables[i]] = i;
-      }
-
-      // Character codes per syllable, so the encoder can write its output bytes
-      // straight out instead of building a multi-megabyte intermediate string
-      this.syllableCodes = new Array(this.syllables.length);
-      for (let i = 0; i < this.syllables.length; i++) {
+        /** @type {string} */
         const syllable = this.syllables[i];
+        /** @type {uint8[]} */
         const codes = new Array(syllable.length);
         for (let j = 0; j < syllable.length; j++) {
           codes[j] = syllable.charCodeAt(j);
         }
-        this.syllableCodes[i] = codes;
+        table[i] = codes;
       }
+      this.syllableCodes = table;
     }
   }
 
   /**
  * Koremutake cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class KoremutakeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KoremutakeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
-
-      this.algorithm.init();
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      algorithm.init();
+      /** @type {string[]} */
+      this.syllables = algorithm.syllables;
+      /** @type {uint8[][]} */
+      this.syllableCodes = algorithm.syllableCodes;
     }
 
     /**
@@ -272,8 +291,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -286,9 +311,11 @@
       if (!this._feedBuffer) {
         throw new Error('KoremutakeInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
@@ -302,33 +329,50 @@
    * every byte >= 128, which is not reversible. Because 128 is a power of
    * two, though, the conversion is a regrouping of the input bits from
    * 8-bit into 7-bit groups and needs no big-integer arithmetic at all.
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} ASCII syllables
    */
 
     encode(data) {
+      /** @type {uint8[]} */
+      const digits = [];
       if (data.length === 0) {
-        return [];
+        return digits;
       }
 
+      /** @type {int32} */
       let zeroByteCount = 0;
-      while (zeroByteCount < data.length && data[zeroByteCount] === 0) zeroByteCount++;
-
-      const digits = new Array(zeroByteCount).fill(0);
-
-      if (zeroByteCount < data.length) {
-        const valueDigits = Regroup(data, zeroByteCount, 8, 7);
-        for (let i = 0; i < valueDigits.length; i++) digits.push(valueDigits[i]);
+      while (zeroByteCount < data.length && data[zeroByteCount] === 0) {
+        zeroByteCount++;
       }
 
-      const syllableCodes = this.algorithm.syllableCodes;
+      for (let i = 0; i < zeroByteCount; i++) {
+        digits.push(0);
+      }
+      if (zeroByteCount < data.length) {
+        /** @type {uint8[]} */
+        const valueDigits = Regroup(data, zeroByteCount, 8, 7);
+        for (let i = 0; i < valueDigits.length; i++) {
+          digits.push(valueDigits[i]);
+        }
+      }
 
+      /** @type {int32} */
       let length = 0;
-      for (let i = 0; i < digits.length; i++) length += syllableCodes[digits[i]].length;
+      for (let i = 0; i < digits.length; i++) {
+        length += this.syllableCodes[digits[i]].length;
+      }
 
+      /** @type {uint8[]} */
       const resultBytes = new Array(length);
+      /** @type {int32} */
       let at = 0;
       for (let i = 0; i < digits.length; i++) {
-        const codes = syllableCodes[digits[i]];
-        for (let j = 0; j < codes.length; j++) resultBytes[at++] = codes[j];
+        /** @type {uint8[]} */
+        const codes = this.syllableCodes[digits[i]];
+        for (let j = 0; j < codes.length; j++) {
+          resultBytes[at++] = codes[j];
+        }
       }
 
       return resultBytes;
@@ -341,25 +385,34 @@
    * representation never starts with digit 0, so this split is always
    * unambiguous), then convert the remaining digits back to the minimal
    * big-endian byte string for that integer.
+   * @param {uint8[]} data - ASCII syllables
+   * @returns {uint8[]} Decoded bytes
    */
 
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
+      /** @type {string} */
       const encoded = OpCodes.BytesToChars(data);
+      /** @type {uint8[]} */
       const digits = [];
+      /** @type {int32} */
       let i = 0;
 
       while (i < encoded.length) {
         // Try to match longest syllable first (3 characters)
+        /** @type {boolean} */
         let found = false;
 
         if (i + 3 <= encoded.length) {
-          const syllable3 = encoded.substring(i, i + 3);
-          if (this.algorithm.decodeTable.hasOwnProperty(syllable3)) {
-            digits.push(this.algorithm.decodeTable[syllable3]);
+          /** @type {int32} */
+          const digit3 = this.syllables.indexOf(encoded.substring(i, i + 3));
+          if (digit3 >= 0) {
+            digits.push(digit3);
             i += 3;
             found = true;
           }
@@ -367,27 +420,35 @@
 
         // Try 2 character syllable
         if (!found && i + 2 <= encoded.length) {
-          const syllable2 = encoded.substring(i, i + 2);
-          if (this.algorithm.decodeTable.hasOwnProperty(syllable2)) {
-            digits.push(this.algorithm.decodeTable[syllable2]);
+          /** @type {int32} */
+          const digit2 = this.syllables.indexOf(encoded.substring(i, i + 2));
+          if (digit2 >= 0) {
+            digits.push(digit2);
             i += 2;
             found = true;
           }
         }
 
         if (!found) {
-          throw new Error(`KoremutakeInstance.decode: unknown syllable at position ${i}`);
+          throw new Error("KoremutakeInstance.decode: unknown syllable at position " + i);
         }
       }
 
+      /** @type {int32} */
       let zeroByteCount = 0;
-      while (zeroByteCount < digits.length && digits[zeroByteCount] === 0) zeroByteCount++;
+      while (zeroByteCount < digits.length && digits[zeroByteCount] === 0) {
+        zeroByteCount++;
+      }
 
-      const result = new Array(zeroByteCount).fill(0);
-
+      for (let k = 0; k < zeroByteCount; k++) {
+        result.push(0);
+      }
       if (zeroByteCount < digits.length) {
+        /** @type {uint8[]} */
         const valueBytes = Regroup(digits, zeroByteCount, 7, 8);
-        for (let i = 0; i < valueBytes.length; i++) result.push(valueBytes[i]);
+        for (let k = 0; k < valueBytes.length; k++) {
+          result.push(valueBytes[k]);
+        }
       }
 
       return result;
