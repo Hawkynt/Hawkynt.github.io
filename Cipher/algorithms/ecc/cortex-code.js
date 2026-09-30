@@ -156,6 +156,7 @@
 
       // Hierarchical structure: 3 layers
       this.numLayers = 3;
+      /** @type {int32[]} */
       this.layerSizes = [8, 12, 16]; // Layer 0: input, Layer 1: hidden, Layer 2: output
 
       // Sparse connectivity matrices between layers
@@ -172,6 +173,7 @@
      * Uses pseudo-random but deterministic pattern for reproducibility
      */
     initializeSparseConnectivity() {
+      /** @type {uint8[][]} */
       this.connectivity = [];
 
       // Layer 0 -> Layer 1 connectivity (8x12 sparse matrix)
@@ -200,6 +202,7 @@
      * @returns {Array<Array<number>>} - Sparse binary matrix
      */
     _createSparseMatrix(rows, cols, seed) {
+      /** @type {uint8[][]} */
       const matrix = [];
       let lfsr = seed;
 
@@ -210,7 +213,7 @@
 
       // Initialize matrix
       for (let i = 0; i < rows; ++i) {
-        matrix[i] = new Array(cols).fill(0);
+        matrix[i] = OpCodes.CreateArray(cols, 0);
       }
 
       // Fill with sparse connections using LFSR for deterministic randomness
@@ -383,8 +386,10 @@
 
       // Solve the linear system: connectivity * input = output (in GF(2))
       // Create augmented matrix [connectivity|output]
+      /** @type {uint8[][]} */
       const augmented = [];
       for (let j = 0; j < outputSize; ++j) {
+        /** @type {int32[]} */
         const row = [];
         for (let i = 0; i < inputSize; ++i) {
           row.push(connectivity[i][j]);
@@ -428,7 +433,8 @@
       }
 
       // Back substitution
-      const input = new Array(inputSize).fill(0);
+      /** @type {uint8[]} */
+      const input = OpCodes.CreateArray(inputSize, 0);
       for (let i = inputSize - 1; i >= 0; --i) {
         // Find a row where column i has coefficient 1
         for (let row = 0; row < outputSize; ++row) {
@@ -480,6 +486,7 @@
      * @returns {Array<Array<number>>} - Beliefs for each layer
      */
     _initializeBeliefs(receivedBits) {
+      /** @type {float64[][]} */
       const beliefs = [];
 
       // Layer 0: Unknown (to be decoded)
@@ -501,6 +508,7 @@
      * @returns {Array<Array<number>>} - Updated beliefs
      */
     _beliefPropagationIteration(beliefs, receivedBits) {
+      /** @type {float64[][]} */
       const newBeliefs = [];
 
       // Layer 2 is fixed by received bits
@@ -609,6 +617,7 @@
       this.numLayers = numLayers;
 
       // Compute layer sizes with geometric progression
+      /** @type {int32[]} */
       this.layerSizes = [];
       for (let i = 0; i < numLayers; ++i) {
         const ratio = i / (numLayers - 1);

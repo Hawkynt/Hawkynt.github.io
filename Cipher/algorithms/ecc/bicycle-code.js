@@ -50,6 +50,7 @@
    */
   function createCirculantMatrix(firstRow) {
     const n = firstRow.length;
+    /** @type {uint8[][]} */
     const matrix = [];
 
     for (let i = 0; i < n; ++i) {
@@ -70,6 +71,7 @@
   function transposeMatrix(matrix) {
     const rows = matrix.length;
     const cols = matrix[0].length;
+    /** @type {int32[][]} */
     const transposed = [];
 
     for (let j = 0; j < cols; ++j) {
@@ -91,6 +93,7 @@
       throw new Error('Matrices must have same number of rows');
     }
 
+    /** @type {uint8[][]} */
     const result = [];
     for (let i = 0; i < A.length; ++i) {
       result.push([...A[i], ...B[i]]);
@@ -104,6 +107,7 @@
   // First row of A chosen to satisfy A·A^T = A^T·A (commutation property)
   // Construction: [1, 1, 0] circulant ensures CSS condition
 
+  /** @type {uint8[]} */
   const CIRCULANT_FIRST_ROW_6_2_2 = [1, 1, 0];
   const A_6_2_2 = createCirculantMatrix(CIRCULANT_FIRST_ROW_6_2_2);
   const AT_6_2_2 = transposeMatrix(A_6_2_2);
@@ -318,6 +322,7 @@
         throw new Error("Bicycle code encode: Input must be multiple of " + this.k + " logical qubits");
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
 
       // Process k logical qubits at a time
@@ -351,6 +356,7 @@
         throw new Error("Bicycle code decode: Input must be multiple of " + this.n + " physical qubits");
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
 
       // Process n-qubit blocks
@@ -390,7 +396,8 @@
      * Returns syndrome vector indicating which stabilizers are violated
      */
     measureSyndrome(qubits, parityMatrix) {
-      const syndrome = new Array(parityMatrix.length).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(parityMatrix.length, 0);
 
       for (let i = 0; i < parityMatrix.length; ++i) {
         /** @type {uint32} */
@@ -490,7 +497,8 @@
         throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[][]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'X':

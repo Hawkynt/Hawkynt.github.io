@@ -171,10 +171,13 @@
       // These are determined by channel reliability (Bhattacharyya parameters)
       // For educational purposes, we use a standard frozen set: {0, 1, 2, 4}
       // Information bits go in positions: {3, 5, 6, 7} (most reliable channels)
+      /** @type {int32[]} */
       this.frozenBitPositions = [0, 1, 2, 4];
+      /** @type {int32[]} */
       this.infoBitPositions = [3, 5, 6, 7];
 
       // Generator matrix F = [1 0; 1 1] for polar transform
+      /** @type {uint8[]} */
       this.F = [[1, 0], [1, 1]];
 
       // Bit-reversal permutation for natural ordering
@@ -251,7 +254,8 @@
       }
 
       // Create input vector u with frozen and information bits
-      const u = new Array(this.N).fill(0);
+      /** @type {uint8[]} */
+      const u = OpCodes.CreateArray(this.N, 0);
 
       // Place information bits in designated positions
       for (let i = 0; i < this.K; i++) {
@@ -293,6 +297,7 @@
       const u = this._inversePolarTransform(revPermuted);
 
       // Extract information bits from their positions
+      /** @type {uint8[]} */
       const decodedInfo = [];
       for (let i = 0; i < this.K; i++) {
         decodedInfo.push(u[this.infoBitPositions[i]]);
@@ -466,6 +471,7 @@
         this.frozenBitPositions = [...frozenPositions].sort((a, b) => a - b);
       } else {
         // Default: freeze least reliable positions (low indices)
+        /** @type {int32[]} */
         this.frozenBitPositions = [];
         for (let i = 0; i < N - K; i++) {
           this.frozenBitPositions.push(i);
@@ -473,6 +479,7 @@
       }
 
       // Compute information bit positions (complement of frozen)
+      /** @type {int32[]} */
       this.infoBitPositions = [];
       for (let i = 0; i < N; i++) {
         if (!this.frozenBitPositions.includes(i)) {

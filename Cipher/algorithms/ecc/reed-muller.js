@@ -198,7 +198,8 @@
       // First row is all ones (constant term)
       // Remaining rows are indicator functions for each variable
 
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term (data[0])
       if (data[0] === 1) {
@@ -235,7 +236,8 @@
         throw new Error("Reed-Muller decode: Input must be exactly " + n + " bits for RM(1," + m + ")");
       }
 
-      const decoded = new Array(k).fill(0);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(k, 0);
 
       // Maximum-likelihood decoding via the Fast Hadamard Transform ("Green machine").
       //

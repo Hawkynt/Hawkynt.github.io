@@ -58,6 +58,7 @@
   /**
    * Compute factorial (cached for performance)
    */
+  /** @type {uint8[]} */
   const factorialCache = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880];
   function factorial(n) {
     if (n < 0) return 0;
@@ -87,6 +88,7 @@
   function coherentStateAmplitudes(alpha, truncation) {
     const alphaSq = alpha * alpha;
     const normFactor = Math.exp(-alphaSq / 2);
+    /** @type {float64[]} */
     const amplitudes = [];
 
     for (let n = 0; n <= truncation; ++n) {
@@ -109,6 +111,7 @@
     const amplitudesPlus = coherentStateAmplitudes(alpha, truncation);
     const amplitudesMinus = coherentStateAmplitudes(-alpha, truncation);
 
+    /** @type {float64[]} */
     const catAmplitudes = [];
     for (let n = 0; n <= truncation; ++n) {
       const amplitude = (amplitudesPlus[n] + sign * amplitudesMinus[n]) / norm;
@@ -146,7 +149,8 @@
    * â |n⟩ = √n |n-1⟩
    */
   function applyPhotonLoss(fockState) {
-    const lostState = new Array(fockState.length).fill(0);
+    /** @type {int32[]} */
+    const lostState = OpCodes.CreateArray(fockState.length, 0);
 
     for (let n = 1; n < fockState.length; ++n) {
       // Loss from |n⟩ → |n-1⟩
@@ -370,6 +374,7 @@
       this._minFidelity = 0.99; // Minimum expected fidelity
 
       // State storage
+      /** @type {int32[]} */
       this._encodedStates = []; // Fock basis representations
     }
 
@@ -473,7 +478,9 @@
      * Logical |1⟩ → odd cat:  (|α⟩ - |-α⟩) / N
      */
     encode(logicalBits) {
+      /** @type {uint8[]} */
       const encodedBits = [];
+      /** @type {int32[]} */
       this._encodedStates = [];
 
       for (let i = 0; i < logicalBits.length; ++i) {
@@ -523,6 +530,7 @@
         return this.encode(catStates);
       }
 
+      /** @type {uint8[]} */
       const logicalBits = [];
 
       for (let i = 0; i < this._encodedStates.length; ++i) {

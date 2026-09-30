@@ -198,6 +198,7 @@
 
       // Channel state information for decoding
       // Format: array of channel gains [h1, h2, ..., hN] for N TX antennas
+      /** @type {float64[]} */
       this._channelGains = [1.0, 1.0]; // Default: identity channels
 
       // Noise variance for soft decision decoding (optional)
@@ -371,6 +372,7 @@
         throw new Error('SpaceTimeBlockCodeInstance._encodeAlamouti: Input must have even length');
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
 
       for (let i = 0; i < symbols.length; i += 2) {
@@ -404,6 +406,7 @@
         throw new Error('SpaceTimeBlockCodeInstance._encodeRate34: Input length must be divisible by 3');
       }
 
+      /** @type {uint8[]} */
       const encoded = [];
       const numAntennas = this._numTxAntennas;
 
@@ -456,6 +459,7 @@
      */
     _encodeRate12(symbols) {
       // Rate 1/2: each symbol repeated with orthogonal structure
+      /** @type {uint8[]} */
       const encoded = [];
       const numAntennas = this._numTxAntennas;
 
@@ -538,6 +542,7 @@
         throw new Error('SpaceTimeBlockCodeInstance._decodeAlamouti: Input length must be divisible by 4');
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
 
       // For educational round-trip: decode from encoded matrix directly
@@ -575,6 +580,7 @@
         throw new Error('SpaceTimeBlockCodeInstance._decodeRate34: Invalid input length for rate 3/4 STBC');
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
 
       // For educational round-trip: extract s1, s2, s3 from encoded matrix
@@ -607,6 +613,7 @@
         throw new Error('SpaceTimeBlockCodeInstance._decodeRate12: Invalid input length for rate 1/2 STBC');
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
 
       // For educational round-trip: extract symbol from first position

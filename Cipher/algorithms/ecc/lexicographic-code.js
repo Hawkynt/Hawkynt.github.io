@@ -217,6 +217,7 @@
 
     generateCodebook() {
       // Greedy lexicographic construction
+      /** @type {uint8[][]} */
       const codebook = [];
       const n = this._n;
       const d = this._d;
@@ -227,6 +228,7 @@
       // Try adding codewords in lexicographic order
       for (let candidate = 1; candidate < OpCodes.Shl32(1, n); ++candidate) {
         // Convert candidate to bit array
+        /** @type {uint8[]} */
         const codeword = [];
         for (let i = n - 1; i >= 0; --i) {
           codeword.push(OpCodes.And32(OpCodes.Shr32(candidate, i), 1));
@@ -315,6 +317,7 @@
 
       // Convert index back to bit array
       const k = Math.floor(Math.log2(this.codebook.length));
+      /** @type {uint8[]} */
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
         decoded.push(OpCodes.And32(OpCodes.Shr32(bestIndex, i), 1));

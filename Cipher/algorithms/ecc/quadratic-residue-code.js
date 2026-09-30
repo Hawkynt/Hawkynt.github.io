@@ -150,6 +150,7 @@
 
     set p(value) {
       // Check if p is prime and p ≡ ±1 (mod 8)
+      /** @type {uint8[]} */
       const validPrimes = [7, 17, 23, 31, 41, 47];
       if (!validPrimes.includes(value)) {
         throw new Error("QuadraticResidueCodeInstance.p: Must be a prime ≡ ±1 (mod 8). Valid values: " + (validPrimes.join(', ')));
@@ -170,14 +171,18 @@
       // Generator polynomial g(x) has roots at α^i where i ∈ QR
       // For simplicity, use pre-computed generators for small primes
       if (p === 7) {
+        /** @type {uint8[]} */
         this.generator = [1, 1, 0, 1]; // x^3 + x + 1
       } else if (p === 17) {
+        /** @type {uint8[]} */
         this.generator = [1, 0, 0, 0, 1, 1, 0, 1, 1]; // x^8 + x^4 + x^3 + x + 1
       } else if (p === 23) {
         // Binary Golay code generator
+        /** @type {uint8[]} */
         this.generator = [1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1]; // Golay (23,12)
       } else {
         // Fallback to simple generator
+        /** @type {uint8[]} */
         this.generator = [1, 1, 0, 1];
       }
     }
@@ -241,6 +246,7 @@
       const r = this.generator.length - 1;
 
       // Shift message by r positions (multiply by x^r)
+      /** @type {uint8[]} */
       const dividend = [...message, ...new Array(r).fill(0)];
 
       // Polynomial division
@@ -275,7 +281,8 @@
     }
 
     polyDivide(dividend, divisor) {
-      const quotient = [...dividend];
+      /** @type {uint8[]} */
+      const quotient = dividend.slice();
       const divisorLen = divisor.length;
 
       for (let i = 0; i <= quotient.length - divisorLen; ++i) {

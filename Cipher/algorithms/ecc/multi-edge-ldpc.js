@@ -48,6 +48,67 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Variable-node statistics of one edge type
+   * @class
+   */
+  class EdgeTypeStat {
+    /**
+     * @param {int32} variableNodes - Variable nodes of this type
+     * @param {int32} degree - Edges per variable node
+     */
+    constructor(variableNodes, degree) {
+      /** @type {int32} */
+      this.variableNodes = variableNodes;
+      /** @type {int32} */
+      this.degree = degree;
+      /** @type {int32} */
+      this.totalEdges = variableNodes * degree;
+    }
+  }
+
+  /**
+   * Check-node statistics
+   * @class
+   */
+  class CheckNodeStat {
+    /**
+     * @param {int32} count - Check nodes
+     * @param {int32} averageDegree - Edges per check node
+     */
+    constructor(count, averageDegree) {
+      /** @type {int32} */
+      this.count = count;
+      /** @type {int32} */
+      this.averageDegree = averageDegree;
+      /** @type {int32} */
+      this.totalEdges = count * averageDegree;
+    }
+  }
+
+  /**
+   * Edge type summary as reported by getEdgeTypeStatistics()
+   * @class
+   */
+  class EdgeTypeStatistics {
+    /**
+     * @param {int32} numEdgeTypes - Number of edge types
+     * @param {EdgeTypeStat} edgeType1 - Information-bit edges
+     * @param {EdgeTypeStat} edgeType2 - Parity-bit edges
+     * @param {CheckNodeStat} checkNodes - Check nodes
+     */
+    constructor(numEdgeTypes, edgeType1, edgeType2, checkNodes) {
+      /** @type {int32} */
+      this.numEdgeTypes = numEdgeTypes;
+      /** @type {EdgeTypeStat} */
+      this.edgeType1 = edgeType1;
+      /** @type {EdgeTypeStat} */
+      this.edgeType2 = edgeType2;
+      /** @type {CheckNodeStat} */
+      this.checkNodes = checkNodes;
+    }
+  }
+
   class MultiEdgeLDPCAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -236,13 +297,15 @@
      * Structure: H = [OpCodes.Or32(H1, H2)] where:
      *   H1: m x k submatrix for edge type 1 (information bits)
      *   H2: m x (n-k) submatrix for edge type 2 (parity bits)
+     * @returns {uint8[][]} Parity-check matrix H
      */
     buildMultiEdgeParityMatrix() {
+      /** @type {uint8[][]} */
       const H = [];
 
       // Initialize m x n parity-check matrix
       for (let i = 0; i < this.m; ++i) {
-        H[i] = new Array(this.n).fill(0);
+        H[i] = OpCodes.CreateArray(this.n, 0);
       }
 
       // Build Edge Type 1 connections (information variable nodes)
@@ -250,6 +313,7 @@
       // Use deterministic pattern to ensure good graph properties
       for (let varNode = 0; varNode < this.edgeType1VariableNodes; ++varNode) {
         const connectionsNeeded = this.edgeType1Degree;
+        /** @type {int32[]} */
         const checkNodes = this.selectCheckNodes(varNode, connectionsNeeded, 'type1');
 
         for (let i = 0; i < checkNodes.length; ++i) {
@@ -263,6 +327,7 @@
       for (let parNode = 0; parNode < this.edgeType2VariableNodes; ++parNode) {
         const varNode = this.k + parNode; // Offset by information bits
         const connectionsNeeded = this.edgeType2Degree;
+        /** @type {int32[]} */
         const checkNodes = this.selectCheckNodes(parNode, connectionsNeeded, 'type2');
 
         for (let i = 0; i < checkNodes.length; ++i) {
@@ -278,8 +343,13 @@
      * Uses deterministic algorithm to create good graph structure
      * Different patterns for different edge types
      * Ensures parity submatrix has full rank for systematic encoding
+     * @param {int32} varNodeIndex - Variable node index
+     * @param {int32} count - Connections wanted
+     * @param {string} edgeType - "type1" or "type2"
+     * @returns {int32[]} Check node indices
      */
     selectCheckNodes(varNodeIndex, count, edgeType) {
+      /** @type {int32[]} */
       const checkNodes = [];
 
       if (edgeType === 'type1') {
@@ -346,6 +416,7 @@
     /**
      * Transform parity-check matrix to systematic form for efficient encoding
      * Uses row operations to convert H to [OpCodes.Xor32(P, T)|I] form, then G = [OpCodes.Or32(I, P)]
+     * @returns {void}
      */
     transformToSystematicForm() {
       // For LDPC codes, we need to solve H*OpCodes.Xor32(c, T) = 0 for encoding
@@ -355,19 +426,23 @@
       // H*OpCodes.Xor32(c, T) = A*OpCodes.Xor32(s, T) + B*OpCodes.Xor32(p, T) = 0  =>  OpCodes.Xor32(p, T) = B^(-1) * A * OpCodes.Xor32(s, T)
 
       // Make a copy of parity check matrix to transform
+      /** @type {uint8[][]} */
       const H_copy = [];
       for (let i = 0; i < this.m; ++i) {
-        H_copy[i] = [...this.parityCheckMatrix[i]];
+        H_copy[i] = this.parityCheckMatrix[i].slice();
       }
 
       // Try to get H into form [OpCodes.Or32(A, I)] using column swaps and row operations
       // For educational simplicity, we'll use a robust encoding approach:
       // Solve H*OpCodes.Xor32(c, T) = 0 directly for each basis vector
 
-      this.encodingMatrix = [];
+      /** @type {uint8[][]} */
+      const encodingMatrix = [];
+      this.encodingMatrix = encodingMatrix;
 
       // For each information bit position
       for (let infoBit = 0; infoBit < this.k; ++infoBit) {
+        /** @type {uint8[]} */
         const parityColumn = this.computeParityForBit(infoBit);
         this.encodingMatrix.push(parityColumn);
       }
@@ -376,25 +451,32 @@
     /**
      * Compute parity bits for a single information bit position
      * Uses iterative solving with Gaussian elimination
+     * @param {int32} infoBitPos - Information bit position
+     * @returns {uint8[]} Parity bits for that information bit
      */
     computeParityForBit(infoBitPos) {
       // Create syndrome vector from this information bit
-      const syndrome = new Array(this.m).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.m, 0);
 
       for (let check = 0; check < this.m; ++check) {
         syndrome[check] = this.parityCheckMatrix[check][infoBitPos];
       }
 
       // Extract parity submatrix (rightmost n-k columns)
+      /** @type {uint8[][]} */
       const H_parity = [];
       for (let i = 0; i < this.m; ++i) {
-        H_parity[i] = [];
+        /** @type {uint8[]} */
+        const row = [];
+        H_parity[i] = row;
         for (let j = 0; j < (this.n - this.k); ++j) {
           H_parity[i][j] = this.parityCheckMatrix[i][this.k + j];
         }
       }
 
       // Solve H_parity * p = syndrome over GF(2)
+      /** @type {uint8[]} */
       const parity = this.solveLinearSystemGF2(H_parity, syndrome);
 
       return parity;
@@ -402,15 +484,22 @@
 
     /**
      * Solve linear system A*x = b over GF(2) using Gaussian elimination
+     * @param {uint8[][]} A - Coefficient matrix
+     * @param {uint8[]} b - Right-hand side
+     * @returns {uint8[]} Solution
      */
     solveLinearSystemGF2(A, b) {
       const m = A.length;
       const n = A[0].length;
 
       // Create augmented matrix [OpCodes.Or32(A, b)]
+      /** @type {uint8[][]} */
       const aug = [];
       for (let i = 0; i < m; ++i) {
-        aug[i] = [...A[i], b[i]];
+        /** @type {uint8[]} */
+        const row = A[i].slice();
+        row.push(b[i]);
+        aug[i] = row;
       }
 
       // Forward elimination to row echelon form
@@ -422,6 +511,7 @@
           if (aug[row][col] === 1) {
             // Swap rows
             if (row !== pivotRow) {
+              /** @type {uint8[]} */
               const temp = aug[pivotRow];
               aug[pivotRow] = aug[row];
               aug[row] = temp;
@@ -446,7 +536,8 @@
       }
 
       // Back substitution
-      const solution = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const solution = OpCodes.CreateArray(n, 0);
 
       for (let row = Math.min(pivotRow, m) - 1; row >= 0; --row) {
         // Find leading 1
@@ -461,6 +552,7 @@
         if (leadCol === -1) continue; // Zero row
 
         // Solve for this variable
+        /** @type {uint32} */
         let value = aug[row][n]; // RHS
         for (let col = leadCol + 1; col < n; ++col) {
           value = OpCodes.Xor32(value, OpCodes.And32(aug[row][col], solution[col]));
@@ -520,13 +612,16 @@
     /**
      * Encode information bits using multi-edge LDPC structure
      * Systematic encoding: codeword = [OpCodes.Or32(info_bits, parity_bits)]
+     * @param {uint8[]} infoBits - k information bits
+     * @returns {uint8[]} n-bit codeword
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
         throw new Error('Multi-Edge LDPC encode: Input must be exactly ' + this.k + ' bits');
       }
 
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Copy information bits (systematic part)
       for (let i = 0; i < this.k; ++i) {
@@ -554,13 +649,17 @@
     /**
      * Decode received codeword using multi-edge belief propagation
      * Different message schedules for different edge types
+     * @param {uint8[]} received - n-bit word
+     * @returns {uint8[]} k information bits
      */
     decode(received) {
       if (received.length !== this.n) {
         throw new Error('Multi-Edge LDPC decode: Input must be exactly ' + this.n + ' bits');
       }
 
-      const decoded = [...received];
+      /** @type {uint8[]} */
+      const decoded = received.slice();
+      /** @type {uint8[]} */
       const syndrome = this.calculateSyndrome(decoded);
 
       if (this.isZeroVector(syndrome)) {
@@ -571,6 +670,7 @@
       // Multi-edge belief propagation decoding
       // Uses different update schedules for each edge type
       const maxIterations = 20;
+      /** @type {uint8[]} */
       const corrected = this.multiEdgeBeliefPropagation(received, maxIterations);
 
       return corrected.slice(0, this.k);
@@ -582,19 +682,29 @@
      *
      * Edge Type 1 (info bits): More aggressive updates (higher reliability)
      * Edge Type 2 (parity bits): Conservative updates (support role)
+     * @param {uint8[]} received - n-bit word
+     * @param {int32} maxIterations - Iteration limit
+     * @returns {uint8[]} Hard decisions
      */
     multiEdgeBeliefPropagation(received, maxIterations) {
       // Initialize log-likelihood ratios (LLRs)
       // Positive LLR = likely 0, Negative LLR = likely 1
-      const channelLLR = received.map(bit => bit === 0 ? 4.0 : -4.0);
+      /** @type {float64[]} */
+      const channelLLR = [];
+      for (let i = 0; i < received.length; ++i) channelLLR.push(received[i] === 0 ? 4.0 : -4.0);
 
       // Message arrays: variable-to-check and check-to-variable
+      // (sparse rows: only entries on edges of the graph are present)
+      /** @type {float64[][]} */
       const varToCheck = [];
+      /** @type {float64[][]} */
       const checkToVar = [];
 
       // Initialize message structures
       for (let v = 0; v < this.n; ++v) {
-        varToCheck[v] = {};
+        /** @type {float64[]} */
+        const edgeMessages = [];
+        varToCheck[v] = edgeMessages;
         for (let c = 0; c < this.m; ++c) {
           if (this.parityCheckMatrix[c][v] === 1) {
             varToCheck[v][c] = channelLLR[v];
@@ -603,7 +713,9 @@
       }
 
       for (let c = 0; c < this.m; ++c) {
-        checkToVar[c] = {};
+        /** @type {float64[]} */
+        const edgeMessages = [];
+        checkToVar[c] = edgeMessages;
         for (let v = 0; v < this.n; ++v) {
           if (this.parityCheckMatrix[c][v] === 1) {
             checkToVar[c][v] = 0.0;
@@ -618,12 +730,17 @@
           for (let v = 0; v < this.n; ++v) {
             if (this.parityCheckMatrix[c][v] === 1) {
               // Product of signs, minimum magnitude
+              /** @type {float64} */
               let product = 1.0;
+              /** @type {float64} */
               let minMagnitude = 999.0;
 
               for (let vp = 0; vp < this.n; ++vp) {
                 if (vp !== v && this.parityCheckMatrix[c][vp] === 1) {
-                  const msg = varToCheck[vp][c] || 0.0;
+                  /** @type {float64} */
+                  const stored = varToCheck[vp][c];
+                  /** @type {float64} */
+                  const msg = (stored ? stored : 0.0);
                   product *= (msg >= 0 ? 1 : -1);
                   minMagnitude = Math.min(minMagnitude, Math.abs(msg));
                 }
@@ -635,18 +752,23 @@
         }
 
         // Variable node update with edge-type-specific handling
+        /** @type {uint8[]} */
         const decoded = [];
 
         for (let v = 0; v < this.n; ++v) {
+          /** @type {float64} */
           let totalLLR = channelLLR[v];
 
           // Determine edge type
           const isType1 = v < this.k; // Information bits
+          /** @type {float64} */
           const dampingFactor = isType1 ? 0.9 : 0.7; // Type 1 more aggressive
 
           for (let c = 0; c < this.m; ++c) {
             if (this.parityCheckMatrix[c][v] === 1) {
-              totalLLR += (checkToVar[c][v] || 0.0) * dampingFactor;
+              /** @type {float64} */
+              const incoming = checkToVar[c][v];
+              totalLLR += (incoming ? incoming : 0.0) * dampingFactor;
             }
           }
 
@@ -657,10 +779,13 @@
           for (let c = 0; c < this.m; ++c) {
             if (this.parityCheckMatrix[c][v] === 1) {
               // Message excludes this check's contribution
+              /** @type {float64} */
               let msgLLR = channelLLR[v];
               for (let cp = 0; cp < this.m; ++cp) {
                 if (cp !== c && this.parityCheckMatrix[cp][v] === 1) {
-                  msgLLR += (checkToVar[cp][v] || 0.0) * dampingFactor;
+                  /** @type {float64} */
+                  const incoming = checkToVar[cp][v];
+                  msgLLR += (incoming ? incoming : 0.0) * dampingFactor;
                 }
               }
               varToCheck[v][c] = msgLLR;
@@ -669,6 +794,7 @@
         }
 
         // Check for convergence
+        /** @type {uint8[]} */
         const currentSyndrome = this.calculateSyndrome(decoded);
         if (this.isZeroVector(currentSyndrome)) {
           return decoded; // Successfully decoded
@@ -676,12 +802,16 @@
       }
 
       // Return best estimate (may contain errors)
+      /** @type {uint8[]} */
       const finalDecoded = [];
       for (let v = 0; v < this.n; ++v) {
+        /** @type {float64} */
         let totalLLR = channelLLR[v];
         for (let c = 0; c < this.m; ++c) {
           if (this.parityCheckMatrix[c][v] === 1) {
-            totalLLR += (checkToVar[c][v] || 0.0);
+            /** @type {float64} */
+            const incoming = checkToVar[c][v];
+            totalLLR += (incoming ? incoming : 0.0);
           }
         }
         finalDecoded[v] = totalLLR >= 0 ? 0 : 1;
@@ -692,9 +822,12 @@
 
     /**
      * Calculate syndrome: s = H * OpCodes.Xor32(c, T) (mod 2)
+     * @param {uint8[]} codeword - n-bit word
+     * @returns {uint8[]} Syndrome
      */
     calculateSyndrome(codeword) {
-      const syndrome = new Array(this.m);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.m, 0);
 
       for (let check = 0; check < this.m; ++check) {
         /** @type {uint32} */
@@ -710,6 +843,8 @@
 
     /**
      * Check if vector is all zeros
+     * @param {uint8[]} vector - Bits
+     * @returns {boolean} True when all zero
      */
     isZeroVector(vector) {
       for (let i = 0; i < vector.length; ++i) {
@@ -720,26 +855,13 @@
 
     /**
      * Get edge type statistics for debugging/analysis
+     * @returns {EdgeTypeStatistics} Edge type summary
      */
     getEdgeTypeStatistics() {
-      return {
-        numEdgeTypes: this.numEdgeTypes,
-        edgeType1: {
-          variableNodes: this.edgeType1VariableNodes,
-          degree: this.edgeType1Degree,
-          totalEdges: this.edgeType1VariableNodes * this.edgeType1Degree
-        },
-        edgeType2: {
-          variableNodes: this.edgeType2VariableNodes,
-          degree: this.edgeType2Degree,
-          totalEdges: this.edgeType2VariableNodes * this.edgeType2Degree
-        },
-        checkNodes: {
-          count: this.m,
-          averageDegree: this.checkNodeDegree,
-          totalEdges: this.m * this.checkNodeDegree
-        }
-      };
+      return new EdgeTypeStatistics(this.numEdgeTypes,
+        new EdgeTypeStat(this.edgeType1VariableNodes, this.edgeType1Degree),
+        new EdgeTypeStat(this.edgeType2VariableNodes, this.edgeType2Degree),
+        new CheckNodeStat(this.m, this.checkNodeDegree));
     }
   }
 

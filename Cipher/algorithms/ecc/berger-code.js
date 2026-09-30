@@ -325,6 +325,7 @@
      * @returns {Array} Binary representation (MSB first)
      */
     intToBinary(value, length) {
+      /** @type {uint8[]} */
       const bits = [];
       for (let i = length - 1; i >= 0; --i) {
         bits.push(OpCodes.And32(OpCodes.Shr32(value, i), 1));

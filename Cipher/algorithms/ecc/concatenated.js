@@ -205,6 +205,7 @@
       const outerEncoded = this.encodeOuter(data);
 
       // Step 2: Apply inner code to each outer symbol
+      /** @type {int32[]} */
       const finalEncoded = [];
       for (let i = 0; i < outerEncoded.length; i += 4) {
         const symbol = outerEncoded.slice(i, i + 4);
@@ -225,6 +226,7 @@
       // Concatenated decoding: decode inner codewords, then outer code
 
       // Step 1: Decode inner codewords
+      /** @type {uint8[]} */
       const innerDecoded = [];
       const symbolSize = 7; // Hamming(7,4) output
       for (let i = 0; i < data.length; i += symbolSize) {
@@ -243,6 +245,7 @@
 
     encodeOuter(data) {
       // Simplified repetition code: repeat each 4-bit block 3 times
+      /** @type {uint8[]} */
       const repeated = [];
       for (let i = 0; i < data.length; i += 4) {
         const block = data.slice(i, i + 4);
@@ -254,6 +257,7 @@
 
     decodeOuter(data) {
       // Decode repetition code: majority voting on each 4-bit block
+      /** @type {uint8[]} */
       const decoded = [];
       for (let i = 0; i < data.length; i += 12) {
         const block1 = data.slice(i, i + 4);
@@ -298,7 +302,8 @@
         throw new Error('Inner decode: Expected 7 bits');
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
 
       // Calculate syndrome
       const s1 = OpCodes.Xor32(OpCodes.Xor32(received[0], received[2]), OpCodes.Xor32(received[4], received[6]));
