@@ -79,14 +79,21 @@
    * SplitMix32 seeding algorithm (improved variant)
    * Used to initialize xoshiro128++ state from a single 32-bit seed
    * Based on MurmurHash3 fmix32 with improved mixing constants
+   * @param {int32} current - State before the step
+   * @returns {SplitMix32Step} Output and advanced state
    */
-  function SplitMix32(state) {
+  function SplitMix32(current) {
+    /** @type {uint32} */
     const GOLDEN_GAMMA = 0x9E3779B9;
+    /** @type {uint32} */
     const MIX_CONST_1 = 0x21f0aaad;
+    /** @type {uint32} */
     const MIX_CONST_2 = 0x735a2d97;
 
-    state = OpCodes.ToInt(state + GOLDEN_GAMMA);
-    let z = state;
+    /** @type {int32} */
+    const advanced = OpCodes.ToInt(OpCodes.Add32(current, GOLDEN_GAMMA));
+    /** @type {uint32} */
+    let z = OpCodes.ToDWord(advanced);
 
     z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 16)), MIX_CONST_1);
     z = OpCodes.ToDWord(z);
@@ -94,26 +101,65 @@
     z = OpCodes.ToDWord(z);
     z = OpCodes.Xor32(z, OpCodes.Shr32(z, 15));
 
-    return { value: OpCodes.ToDWord(z), nextState: state };
+    return new SplitMix32Step(OpCodes.ToDWord(z), advanced);
+  }
+
+  /**
+   * One SplitMix32 step: the output and the advanced state
+   * @class
+   */
+  class SplitMix32Step {
+    /**
+     * @param {uint32} value - Output
+     * @param {int32} nextState - Advanced state
+     */
+    constructor(value, nextState) {
+      /** @type {uint32} */
+      this.value = value;
+      /** @type {int32} */
+      this.nextState = nextState;
+    }
+  }
+
+  /**
+   * One SplitMix64 step: the output and the advanced state
+   * @class
+   */
+  class SplitMix64Step {
+    /**
+     * @param {BigInt} value - Output
+     * @param {BigInt} nextState - Advanced state
+     */
+    constructor(value, nextState) {
+      /** @type {BigInt} */
+      this.value = value;
+      /** @type {BigInt} */
+      this.nextState = nextState;
+    }
   }
 
   /**
    * SplitMix64 seeding algorithm
    * Used to initialize xoshiro256++ state from a single 64-bit seed
    * Based on http://prng.di.unimi.it/splitmix64.c
+   * @param {BigInt} current - State before the step
+   * @returns {SplitMix64Step} Output and advanced state
    */
-  function SplitMix64(state) {
+  function SplitMix64(current) {
+    /** @type {BigInt} */
     const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
+    /** @type {BigInt} */
+    const advanced = OpCodes.ToQWord(current + GOLDEN_GAMMA);
 
-    let z = state;
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
     z = OpCodes.ToQWord(z * 0x94D049BB133111EBn);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: state };
+    return new SplitMix64Step(z, advanced);
   }
 
   /**
@@ -121,9 +167,13 @@
    * Supports both 128-bit (32-bit) and 256-bit (64-bit) variants
    */
   class XoshiroPlusPlusAlgorithm extends RandomGenerationAlgorithm {
+    /**
+     * @param {int32} bitWidth - State size: 128 or 256
+     */
     constructor(bitWidth) {
       super();
 
+      /** @type {int32} */
       this.bitWidth = bitWidth;
 
       if (bitWidth === 128) {
@@ -222,7 +272,7 @@
           }
         ];
       } else {
-        throw new Error(`Invalid bit width: ${bitWidth}. Supported values: 128, 256`);
+        throw new Error("Invalid bit width: " + bitWidth + ". Supported values: 128, 256");
       }
 
       // Common metadata
@@ -241,7 +291,7 @@
       // Documentation (common to both variants)
       this.documentation = [
         new LinkItem(
-          `Official Reference Implementation (${this.name})`,
+          "Official Reference Implementation (" + this.name + ")",
           bitWidth === 128
             ? "https://prng.di.unimi.it/xoshiro128plusplus.c"
             : "https://prng.di.unimi.it/xoshiro256plusplus.c"
@@ -312,22 +362,30 @@
       /** @type {int32} */
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
+      /** @type {int32} */
       this.bitWidth = algorithm.bitWidth;
 
-      if (this.bitWidth === 128) {
-        // Xoshiro128++ state: four 32-bit values
-        this._s0 = 0;
-        this._s1 = 0;
-        this._s2 = 0;
-        this._s3 = 0;
-      } else {
-        // Xoshiro256++ state: four 64-bit values (using BigInt)
-        this._s0 = 0n;
-        this._s1 = 0n;
-        this._s2 = 0n;
-        this._s3 = 0n;
-      }
+      // Xoshiro128++ state: four 32-bit values
+      /** @type {uint32} */
+      this._w0 = 0;
+      /** @type {uint32} */
+      this._w1 = 0;
+      /** @type {uint32} */
+      this._w2 = 0;
+      /** @type {uint32} */
+      this._w3 = 0;
 
+      // Xoshiro256++ state: four 64-bit values (using BigInt)
+      /** @type {BigInt} */
+      this._s0 = 0n;
+      /** @type {BigInt} */
+      this._s1 = 0n;
+      /** @type {BigInt} */
+      this._s2 = 0n;
+      /** @type {BigInt} */
+      this._s3 = 0n;
+
+      /** @type {boolean} */
       this._ready = false;
     }
 
@@ -345,6 +403,7 @@
 
       if (this.bitWidth === 128) {
         // Convert seed bytes to 32-bit value (little-endian)
+        /** @type {uint32} */
         let seedValue = 0;
         for (let i = 0; i < Math.min(4, seedBytes.length); ++i) {
           seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
@@ -352,45 +411,50 @@
         seedValue = OpCodes.ToDWord(seedValue);
 
         // Initialize state using SplitMix32
-        let state = seedValue;
+        /** @type {int32} */
+        let mixState = OpCodes.ToInt(seedValue);
 
-        let result = SplitMix32(state);
-        this._s0 = result.value;
-        state = result.nextState;
+        /** @type {SplitMix32Step} */
+        let result = SplitMix32(mixState);
+        this._w0 = result.value;
+        mixState = result.nextState;
 
-        result = SplitMix32(state);
-        this._s1 = result.value;
-        state = result.nextState;
+        result = SplitMix32(mixState);
+        this._w1 = result.value;
+        mixState = result.nextState;
 
-        result = SplitMix32(state);
-        this._s2 = result.value;
-        state = result.nextState;
+        result = SplitMix32(mixState);
+        this._w2 = result.value;
+        mixState = result.nextState;
 
-        result = SplitMix32(state);
-        this._s3 = result.value;
+        result = SplitMix32(mixState);
+        this._w3 = result.value;
       } else {
         // Convert seed bytes to 64-bit BigInt (little-endian)
+        /** @type {BigInt} */
         let seedValue = 0n;
         for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
           seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
         }
 
         // Initialize state using SplitMix64
-        let state = seedValue;
+        /** @type {BigInt} */
+        let mixState = seedValue;
 
-        let result = SplitMix64(state);
+        /** @type {SplitMix64Step} */
+        let result = SplitMix64(mixState);
         this._s0 = result.value;
-        state = result.nextState;
+        mixState = result.nextState;
 
-        result = SplitMix64(state);
+        result = SplitMix64(mixState);
         this._s1 = result.value;
-        state = result.nextState;
+        mixState = result.nextState;
 
-        result = SplitMix64(state);
+        result = SplitMix64(mixState);
         this._s2 = result.value;
-        state = result.nextState;
+        mixState = result.nextState;
 
-        result = SplitMix64(state);
+        result = SplitMix64(mixState);
         this._s3 = result.value;
       }
 
@@ -406,7 +470,7 @@
 
     /**
      * Generate next 32-bit random value (Xoshiro128++)
-     * @returns {number} 32-bit random value
+     * @returns {uint32} 32-bit random value
      */
     _next32() {
       if (!this._ready) {
@@ -414,28 +478,32 @@
       }
 
       // Output function: result = rotl(s[0] + s[3], 7) + s[0]
-      const sum = OpCodes.ToInt(this._s0 + this._s3);
+      /** @type {uint32} */
+      const sum = OpCodes.Add32(this._w0, this._w3);
+      /** @type {uint32} */
       const rotated = OpCodes.RotL32(sum, 7);
-      const result = OpCodes.ToInt(rotated + this._s0);
+      /** @type {uint32} */
+      const result = OpCodes.Add32(rotated, this._w0);
 
       // State update
-      const t = OpCodes.Shl32(this._s1, 9);
+      /** @type {uint32} */
+      const t = OpCodes.Shl32(this._w1, 9);
 
-      this._s2 = OpCodes.Xor32(this._s2, this._s0);
-      this._s3 = OpCodes.Xor32(this._s3, this._s1);
-      this._s1 = OpCodes.Xor32(this._s1, this._s2);
-      this._s0 = OpCodes.Xor32(this._s0, this._s3);
+      this._w2 = OpCodes.Xor32(this._w2, this._w0);
+      this._w3 = OpCodes.Xor32(this._w3, this._w1);
+      this._w1 = OpCodes.Xor32(this._w1, this._w2);
+      this._w0 = OpCodes.Xor32(this._w0, this._w3);
 
-      this._s2 = OpCodes.Xor32(this._s2, t);
-      this._s3 = OpCodes.RotL32(this._s3, 11);
+      this._w2 = OpCodes.Xor32(this._w2, t);
+      this._w3 = OpCodes.RotL32(this._w3, 11);
 
       // Ensure all state values remain unsigned 32-bit
-      this._s0 = OpCodes.ToDWord(this._s0);
-      this._s1 = OpCodes.ToDWord(this._s1);
-      this._s2 = OpCodes.ToDWord(this._s2);
-      this._s3 = OpCodes.ToDWord(this._s3);
+      this._w0 = OpCodes.ToDWord(this._w0);
+      this._w1 = OpCodes.ToDWord(this._w1);
+      this._w2 = OpCodes.ToDWord(this._w2);
+      this._w3 = OpCodes.ToDWord(this._w3);
 
-      return OpCodes.ToDWord(result);
+      return result;
     }
 
     /**
@@ -448,11 +516,15 @@
       }
 
       // Output function: result = rotl(s[0] + s[3], 23) + s[0]
+      /** @type {BigInt} */
       const sum = OpCodes.ToQWord(this._s0 + this._s3);
+      /** @type {BigInt} */
       const rotated = OpCodes.RotL64n(sum, 23);
+      /** @type {BigInt} */
       const result = OpCodes.ToQWord(rotated + this._s0);
 
       // State update
+      /** @type {BigInt} */
       const t = OpCodes.ShiftLn(this._s1, 17);
 
       this._s2 = OpCodes.XorN(this._s2, this._s0);
@@ -474,7 +546,7 @@
     NextBytes(length) {
       if (!this._ready) {
         const variant = this.bitWidth === 128 ? 'Xoshiro128++' : 'Xoshiro256++';
-        throw new Error(`${variant} not initialized: set seed first`);
+        throw new Error("" + variant + " not initialized: set seed first");
       }
 
       if (length === 0) {
@@ -490,6 +562,7 @@
       if (this.bitWidth === 128) {
         // Generate 32-bit values and extract bytes
         while (bytesGenerated < length) {
+          /** @type {uint32} */
           const value32 = this._next32();
 
           // Extract bytes in little-endian order
@@ -503,11 +576,13 @@
       } else {
         // Generate 64-bit values and extract bytes
         while (bytesGenerated < length) {
+          /** @type {BigInt} */
           const value64 = this._next64();
 
           // Extract bytes in little-endian order
           for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
             const shifted = OpCodes.ShiftRn(value64, i * 8);
+            /** @type {uint8} */
             const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
             output.push(byteVal);
             ++bytesGenerated;
@@ -567,35 +642,42 @@
      * Xoshiro256++: equivalent to 2^128 calls to _next64()
      * Useful for parallel computation - allows splitting the sequence
      * Based on official implementation
+     * @returns {void}
      */
     jump() {
       if (this.bitWidth === 128) {
         // Jump polynomial coefficients for xoshiro128++ (from official implementation)
+        /** @type {uint32[]} */
         const JUMP = [0x8764000b, 0xf542d2d3, 0x6fa035c3, 0x77f2db5b];
 
+        /** @type {uint32} */
         let s0 = 0;
+        /** @type {uint32} */
         let s1 = 0;
+        /** @type {uint32} */
         let s2 = 0;
+        /** @type {uint32} */
         let s3 = 0;
 
         for (let i = 0; i < JUMP.length; ++i) {
           for (let b = 0; b < 32; ++b) {
             if (OpCodes.And32(JUMP[i], OpCodes.Shl32(1, b)) !== 0) {
-              s0 = OpCodes.Xor32(s0, this._s0);
-              s1 = OpCodes.Xor32(s1, this._s1);
-              s2 = OpCodes.Xor32(s2, this._s2);
-              s3 = OpCodes.Xor32(s3, this._s3);
+              s0 = OpCodes.Xor32(s0, this._w0);
+              s1 = OpCodes.Xor32(s1, this._w1);
+              s2 = OpCodes.Xor32(s2, this._w2);
+              s3 = OpCodes.Xor32(s3, this._w3);
             }
             this._next32();
           }
         }
 
-        this._s0 = OpCodes.ToDWord(s0);
-        this._s1 = OpCodes.ToDWord(s1);
-        this._s2 = OpCodes.ToDWord(s2);
-        this._s3 = OpCodes.ToDWord(s3);
+        this._w0 = OpCodes.ToDWord(s0);
+        this._w1 = OpCodes.ToDWord(s1);
+        this._w2 = OpCodes.ToDWord(s2);
+        this._w3 = OpCodes.ToDWord(s3);
       } else {
         // Jump polynomial coefficients for xoshiro256++ (from official implementation)
+        /** @type {BigInt[]} */
         const JUMP = [
           0x180ec6d33cfd0aban,
           0xd5a61266f0c9392cn,
@@ -603,13 +685,18 @@
           0x39abdc4529b1661cn
         ];
 
+        /** @type {BigInt} */
         let s0 = 0n;
+        /** @type {BigInt} */
         let s1 = 0n;
+        /** @type {BigInt} */
         let s2 = 0n;
+        /** @type {BigInt} */
         let s3 = 0n;
 
         for (let i = 0; i < JUMP.length; ++i) {
           for (let b = 0; b < 64; ++b) {
+            /** @type {BigInt} */
             const mask = OpCodes.ShiftLn(1n, b);
             if (OpCodes.AndN(JUMP[i], mask) !== 0n) {
               s0 = OpCodes.XorN(s0, this._s0);
@@ -634,35 +721,42 @@
      * Xoshiro256++: equivalent to 2^192 calls to _next64()
      * Useful for parallel computation across multiple machines
      * Based on official implementation
+     * @returns {void}
      */
     longJump() {
       if (this.bitWidth === 128) {
         // Long jump polynomial coefficients for xoshiro128++ (from official implementation)
+        /** @type {uint32[]} */
         const LONG_JUMP = [0xb523952e, 0x0b6f099f, 0xccf5a0ef, 0x1c580662];
 
+        /** @type {uint32} */
         let s0 = 0;
+        /** @type {uint32} */
         let s1 = 0;
+        /** @type {uint32} */
         let s2 = 0;
+        /** @type {uint32} */
         let s3 = 0;
 
         for (let i = 0; i < LONG_JUMP.length; ++i) {
           for (let b = 0; b < 32; ++b) {
             if (OpCodes.And32(LONG_JUMP[i], OpCodes.Shl32(1, b)) !== 0) {
-              s0 = OpCodes.Xor32(s0, this._s0);
-              s1 = OpCodes.Xor32(s1, this._s1);
-              s2 = OpCodes.Xor32(s2, this._s2);
-              s3 = OpCodes.Xor32(s3, this._s3);
+              s0 = OpCodes.Xor32(s0, this._w0);
+              s1 = OpCodes.Xor32(s1, this._w1);
+              s2 = OpCodes.Xor32(s2, this._w2);
+              s3 = OpCodes.Xor32(s3, this._w3);
             }
             this._next32();
           }
         }
 
-        this._s0 = OpCodes.ToDWord(s0);
-        this._s1 = OpCodes.ToDWord(s1);
-        this._s2 = OpCodes.ToDWord(s2);
-        this._s3 = OpCodes.ToDWord(s3);
+        this._w0 = OpCodes.ToDWord(s0);
+        this._w1 = OpCodes.ToDWord(s1);
+        this._w2 = OpCodes.ToDWord(s2);
+        this._w3 = OpCodes.ToDWord(s3);
       } else {
         // Long jump polynomial coefficients for xoshiro256++ (from official implementation)
+        /** @type {BigInt[]} */
         const LONG_JUMP = [
           0x76e15d3efefdcbbfn,
           0xc5004e441c522fb3n,
@@ -670,13 +764,18 @@
           0x39109bb02acbe635n
         ];
 
+        /** @type {BigInt} */
         let s0 = 0n;
+        /** @type {BigInt} */
         let s1 = 0n;
+        /** @type {BigInt} */
         let s2 = 0n;
+        /** @type {BigInt} */
         let s3 = 0n;
 
         for (let i = 0; i < LONG_JUMP.length; ++i) {
           for (let b = 0; b < 64; ++b) {
+            /** @type {BigInt} */
             const mask = OpCodes.ShiftLn(1n, b);
             if (OpCodes.AndN(LONG_JUMP[i], mask) !== 0n) {
               s0 = OpCodes.XorN(s0, this._s0);

@@ -259,7 +259,8 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // State array: 521 × 32-bit words
-      this._state = new Array(STATE_SIZE).fill(0);
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(STATE_SIZE, 0);
 
       // Current position in circular buffer
       this._index = 0;
@@ -280,17 +281,18 @@
       }
 
       // Convert seed bytes to 32-bit seed value
+      /** @type {uint32} */
       let seedValue = 0;
 
       if (seedBytes.length <= 4) {
         // Seed is 4 bytes or less - pack into 32-bit value (big-endian)
         for (let i = 0; i < seedBytes.length; ++i) {
-          seedValue = OpCodes.ToUint32((seedValue * 256) + seedBytes[i]);
+          seedValue = OpCodes.Add32(OpCodes.Mul32(seedValue, 256), seedBytes[i]);
         }
       } else {
         // Seed is more than 4 bytes - XOR fold into 32 bits
         for (let i = 0; i < seedBytes.length; ++i) {
-          seedValue = OpCodes.ToUint32((seedValue * 256) + seedBytes[i]);
+          seedValue = OpCodes.Add32(OpCodes.Mul32(seedValue, 256), seedBytes[i]);
         }
       }
 
@@ -305,7 +307,7 @@
       // Fill state array with LCG-generated values
       // Generate first value before storing to ensure even seed=0 gets mixed
       for (let i = 0; i < STATE_SIZE; ++i) {
-        lcgState = OpCodes.ToUint32(LCG_A * lcgState + LCG_C);
+        lcgState = OpCodes.Add32(OpCodes.Mul32(LCG_A, lcgState), LCG_C);
         this._state[i] = lcgState;
       }
 
@@ -335,6 +337,7 @@
     /**
      * Generate next 32-bit value using gfsr4 algorithm
      * Implements: x[i] = x[i-521] XOR x[i-353] XOR x[i-168] XOR x[i-32]
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

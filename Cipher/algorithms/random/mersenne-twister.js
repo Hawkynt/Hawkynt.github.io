@@ -197,10 +197,15 @@
       this._skip = 0;
 
       // MT19937 state
-      this._state = new Array(N);  // State array
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(N, 0);  // State array
+      /** @type {int32} */
       this._index = N + 1;         // Index into state array (N+1 means uninitialized)
+      /** @type {uint32[]} */
       this._mag01 = [0, MATRIX_A]; // mag01[x] = x * MATRIX_A for x=0,1
+      /** @type {int32} */
       this._outputSize = 32;       // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;         // Number of bytes to skip before generating output
     }
 
@@ -218,9 +223,10 @@
 
       // Convert seed bytes to 32-bit unsigned integer
       // Expecting little-endian format to match test vectors
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
+        seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
       seedValue = OpCodes.ToUint32(seedValue);
 
@@ -231,13 +237,13 @@
       for (this._index = 1; this._index < N; ++this._index) {
         // state[i] = f * (state[i-1] XOR (state[i-1] shr 30)) + i
         const prev = this._state[this._index - 1];
-        const xored = OpCodes.XorN(prev, OpCodes.Shr32(prev, 30));
+        const xored = OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30));
         // The product 1812433253 * xored reaches ~2^63, far beyond the 2^53 that a
         // JavaScript number holds exactly, so it must be multiplied with 32-bit
         // wrapping semantics rather than truncated after the fact - truncating a
         // value whose low bits have already been rounded away cannot recover them.
         const mult = OpCodes.Mul32(INIT_MULTIPLIER, xored);
-        this._state[this._index] = OpCodes.ToUint32(mult + this._index);
+        this._state[this._index] = OpCodes.Add32(mult, this._index);
       }
 
       // Reset index to trigger twist on first generation
@@ -255,7 +261,7 @@
      * Generate the next 32-bit random value
      * Based on mt19937ar.c genrand_int32() function
      *
-     * @returns {number} 32-bit unsigned random value
+     * @returns {uint32} 32-bit unsigned random value
      */
     _next32() {
       if (this._index >= N) {
@@ -272,10 +278,10 @@
       let y = this._state[this._index++];
 
       // Tempering transformations
-      y = OpCodes.XorN(y, OpCodes.Shr32(y, 11));
-      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.AndN(OpCodes.Shl32(y, 7), TEMPERING_MASK_B)));
-      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.AndN(OpCodes.Shl32(y, 15), TEMPERING_MASK_C)));
-      y = OpCodes.XorN(y, OpCodes.Shr32(y, 18));
+      y = OpCodes.Xor32(y, OpCodes.Shr32(y, 11));
+      y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.And32(OpCodes.Shl32(y, 7), TEMPERING_MASK_B)));
+      y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.And32(OpCodes.Shl32(y, 15), TEMPERING_MASK_C)));
+      y = OpCodes.Xor32(y, OpCodes.Shr32(y, 18));
 
       return OpCodes.ToUint32(y);
     }
@@ -289,20 +295,20 @@
 
       // First loop: i from 0 to N-M-1
       for (i = 0; i < N - M; ++i) {
-        const y = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
-        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + M], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
+        const y = OpCodes.Or32(OpCodes.And32(this._state[i], UPPER_MASK), OpCodes.And32(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.Xor32(OpCodes.Xor32(this._state[i + M], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.And32(y, 0x1)]);
       }
 
       // Second loop: i from N-M to N-2
       for (; i < N - 1; ++i) {
-        const y = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
-        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + (M - N)], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
+        const y = OpCodes.Or32(OpCodes.And32(this._state[i], UPPER_MASK), OpCodes.And32(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.Xor32(OpCodes.Xor32(this._state[i + (M - N)], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.And32(y, 0x1)]);
       }
 
       // Final element
       {
-        const y = OpCodes.OrN(OpCodes.AndN(this._state[N - 1], UPPER_MASK), OpCodes.AndN(this._state[0], LOWER_MASK));
-        this._state[N - 1] = OpCodes.XorN(OpCodes.XorN(this._state[M - 1], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
+        const y = OpCodes.Or32(OpCodes.And32(this._state[N - 1], UPPER_MASK), OpCodes.And32(this._state[0], LOWER_MASK));
+        this._state[N - 1] = OpCodes.Xor32(OpCodes.Xor32(this._state[M - 1], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.And32(y, 0x1)]);
       }
 
       this._index = 0;
@@ -334,10 +340,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format
-        output.push(OpCodes.AndN(value, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
+        output.push(OpCodes.And32(value, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -345,7 +351,7 @@
       if (remainingBytes > 0) {
         const value = this._next32();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 
@@ -399,11 +405,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

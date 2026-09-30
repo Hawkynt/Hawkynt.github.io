@@ -274,6 +274,7 @@
         );
       } else {
         // For seeds < 4 bytes, pack what we have (pad with zeros)
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
           bytes[i] = seedBytes[i];
@@ -291,6 +292,7 @@
         );
       } else if (seedBytes.length >= 5) {
         // For partial carry bytes, pack what we have
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 4; i < seedBytes.length; ++i) {
           bytes[i - 4] = seedBytes[i];
@@ -333,11 +335,16 @@
 
       // Perform 64-bit multiply-with-carry: temp = A * x + c
       // BigInt required for exact 64-bit arithmetic (no OpCodes equivalent)
+      /** @type {BigInt} */
       const temp = BigInt(this._A) * BigInt(this._x) + BigInt(this._c);
 
       // Split result: lower 32 bits = new x, upper 32 bits = new c
-      this._x = Number(OpCodes.AndN(temp, 0xFFFFFFFFn));
-      this._c = Number(OpCodes.ShiftRn(temp, 32));
+      /** @type {uint32} */
+      const newX = Number(OpCodes.AndN(temp, 0xFFFFFFFFn));
+      /** @type {uint32} */
+      const newC = Number(OpCodes.ShiftRn(temp, 32));
+      this._x = newX;
+      this._c = newC;
 
       return output;
     }
@@ -400,7 +407,7 @@
 
     Result() {
       // Use specified output size or default to 64 bytes
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
       return this.NextBytes(size);
     }
 
@@ -416,7 +423,7 @@
      * @returns {int32} Bytes returned by Result()
      */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
   }
 

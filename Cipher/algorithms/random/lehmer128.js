@@ -45,15 +45,21 @@
 
   // Lehmer128 multiplier constant (from PCG research - excellent spectral properties)
   // M8=0.71005, M16=0.66094, M24=0.61455
+  /** @type {BigInt} */
   const MULTIPLIER = 0x0fc94e3bf4e9ab32866458cd56f5e605n;
 
   // Mask for 128-bit arithmetic
+  /** @type {BigInt} */
   const MASK_128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFn;
+  /** @type {BigInt} */
   const MASK_64 = 0xFFFFFFFFFFFFFFFFn;
 
   // SplitMix64 constants for seeding (matching Lehmer64 implementation)
+  /** @type {BigInt} */
   const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+  /** @type {BigInt} */
   const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+  /** @type {BigInt} */
   const MIX_CONST_2 = 0x94D049BB133111EBn;
 
   class Lehmer128Algorithm extends RandomGenerationAlgorithm {
@@ -212,6 +218,7 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Lehmer128 state (128-bit BigInt)
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
@@ -221,7 +228,7 @@
      * Matches reference implementation initialization
      *
      * @param {BigInt} seed - Seed value
-     * @param {number} index - Index (0 or 1 for high/low 64-bit parts)
+     * @param {int32} index - Index (0 or 1 for high/low 64-bit parts)
      * @returns {BigInt} 64-bit output
      */
     _splitmix64_stateless(seed, index) {
@@ -248,6 +255,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -274,6 +282,7 @@
     /**
      * Set state directly (for testing with specific 128-bit values)
      * Allows setting full 128-bit state instead of using seed initialization
+     * @param {uint8[]} stateBytes - State, big-endian
      */
     set state(stateBytes) {
       if (!stateBytes || stateBytes.length === 0) {
@@ -282,6 +291,7 @@
       }
 
       // Convert state bytes to 128-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let stateValue = 0n;
       for (let i = 0; i < stateBytes.length && i < 16; ++i) {
         stateValue = OpCodes.OrN(OpCodes.ShiftLn(stateValue, 8), BigInt(stateBytes[i]));
@@ -335,12 +345,14 @@
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
           const shiftAmount = (7 - i) * 8;
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(shiftAmount)), 0xFFn));
           output.push(byte);
         }

@@ -174,6 +174,7 @@
     /**
      * Set the prime modulus p
      * Should be a large prime for cryptographic security
+     * @param {BigInt} value - Prime p (a number is accepted too)
      */
     set p(value) {
       if (typeof value === 'number') {
@@ -188,6 +189,9 @@
       this._threshold = (value - 1n) / 2n;
     }
 
+    /**
+     * @returns {BigInt} Prime p
+     */
     get p() {
       return this._p;
     }
@@ -195,6 +199,7 @@
     /**
      * Set the generator g (primitive root modulo p)
      * Should be a primitive root for proper distribution
+     * @param {BigInt} value - Generator g (a number is accepted too)
      */
     set g(value) {
       if (typeof value === 'number') {
@@ -208,6 +213,9 @@
       this._g = value;
     }
 
+    /**
+     * @returns {BigInt} Generator g
+     */
     get g() {
       return this._g;
     }
@@ -232,6 +240,7 @@
       }
 
       // Convert seed bytes to BigInt
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -276,6 +285,7 @@
      * Generate a single byte (8 bits)
      */
     _generateByte() {
+      /** @type {uint8} */
       let byte = 0;
 
       for (let i = 0; i < 8; ++i) {

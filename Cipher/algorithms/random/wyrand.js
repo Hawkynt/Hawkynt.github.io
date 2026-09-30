@@ -187,6 +187,23 @@
   }
 
   /**
+   * A 128-bit value as two 64-bit halves
+   * @class
+   */
+  class Wide128 {
+    /**
+     * @param {BigInt} hi - High 64 bits
+     * @param {BigInt} lo - Low 64 bits
+     */
+    constructor(hi, lo) {
+      /** @type {BigInt} */
+      this.hi = hi;
+      /** @type {BigInt} */
+      this.lo = lo;
+    }
+  }
+
+  /**
  * Wyrand cipher instance implementing Feed/Result pattern
  * @class
  * @extends {IBlockCipherInstance}
@@ -202,10 +219,13 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Wyrand constants (from WyHash implementation)
+      /** @type {BigInt} */
       this.WYRAND_PRIME0 = 0xa0761d6478bd642fn;  // Increment constant (related to golden ratio)
+      /** @type {BigInt} */
       this.WYRAND_PRIME1 = 0xe7037ed1a0b428dbn;  // XOR mixing constant
 
       // Generator state
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
@@ -221,6 +241,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian - most significant byte first)
+      /** @type {BigInt} */
       this._state = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         this._state = OpCodes.OrN(OpCodes.ShiftLn(this._state, 8), BigInt(seedBytes[i]));
@@ -241,31 +262,44 @@
      * Multiplies two 64-bit values and returns {hi, lo} parts
      * @param {BigInt} a - First 64-bit value
      * @param {BigInt} b - Second 64-bit value
-     * @returns {Object} {hi: high64bits, lo: low64bits}
+     * @returns {Wide128} {hi: high64bits, lo: low64bits}
      */
     _multiply128(a, b) {
+      /** @type {BigInt} */
       const mask32 = 0xFFFFFFFFn;
 
       // Split into 32-bit parts for accurate multiplication
+      /** @type {BigInt} */
       const a_lo = OpCodes.AndN(a, mask32);
-      const a_hi = OpCodes.ShiftRn(a, 32n);
+      /** @type {BigInt} */
+      const a_hi = OpCodes.ShiftRn(a, 32);
+      /** @type {BigInt} */
       const b_lo = OpCodes.AndN(b, mask32);
-      const b_hi = OpCodes.ShiftRn(b, 32n);
+      /** @type {BigInt} */
+      const b_hi = OpCodes.ShiftRn(b, 32);
 
       // Compute partial products (64-bit intermediate results)
+      /** @type {BigInt} */
       const ll = a_lo * b_lo;
+      /** @type {BigInt} */
       const lh = a_lo * b_hi;
+      /** @type {BigInt} */
       const hl = a_hi * b_lo;
+      /** @type {BigInt} */
       const hh = a_hi * b_hi;
 
       // Combine with carry propagation
-      const mid1 = lh + OpCodes.ShiftRn(ll, 32n);
+      /** @type {BigInt} */
+      const mid1 = lh + OpCodes.ShiftRn(ll, 32);
+      /** @type {BigInt} */
       const mid2 = hl + OpCodes.AndN(mid1, mask32);
 
-      const lo = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(OpCodes.AndN(mid2, mask32), 32n), OpCodes.AndN(ll, mask32)), 0xFFFFFFFFFFFFFFFFn);
-      const hi = OpCodes.AndN(hh + OpCodes.ShiftRn(mid1, 32n) + OpCodes.ShiftRn(mid2, 32n), 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const lo = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(OpCodes.AndN(mid2, mask32), 32), OpCodes.AndN(ll, mask32)), 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const hi = OpCodes.AndN(hh + OpCodes.ShiftRn(mid1, 32) + OpCodes.ShiftRn(mid2, 32), 0xFFFFFFFFFFFFFFFFn);
 
-      return { hi, lo };
+      return new Wide128(hi, lo);
     }
 
     /**
@@ -275,6 +309,7 @@
      * 1. state += WYRAND_PRIME0
      * 2. t = (state) * (state XOR WYRAND_PRIME1)  // 128-bit multiplication
      * 3. return (t shr 64) XOR t  // XOR high and low parts
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -285,12 +320,15 @@
       this._state = OpCodes.AndN(this._state + this.WYRAND_PRIME0, 0xFFFFFFFFFFFFFFFFn);
 
       // Step 2: Mix state with WYRAND_PRIME1
+      /** @type {BigInt} */
       const mixed = OpCodes.XorN(this._state, this.WYRAND_PRIME1);
 
       // Step 3: 128-bit multiplication of state * mixed
+      /** @type {Wide128} */
       const product = this._multiply128(this._state, mixed);
 
       // Step 4: XOR high and low 64-bit parts for final output
+      /** @type {BigInt} */
       const output = OpCodes.XorN(product.hi, product.lo);
 
       return OpCodes.AndN(output, 0xFFFFFFFFFFFFFFFFn);
@@ -323,7 +361,8 @@
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt((7 - i) * 8)), 0xFFn));
+          /** @type {uint8} */
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
 

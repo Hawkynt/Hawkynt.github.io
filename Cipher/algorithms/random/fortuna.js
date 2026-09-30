@@ -48,6 +48,7 @@
   // ===== SHA-256 Implementation (minimal for Fortuna) =====
   // Integrated directly to avoid circular dependencies
 
+  /** @type {uint32[]} */
   const SHA256_K = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
     0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -67,15 +68,27 @@
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
   ];
 
+  /**
+   * Incremental SHA-256 used for the entropy pools
+   * @class
+   */
   class SHA256State {
     constructor() {
+      /** @type {uint32[]} */
       this.h = new Uint32Array(8);
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(64);
+      /** @type {int32} */
       this.bufferLength = 0;
+      /** @type {float64} */
       this.length = 0;
       this.init();
     }
 
+    /**
+     * Reset to the initial hash value
+     * @returns {void}
+     */
     init() {
       // NIST FIPS 180-4 initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
       this.h[0] = 0x6a09e667;
@@ -90,6 +103,11 @@
       this.length = 0;
     }
 
+    /**
+     * Absorb bytes
+     * @param {uint8[]} data - Bytes to hash
+     * @returns {void}
+     */
     process(data) {
       for (let i = 0; i < data.length; ++i) {
         this.buffer[this.bufferLength++] = data[i];
@@ -101,23 +119,32 @@
       this.length += data.length;
     }
 
+    /**
+     * Pad and finish the hash
+     * @returns {uint8[]} 32-byte digest
+     */
     done() {
       // Pad the message
+      /** @type {int32} */
       const paddingLength = this.bufferLength < 56 ? 56 - this.bufferLength : 120 - this.bufferLength;
+      /** @type {uint8[]} */
       const padding = new Uint8Array(paddingLength + 8);
       padding[0] = 0x80;
 
       // Append length in bits as 64-bit big-endian
-      const bitLength = this.length * 8;
+      /** @type {uint32} */
+      const bitLength = OpCodes.ToUint32(this.length * 8);
       for (let i = 0; i < 8; ++i) {
-        padding[paddingLength + i] = OpCodes.AndN(OpCodes.Shr32(bitLength, (7 - i) * 8), 0xff);
+        padding[paddingLength + i] = OpCodes.And32(OpCodes.Shr32(bitLength, (7 - i) * 8), 0xff);
       }
 
       this.process(padding);
 
       // Extract hash value
+      /** @type {uint8[]} */
       const result = [];
       for (let i = 0; i < 8; ++i) {
+        /** @type {uint8[]} */
         const bytes = OpCodes.Unpack32BE(this.h[i]);
         for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
       }
@@ -125,7 +152,12 @@
       return result;
     }
 
+    /**
+     * Compress the buffered 64-byte block
+     * @returns {void}
+     */
     _processBlock() {
+      /** @type {uint32[]} */
       const w = new Uint32Array(64);
 
       // Prepare message schedule
@@ -139,9 +171,9 @@
       }
 
       for (let i = 16; i < 64; ++i) {
-        const s0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(w[i - 15], 7), OpCodes.RotR32(w[i - 15], 18)), OpCodes.Shr32(w[i - 15], 3));
-        const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(w[i - 2], 17), OpCodes.RotR32(w[i - 2], 19)), OpCodes.Shr32(w[i - 2], 10));
-        w[i] = OpCodes.ToUint32(w[i - 16] + s0 + w[i - 7] + s1);
+        const s0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(w[i - 15], 7), OpCodes.RotR32(w[i - 15], 18)), OpCodes.Shr32(w[i - 15], 3));
+        const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(w[i - 2], 17), OpCodes.RotR32(w[i - 2], 19)), OpCodes.Shr32(w[i - 2], 10));
+        w[i] = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(w[i - 16], s0), w[i - 7]), s1);
       }
 
       // Initialize working variables
@@ -156,11 +188,12 @@
 
       // Compression function main loop
       for (let i = 0; i < 64; ++i) {
-        const S1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
-        const ch = OpCodes.XorN(OpCodes.AndN(e, f), OpCodes.AndN(~e, g));
-        const temp1 = OpCodes.ToUint32(h + S1 + ch + SHA256_K[i] + w[i]);
-        const S0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
-        const maj = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(a, c)), OpCodes.AndN(b, c));
+        const S1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
+        const ch = OpCodes.Xor32(OpCodes.And32(e, f), OpCodes.And32(~e, g));
+        /** @type {uint32} */
+        const temp1 = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(h, S1), ch), SHA256_K[i]), w[i]);
+        const S0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
+        const maj = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(a, b), OpCodes.And32(a, c)), OpCodes.And32(b, c));
         const temp2 = OpCodes.ToUint32(S0 + maj);
 
         h = g;
@@ -187,6 +220,7 @@
 
   // ===== AES-256 Implementation (minimal for Fortuna counter mode) =====
 
+  /** @type {uint8[]} */
   const AES_SBOX = new Uint8Array([
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -206,22 +240,37 @@
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
   ]);
 
+  /** @type {uint8[]} */
   const AES_RCON = new Uint8Array([
     0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
   ]);
 
+  /**
+   * AES-256 encryption of single blocks
+   * @class
+   */
   class AES256 {
+    /**
+     * @param {uint8[]} key - 32-byte key
+     */
     constructor(key) {
       if (key.length !== 32) {
         throw new Error('AES256 requires 32-byte key');
       }
+      /** @type {uint8[]} */
       this.roundKeys = this._expandKey(key);
     }
 
+    /**
+     * Expand the key into round keys
+     * @param {uint8[]} key - 32-byte key
+     * @returns {uint8[]} 240 round-key bytes
+     */
     _expandKey(key) {
       const nk = 8;  // Number of 32-bit words in key (256 bits / 32)
       const nr = 14; // Number of rounds for AES-256
       const totalWords = 4 * (nr + 1); // 60 words
+      /** @type {uint32[]} */
       const w = new Uint32Array(totalWords);
 
       // Copy initial key
@@ -231,24 +280,27 @@
 
       // Expand key
       for (let i = nk; i < totalWords; ++i) {
+        /** @type {uint32} */
         let temp = w[i - 1];
 
         if (i % nk === 0) {
           // RotWord, SubWord, Rcon
           temp = this._rotWord(temp);
           temp = this._subWord(temp);
-          temp = OpCodes.ToUint32(OpCodes.XorN(temp, OpCodes.Shl32(AES_RCON[(i / nk) - 1], 24)));
+          temp = OpCodes.ToUint32(OpCodes.Xor32(temp, OpCodes.Shl32(AES_RCON[(i / nk) - 1], 24)));
         } else if (i % nk === 4) {
           // SubWord for AES-256
           temp = this._subWord(temp);
         }
 
-        w[i] = OpCodes.ToUint32(OpCodes.XorN(w[i - nk], temp));
+        w[i] = OpCodes.ToUint32(OpCodes.Xor32(w[i - nk], temp));
       }
 
       // Convert to byte array
+      /** @type {uint8[]} */
       const roundKeys = new Uint8Array(totalWords * 4);
       for (let i = 0; i < totalWords; ++i) {
+        /** @type {uint8[]} */
         const bytes = OpCodes.Unpack32BE(w[i]);
         roundKeys[i * 4] = bytes[0];
         roundKeys[i * 4 + 1] = bytes[1];
@@ -259,11 +311,20 @@
       return roundKeys;
     }
 
+    /**
+     * @param {uint32} word - Key-schedule word
+     * @returns {uint32} Word rotated by one byte
+     */
     _rotWord(word) {
       return OpCodes.RotL32(word, 8);
     }
 
+    /**
+     * @param {uint32} word - Key-schedule word
+     * @returns {uint32} Word with each byte substituted
+     */
     _subWord(word) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.Unpack32BE(word);
       return OpCodes.Pack32BE(
         AES_SBOX[bytes[0]],
@@ -273,7 +334,13 @@
       );
     }
 
+    /**
+     * Encrypt one block
+     * @param {uint8[]} block - 16-byte plaintext
+     * @returns {uint8[]} 16-byte ciphertext
+     */
     encrypt(block) {
+      /** @type {uint8[]} */
       const state = new Uint8Array(block);
       const nr = 14; // AES-256 rounds
 
@@ -296,21 +363,35 @@
       return Array.from(state);
     }
 
+    /**
+     * @param {uint8[]} state - Block, updated in place
+     * @param {int32} round - Round index
+     * @returns {void}
+     */
     _addRoundKey(state, round) {
       const offset = round * 16;
       for (let i = 0; i < 16; ++i) {
-        state[i] = OpCodes.XorN(state[i], this.roundKeys[offset + i]);
+        state[i] = OpCodes.Xor32(state[i], this.roundKeys[offset + i]);
       }
     }
 
+    /**
+     * @param {uint8[]} state - Block, updated in place
+     * @returns {void}
+     */
     _subBytes(state) {
       for (let i = 0; i < 16; ++i) {
         state[i] = AES_SBOX[state[i]];
       }
     }
 
+    /**
+     * @param {uint8[]} state - Block, updated in place
+     * @returns {void}
+     */
     _shiftRows(state) {
       // Row 1: shift left by 1
+      /** @type {uint8} */
       let temp = state[1];
       state[1] = state[5];
       state[5] = state[9];
@@ -319,7 +400,8 @@
 
       // Row 2: shift left by 2
       temp = state[2];
-      let temp2 = state[6];
+      /** @type {uint8} */
+      const temp2 = state[6];
       state[2] = state[10];
       state[6] = state[14];
       state[10] = temp;
@@ -333,6 +415,10 @@
       state[7] = temp;
     }
 
+    /**
+     * @param {uint8[]} state - Block, updated in place
+     * @returns {void}
+     */
     _mixColumns(state) {
       for (let col = 0; col < 4; ++col) {
         const base = col * 4;
@@ -341,10 +427,10 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3);
-        state[base + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3);
-        state[base + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3));
-        state[base + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2));
+        state[base] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3);
+        state[base + 1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3);
+        state[base + 2] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3));
+        state[base + 3] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2));
       }
     }
   }
@@ -423,7 +509,7 @@
           text: "Multiple block test - 128 bytes sequential entropy, generate 64 bytes",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/prngs/fortuna.c",
           input: null,
-          seed: new Array(128).fill(0).map((_, i) => OpCodes.AndN(i, 0xff)),
+          seed: new Array(128).fill(0).map((_, i) => OpCodes.And32(i, 0xff)),
           outputSize: 64,
           expected: OpCodes.Hex8ToBytes(
             '667dbf72dbf3a8b403512fc0e26ec57f' +
@@ -465,7 +551,8 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Fortuna state
-      this.pools = new Array(FORTUNA_POOLS);
+      /** @type {SHA256State[]} */
+      this.pools = [];
       for (let i = 0; i < FORTUNA_POOLS; ++i) {
         this.pools[i] = new SHA256State();
       }
@@ -477,6 +564,7 @@
 
       this.K = new Uint8Array(32); // AES-256 key
       this.IV = new Uint8Array(16); // Counter for AES CTR mode
+      /** @type {AES256} */
       this.aes = null;             // AES cipher instance
 
       this.ready = false;          // PRNG ready after first reseed
@@ -485,6 +573,10 @@
       this._setupAES();
     }
 
+    /**
+     * Rebuild the cipher from the current key
+     * @returns {void}
+     */
     _setupAES() {
       this.aes = new AES256(this.K);
     }
@@ -492,10 +584,11 @@
     /**
      * Update IV counter (little-endian increment)
      * LibTomCrypt: s_fortuna_update_iv()
+     * @returns {void}
      */
     _updateIV() {
       for (let i = 0; i < 16; ++i) {
-        this.IV[i] = OpCodes.AndN(this.IV[i] + 1, 0xff);
+        this.IV[i] = OpCodes.And32(this.IV[i] + 1, 0xff);
         if (this.IV[i] !== 0) {
           break; // No carry, done
         }
@@ -505,6 +598,7 @@
     /**
      * Reseed the generator from entropy pools
      * LibTomCrypt: s_fortuna_reseed()
+     * @returns {void}
      */
     _reseed() {
       // Check minimum pool size
@@ -513,6 +607,7 @@
       }
 
       // Hash all contributing pools
+      /** @type {SHA256State} */
       const md = new SHA256State();
       md.process(Array.from(this.K)); // Start with current key
 
@@ -521,8 +616,9 @@
       // Pool scheduling: pool i is included every 2^i reseeds
       // Pool 0 is always included
       for (let i = 0; i < FORTUNA_POOLS; ++i) {
-        if (i === 0 || OpCodes.AndN(OpCodes.Shr32(newResetCnt, i - 1), 1) === 0) {
+        if (i === 0 || OpCodes.And32(OpCodes.Shr32(newResetCnt, i - 1), 1) === 0) {
           // Include this pool
+          /** @type {uint8[]} */
           const poolHash = this.pools[i].done();
           md.process(poolHash);
 
@@ -534,6 +630,7 @@
       }
 
       // New key = SHA256(K || poolHashes)
+      /** @type {uint8[]} */
       const newKey = md.done();
       this.K.set(newKey);
 
@@ -555,9 +652,10 @@
      * Add entropy to pools (round-robin distribution)
      * LibTomCrypt: fortuna_add_entropy()
      *
-     * @param {Array} data - Entropy bytes
-     * @param {number} source - Source identifier (0-255), default 0
-     * @param {number} pool - Specific pool (optional, uses round-robin if not specified)
+     * @param {uint8[]} data - Entropy bytes
+     * @param {int32} [source=0] - Source identifier (0-255)
+     * @param {int32} [pool=null] - Specific pool (uses round-robin if not specified)
+     * @returns {void}
      */
     AddEntropy(data, source = 0, pool = null) {
       if (!data || data.length === 0) {
@@ -565,9 +663,11 @@
       }
 
       // Limit entropy chunk size to 32 bytes per LibTomCrypt
+      /** @type {uint8[]} */
       const chunk = data.slice(0, Math.min(32, data.length));
 
       // Determine target pool
+      /** @type {int32} */
       const targetPool = pool !== null ? pool : this.poolIdx;
 
       if (targetPool < 0 || targetPool >= FORTUNA_POOLS) {
@@ -575,7 +675,7 @@
       }
 
       // Format: source (1 byte) || length (1 byte) || data
-      const header = [OpCodes.AndN(source, 0xff), OpCodes.AndN(chunk.length, 0xff)];
+      const header = [OpCodes.And32(source, 0xff), OpCodes.And32(chunk.length, 0xff)];
       this.pools[targetPool].process(header);
       this.pools[targetPool].process(chunk);
 
@@ -619,6 +719,7 @@
 
       // Generate full blocks
       while (length >= AES_BLOCK_SIZE) {
+        /** @type {uint8[]} */
         const block = this.aes.encrypt(this.IV);
         for (let _i = 0; _i < block.length; _i++) output.push(block[_i]);
         this._updateIV();
@@ -627,16 +728,22 @@
 
       // Generate partial block if needed
       if (length > 0) {
+        /** @type {uint8[]} */
         const block = this.aes.encrypt(this.IV);
-        output.push(...block.slice(0, length));
+        for (let _i = 0; _i < length; _i++) output.push(block[_i]);
         this._updateIV();
       }
 
       // Generate new key: K = AES_K(IV) || AES_K(IV+1)
+      /** @type {uint8[]} */
       const newKey = [];
-      newKey.push(...this.aes.encrypt(this.IV));
+      /** @type {uint8[]} */
+      const keyHi = this.aes.encrypt(this.IV);
+      for (let _i = 0; _i < keyHi.length; _i++) newKey.push(keyHi[_i]);
       this._updateIV();
-      newKey.push(...this.aes.encrypt(this.IV));
+      /** @type {uint8[]} */
+      const keyLo = this.aes.encrypt(this.IV);
+      for (let _i = 0; _i < keyLo.length; _i++) newKey.push(keyLo[_i]);
       this._updateIV();
 
       this.K.set(newKey);

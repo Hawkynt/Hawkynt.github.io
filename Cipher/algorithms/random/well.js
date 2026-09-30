@@ -195,10 +195,16 @@
       super(algorithm);
 
       // WELL512a state
-      this._state = new Array(R);  // State array (16 uint32 values)
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(R, 0);  // State array (16 uint32 values)
+      /** @type {int32} */
       this._index = 0;             // Current index in state array
+      /** @type {boolean} */
       this._ready = false;         // Initialization flag
+      /** @type {int32} */
       this._outputSize = 32;       // Default output size in bytes
+      /** @type {BigInt} */
+      this._splitMix64State = 0n;  // SplitMix64 state used while seeding
     }
 
     /**
@@ -214,9 +220,10 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
-        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
+        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
       }
 
       // Initialize state array using SplitMix64
@@ -241,34 +248,41 @@
     /**
      * SplitMix64 helper for state initialization
      * Based on reference implementation by Guy L. Steele Jr. and Doug Lea
+     * @param {BigInt} initialSeed - State to advance from
+     * @returns {uint32} Low 32 bits of the mixed output
      */
-    _splitMix64State = 0n;
-
     _splitMix64Next(initialSeed) {
+      /** @type {BigInt} */
       const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       const MIX_CONST_2 = 0x94D049BB133111EBn;
+      /** @type {BigInt} */
       const MASK_64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Update state
-      this._splitMix64State = OpCodes.AndN(
-        (initialSeed !== undefined ? initialSeed : this._splitMix64State) + GOLDEN_GAMMA,
-        MASK_64
-      );
+      this._splitMix64State = OpCodes.AndN(initialSeed + GOLDEN_GAMMA, MASK_64);
 
       // Mix function (Stafford variant 13)
+      /** @type {BigInt} */
       let z = this._splitMix64State;
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30)) * MIX_CONST_1, MASK_64);
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27)) * MIX_CONST_2, MASK_64);
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 31)), MASK_64);
 
       // Convert to 32-bit unsigned integer
-      return Number(OpCodes.AndN(z, 0xFFFFFFFFn));
+      /** @type {uint32} */
+      const low = Number(OpCodes.AndN(z, 0xFFFFFFFFn));
+      return low;
     }
 
     /**
      * MAT0POS: v XOR (v right-shift t)
      * Matrix operation for positive (right) shift
+     * @param {int32} t - Shift amount
+     * @param {uint32} v - Value
+     * @returns {uint32} v XOR (v shifted right by t)
      */
     _MAT0POS(t, v) {
       v = OpCodes.ToUint32(v);
@@ -280,6 +294,9 @@
      * MAT0NEG: v XOR (v left-shift -t)
      * Matrix operation for negative (left) shift
      * In C#: t is negative, so -t gives positive shift amount
+     * @param {int32} t - Negated shift amount
+     * @param {uint32} v - Value
+     * @returns {uint32} v XOR (v shifted left by -t)
      */
     _MAT0NEG(t, v) {
       v = OpCodes.ToUint32(v);
@@ -290,6 +307,7 @@
 
     /**
      * Get state value at current index
+     * @returns {uint32} State word
      */
     get _V0() {
       return this._state[this._index];
@@ -297,6 +315,7 @@
 
     /**
      * Get state value at (index + M1) % R
+     * @returns {uint32} State word
      */
     get _VM1() {
       return this._state[(this._index + M1) % R];
@@ -304,6 +323,7 @@
 
     /**
      * Get state value at (index + M2) % R
+     * @returns {uint32} State word
      */
     get _VM2() {
       return this._state[(this._index + M2) % R];
@@ -311,6 +331,7 @@
 
     /**
      * Get state value at (index + M3) % R
+     * @returns {uint32} State word
      */
     get _VM3() {
       return this._state[(this._index + M3) % R];
@@ -318,6 +339,7 @@
 
     /**
      * Get state value at (index + R - 1) % R (previous position)
+     * @returns {uint32} State word
      */
     get _VRm1() {
       return this._state[(this._index + R - 1) % R];
@@ -325,6 +347,7 @@
 
     /**
      * Set new state value at (index + R - 1) % R
+     * @param {uint32} value - New state word
      */
     set _newV0(value) {
       this._state[(this._index + R - 1) % R] = value;
@@ -332,6 +355,7 @@
 
     /**
      * Set new state value at current index
+     * @param {uint32} value - New state word
      */
     set _newV1(value) {
       this._state[this._index] = value;
@@ -350,6 +374,7 @@
      * 6. newV0 = MAT0NEG(T4, z0) XOR MAT0NEG(T5, z1) XOR MAT0NEG(T6, z2)
      * 7. index = (index + R - 1) % R
      * 8. return state[index]
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {
@@ -407,8 +432,11 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format using OpCodes
+        /** @type {uint8[]} */
         const bytes = OpCodes.Unpack32LE(value);
-        output.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        for (let j = 0; j < 4; ++j) {
+          output.push(bytes[j]);
+        }
       }
 
       // Handle remaining bytes (if length not multiple of 4)

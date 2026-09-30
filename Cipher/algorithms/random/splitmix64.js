@@ -199,11 +199,15 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SplitMix64 constants
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;  // Scaled golden ratio
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;   // Stafford variant 13
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // Generator state
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
@@ -219,6 +223,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian - most significant byte first)
+      /** @type {BigInt} */
       this._state = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         this._state = OpCodes.OrN(OpCodes.ShiftLn(this._state, 8), BigInt(seedBytes[i]));
@@ -244,6 +249,7 @@
      * 3. z = (z XOR (z shr 30)) * MIX_CONST_1
      * 4. z = (z XOR (z shr 27)) * MIX_CONST_2
      * 5. return z XOR (z shr 31)
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -284,11 +290,13 @@
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }

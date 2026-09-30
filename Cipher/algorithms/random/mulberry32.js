@@ -291,15 +291,15 @@
       // Step 2: MurmurHash3-style mixing
       // First mix: XOR with right-shift 15, multiply by (z|1)
       const zShifted15 = OpCodes.Shr32(z, 15);
-      z = Math.imul(OpCodes.XorN(z, zShifted15), OpCodes.OrN(z, 1));
+      z = Math.imul(OpCodes.Xor32(z, zShifted15), OpCodes.Or32(z, 1));
 
       // Step 3: Second mix: XOR with addition and multiply
       const zShifted7 = OpCodes.Shr32(z, 7);
-      z = OpCodes.ToInt(OpCodes.XorN(z, z + Math.imul(OpCodes.XorN(z, zShifted7), OpCodes.OrN(z, 61))));
+      z = OpCodes.ToInt(OpCodes.Xor32(z, z + Math.imul(OpCodes.Xor32(z, zShifted7), OpCodes.Or32(z, 61))));
 
       // Step 4: Final mix: XOR with right-shift 14
       const zShifted14 = OpCodes.Shr32(z, 14);
-      return OpCodes.ToDWord(OpCodes.XorN(z, zShifted14));
+      return OpCodes.ToDWord(OpCodes.Xor32(z, zShifted14));
     }
 
     /**

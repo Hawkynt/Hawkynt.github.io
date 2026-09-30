@@ -44,22 +44,50 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   /**
+   * Snapshot of the generator state words
+   * @class
+   */
+  class RomuDuoState {
+    /**
+     * @param {BigInt} x - State word x
+     * @param {BigInt} y - State word y
+     */
+    constructor(x, y) {
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {BigInt} */
+      this.y = y;
+    }
+  }
+
+  /**
+   * SplitMix64 state advance: add the golden gamma
+   * @param {BigInt} current - State before the step
+   * @returns {BigInt} Advanced state
+   */
+  function SplitMix64Advance(current) {
+    /** @type {BigInt} */
+    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+    return OpCodes.ToQWord(current + GOLDEN_GAMMA);
+  }
+
+  /**
    * SplitMix64 seeding algorithm
    * Used to initialize RomuDuo state from a single 64-bit seed
    * Based on standard SplitMix64 implementation
+   * @param {BigInt} advanced - Advanced state (see SplitMix64Advance)
+   * @returns {BigInt} Mixed output
    */
-  function SplitMix64(state) {
-    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
-
-    let z = state;
+  function SplitMix64Mix(advanced) {
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
     z = OpCodes.ToQWord(z * 0x94D049BB133111EBn);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: state };
+    return z;
   }
 
   class RomuDuoAlgorithm extends RandomGenerationAlgorithm {
@@ -184,10 +212,13 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // RomuDuo algorithm constant (same as RomuTrio)
+      /** @type {BigInt} */
       this.ROMU_MULTIPLIER = 0xD3833E804F4C574Bn; // 15241094284759029579
 
       // RomuDuo state: two 64-bit values (using BigInt)
+      /** @type {BigInt} */
       this._xState = 0n;
+      /** @type {BigInt} */
       this._yState = 0n;
       this._ready = false;
     }
@@ -207,31 +238,34 @@
 
       if (seedBytes.length >= 16) {
         // Direct state initialization: 16 bytes = 2x64-bit values (little-endian)
+        /** @type {BigInt} */
         this._xState = 0n;
         for (let i = 0; i < 8; ++i) {
           this._xState = OpCodes.OrN(this._xState, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
         }
 
+        /** @type {BigInt} */
         this._yState = 0n;
         for (let i = 0; i < 8; ++i) {
           this._yState = OpCodes.OrN(this._yState, OpCodes.ShiftLn(BigInt(seedBytes[8 + i]), i * 8));
         }
       } else {
         // Single 64-bit seed: use SplitMix64 to initialize state
+        /** @type {BigInt} */
         let seedValue = 0n;
         for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
           seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
         }
 
         // Initialize state using SplitMix64
-        let state = seedValue;
+        /** @type {BigInt} */
+        let mixState = seedValue;
 
-        let result = SplitMix64(state);
-        this._xState = result.value;
-        state = result.nextState;
+        mixState = SplitMix64Advance(mixState);
+        this._xState = SplitMix64Mix(mixState);
 
-        result = SplitMix64(state);
-        this._yState = result.value;
+        mixState = SplitMix64Advance(mixState);
+        this._yState = SplitMix64Mix(mixState);
       }
 
       this._ready = true;
@@ -299,11 +333,13 @@
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, i * 8);
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -356,13 +392,10 @@
 
     /**
      * Get current internal state (for testing/debugging)
-     * @returns {Object} Current state {x, y}
+     * @returns {RomuDuoState} Current state {x, y}
      */
     getState() {
-      return {
-        x: this._xState,
-        y: this._yState
-      };
+      return new RomuDuoState(this._xState, this._yState);
     }
   }
 

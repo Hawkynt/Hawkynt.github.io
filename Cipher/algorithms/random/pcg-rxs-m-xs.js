@@ -150,13 +150,17 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // PCG state (64-bit)
+      /** @type {BigInt} */
       this._state = 0n;
 
       // PCG constants for 64-bit LCG (from Apache Commons RNG)
+      /** @type {BigInt} */
       this.MULTIPLIER = 6364136223846793005n; // 64-bit LCG multiplier
+      /** @type {BigInt} */
       this.DEFAULT_INCREMENT = 1442695040888963407n; // Default increment (odd)
 
       // RXS-M-XS output constants (from Apache Commons RNG)
+      /** @type {BigInt} */
       this.MULTIPLY_CONSTANT = 0xAEF17502108EF2D9n; // -5840758589994634535L as unsigned
 
       this._increment = this.DEFAULT_INCREMENT;
@@ -175,6 +179,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -183,6 +188,7 @@
       // Initialize state using Apache Commons RNG method:
       // state = bump(seed + increment)
       // where bump(x) = x * MULTIPLIER + increment
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._state = (seedValue + this._increment) * this.MULTIPLIER + this._increment;
       this._state = OpCodes.AndN(this._state, mask64);
@@ -200,6 +206,7 @@
     /**
      * Set sequence/increment value
      * Increment must be odd for full period
+     * @param {uint8[]} seqBytes - Increment, big-endian
      */
     set sequence(seqBytes) {
       if (!seqBytes || seqBytes.length === 0) {
@@ -208,6 +215,7 @@
       }
 
       // Convert sequence bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seqValue = 0n;
       for (let i = 0; i < Math.min(seqBytes.length, 8); ++i) {
         seqValue = OpCodes.OrN(OpCodes.ShiftLn(seqValue, 8n), BigInt(seqBytes[i]));
@@ -218,10 +226,14 @@
       // We directly ensure it's odd here
       this._increment = OpCodes.OrN(OpCodes.ShiftLn(seqValue, 1n), 1n);
 
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._increment = OpCodes.AndN(this._increment, mask64);
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get sequence() {
       return null;
     }
@@ -235,15 +247,18 @@
      * 3. Apply permutation to OLD state
      *
      * Reference: Apache Commons RNG PcgRxsMXs64.next()
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
         throw new Error('PCG not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Save current state for output
+      /** @type {BigInt} */
       const oldState = this._state;
 
       // Advance LCG state: state = state * MULTIPLIER + INCREMENT
@@ -264,14 +279,21 @@
      * 1. Random XorShift: word XOR (word right-shift by variable amount)
      * 2. Multiply: word multiplied by MULTIPLY_CONSTANT
      * 3. XorShift: word XOR (word right-shift by 43)
+     * @param {BigInt} s - LCG state
+     * @returns {BigInt} Permuted output
      */
-    _permute(state) {
+    _permute(s) {
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Step 1: Random XorShift
       // Extract shift amount from top 5 bits: ShiftRn(state, 59) + 5
-      const shiftAmount1 = Number(OpCodes.ShiftRn(state, 59n)) + 5;
-      let word = OpCodes.XorN(state, OpCodes.ShiftRn(state, BigInt(shiftAmount1)));
+      /** @type {int32} */
+      const top = Number(OpCodes.ShiftRn(s, 59));
+      /** @type {int32} */
+      const shiftAmount1 = top + 5;
+      /** @type {BigInt} */
+      let word = OpCodes.XorN(s, OpCodes.ShiftRn(s, shiftAmount1));
       word = OpCodes.AndN(word, mask64);
 
       // Step 2: MCG Multiply
@@ -279,7 +301,7 @@
       word = OpCodes.AndN(word, mask64);
 
       // Step 3: Fixed XorShift (shift right by 43)
-      word = OpCodes.XorN(word, OpCodes.ShiftRn(word, 43n));
+      word = OpCodes.XorN(word, OpCodes.ShiftRn(word, 43));
       word = OpCodes.AndN(word, mask64);
 
       return word;
@@ -288,12 +310,15 @@
     /**
      * Generate a single 32-bit value
      * Extracts upper 32 bits from 64-bit output
+     * @returns {uint32} Upper half of the next output
      */
     _next32() {
+      /** @type {BigInt} */
       const value64 = this._next64();
 
       // Extract upper 32 bits for better distribution
-      const value32 = Number(OpCodes.ShiftRn(value64, 32n));
+      /** @type {uint32} */
+      const value32 = Number(OpCodes.ShiftRn(value64, 32));
       return OpCodes.ToUint32(value32);
     }
 
@@ -319,12 +344,15 @@
       const output = [];
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Pack 64-bit value as 8 bytes (big-endian)
         for (let i = 56; i >= 0; i -= 8) {
           if (output.length < length) {
-            output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value64, BigInt(i)), 0xFFn)));
+            /** @type {uint8} */
+            const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value64, i), 0xFFn));
+            output.push(b);
           }
         }
       }
