@@ -74,6 +74,7 @@
   // checked against the registered implementation as well as the published
   // SHAKE-256 values.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -81,6 +82,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -90,23 +92,38 @@
 
   // The rho offsets and the pi permutation, derived from their definitions
   // rather than transcribed.
-  const KECCAK_ROTATION = new Uint8Array(25);
-  const KECCAK_PI = new Uint8Array(25);
-
-  (function buildKeccakTables() {
+  /**
+   * The rho offsets, walking (x, y) -> (y, 2x + 3y) from (1, 0).
+   * @returns {Uint8Array} rotation per lane
+   */
+  function BuildKeccakRotation() {
+    const table = new Uint8Array(25);
     let x = 1;
     let y = 0;
     for (let t = 0; t < 24; ++t) {
-      KECCAK_ROTATION[x + 5 * y] = ((t + 1) * (t + 2) / 2) % 64;
+      table[x + 5 * y] = ((t + 1) * (t + 2) / 2) % 64;
       const nextX = y;
       const nextY = (2 * x + 3 * y) % 5;
       x = nextX;
       y = nextY;
     }
+    return table;
+  }
+
+  /**
+   * The pi permutation: the source lane of every destination lane.
+   * @returns {Uint8Array} source index per lane
+   */
+  function BuildKeccakPi() {
+    const table = new Uint8Array(25);
     for (let column = 0; column < 5; ++column)
       for (let row = 0; row < 5; ++row)
-        KECCAK_PI[row + 5 * ((2 * column + 3 * row) % 5)] = column + 5 * row;
-  })();
+        table[row + 5 * ((2 * column + 3 * row) % 5)] = column + 5 * row;
+    return table;
+  }
+
+  const KECCAK_ROTATION = BuildKeccakRotation();
+  const KECCAK_PI = BuildKeccakPi();
 
   /**
    * The Keccak-f[1600] permutation, over a state of 25 lanes each held as a low
@@ -123,7 +140,9 @@
     for (let round = 0; round < 24; ++round) {
       // theta
       for (let column = 0; column < 5; ++column) {
+        /** @type {int32} */
         let accumulatorHigh = high[column];
+        /** @type {int32} */
         let accumulatorLow = low[column];
         for (let row = 1; row < 5; ++row) {
           accumulatorHigh = OpCodes.Xor32(accumulatorHigh, high[column + 5 * row]);
@@ -146,10 +165,15 @@
 
       // rho and pi
       for (let index = 0; index < 25; ++index) {
+        /** @type {int32} */
         const source = KECCAK_PI[index];
         const rotated = OpCodes.RotL64_HL(high[source], low[source], KECCAK_ROTATION[source]);
-        bufferHigh[index] = rotated.h;
-        bufferLow[index] = rotated.l;
+        /** @type {uint32} */
+        const rotatedHigh = rotated.h;
+        /** @type {uint32} */
+        const rotatedLow = rotated.l;
+        bufferHigh[index] = rotatedHigh;
+        bufferLow[index] = rotatedLow;
       }
 
       // chi
@@ -174,32 +198,98 @@
   const SHAKE256_RATE = 136;
 
   /**
+   * A SHAKE-256 sponge being squeezed: the state and how many octets of the
+   * current block have been read.
+   */
+  class HqcShakeStream {
+    constructor() {
+      /** @type {Int32Array} */
+      this.high = new Int32Array(25);
+      /** @type {Int32Array} */
+      this.low = new Int32Array(25);
+      /** @type {int32} */
+      this.squeezed = 0;
+    }
+  }
+
+  /**
+   * Exclusive-or one octet into the state at a byte offset of the rate.
+   * @param {HqcShakeStream} stream - the sponge
+   * @param {int32} offset - byte offset in the block
+   * @param {uint32} value - the octet
+   */
+  function ShakeXorByte(stream, offset, value) {
+    const lane = Math.floor(offset / 8);
+    const inLane = offset % 8;
+    if (inLane < 4)
+      stream.low[lane] = OpCodes.Xor32(stream.low[lane], OpCodes.Shl32(value, 8 * inLane));
+    else
+      stream.high[lane] = OpCodes.Xor32(stream.high[lane], OpCodes.Shl32(value, 8 * (inLane - 4)));
+  }
+
+  /**
+   * The next squeezed octet, permuting when the block is used up.
+   * @param {HqcShakeStream} stream - the sponge
+   * @returns {uint32} the octet
+   */
+  function ShakeNextByte(stream) {
+    if (stream.squeezed === SHAKE256_RATE) {
+      KeccakF1600(stream.high, stream.low);
+      stream.squeezed = 0;
+    }
+    const lane = Math.floor(stream.squeezed / 8);
+    const inLane = stream.squeezed % 8;
+    /** @type {int32} */
+    let half = 0;
+    if (inLane < 4) {
+      half = stream.low[lane];
+    } else {
+      half = stream.high[lane];
+    }
+    const byte = OpCodes.And32(OpCodes.Shr32(half, 8 * (inLane % 4)), 0xFF);
+    ++stream.squeezed;
+    return byte;
+  }
+
+  /**
+   * Squeeze count octets; successive reads continue the same stream.
+   * @param {HqcShakeStream} stream - the sponge
+   * @param {int32} count - octets required
+   * @returns {uint8[]} the octets
+   */
+  function ShakeRead(stream, count) {
+    /** @type {uint8[]} */
+    const out = new Array(count);
+    for (let i = 0; i < count; ++i) out[i] = ShakeNextByte(stream);
+    return out;
+  }
+
+  /**
+   * Squeeze and discard count octets.
+   * @param {HqcShakeStream} stream - the sponge
+   * @param {int32} count - octets to skip
+   */
+  function ShakeSkip(stream, count) {
+    for (let i = 0; i < count; ++i) ShakeNextByte(stream);
+  }
+
+  /**
    * Absorb the given byte strings and return a reader over the squeezed stream.
    * Successive reads continue the same stream rather than restarting it.
    * @param {uint8[][]} parts - byte strings, absorbed in order
-   * @returns {object} a reader with read(count) and skip(count)
+   * @returns {HqcShakeStream} the sponge, ready to squeeze
    */
   function Shake256Stream(parts) {
-    const high = new Int32Array(25);
-    const low = new Int32Array(25);
+    const stream = new HqcShakeStream();
     let position = 0;
-
-    const xorByte = function (offset, value) {
-      const lane = Math.floor(offset / 8);
-      const inLane = offset % 8;
-      if (inLane < 4)
-        low[lane] = OpCodes.Xor32(low[lane], OpCodes.Shl32(value, 8 * inLane));
-      else
-        high[lane] = OpCodes.Xor32(high[lane], OpCodes.Shl32(value, 8 * (inLane - 4)));
-    };
 
     for (let p = 0; p < parts.length; ++p) {
       const part = parts[p];
       for (let i = 0; i < part.length; ++i) {
-        xorByte(position, OpCodes.AndN(part[i], 0xFF));
+        ShakeXorByte(stream, position, OpCodes.And32(part[i], 0xFF));
         ++position;
         if (position === SHAKE256_RATE) {
-          KeccakF1600(high, low);
+          KeccakF1600(stream.high, stream.low);
           position = 0;
         }
       }
@@ -208,45 +298,21 @@
     // The SHAKE domain separator followed by the pad10*1 terminator. When only
     // one byte of the block is free the two land on the same byte, which
     // exclusive-oring both in handles without a special case.
-    xorByte(position, 0x1F);
-    xorByte(SHAKE256_RATE - 1, 0x80);
-    KeccakF1600(high, low);
+    ShakeXorByte(stream, position, 0x1F);
+    ShakeXorByte(stream, SHAKE256_RATE - 1, 0x80);
+    KeccakF1600(stream.high, stream.low);
 
-    let squeezed = 0;
-
-    const nextByte = function () {
-      if (squeezed === SHAKE256_RATE) {
-        KeccakF1600(high, low);
-        squeezed = 0;
-      }
-      const lane = Math.floor(squeezed / 8);
-      const inLane = squeezed % 8;
-      const half = inLane < 4 ? low[lane] : high[lane];
-      const byte = OpCodes.AndN(OpCodes.Shr32(half, 8 * (inLane % 4)), 0xFF);
-      ++squeezed;
-      return byte;
-    };
-
-    return {
-      read: function (count) {
-        const out = new Array(count);
-        for (let i = 0; i < count; ++i) out[i] = nextByte();
-        return out;
-      },
-      skip: function (count) {
-        for (let i = 0; i < count; ++i) nextByte();
-      }
-    };
+    return stream;
   }
 
   /**
    * SHAKE-256 over the concatenation of the given byte strings.
    * @param {uint8[][]} parts - byte strings, absorbed in order
-   * @param {number} outputBytes - octets required
-   * @returns {number[]} the output octets
+   * @param {int32} outputBytes - octets required
+   * @returns {uint8[]} the output octets
    */
   function Shake256(parts, outputBytes) {
-    return Shake256Stream(parts).read(outputBytes);
+    return ShakeRead(Shake256Stream(parts), outputBytes);
   }
 
   // ===== PARAMETER SETS =====
@@ -270,58 +336,143 @@
   const DOMAIN_H = 4;
   const DOMAIN_K = 5;
 
-  const PARAMETER_SETS = (() => {
-    const build = (name, n, n1, n2, omega, omegaR, omegaE, delta, k, g, rsPoly) => {
-      const set = {
-        name: name, n: n, n1: n1, n2: n2, n1n2: n1 * n2,
-        omega: omega, omegaR: omegaR, omegaE: omegaE,
-        delta: delta, k: k, g: g, rsPoly: rsPoly
-      };
-      set.nBytes = Math.ceil(n / 8);
-      set.nWords = Math.ceil(n / 32);
-      set.topBit = n - (set.nWords - 1) * 32;
-      set.topMask = OpCodes.Shr32(0xFFFFFFFF, 32 - set.topBit);
-      set.n1n2Bytes = set.n1n2 / 8;
-      set.n1n2Words = set.n1n2 / 32;
-      set.multiplicity = n2 / 128;
-      set.publicKeySize = SEED_BYTES + set.nBytes;
-      set.privateKeySize = SEED_BYTES + set.publicKeySize;
-      set.ciphertextSize = set.nBytes + set.n1n2Bytes + HASH_BYTES + SALT_BYTES;
-      set.sharedSecretSize = HASH_BYTES;
-      set.randomnessSize = k + SALT_BYTES;
-      return set;
-    };
+  class HqcParams {
+    /**
+     * @param {string} name - 'hqc-128', 'hqc-192' or 'hqc-256'
+     * @param {int32} n - length of the quasi-cyclic code
+     * @param {int32} n1 - Reed-Solomon length
+     * @param {int32} n2 - duplicated Reed-Muller length
+     * @param {int32} omega - weight of the secret
+     * @param {int32} omegaR - weight of r1 and r2
+     * @param {int32} omegaE - weight of e
+     * @param {int32} delta - Reed-Solomon correction capacity
+     * @param {int32} k - Reed-Solomon dimension, the message octets
+     * @param {int32} g - generator polynomial length
+     * @param {int32[]} rsPoly - generator polynomial coefficients
+     */
+    constructor(name, n, n1, n2, omega, omegaR, omegaE, delta, k, g, rsPoly) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.n1 = n1;
+      /** @type {int32} */
+      this.n2 = n2;
+      /** @type {int32} */
+      this.n1n2 = n1 * n2;
+      /** @type {int32} */
+      this.omega = omega;
+      /** @type {int32} */
+      this.omegaR = omegaR;
+      /** @type {int32} */
+      this.omegaE = omegaE;
+      /** @type {int32} */
+      this.delta = delta;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.g = g;
+      /** @type {int32[]} */
+      this.rsPoly = rsPoly;
+      /** @type {int32} */
+      this.nBytes = Math.ceil(n / 8);
+      /** @type {int32} */
+      this.nWords = Math.ceil(n / 32);
+      /** @type {int32} */
+      this.topBit = n - (this.nWords - 1) * 32;
+      /** @type {uint32} */
+      this.topMask = OpCodes.Shr32(0xFFFFFFFF, 32 - this.topBit);
+      /** @type {int32} */
+      this.n1n2Bytes = this.n1n2 / 8;
+      /** @type {int32} */
+      this.n1n2Words = this.n1n2 / 32;
+      /** @type {int32} */
+      this.multiplicity = n2 / 128;
+      /** @type {int32} */
+      this.publicKeySize = SEED_BYTES + this.nBytes;
+      /** @type {int32} */
+      this.privateKeySize = SEED_BYTES + this.publicKeySize;
+      /** @type {int32} */
+      this.ciphertextSize = this.nBytes + this.n1n2Bytes + HASH_BYTES + SALT_BYTES;
+      /** @type {int32} */
+      this.sharedSecretSize = HASH_BYTES;
+      /** @type {int32} */
+      this.randomnessSize = k + SALT_BYTES;
+    }
+  }
 
-    const sets = {};
-    for (const set of [
-      build('hqc-128', 17669, 46, 384, 66, 75, 75, 15, 16, 31,
-        [89, 69, 153, 116, 176, 117, 111, 75, 73, 233, 242, 233, 65, 210, 21, 139,
-         103, 173, 67, 118, 105, 210, 174, 110, 74, 69, 228, 82, 255, 181, 1]),
-      build('hqc-192', 35851, 56, 640, 100, 114, 114, 16, 24, 33,
-        [45, 216, 239, 24, 253, 104, 27, 40, 107, 50, 163, 210, 227, 134, 224, 158,
-         119, 13, 158, 1, 238, 164, 82, 43, 15, 232, 246, 142, 50, 189, 29, 232, 1]),
-      build('hqc-256', 57637, 90, 640, 131, 149, 149, 29, 32, 59,
-        [49, 167, 49, 39, 200, 121, 124, 91, 240, 63, 148, 71, 150, 123, 87, 101, 32,
-         215, 159, 71, 201, 115, 97, 210, 186, 183, 141, 217, 123, 12, 31, 243, 180,
-         219, 152, 239, 99, 141, 4, 246, 191, 144, 8, 232, 47, 27, 141, 178, 130, 64,
-         124, 47, 39, 188, 216, 48, 199, 187, 1])
-    ]) sets[set.name] = set;
-    return sets;
-  })();
+  /** @type {int32[]} */
+  const RS_POLY_128 = [89, 69, 153, 116, 176, 117, 111, 75, 73, 233, 242, 233, 65, 210, 21, 139,
+     103, 173, 67, 118, 105, 210, 174, 110, 74, 69, 228, 82, 255, 181, 1];
+  /** @type {int32[]} */
+  const RS_POLY_192 = [45, 216, 239, 24, 253, 104, 27, 40, 107, 50, 163, 210, 227, 134, 224, 158,
+     119, 13, 158, 1, 238, 164, 82, 43, 15, 232, 246, 142, 50, 189, 29, 232, 1];
+  /** @type {int32[]} */
+  const RS_POLY_256 = [49, 167, 49, 39, 200, 121, 124, 91, 240, 63, 148, 71, 150, 123, 87, 101, 32,
+     215, 159, 71, 201, 115, 97, 210, 186, 183, 141, 217, 123, 12, 31, 243, 180,
+     219, 152, 239, 99, 141, 4, 246, 191, 144, 8, 232, 47, 27, 141, 178, 130, 64,
+     124, 47, 39, 188, 216, 48, 199, 187, 1];
 
+  const HQC_128 = new HqcParams('hqc-128', 17669, 46, 384, 66, 75, 75, 15, 16, 31, RS_POLY_128);
+  const HQC_192 = new HqcParams('hqc-192', 35851, 56, 640, 100, 114, 114, 16, 24, 33, RS_POLY_192);
+  const HQC_256 = new HqcParams('hqc-256', 57637, 90, 640, 131, 149, 149, 29, 32, 59, RS_POLY_256);
+
+  /** @type {HqcParams[]} */
+  const PARAMETER_SET_LIST = [HQC_128, HQC_192, HQC_256];
+
+  const PARAMETER_SETS = {
+    'hqc-128': HQC_128,
+    'hqc-192': HQC_192,
+    'hqc-256': HQC_256
+  };
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {HqcParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {HqcParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /**
+   * Look a parameter set up by a label that names, contains or is contained in
+   * one of the set names, or by its security level alone.
+   * @param {string|int32} label - 'hqc-128', 'HQC-192', '256', ...
+   * @returns {HqcParams|null} the parameter set, or null
+   */
   function FindParameterSet(label) {
-    if (!label) return null;
+    if (!label) {
+      return null;
+    }
+    /** @type {string} */
     const text = String(label).toLowerCase();
-    if (PARAMETER_SETS[text]) return PARAMETER_SETS[text];
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (name.indexOf(text) >= 0 || text.indexOf(name) >= 0) return PARAMETER_SETS[name];
-    if (text === '128' || text === '192' || text === '256') return PARAMETER_SETS['hqc-' + text];
+    const exact = ParameterSetEntry(text);
+    if (exact) return exact;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const name = PARAMETER_SET_LIST[i].name;
+      if (name.indexOf(text) >= 0 || text.indexOf(name) >= 0) return PARAMETER_SET_LIST[i];
+    }
+    if (text === '128' || text === '192' || text === '256') return ParameterSetEntry('hqc-' + text);
     return null;
   }
 
+  /**
+   * The parameter set whose encoded key has this length.
+   * @param {int32} length - byte length
+   * @param {string} field - 'publicKeySize' or 'privateKeySize'
+   * @returns {HqcParams|null} the parameter set, or null
+   */
   function ParameterSetByLength(length, field) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name][field] === length) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const set = PARAMETER_SET_LIST[i];
+      const size = field === 'privateKeySize' ? set.privateKeySize : set.publicKeySize;
+      if (size === length) return set;
+    }
     return null;
   }
 
@@ -330,33 +481,92 @@
   // Every parameter set uses the same field, generated by x^8 + x^4 + x^3 + x^2
   // + 1, with 2 as the primitive element.
 
-  const GF_EXP = new Uint16Array(256);
-  const GF_LOG = new Uint16Array(256);
-
-  (function buildFieldTables() {
+  /**
+   * Powers of the primitive element 2, with alpha^255 = 1 appended.
+   * @returns {Uint16Array} exponent to element
+   */
+  function BuildFieldExp() {
+    const table = new Uint16Array(256);
     let element = 1;
     for (let i = 0; i < GF_ORDER; ++i) {
-      GF_EXP[i] = element;
-      GF_LOG[element] = i;
+      table[i] = element;
       element = element * 2;
-      if (element >= 256) element = OpCodes.XorN(element, GF_POLY);
+      if (element >= 256) element = OpCodes.Xor32(element, GF_POLY);
     }
-    GF_EXP[GF_ORDER] = 1;
-    GF_LOG[0] = 0;
-  })();
+    table[GF_ORDER] = 1;
+    return table;
+  }
 
+  /**
+   * Discrete logarithms to the base 2, with log(0) set to 0.
+   * @param {Uint16Array} exp - the power table
+   * @returns {Uint16Array} element to exponent
+   */
+  function BuildFieldLog(exp) {
+    const table = new Uint16Array(256);
+    for (let i = 0; i < GF_ORDER; ++i) {
+      /** @type {int32} */
+      const element = exp[i];
+      table[element] = i;
+    }
+    table[0] = 0;
+    return table;
+  }
+
+  const GF_EXP = BuildFieldExp();
+  const GF_LOG = BuildFieldLog(GF_EXP);
+
+  /**
+   * @param {uint32} a - field element
+   * @param {uint32} b - field element
+   * @returns {uint32} a * b in GF(2^8)
+   */
   function GfMul(a, b) {
-    if (a === 0 || b === 0) return 0;
-    return GF_EXP[(GF_LOG[a] + GF_LOG[b]) % GF_ORDER];
+    if (a === 0 || b === 0) {
+      return 0;
+    }
+    /** @type {int32} */
+    const logA = GF_LOG[a];
+    /** @type {int32} */
+    const logB = GF_LOG[b];
+    /** @type {uint32} */
+    const product = GF_EXP[(logA + logB) % GF_ORDER];
+    return product;
   }
 
+  /**
+   * @param {uint32} a - field element
+   * @returns {uint32} 1 / a, or 0 for 0
+   */
   function GfInverse(a) {
-    if (a === 0) return 0;
-    return GF_EXP[(GF_ORDER - GF_LOG[a]) % GF_ORDER];
+    if (a === 0) {
+      return 0;
+    }
+    /** @type {int32} */
+    const logA = GF_LOG[a];
+    /** @type {uint32} */
+    const inverse = GF_EXP[(GF_ORDER - logA) % GF_ORDER];
+    return inverse;
   }
 
+  /**
+   * @param {int32} exponent - any integer
+   * @returns {uint32} alpha^exponent
+   */
   function GfPow(exponent) {
-    return GF_EXP[((exponent % GF_ORDER) + GF_ORDER) % GF_ORDER];
+    /** @type {uint32} */
+    const power = GF_EXP[((exponent % GF_ORDER) + GF_ORDER) % GF_ORDER];
+    return power;
+  }
+
+  /**
+   * @param {int32} count - length
+   * @returns {int32[]} a zero-filled array
+   */
+  function ZeroArray(count) {
+    /** @type {int32[]} */
+    const out = new Array(count).fill(0);
+    return out;
   }
 
   // ===== randomness =====
@@ -366,10 +576,12 @@
    * The round 4 package uses this in place of the NIST AES-256 CTR_DRBG, which
    * is why the Known Answer Test seeds can drive this file directly.
    * @param {uint8[]} seed - the 48 octet seed
-   * @returns {object} a reader over the stream
+   * @returns {HqcShakeStream} a reader over the stream
    */
   function Prng(seed) {
-    return Shake256Stream([seed, [DOMAIN_PRNG]]);
+    /** @type {uint8[]} */
+    const domain = [DOMAIN_PRNG];
+    return Shake256Stream([seed, domain]);
   }
 
   /**
@@ -378,18 +590,25 @@
    * consumes the whole of the final word, so the skip below is part of the
    * definition rather than an optimisation.
    * @param {uint8[]} seed - the 40 octet seed
-   * @returns {object} a reader over the stream
+   * @returns {HqcShakeStream} a reader over the stream, read with ExpanderRead
    */
   function SeedExpander(seed) {
-    const stream = Shake256Stream([seed, [DOMAIN_SEEDEXPANDER]]);
-    return {
-      read: function (count) {
-        const out = stream.read(count);
-        const remainder = count % 8;
-        if (remainder !== 0) stream.skip(8 - remainder);
-        return out;
-      }
-    };
+    /** @type {uint8[]} */
+    const domain = [DOMAIN_SEEDEXPANDER];
+    return Shake256Stream([seed, domain]);
+  }
+
+  /**
+   * Read from a seed expander: count octets, then the rest of the final word.
+   * @param {HqcShakeStream} expander - the stream
+   * @param {int32} count - octets required
+   * @returns {uint8[]} the octets
+   */
+  function ExpanderRead(expander, count) {
+    const out = ShakeRead(expander, count);
+    const remainder = count % 8;
+    if (remainder !== 0) ShakeSkip(expander, 8 - remainder);
+    return out;
   }
 
   // ===== vectors over GF(2)[x] / (x^n - 1) =====
@@ -398,23 +617,39 @@
   // of the vector is bit i modulo 32 of word i over 32 - the same order in which
   // the scheme serialises its vectors to octets.
 
+  /**
+   * @param {uint8[]} bytes - octets, least significant first
+   * @param {int32} wordCount - words to fill
+   * @returns {Uint32Array} the words
+   */
   function BytesToWords(bytes, wordCount) {
     const words = new Uint32Array(wordCount);
     const limit = Math.min(bytes.length, wordCount * 4);
     for (let i = 0; i < limit; ++i) {
       const w = OpCodes.Shr32(i, 2);
-      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(OpCodes.AndN(bytes[i], 0xFF), 8 * (i % 4)));
+      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(OpCodes.And32(bytes[i], 0xFF), 8 * (i % 4)));
     }
     return words;
   }
 
+  /**
+   * @param {Uint32Array} words - the words
+   * @param {int32} byteCount - octets to emit
+   * @returns {uint8[]} the octets, least significant first
+   */
   function WordsToBytes(words, byteCount) {
+    /** @type {uint8[]} */
     const bytes = new Array(byteCount);
     for (let i = 0; i < byteCount; ++i)
-      bytes[i] = OpCodes.AndN(OpCodes.Shr32(words[OpCodes.Shr32(i, 2)], 8 * (i % 4)), 0xFF);
+      bytes[i] = OpCodes.And32(OpCodes.Shr32(words[OpCodes.Shr32(i, 2)], 8 * (i % 4)), 0xFF);
     return bytes;
   }
 
+  /**
+   * @param {Uint32Array} a - vector
+   * @param {Uint32Array} b - vector, at least as long
+   * @returns {Uint32Array} a + b over GF(2)
+   */
   function VectAdd(a, b) {
     const out = new Uint32Array(a.length);
     for (let i = 0; i < a.length; ++i) out[i] = OpCodes.Xor32(a[i], b[i]);
@@ -424,7 +659,7 @@
   /**
    * Fold every bit at index n or above back down by n, which is the reduction
    * modulo x^n - 1.
-   * @param {object} set - the parameter set
+   * @param {HqcParams} set - the parameter set
    * @param {Uint32Array} accumulator - the unreduced product
    * @returns {Uint32Array} the reduced vector, set.nWords long
    */
@@ -461,8 +696,8 @@
    * Multiply modulo x^n - 1. In this scheme one operand always has low weight,
    * so it is given by the positions of its set bits and the product is the sum
    * of the other operand shifted to each of them.
-   * @param {object} set - the parameter set
-   * @param {number[]} sparsePositions - positions of the set bits
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} sparsePositions - positions of the set bits
    * @param {Uint32Array} dense - the other operand
    * @returns {Uint32Array} the product
    */
@@ -472,8 +707,10 @@
 
     for (let s = 0; s < sparsePositions.length; ++s) {
       const position = sparsePositions[s];
+      /** @type {int32} */
       const wordShift = OpCodes.Shr32(position, 5);
-      const bitShift = OpCodes.AndN(position, 31);
+      /** @type {int32} */
+      const bitShift = OpCodes.And32(position, 31);
 
       if (bitShift === 0) {
         for (let i = 0; i < words; ++i)
@@ -481,6 +718,7 @@
       } else {
         const back = 32 - bitShift;
         for (let i = 0; i < words; ++i) {
+          /** @type {uint32} */
           const d = dense[i];
           if (d === 0) continue;
           const lo = wordShift + i;
@@ -497,18 +735,19 @@
    * A vector of exactly the given weight, drawn by algorithm 5 of eprint
    * 2021/1631: a partial Fisher-Yates shuffle whose collisions are resolved by
    * sending the colliding entry back to its own index.
-   * @param {object} set - the parameter set
-   * @param {object} expander - the seed expander to draw from
-   * @param {number} weight - the number of set bits
-   * @returns {object} the vector and the positions of its set bits
+   * @param {HqcParams} set - the parameter set
+   * @param {HqcShakeStream} expander - the seed expander to draw from
+   * @param {int32} weight - the number of set bits
+   * @returns {HqcFixedWeight} the vector and the positions of its set bits
    */
   function VectSetRandomFixedWeight(set, expander, weight) {
-    const bytes = expander.read(4 * weight);
+    const bytes = ExpanderRead(expander, 4 * weight);
+    /** @type {int32[]} */
     const positions = new Array(weight);
 
     for (let i = 0; i < weight; ++i) {
       const b = 4 * i;
-      const value = bytes[b] + bytes[b + 1] * 0x100 + bytes[b + 2] * 0x10000 + bytes[b + 3] * 0x1000000;
+      const value = OpCodes.Pack32LE(bytes[b], bytes[b + 1], bytes[b + 2], bytes[b + 3]);
       positions[i] = i + (value % (set.n - i));
     }
 
@@ -521,27 +760,37 @@
     const words = new Uint32Array(set.nWords);
     for (let i = 0; i < weight; ++i) {
       const w = OpCodes.Shr32(positions[i], 5);
-      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(1, OpCodes.AndN(positions[i], 31)));
+      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(1, OpCodes.And32(positions[i], 31)));
     }
 
-    return { words: words, positions: positions };
+    return new HqcFixedWeight(words, positions);
   }
 
+  /**
+   * A uniformly random vector of length n.
+   * @param {HqcParams} set - the parameter set
+   * @param {HqcShakeStream} expander - the seed expander to draw from
+   * @returns {Uint32Array} the vector
+   */
   function VectSetRandom(set, expander) {
-    const words = BytesToWords(expander.read(set.nBytes), set.nWords);
+    const words = BytesToWords(ExpanderRead(expander, set.nBytes), set.nWords);
     words[set.nWords - 1] = OpCodes.And32(words[set.nWords - 1], set.topMask);
     return words;
   }
 
   // ===== the outer code: duplicated Reed-Muller RM(1,7) =====
 
+  /**
+   * @param {uint32} x - any word
+   * @returns {uint32} all ones when bit 0 of x is set, otherwise zero
+   */
   function Bit0Mask(x) {
-    return OpCodes.AndN(x, 1) === 1 ? 0xFFFFFFFF : 0;
+    return OpCodes.And32(x, 1) === 1 ? 0xFFFFFFFF : 0;
   }
 
   /**
    * One message octet to a 128 bit RM(1,7) codeword, held as four words.
-   * @param {number} message - the octet
+   * @param {int32} message - the octet
    * @returns {Uint32Array} the codeword
    */
   function ReedMullerEncodeByte(message) {
@@ -563,6 +812,11 @@
     return word;
   }
 
+  /**
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} messageBytes - n1 Reed-Solomon symbols
+   * @returns {Uint32Array} the duplicated Reed-Muller codeword
+   */
   function ReedMullerEncode(set, messageBytes) {
     const words = new Uint32Array(set.n1n2Words);
     for (let i = 0; i < set.n1; ++i) {
@@ -584,8 +838,12 @@
     let to = new Int32Array(128);
     for (let pass = 0; pass < 7; ++pass) {
       for (let i = 0; i < 64; ++i) {
-        to[i] = from[2 * i] + from[2 * i + 1];
-        to[i + 64] = from[2 * i] - from[2 * i + 1];
+        /** @type {int32} */
+        const even = from[2 * i];
+        /** @type {int32} */
+        const odd = from[2 * i + 1];
+        to[i] = even + odd;
+        to[i + 64] = even - odd;
       }
       const swap = from;
       from = to;
@@ -597,11 +855,12 @@
   /**
    * Maximum likelihood decoding of the duplicated code: sum the copies, take
    * the Hadamard transform, and read off the largest coefficient.
-   * @param {object} set - the parameter set
+   * @param {HqcParams} set - the parameter set
    * @param {Uint32Array} words - the received word
-   * @returns {number[]} one octet per Reed-Solomon symbol
+   * @returns {int32[]} one octet per Reed-Solomon symbol
    */
   function ReedMullerDecode(set, words) {
+    /** @type {int32[]} */
     const messageBytes = new Array(set.n1);
     const expanded = new Int32Array(128);
 
@@ -609,11 +868,11 @@
       const base = i * set.multiplicity * 4;
       for (let part = 0; part < 4; ++part)
         for (let bit = 0; bit < 32; ++bit)
-          expanded[part * 32 + bit] = OpCodes.AndN(OpCodes.Shr32(words[base + part], bit), 1);
+          expanded[part * 32 + bit] = OpCodes.And32(OpCodes.Shr32(words[base + part], bit), 1);
       for (let copy = 1; copy < set.multiplicity; ++copy)
         for (let part = 0; part < 4; ++part)
           for (let bit = 0; bit < 32; ++bit)
-            expanded[part * 32 + bit] += OpCodes.AndN(OpCodes.Shr32(words[base + copy * 4 + part], bit), 1);
+            expanded[part * 32 + bit] += OpCodes.And32(OpCodes.Shr32(words[base + copy * 4 + part], bit), 1);
 
       const transform = Hadamard(expanded);
 
@@ -626,6 +885,7 @@
       let peakValue = 0;
       let peakPosition = 0;
       for (let j = 0; j < 128; ++j) {
+        /** @type {int32} */
         const t = transform[j];
         const absolute = t > 0 ? t : -t;
         if (absolute > peakAbsolute) {
@@ -644,19 +904,23 @@
 
   /**
    * Systematic encoding by the shift register of the generator polynomial.
-   * @param {object} set - the parameter set
-   * @param {number[]} messageBytes - k message octets
-   * @returns {number[]} n1 codeword octets
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} messageBytes - k message octets
+   * @returns {int32[]} n1 codeword octets
    */
   function ReedSolomonEncode(set, messageBytes) {
-    const codeword = new Array(set.n1).fill(0);
-    const tmp = new Array(set.g).fill(0);
+    /** @type {int32[]} */
+    const codeword = ZeroArray(set.n1);
+    /** @type {int32[]} */
+    const tmp = ZeroArray(set.g);
     const parity = set.n1 - set.k;
 
     for (let i = 0; i < set.k; ++i) {
+      // The message octet comes from the caller unmasked, so the exclusive-or
+      // stays the plain one rather than the unsigned 32 bit helper.
       const gate = OpCodes.XorN(messageBytes[set.k - 1 - i], codeword[parity - 1]);
       for (let j = 0; j < set.g; ++j) tmp[j] = GfMul(gate, set.rsPoly[j]);
-      for (let kk = parity - 1; kk > 0; --kk) codeword[kk] = OpCodes.XorN(codeword[kk - 1], tmp[kk]);
+      for (let kk = parity - 1; kk > 0; --kk) codeword[kk] = OpCodes.Xor32(codeword[kk - 1], tmp[kk]);
       codeword[0] = tmp[0];
     }
 
@@ -664,13 +928,19 @@
     return codeword;
   }
 
-  /** The 2 delta syndromes, the received word evaluated at alpha^1 .. alpha^2delta. */
+  /**
+   * The 2 delta syndromes, the received word evaluated at alpha^1 .. alpha^2delta.
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} codeword - n1 received symbols
+   * @returns {int32[]} the syndromes
+   */
   function ComputeSyndromes(set, codeword) {
-    const syndromes = new Array(2 * set.delta).fill(0);
+    /** @type {int32[]} */
+    const syndromes = ZeroArray(2 * set.delta);
     for (let i = 0; i < 2 * set.delta; ++i) {
       let sum = codeword[0];
       for (let j = 1; j < set.n1; ++j)
-        sum = OpCodes.XorN(sum, GfMul(codeword[j], GfPow((i + 1) * j)));
+        sum = OpCodes.Xor32(sum, GfMul(codeword[j], GfPow((i + 1) * j)));
       syndromes[i] = sum;
     }
     return syndromes;
@@ -678,13 +948,15 @@
 
   /**
    * Berlekamp's simplified algorithm for the error locator polynomial.
-   * @param {object} set - the parameter set
-   * @param {number[]} syndromes - the syndromes
-   * @returns {object} the locator and its degree
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} syndromes - the syndromes
+   * @returns {HqcErrorLocator} the locator and its degree
    */
   function ComputeErrorLocator(set, syndromes) {
-    const sigma = new Array(set.delta + 1).fill(0);
-    const sigmaPrevious = new Array(set.delta + 1).fill(0);
+    /** @type {int32[]} */
+    const sigma = ZeroArray(set.delta + 1);
+    /** @type {int32[]} */
+    const sigmaPrevious = ZeroArray(set.delta + 1);
     sigmaPrevious[1] = 1;
 
     let degreeSigma = 0;
@@ -701,7 +973,7 @@
 
       const ratio = GfMul(discrepancy, GfInverse(discrepancyPrevious));
       for (let i = 1; i <= mu + 1 && i <= set.delta; ++i)
-        sigma[i] = OpCodes.XorN(sigma[i], GfMul(ratio, sigmaPrevious[i]));
+        sigma[i] = OpCodes.Xor32(sigma[i], GfMul(ratio, sigmaPrevious[i]));
 
       const degreeShifted = (mu - rho) + degreeSigmaPrevious;
       const grew = discrepancy !== 0 && degreeShifted > degreeSigma;
@@ -720,21 +992,29 @@
 
       discrepancy = syndromes[mu + 1];
       for (let i = 1; i <= mu + 1 && i <= set.delta; ++i)
-        discrepancy = OpCodes.XorN(discrepancy, GfMul(sigma[i], syndromes[mu + 1 - i]));
+        discrepancy = OpCodes.Xor32(discrepancy, GfMul(sigma[i], syndromes[mu + 1 - i]));
     }
 
-    return { sigma: sigma, degree: degreeSigma };
+    return new HqcErrorLocator(sigma, degreeSigma);
   }
 
-  /** Chien search: position i carries an error when the locator vanishes at alpha^-i. */
+  /**
+   * Chien search: position i carries an error when the locator vanishes at alpha^-i.
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} sigma - the error locator
+   * @returns {int32[]} the error positions
+   */
   function ComputeErrorPositions(set, sigma) {
+    /** @type {int32[]} */
     const positions = [];
     for (let i = 0; i < set.n1; ++i) {
       const x = GfPow(-i);
+      /** @type {uint32} */
       let value = 0;
+      /** @type {uint32} */
       let power = 1;
       for (let j = 0; j <= set.delta; ++j) {
-        value = OpCodes.XorN(value, GfMul(sigma[j], power));
+        value = OpCodes.Xor32(value, GfMul(sigma[j], power));
         power = GfMul(power, x);
       }
       if (value === 0) positions.push(i);
@@ -742,46 +1022,72 @@
     return positions;
   }
 
+  /**
+   * The error evaluator polynomial z.
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} sigma - the error locator
+   * @param {int32} degree - its degree
+   * @param {int32[]} syndromes - the syndromes
+   * @returns {int32[]} z
+   */
   function ComputeZPoly(set, sigma, degree, syndromes) {
-    const z = new Array(set.delta + 1).fill(0);
+    /** @type {int32[]} */
+    const z = ZeroArray(set.delta + 1);
     z[0] = 1;
     for (let i = 1; i <= set.delta; ++i) z[i] = i <= degree ? sigma[i] : 0;
-    z[1] = OpCodes.XorN(z[1], syndromes[0]);
+    z[1] = OpCodes.Xor32(z[1], syndromes[0]);
 
     for (let i = 2; i <= set.delta; ++i) {
       if (i > degree) continue;
-      z[i] = OpCodes.XorN(z[i], syndromes[i - 1]);
-      for (let j = 1; j < i; ++j) z[i] = OpCodes.XorN(z[i], GfMul(sigma[j], syndromes[i - j - 1]));
+      z[i] = OpCodes.Xor32(z[i], syndromes[i - 1]);
+      for (let j = 1; j < i; ++j) z[i] = OpCodes.Xor32(z[i], GfMul(sigma[j], syndromes[i - j - 1]));
     }
     return z;
   }
 
-  /** Forney's formula for the magnitude of the error at each located position. */
+  /**
+   * Forney's formula for the magnitude of the error at each located position.
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} z - the error evaluator
+   * @param {int32[]} positions - the error positions
+   * @returns {int32[]} n1 error values
+   */
   function ComputeErrorValues(set, z, positions) {
-    const beta = new Array(set.delta).fill(0);
+    /** @type {int32[]} */
+    const beta = ZeroArray(set.delta);
     const count = Math.min(positions.length, set.delta);
     for (let i = 0; i < count; ++i) beta[i] = GfPow(positions[i]);
 
-    const values = new Array(set.delta).fill(0);
+    /** @type {int32[]} */
+    const values = ZeroArray(set.delta);
     for (let i = 0; i < set.delta; ++i) {
       const inverse = GfInverse(beta[i]);
+      /** @type {uint32} */
       let numerator = 1;
+      /** @type {uint32} */
       let power = 1;
       for (let j = 1; j <= set.delta; ++j) {
         power = GfMul(power, inverse);
-        numerator = OpCodes.XorN(numerator, GfMul(power, z[j]));
+        numerator = OpCodes.Xor32(numerator, GfMul(power, z[j]));
       }
+      /** @type {uint32} */
       let denominator = 1;
       for (let kk = 1; kk < set.delta; ++kk)
-        denominator = GfMul(denominator, OpCodes.XorN(1, GfMul(inverse, beta[(i + kk) % set.delta])));
+        denominator = GfMul(denominator, OpCodes.Xor32(1, GfMul(inverse, beta[(i + kk) % set.delta])));
       values[i] = i < count ? GfMul(numerator, GfInverse(denominator)) : 0;
     }
 
-    const errorValues = new Array(set.n1).fill(0);
+    /** @type {int32[]} */
+    const errorValues = ZeroArray(set.n1);
     for (let i = 0; i < count; ++i) errorValues[positions[i]] = values[i];
     return errorValues;
   }
 
+  /**
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} codewordBytes - n1 received symbols
+   * @returns {int32[]} the k corrected message octets
+   */
   function ReedSolomonDecode(set, codewordBytes) {
     const codeword = codewordBytes.slice(0, set.n1);
     const syndromes = ComputeSyndromes(set, codeword);
@@ -790,39 +1096,155 @@
     const z = ComputeZPoly(set, locator.sigma, locator.degree, syndromes);
     const errorValues = ComputeErrorValues(set, z, positions);
 
-    for (let i = 0; i < set.n1; ++i) codeword[i] = OpCodes.XorN(codeword[i], errorValues[i]);
+    for (let i = 0; i < set.n1; ++i) codeword[i] = OpCodes.Xor32(codeword[i], errorValues[i]);
     return codeword.slice(set.g - 1, set.g - 1 + set.k);
   }
 
+  /**
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} messageBytes - k octets
+   * @returns {Uint32Array} the concatenated codeword
+   */
   function CodeEncode(set, messageBytes) {
     return ReedMullerEncode(set, ReedSolomonEncode(set, messageBytes));
   }
 
+  /**
+   * @param {HqcParams} set - the parameter set
+   * @param {Uint32Array} words - the received word
+   * @returns {int32[]} the k decoded octets
+   */
   function CodeDecode(set, words) {
     return ReedSolomonDecode(set, ReedMullerDecode(set, words));
   }
 
+  // ===== result records =====
+
+  class HqcFixedWeight {
+    /**
+     * @param {Uint32Array} words - the vector
+     * @param {int32[]} positions - positions of its set bits
+     */
+    constructor(words, positions) {
+      /** @type {Uint32Array} */
+      this.words = words;
+      /** @type {int32[]} */
+      this.positions = positions;
+    }
+  }
+
+  class HqcErrorLocator {
+    /**
+     * @param {int32[]} sigma - the locator polynomial
+     * @param {int32} degree - its degree
+     */
+    constructor(sigma, degree) {
+      /** @type {int32[]} */
+      this.sigma = sigma;
+      /** @type {int32} */
+      this.degree = degree;
+    }
+  }
+
+  class HqcPublicKey {
+    /**
+     * @param {Uint32Array} h - the random vector
+     * @param {Uint32Array} s - the syndrome
+     */
+    constructor(h, s) {
+      /** @type {Uint32Array} */
+      this.h = h;
+      /** @type {Uint32Array} */
+      this.s = s;
+    }
+  }
+
+  class HqcKeyPair {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} secretKey - encoded secret key
+     */
+    constructor(publicKey, secretKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.secretKey = secretKey;
+    }
+  }
+
+  class HqcPkeCiphertext {
+    /**
+     * @param {Uint32Array} u - first ciphertext vector
+     * @param {Uint32Array} v - second ciphertext vector
+     */
+    constructor(u, v) {
+      /** @type {Uint32Array} */
+      this.u = u;
+      /** @type {Uint32Array} */
+      this.v = v;
+    }
+  }
+
+  class HqcEncapsulation {
+    /**
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @param {uint8[]} sharedSecret - the shared secret
+     */
+    constructor(ciphertext, sharedSecret) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.sharedSecret = sharedSecret;
+    }
+  }
+
+  class HqcKatRecord {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} secretKey - encoded secret key
+     * @param {uint8[]} randomness - message and salt
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @param {uint8[]} sharedSecret - the shared secret
+     */
+    constructor(publicKey, secretKey, randomness, ciphertext, sharedSecret) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.secretKey = secretKey;
+      /** @type {uint8[]} */
+      this.randomness = randomness;
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.sharedSecret = sharedSecret;
+    }
+  }
+
   // ===== the public key encryption scheme =====
 
+  /**
+   * @param {HqcParams} set - the parameter set
+   * @param {uint8[]} pk - the public key
+   * @returns {HqcPublicKey} h and s
+   */
   function PublicKeyFromString(set, pk) {
-    return {
-      h: VectSetRandom(set, SeedExpander(pk.slice(0, SEED_BYTES))),
-      s: BytesToWords(pk.slice(SEED_BYTES, SEED_BYTES + set.nBytes), set.nWords)
-    };
+    return new HqcPublicKey(
+      VectSetRandom(set, SeedExpander(pk.slice(0, SEED_BYTES))),
+      BytesToWords(pk.slice(SEED_BYTES, SEED_BYTES + set.nBytes), set.nWords));
   }
 
   /**
    * The key pair. The public key names the seed of h and the syndrome
    * s = x + h y; the secret key names the seed of x and y, with the public key
    * appended so that the serialised forms match the NIST interface.
-   * @param {object} set - the parameter set
-   * @param {object} prng - the stream to draw the two seeds from
-   * @returns {object} the public and secret keys as octet strings
+   * @param {HqcParams} set - the parameter set
+   * @param {HqcShakeStream} prng - the stream to draw the two seeds from
+   * @returns {HqcKeyPair} the public and secret keys as octet strings
    */
   function PkeKeygen(set, prng) {
-    const skSeed = prng.read(SEED_BYTES);
+    const skSeed = ShakeRead(prng, SEED_BYTES);
     const skExpander = SeedExpander(skSeed);
-    const pkSeed = prng.read(SEED_BYTES);
+    const pkSeed = ShakeRead(prng, SEED_BYTES);
     const pkExpander = SeedExpander(pkSeed);
 
     const x = VectSetRandomFixedWeight(set, skExpander, set.omega);
@@ -832,17 +1254,17 @@
     const s = VectAdd(x.words, VectMul(set, y.positions, h));
 
     const publicKey = pkSeed.concat(WordsToBytes(s, set.nBytes));
-    return { publicKey: publicKey, secretKey: skSeed.concat(publicKey) };
+    return new HqcKeyPair(publicKey, skSeed.concat(publicKey));
   }
 
   /**
    * Encrypt: u = r1 + h r2 and v = mG + s r2 + e, for low weight r1, r2 and e
    * drawn from theta.
-   * @param {object} set - the parameter set
-   * @param {number[]} messageBytes - k octets
-   * @param {number[]} theta - the randomness seed
-   * @param {number[]} pk - the public key
-   * @returns {object} the two ciphertext vectors
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} messageBytes - k octets
+   * @param {int32[]} theta - the randomness seed
+   * @param {int32[]} pk - the public key
+   * @returns {HqcPkeCiphertext} the two ciphertext vectors
    */
   function PkeEncrypt(set, messageBytes, theta, pk) {
     const expander = SeedExpander(theta.slice(0, SEED_BYTES));
@@ -861,17 +1283,17 @@
     let v = VectAdd(VectMul(set, r2.positions, key.s), e.words);
     v = VectAdd(v, lifted);
 
-    return { u: u, v: v.slice(0, set.n1n2Words) };
+    return new HqcPkeCiphertext(u, v.slice(0, set.n1n2Words));
   }
 
   /**
    * Decrypt by decoding v - u y, which differs from the codeword only by the
    * low weight combination the secret cancels.
-   * @param {object} set - the parameter set
+   * @param {HqcParams} set - the parameter set
    * @param {Uint32Array} u - first ciphertext vector
    * @param {Uint32Array} v - second ciphertext vector
-   * @param {number[]} sk - the secret key
-   * @returns {number[]} the k recovered octets
+   * @param {int32[]} sk - the secret key
+   * @returns {int32[]} the k recovered octets
    */
   function PkeDecrypt(set, u, v, sk) {
     const expander = SeedExpander(sk.slice(0, SEED_BYTES));
@@ -891,36 +1313,41 @@
    * Encapsulate. The message and the salt are the randomness; theta is derived
    * from them with the public key's seed, which is the Hofheinz-Hovelmanns-Kiltz
    * transform that makes the scheme chosen-ciphertext secure.
-   * @param {object} set - the parameter set
-   * @param {number[]} pk - the public key
-   * @param {number[]} randomness - k + 16 octets, the message then the salt
-   * @returns {object} the ciphertext and the shared secret
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} pk - the public key
+   * @param {int32[]} randomness - k + 16 octets, the message then the salt
+   * @returns {HqcEncapsulation} the ciphertext and the shared secret
    */
   function Encapsulate(set, pk, randomness) {
     const m = randomness.slice(0, set.k);
     const salt = randomness.slice(set.k, set.k + SALT_BYTES);
+    /** @type {uint8[]} */
+    const domainG = [DOMAIN_G];
+    /** @type {uint8[]} */
+    const domainH = [DOMAIN_H];
+    /** @type {uint8[]} */
+    const domainK = [DOMAIN_K];
 
-    const theta = Shake256([m, pk.slice(0, SEED_BYTES), salt, [DOMAIN_G]], HASH_BYTES);
+    const theta = Shake256([m, pk.slice(0, SEED_BYTES), salt, domainG], HASH_BYTES);
     const encrypted = PkeEncrypt(set, m, theta, pk);
-    const d = Shake256([m, [DOMAIN_H]], HASH_BYTES);
+    const d = Shake256([m, domainH], HASH_BYTES);
 
     const uBytes = WordsToBytes(encrypted.u, set.nBytes);
     const vBytes = WordsToBytes(encrypted.v, set.n1n2Bytes);
 
-    return {
-      ciphertext: uBytes.concat(vBytes).concat(d).concat(salt),
-      sharedSecret: Shake256([m, uBytes, vBytes, [DOMAIN_K]], HASH_BYTES)
-    };
+    return new HqcEncapsulation(
+      uBytes.concat(vBytes).concat(d).concat(salt),
+      Shake256([m, uBytes, vBytes, domainK], HASH_BYTES));
   }
 
   /**
    * Decapsulate. The recovered message is re-encrypted and the result compared
    * with what arrived; a ciphertext this key did not produce yields a secret of
    * zeroes rather than the one the sender derived.
-   * @param {object} set - the parameter set
-   * @param {number[]} ciphertext - the ciphertext
-   * @param {number[]} sk - the secret key
-   * @returns {number[]} the shared secret
+   * @param {HqcParams} set - the parameter set
+   * @param {int32[]} ciphertext - the ciphertext
+   * @param {int32[]} sk - the secret key
+   * @returns {int32[]} the shared secret
    */
   function Decapsulate(set, ciphertext, sk) {
     const uBytes = ciphertext.slice(0, set.nBytes);
@@ -933,11 +1360,17 @@
     const pk = sk.slice(SEED_BYTES);
 
     const m = PkeDecrypt(set, u, v, sk);
+    /** @type {uint8[]} */
+    const domainG = [DOMAIN_G];
+    /** @type {uint8[]} */
+    const domainH = [DOMAIN_H];
+    /** @type {uint8[]} */
+    const domainK = [DOMAIN_K];
 
-    const theta = Shake256([m, pk.slice(0, SEED_BYTES), salt, [DOMAIN_G]], HASH_BYTES);
+    const theta = Shake256([m, pk.slice(0, SEED_BYTES), salt, domainG], HASH_BYTES);
     const reEncrypted = PkeEncrypt(set, m, theta, pk);
-    const d2 = Shake256([m, [DOMAIN_H]], HASH_BYTES);
-    const sharedSecret = Shake256([m, uBytes, vBytes, [DOMAIN_K]], HASH_BYTES);
+    const d2 = Shake256([m, domainH], HASH_BYTES);
+    const sharedSecret = Shake256([m, uBytes, vBytes, domainK], HASH_BYTES);
 
     const u2Bytes = WordsToBytes(reEncrypted.u, set.nBytes);
     const v2Bytes = WordsToBytes(reEncrypted.v, set.n1n2Bytes);
@@ -947,7 +1380,11 @@
     for (let i = 0; agree && i < set.n1n2Bytes; ++i) if (vBytes[i] !== v2Bytes[i]) agree = false;
     for (let i = 0; agree && i < HASH_BYTES; ++i) if (d[i] !== d2[i]) agree = false;
 
-    if (!agree) return new Array(set.sharedSecretSize).fill(0);
+    if (!agree) {
+      /** @type {uint8[]} */
+      const zeros = ZeroArray(set.sharedSecretSize);
+      return zeros;
+    }
     return sharedSecret;
   }
 
@@ -955,22 +1392,17 @@
    * One Known Answer Test record, end to end from its 48 octet seed: the key
    * pair and then the encapsulation, drawn from one stream in that order, which
    * is what the submission's generator does.
-   * @param {object} set - the parameter set
+   * @param {HqcParams} set - the parameter set
    * @param {uint8[]} seed - the 48 octet seed
-   * @returns {object} the public key, secret key, ciphertext and shared secret
+   * @returns {HqcKatRecord} the public key, secret key, ciphertext and shared secret
    */
   function KatRecord(set, seed) {
     const prng = Prng(seed);
     const pair = PkeKeygen(set, prng);
-    const randomness = prng.read(set.k).concat(prng.read(SALT_BYTES));
+    const randomness = ShakeRead(prng, set.k).concat(ShakeRead(prng, SALT_BYTES));
     const encapsulated = Encapsulate(set, pair.publicKey, randomness);
-    return {
-      publicKey: pair.publicKey,
-      secretKey: pair.secretKey,
-      randomness: randomness,
-      ciphertext: encapsulated.ciphertext,
-      sharedSecret: encapsulated.sharedSecret
-    };
+    return new HqcKatRecord(pair.publicKey, pair.secretKey, randomness,
+      encapsulated.ciphertext, encapsulated.sharedSecret);
   }
 
   // ===== TEST VECTORS =====
@@ -1433,152 +1865,6 @@
       "1AA3422C25B8C7F3A201EB1914");
   const KAT256_SS = OpCodes.Hex8ToBytes("8BDD2446F939F77A5E6075B0244A804A33D3ED5978F8055F29F4431629CB331125FB1CF05B45F0D6723A915ECD9BEE2EF7B0F362093A20464F8BDD56282AC9BE");
 
-  const VECTORS = [
-    {
-      text: "HQC-128 hqc-128_kat.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-128',
-      keyGenerationOutput: 'publicKey',
-      input: KAT128_SEED,
-      expected: KAT128_PK
-    },
-    {
-      text: "HQC-128 hqc-128_kat.rsp record 0: seed to secret key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-128',
-      keyGenerationOutput: 'privateKey',
-      input: KAT128_SEED,
-      expected: KAT128_SK
-    },
-    {
-      text: "HQC-128 hqc-128_kat.rsp record 0: seed to ciphertext",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-128',
-      keyGenerationOutput: 'ciphertext',
-      input: KAT128_SEED,
-      expected: KAT128_CT
-    },
-    {
-      text: "HQC-128 hqc-128_kat.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-128',
-      keyGenerationOutput: 'sharedSecret',
-      input: KAT128_SEED,
-      expected: KAT128_SS
-    },
-    {
-      // Drives the decoder, which no other direction reaches: the Reed-Muller
-      // and Reed-Solomon decoders only run on the decapsulation path.
-      text: "HQC-128 hqc-128_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-128',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KAT128_SEED,
-      expected: KAT128_SS
-    },
-    {
-      text: "HQC-128 hqc-128_kat.rsp record 0: decapsulation of the published ciphertext under the published secret key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      inverse: true,
-      privateKey: KAT128_SK,
-      input: KAT128_CT,
-      expected: KAT128_SS
-    },
-    {
-      // Setting sharedSecret turns the result into a verdict, so that the
-      // rejection cases below can assert a mismatch without naming the value
-      // the rejection branch produces.
-      text: "HQC-128 hqc-128_kat.rsp record 0: the recovered secret is the published one",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      inverse: true,
-      privateKey: KAT128_SK,
-      sharedSecret: KAT128_SS,
-      input: KAT128_CT,
-      expected: [1]
-    },
-    {
-      // One bit of the ciphertext flipped. HQC answers a ciphertext it did not
-      // produce with a secret of zeroes rather than an error, so the property
-      // to assert is that the published secret does not come back.
-      text: "HQC-128 hqc-128_kat.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      inverse: true,
-      privateKey: KAT128_SK,
-      sharedSecret: KAT128_SS,
-      input: KAT128_CT_CORRUPTED,
-      expected: [0]
-    },
-    {
-      text: "HQC-128 hqc-128_kat.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      inverse: true,
-      privateKey: KAT128_SK_OTHER,
-      sharedSecret: KAT128_SS,
-      input: KAT128_CT,
-      expected: [0]
-    },
-    {
-      text: "HQC-192 hqc-192_kat.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-192',
-      keyGenerationOutput: 'publicKey',
-      input: KAT192_SEED,
-      expected: KAT192_PK
-    },
-    {
-      // The shared secret is SHAKE-256 over the message and both ciphertext
-      // vectors, so agreeing on it pins the whole ciphertext as well.
-      text: "HQC-192 hqc-192_kat.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-192',
-      keyGenerationOutput: 'sharedSecret',
-      input: KAT192_SEED,
-      expected: KAT192_SS
-    },
-    {
-      text: "HQC-192 hqc-192_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-192',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KAT192_SEED,
-      expected: KAT192_SS
-    },
-    {
-      text: "HQC-256 hqc-256_kat.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-256',
-      keyGenerationOutput: 'publicKey',
-      input: KAT256_SEED,
-      expected: KAT256_PK
-    },
-    {
-      text: "HQC-256 hqc-256_kat.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-256',
-      keyGenerationOutput: 'sharedSecret',
-      input: KAT256_SEED,
-      expected: KAT256_SS
-    },
-    {
-      text: "HQC-256 hqc-256_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'hqc-256',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KAT256_SEED,
-      expected: KAT256_SS
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -1618,7 +1904,152 @@
         new LinkItem("Sampling Fixed Weight Vectors", "https://eprint.iacr.org/2021/1631")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "HQC-128 hqc-128_kat.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-128',
+          keyGenerationOutput: 'publicKey',
+          input: KAT128_SEED,
+          expected: KAT128_PK
+        },
+        {
+          text: "HQC-128 hqc-128_kat.rsp record 0: seed to secret key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-128',
+          keyGenerationOutput: 'privateKey',
+          input: KAT128_SEED,
+          expected: KAT128_SK
+        },
+        {
+          text: "HQC-128 hqc-128_kat.rsp record 0: seed to ciphertext",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-128',
+          keyGenerationOutput: 'ciphertext',
+          input: KAT128_SEED,
+          expected: KAT128_CT
+        },
+        {
+          text: "HQC-128 hqc-128_kat.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-128',
+          keyGenerationOutput: 'sharedSecret',
+          input: KAT128_SEED,
+          expected: KAT128_SS
+        },
+        {
+          // Drives the decoder, which no other direction reaches: the Reed-Muller
+          // and Reed-Solomon decoders only run on the decapsulation path.
+          text: "HQC-128 hqc-128_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-128',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KAT128_SEED,
+          expected: KAT128_SS
+        },
+        {
+          text: "HQC-128 hqc-128_kat.rsp record 0: decapsulation of the published ciphertext under the published secret key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          inverse: true,
+          privateKey: KAT128_SK,
+          input: KAT128_CT,
+          expected: KAT128_SS
+        },
+        {
+          // Setting sharedSecret turns the result into a verdict, so that the
+          // rejection cases below can assert a mismatch without naming the value
+          // the rejection branch produces.
+          text: "HQC-128 hqc-128_kat.rsp record 0: the recovered secret is the published one",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          inverse: true,
+          privateKey: KAT128_SK,
+          sharedSecret: KAT128_SS,
+          input: KAT128_CT,
+          expected: [1]
+        },
+        {
+          // One bit of the ciphertext flipped. HQC answers a ciphertext it did not
+          // produce with a secret of zeroes rather than an error, so the property
+          // to assert is that the published secret does not come back.
+          text: "HQC-128 hqc-128_kat.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          inverse: true,
+          privateKey: KAT128_SK,
+          sharedSecret: KAT128_SS,
+          input: KAT128_CT_CORRUPTED,
+          expected: [0]
+        },
+        {
+          text: "HQC-128 hqc-128_kat.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          inverse: true,
+          privateKey: KAT128_SK_OTHER,
+          sharedSecret: KAT128_SS,
+          input: KAT128_CT,
+          expected: [0]
+        },
+        {
+          text: "HQC-192 hqc-192_kat.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-192',
+          keyGenerationOutput: 'publicKey',
+          input: KAT192_SEED,
+          expected: KAT192_PK
+        },
+        {
+          // The shared secret is SHAKE-256 over the message and both ciphertext
+          // vectors, so agreeing on it pins the whole ciphertext as well.
+          text: "HQC-192 hqc-192_kat.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-192',
+          keyGenerationOutput: 'sharedSecret',
+          input: KAT192_SEED,
+          expected: KAT192_SS
+        },
+        {
+          text: "HQC-192 hqc-192_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-192',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KAT192_SEED,
+          expected: KAT192_SS
+        },
+        {
+          text: "HQC-256 hqc-256_kat.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-256',
+          keyGenerationOutput: 'publicKey',
+          input: KAT256_SEED,
+          expected: KAT256_PK
+        },
+        {
+          text: "HQC-256 hqc-256_kat.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-256',
+          keyGenerationOutput: 'sharedSecret',
+          input: KAT256_SEED,
+          expected: KAT256_SS
+        },
+        {
+          text: "HQC-256 hqc-256_kat.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/HQC-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'hqc-256',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KAT256_SEED,
+          expected: KAT256_SS
+        }
+      ];
     }
 
     /**
@@ -1652,7 +2083,7 @@
    */
   class HQCInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - Parent algorithm instance
+     * @param {HQCCipher} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - decapsulation mode
      */
     constructor(algorithm, isInverse = false) {
@@ -1663,7 +2094,7 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['hqc-128'];
+      this._parameterSet = HQC_128;
       this._publicKey = null;
       this._privateKey = null;
       this._sharedSecret = null;
@@ -1688,6 +2119,7 @@
     /**
      * The public key. Its length selects the parameter set, the encoded lengths
      * across the three sets being pairwise distinct.
+     * @param {uint8[]} keyBytes - the encoded public key; falsy clears it
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -1707,6 +2139,10 @@
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
+    /**
+     * The secret key. Its length selects the parameter set.
+     * @param {uint8[]} keyBytes - the encoded secret key; falsy clears it
+     */
     set privateKey(keyBytes) {
       if (!keyBytes) {
         this._privateKey = null;
@@ -1730,6 +2166,7 @@
      * Result report agreement as [1] or [0] rather than returning the secret,
      * so that a vector can assert a rejection without naming the value the
      * rejection produces.
+     * @param {uint8[]} secretBytes - the expected secret; falsy clears it
      */
     set sharedSecret(secretBytes) {
       this._sharedSecret = secretBytes ? Array.from(secretBytes) : null;
@@ -1760,6 +2197,7 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid HQC key data format');
 
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
 
       if (ParameterSetByLength(bytes.length, 'privateKeySize')) {
@@ -1787,14 +2225,14 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding the whole.
-     * @param {number[]} data - input bytes
+     * @param {int32[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
         for (let i = 0; i < data.length; ++i)
-          this.inputBuffer.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+          this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -1808,7 +2246,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {number[]} the result bytes
+     * @returns {int32[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
