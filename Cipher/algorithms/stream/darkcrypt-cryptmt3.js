@@ -228,6 +228,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("16c3811c902f0402b34d837cf79050c04e85f6192f5b5dc68bdb71b1e7d31bc44df8935e35c9e4c806609cea1a4eab594dde595f1ab4fb68227b1a8d2339ee37")
+        },
+        {
+          text: "DarkCrypt Mt3 — non-zero key and IV, 20-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186abd0f51a3f6489aed3f81d42678cb1d6fb20456a8fb4d9fe23486d92b7dc0126"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22578cc1f62b6095caff34699ed3083d72a7dc11467bb0e51a4f84b9ee23588dc2f72c6196cb00356a9fd4093e73a8dd12"),
+          expected: OpCodes.Hex8ToBytes("0604d310f087c985351a64aac5eec3520b23e4a0")
         }
       ];
     }
@@ -301,15 +309,17 @@
     Result() {
       if (!this._ctx) throw new Error("Key and IV not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
-      if (this.inputBuffer.length % 16 !== 0)
-        throw new Error("CryptMT3 (DarkCrypt) requires input length to be a multiple of 16 bytes");
-
+      /** @type {int32} */
+      const length = this.inputBuffer.length;
+      // The filter works on whole 16-byte blocks: a partial last block is zero-padded and the
+      // output truncated. The booter still advances only (length + 7) / 8 half-blocks, so a
+      // last block of at most 8 bytes takes its second half from a block this call left untouched.
       /** @type {uint8[]} */
-      const plain = this.inputBuffer;
+      const plain = this.inputBuffer.concat(OpCodes.CreateArray((16 - length % 16) % 16, 0));
       /** @type {CryptMtState} */
       const ctx = this._ctx;
       /** @type {int32} */
-      const count = Math.floor((plain.length + 7) / 8);
+      const count = Math.floor((length + 7) / 8);
       const p = ctx.keyAreaLength - 2;
       booterAm(ctx.lung, ctx.sfmt, ctx.psfmtOff, ctx.sfmt, ctx.psfmtOff + p, count);
       /** @type {uint8[]} */
@@ -317,7 +327,7 @@
       filter16Bytes(ctx.sfmt, ctx.psfmtOff, ctx.accum, cipher, plain, Math.floor(plain.length / 16));
 
       this.inputBuffer = [];
-      return cipher;
+      return cipher.slice(0, length);
     }
 
     _tryInitialize() {
