@@ -166,7 +166,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XorWowInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -184,8 +184,15 @@
  */
 
   class XorWowInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {XorWowAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // XorWow uses 5x 32-bit state variables + 1 Weyl counter
       this._x = 0;
@@ -203,6 +210,7 @@
     /**
      * Set seed value (1-24 bytes)
      * Seed format: 8-byte seed (low 32 bits, high 32 bits) or full 24-byte state
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -215,16 +223,16 @@
         // C# treats ulong as little-endian: low 32 bits first, then high 32 bits
         // So for seed bytes in big-endian format, we need to swap the halves
         const high = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         const low = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
 
         // Initialize state using the same algorithm as C# version
@@ -233,7 +241,7 @@
         const t0 = OpCodes.ToUint32((1099087573 * s0));
         const t1 = OpCodes.ToUint32((2591861531 * s1));
 
-        this._weyl = OpCodes.ToUint32(6615241 + t1 + t0);
+        this._weyl = OpCodes.Add32(OpCodes.Add32(6615241, t1), t0);
         this._x = OpCodes.ToUint32(123456789 + t0);
         this._y = OpCodes.Xor32(362436069, t0);
         this._z = OpCodes.ToUint32(521288629 + t1);
@@ -258,13 +266,17 @@
       }
 
       // For other lengths, pad to 8 bytes and use standard initialization
-      const paddedSeed = new Array(8).fill(0);
+      /** @type {uint8[]} */
+      const paddedSeed = OpCodes.CreateArray(8, 0);
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         paddedSeed[i] = seedBytes[i];
       }
       this.seed = paddedSeed;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -313,8 +325,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -322,9 +334,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -366,7 +381,8 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -382,24 +398,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

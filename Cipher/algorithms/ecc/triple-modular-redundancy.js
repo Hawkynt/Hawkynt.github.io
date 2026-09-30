@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TripleModularRedundancyInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,17 @@
   class TripleModularRedundancyInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TripleModularRedundancyAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
     }
 
@@ -178,31 +182,48 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Simply replicate each bit three times
+      /** @type {uint8[]} */
       const encoded = [];
       for (let i = 0; i < data.length; ++i) {
-        encoded.push(data[i], data[i], data[i]);
+        encoded.push(data[i]);
+        encoded.push(data[i]);
+        encoded.push(data[i]);
       }
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Must have length divisible by 3
       if (data.length % 3 !== 0) {
         throw new Error('TMR decode: Input length must be divisible by 3');
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
+      /** @type {int32} */
       const k = data.length / 3;
 
       // Majority voting for each triplet
       for (let i = 0; i < k; ++i) {
+        /** @type {int32} */
         const bit0 = data[i * 3];
+        /** @type {int32} */
         const bit1 = data[i * 3 + 1];
+        /** @type {int32} */
         const bit2 = data[i * 3 + 2];
 
         // Count ones
+        /** @type {int32} */
         const onesCount = bit0 + bit1 + bit2;
 
         // Majority vote (2 or 3 ones -> 1, otherwise 0)
@@ -210,9 +231,10 @@
 
         // Log correction if needed
         if (onesCount === 2 || onesCount === 1) {
-          const errors = [bit0, bit1, bit2].filter(b => b !== voted).length;
+          /** @type {int32} */
+          const errors = (bit0 !== voted ? 1 : 0) + (bit1 !== voted ? 1 : 0) + (bit2 !== voted ? 1 : 0);
           if (errors > 0) {
-            console.log(`TMR: Corrected ${errors} error(s) in position ${i}`);
+            console.log("TMR: Corrected " + errors + " error(s) in position " + i);
           }
         }
 
@@ -222,6 +244,10 @@
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length % 3 !== 0) return true;
 
@@ -229,8 +255,11 @@
 
       // Check each triplet for disagreement
       for (let i = 0; i < k; ++i) {
+        /** @type {int32} */
         const bit0 = data[i * 3];
+        /** @type {int32} */
         const bit1 = data[i * 3 + 1];
+        /** @type {int32} */
         const bit2 = data[i * 3 + 2];
 
         // If all three don't agree, there's an error

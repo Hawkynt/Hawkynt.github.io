@@ -178,7 +178,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TinyMTInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -196,16 +196,28 @@
  */
 
   class TinyMTInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {TinyMTAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // TinyMT32 state (127 bits = 4 x 32-bit words)
-      this._status = new Array(4);  // Internal state vector
+      /** @type {uint32[]} */
+      this._status = OpCodes.CreateArray(4, 0);  // Internal state vector
+      /** @type {uint32} */
       this._mat1 = DEFAULT_MAT1;    // Parameter mat1
+      /** @type {uint32} */
       this._mat2 = DEFAULT_MAT2;    // Parameter mat2
+      /** @type {uint32} */
       this._tmat = DEFAULT_TMAT;    // Tempering matrix parameter
+      /** @type {boolean} */
       this._initialized = false;    // Initialization flag
+      /** @type {int32} */
       this._outputSize = 32;        // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;          // Number of bytes to skip before output
     }
 
@@ -213,7 +225,7 @@
      * Initialize the generator with a 32-bit seed
      * Based on RFC 8682 tinymt32_init() function
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed (little-endian)
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed (little-endian)
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -222,9 +234,10 @@
       }
 
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
+        seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
       seedValue = OpCodes.ToUint32(seedValue);
 
@@ -237,12 +250,12 @@
       // Initialization loop (MIN_LOOP = 8 iterations)
       for (let i = 1; i < MIN_LOOP; ++i) {
         // status[i AND 3] XOR= i + MULT * (status[(i-1) AND 3] XOR (status[(i-1) AND 3] shr 30))
-        const prev = this._status[OpCodes.AndN(i - 1, 3)];
-        const xored = OpCodes.ToUint32(OpCodes.XorN(prev, OpCodes.Shr32(prev, 30)));
+        const prev = this._status[OpCodes.And32(i - 1, 3)];
+        const xored = OpCodes.ToUint32(OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30)));
         // CRITICAL: Use Math.imul for correct 32-bit integer multiplication
         // Regular JavaScript multiplication loses precision with large numbers
         const mult = OpCodes.ToUint32(Math.imul(INIT_MULTIPLIER, xored));
-        this._status[OpCodes.AndN(i, 3)] = OpCodes.XorN(this._status[OpCodes.AndN(i, 3)], OpCodes.ToUint32(i + mult));
+        this._status[OpCodes.And32(i, 3)] = OpCodes.Xor32(this._status[OpCodes.And32(i, 3)], OpCodes.ToUint32(i + mult));
       }
 
       // Period certification
@@ -256,6 +269,9 @@
       this._initialized = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -263,10 +279,11 @@
     /**
      * Period certification to ensure period of 2^127-1
      * From RFC 8682 - checks if state is all zeros and fixes it
+     * @returns {void}
      */
     _periodCertification() {
       // Check if all status words are zero (after masking)
-      if (OpCodes.AndN(this._status[0], TINYMT32_MASK) === 0 &&
+      if (OpCodes.And32(this._status[0], TINYMT32_MASK) === 0 &&
           this._status[1] === 0 &&
           this._status[2] === 0 &&
           this._status[3] === 0) {
@@ -281,32 +298,36 @@
     /**
      * Update internal state (state transition function)
      * Based on RFC 8682 tinymt32_next_state() function
+     * @returns {void}
      */
     _nextState() {
-      let x, y;
+      /** @type {uint32} */
+      let x;
+      /** @type {uint32} */
+      let y;
 
       // Extract and combine state elements
       y = this._status[3];
-      x = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(this._status[0], TINYMT32_MASK),
+      x = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(this._status[0], TINYMT32_MASK),
            this._status[1]),
            this._status[2]));
 
       // Apply shifts and XOR
-      x = OpCodes.XorN(x, OpCodes.ToUint32(OpCodes.Shl32(x, TINYMT32_SH0)));
-      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.XorN(OpCodes.Shr32(y, TINYMT32_SH0), x)));
+      x = OpCodes.Xor32(x, OpCodes.ToUint32(OpCodes.Shl32(x, TINYMT32_SH0)));
+      y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.Xor32(OpCodes.Shr32(y, TINYMT32_SH0), x)));
 
       // Rotate state array
       this._status[0] = this._status[1];
       this._status[1] = this._status[2];
-      this._status[2] = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.Shl32(y, TINYMT32_SH1)));
+      this._status[2] = OpCodes.ToUint32(OpCodes.Xor32(x, OpCodes.Shl32(y, TINYMT32_SH1)));
       this._status[3] = y;
 
       // Conditional matrix operations based on LSB of y
       // CRITICAL: Use signed arithmetic for proper masking behavior
-      const lsb = OpCodes.AndN(y, 1);
+      const lsb = OpCodes.And32(y, 1);
       if (lsb !== 0) {
-        this._status[1] = OpCodes.XorN(this._status[1], this._mat1);
-        this._status[2] = OpCodes.XorN(this._status[2], this._mat2);
+        this._status[1] = OpCodes.Xor32(this._status[1], this._mat1);
+        this._status[2] = OpCodes.Xor32(this._status[2], this._mat2);
       }
     }
 
@@ -314,19 +335,19 @@
      * Apply tempering transformation to generate output
      * Based on RFC 8682 tinymt32_temper() function
      *
-     * @returns {number} 32-bit unsigned random value
+     * @returns {uint32} 32-bit unsigned random value
      */
     _temper() {
-      let t0, t1;
+      /** @type {uint32} */
+      let t0 = this._status[3];
+      /** @type {uint32} */
+      const t1 = OpCodes.Add32(this._status[0], OpCodes.Shr32(this._status[2], TINYMT32_SH8));
 
-      t0 = this._status[3];
-      t1 = OpCodes.ToUint32(this._status[0] + OpCodes.Shr32(this._status[2], TINYMT32_SH8));
-
-      t0 = OpCodes.XorN(t0, t1);
+      t0 = OpCodes.Xor32(t0, t1);
 
       // Conditional XOR with tmat based on LSB of t1
-      if (OpCodes.AndN(t1, 1) !== 0) {
-        t0 = OpCodes.XorN(t0, this._tmat);
+      if (OpCodes.And32(t1, 1) !== 0) {
+        t0 = OpCodes.Xor32(t0, this._tmat);
       }
 
       return OpCodes.ToUint32(t0);
@@ -336,7 +357,7 @@
      * Generate the next 32-bit random value
      * Based on RFC 8682 tinymt32_generate_uint32() function
      *
-     * @returns {number} 32-bit unsigned random value
+     * @returns {uint32} 32-bit unsigned random value
      */
     _next32() {
       if (!this._initialized) {
@@ -351,8 +372,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first)
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -360,9 +381,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -370,10 +394,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format
-        output.push(OpCodes.AndN(value, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
+        output.push(OpCodes.And32(value, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -381,7 +405,7 @@
       if (remainingBytes > 0) {
         const value = this._next32();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 
@@ -419,11 +443,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -431,11 +459,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

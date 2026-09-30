@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Letter frequencies partially preserved, making frequency analysis effective on longer texts](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Use only for educational demonstrations, not for actual security |
-| [Repeating key patterns can be detected using Kasiski's method for determining key length](https://en.wikipedia.org/wiki/Kasiski_examination) | — | Consider as historical demonstration cipher only |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Letter frequencies partially preserved, making frequency analysis effective on longer texts | Use only for educational demonstrations, not for actual security |
+| [Kasiski Examination](https://en.wikipedia.org/wiki/Kasiski_examination) | Repeating key patterns can be detected using Kasiski's method for determining key length | Consider as historical demonstration cipher only |
 
 ## Documentation
 

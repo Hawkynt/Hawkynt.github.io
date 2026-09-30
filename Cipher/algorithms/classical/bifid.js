@@ -64,6 +64,7 @@
       this.country = CountryCode.FR;
 
       // Standard Polybius square (5x5 grid, I/J combined)
+      /** @type {string[][]} */
       this.STANDARD_GRID = [
         ['A', 'B', 'C', 'D', 'E'],
         ['F', 'G', 'H', 'I', 'K'],
@@ -86,18 +87,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Frequency Analysis",
-          text: "While more resistant than monoalphabetic ciphers, still vulnerable to frequency analysis with sufficient text",
-          uri: "https://en.wikipedia.org/wiki/Bifid_cipher#Cryptanalysis",
-          mitigation: "Use variable block sizes and longer keywords"
-        },
-        {
-          type: "Grid Recovery", 
-          text: "Custom keyword grids can sometimes be recovered through cryptanalysis",
-          uri: "https://practicalcryptography.com/ciphers/classical-era/bifid/",
-          mitigation: "Educational use only - not suitable for actual security"
-        }
+        new Vulnerability(
+          "Frequency Analysis",
+          "While more resistant than monoalphabetic ciphers, still vulnerable to frequency analysis with sufficient text",
+          "Use variable block sizes and longer keywords",
+          "https://en.wikipedia.org/wiki/Bifid_cipher#Cryptanalysis"
+        ),
+        new Vulnerability(
+          "Grid Recovery",
+          "Custom keyword grids can sometimes be recovered through cryptanalysis",
+          "Educational use only - not suitable for actual security",
+          "https://practicalcryptography.com/ciphers/classical-era/bifid/"
+        )
       ];
 
       // Test vectors using byte arrays
@@ -143,7 +144,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BifidCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -161,48 +162,79 @@
   class BifidCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BifidCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string[][]} */
+      this.standardGrid = algorithm.STANDARD_GRID;
+      /** @type {string} */
       this.keyword = "";
+      /** @type {int32} */
       this.period = 5; // Default period
-      this.grid = JSON.parse(JSON.stringify(algorithm.STANDARD_GRID)); // Copy standard grid
+      /** @type {string[][]} */
+      this.grid = this._standardGridCopy(); // Copy standard grid
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-    // Property setter for key (expects "keyword,period" format or just "period")
+    /**
+     * @returns {string[][]} Deep copy of the standard grid
+     */
+    _standardGridCopy() {
+      /** @type {string[][]} */
+      const copy = [];
+      for (let r = 0; r < this.standardGrid.length; r++) copy.push(this.standardGrid[r].slice());
+      return copy;
+    }
+
+    /**
+     * Key as "keyword,period", just "period", or just a keyword
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for the standard grid and period 5
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this.keyword = "";
         this.period = 5;
-        this.grid = JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
+        this.grid = this._standardGridCopy();
         return;
       }
 
       // Convert byte array to string
+      /** @type {string} */
       const keyString = String.fromCharCode(...keyData);
 
       // Parse key string (format: "keyword,period" or just "period")
+      /** @type {string[]} */
       const parts = keyString.split(',');
 
       if (parts.length === 2) {
         // Has keyword and period
-        this.keyword = parts[0].toUpperCase().replace(/[^A-Z]/g, '');
-        this.period = parseInt(parts[1]) || 5;
+        /** @type {string} */
+        const upper = parts[0].toUpperCase();
+        this.keyword = upper.replace(/[^A-Z]/g, '');
+        /** @type {int32} */
+        const parsed = parseInt(parts[1]);
+        this.period = parsed ? parsed : 5;
       } else if (parts.length === 1) {
         // Check if it's just a number (period) or keyword
+        /** @type {int32} */
         const num = parseInt(parts[0]);
-        if (!isNaN(num) && num > 0) {
+        /** @type {boolean} */
+        const notANumber = isNaN(num);
+        if (!notANumber && num > 0) {
           // It's just a period
           this.keyword = "";
           this.period = num;
         } else {
           // It's just a keyword
-          this.keyword = parts[0].toUpperCase().replace(/[^A-Z]/g, '');
+          /** @type {string} */
+          const upper = parts[0].toUpperCase();
+          this.keyword = upper.replace(/[^A-Z]/g, '');
           this.period = 5; // Default period
         }
       }
@@ -214,39 +246,55 @@
       if (this.keyword.length > 0) {
         this.grid = this.createCustomGrid(this.keyword);
       } else {
-        this.grid = JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
+        this.grid = this._standardGridCopy();
       }
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key as text
+   * @returns {string} "keyword,period", or just the period
    */
 
     get key() {
       if (this.keyword.length > 0) {
         return this.keyword + "," + this.period;
       } else {
-        return this.period.toString();
+        return '' + this.period;
       }
     }
 
-    // Create custom Polybius grid from keyword
+    /**
+     * Create custom Polybius grid from keyword
+     * @param {string} keyword - Keyword; only A-Z except J counts
+     * @returns {string[][]} 5x5 grid
+     */
     createCustomGrid(keyword) {
       if (!keyword || keyword.length === 0) {
-        return JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
+        return this._standardGridCopy();
       }
 
       // Start with empty grid
-      const grid = [[], [], [], [], []];
-      const used = new Set();
-      let row = 0, col = 0;
+      /** @type {string[][]} */
+      const grid = [];
+      for (let r = 0; r < 5; r++) {
+        /** @type {string[]} */
+        const cells = [];
+        grid.push(cells);
+      }
+      /** @type {string} */
+      let used = '';
+      /** @type {int32} */
+      let row = 0;
+      /** @type {int32} */
+      let col = 0;
 
       // Add keyword letters first (removing duplicates)
-      for (const char of keyword) {
-        if (char >= 'A' && char <= 'Z' && !used.has(char) && char !== 'J') {
+      for (let i = 0; i < keyword.length; i++) {
+        /** @type {string} */
+        const char = keyword.charAt(i);
+        if (char >= 'A' && char <= 'Z' && used.indexOf(char) < 0 && char !== 'J') {
           grid[row][col] = char;
-          used.add(char);
+          used += char;
           col++;
           if (col >= 5) {
             col = 0;
@@ -257,11 +305,14 @@
       }
 
       // Fill remaining positions with unused letters (I/J treated as I)
+      /** @type {string} */
       const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
-      for (const char of alphabet) {
-        if (!used.has(char) && row < 5) {
+      for (let i = 0; i < alphabet.length; i++) {
+        /** @type {string} */
+        const char = alphabet.charAt(i);
+        if (used.indexOf(char) < 0 && row < 5) {
           grid[row][col] = char;
-          used.add(char);
+          used += char;
           col++;
           if (col >= 5) {
             col = 0;
@@ -273,8 +324,6 @@
       return grid;
     }
 
-    // Feed data to the cipher
-
     // Get the result of the transformation
     /**
    * Get cipher result (encrypted or decrypted data)
@@ -284,16 +333,23 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // Convert input buffer to string and clean (letters only, uppercase)
+      /** @type {string} */
       const inputString = String.fromCharCode(...this.inputBuffer);
-      const cleanText = inputString.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = inputString.toUpperCase();
+      /** @type {string} */
+      const cleanText = upper.replace(/[^A-Z]/g, '');
 
       // Process using Bifid algorithm
-      const resultString = this.isInverse ? 
-        this.decrypt(cleanText) : 
+      /** @type {string} */
+      const resultString = this.isInverse ?
+        this.decrypt(cleanText) :
         this.encrypt(cleanText);
 
       // Clear input buffer for next operation
@@ -303,15 +359,22 @@
       return OpCodes.AnsiToBytes(resultString);
     }
 
-    // Encrypt using Bifid cipher
+    /**
+     * Encrypt using Bifid cipher
+     * @param {string} plaintext - Upper-case letters
+     * @returns {string} Ciphertext
+     */
     encrypt(plaintext) {
       if (plaintext.length === 0) return '';
 
+      /** @type {string} */
       let result = '';
 
       // Process text in blocks of 'period' length
       for (let blockStart = 0; blockStart < plaintext.length; blockStart += this.period) {
+        /** @type {int32} */
         const blockEnd = Math.min(blockStart + this.period, plaintext.length);
+        /** @type {string} */
         const block = plaintext.substring(blockStart, blockEnd);
         result += this.processBlock(block, true);
       }
@@ -319,15 +382,22 @@
       return result;
     }
 
-    // Decrypt using Bifid cipher
+    /**
+     * Decrypt using Bifid cipher
+     * @param {string} ciphertext - Upper-case letters
+     * @returns {string} Plaintext
+     */
     decrypt(ciphertext) {
       if (ciphertext.length === 0) return '';
 
+      /** @type {string} */
       let result = '';
 
       // Process text in blocks of 'period' length
       for (let blockStart = 0; blockStart < ciphertext.length; blockStart += this.period) {
+        /** @type {int32} */
         const blockEnd = Math.min(blockStart + this.period, ciphertext.length);
+        /** @type {string} */
         const block = ciphertext.substring(blockStart, blockEnd);
         result += this.processBlock(block, false);
       }
@@ -335,82 +405,99 @@
       return result;
     }
 
-    // Process a single block (encrypt or decrypt)
+    /**
+     * Process a single block (encrypt or decrypt)
+     * @param {string} block - Upper-case letters
+     * @param {boolean} encrypt - True to encrypt
+     * @returns {string} Transformed block (letters missing from the grid are dropped)
+     */
     processBlock(block, encrypt) {
-      if (block.length === 0) return '';
+      if (block.length === 0) {
+        return '';
+      }
 
-      const coordinates = [];
+      // Coordinates of the block's letters, as rows and columns
+      /** @type {int32[]} */
+      let rows = [];
+      /** @type {int32[]} */
+      let cols = [];
 
       // Convert characters to coordinates
       for (let i = 0; i < block.length; i++) {
+        /** @type {string} */
         let char = block.charAt(i);
         if (char === 'J') char = 'I'; // Handle I/J equivalence
 
         // Find character in grid
+        /** @type {boolean} */
         let found = false;
         for (let row = 0; row < 5; row++) {
           for (let col = 0; col < 5; col++) {
             if (this.grid[row][col] === char) {
-              coordinates.push({ row: row, col: col });
+              rows.push(row);
+              cols.push(col);
               found = true;
               break;
             }
           }
           if (found) break;
         }
-
-        if (!found) {
-          // Character not found in grid, skip it
-          continue;
-        }
+        // A character not found in the grid is skipped
       }
 
-      if (coordinates.length === 0) return '';
-
-      // Extract rows and columns
-      let rows = [];
-      let cols = [];
-
-      for (const coord of coordinates) {
-        rows.push(coord.row);
-        cols.push(coord.col);
+      if (rows.length === 0) {
+        return '';
       }
 
-      let newCoords = [];
+      /** @type {int32[]} */
+      const newRows = [];
+      /** @type {int32[]} */
+      const newCols = [];
 
       if (encrypt) {
         // For encryption: concatenate rows then columns, then pair them up
+        /** @type {int32[]} */
         const combined = rows.concat(cols);
         for (let i = 0; i < combined.length; i += 2) {
           if (i + 1 < combined.length) {
-            newCoords.push({ row: combined[i], col: combined[i + 1] });
+            newRows.push(combined[i]);
+            newCols.push(combined[i + 1]);
           } else {
             // Odd number of coordinates, use same value for both
-            newCoords.push({ row: combined[i], col: combined[i] });
+            newRows.push(combined[i]);
+            newCols.push(combined[i]);
           }
         }
       } else {
         // For decryption: extract alternating elements back into rows and columns
+        /** @type {int32[]} */
         const combined = [];
-        for (const coord of coordinates) {
-          combined.push(coord.row);
-          combined.push(coord.col);
+        for (let i = 0; i < rows.length; i++) {
+          combined.push(rows[i]);
+          combined.push(cols[i]);
         }
 
+        /** @type {int32} */
         const halfLen = Math.floor(combined.length / 2);
         rows = combined.slice(0, halfLen);
         cols = combined.slice(halfLen);
 
         for (let i = 0; i < rows.length; i++) {
-          newCoords.push({ row: rows[i], col: cols[i] });
+          newRows.push(rows[i]);
+          newCols.push(cols[i]);
         }
       }
 
       // Convert coordinates back to characters
+      /** @type {string} */
       let result = '';
-      for (const coord of newCoords) {
-        if (coord.row >= 0 && coord.row < 5 && coord.col >= 0 && coord.col < 5) {
-          result += this.grid[coord.row][coord.col];
+      for (let i = 0; i < newRows.length; i++) {
+        /** @type {int32} */
+        const r = newRows[i];
+        /** @type {int32} */
+        const c = newCols[i];
+        if (r >= 0 && r < 5 && c >= 0 && c < 5) {
+          result += this.grid[r][c];
         }
       }
 

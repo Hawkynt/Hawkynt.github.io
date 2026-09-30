@@ -214,7 +214,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ACRNGInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -232,20 +232,30 @@
  */
 
   class ACRNGInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ACRNGAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SplitMix64 constants for state initialization
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // ACRNG parameters
       this._order = 12;          // Default order (state array size = order + 1)
+      /** @type {BigInt} */
       this._modulo = 0n;         // 0 means implicit modulo (2^64)
       this._useImplicitModulo = true;
 
       // Generator state
+      /** @type {BigInt[]} */
       this._state = null;        // State array (64-bit BigInt values)
       this._ready = false;       // Initialization status
     }
@@ -253,6 +263,7 @@
     /**
      * Set order parameter (state array size = order + 1)
      * Default is 12, creating a state array of 13 elements
+     * @param {int32} value - Order
      */
     set order(value) {
       if (value <= 0) {
@@ -265,6 +276,9 @@
       }
     }
 
+    /**
+     * @returns {int32} Order
+     */
     get order() {
       return this._order;
     }
@@ -272,21 +286,25 @@
     /**
      * Set modulo parameter (m)
      * If modulo is null, 0, or empty, use implicit modulo (2^64)
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
      */
     set modulo(moduloBytes) {
       if (!moduloBytes || moduloBytes.length === 0) {
+        /** @type {BigInt} */
         this._modulo = 0n;
         this._useImplicitModulo = true;
         return;
       }
 
       // Convert modulo bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let moduloValue = 0n;
       for (let i = 0; i < moduloBytes.length; ++i) {
         moduloValue = OpCodes.OrN(OpCodes.ShiftLn(moduloValue, 8n), BigInt(moduloBytes[i]));
       }
 
       if (moduloValue === 0n) {
+        /** @type {BigInt} */
         this._modulo = 0n;
         this._useImplicitModulo = true;
       } else {
@@ -295,6 +313,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get modulo() {
       return null;
     }
@@ -302,6 +323,7 @@
     /**
      * Initialize generator with seed value (1-8 bytes)
      * State is initialized using SplitMix64 algorithm
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -310,6 +332,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -317,10 +340,11 @@
 
       // Initialize state array (size = order + 1)
       const stateSize = this._order + 1;
-      this._state = new Array(stateSize);
+      this._state = OpCodes.CreateArray(stateSize, 0n);
 
       // Use SplitMix64 to initialize state
       for (let i = 0; i < stateSize; ++i) {
+        /** @type {BigInt} */
         const nextValue = this._splitmix64Next(seedValue);
 
         if (this._useImplicitModulo) {
@@ -337,6 +361,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -344,13 +371,17 @@
     /**
      * SplitMix64 next function for state initialization
      * This matches the C# reference implementation
+     * @param {BigInt} z - State before the step
+     * @returns {BigInt} Mixed output
      */
     _splitmix64Next(z) {
       // Add golden gamma to state
-      z = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const advanced = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
 
       // Mix function (Stafford variant 13)
-      let result = z;
+      /** @type {BigInt} */
+      let result = advanced;
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 30)) * this.MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 27)) * this.MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 31)), 0xFFFFFFFFFFFFFFFFn);
@@ -362,6 +393,7 @@
      * Generate next value using ACRNG algorithm
      * Cascading addition: X[i] = (X[i-1]_new + X[i]) mod m for i = 1 to order
      * Returns X[order] as output
+     * @returns {BigInt} Next output
      */
     _next() {
       if (!this._ready) {
@@ -377,6 +409,7 @@
         // Explicit modulo - use UInt128 arithmetic like C#
         for (let i = 1; i < this._state.length; ++i) {
           // Add with 128-bit precision, then apply modulo
+          /** @type {BigInt} */
           const sum = this._state[i - 1] + this._state[i];
           this._state[i] = sum % this._modulo;
         }
@@ -388,8 +421,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -397,9 +430,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Determine byte width based on modulo
@@ -408,10 +444,12 @@
       const bytesPerValue = use32Bit ? 4 : 8;
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         if (use32Bit) {
           // Pack as 32-bit value (big-endian)
+          /** @type {uint32} */
           const value32 = Number(OpCodes.AndN(value, 0xFFFFFFFFn));
           const bytes = OpCodes.Unpack32BE(value32);
           for (let i = 0; i < 4 && output.length < length; ++i) {
@@ -421,7 +459,9 @@
           // Pack as 64-bit value (big-endian)
           for (let i = 56; i >= 0; i -= 8) {
             if (output.length < length) {
-              output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i)), 0xFFn)));
+              /** @type {uint8} */
+              const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i), 0xFFn));
+              output.push(b);
             }
           }
         }
@@ -450,19 +490,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 
