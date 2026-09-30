@@ -238,9 +238,10 @@
       buf.push(0x80); // single padding bit (byte-aligned input only)
       while (buf.length < bufSize) buf.push(0);
 
-      if (ptr > bufSize - 18) {
-        // Not enough room left for the 18-byte trailer: compress this
-        // padding-only block first, then start a fresh all-zero block.
+      if (ptr + 1 > bufSize - 18) {
+        // The 0x80 byte leaves no room for the 18-byte trailer: compress this
+        // block first, then start a fresh all-zero block. At ptr = bufSize - 18
+        // the trailer would overwrite the 0x80 byte.
         this._compress(buf);
         this.C = this._zeroWords();
         buf = OpCodes.CreateArray(bufSize, 0);
@@ -609,6 +610,23 @@
           input: [0xCC],
           outputSize: 64,
           expected: OpCodes.Hex8ToBytes("dfce37ca6f32ba4c3a72e77bca20e511a39b31a6075815f083db2ecfd5c32cfd6a4e0dd9bd51921199758edd2fe8ed0fa31e06aa821c7030653d15408e8728dd")
+        },
+
+        // A final block holding exactly blockSize - 18 bytes leaves no room for
+        // the 0x80 byte plus the 18-byte trailer, so padding needs an extra block
+        {
+          text: "NIST SHA-3 Round 2 KAT, ShortMsgKAT_256 Len = 1392 (174 bytes, extra padding block) - ECHO-256",
+          uri: "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round2/documents/ECHO_Round2.zip",
+          input: OpCodes.Hex8ToBytes("bebd4f1a84fc8b15e4452a54bd02d69e304b7f32616aadd90537937106ae4e28de9d8aab02d19bc3e2fde1d651559e296453e4dba94370a14dbbb2d1d4e2022302ee90e208321efcd8528ad89e46dc839ea9df618ea8394a6bff308e7726bae0c19bcd4be52da6258e2ef4e96aa21244429f49ef5cb486d7ff35cac1bacb7e95711944bccb2ab34700d42d1eb38b5d536b947348a458ede3dc6bd6ec547b1b0cae5b257be36a7124e1060c170ffa"),
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes("45e8685857b7abffa9cf6c0379ffa563bb3b39a6b049f949adf10ecea718be77")
+        },
+        {
+          text: "NIST SHA-3 Round 2 KAT, ShortMsgKAT_512 Len = 880 (110 bytes, extra padding block) - ECHO-512",
+          uri: "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round2/documents/ECHO_Round2.zip",
+          input: OpCodes.Hex8ToBytes("47c6e0c2b74948465921868804f0f7bd50dd323583dc784f998a93cd1ca4c6ef84d41dc81c2c40f34b5bee6a93867b3bdba0052c5f59e6f3657918c382e771d33109122cc8bb0e1e53c4e3d13b43ce44970f5e0c079d2ad7d7a3549cd75760c21bb15b447589e86e8d76b1e9ced2"),
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("9067514f1d82ddbae543c634013e613c558d9ff5d26e4c47ea124088a2c5a32fa58b3592a5b71c48b6bf36e2b8ab6ec6815f5b17dfc204fe3be1f91cda1257e6")
         }
       ];
     }
