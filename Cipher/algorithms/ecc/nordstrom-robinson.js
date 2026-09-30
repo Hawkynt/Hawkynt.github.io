@@ -144,6 +144,7 @@
       this.result = null;
 
       // Pre-generate codebook using coset construction
+      /** @type {uint8[][]} */
       this.codebook = this.generateCodebook();
     }
 
@@ -178,86 +179,51 @@
       return this.result;
     }
 
+    /**
+     * Codewords of the eight RM(1,4) cosets; entry i is the codeword of message i
+     * (coset c holds messages 32c .. 32c+31)
+     * @returns {uint8[][]} 256 codewords of 16 bits
+     */
     generateCodebook() {
       // Nordstrom-Robinson code as union of cosets of first-order Reed-Muller code
       // We use a construction based on the (16,5,8) Hadamard code
-      /** @type {uint8[]} */
+      /** @type {uint8[][]} */
       const codebook = [];
 
-      // Generate first coset: RM(1,4) - First-order Reed-Muller code [16,5,8]
-      for (let msg = 0; msg < 32; ++msg) {
-        const codeword = this.rmEncode(msg);
-        codebook.push({ message: msg, codeword: codeword, coset: 0 });
-      }
+      // Coset leaders: the first coset is RM(1,4) itself, the second adds
+      // v = [0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1] (codeword of (8,4,4) RM), and so on
+      /** @type {uint8[][]} */
+      const cosetLeaders = [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+        [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+        [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+        [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0],
+        [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0]
+      ];
 
-      // Generate second coset: RM(1,4) + v where v is a specific coset leader
-      // Use v = [0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1] (codeword of (8,4,4) RM)
-      /** @type {uint8[]} */
-      const cosetLeader = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1];
-
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader[i]));
-        codebook.push({ message: msg + 32, codeword: codeword, coset: 1 });
-      }
-
-      // Generate third coset
-      /** @type {uint8[]} */
-      const cosetLeader2 = [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader2[i]));
-        codebook.push({ message: msg + 64, codeword: codeword, coset: 2 });
-      }
-
-      // Generate fourth coset
-      /** @type {uint8[]} */
-      const cosetLeader3 = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader3[i]));
-        codebook.push({ message: msg + 96, codeword: codeword, coset: 3 });
-      }
-
-      // Generate fifth coset
-      /** @type {uint8[]} */
-      const cosetLeader4 = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader4[i]));
-        codebook.push({ message: msg + 128, codeword: codeword, coset: 4 });
-      }
-
-      // Generate sixth coset
-      /** @type {uint8[]} */
-      const cosetLeader5 = [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader5[i]));
-        codebook.push({ message: msg + 160, codeword: codeword, coset: 5 });
-      }
-
-      // Generate seventh coset
-      /** @type {uint8[]} */
-      const cosetLeader6 = [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader6[i]));
-        codebook.push({ message: msg + 192, codeword: codeword, coset: 6 });
-      }
-
-      // Generate eighth coset
-      /** @type {uint8[]} */
-      const cosetLeader7 = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0];
-      for (let msg = 0; msg < 32; ++msg) {
-        const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader7[i]));
-        codebook.push({ message: msg + 224, codeword: codeword, coset: 7 });
+      for (let coset = 0; coset < cosetLeaders.length; ++coset) {
+        /** @type {uint8[]} */
+        const leader = cosetLeaders[coset];
+        for (let msg = 0; msg < 32; ++msg) {
+          /** @type {uint8[]} */
+          const rmWord = this.rmEncode(msg);
+          /** @type {uint8[]} */
+          const codeword = [];
+          for (let i = 0; i < rmWord.length; ++i) codeword.push(OpCodes.Xor32(rmWord[i], leader[i]));
+          codebook.push(codeword);
+        }
       }
 
       return codebook;
     }
 
+    /**
+     * @param {uint32} msg - Five message bits
+     * @returns {uint8[]} RM(1,4) codeword
+     */
     rmEncode(msg) {
       // Encode using first-order Reed-Muller RM(1,4): 5 bits -> 16 bits
       // Message format: [a0, a1, a2, a3, a4] where a0 is constant term
@@ -267,18 +233,18 @@
       const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term
-      if ((msg&1) !== 0) {
+      if (OpCodes.And32(msg, 1) !== 0) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] = codeword[i]^1;
+          codeword[i] = OpCodes.ToInt(OpCodes.Xor32(codeword[i], 1));
         }
       }
 
       // Linear terms
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        if ((OpCodes.Shr32(msg, (var_idx + 1))&1) !== 0) {
+        if (OpCodes.And32(OpCodes.Shr32(msg, (var_idx + 1)), 1) !== 0) {
           for (let i = 0; i < n; ++i) {
-            if ((OpCodes.Shr32(i, (m - 1 - var_idx))&1) !== 0) {
-              codeword[i] = codeword[i]^1;
+            if (OpCodes.And32(OpCodes.Shr32(i, (m - 1 - var_idx)), 1) !== 0) {
+              codeword[i] = OpCodes.ToInt(OpCodes.Xor32(codeword[i], 1));
             }
           }
         }
@@ -300,14 +266,16 @@
       /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < 8; ++i) {
-        index = OpCodes.ToUint32(OpCodes.Shl32(index, 1)+(data[i]&1));
+        index = OpCodes.Add32(OpCodes.Shl32(index, 1), OpCodes.And32(data[i], 1));
       }
 
       if (index >= this.codebook.length) {
         throw new Error("Nordstrom-Robinson encode: Index " + index + " out of range");
       }
 
-      return [...this.codebook[index].codeword];
+      /** @type {uint8[]} */
+      const codeword = this.codebook[index].slice();
+      return codeword;
     }
 
     /**
@@ -320,14 +288,16 @@
       }
 
       // Minimum distance decoding
+      /** @type {float64} */
       let minDistance = Infinity;
       /** @type {uint32} */
       let bestIndex = 0;
 
       for (let i = 0; i < this.codebook.length; ++i) {
+        /** @type {int32} */
         let distance = 0;
         for (let j = 0; j < 16; ++j) {
-          if (data[j] !== this.codebook[i].codeword[j]) {
+          if (data[j] !== this.codebook[i][j]) {
             ++distance;
           }
         }
@@ -339,9 +309,10 @@
       }
 
       // Convert index back to 8-bit array
+      /** @type {uint8[]} */
       const decoded = new Array(8);
       for (let i = 7; i >= 0; --i) {
-        decoded[i] = bestIndex&1;
+        decoded[i] = OpCodes.And32(bestIndex, 1);
         bestIndex = OpCodes.Shr32(bestIndex, 1);
       }
 
@@ -359,7 +330,7 @@
       for (let i = 0; i < this.codebook.length; ++i) {
         let matches = true;
         for (let j = 0; j < 16; ++j) {
-          if (data[j] !== this.codebook[i].codeword[j]) {
+          if (data[j] !== this.codebook[i][j]) {
             matches = false;
             break;
           }

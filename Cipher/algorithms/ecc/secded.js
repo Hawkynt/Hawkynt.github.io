@@ -184,7 +184,9 @@
         throw new Error('SECDEDInstance.DetectError: Input must be 8-bit array');
       }
 
+      /** @type {uint32} */
       const syndrome = this.calculateSyndrome(data);
+      /** @type {uint32} */
       const overallParity = this.calculateOverallParity(data);
 
       // syndrome = 0, parity = 0 -> no error
@@ -206,6 +208,7 @@
       }
 
       const [d1, d2, d3, d4] = data;
+      /** @type {uint8[]} */
       const encoded = new Array(8);
 
       // First encode as Hamming (7,4)
@@ -237,8 +240,11 @@
         throw new Error('SECDED decode: Input must be exactly 8 bits');
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      /** @type {uint32} */
       const syndrome = this.calculateSyndrome(received);
+      /** @type {uint32} */
       const overallParity = this.calculateOverallParity(received);
 
       if (syndrome === 0 && overallParity === 0) {
@@ -251,6 +257,7 @@
         // Single bit error in Hamming portion (correctable)
         // Syndrome indicates position in 1-indexed Hamming code
         // Map to SECDED positions: 1->1, 2->2, 3->3, 4->4, 5->5, 6->6, 7->7
+        /** @type {int32} */
         const errorPos = syndrome;
         console.log("SECDED: Single error at position " + (errorPos + 1) + ", correcting...");
         if (errorPos >= 1 && errorPos <= 7) {
@@ -262,19 +269,32 @@
       }
 
       // Extract data bits from positions 4, 6, 7, 8 (1-indexed)
-      return [received[3], received[5], received[6], received[7]];
+      /** @type {uint8[]} */
+      const decoded = [received[3], received[5], received[6], received[7]];
+      return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Eight-bit codeword
+     * @returns {uint32} Hamming syndrome (1-indexed error position, 0 for none)
+     */
     calculateSyndrome(data) {
       // Calculate Hamming syndrome from positions 1-7 (indices 1-7)
+      /** @type {uint32} */
       const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[1], data[3]), data[5]), data[7]); // p1 XOR positions 3,5,7
+      /** @type {uint32} */
       const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[2], data[3]), data[6]), data[7]); // p2 XOR positions 3,6,7
+      /** @type {uint32} */
       const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[4], data[5]), data[6]), data[7]); // p4 XOR positions 5,6,7
 
       // Syndrome indicates error position in Hamming code (1-indexed)
-      return s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
+      return OpCodes.Add32(OpCodes.Add32(s1, OpCodes.Shl32(s2, 1)), OpCodes.Shl32(s4, 2));
     }
 
+    /**
+     * @param {uint8[]} data - Eight-bit codeword
+     * @returns {uint32} Parity over all bits
+     */
     calculateOverallParity(data) {
       // XOR all bits including overall parity bit
       /** @type {uint32} */
