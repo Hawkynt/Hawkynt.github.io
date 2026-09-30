@@ -213,6 +213,7 @@
       // The shift register holds the current input bit in its most significant
       // position followed by the K-1 preceding input bits, so that a generator
       // polynomial masks directly onto the register layout.
+      /** @type {uint8[]} */
       const output = [];
       const constraintLength = this._constraintLength;
       const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1;
@@ -263,21 +264,27 @@
       const numStates = OpCodes.Shl32(1, constraintLength - 1);
       const stateMask = numStates - 1;
 
+      /** @type {float64[]} */
       let pathMetrics = new Array(numStates).fill(Infinity);
       pathMetrics[0] = 0; // The encoder starts in the all-zero state
 
       // Survivor decisions: for each stage, the input bit that entered a state
       // and the predecessor state it came from
+      /** @type {uint8[][]} */
       const decisionBit = [];
+      /** @type {uint8[][]} */
       const decisionFrom = [];
 
       for (let t = 0; t < numBits; ++t) {
         const r1 = OpCodes.And32(received[t * this._rate], 1);
         const r2 = OpCodes.And32(received[t * this._rate + 1], 1);
 
+        /** @type {float64[]} */
         const nextMetrics = new Array(numStates).fill(Infinity);
-        const enteredWith = new Array(numStates).fill(0);
-        const cameFrom = new Array(numStates).fill(0);
+        /** @type {uint8[]} */
+        const enteredWith = OpCodes.CreateArray(numStates, 0);
+        /** @type {uint8[]} */
+        const cameFrom = OpCodes.CreateArray(numStates, 0);
 
         for (let state = 0; state < numStates; ++state) {
           if (pathMetrics[state] === Infinity) continue;
@@ -321,7 +328,8 @@
       }
 
       // Trace the survivor path back to recover the information bits
-      const decoded = new Array(numBits).fill(0);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(numBits, 0);
       let state = bestState;
       for (let t = numBits - 1; t >= 0; --t) {
         decoded[t] = decisionBit[t][state];

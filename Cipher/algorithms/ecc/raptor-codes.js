@@ -155,6 +155,7 @@
 
       // Input/Output
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
       this.decodedSymbols = null;
 
@@ -383,6 +384,7 @@
     }
 
     _ltEncode() {
+      /** @type {uint8[]} */
       const ltSymbols = [];
       const numLTSymbols = this.ltGraph.rightNodes - this.intermediateSymbolsCount; // Exclude systematic part
 
@@ -460,8 +462,10 @@
       let converged = false;
 
       // Initialize variable and check node beliefs
-      const variableBeliefs = new Array(this.intermediateSymbolsCount).fill(0);
-      const checkBeliefs = new Array(this.preCodeMatrix.rows).fill(0);
+      /** @type {float64[]} */
+      const variableBeliefs = OpCodes.CreateArray(this.intermediateSymbolsCount, 0);
+      /** @type {float64[]} */
+      const checkBeliefs = OpCodes.CreateArray(this.preCodeMatrix.rows, 0);
 
       while (iteration < maxIterations && !converged) {
         // Variable node update

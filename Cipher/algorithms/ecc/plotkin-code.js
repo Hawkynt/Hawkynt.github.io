@@ -308,6 +308,7 @@
       // Split data: first prevK bits for u, rest for v
       // Special handling: when k = prevK + 1, we need to pad v
       const uBits = data.slice(0, prevK);
+      /** @type {uint8[]} */
       const vBits = [];
 
       // For v, we need prevK bits total
@@ -333,6 +334,7 @@
       const vEncoded = tempInstance.Result();
 
       // Construct |u|u+v|
+      /** @type {uint8[]} */
       const codeword = [];
 
       // First half: u
@@ -371,6 +373,7 @@
 
       // Compute u = r1, v = r1 XOR r2
       const uReceived = [...r1];
+      /** @type {uint8[]} */
       const vReceived = [];
       for (let i = 0; i < halfN; ++i) {
         vReceived.push(OpCodes.Xor32(r1[i], r2[i]));
@@ -389,6 +392,7 @@
       // Combine decoded bits
       // First k bits come from u, remaining from v
       const prevK = halfN / 2 + 1;
+      /** @type {uint8[]} */
       const decoded = [];
 
       for (let i = 0; i < prevK; ++i) {

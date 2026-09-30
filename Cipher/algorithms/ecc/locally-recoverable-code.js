@@ -219,7 +219,8 @@
       }
 
       // Linear encoding: c = m * G
-      const codeword = new Array(6).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(6, 0);
 
       for (let i = 0; i < 6; ++i) {
         /** @type {uint32} */
@@ -279,6 +280,7 @@
 
     computeSyndromes(data) {
       // Compute syndrome vector for error detection
+      /** @type {uint8[]} */
       const syndromes = [];
 
       // Local parity 1: c3 = c0 XOR c1

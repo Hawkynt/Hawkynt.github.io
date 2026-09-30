@@ -138,6 +138,7 @@
       this.result = null;
 
       // BCH(7,4) generator polynomial: x^3 + x + 1 (octal 013 = binary 1011)
+      /** @type {uint8[]} */
       this.generatorPoly = [1, 0, 1, 1]; // coefficients from high to low
     }
 
@@ -235,7 +236,8 @@
 
     // Polynomial division in GF(2)
     polyDiv(dividend, divisor) {
-      const result = [...dividend];
+      /** @type {uint8[]} */
+      const result = dividend.slice();
       const divisorLen = divisor.length;
 
       for (let i = 0; i <= result.length - divisorLen; ++i) {

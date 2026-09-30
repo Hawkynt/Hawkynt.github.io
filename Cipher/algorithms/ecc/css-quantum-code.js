@@ -250,7 +250,8 @@
       }
 
       // Copy to avoid modifying input
-      const received = [...physicalQubits];
+      /** @type {uint8[]} */
+      const received = physicalQubits.slice();
 
       // Measure Z-stabilizers (detect bit-flip errors)
       const syndrome = this.measureSyndrome(received);
@@ -275,7 +276,8 @@
      * Returns 3-bit syndrome indicating error location
      */
     measureSyndrome(qubits) {
-      const syndrome = new Array(3).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(3, 0);
 
       for (let i = 0; i < 3; ++i) {
         /** @type {uint32} */
@@ -361,7 +363,8 @@
         throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'bit-flip':

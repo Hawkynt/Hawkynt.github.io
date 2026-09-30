@@ -202,6 +202,7 @@
       const n = OpCodes.Shl32(1, m); // 2^m
       const k = n - 2 * m - 1; // Number of information bits
 
+      /** @type {uint8[]} */
       const codebook = [];
 
       // For simplified implementation, use construction similar to Nordstrom-Robinson
@@ -234,7 +235,8 @@
     rmEncode(msg, m) {
       // First-order Reed-Muller encoding
       const n = OpCodes.Shl32(1, m);
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term
       if (msg&1) {
@@ -260,7 +262,8 @@
     applyCoset(codeword, cosetBits, m) {
       // Apply coset transformation based on cosetBits
       const n = OpCodes.Shl32(1, m);
-      const result = [...codeword];
+      /** @type {uint8[]} */
+      const result = codeword.slice();
 
       // Simplified coset application
       // Real Preparata uses complex coset structure
@@ -334,6 +337,7 @@
       }
 
       // Convert index back to bit array
+      /** @type {uint8[]} */
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
         decoded.push((OpCodes.Shr32(bestIndex, i))&1);

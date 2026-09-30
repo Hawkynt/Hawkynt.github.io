@@ -226,18 +226,22 @@
       // decoder describing different codes.
       const parityCount = this.n - this.k;
 
+      /** @type {uint8[][]} */
       this.parityGenerator = [];
       for (let i = 0; i < this.k; i++) {
-        const row = new Array(parityCount).fill(0);
+        /** @type {int32[]} */
+        const row = OpCodes.CreateArray(parityCount, 0);
         for (let p = 0; p < parityCount; p++) {
           row[p] = this.couplingMatrix[p][i];
         }
         this.parityGenerator.push(row);
       }
 
+      /** @type {int32[][]} */
       this.parityCheckMatrix = [];
       for (let p = 0; p < parityCount; p++) {
-        const row = new Array(this.n).fill(0);
+        /** @type {int32[]} */
+        const row = OpCodes.CreateArray(this.n, 0);
         for (let i = 0; i < this.k; i++) {
           row[i] = this.parityGenerator[i][p];
         }
@@ -309,7 +313,8 @@
         throw new Error("SC-LDPC encode: Input must be exactly " + this.k + " bits");
       }
 
-      const encoded = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(this.n, 0);
 
       // Copy systematic information bits
       for (let i = 0; i < this.k; i++) {
@@ -375,6 +380,7 @@
      * Syndrome = H * codeword (mod 2)
      */
     calculateSyndrome(codeword) {
+      /** @type {uint8[]} */
       const syndrome = [];
 
       for (let i = 0; i < this.numChecks; i++) {
@@ -396,7 +402,8 @@
      * Implements simplified sliding window decoding with threshold saturation
      */
     windowedBP(received, maxIterations) {
-      const decoded = [...received];
+      /** @type {uint8[]} */
+      const decoded = received.slice();
       const windowSize = this.w; // Window size equals coupling width
 
       // Initialize log-likelihood ratios (LLRs)

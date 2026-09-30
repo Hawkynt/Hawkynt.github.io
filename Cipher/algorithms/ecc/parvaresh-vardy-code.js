@@ -158,6 +158,7 @@
 
       // Evaluation points in GF(16)
       // Use all non-zero elements for maximum code length
+      /** @type {uint8[]} */
       this.evalPoints = [1, 2, 3, 4, 5, 6, 7, 8];
 
       // Initialize Galois Field
@@ -248,6 +249,7 @@
       const hEvals = this.evaluatePolynomial(h);
 
       // Step 5: Concatenate evaluations [f(α1), f(α2), ..., f(αn), h(α1), h(α2), ..., h(αn)]
+      /** @type {uint8[]} */
       const codeword = [...fEvals, ...hEvals];
 
       return codeword;
@@ -390,7 +392,8 @@
       // Multiply two polynomials over GF(16)
       // Returns coefficients of product polynomial
       const resultDegree = poly1.length + poly2.length - 2;
-      const result = new Array(resultDegree + 1).fill(0);
+      /** @type {uint8[]} */
+      const result = OpCodes.CreateArray(resultDegree + 1, 0);
 
       for (let i = 0; i < poly1.length; ++i) {
         for (let j = 0; j < poly2.length; ++j) {
@@ -405,7 +408,8 @@
       // Lagrange interpolation over GF(16). Recovers the unique polynomial of
       // degree below indices.length passing through the selected evaluation
       // points, returned as coefficients with coefficients[i] scaling x^i.
-      const coefficients = new Array(indices.length).fill(0);
+      /** @type {uint8[]} */
+      const coefficients = OpCodes.CreateArray(indices.length, 0);
 
       for (let a = 0; a < indices.length; ++a) {
         const xa = this.evalPoints[indices[a]];
@@ -413,6 +417,7 @@
 
         // Basis polynomial: product over b not equal to a of (x + xb),
         // normalised by the product of (xa + xb) so it is 1 at xa and 0 elsewhere
+        /** @type {uint8[]} */
         let basis = [1];
         let denominator = 1;
 

@@ -201,7 +201,8 @@
 
       // Simplex code generator matrix is the transpose of Hamming parity-check matrix
       // Each row corresponds to a column of the Hamming parity-check matrix
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Generate codeword by linear combination of basis vectors
       for (let i = 0; i < m; ++i) {
@@ -232,7 +233,8 @@
         throw new Error("Simplex decode: Input must be exactly " + n + " bits for Simplex(" + n + "," + m + ")");
       }
 
-      const decoded = new Array(m).fill(0);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(m, 0);
 
       // Correlate with all possible codewords (2^m total)
       let maxCorrelation = -Infinity;
@@ -240,7 +242,8 @@
 
       for (let msg = 0; msg < (OpCodes.Shl32(1, m)); ++msg) {
         // Generate codeword for this message
-        const testCodeword = new Array(n).fill(0);
+        /** @type {uint8[]} */
+        const testCodeword = OpCodes.CreateArray(n, 0);
         for (let i = 0; i < m; ++i) {
           if (OpCodes.And32(OpCodes.Shr32(msg, i), 1)) {
             for (let j = 0; j < n; ++j) {

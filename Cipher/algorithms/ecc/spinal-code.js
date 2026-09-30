@@ -235,6 +235,7 @@
       let spineState = 0;
 
       // Generate coded symbols through multiple passes
+      /** @type {uint8[]} */
       const coded = [];
 
       for (let pass = 0; pass < this.numPasses; ++pass) {
@@ -282,6 +283,7 @@
      * @returns {Array} - Candidates [{message, metric}, ...] sorted by likelihood
      */
     _bubbleDecoder(received) {
+      /** @type {uint8[]} */
       const candidates = [];
 
       // Generate all possible messages (brute-force for small k)
@@ -323,6 +325,7 @@
      */
     _generateCodedSequence(message) {
       let spineState = 0;
+      /** @type {uint8[]} */
       const coded = [];
 
       for (let pass = 0; pass < this.numPasses; ++pass) {
@@ -425,6 +428,7 @@
      * @returns {Array} - Bit array
      */
     _intToBits(value, numBits) {
+      /** @type {uint8[]} */
       const bits = [];
       for (let i = 0; i < numBits; ++i) {
         // Note: Structural bit extraction

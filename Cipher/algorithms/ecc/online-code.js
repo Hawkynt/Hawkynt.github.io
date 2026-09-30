@@ -198,6 +198,7 @@
 
       // Input/Output
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
       this.decodedSymbols = null;
 
@@ -377,7 +378,8 @@
 
     _computeAuxiliarySymbols() {
       // Each auxiliary symbol is XOR of all connected message symbols
-      const auxiliary = new Array(this.auxiliaryCount).fill(0);
+      /** @type {uint8[]} */
+      const auxiliary = OpCodes.CreateArray(this.auxiliaryCount, 0);
 
       for (let auxIdx = 0; auxIdx < this.auxiliaryCount; auxIdx++) {
         const connectedMessages = this.outerCodeGraph.getNeighbors(auxIdx);
@@ -391,6 +393,7 @@
     }
 
     _encodeInnerCode(compositeBlock) {
+      /** @type {uint8[]} */
       const innerSymbols = [];
 
       // Generate inner code symbols (excluding systematic part)
@@ -440,7 +443,8 @@
 
     _reconstructAuxiliarySymbols(sourceSymbols, repairSymbols) {
       // Reconstruct auxiliary symbols from source symbols using outer code
-      const auxiliary = new Array(this.auxiliaryCount).fill(0);
+      /** @type {uint8[]} */
+      const auxiliary = OpCodes.CreateArray(this.auxiliaryCount, 0);
 
       for (let auxIdx = 0; auxIdx < this.auxiliaryCount; auxIdx++) {
         const connectedMessages = this.outerCodeGraph.getNeighbors(auxIdx);
@@ -463,7 +467,8 @@
       const maxIterations = 100;
       let iteration = 0;
 
-      const decoded = [...receivedSymbols];
+      /** @type {uint8[]} */
+      const decoded = receivedSymbols.slice();
       const unknownSet = new Set(erasurePositions);
 
       while (unknownSet.size > 0 && iteration < maxIterations) {
@@ -543,6 +548,7 @@
     getOuterCodeStats() {
       if (!this.outerCodeGraph) return null;
 
+      /** @type {int32[]} */
       const degrees = [];
       for (let i = 0; i < this.outerCodeGraph.rightNodes; i++) {
         degrees.push(this.outerCodeGraph.getDegree(i));
@@ -562,6 +568,7 @@
     getInnerCodeStats() {
       if (!this.innerCodeGraph) return null;
 
+      /** @type {int32[]} */
       const degrees = [];
       for (let i = 0; i < this.innerCodeGraph.rightNodes; i++) {
         degrees.push(this.innerCodeGraph.getDegree(i));
