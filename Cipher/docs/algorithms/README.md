@@ -835,7 +835,7 @@ _Cryptographic hash algorithms_
 | [JH-384](hash-functions/jh-384.md) | — | JH is a SHA-3 finalist designed by Hongjun Wu. A 1024-bit state is regrouped into 256 four-bit elements and driven through 42 rounds of S-b… |
 | [JH-512](hash-functions/jh-512.md) | — | JH is a SHA-3 finalist designed by Hongjun Wu. A 1024-bit state is regrouped into 256 four-bit elements and driven through 42 rounds of S-b… |
 | [KangarooTwelve](hash-functions/kangarootwelve.md) | 🧪 Experimental | Fast hashing based on Keccak-p[1600,12] with tree structure for parallel processing. NIST Lightweight Cryptography submission offering high… |
-| [Keccak (DarkCrypt)](hash-functions/keccak-darkcrypt.md) | 🎓 Educational Only | Keccak sponge hash variant used by the DarkCrypt Total Commander plugin. Built on the standard Keccak-f[1600] permutation (standard rotatio… |
+| [Keccak (DarkCrypt)](hash-functions/keccak-darkcrypt.md) | 🎓 Educational Only | Keccak-512 as used by the DarkCrypt Total Commander plugin: the original SHA-3 round 1 submission (Keccak version 1, 2008), Keccak[r=512, c… |
 | [Keccak-224](hash-functions/keccak-224.md) | — | Original Keccak-224 hash function (pre-SHA3). Uses 0x01 padding instead of SHA-3's 0x06. Produces 224-bit digests. |
 | [Keccak-256](hash-functions/keccak-256.md) | — | Original Keccak-256 hash function (pre-SHA3). Uses 0x01 padding instead of SHA-3's 0x06. Widely used in blockchain applications like Ethere… |
 | [Keccak-384](hash-functions/keccak-384.md) | — | Original Keccak-384 hash function (pre-SHA3). Uses 0x01 padding instead of SHA-3's 0x06. Produces 384-bit digests. |
@@ -856,7 +856,7 @@ _Cryptographic hash algorithms_
 | [MD2](hash-functions/md2.md) | — | MD2 is a 128-bit cryptographic hash function and predecessor to MD4 and MD5. It is extremely slow and cryptographically broken with known c… |
 | [MD4](hash-functions/md4.md) | — | MD4 is a 128-bit cryptographic hash function and predecessor to MD5. It is cryptographically broken with practical collision attacks and sh… |
 | [MD5](hash-functions/md5.md) | ❌ Broken | 128-bit cryptographic hash function designed by Ronald Rivest. Fast but cryptographically broken with practical collision attacks. |
-| [MD6 (DarkCrypt)](hash-functions/md6-darkcrypt.md) | 🎓 Educational Only | Standard MD6-512 hash function as used by the DarkCrypt Total Commander plugin: the unmodified MIT reference MD6 implementation, hardcoded… |
+| [MD6 (DarkCrypt)](hash-functions/md6-darkcrypt.md) | 🎓 Educational Only | MD6-512 as used by the DarkCrypt Total Commander plugin: the MIT reference MD6 as submitted to SHA-3 round 1 (d=512, r=168, L=64, no key),… |
 | [MDC-2](hash-functions/mdc-2.md) | ⚠️ Deprecated | Modification Detection Code 2, an ISO/IEC 10118-2 standard hash function based on DES encryption. Produces 128-bit hashes using Davies-Meye… |
 | [MurmurHash3](hash-functions/murmurhash3.md) | 🎓 Educational Only | Fast non-cryptographic hash function with excellent distribution properties. Designed for hash tables, bloom filters, and general purpose h… |
 | [Panama-BE](hash-functions/panama-be.md) | ❌ Broken | Panama hash function with big-endian byte order. Belt-and-mill construction combining linear feedback shift register (belt) and nonlinear s… |
@@ -889,7 +889,7 @@ _Cryptographic hash algorithms_
 | [SHAKE256](hash-functions/shake256.md) | — | SHAKE256 is an extendable-output function (XOF) from NIST FIPS 202 with 256-bit security. Can produce variable-length output, making it sui… |
 | [SipHash-2-4](hash-functions/siphash-2-4.md) | 🎓 Educational Only | Fast cryptographically secure pseudorandom function designed for hash tables and data structures requiring collision resistance. |
 | [Skein](hash-functions/skein.md) | 🎓 Educational Only | Skein-512 hash function from NIST SHA-3 competition. Built on Threefish-512 tweakable block cipher using UBI mode. Finalist in SHA-3 compet… |
-| [Skein (DarkCrypt)](hash-functions/skein-darkcrypt.md) | 🎓 Educational Only | Skein-512-512 variant used by the DarkCrypt Total Commander plugin. Uses the deprecated pre-tweak (October 2008, NIST round 1) Threefish-51… |
+| [Skein (DarkCrypt)](hash-functions/skein-darkcrypt.md) | 🎓 Educational Only | Skein-512-512 as used by the DarkCrypt Total Commander plugin: Skein version 1.1, the SHA-3 round 1 definition, with the original Threefish… |
 | [SKINNY-tk2-HASH](hash-functions/skinny-tk2-hash.md) | 🧪 Experimental | Lightweight hash function based on SKINNY-128-256 tweakable block cipher. Uses 32-byte internal state with 4-byte absorption rate for effic… |
 | [SKINNY-tk3-HASH](hash-functions/skinny-tk3-hash.md) | 🧪 Experimental | Lightweight hash function based on SKINNY-128-384 tweakable block cipher. Uses 48-byte internal state with 16-byte absorption rate for high… |
 | [SM3](hash-functions/sm3.md) | — | Chinese national cryptographic hash standard producing 256-bit digests. Part of the ShangMi (Commercial Cryptography) suite used in China's… |

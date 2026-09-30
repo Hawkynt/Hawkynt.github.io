@@ -2,21 +2,20 @@
  * Skein (DarkCrypt variant) - AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
  *
- * As implemented in the DarkCrypt Total Commander plugin (no public specification
- * matches this variant's output). It is a full Skein-512-512 pipeline (UBI chaining
- * mode, "SHA3" configuration-block schema, standard tweak encoding with TYPE_CFG=4/
- * TYPE_MSG=48/TYPE_OUT=63 and first/final flag bits in the expected positions,
- * little-endian byte packing) built on a Threefish-512 core, but it differs from the
- * modern reference Skein-512 implementation in two ways: it uses the DEPRECATED
- * pre-tweak (October 2008, NIST SHA-3 round 1) rotation constant schedule from Skein
- * spec v1.3 Appendix D Table 29 rather than the final v1.3 rotation schedule, and the
- * Threefish-512 key schedule's parity word is computed with the constant
- * 0x5555555555555555 (an alternating-bit pattern) instead of the standard
- * C_240 = 0x1BD11BDAA9FC1A22.
+ * The Skein-512-512 used by the DarkCrypt Total Commander plugin is Skein
+ * version 1.1 (15 November 2008), the SHA-3 round 1 definition. It predates
+ * both later tweaks to Threefish-512:
  *
- * Everything else (UBI tweak bookkeeping, output-transform counter-block extraction,
- * message/config block byte packing) matches standard Skein-512-512 exactly. Test
- * vectors verified against the DarkCrypt implementation.
+ *  - the round 2 tweak (version 1.2) replaced the rotation constants; the
+ *    round 1 set is listed in Skein v1.3, Appendix D, Table 29
+ *  - the round 3 tweak (version 1.3) replaced the key schedule parity constant
+ *    C5 = 0x5555555555555555 with C240 = 0x1BD11BDAA9FC1A22
+ *
+ * UBI chaining, the configuration block, the tweak encoding and the output
+ * transform are the same in every version. It matches the Skein-512-512
+ * vectors of the version 1.1 paper (Appendix C.2) and every byte-aligned
+ * entry of the version 1.1 known-answer tests (ShortMsgKAT_512,
+ * LongMsgKAT_512). Test vectors verified against the DarkCrypt implementation.
  */
 
 (function (root, factory) {
@@ -45,10 +44,10 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // ===== THREEFISH-512 CORE (DarkCrypt variant) =====
+  // ===== THREEFISH-512 CORE (Skein version 1.1) =====
 
-  // Deprecated pre-tweak Threefish-512 rotation constants (Skein spec v1.3, Appendix D,
-  // Table 29 - "October 2008 (NIST Round 1)"). Matches the DarkCrypt implementation.
+  // Round 1 Threefish-512 rotation constants (Skein spec v1.3, Appendix D,
+  // Table 29 - "October 2008 (NIST Round 1)"), replaced in version 1.2.
   const ROTATION_0_0 = 38, ROTATION_0_1 = 30, ROTATION_0_2 = 50, ROTATION_0_3 = 53;
   const ROTATION_1_0 = 48, ROTATION_1_1 = 20, ROTATION_1_2 = 43, ROTATION_1_3 = 31;
   const ROTATION_2_0 = 34, ROTATION_2_1 = 14, ROTATION_2_2 = 15, ROTATION_2_3 = 27;
@@ -60,9 +59,8 @@
 
   const ROUNDS_512 = 72;
 
-  // DarkCrypt's non-standard key-schedule parity constant. Standard Skein uses
-  // C_240 = 0x1BD11BDAA9FC1A22; this implementation instead XORs the chain
-  // words with the alternating-bit pattern 0x5555555555555555.
+  // Key schedule parity constant C5 of Skein versions 1.0 to 1.2; version 1.3
+  // replaced it with C240 = 0x1BD11BDAA9FC1A22.
   const C_PARITY = 0x5555555555555555n;
 
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
@@ -82,7 +80,7 @@
   }
 
   /**
-   * Threefish-512 encryption (DarkCrypt variant: deprecated rotations + custom parity)
+   * Threefish-512 encryption (Skein version 1.1: round 1 rotations and parity constant)
    * @param {BigInt[]} key - eight 64-bit key words
    * @param {BigInt[]} tweak - two 64-bit tweak words
    * @param {BigInt[]} block - eight 64-bit plaintext words
@@ -415,8 +413,8 @@
       super();
 
       this.name = "Skein (DarkCrypt)";
-      this.description = "Skein-512-512 variant used by the DarkCrypt Total Commander plugin. Uses the deprecated pre-tweak (October 2008, NIST round 1) Threefish-512 rotation constants from Skein spec v1.3 Appendix D Table 29 combined with a non-standard key-schedule parity constant (0x5555555555555555 instead of the standard C_240); matches no published Skein test vector.";
-      this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker (Skein); DarkCrypt plugin author (variant constant substitution)";
+      this.description = "Skein-512-512 as used by the DarkCrypt Total Commander plugin: Skein version 1.1, the SHA-3 round 1 definition, with the original Threefish-512 rotation constants (replaced in version 1.2) and key schedule parity constant 0x5555555555555555 (replaced by C240 in version 1.3). Matches the published version 1.1 test vectors and known-answer tests, not those of the final Skein 1.3.";
+      this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker";
       this.year = 2008;
       this.category = CategoryType.HASH;
       this.subCategory = "DarkCrypt Variant";
@@ -433,6 +431,8 @@
       this.documentation = [
         new LinkItem("Skein 1.3 Specification", "https://www.schneier.com/academic/skein/skein1.3.pdf"),
         new LinkItem("Threefish Cipher", "https://www.schneier.com/academic/threefish/"),
+        new LinkItem("Skein 1.1 Specification (15 Nov 2008)", "https://github.com/SparkDustJoe/Skein/blob/master/skein1.1.pdf"),
+        new LinkItem("Skein NIST Round 3 Tweak Description", "https://www.schneier.com/wp-content/uploads/2015/01/skein-1.3-modifications.pdf"),
         new LinkItem("DarkCrypt plugin (Total Commander PlugRing)", "https://totalcmd.net/plugring/darkcrypttc.html")
       ];
 
@@ -440,14 +440,38 @@
         new LinkItem("DarkCrypt Total Commander plugin", "https://github.com/Zdimon/DarkCryptTC")
       ];
 
-      // Vectors generated from the DarkCrypt implementation's hashnow(inPtr, outPtr, len)
-      // export; empty/"abc"/incr64 (bytes 0x00..0x3F) inputs.
+      // Skein version 1.1 paper, Appendix C.2, the version 1.1 known-answer tests,
+      // and further test vectors verified against the DarkCrypt implementation.
       this.tests = [
+        new TestCase(
+          OpCodes.Hex8ToBytes("ff"),
+          OpCodes.Hex8ToBytes("8fca8d2705f99a56904308a4004c64efb668818b58b0895bf7296a2c5a54f9301483d622c4a5aec855ac30087e1eb0e83940906e7b055d70d446c8d285f27f01"),
+          "Skein 1.1 Appendix C.2 - Skein-512-512, 1 byte",
+          "https://github.com/SparkDustJoe/Skein/blob/master/skein1.1.pdf"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0dfdedddcdbdad9d8d7d6d5d4d3d2d1d0cfcecdcccbcac9c8c7c6c5c4c3c2c1c0"),
+          OpCodes.Hex8ToBytes("0fc42e100b2cd0b0c69f39383f9d2d17af6cf74e2aa8d4e2d91cbf94a59935a3123b7f9250f982224bf0c3e190be10ab41add8c1e35cbec4b1b3c35dbba5869c"),
+          "Skein 1.1 Appendix C.2 - Skein-512-512, 64 bytes",
+          "https://github.com/SparkDustJoe/Skein/blob/master/skein1.1.pdf"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0dfdedddcdbdad9d8d7d6d5d4d3d2d1d0cfcecdcccbcac9c8c7c6c5c4c3c2c1c0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0afaeadacabaaa9a8a7a6a5a4a3a2a1a09f9e9d9c9b9a999897969594939291908f8e8d8c8b8a89888786858483828180"),
+          OpCodes.Hex8ToBytes("0f019e7c1849167cecb9a0d8f1b00ccd5b14159c5aaee449dab55a1bc6c85103e8378454912e46af63067950f863043ccfa3699887a2577337caa66531bdbf9e"),
+          "Skein 1.1 Appendix C.2 - Skein-512-512, 128 bytes",
+          "https://github.com/SparkDustJoe/Skein/blob/master/skein1.1.pdf"
+        ),
         new TestCase(
           OpCodes.Hex8ToBytes(""),
           OpCodes.Hex8ToBytes("d3f7263a09837f4ce5c8ef70a5ddffac7b92d6c2ace5a12265bd5b593260a3ff20d8b4b4c5494e945448b37abb1fc526f6b46089208fde938d7f23724c4bdfb7"),
-          "DarkCrypt Skein empty string",
-          "https://github.com/Zdimon/DarkCryptTC"
+          "Skein 1.1 ShortMsgKAT_512 - Len = 0",
+          "https://web.archive.org/web/2015/http://www.skein-hash.info/sites/default/files/skein_NIST_CD_121508.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("cc"),
+          OpCodes.Hex8ToBytes("a37fa71a4bff725887fd1e3c087a0d9c427e475962d4d4abfa45f098ec16a18c1e2f957c0ec343f7e910ec30e34aecfa703f6d2a334250e5446cdce71a99c222"),
+          "Skein 1.1 ShortMsgKAT_512 - Len = 8",
+          "https://web.archive.org/web/2015/http://www.skein-hash.info/sites/default/files/skein_NIST_CD_121508.zip"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("abc"),
