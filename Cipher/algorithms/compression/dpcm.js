@@ -121,32 +121,62 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {DpcmInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DpcmInstance(this, isInverse);
     }
   }
 
   class DpcmInstance extends IAlgorithmInstance {
+    /**
+     * @param {Dpcm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
-      const output = this.isInverse ? this._decode(this.inputBuffer) : this._encode(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let output;
+      if (this.isInverse) {
+        output = this._decode(this.inputBuffer);
+      } else {
+        output = this._encode(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
     // Forward transform: replaces each sample (after the first) with its
     // modulo-256 difference from the previous original sample.
+    /**
+     * @param {uint8[]} samples - Samples (at least one)
+     * @returns {uint8[]} First sample, then modulo-256 differences
+     */
     _encode(samples) {
+      /** @type {uint8[]} */
       const result = new Array(samples.length);
       result[0] = OpCodes.ToByte(samples[0]);
 
@@ -159,7 +189,12 @@
 
     // Inverse transform: reconstructs each sample by accumulating residuals
     // (modulo 256) onto the previously reconstructed sample.
+    /**
+     * @param {uint8[]} residuals - First sample, then modulo-256 differences (at least one)
+     * @returns {uint8[]} Reconstructed samples
+     */
     _decode(residuals) {
+      /** @type {uint8[]} */
       const result = new Array(residuals.length);
       result[0] = OpCodes.ToByte(residuals[0]);
 

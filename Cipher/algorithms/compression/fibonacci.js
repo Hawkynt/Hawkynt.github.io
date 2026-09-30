@@ -71,6 +71,7 @@
         this.country = CountryCode.BE;
 
         // Pre-computed Fibonacci numbers for efficiency (first 32 numbers)
+        /** @type {uint32[]} */
         this.fibNumbers = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 
                            2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 
                            196418, 317811, 514229, 832040, 1346269, 2178309, 3524578];
@@ -151,23 +152,46 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {FibonacciInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new FibonacciInstance(this, isInverse);
       }
     }
 
     class FibonacciInstance extends IAlgorithmInstance {
+      /**
+       * @param {FibonacciCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {uint32[]} */
         this.fibNumbers = algorithm.fibNumbers;
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ? this._decompress() : this._compress();
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress();
+        } else {
+          result = this._compress();
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
@@ -179,24 +203,56 @@
       // positive integers (n >= 1), so bytes (0..255) are shifted to
       // (1..256) before encoding; without this shift, byte 0 and byte 1
       // would both encode to "11" and be indistinguishable on decode.
+      /**
+       * @returns {uint8[]} Length header and Fibonacci codes
+       */
       _compress() {
         const bitStream = OpCodes.CreateBitStream();
         bitStream.writeUint32LE(this.inputBuffer.length);
-        for (const byte of this.inputBuffer) this._encodeFibonacci(bitStream, byte + 1);
-        return bitStream.toArray();
+        for (let k = 0; k < this.inputBuffer.length; k++) {
+          /** @type {int32} */
+          const value = this.inputBuffer[k] + 1;
+          this._encodeFibonacci(bitStream, value);
+        }
+        /** @type {uint8[]} */
+        const bytes = bitStream.toArray();
+        return bytes;
       }
 
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
-        if (this.inputBuffer.length < 4) return [];
+        /** @type {uint8[]} */
+        const result = [];
+        if (this.inputBuffer.length < 4) {
+          return result;
+        }
 
         const bitStream = OpCodes.CreateBitStream(this.inputBuffer);
-        const uncompressedSize = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
-        if (uncompressedSize === 0) return [];
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const uncompressedSize = OpCodes.Pack32LE(c0, c1, c2, c3);
+        if (uncompressedSize === 0) {
+          return result;
+        }
 
-        const result = [];
-        let prevBit = 0, sum = 0, fibIndex = 0;
+        /** @type {uint32} */
+        let prevBit = 0;
+        /** @type {int32} */
+        let sum = 0;
+        /** @type {int32} */
+        let fibIndex = 0;
 
         while (result.length < uncompressedSize) {
+          /** @type {uint32} */
           const bit = bitStream.readBit();
 
           if (bit === 1 && prevBit === 1) {
@@ -206,7 +262,9 @@
             fibIndex = 0;
             prevBit = 0;
           } else {
-            if (bit === 1) sum += this.fibNumbers[fibIndex];
+            if (bit === 1) {
+              sum += this.fibNumbers[fibIndex];
+            }
             fibIndex++;
             prevBit = bit;
           }
@@ -218,20 +276,34 @@
       // Greedy Zeckendorf decomposition of a positive integer into
       // non-consecutive Fibonacci numbers, written least-significant-digit
       // first, followed by a terminating 1-bit.
+      /**
+       * @param {_BitStream} bitStream - Output bits
+       * @param {int32} num - Positive integer
+       */
       _encodeFibonacci(bitStream, num) {
-        const bits = [];
+        /** @type {uint32[]} */
+        const bits = new Array(this.fibNumbers.length);
+        for (let i = 0; i < bits.length; i++) {
+          bits[i] = 0;
+        }
+        /** @type {int32} */
         let remaining = num;
+        /** @type {int32} */
         let maxBitSet = -1;
 
         for (let i = this.fibNumbers.length - 1; i >= 0; i--) {
           if (this.fibNumbers[i] <= remaining) {
             bits[i] = 1;
             remaining -= this.fibNumbers[i];
-            if (i > maxBitSet) maxBitSet = i;
+            if (i > maxBitSet) {
+              maxBitSet = i;
+            }
           }
         }
 
-        for (let i = 0; i <= maxBitSet; i++) bitStream.writeBit(bits[i] || 0);
+        for (let i = 0; i <= maxBitSet; i++) {
+          bitStream.writeBit(bits[i]);
+        }
         bitStream.writeBit(1); // terminator
       }
     }

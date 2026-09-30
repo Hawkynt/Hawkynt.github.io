@@ -73,29 +73,46 @@
   // work is now a handful of large divisions rather than millions of small ones.
 
   // Number of digits converted directly at the bottom of the recursion.
+  /** @type {int32} */
   const DIRECT_DIGITS = 32;
 
-  const HEX_BYTE = new Array(256);
-  for (let i = 0; i < 256; i++)
-    HEX_BYTE[i] = (i < 16 ? '0' : '') + i.toString(16);
+  /** @type {string} */
+  const HEX_DIGITS = '0123456789abcdef';
 
-  const HEX_VALUE = {};
-  for (let i = 0; i < 16; i++)
-    HEX_VALUE['0123456789abcdef'.charAt(i)] = i;
+  /**
+   * Two lowercase hex digits of a byte.
+   * @param {uint8} value - Byte
+   * @returns {string} Two hex digits, most significant first
+   */
+  function HexByte(value) {
+    return HEX_DIGITS.charAt(OpCodes.Shr32(value, 4)) + HEX_DIGITS.charAt(OpCodes.And32(value, 15));
+  }
+
+  /**
+   * Value of one lowercase hex digit.
+   * @param {string} digit - One character of '0123456789abcdef'
+   * @returns {int32} Its value 0..15
+   */
+  function HexValue(digit) {
+    return HEX_DIGITS.indexOf(digit);
+  }
 
   /**
    * Read data[from..] as one big-endian unsigned integer.
    * @param {uint8[]} data - Source bytes
-   * @param {number} from - First index to read
+   * @param {int32} from - First index to read
    * @returns {BigInt} The value of those bytes, most significant byte first
    */
   function BytesToValue(data, from) {
-    if (from >= data.length)
+    if (from >= data.length) {
       return 0n;
+    }
 
+    /** @type {string[]} */
     const parts = new Array(data.length - from);
-    for (let i = from; i < data.length; i++)
-      parts[i - from] = HEX_BYTE[data[i]];
+    for (let i = from; i < data.length; i++) {
+      parts[i - from] = HexByte(data[i]);
+    }
 
     return BigInt('0x' + parts.join(''));
   }
@@ -106,33 +123,60 @@
    * @returns {uint8[]} Minimal big-endian bytes, empty for zero
    */
   function ValueToBytes(value) {
-    if (value === 0n)
-      return [];
+    /** @type {uint8[]} */
+    const empty = [];
+    if (value === 0n) {
+      return empty;
+    }
 
+    /** @type {string} */
     let hex = value.toString(16);
-    if (hex.length % 2 === 1)
+    if (hex.length % 2 === 1) {
       hex = '0' + hex;
+    }
 
+    /** @type {uint8[]} */
     const out = new Array(hex.length / 2);
-    for (let i = 0, j = 0; i < hex.length; i += 2, j++)
-      out[j] = HEX_VALUE[hex.charAt(i)] * 16 + HEX_VALUE[hex.charAt(i + 1)];
+    for (let i = 0, j = 0; i < hex.length; i += 2, j++) {
+      out[j] = HexValue(hex.charAt(i)) * 16 + HexValue(hex.charAt(i + 1));
+    }
 
     return out;
   }
 
   /**
+   * One split point: radix^digits, the value that splits a number into its
+   * top digits and its bottom `digits` digits.
+   */
+  class SplitPoint {
+    /**
+     * @param {int32} digits - Number of digits below the split
+     * @param {BigInt} value - radix^digits
+     */
+    constructor(digits, value) {
+      /** @type {int32} */
+      this.digits = digits;
+      /** @type {BigInt} */
+      this.value = value;
+    }
+  }
+
+  /**
    * Precompute radix^(DIRECT_DIGITS * 2^k) for every k needed to cover digitCount.
-   * @param {number} radix - Target radix
-   * @param {number} digitCount - Upper bound on the number of digits to render
-   * @returns {Array} Ascending list of { digits, value } split points
+   * @param {int32} radix - Target radix
+   * @param {int32} digitCount - Upper bound on the number of digits to render
+   * @returns {SplitPoint[]} Ascending list of split points
    */
   function BuildSplitPoints(radix, digitCount) {
+    /** @type {SplitPoint[]} */
     const points = [];
+    /** @type {BigInt} */
     let value = BigInt(radix) ** BigInt(DIRECT_DIGITS);
+    /** @type {int32} */
     let digits = DIRECT_DIGITS;
 
     while (digits < digitCount) {
-      points.push({ digits: digits, value: value });
+      points.push(new SplitPoint(digits, value));
       value = value * value;
       digits = digits * 2;
     }
@@ -144,18 +188,22 @@
    * Write `value` as exactly `digitCount` radix digits (zero padded on the left,
    * most significant first) into out[offset .. offset+digitCount-1].
    * @param {BigInt} value - Value, known to be below radix^digitCount
-   * @param {number} radix - Target radix
-   * @param {number} digitCount - Exact number of digit slots to fill
-   * @param {Array} points - Split points from BuildSplitPoints
-   * @param {number[]} out - Destination digit array
-   * @param {number} offset - First slot to fill
+   * @param {int32} radix - Target radix
+   * @param {int32} digitCount - Exact number of digit slots to fill
+   * @param {SplitPoint[]} points - Split points from BuildSplitPoints
+   * @param {int32[]} out - Destination digit array
+   * @param {int32} offset - First slot to fill
    */
   function RenderDigits(value, radix, digitCount, points, out, offset) {
     if (digitCount <= DIRECT_DIGITS) {
+      /** @type {BigInt} */
       const big = BigInt(radix);
+      /** @type {BigInt} */
       let rest = value;
       for (let i = offset + digitCount - 1; i >= offset; i--) {
-        out[i] = Number(rest % big);
+        /** @type {int32} */
+        const digit = Number(rest % big);
+        out[i] = digit;
         rest = rest / big;
       }
       return;
@@ -163,13 +211,19 @@
 
     // Largest precomputed split strictly below digitCount; because the split
     // points double, the two halves are each strictly smaller than digitCount.
+    /** @type {int32} */
     let k = points.length - 1;
-    while (k > 0 && points[k].digits >= digitCount)
+    while (k > 0 && points[k].digits >= digitCount) {
       k--;
+    }
 
+    /** @type {int32} */
     const lowDigits = points[k].digits;
+    /** @type {BigInt} */
     const split = points[k].value;
+    /** @type {BigInt} */
     const high = value / split;
+    /** @type {BigInt} */
     const low = value - high * split;
 
     RenderDigits(high, radix, digitCount - lowDigits, points, out, offset);
@@ -181,28 +235,37 @@
    * minimal radix-N digit string (most significant digit first, no leading
    * zero digits, empty when the value is zero).
    * @param {uint8[]} data - Source bytes
-   * @param {number} from - First index to read
-   * @param {number} radix - Target radix
-   * @returns {number[]} Digit values in [0, radix)
+   * @param {int32} from - First index to read
+   * @param {int32} radix - Target radix
+   * @returns {int32[]} Digit values in [0, radix)
    */
   function BytesToDigits(data, from, radix) {
+    /** @type {BigInt} */
     const value = BytesToValue(data, from);
-    if (value === 0n)
-      return [];
+    /** @type {int32[]} */
+    const empty = [];
+    if (value === 0n) {
+      return empty;
+    }
 
     // Digits needed for a value below 2^bits, plus two slack digits so that
     // rounding in the logarithm can never make the estimate too small - the
     // tightest true margin over all sizes is barely one digit wide. Any surplus
     // shows up as leading zero digits and is stripped below.
+    /** @type {int32} */
     const bits = (data.length - from) * 8;
+    /** @type {int32} */
     const digitCount = Math.floor(bits * Math.LN2 / Math.log(radix)) + 2;
 
+    /** @type {int32[]} */
     const out = new Array(digitCount);
     RenderDigits(value, radix, digitCount, BuildSplitPoints(radix, digitCount), out, 0);
 
+    /** @type {int32} */
     let start = 0;
-    while (start < digitCount && out[start] === 0)
+    while (start < digitCount && out[start] === 0) {
       start++;
+    }
 
     return start === 0 ? out : out.slice(start);
   }
@@ -216,42 +279,59 @@
    * pairwise, so each multiplication carries half the number rather than all of
    * it.
    *
-   * @param {number[]} digits - Digit values, most significant first
-   * @param {number} from - First index to read
-   * @param {number} radix - Source radix
+   * @param {int32[]} digits - Digit values, most significant first
+   * @param {int32} from - First index to read
+   * @param {int32} radix - Source radix
    * @returns {BigInt} The value of those digits
    */
   function DigitsToValue(digits, from, radix) {
+    /** @type {int32} */
     const count = digits.length - from;
-    if (count <= 0)
+    if (count <= 0) {
       return 0n;
+    }
 
+    /** @type {BigInt} */
     const big = BigInt(radix);
 
+    /** @type {int32} */
     let blocks = 1;
-    while (blocks * DIRECT_DIGITS < count)
+    while (blocks * DIRECT_DIGITS < count) {
       blocks = blocks * 2;
+    }
 
     // Right aligned, so the last block holds the least significant digits and
     // any unused blocks at the front simply stay zero.
-    const parts = new Array(blocks).fill(0n);
+    /** @type {BigInt[]} */
+    const parts = new Array(blocks);
+    for (let b = 0; b < blocks; b++) {
+      parts[b] = 0n;
+    }
+    /** @type {int32} */
     let end = digits.length;
     for (let b = blocks - 1; b >= 0 && end > from; b--) {
+      /** @type {int32} */
       const start = Math.max(from, end - DIRECT_DIGITS);
+      /** @type {BigInt} */
       let value = 0n;
-      for (let i = start; i < end; i++)
+      for (let i = start; i < end; i++) {
         value = value * big + BigInt(digits[i]);
+      }
 
       parts[b] = value;
       end = start;
     }
 
+    /** @type {BigInt} */
     let weight = big ** BigInt(DIRECT_DIGITS);
+    /** @type {int32} */
     let len = blocks;
     while (len > 1) {
+      /** @type {int32} */
       const half = len / 2;
-      for (let i = 0; i < half; i++)
+      for (let i = 0; i < half; i++) {
         parts[i] = parts[2 * i] * weight + parts[2 * i + 1];
+      }
 
       weight = weight * weight;
       len = half;
@@ -292,17 +372,8 @@
 
       this.knownVulnerabilities = [];
 
-      // Test vectors with bit-perfect accuracy - initialize after OpCodes is available
-      this.tests = this.createTestVectors();
-    }
-
-    createTestVectors() {
-      // Ensure OpCodes is available
-      if (!OpCodes) {
-        return [];
-      }
-
-      return [
+      // Test vectors with bit-perfect accuracy
+      this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes(""),
           OpCodes.AnsiToBytes(""),
@@ -345,7 +416,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Base62Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -353,32 +424,57 @@
     }
   }
 
+  /** @type {string} */
+  const BASE62_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
   /**
  * Base62 cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class Base62Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Base62Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.alphabet = OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789");
+      /** @type {uint8[]} */
+      this.alphabet = OpCodes.AnsiToBytes(BASE62_ALPHABET);
+      /** @type {int32} */
       this.base = 62;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      // Create decode lookup table
-      this.decodeTable = {};
-      const alphabetStr = OpCodes.BytesToChars(this.alphabet);
-      for (let i = 0; i < alphabetStr.length; i++) {
-        this.decodeTable[alphabetStr[i]] = i;
+      // Decode lookup table indexed by character code: the digit value, or -1
+      // for a character outside the alphabet
+      /** @type {int32[]} */
+      this.decodeTable = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        this.decodeTable[i] = -1;
       }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        this.decodeTable[this.alphabet[i]] = i;
+      }
+    }
+
+    /**
+     * Digit value of a character code.
+     * @param {int32} code - Character code
+     * @returns {int32} Its digit value, or -1 when it is not a Base62 character
+     */
+    digitOf(code) {
+      if (code < 0 || code >= 256) {
+        return -1;
+      }
+      return this.decodeTable[code];
     }
 
     /**
@@ -397,8 +493,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -411,19 +513,29 @@
       if (!this._feedBuffer) {
         throw new Error('Base62Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode bytes as Base62 characters
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII Base62 characters
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const empty = [];
       if (data.length === 0) {
-        return [];
+        return empty;
       }
 
       // Leading zero bytes contribute nothing to the integer value, so the
       // conversion below can start past them
+      /** @type {int32} */
       let leadingZeros = 0;
       for (let i = 0; i < data.length && data[i] === 0; i++) {
         leadingZeros++;
@@ -434,16 +546,24 @@
       // made every all-zero input encode alike, and decode returned one byte
       // whatever went in - the only inputs this changes are ones that could not
       // survive a round trip before.
+      /** @type {uint8} */
+      const zeroCode = this.alphabet[0];
       if (leadingZeros === data.length) {
-        return new Array(data.length).fill(this.alphabet[0]);
+        /** @type {uint8[]} */
+        const zeros = new Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          zeros[i] = zeroCode;
+        }
+        return zeros;
       }
 
       // Convert the remaining bytes, read as one big-endian unsigned integer,
       // to Base62 digits, then prefix one 'A' per leading zero byte
+      /** @type {int32[]} */
       const digits = BytesToDigits(data, leadingZeros, this.base);
 
+      /** @type {uint8[]} */
       const result = new Array(leadingZeros + digits.length);
-      const zeroCode = this.alphabet[0];
       for (let i = 0; i < leadingZeros; i++) {
         result[i] = zeroCode;
       }
@@ -454,36 +574,44 @@
       return result;
     }
 
+    /**
+     * Decode Base62 characters to bytes
+     * @param {uint8[]} data - ASCII Base62 characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const empty = [];
       if (data.length === 0) {
-        return [];
+        return empty;
       }
 
-      const input = OpCodes.BytesToChars(data);
-
       // Validate input contains only Base62 characters
-      for (let i = 0; i < input.length; i++) {
-        if (!(input[i] in this.decodeTable)) {
-          throw new Error(`Base62Instance.decode: Invalid character '${input[i]}'`);
+      for (let i = 0; i < data.length; i++) {
+        if (this.digitOf(data[i]) < 0) {
+          throw new Error("Base62Instance.decode: Invalid character '" + String.fromCharCode(data[i]) + "'");
         }
       }
 
       // Count leading 'A' characters (representing zero bytes)
+      /** @type {int32} */
       let leadingZeros = 0;
-      const alphabetStr = OpCodes.BytesToChars(this.alphabet);
-      for (let i = 0; i < input.length && input[i] === alphabetStr[0]; i++) {
+      for (let i = 0; i < data.length && data[i] === this.alphabet[0]; i++) {
         leadingZeros++;
       }
 
       // Convert Base62 to big integer and back to its minimal byte string
-      const digits = new Array(input.length - leadingZeros);
-      for (let i = leadingZeros; i < input.length; i++) {
-        digits[i - leadingZeros] = this.decodeTable[input[i]];
+      /** @type {int32[]} */
+      const digits = new Array(data.length - leadingZeros);
+      for (let i = leadingZeros; i < data.length; i++) {
+        digits[i - leadingZeros] = this.digitOf(data[i]);
       }
 
+      /** @type {uint8[]} */
       const valueBytes = ValueToBytes(DigitsToValue(digits, 0, this.base));
 
       // Add leading zero bytes
+      /** @type {uint8[]} */
       const bytes = new Array(leadingZeros + valueBytes.length);
       for (let i = 0; i < leadingZeros; i++) {
         bytes[i] = 0;
@@ -492,37 +620,56 @@
         bytes[leadingZeros + i] = valueBytes[i];
       }
 
-      return bytes.length > 0 ? bytes : [0];
+      if (bytes.length > 0) {
+        return bytes;
+      }
+      /** @type {uint8[]} */
+      const zero = [0];
+      return zero;
     }
 
     // Utility methods for number encoding (common use case for URL shortening)
+
+    /**
+     * Encode a non-negative integer as a Base62 string
+     * @param {float64} num - Non-negative integer to encode (exact up to 2^53)
+     * @returns {string} Its Base62 spelling
+     */
     encodeNumber(num) {
       if (num === 0) {
-        return String.fromCharCode(this.alphabet[0]);
+        return BASE62_ALPHABET.charAt(0);
       }
 
-      const alphabetStr = OpCodes.BytesToChars(this.alphabet);
+      /** @type {string} */
       let result = "";
+      /** @type {float64} */
       let n = num;
 
       while (n > 0) {
-        result = alphabetStr[n % this.base] + result;
+        result = BASE62_ALPHABET.charAt(n % this.base) + result;
         n = Math.floor(n / this.base);
       }
 
       return result;
     }
 
+    /**
+     * Decode a Base62 string to a number
+     * @param {string} encoded - Base62 characters
+     * @returns {float64} The number they spell (exact up to 2^53)
+     */
     decodeNumber(encoded) {
       if (!encoded || encoded.length === 0) {
         return 0;
       }
 
+      /** @type {float64} */
       let num = 0;
       for (let i = 0; i < encoded.length; i++) {
-        const value = this.decodeTable[encoded[i]];
-        if (value === undefined) {
-          throw new Error(`Base62Instance.decodeNumber: Invalid character '${encoded[i]}'`);
+        /** @type {int32} */
+        const value = this.digitOf(encoded.charCodeAt(i));
+        if (value < 0) {
+          throw new Error("Base62Instance.decodeNumber: Invalid character '" + encoded.charAt(i) + "'");
         }
         num = num * this.base + value;
       }

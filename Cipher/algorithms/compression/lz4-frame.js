@@ -61,64 +61,111 @@
 
   // ===== xxHash32 (https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md) =====
 
+  /** @type {uint32} */
   const XXH_PRIME1 = 0x9E3779B1;
+  /** @type {uint32} */
   const XXH_PRIME2 = 0x85EBCA77;
+  /** @type {uint32} */
   const XXH_PRIME3 = 0xC2B2AE3D;
+  /** @type {uint32} */
   const XXH_PRIME4 = 0x27D4EB2F;
+  /** @type {uint32} */
   const XXH_PRIME5 = 0x165667B1;
+  // Lane seeds for seed 0: PRIME1 + PRIME2 and 0 - PRIME1, both mod 2^32.
+  /** @type {uint32} */
+  const XXH_SEED_V1 = 0x24234428;
+  /** @type {uint32} */
+  const XXH_SEED_V4 = 0x61C8864F;
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} offset - Position of the word
+   * @returns {uint32} Little-endian 32-bit word
+   */
   function readU32LE(data, offset) {
-    return OpCodes.ToUint32(
-      OpCodes.OrN(
-        OpCodes.OrN(
-          OpCodes.OrN(data[offset], OpCodes.Shl32(data[offset + 1], 8)),
-          OpCodes.Shl32(data[offset + 2], 16)
-        ),
-        OpCodes.Shl32(data[offset + 3], 24)
-      )
+    return OpCodes.Or32(
+      OpCodes.Or32(
+        OpCodes.Or32(data[offset], OpCodes.Shl32(data[offset + 1], 8)),
+        OpCodes.Shl32(data[offset + 2], 16)
+      ),
+      OpCodes.Shl32(data[offset + 3], 24)
     );
   }
 
+  /**
+   * @param {uint32} acc - Lane accumulator
+   * @param {uint32} input - Lane input word
+   * @returns {uint32} New accumulator
+   */
   function xxhRound(acc, input) {
-    acc = OpCodes.ToUint32(acc + OpCodes.Mul32(input, XXH_PRIME2));
-    acc = OpCodes.RotL32(acc, 13);
-    return OpCodes.Mul32(acc, XXH_PRIME1);
+    /** @type {uint32} */
+    let lane = OpCodes.Add32(acc, OpCodes.Mul32(input, XXH_PRIME2));
+    lane = OpCodes.RotL32(lane, 13);
+    return OpCodes.Mul32(lane, XXH_PRIME1);
   }
 
-  function xxhAvalanche(hash) {
-    hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 15));
+  /**
+   * @param {uint32} value - Hash before avalanche
+   * @returns {uint32} Final hash
+   */
+  function xxhAvalanche(value) {
+    /** @type {uint32} */
+    let hash = OpCodes.Xor32(value, OpCodes.Shr32(value, 15));
     hash = OpCodes.Mul32(hash, XXH_PRIME2);
     hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 13));
     hash = OpCodes.Mul32(hash, XXH_PRIME3);
     hash = OpCodes.Xor32(hash, OpCodes.Shr32(hash, 16));
-    return OpCodes.ToUint32(hash);
+    return hash;
   }
 
-  function xxhFinalizeTail(hash, data, offset, end) {
+  /**
+   * @param {uint32} value - Hash so far
+   * @param {uint8[]} data - Bytes
+   * @param {int32} offset - First remaining byte
+   * @param {int32} end - End of the hashed range
+   * @returns {uint32} Final hash
+   */
+  function xxhFinalizeTail(value, data, offset, end) {
+    /** @type {uint32} */
+    let hash = value;
+    /** @type {int32} */
     let pos = offset;
     while (pos + 4 <= end) {
-      hash = OpCodes.ToUint32(hash + OpCodes.Mul32(readU32LE(data, pos), XXH_PRIME3));
+      hash = OpCodes.Add32(hash, OpCodes.Mul32(readU32LE(data, pos), XXH_PRIME3));
       hash = OpCodes.Mul32(OpCodes.RotL32(hash, 17), XXH_PRIME4);
       pos += 4;
     }
     while (pos < end) {
-      hash = OpCodes.ToUint32(hash + OpCodes.Mul32(data[pos], XXH_PRIME5));
+      hash = OpCodes.Add32(hash, OpCodes.Mul32(data[pos], XXH_PRIME5));
       hash = OpCodes.Mul32(OpCodes.RotL32(hash, 11), XXH_PRIME1);
       ++pos;
     }
     return xxhAvalanche(hash);
   }
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} offset - Start of the hashed range
+   * @param {int32} end - End of the hashed range
+   * @returns {uint32} xxHash32 with seed 0
+   */
   function xxHash32(data, offset, end) {
+    /** @type {int32} */
     const length = end - offset;
-    if (length < 16)
-      return xxhFinalizeTail(OpCodes.ToUint32(XXH_PRIME5 + length), data, offset, end);
+    if (length < 16) {
+      return xxhFinalizeTail(OpCodes.Add32(XXH_PRIME5, length), data, offset, end);
+    }
 
-    let v1 = OpCodes.ToUint32(XXH_PRIME1 + XXH_PRIME2);
-    let v2 = OpCodes.ToUint32(XXH_PRIME2);
+    /** @type {uint32} */
+    let v1 = XXH_SEED_V1;
+    /** @type {uint32} */
+    let v2 = XXH_PRIME2;
+    /** @type {uint32} */
     let v3 = 0;
-    let v4 = OpCodes.ToUint32(-XXH_PRIME1);
+    /** @type {uint32} */
+    let v4 = XXH_SEED_V4;
 
+    /** @type {int32} */
     let pos = offset;
     while (pos + 16 <= end) {
       v1 = xxhRound(v1, readU32LE(data, pos));
@@ -128,102 +175,177 @@
       pos += 16;
     }
 
-    let hash = OpCodes.ToUint32(
-      OpCodes.RotL32(v1, 1) + OpCodes.RotL32(v2, 7) + OpCodes.RotL32(v3, 12) + OpCodes.RotL32(v4, 18)
+    /** @type {uint32} */
+    let hash = OpCodes.Add32(
+      OpCodes.Add32(OpCodes.RotL32(v1, 1), OpCodes.RotL32(v2, 7)),
+      OpCodes.Add32(OpCodes.RotL32(v3, 12), OpCodes.RotL32(v4, 18))
     );
-    hash = OpCodes.ToUint32(hash + length);
+    hash = OpCodes.Add32(hash, length);
     return xxhFinalizeTail(hash, data, pos, end);
   }
 
   // ===== LZ4 BLOCK CODEC (https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md) =====
 
+  /** @type {int32} */
   const MIN_MATCH = 4;
+  /** @type {int32} */
   const RUN_MASK = 15;
+  /** @type {int32} */
   const MAX_DISTANCE = 65535;
+  /** @type {int32} */
   const HASH_LOG = 16;
+  /** @type {int32} */
   const HASH_SIZE_U32 = 65536;
+  /** @type {int32} */
   const LAST_LITERALS = 5;
+  /** @type {int32} */
   const MF_LIMIT = 12;
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position of the four hashed bytes
+   * @returns {uint32} Hash table index
+   */
   function blockHash(data, pos) {
+    /** @type {uint32} */
     const value = readU32LE(data, pos);
     return OpCodes.Shr32(OpCodes.Mul32(value, 2654435761), 32 - HASH_LOG);
   }
 
+  /**
+   * @param {uint8[]} output - Block being written
+   * @param {int32} extra - Length beyond the 15 held by the token
+   */
+  function writeLengthExtension(output, extra) {
+    /** @type {int32} */
+    let remaining = extra;
+    while (remaining >= 255) {
+      output.push(255);
+      remaining -= 255;
+    }
+    output.push(OpCodes.And32(remaining, 0xFF));
+  }
+
+  /**
+   * @param {uint8[]} output - Block being written
+   * @param {uint8[]} input - Source bytes
+   * @param {int32} literalStart - First literal
+   * @param {int32} literalCount - Number of literals
+   * @param {int32} offset - Match distance
+   * @param {int32} matchLength - Match length
+   */
   function emitSequence(output, input, literalStart, literalCount, offset, matchLength) {
+    /** @type {int32} */
     const matchCode = matchLength - MIN_MATCH;
+    /** @type {int32} */
     const tokenLit = Math.min(literalCount, RUN_MASK);
+    /** @type {int32} */
     const tokenMatch = Math.min(matchCode, RUN_MASK);
-    output.push(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(tokenLit, 4), tokenMatch), 0xFF));
+    output.push(OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(tokenLit, 4), tokenMatch), 0xFF));
 
     if (literalCount >= RUN_MASK) {
-      let remaining = literalCount - RUN_MASK;
-      while (remaining >= 255) { output.push(255); remaining -= 255; }
-      output.push(OpCodes.AndN(remaining, 0xFF));
+      writeLengthExtension(output, literalCount - RUN_MASK);
     }
 
-    for (let i = 0; i < literalCount; ++i) output.push(input[literalStart + i]);
+    for (let i = 0; i < literalCount; ++i) {
+      output.push(input[literalStart + i]);
+    }
 
-    output.push(OpCodes.AndN(offset, 0xFF));
-    output.push(OpCodes.AndN(OpCodes.Shr32(offset, 8), 0xFF));
+    output.push(OpCodes.And32(offset, 0xFF));
+    output.push(OpCodes.And32(OpCodes.Shr32(offset, 8), 0xFF));
 
     if (matchCode >= RUN_MASK) {
-      let remaining = matchCode - RUN_MASK;
-      while (remaining >= 255) { output.push(255); remaining -= 255; }
-      output.push(OpCodes.AndN(remaining, 0xFF));
+      writeLengthExtension(output, matchCode - RUN_MASK);
     }
   }
 
+  /**
+   * @param {uint8[]} output - Block being written
+   * @param {uint8[]} input - Source bytes
+   * @param {int32} literalStart - First literal
+   * @param {int32} literalCount - Number of literals
+   */
   function emitLastLiterals(output, input, literalStart, literalCount) {
-    output.push(OpCodes.AndN(OpCodes.Shl32(Math.min(literalCount, RUN_MASK), 4), 0xFF));
+    output.push(OpCodes.And32(OpCodes.Shl32(Math.min(literalCount, RUN_MASK), 4), 0xFF));
 
     if (literalCount >= RUN_MASK) {
-      let remaining = literalCount - RUN_MASK;
-      while (remaining >= 255) { output.push(255); remaining -= 255; }
-      output.push(OpCodes.AndN(remaining, 0xFF));
+      writeLengthExtension(output, literalCount - RUN_MASK);
     }
 
-    for (let i = 0; i < literalCount; ++i) output.push(input[literalStart + i]);
+    for (let i = 0; i < literalCount; ++i) {
+      output.push(input[literalStart + i]);
+    }
   }
 
-  function compressBlock(input) {
-    const n = input.length;
-    const output = [];
-    if (n === 0) return output;
+  /**
+   * @param {uint8[]} input - Bytes
+   * @param {int32} a - First position
+   * @param {int32} b - Second position
+   * @returns {boolean} True when the four bytes at a and b are equal
+   */
+  function sameFour(input, a, b) {
+    return input[a] === input[b] &&
+      input[a + 1] === input[b + 1] &&
+      input[a + 2] === input[b + 2] &&
+      input[a + 3] === input[b + 3];
+  }
 
+  /**
+   * @param {uint8[]} input - Block bytes
+   * @returns {uint8[]} LZ4 block
+   */
+  function compressBlock(input) {
+    /** @type {int32} */
+    const n = input.length;
+    /** @type {uint8[]} */
+    const output = [];
+    if (n === 0) {
+      return output;
+    }
+
+    /** @type {int32[]} */
     const hashTable = new Int32Array(HASH_SIZE_U32).fill(-1);
+    /** @type {int32} */
     let pos = 0;
+    /** @type {int32} */
     let anchor = 0;
 
     // No match may start within MF_LIMIT bytes of the end; matches may not
     // extend into the final LAST_LITERALS bytes, which must stay literals.
+    /** @type {int32} */
     const searchLimit = n - MF_LIMIT;
+    /** @type {int32} */
     const matchLimit = n - LAST_LITERALS;
 
     while (pos < searchLimit) {
+      /** @type {int32} */
       let matchOffset = 0;
+      /** @type {int32} */
       let matchLength = 0;
 
+      /** @type {uint32} */
       const h = blockHash(input, pos);
+      /** @type {int32} */
       const candidate = hashTable[h];
       hashTable[h] = pos;
 
-      if (candidate >= 0 && (pos - candidate) <= MAX_DISTANCE &&
-          input[candidate] === input[pos] &&
-          input[candidate + 1] === input[pos + 1] &&
-          input[candidate + 2] === input[pos + 2] &&
-          input[candidate + 3] === input[pos + 3]) {
+      if (candidate >= 0 && (pos - candidate) <= MAX_DISTANCE && sameFour(input, candidate, pos)) {
         matchOffset = pos - candidate;
         matchLength = MIN_MATCH;
         while (pos + matchLength < matchLimit &&
-               input[candidate + matchLength] === input[pos + matchLength])
+               input[candidate + matchLength] === input[pos + matchLength]) {
           ++matchLength;
+        }
       }
 
-      if (matchLength < MIN_MATCH) { ++pos; continue; }
+      if (matchLength < MIN_MATCH) {
+        ++pos;
+        continue;
+      }
 
       emitSequence(output, input, anchor, pos - anchor, matchOffset, matchLength);
 
+      /** @type {int32} */
       const end = pos + matchLength;
       ++pos;
       while (pos < end && pos + 3 < n) {
@@ -238,183 +360,256 @@
     return output;
   }
 
+  /**
+   * @param {uint8[]} input - Frame bytes
+   * @param {int32} start - Start of the block
+   * @param {int32} length - Block size
+   * @param {uint8[]} output - Decoded bytes (appended to)
+   */
   function decompressBlock(input, start, length, output) {
+    /** @type {int32} */
     const end = start + length;
+    /** @type {int32} */
     let ip = start;
 
     while (ip < end) {
+      /** @type {uint8} */
       const token = input[ip++];
 
+      /** @type {int32} */
       let literalLength = OpCodes.Shr32(token, 4);
       if (literalLength === 15) {
-        let extra;
+        /** @type {uint8} */
+        let extra = 0;
         do {
-          if (ip >= end) break;
+          if (ip >= end) {
+            break;
+          }
           extra = input[ip++];
           literalLength += extra;
         } while (extra === 255);
       }
 
       for (let i = 0; i < literalLength; ++i) {
-        if (ip >= end) break;
+        if (ip >= end) {
+          break;
+        }
         output.push(input[ip++]);
       }
 
-      if (ip >= end) break;
-      if (ip + 1 >= end) break;
+      if (ip >= end) {
+        break;
+      }
+      if (ip + 1 >= end) {
+        break;
+      }
 
-      const offset = OpCodes.OrN(input[ip], OpCodes.Shl32(input[ip + 1], 8));
+      /** @type {uint32} */
+      const offset = OpCodes.Or32(input[ip], OpCodes.Shl32(input[ip + 1], 8));
       ip += 2;
 
-      const matchField = OpCodes.AndN(token, 0x0F);
+      /** @type {uint32} */
+      const matchField = OpCodes.And32(token, 0x0F);
+      /** @type {int32} */
       let matchLength = matchField + MIN_MATCH;
       if (matchField === 15) {
-        let extra;
+        /** @type {uint8} */
+        let extra = 0;
         do {
-          if (ip >= end) break;
+          if (ip >= end) {
+            break;
+          }
           extra = input[ip++];
           matchLength += extra;
         } while (extra === 255);
       }
 
+      /** @type {int32} */
       const matchPos = output.length - offset;
-      if (matchPos < 0) throw new Error('LZ4 Frame: invalid match offset');
-      for (let i = 0; i < matchLength; ++i) output.push(output[matchPos + i]);
+      if (matchPos < 0) {
+        throw new Error('LZ4 Frame: invalid match offset');
+      }
+      for (let i = 0; i < matchLength; ++i) {
+        output.push(output[matchPos + i]);
+      }
     }
   }
 
   // ===== FRAME CODEC =====
 
+  /** @type {uint8[]} */
   const FRAME_MAGIC = [0x04, 0x22, 0x4D, 0x18];   // 0x184D2204 little-endian
+  /** @type {int32} */
   const BLOCK_MAX_SIZE = 4 * 1024 * 1024;         // BD block-max-size code 7
+  /** @type {int32} */
   const BLOCK_MAX_SIZE_BITS = 7;
 
+  /**
+   * @param {uint8[]} out - Frame being written
+   * @param {uint32} value - Value appended as four little-endian bytes
+   */
+  function pushU32LE(out, value) {
+    out.push(OpCodes.And32(value, 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(value, 16), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(value, 24), 0xFF));
+  }
+
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} LZ4 frame
+   */
   function frameCompress(data) {
+    /** @type {uint8[]} */
     const out = [];
 
     // ---- frame header ----
-    for (let i = 0; i < FRAME_MAGIC.length; ++i) out.push(FRAME_MAGIC[i]);
+    for (let i = 0; i < FRAME_MAGIC.length; ++i) {
+      out.push(FRAME_MAGIC[i]);
+    }
 
     // FLG: version 01, block independence, content size present, content checksum.
-    const flg = OpCodes.OrN(
-      OpCodes.OrN(OpCodes.Shl32(1, 6), OpCodes.Shl32(1, 5)),
-      OpCodes.OrN(OpCodes.Shl32(1, 3), OpCodes.Shl32(1, 2))
+    /** @type {uint32} */
+    const flg = OpCodes.Or32(
+      OpCodes.Or32(OpCodes.Shl32(1, 6), OpCodes.Shl32(1, 5)),
+      OpCodes.Or32(OpCodes.Shl32(1, 3), OpCodes.Shl32(1, 2))
     );
     out.push(flg);
-    out.push(OpCodes.AndN(OpCodes.Shl32(BLOCK_MAX_SIZE_BITS, 4), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shl32(BLOCK_MAX_SIZE_BITS, 4), 0xFF));
 
     // Content size, 8 bytes little-endian.
+    /** @type {float64} */
     let remaining = data.length;
     for (let i = 0; i < 8; ++i) {
-      out.push(OpCodes.AndN(remaining, 0xFF));
+      out.push(OpCodes.And32(OpCodes.ToUint32(remaining), 0xFF));
       remaining = Math.floor(remaining / 256);
     }
 
     // Header checksum: second byte of xxHash32 over the descriptor bytes.
+    /** @type {uint32} */
     const headerChecksum = xxHash32(out, 4, 14);
-    out.push(OpCodes.AndN(OpCodes.Shr32(headerChecksum, 8), 0xFF));
+    out.push(OpCodes.And32(OpCodes.Shr32(headerChecksum, 8), 0xFF));
 
     // ---- data blocks ----
+    /** @type {int32} */
     let offset = 0;
     while (offset < data.length) {
+      /** @type {int32} */
       const blockLength = Math.min(BLOCK_MAX_SIZE, data.length - offset);
+      /** @type {uint8[]} */
       const block = data.slice(offset, offset + blockLength);
+      /** @type {uint8[]} */
       const compressed = compressBlock(block);
 
       if (compressed.length >= blockLength) {
         // Store uncompressed; the high bit of the size field flags this.
-        const header = OpCodes.ToUint32(OpCodes.OrN(blockLength, 0x80000000));
-        out.push(OpCodes.AndN(header, 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 8), 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 16), 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 24), 0xFF));
-        for (let i = 0; i < blockLength; ++i) out.push(block[i]);
+        pushU32LE(out, OpCodes.Or32(blockLength, 0x80000000));
+        for (let i = 0; i < blockLength; ++i) {
+          out.push(block[i]);
+        }
       } else {
-        const header = compressed.length;
-        out.push(OpCodes.AndN(header, 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 8), 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 16), 0xFF));
-        out.push(OpCodes.AndN(OpCodes.Shr32(header, 24), 0xFF));
-        for (let i = 0; i < compressed.length; ++i) out.push(compressed[i]);
+        pushU32LE(out, compressed.length);
+        for (let i = 0; i < compressed.length; ++i) {
+          out.push(compressed[i]);
+        }
       }
 
       offset += blockLength;
     }
 
     // ---- end mark and content checksum ----
-    out.push(0, 0, 0, 0);
-    const contentChecksum = xxHash32(data, 0, data.length);
-    out.push(OpCodes.AndN(contentChecksum, 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(contentChecksum, 8), 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(contentChecksum, 16), 0xFF));
-    out.push(OpCodes.AndN(OpCodes.Shr32(contentChecksum, 24), 0xFF));
+    pushU32LE(out, 0);
+    pushU32LE(out, xxHash32(data, 0, data.length));
 
     return out;
   }
 
+  /**
+   * @param {uint8[]} data - LZ4 frame
+   * @returns {uint8[]} Decoded bytes
+   */
   function frameDecompress(data) {
-    if (data.length < 4) throw new Error('LZ4 Frame: frame too short');
-    for (let i = 0; i < FRAME_MAGIC.length; ++i)
-      if (data[i] !== FRAME_MAGIC[i]) throw new Error('LZ4 Frame: invalid frame magic');
+    if (data.length < 4) {
+      throw new Error('LZ4 Frame: frame too short');
+    }
+    for (let i = 0; i < FRAME_MAGIC.length; ++i) {
+      if (data[i] !== FRAME_MAGIC[i]) {
+        throw new Error('LZ4 Frame: invalid frame magic');
+      }
+    }
 
+    /** @type {int32} */
     let pos = 4;
-    if (pos + 2 > data.length) throw new Error('LZ4 Frame: truncated frame header');
+    if (pos + 2 > data.length) {
+      throw new Error('LZ4 Frame: truncated frame header');
+    }
+    /** @type {uint8} */
     const flg = data[pos++];
     ++pos; // BD byte: block max size only bounds the decode buffer, not needed here
 
-    const contentSizePresent = OpCodes.AndN(OpCodes.Shr32(flg, 3), 1) === 1;
-    const contentChecksumPresent = OpCodes.AndN(OpCodes.Shr32(flg, 2), 1) === 1;
-    const blockChecksumPresent = OpCodes.AndN(OpCodes.Shr32(flg, 4), 1) === 1;
+    /** @type {boolean} */
+    const contentSizePresent = OpCodes.And32(OpCodes.Shr32(flg, 3), 1) === 1;
+    /** @type {boolean} */
+    const contentChecksumPresent = OpCodes.And32(OpCodes.Shr32(flg, 2), 1) === 1;
+    /** @type {boolean} */
+    const blockChecksumPresent = OpCodes.And32(OpCodes.Shr32(flg, 4), 1) === 1;
 
     if (contentSizePresent) {
-      if (pos + 8 > data.length) throw new Error('LZ4 Frame: truncated content size');
+      if (pos + 8 > data.length) {
+        throw new Error('LZ4 Frame: truncated content size');
+      }
       pos += 8;
     }
 
-    if (pos >= data.length) throw new Error('LZ4 Frame: truncated header checksum');
+    if (pos >= data.length) {
+      throw new Error('LZ4 Frame: truncated header checksum');
+    }
     ++pos; // header checksum byte
 
+    /** @type {uint8[]} */
     const output = [];
     while (pos + 4 <= data.length) {
-      const blockHeader = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(data[pos], OpCodes.Shl32(data[pos + 1], 8)),
-            OpCodes.Shl32(data[pos + 2], 16)
-          ),
-          OpCodes.Shl32(data[pos + 3], 24)
-        )
-      );
+      /** @type {uint32} */
+      const blockHeader = readU32LE(data, pos);
       pos += 4;
 
-      if (blockHeader === 0) break; // end mark
+      if (blockHeader === 0) {
+        break; // end mark
+      }
 
-      const isUncompressed = OpCodes.AndN(blockHeader, 0x80000000) !== 0;
-      const dataSize = OpCodes.AndN(blockHeader, 0x7FFFFFFF);
+      /** @type {boolean} */
+      const isUncompressed = OpCodes.And32(blockHeader, 0x80000000) !== 0;
+      /** @type {uint32} */
+      const dataSize = OpCodes.And32(blockHeader, 0x7FFFFFFF);
 
-      if (pos + dataSize > data.length) throw new Error('LZ4 Frame: truncated block data');
+      /** @type {float64} */
+      const blockEnd = pos + dataSize;
+      if (blockEnd > data.length) {
+        throw new Error('LZ4 Frame: truncated block data');
+      }
 
-      if (isUncompressed)
-        for (let i = 0; i < dataSize; ++i) output.push(data[pos + i]);
-      else
+      if (isUncompressed) {
+        for (let i = 0; i < dataSize; ++i) {
+          output.push(data[pos + i]);
+        }
+      } else {
         decompressBlock(data, pos, dataSize, output);
+      }
 
       pos += dataSize;
-      if (blockChecksumPresent) pos += 4;
+      if (blockChecksumPresent) {
+        pos += 4;
+      }
     }
 
     if (contentChecksumPresent && pos + 4 <= data.length) {
-      const expected = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(data[pos], OpCodes.Shl32(data[pos + 1], 8)),
-            OpCodes.Shl32(data[pos + 2], 16)
-          ),
-          OpCodes.Shl32(data[pos + 3], 24)
-        )
-      );
-      if (expected !== xxHash32(output, 0, output.length))
+      /** @type {uint32} */
+      const expected = readU32LE(data, pos);
+      /** @type {uint32} */
+      const actual = xxHash32(output, 0, output.length);
+      if (expected !== actual) {
         throw new Error('LZ4 Frame: content checksum mismatch');
+      }
     }
 
     return output;
@@ -533,23 +728,42 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {LZ4FrameInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new LZ4FrameInstance(this, isInverse);
     }
   }
 
   class LZ4FrameInstance extends IAlgorithmInstance {
+    /**
+     * @param {LZ4FrameCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
-      if (this.isInverse) return frameDecompress(data);
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      if (this.isInverse) {
+        return frameDecompress(data);
+      }
       return frameCompress(data);
     }
   }

@@ -126,49 +126,67 @@
       ];
 
       // XXencode alphabet (64 characters) - different from UUencode
+      /** @type {string} */
       this.alphabet = "+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+      /** @type {int32[]|null} */
       this.decodeTable = null;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XXEncodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new XXEncodeInstance(this, isInverse);
     }
 
+    /**
+     * Build the decode lookup table: the 6-bit value of each character code,
+     * or -1 for a character outside the alphabet
+     */
     init() {
-      // Build decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
+      /** @type {int32[]} */
+      const table = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        table[i] = -1;
       }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        table[this.alphabet.charCodeAt(i)] = i;
+      }
+      this.decodeTable = table;
     }
   }
 
   /**
  * XXEncode cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class XXEncodeInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XXEncodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      this.algorithm.init();
+      algorithm.init();
+      /** @type {string} */
+      this.alphabet = algorithm.alphabet;
+      /** @type {int32[]} */
+      this.decodeTable = algorithm.decodeTable;
     }
 
     /**
@@ -187,8 +205,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -201,73 +225,89 @@
       if (!this._feedBuffer) {
         throw new Error('XXEncodeInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * XXencode bytes (no line framing)
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} XXencoded characters
+     */
     encode(data) {
-      if (data.length === 0) {
-        return [];
-      }
-
+      /** @type {uint8[]} */
       const result = [];
+      if (data.length === 0) {
+        return result;
+      }
 
       // Process in groups of 3 bytes
       for (let i = 0; i < data.length; i += 3) {
+        /** @type {int32} */
         const groupSize = Math.min(3, data.length - i);
 
+        /** @type {uint8} */
         const byte1 = data[i];
+        /** @type {uint8} */
         const byte2 = i + 1 < data.length ? data[i + 1] : 0;
+        /** @type {uint8} */
         const byte3 = i + 2 < data.length ? data[i + 2] : 0;
 
         // Pack 3 bytes into 24-bit value
-        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(byte1, 16), OpCodes.Shl32(byte2, 8)), byte3);
-
-        // Convert to 4 base-64 characters
-        const char4 = this.algorithm.alphabet[OpCodes.AndN(packed, 0x3F)];
-        const char3 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 6), 0x3F)];
-        const char2 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 12), 0x3F)];
-        const char1 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 18), 0x3F)];
+        /** @type {uint32} */
+        const packed = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(byte1, 16), OpCodes.Shl32(byte2, 8)), byte3);
 
         // A partial trailing group emits only the characters its data bits
         // actually occupy: 1 byte needs two 6-bit symbols, 2 bytes need three,
         // 3 bytes need four. Emitting a full quartet for a short tail would
         // make the group length the only record of how many bytes were real,
         // and that record is not recoverable on decode.
-        result.push(char1.charCodeAt(0));
-        result.push(char2.charCodeAt(0));
+        result.push(this.alphabet.charCodeAt(OpCodes.And32(OpCodes.Shr32(packed, 18), 0x3F)));
+        result.push(this.alphabet.charCodeAt(OpCodes.And32(OpCodes.Shr32(packed, 12), 0x3F)));
         if (groupSize >= 2) {
-          result.push(char3.charCodeAt(0));
+          result.push(this.alphabet.charCodeAt(OpCodes.And32(OpCodes.Shr32(packed, 6), 0x3F)));
         }
         if (groupSize === 3) {
-          result.push(char4.charCodeAt(0));
+          result.push(this.alphabet.charCodeAt(OpCodes.And32(packed, 0x3F)));
         }
       }
 
       return result;
     }
 
+    /**
+     * Six-bit value of an XXencoded character
+     * @param {uint8} code - Character code
+     * @returns {int32} Its 6-bit value
+     */
+    lookup(code) {
+      /** @type {int32} */
+      const value = code >= 0 && code < 256 ? this.decodeTable[code] : -1;
+      if (value < 0) {
+        throw new Error('XXencode: Invalid character in encoded data');
+      }
+      return value;
+    }
+
+    /**
+     * Decode XXencoded characters (no line framing)
+     * @param {uint8[]} data - XXencoded characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const encoded = OpCodes.BytesToChars(data);
-
-      const result = [];
-
-      const lookup = (ch) => {
-        const value = this.algorithm.decodeTable[ch];
-        if (value === undefined) {
-          throw new Error('XXencode: Invalid character in encoded data');
-        }
-        return value;
-      };
-
-      for (let i = 0; i < encoded.length; i += 4) {
-        const groupSize = Math.min(4, encoded.length - i);
+      for (let i = 0; i < data.length; i += 4) {
+        /** @type {int32} */
+        const groupSize = Math.min(4, data.length - i);
 
         // A lone trailing character carries only six bits, which is not enough
         // to have come from any whole byte, so it cannot be a valid encoding.
@@ -277,19 +317,25 @@
 
         if (groupSize === 2) {
           // Two characters carry one byte in their top eight bits
-          const packed = OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 6), lookup(encoded[i + 1]));
-          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 4), 0xFF));
+          /** @type {uint32} */
+          const packed = OpCodes.Or32(OpCodes.Shl32(this.lookup(data[i]), 6), this.lookup(data[i + 1]));
+          result.push(OpCodes.And32(OpCodes.Shr32(packed, 4), 0xFF));
         } else if (groupSize === 3) {
           // Three characters carry two bytes in their top sixteen bits
-          const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 12), OpCodes.Shl32(lookup(encoded[i + 1]), 6)), lookup(encoded[i + 2]));
-          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 10), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 2), 0xFF));
+          /** @type {uint32} */
+          const packed = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(this.lookup(data[i]), 12),
+            OpCodes.Shl32(this.lookup(data[i + 1]), 6)), this.lookup(data[i + 2]));
+          result.push(OpCodes.And32(OpCodes.Shr32(packed, 10), 0xFF));
+          result.push(OpCodes.And32(OpCodes.Shr32(packed, 2), 0xFF));
         } else {
           // Four characters carry a full three-byte group
-          const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(lookup(encoded[i]), 18), OpCodes.Shl32(lookup(encoded[i + 1]), 12)), OpCodes.Shl32(lookup(encoded[i + 2]), 6)), lookup(encoded[i + 3]));
-          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 16), 0xFF));
-          result.push(OpCodes.AndN(OpCodes.Shr32(packed, 8), 0xFF));
-          result.push(OpCodes.AndN(packed, 0xFF));
+          /** @type {uint32} */
+          const packed = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(this.lookup(data[i]), 18),
+            OpCodes.Shl32(this.lookup(data[i + 1]), 12)), OpCodes.Shl32(this.lookup(data[i + 2]), 6)),
+            this.lookup(data[i + 3]));
+          result.push(OpCodes.And32(OpCodes.Shr32(packed, 16), 0xFF));
+          result.push(OpCodes.And32(OpCodes.Shr32(packed, 8), 0xFF));
+          result.push(OpCodes.And32(packed, 0xFF));
         }
       }
 

@@ -109,6 +109,11 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {LZOInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new LZOInstance(this, isInverse);
       }
@@ -116,47 +121,96 @@
 
     // LZO compression instance
     class LZOInstance extends IAlgorithmInstance {
+      /**
+       * @param {LZOCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
         // LZO1X-1 style parameters (LZ4-style token stream; see CompressionWorkbench's
         // Lzo1xCompressor, the authoritative reference for this container/payload).
+        /** @type {int32} */
         this.MIN_MATCH = 4;            // Minimum match length
+        /** @type {int32} */
         this.MAX_DISTANCE = 65535;     // Maximum backward distance (fits u16 LE offset)
+        /** @type {int32} */
         this.HASH_BITS = 14;           // Hash table bits
+        /** @type {int32} */
         this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
-        this.inputBuffer = [];
-        return Array.from(result);
+        /** @type {uint8[]} */
+        const bytes = new Uint8Array(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress(bytes);
+        } else {
+          result = this._compress(bytes);
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        /** @type {uint8[]} */
+        const output = [];
+        for (let i = 0; i < result.length; i++) {
+          output.push(result[i]);
+        }
+        return output;
       }
 
+      /**
+       * @param {uint8[]} input - Input bytes
+       * @returns {uint8[]} 4-byte LE length followed by the LZO1X payload
+       */
       _compress(input) {
         // Container: 4-byte little-endian original length, then the LZO1X payload
+        /** @type {uint8[]} */
         const header = OpCodes.Unpack32LE(input.length);
-        const payload = input.length === 0 ? [] : this._compressBlock(input);
+        /** @type {uint8[]} */
+        let payload = [];
+        if (input.length !== 0) {
+          payload = this._compressBlock(input);
+        }
         return new Uint8Array(header.concat(payload));
       }
 
+      /**
+       * @param {uint8[]} input - Input bytes (at least one)
+       * @returns {uint8[]} Token stream
+       */
       _compressBlock(input) {
+        /** @type {int32} */
         const srcLen = input.length;
+        /** @type {uint8[]} */
         const output = [];
+        /** @type {int32[]} */
         const hashTable = new Int32Array(this.HASH_SIZE);
         hashTable.fill(-1);
 
+        /** @type {int32} */
         let anchor = 0; // Start of pending literal run
+        /** @type {int32} */
         let pos = 0;
 
         // We need MIN_MATCH bytes ahead to form a hash key.
+        /** @type {int32} */
         const limit = srcLen - this.MIN_MATCH;
 
         while (pos <= limit) {
+          /** @type {uint32} */
           const hash = this._hash4(input, pos);
+          /** @type {int32} */
           const matchPos = hashTable[hash];
           hashTable[hash] = pos;
 
@@ -166,27 +220,36 @@
               input[pos + 2] === input[matchPos + 2] &&
               input[pos + 3] === input[matchPos + 3]) {
             // Extend match as far as possible
+            /** @type {int32} */
             let matchLength = this.MIN_MATCH;
+            /** @type {int32} */
             const maxMatchLength = srcLen - pos;
-            while (matchLength < maxMatchLength && input[pos + matchLength] === input[matchPos + matchLength])
+            while (matchLength < maxMatchLength && input[pos + matchLength] === input[matchPos + matchLength]) {
               ++matchLength;
+            }
 
+            /** @type {int32} */
             const literalLength = pos - anchor;
+            /** @type {int32} */
             const distance = pos - matchPos;
 
             this._writeSequence(output, input, anchor, literalLength, distance, matchLength - this.MIN_MATCH);
 
             // Update hash for positions skipped inside the match
             for (let i = 1; i < matchLength; ++i) {
+              /** @type {int32} */
               const skipped = pos + i;
-              if (skipped > limit) break;
+              if (skipped > limit) {
+                break;
+              }
               hashTable[this._hash4(input, skipped)] = skipped;
             }
 
             pos += matchLength;
             anchor = pos;
-          } else
+          } else {
             ++pos;
+          }
         }
 
         // Final literal run: low nibble = 0, no offset follows.
@@ -195,7 +258,13 @@
         return output;
       }
 
+      /**
+       * @param {uint8[]} input - Bytes
+       * @param {int32} pos - Position of the four hashed bytes
+       * @returns {uint32} Hash bucket
+       */
       _hash4(input, pos) {
+        /** @type {uint32} */
         const val = OpCodes.Pack32LE(
           OpCodes.ToByte(input[pos]), OpCodes.ToByte(input[pos + 1]),
           OpCodes.ToByte(input[pos + 2]), OpCodes.ToByte(input[pos + 3])
@@ -203,111 +272,164 @@
         return OpCodes.Shr32(OpCodes.Mul32(val, 2654435761), 32 - this.HASH_BITS);
       }
 
+      /**
+       * Append a length extension: 255 bytes while at least 255 remain, then the rest
+       * @param {uint8[]} output - Destination
+       * @param {int32} value - Remaining length
+       */
+      _writeExtension(output, value) {
+        /** @type {int32} */
+        let remaining = value;
+        while (remaining >= 255) {
+          output.push(255);
+          remaining -= 255;
+        }
+        output.push(OpCodes.ToByte(remaining));
+      }
+
+      /**
+       * @param {uint8[]} output - Destination
+       * @param {uint8[]} input - Source
+       * @param {int32} litStart - First literal
+       * @param {int32} litLen - Number of literals
+       * @param {int32} distance - Match distance
+       * @param {int32} matchExtra - Match length minus MIN_MATCH
+       */
       _writeSequence(output, input, litStart, litLen, distance, matchExtra) {
+        /** @type {int32} */
         const litNibble = Math.min(litLen, 15);
+        /** @type {int32} */
         const matchNibble = Math.min(matchExtra, 15);
-        output.push(OpCodes.ToByte(OpCodes.Shl8(litNibble, 4)|matchNibble));
+        output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl8(litNibble, 4), matchNibble)));
 
         if (litNibble === 15) {
-          let remaining = litLen - 15;
-          while (remaining >= 255) {
-            output.push(255);
-            remaining -= 255;
-          }
-          output.push(OpCodes.ToByte(remaining));
+          this._writeExtension(output, litLen - 15);
         }
 
-        for (let i = 0; i < litLen; ++i)
+        for (let i = 0; i < litLen; ++i) {
           output.push(OpCodes.ToByte(input[litStart + i]));
+        }
 
         output.push(OpCodes.ToByte(distance));
         output.push(OpCodes.ToByte(OpCodes.Shr16(distance, 8)));
 
         if (matchNibble === 15) {
-          let remaining = matchExtra - 15;
-          while (remaining >= 255) {
-            output.push(255);
-            remaining -= 255;
-          }
-          output.push(OpCodes.ToByte(remaining));
+          this._writeExtension(output, matchExtra - 15);
         }
       }
 
+      /**
+       * @param {uint8[]} output - Destination
+       * @param {uint8[]} input - Source
+       * @param {int32} litStart - First literal
+       * @param {int32} litLen - Number of literals
+       */
       _writeFinalLiterals(output, input, litStart, litLen) {
+        /** @type {int32} */
         const litNibble = Math.min(litLen, 15);
         output.push(OpCodes.ToByte(OpCodes.Shl8(litNibble, 4))); // low nibble = 0
 
         if (litNibble === 15) {
-          let remaining = litLen - 15;
-          while (remaining >= 255) {
-            output.push(255);
-            remaining -= 255;
-          }
-          output.push(OpCodes.ToByte(remaining));
+          this._writeExtension(output, litLen - 15);
         }
 
-        for (let i = 0; i < litLen; ++i)
+        for (let i = 0; i < litLen; ++i) {
           output.push(OpCodes.ToByte(input[litStart + i]));
+        }
       }
 
+      /**
+       * @param {uint8[]} input - 4-byte LE length followed by the LZO1X payload
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(input) {
-        if (input.length < 4)
+        if (input.length < 4) {
           return new Uint8Array(0);
+        }
 
+        /** @type {uint32} */
         const originalLength = OpCodes.Pack32LE(
           OpCodes.ToByte(input[0]), OpCodes.ToByte(input[1]),
           OpCodes.ToByte(input[2]), OpCodes.ToByte(input[3])
         );
+        /** @type {uint8[]} */
         const output = this._decompressBlock(input.slice(4));
-        return output.length === originalLength ? output : output.slice(0, originalLength);
+        if (output.length === originalLength) {
+          return output;
+        }
+        return output.slice(0, originalLength);
       }
 
+      /**
+       * @param {uint8[]} input - Token stream
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompressBlock(input) {
+        /** @type {int32} */
         const inputLength = input.length;
+        /** @type {uint8[]} */
         const output = [];
+        /** @type {int32} */
         let ip = 0;
 
         while (ip < inputLength) {
+          /** @type {uint8} */
           const token = OpCodes.ToByte(input[ip++]);
 
+          /** @type {int32} */
           let litLen = OpCodes.ToByte(OpCodes.Shr8(token, 4));
           if (litLen === 15) {
-            let ext;
+            /** @type {int32} */
+            let ext = 0;
             do {
-              if (ip >= inputLength) break;
+              if (ip >= inputLength) {
+                break;
+              }
               ext = OpCodes.ToByte(input[ip++]);
               litLen += ext;
             } while (ext === 255);
           }
 
+          /** @type {uint8} */
           const matchExtra = OpCodes.And8(token, 0x0F);
 
           if (litLen > 0) {
-            for (let i = 0; i < litLen && ip < inputLength; ++i)
+            for (let i = 0; i < litLen && ip < inputLength; ++i) {
               output.push(OpCodes.ToByte(input[ip++]));
+            }
           }
 
           // End-of-stream: the final token has low nibble 0 and nothing follows it.
-          if (matchExtra === 0 && ip >= inputLength)
+          if (matchExtra === 0 && ip >= inputLength) {
             break;
+          }
 
-          if (ip + 1 >= inputLength) break;
+          if (ip + 1 >= inputLength) {
+            break;
+          }
+          /** @type {int32} */
           const distance = OpCodes.Pack16LE(OpCodes.ToByte(input[ip]), OpCodes.ToByte(input[ip + 1]));
           ip += 2;
 
+          /** @type {int32} */
           let matchLength = this.MIN_MATCH + matchExtra;
           if (matchExtra === 15) {
-            let ext;
+            /** @type {int32} */
+            let ext = 0;
             do {
-              if (ip >= inputLength) break;
+              if (ip >= inputLength) {
+                break;
+              }
               ext = OpCodes.ToByte(input[ip++]);
               matchLength += ext;
             } while (ext === 255);
           }
 
+          /** @type {int32} */
           const matchStart = output.length - distance;
-          for (let i = 0; i < matchLength; ++i)
+          for (let i = 0; i < matchLength; ++i) {
             output.push(OpCodes.ToByte(output[matchStart + i]));
+          }
         }
 
         return new Uint8Array(output);
