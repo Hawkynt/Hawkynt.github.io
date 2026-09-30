@@ -59,99 +59,176 @@
 
   // ===== LZMA-STYLE RANGE CODER (matches Compression.Core.Entropy.RangeCoding) =====
 
+  /** @type {int32} */
   const RC_BIT_MODEL_TOTAL_BITS = 11;
+  /** @type {int32} */
   const RC_BIT_MODEL_TOTAL = OpCodes.Shl32(1, RC_BIT_MODEL_TOTAL_BITS); // 2048
+  /** @type {int32} */
   const RC_NUM_MOVE_BITS = 5;
+  /** @type {uint32} */
   const RC_TOP_VALUE = OpCodes.Shl32(1, 24);
+  /** @type {int32} */
   const RC_PROB_INIT_VALUE = RC_BIT_MODEL_TOTAL / 2; // 1024
 
   class RangeEncoder {
     constructor() {
+      /** @type {uint32} */
       this.range = 0xFFFFFFFF;
-      this.low = 0; // may transiently exceed 32 bits (carry); truncated on each shiftLow
+      // low may transiently exceed 32 bits (carry); it is kept as an exact
+      // float64 and truncated on each shiftLow
+      /** @type {float64} */
+      this.low = 0;
+      /** @type {int32} */
       this.cacheSize = 1;
+      /** @type {int32} */
       this.cache = 0;
+      /** @type {uint8[]} */
       this.output = [];
     }
+
+    /**
+     * @param {int32[]} probs - Probabilities
+     * @param {int32} idx - Probability used
+     * @param {int32} bit - Bit to code
+     */
     encodeBit(probs, idx, bit) {
-      const bound = OpCodes.ToUint32(OpCodes.Shr32(this.range, RC_BIT_MODEL_TOTAL_BITS) * probs[idx]);
+      /** @type {int32} */
+      const p = probs[idx];
+      // range >> 11 times an 11-bit probability stays below 2^32, so Mul32 is exact
+      /** @type {uint32} */
+      const bound = OpCodes.Mul32(OpCodes.Shr32(this.range, RC_BIT_MODEL_TOTAL_BITS), p);
       if (bit === 0) {
         this.range = bound;
-        probs[idx] += Math.floor((RC_BIT_MODEL_TOTAL - probs[idx]) / OpCodes.Shl32(1, RC_NUM_MOVE_BITS));
+        /** @type {int32} */
+        const up = OpCodes.Shr32(RC_BIT_MODEL_TOTAL - p, RC_NUM_MOVE_BITS);
+        probs[idx] = p + up;
       } else {
         this.low += bound;
-        this.range -= bound;
-        probs[idx] -= Math.floor(probs[idx] / OpCodes.Shl32(1, RC_NUM_MOVE_BITS));
+        this.range = OpCodes.Sub32(this.range, bound);
+        /** @type {int32} */
+        const down = OpCodes.Shr32(p, RC_NUM_MOVE_BITS);
+        probs[idx] = p - down;
       }
       this._normalize();
     }
+
+    /** Flush the pending bytes */
     finish() {
-      for (let i = 0; i < 5; ++i) this._shiftLow();
+      for (let i = 0; i < 5; ++i) {
+        this._shiftLow();
+      }
     }
+
     _normalize() {
-      if (this.range >= RC_TOP_VALUE) return;
+      if (this.range >= RC_TOP_VALUE) {
+        return;
+      }
       this.range = OpCodes.Shl32(this.range, 8);
       this._shiftLow();
     }
+
     _shiftLow() {
+      /** @type {int32} */
       const carry = Math.floor(this.low / 4294967296); // this.low >> 32
       if (this.low < 0xFF000000 || carry !== 0) {
+        /** @type {int32} */
         let temp = this.cache;
         do {
           this.output.push(OpCodes.And32(temp + carry, 0xFF));
           temp = 0xFF;
         } while (--this.cacheSize > 0);
-        this.cache = OpCodes.And32(Math.floor(OpCodes.ToUint32(this.low) / 16777216), 0xFF);
+        this.cache = OpCodes.And32(OpCodes.Shr32(OpCodes.ToUint32(this.low), 24), 0xFF);
       }
       ++this.cacheSize;
-      this.low = OpCodes.Shl32(this.low, 8);
+      this.low = OpCodes.Shl32(OpCodes.ToUint32(this.low), 8);
     }
   }
 
   class RangeDecoder {
+    /**
+     * @param {uint8[]} bytes - Coded bytes (zero past the end)
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.input = bytes;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.range = 0xFFFFFFFF;
+      /** @type {uint32} */
       this.code = 0;
       this._readByte(); // leading 0x00 byte, discarded (matches RangeEncoder's initial cache)
-      for (let i = 0; i < 4; ++i)
+      for (let i = 0; i < 4; ++i) {
         this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), this._readByte());
+      }
     }
+
+    /**
+     * @returns {uint8} Next byte, 0 past the end
+     */
     _readByte() {
       return this.pos < this.input.length ? this.input[this.pos++] : 0;
     }
+
+    /**
+     * @param {int32[]} probs - Probabilities
+     * @param {int32} idx - Probability used
+     * @returns {int32} Decoded bit
+     */
     decodeBit(probs, idx) {
-      const bound = OpCodes.ToUint32(OpCodes.Shr32(this.range, RC_BIT_MODEL_TOTAL_BITS) * probs[idx]);
-      let bit;
+      /** @type {int32} */
+      const p = probs[idx];
+      /** @type {uint32} */
+      const bound = OpCodes.Mul32(OpCodes.Shr32(this.range, RC_BIT_MODEL_TOTAL_BITS), p);
+      /** @type {int32} */
+      let bit = 0;
       if (this.code < bound) {
         this.range = bound;
-        probs[idx] += Math.floor((RC_BIT_MODEL_TOTAL - probs[idx]) / OpCodes.Shl32(1, RC_NUM_MOVE_BITS));
+        /** @type {int32} */
+        const up = OpCodes.Shr32(RC_BIT_MODEL_TOTAL - p, RC_NUM_MOVE_BITS);
+        probs[idx] = p + up;
         bit = 0;
       } else {
-        this.code -= bound;
-        this.range -= bound;
-        probs[idx] -= Math.floor(probs[idx] / OpCodes.Shl32(1, RC_NUM_MOVE_BITS));
+        this.code = OpCodes.Sub32(this.code, bound);
+        this.range = OpCodes.Sub32(this.range, bound);
+        /** @type {int32} */
+        const down = OpCodes.Shr32(p, RC_NUM_MOVE_BITS);
+        probs[idx] = p - down;
         bit = 1;
       }
       this._normalize();
       return bit;
     }
+
     _normalize() {
-      if (this.range >= RC_TOP_VALUE) return;
+      if (this.range >= RC_TOP_VALUE) {
+        return;
+      }
       this.range = OpCodes.Shl32(this.range, 8);
       this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 8), this._readByte());
     }
   }
 
   class BitTreeEncoder {
+    /**
+     * @param {int32} numBits - Bits per symbol
+     */
     constructor(numBits) {
+      /** @type {int32} */
       this.numBits = numBits;
+      /** @type {int32[]} */
       this.probs = new Int32Array(OpCodes.Shl32(1, numBits)).fill(RC_PROB_INIT_VALUE);
     }
+
+    /**
+     * @param {RangeEncoder} encoder - Output coder
+     * @param {uint32} value - Symbol
+     */
     encode(encoder, value) {
+      /** @type {uint32} */
       let index = 1;
       for (let i = this.numBits - 1; i >= 0; --i) {
+        /** @type {uint32} */
         const bit = OpCodes.And32(OpCodes.Shr32(value, i), 1);
         encoder.encodeBit(this.probs, index, bit);
         index = OpCodes.Or32(OpCodes.Shl32(index, 1), bit);
@@ -160,69 +237,209 @@
   }
 
   class BitTreeDecoder {
+    /**
+     * @param {int32} numBits - Bits per symbol
+     */
     constructor(numBits) {
+      /** @type {int32} */
       this.numBits = numBits;
+      /** @type {int32[]} */
       this.probs = new Int32Array(OpCodes.Shl32(1, numBits)).fill(RC_PROB_INIT_VALUE);
     }
+
+    /**
+     * @param {RangeDecoder} decoder - Input coder
+     * @returns {int32} Symbol
+     */
     decode(decoder) {
+      /** @type {uint32} */
       let index = 1;
       for (let i = 0; i < this.numBits; ++i) {
+        /** @type {int32} */
         const bit = decoder.decodeBit(this.probs, index);
         index = OpCodes.Or32(OpCodes.Shl32(index, 1), bit);
       }
-      return index - OpCodes.Shl32(1, this.numBits);
+      /** @type {int32} */
+      const top = OpCodes.Shl32(1, this.numBits);
+      /** @type {int32} */
+      const leaf = index;
+      return leaf - top;
     }
   }
 
   // ===== BURROWS-WHEELER TRANSFORM (matches Compression.Core.Transforms.BurrowsWheelerTransform) =====
 
-  class BurrowsWheelerTransform {
-    static forward(data) {
-      const n = data.length;
-      if (n === 0) return { transformed: [], index: 0 };
+  /**
+   * Result of the forward transform
+   */
+  class BwtResult {
+    /**
+     * @param {uint8[]} transformed - Last column of the sorted rotations
+     * @param {int32} index - Row of the original rotation
+     */
+    constructor(transformed, index) {
+      /** @type {uint8[]} */
+      this.transformed = transformed;
+      /** @type {int32} */
+      this.index = index;
+    }
+  }
 
-      const sa = new Array(n);
-      for (let i = 0; i < n; ++i) sa[i] = i;
+  /**
+   * Compare the rotations of data starting at a and b
+   * @param {uint8[]} data - Bytes
+   * @param {int32} a - First rotation start
+   * @param {int32} b - Second rotation start
+   * @returns {int32} Negative, zero or positive as rotation a sorts before, with or after b
+   */
+  function compareRotations(data, a, b) {
+    /** @type {int32} */
+    const n = data.length;
+    for (let k = 0; k < n; ++k) {
+      /** @type {int32} */
+      const da = data[(a + k) % n];
+      /** @type {int32} */
+      const db = data[(b + k) % n];
+      if (da !== db) {
+        return da - db;
+      }
+    }
+    return 0;
+  }
 
-      // Full cyclic-rotation comparison sort. JS Array.prototype.sort is a
-      // stable sort, so fully-tied rotations (periodic input) keep their
-      // original relative (ascending index) order.
-      sa.sort((a, b) => {
-        for (let k = 0; k < n; ++k) {
-          const da = data[(a + k) % n];
-          const db = data[(b + k) % n];
-          if (da !== db) return da - db;
+  /**
+   * Stable merge sort of rotation starts. Fully-tied rotations (periodic
+   * input) keep their ascending index order, exactly as the stable
+   * Array.prototype.sort did.
+   * @param {uint8[]} data - Bytes
+   * @param {int32[]} sa - Rotation starts, sorted in place
+   */
+  function sortRotations(data, sa) {
+    /** @type {int32} */
+    const n = sa.length;
+    /** @type {int32[]} */
+    let src = sa.slice();
+    /** @type {int32[]} */
+    let dst = new Array(n);
+    for (let width = 1; width < n; width *= 2) {
+      for (let lo = 0; lo < n; lo += 2 * width) {
+        /** @type {int32} */
+        const mid = Math.min(lo + width, n);
+        /** @type {int32} */
+        const hi = Math.min(lo + 2 * width, n);
+        /** @type {int32} */
+        let i = lo;
+        /** @type {int32} */
+        let j = mid;
+        /** @type {int32} */
+        let k = lo;
+        while (i < mid && j < hi) {
+          if (compareRotations(data, src[j], src[i]) < 0) {
+            dst[k++] = src[j++];
+          } else {
+            dst[k++] = src[i++];
+          }
         }
-        return 0;
-      });
+        while (i < mid) {
+          dst[k++] = src[i++];
+        }
+        while (j < hi) {
+          dst[k++] = src[j++];
+        }
+      }
+      /** @type {int32[]} */
+      const swap = src;
+      src = dst;
+      dst = swap;
+    }
+    for (let i = 0; i < n; i++) {
+      sa[i] = src[i];
+    }
+  }
 
+  class BurrowsWheelerTransform {
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {BwtResult} Last column and original row
+     */
+    static forward(data) {
+      /** @type {int32} */
+      const n = data.length;
+      if (n === 0) {
+        /** @type {uint8[]} */
+        const none = [];
+        return new BwtResult(none, 0);
+      }
+
+      /** @type {int32[]} */
+      const sa = new Array(n);
+      for (let i = 0; i < n; ++i) {
+        sa[i] = i;
+      }
+
+      // Full cyclic-rotation comparison sort, stable, so fully-tied rotations
+      // (periodic input) keep their original relative (ascending index) order.
+      sortRotations(data, sa);
+
+      /** @type {uint8[]} */
       const transformed = new Array(n);
+      /** @type {int32} */
       let index = 0;
       for (let i = 0; i < n; ++i) {
-        if (sa[i] === 0) { index = i; transformed[i] = data[n - 1]; }
-        else transformed[i] = data[sa[i] - 1];
+        if (sa[i] === 0) {
+          index = i;
+          transformed[i] = data[n - 1];
+        } else {
+          transformed[i] = data[sa[i] - 1];
+        }
       }
-      return { transformed, index };
+      return new BwtResult(transformed, index);
     }
 
+    /**
+     * @param {uint8[]} data - Last column
+     * @param {int32} index - Row of the original rotation
+     * @returns {uint8[]} Original bytes
+     */
     static inverse(data, index) {
+      /** @type {int32} */
       const n = data.length;
-      if (n === 0) return [];
-
-      const count = new Array(256).fill(0);
-      for (let i = 0; i < n; ++i) ++count[data[i]];
-
-      const cumulative = new Array(256).fill(0);
-      let sum = 0;
-      for (let c = 0; c < 256; ++c) { cumulative[c] = sum; sum += count[c]; }
-
-      const lfMap = new Array(n);
-      const tempCount = cumulative.slice();
-      for (let i = 0; i < n; ++i) { lfMap[i] = tempCount[data[i]]; ++tempCount[data[i]]; }
-
+      /** @type {uint8[]} */
       const result = new Array(n);
+      if (n === 0) {
+        return result;
+      }
+
+      /** @type {int32[]} */
+      const count = new Int32Array(256);
+      for (let i = 0; i < n; ++i) {
+        ++count[data[i]];
+      }
+
+      /** @type {int32[]} */
+      const cumulative = new Int32Array(256);
+      /** @type {int32} */
+      let sum = 0;
+      for (let c = 0; c < 256; ++c) {
+        cumulative[c] = sum;
+        sum += count[c];
+      }
+
+      /** @type {int32[]} */
+      const lfMap = new Array(n);
+      /** @type {int32[]} */
+      const tempCount = cumulative.slice();
+      for (let i = 0; i < n; ++i) {
+        lfMap[i] = tempCount[data[i]];
+        ++tempCount[data[i]];
+      }
+
+      /** @type {int32} */
       let idx = index;
-      for (let i = n - 1; i >= 0; --i) { result[i] = data[idx]; idx = lfMap[idx]; }
+      for (let i = n - 1; i >= 0; --i) {
+        result[i] = data[idx];
+        idx = lfMap[idx];
+      }
       return result;
     }
   }
@@ -230,37 +447,67 @@
   // ===== MOVE-TO-FRONT (matches Compression.Core.Transforms.MoveToFrontTransform) =====
 
   class MoveToFront {
+    /**
+     * @param {uint8[]} data - Bytes
+     * @returns {uint8[]} Move-to-front ranks
+     */
     static encode(data) {
+      /** @type {uint8[]} */
       const alphabet = new Uint8Array(256);
-      for (let i = 0; i < 256; ++i) alphabet[i] = i;
+      for (let i = 0; i < 256; ++i) {
+        alphabet[i] = i;
+      }
 
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < data.length; ++i) {
+        /** @type {uint8} */
         const symbol = data[i];
+        /** @type {int32} */
         let idx = 0;
-        while (alphabet[idx] !== symbol) ++idx;
+        while (alphabet[idx] !== symbol) {
+          ++idx;
+        }
         result[i] = idx;
 
         if (idx > 0) {
-          for (let k = idx; k > 0; --k) alphabet[k] = alphabet[k - 1];
+          /** @type {int32} */
+          const last = idx;
+          for (let k = last; k > 0; --k) {
+            alphabet[k] = alphabet[k - 1];
+          }
           alphabet[0] = symbol;
         }
       }
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Move-to-front ranks
+     * @returns {uint8[]} Bytes
+     */
     static decode(data) {
+      /** @type {uint8[]} */
       const alphabet = new Uint8Array(256);
-      for (let i = 0; i < 256; ++i) alphabet[i] = i;
+      for (let i = 0; i < 256; ++i) {
+        alphabet[i] = i;
+      }
 
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < data.length; ++i) {
+        /** @type {uint8} */
         const idx = data[i];
+        /** @type {uint8} */
         const symbol = alphabet[idx];
         result[i] = symbol;
 
         if (idx > 0) {
-          for (let k = idx; k > 0; --k) alphabet[k] = alphabet[k - 1];
+          /** @type {int32} */
+          const last = idx;
+          for (let k = last; k > 0; --k) {
+            alphabet[k] = alphabet[k - 1];
+          }
           alphabet[0] = symbol;
         }
       }
@@ -325,75 +572,144 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {BSCInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BSCInstance(this, isInverse);
     }
   }
 
   class BSCInstance extends IAlgorithmInstance {
+    /**
+     * @param {BSCAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ?
-        this.decompress(this.inputBuffer) :
-        this.compress(this.inputBuffer);
-
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this.decompress(this.inputBuffer);
+      } else {
+        result = this.compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Size, BWT index and range-coded ranks
+     */
     compress(data) {
-      const header = OpCodes.Unpack32LE(data.length);
-      if (data.length === 0) return header;
+      /** @type {uint8[]} */
+      const result = OpCodes.Unpack32LE(data.length);
+      if (data.length === 0) {
+        return result;
+      }
 
+      /** @type {BwtResult} */
       const bwt = BurrowsWheelerTransform.forward(data);
+      /** @type {uint8[]} */
       const mtf = MoveToFront.encode(bwt.transformed);
+      /** @type {uint8[]} */
       const indexHeader = OpCodes.Unpack32LE(bwt.index);
 
+      /** @type {RangeEncoder} */
       const encoder = new RangeEncoder();
+      /** @type {BitTreeEncoder[]} */
       const trees = [new BitTreeEncoder(8), new BitTreeEncoder(8)];
 
+      /** @type {int32} */
       let context = 0;
-      for (const b of mtf) {
-        trees[context].encode(encoder, b);
+      for (let i = 0; i < mtf.length; i++) {
+        /** @type {uint8} */
+        const b = mtf[i];
+        /** @type {BitTreeEncoder} */
+        const tree = trees[context];
+        tree.encode(encoder, b);
         context = b === 0 ? 0 : 1;
       }
 
       encoder.finish();
-      return [...header, ...indexHeader, ...encoder.output];
+      for (let i = 0; i < indexHeader.length; i++) {
+        result.push(indexHeader[i]);
+      }
+      /** @type {uint8[]} */
+      const coded = encoder.output;
+      for (let i = 0; i < coded.length; i++) {
+        result.push(coded[i]);
+      }
+      return result;
     }
 
+    /**
+     * @param {uint8[]} compressedData - Size, BWT index and range-coded ranks
+     * @returns {uint8[]} Decoded bytes
+     */
     decompress(compressedData) {
-      if (!compressedData || compressedData.length < 4)
-        return [];
+      if (!compressedData || compressedData.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint32} */
       const size = OpCodes.Pack32LE(compressedData[0], compressedData[1], compressedData[2], compressedData[3]);
-      if (size === 0) return [];
+      if (size === 0) {
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
+      }
 
-      if (compressedData.length < 8)
+      if (compressedData.length < 8) {
         throw new Error('Invalid BSC compressed data: too short');
+      }
 
+      /** @type {uint32} */
       const index = OpCodes.Pack32LE(compressedData[4], compressedData[5], compressedData[6], compressedData[7]);
+      /** @type {uint8[]} */
       const rest = compressedData.slice(8);
 
+      /** @type {RangeDecoder} */
       const decoder = new RangeDecoder(rest);
+      /** @type {BitTreeDecoder[]} */
       const trees = [new BitTreeDecoder(8), new BitTreeDecoder(8)];
 
+      /** @type {uint8[]} */
       const mtf = new Array(size);
+      /** @type {int32} */
       let context = 0;
       for (let i = 0; i < size; ++i) {
-        const b = trees[context].decode(decoder);
+        /** @type {BitTreeDecoder} */
+        const tree = trees[context];
+        /** @type {int32} */
+        const b = tree.decode(decoder);
         mtf[i] = b;
         context = b === 0 ? 0 : 1;
       }
 
+      /** @type {uint8[]} */
       const bwt = MoveToFront.decode(mtf);
-      return BurrowsWheelerTransform.inverse(bwt, index);
+      /** @type {uint8[]} */
+      const restored = BurrowsWheelerTransform.inverse(bwt, index);
+      return restored;
     }
   }
 
