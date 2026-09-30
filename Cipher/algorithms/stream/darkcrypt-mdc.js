@@ -311,6 +311,14 @@
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           expected: OpCodes.Hex8ToBytes("d8733281525b4ea913abfbcd51c4e0c8af56081da8ca49a9c4ddf02943cb2d5ce6a6614297a26457b330575f96b463e50eb5e014e1d7f0b163e66b92d1a7b61e")
+        },
+        {
+          text: "DarkCrypt Mdc — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186abd0f51a3f6489aed3f81d42678cb1d6fb20456a8fb4d9fe23486d92b7dc0126"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457a"),
+          expected: OpCodes.Hex8ToBytes("2e2a484944b2d56b05f06612af14366ec204d3aafb9589503bc220568a31d7a0308d6fdc092ea54491472ba728129680")
         }
       ];
     }
