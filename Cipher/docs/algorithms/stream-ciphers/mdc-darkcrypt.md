@@ -39,7 +39,7 @@
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Mdc — keystream from incrementing key, zero IV, zero plaintext](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -58,6 +58,15 @@
 | `iv` | `0000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `d8733281525b4ea913abfbcd51c4e0c8 af56081da8ca49a9c4ddf02943cb2d5c e6a6614297a26457b330575f96b463e5 0eb5e014e1d7f0b163e66b92d1a7b61e` |
+
+**Vector 3** — [DarkCrypt Mdc — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136 5b80a5caef14395e83a8cdf2173c6186 abd0f51a3f6489aed3f81d42678cb1d6 fb20456a8fb4d9fe23486d92b7dc0126` |
+| `iv` | `073c71a6db10457a` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `2e2a484944b2d56b05f06612af14366e c204d3aafb9589503bc220568a31d7a0 308d6fdc092ea54491472ba728129680` |
 
 ---
 
