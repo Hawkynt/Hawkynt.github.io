@@ -191,7 +191,7 @@
 
     /**
      * Feed data for encoding/decoding
-     * @param {Array<number>} data - Symbol array (bytes)
+     * @param {uint8[]} data - Symbol array (bytes)
      */
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -209,7 +209,7 @@
 
     /**
      * Return processed result
-     * @returns {Array<number>} Encoded/decoded symbol array
+     * @returns {uint8[]} Encoded/decoded symbol array
      */
     Result() {
       if (this.result === null) {
@@ -229,8 +229,11 @@
       }
 
       // For MDS codes, we check if parity symbols match computed values
+      /** @type {uint8[]} */
       const message = data.slice(0, this.k);
+      /** @type {uint8[]} */
       const receivedParity = data.slice(this.k);
+      /** @type {uint8[]} */
       const computedParity = this.computeParity(message);
 
       // Compare parity symbols
@@ -244,8 +247,8 @@
 
     /**
      * Encode message to codeword (systematic form)
-     * @param {Array<number>} message - k data symbols
-     * @returns {Array<number>} n codeword symbols
+     * @param {uint8[]} message - k data symbols
+     * @returns {uint8[]} n codeword symbols
      */
     encode(message) {
       if (message.length !== this.k) {
@@ -253,14 +256,17 @@
       }
 
       // Validate symbols in field range
-      for (let symbol of message) {
+      for (let s = 0; s < message.length; ++s) {
+        /** @type {uint8} */
+        const symbol = message[s];
         if (symbol < 0 || symbol >= this.field) {
           throw new Error("MDS: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
       // Systematic encoding: [message parity]
-      const codeword = new Array(this.n);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Copy message symbols
       for (let i = 0; i < this.k; ++i) {
@@ -268,6 +274,7 @@
       }
 
       // Compute parity symbols using Cauchy matrix
+      /** @type {uint8[]} */
       const parity = this.computeParity(message);
       for (let i = 0; i < this.r; ++i) {
         codeword[this.k + i] = parity[i];
@@ -278,8 +285,8 @@
 
     /**
      * Decode codeword to message (with erasure correction)
-     * @param {Array<number>} received - n received symbols (may have erasures marked as null)
-     * @returns {Array<number>} k decoded message symbols
+     * @param {uint8[]} received - n received symbols (may have erasures marked as null)
+     * @returns {uint8[]} k decoded message symbols
      */
     decode(received) {
       if (received.length !== this.n) {
@@ -287,7 +294,7 @@
       }
 
       // Count erasures (marked as null or -1)
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const erasures = [];
       for (let i = 0; i < this.n; ++i) {
         if (received[i] === null || received[i] === -1 || received[i] === undefined) {
@@ -315,17 +322,19 @@
 
     /**
      * Compute parity symbols using Cauchy matrix multiplication
-     * @param {Array<number>} message - k message symbols
-     * @returns {Array<number>} r parity symbols
+     * @param {uint8[]} message - k message symbols
+     * @returns {uint8[]} r parity symbols
      */
     computeParity(message) {
-      const parity = new Array(this.r);
+      /** @type {uint8[]} */
+      const parity = OpCodes.CreateArray(this.r, 0);
 
       // Parity matrix is rows k..n-1 of Cauchy matrix
       for (let i = 0; i < this.r; ++i) {
         /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.k; ++j) {
+          /** @type {uint8} */
           const matrixElement = this.cauchyMatrix[this.k + i][j];
           sum = OpCodes.Xor32(sum, this.gfMultiply(matrixElement, message[j]));
         }
@@ -337,16 +346,16 @@
 
     /**
      * Erasure decoding using matrix inversion
-     * @param {Array<number>} received - n symbols with erasures
-     * @param {Array<number>} erasures - Indices of erased symbols
-     * @returns {Array<number>} k decoded message symbols
+     * @param {uint8[]} received - n symbols with erasures
+     * @param {int32[]} erasures - Indices of erased symbols
+     * @returns {uint8[]} k decoded message symbols
      */
     erasureDecode(received, erasures) {
       // Select k surviving symbols
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const surviving = [];
       for (let i = 0; i < this.n; ++i) {
-        if (!erasures.includes(i)) {
+        if (erasures.indexOf(i) < 0) {
           surviving.push(i);
         }
       }
@@ -373,14 +382,19 @@
       }
 
       // General case: Extract k×k submatrix and invert
+      /** @type {uint8[][]} */
       const submatrix = this.extractSubmatrix(surviving);
+      /** @type {uint8[][]} */
       const inverse = this.invertMatrix(submatrix);
 
       // Extract surviving symbol values
-      const survivingValues = surviving.map(idx => received[idx]);
+      /** @type {uint8[]} */
+      const survivingValues = [];
+      for (let i = 0; i < surviving.length; ++i) survivingValues.push(received[surviving[i]]);
 
       // Multiply inverse by surviving symbols: message = inverse * codeword_partial
-      const message = new Array(this.k);
+      /** @type {uint8[]} */
+      const message = OpCodes.CreateArray(this.k, 0);
       for (let i = 0; i < this.k; ++i) {
         /** @type {uint32} */
         let sum = 0;
@@ -397,7 +411,7 @@
      * Generate Cauchy matrix for MDS code in systematic form
      * Generator matrix G = [I_k P] where I_k is identity and P is r×k parity matrix
      * P derived from Cauchy matrix to ensure MDS property
-     * @returns {Array<Array<number> >} n×k generator matrix in systematic form
+     * @returns {uint8[][]} n×k generator matrix in systematic form
      */
     generateCauchyMatrix() {
       /** @type {uint8[][]} */
@@ -405,7 +419,8 @@
 
       // First k rows: Identity matrix [I_k combined with parity]
       for (let i = 0; i < this.k; ++i) {
-        const row = new Array(this.k);
+        /** @type {uint8[]} */
+        const row = OpCodes.CreateArray(this.k, 0);
         for (let j = 0; j < this.k; ++j) {
           row[j] = (i === j) ? 1 : 0;
         }
@@ -429,7 +444,7 @@
 
       // Compute Cauchy parity rows
       for (let i = 0; i < this.r; ++i) {
-        /** @type {int32[]} */
+        /** @type {uint8[]} */
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           // C[i,j] = 1/(x[i] + y[j]) in GF(256)
@@ -437,6 +452,7 @@
           if (denominator === 0) {
             throw new Error('Cauchy matrix: x_i + y_j = 0 not allowed');
           }
+          /** @type {uint8} */
           const element = this.gfInverse(denominator);
           row.push(element);
         }
@@ -448,14 +464,14 @@
 
     /**
      * Extract k×k submatrix for decoding
-     * @param {Array<number>} rows - Row indices to extract
-     * @returns {Array<Array<number> >} k×k submatrix
+     * @param {int32[]} rows - Row indices to extract
+     * @returns {uint8[][]} k×k submatrix
      */
     extractSubmatrix(rows) {
       /** @type {uint8[][]} */
       const submatrix = [];
       for (let i = 0; i < this.k; ++i) {
-        /** @type {int32[]} */
+        /** @type {uint8[]} */
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           row.push(this.cauchyMatrix[rows[i]][j]);
@@ -467,8 +483,8 @@
 
     /**
      * Invert matrix over GF(256) using Gaussian elimination
-     * @param {Array<Array<number> >} matrix - k×k matrix
-     * @returns {Array<Array<number> >} k×k inverse matrix
+     * @param {uint8[][]} matrix - k×k matrix
+     * @returns {uint8[][]} k×k inverse matrix
      */
     invertMatrix(matrix) {
       const k = matrix.length;
@@ -536,9 +552,12 @@
 
     /**
      * Initialize Galois Field GF(256) log and antilog tables
+     * @returns {void}
      */
     initializeGaloisField() {
+      /** @type {int32[]} */
       this.gfLog = new Array(this.field);
+      /** @type {uint8[]} */
       this.gfAntilog = new Array(this.field);
 
       /** @type {uint32} */
@@ -556,9 +575,9 @@
 
     /**
      * Galois Field multiplication
-     * @param {number} a - GF(256) element
-     * @param {number} b - GF(256) element
-     * @returns {number} a * b in GF(256)
+     * @param {uint8} a - GF(256) element
+     * @param {uint8} b - GF(256) element
+     * @returns {uint8} a * b in GF(256)
      */
     gfMultiply(a, b) {
       if (a === 0 || b === 0) return 0;
@@ -567,9 +586,9 @@
 
     /**
      * Galois Field division
-     * @param {number} a - GF(256) element
-     * @param {number} b - GF(256) element
-     * @returns {number} a / b in GF(256)
+     * @param {uint8} a - GF(256) element
+     * @param {uint8} b - GF(256) element
+     * @returns {uint8} a / b in GF(256)
      */
     gfDivide(a, b) {
       if (b === 0) throw new Error('Division by zero in Galois Field');
@@ -579,11 +598,14 @@
 
     /**
      * Galois Field multiplicative inverse
-     * @param {number} a - GF(256) element
-     * @returns {number} 1/a in GF(256)
+     * @param {uint8} a - GF(256) element
+     * @returns {uint8} 1/a in GF(256)
      */
     gfInverse(a) {
-      if (a === 0) throw new Error('Zero has no inverse in Galois Field');
+      if (a === 0) {
+        throw new Error('Zero has no inverse in Galois Field');
+      }
+      /** @type {int32} */
       const logInv = (this.field - 1 - this.gfLog[a]) % (this.field - 1);
       return this.gfAntilog[logInv];
     }
