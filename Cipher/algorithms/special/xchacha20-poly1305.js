@@ -77,7 +77,9 @@
       this.SupportedKeySizes = [
         new KeySize(32, 32, 32)
       ];
-      this.SupportedTagSizes = [16]; // 128-bit authentication tag
+      this.SupportedTagSizes = [
+        new KeySize(16, 16, 0) // 128-bit authentication tag
+      ];
       this.SupportsDetached = false;
 
       // Documentation and references
@@ -128,7 +130,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XChaCha20Poly1305AlgorithmInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -145,25 +147,38 @@
   class XChaCha20Poly1305AlgorithmInstance extends IAeadInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {XChaCha20Poly1305Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint8[]|null} */
       this.nonce = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.tagSize = 16; // 128-bit authentication tag
 
       // XChaCha20-Poly1305 specific state
+      /** @type {boolean} */
       this.initialized = false;
 
       // Constants
+      /** @type {int32} */
       this.NONCE_SIZE = 24; // 192-bit nonces for XChaCha20
+      /** @type {int32} */
       this.TAG_SIZE = 16;
+      /** @type {int32} */
       this.KEY_SIZE = 32;
+      /** @type {int32} */
       this.BLOCK_SIZE = 64;
     }
 
@@ -181,17 +196,23 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
-
-      if (!isValidSize) {
-        const msg = OpCodes.AnsiToBytes(`Invalid key size: ${keyBytes.length} bytes`);
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
       }
 
-      this._key = [...keyBytes];
+      if (!isValidSize) {
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
+      }
+
+      this._key = keyBytes.slice();
       this.initialized = false;
     }
 
@@ -201,22 +222,34 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
-    // Set nonce for AEAD operation
+    /**
+     * Set nonce for AEAD operation
+     * @param {uint8[]} nonce - 24-byte nonce
+     * @returns {void}
+     */
     setNonce(nonce) {
       if (!nonce || nonce.length !== this.NONCE_SIZE) {
-        const msg = OpCodes.AnsiToBytes("XChaCha20-Poly1305 requires 24-byte nonce");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("XChaCha20-Poly1305 requires 24-byte nonce");
       }
-      this.nonce = [...nonce];
+      this.nonce = nonce.slice();
       this.initialized = false;
     }
 
-    // Set additional authenticated data
+    /**
+     * Set additional authenticated data
+     * @param {uint8[]|null} aad - Associated data
+     * @returns {void}
+     */
     setAAD(aad) {
-      this.aad = aad ? [...aad] : [];
+      /** @type {uint8[]} */
+      let copy = [];
+      if (aad) {
+        copy = aad.slice();
+      }
+      this.aad = copy;
     }
 
     /**
@@ -228,8 +261,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) {
-        const msg = OpCodes.AnsiToBytes("Key not set");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("Key not set");
       }
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
@@ -243,19 +275,26 @@
 
     Result() {
       if (!this.key) {
-        const msg = OpCodes.AnsiToBytes("Key not set");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("Key not set");
       }
 
       // Set default nonce if not provided (for test vectors)
       if (!this.nonce) {
-        this.nonce = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]; // 24-byte nonce
+        this.nonce = OpCodes.CreateArray(24, 0); // 24-byte nonce
+        this.nonce[23] = 1;
       }
 
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      const output = this.isInverse 
-        ? this._aeadDecrypt(input, this.nonce, this.aad || [])
-        : this._aeadEncrypt(input, this.nonce, this.aad || []);
+      /** @type {uint8[]} */
+      let aad = [];
+      if (this.aad) {
+        aad = this.aad;
+      }
+      /** @type {uint8[]} */
+      const output = this.isInverse
+        ? this._aeadDecrypt(input, this.nonce, aad)
+        : this._aeadEncrypt(input, this.nonce, aad);
 
       // Clear buffers for next operation
       this.inputBuffer = [];
@@ -264,163 +303,204 @@
       return output;
     }
 
-    // HChaCha20 - used for key derivation with extended nonce
-    _hchacha20(key, nonce) {
-      // Initialize state with constants, key, and first 16 bytes of nonce
-      const state = new Array(16);
+    /**
+     * Build the initial ChaCha state from constants, key and four nonce/counter words
+     * @param {uint8[]} key - 32-byte key
+     * @returns {uint32[]} State with words 12..15 still zero
+     */
+    _initialWords(key) {
+      /** @type {uint32[]} */
+      const words = new Array(16);
 
       // Constants "expand 32-byte k"
-      state[0] = 0x61707865;
-      state[1] = 0x3320646e;
-      state[2] = 0x79622d32;
-      state[3] = 0x6b206574;
+      words[0] = 0x61707865;
+      words[1] = 0x3320646e;
+      words[2] = 0x79622d32;
+      words[3] = 0x6b206574;
 
       // Key
       for (let i = 0; i < 8; i++) {
-        state[4 + i] = OpCodes.Pack32LE(
+        words[4 + i] = OpCodes.Pack32LE(
           key[i * 4], key[i * 4 + 1],
           key[i * 4 + 2], key[i * 4 + 3]
         );
       }
+      for (let i = 12; i < 16; i++) words[i] = 0;
+      return words;
+    }
+
+    /**
+     * 20 ChaCha rounds (10 double rounds) in place
+     * @param {uint32[]} x - Working state
+     * @returns {void}
+     */
+    _rounds(x) {
+      for (let i = 0; i < 10; i++) {
+        // Column rounds
+        this._quarterRound(x, 0, 4, 8, 12);
+        this._quarterRound(x, 1, 5, 9, 13);
+        this._quarterRound(x, 2, 6, 10, 14);
+        this._quarterRound(x, 3, 7, 11, 15);
+
+        // Diagonal rounds
+        this._quarterRound(x, 0, 5, 10, 15);
+        this._quarterRound(x, 1, 6, 11, 12);
+        this._quarterRound(x, 2, 7, 8, 13);
+        this._quarterRound(x, 3, 4, 9, 14);
+      }
+    }
+
+    /**
+     * HChaCha20 - used for key derivation with extended nonce
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint8[]} nonce - First 16 bytes of the extended nonce
+     * @returns {uint8[]} 32-byte subkey
+     */
+    _hchacha20(key, nonce) {
+      // Initialize state with constants, key, and first 16 bytes of nonce
+      /** @type {uint32[]} */
+      const words = this._initialWords(key);
 
       // First 16 bytes of nonce
       for (let i = 0; i < 4; i++) {
-        state[12 + i] = OpCodes.Pack32LE(
+        words[12 + i] = OpCodes.Pack32LE(
           nonce[i * 4], nonce[i * 4 + 1],
           nonce[i * 4 + 2], nonce[i * 4 + 3]
         );
       }
 
       // Working state for rounds
-      const workingState = OpCodes.CopyArray(state);
-
-      // 20 rounds (10 double rounds)
-      for (let i = 0; i < 10; i++) {
-        // Column rounds
-        this._quarterRound(workingState, 0, 4, 8, 12);
-        this._quarterRound(workingState, 1, 5, 9, 13);
-        this._quarterRound(workingState, 2, 6, 10, 14);
-        this._quarterRound(workingState, 3, 7, 11, 15);
-
-        // Diagonal rounds
-        this._quarterRound(workingState, 0, 5, 10, 15);
-        this._quarterRound(workingState, 1, 6, 11, 12);
-        this._quarterRound(workingState, 2, 7, 8, 13);
-        this._quarterRound(workingState, 3, 4, 9, 14);
-      }
+      /** @type {uint32[]} */
+      const x = words.slice();
+      this._rounds(x);
 
       // Extract key material: words 0, 1, 2, 3, 12, 13, 14, 15
-      const derivedKey = [];
-      const keyWords = [0, 1, 2, 3, 12, 13, 14, 15];
+      /** @type {uint8[]} */
+      const derived = [];
+      /** @type {int32[]} */
+      const wordIndices = [0, 1, 2, 3, 12, 13, 14, 15];
 
-      for (const wordIndex of keyWords) {
-        const bytes = OpCodes.Unpack32LE(workingState[wordIndex]);
-        for (let _i = 0; _i < bytes.length; _i++) derivedKey.push(bytes[_i]);
+      for (let w = 0; w < wordIndices.length; w++) {
+        /** @type {uint8[]} */
+        const bytes = OpCodes.Unpack32LE(x[wordIndices[w]]);
+        for (let _i = 0; _i < bytes.length; _i++) derived.push(bytes[_i]);
       }
 
-      return derivedKey;
+      return derived;
     }
 
-    // ChaCha20 quarter round
-    _quarterRound(state, a, b, c, d) {
-      state[a] = OpCodes.ToUint32(state[a] + state[b]);
-      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 16);
+    /**
+     * ChaCha20 quarter round
+     * @param {uint32[]} x - Working state
+     * @param {int32} a - Word index
+     * @param {int32} b - Word index
+     * @param {int32} c - Word index
+     * @param {int32} d - Word index
+     * @returns {void}
+     */
+    _quarterRound(x, a, b, c, d) {
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.RotL32(OpCodes.Xor32(x[d], x[a]), 16);
 
-      state[c] = OpCodes.ToUint32(state[c] + state[d]);
-      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 12);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.RotL32(OpCodes.Xor32(x[b], x[c]), 12);
 
-      state[a] = OpCodes.ToUint32(state[a] + state[b]);
-      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 8);
+      x[a] = OpCodes.Add32(x[a], x[b]);
+      x[d] = OpCodes.RotL32(OpCodes.Xor32(x[d], x[a]), 8);
 
-      state[c] = OpCodes.ToUint32(state[c] + state[d]);
-      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 7);
+      x[c] = OpCodes.Add32(x[c], x[d]);
+      x[b] = OpCodes.RotL32(OpCodes.Xor32(x[b], x[c]), 7);
     }
 
-    // ChaCha20 block function
+    /**
+     * ChaCha20 block function
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint32} counter - Block counter
+     * @param {uint8[]} nonce - 12-byte nonce
+     * @returns {uint8[]} 64 keystream bytes
+     */
     _chachaBlock(key, counter, nonce) {
       // Initialize state
-      const state = new Array(16);
-
-      // Constants "expand 32-byte k"
-      state[0] = 0x61707865;
-      state[1] = 0x3320646e;
-      state[2] = 0x79622d32;
-      state[3] = 0x6b206574;
-
-      // Key
-      for (let i = 0; i < 8; i++) {
-        state[4 + i] = OpCodes.Pack32LE(
-          key[i * 4], key[i * 4 + 1],
-          key[i * 4 + 2], key[i * 4 + 3]
-        );
-      }
+      /** @type {uint32[]} */
+      const words = this._initialWords(key);
 
       // Counter
-      state[12] = counter;
+      words[12] = counter;
 
       // Nonce (12 bytes)
       for (let i = 0; i < 3; i++) {
-        state[13 + i] = OpCodes.Pack32LE(
+        words[13 + i] = OpCodes.Pack32LE(
           nonce[i * 4], nonce[i * 4 + 1],
           nonce[i * 4 + 2], nonce[i * 4 + 3]
         );
       }
 
       // Working state for rounds
-      const workingState = OpCodes.CopyArray(state);
-
-      // 20 rounds (10 double rounds)
-      for (let i = 0; i < 10; i++) {
-        // Column rounds
-        this._quarterRound(workingState, 0, 4, 8, 12);
-        this._quarterRound(workingState, 1, 5, 9, 13);
-        this._quarterRound(workingState, 2, 6, 10, 14);
-        this._quarterRound(workingState, 3, 7, 11, 15);
-
-        // Diagonal rounds
-        this._quarterRound(workingState, 0, 5, 10, 15);
-        this._quarterRound(workingState, 1, 6, 11, 12);
-        this._quarterRound(workingState, 2, 7, 8, 13);
-        this._quarterRound(workingState, 3, 4, 9, 14);
-      }
+      /** @type {uint32[]} */
+      const x = words.slice();
+      this._rounds(x);
 
       // Add original state
       for (let i = 0; i < 16; i++) {
-        workingState[i] = OpCodes.ToUint32(workingState[i] + state[i]);
+        x[i] = OpCodes.Add32(x[i], words[i]);
       }
 
       // Serialize to bytes
+      /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(workingState[i]);
+        /** @type {uint8[]} */
+        const bytes = OpCodes.Unpack32LE(x[i]);
         for (let _i = 0; _i < bytes.length; _i++) keystream.push(bytes[_i]);
       }
 
       return keystream;
     }
 
-    // XChaCha20 encryption/decryption
+    /**
+     * ChaCha20 nonce: 4 zero bytes and the last 8 bytes of the extended nonce
+     * @param {uint8[]} nonce - 24-byte extended nonce
+     * @returns {uint8[]} 12-byte nonce
+     */
+    _innerNonce(nonce) {
+      /** @type {uint8[]} */
+      const inner = OpCodes.CreateArray(12, 0);
+      for (let i = 0; i < 8; i++) {
+        inner[4 + i] = nonce[16 + i];
+      }
+      return inner;
+    }
+
+    /**
+     * XChaCha20 encryption/decryption
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint8[]} nonce - 24-byte nonce
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Output bytes
+     */
     _xchacha20(key, nonce, data) {
       // Derive key using HChaCha20 with first 16 bytes of nonce
-      const derivedKey = this._hchacha20(key, nonce.slice(0, 16));
+      /** @type {uint8[]} */
+      const subkey = this._hchacha20(key, nonce.slice(0, 16));
 
       // Use last 8 bytes of nonce + 4 zero bytes as ChaCha20 nonce
-      const chacha20Nonce = new Array(12);
-      chacha20Nonce.fill(0, 0, 4); // 4 zero bytes
-      for (let i = 0; i < 8; i++) {
-        chacha20Nonce[4 + i] = nonce[16 + i];
-      }
+      /** @type {uint8[]} */
+      const chacha20Nonce = this._innerNonce(nonce);
 
       // Use standard ChaCha20 with derived key
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {uint32} */
       let blockCounter = 1; // Start at 1 (0 reserved for Poly1305 key)
 
       for (let i = 0; i < data.length; i += this.BLOCK_SIZE) {
-        const keystream = this._chachaBlock(derivedKey, blockCounter, chacha20Nonce);
+        /** @type {uint8[]} */
+        const keystream = this._chachaBlock(subkey, blockCounter, chacha20Nonce);
+        /** @type {uint8[]} */
         const block = data.slice(i, i + this.BLOCK_SIZE);
 
         for (let j = 0; j < block.length; j++) {
-          result.push(OpCodes.XorN(block[j], keystream[j]));
+          result.push(OpCodes.Xor8(block[j], keystream[j]));
         }
 
         blockCounter++;
@@ -429,142 +509,176 @@
       return result;
     }
 
-    // XChaCha20-Poly1305 key generation for authentication
+    /**
+     * XChaCha20-Poly1305 key generation for authentication
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint8[]} nonce - 24-byte nonce
+     * @returns {uint8[]} 32-byte one-time Poly1305 key
+     */
     _poly1305KeyGen(key, nonce) {
       // Derive key using HChaCha20
-      const derivedKey = this._hchacha20(key, nonce.slice(0, 16));
+      /** @type {uint8[]} */
+      const subkey = this._hchacha20(key, nonce.slice(0, 16));
 
       // Use last 8 bytes of nonce + 4 zero bytes as ChaCha20 nonce
-      const chacha20Nonce = new Array(12);
-      chacha20Nonce.fill(0, 0, 4);
-      for (let i = 0; i < 8; i++) {
-        chacha20Nonce[4 + i] = nonce[16 + i];
-      }
+      /** @type {uint8[]} */
+      const chacha20Nonce = this._innerNonce(nonce);
 
       // Generate first block (counter = 0) for Poly1305 key
-      const keystream = this._chachaBlock(derivedKey, 0, chacha20Nonce);
+      /** @type {uint8[]} */
+      const keystream = this._chachaBlock(subkey, 0, chacha20Nonce);
       return keystream.slice(0, 32);
     }
 
-    // Poly1305 authenticator using framework's implementation
+    /**
+     * Poly1305 authenticator using framework's implementation
+     * @param {uint8[]} key - 32-byte one-time key
+     * @param {uint8[]} data - Authenticated data
+     * @returns {uint8[]} 16-byte tag
+     */
     _poly1305(key, data) {
       const poly1305Alg = AlgorithmFramework.Find('Poly1305');
       if (!poly1305Alg) {
         throw new Error('Poly1305 algorithm not found in framework');
       }
 
-      const instance = poly1305Alg.CreateInstance();
+      /** @type {IMacInstance} */
+      const instance = poly1305Alg.CreateInstance(false);
       instance.key = key; // 32-byte key
       instance.Feed(data);
-      return instance.Result();
+      /** @type {uint8[]} */
+      const tag = instance.Result();
+      return tag;
     }
 
-    // Pad data to 16-byte boundary
-    _padToBlockSize(data) {
-      const padded = OpCodes.CopyArray(data);
-      while (padded.length % 16 !== 0) {
-        padded.push(0);
-      }
-      return padded;
+    /**
+     * Append data zero-padded to a 16-byte boundary
+     * @param {uint8[]} target - Array to extend
+     * @param {uint8[]} data - Data to append
+     * @returns {void}
+     */
+    _appendPadded(target, data) {
+      for (let i = 0; i < data.length; i++) target.push(data[i]);
+      for (let i = data.length; i % 16 !== 0; i++) target.push(0);
     }
 
-    // Encode length as 8-byte little-endian
+    /**
+     * Encode length as 8-byte little-endian
+     * @param {int32} length - Length in bytes
+     * @returns {uint8[]} Encoded length
+     */
     _encodeLength(length) {
+      /** @type {uint8[]} */
       const result = new Array(8);
-      // JavaScript bitwise operators work on 32-bit integers only
-      // Shifts shl 32 bits wrap around, so we need special handling
+      // Lengths are below 2^32: the upper 4 bytes are zero
       for (let i = 0; i < 4; i++) {
-        result[i] = OpCodes.AndN(OpCodes.Shr32(length, i * 8), 0xFF);
+        result[i] = OpCodes.And32(OpCodes.Shr32(length, i * 8), 0xFF);
       }
-      // Upper 4 bytes are zero for lengths < 2^32
       for (let i = 4; i < 8; i++) {
         result[i] = 0;
       }
       return result;
     }
 
-    _aeadEncrypt(plaintext, nonce, aad) {
-      if (nonce.length !== this.NONCE_SIZE) {
-        const msg = OpCodes.AnsiToBytes('XChaCha20-Poly1305 requires exactly 24-byte (192-bit) nonce');
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
-      }
-
-      // Generate Poly1305 key
-      const poly1305Key = this._poly1305KeyGen(this._key, nonce);
-
-      // Encrypt plaintext with XChaCha20
-      const ciphertext = this._xchacha20(this._key, nonce, plaintext);
-
-      // Construct data for authentication
+    /**
+     * Poly1305 input: padded AAD, padded ciphertext, both lengths
+     * @param {uint8[]} aad - Associated data
+     * @param {uint8[]} ciphertext - Ciphertext
+     * @returns {uint8[]} MAC input
+     */
+    _authData(aad, ciphertext) {
+      /** @type {uint8[]} */
       const authData = [];
 
       // Add AAD
       if (aad && aad.length > 0) {
-        authData.push(...this._padToBlockSize(aad));
+        this._appendPadded(authData, aad);
       }
 
       // Add ciphertext
-      authData.push(...this._padToBlockSize(ciphertext));
+      this._appendPadded(authData, ciphertext);
 
       // Add lengths
-      authData.push(...this._encodeLength(aad ? aad.length : 0));
-      authData.push(...this._encodeLength(ciphertext.length));
-
-      // Compute authentication tag
-      const tag = this._poly1305(poly1305Key, authData);
-
-      // Clear sensitive key material
-      OpCodes.ClearArray(poly1305Key);
-
-      return [...ciphertext, ...tag];
+      /** @type {uint8[]} */
+      const aadLength = this._encodeLength(aad ? aad.length : 0);
+      /** @type {uint8[]} */
+      const ctLength = this._encodeLength(ciphertext.length);
+      for (let i = 0; i < 8; i++) authData.push(aadLength[i]);
+      for (let i = 0; i < 8; i++) authData.push(ctLength[i]);
+      return authData;
     }
 
+    /**
+     * @param {uint8[]} plaintext - Plaintext
+     * @param {uint8[]} nonce - 24-byte nonce
+     * @param {uint8[]} aad - Associated data
+     * @returns {uint8[]} Ciphertext followed by the tag
+     */
+    _aeadEncrypt(plaintext, nonce, aad) {
+      if (nonce.length !== this.NONCE_SIZE) {
+        throw new Error('XChaCha20-Poly1305 requires exactly 24-byte (192-bit) nonce');
+      }
+
+      // Generate Poly1305 key
+      /** @type {uint8[]} */
+      const macKey = this._poly1305KeyGen(this._key, nonce);
+
+      // Encrypt plaintext with XChaCha20
+      /** @type {uint8[]} */
+      const ciphertext = this._xchacha20(this._key, nonce, plaintext);
+
+      // Compute authentication tag
+      /** @type {uint8[]} */
+      const tag = this._poly1305(macKey, this._authData(aad, ciphertext));
+
+      // Clear sensitive key material
+      OpCodes.ClearArray(macKey);
+
+      /** @type {uint8[]} */
+      const output = ciphertext.slice();
+      for (let i = 0; i < tag.length; i++) output.push(tag[i]);
+      return output;
+    }
+
+    /**
+     * @param {uint8[]} ciphertextWithTag - Ciphertext followed by the tag
+     * @param {uint8[]} nonce - 24-byte nonce
+     * @param {uint8[]} aad - Associated data
+     * @returns {uint8[]} Plaintext
+     */
     _aeadDecrypt(ciphertextWithTag, nonce, aad) {
       if (ciphertextWithTag.length < this.TAG_SIZE) {
-        const msg = OpCodes.AnsiToBytes("Ciphertext too short for authentication tag");
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error("Ciphertext too short for authentication tag");
       }
 
       if (nonce.length !== this.NONCE_SIZE) {
-        const msg = OpCodes.AnsiToBytes('XChaCha20-Poly1305 requires exactly 24-byte (192-bit) nonce');
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        throw new Error('XChaCha20-Poly1305 requires exactly 24-byte (192-bit) nonce');
       }
 
+      /** @type {uint8[]} */
       const ciphertext = ciphertextWithTag.slice(0, -this.TAG_SIZE);
+      /** @type {uint8[]} */
       const expectedTag = ciphertextWithTag.slice(-this.TAG_SIZE);
 
       // Generate Poly1305 key
-      const poly1305Key = this._poly1305KeyGen(this._key, nonce);
-
-      // Construct data for authentication
-      const authData = [];
-
-      // Add AAD
-      if (aad && aad.length > 0) {
-        authData.push(...this._padToBlockSize(aad));
-      }
-
-      // Add ciphertext
-      authData.push(...this._padToBlockSize(ciphertext));
-
-      // Add lengths
-      authData.push(...this._encodeLength(aad ? aad.length : 0));
-      authData.push(...this._encodeLength(ciphertext.length));
+      /** @type {uint8[]} */
+      const macKey = this._poly1305KeyGen(this._key, nonce);
 
       // Verify authentication tag
-      const tag = this._poly1305(poly1305Key, authData);
+      /** @type {uint8[]} */
+      const tag = this._poly1305(macKey, this._authData(aad, ciphertext));
 
       if (!OpCodes.SecureCompare(tag, expectedTag)) {
-        OpCodes.ClearArray(poly1305Key);
-        const msg = OpCodes.AnsiToBytes('Authentication tag verification failed');
-        throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+        OpCodes.ClearArray(macKey);
+        throw new Error('Authentication tag verification failed');
       }
 
       // Decrypt ciphertext with XChaCha20
+      /** @type {uint8[]} */
       const plaintext = this._xchacha20(this._key, nonce, ciphertext);
 
       // Clear sensitive key material
-      OpCodes.ClearArray(poly1305Key);
+      OpCodes.ClearArray(macKey);
 
       return plaintext;
     }

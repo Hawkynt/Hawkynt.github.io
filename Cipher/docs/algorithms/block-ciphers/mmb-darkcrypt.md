@@ -39,31 +39,39 @@
 
 ## Test vectors
 
-3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+4 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
-**Vector 1** — [MMB from published specification, zero key/plaintext (spec-derived, not a published KAT)](https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15)
-
-| Field | Value |
-| --- | --- |
-| `key` | `00000000000000000000000000000000` |
-| `input` | `00000000000000000000000000000000` |
-| `expected` | `cc5469e1985fa4e66fe523c35bbfdb88` |
-
-**Vector 2** — [MMB from published specification, incrementing key/plaintext (spec-derived, not a published KAT)](https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15)
+**Vector 1** — [DarkCrypt MMB — incrementing key/plaintext (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
 
 | Field | Value |
 | --- | --- |
 | `key` | `000102030405060708090a0b0c0d0e0f` |
 | `input` | `000102030405060708090a0b0c0d0e0f` |
-| `expected` | `afd4006bd8a0b7ab8d66b73c2d930c13` |
+| `expected` | `13d3b3fe7bc02c0dc56dc648a5ae9d32` |
 
-**Vector 3** — [MMB from published specification, shifted incrementing key/plaintext (spec-derived, not a published KAT)](https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15)
+**Vector 2** — [DarkCrypt MMB — shifted incrementing key/plaintext (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
 
 | Field | Value |
 | --- | --- |
 | `key` | `0102030405060708090a0b0c0d0e0f10` |
 | `input` | `101112131415161718191a1b1c1d1e1f` |
-| `expected` | `99429481d771c67317b14514b804184b` |
+| `expected` | `eaf8b8248e6a72f072dbc17e40a95c13` |
+
+**Vector 3** — [DarkCrypt MMB — zero key, single set bit (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `00000000000000000000000000000000` |
+| `input` | `00000000000000000000000000000001` |
+| `expected` | `1ee0920041dfb7cb05c6fbcd5ba51eec` |
+
+**Vector 4** — [DarkCrypt MMB — random key/plaintext (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `b92c2757b9edb9024541662e8ebf42d1` |
+| `input` | `049005731fad4901eb411879d4f5a4ac` |
+| `expected` | `916279fa86fa981886f9f4065efcde05` |
 
 ---
 

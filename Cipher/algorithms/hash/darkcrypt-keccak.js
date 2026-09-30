@@ -2,26 +2,23 @@
  * Keccak (DarkCrypt variant) - AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
  *
- * As implemented in the DarkCrypt Total Commander plugin (no public specification
- * matches this variant's output). It is a Keccak sponge built on the standard
- * Keccak-f[1600] permutation (identical theta/rho/pi/chi/iota steps, identical
- * rotation offsets, and the standard round constants), but it differs from every
- * published Keccak/SHA-3 parameter set in three ways:
+ * The Keccak-512 used by the DarkCrypt Total Commander plugin is the original
+ * SHA-3 round 1 submission (Keccak specifications version 1, October 2008),
+ * Keccak[r=512, c=1088, d=64], which predates the later changes to Keccak:
  *
- *  - Only 18 permutation rounds are applied per call instead of the standard 24
- *    (the round-constant schedule is simply truncated to its first 18 entries).
- *  - The rate is fixed at 64 bytes (512 bits) with a 1088-bit capacity, regardless
- *    of digest size - the inverse proportion of standard SHA-3-512's 576-bit rate
- *    and 1024-bit capacity.
- *  - Padding is not the bit-oriented pad10*1 scheme used by Keccak/SHA-3/SHAKE.
- *    Instead a fixed 4-byte suffix (0x01, 0x40, 0x40, 0x01) is appended directly
- *    after the message bytes, and the combined stream is then zero-padded up to
- *    the next multiple of the 64-byte rate.
+ *  - Keccak-f[1600] has 18 rounds (12 + l), raised to 24 for SHA-3 round 2; the
+ *    round function, rotation offsets and round constants are unchanged.
+ *  - The rate is the largest power of two within the security limit, 512 bits
+ *    for a 512-bit digest (1088-bit capacity); round 3 raised it to 576 bits.
+ *  - Byte-aligned messages are padded as M || 0x01 || d || r/8 || 0x01 || 0x00...
+ *    with the diversifier d = 64 (digest bytes) and r/8 = 64, so the suffix is
+ *    0x01 0x40 0x40 0x01, zero-filled to a multiple of the 64-byte rate. Round 3
+ *    replaced this with the simple pad10*1 rule.
  *
- * The digest is always 64 bytes (512 bits), read directly as the first rate-sized
- * block of the state after the final permutation (no extra squeeze step is needed
- * since the digest size equals the rate). Test vectors verified against the
- * DarkCrypt implementation.
+ * The digest is the first 64 bytes of the state after the final permutation,
+ * which is exactly one rate-sized block. It matches every byte-aligned entry of
+ * the round 1 known-answer tests (ShortMsgKAT_512, LongMsgKAT_512). Test
+ * vectors verified against the DarkCrypt implementation.
  */
 
 (function (root, factory) {
@@ -50,18 +47,16 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // DarkCrypt Keccak: the permutation core uses standard Keccak-f[1600] round
-  // constants and rotation offsets, but only the first 18 (of the standard 24)
-  // rounds are executed.
+  // Keccak version 1: 12 + l = 18 rounds of Keccak-f[1600] (24 from round 2 on)
   /** @type {int32} */
   const KECCAK_ROUNDS = 18;
 
-  // DarkCrypt Keccak block size: 64 bytes (512-bit rate, 1088-bit capacity).
+  // Keccak version 1 Keccak-512: 64-byte rate (512 bits), 1088-bit capacity
   /** @type {int32} */
   const RATE = 64;
 
-  // Fixed padding suffix appended after the message before zero-filling to a
-  // multiple of RATE (replaces the standard pad10*1 scheme).
+  // Version 1 byte-aligned padding: 0x01, diversifier d = 64, r/8 = 64, 0x01,
+  // then zero-filled to a multiple of RATE
   const PAD_SUFFIX = OpCodes.Hex8ToBytes("01404001");
 
   /** @type {int32} 512-bit digest */
@@ -217,9 +212,9 @@
       super();
 
       this.name = "Keccak (DarkCrypt)";
-      this.description = "Keccak sponge hash variant used by the DarkCrypt Total Commander plugin. Built on the standard Keccak-f[1600] permutation (standard rotation offsets and round constants) but truncated to 18 rounds instead of the standard 24, with a fixed 64-byte rate (1088-bit capacity) and a fixed 4-byte padding suffix (0x01, 0x40, 0x40, 0x01) in place of the usual pad10*1 scheme. Produces a 512-bit digest; matches no published Keccak or SHA-3 test vector.";
-      this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche (Keccak); DarkCrypt plugin author (round-count and padding variant)";
-      this.year = 2012;
+      this.description = "Keccak-512 as used by the DarkCrypt Total Commander plugin: the original SHA-3 round 1 submission (Keccak version 1, 2008), Keccak[r=512, c=1088, d=64] with 18 rounds of Keccak-f[1600] and the version 1 padding that encodes the diversifier and rate. Differs from later Keccak-512 and SHA3-512, which use 24 rounds, a 576-bit rate and pad10*1; matches the published round 1 known-answer tests.";
+      this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+      this.year = 2008;
       this.category = CategoryType.HASH;
       this.subCategory = "DarkCrypt Variant";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -234,6 +229,8 @@
 
       this.documentation = [
         new LinkItem("Keccak Team", "https://keccak.team/keccak.html"),
+        new LinkItem("Keccak specifications, round 1 (obsolete documents)", "https://keccak.team/archives.html"),
+        new LinkItem("Simplifying Keccak's padding rule for round 3", "https://keccak.team/2011/version_3.0.html"),
         new LinkItem("DarkCrypt plugin (Total Commander PlugRing)", "https://totalcmd.net/plugring/darkcrypttc.html")
       ];
 
@@ -241,14 +238,32 @@
         new LinkItem("DarkCrypt Total Commander plugin", "https://github.com/Zdimon/DarkCryptTC")
       ];
 
-      // Vectors generated from the DarkCrypt implementation's hashnow(inPtr, outPtr, len)
-      // export; empty/"abc"/incr64 (bytes 0x00..0x3F) inputs.
+      // Round 1 known-answer tests (ShortMsgKAT_512 / LongMsgKAT_512) and further
+      // test vectors verified against the DarkCrypt implementation.
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes(""),
           OpCodes.Hex8ToBytes("8596f8df2e856ec888823da8ccc914139f31baee6aa5c37dbe30bddbfd75c63cdc205f15f30faa348e27b5f90495b339a606e3c84bfcdcd55e88b0e178b56feb"),
-          "DarkCrypt Keccak - empty message",
-          "https://github.com/Zdimon/DarkCryptTC"
+          "Keccak round 1 ShortMsgKAT_512 - Len = 0",
+          "https://keccak.team/obsolete/KeccakKAT.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("cc"),
+          OpCodes.Hex8ToBytes("84be36543acdabb7d4e097e8bd23ecbf231ec672f771d8bdb807b8ad98976120f361212493564addce36077cc1def7c483cd4bbd8946563a127883b3593945a6"),
+          "Keccak round 1 ShortMsgKAT_512 - Len = 8",
+          "https://keccak.team/obsolete/KeccakKAT.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("a62fc595b4096e6336e53fcdfc8d1cc175d71dac9d750a6133d23199eaac288207944cea6b16d27631915b4619f743da2e30a0c00bbdb1bbb35ab852ef3b9aec6b0a8dcc6e9e1abaa3ad62ac0a6c5de765de2c3711b769e3fde44a74016fff82ac46fa8f1797d3b2a726b696e3dea5530439acee3a45c2a51bc32dd055650b"),
+          OpCodes.Hex8ToBytes("8e20c08e35cd59e0c21dc36edc59647125af8c0597ed64a87db634ae54f1ce1564b9400eab7d12e847189c363acbd1b6b8a17437f0d1959ce48de980e93143c2"),
+          "Keccak round 1 ShortMsgKAT_512 - Len = 1016 (two blocks)",
+          "https://keccak.team/obsolete/KeccakKAT.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("724627916c50338643e6996f07877eafd96bdf01da7e991d4155b9be1295ea7d21c9391f4c4a41c75f77e5d27389253393725f1427f57914b273ab862b9e31dabce506e558720520d33352d119f699e784f9e548ff91bc35ca147042128709820d69a8287ea3257857615eb0321270e94b84f446942765ce882b191faee7e1c87e0f0bd4e0cd8a927703524b559b769ca4ece1f6dbf313fdcf67c572ec4185c1a88e86ec11b6454b371980020f19633b6b95bd280e4fbcb0161e1a82470320cec6ecfa25ac73d09f1536f286d3f9dacafb2cd1d0ce72d64d197f5c7520b3ccb2fd74eb72664ba93853ef41eabf52f015dd591500d018dd162815cc993595b195"),
+          OpCodes.Hex8ToBytes("f28d27e97389800e972cb2202365a4f344ec1db0d8a58f5fcd08ac80fb2cf1a7e8cfaa81b7d9b2a9344b08a98d2e3433f7edd30a5d63dfb41d2b3463e77e17fc"),
+          "Keccak round 1 LongMsgKAT_512 - Len = 2048",
+          "https://keccak.team/obsolete/KeccakKAT.zip"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("abc"),

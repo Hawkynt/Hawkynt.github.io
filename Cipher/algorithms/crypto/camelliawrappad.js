@@ -48,9 +48,12 @@
           CryptoAlgorithm, KeySize, LinkItem, IAlgorithmInstance } = AlgorithmFramework;
 
   // Default AIV (Alternative Initial Value) for RFC 5649
+  /** @type {uint8[]} */
   const DEFAULT_AIV = [0xA6, 0x59, 0x59, 0xA6];
 
   // Helper function to get Camellia algorithm (registry-first, plain require fallback)
+  /**
+   */
   function getCamelliaAlgorithm() {
     let camellia = AlgorithmFramework.Find('Camellia');
     if (!camellia && typeof require !== 'undefined') {
@@ -127,7 +130,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CamelliaKeyWrapPadInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -144,16 +147,23 @@
   class CamelliaKeyWrapPadInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CamelliaKeyWrapPadAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this._aiv = [...DEFAULT_AIV];
+      /** @type {IBlockCipherInstance|null} */
       this.camelliaInstance = null;
     }
 
@@ -171,11 +181,18 @@
       }
 
       // Validate key size (must be 128, 192, or 256 bits)
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize &&
-        keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize &&
+            keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (must be 16, 24, or 32)');
@@ -195,6 +212,9 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {uint8[]|null} aivBytes - 4-byte AIV prefix, or null for the RFC 5649 default
+     */
     set aiv(aivBytes) {
       if (!aivBytes) {
         this._aiv = [...DEFAULT_AIV];
@@ -208,6 +228,9 @@
       this._aiv = [...aivBytes];
     }
 
+    /**
+     * @returns {uint8[]} Copy of the 4-byte AIV prefix
+     */
     get aiv() {
       return [...this._aiv];
     }
@@ -228,14 +251,23 @@
         throw new Error('No data fed');
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._unwrap() : this._wrap();
       this.inputBuffer = [];
       return result;
     }
 
+    /**
+     * Zero-pad to a multiple of 8 bytes (RFC 5649 section 4.1)
+     * @param {uint8[]} plaintext - Key data
+     * @returns {uint8[]} Padded copy
+     */
     _padPlaintext(plaintext) {
+      /** @type {int32} */
       const plaintextLength = plaintext.length;
+      /** @type {int32} */
       const numOfZerosToAppend = (8 - (plaintextLength % 8)) % 8;
+      /** @type {uint8[]} */
       const paddedPlaintext = new Array(plaintextLength + numOfZerosToAppend);
 
       // Copy plaintext
@@ -251,17 +283,25 @@
       return paddedPlaintext;
     }
 
+    /**
+     * Wrap the buffered key data (RFC 5649 section 4.1)
+     * @returns {uint8[]} Wrapped data
+     */
     _wrap() {
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
+      /** @type {int32} */
       const plaintextLength = plaintext.length;
 
       // Create AIV with MLI (Message Length Indicator)
+      /** @type {uint8[]} */
       const aiv = new Array(8);
       aiv[0] = this._aiv[0];
       aiv[1] = this._aiv[1];
       aiv[2] = this._aiv[2];
       aiv[3] = this._aiv[3];
       // Pack MLI as big-endian 32-bit integer using OpCodes
+      /** @type {uint8[]} */
       const mliBytes = OpCodes.Unpack32BE(plaintextLength);
       aiv[4] = mliBytes[0];
       aiv[5] = mliBytes[1];
@@ -269,27 +309,36 @@
       aiv[7] = mliBytes[3];
 
       // Pad plaintext to multiple of 8 bytes
+      /** @type {uint8[]} */
       const paddedPlaintext = this._padPlaintext(plaintext);
 
       // Initialize Camellia instance if not already done
       if (!this.camelliaInstance) {
         const CamelliaAlgorithm = getCamelliaAlgorithm();
-        this.camelliaInstance = CamelliaAlgorithm.CreateInstance(false);
-        this.camelliaInstance.key = this._key;
+        /** @type {IBlockCipherInstance} */
+        const engine = CamelliaAlgorithm.CreateInstance(false);
+        engine.key = this._key;
+        this.camelliaInstance = engine;
       }
+      /** @type {IBlockCipherInstance} */
+      const camelliaEncrypt = this.camelliaInstance;
 
       // Special case: if padded plaintext is exactly 8 bytes
       if (paddedPlaintext.length === 8) {
         // Prepend AIV and encrypt as single block (or multiple blocks for 128-bit cipher)
         const block = [...aiv, ...paddedPlaintext];
-        this.camelliaInstance.Feed(block);
-        return this.camelliaInstance.Result();
+        camelliaEncrypt.Feed(block);
+        /** @type {uint8[]} */
+        const single = camelliaEncrypt.Result();
+        return single;
       }
 
       // General case: use RFC 3394 wrap with custom AIV
       // Initialize variables
       let A = [...aiv];  // 64-bit register A
+      /** @type {int32} */
       const n = paddedPlaintext.length / 8;
+      /** @type {uint8[][]} */
       const R = [];      // Array of n 64-bit registers
 
       // Copy input into R[0]...R[n-1]
@@ -302,8 +351,9 @@
         for (let i = 0; i < n; ++i) {
           // B = Camellia(K, A|R[i])
           const block = [...A, ...R[i]];
-          this.camelliaInstance.Feed(block);
-          const B = this.camelliaInstance.Result();
+          camelliaEncrypt.Feed(block);
+          /** @type {uint8[]} */
+          const B = camelliaEncrypt.Result();
 
           // A = MSB(64, B) XOR t (where t = n*j + i + 1)
           A = B.slice(0, 8);
@@ -311,7 +361,7 @@
 
           // XOR the counter t into the last 4 bytes of A (big-endian)
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A[8 - k] = OpCodes.XorN(A[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+            A[8 - k] = OpCodes.Xor8(A[8 - k], OpCodes.GetByte(t, k - 1));
           }
 
           // R[i] = LSB(64, B)
@@ -320,15 +370,21 @@
       }
 
       // Output is A|R[0]|R[1]|...|R[n-1]
+      /** @type {uint8[]} */
       const output = [...A];
       for (let i = 0; i < n; ++i) {
-        output.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) output.push(R[i][b]);
       }
 
       return output;
     }
 
+    /**
+     * Unwrap the buffered data (RFC 5649 section 4.2)
+     * @returns {uint8[]} Unwrapped key data
+     */
     _unwrap() {
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer;
 
       // Validate input length (must be at least 16 bytes, multiple of 8)
@@ -340,21 +396,26 @@
         throw new Error('Unwrap data must be a multiple of 8 bytes');
       }
 
+      /** @type {int32} */
       const n = (ciphertext.length / 8) - 1;
 
       // Get Camellia algorithm
       const CamelliaAlgorithm = getCamelliaAlgorithm();
 
-      let extractedAIV;
-      let paddedPlaintext;
+      /** @type {uint8[]} */
+      let extractedAIV = [];
+      /** @type {uint8[]} */
+      let paddedPlaintext = [];
 
       // Special case: exactly 16 bytes (two 64-bit blocks)
       if (n === 1) {
         // Decrypt as a single block
-        const camelliaDecrypt = CamelliaAlgorithm.CreateInstance(true);
-        camelliaDecrypt.key = this._key;
-        camelliaDecrypt.Feed(ciphertext);
-        const decrypted = camelliaDecrypt.Result();
+        /** @type {IBlockCipherInstance} */
+        const camelliaSingle = CamelliaAlgorithm.CreateInstance(true);
+        camelliaSingle.key = this._key;
+        camelliaSingle.Feed(ciphertext);
+        /** @type {uint8[]} */
+        const decrypted = camelliaSingle.Result();
 
         // Extract AIV
         extractedAIV = decrypted.slice(0, 8);
@@ -362,7 +423,9 @@
       } else {
         // General case: RFC 3394 unwrap
         // Initialize variables
+        /** @type {uint8[]} */
         let A = ciphertext.slice(0, 8);  // First 64 bits
+        /** @type {uint8[][]} */
         const R = [];                     // Array of n 64-bit registers
 
         // Copy ciphertext into R[0]...R[n-1]
@@ -371,6 +434,7 @@
         }
 
         // Perform unwrapping operation
+        /** @type {IBlockCipherInstance} */
         const camelliaDecrypt = CamelliaAlgorithm.CreateInstance(true);
         camelliaDecrypt.key = this._key;
 
@@ -382,12 +446,13 @@
             // XOR t into A (reverse the operation from wrapping)
             const A_copy = [...A];
             for (let k = 1; t !== 0 && k <= 4; ++k) {
-              A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+              A_copy[8 - k] = OpCodes.Xor8(A_copy[8 - k], OpCodes.GetByte(t, k - 1));
             }
 
             // B = Camellia_Decrypt(K, (A XOR t)|R[i])
             const block = [...A_copy, ...R[i]];
             camelliaDecrypt.Feed(block);
+            /** @type {uint8[]} */
             const B = camelliaDecrypt.Result();
 
             // A = MSB(64, B)
@@ -403,34 +468,39 @@
         // Reconstruct padded plaintext
         paddedPlaintext = [];
         for (let i = 0; i < n; ++i) {
-          paddedPlaintext.push(...R[i]);
+          for (let b = 0; b < R[i].length; ++b) paddedPlaintext.push(R[i][b]);
         }
       }
 
       // Decompose the extracted AIV to the fixed portion and the MLI
+      /** @type {uint8[]} */
       const extractedHighOrderAIV = extractedAIV.slice(0, 4);
+      /** @type {uint32} */
       const mli = OpCodes.Pack32BE(extractedAIV[4], extractedAIV[5], extractedAIV[6], extractedAIV[7]);
 
       // Check the fixed portion of the AIV (constant-time comparison)
+      /** @type {boolean} */
       let isValid = OpCodes.ConstantTimeCompare(extractedHighOrderAIV, this._aiv);
 
-      // Check the MLI against the actual length
+      // Check the MLI against the actual length; this range test is also the
+      // test that the number of padding zeros, upperBound - MLI, is 0..7
+      /** @type {int32} */
       const upperBound = paddedPlaintext.length;
+      /** @type {int32} */
       const lowerBound = upperBound - 8;
+      /** @type {int32} */
+      let expectedZeros = 4;
       if (mli <= lowerBound || mli > upperBound) {
-        isValid = false;
-      }
-
-      // Check the number of padding zeros
-      let expectedZeros = upperBound - mli;
-      if (expectedZeros >= 8 || expectedZeros < 0) {
         // Pick a "typical" amount of padding to avoid timing attacks
         isValid = false;
-        expectedZeros = 4;
+      } else {
+        expectedZeros = upperBound - OpCodes.ToInt(mli);
       }
 
       // Verify padding is all zeros (constant-time)
-      const zeros = new Array(expectedZeros).fill(0);
+      /** @type {uint8[]} */
+      const zeros = OpCodes.CreateArray(expectedZeros, 0);
+      /** @type {uint8[]} */
       const pad = paddedPlaintext.slice(paddedPlaintext.length - expectedZeros);
       if (!OpCodes.ConstantTimeCompare(pad, zeros)) {
         isValid = false;

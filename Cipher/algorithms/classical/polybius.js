@@ -78,18 +78,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Frequency Analysis",
-          text: "Each letter always maps to same coordinate pair, preserving frequency patterns",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Educational use only - provides no security by modern standards"
-        },
-        {
-          type: "Pattern Recognition",
-          text: "Identical plaintext produces identical coordinate patterns making analysis easy",
-          uri: "https://en.wikipedia.org/wiki/Pattern_recognition",
-          mitigation: "Historical demonstration cipher only"
-        }
+        new Vulnerability(
+          "Frequency Analysis",
+          "Each letter always maps to same coordinate pair, preserving frequency patterns",
+          "Educational use only - provides no security by modern standards",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        ),
+        new Vulnerability(
+          "Pattern Recognition",
+          "Identical plaintext produces identical coordinate patterns making analysis easy",
+          "Historical demonstration cipher only",
+          "https://en.wikipedia.org/wiki/Pattern_recognition"
+        )
       ];
 
       // Test vectors using byte arrays - bit-perfect results from implementation  
@@ -125,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PolybiusSquareInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -143,16 +143,19 @@
   class PolybiusSquareInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PolybiusSquare} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Standard 5x5 Polybius grid (I and J share the same cell)
+      /** @type {string[][]} */
       this.STANDARD_GRID = [
         ['A', 'B', 'C', 'D', 'E'],
         ['F', 'G', 'H', 'I', 'K'],
@@ -161,10 +164,16 @@
         ['V', 'W', 'X', 'Y', 'Z']
       ];
 
+      // The grid stays untyped: the key getter hands it out although the key
+      // setter takes keyword bytes, and only an untyped grid lets the key
+      // property of a statically typed port, typed by its setter, accept it
       this.grid = JSON.parse(JSON.stringify(this.STANDARD_GRID)); // Deep copy
     }
 
-    // Property setter for key (optional keyword for custom grid)
+    /**
+     * Optional keyword for a custom grid
+     * @param {uint8[]|null} keyData - Keyword bytes, or null/empty for the standard grid
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         // Use standard grid
@@ -172,68 +181,82 @@
         return;
       }
 
+      /** @type {string} */
       const keyword = String.fromCharCode.apply(null, keyData);
       this.grid = this.createCustomGrid(keyword);
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the grid in use
+   * @returns {string[][]} Grid of single letters
    */
 
     get key() {
       return this.grid;
     }
 
-    // Create custom grid from keyword
+    /**
+     * Create custom grid from keyword
+     * @param {string} keyword - Keyword
+     * @returns {string[][]} Grid of single letters
+     */
     createCustomGrid(keyword) {
       if (!keyword || keyword.length === 0) {
         return JSON.parse(JSON.stringify(this.STANDARD_GRID));
       }
 
       // Normalize keyword: uppercase, letters only, remove duplicates
-      const cleanKeyword = keyword.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = keyword.toUpperCase();
+      /** @type {string} */
+      const cleanKeyword = upper.replace(/[^A-Z]/g, '');
+      /** @type {string} */
       let uniqueKeyword = '';
-      const seen = {};
 
       for (let i = 0; i < cleanKeyword.length; i++) {
+        /** @type {string} */
         let char = cleanKeyword.charAt(i);
         if (char === 'J') char = 'I'; // Handle I/J equivalence
-        if (!seen[char]) {
+        if (uniqueKeyword.indexOf(char) < 0) {
           uniqueKeyword += char;
-          seen[char] = true;
         }
       }
 
       // Generate full alphabet excluding used characters
+      /** @type {string} */
       const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
+      /** @type {string} */
       let remaining = '';
 
       for (let i = 0; i < alphabet.length; i++) {
+        /** @type {string} */
         const char = alphabet.charAt(i);
-        if (!seen[char]) {
+        if (uniqueKeyword.indexOf(char) < 0) {
           remaining += char;
         }
       }
 
       // Combine keyword with remaining letters
+      /** @type {string} */
       const fullAlphabet = uniqueKeyword + remaining;
 
       // Fill 5x5 grid
+      /** @type {string[][]} */
       const grid = [];
+      /** @type {int32} */
       let index = 0;
 
       for (let row = 0; row < 5; row++) {
-        grid[row] = [];
+        /** @type {string[]} */
+        const cells = [];
         for (let col = 0; col < 5; col++) {
-          grid[row][col] = fullAlphabet.charAt(index++);
+          cells.push(fullAlphabet.charAt(index++));
         }
+        grid.push(cells);
       }
 
       return grid;
     }
-
-    // Feed data to the cipher
 
     // Get the result of the transformation
     /**
@@ -244,9 +267,12 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {string} */
       const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
 
       if (this.isInverse) {
@@ -258,27 +284,40 @@
       }
     }
 
-    // Encrypt text to coordinates
+    /**
+     * Encrypt text to coordinates
+     * @param {string} plaintext - Text; only its letters count, J as I
+     * @returns {uint8[]} ASCII of the space-separated coordinate pairs
+     */
     encryptText(plaintext) {
+      /** @type {uint8[]} */
       const output = [];
 
       // Convert to uppercase and filter to letters only
-      const cleanText = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = plaintext.toUpperCase();
+      /** @type {string} */
+      const cleanText = upper.replace(/[^A-Z]/g, '');
 
+      /** @type {string[]} */
       const result = [];
 
       for (let i = 0; i < cleanText.length; i++) {
+        /** @type {string} */
         let char = cleanText.charAt(i);
 
         // Handle I/J equivalence
         if (char === 'J') char = 'I';
 
         // Find character in grid
+        /** @type {boolean} */
         let found = false;
         for (let row = 0; row < 5; row++) {
           for (let col = 0; col < 5; col++) {
             if (this.grid[row][col] === char) {
-              result.push((row + 1).toString() + (col + 1).toString());
+              /** @type {string} */
+              const pair = '' + (row + 1) + (col + 1);
+              result.push(pair);
               found = true;
               break;
             }
@@ -293,6 +332,7 @@
       }
 
       // Convert result string to byte array
+      /** @type {string} */
       const resultStr = result.join(' ');
       for (let i = 0; i < resultStr.length; i++) {
         output.push(resultStr.charCodeAt(i));
@@ -304,20 +344,38 @@
       return output;
     }
 
-    // Decrypt coordinates to text
+    /**
+     * Decrypt coordinates to text
+     * @param {string} ciphertext - Space-separated coordinate pairs
+     * @returns {uint8[]} ASCII letters, '?' for invalid pairs
+     */
     decryptText(ciphertext) {
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {string} */
       let result = '';
 
       // Split by spaces and process each coordinate pair
-      const coordinates = ciphertext.trim().split(/\s+/);
+      /** @type {string} */
+      const trimmed = ciphertext.trim();
+      /** @type {string[]} */
+      const coordinates = trimmed.split(/\s+/);
 
       for (let i = 0; i < coordinates.length; i++) {
+        /** @type {string} */
         const coord = coordinates[i];
 
-        if (coord.length === 2 && /^\d\d$/.test(coord)) {
-          const row = parseInt(coord.charAt(0)) - 1;
-          const col = parseInt(coord.charAt(1)) - 1;
+        // exactly two ASCII digits
+        if (coord.length === 2 && coord.charAt(0) >= '0' && coord.charAt(0) <= '9' &&
+            coord.charAt(1) >= '0' && coord.charAt(1) <= '9') {
+          /** @type {int32} */
+          const rowDigit = parseInt(coord.charAt(0));
+          /** @type {int32} */
+          const colDigit = parseInt(coord.charAt(1));
+          /** @type {int32} */
+          const row = rowDigit - 1;
+          /** @type {int32} */
+          const col = colDigit - 1;
 
           if (row >= 0 && row < 5 && col >= 0 && col < 5) {
             result += this.grid[row][col];
@@ -346,11 +404,6 @@
 
   // Register the algorithm immediately
   RegisterAlgorithm(algorithm);
-
-  // Export for Node.js compatibility
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = algorithm;
-  }
 
   // ===== REGISTRATION =====
 

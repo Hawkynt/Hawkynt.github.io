@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {QuadraticResidueCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,62 +132,95 @@
   class QuadraticResidueCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {QuadraticResidueCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._p = 7; // Default: (7,4) QR code
 
       // Pre-compute generator polynomial for default p
       this.updateGenerator();
     }
 
+    /**
+     * @param {int32} value - Prime length p = +-1 (mod 8)
+     */
     set p(value) {
       // Check if p is prime and p ≡ ±1 (mod 8)
+      /** @type {uint8[]} */
       const validPrimes = [7, 17, 23, 31, 41, 47];
       if (!validPrimes.includes(value)) {
-        throw new Error(`QuadraticResidueCodeInstance.p: Must be a prime ≡ ±1 (mod 8). Valid values: ${validPrimes.join(', ')}`);
+        throw new Error("QuadraticResidueCodeInstance.p: Must be a prime ≡ ±1 (mod 8). Valid values: " + (validPrimes.join(', ')));
       }
       this._p = value;
       this.updateGenerator();
     }
 
+    /**
+     * @returns {int32} Prime length p
+     */
     get p() {
       return this._p;
     }
 
+    /**
+     * @returns {void}
+     */
     updateGenerator() {
       // Compute quadratic residues modulo p
       const p = this._p;
+      /** @type {int32[]} */
       const qr = this.computeQuadraticResidues(p);
 
       // Generator polynomial g(x) has roots at α^i where i ∈ QR
       // For simplicity, use pre-computed generators for small primes
       if (p === 7) {
+        /** @type {uint8[]} */
         this.generator = [1, 1, 0, 1]; // x^3 + x + 1
       } else if (p === 17) {
+        /** @type {uint8[]} */
         this.generator = [1, 0, 0, 0, 1, 1, 0, 1, 1]; // x^8 + x^4 + x^3 + x + 1
       } else if (p === 23) {
         // Binary Golay code generator
+        /** @type {uint8[]} */
         this.generator = [1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1]; // Golay (23,12)
       } else {
         // Fallback to simple generator
+        /** @type {uint8[]} */
         this.generator = [1, 1, 0, 1];
       }
     }
 
+    /**
+     * @param {int32} p - Prime modulus
+     * @returns {int32[]} Distinct quadratic residues in ascending order
+     */
     computeQuadraticResidues(p) {
       // Compute set of quadratic residues modulo p
-      const qr = new Set();
+      /** @type {int32[]} */
+      const qr = [];
       for (let i = 1; i < p; ++i) {
+        /** @type {int32} */
         const residue = (i * i) % p;
-        qr.add(residue);
+        if (qr.indexOf(residue) < 0) {
+          // Insert in ascending position
+          let j = qr.length;
+          qr.push(residue);
+          while (j > 0 && qr[j - 1] > residue) {
+            qr[j] = qr[j - 1];
+            --j;
+          }
+          qr[j] = residue;
+        }
       }
-      return Array.from(qr).sort((a, b) => a - b);
+      return qr;
     }
 
     /**
@@ -221,40 +254,60 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const p = this._p;
       const k = Math.floor((p + 1) / 2);
 
       if (data.length !== k) {
-        throw new Error(`QR encode: Input must be exactly ${k} bits for (${p},${k}) code`);
+        throw new Error("QR encode: Input must be exactly " + k + " bits for (" + p + "," + k + ") code");
       }
 
       // Cyclic code encoding using polynomial division
-      const message = [...data];
+      /** @type {uint8[]} */
+      const message = data.slice();
       const n = p;
       const r = this.generator.length - 1;
 
       // Shift message by r positions (multiply by x^r)
-      const dividend = [...message, ...new Array(r).fill(0)];
+      /** @type {uint8[]} */
+      const dividend = message.slice();
+      for (let i = 0; i < r; ++i) dividend.push(0);
 
       // Polynomial division
+      /** @type {uint8[]} */
       const remainder = this.polyDivide(dividend, this.generator);
 
       // Systematic encoding: message|remainder
-      return [...message, ...remainder];
+      /** @type {uint8[]} */
+      const codeword = message.slice();
+      for (let i = 0; i < remainder.length; ++i) codeword.push(remainder[i]);
+      return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const p = this._p;
       const k = Math.floor((p + 1) / 2);
 
       if (data.length !== p) {
-        throw new Error(`QR decode: Input must be exactly ${p} bits for (${p},${k}) code`);
+        throw new Error("QR decode: Input must be exactly " + p + " bits for (" + p + "," + k + ") code");
       }
 
       // Calculate syndrome
+      /** @type {uint8[]} */
       const syndrome = this.polyDivide(data, this.generator);
-      const hasError = syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) hasError = true;
+      }
 
       if (hasError) {
         console.warn('QR Code: Errors detected, simplified decoding may not correct all errors');
@@ -264,14 +317,20 @@
       return data.slice(0, k);
     }
 
+    /**
+     * @param {uint8[]} dividend - Dividend coefficients, high to low
+     * @param {uint8[]} divisor - Divisor coefficients, high to low
+     * @returns {uint8[]} Remainder
+     */
     polyDivide(dividend, divisor) {
-      const quotient = [...dividend];
+      /** @type {uint8[]} */
+      const quotient = dividend.slice();
       const divisorLen = divisor.length;
 
       for (let i = 0; i <= quotient.length - divisorLen; ++i) {
         if (quotient[i] === 1) {
           for (let j = 0; j < divisorLen; ++j) {
-            quotient[i + j] ^= divisor[j];
+            quotient[i + j] = OpCodes.ToInt(OpCodes.Xor32(quotient[i + j], divisor[j]));
           }
         }
       }
@@ -280,13 +339,21 @@
       return quotient.slice(-(divisorLen - 1));
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const p = this._p;
       if (data.length !== p) return true;
 
       // Calculate syndrome
+      /** @type {uint8[]} */
       const syndrome = this.polyDivide(data, this.generator);
-      return syndrome.some(s => s !== 0);
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) return true;
+      }
+      return false;
     }
   }
 

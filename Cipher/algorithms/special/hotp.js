@@ -198,21 +198,21 @@
 
       /**
        * Shared secret key for HMAC-SHA1
-       * @type {number[]|null}
+       * @type {uint8[]|null}
        * @private
        */
       this._key = null;
 
       /**
        * Counter value (typically incremented after each OTP generation)
-       * @type {number}
+       * @type {uint64}
        * @private
        */
       this._counter = 0;
 
       /**
        * Number of digits in the generated OTP (6-10)
-       * @type {number}
+       * @type {int32}
        * @private
        */
       this._digits = 6;  // Default 6-digit OTP
@@ -224,7 +224,7 @@
      * The key is typically 20 bytes (160 bits) for HMAC-SHA1, but can be
      * any length. The key is copied internally to prevent external modification.
      *
-     * @param {number[]} keyBytes - Secret key as byte array (uint8 values 0-255)
+     * @param {uint8[]} keyBytes - Secret key as byte array (uint8 values 0-255)
      * @throws {Error} If keyBytes is not a byte array
      *
      * @example
@@ -234,16 +234,16 @@
       if (!keyBytes || !Array.isArray(keyBytes)) {
         throw new Error("Key must be a byte array");
       }
-      this._key = [...keyBytes];
+      this._key = keyBytes.slice();
     }
 
     /**
      * Gets a copy of the current secret key
      *
-     * @returns {number[]|null} Copy of the secret key bytes, or null if not set
+     * @returns {uint8[]|null} Copy of the secret key bytes, or null if not set
      */
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
     /**
@@ -253,7 +253,7 @@
      * incremented after each successful OTP validation. RFC 4226 recommends
      * using an 8-byte (64-bit) counter value.
      *
-     * @param {number} value - Counter value (non-negative integer, uint64 range)
+     * @param {uint64} value - Counter value (non-negative integer, uint64 range)
      * @throws {Error} If value is not a non-negative integer
      *
      * @example
@@ -270,7 +270,7 @@
     /**
      * Gets the current counter value
      *
-     * @returns {number} Current counter value (uint64)
+     * @returns {uint64} Current counter value (uint64)
      */
     get counter() {
       return this._counter;
@@ -282,7 +282,7 @@
      * RFC 4226 supports OTPs with 6-10 digits. Most implementations use 6 digits
      * for usability, though 8 digits provides better security against brute force.
      *
-     * @param {number} value - Number of OTP digits (integer 6-10 inclusive)
+     * @param {int32} value - Number of OTP digits (integer 6-10 inclusive)
      * @throws {Error} If value is not between 6 and 10 (inclusive)
      *
      * @example
@@ -299,7 +299,7 @@
     /**
      * Gets the current OTP digit length setting
      *
-     * @returns {number} Number of digits (6-10)
+     * @returns {int32} Number of digits (6-10)
      */
     get digits() {
       return this._digits;
@@ -312,7 +312,8 @@
      * All parameters are set via properties (key, counter, digits).
      * This method exists for AlgorithmFramework compatibility.
      *
-     * @param {number[]} data - Input data (ignored for HOTP)
+     * @param {uint8[]} data - Input data (ignored for HOTP)
+     * @returns {void}
      */
     Feed(data) {
       // HOTP doesn't use streaming input
@@ -328,7 +329,7 @@
      * 3. Reduce modulo 10^digits to get OTP
      * 4. Format with leading zeros
      *
-     * @returns {number[]} OTP as ASCII-encoded byte array (e.g., "755224" as bytes)
+     * @returns {uint8[]} OTP as ASCII-encoded byte array (e.g., "755224" as bytes)
      * @throws {Error} If key is not set
      *
      * @example
@@ -344,25 +345,34 @@
       }
 
       // Step 1: Generate HMAC-SHA1(key, counter)
+      /** @type {uint8[]} */
       const counterBytes = this._encodeCounter(this._counter);
+      /** @type {uint8[]} */
       const hmacResult = this._hmacSHA1(this._key, counterBytes);
 
       // Step 2: Dynamic Truncation (DT)
       // Extract 4 bytes starting at offset (last nibble of hash)
-      const offset = OpCodes.AndN(hmacResult[19], 0x0F);
+      /** @type {int32} */
+      const offset = OpCodes.And32(hmacResult[19], 0x0F);
+      /** @type {uint32} */
       const binaryCode =
-        OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset], 0x7F), 24),
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 1], 0xFF), 16)),
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 2], 0xFF), 8)),
-          OpCodes.AndN(hmacResult[offset + 3], 0xFF));
+        OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset], 0x7F), 24),
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset + 1], 0xFF), 16)),
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset + 2], 0xFF), 8)),
+          OpCodes.And32(hmacResult[offset + 3], 0xFF));
 
       // Step 3: Compute OTP = binaryCode mod 10^digits
-      const modulus = Math.pow(10, this._digits);
+      /** @type {uint64} */
+      let modulus = 1;
+      for (let d = 0; d < this._digits; d++) modulus = modulus * 10;
+      /** @type {uint64} */
       const otp = binaryCode % modulus;
 
       // Step 4: Convert to string with leading zeros
-      const otpString = otp.toString().padStart(this._digits, '0');
+      /** @type {string} */
+      let otpString = String(otp);
+      while (otpString.length < this._digits) otpString = '0' + otpString;
 
       // Return as byte array (ASCII encoding)
       return OpCodes.AnsiToBytes(otpString);
@@ -375,8 +385,8 @@
      * as required by RFC 4226 for HMAC-SHA1 input.
      *
      * @private
-     * @param {number} counter - Counter value (uint64, 0 to 2^53-1 in JavaScript)
-     * @returns {number[]} 8-byte big-endian array (uint8 values)
+     * @param {uint64} counter - Counter value (uint64, 0 to 2^53-1 in JavaScript)
+     * @returns {uint8[]} 8-byte big-endian array (uint8 values)
      *
      * @example
      * _encodeCounter(0) // Returns [0,0,0,0,0,0,0,0]
@@ -384,10 +394,13 @@
      * _encodeCounter(256) // Returns [0,0,0,0,0,0,1,0]
      */
     _encodeCounter(counter) {
-      const result = new Array(8).fill(0);
+      /** @type {uint8[]} */
+      const result = OpCodes.CreateArray(8, 0);
+      /** @type {uint64} */
+      let rest = counter;
       for (let i = 7; i >= 0; i--) {
-        result[i] = OpCodes.AndN(counter, 0xFF);
-        counter = Math.floor(counter / 256);
+        result[i] = rest % 256;
+        rest = Math.floor(rest / 256);
       }
       return result;
     }
@@ -399,9 +412,9 @@
      * OpCodes.HMAC if available. HMAC-SHA1 is required by RFC 4226.
      *
      * @private
-     * @param {number[]} key - Secret key as byte array (uint8 values)
-     * @param {number[]} message - Message to authenticate (uint8 values)
-     * @returns {number[]} 20-byte HMAC-SHA1 hash (uint8 values)
+     * @param {uint8[]} key - Secret key as byte array (uint8 values)
+     * @param {uint8[]} message - Message to authenticate (uint8 values)
+     * @returns {uint8[]} 20-byte HMAC-SHA1 hash (uint8 values)
      * @throws {Error} If no crypto library is available
      *
      * @example
@@ -422,13 +435,8 @@
         }
       }
 
-      // Check if we have HMAC in OpCodes
-      if (OpCodes && OpCodes.HMAC) {
-        return OpCodes.HMAC(key, message, 'SHA-1');
-      }
-
       throw new Error(
-        `Cannot compute HMAC-SHA1: No crypto library available (requires Node.js crypto or Web Crypto API)`
+        "Cannot compute HMAC-SHA1: No crypto library available (requires Node.js crypto or Web Crypto API)"
       );
     }
   }

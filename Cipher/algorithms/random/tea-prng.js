@@ -141,7 +141,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TEAPRNGInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -159,11 +159,17 @@
  */
 
   class TEAPRNGInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {TEAPRNGAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // PRNG state
       this._key = null;
+      /** @type {BigInt} */
       this._counter = 0n; // 64-bit counter
       this._ready = false;
 
@@ -174,6 +180,7 @@
 
     /**
      * Set seed value (becomes TEA encryption key)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -184,15 +191,19 @@
 
       // Validate seed size (must be 16 bytes for TEA key)
       if (seedBytes.length !== 16) {
-        throw new Error(`Invalid seed size: ${seedBytes.length} bytes. TEA-PRNG requires exactly 16 bytes`);
+        throw new Error("Invalid seed size: " + seedBytes.length + " bytes. TEA-PRNG requires exactly 16 bytes");
       }
 
       // Store key and reset counter
       this._key = [...seedBytes];
+      /** @type {BigInt} */
       this._counter = 0n;
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return this._key ? [...this._key] : null;
     }
@@ -200,11 +211,13 @@
     /**
      * Encrypt a 64-bit block using TEA cipher
      * @param {BigInt} counterValue - 64-bit counter to encrypt
-     * @returns {Array} 8-byte encrypted block
+     * @returns {uint8[]} 8-byte encrypted block
      */
     _encryptCounter(counterValue) {
       // Convert counter to two 32-bit words (big-endian)
-      let v0 = Number(OpCodes.AndN(OpCodes.ShiftRn(counterValue, 32n), 0xFFFFFFFFn));
+      /** @type {uint32} */
+      let v0 = Number(OpCodes.AndN(OpCodes.ShiftRn(counterValue, 32), 0xFFFFFFFFn));
+      /** @type {uint32} */
       let v1 = Number(OpCodes.AndN(counterValue, 0xFFFFFFFFn));
 
       // Extract key as four 32-bit words (big-endian)
@@ -213,26 +226,33 @@
       const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
       const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
+      /** @type {uint32} */
       let sum = 0;
 
       // 32 rounds of TEA encryption using OpCodes
       for (let i = 0; i < this.ROUNDS; ++i) {
         sum = OpCodes.Add32(sum, this.DELTA);
-        v0 = OpCodes.Add32(v0, OpCodes.Add32(OpCodes.Shl32(v1, 4), k0)^OpCodes.Add32(v1, sum)^OpCodes.Add32(OpCodes.Shr32(v1, 5), k1));
-        v1 = OpCodes.Add32(v1, OpCodes.Add32(OpCodes.Shl32(v0, 4), k2)^OpCodes.Add32(v0, sum)^OpCodes.Add32(OpCodes.Shr32(v0, 5), k3));
+        v0 = OpCodes.Add32(v0, OpCodes.Xor32(OpCodes.Xor32(OpCodes.Add32(OpCodes.Shl32(v1, 4), k0), OpCodes.Add32(v1, sum)), OpCodes.Add32(OpCodes.Shr32(v1, 5), k1)));
+        v1 = OpCodes.Add32(v1, OpCodes.Xor32(OpCodes.Xor32(OpCodes.Add32(OpCodes.Shl32(v0, 4), k2), OpCodes.Add32(v0, sum)), OpCodes.Add32(OpCodes.Shr32(v0, 5), k3)));
       }
 
       // Convert back to bytes (big-endian)
+      /** @type {uint8[]} */
       const v0Bytes = OpCodes.Unpack32BE(v0);
+      /** @type {uint8[]} */
       const v1Bytes = OpCodes.Unpack32BE(v1);
 
-      return [...v0Bytes, ...v1Bytes];
+      /** @type {uint8[]} */
+      const block = [];
+      for (let i = 0; i < v0Bytes.length; ++i) block.push(v0Bytes[i]);
+      for (let i = 0; i < v1Bytes.length; ++i) block.push(v1Bytes[i]);
+      return block;
     }
 
     /**
      * Generate random bytes using TEA in counter mode
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -240,14 +260,18 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate blocks until we have enough bytes
       while (output.length < length) {
         // Encrypt current counter value
+        /** @type {uint8[]} */
         const block = this._encryptCounter(this._counter);
 
         // Increment counter for next block using OpCodes
@@ -282,19 +306,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

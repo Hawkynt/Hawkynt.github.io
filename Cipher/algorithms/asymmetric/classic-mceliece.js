@@ -123,6 +123,7 @@
   // the published Known Answer Tests, which do not agree unless every byte of
   // that stream is right.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -130,6 +131,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -137,6 +139,7 @@
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x00000000, 0x80000000
   ];
 
+  /** @type {int32[]} */
   const KECCAK_ROTATION = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
@@ -156,7 +159,10 @@
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
-        let low = 0, high = 0;
+        /** @type {uint32} */
+        let low = 0;
+        /** @type {uint32} */
+        let high = 0;
         for (let y = 0; y < 5; ++y) {
           low = OpCodes.Xor32(low, state[2 * (x + 5 * y)]);
           high = OpCodes.Xor32(high, state[2 * (x + 5 * y) + 1]);
@@ -166,7 +172,9 @@
       }
 
       for (let x = 0; x < 5; ++x) {
+        /** @type {int32} */
         const low = c[2 * ((x + 1) % 5)];
+        /** @type {int32} */
         const high = c[2 * ((x + 1) % 5) + 1];
         const rotatedLow = OpCodes.Or32(OpCodes.Shl32(low, 1), OpCodes.Shr32(high, 31));
         const rotatedHigh = OpCodes.Or32(OpCodes.Shl32(high, 1), OpCodes.Shr32(low, 31));
@@ -185,9 +193,14 @@
         for (let y = 0; y < 5; ++y) {
           const i = x + 5 * y;
           const rotation = KECCAK_ROTATION[i];
+          /** @type {int32} */
           const low = state[2 * i];
+          /** @type {int32} */
           const high = state[2 * i + 1];
-          let newLow, newHigh;
+          /** @type {uint32} */
+          let newLow = 0;
+          /** @type {uint32} */
+          let newHigh = 0;
           if (rotation === 0) {
             newLow = low;
             newHigh = high;
@@ -222,31 +235,39 @@
   }
 
   /**
+   * Exclusive-or one full block into the state and permute.
+   * @param {Int32Array} state - 50 words, modified in place
+   * @param {Uint8Array} block - SHAKE256_RATE octets
+   */
+  function AbsorbBlock(state, block) {
+    for (let i = 0; i < SHAKE256_RATE; ++i) {
+      /** @type {int32} */
+      const word = OpCodes.Shr32(i, 3);
+      const byteInWord = OpCodes.And32(i, 7);
+      /** @type {int32} */
+      const half = OpCodes.Shr32(byteInWord, 2);
+      const index = 2 * word + half;
+      state[index] = OpCodes.Xor32(state[index], OpCodes.Shl32(block[i], 8 * OpCodes.And32(byteInWord, 3)));
+    }
+    KeccakPermute(state);
+  }
+
+  /**
    * SHAKE-256 over a byte string, squeezed to any length in one call.
    * @param {uint8[]} input - the message
-   * @param {number} outputLength - octets wanted
+   * @param {int32} outputLength - octets wanted
    * @returns {Uint8Array} the output
    */
   function Shake256(input, outputLength) {
     const state = new Int32Array(50);
     const block = new Uint8Array(SHAKE256_RATE);
 
-    const absorbBlock = () => {
-      for (let i = 0; i < SHAKE256_RATE; ++i) {
-        const word = OpCodes.Shr32(i, 3);
-        const byteInWord = OpCodes.And32(i, 7);
-        const index = 2 * word + OpCodes.Shr32(byteInWord, 2);
-        state[index] = OpCodes.Xor32(state[index], OpCodes.Shl32(block[i], 8 * OpCodes.And32(byteInWord, 3)));
-      }
-      KeccakPermute(state);
-    };
-
     let filled = 0;
     for (let i = 0; i < input.length; ++i) {
       block[filled] = OpCodes.And32(input[i], 0xFF);
       ++filled;
       if (filled === SHAKE256_RATE) {
-        absorbBlock();
+        AbsorbBlock(state, block);
         block.fill(0);
         filled = 0;
       }
@@ -255,15 +276,18 @@
     block.fill(0, filled);
     block[filled] = OpCodes.Xor32(block[filled], 0x1F);
     block[SHAKE256_RATE - 1] = OpCodes.Xor32(block[SHAKE256_RATE - 1], 0x80);
-    absorbBlock();
+    AbsorbBlock(state, block);
 
     const output = new Uint8Array(outputLength);
     let produced = 0;
     while (produced < outputLength) {
       for (let i = 0; i < SHAKE256_RATE && produced < outputLength; ++i) {
+        /** @type {int32} */
         const word = OpCodes.Shr32(i, 3);
         const byteInWord = OpCodes.And32(i, 7);
-        const index = 2 * word + OpCodes.Shr32(byteInWord, 2);
+        /** @type {int32} */
+        const half = OpCodes.Shr32(byteInWord, 2);
+        const index = 2 * word + half;
         output[produced] = OpCodes.And32(OpCodes.Shr32(state[index], 8 * OpCodes.And32(byteInWord, 3)), 0xFF);
         ++produced;
       }
@@ -279,13 +303,24 @@
   // record's 48 byte seed into the seed key generation expands and then into
   // the randomness encapsulation draws for its error vector.
 
+  /**
+   * @param {uint8[]} key - 32 key octets
+   * @param {uint8[]} block - 16 plaintext octets
+   * @returns {uint8[]} 16 ciphertext octets
+   */
   function Aes256Ecb(key, block) {
     const instance = FindAes().CreateInstance(false);
     instance.key = key;
     instance.Feed(block);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
+  /**
+   * Increment a 16 octet big-endian counter in place.
+   * @param {uint8[]} v - the counter
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -293,44 +328,67 @@
     }
   }
 
+  /** The CTR_DRBG state: key and counter. */
+  class McElieceDrbg {
+    constructor() {
+      /** @type {uint8[]} */
+      this.key = new Array(32).fill(0);
+      /** @type {uint8[]} */
+      this.v = new Array(16).fill(0);
+    }
+  }
+
+  /**
+   * The CTR_DRBG update function.
+   * @param {McElieceDrbg} drbg - the generator
+   * @param {uint8[]|null} providedData - 48 octets to mix in, or null
+   */
+  function DrbgUpdate(drbg, providedData) {
+    /** @type {uint8[]} */
+    const temp = [];
+    for (let i = 0; i < 3; ++i) {
+      IncrementCounter(drbg.v);
+      const block = Aes256Ecb(drbg.key, drbg.v);
+      for (let j = 0; j < 16; ++j) temp.push(block[j]);
+    }
+    // The seed arrives from the caller unmasked, so the exclusive-or stays
+    // the plain one rather than the unsigned 32 bit helper.
+    if (providedData)
+      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
+    for (let i = 0; i < 32; ++i) drbg.key[i] = temp[i];
+    for (let i = 0; i < 16; ++i) drbg.v[i] = temp[32 + i];
+  }
+
+  /**
+   * Draw count octets, then update the state.
+   * @param {McElieceDrbg} drbg - the generator
+   * @param {int32} count - octets required
+   * @returns {uint8[]} the octets
+   */
+  function DrbgRead(drbg, count) {
+    /** @type {uint8[]} */
+    const out = [];
+    while (out.length < count) {
+      IncrementCounter(drbg.v);
+      const block = Aes256Ecb(drbg.key, drbg.v);
+      for (let j = 0; j < 16 && out.length < count; ++j) out.push(block[j]);
+    }
+    DrbgUpdate(drbg, null);
+    return out;
+  }
+
   /**
    * The generator, seeded as randombytes_init does with a zero key and counter.
    * @param {uint8[]} entropy - the 48 octet seed
-   * @returns {object} a reader with read(count)
+   * @returns {McElieceDrbg} the generator, read with DrbgRead
    */
   function Drbg(entropy) {
-    const key = new Array(32).fill(0);
-    const v = new Array(16).fill(0);
-
-    const update = function (providedData) {
-      const temp = [];
-      for (let i = 0; i < 3; ++i) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
-        for (let j = 0; j < 16; ++j) temp.push(block[j]);
-      }
-      if (providedData)
-        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
-      for (let i = 0; i < 32; ++i) key[i] = temp[i];
-      for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
-    };
-
+    const drbg = new McElieceDrbg();
+    /** @type {uint8[]} */
     const seed = [];
     for (let i = 0; i < 48; ++i) seed.push(entropy[i]);
-    update(seed);
-
-    return {
-      read: function (count) {
-        const out = [];
-        while (out.length < count) {
-          IncrementCounter(v);
-          const block = Aes256Ecb(key, v);
-          for (let j = 0; j < 16 && out.length < count; ++j) out.push(block[j]);
-        }
-        update(null);
-        return out;
-      }
-    };
+    DrbgUpdate(drbg, seed);
+    return drbg;
   }
 
   // ===== PARAMETER SETS =====
@@ -341,58 +399,138 @@
   // elements' minimal polynomials are the Goppa polynomials: each entry is an
   // exponent below t and the field coefficient that lands on it.
 
-  const PARAMETER_SETS = (() => {
-    const build = (name, m, n, t, fieldPolynomial, ringTaps) => {
+  class McElieceParams {
+    /**
+     * @param {string} name - 'mceliece348864', ...
+     * @param {int32} m - degree of the field
+     * @param {int32} n - code length
+     * @param {int32} t - errors the code corrects
+     * @param {int32} fieldPolynomial - f(z) defining GF(2^m)
+     * @param {int32[][]} ringTaps - reduction of y^t: exponent and coefficient pairs
+     */
+    constructor(name, m, n, t, fieldPolynomial, ringTaps) {
       const q = OpCodes.Shl32(1, m);
       const mt = m * t;
-      const set = {
-        name: name, m: m, n: n, t: t, q: q, mt: mt, k: n - mt,
-        fieldPolynomial: fieldPolynomial, ringTaps: ringTaps
-      };
-      set.nBytes = OpCodes.Shr32(n, 3);
-      set.syndromeSize = OpCodes.Shr32(mt + 7, 3);
-      set.publicKeyRowSize = OpCodes.Shr32(set.k + 7, 3);
-      set.publicKeySize = mt * set.publicKeyRowSize;
-      set.irreducibleSize = t * 2;
-      set.conditionSize = OpCodes.Shl32(1, m - 4) * (2 * m - 1);
-      set.privateKeySize = 32 + 8 + set.irreducibleSize + set.conditionSize + set.nBytes;
-      set.ciphertextSize = set.syndromeSize;
-      set.sharedSecretSize = 32;
-      set.seedSize = 32;
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.m = m;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.t = t;
+      /** @type {int32} */
+      this.q = q;
+      /** @type {int32} */
+      this.mt = mt;
+      /** @type {int32} */
+      this.k = n - mt;
+      /** @type {int32} */
+      this.fieldPolynomial = fieldPolynomial;
+      /** @type {int32[][]} */
+      this.ringTaps = ringTaps;
+      /** @type {int32} */
+      this.nBytes = OpCodes.Shr32(n, 3);
+      /** @type {int32} */
+      this.syndromeSize = OpCodes.Shr32(mt + 7, 3);
+      /** @type {int32} */
+      this.publicKeyRowSize = OpCodes.Shr32(this.k + 7, 3);
+      /** @type {int32} */
+      this.publicKeySize = mt * this.publicKeyRowSize;
+      /** @type {int32} */
+      this.irreducibleSize = t * 2;
+      /** @type {int32} */
+      this.conditionSize = OpCodes.Shl32(1, m - 4) * (2 * m - 1);
+      /** @type {int32} */
+      this.privateKeySize = 32 + 8 + this.irreducibleSize + this.conditionSize + this.nBytes;
+      /** @type {int32} */
+      this.ciphertextSize = this.syndromeSize;
+      /** @type {int32} */
+      this.sharedSecretSize = 32;
+      /** @type {int32} */
+      this.seedSize = 32;
       // tau is t when n is q, and 2t when n is at least half of q. Every
       // selected parameter set falls in one of those two cases.
-      set.tau = (n === q) ? t : (2 * n >= q ? 2 * t : 4 * t);
-      return set;
-    };
+      /** @type {int32} */
+      this.tau = (n === q) ? t : (2 * n >= q ? 2 * t : 4 * t);
+    }
+  }
 
-    const sets = {};
-    for (const set of [
-      build('mceliece348864',  12, 3488, 64,  0x1009, [[3, 1], [1, 1], [0, 2]]),
-      build('mceliece460896',  13, 4608, 96,  0x201B, [[10, 1], [9, 1], [6, 1], [0, 1]]),
-      build('mceliece6688128', 13, 6688, 128, 0x201B, [[7, 1], [2, 1], [1, 1], [0, 1]]),
-      build('mceliece6960119', 13, 6960, 119, 0x201B, [[8, 1], [0, 1]]),
-      build('mceliece8192128', 13, 8192, 128, 0x201B, [[7, 1], [2, 1], [1, 1], [0, 1]])
-    ]) sets[set.name] = set;
-    return sets;
-  })();
+  /** @type {int32[][]} */
+  const TAPS_348864 = [[3, 1], [1, 1], [0, 2]];
+  /** @type {int32[][]} */
+  const TAPS_460896 = [[10, 1], [9, 1], [6, 1], [0, 1]];
+  /** @type {int32[][]} */
+  const TAPS_6688128 = [[7, 1], [2, 1], [1, 1], [0, 1]];
+  /** @type {int32[][]} */
+  const TAPS_6960119 = [[8, 1], [0, 1]];
+  /** @type {int32[][]} */
+  const TAPS_8192128 = [[7, 1], [2, 1], [1, 1], [0, 1]];
 
+  const MCELIECE_348864 = new McElieceParams('mceliece348864', 12, 3488, 64, 0x1009, TAPS_348864);
+  const MCELIECE_460896 = new McElieceParams('mceliece460896', 13, 4608, 96, 0x201B, TAPS_460896);
+  const MCELIECE_6688128 = new McElieceParams('mceliece6688128', 13, 6688, 128, 0x201B, TAPS_6688128);
+  const MCELIECE_6960119 = new McElieceParams('mceliece6960119', 13, 6960, 119, 0x201B, TAPS_6960119);
+  const MCELIECE_8192128 = new McElieceParams('mceliece8192128', 13, 8192, 128, 0x201B, TAPS_8192128);
+
+  /** @type {McElieceParams[]} */
+  const PARAMETER_SET_LIST = [MCELIECE_348864, MCELIECE_460896, MCELIECE_6688128, MCELIECE_6960119, MCELIECE_8192128];
+
+  const PARAMETER_SETS = {
+    'mceliece348864': MCELIECE_348864,
+    'mceliece460896': MCELIECE_460896,
+    'mceliece6688128': MCELIECE_6688128,
+    'mceliece6960119': MCELIECE_6960119,
+    'mceliece8192128': MCELIECE_8192128
+  };
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {McElieceParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {McElieceParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /**
+   * Look a parameter set up by a name, a part of a name, or its code length.
+   * @param {string|int32} label - 'mceliece348864', '460896', '8192', ...
+   * @returns {McElieceParams|null} the parameter set, or null
+   */
   function FindParameterSet(label) {
-    if (label === null || label === undefined) return null;
+    if (label === null || label === undefined) {
+      return null;
+    }
+    /** @type {string} */
     const text = String(label).toLowerCase();
-    if (PARAMETER_SETS[text]) return PARAMETER_SETS[text];
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (name.indexOf(text) >= 0) return PARAMETER_SETS[name];
-    if (text === '3488') return PARAMETER_SETS['mceliece348864'];
-    if (text === '4608') return PARAMETER_SETS['mceliece460896'];
-    if (text === '6688') return PARAMETER_SETS['mceliece6688128'];
-    if (text === '6960') return PARAMETER_SETS['mceliece6960119'];
-    if (text === '8192') return PARAMETER_SETS['mceliece8192128'];
+    const exact = ParameterSetEntry(text);
+    if (exact) return exact;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name.indexOf(text) >= 0) return PARAMETER_SET_LIST[i];
+    if (text === '3488') return MCELIECE_348864;
+    if (text === '4608') return MCELIECE_460896;
+    if (text === '6688') return MCELIECE_6688128;
+    if (text === '6960') return MCELIECE_6960119;
+    if (text === '8192') return MCELIECE_8192128;
     return null;
   }
 
+  /**
+   * The parameter set whose encoded key has this length.
+   * @param {int32} length - byte length
+   * @param {string} field - 'publicKeySize' or 'privateKeySize'
+   * @returns {McElieceParams|null} the parameter set, or null
+   */
   function ParameterSetByLength(length, field) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name][field] === length) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const set = PARAMETER_SET_LIST[i];
+      const size = field === 'privateKeySize' ? set.privateKeySize : set.publicKeySize;
+      if (size === length) return set;
+    }
     return null;
   }
 
@@ -404,49 +542,122 @@
   // multiply; z itself generates only a subgroup for f(z) = z^12 + z^3 + 1, so
   // the generator is searched for rather than assumed.
 
-  const FIELD_CACHE = {};
+  /** GF(2^m) with its logarithm tables. */
+  class McElieceField {
+    /**
+     * @param {int32} m - degree
+     * @param {int32} q - 2^m
+     * @param {int32} mask - q - 1, the multiplicative order
+     * @param {Uint16Array} exp - powers of the generator, twice over
+     * @param {Uint16Array} log - discrete logarithms
+     */
+    constructor(m, q, mask, exp, log) {
+      /** @type {int32} */
+      this.m = m;
+      /** @type {int32} */
+      this.q = q;
+      /** @type {int32} */
+      this.mask = mask;
+      /** @type {Uint16Array} */
+      this.exp = exp;
+      /** @type {Uint16Array} */
+      this.log = log;
+    }
+  }
 
+  /**
+   * @param {McElieceField} field - the field
+   * @param {uint32} a - element
+   * @param {uint32} b - element
+   * @returns {uint32} a * b
+   */
+  function FieldMultiply(field, a, b) {
+    if (a === 0 || b === 0) {
+      return 0;
+    }
+    /** @type {int32} */
+    const logA = field.log[a];
+    /** @type {int32} */
+    const logB = field.log[b];
+    /** @type {uint32} */
+    const product = field.exp[logA + logB];
+    return product;
+  }
+
+  /**
+   * @param {McElieceField} field - the field
+   * @param {uint32} a - element
+   * @returns {uint32} 1 / a, or 0 for 0
+   */
+  function FieldInvert(field, a) {
+    if (a === 0) {
+      return 0;
+    }
+    /** @type {int32} */
+    const logA = field.log[a];
+    /** @type {uint32} */
+    const inverse = field.exp[field.mask - logA];
+    return inverse;
+  }
+
+  /**
+   * Carrier-free multiply and reduce, used only to build the tables.
+   * @param {uint32} a - element
+   * @param {uint32} b - element
+   * @param {int32} m - degree
+   * @param {uint32} reduction - f(z) without its leading term
+   * @param {int32} mask - 2^m - 1
+   * @returns {uint32} a * b in GF(2^m)
+   */
+  function SlowMultiply(a, b, m, reduction, mask) {
+    /** @type {uint32} */
+    let result = 0;
+    for (let i = 0; i < m; ++i)
+      if (OpCodes.And32(OpCodes.Shr32(b, i), 1)) result = OpCodes.Xor32(result, OpCodes.Shl32(a, i));
+    for (let i = 2 * m - 2; i >= m; --i)
+      if (OpCodes.And32(OpCodes.Shr32(result, i), 1)) {
+        result = OpCodes.Xor32(result, OpCodes.Shl32(1, i));
+        result = OpCodes.Xor32(result, OpCodes.Shl32(reduction, i - m));
+      }
+    return OpCodes.And32(result, mask);
+  }
+
+  /** @type {McElieceField[]} */
+  const FIELD_CACHE = [];
+
+  /**
+   * The field of a parameter set, built once per degree.
+   * @param {McElieceParams} set - the parameter set
+   * @returns {McElieceField} the field
+   */
   function GetField(set) {
     const cached = FIELD_CACHE[set.m];
     if (cached) return cached;
 
     const m = set.m;
+    /** @type {int32} */
     const q = OpCodes.Shl32(1, m);
     const mask = q - 1;
     const reduction = OpCodes.And32(set.fieldPolynomial, mask);
 
-    const slowMultiply = (a, b) => {
-      let result = 0;
-      for (let i = 0; i < m; ++i)
-        if (OpCodes.And32(OpCodes.Shr32(b, i), 1)) result = OpCodes.Xor32(result, OpCodes.Shl32(a, i));
-      for (let i = 2 * m - 2; i >= m; --i)
-        if (OpCodes.And32(OpCodes.Shr32(result, i), 1)) {
-          result = OpCodes.Xor32(result, OpCodes.Shl32(1, i));
-          result = OpCodes.Xor32(result, OpCodes.Shl32(reduction, i - m));
-        }
-      return OpCodes.And32(result, mask);
-    };
-
     let generator = 0;
     for (let candidate = 2; candidate < q; ++candidate) {
-      let value = 1, order = 0;
-      do { value = slowMultiply(value, candidate); ++order; } while (value !== 1 && order <= mask);
+      /** @type {uint32} */
+      let value = 1;
+      let order = 0;
+      do { value = SlowMultiply(value, candidate, m, reduction, mask); ++order; } while (value !== 1 && order <= mask);
       if (order === mask) { generator = candidate; break; }
     }
     if (!generator) throw new Error('Classic McEliece: no generator found for GF(2^' + m + ')');
 
     const exp = new Uint16Array(2 * mask);
     const log = new Uint16Array(q);
+    /** @type {uint32} */
     let value = 1;
-    for (let i = 0; i < mask; ++i) { exp[i] = value; log[value] = i; value = slowMultiply(value, generator); }
+    for (let i = 0; i < mask; ++i) { exp[i] = value; log[value] = i; value = SlowMultiply(value, generator, m, reduction, mask); }
     for (let i = mask; i < 2 * mask; ++i) exp[i] = exp[i - mask];
 
-    const field = {
-      m: m, q: q, mask: mask,
-      multiply: (a, b) => (a === 0 || b === 0) ? 0 : exp[log[a] + log[b]],
-      invert: (a) => (a === 0) ? 0 : exp[mask - log[a]],
-      exp: exp, log: log
-    };
+    const field = new McElieceField(m, q, mask, exp, log);
     FIELD_CACHE[m] = field;
     return field;
   }
@@ -458,8 +669,8 @@
    * polynomials of.
    * @param {Uint16Array} a - first operand, t coefficients
    * @param {Uint16Array} b - second operand, t coefficients
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
    * @returns {Uint16Array} the product
    */
   function RingMultiply(a, b, set, field) {
@@ -467,19 +678,21 @@
     const product = new Uint16Array(2 * t - 1);
 
     for (let i = 0; i < t; ++i) {
+      /** @type {uint32} */
       const left = a[i];
       if (left === 0) continue;
       for (let j = 0; j < t; ++j)
-        product[i + j] = OpCodes.Xor32(product[i + j], field.multiply(left, b[j]));
+        product[i + j] = OpCodes.Xor32(product[i + j], FieldMultiply(field, left, b[j]));
     }
 
     for (let i = 2 * t - 2; i >= t; --i) {
+      /** @type {uint32} */
       const high = product[i];
       if (high === 0) continue;
       for (let tap = 0; tap < set.ringTaps.length; ++tap) {
         const exponent = set.ringTaps[tap][0];
         const coefficient = set.ringTaps[tap][1];
-        const contribution = (coefficient === 1) ? high : field.multiply(high, coefficient);
+        const contribution = (coefficient === 1) ? high : FieldMultiply(field, high, coefficient);
         product[i - t + exponent] = OpCodes.Xor32(product[i - t + exponent], contribution);
       }
     }
@@ -494,14 +707,15 @@
    * Returns null when it has degree below t, which the caller answers by
    * restarting key generation from the next seed.
    * @param {Uint16Array} element - t coefficients
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
    * @returns {Uint16Array|null} the t low coefficients of the monic result
    */
   function MinimalPolynomial(element, set, field) {
     const t = set.t;
 
     // column j holds the jth power of the element
+    /** @type {Uint16Array[]} */
     const columns = [];
     const first = new Uint16Array(t);
     first[0] = 1;
@@ -518,15 +732,18 @@
 
       if (columns[j][j] === 0) return null;
 
-      const inverse = field.invert(columns[j][j]);
-      for (let c = j; c <= t; ++c) columns[c][j] = field.multiply(columns[c][j], inverse);
+      /** @type {uint32} */
+      const pivot = columns[j][j];
+      const inverse = FieldInvert(field, pivot);
+      for (let c = j; c <= t; ++c) columns[c][j] = FieldMultiply(field, columns[c][j], inverse);
 
       for (let k = 0; k < t; ++k) {
         if (k === j) continue;
+        /** @type {uint32} */
         const factor = columns[j][k];
         if (factor === 0) continue;
         for (let c = j; c <= t; ++c)
-          columns[c][k] = OpCodes.Xor32(columns[c][k], field.multiply(columns[c][j], factor));
+          columns[c][k] = OpCodes.Xor32(columns[c][k], FieldMultiply(field, columns[c][j], factor));
       }
     }
 
@@ -537,26 +754,57 @@
 
   // ===== small helpers =====
 
+  /**
+   * @param {uint32} value - an m bit value
+   * @param {int32} m - bit count
+   * @returns {uint32} its bits in reverse order
+   */
   function BitReverse(value, m) {
+    /** @type {uint32} */
     let out = 0;
     for (let i = 0; i < m; ++i) out = OpCodes.Or32(OpCodes.Shl32(out, 1), OpCodes.And32(OpCodes.Shr32(value, i), 1));
     return out;
   }
 
+  /**
+   * @param {uint8[]} bytes - octets
+   * @param {int32} offset - offset of a little-endian 16 bit value
+   * @param {int32} mask - field mask
+   * @returns {uint32} the masked value
+   */
   function LoadFieldElement(bytes, offset, mask) {
     return OpCodes.And32(OpCodes.Or32(bytes[offset], OpCodes.Shl32(bytes[offset + 1], 8)), mask);
   }
 
+  /**
+   * @param {uint8[]} bytes - bit string, least significant bit first
+   * @param {int32} index - bit index
+   * @returns {uint32} the bit
+   */
   function ReadBit(bytes, index) {
     return OpCodes.And32(OpCodes.Shr32(bytes[OpCodes.Shr32(index, 3)], OpCodes.And32(index, 7)), 1);
   }
 
+  /**
+   * @param {uint8[]} bytes - bit string, modified in place
+   * @param {int32} index - bit index
+   * @param {int32} [offset] - octets to skip first
+   */
   function SetBit(bytes, index, offset) {
-    const byte = (offset || 0) + OpCodes.Shr32(index, 3);
+    /** @type {int32} */
+    const start = offset ? offset : 0;
+    /** @type {int32} */
+    const byteIndex = OpCodes.Shr32(index, 3);
+    const byte = start + byteIndex;
     bytes[byte] = OpCodes.Or32(bytes[byte], OpCodes.Shl32(1, OpCodes.And32(index, 7)));
   }
 
+  /**
+   * @param {uint8[]} bytes - an array or typed array
+   * @returns {uint8[]} a plain array copy
+   */
   function ToArray(bytes) {
+    /** @type {uint8[]} */
     const out = new Array(bytes.length);
     for (let i = 0; i < bytes.length; ++i) out[i] = bytes[i];
     return out;
@@ -569,6 +817,12 @@
   // conversion are the ones the specification fixes; any other control bits for
   // the same permutation would give a different, and wrong, private key.
 
+  /**
+   * out[permutation[i]] = values[i].
+   * @param {Int32Array} values - the values
+   * @param {Int32Array} permutation - where each goes
+   * @returns {Int32Array} the composition
+   */
   function ComposeInverse(values, permutation) {
     const out = new Int32Array(values.length);
     for (let i = 0; i < values.length; ++i) out[permutation[i]] = values[i];
@@ -578,13 +832,17 @@
   /**
    * Control bits for the permutation, as controlbits in the specification.
    * @param {Int32Array} permutation - a permutation of a power-of-two range
-   * @returns {number[]} one bit per entry of the network
+   * @returns {int32[]} one bit per entry of the network
    */
   function ControlBits(permutation) {
     const n = permutation.length;
     let m = 1;
     while (OpCodes.Shl32(1, m) < n) ++m;
-    if (m === 1) return [permutation[0]];
+    if (m === 1) {
+      /** @type {int32[]} */
+      const single = [permutation[0]];
+      return single;
+    }
 
     const p = new Int32Array(n);
     const q = new Int32Array(n);
@@ -646,6 +904,7 @@
     const evenBits = ControlBits(even);
     const oddBits = ControlBits(odd);
 
+    /** @type {int32[]} */
     const out = [];
     for (let j = 0; j < half; ++j) out.push(front[j]);
     for (let j = 0; j < evenBits.length; ++j) { out.push(evenBits[j]); out.push(oddBits[j]); }
@@ -657,20 +916,24 @@
    * The permutation the control bits describe, as permutation in the
    * specification. Decapsulation reads the private key this way.
    * @param {uint8[]} conditionBytes - the control bits
-   * @param {number} m - log2 of the field size
+   * @param {int32} m - log2 of the field size
    * @returns {Int32Array} the permutation
    */
   function PermutationFromControlBits(conditionBytes, m) {
+    /** @type {int32} */
     const n = OpCodes.Shl32(1, m);
     const permutation = new Int32Array(n);
     for (let i = 0; i < n; ++i) permutation[i] = i;
 
+    /** @type {int32} */
     const half = OpCodes.Shr32(n, 1);
     for (let i = 0; i < 2 * m - 1; ++i) {
+      /** @type {int32} */
       const gap = OpCodes.Shl32(1, Math.min(i, 2 * m - 2 - i));
       for (let j = 0; j < half; ++j) {
         if (!ReadBit(conditionBytes, i * half + j)) continue;
         const position = (j % gap) + 2 * gap * Math.floor(j / gap);
+        /** @type {int32} */
         const swap = permutation[position];
         permutation[position] = permutation[position + gap];
         permutation[position + gap] = swap;
@@ -683,7 +946,7 @@
    * The support, that is the field ordering the private key's control bits
    * encode, restricted to the n columns the code uses.
    * @param {uint8[]} conditionBytes - the control bits
-   * @param {object} set - the parameter set
+   * @param {McElieceParams} set - the parameter set
    * @returns {Uint16Array} the support
    */
   function SupportFromControlBits(conditionBytes, set) {
@@ -702,20 +965,39 @@
    * generation from the next seed.
    * @param {Uint16Array} goppa - the t low coefficients of the monic polynomial
    * @param {uint8[]} raw - q little-endian 32 bit values ordering the field
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
-   * @returns {object|null} { publicKey, permutation }
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
+   * @returns {McEliecePublicKey|null} { publicKey, permutation }
    */
   function GeneratePublicKey(goppa, raw, set, field) {
-    const { m, n, t, q, mt, k, nBytes } = set;
+    const m = set.m;
+    const n = set.n;
+    const t = set.t;
+    const q = set.q;
+    const mt = set.mt;
+    const k = set.k;
+    const nBytes = set.nBytes;
 
+    /** @type {int32[]} */
     const order = new Array(q);
     for (let i = 0; i < q; ++i) order[i] = i;
     const value = new Float64Array(q);
     for (let i = 0; i < q; ++i) {
-      value[i] = raw[4 * i] + raw[4 * i + 1] * 256 + raw[4 * i + 2] * 65536 + raw[4 * i + 3] * 16777216;
+      value[i] = OpCodes.Pack32LE(raw[4 * i], raw[4 * i + 1], raw[4 * i + 2], raw[4 * i + 3]);
     }
-    order.sort((x, y) => (value[x] - value[y]) || (x - y));
+    /**
+     * By the drawn value, ties by index; the values are finite, so a zero
+     * difference is the only falsy one.
+     * @param {int32} x - left index
+     * @param {int32} y - right index
+     * @returns {float64} negative, zero or positive
+     */
+    function CompareDrawn(x, y) {
+      /** @type {float64} */
+      const difference = value[x] - value[y];
+      return difference !== 0 ? difference : x - y;
+    }
+    order.sort(CompareDrawn);
     for (let i = 1; i < q; ++i) if (value[order[i - 1]] === value[order[i]]) return null;
 
     const permutation = new Int32Array(q);
@@ -728,13 +1010,15 @@
     // increasing powers of the support
     const scaled = new Uint16Array(n);
     for (let j = 0; j < n; ++j) {
+      /** @type {uint32} */
       let evaluated = 1;
-      for (let i = t - 1; i >= 0; --i) evaluated = OpCodes.Xor32(field.multiply(evaluated, support[j]), goppa[i]);
+      for (let i = t - 1; i >= 0; --i) evaluated = OpCodes.Xor32(FieldMultiply(field, evaluated, support[j]), goppa[i]);
       if (evaluated === 0) return null;
-      scaled[j] = field.invert(evaluated);
+      scaled[j] = FieldInvert(field, evaluated);
     }
 
     const rowWords = Math.ceil(nBytes / 4);
+    /** @type {Uint32Array[]} */
     const rows = new Array(mt);
     for (let i = 0; i < mt; ++i) rows[i] = new Uint32Array(rowWords);
 
@@ -748,7 +1032,7 @@
           }
       }
       if (i < t - 1)
-        for (let j = 0; j < n; ++j) scaled[j] = field.multiply(scaled[j], support[j]);
+        for (let j = 0; j < n; ++j) scaled[j] = FieldMultiply(field, scaled[j], support[j]);
     }
 
     // reduce to systematic form
@@ -789,7 +1073,7 @@
       }
     }
 
-    return { publicKey: publicKey, permutation: permutation };
+    return new McEliecePublicKey(publicKey, permutation);
   }
 
   // ===== SeededKeyGen =====
@@ -798,8 +1082,8 @@
    * Expand a seed into a key pair, restarting from the derived seed whenever
    * the ordering, the polynomial or the reduction fails, as SeededKeyGen does.
    * @param {uint8[]} delta - the 32 octet seed
-   * @param {object} set - the parameter set
-   * @returns {object} { publicKey, privateKey, attempts }
+   * @param {McElieceParams} set - the parameter set
+   * @returns {McElieceGenerated} { publicKey, privateKey, attempts }
    */
   function SeededKeyGen(delta, set) {
     const field = GetField(set);
@@ -807,6 +1091,7 @@
 
     for (let attempt = 0; attempt < 64; ++attempt) {
       const streamLength = set.nBytes + set.q * 4 + set.t * 2 + 32;
+      /** @type {uint8[]} */
       const input = new Array(33);
       input[0] = 64;
       for (let i = 0; i < 32; ++i) input[1 + i] = seed[i];
@@ -818,6 +1103,7 @@
       // the stream is consumed from its end: the next seed, then the
       // polynomial, then the ordering, then the rejection string s
       let cursor = streamLength - 32;
+      /** @type {uint8[]} */
       const nextSeed = [];
       for (let i = 0; i < 32; ++i) nextSeed.push(stream[cursor + i]);
 
@@ -853,14 +1139,96 @@
       privateKey[34] = 0xFF;
       privateKey[35] = 0xFF;
 
-      return {
-        publicKey: ToArray(generated.publicKey),
-        privateKey: ToArray(privateKey),
-        attempts: attempt + 1
-      };
+      return new McElieceGenerated(ToArray(generated.publicKey), ToArray(privateKey), attempt + 1);
     }
 
     throw new Error('Classic McEliece key generation did not converge from this seed');
+  }
+
+  // ===== result records =====
+
+  class McEliecePublicKey {
+    /**
+     * @param {Uint8Array} publicKey - the matrix
+     * @param {Int32Array} permutation - the field ordering
+     */
+    constructor(publicKey, permutation) {
+      /** @type {Uint8Array} */
+      this.publicKey = publicKey;
+      /** @type {Int32Array} */
+      this.permutation = permutation;
+    }
+  }
+
+  class McElieceGenerated {
+    /**
+     * @param {uint8[]} publicKey - the public key
+     * @param {uint8[]} privateKey - the private key
+     * @param {int32} attempts - seeds tried
+     */
+    constructor(publicKey, privateKey, attempts) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.privateKey = privateKey;
+      /** @type {int32} */
+      this.attempts = attempts;
+    }
+  }
+
+  class McElieceErrorVector {
+    /**
+     * @param {Uint8Array} errorVector - n bits of weight t
+     * @param {int32[]} positions - its set bits, in drawing order
+     */
+    constructor(errorVector, positions) {
+      /** @type {Uint8Array} */
+      this.errorVector = errorVector;
+      /** @type {int32[]} */
+      this.positions = positions;
+    }
+  }
+
+  class McElieceEncapsulation {
+    /**
+     * @param {uint8[]} ciphertext - the syndrome
+     * @param {uint8[]} sharedSecret - the session key
+     * @param {uint8[]} errorVector - the drawn error vector
+     */
+    constructor(ciphertext, sharedSecret, errorVector) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.sharedSecret = sharedSecret;
+      /** @type {uint8[]} */
+      this.errorVector = errorVector;
+    }
+  }
+
+  class McElieceKeyPair {
+    /**
+     * @param {uint8[]} publicKey - the public key
+     * @param {uint8[]} privateKey - the private key
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.privateKey = privateKey;
+    }
+  }
+
+  class McElieceSeed {
+    /**
+     * @param {uint8[]} delta - the 32 octet key generation seed
+     * @param {McElieceDrbg|null} reader - the generator it came from, if any
+     */
+    constructor(delta, reader) {
+      /** @type {uint8[]} */
+      this.delta = delta;
+      /** @type {McElieceDrbg|null} */
+      this.reader = reader;
+    }
   }
 
   // ===== Encode =====
@@ -869,11 +1237,12 @@
    * The syndrome of an error vector under the public key, that is a ciphertext.
    * @param {uint8[]} errorVector - n bits of weight t
    * @param {uint8[]} publicKey - the matrix
-   * @param {object} set - the parameter set
+   * @param {McElieceParams} set - the parameter set
    * @returns {Uint8Array} the ciphertext
    */
   function Encode(errorVector, publicKey, set) {
-    const { mt, k } = set;
+    const mt = set.mt;
+    const k = set.k;
     const ciphertext = new Uint8Array(set.syndromeSize);
 
     // the tail of the error vector that multiplies the matrix, repacked so that
@@ -885,6 +1254,7 @@
     for (let i = 0; i < mt; ++i) {
       let parity = ReadBit(errorVector, i);
       const base = i * set.publicKeyRowSize;
+      /** @type {uint32} */
       let accumulator = 0;
       for (let j = 0; j < set.publicKeyRowSize; ++j)
         accumulator = OpCodes.Xor32(accumulator, OpCodes.And32(publicKey[base + j], tail[j]));
@@ -904,13 +1274,14 @@
    * Draw an error vector of weight t, as FixedWeight does: take field-sized
    * chunks of randomness, keep the ones below n, and restart when there are too
    * few or any two collide.
-   * @param {object} generator - a reader with read(count)
-   * @param {object} set - the parameter set
-   * @returns {object} { errorVector, positions }
+   * @param {McElieceDrbg} generator - the generator to draw from
+   * @param {McElieceParams} set - the parameter set
+   * @returns {McElieceErrorVector} { errorVector, positions }
    */
   function FixedWeight(generator, set) {
     for (let attempt = 0; attempt < 128; ++attempt) {
-      const raw = generator.read(set.tau * 2);
+      const raw = DrbgRead(generator, set.tau * 2);
+      /** @type {int32[]} */
       const positions = [];
       for (let i = 0; i < set.tau && positions.length < set.t; ++i) {
         const candidate = LoadFieldElement(raw, i * 2, set.q - 1);
@@ -926,7 +1297,7 @@
 
       const errorVector = new Uint8Array(set.nBytes);
       for (let i = 0; i < positions.length; ++i) SetBit(errorVector, positions[i]);
-      return { errorVector: errorVector, positions: positions };
+      return new McElieceErrorVector(errorVector, positions);
     }
 
     throw new Error('Classic McEliece could not draw an error vector of weight t');
@@ -934,9 +1305,18 @@
 
   // ===== Decode =====
 
+  /**
+   * Horner evaluation over GF(2^m).
+   * @param {Uint16Array} coefficients - constant term first
+   * @param {int32} degree - index of the leading coefficient
+   * @param {uint32} at - the point
+   * @param {McElieceField} field - the field
+   * @returns {uint32} the value
+   */
   function EvaluatePolynomial(coefficients, degree, at, field) {
+    /** @type {uint32} */
     let result = coefficients[degree];
-    for (let i = degree - 1; i >= 0; --i) result = OpCodes.Xor32(field.multiply(result, at), coefficients[i]);
+    for (let i = degree - 1; i >= 0; --i) result = OpCodes.Xor32(FieldMultiply(field, result, at), coefficients[i]);
     return result;
   }
 
@@ -945,8 +1325,8 @@
    * @param {Uint16Array} goppa - t + 1 coefficients, monic
    * @param {Uint16Array} support - the field ordering
    * @param {uint8[]} word - n bits
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
    * @returns {Uint16Array} 2t field elements
    */
   function Syndrome(goppa, support, word, set, field) {
@@ -955,11 +1335,13 @@
 
     for (let i = 0; i < set.n; ++i) {
       if (!ReadBit(word, i)) continue;
-      const evaluated = EvaluatePolynomial(goppa, set.t, support[i], field);
-      let term = field.invert(field.multiply(evaluated, evaluated));
+      /** @type {uint32} */
+      const point = support[i];
+      const evaluated = EvaluatePolynomial(goppa, set.t, point, field);
+      let term = FieldInvert(field, FieldMultiply(field, evaluated, evaluated));
       for (let j = 0; j < width; ++j) {
         out[j] = OpCodes.Xor32(out[j], term);
-        term = field.multiply(term, support[i]);
+        term = FieldMultiply(field, term, point);
       }
     }
 
@@ -969,8 +1351,8 @@
   /**
    * The error locator, by Berlekamp-Massey over the syndrome.
    * @param {Uint16Array} syndrome - 2t field elements
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
    * @returns {Uint16Array} t + 1 coefficients, constant term first
    */
   function BerlekampMassey(syndrome, set, field) {
@@ -982,13 +1364,15 @@
     previous[1] = 1;
     current[0] = 1;
     let length = 0;
+    /** @type {uint32} */
     let lastDiscrepancy = 1;
 
     for (let step = 0; step < 2 * t; ++step) {
+      /** @type {uint32} */
       let discrepancy = 0;
       const limit = Math.min(step, t);
       for (let i = 0; i <= limit; ++i)
-        discrepancy = OpCodes.Xor32(discrepancy, field.multiply(current[i], syndrome[step - i]));
+        discrepancy = OpCodes.Xor32(discrepancy, FieldMultiply(field, current[i], syndrome[step - i]));
 
       const nonZero = discrepancy !== 0;
       const extend = nonZero && (2 * length <= step);
@@ -996,9 +1380,9 @@
       saved.set(current);
 
       if (nonZero) {
-        const factor = field.multiply(field.invert(lastDiscrepancy), discrepancy);
+        const factor = FieldMultiply(field, FieldInvert(field, lastDiscrepancy), discrepancy);
         for (let i = 0; i <= t; ++i)
-          current[i] = OpCodes.Xor32(current[i], field.multiply(factor, previous[i]));
+          current[i] = OpCodes.Xor32(current[i], FieldMultiply(field, factor, previous[i]));
       }
 
       if (extend) {
@@ -1022,8 +1406,8 @@
    * key's rejection string rather than an error.
    * @param {uint8[]} privateKeyBody - the private key from its polynomial on
    * @param {uint8[]} ciphertext - the syndrome
-   * @param {object} set - the parameter set
-   * @param {object} field - the field
+   * @param {McElieceParams} set - the parameter set
+   * @param {McElieceField} field - the field
    * @returns {Uint8Array|null} the error vector
    */
   function Decode(privateKeyBody, ciphertext, set, field) {
@@ -1033,6 +1417,7 @@
     for (let i = 0; i < t; ++i) goppa[i] = LoadFieldElement(privateKeyBody, i * 2, set.q - 1);
     goppa[t] = 1;
 
+    /** @type {uint8[]} */
     const conditionBytes = [];
     for (let i = 0; i < set.conditionSize; ++i) conditionBytes.push(privateKeyBody[set.irreducibleSize + i]);
     const support = SupportFromControlBits(conditionBytes, set);
@@ -1061,7 +1446,16 @@
 
   // ===== the KEM =====
 
+  /**
+   * The session key: SHAKE-256 of a marker octet, a vector and the ciphertext.
+   * @param {int32} marker - 1 for a decoded error vector, 0 for the rejection string
+   * @param {uint8[]} vector - nBytes octets
+   * @param {uint8[]} ciphertext - the syndrome
+   * @param {McElieceParams} set - the parameter set
+   * @returns {uint8[]} 32 octets
+   */
   function SessionKey(marker, vector, ciphertext, set) {
+    /** @type {uint8[]} */
     const input = new Array(1 + set.nBytes + set.syndromeSize);
     input[0] = marker;
     for (let i = 0; i < set.nBytes; ++i) input[1 + i] = vector[i];
@@ -1073,7 +1467,7 @@
    * The padding bits of a ciphertext, where mt is not a multiple of 8, must be
    * zero. The submission clears the session key of a ciphertext whose are not.
    * @param {uint8[]} ciphertext - the syndrome
-   * @param {object} set - the parameter set
+   * @param {McElieceParams} set - the parameter set
    * @returns {boolean} whether the padding is well formed
    */
   function CiphertextPaddingIsZero(ciphertext, set) {
@@ -1082,21 +1476,36 @@
     return OpCodes.Shr32(ciphertext[set.syndromeSize - 1], spare) === 0;
   }
 
+  /**
+   * Encapsulate: draw an error vector and take its syndrome.
+   * @param {uint8[]} publicKey - the matrix
+   * @param {McElieceDrbg} generator - the generator to draw from
+   * @param {McElieceParams} set - the parameter set
+   * @returns {McElieceEncapsulation} ciphertext, shared secret and error vector
+   */
   function Encapsulate(publicKey, generator, set) {
     const drawn = FixedWeight(generator, set);
     const ciphertext = Encode(drawn.errorVector, publicKey, set);
-    return {
-      ciphertext: ToArray(ciphertext),
-      sharedSecret: SessionKey(1, drawn.errorVector, ciphertext, set),
-      errorVector: ToArray(drawn.errorVector)
-    };
+    return new McElieceEncapsulation(
+      ToArray(ciphertext),
+      SessionKey(1, drawn.errorVector, ciphertext, set),
+      ToArray(drawn.errorVector));
   }
 
+  /**
+   * Decapsulate, answering a ciphertext that does not decode with the
+   * rejection string's session key.
+   * @param {uint8[]} ciphertext - the syndrome
+   * @param {uint8[]} privateKey - the private key
+   * @param {McElieceParams} set - the parameter set
+   * @returns {uint8[]} the shared secret
+   */
   function Decapsulate(ciphertext, privateKey, set) {
     if (ciphertext.length !== set.ciphertextSize)
       throw new Error('A ' + set.name + ' ciphertext is ' + set.ciphertextSize + ' bytes, got ' + ciphertext.length);
 
     const field = GetField(set);
+    /** @type {uint8[]} */
     const body = [];
     for (let i = 40; i < privateKey.length; ++i) body.push(privateKey[i]);
 
@@ -1110,6 +1519,7 @@
     // the private key's own rejection string, so that failure is not
     // distinguishable from success by the caller.
     const rejectionOffset = 40 + set.irreducibleSize + set.conditionSize;
+    /** @type {uint8[]} */
     const rejection = [];
     for (let i = 0; i < set.nBytes; ++i) rejection.push(privateKey[rejectionOffset + i]);
     return SessionKey(0, rejection, ciphertext, set);
@@ -2261,122 +2671,6 @@
 
   const KAT8192128_SS = OpCodes.Hex8ToBytes("82351702A2C3973644CB735FC9B6CEA8FE526D7D729EE134FC12C0201690E854");
 
-  const VECTORS = [
-    {
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published private key",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      parameterSet: 'mceliece348864',
-      keyGeneration: true,
-      keyGenerationOutput: 'privateKey',
-      input: KAT348864_SEED,
-      expected: KAT348864_SK
-    },
-    {
-      // The ciphertext is the syndrome of the drawn error vector under the
-      // generated matrix, so this is what pins the public key: a wrong matrix
-      // gives a wrong ciphertext.
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published ciphertext",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      parameterSet: 'mceliece348864',
-      katRecord: true,
-      encapsulationOutput: 'ciphertext',
-      input: KAT348864_SEED,
-      expected: KAT348864_CT
-    },
-    {
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      parameterSet: 'mceliece348864',
-      katRecord: true,
-      encapsulationOutput: 'sharedSecret',
-      input: KAT348864_SEED,
-      expected: KAT348864_SS
-    },
-    {
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT348864_SK,
-      input: KAT348864_CT,
-      expected: KAT348864_SS
-    },
-    {
-      // Setting sharedSecret turns the result into a verdict, so that the
-      // negative cases below can assert a mismatch without naming the value the
-      // rejection branch produces.
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the recovered secret is the published one",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT348864_SK,
-      sharedSecret: KAT348864_SS,
-      input: KAT348864_CT,
-      expected: [1]
-    },
-    {
-      // One bit of the ciphertext moved. Classic McEliece answers a ciphertext
-      // it cannot decode with a secret derived from the private key's rejection
-      // string rather than an error, so the property to assert is that the
-      // published secret does not come back.
-      text: "Classic McEliece mceliece348864: a modified ciphertext must not decapsulate to the published secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT348864_SK,
-      sharedSecret: KAT348864_SS,
-      input: KAT348864_CT_CORRUPTED,
-      expected: [0]
-    },
-    {
-      text: "Classic McEliece mceliece348864: record 0's ciphertext under record 1's private key must not recover record 0's secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT348864_SK_RECORD1,
-      sharedSecret: KAT348864_SS,
-      input: KAT348864_CT,
-      expected: [0]
-    },
-    {
-      text: "Classic McEliece mceliece348864 kat_kem.rsp record 1: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT348864_SK_RECORD1,
-      input: KAT348864_CT_RECORD1,
-      expected: KAT348864_SS_RECORD1
-    },
-    {
-      text: "Classic McEliece mceliece460896 kat_kem.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT460896_SK,
-      input: KAT460896_CT,
-      expected: KAT460896_SS
-    },
-    {
-      text: "Classic McEliece mceliece6688128 kat_kem.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT6688128_SK,
-      input: KAT6688128_CT,
-      expected: KAT6688128_SS
-    },
-    {
-      // The only set whose mt is not a multiple of 8, so its ciphertext carries
-      // padding bits and its matrix rows are bit shifted rather than copied.
-      text: "Classic McEliece mceliece6960119 kat_kem.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT6960119_SK,
-      input: KAT6960119_CT,
-      expected: KAT6960119_SS
-    },
-    {
-      text: "Classic McEliece mceliece8192128 kat_kem.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
-      inverse: true,
-      privateKey: KAT8192128_SK,
-      input: KAT8192128_CT,
-      expected: KAT8192128_SS
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -2427,7 +2721,122 @@
           "Treat this as a reference implementation of the scheme rather than a hardened one.")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published private key",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          parameterSet: 'mceliece348864',
+          keyGeneration: true,
+          keyGenerationOutput: 'privateKey',
+          input: KAT348864_SEED,
+          expected: KAT348864_SK
+        },
+        {
+          // The ciphertext is the syndrome of the drawn error vector under the
+          // generated matrix, so this is what pins the public key: a wrong matrix
+          // gives a wrong ciphertext.
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published ciphertext",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          parameterSet: 'mceliece348864',
+          katRecord: true,
+          encapsulationOutput: 'ciphertext',
+          input: KAT348864_SEED,
+          expected: KAT348864_CT
+        },
+        {
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the seed generates the published shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          parameterSet: 'mceliece348864',
+          katRecord: true,
+          encapsulationOutput: 'sharedSecret',
+          input: KAT348864_SEED,
+          expected: KAT348864_SS
+        },
+        {
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT348864_SK,
+          input: KAT348864_CT,
+          expected: KAT348864_SS
+        },
+        {
+          // Setting sharedSecret turns the result into a verdict, so that the
+          // negative cases below can assert a mismatch without naming the value the
+          // rejection branch produces.
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 0: the recovered secret is the published one",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT348864_SK,
+          sharedSecret: KAT348864_SS,
+          input: KAT348864_CT,
+          expected: [1]
+        },
+        {
+          // One bit of the ciphertext moved. Classic McEliece answers a ciphertext
+          // it cannot decode with a secret derived from the private key's rejection
+          // string rather than an error, so the property to assert is that the
+          // published secret does not come back.
+          text: "Classic McEliece mceliece348864: a modified ciphertext must not decapsulate to the published secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT348864_SK,
+          sharedSecret: KAT348864_SS,
+          input: KAT348864_CT_CORRUPTED,
+          expected: [0]
+        },
+        {
+          text: "Classic McEliece mceliece348864: record 0's ciphertext under record 1's private key must not recover record 0's secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT348864_SK_RECORD1,
+          sharedSecret: KAT348864_SS,
+          input: KAT348864_CT,
+          expected: [0]
+        },
+        {
+          text: "Classic McEliece mceliece348864 kat_kem.rsp record 1: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT348864_SK_RECORD1,
+          input: KAT348864_CT_RECORD1,
+          expected: KAT348864_SS_RECORD1
+        },
+        {
+          text: "Classic McEliece mceliece460896 kat_kem.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT460896_SK,
+          input: KAT460896_CT,
+          expected: KAT460896_SS
+        },
+        {
+          text: "Classic McEliece mceliece6688128 kat_kem.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT6688128_SK,
+          input: KAT6688128_CT,
+          expected: KAT6688128_SS
+        },
+        {
+          // The only set whose mt is not a multiple of 8, so its ciphertext carries
+          // padding bits and its matrix rows are bit shifted rather than copied.
+          text: "Classic McEliece mceliece6960119 kat_kem.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT6960119_SK,
+          input: KAT6960119_CT,
+          expected: KAT6960119_SS
+        },
+        {
+          text: "Classic McEliece mceliece8192128 kat_kem.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://classic.mceliece.org/nist/mceliece-kat-20221023.tar.gz",
+          inverse: true,
+          privateKey: KAT8192128_SK,
+          input: KAT8192128_CT,
+          expected: KAT8192128_SS
+        }
+      ];
     }
 
     /**
@@ -2441,7 +2850,7 @@
 
   class ClassicMcElieceInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - parent algorithm instance
+     * @param {ClassicMcElieceAlgorithm} algorithm - parent algorithm instance
      * @param {boolean} [isInverse=false] - decapsulation mode
      */
     constructor(algorithm, isInverse = false) {
@@ -2452,7 +2861,7 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['mceliece348864'];
+      this._parameterSet = MCELIECE_348864;
       this._publicKey = null;
       this._privateKey = null;
       this._sharedSecret = null;
@@ -2478,6 +2887,7 @@
     /**
      * The public key. Its length selects the parameter set, the encoded lengths
      * across the five sets being pairwise distinct.
+     * @param {uint8[]} keyBytes - the encoded public key; falsy clears it
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -2499,6 +2909,7 @@
 
     /**
      * The private key. Its length selects the parameter set the same way.
+     * @param {uint8[]} keyBytes - the encoded private key; falsy clears it
      */
     set privateKey(keyBytes) {
       if (!keyBytes) {
@@ -2523,6 +2934,7 @@
      * Result report agreement as [1] or [0] rather than returning the secret,
      * so that a vector can assert a rejection without naming the value the
      * rejection produces.
+     * @param {uint8[]} secretBytes - the expected secret; falsy clears it
      */
     set sharedSecret(secretBytes) {
       this._sharedSecret = secretBytes ? ToArray(secretBytes) : null;
@@ -2578,7 +2990,7 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding whole.
-     * @param {number[]} data - input bytes
+     * @param {int32[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -2599,7 +3011,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {number[]} the result bytes
+     * @returns {int32[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -2648,17 +3060,17 @@
      * Read the input as either the 48 byte entropy of a Known Answer Test
      * record, which the NIST generator expands, or as the 32 byte seed key
      * generation takes directly.
-     * @param {number[]} input - the fed bytes
-     * @param {object} set - the parameter set
-     * @returns {object} { delta, reader }
+     * @param {int32[]} input - the fed bytes
+     * @param {McElieceParams} set - the parameter set
+     * @returns {McElieceSeed} { delta, reader }
      */
     _SeedReader(input, set) {
       if (input.length === 48) {
         const reader = Drbg(input);
-        return { delta: reader.read(32), reader: reader };
+        return new McElieceSeed(DrbgRead(reader, 32), reader);
       }
       if (input.length === set.seedSize)
-        return { delta: input, reader: null };
+        return new McElieceSeed(input, null);
       throw new Error('Classic McEliece key generation takes a 48 byte Known Answer Test seed or a 32 byte seed, got ' + input.length);
     }
 
@@ -2666,21 +3078,21 @@
 
     /**
      * Generate a key pair from a seed.
-     * @param {number[]} seed - 48 byte KAT entropy or a 32 byte seed
-     * @returns {object} { publicKey, privateKey }
+     * @param {int32[]} seed - 48 byte KAT entropy or a 32 byte seed
+     * @returns {McElieceKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(seed) {
       const generator = this._SeedReader(ToArray(seed), this._parameterSet);
       const pair = SeededKeyGen(generator.delta, this._parameterSet);
       this._publicKey = pair.publicKey;
       this._privateKey = pair.privateKey;
-      return { publicKey: pair.publicKey.slice(), privateKey: pair.privateKey.slice() };
+      return new McElieceKeyPair(pair.publicKey.slice(), pair.privateKey.slice());
     }
 
     /**
      * Encapsulate to the configured public key.
-     * @param {number[]} seed - 48 byte entropy for the error vector
-     * @returns {object} { ciphertext, sharedSecret }
+     * @param {int32[]} seed - 48 byte entropy for the error vector
+     * @returns {McElieceEncapsulation} { ciphertext, sharedSecret, errorVector }
      */
     Encapsulate(seed) {
       if (!this._publicKey) throw new Error('Classic McEliece encapsulation needs a public key');
@@ -2689,8 +3101,8 @@
 
     /**
      * Decapsulate with the configured private key.
-     * @param {number[]} ciphertext - the syndrome
-     * @returns {number[]} the shared secret
+     * @param {int32[]} ciphertext - the syndrome
+     * @returns {int32[]} the shared secret
      */
     Decapsulate(ciphertext) {
       if (!this._privateKey) throw new Error('Classic McEliece decapsulation needs a private key');

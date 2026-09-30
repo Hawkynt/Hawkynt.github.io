@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GabidulinCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -153,13 +153,15 @@
   class GabidulinCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GabidulinCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Gabidulin [4,2] code over GF(2^2)
@@ -177,6 +179,7 @@
       // Each row is [g_i, g_i^[1], g_i^[2], g_i^[3]]
       // where g^[j] means applying Frobenius j times
       // Frobenius: 0->0, 1->1, 2(α)->3(α+1), 3(α+1)->2(α)
+      /** @type {uint8[][]} */
       this.generatorMatrix = [
         [1, 1, 1, 1], // g_0 = 1 -> [σ^0(1), σ^1(1), σ^2(1), σ^3(1)] = [1, 1, 1, 1]
         [0, 1, 3, 2]  // g_1 = α -> [σ^0(α), σ^1(α), σ^2(α), σ^3(α)] = [2, 3, 2, 3] but evaluated at points
@@ -217,15 +220,28 @@
     // GF(4) arithmetic operations
     // GF(4) = {0, 1, α, α+1} represented as {0, 1, 2, 3}
     // Primitive polynomial: x^2 + x + 1
+    /**
+     * @param {int32} a - GF(4) element
+     * @param {int32} b - GF(4) element
+     * @returns {int32} a + b
+     */
     gf4Add(a, b) {
-      return a^b; // XOR for GF(2^m) field addition
+      return OpCodes.ToInt(OpCodes.Xor32(a, b)); // XOR for GF(2^m) field addition
     }
 
+    /**
+     * @param {int32} a - GF(4) element
+     * @param {int32} b - GF(4) element
+     * @returns {int32} a * b
+     */
     gf4Multiply(a, b) {
-      if (a === 0 || b === 0) return 0;
+      if (a === 0 || b === 0) {
+        return 0;
+      }
 
       // Multiplication table for GF(4)
       // Generated from polynomial basis with x^2 + x + 1
+      /** @type {uint8[][]} */
       const mulTable = [
         [0, 0, 0, 0],
         [0, 1, 2, 3],
@@ -237,7 +253,13 @@
     }
 
     // Frobenius automorphism: σ(x) = x^2 in GF(2^m)
+    /**
+     * @param {int32} element - GF(4) element
+     * @param {int32} [power=1] - Number of applications
+     * @returns {int32} sigma^power(element)
+     */
     frobeniusMap(element, power = 1) {
+      /** @type {int32} */
       let result = element;
 
       // Apply Frobenius map 'power' times
@@ -254,26 +276,33 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode k message symbols to n codeword symbols
       if (data.length !== this.k) {
-        throw new Error(`Gabidulin encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("Gabidulin encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] > 3 || !Number.isInteger(data[i])) {
-          throw new Error(`Gabidulin encode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Gabidulin encode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Matrix-vector multiplication over GF(4)
       // c = m * G where m is message vector, G is generator matrix
       for (let j = 0; j < this.n; ++j) {
+        /** @type {int32} */
         let sum = 0;
         for (let i = 0; i < this.k; ++i) {
+          /** @type {int32} */
           const product = this.gf4Multiply(data[i], this.generatorMatrix[i][j]);
           sum = this.gf4Add(sum, product);
         }
@@ -283,15 +312,19 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== this.n) {
-        throw new Error(`Gabidulin decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("Gabidulin decode: Input must be exactly " + this.n + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] > 3 || !Number.isInteger(data[i])) {
-          throw new Error(`Gabidulin decode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Gabidulin decode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -299,13 +332,16 @@
       // For educational implementation, use maximum likelihood decoding
       // Real Gabidulin decoding uses Welch-Berlekamp-like algorithms for rank metric
 
+      /** @type {float64} */
       let minRankDistance = Infinity;
-      let bestMessage = new Array(this.k).fill(0);
+      /** @type {uint8[]} */
+      let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Try all 4^k possible messages (feasible for small k)
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
+        /** @type {uint8[]} */
         const message = [];
         let temp = msgIndex;
 
@@ -314,9 +350,11 @@
           temp = Math.floor(temp / 4);
         }
 
+        /** @type {uint8[]} */
         const testCodeword = this.encode(message);
 
         // Calculate rank distance (number of linearly independent error symbols)
+        /** @type {int32} */
         const rankDist = this.calculateRankDistance(data, testCodeword);
 
         if (rankDist < minRankDistance) {
@@ -328,11 +366,17 @@
       return bestMessage;
     }
 
+    /**
+     * @param {uint8[]} codeword1 - First codeword
+     * @param {uint8[]} codeword2 - Second codeword
+     * @returns {int32} Hamming distance, used as the rank-distance approximation
+     */
     calculateRankDistance(codeword1, codeword2) {
       // Rank distance = rank of error vector over base field
       // For simplified implementation, use Hamming distance as approximation
       // Real rank distance requires computing rank of matrix formed by error coordinates
 
+      /** @type {int32} */
       let hammingDistance = 0;
 
       for (let i = 0; i < this.n; ++i) {
@@ -346,6 +390,10 @@
       return hammingDistance;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this.n) return true;
 

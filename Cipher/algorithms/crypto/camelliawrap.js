@@ -41,25 +41,14 @@
     throw new Error('OpCodes dependency is required');
   }
 
+  // Camellia must be registered (loading the module registers it)
+  if (!AlgorithmFramework.Find("Camellia")) {
+    throw new Error('Camellia algorithm dependency is required');
+  }
+
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
-
-  // Get Camellia algorithm
-  let CamelliaAlgorithm;
-  if (CamelliaModule && CamelliaModule.CamelliaAlgorithm) {
-    CamelliaAlgorithm = CamelliaModule.CamelliaAlgorithm;
-  } else {
-    // Try global registry
-    CamelliaAlgorithm = AlgorithmFramework.Find("Camellia");
-    if (CamelliaAlgorithm && CamelliaAlgorithm.constructor) {
-      CamelliaAlgorithm = CamelliaAlgorithm.constructor;
-    }
-  }
-
-  if (!CamelliaAlgorithm) {
-    throw new Error('Camellia algorithm dependency is required');
-  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -112,7 +101,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CamelliaWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -129,21 +118,29 @@
   class CamelliaWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CamelliaWrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Default IV from RFC 3394
+      /** @type {uint8[]} */
       this.DEFAULT_IV = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6];
 
       // Create Camellia cipher instance
+      /** @type {IBlockCipherInstance|null} */
       this.camellia = null;
     }
 
@@ -161,12 +158,19 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
@@ -177,8 +181,10 @@
         throw new Error("Camellia cipher not available");
       }
 
-      this.camellia = camelliaAlgo.CreateInstance(false); // Always encrypt for wrapping
-      this.camellia.key = keyBytes;
+      /** @type {IBlockCipherInstance} */
+      const engine = camelliaAlgo.CreateInstance(false); // Always encrypt for wrapping
+      engine.key = keyBytes;
+      this.camellia = engine;
     }
 
     /**
@@ -203,7 +209,7 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes (must be 8)`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes (must be 8)");
       }
 
       this._iv = [...ivBytes];
@@ -229,14 +235,23 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._unwrap() : this._wrap();
       this.inputBuffer = [];
       return result;
     }
 
+    /**
+     * Wrap the buffered key data (RFC 3394 section 2.2.1)
+     * @returns {uint8[]} Wrapped data
+     */
     _wrap() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      const iv = this._iv || this.DEFAULT_IV;
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : this.DEFAULT_IV;
+      /** @type {IBlockCipherInstance} */
+      const engine = this.camellia;
 
       // Validate input length
       if (input.length < 8) {
@@ -247,18 +262,23 @@
         throw new Error("Wrap data must be a multiple of 8 bytes");
       }
 
+      /** @type {int32} */
       const n = input.length / 8;
 
       // Initialize output block: IV || input
+      /** @type {uint8[]} */
       const block = [...iv, ...input];
 
       // Special case: single 8-byte block
       if (n === 1) {
-        this.camellia.Feed(block);
-        return this.camellia.Result();
+        engine.Feed(block);
+        /** @type {uint8[]} */
+        const single = engine.Result();
+        return single;
       }
 
       // RFC 3394 wrap algorithm
+      /** @type {uint8[]} */
       const buf = new Array(16);
 
       for (let j = 0; j < 6; ++j) {
@@ -269,19 +289,22 @@
             buf[k + 8] = block[8 * i + k];
           }
 
-          this.camellia.Feed(buf);
-          const encrypted = this.camellia.Result();
+          engine.Feed(buf);
+          /** @type {uint8[]} */
+          const encrypted = engine.Result();
 
           // A = MSB(64, B)^t where t = (n*j)+i
+          /** @type {uint32} */
           const t = n * j + i;
           for (let k = 0; k < 8; ++k) {
             block[k] = encrypted[k];
           }
 
           // XOR the time step into A (big-endian)
+          /** @type {uint32} */
           let tVal = t;
           for (let k = 1; tVal !== 0; ++k) {
-            block[8 - k] = OpCodes.Xor32(block[8 - k], OpCodes.ToByte(tVal));
+            block[8 - k] = OpCodes.Xor8(block[8 - k], OpCodes.ToByte(tVal));
             tVal = OpCodes.Shr32(tVal, 8);
           }
 
@@ -295,9 +318,15 @@
       return block;
     }
 
+    /**
+     * Unwrap the buffered data (RFC 3394 section 2.2.2)
+     * @returns {uint8[]} Unwrapped key data
+     */
     _unwrap() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      const iv = this._iv || this.DEFAULT_IV;
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : this.DEFAULT_IV;
 
       // Validate input length
       if (input.length < 16) {
@@ -308,11 +337,15 @@
         throw new Error("Unwrap data must be a multiple of 8 bytes");
       }
 
+      /** @type {int32} */
       const n = (input.length / 8) - 1;
 
       // Split input into A and R[1]...R[n]
+      /** @type {uint8[]} */
       const a = new Array(8);
+      /** @type {uint8[]} */
       const block = new Array(input.length - 8);
+      /** @type {uint8[]} */
       const buf = new Array(16);
 
       for (let i = 0; i < 8; ++i) {
@@ -325,12 +358,14 @@
 
       // Need decrypt instance for unwrapping
       const camelliaAlgo = AlgorithmFramework.Find("Camellia");
+      /** @type {IBlockCipherInstance} */
       const camelliaDecrypt = camelliaAlgo.CreateInstance(true); // Decrypt
       camelliaDecrypt.key = this._key;
 
       // Special case: single block
       if (n === 1) {
         camelliaDecrypt.Feed(input);
+        /** @type {uint8[]} */
         const decrypted = camelliaDecrypt.Result();
 
         // Check IV
@@ -352,14 +387,17 @@
             buf[k + 8] = block[8 * (i - 1) + k];
           }
 
+          /** @type {uint32} */
           const t = n * j + i;
+          /** @type {uint32} */
           let tVal = t;
           for (let k = 1; tVal !== 0; ++k) {
-            buf[8 - k] = OpCodes.Xor32(buf[8 - k], OpCodes.ToByte(tVal));
+            buf[8 - k] = OpCodes.Xor8(buf[8 - k], OpCodes.ToByte(tVal));
             tVal = OpCodes.Shr32(tVal, 8);
           }
 
           camelliaDecrypt.Feed(buf);
+          /** @type {uint8[]} */
           const decrypted = camelliaDecrypt.Result();
 
           // A = MSB(64, B)
@@ -375,9 +413,10 @@
       }
 
       // Verify IV using constant-time comparison
+      /** @type {uint32} */
       let diff = 0;
       for (let i = 0; i < 8; ++i) {
-        diff = OpCodes.ToUint32(OpCodes.Or32(diff, OpCodes.Xor32(a[i], iv[i])));
+        diff = OpCodes.Or32(diff, OpCodes.Xor32(a[i], iv[i]));
       }
 
       if (diff !== 0) {

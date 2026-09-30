@@ -44,6 +44,70 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // Face indicator rows of the [[7,1,3]] lattice (copied wherever used)
+  /** @type {uint8[]} */
+  const FACE_012 = [1, 1, 1, 0, 0, 0, 0];
+  /** @type {uint8[]} */
+  const FACE_235 = [0, 0, 1, 1, 0, 1, 0];
+  /** @type {uint8[]} */
+  const FACE_145 = [0, 1, 0, 0, 1, 1, 0];
+  /** @type {uint8[]} */
+  const FACE_023 = [1, 0, 1, 1, 0, 0, 0];
+  /** @type {uint8[]} */
+  const FACE_125 = [0, 1, 1, 0, 0, 1, 0];
+  /** @type {uint8[]} */
+  const FACE_456 = [0, 0, 0, 0, 1, 1, 1];
+  /** @type {uint8[]} */
+  const FACE_013 = [1, 1, 0, 1, 0, 0, 0];
+  /** @type {uint8[]} */
+  const FACE_256 = [0, 0, 1, 0, 0, 1, 1];
+
+  /**
+   * Stabilizer counts as reported by getLatticeInfo()
+   * @class
+   */
+  class StabilizerCounts {
+    /**
+     * @param {int32} X - X-type generators
+     * @param {int32} Z - Z-type generators
+     */
+    constructor(X, Z) {
+      /** @type {int32} */
+      this.X = X;
+      /** @type {int32} */
+      this.Z = Z;
+    }
+  }
+
+  /**
+   * Lattice description as reported by getLatticeInfo()
+   * @class
+   */
+  class LatticeInfo {
+    /**
+     * @param {int32} vertices - Physical qubits
+     * @param {int32} logicalQubits - Logical qubits
+     * @param {int32} distance - Code distance
+     * @param {StabilizerCounts} stabilizers - Generator counts
+     */
+    constructor(vertices, logicalQubits, distance, stabilizers) {
+      /** @type {int32} */
+      this.vertices = vertices;
+      /** @type {int32} */
+      this.logicalQubits = logicalQubits;
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {StabilizerCounts} */
+      this.stabilizers = stabilizers;
+      /** @type {string} */
+      this.latticeType = 'Triangular (2-simplex)';
+      /** @type {string} */
+      this.colorCoding = '3-coloring (RED, GREEN, BLUE faces)';
+      /** @type {string} */
+      this.topology = 'Hexagonal plaquettes with 3-body stabilizers';
+    }
+  }
+
   class TopologicalColorCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -122,7 +186,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TopologicalColorCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,13 +203,15 @@
   class TopologicalColorCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TopologicalColorCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Color code [[7,1,3]] parameters
@@ -172,57 +238,67 @@
       // Z-stabilizers detect bit-flip errors
 
       // RED face X-stabilizers (acting on vertices of red faces)
+      /** @type {uint8[][]} */
       this.stabilizerRedX = [
-        [1, 1, 1, 0, 0, 0, 0], // Face {0,1,2}
-        [0, 0, 1, 1, 0, 1, 0], // Face {2,3,5}
-        [0, 1, 0, 0, 1, 1, 0]  // Face {1,4,5}
+        FACE_012.slice(), // Face {0,1,2}
+        FACE_235.slice(), // Face {2,3,5}
+        FACE_145.slice()  // Face {1,4,5}
       ];
 
       // GREEN face X-stabilizers
+      /** @type {uint8[][]} */
       this.stabilizerGreenX = [
-        [1, 0, 1, 1, 0, 0, 0], // Face {0,2,3}
-        [0, 1, 1, 0, 0, 1, 0], // Face {1,2,5}
-        [0, 0, 0, 0, 1, 1, 1]  // Face {4,5,6}
+        FACE_023.slice(), // Face {0,2,3}
+        FACE_125.slice(), // Face {1,2,5}
+        FACE_456.slice()  // Face {4,5,6}
       ];
 
       // BLUE face X-stabilizers
+      /** @type {uint8[][]} */
       this.stabilizerBlueX = [
-        [1, 1, 0, 1, 0, 0, 0], // Face {0,1,3}
-        [0, 0, 1, 0, 0, 1, 1], // Face {2,5,6}
-        [0, 1, 0, 0, 1, 1, 0]  // Face {1,4,5} (redundant with red)
+        FACE_013.slice(), // Face {0,1,3}
+        FACE_256.slice(), // Face {2,5,6}
+        FACE_145.slice()  // Face {1,4,5} (redundant with red)
       ];
 
       // Z-stabilizers (same structure as X-stabilizers)
       // In CSS-type color codes, Z-stabilizers mirror X-stabilizers
+      /** @type {uint8[][]} */
       this.stabilizerRedZ = this.stabilizerRedX;
+      /** @type {uint8[][]} */
       this.stabilizerGreenZ = this.stabilizerGreenX;
+      /** @type {uint8[][]} */
       this.stabilizerBlueZ = this.stabilizerBlueX;
 
       // Independent stabilizers (non-redundant set)
       // 6 independent stabilizers for [[7,1,3]] code (n-k = 6)
+      /** @type {uint8[][]} */
       this.stabilizerGeneratorsX = [
-        [1, 1, 1, 0, 0, 0, 0], // Red face {0,1,2}
-        [0, 0, 1, 1, 0, 1, 0], // Red face {2,3,5}
-        [0, 1, 0, 0, 1, 1, 0], // Red/Blue face {1,4,5}
-        [1, 0, 1, 1, 0, 0, 0], // Green face {0,2,3}
-        [0, 1, 1, 0, 0, 1, 0], // Green face {1,2,5}
-        [0, 0, 0, 0, 1, 1, 1]  // Green face {4,5,6}
+        FACE_012.slice(), // Red face {0,1,2}
+        FACE_235.slice(), // Red face {2,3,5}
+        FACE_145.slice(), // Red/Blue face {1,4,5}
+        FACE_023.slice(), // Green face {0,2,3}
+        FACE_125.slice(), // Green face {1,2,5}
+        FACE_456.slice()  // Green face {4,5,6}
       ];
 
+      /** @type {uint8[][]} */
       this.stabilizerGeneratorsZ = [
-        [1, 1, 1, 0, 0, 0, 0], // Red Z-stabilizer
-        [0, 0, 1, 1, 0, 1, 0], // Red Z-stabilizer
-        [0, 1, 0, 0, 1, 1, 0], // Red/Blue Z-stabilizer
-        [1, 0, 1, 1, 0, 0, 0], // Green Z-stabilizer
-        [0, 1, 1, 0, 0, 1, 0], // Green Z-stabilizer
-        [0, 0, 0, 0, 1, 1, 1]  // Green Z-stabilizer
+        FACE_012.slice(), // Red Z-stabilizer
+        FACE_235.slice(), // Red Z-stabilizer
+        FACE_145.slice(), // Red/Blue Z-stabilizer
+        FACE_023.slice(), // Green Z-stabilizer
+        FACE_125.slice(), // Green Z-stabilizer
+        FACE_456.slice()  // Green Z-stabilizer
       ];
 
       // Logical operators (stabilizer-commuting operators)
       // Logical X operator: X̄ acts on qubits forming a path through lattice
+      /** @type {uint8[]} */
       this.logicalX = [1, 1, 1, 1, 1, 1, 1]; // All qubits (for [[7,1,3]] simplex code)
 
       // Logical Z operator: Z̄ anticommutes with X̄
+      /** @type {uint8[]} */
       this.logicalZ = [1, 1, 1, 1, 1, 1, 1]; // All qubits (dual structure)
     }
 
@@ -263,18 +339,23 @@
      * Encode logical qubit to 7 physical qubits using [[7,1,3]] color code
      * For classical simulation: |0⟩ → |0000000⟩, |1⟩ → |1111111⟩
      * Real quantum encoding preserves superposition: α|0⟩+β|1⟩ → α|0000000⟩+β|1111111⟩
+     * @param {uint8[]} logicalQubit - One logical bit
+     * @returns {uint8[]} Seven physical bits
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
-        throw new Error(`Color code encode: Input must be exactly ${this.k} logical qubit (as classical bit)`);
+        throw new Error("Color code encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
+      /** @type {uint8} */
       const logical = logicalQubit[0];
 
       // Color code logical codewords (CSS code structure)
       // Logical |0⟩ is the +1 eigenstate of all Z-stabilizers → |0000000⟩
       // Logical |1⟩ is obtained by applying logical X̄ → |1111111⟩
-      const encoded = new Array(this.n).fill(logical);
+      /** @type {uint8[]} */
+      const encoded = [];
+      for (let i = 0; i < this.n; ++i) encoded.push(logical);
 
       return encoded;
     }
@@ -283,45 +364,58 @@
      * Decode physical qubits with error correction
      * Measures X and Z stabilizers to detect and correct errors
      * Uses syndrome decoding to identify error locations on triangular lattice
+     * @param {uint8[]} physicalQubits - Seven physical bits
+     * @returns {uint8[]} One logical bit
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
-        throw new Error(`Color code decode: Input must be exactly ${this.n} physical qubits (as classical bits)`);
+        throw new Error("Color code decode: Input must be exactly " + this.n + " physical qubits (as classical bits)");
       }
 
       // Copy to avoid modifying input
-      const received = [...physicalQubits];
+      /** @type {uint8[]} */
+      const received = physicalQubits.slice();
 
       // Measure Z-stabilizers (detect X errors / bit-flips)
+      /** @type {uint8[]} */
       const syndromeZ = this.measureStabilizers(received, this.stabilizerGeneratorsZ);
 
       // Calculate error location from syndrome
+      /** @type {int32} */
       const errorPosition = this.decodeMinimumWeight(syndromeZ, this.stabilizerGeneratorsZ);
 
       // Correct bit-flip error if detected
       if (errorPosition !== -1 && errorPosition < this.n) {
-        received[errorPosition] = OpCodes.XorArrays([received[errorPosition]], [1])[0];
+        received[errorPosition] = OpCodes.And32(OpCodes.Xor32(received[errorPosition], 1), 0xFF);
       }
 
       // Extract logical qubit (majority vote for classical simulation)
       // Real quantum decoding would measure logical Z̄ operator
+      /** @type {uint8} */
       const logicalQubit = this.extractLogicalQubit(received);
 
-      return [logicalQubit];
+      /** @type {uint8[]} */
+      const decoded = [logicalQubit];
+      return decoded;
     }
 
     /**
      * Measure stabilizer generators
      * Returns syndrome (array of measurement outcomes)
+     * @param {uint8[]} qubits - Physical bits
+     * @param {uint8[][]} stabilizers - Generator rows
+     * @returns {uint8[]} Syndrome
      */
     measureStabilizers(qubits, stabilizers) {
+      /** @type {uint8[]} */
       const syndrome = [];
 
       for (let i = 0; i < stabilizers.length; ++i) {
+        /** @type {uint8} */
         let measurement = 0;
         for (let j = 0; j < this.n; ++j) {
           if (stabilizers[i][j] === 1) {
-            measurement = OpCodes.XorArrays([measurement], [qubits[j]])[0];
+            measurement = OpCodes.And32(OpCodes.Xor32(measurement, qubits[j]), 0xFF);
           }
         }
         syndrome.push(measurement);
@@ -333,10 +427,15 @@
     /**
      * Decode syndrome to error position using minimum weight matching
      * For [[7,1,3]] code, use lookup table for single-qubit errors
+     * @param {uint8[]} syndrome - Syndrome
+     * @param {uint8[][]} stabilizers - Generator rows
+     * @returns {int32} Error position, or -1
      */
     decodeMinimumWeight(syndrome, stabilizers) {
       // Check if syndrome is trivial (no error)
-      const syndromeSum = syndrome.reduce((sum, bit) => sum + bit, 0);
+      /** @type {int32} */
+      let syndromeSum = 0;
+      for (let i = 0; i < syndrome.length; ++i) syndromeSum += syndrome[i];
       if (syndromeSum === 0) {
         return -1; // No error detected
       }
@@ -345,6 +444,7 @@
       // Find qubit position that matches syndrome
       for (let pos = 0; pos < this.n; ++pos) {
         // Calculate expected syndrome for error at position pos
+        /** @type {uint8[]} */
         const expectedSyndrome = [];
         for (let i = 0; i < stabilizers.length; ++i) {
           expectedSyndrome.push(stabilizers[i][pos]);
@@ -372,9 +472,12 @@
     /**
      * Extract logical qubit using majority vote (classical approximation)
      * Real quantum systems would measure logical Z̄ operator
+     * @param {uint8[]} qubits - Physical bits
+     * @returns {uint8} Majority bit
      */
     extractLogicalQubit(qubits) {
       // Count ones
+      /** @type {int32} */
       let ones = 0;
       for (let i = 0; i < this.n; ++i) {
         ones += qubits[i];
@@ -386,6 +489,8 @@
 
     /**
      * Detect if error is present (public API)
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -393,11 +498,15 @@
       }
 
       // Measure all stabilizers
+      /** @type {uint8[]} */
       const syndromeX = this.measureStabilizers(data, this.stabilizerGeneratorsX);
+      /** @type {uint8[]} */
       const syndromeZ = this.measureStabilizers(data, this.stabilizerGeneratorsZ);
 
       // Check if any syndrome is non-trivial
-      const hasError = syndromeX.some(s => s !== 0) || syndromeZ.some(s => s !== 0);
+      let hasError = false;
+      for (let i = 0; i < syndromeX.length && !hasError; ++i) hasError = syndromeX[i] !== 0;
+      for (let i = 0; i < syndromeZ.length && !hasError; ++i) hasError = syndromeZ[i] !== 0;
 
       return hasError;
     }
@@ -406,18 +515,23 @@
      * Introduce error for testing (educational purposes)
      * errorType: 'X' (bit-flip), 'Z' (phase-flip), 'Y' (both)
      * position: qubit index 0-6
+     * @param {uint8[]} qubits - Physical bits
+     * @param {string} errorType - "X", "Z" or "Y"
+     * @param {int32} position - Qubit index
+     * @returns {uint8[]} Bits with the error applied
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'X':
           // X error: bit-flip (|0⟩↔|1⟩)
-          result[position] = OpCodes.XorArrays([result[position]], [1])[0];
+          result[position] = OpCodes.And32(OpCodes.Xor32(result[position], 1), 0xFF);
           break;
 
         case 'Z':
@@ -428,11 +542,11 @@
 
         case 'Y':
           // Y error: both X and Z errors (XZ = iY)
-          result[position] = OpCodes.XorArrays([result[position]], [1])[0];
+          result[position] = OpCodes.And32(OpCodes.Xor32(result[position], 1), 0xFF);
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}. Use 'X', 'Z', or 'Y'`);
+          throw new Error("Unknown error type: " + errorType + ". Use 'X', 'Z', or 'Y'");
       }
 
       return result;
@@ -440,20 +554,11 @@
 
     /**
      * Get lattice structure information (educational visualization)
+     * @returns {LatticeInfo} Lattice description
      */
     getLatticeInfo() {
-      return {
-        vertices: this.n,
-        logicalQubits: this.k,
-        distance: this.d,
-        stabilizers: {
-          X: this.stabilizerGeneratorsX.length,
-          Z: this.stabilizerGeneratorsZ.length
-        },
-        latticeType: 'Triangular (2-simplex)',
-        colorCoding: '3-coloring (RED, GREEN, BLUE faces)',
-        topology: 'Hexagonal plaquettes with 3-body stabilizers'
-      };
+      return new LatticeInfo(this.n, this.k, this.d,
+        new StabilizerCounts(this.stabilizerGeneratorsX.length, this.stabilizerGeneratorsZ.length));
     }
   }
 

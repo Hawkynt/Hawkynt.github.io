@@ -100,12 +100,15 @@
       ];
 
       // For test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
 
       // The cube holds 27 cells, which is the 26 letters plus one extra sign.
       // Nothing is merged: unlike a 5x5 Polybius square the trifid cube has
       // room for J in its own right.
+      /** @type {string} */
       this.STANDARD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ+';
+      /** @type {string[][][]} */
       this.STANDARD_CUBE = this.createCube(this.STANDARD_ALPHABET);
     }
 
@@ -115,15 +118,23 @@
      * @returns {string[][][]} layer/row/column cube
      */
     createCube(alphabet) {
+      /** @type {string[][][]} */
       const cube = [];
+      /** @type {int32} */
       let index = 0;
 
       for (let layer = 0; layer < 3; layer++) {
-        cube[layer] = [];
+        /** @type {string[][]} */
+        const rows = [];
+        cube.push(rows);
         for (let row = 0; row < 3; row++) {
-          cube[layer][row] = [];
+          /** @type {string[]} */
+          const cells = [];
+          rows.push(cells);
           for (let col = 0; col < 3; col++) {
-            cube[layer][row][col] = alphabet[index++];
+            /** @type {string} */
+            const cell = alphabet[index++];
+            cells.push(cell);
           }
         }
       }
@@ -138,23 +149,55 @@
      * @returns {string} 27-character alphabet
      */
     buildAlphabet(keyword) {
-      const letters = String(keyword).toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = String(keyword).toUpperCase();
+      /** @type {string} */
+      const letters = upper.replace(/[^A-Z]/g, '');
+      /** @type {string} */
       let mixed = '';
-      for (const char of letters)
+      for (let i = 0; i < letters.length; i++) {
+        /** @type {string} */
+        const char = letters.charAt(i);
         if (!mixed.includes(char)) mixed += char;
-      for (const char of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+      }
+      /** @type {string} */
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      for (let i = 0; i < alphabet.length; i++) {
+        /** @type {string} */
+        const char = alphabet.charAt(i);
         if (!mixed.includes(char)) mixed += char;
+      }
       return mixed + '+';
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TrifidInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new TrifidInstance(this, isInverse);
+    }
+  }
+
+  /**
+   * Position of a character in the cube
+   * @class
+   */
+  class CubePosition {
+    /**
+     * @param {int32} layer - Layer 0..2
+     * @param {int32} row - Row 0..2
+     * @param {int32} col - Column 0..2
+     */
+    constructor(layer, row, col) {
+      /** @type {int32} */
+      this.layer = layer;
+      /** @type {int32} */
+      this.row = row;
+      /** @type {int32} */
+      this.col = col;
     }
   }
 
@@ -167,18 +210,26 @@
   class TrifidInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TrifidCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {TrifidCipher} */
+      this.trifid = algorithm;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
+      /** @type {int32} */
       this.period = 5; // Default period
-      this.alphabet = this.algorithm.STANDARD_ALPHABET;
-      this.cube = JSON.parse(JSON.stringify(this.algorithm.STANDARD_CUBE));
+      /** @type {string} */
+      this.alphabet = algorithm.STANDARD_ALPHABET;
+      /** @type {string[][][]} */
+      this.cube = algorithm.createCube(algorithm.STANDARD_ALPHABET);
     }
 
     /**
@@ -186,37 +237,54 @@
      * @param {uint8[]|string} keyData - Key bytes or string
      */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
+      /** @type {string[]} */
       const parts = keyString.split(',');
+      /** @type {string} */
       let keyword = '';
+      /** @type {int32} */
       let period = 5;
 
       if (parts.length >= 2) {
         keyword = parts[0];
-        period = parseInt(parts[1], 10) || 5;
+        /** @type {int32} */
+        const parsed = parseInt(parts[1], 10);
+        period = parsed ? parsed : 5;
       } else {
+        /** @type {int32} */
         const asNumber = parseInt(parts[0], 10);
-        if (isNaN(asNumber)) keyword = parts[0] || '';
+        /** @type {boolean} */
+        const notANumber = isNaN(asNumber);
+        if (notANumber) keyword = parts[0] ? parts[0] : '';
         else period = asNumber;
       }
 
       this.period = Math.max(1, Math.min(period, 25));
-      this.alphabet = keyword.replace(/[^A-Za-z]/g, '').length > 0
-        ? this.algorithm.buildAlphabet(keyword)
-        : this.algorithm.STANDARD_ALPHABET;
-      this.cube = this.algorithm.createCube(this.alphabet);
+      /** @type {string} */
+      const keyLetters = keyword.replace(/[^A-Za-z]/g, '');
+      if (keyLetters.length > 0) {
+        /** @type {string} */
+        const mixed = this.trifid.buildAlphabet(keyword);
+        this.alphabet = mixed;
+      } else {
+        this.alphabet = this.trifid.STANDARD_ALPHABET;
+      }
+      this.cube = this.trifid.createCube(this.alphabet);
       this._key = keyString;
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key text
+   * @returns {string|null} Key text or null
    */
 
     get key() {
@@ -225,7 +293,7 @@
 
     /**
    * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
+   * @param {string|uint8[]} data - Input text, or its bytes
    * @throws {Error} If key not set
    */
 
@@ -233,11 +301,14 @@
       if (!data || data.length === 0) return;
 
       // Convert bytes to string for classical cipher
+      /** @type {string} */
       let text = '';
       if (typeof data === 'string') {
         text = data;
       } else {
-        text = String.fromCharCode(...data);
+        /** @type {uint8[]} */
+        const bytes = data;
+        text = String.fromCharCode(...bytes);
       }
 
       this.inputBuffer.push(text);
@@ -250,25 +321,34 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (this.inputBuffer.length === 0) return output;
 
+      /** @type {string} */
       const text = this.inputBuffer.join('');
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decryptText(text) : 
+      /** @type {string} */
+      const result = this.isInverse ?
+        this.decryptText(text) :
         this.encryptText(text);
 
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      // Convert string result to bytes (all cube characters are ASCII)
+      for (let i = 0; i < result.length; i++) output.push(result.charCodeAt(i));
+      return output;
     }
 
+    /**
+     * @param {string} char - Character
+     * @returns {CubePosition|null} Its position, or null when the cube lacks it
+     */
     findPosition(char) {
       for (let layer = 0; layer < 3; layer++) {
         for (let row = 0; row < 3; row++) {
           for (let col = 0; col < 3; col++) {
             if (this.cube[layer][row][col] === char) {
-              return { layer, row, col };
+              return new CubePosition(layer, row, col);
             }
           }
         }
@@ -284,21 +364,34 @@
      * @returns {string} Input restricted to cube characters
      */
     restrictToCube(text) {
+      /** @type {string} */
       let result = '';
-      for (const char of text.toUpperCase())
+      /** @type {string} */
+      const upper = text.toUpperCase();
+      for (let i = 0; i < upper.length; i++) {
+        /** @type {string} */
+        const char = upper.charAt(i);
         if (this.alphabet.includes(char)) result += char;
+      }
       return result;
     }
 
+    /**
+     * @param {string} plaintext - Text
+     * @returns {string} Ciphertext
+     */
     encryptText(plaintext) {
       // The cube is 27 cells for 26 letters and one sign, so J keeps its own
       // cell; folding J onto I here, as a 5x5 Polybius square must, left J
       // unreachable and contradicted the cube this file builds.
+      /** @type {string} */
       const text = this.restrictToCube(plaintext);
+      /** @type {string} */
       let result = '';
 
       // Process text in blocks of 'period' length
       for (let blockStart = 0; blockStart < text.length; blockStart += this.period) {
+        /** @type {string} */
         const block = text.substring(blockStart, Math.min(blockStart + this.period, text.length));
         result += this.processBlock(block, true);
       }
@@ -306,15 +399,22 @@
       return result;
     }
 
+    /**
+     * @param {string} ciphertext - Text
+     * @returns {string} Plaintext
+     */
     decryptText(ciphertext) {
       // The 27th sign is a perfectly ordinary ciphertext character. Stripping
       // it here, as "[^A-Z]" did, shortened the block and broke the round trip:
       // HELLO enciphered to BOJN+ and came back as DHNK.
+      /** @type {string} */
       const text = this.restrictToCube(ciphertext);
+      /** @type {string} */
       let result = '';
 
       // Process text in blocks of 'period' length
       for (let blockStart = 0; blockStart < text.length; blockStart += this.period) {
+        /** @type {string} */
         const block = text.substring(blockStart, Math.min(blockStart + this.period, text.length));
         result += this.processBlock(block, false);
       }
@@ -322,78 +422,102 @@
       return result;
     }
 
-    processBlock(block, encrypt) {
-      const coordinates = [];
-
-      // Convert characters to coordinates
-      for (let i = 0; i < block.length; i++) {
-        const char = block[i];
-        const pos = this.findPosition(char);
-        if (pos) {
-          coordinates.push(pos);
-        } else {
-          coordinates.push({ layer: 0, row: 0, col: 0 }); // Default
-        }
+    /**
+     * The cube character at a position, or 'A' when there is none
+     * @param {int32} layer - Layer
+     * @param {int32} row - Row
+     * @param {int32} col - Column
+     * @returns {string} Character
+     */
+    _cellOrA(layer, row, col) {
+      if (this.cube[layer] && this.cube[layer][row] && this.cube[layer][row][col]) {
+        return this.cube[layer][row][col];
       }
+      return 'A'; // Fallback
+    }
 
+    /**
+     * @param {string} block - Cube characters
+     * @param {boolean} encrypt - True to encrypt
+     * @returns {string} Transformed block
+     */
+    processBlock(block, encrypt) {
+      /** @type {string} */
       let result = '';
 
       if (encrypt) {
         // Encryption: separate layers, rows, and columns, then combine
-        const layers = coordinates.map(coord => coord.layer);
-        const rows = coordinates.map(coord => coord.row);
-        const cols = coordinates.map(coord => coord.col);
+        /** @type {int32[]} */
+        const layers = [];
+        /** @type {int32[]} */
+        const rows = [];
+        /** @type {int32[]} */
+        const cols = [];
+        for (let i = 0; i < block.length; i++) {
+          /** @type {CubePosition|null} */
+          const pos = this.findPosition(block.charAt(i));
+          layers.push(pos ? pos.layer : 0); // Default
+          rows.push(pos ? pos.row : 0);
+          cols.push(pos ? pos.col : 0);
+        }
+        /** @type {int32[]} */
         const combined = layers.concat(rows).concat(cols);
 
         // Group into triplets
         for (let i = 0; i < combined.length; i += 3) {
-          const layer = combined[i] || 0;
-          const row = combined[i + 1] || 0;
-          const col = combined[i + 2] || 0;
-
-          if (this.cube[layer] && this.cube[layer][row] && this.cube[layer][row][col]) {
-            result += this.cube[layer][row][col];
-          } else {
-            result += 'A'; // Fallback
-          }
+          /** @type {int32} */
+          const layer = combined[i] ? combined[i] : 0;
+          /** @type {int32} */
+          const row = combined[i + 1] ? combined[i + 1] : 0;
+          /** @type {int32} */
+          const col = combined[i + 2] ? combined[i + 2] : 0;
+          result += this._cellOrA(layer, row, col);
         }
       } else {
         // Decryption: convert back to coordinates and separate
+        /** @type {int32[]} */
         const combined = [];
 
         for (let i = 0; i < block.length; i++) {
-          const char = block[i];
-          const pos = this.findPosition(char);
+          /** @type {CubePosition|null} */
+          const pos = this.findPosition(block.charAt(i));
           if (pos) {
-            combined.push(pos.layer, pos.row, pos.col);
+            combined.push(pos.layer);
+            combined.push(pos.row);
+            combined.push(pos.col);
           } else {
-            combined.push(0, 0, 0);
+            combined.push(0);
+            combined.push(0);
+            combined.push(0);
           }
         }
 
         // Split back into layers, rows, cols
+        /** @type {int32} */
         const third = Math.ceil(combined.length / 3);
+        /** @type {int32[]} */
         const layers = combined.slice(0, third);
+        /** @type {int32[]} */
         const rows = combined.slice(third, third * 2);
+        /** @type {int32[]} */
         const cols = combined.slice(third * 2);
 
         // Recombine
         for (let i = 0; i < layers.length; i++) {
-          const layer = layers[i] || 0;
+          /** @type {int32} */
+          const layer = layers[i] ? layers[i] : 0;
+          /** @type {int32} */
           const row = (i < rows.length) ? rows[i] : 0;
+          /** @type {int32} */
           const col = (i < cols.length) ? cols[i] : 0;
-
-          if (this.cube[layer] && this.cube[layer][row] && this.cube[layer][row][col]) {
-            result += this.cube[layer][row][col];
-          } else {
-            result += 'A'; // Fallback
-          }
+          result += this._cellOrA(layer, row, col);
         }
       }
 
       return result;
     }
   }
+
 
   // Register the algorithm
 

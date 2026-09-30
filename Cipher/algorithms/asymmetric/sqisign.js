@@ -110,6 +110,7 @@
   // collection's extendable output function, which would have to be loaded at
   // module scope and would then be credited to this directory.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -117,6 +118,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -124,6 +126,7 @@
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x00000000, 0x80000000
   ];
 
+  /** @type {int32[]} */
   const KECCAK_ROTATION = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
@@ -143,7 +146,10 @@
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
-        let low = 0, high = 0;
+        /** @type {uint32} */
+        let low = 0;
+        /** @type {uint32} */
+        let high = 0;
         for (let y = 0; y < 5; ++y) {
           low = OpCodes.Xor32(low, state[2 * (x + 5 * y)]);
           high = OpCodes.Xor32(high, state[2 * (x + 5 * y) + 1]);
@@ -208,6 +214,11 @@
     }
   }
 
+  /**
+   * @param {Int32Array} state - state
+   * @param {int32} position - position
+   * @param {int32} value - value
+   */
   function StateXorByte(state, position, value) {
     const word = Math.floor(position / 8);
     const byteInWord = position % 8;
@@ -215,6 +226,11 @@
     state[index] = OpCodes.Xor32(state[index], OpCodes.Shl32(value, 8 * (byteInWord % 4)));
   }
 
+  /**
+   * @param {Int32Array} state - state
+   * @param {int32} position - position
+   * @returns {int32} Result
+   */
   function StateReadByte(state, position) {
     const word = Math.floor(position / 8);
     const byteInWord = position % 8;
@@ -224,9 +240,9 @@
 
   /**
    * SHAKE256 over the concatenation of the given byte strings.
-   * @param {Array} parts - byte arrays, absorbed in order
-   * @param {number} outputLength - bytes to squeeze
-   * @returns {number[]} the output
+   * @param {uint8[][]} parts - byte arrays, absorbed in order
+   * @param {int32} outputLength - bytes to squeeze
+   * @returns {uint8[]} the output
    */
   function Shake256(parts, outputLength) {
     const state = new Int32Array(50);
@@ -247,6 +263,7 @@
     StateXorByte(state, SHAKE256_RATE - 1, 0x80);
     KeccakPermute(state);
 
+    /** @type {uint8[]} */
     const out = new Array(outputLength);
     let offset = 0;
     for (let i = 0; i < outputLength; ++i) {
@@ -264,12 +281,22 @@
   // Scalars and field elements travel as BigInt. Bits are read by division
   // rather than by shifting, and powers of two are tabulated.
 
+  /**
+   * @param {int32} e - e
+   * @returns {BigInt} Result
+   */
   function PowerOfTwo(e) {
     return 2n ** BigInt(e);
   }
 
-  /** Little-endian bits of a non-negative BigInt, `count` of them. */
+  /**
+   * Little-endian bits of a non-negative BigInt, `count` of them.
+   * @param {BigInt} value - value
+   * @param {int32} count - count
+   * @returns {int32[]} Result
+   */
   function BitsOf(value, count) {
+    /** @type {int32[]} */
     const bits = new Array(count);
     let v = value;
     for (let i = 0; i < count; ++i) {
@@ -279,15 +306,27 @@
     return bits;
   }
 
-  /** Little-endian bytes to BigInt. */
+  /**
+   * Little-endian bytes to BigInt.
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} offset - offset
+   * @param {int32} length - length
+   * @returns {BigInt} Result
+   */
   function DecodeLittleEndian(bytes, offset, length) {
     let v = 0n;
     for (let i = length - 1; i >= 0; --i) v = v * 256n + BigInt(bytes[offset + i]);
     return v;
   }
 
-  /** BigInt to `length` little-endian bytes. */
+  /**
+   * BigInt to `length` little-endian bytes.
+   * @param {BigInt} value - value
+   * @param {int32} length - length
+   * @returns {uint8[]} Result
+   */
   function EncodeLittleEndian(value, length) {
+    /** @type {uint8[]} */
     const out = new Array(length);
     let v = value;
     for (let i = 0; i < length; ++i) {
@@ -303,9 +342,9 @@
    * Arithmetic of GF(p) and GF(p^2) = GF(p)[i]/(i^2 + 1) for one prime
    * p = 3 mod 4. Elements of GF(p) are BigInt in [0, p); elements of GF(p^2)
    * are { re, im } pairs of them.
-   * @param {bigint} P - the prime
-   * @param {number} encodedBytes - bytes of an encoded element of GF(p)
-   * @returns {object} the field operations
+   * @param {BigInt} P - the prime
+   * @param {int32} encodedBytes - bytes of an encoded element of GF(p)
+   * @returns {SqiField} the field operations
    */
   function MakeField(P, encodedBytes) {
     const PP = P * P;
@@ -313,12 +352,23 @@
     const INV3 = ((2n * P + 1n) % 3n === 0n) ? (2n * P + 1n) / 3n : (P + 1n) / 3n;
 
     // Exponents, as bit strings consumed from the top.
-    const exponentBits = e => BitsOf(e, e.toString(2).length);
+    /**
+     * @param {BigInt} e - an exponent
+     * @returns {int32[]} its bits, least significant first
+     */
+    function exponentBits(e) {
+      return BitsOf(e, e.toString(2).length);
+    }
     const E_SQRT = exponentBits((P + 1n) / 4n);
     const E_PRO = exponentBits((P - 3n) / 4n);
     const E_INV = exponentBits(P - 2n);
     const E_LEG = exponentBits((P - 1n) / 2n);
 
+    /**
+     * @param {BigInt} a - a
+     * @param {int32[]} bits - bits
+     * @returns {BigInt} Result
+     */
     function fpPow(a, bits) {
       let r = 1n;
       for (let i = bits.length - 1; i >= 0; --i) {
@@ -331,66 +381,184 @@
     const F = {
       P: P,
       bytes: encodedBytes,
-
-      fpAdd: (a, b) => { const s = a + b; return s >= P ? s - P : s; },
-      fpSub: (a, b) => { const s = a - b; return s < 0n ? s + P : s; },
-      fpNeg: a => (a === 0n ? 0n : P - a),
-      fpMul: (a, b) => a * b % P,
-      fpInv: a => fpPow(a, E_INV),
-      fpSqrt: a => fpPow(a, E_SQRT),
-      fpExp3Div4: a => fpPow(a, E_PRO),
-      fpIsSquare: a => (a === 0n) || (fpPow(a, E_LEG) === 1n),
-      fpHalf: a => a * INV2 % P,
-      fpDiv3: a => a * INV3 % P,
-
+      /**
+       * @param {BigInt} a - a
+       * @param {BigInt} b - b
+       * @returns {BigInt} a + b
+       */
+      fpAdd(a, b) { const s = a + b; return s >= P ? s - P : s; },
+      /**
+       * @param {BigInt} a - a
+       * @param {BigInt} b - b
+       * @returns {BigInt} a - b
+       */
+      fpSub(a, b) { const s = a - b; return s < 0n ? s + P : s; },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} -a
+       */
+      fpNeg(a) { return (a === 0n ? 0n : P - a); },
+      /**
+       * @param {BigInt} a - a
+       * @param {BigInt} b - b
+       * @returns {BigInt} a b
+       */
+      fpMul(a, b) { return a * b % P; },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} 1 / a
+       */
+      fpInv(a) { return fpPow(a, E_INV); },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} a^((p + 1) / 4)
+       */
+      fpSqrt(a) { return fpPow(a, E_SQRT); },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} a^((p - 3) / 4)
+       */
+      fpExp3Div4(a) { return fpPow(a, E_PRO); },
+      /**
+       * @param {BigInt} a - a
+       * @returns {boolean} whether a is a square
+       */
+      fpIsSquare(a) { return (a === 0n) || (fpPow(a, E_LEG) === 1n); },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} a / 2
+       */
+      fpHalf(a) { return a * INV2 % P; },
+      /**
+       * @param {BigInt} a - a
+       * @returns {BigInt} a / 3
+       */
+      fpDiv3(a) { return a * INV3 % P; },
       // --- GF(p^2) ---
-      zero: () => ({ re: 0n, im: 0n }),
-      one: () => ({ re: 1n, im: 0n }),
-      of: (re, im) => ({ re: re, im: im }),
-      small: n => ({ re: BigInt(n) % P, im: 0n }),
-
-      add: (a, b) => {
+      /**
+       * @returns {Fp2} zero
+       */
+      zero() { return new Fp2(0n, 0n); },
+      /**
+       * @returns {Fp2} one
+       */
+      one() { return new Fp2(1n, 0n); },
+      // An arrow rather than a method: the parsers the tests and the
+      // transpiler share read a method named of as the for-of keyword.
+      of: (re, im) => new Fp2(re, im),
+      /**
+       * @param {int32} n - a small integer
+       * @returns {Fp2} n
+       */
+      small(n) { return new Fp2(BigInt(n) % P, 0n); },
+      /**
+       * @param {Fp2} a - a
+       * @param {Fp2} b - b
+       * @returns {Fp2} a + b
+       */
+      add(a, b) {
         let re = a.re + b.re; if (re >= P) re -= P;
         let im = a.im + b.im; if (im >= P) im -= P;
-        return { re: re, im: im };
+        return new Fp2(re, im);
       },
-      sub: (a, b) => {
+      /**
+       * @param {Fp2} a - a
+       * @param {Fp2} b - b
+       * @returns {Fp2} a - b
+       */
+      sub(a, b) {
         let re = a.re - b.re; if (re < 0n) re += P;
         let im = a.im - b.im; if (im < 0n) im += P;
-        return { re: re, im: im };
+        return new Fp2(re, im);
       },
-      neg: a => ({ re: a.re === 0n ? 0n : P - a.re, im: a.im === 0n ? 0n : P - a.im }),
-      mul: (a, b) => ({
-        re: (a.re * b.re + PP - a.im * b.im) % P,
-        im: (a.re * b.im + a.im * b.re) % P
-      }),
-      sqr: a => ({
-        re: (a.re + a.im) * (a.re + P - a.im) % P,
-        im: 2n * a.re * a.im % P
-      }),
-      mulSmall: (a, n) => ({ re: a.re * BigInt(n) % P, im: a.im * BigInt(n) % P }),
-      half: a => ({ re: a.re * INV2 % P, im: a.im * INV2 % P }),
-      div3: a => ({ re: a.re * INV3 % P, im: a.im * INV3 % P }),
-      isZero: a => a.re === 0n && a.im === 0n,
-      isOne: a => a.re === 1n && a.im === 0n,
-      equal: (a, b) => a.re === b.re && a.im === b.im,
-      copy: a => ({ re: a.re, im: a.im }),
-
-      inv: a => {
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} -a
+       */
+      neg(a) { return new Fp2(a.re === 0n ? 0n : P - a.re, a.im === 0n ? 0n : P - a.im); },
+      /**
+       * @param {Fp2} a - a
+       * @param {Fp2} b - b
+       * @returns {Fp2} a b
+       */
+      mul(a, b) {
+        return new Fp2(
+          (a.re * b.re + PP - a.im * b.im) % P,
+          (a.re * b.im + a.im * b.re) % P
+        );
+      },
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} a^2
+       */
+      sqr(a) {
+        return new Fp2(
+          (a.re + a.im) * (a.re + P - a.im) % P,
+          2n * a.re * a.im % P
+        );
+      },
+      /**
+       * @param {Fp2} a - a
+       * @param {int32} n - a small integer
+       * @returns {Fp2} n a
+       */
+      mulSmall(a, n) { return new Fp2(a.re * BigInt(n) % P, a.im * BigInt(n) % P); },
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} a / 2
+       */
+      half(a) { return new Fp2(a.re * INV2 % P, a.im * INV2 % P); },
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} a / 3
+       */
+      div3(a) { return new Fp2(a.re * INV3 % P, a.im * INV3 % P); },
+      /**
+       * @param {Fp2} a - a
+       * @returns {boolean} whether a is zero
+       */
+      isZero(a) { return a.re === 0n && a.im === 0n; },
+      /**
+       * @param {Fp2} a - a
+       * @returns {boolean} whether a is one
+       */
+      isOne(a) { return a.re === 1n && a.im === 0n; },
+      /**
+       * @param {Fp2} a - a
+       * @param {Fp2} b - b
+       * @returns {boolean} whether a equals b
+       */
+      equal(a, b) { return a.re === b.re && a.im === b.im; },
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} a copy of a
+       */
+      copy(a) { return new Fp2(a.re, a.im); },
+      /**
+       * @param {Fp2} a - a
+       * @returns {Fp2} 1 / a
+       */
+      inv(a) {
         const norm = (a.re * a.re + a.im * a.im) % P;
         const t = fpPow(norm, E_INV);
-        return { re: a.re * t % P, im: (P - a.im * t % P) % P };
+        return new Fp2(a.re * t % P, (P - a.im * t % P) % P);
       },
-
-      isSquare: a => {
+      /**
+       * @param {Fp2} a - a
+       * @returns {boolean} whether a is a square
+       */
+      isSquare(a) {
         const norm = (a.re * a.re + a.im * a.im) % P;
         return (norm === 0n) || (fpPow(norm, E_LEG) === 1n);
       },
-
       // The canonical square root of the reference (Aardal et al.,
       // eprint 2024/1563): the root whose real part is even, or whose
       // imaginary part is even when the real part is zero.
-      sqrt: a => {
+      /**
+       * @param {Fp2} a - a square
+       * @returns {Fp2} its canonical root
+       */
+      sqrt(a) {
         let x0 = fpPow((a.re * a.re + a.im * a.im) % P, E_SQRT);
         if (a.im === 0n) x0 = a.re;
         x0 = F.fpAdd(x0, a.re);
@@ -401,69 +569,992 @@
         let t1 = F.fpAdd(x0, x0);
         t1 = t1 * t1 % P;
         const f = (t0 === t1);
-        let r0, r1;
+        /** @type {BigInt} */
+        let r0;
+        /** @type {BigInt} */
+        let r1;
         if (f) { r0 = x0; r1 = x1; } else { r0 = x1; r1 = F.fpNeg(x0); }
         const negate = (r0 % 2n === 1n) || (r0 === 0n && r1 % 2n === 1n);
         if (negate) { r0 = F.fpNeg(r0); r1 = F.fpNeg(r1); }
-        return { re: r0, im: r1 };
+        return new Fp2(r0, r1);
       },
-
-      /** Encode an element of GF(p^2): real part, then imaginary, little-endian. */
-      encode: a => EncodeLittleEndian(a.re, encodedBytes).concat(EncodeLittleEndian(a.im, encodedBytes)),
-
-      /** Decode; a non-canonical half decodes to zero, as the reference does. */
-      decode: (bytes, offset) => {
+      /**
+       * Encode an element of GF(p^2): real part, then imaginary, little-endian.
+       * @param {Fp2} a - a
+       * @returns {uint8[]} its encoding
+       */
+      encode(a) { return EncodeLittleEndian(a.re, encodedBytes).concat(EncodeLittleEndian(a.im, encodedBytes)); },
+      /**
+       * Decode; a non-canonical half decodes to zero, as the reference does.
+       * @param {uint8[]} bytes - the encoding
+       * @param {int32} offset - where it starts
+       * @returns {Fp2} the element
+       */
+      decode(bytes, offset) {
         let re = DecodeLittleEndian(bytes, offset, encodedBytes);
         let im = DecodeLittleEndian(bytes, offset + encodedBytes, encodedBytes);
         if (re >= P) re = 0n;
         if (im >= P) im = 0n;
-        return { re: re, im: im };
+        return new Fp2(re, im);
       }
     };
 
-    /** Invert every element at once; a zero among them zeroes them all. */
+    /**
+     * Invert every element at once; a zero among them zeroes them all.
+     * @param {Fp2[]} xs - the elements
+     * @returns {Fp2[]} their inverses
+     */
     F.batchedInv = function (xs) {
       const len = xs.length;
+      /** @type {Fp2[]} */
       const t1 = new Array(len);
       t1[0] = xs[0];
       for (let i = 1; i < len; ++i) t1[i] = F.mul(t1[i - 1], xs[i]);
       const inverse = F.inv(t1[len - 1]);
+      /** @type {Fp2[]} */
       const t2 = new Array(len);
       t2[0] = inverse;
       for (let i = 1; i < len; ++i) t2[i] = F.mul(t2[i - 1], xs[len - i]);
+      /** @type {Fp2[]} */
       const out = new Array(len);
       out[0] = t2[len - 1];
       for (let i = 1; i < len; ++i) out[i] = F.mul(t1[i - 1], t2[len - i - 1]);
       return out;
     };
 
-    return F;
+    return new SqiField(F);
+  }
+
+  // ===== value classes =====
+
+  /** An element re + i im of GF(p^2). */
+  class Fp2 {
+    /**
+     * @param {BigInt} re - the real part
+     * @param {BigInt} im - the imaginary part
+     */
+    constructor(re, im) {
+      /** @type {BigInt} */
+      this.re = re;
+      /** @type {BigInt} */
+      this.im = im;
+    }
+  }
+
+  /**
+   * The operations of one field GF(p^2), the closures MakeField builds, as own
+   * properties in the order the object literal held them.
+   */
+  class SqiField {
+    /**
+     * @param {Object} ops - the object literal of the operations
+     */
+    constructor(ops) {
+      /** @type {BigInt} */
+      this.P = ops.P;
+      /** @type {int32} */
+      this.bytes = ops.bytes;
+      this.fpAdd = ops.fpAdd;
+      this.fpSub = ops.fpSub;
+      this.fpNeg = ops.fpNeg;
+      this.fpMul = ops.fpMul;
+      this.fpInv = ops.fpInv;
+      this.fpSqrt = ops.fpSqrt;
+      this.fpExp3Div4 = ops.fpExp3Div4;
+      this.fpIsSquare = ops.fpIsSquare;
+      this.fpHalf = ops.fpHalf;
+      this.fpDiv3 = ops.fpDiv3;
+      this.zero = ops.zero;
+      this.one = ops.one;
+      this.of = ops.of;
+      this.small = ops.small;
+      this.add = ops.add;
+      this.sub = ops.sub;
+      this.neg = ops.neg;
+      this.mul = ops.mul;
+      this.sqr = ops.sqr;
+      this.mulSmall = ops.mulSmall;
+      this.half = ops.half;
+      this.div3 = ops.div3;
+      this.isZero = ops.isZero;
+      this.isOne = ops.isOne;
+      this.equal = ops.equal;
+      this.copy = ops.copy;
+      this.inv = ops.inv;
+      this.isSquare = ops.isSquare;
+      this.sqrt = ops.sqrt;
+      this.encode = ops.encode;
+      this.decode = ops.decode;
+      this.batchedInv = ops.batchedInv;
+    }
+  }
+
+  /** One parameter set, in the order the object literal held its fields. */
+  class SqiParams {
+    /**
+     * @param {string} name - the set name
+     * @param {SqiField} F - its field
+     * @param {BigInt} cofactor - the cofactor of p + 1
+     * @param {int32} cofactorBits - its bit length
+     * @param {int32} torsionPower - the power of two dividing p + 1
+     * @param {int32} responseLength - the response length
+     * @param {int32} securityBits - the security level in bits
+     * @param {int32} hashIterations - the SHAKE256 iterations of the challenge
+     * @param {int32} fpBytes - octets of an element of GF(p)
+     * @param {int32} fp2Bytes - octets of an element of GF(p^2)
+     * @param {int32} publicKeyBytes - octets of a public key
+     * @param {int32} signatureBytes - octets of a signature
+     * @param {int32} matrixEntryBytes - octets of a matrix entry
+     * @param {Fp2} e0P - x(P) of the basis of E0
+     * @param {Fp2} e0Q - x(Q) of the basis of E0
+     */
+    constructor(name, F, cofactor, cofactorBits, torsionPower, responseLength, securityBits, hashIterations,
+                fpBytes, fp2Bytes, publicKeyBytes, signatureBytes, matrixEntryBytes, e0P, e0Q) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {SqiField} */
+      this.F = F;
+      /** @type {BigInt} */
+      this.cofactor = cofactor;
+      /** @type {int32} */
+      this.cofactorBits = cofactorBits;
+      /** @type {int32} */
+      this.torsionPower = torsionPower;
+      /** @type {int32} */
+      this.responseLength = responseLength;
+      /** @type {int32} */
+      this.securityBits = securityBits;
+      /** @type {int32} */
+      this.hashIterations = hashIterations;
+      /** @type {int32} */
+      this.fpBytes = fpBytes;
+      /** @type {int32} */
+      this.fp2Bytes = fp2Bytes;
+      /** @type {int32} */
+      this.publicKeyBytes = publicKeyBytes;
+      /** @type {int32} */
+      this.signatureBytes = signatureBytes;
+      /** @type {int32} */
+      this.matrixEntryBytes = matrixEntryBytes;
+      /** @type {Fp2} */
+      this.e0P = e0P;
+      /** @type {Fp2} */
+      this.e0Q = e0Q;
+    }
+  }
+
+  /** A point (x : z) of the Kummer line. */
+  class XzPoint {
+    /**
+     * @param {Fp2} x - X
+     * @param {Fp2} z - Z
+     */
+    constructor(x, z) {
+      /** @type {Fp2} */
+      this.x = x;
+      /** @type {Fp2} */
+      this.z = z;
+    }
+  }
+
+  /** A Montgomery curve (A : C) with its (A + 2C : 4C). */
+  class MontCurve {
+    /**
+     * @param {Fp2} A - A
+     * @param {Fp2} C - C
+     * @param {XzPoint} A24 - (A + 2C : 4C)
+     * @param {boolean} normalized - whether A24 has z = 1
+     */
+    constructor(A, C, A24, normalized) {
+      /** @type {Fp2} */
+      this.A = A;
+      /** @type {Fp2} */
+      this.C = C;
+      /** @type {XzPoint} */
+      this.A24 = A24;
+      /** @type {boolean} */
+      this.normalized = normalized;
+    }
+  }
+
+  /** x(P), x(Q) and x(P - Q). */
+  class XzBasis {
+    /**
+     * @param {XzPoint} P - P
+     * @param {XzPoint} Q - Q
+     * @param {XzPoint} PmQ - P - Q
+     */
+    constructor(P, Q, PmQ) {
+      /** @type {XzPoint} */
+      this.P = P;
+      /** @type {XzPoint} */
+      this.Q = Q;
+      /** @type {XzPoint} */
+      this.PmQ = PmQ;
+    }
+  }
+
+  /** A 2-isogeny: the codomain's (A + 2C : 4C) and the evaluation constants. */
+  class Isogeny2 {
+    /**
+     * @param {XzPoint} A24 - the codomain
+     * @param {XzPoint} K - the evaluation constants
+     */
+    constructor(A24, K) {
+      /** @type {XzPoint} */
+      this.A24 = A24;
+      /** @type {XzPoint} */
+      this.K = K;
+    }
+  }
+
+  /** A 4-isogeny: the codomain's (A + 2C : 4C) and the evaluation constants. */
+  class Isogeny4 {
+    /**
+     * @param {XzPoint} A24 - the codomain
+     * @param {Fp2[]} K - the three evaluation constants
+     */
+    constructor(A24, K) {
+      /** @type {XzPoint} */
+      this.A24 = A24;
+      /** @type {Fp2[]} */
+      this.K = K;
+    }
+  }
+
+  /** A Jacobian point (X : Y : Z). */
+  class JacPoint {
+    /**
+     * @param {Fp2} x - X
+     * @param {Fp2} y - Y
+     * @param {Fp2} z - Z
+     */
+    constructor(x, y, z) {
+      /** @type {Fp2} */
+      this.x = x;
+      /** @type {Fp2} */
+      this.y = y;
+      /** @type {Fp2} */
+      this.z = z;
+    }
+  }
+
+  /** P and Q lifted to Jacobian points, and whether P lifted. */
+  class LiftedBasis {
+    /**
+     * @param {boolean} ok - whether y(P) exists
+     * @param {JacPoint} P - P
+     * @param {JacPoint} Q - Q
+     */
+    constructor(ok, P, Q) {
+      /** @type {boolean} */
+      this.ok = ok;
+      /** @type {JacPoint} */
+      this.P = P;
+      /** @type {JacPoint} */
+      this.Q = Q;
+    }
+  }
+
+  /** A point in modified Jacobian coordinates of the short Weierstrass model. */
+  class WsPoint {
+    /**
+     * @param {JacPoint} Q - the point
+     * @param {Fp2} t - a Z^4
+     * @param {Fp2} ao3 - A / 3
+     */
+    constructor(Q, t, ao3) {
+      /** @type {JacPoint} */
+      this.Q = Q;
+      /** @type {Fp2} */
+      this.t = t;
+      /** @type {Fp2} */
+      this.ao3 = ao3;
+    }
+  }
+
+  /** A doubled point in modified Jacobian coordinates. */
+  class WsDouble {
+    /**
+     * @param {JacPoint} Q - the point
+     * @param {Fp2} u - the new a Z^4
+     */
+    constructor(Q, u) {
+      /** @type {JacPoint} */
+      this.Q = Q;
+      /** @type {Fp2} */
+      this.u = u;
+    }
+  }
+
+  /** u, v, w with x(P + Q) = (u - v : w) and x(P - Q) = (u + v : w). */
+  class AddComponents {
+    /**
+     * @param {Fp2} u - u
+     * @param {Fp2} v - v
+     * @param {Fp2} w - w
+     */
+    constructor(u, v, w) {
+      /** @type {Fp2} */
+      this.u = u;
+      /** @type {Fp2} */
+      this.v = v;
+      /** @type {Fp2} */
+      this.w = w;
+    }
+  }
+
+  /** A couple of Jacobian points on E1 x E2. */
+  class JacCouple {
+    /**
+     * @param {JacPoint} P1 - on E1
+     * @param {JacPoint} P2 - on E2
+     */
+    constructor(P1, P2) {
+      /** @type {JacPoint} */
+      this.P1 = P1;
+      /** @type {JacPoint} */
+      this.P2 = P2;
+    }
+  }
+
+  /** A couple of x-only points on E1 x E2. */
+  class XzCouple {
+    /**
+     * @param {XzPoint} P1 - on E1
+     * @param {XzPoint} P2 - on E2
+     */
+    constructor(P1, P2) {
+      /** @type {XzPoint} */
+      this.P1 = P1;
+      /** @type {XzPoint} */
+      this.P2 = P2;
+    }
+  }
+
+  /** The kernel of the dimension-two isogeny: T1, T2 and T1 - T2 on E1 x E2. */
+  class CoupleKernel {
+    /**
+     * @param {XzCouple} T1 - T1
+     * @param {XzCouple} T2 - T2
+     * @param {XzCouple} T1m2 - T1 - T2
+     */
+    constructor(T1, T2, T1m2) {
+      /** @type {XzCouple} */
+      this.T1 = T1;
+      /** @type {XzCouple} */
+      this.T2 = T2;
+      /** @type {XzCouple} */
+      this.T1m2 = T1m2;
+    }
+  }
+
+  /** A product E1 x E2. */
+  class CurvePair {
+    /**
+     * @param {MontCurve} E1 - E1
+     * @param {MontCurve} E2 - E2
+     */
+    constructor(E1, E2) {
+      /** @type {MontCurve} */
+      this.E1 = E1;
+      /** @type {MontCurve} */
+      this.E2 = E2;
+    }
+  }
+
+  /** A theta point (x : y : z : t). */
+  class ThetaPoint {
+    /**
+     * @param {Fp2} x - x
+     * @param {Fp2} y - y
+     * @param {Fp2} z - z
+     * @param {Fp2} t - t
+     */
+    constructor(x, y, z, t) {
+      /** @type {Fp2} */
+      this.x = x;
+      /** @type {Fp2} */
+      this.y = y;
+      /** @type {Fp2} */
+      this.z = z;
+      /** @type {Fp2} */
+      this.t = t;
+    }
+  }
+
+  /** The products of theta constants doubling needs. */
+  class ThetaPrecomputation {
+    /**
+     * @param {Fp2} XYZ0 - XYZ0
+     * @param {Fp2} XYT0 - XYT0
+     * @param {Fp2} YZT0 - YZT0
+     * @param {Fp2} XZT0 - XZT0
+     */
+    constructor(XYZ0, XYT0, YZT0, XZT0) {
+      /** @type {Fp2} */
+      this.XYZ0 = XYZ0;
+      /** @type {Fp2} */
+      this.XYT0 = XYT0;
+      /** @type {Fp2} */
+      this.YZT0 = YZT0;
+      /** @type {Fp2} */
+      this.XZT0 = XZT0;
+    }
+  }
+
+  /** A theta structure: its null point and, once computed, its precomputation. */
+  class ThetaStructure {
+    /**
+     * @param {ThetaPoint} nul - the null point
+     * @param {ThetaPrecomputation} pre - the precomputation, or null
+     */
+    constructor(nul, pre) {
+      /** @type {ThetaPoint} */
+      this.null = nul;
+      /** @type {ThetaPrecomputation} */
+      this.pre = pre;
+    }
+  }
+
+  /** The action of a 4-torsion point by translation. */
+  class TranslationMatrix {
+    /**
+     * @param {Fp2} g00 - g00
+     * @param {Fp2} g01 - g01
+     * @param {Fp2} g10 - g10
+     * @param {Fp2} g11 - g11
+     */
+    constructor(g00, g01, g10, g11) {
+      /** @type {Fp2} */
+      this.g00 = g00;
+      /** @type {Fp2} */
+      this.g01 = g01;
+      /** @type {Fp2} */
+      this.g10 = g10;
+      /** @type {Fp2} */
+      this.g11 = g11;
+    }
+  }
+
+  /** A projective pair (x : y). */
+  class ProjectivePair {
+    /**
+     * @param {Fp2} x - x
+     * @param {Fp2} y - y
+     */
+    constructor(x, y) {
+      /** @type {Fp2} */
+      this.x = x;
+      /** @type {Fp2} */
+      this.y = y;
+    }
+  }
+
+  /** The gluing isogeny E1 x E2 -> A. */
+  class GluingIsogeny {
+    /**
+     * @param {Fp2[][]} M - the change of basis
+     * @param {JacCouple} xyK1_8 - the 8-torsion couple
+     * @param {CurvePair} domain - E1 x E2
+     * @param {ThetaPoint} codomain - the codomain's null point
+     * @param {ProjectivePair} imageK1_8 - the image of K1_8
+     */
+    constructor(M, xyK1_8, domain, codomain, imageK1_8) {
+      /** @type {Fp2[][]} */
+      this.M = M;
+      /** @type {JacCouple} */
+      this.xyK1_8 = xyK1_8;
+      /** @type {CurvePair} */
+      this.domain = domain;
+      /** @type {ThetaPoint} */
+      this.codomain = codomain;
+      /** @type {ProjectivePair} */
+      this.imageK1_8 = imageK1_8;
+    }
+  }
+
+  /** A (2,2)-isogeny of the theta model. */
+  class ThetaIsogeny {
+    /**
+     * @param {boolean} hadamard1 - whether the domain is in the dual coordinates
+     * @param {boolean} hadamard2 - whether the codomain is
+     * @param {ThetaPoint} pre - the evaluation constants
+     * @param {ThetaStructure} codomain - the codomain
+     */
+    constructor(hadamard1, hadamard2, pre, codomain) {
+      /** @type {boolean} */
+      this.hadamard1 = hadamard1;
+      /** @type {boolean} */
+      this.hadamard2 = hadamard2;
+      /** @type {ThetaPoint} */
+      this.pre = pre;
+      /** @type {ThetaStructure} */
+      this.codomain = codomain;
+    }
+  }
+
+  /** The base change that puts the splitting in product position. */
+  class Splitting {
+    /**
+     * @param {Fp2[][]} M - the base change
+     * @param {ThetaStructure} B - the structure after it
+     */
+    constructor(M, B) {
+      /** @type {Fp2[][]} */
+      this.M = M;
+      /** @type {ThetaStructure} */
+      this.B = B;
+    }
+  }
+
+  /** A decoded public key. */
+  class SqiPublicKey {
+    /**
+     * @param {Fp2} A - the curve coefficient
+     * @param {int32} hint - the basis hint
+     */
+    constructor(A, hint) {
+      /** @type {Fp2} */
+      this.A = A;
+      /** @type {int32} */
+      this.hint = hint;
+    }
+  }
+
+  /** A decoded signature, its fields in the order decoding fills them. */
+  class SqiSignature {
+    constructor() {
+      /** @type {Fp2} */
+      this.auxA = null;
+      /** @type {int32} */
+      this.backtracking = 0;
+      /** @type {int32} */
+      this.twoRespLength = 0;
+      /** @type {BigInt[][]} */
+      this.mat = null;
+      /** @type {BigInt} */
+      this.challenge = 0n;
+      /** @type {int32} */
+      this.hintAux = 0;
+      /** @type {int32} */
+      this.hintChall = 0;
+    }
+  }
+
+  /** What opening a signed message gives. */
+  class SqiOpenResult {
+    /**
+     * @param {boolean} accepted - whether the signature verified
+     * @param {uint8[]} message - the message, or null
+     * @param {string} reason - why it was rejected, or empty
+     */
+    constructor(accepted, message, reason) {
+      /** @type {boolean} */
+      this.accepted = accepted;
+      /** @type {uint8[]} */
+      this.message = message;
+      /** @type {string} */
+      this.reason = reason;
+    }
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} F.fpAdd(a, b)
+   */
+  function FieldFpAdd(F, a, b) {
+    /** @type {BigInt} */
+    const r = F.fpAdd(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} F.fpSub(a, b)
+   */
+  function FieldFpSub(F, a, b) {
+    /** @type {BigInt} */
+    const r = F.fpSub(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpNeg(a)
+   */
+  function FieldFpNeg(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpNeg(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} F.fpMul(a, b)
+   */
+  function FieldFpMul(F, a, b) {
+    /** @type {BigInt} */
+    const r = F.fpMul(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpInv(a)
+   */
+  function FieldFpInv(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpInv(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpSqrt(a)
+   */
+  function FieldFpSqrt(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpSqrt(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpExp3Div4(a)
+   */
+  function FieldFpExp3Div4(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpExp3Div4(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {boolean} F.fpIsSquare(a)
+   */
+  function FieldFpIsSquare(F, a) {
+    /** @type {boolean} */
+    const r = F.fpIsSquare(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpHalf(a)
+   */
+  function FieldFpHalf(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpHalf(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} a - a
+   * @returns {BigInt} F.fpDiv3(a)
+   */
+  function FieldFpDiv3(F, a) {
+    /** @type {BigInt} */
+    const r = F.fpDiv3(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @returns {Fp2} F.zero()
+   */
+  function FieldZero(F) {
+    /** @type {Fp2} */
+    const r = F.zero();
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @returns {Fp2} F.one()
+   */
+  function FieldOne(F) {
+    /** @type {Fp2} */
+    const r = F.one();
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {BigInt} re - re
+   * @param {BigInt} im - im
+   * @returns {Fp2} F.of(re, im)
+   */
+  function FieldOf(F, re, im) {
+    /** @type {Fp2} */
+    const r = F.of(re, im);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {int32} n - n
+   * @returns {Fp2} F.small(n)
+   */
+  function FieldSmall(F, n) {
+    /** @type {Fp2} */
+    const r = F.small(n);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @param {Fp2} b - b
+   * @returns {Fp2} F.add(a, b)
+   */
+  function FieldAdd(F, a, b) {
+    /** @type {Fp2} */
+    const r = F.add(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @param {Fp2} b - b
+   * @returns {Fp2} F.sub(a, b)
+   */
+  function FieldSub(F, a, b) {
+    /** @type {Fp2} */
+    const r = F.sub(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.neg(a)
+   */
+  function FieldNeg(F, a) {
+    /** @type {Fp2} */
+    const r = F.neg(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @param {Fp2} b - b
+   * @returns {Fp2} F.mul(a, b)
+   */
+  function FieldMul(F, a, b) {
+    /** @type {Fp2} */
+    const r = F.mul(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.sqr(a)
+   */
+  function FieldSqr(F, a) {
+    /** @type {Fp2} */
+    const r = F.sqr(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @param {int32} n - n
+   * @returns {Fp2} F.mulSmall(a, n)
+   */
+  function FieldMulSmall(F, a, n) {
+    /** @type {Fp2} */
+    const r = F.mulSmall(a, n);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.half(a)
+   */
+  function FieldHalf(F, a) {
+    /** @type {Fp2} */
+    const r = F.half(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.div3(a)
+   */
+  function FieldDiv3(F, a) {
+    /** @type {Fp2} */
+    const r = F.div3(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {boolean} F.isZero(a)
+   */
+  function FieldIsZero(F, a) {
+    /** @type {boolean} */
+    const r = F.isZero(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {boolean} F.isOne(a)
+   */
+  function FieldIsOne(F, a) {
+    /** @type {boolean} */
+    const r = F.isOne(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @param {Fp2} b - b
+   * @returns {boolean} F.equal(a, b)
+   */
+  function FieldEqual(F, a, b) {
+    /** @type {boolean} */
+    const r = F.equal(a, b);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.copy(a)
+   */
+  function FieldCopy(F, a) {
+    /** @type {Fp2} */
+    const r = F.copy(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.inv(a)
+   */
+  function FieldInv(F, a) {
+    /** @type {Fp2} */
+    const r = F.inv(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {boolean} F.isSquare(a)
+   */
+  function FieldIsSquare(F, a) {
+    /** @type {boolean} */
+    const r = F.isSquare(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {Fp2} F.sqrt(a)
+   */
+  function FieldSqrt(F, a) {
+    /** @type {Fp2} */
+    const r = F.sqrt(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2} a - a
+   * @returns {uint8[]} F.encode(a)
+   */
+  function FieldEncode(F, a) {
+    /** @type {uint8[]} */
+    const r = F.encode(a);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} offset - offset
+   * @returns {Fp2} F.decode(bytes, offset)
+   */
+  function FieldDecode(F, bytes, offset) {
+    /** @type {Fp2} */
+    const r = F.decode(bytes, offset);
+    return r;
+  }
+
+  /**
+   * @param {SqiField} F - the field
+   * @param {Fp2[]} xs - xs
+   * @returns {Fp2[]} F.batchedInv(xs)
+   */
+  function FieldBatchedInv(F, xs) {
+    /** @type {Fp2[]} */
+    const r = F.batchedInv(xs);
+    return r;
   }
 
   // ===== parameter sets =====
 
+  /**
+   * @param {string} name - name
+   * @param {int32} cofactor - cofactor
+   * @param {int32} power - power
+   * @param {int32} responseLength - responseLength
+   * @param {int32} securityBits - securityBits
+   * @param {int32} hashIterations - hashIterations
+   * @param {int32} publicKeyBytes - publicKeyBytes
+   * @param {int32} signatureBytes - signatureBytes
+   * @param {string[]} e0 - e0
+   * @returns {SqiParams} Result
+   */
   function Params(name, cofactor, power, responseLength, securityBits, hashIterations,
                   publicKeyBytes, signatureBytes, e0) {
     const P = BigInt(cofactor) * PowerOfTwo(power) - 1n;
     const fpBytes = Math.floor((P.toString(2).length + 7) / 8);
     const F = MakeField(P, fpBytes);
-    return {
-      name: name,
-      F: F,
-      cofactor: BigInt(cofactor),
-      cofactorBits: BigInt(cofactor).toString(2).length,
-      torsionPower: power,
-      responseLength: responseLength,
-      securityBits: securityBits,
-      hashIterations: hashIterations,
-      fpBytes: fpBytes,
-      fp2Bytes: 2 * fpBytes,
-      publicKeyBytes: publicKeyBytes,
-      signatureBytes: signatureBytes,
-      matrixEntryBytes: Math.floor((responseLength + 9) / 8),
-      e0P: F.of(BigInt('0x' + e0[0]), BigInt('0x' + e0[1])),
-      e0Q: F.of(BigInt('0x' + e0[2]), BigInt('0x' + e0[3]))
-    };
+    return new SqiParams(
+      name,
+      F,
+      BigInt(cofactor),
+      BigInt(cofactor).toString(2).length,
+      power,
+      responseLength,
+      securityBits,
+      hashIterations,
+      fpBytes,
+      2 * fpBytes,
+      publicKeyBytes,
+      signatureBytes,
+      Math.floor((responseLength + 9) / 8),
+      FieldOf(F, BigInt('0x' + e0[0]), BigInt('0x' + e0[1])),
+      FieldOf(F, BigInt('0x' + e0[2]), BigInt('0x' + e0[3]))
+    );
   }
 
   // The canonical basis of E0[2^f], precomputed by the submission because the
@@ -489,21 +1580,45 @@
     ])
   };
 
+  /**
+   * The parameter set of a name, a plain property read of the table.
+   * @param {string} name - the set name
+   * @returns {SqiParams} the entry
+   */
+  function ParameterSetEntry(name) {
+    /** @type {SqiParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /**
+   * @param {int32} length - length
+   * @returns {SqiParams} Result
+   */
   function ParameterSetByPublicKeyLength(length) {
     for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name].publicKeyBytes === length) return PARAMETER_SETS[name];
+      if (ParameterSetEntry(name).publicKeyBytes === length) return ParameterSetEntry(name);
     return null;
   }
 
+  /**
+   * @param {string} label - label
+   * @returns {SqiParams} Result
+   */
   function FindParameterSet(label) {
-    if (label === null || label === undefined) return null;
+    if (label === null || label === undefined) {
+      return null;
+    }
+    /** @type {string} */
     const wanted = String(label).toUpperCase().replace(/[^A-Z0-9]/g, '');
     for (const name of Object.keys(PARAMETER_SETS)) {
+      /** @type {string} */
       const short = name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      /** @type {string} */
       const level = name.split('-')[1];
       if (wanted === short || wanted === level || wanted === 'LVL' + ({ I: 1, III: 3, V: 5 })[level]
           || wanted === 'SQISIGNLVL' + ({ I: 1, III: 3, V: 5 })[level])
-        return PARAMETER_SETS[name];
+        return ParameterSetEntry(name);
     }
     return null;
   }
@@ -514,44 +1629,121 @@
   // Jacobian points (X : Y : Z) for the gluing step. Everything below follows
   // the reference implementation formula for formula.
 
+  /**
+   * @param {SqiParams} prm - prm
+   */
   function Verifier(prm) {
     const F = prm.F;
     const TORSION = prm.torsionPower;
     const HD_EXTRA_TORSION = 2;
 
-    const point = (x, z) => ({ x: x, z: z });
-    const copyPoint = Q => ({ x: Q.x, z: Q.z });
-    const pointInfinity = () => ({ x: F.one(), z: F.zero() });
-    const copyCurve = E => ({ A: E.A, C: E.C, A24: copyPoint(E.A24), normalized: E.normalized });
-    const curveFromA = A => ({ A: A, C: F.one(), A24: pointInfinity(), normalized: false });
+    /**
+     * @param {Fp2} x - X
+     * @param {Fp2} z - Z
+     * @returns {XzPoint} (X : Z)
+     */
+    function point(x, z) {
+      return new XzPoint(x, z);
+    }
+
+    /**
+     * @param {Fp2} x - X
+     * @param {Fp2} y - Y
+     * @param {Fp2} z - Z
+     * @returns {JacPoint} (X : Y : Z)
+     */
+    function jac(x, y, z) {
+      return new JacPoint(x, y, z);
+    }
+
+    /**
+     * @param {Fp2} x - x
+     * @param {Fp2} y - y
+     * @param {Fp2} z - z
+     * @param {Fp2} t - t
+     * @returns {ThetaPoint} (x : y : z : t)
+     */
+    function theta(x, y, z, t) {
+      return new ThetaPoint(x, y, z, t);
+    }
+
+
+    /**
+     * @param {XzPoint} Q - a point
+     * @returns {XzPoint} a copy of it
+     */
+    function copyPoint(Q) {
+      return new XzPoint(Q.x, Q.z);
+    }
+
+    /**
+     * @returns {XzPoint} the point at infinity
+     */
+    function pointInfinity() {
+      return new XzPoint(FieldOne(F), FieldZero(F));
+    }
+
+    /**
+     * @param {MontCurve} E - a curve
+     * @returns {MontCurve} a copy of it
+     */
+    function copyCurve(E) {
+      return new MontCurve(E.A, E.C, copyPoint(E.A24), E.normalized);
+    }
+
+    /**
+     * @param {Fp2} A - the coefficient
+     * @returns {MontCurve} the curve (A : 1)
+     */
+    function curveFromA(A) {
+      return new MontCurve(A, FieldOne(F), pointInfinity(), false);
+    }
 
     // --- curve bookkeeping ---
 
+    /**
+     * @param {XzPoint} Q - Q
+     * @returns {XzPoint} Result
+     */
     function normalizePoint(Q) {
-      const zi = F.inv(Q.z);
-      return point(F.mul(Q.x, zi), F.one());
+      const zi = FieldInv(F, Q.z);
+      return point(FieldMul(F, Q.x, zi), FieldOne(F));
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @returns {XzPoint} Result
+     */
     function acToA24(E) {
       if (E.normalized) return copyPoint(E.A24);
-      const c2 = F.add(E.C, E.C);
-      return point(F.add(E.A, c2), F.add(c2, c2));
+      const c2 = FieldAdd(F, E.C, E.C);
+      return point(FieldAdd(F, E.A, c2), FieldAdd(F, c2, c2));
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @param {XzPoint} A24 - A24
+     */
     function a24ToAC(E, A24) {
-      let A = F.add(A24.x, A24.x);
-      A = F.sub(A, A24.z);
-      A = F.add(A, A);
+      let A = FieldAdd(F, A24.x, A24.x);
+      A = FieldSub(F, A, A24.z);
+      A = FieldAdd(F, A, A);
       E.A = A;
       E.C = A24.z;
     }
 
+    /**
+     * @param {MontCurve} E - E
+     */
     function normalizeCurve(E) {
-      const ci = F.inv(E.C);
-      E.A = F.mul(E.A, ci);
-      E.C = F.one();
+      const ci = FieldInv(F, E.C);
+      E.A = FieldMul(F, E.A, ci);
+      E.C = FieldOne(F);
     }
 
+    /**
+     * @param {MontCurve} E - E
+     */
     function normalizeA24(E) {
       if (!E.normalized) {
         E.A24 = normalizePoint(acToA24(E));
@@ -559,142 +1751,213 @@
       }
     }
 
+    /**
+     * @param {MontCurve} E - E
+     */
     function normalizeCurveAndA24(E) {
-      if (!F.isOne(E.C)) normalizeCurve(E);
+      if (!FieldIsOne(F, E.C)) normalizeCurve(E);
       if (!E.normalized) {
-        let x = F.of(F.fpAdd(F.fpAdd(E.A.re, 1n), 1n), E.A.im);
-        x = F.half(F.half(x));
-        E.A24 = point(x, F.one());
+        let x = FieldOf(F, FieldFpAdd(F, FieldFpAdd(F, E.A.re, 1n), 1n), E.A.im);
+        x = FieldHalf(F, FieldHalf(F, x));
+        E.A24 = point(x, FieldOne(F));
         E.normalized = true;
       }
     }
 
+    /**
+     * @param {Fp2} A - A
+     * @returns {boolean} Result
+     */
     function curveVerifyA(A) {
-      const two = F.of(2n, 0n);
-      if (F.equal(A, two)) return false;
-      if (F.equal(A, F.neg(two))) return false;
+      const two = FieldOf(F, 2n, 0n);
+      if (FieldEqual(F, A, two)) return false;
+      if (FieldEqual(F, A, FieldNeg(F, two))) return false;
       return true;
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @returns {Fp2} Result
+     */
     function jInvariant(E) {
-      let t1 = F.sqr(E.C);
-      let j = F.sqr(E.A);
-      let t0 = F.add(t1, t1);
-      t0 = F.sub(j, t0);
-      t0 = F.sub(t0, t1);
-      j = F.sub(t0, t1);
-      t1 = F.sqr(t1);
-      j = F.mul(j, t1);
-      t0 = F.add(t0, t0);
-      t0 = F.add(t0, t0);
-      t1 = F.sqr(t0);
-      t0 = F.mul(t0, t1);
-      t0 = F.add(t0, t0);
-      t0 = F.add(t0, t0);
-      j = F.inv(j);
-      return F.mul(t0, j);
+      let t1 = FieldSqr(F, E.C);
+      let j = FieldSqr(F, E.A);
+      let t0 = FieldAdd(F, t1, t1);
+      t0 = FieldSub(F, j, t0);
+      t0 = FieldSub(F, t0, t1);
+      j = FieldSub(F, t0, t1);
+      t1 = FieldSqr(F, t1);
+      j = FieldMul(F, j, t1);
+      t0 = FieldAdd(F, t0, t0);
+      t0 = FieldAdd(F, t0, t0);
+      t1 = FieldSqr(F, t0);
+      t0 = FieldMul(F, t0, t1);
+      t0 = FieldAdd(F, t0, t0);
+      t0 = FieldAdd(F, t0, t0);
+      j = FieldInv(F, j);
+      return FieldMul(F, t0, j);
     }
 
     // --- x-only arithmetic ---
 
-    const isZeroPoint = Q => F.isZero(Q.z);
-    const hasZeroCoordinate = Q => F.isZero(Q.x) || F.isZero(Q.z);
+    /**
+     * @param {XzPoint} Q - a point
+     * @returns {boolean} whether it is the point at infinity
+     */
+    function isZeroPoint(Q) {
+      return FieldIsZero(F, Q.z);
+    }
 
+    /**
+     * @param {XzPoint} Q - a point
+     * @returns {boolean} whether x or z is zero
+     */
+    function hasZeroCoordinate(Q) {
+      return FieldIsZero(F, Q.x) || FieldIsZero(F, Q.z);
+    }
+
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} Q - Q
+     * @returns {boolean} Result
+     */
     function pointsEqual(Pt, Q) {
       const lz = isZeroPoint(Pt), rz = isZeroPoint(Q);
       if (lz || rz) return lz && rz;
-      return F.equal(F.mul(Pt.x, Q.z), F.mul(Pt.z, Q.x));
+      return FieldEqual(F, FieldMul(F, Pt.x, Q.z), FieldMul(F, Pt.z, Q.x));
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {MontCurve} E - E
+     * @returns {boolean} Result
+     */
     function isTwoTorsion(Pt, E) {
       if (isZeroPoint(Pt)) return false;
-      let t0 = F.sqr(F.add(Pt.x, Pt.z));
-      let t1 = F.sqr(F.sub(Pt.x, Pt.z));
-      let t2 = F.sub(t0, t1);
-      t1 = F.add(t0, t1);
-      t2 = F.mul(t2, E.A);
-      t1 = F.mul(t1, E.C);
-      t1 = F.add(t1, t1);
-      t0 = F.add(t1, t2);
-      return F.isZero(Pt.x) || F.isZero(t0);
+      let t0 = FieldSqr(F, FieldAdd(F, Pt.x, Pt.z));
+      let t1 = FieldSqr(F, FieldSub(F, Pt.x, Pt.z));
+      let t2 = FieldSub(F, t0, t1);
+      t1 = FieldAdd(F, t0, t1);
+      t2 = FieldMul(F, t2, E.A);
+      t1 = FieldMul(F, t1, E.C);
+      t1 = FieldAdd(F, t1, t1);
+      t0 = FieldAdd(F, t1, t2);
+      return FieldIsZero(F, Pt.x) || FieldIsZero(F, t0);
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} A24 - A24
+     * @param {boolean} normalized - normalized
+     * @returns {XzPoint} Result
+     */
     function xDblA24(Pt, A24, normalized) {
-      const t0 = F.sqr(F.add(Pt.x, Pt.z));
-      let t1 = F.sqr(F.sub(Pt.x, Pt.z));
-      const t2 = F.sub(t0, t1);
-      if (!normalized) t1 = F.mul(t1, A24.z);
-      const x = F.mul(t0, t1);
-      const u = F.add(F.mul(t2, A24.x), t1);
-      return point(x, F.mul(u, t2));
+      const t0 = FieldSqr(F, FieldAdd(F, Pt.x, Pt.z));
+      let t1 = FieldSqr(F, FieldSub(F, Pt.x, Pt.z));
+      const t2 = FieldSub(F, t0, t1);
+      if (!normalized) t1 = FieldMul(F, t1, A24.z);
+      const x = FieldMul(F, t0, t1);
+      const u = FieldAdd(F, FieldMul(F, t2, A24.x), t1);
+      return point(x, FieldMul(F, u, t2));
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {Fp2} A - A
+     * @param {Fp2} C - C
+     * @returns {XzPoint} Result
+     */
     function xDbl(Pt, A, C) {
-      let t0 = F.sqr(F.add(Pt.x, Pt.z));
-      let t1 = F.sqr(F.sub(Pt.x, Pt.z));
-      const t2 = F.sub(t0, t1);
-      const t3 = F.add(C, C);
-      t1 = F.mul(t1, t3);
-      t1 = F.add(t1, t1);
-      const x = F.mul(t0, t1);
-      t0 = F.add(t3, A);
-      t0 = F.mul(t0, t2);
-      t0 = F.add(t0, t1);
-      return point(x, F.mul(t0, t2));
+      let t0 = FieldSqr(F, FieldAdd(F, Pt.x, Pt.z));
+      let t1 = FieldSqr(F, FieldSub(F, Pt.x, Pt.z));
+      const t2 = FieldSub(F, t0, t1);
+      const t3 = FieldAdd(F, C, C);
+      t1 = FieldMul(F, t1, t3);
+      t1 = FieldAdd(F, t1, t1);
+      const x = FieldMul(F, t0, t1);
+      t0 = FieldAdd(F, t3, A);
+      t0 = FieldMul(F, t0, t2);
+      t0 = FieldAdd(F, t0, t1);
+      return point(x, FieldMul(F, t0, t2));
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @returns {XzPoint} Result
+     */
     function xDblE0(Pt) {
-      const t0 = F.sqr(F.add(Pt.x, Pt.z));
-      let t1 = F.sqr(F.sub(Pt.x, Pt.z));
-      const t2 = F.sub(t0, t1);
-      t1 = F.add(t1, t1);
-      return point(F.mul(t0, t1), F.mul(F.add(t1, t2), t2));
+      const t0 = FieldSqr(F, FieldAdd(F, Pt.x, Pt.z));
+      let t1 = FieldSqr(F, FieldSub(F, Pt.x, Pt.z));
+      const t2 = FieldSub(F, t0, t1);
+      t1 = FieldAdd(F, t1, t1);
+      return point(FieldMul(F, t0, t1), FieldMul(F, FieldAdd(F, t1, t2), t2));
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} Q - Q
+     * @param {XzPoint} PQ - PQ
+     * @returns {XzPoint} Result
+     */
     function xAdd(Pt, Q, PQ) {
-      let t0 = F.add(Pt.x, Pt.z);
-      let t1 = F.sub(Pt.x, Pt.z);
-      let t2 = F.add(Q.x, Q.z);
-      let t3 = F.sub(Q.x, Q.z);
-      t0 = F.mul(t0, t3);
-      t1 = F.mul(t1, t2);
-      t2 = F.sqr(F.add(t0, t1));
-      t3 = F.sqr(F.sub(t0, t1));
-      return point(F.mul(PQ.z, t2), F.mul(PQ.x, t3));
+      let t0 = FieldAdd(F, Pt.x, Pt.z);
+      let t1 = FieldSub(F, Pt.x, Pt.z);
+      let t2 = FieldAdd(F, Q.x, Q.z);
+      let t3 = FieldSub(F, Q.x, Q.z);
+      t0 = FieldMul(F, t0, t3);
+      t1 = FieldMul(F, t1, t2);
+      t2 = FieldSqr(F, FieldAdd(F, t0, t1));
+      t3 = FieldSqr(F, FieldSub(F, t0, t1));
+      return point(FieldMul(F, PQ.z, t2), FieldMul(F, PQ.x, t3));
     }
 
-    /** Simultaneous doubling of P and differential addition P + Q. */
+    /**
+     * Simultaneous doubling of P and differential addition P + Q.
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} Q - Q
+     * @param {XzPoint} PQ - PQ
+     * @param {XzPoint} A24 - A24
+     * @param {boolean} normalized - normalized
+     * @returns {XzPoint[]} Result
+     */
     function xDblAdd(Pt, Q, PQ, A24, normalized) {
-      let t0 = F.add(Pt.x, Pt.z);
-      let t1 = F.sub(Pt.x, Pt.z);
-      let Rx = F.sqr(t0);
-      let t2 = F.sub(Q.x, Q.z);
-      let Sx = F.add(Q.x, Q.z);
-      t0 = F.mul(t0, t2);
-      let Rz = F.sqr(t1);
-      t1 = F.mul(t1, Sx);
-      t2 = F.sub(Rx, Rz);
-      if (!normalized) Rz = F.mul(Rz, A24.z);
-      Rx = F.mul(Rx, Rz);
-      Sx = F.mul(A24.x, t2);
-      let Sz = F.sub(t0, t1);
-      Rz = F.add(Rz, Sx);
-      Sx = F.add(t0, t1);
-      Rz = F.mul(Rz, t2);
-      Sz = F.sqr(Sz);
-      Sx = F.sqr(Sx);
-      Sz = F.mul(Sz, PQ.x);
-      Sx = F.mul(Sx, PQ.z);
+      let t0 = FieldAdd(F, Pt.x, Pt.z);
+      let t1 = FieldSub(F, Pt.x, Pt.z);
+      let Rx = FieldSqr(F, t0);
+      let t2 = FieldSub(F, Q.x, Q.z);
+      let Sx = FieldAdd(F, Q.x, Q.z);
+      t0 = FieldMul(F, t0, t2);
+      let Rz = FieldSqr(F, t1);
+      t1 = FieldMul(F, t1, Sx);
+      t2 = FieldSub(F, Rx, Rz);
+      if (!normalized) Rz = FieldMul(F, Rz, A24.z);
+      Rx = FieldMul(F, Rx, Rz);
+      Sx = FieldMul(F, A24.x, t2);
+      let Sz = FieldSub(F, t0, t1);
+      Rz = FieldAdd(F, Rz, Sx);
+      Sx = FieldAdd(F, t0, t1);
+      Rz = FieldMul(F, Rz, t2);
+      Sz = FieldSqr(F, Sz);
+      Sx = FieldSqr(F, Sx);
+      Sz = FieldMul(F, Sz, PQ.x);
+      Sx = FieldMul(F, Sx, PQ.z);
       return [point(Rx, Rz), point(Sx, Sz)];
     }
 
-    /** The Montgomery ladder, k of kbits bits. */
+    /**
+     * The Montgomery ladder, k of kbits bits.
+     * @param {XzPoint} Pt - Pt
+     * @param {BigInt} k - k
+     * @param {int32} kbits - kbits
+     * @param {MontCurve} E - E
+     * @returns {XzPoint} Result
+     */
     function xMul(Pt, k, kbits, E) {
       let A24;
       if (!E.normalized) {
-        let x = F.add(E.C, E.C);
-        const z = F.add(x, x);
-        x = F.add(x, E.A);
+        let x = FieldAdd(F, E.C, E.C);
+        const z = FieldAdd(F, x, x);
+        x = FieldAdd(F, x, E.A);
         A24 = point(x, z);
       } else {
         A24 = copyPoint(E.A24);
@@ -714,12 +1977,25 @@
       return R0;
     }
 
-    /** The Montgomery biladder: k P + l Q from P, Q and P - Q. */
+    /**
+     * The Montgomery biladder: k P + l Q from P, Q and P - Q.
+     * @param {XzPoint} Pt - Pt
+     * @param {BigInt} k - k
+     * @param {XzPoint} Q - Q
+     * @param {BigInt} l - l
+     * @param {XzPoint} PQ - PQ
+     * @param {int32} kbits - kbits
+     * @param {MontCurve} E - E
+     * @returns {XzPoint|null} Result
+     */
     function xDblMul(Pt, k, Q, l, PQ, kbits, E) {
       if (hasZeroCoordinate(Pt) || hasZeroCoordinate(Q) || hasZeroCoordinate(PQ)) return null;
 
       const wrap = PowerOfTwo(64 * 8);
-      const bitk0 = Number(k % 2n), bitl0 = Number(l % 2n);
+      /** @type {int32} */
+      const bitk0 = Number(k % 2n);
+      /** @type {int32} */
+      const bitl0 = Number(l % 2n);
       const sigma = [1 - bitk0, 1 - bitl0];
       const evens = sigma[0] + sigma[1];
       const mevens = (evens % 2 === 1);
@@ -730,17 +2006,24 @@
       let kt = bitk0 ? k : (k - 1n + wrap) % wrap;
       let lt = bitl0 ? l : (l - 1n + wrap) % wrap;
 
+      /** @type {int32[]} */
       const r = new Array(2 * kbits);
       for (let i = 0; i < kbits; ++i) {
         if (sigma[0] !== preSigma) { const t = kt; kt = lt; lt = t; }
-        let b1, b2;
+        /** @type {int32} */
+        let b1;
+        /** @type {int32} */
+        let b2;
         if (i === kbits - 1) {
           b1 = 0; b2 = 0;
         } else {
           b1 = Number(kt % 2n); kt = kt / 2n;
           b2 = Number(lt % 2n); lt = lt / 2n;
         }
-        const c1 = Number(kt % 2n), c2 = Number(lt % 2n);
+        /** @type {int32} */
+        const c1 = Number(kt % 2n);
+        /** @type {int32} */
+        const c2 = Number(lt % 2n);
         r[2 * i] = (c1 + b1) % 2;
         r[2 * i + 1] = (c2 + b2) % 2;
         preSigma = sigma[0];
@@ -758,7 +2041,7 @@
       let diff2a = copyPoint(R[2]);
       let diff2b = copyPoint(PQ);
 
-      const aIsZero = F.isZero(E.A);
+      const aIsZero = FieldIsZero(F, E.A);
 
       for (let i = kbits - 1; i >= 0; --i) {
         const h = r[2 * i] + r[2 * i + 1];
@@ -782,9 +2065,17 @@
       return S;
     }
 
-    /** P + [m]Q from x(P), x(Q), x(P - Q), the ladder of the reference. */
+    /**
+     * P + [m]Q from x(P), x(Q), x(P - Q), the ladder of the reference.
+     * @param {BigInt} m - m
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} Q - Q
+     * @param {XzPoint} PQ - PQ
+     * @param {MontCurve} E - E
+     * @returns {XzPoint|null} Result
+     */
     function ladder3pt(m, Pt, Q, PQ, E) {
-      if (!F.isOne(E.A24.z)) return null;
+      if (!FieldIsOne(F, E.A24.z)) return null;
       if (hasZeroCoordinate(PQ)) return null;
       let X0 = copyPoint(Q), X1 = copyPoint(Pt), X2 = copyPoint(PQ);
       const bits = BitsOf(m, 64 * Math.ceil(prm.securityBits / 64));
@@ -797,10 +2088,21 @@
       return X1;
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {MontCurve} E - E
+     * @returns {XzPoint} Result
+     */
     function ecDbl(Pt, E) {
       return E.normalized ? xDblA24(Pt, E.A24, true) : xDbl(Pt, E.A, E.C);
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {int32} n - n
+     * @param {MontCurve} E - E
+     * @returns {XzPoint} Result
+     */
     function ecDblIter(Pt, n, E) {
       if (n === 0) return copyPoint(Pt);
       if (n > 50) normalizeA24(E);
@@ -813,122 +2115,185 @@
       return R;
     }
 
+    /**
+     * @param {XzBasis} B - B
+     * @param {int32} n - n
+     * @param {MontCurve} E - E
+     * @returns {XzBasis} Result
+     */
     function ecDblIterBasis(B, n, E) {
-      return { P: ecDblIter(B.P, n, E), Q: ecDblIter(B.Q, n, E), PmQ: ecDblIter(B.PmQ, n, E) };
+      return new XzBasis(ecDblIter(B.P, n, E), ecDblIter(B.Q, n, E), ecDblIter(B.PmQ, n, E));
     }
 
+    /**
+     * @param {BigInt} k - k
+     * @param {BigInt} l - l
+     * @param {int32} kbits - kbits
+     * @param {XzBasis} B - B
+     * @param {MontCurve} E - E
+     * @returns {XzPoint|null} Result
+     */
     function biscalarMul(k, l, kbits, B, E) {
-      if (F.isZero(B.PmQ.z)) return null;
+      if (FieldIsZero(F, B.PmQ.z)) return null;
       if (kbits === 1) {
-        if (!isTwoTorsion(B.P, E) || !isTwoTorsion(B.Q, E) || !isTwoTorsion(B.PmQ, E)) return null;
-        const bP = Number(k % 2n), bQ = Number(l % 2n);
+        if (!isTwoTorsion(B.P, E) || !isTwoTorsion(B.Q, E) || !isTwoTorsion(B.PmQ, E)) {
+          return null;
+        }
+        /** @type {int32} */
+        const bP = Number(k % 2n);
+        /** @type {int32} */
+        const bQ = Number(l % 2n);
         if (!bP && !bQ) return pointInfinity();
         if (bP && !bQ) return copyPoint(B.P);
         if (!bP && bQ) return copyPoint(B.Q);
         return copyPoint(B.PmQ);
       }
       const E2 = copyCurve(E);
-      if (!F.isZero(E.A)) normalizeA24(E2);
+      if (!FieldIsZero(F, E.A)) normalizeA24(E2);
       return xDblMul(B.P, k, B.Q, l, B.PmQ, kbits, E2);
     }
 
     // --- bases of E[2^f] ---
 
-    /** The difference P - Q the reference picks from x(P) and x(Q). */
+    /**
+     * The difference P - Q the reference picks from x(P) and x(Q).
+     * @param {XzPoint} Pt - Pt
+     * @param {XzPoint} Q - Q
+     * @param {MontCurve} E - E
+     * @returns {XzPoint} Result
+     */
     function differencePoint(Pt, Q, E) {
-      let t0 = F.mul(Pt.x, Q.x);
-      let t1 = F.mul(Pt.z, Q.z);
-      let Bxx = F.sqr(F.sub(t0, t1));
-      Bxx = F.mul(Bxx, E.C);
-      let Bxz = F.add(t0, t1);
-      t0 = F.mul(Pt.x, Q.z);
-      t1 = F.mul(Pt.z, Q.x);
-      let Bzz = F.add(t0, t1);
-      Bxz = F.mul(Bxz, Bzz);
-      Bzz = F.sqr(F.sub(t0, t1));
-      Bzz = F.mul(Bzz, E.C);
-      Bxz = F.mul(Bxz, E.C);
-      t0 = F.mul(t0, t1);
-      t0 = F.mul(t0, E.A);
-      t0 = F.add(t0, t0);
-      Bxz = F.add(Bxz, t0);
+      let t0 = FieldMul(F, Pt.x, Q.x);
+      let t1 = FieldMul(F, Pt.z, Q.z);
+      let Bxx = FieldSqr(F, FieldSub(F, t0, t1));
+      Bxx = FieldMul(F, Bxx, E.C);
+      let Bxz = FieldAdd(F, t0, t1);
+      t0 = FieldMul(F, Pt.x, Q.z);
+      t1 = FieldMul(F, Pt.z, Q.x);
+      let Bzz = FieldAdd(F, t0, t1);
+      Bxz = FieldMul(F, Bxz, Bzz);
+      Bzz = FieldSqr(F, FieldSub(F, t0, t1));
+      Bzz = FieldMul(F, Bzz, E.C);
+      Bxz = FieldMul(F, Bxz, E.C);
+      t0 = FieldMul(F, t0, t1);
+      t0 = FieldMul(F, t0, E.A);
+      t0 = FieldAdd(F, t0, t0);
+      Bxz = FieldAdd(F, Bxz, t0);
 
       // Normalise by C * conj(C)^2 * conj(Pz)^2 * conj(Qz)^2 so that the
       // denominator is a fourth power in GF(p), which makes the root below
       // canonical.
-      const conj = a => F.of(a.re, F.fpNeg(a.im));
-      t0 = F.sqr(conj(E.C));
-      t0 = F.mul(t0, E.C);
-      t1 = F.sqr(conj(Pt.z));
-      t0 = F.mul(t0, t1);
-      t1 = F.sqr(conj(Q.z));
-      t0 = F.mul(t0, t1);
-      Bxx = F.mul(Bxx, t0);
-      Bxz = F.mul(Bxz, t0);
-      Bzz = F.mul(Bzz, t0);
+      /**
+       * @param {Fp2} a - an element
+       * @returns {Fp2} its conjugate
+       */
+      function conj(a) {
+        return FieldOf(F, a.re, FieldFpNeg(F, a.im));
+      }
+      t0 = FieldSqr(F, conj(E.C));
+      t0 = FieldMul(F, t0, E.C);
+      t1 = FieldSqr(F, conj(Pt.z));
+      t0 = FieldMul(F, t0, t1);
+      t1 = FieldSqr(F, conj(Q.z));
+      t0 = FieldMul(F, t0, t1);
+      Bxx = FieldMul(F, Bxx, t0);
+      Bxz = FieldMul(F, Bxz, t0);
+      Bzz = FieldMul(F, Bzz, t0);
 
-      t0 = F.sqr(Bxz);
-      t1 = F.mul(Bxx, Bzz);
-      t0 = F.sub(t0, t1);
-      t0 = F.sqrt(t0);
-      return point(F.add(Bxz, t0), Bzz);
+      t0 = FieldSqr(F, Bxz);
+      t1 = FieldMul(F, Bxx, Bzz);
+      t0 = FieldSub(F, t0, t1);
+      t0 = FieldSqrt(F, t0);
+      return point(FieldAdd(F, Bxz, t0), Bzz);
     }
 
+    /**
+     * @param {Fp2} x - x
+     * @param {MontCurve} E - E
+     * @returns {boolean} Result
+     */
     function isOnCurve(x, E) {
-      let t0 = F.add(x, E.A);
-      t0 = F.mul(t0, x);
-      t0 = F.add(t0, F.one());
-      t0 = F.mul(t0, x);
-      return F.isSquare(t0);
+      let t0 = FieldAdd(F, x, E.A);
+      t0 = FieldMul(F, t0, x);
+      t0 = FieldAdd(F, t0, FieldOne(F));
+      t0 = FieldMul(F, t0, x);
+      return FieldIsSquare(F, t0);
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @param {MontCurve} E - E
+     * @param {int32} f - f
+     * @returns {XzPoint} Result
+     */
     function clearCofactor(Pt, E, f) {
       let R = xMul(Pt, prm.cofactor, prm.cofactorBits, E);
       for (let i = 0; i < TORSION - f; ++i) R = xDblA24(R, E.A24, E.normalized);
       return R;
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @param {int32} start - start
+     * @returns {Fp2} Result
+     */
     function findNqrFactor(E, start) {
       let n = start;
       let qr = true;
       let z;
       for (;;) {
         while (qr) {
-          qr = F.fpIsSquare(BigInt(n * n + 1) % F.P);
+          qr = FieldFpIsSquare(F, BigInt(n * n + 1) % F.P);
           ++n;
         }
         const b = BigInt(n - 1);
-        z = F.of(1n, b);
-        let t0 = F.of(0n, b);
-        t0 = F.mul(t0, F.sqr(E.A));
-        t0 = F.sub(t0, F.sqr(z));
-        const found = !F.isSquare(t0);
+        z = FieldOf(F, 1n, b);
+        let t0 = FieldOf(F, 0n, b);
+        t0 = FieldMul(F, t0, FieldSqr(F, E.A));
+        t0 = FieldSub(F, t0, FieldSqr(F, z));
+        const found = !FieldIsSquare(F, t0);
         qr = true;
         if (found) break;
       }
-      return F.neg(F.mul(F.inv(z), E.A));
+      return FieldNeg(F, FieldMul(F, FieldInv(F, z), E.A));
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @param {int32} start - start
+     * @returns {Fp2} Result
+     */
     function findNAxCoord(E, start) {
-      let x = (start === 1) ? F.copy(E.A) : F.mulSmall(E.A, start);
-      while (!isOnCurve(x, E)) x = F.add(x, E.A);
+      let x = (start === 1) ? FieldCopy(F, E.A) : FieldMulSmall(F, E.A, start);
+      while (!isOnCurve(x, E)) x = FieldAdd(F, x, E.A);
       return x;
     }
 
+    /**
+     * @param {MontCurve} E - E
+     * @param {int32} f - f
+     * @returns {XzBasis} Result
+     */
     function basisE0(E, f) {
-      let Pt = point(prm.e0P, F.one());
-      let Q = point(prm.e0Q, F.one());
+      let Pt = point(prm.e0P, FieldOne(F));
+      let Q = point(prm.e0Q, FieldOne(F));
       for (let i = 0; i < TORSION - f; ++i) {
         Pt = xDblE0(Pt);
         Q = xDblE0(Q);
       }
-      return { P: Pt, Q: Q, PmQ: differencePoint(Pt, Q, E) };
+      return new XzBasis(Pt, Q, differencePoint(Pt, Q, E));
     }
 
-    /** The canonical basis of E[2^f] rebuilt from its one-byte hint. */
+    /**
+     * The canonical basis of E[2^f] rebuilt from its one-byte hint.
+     * @param {MontCurve} E - E
+     * @param {int32} f - f
+     * @param {int32} hint - hint
+     * @returns {XzBasis} Result
+     */
     function basisFromHint(E, f, hint) {
       normalizeCurveAndA24(E);
-      if (F.isZero(E.A)) return basisE0(E, f);
+      if (FieldIsZero(F, E.A)) return basisE0(E, f);
 
       const hintA = hint % 2;
       const hintP = Math.floor(hint / 2);
@@ -936,67 +2301,92 @@
       if (!hintP) {
         px = hintA ? findNqrFactor(E, 128) : findNAxCoord(E, 128);
       } else if (!hintA) {
-        px = F.mulSmall(E.A, hintP);
+        px = FieldMulSmall(F, E.A, hintP);
       } else {
-        px = F.neg(F.mul(F.inv(F.of(1n, BigInt(hintP))), E.A));
+        px = FieldNeg(F, FieldMul(F, FieldInv(F, FieldOf(F, 1n, BigInt(hintP))), E.A));
       }
-      let Pt = point(px, F.one());
-      let Q = point(F.neg(F.add(E.A, px)), F.one());
+      let Pt = point(px, FieldOne(F));
+      let Q = point(FieldNeg(F, FieldAdd(F, E.A, px)), FieldOne(F));
       Pt = clearCofactor(Pt, E, f);
       Q = clearCofactor(Q, E, f);
-      return { P: Pt, Q: differencePoint(Pt, Q, E), PmQ: Q };
+      return new XzBasis(Pt, differencePoint(Pt, Q, E), Q);
     }
 
     // --- isogenies of degree 2 and 4 ---
 
+    /**
+     * @param {XzPoint} K - K
+     * @returns {Isogeny2} Result
+     */
     function xIsog2(K) {
-      const bx = F.sqr(K.x);
-      const bz = F.sqr(K.z);
-      return { A24: point(F.sub(bz, bx), bz), K: point(F.add(K.x, K.z), F.sub(K.x, K.z)) };
+      const bx = FieldSqr(F, K.x);
+      const bz = FieldSqr(F, K.z);
+      return new Isogeny2(point(FieldSub(F, bz, bx), bz), point(FieldAdd(F, K.x, K.z), FieldSub(F, K.x, K.z)));
     }
 
+    /**
+     * @param {XzPoint} Q - Q
+     * @param {XzPoint} K - K
+     * @returns {XzPoint} Result
+     */
     function xEval2(Q, K) {
-      let t0 = F.add(Q.x, Q.z);
-      let t1 = F.sub(Q.x, Q.z);
-      const t2 = F.mul(K.x, t1);
-      t1 = F.mul(K.z, t0);
-      t0 = F.add(t2, t1);
-      t1 = F.sub(t2, t1);
-      return point(F.mul(Q.x, t0), F.mul(Q.z, t1));
+      let t0 = FieldAdd(F, Q.x, Q.z);
+      let t1 = FieldSub(F, Q.x, Q.z);
+      const t2 = FieldMul(F, K.x, t1);
+      t1 = FieldMul(F, K.z, t0);
+      t0 = FieldAdd(F, t2, t1);
+      t1 = FieldSub(F, t2, t1);
+      return point(FieldMul(F, Q.x, t0), FieldMul(F, Q.z, t1));
     }
 
+    /**
+     * @param {XzPoint} Pt - Pt
+     * @returns {Isogeny4} Result
+     */
     function xIsog4(Pt) {
-      const k0x = F.sqr(Pt.x);
-      const k0z = F.sqr(Pt.z);
-      const k1x = F.add(k0z, k0x);
-      const k1z = F.sub(k0z, k0x);
-      const B = point(F.mul(k1x, k1z), F.sqr(k0z));
-      const K2x = F.add(Pt.x, Pt.z);
-      const K1x = F.sub(Pt.x, Pt.z);
-      let K0x = F.add(k0z, k0z);
-      K0x = F.add(K0x, K0x);
-      return { A24: B, K: [K0x, K1x, K2x] };
+      const k0x = FieldSqr(F, Pt.x);
+      const k0z = FieldSqr(F, Pt.z);
+      const k1x = FieldAdd(F, k0z, k0x);
+      const k1z = FieldSub(F, k0z, k0x);
+      const B = point(FieldMul(F, k1x, k1z), FieldSqr(F, k0z));
+      const K2x = FieldAdd(F, Pt.x, Pt.z);
+      const K1x = FieldSub(F, Pt.x, Pt.z);
+      let K0x = FieldAdd(F, k0z, k0z);
+      K0x = FieldAdd(F, K0x, K0x);
+      return new Isogeny4(B, [K0x, K1x, K2x]);
     }
 
+    /**
+     * @param {XzPoint} Q - Q
+     * @param {Fp2[]} K - K
+     * @returns {XzPoint} Result
+     */
     function xEval4(Q, K) {
-      let t0 = F.add(Q.x, Q.z);
-      let t1 = F.sub(Q.x, Q.z);
-      let x = F.mul(t0, K[1]);
-      let z = F.mul(t1, K[2]);
-      t0 = F.mul(t0, t1);
-      t0 = F.mul(t0, K[0]);
-      t1 = F.add(x, z);
-      z = F.sub(x, z);
-      t1 = F.sqr(t1);
-      z = F.sqr(z);
-      x = F.add(t0, t1);
-      t0 = F.sub(t0, z);
-      x = F.mul(x, t1);
-      z = F.mul(z, t0);
+      let t0 = FieldAdd(F, Q.x, Q.z);
+      let t1 = FieldSub(F, Q.x, Q.z);
+      let x = FieldMul(F, t0, K[1]);
+      let z = FieldMul(F, t1, K[2]);
+      t0 = FieldMul(F, t0, t1);
+      t0 = FieldMul(F, t0, K[0]);
+      t1 = FieldAdd(F, x, z);
+      z = FieldSub(F, x, z);
+      t1 = FieldSqr(F, t1);
+      z = FieldSqr(F, z);
+      x = FieldAdd(F, t0, t1);
+      t0 = FieldSub(F, t0, z);
+      x = FieldMul(F, x, t1);
+      z = FieldMul(F, z, t0);
       return point(x, z);
     }
 
-    /** A 2^n-isogeny from its kernel, as a chain of 4-isogenies. */
+    /**
+     * A 2^n-isogeny from its kernel, as a chain of 4-isogenies.
+     * @param {MontCurve} E - E
+     * @param {XzPoint[]} points - points
+     * @param {XzPoint} kernel - kernel
+     * @param {int32} isogLen - isogLen
+     * @returns {boolean} Result
+     */
     function evalEvenStrategy(E, points, kernel, isogLen) {
       normalizeA24(E);
       let A24 = copyPoint(E.A24);
@@ -1018,7 +2408,7 @@
           const test = xDblA24(splits[current], E.A24, E.normalized);
           if (!isTwoTorsion(test, E)) return false;
           const T = xDblA24(splits[current], A24, false);
-          if (F.isZero(T.x)) return false;
+          if (FieldIsZero(F, T.x)) return false;
         }
 
         const iso = xIsog4(splits[current]);
@@ -1033,7 +2423,7 @@
 
       if (isogLen % 2) {
         if (isogLen === 1 && !isTwoTorsion(splits[0], E)) return false;
-        if (F.isZero(splits[0].x)) return false;
+        if (FieldIsZero(F, splits[0].x)) return false;
         const iso = xIsog2(splits[0]);
         A24 = iso.A24;
         for (let i = 0; i < points.length; ++i) points[i] = xEval2(points[i], iso.K);
@@ -1044,7 +2434,14 @@
       return true;
     }
 
-    /** A short 2^len-isogeny, one 2-isogeny at a time. */
+    /**
+     * A short 2^len-isogeny, one 2-isogeny at a time.
+     * @param {MontCurve} E - E
+     * @param {XzPoint} kernel - kernel
+     * @param {int32} len - len
+     * @param {XzPoint[]} points - points
+     * @returns {boolean} Result
+     */
     function evalSmallChain(E, kernel, len, points) {
       let A24 = acToA24(E);
       let bigK = copyPoint(kernel);
@@ -1052,7 +2449,7 @@
         let smallK = copyPoint(bigK);
         for (let j = 0; j < len - i - 1; ++j) smallK = xDblA24(smallK, A24, false);
         if (i === 0 && !isTwoTorsion(smallK, E)) return false;
-        if (F.isZero(smallK.x)) return false;
+        if (FieldIsZero(F, smallK.x)) return false;
         const iso = xIsog2(smallK);
         A24 = iso.A24;
         bigK = xEval2(bigK, iso.K);
@@ -1065,181 +2462,237 @@
 
     // --- Jacobian points ---
 
-    const jac = (x, y, z) => ({ x: x, y: y, z: z });
 
-    /** y of a point from x, as the reference picks it; null off the curve. */
+    /**
+     * y of a point from x, as the reference picks it; null off the curve.
+     * @param {Fp2} px - px
+     * @param {MontCurve} E - E
+     * @returns {Fp2|null} Result
+     */
     function recoverY(px, E) {
-      let t0 = F.sqr(px);
-      let y = F.mul(t0, E.A);
-      y = F.add(y, px);
-      t0 = F.mul(t0, px);
-      y = F.add(y, t0);
-      const root = F.sqrt(y);
-      return F.equal(F.sqr(root), y) ? root : null;
+      let t0 = FieldSqr(F, px);
+      let y = FieldMul(F, t0, E.A);
+      y = FieldAdd(F, y, px);
+      t0 = FieldMul(F, t0, px);
+      y = FieldAdd(F, y, t0);
+      const root = FieldSqrt(F, y);
+      return FieldEqual(F, FieldSqr(F, root), y) ? root : null;
     }
 
-    /** Lift x(P), x(Q), x(P - Q) to Jacobian P and Q, normalising E. */
+    /**
+     * Lift x(P), x(Q), x(P - Q) to Jacobian P and Q, normalising E.
+     * @param {XzBasis} B - B
+     * @param {MontCurve} E - E
+     * @returns {LiftedBasis} Result
+     */
     function liftBasis(B, E) {
-      const inverses = F.batchedInv([B.P.z, E.C]);
-      const Px = F.mul(B.P.x, inverses[0]);
-      E.A = F.mul(E.A, inverses[1]);
-      E.C = F.one();
+      const inverses = FieldBatchedInv(F, [B.P.z, E.C]);
+      const Px = FieldMul(F, B.P.x, inverses[0]);
+      E.A = FieldMul(F, E.A, inverses[1]);
+      E.C = FieldOne(F);
       const PmQ = B.PmQ;
 
       const Py = recoverY(Px, E);
-      const PyValue = Py || F.sqrt(F.add(F.add(F.mul(F.sqr(Px), E.A), Px), F.mul(F.sqr(Px), Px)));
+      const PyValue = Py || FieldSqrt(F, FieldAdd(F, FieldAdd(F, FieldMul(F, FieldSqr(F, Px), E.A), Px), FieldMul(F, FieldSqr(F, Px), Px)));
 
       let Qx = B.Q.x, Qz = B.Q.z;
-      let v1 = F.mul(Px, Qz);
-      let v2 = F.add(Qx, v1);
-      let v3 = F.sqr(F.sub(Qx, v1));
-      v3 = F.mul(v3, PmQ.x);
-      v1 = F.add(E.A, E.A);
-      v1 = F.mul(v1, Qz);
-      v2 = F.add(v2, v1);
-      let v4 = F.mul(Px, Qx);
-      v4 = F.add(v4, Qz);
-      v2 = F.mul(v2, v4);
-      v1 = F.mul(v1, Qz);
-      v2 = F.sub(v2, v1);
-      v2 = F.mul(v2, PmQ.z);
-      let Qy = F.sub(v3, v2);
-      v1 = F.add(PyValue, PyValue);
-      v1 = F.mul(v1, Qz);
-      v1 = F.mul(v1, PmQ.z);
-      Qx = F.mul(Qx, v1);
-      Qz = F.mul(Qz, v1);
-      v1 = F.sqr(Qz);
-      Qy = F.mul(Qy, v1);
-      Qx = F.mul(Qx, Qz);
+      let v1 = FieldMul(F, Px, Qz);
+      let v2 = FieldAdd(F, Qx, v1);
+      let v3 = FieldSqr(F, FieldSub(F, Qx, v1));
+      v3 = FieldMul(F, v3, PmQ.x);
+      v1 = FieldAdd(F, E.A, E.A);
+      v1 = FieldMul(F, v1, Qz);
+      v2 = FieldAdd(F, v2, v1);
+      let v4 = FieldMul(F, Px, Qx);
+      v4 = FieldAdd(F, v4, Qz);
+      v2 = FieldMul(F, v2, v4);
+      v1 = FieldMul(F, v1, Qz);
+      v2 = FieldSub(F, v2, v1);
+      v2 = FieldMul(F, v2, PmQ.z);
+      let Qy = FieldSub(F, v3, v2);
+      v1 = FieldAdd(F, PyValue, PyValue);
+      v1 = FieldMul(F, v1, Qz);
+      v1 = FieldMul(F, v1, PmQ.z);
+      Qx = FieldMul(F, Qx, v1);
+      Qz = FieldMul(F, Qz, v1);
+      v1 = FieldSqr(F, Qz);
+      Qy = FieldMul(F, Qy, v1);
+      Qx = FieldMul(F, Qx, Qz);
 
-      return { ok: Py !== null, P: jac(Px, PyValue, F.one()), Q: jac(Qx, Qy, Qz) };
+      return new LiftedBasis(Py !== null, jac(Px, PyValue, FieldOne(F)), jac(Qx, Qy, Qz));
     }
 
+    /**
+     * @param {JacPoint} Pt - Pt
+     * @returns {XzPoint} Result
+     */
     function jacToXZ(Pt) {
       let x = Pt.x;
-      const z = F.sqr(Pt.z);
-      if (F.isZero(x) && F.isZero(z)) x = F.one();
+      const z = FieldSqr(F, Pt.z);
+      if (FieldIsZero(F, x) && FieldIsZero(F, z)) x = FieldOne(F);
       return point(x, z);
     }
 
+    /**
+     * @param {JacPoint} Pt - Pt
+     * @param {MontCurve} E - E
+     * @returns {JacPoint} Result
+     */
     function jacDbl(Pt, E) {
-      if (F.isZero(Pt.x) && F.isZero(Pt.z)) return jac(Pt.x, Pt.y, Pt.z);
-      let t0 = F.sqr(Pt.x);
-      let t1 = F.add(t0, t0);
-      t0 = F.add(t0, t1);
-      t1 = F.sqr(Pt.z);
-      let t2 = F.mul(Pt.x, E.A);
-      t2 = F.add(t2, t2);
-      t2 = F.add(t1, t2);
-      t2 = F.mul(t1, t2);
-      t2 = F.add(t0, t2);
-      let z = F.mul(Pt.y, Pt.z);
-      z = F.add(z, z);
-      t0 = F.sqr(z);
-      t0 = F.mul(t0, E.A);
-      t1 = F.sqr(Pt.y);
-      t1 = F.add(t1, t1);
-      let t3 = F.add(Pt.x, Pt.x);
-      t3 = F.mul(t1, t3);
-      let x = F.sqr(t2);
-      x = F.sub(x, t0);
-      x = F.sub(x, t3);
-      x = F.sub(x, t3);
-      let y = F.sub(t3, x);
-      y = F.mul(y, t2);
-      t1 = F.sqr(t1);
-      y = F.sub(y, t1);
-      y = F.sub(y, t1);
+      if (FieldIsZero(F, Pt.x) && FieldIsZero(F, Pt.z)) return jac(Pt.x, Pt.y, Pt.z);
+      let t0 = FieldSqr(F, Pt.x);
+      let t1 = FieldAdd(F, t0, t0);
+      t0 = FieldAdd(F, t0, t1);
+      t1 = FieldSqr(F, Pt.z);
+      let t2 = FieldMul(F, Pt.x, E.A);
+      t2 = FieldAdd(F, t2, t2);
+      t2 = FieldAdd(F, t1, t2);
+      t2 = FieldMul(F, t1, t2);
+      t2 = FieldAdd(F, t0, t2);
+      let z = FieldMul(F, Pt.y, Pt.z);
+      z = FieldAdd(F, z, z);
+      t0 = FieldSqr(F, z);
+      t0 = FieldMul(F, t0, E.A);
+      t1 = FieldSqr(F, Pt.y);
+      t1 = FieldAdd(F, t1, t1);
+      let t3 = FieldAdd(F, Pt.x, Pt.x);
+      t3 = FieldMul(F, t1, t3);
+      let x = FieldSqr(F, t2);
+      x = FieldSub(F, x, t0);
+      x = FieldSub(F, x, t3);
+      x = FieldSub(F, x, t3);
+      let y = FieldSub(F, t3, x);
+      y = FieldMul(F, y, t2);
+      t1 = FieldSqr(F, t1);
+      y = FieldSub(F, y, t1);
+      y = FieldSub(F, y, t1);
       return jac(x, y, z);
     }
 
-    /** To the modified Jacobian coordinates of the short Weierstrass model. */
+    /**
+     * To the modified Jacobian coordinates of the short Weierstrass model.
+     * @param {JacPoint} Pt - Pt
+     * @param {MontCurve} E - E
+     * @returns {WsPoint} Result
+     */
     function jacToWS(Pt, E) {
-      let t, ao3 = F.zero(), x;
-      if (!F.isZero(E.A)) {
-        ao3 = F.div3(E.A);
-        t = F.sqr(Pt.z);
-        x = F.add(F.mul(ao3, t), Pt.x);
-        t = F.sqr(t);
-        let a = F.mul(ao3, E.A);
-        a = F.of(F.fpSub(1n, a.re), F.fpNeg(a.im));
-        t = F.mul(t, a);
+      /** @type {Fp2} */
+      let t;
+      /** @type {Fp2} */
+      let ao3 = FieldZero(F);
+      /** @type {Fp2} */
+      let x;
+      if (!FieldIsZero(F, E.A)) {
+        ao3 = FieldDiv3(F, E.A);
+        t = FieldSqr(F, Pt.z);
+        x = FieldAdd(F, FieldMul(F, ao3, t), Pt.x);
+        t = FieldSqr(F, t);
+        let a = FieldMul(F, ao3, E.A);
+        a = FieldOf(F, FieldFpSub(F, 1n, a.re), FieldFpNeg(F, a.im));
+        t = FieldMul(F, t, a);
       } else {
         x = Pt.x;
-        t = F.sqr(F.sqr(Pt.z));
+        t = FieldSqr(F, FieldSqr(F, Pt.z));
       }
-      return { Q: jac(x, Pt.y, Pt.z), t: t, ao3: ao3 };
+      return new WsPoint(jac(x, Pt.y, Pt.z), t, ao3);
     }
 
+    /**
+     * @param {JacPoint} Pt - Pt
+     * @param {Fp2} ao3 - ao3
+     * @param {MontCurve} E - E
+     * @returns {JacPoint} Result
+     */
     function jacFromWS(Pt, ao3, E) {
       let x = Pt.x;
-      if (!F.isZero(E.A)) x = F.sub(Pt.x, F.mul(F.sqr(Pt.z), ao3));
+      if (!FieldIsZero(F, E.A)) x = FieldSub(F, Pt.x, FieldMul(F, FieldSqr(F, Pt.z), ao3));
       return jac(x, Pt.y, Pt.z);
     }
 
+    /**
+     * @param {JacPoint} Pt - Pt
+     * @param {Fp2} t - t
+     * @returns {WsDouble} Result
+     */
     function jacDblW(Pt, t) {
-      if (F.isZero(Pt.x) && F.isZero(Pt.z)) return { Q: jac(Pt.x, Pt.y, Pt.z), u: t };
-      const xx = F.sqr(Pt.x);
-      let c = F.sqr(Pt.y);
-      c = F.add(c, c);
-      const cc = F.sqr(c);
-      const r = F.add(cc, cc);
-      let s = F.sqr(F.add(Pt.x, c));
-      s = F.sub(s, xx);
-      s = F.sub(s, cc);
-      let m = F.add(xx, xx);
-      m = F.add(m, xx);
-      m = F.add(m, t);
-      let x = F.sqr(m);
-      x = F.sub(x, s);
-      x = F.sub(x, s);
-      let z = F.mul(Pt.y, Pt.z);
-      z = F.add(z, z);
-      let y = F.sub(s, x);
-      y = F.mul(y, m);
-      y = F.sub(y, r);
-      let u = F.mul(t, r);
-      u = F.add(u, u);
-      return { Q: jac(x, y, z), u: u };
+      if (FieldIsZero(F, Pt.x) && FieldIsZero(F, Pt.z)) return new WsDouble(jac(Pt.x, Pt.y, Pt.z), t);
+      const xx = FieldSqr(F, Pt.x);
+      let c = FieldSqr(F, Pt.y);
+      c = FieldAdd(F, c, c);
+      const cc = FieldSqr(F, c);
+      const r = FieldAdd(F, cc, cc);
+      let s = FieldSqr(F, FieldAdd(F, Pt.x, c));
+      s = FieldSub(F, s, xx);
+      s = FieldSub(F, s, cc);
+      let m = FieldAdd(F, xx, xx);
+      m = FieldAdd(F, m, xx);
+      m = FieldAdd(F, m, t);
+      let x = FieldSqr(F, m);
+      x = FieldSub(F, x, s);
+      x = FieldSub(F, x, s);
+      let z = FieldMul(F, Pt.y, Pt.z);
+      z = FieldAdd(F, z, z);
+      let y = FieldSub(F, s, x);
+      y = FieldMul(F, y, m);
+      y = FieldSub(F, y, r);
+      let u = FieldMul(F, t, r);
+      u = FieldAdd(F, u, u);
+      return new WsDouble(jac(x, y, z), u);
     }
 
-    /** u, v, w with x(P + Q) = (u - v : w) and x(P - Q) = (u + v : w). */
+    /**
+     * u, v, w with x(P + Q) = (u - v : w) and x(P - Q) = (u + v : w).
+     * @param {JacPoint} Pt - Pt
+     * @param {JacPoint} Q - Q
+     * @param {MontCurve} E - E
+     * @returns {AddComponents} Result
+     */
     function jacAddComponents(Pt, Q, E) {
-      let t0 = F.sqr(Pt.z);
-      let t1 = F.sqr(Q.z);
-      const t2 = F.mul(Pt.x, t1);
-      const t3 = F.mul(t0, Q.x);
-      let t4 = F.mul(Pt.y, Q.z);
-      t4 = F.mul(t4, t1);
-      let t5 = F.mul(Pt.z, Q.y);
-      t5 = F.mul(t5, t0);
-      t0 = F.mul(t0, t1);
-      let t6 = F.mul(t4, t5);
-      const v = F.add(t6, t6);
-      t4 = F.sqr(t4);
-      t5 = F.sqr(t5);
-      t4 = F.add(t4, t5);
-      t5 = F.add(t2, t3);
-      t6 = F.add(t3, t3);
-      t6 = F.sub(t5, t6);
-      t6 = F.sqr(t6);
-      t1 = F.mul(E.A, t0);
-      t1 = F.add(t5, t1);
-      t1 = F.mul(t1, t6);
-      const u = F.sub(t4, t1);
-      const w = F.mul(t6, t0);
-      return { u: u, v: v, w: w };
+      let t0 = FieldSqr(F, Pt.z);
+      let t1 = FieldSqr(F, Q.z);
+      const t2 = FieldMul(F, Pt.x, t1);
+      const t3 = FieldMul(F, t0, Q.x);
+      let t4 = FieldMul(F, Pt.y, Q.z);
+      t4 = FieldMul(F, t4, t1);
+      let t5 = FieldMul(F, Pt.z, Q.y);
+      t5 = FieldMul(F, t5, t0);
+      t0 = FieldMul(F, t0, t1);
+      let t6 = FieldMul(F, t4, t5);
+      const v = FieldAdd(F, t6, t6);
+      t4 = FieldSqr(F, t4);
+      t5 = FieldSqr(F, t5);
+      t4 = FieldAdd(F, t4, t5);
+      t5 = FieldAdd(F, t2, t3);
+      t6 = FieldAdd(F, t3, t3);
+      t6 = FieldSub(F, t5, t6);
+      t6 = FieldSqr(F, t6);
+      t1 = FieldMul(F, E.A, t0);
+      t1 = FieldAdd(F, t5, t1);
+      t1 = FieldMul(F, t1, t6);
+      const u = FieldSub(F, t4, t1);
+      const w = FieldMul(F, t6, t0);
+      return new AddComponents(u, v, w);
     }
 
     // --- couples of points on E1 x E2 ---
 
+    /**
+     * @param {JacCouple} T - T
+     * @param {CurvePair} E12 - E12
+     * @returns {JacCouple} Result
+     */
     function doubleCoupleJac(T, E12) {
-      return { P1: jacDbl(T.P1, E12.E1), P2: jacDbl(T.P2, E12.E2) };
+      return new JacCouple(jacDbl(T.P1, E12.E1), jacDbl(T.P2, E12.E2));
     }
 
+    /**
+     * @param {JacCouple} T - T
+     * @param {int32} n - n
+     * @param {CurvePair} E12 - E12
+     * @returns {JacCouple} Result
+     */
     function doubleCoupleJacIter(T, n, E12) {
-      if (n === 0) return { P1: T.P1, P2: T.P2 };
+      if (n === 0) return new JacCouple(T.P1, T.P2);
       if (n === 1) return doubleCoupleJac(T, E12);
       const w1 = jacToWS(T.P1, E12.E1);
       const w2 = jacToWS(T.P2, E12.E2);
@@ -1248,58 +2701,105 @@
         const d1 = jacDblW(Q1, t1); Q1 = d1.Q; t1 = d1.u;
         const d2 = jacDblW(Q2, t2); Q2 = d2.Q; t2 = d2.u;
       }
-      return { P1: jacFromWS(Q1, w1.ao3, E12.E1), P2: jacFromWS(Q2, w2.ao3, E12.E2) };
+      return new JacCouple(jacFromWS(Q1, w1.ao3, E12.E1), jacFromWS(Q2, w2.ao3, E12.E2));
     }
 
     // --- the theta model ---
 
-    const theta = (x, y, z, t) => ({ x: x, y: y, z: z, t: t });
-    const thetaCoord = (T, i) => (i === 0 ? T.x : i === 1 ? T.y : i === 2 ? T.z : T.t);
-
-    function hadamard(T) {
-      const t1 = F.add(T.x, T.y);
-      const t2 = F.sub(T.x, T.y);
-      const t3 = F.add(T.z, T.t);
-      const t4 = F.sub(T.z, T.t);
-      return theta(F.add(t1, t3), F.add(t2, t4), F.sub(t1, t3), F.sub(t2, t4));
+    /**
+     * @param {ThetaPoint} T - a theta point
+     * @param {int32} i - 0 to 3
+     * @returns {Fp2} its coordinate i
+     */
+    function thetaCoord(T, i) {
+      return (i === 0 ? T.x : i === 1 ? T.y : i === 2 ? T.z : T.t);
     }
 
-    const pointwiseSquare = T => theta(F.sqr(T.x), F.sqr(T.y), F.sqr(T.z), F.sqr(T.t));
-    const toSquaredTheta = T => hadamard(pointwiseSquare(T));
+    /**
+     * @param {ThetaPoint} T - T
+     * @returns {ThetaPoint} Result
+     */
+    function hadamard(T) {
+      const t1 = FieldAdd(F, T.x, T.y);
+      const t2 = FieldSub(F, T.x, T.y);
+      const t3 = FieldAdd(F, T.z, T.t);
+      const t4 = FieldSub(F, T.z, T.t);
+      return theta(FieldAdd(F, t1, t3), FieldAdd(F, t2, t4), FieldSub(F, t1, t3), FieldSub(F, t2, t4));
+    }
 
+    /**
+     * @param {ThetaPoint} T - a theta point
+     * @returns {ThetaPoint} its coordinates squared
+     */
+    function pointwiseSquare(T) {
+      return theta(FieldSqr(F, T.x), FieldSqr(F, T.y), FieldSqr(F, T.z), FieldSqr(F, T.t));
+    }
+
+    /**
+     * @param {ThetaPoint} T - a theta point
+     * @returns {ThetaPoint} the Hadamard transform of its squares
+     */
+    function toSquaredTheta(T) {
+      return hadamard(pointwiseSquare(T));
+    }
+
+    /**
+     * @param {Fp2[][]} M - M
+     * @param {ThetaPoint} T - T
+     * @returns {ThetaPoint} Result
+     */
     function applyIsomorphism(M, T) {
-      const row = r => F.add(F.add(F.mul(T.x, M[r][0]), F.mul(T.y, M[r][1])),
-                             F.add(F.mul(T.z, M[r][2]), F.mul(T.t, M[r][3])));
+      /**
+       * @param {int32} r - the row
+       * @returns {Fp2} row r of M applied to T
+       */
+      function row(r) {
+        return FieldAdd(F, FieldAdd(F, FieldMul(F, T.x, M[r][0]), FieldMul(F, T.y, M[r][1])),
+                     FieldAdd(F, FieldMul(F, T.z, M[r][2]), FieldMul(F, T.t, M[r][3])));
+      }
       return theta(row(0), row(1), row(2), row(3));
     }
 
+    /**
+     * @param {ThetaStructure} A - A
+     * @returns {ThetaPrecomputation} Result
+     */
     function thetaPrecomputation(A) {
       if (A.pre) return A.pre;
       const d = toSquaredTheta(A.null);
-      let t1 = F.mul(d.x, d.y);
-      let t2 = F.mul(d.z, d.t);
-      const pre = {
-        XYZ0: F.mul(t1, d.z), XYT0: F.mul(t1, d.t), YZT0: F.mul(t2, d.y), XZT0: F.mul(t2, d.x)
-      };
+      let t1 = FieldMul(F, d.x, d.y);
+      let t2 = FieldMul(F, d.z, d.t);
+      const pre = new ThetaPrecomputation(FieldMul(F, t1, d.z), FieldMul(F, t1, d.t), FieldMul(F, t2, d.y), FieldMul(F, t2, d.x));
       const n = A.null;
-      t1 = F.mul(n.x, n.y);
-      t2 = F.mul(n.z, n.t);
-      pre.xyz0 = F.mul(t1, n.z);
-      pre.xyt0 = F.mul(t1, n.t);
-      pre.yzt0 = F.mul(t2, n.y);
-      pre.xzt0 = F.mul(t2, n.x);
+      t1 = FieldMul(F, n.x, n.y);
+      t2 = FieldMul(F, n.z, n.t);
+      pre.xyz0 = FieldMul(F, t1, n.z);
+      pre.xyt0 = FieldMul(F, t1, n.t);
+      pre.yzt0 = FieldMul(F, t2, n.y);
+      pre.xzt0 = FieldMul(F, t2, n.x);
       A.pre = pre;
       return pre;
     }
 
+    /**
+     * @param {ThetaStructure} A - A
+     * @param {ThetaPoint} T - T
+     * @returns {ThetaPoint} Result
+     */
     function thetaDouble(A, T) {
       const pre = thetaPrecomputation(A);
       let o = pointwiseSquare(toSquaredTheta(T));
-      o = theta(F.mul(o.x, pre.YZT0), F.mul(o.y, pre.XZT0), F.mul(o.z, pre.XYT0), F.mul(o.t, pre.XYZ0));
+      o = theta(FieldMul(F, o.x, pre.YZT0), FieldMul(F, o.y, pre.XZT0), FieldMul(F, o.z, pre.XYT0), FieldMul(F, o.t, pre.XYZ0));
       o = hadamard(o);
-      return theta(F.mul(o.x, pre.yzt0), F.mul(o.y, pre.xzt0), F.mul(o.z, pre.xyt0), F.mul(o.t, pre.xyz0));
+      return theta(FieldMul(F, o.x, pre.yzt0), FieldMul(F, o.y, pre.xzt0), FieldMul(F, o.z, pre.xyt0), FieldMul(F, o.t, pre.xyz0));
     }
 
+    /**
+     * @param {ThetaStructure} A - A
+     * @param {ThetaPoint} T - T
+     * @param {int32} e - e
+     * @returns {ThetaPoint} Result
+     */
     function thetaDoubleIter(A, T, e) {
       let o = T;
       for (let i = 0; i < e; ++i) o = thetaDouble(A, o);
@@ -1307,22 +2807,35 @@
     }
 
     // Action by translation of the 4-torsion, for the gluing change of basis.
+    /**
+     * @param {XzPoint} P4 - P4
+     * @param {XzPoint} P2 - P2
+     * @param {Fp2} zInv - zInv
+     * @param {Fp2} detInv - detInv
+     * @returns {TranslationMatrix} Result
+     */
     function translationMatrix(P4, P2, zInv, detInv) {
-      const tmp = F.mul(P4.x, zInv);
-      let g10 = F.mul(P4.x, P2.x);
-      g10 = F.mul(g10, detInv);
-      g10 = F.sub(g10, tmp);
-      let g11 = F.mul(P2.x, detInv);
-      g11 = F.mul(g11, P4.z);
-      const g00 = F.neg(g11);
-      let g01 = F.mul(P2.z, detInv);
-      g01 = F.mul(g01, P4.z);
-      return { g00: g00, g01: F.neg(g01), g10: g10, g11: g11 };
+      const tmp = FieldMul(F, P4.x, zInv);
+      let g10 = FieldMul(F, P4.x, P2.x);
+      g10 = FieldMul(F, g10, detInv);
+      g10 = FieldSub(F, g10, tmp);
+      let g11 = FieldMul(F, P2.x, detInv);
+      g11 = FieldMul(F, g11, P4.z);
+      const g00 = FieldNeg(F, g11);
+      let g01 = FieldMul(F, P2.z, detInv);
+      g01 = FieldMul(F, g01, P4.z);
+      return new TranslationMatrix(g00, FieldNeg(F, g01), g10, g11);
     }
 
+    /**
+     * @param {XzCouple} K1_4 - K1_4
+     * @param {XzCouple} K2_4 - K2_4
+     * @param {CurvePair} E12 - E12
+     * @returns {Fp2[][]|null} Result
+     */
     function gluingChangeOfBasis(K1_4, K2_4, E12) {
-      const K1_2 = { P1: ecDbl(K1_4.P1, E12.E1), P2: ecDbl(K1_4.P2, E12.E2) };
-      const K2_2 = { P1: ecDbl(K2_4.P1, E12.E1), P2: ecDbl(K2_4.P2, E12.E2) };
+      const K1_2 = new XzCouple(ecDbl(K1_4.P1, E12.E1), ecDbl(K1_4.P2, E12.E2));
+      const K2_2 = new XzCouple(ecDbl(K2_4.P1, E12.E1), ecDbl(K2_4.P2, E12.E2));
 
       // verify_two_torsion
       if (isZeroPoint(K1_2.P1) || isZeroPoint(K1_2.P2) || isZeroPoint(K2_2.P1) || isZeroPoint(K2_2.P2))
@@ -1330,15 +2843,23 @@
       if (pointsEqual(K1_2.P1, K2_2.P1) || pointsEqual(K1_2.P2, K2_2.P2)) return null;
       const O1 = [ecDbl(K1_2.P1, E12.E1), ecDbl(K1_2.P2, E12.E2)];
       const O2 = [ecDbl(K2_2.P1, E12.E1), ecDbl(K2_2.P2, E12.E2)];
-      if (!(isZeroPoint(O1[0]) && isZeroPoint(O1[1]) && isZeroPoint(O2[0]) && isZeroPoint(O2[1])))
+      if (!(isZeroPoint(O1[0]) && isZeroPoint(O1[1]) && isZeroPoint(O2[0]) && isZeroPoint(O2[1]))) {
         return null;
+      }
 
-      const det = (P4, P2) => F.sub(F.mul(P4.x, P2.z), F.mul(P4.z, P2.x));
-      const inv = F.batchedInv([
+      /**
+       * @param {XzPoint} P4 - a 4-torsion point
+       * @param {XzPoint} P2 - its double
+       * @returns {Fp2} the determinant of the two
+       */
+      function det(P4, P2) {
+        return FieldSub(F, FieldMul(F, P4.x, P2.z), FieldMul(F, P4.z, P2.x));
+      }
+      const inv = FieldBatchedInv(F, [
         K1_4.P1.z, K1_4.P2.z, K2_4.P1.z, K2_4.P2.z,
         det(K1_4.P1, K1_2.P1), det(K1_4.P2, K1_2.P2), det(K2_4.P1, K2_2.P1), det(K2_4.P2, K2_2.P2)
       ]);
-      if (F.isZero(inv[0])) return null;
+      if (FieldIsZero(F, inv[0])) return null;
 
       const G = [
         translationMatrix(K1_4.P1, K1_2.P1, inv[0], inv[4]),
@@ -1347,44 +2868,62 @@
         translationMatrix(K2_4.P2, K2_2.P2, inv[3], inv[7])
       ];
 
-      const t001 = F.add(F.mul(G[0].g00, G[2].g00), F.mul(G[0].g01, G[2].g10));
-      const t101 = F.add(F.mul(G[0].g10, G[2].g00), F.mul(G[0].g11, G[2].g10));
-      const t002 = F.add(F.mul(G[1].g00, G[3].g00), F.mul(G[1].g01, G[3].g10));
-      const t102 = F.add(F.mul(G[1].g10, G[3].g00), F.mul(G[1].g11, G[3].g10));
+      const t001 = FieldAdd(F, FieldMul(F, G[0].g00, G[2].g00), FieldMul(F, G[0].g01, G[2].g10));
+      const t101 = FieldAdd(F, FieldMul(F, G[0].g10, G[2].g00), FieldMul(F, G[0].g11, G[2].g10));
+      const t002 = FieldAdd(F, FieldMul(F, G[1].g00, G[3].g00), FieldMul(F, G[1].g01, G[3].g10));
+      const t102 = FieldAdd(F, FieldMul(F, G[1].g10, G[3].g00), FieldMul(F, G[1].g11, G[3].g10));
 
+      /** @type {Fp2[][]} */
       const M = [[], [], [], []];
-      M[0][0] = F.add(F.add(F.add(F.one(), F.mul(t001, t002)), F.mul(G[2].g00, G[3].g00)), F.mul(G[0].g00, G[1].g00));
-      M[0][1] = F.add(F.add(F.mul(t001, t102), F.mul(G[2].g00, G[3].g10)), F.mul(G[0].g00, G[1].g10));
-      M[0][2] = F.add(F.add(F.mul(t101, t002), F.mul(G[2].g10, G[3].g00)), F.mul(G[0].g10, G[1].g00));
-      M[0][3] = F.add(F.add(F.mul(t101, t102), F.mul(G[2].g10, G[3].g10)), F.mul(G[0].g10, G[1].g10));
+      M[0][0] = FieldAdd(F, FieldAdd(F, FieldAdd(F, FieldOne(F), FieldMul(F, t001, t002)), FieldMul(F, G[2].g00, G[3].g00)), FieldMul(F, G[0].g00, G[1].g00));
+      M[0][1] = FieldAdd(F, FieldAdd(F, FieldMul(F, t001, t102), FieldMul(F, G[2].g00, G[3].g10)), FieldMul(F, G[0].g00, G[1].g10));
+      M[0][2] = FieldAdd(F, FieldAdd(F, FieldMul(F, t101, t002), FieldMul(F, G[2].g10, G[3].g00)), FieldMul(F, G[0].g10, G[1].g00));
+      M[0][3] = FieldAdd(F, FieldAdd(F, FieldMul(F, t101, t102), FieldMul(F, G[2].g10, G[3].g10)), FieldMul(F, G[0].g10, G[1].g10));
 
-      M[1][0] = F.add(F.mul(G[3].g00, M[0][0]), F.mul(G[3].g01, M[0][1]));
-      M[1][1] = F.add(F.mul(G[3].g10, M[0][0]), F.mul(G[3].g11, M[0][1]));
-      M[1][2] = F.add(F.mul(G[3].g00, M[0][2]), F.mul(G[3].g01, M[0][3]));
-      M[1][3] = F.add(F.mul(G[3].g10, M[0][2]), F.mul(G[3].g11, M[0][3]));
+      M[1][0] = FieldAdd(F, FieldMul(F, G[3].g00, M[0][0]), FieldMul(F, G[3].g01, M[0][1]));
+      M[1][1] = FieldAdd(F, FieldMul(F, G[3].g10, M[0][0]), FieldMul(F, G[3].g11, M[0][1]));
+      M[1][2] = FieldAdd(F, FieldMul(F, G[3].g00, M[0][2]), FieldMul(F, G[3].g01, M[0][3]));
+      M[1][3] = FieldAdd(F, FieldMul(F, G[3].g10, M[0][2]), FieldMul(F, G[3].g11, M[0][3]));
 
-      M[2][0] = F.add(F.mul(G[0].g00, M[0][0]), F.mul(G[0].g01, M[0][2]));
-      M[2][1] = F.add(F.mul(G[0].g00, M[0][1]), F.mul(G[0].g01, M[0][3]));
-      M[2][2] = F.add(F.mul(G[0].g10, M[0][0]), F.mul(G[0].g11, M[0][2]));
-      M[2][3] = F.add(F.mul(G[0].g10, M[0][1]), F.mul(G[0].g11, M[0][3]));
+      M[2][0] = FieldAdd(F, FieldMul(F, G[0].g00, M[0][0]), FieldMul(F, G[0].g01, M[0][2]));
+      M[2][1] = FieldAdd(F, FieldMul(F, G[0].g00, M[0][1]), FieldMul(F, G[0].g01, M[0][3]));
+      M[2][2] = FieldAdd(F, FieldMul(F, G[0].g10, M[0][0]), FieldMul(F, G[0].g11, M[0][2]));
+      M[2][3] = FieldAdd(F, FieldMul(F, G[0].g10, M[0][1]), FieldMul(F, G[0].g11, M[0][3]));
 
-      M[3][0] = F.add(F.mul(G[0].g00, M[1][0]), F.mul(G[0].g01, M[1][2]));
-      M[3][1] = F.add(F.mul(G[0].g00, M[1][1]), F.mul(G[0].g01, M[1][3]));
-      M[3][2] = F.add(F.mul(G[0].g10, M[1][0]), F.mul(G[0].g11, M[1][2]));
-      M[3][3] = F.add(F.mul(G[0].g10, M[1][1]), F.mul(G[0].g11, M[1][3]));
+      M[3][0] = FieldAdd(F, FieldMul(F, G[0].g00, M[1][0]), FieldMul(F, G[0].g01, M[1][2]));
+      M[3][1] = FieldAdd(F, FieldMul(F, G[0].g00, M[1][1]), FieldMul(F, G[0].g01, M[1][3]));
+      M[3][2] = FieldAdd(F, FieldMul(F, G[0].g10, M[1][0]), FieldMul(F, G[0].g11, M[1][2]));
+      M[3][3] = FieldAdd(F, FieldMul(F, G[0].g10, M[1][1]), FieldMul(F, G[0].g11, M[1][3]));
       return M;
     }
 
+    /**
+     * @param {Fp2[][]} M - M
+     * @param {XzCouple} T - T
+     * @returns {ThetaPoint} Result
+     */
     function baseChange(M, T) {
-      const nul = theta(F.mul(T.P1.x, T.P2.x), F.mul(T.P1.x, T.P2.z), F.mul(T.P2.x, T.P1.z), F.mul(T.P1.z, T.P2.z));
+      const nul = theta(FieldMul(F, T.P1.x, T.P2.x), FieldMul(F, T.P1.x, T.P2.z), FieldMul(F, T.P2.x, T.P1.z), FieldMul(F, T.P1.z, T.P2.z));
       return applyIsomorphism(M, nul);
     }
 
-    /** The gluing isogeny E1 x E2 -> A with kernel [4](K1_8, K2_8). */
+    /**
+     * The gluing isogeny E1 x E2 -> A with kernel [4](K1_8, K2_8).
+     * @param {CurvePair} E12 - E12
+     * @param {JacCouple} xyK1_8 - xyK1_8
+     * @param {JacCouple} xyK2_8 - xyK2_8
+     * @returns {GluingIsogeny|null} Result
+     */
     function gluingCompute(E12, xyK1_8, xyK2_8) {
       const xyK1_4 = doubleCoupleJac(xyK1_8, E12);
       const xyK2_4 = doubleCoupleJac(xyK2_8, E12);
-      const toXZ = T => ({ P1: jacToXZ(T.P1), P2: jacToXZ(T.P2) });
+      /**
+       * @param {JacCouple} T - a couple of Jacobian points
+       * @returns {XzCouple} their x-only forms
+       */
+      function toXZ(T) {
+        return new XzCouple(jacToXZ(T.P1), jacToXZ(T.P2));
+      }
       const K1_8 = toXZ(xyK1_8), K2_8 = toXZ(xyK2_8);
       const K1_4 = toXZ(xyK1_4), K2_4 = toXZ(xyK2_4);
 
@@ -1394,45 +2933,62 @@
       const TT1 = toSquaredTheta(baseChange(M, K1_8));
       const TT2 = toSquaredTheta(baseChange(M, K2_8));
 
-      if (!(F.isZero(TT1.t) && F.isZero(TT2.t))) return null;
-      if (F.isZero(TT1.x) || F.isZero(TT2.x) || F.isZero(TT1.y) || F.isZero(TT2.z) || F.isZero(TT1.z))
+      if (!(FieldIsZero(F, TT1.t) && FieldIsZero(F, TT2.t))) return null;
+      if (FieldIsZero(F, TT1.x) || FieldIsZero(F, TT2.x) || FieldIsZero(F, TT1.y) || FieldIsZero(F, TT2.z) || FieldIsZero(F, TT1.z))
         return null;
 
-      let codomain = theta(F.mul(TT1.x, TT2.x), F.mul(TT1.y, TT2.x), F.mul(TT1.x, TT2.z), F.zero());
-      const precomputation = theta(F.mul(TT1.y, TT2.z), codomain.z, codomain.y, F.zero());
-      const imageK1_8 = { x: F.mul(TT1.x, precomputation.x), y: F.mul(TT1.z, precomputation.z) };
+      let codomain = theta(FieldMul(F, TT1.x, TT2.x), FieldMul(F, TT1.y, TT2.x), FieldMul(F, TT1.x, TT2.z), FieldZero(F));
+      const precomputation = theta(FieldMul(F, TT1.y, TT2.z), codomain.z, codomain.y, FieldZero(F));
+      const imageK1_8 = new ProjectivePair(FieldMul(F, TT1.x, precomputation.x), FieldMul(F, TT1.z, precomputation.z));
 
       // the 4-torsion points [2]K1_8 and [2]K2_8 have to be isotropic
-      if (!F.equal(imageK1_8.x, F.mul(TT1.y, precomputation.y))) return null;
-      if (!F.equal(F.mul(TT2.z, precomputation.z), F.mul(TT2.x, precomputation.x))) return null;
+      if (!FieldEqual(F, imageK1_8.x, FieldMul(F, TT1.y, precomputation.y))) return null;
+      if (!FieldEqual(F, FieldMul(F, TT2.z, precomputation.z), FieldMul(F, TT2.x, precomputation.x))) return null;
 
       codomain = hadamard(codomain);
-      return { M: M, xyK1_8: xyK1_8, domain: E12, codomain: codomain, imageK1_8: imageK1_8 };
+      return new GluingIsogeny(M, xyK1_8, E12, codomain, imageK1_8);
     }
 
+    /**
+     * @param {JacCouple} Pc - Pc
+     * @param {GluingIsogeny} phi - phi
+     * @returns {ThetaPoint} Result
+     */
     function gluingEvalPoint(Pc, phi) {
       const c1 = jacAddComponents(Pc.P1, phi.xyK1_8.P1, phi.domain.E1);
       const c2 = jacAddComponents(Pc.P2, phi.xyK1_8.P2, phi.domain.E2);
 
-      const T2t = F.mul(c1.v, c2.v);
-      const T1x = F.add(F.mul(c1.u, c2.u), T2t);
-      let T1 = theta(T1x, F.mul(c1.u, c2.w), F.mul(c1.w, c2.u), F.mul(c1.w, c2.w));
-      let T2x = F.mul(F.add(c1.u, c1.v), F.add(c2.u, c2.v));
-      T2x = F.sub(T2x, T1x);
-      let T2 = theta(T2x, F.mul(c1.v, c2.w), F.mul(c1.w, c2.v), F.zero());
+      const T2t = FieldMul(F, c1.v, c2.v);
+      const T1x = FieldAdd(F, FieldMul(F, c1.u, c2.u), T2t);
+      let T1 = theta(T1x, FieldMul(F, c1.u, c2.w), FieldMul(F, c1.w, c2.u), FieldMul(F, c1.w, c2.w));
+      let T2x = FieldMul(F, FieldAdd(F, c1.u, c1.v), FieldAdd(F, c2.u, c2.v));
+      T2x = FieldSub(F, T2x, T1x);
+      let T2 = theta(T2x, FieldMul(F, c1.v, c2.w), FieldMul(F, c1.w, c2.v), FieldZero(F));
 
       T1 = pointwiseSquare(applyIsomorphism(phi.M, T1));
       T2 = pointwiseSquare(applyIsomorphism(phi.M, T2));
-      T1 = hadamard(theta(F.sub(T1.x, T2.x), F.sub(T1.y, T2.y), F.sub(T1.z, T2.z), F.sub(T1.t, T2.t)));
+      T1 = hadamard(theta(FieldSub(F, T1.x, T2.x), FieldSub(F, T1.y, T2.y), FieldSub(F, T1.z, T2.z), FieldSub(F, T1.t, T2.t)));
 
-      const image = theta(F.mul(T1.x, phi.imageK1_8.y), F.mul(T1.y, phi.imageK1_8.y),
-                          F.mul(T1.z, phi.imageK1_8.x), F.mul(T1.t, phi.imageK1_8.x));
+      const image = theta(FieldMul(F, T1.x, phi.imageK1_8.y), FieldMul(F, T1.y, phi.imageK1_8.y),
+                          FieldMul(F, T1.z, phi.imageK1_8.x), FieldMul(F, T1.t, phi.imageK1_8.x));
       return hadamard(image);
     }
 
-    /** A (2,2)-isogeny of the theta model with kernel [4](T1_8, T2_8). */
+    /**
+     * A (2,2)-isogeny of the theta model with kernel [4](T1_8, T2_8).
+     * @param {ThetaStructure} A - A
+     * @param {ThetaPoint} T1_8 - T1_8
+     * @param {ThetaPoint} T2_8 - T2_8
+     * @param {boolean} hadamard1 - hadamard1
+     * @param {boolean} hadamard2 - hadamard2
+     * @param {boolean} verify - verify
+     * @returns {ThetaIsogeny|null} Result
+     */
     function thetaIsogenyCompute(A, T1_8, T2_8, hadamard1, hadamard2, verify) {
-      let TT1, TT2;
+      /** @type {ThetaPoint} */
+      let TT1;
+      /** @type {ThetaPoint} */
+      let TT2;
       if (hadamard1) {
         TT1 = toSquaredTheta(hadamard(T1_8));
         TT2 = toSquaredTheta(hadamard(T2_8));
@@ -1441,38 +2997,46 @@
         TT2 = toSquaredTheta(T2_8);
       }
 
-      if (F.isZero(TT2.x) || F.isZero(TT2.y) || F.isZero(TT2.z) || F.isZero(TT2.t)
-          || F.isZero(TT1.x) || F.isZero(TT1.y))
+      if (FieldIsZero(F, TT2.x) || FieldIsZero(F, TT2.y) || FieldIsZero(F, TT2.z) || FieldIsZero(F, TT2.t)
+          || FieldIsZero(F, TT1.x) || FieldIsZero(F, TT1.y))
         return null;
 
-      const t1 = F.mul(TT1.x, TT2.y);
-      const t2 = F.mul(TT1.y, TT2.x);
-      let nul = theta(F.mul(TT2.x, t1), F.mul(TT2.y, t2), F.mul(TT2.z, t1), F.mul(TT2.t, t2));
-      const t3 = F.mul(TT2.z, TT2.t);
-      const pre = theta(F.mul(t3, TT1.y), F.mul(t3, TT1.x), nul.t, nul.z);
+      const t1 = FieldMul(F, TT1.x, TT2.y);
+      const t2 = FieldMul(F, TT1.y, TT2.x);
+      let nul = theta(FieldMul(F, TT2.x, t1), FieldMul(F, TT2.y, t2), FieldMul(F, TT2.z, t1), FieldMul(F, TT2.t, t2));
+      const t3 = FieldMul(F, TT2.z, TT2.t);
+      const pre = theta(FieldMul(F, t3, TT1.y), FieldMul(F, t3, TT1.x), nul.t, nul.z);
 
       if (verify) {
-        if (!F.equal(F.mul(TT1.x, pre.x), F.mul(TT1.y, pre.y))) return null;
-        if (!F.equal(F.mul(TT1.z, pre.z), F.mul(TT1.t, pre.t))) return null;
-        if (!F.equal(F.mul(TT2.x, pre.x), F.mul(TT2.z, pre.z))) return null;
-        if (!F.equal(F.mul(TT2.y, pre.y), F.mul(TT2.t, pre.t))) return null;
+        if (!FieldEqual(F, FieldMul(F, TT1.x, pre.x), FieldMul(F, TT1.y, pre.y))) return null;
+        if (!FieldEqual(F, FieldMul(F, TT1.z, pre.z), FieldMul(F, TT1.t, pre.t))) return null;
+        if (!FieldEqual(F, FieldMul(F, TT2.x, pre.x), FieldMul(F, TT2.z, pre.z))) return null;
+        if (!FieldEqual(F, FieldMul(F, TT2.y, pre.y), FieldMul(F, TT2.t, pre.t))) return null;
       }
 
       if (hadamard2) nul = hadamard(nul);
-      return { hadamard1: hadamard1, hadamard2: hadamard2, pre: pre, codomain: { null: nul, pre: null } };
+      return new ThetaIsogeny(hadamard1, hadamard2, pre, new ThetaStructure(nul, null));
     }
 
+    /**
+     * @param {ThetaIsogeny} phi - phi
+     * @param {ThetaPoint} T - T
+     * @returns {ThetaPoint} Result
+     */
     function thetaIsogenyEval(phi, T) {
       let o = phi.hadamard1 ? toSquaredTheta(hadamard(T)) : toSquaredTheta(T);
-      o = theta(F.mul(o.x, phi.pre.x), F.mul(o.y, phi.pre.y), F.mul(o.z, phi.pre.z), F.mul(o.t, phi.pre.t));
+      o = theta(FieldMul(F, o.x, phi.pre.x), FieldMul(F, o.y, phi.pre.y), FieldMul(F, o.z, phi.pre.z), FieldMul(F, o.t, phi.pre.t));
       return phi.hadamard2 ? hadamard(o) : o;
     }
 
     // The ten even theta characteristics, and the base changes that move the
     // vanishing one to the product position.
+    /** @type {int32[][]} */
     const EVEN_INDEX = [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 2], [2, 0], [2, 1], [3, 0], [3, 3]];
+    /** @type {int32[][]} */
     const CHI_EVAL = [[1, 1, 1, 1], [1, -1, 1, -1], [1, 1, -1, -1], [1, -1, -1, 1]];
     // 0 = zero, 1 = one, 2 = i, 3 = -1, 4 = -i
+    /** @type {int32[][][]} */
     const SPLITTING_TRANSFORMS = [
       [[1, 2, 1, 2], [1, 4, 3, 2], [1, 2, 3, 4], [3, 2, 3, 2]],
       [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0], [0, 3, 0, 0]],
@@ -1485,21 +3049,27 @@
       [[1, 1, 1, 1], [1, 3, 1, 3], [1, 1, 3, 3], [3, 1, 1, 3]],
       [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
     ];
-    const FP2_CONSTANTS = [F.zero(), F.one(), F.of(0n, 1n), F.neg(F.one()), F.neg(F.of(0n, 1n))];
+    /** @type {Fp2[]} */
+    const FP2_CONSTANTS = [FieldZero(F), FieldOne(F), FieldOf(F, 0n, 1n), FieldNeg(F, FieldOne(F)), FieldNeg(F, FieldOf(F, 0n, 1n))];
 
+    /**
+     * @param {ThetaStructure} A - A
+     * @param {int32} zeroIndex - zeroIndex
+     * @returns {Splitting|null} Result
+     */
     function splittingCompute(A, zeroIndex) {
       let M = null;
       let count = 0;
       for (let i = 0; i < 10; ++i) {
-        let U = F.zero();
+        let U = FieldZero(F);
         for (let t = 0; t < 4; ++t) {
           const t2 = thetaCoord(A.null, t);
           let t1 = thetaCoord(A.null, OpCodes.Xor32(t, EVEN_INDEX[i][1]));
-          t1 = F.mul(t1, t2);
-          if (CHI_EVAL[EVEN_INDEX[i][0]][t] < 0) t1 = F.neg(t1);
-          U = F.add(U, t1);
+          t1 = FieldMul(F, t1, t2);
+          if (CHI_EVAL[EVEN_INDEX[i][0]][t] < 0) t1 = FieldNeg(F, t1);
+          U = FieldAdd(F, U, t1);
         }
-        const vanishes = F.isZero(U);
+        const vanishes = FieldIsZero(F, U);
         if (vanishes) {
           ++count;
           M = SPLITTING_TRANSFORMS[i].map(row => row.map(c => FP2_CONSTANTS[c]));
@@ -1507,44 +3077,63 @@
         if (zeroIndex !== -1 && i === zeroIndex && !vanishes) return null;
       }
       if (count !== 1) return null;
-      return { M: M, B: { null: applyIsomorphism(M, A.null), pre: null } };
+      return new Splitting(M, new ThetaStructure(applyIsomorphism(M, A.null), null));
     }
 
+    /**
+     * @param {ThetaStructure} A - A
+     * @returns {CurvePair|null} Result
+     */
     function productStructureToEllipticProduct(A) {
       const n = A.null;
-      if (!F.equal(F.mul(n.x, n.t), F.mul(n.y, n.z))) return null;
-      if (F.isZero(n.x) || F.isZero(n.y) || F.isZero(n.z)) return null;
+      if (!FieldEqual(F, FieldMul(F, n.x, n.t), FieldMul(F, n.y, n.z))) return null;
+      if (FieldIsZero(F, n.x) || FieldIsZero(F, n.y) || FieldIsZero(F, n.z)) {
+        return null;
+      }
 
-      const curveOf = (a, b) => {
-        const aa = F.sqr(F.sqr(a));
-        const bb = F.sqr(F.sqr(b));
-        let A2 = F.add(aa, bb);
-        A2 = F.neg(F.add(A2, A2));
-        return { A: A2, C: F.sub(aa, bb), A24: pointInfinity(), normalized: false };
-      };
+      /**
+       * @param {Fp2} a - a theta constant
+       * @param {Fp2} b - another
+       * @returns {MontCurve} the curve they define
+       */
+      function curveOf(a, b) {
+        const aa = FieldSqr(F, FieldSqr(F, a));
+        const bb = FieldSqr(F, FieldSqr(F, b));
+        let A2 = FieldAdd(F, aa, bb);
+        A2 = FieldNeg(F, FieldAdd(F, A2, A2));
+        return new MontCurve(A2, FieldSub(F, aa, bb), pointInfinity(), false);
+      }
       const E2 = curveOf(n.x, n.y);
       const E1 = curveOf(n.x, n.z);
-      if (F.isZero(E1.C) || F.isZero(E2.C)) return null;
-      return { E1: E1, E2: E2 };
+      if (FieldIsZero(F, E1.C) || FieldIsZero(F, E2.C)) return null;
+      return new CurvePair(E1, E2);
     }
 
     /**
      * The chain of n (2,2)-isogenies from E1 x E2 whose kernel the bases
      * generate, with the two extra bits of torsion the signature provides.
      * Returns the codomain product, or null when the chain does not split.
+     * @param {int32} n - n
+     * @param {CurvePair} E12 - E12
+     * @param {CoupleKernel} ker - ker
+     * @returns {CurvePair|null} Result
      */
     function thetaChainVerify(n, E12, ker) {
-      const lift1 = liftBasis({ P: ker.T1.P1, Q: ker.T2.P1, PmQ: ker.T1m2.P1 }, E12.E1);
+      const lift1 = liftBasis(new XzBasis(ker.T1.P1, ker.T2.P1, ker.T1m2.P1), E12.E1);
       if (!lift1.ok) return null;
-      const lift2 = liftBasis({ P: ker.T1.P2, Q: ker.T2.P2, PmQ: ker.T1m2.P2 }, E12.E2);
+      const lift2 = liftBasis(new XzBasis(ker.T1.P2, ker.T2.P2, ker.T1m2.P2), E12.E2);
       if (!lift2.ok) return null;
 
-      const xyT1 = { P1: lift1.P, P2: lift2.P };
-      const xyT2 = { P1: lift1.Q, P2: lift2.Q };
+      const xyT1 = new JacCouple(lift1.P, lift2.P);
+      const xyT2 = new JacCouple(lift1.Q, lift2.Q);
 
+      /** @type {int32[]} */
       const todo = [n];
       let current = 0;
-      const jacQ1 = [xyT1], jacQ2 = [xyT2];
+      /** @type {JacCouple[]} */
+      const jacQ1 = [xyT1];
+      /** @type {JacCouple[]} */
+      const jacQ2 = [xyT2];
       while (todo[current] !== 1) {
         ++current;
         const prev = todo[current - 1];
@@ -1555,9 +3144,14 @@
       }
 
       const gluing = gluingCompute(E12, jacQ1[current], jacQ2[current]);
-      if (!gluing) return null;
+      if (!gluing) {
+        return null;
+      }
 
-      const thetaQ1 = [], thetaQ2 = [];
+      /** @type {ThetaPoint[]} */
+      const thetaQ1 = [];
+      /** @type {ThetaPoint[]} */
+      const thetaQ2 = [];
       for (let j = 0; j < current; ++j) {
         thetaQ1[j] = gluingEvalPoint(jacQ1[j], gluing);
         thetaQ2[j] = gluingEvalPoint(jacQ2[j], gluing);
@@ -1565,7 +3159,7 @@
       }
       --current;
 
-      let A = { null: gluing.codomain, pre: null };
+      let A = new ThetaStructure(gluing.codomain, null);
 
       for (let i = 1; current >= 0 && todo[current]; ++i) {
         while (todo[current] !== 1) {
@@ -1577,6 +3171,7 @@
           todo[current] = prev - dbls;
         }
 
+        /** @type {ThetaIsogeny} */
         let step;
         if (i === n - 2)
           step = thetaIsogenyCompute(A, thetaQ1[current], thetaQ2[current], false, false, true);
@@ -1602,20 +3197,38 @@
 
     // --- the protocol ---
 
+    /**
+     * @param {uint8[]} bytes - bytes
+     * @returns {SqiPublicKey} Result
+     */
     function decodePublicKey(bytes) {
-      return { A: F.decode(bytes, 0), hint: bytes[prm.fp2Bytes] };
+      return new SqiPublicKey(FieldDecode(F, bytes, 0), bytes[prm.fp2Bytes]);
     }
 
+    /**
+     * @param {uint8[]} bytes - bytes
+     * @returns {SqiSignature} Result
+     */
     function decodeSignature(bytes) {
       let offset = 0;
-      const sig = {};
-      sig.auxA = F.decode(bytes, offset);
+      const sig = new SqiSignature();
+      sig.auxA = FieldDecode(F, bytes, offset);
       offset += prm.fp2Bytes;
       sig.backtracking = bytes[offset++];
       sig.twoRespLength = bytes[offset++];
       const nb = prm.matrixEntryBytes;
-      const entry = () => { const v = DecodeLittleEndian(bytes, offset, nb); offset += nb; return v; };
-      const m00 = entry(), m01 = entry(), m10 = entry(), m11 = entry();
+      /**
+       * @returns {BigInt} the next matrix entry
+       */
+      function entry() {
+        const v = DecodeLittleEndian(bytes, offset, nb);
+        offset += nb;
+        return v;
+      }
+      const m00 = entry();
+      const m01 = entry();
+      const m10 = entry();
+      const m11 = entry();
       sig.mat = [[m00, m01], [m10, m11]];
       const cb = prm.securityBits / 8;
       sig.challenge = DecodeLittleEndian(bytes, offset, cb);
@@ -1625,9 +3238,15 @@
       return sig;
     }
 
-    /** The challenge: SHAKE256 of j(E_pk), j(E_com) and the message, iterated. */
+    /**
+     * The challenge: SHAKE256 of j(E_pk), j(E_com) and the message, iterated.
+     * @param {MontCurve} pkCurve - pkCurve
+     * @param {MontCurve} comCurve - comCurve
+     * @param {uint8[]} message - message
+     * @returns {BigInt} Result
+     */
     function hashToChallenge(pkCurve, comCurve, message) {
-      const buf = F.encode(jInvariant(pkCurve)).concat(F.encode(jInvariant(comCurve)));
+      const buf = FieldEncode(F, jInvariant(pkCurve)).concat(FieldEncode(F, jInvariant(comCurve)));
       const hashBytes = Math.floor((2 * prm.securityBits + 7) / 8);
       let scalar = Shake256([buf, message], hashBytes);
       for (let i = 2; i < prm.hashIterations; ++i) scalar = Shake256([scalar], hashBytes);
@@ -1638,6 +3257,12 @@
       return value % PowerOfTwo(prm.securityBits);
     }
 
+    /**
+     * @param {SqiSignature} sig - sig
+     * @param {SqiPublicKey} pk - pk
+     * @param {uint8[]} message - message
+     * @returns {boolean} Result
+     */
     function verify(sig, pk, message) {
       // the matrix entries have to be canonical below 2^(response + 2 - backtracking)
       const bound = prm.responseLength + HD_EXTRA_TORSION - sig.backtracking;
@@ -1675,7 +3300,7 @@
       const f = powDim2 + HD_EXTRA_TORSION + sig.twoRespLength;
       const modF = PowerOfTwo(f);
       const m = sig.mat;
-      const tmp = { P: Bchall.P, Q: Bchall.Q, PmQ: Bchall.PmQ };
+      const tmp = new XzBasis(Bchall.P, Bchall.Q, Bchall.PmQ);
       const nP = biscalarMul(m[0][0], m[1][0], f, tmp, Echall);
       if (!nP) return false;
       const nQ = biscalarMul(m[0][1], m[1][1], f, tmp, Echall);
@@ -1684,7 +3309,7 @@
       const s1 = ((m[1][0] - m[1][1]) % modF + modF) % modF;
       const nPmQ = biscalarMul(s0, s1, f, tmp, Echall);
       if (!nPmQ) return false;
-      Bchall = { P: nP, Q: nQ, PmQ: nPmQ };
+      Bchall = new XzBasis(nP, nQ, nPmQ);
 
       // the short 2^r response isogeny
       if (sig.twoRespLength > 0) {
@@ -1692,10 +3317,11 @@
         ker = ecDblIter(ker, powDim2 + HD_EXTRA_TORSION, Echall);
         const pts = [Bchall.P, Bchall.Q, Bchall.PmQ];
         if (!evalSmallChain(Echall, ker, sig.twoRespLength, pts)) return false;
-        Bchall = { P: pts[0], Q: pts[1], PmQ: pts[2] };
+        Bchall = new XzBasis(pts[0], pts[1], pts[2]);
       }
 
       // the commitment curve, from the dimension-two isogeny
+      /** @type {MontCurve} */
       let Ecom;
       if (powDim2 === 0) {
         const P2 = xDblA24(Bchall.P, Echall.A24, Echall.normalized);
@@ -1703,12 +3329,12 @@
         if (!(isTwoTorsion(P2, Echall) && isTwoTorsion(Q2, Echall) && !pointsEqual(P2, Q2))) return false;
         Ecom = copyCurve(Echall);
       } else {
-        const E12 = { E1: copyCurve(Echall), E2: copyCurve(Eaux) };
-        const ker = {
-          T1: { P1: Bchall.P, P2: Baux.P },
-          T2: { P1: Bchall.Q, P2: Baux.Q },
-          T1m2: { P1: Bchall.PmQ, P2: Baux.PmQ }
-        };
+        const E12 = new CurvePair(copyCurve(Echall), copyCurve(Eaux));
+        const ker = new CoupleKernel(
+          new XzCouple(Bchall.P, Baux.P),
+          new XzCouple(Bchall.Q, Baux.Q),
+          new XzCouple(Bchall.PmQ, Baux.PmQ)
+        );
         const codomain = thetaChainVerify(powDim2, E12, ker);
         if (!codomain) return false;
         Ecom = codomain.E1;
@@ -1720,24 +3346,27 @@
     return {
       /**
        * crypto_sign_open.
-       * @param {number[]} signedMessage - signature || message
-       * @param {number[]} publicKey - the encoded public key
+       * @param {uint8[]} signedMessage - signature || message
+       * @param {uint8[]} publicKey - the encoded public key
        * @returns {{accepted: boolean, message: number[]|null, reason: string}}
        */
       open: function (signedMessage, publicKey) {
         if (publicKey.length !== prm.publicKeyBytes)
-          return { accepted: false, message: null, reason: 'a ' + prm.name + ' public key is ' + prm.publicKeyBytes + ' bytes' };
+          return new SqiOpenResult(false, null, 'a ' + prm.name + ' public key is ' + prm.publicKeyBytes + ' bytes');
         if (signedMessage.length < prm.signatureBytes)
-          return { accepted: false, message: null, reason: 'a ' + prm.name + ' signed message carries a ' + prm.signatureBytes + ' byte signature' };
+          return new SqiOpenResult(false, null, 'a ' + prm.name + ' signed message carries a ' + prm.signatureBytes + ' byte signature');
         const sig = decodeSignature(signedMessage);
         const message = signedMessage.slice(prm.signatureBytes);
         const accepted = verify(sig, decodePublicKey(publicKey), message);
-        return { accepted: accepted, message: accepted ? message : null, reason: accepted ? '' : 'the signature does not verify' };
+        return new SqiOpenResult(accepted, accepted ? message : null, accepted ? '' : 'the signature does not verify');
       }
     };
   }
 
   const verifiers = {};
+  /**
+   * @param {SqiParams} prm - prm
+   */
   function VerifierFor(prm) {
     if (!verifiers[prm.name]) verifiers[prm.name] = Verifier(prm);
     return verifiers[prm.name];
@@ -1745,15 +3374,17 @@
 
   /**
    * Open a signed message under a public key; the key's length picks the level.
-   * @param {number[]} signedMessage - signature || message
-   * @param {number[]} publicKey - the encoded public key
-   * @returns {{accepted: boolean, message: number[]|null, reason: string}}
+   * @param {uint8[]} signedMessage - signature || message
+   * @param {uint8[]} publicKey - the encoded public key
+   * @returns {SqiOpenResult}}
    */
   function SignOpen(signedMessage, publicKey) {
     const prm = ParameterSetByPublicKeyLength(publicKey.length);
-    if (!prm) return { accepted: false, message: null, reason: 'no SQIsign level has a ' + publicKey.length + ' byte public key' };
+    if (!prm) return new SqiOpenResult(false, null, 'no SQIsign level has a ' + publicKey.length + ' byte public key');
+    /** @type {uint8[]} */
     const sm = [];
     for (let i = 0; i < signedMessage.length; ++i) sm.push(OpCodes.And32(signedMessage[i], 0xFF));
+    /** @type {uint8[]} */
     const pk = [];
     for (let i = 0; i < publicKey.length; ++i) pk.push(OpCodes.And32(publicKey[i], 0xFF));
     return VerifierFor(prm).open(sm, pk);
@@ -1979,6 +3610,10 @@
       }
   ];
 
+  /**
+   * @param {string} text - text
+   * @returns {uint8[]} Result
+   */
   function Hex(text) {
     return OpCodes.Hex8ToBytes(text);
   }
@@ -1989,10 +3624,16 @@
     throw new Error('no committed SQIsign record ' + level + ' ' + count);
   }
 
-  /** A copy of the bytes with one bit flipped. */
+  /**
+   * A copy of the bytes with one bit flipped.
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} offset - offset
+   * @param {int32} mask - mask
+   * @returns {uint8[]} Result
+   */
   function FlipBit(bytes, offset, mask) {
     const out = bytes.slice();
-    out[offset] = OpCodes.XorN(out[offset], mask);
+    out[offset] = OpCodes.Xor32(out[offset], mask);
     return out;
   }
 
@@ -2188,12 +3829,15 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['SQIsign-I'];
+      this._parameterSet = ParameterSetEntry('SQIsign-I');
       this._publicKey = null;
       this._message = null;
       this._keyData = null;
     }
 
+    /**
+     * @param {string} label - a set name, level or KAT label
+     */
     set parameterSet(label) {
       const found = FindParameterSet(label);
       if (!found) throw new Error('Unknown SQIsign parameter set: ' + label);
@@ -2204,7 +3848,10 @@
       return this._parameterSet.name;
     }
 
-    /** The public key; its length selects the level. */
+    /**
+     * The public key; its length selects the level.
+     * @param {uint8[]} keyBytes - the key, or null
+     */
     set publicKey(keyBytes) {
       if (!keyBytes) {
         this._publicKey = null;
@@ -2224,6 +3871,7 @@
     /**
      * A message to compare the verified one against. Setting it makes Result
      * report a verdict as [1] or [0] instead of returning the message.
+     * @param {uint8[]} messageBytes - the message, or null
      */
     set message(messageBytes) {
       if (!messageBytes) {
@@ -2238,7 +3886,10 @@
       return this._message ? this._message.slice() : null;
     }
 
-    /** The generic key entry point: the public key. */
+    /**
+     * The generic key entry point: the public key.
+     * @param {uint8[]} keyData - the key, or null
+     */
     set key(keyData) {
       this._keyData = keyData;
       if (keyData === null || keyData === undefined) {
@@ -2290,7 +3941,7 @@
 
     /**
      * Verify a signed message against a public key.
-     * @param {number[]} signedMessage - signature || message
+     * @param {uint8[]} signedMessage - signature || message
      * @param {number[]} [publicKey] - the key, defaulting to the configured one
      * @returns {object} { accepted, message, reason }
      */

@@ -52,45 +52,138 @@
   // Format: [X bits, Z bits] where each is 5 bits for 5 qubits
   // X = bit flip, Z = phase flip, Y = XZ (both)
 
+  /**
+   * One stabilizer generator as X and Z qubit masks
+   * @class
+   */
+  class Stabilizer {
+    /**
+     * @param {uint32} x - X-part qubit mask
+     * @param {uint32} z - Z-part qubit mask
+     * @param {string} name - Pauli string
+     */
+    constructor(x, z, name) {
+      /** @type {uint32} */
+      this.x = x;
+      /** @type {uint32} */
+      this.z = z;
+      /** @type {string} */
+      this.name = name;
+    }
+  }
+
+  /**
+   * Error pattern a syndrome points at
+   * @class
+   */
+  class SyndromeEntry {
+    /**
+     * @param {int32} qubit - Affected qubit, -1 for none
+     * @param {int32} errorType - 0=none, 1=X, 2=Z, 3=Y
+     */
+    constructor(qubit, errorType) {
+      /** @type {int32} */
+      this.qubit = qubit;
+      /** @type {int32} */
+      this.errorType = errorType;
+    }
+  }
+
+  /**
+   * Readable form of a stabilizer generator
+   * @class
+   */
+  class StabilizerDescription {
+    /**
+     * @param {string} name - Pauli string
+     * @param {string} x - X mask as five binary digits
+     * @param {string} z - Z mask as five binary digits
+     * @param {string} description - Affected qubits
+     */
+    constructor(name, x, z, description) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {string} */
+      this.x = x;
+      /** @type {string} */
+      this.z = z;
+      /** @type {string} */
+      this.description = description;
+    }
+  }
+
+  /**
+   * [[n,k,d]] parameters of the code
+   * @class
+   */
+  class StabilizerCodeParameters {
+    constructor() {
+      /** @type {int32} */
+      this.n = 5;  // Number of physical qubits
+      /** @type {int32} */
+      this.k = 1;  // Number of logical qubits
+      /** @type {int32} */
+      this.d = 3;  // Minimum distance
+      /** @type {int32} */
+      this.t = 1;  // Error correction capability
+      /** @type {string} */
+      this.type = 'Stabilizer';
+      /** @type {int32} */
+      this.stabilizers = 4;  // Number of independent stabilizer generators
+    }
+  }
+
   // Generator format: XZZXI (X on qubits 0,4; Z on qubits 1,2)
+  /** @type {Stabilizer[]} */
   const STABILIZERS_5_1_3 = [
-    { x: 0b10011, z: 0b00000, name: 'XZZXI' }, // X on 0,3,4; Z on 1,2
-    { x: 0b01101, z: 0b10000, name: 'IXZZX' }, // X on 0,2,3; Z on 1,4
-    { x: 0b10110, z: 0b01000, name: 'XIXZZ' }, // X on 1,2,4; Z on 0,3
-    { x: 0b01011, z: 0b00100, name: 'ZXIXZ' }  // X on 0,1,3; Z on 2,4
+    new Stabilizer(0b10011, 0b00000, 'XZZXI'), // X on 0,3,4; Z on 1,2
+    new Stabilizer(0b01101, 0b10000, 'IXZZX'), // X on 0,2,3; Z on 1,4
+    new Stabilizer(0b10110, 0b01000, 'XIXZZ'), // X on 1,2,4; Z on 0,3
+    new Stabilizer(0b01011, 0b00100, 'ZXIXZ')  // X on 0,1,3; Z on 2,4
   ];
+
+  /** @type {SyndromeEntry} */
+  const NO_ERROR_5_1_3 = new SyndromeEntry(-1, 0);
 
   // Syndrome lookup table for [[5,1,3]] code
   // Maps 4-bit syndrome to error pattern (which qubit has which error)
   // Error types: 0=none, 1=X, 2=Z, 3=Y(XZ)
+  /** @type {SyndromeEntry[]} */
   const SYNDROME_TABLE_5_1_3 = buildSyndromeTable();
 
+  /**
+   * Syndrome-indexed error patterns; a later entry for the same syndrome
+   * replaces an earlier one, and unlisted syndromes stay null
+   * @returns {SyndromeEntry[]} 16-entry table
+   */
   function buildSyndromeTable() {
-    const table = new Map();
+    /** @type {SyndromeEntry[]} */
+    const table = [];
+    for (let s = 0; s < 16; ++s) table.push(null);
 
     // No error
-    table.set(0b0000, { qubit: -1, type: 0 });
+    table[0b0000] = new SyndromeEntry(-1, 0);
 
     // Single X errors (bit flips)
-    table.set(0b1101, { qubit: 0, type: 1 }); // X on qubit 0
-    table.set(0b1010, { qubit: 1, type: 1 }); // X on qubit 1
-    table.set(0b0110, { qubit: 2, type: 1 }); // X on qubit 2
-    table.set(0b1100, { qubit: 3, type: 1 }); // X on qubit 3
-    table.set(0b0011, { qubit: 4, type: 1 }); // X on qubit 4
+    table[0b1101] = new SyndromeEntry(0, 1); // X on qubit 0
+    table[0b1010] = new SyndromeEntry(1, 1); // X on qubit 1
+    table[0b0110] = new SyndromeEntry(2, 1); // X on qubit 2
+    table[0b1100] = new SyndromeEntry(3, 1); // X on qubit 3
+    table[0b0011] = new SyndromeEntry(4, 1); // X on qubit 4
 
     // Single Z errors (phase flips)
-    table.set(0b1000, { qubit: 0, type: 2 }); // Z on qubit 0
-    table.set(0b0100, { qubit: 1, type: 2 }); // Z on qubit 1
-    table.set(0b0010, { qubit: 2, type: 2 }); // Z on qubit 2
-    table.set(0b0001, { qubit: 3, type: 2 }); // Z on qubit 3
-    table.set(0b1001, { qubit: 4, type: 2 }); // Z on qubit 4
+    table[0b1000] = new SyndromeEntry(0, 2); // Z on qubit 0
+    table[0b0100] = new SyndromeEntry(1, 2); // Z on qubit 1
+    table[0b0010] = new SyndromeEntry(2, 2); // Z on qubit 2
+    table[0b0001] = new SyndromeEntry(3, 2); // Z on qubit 3
+    table[0b1001] = new SyndromeEntry(4, 2); // Z on qubit 4
 
     // Single Y errors (both bit and phase flip)
-    table.set(0b0101, { qubit: 0, type: 3 }); // Y on qubit 0
-    table.set(0b1110, { qubit: 1, type: 3 }); // Y on qubit 1
-    table.set(0b0100, { qubit: 2, type: 3 }); // Y on qubit 2
-    table.set(0b1101, { qubit: 3, type: 3 }); // Y on qubit 3
-    table.set(0b1010, { qubit: 4, type: 3 }); // Y on qubit 4
+    table[0b0101] = new SyndromeEntry(0, 3); // Y on qubit 0
+    table[0b1110] = new SyndromeEntry(1, 3); // Y on qubit 1
+    table[0b0100] = new SyndromeEntry(2, 3); // Y on qubit 2
+    table[0b1101] = new SyndromeEntry(3, 3); // Y on qubit 3
+    table[0b1010] = new SyndromeEntry(4, 3); // Y on qubit 4
 
     return table;
   }
@@ -181,7 +274,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {StabilizerQuantumCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -198,13 +291,15 @@
   class StabilizerQuantumCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {StabilizerQuantumCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -242,25 +337,28 @@
     // ===== ENCODING =====
     // Maps logical qubit state to 5 physical qubits using stabilizer code
 
+    /**
+     * @returns {uint8[]} Five physical bits per logical bit
+     */
     _encode() {
       if (this.inputBuffer.length === 0) {
         throw new Error('Stabilizer code requires at least 1 bit of logical data');
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process each input bit as a logical qubit
       for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {uint8} */
         const logicalBit = OpCodes.ToByte(this.inputBuffer[i]);
 
         // Encode using [[5,1,3]] code
         // Simplified: |0_L> → [0,0,0,0,0], |1_L> → [1,1,1,1,1]
         // Real quantum implementation would use proper superposition states
-        if (logicalBit === 0) {
-          result.push(0, 0, 0, 0, 0);
-        } else {
-          result.push(1, 1, 1, 1, 1);
-        }
+        /** @type {uint8} */
+        const physical = logicalBit === 0 ? 0 : 1;
+        for (let q = 0; q < 5; ++q) result.push(physical);
       }
 
       this.inputBuffer = [];
@@ -269,6 +367,9 @@
 
     // ===== DECODING WITH ERROR CORRECTION =====
 
+    /**
+     * @returns {uint8[]} One logical bit per five-bit block
+     */
     _decode() {
       if (this.inputBuffer.length === 0) {
         throw new Error('Stabilizer code requires encoded data');
@@ -278,30 +379,40 @@
         throw new Error('Stabilizer code requires data in 5-qubit blocks');
       }
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Process 5-bit blocks
       for (let i = 0; i < this.inputBuffer.length; i += 5) {
         // Extract 5-qubit codeword
+        /** @type {uint8[]} */
         const codeword = this.inputBuffer.slice(i, i + 5);
 
         // Convert to packed integer for syndrome calculation
+        /** @type {uint32} */
         const packed = this._packBits(codeword);
 
         // Measure stabilizers to get syndrome
+        /** @type {uint32} */
         const syndrome = this._measureSyndrome(packed);
 
         // Lookup error correction
-        const errorInfo = SYNDROME_TABLE_5_1_3.get(syndrome) || { qubit: -1, type: 0 };
+        /** @type {SyndromeEntry} */
+        let errorInfo = NO_ERROR_5_1_3;
+        if (syndrome < SYNDROME_TABLE_5_1_3.length && SYNDROME_TABLE_5_1_3[syndrome] !== null) {
+          errorInfo = SYNDROME_TABLE_5_1_3[syndrome];
+        }
 
         // Apply correction
+        /** @type {uint32} */
         let corrected = packed;
         if (errorInfo.qubit >= 0) {
-          corrected = this._applyCorrection(packed, errorInfo.qubit, errorInfo.type);
+          corrected = this._applyCorrection(packed, errorInfo.qubit, errorInfo.errorType);
         }
 
         // Decode to logical bit
         // Simplified: measure if closer to 00000 or 11111
+        /** @type {uint8} */
         const logicalBit = this._decodeLogicalBit(corrected);
 
         result.push(logicalBit);
@@ -312,7 +423,12 @@
     }
 
     // Pack 5-bit array into integer
+    /**
+     * @param {uint8[]} bits - Up to five bits
+     * @returns {uint32} Bits packed MSB first
+     */
     _packBits(bits) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < Math.min(5, bits.length); i++) {
         result = OpCodes.ToUint32(OpCodes.Shl32(result, 1)|OpCodes.ToByte(bits[i]));
@@ -323,19 +439,28 @@
     // ===== STABILIZER MEASUREMENT =====
     // Measures all stabilizer generators to compute syndrome
 
+    /**
+     * @param {uint32} codeword - Packed codeword
+     * @returns {uint32} Syndrome
+     */
     _measureSyndrome(codeword) {
+      /** @type {uint32} */
       let syndrome = 0;
 
       for (let i = 0; i < STABILIZERS_5_1_3.length; i++) {
+        /** @type {Stabilizer} */
         const stabilizer = STABILIZERS_5_1_3[i];
 
         // Compute eigenvalue (-1 or +1) by counting parity
         // In classical representation: XOR of affected qubits
+        /** @type {uint32} */
         const xParity = this._computeParity(codeword, stabilizer.x);
+        /** @type {uint32} */
         const zParity = this._computeParity(codeword, stabilizer.z);
 
         // Syndrome bit: 0 if +1 eigenvalue, 1 if -1 eigenvalue
         // Simplified: XOR of parities indicates error
+        /** @type {uint32} */
         const syndromeBit = OpCodes.Xor32(xParity, zParity);
 
         syndrome = OpCodes.Xor32(syndrome, OpCodes.Shl32(syndromeBit, i));
@@ -345,9 +470,16 @@
     }
 
     // Compute parity of bits selected by mask
+    /**
+     * @param {uint32} value - Packed codeword
+     * @param {uint32} mask - Qubit selection
+     * @returns {uint32} Folded parity
+     */
     _computeParity(value, mask) {
+      /** @type {uint32} */
       let result = 0;
-      let masked = OpCodes.ToUint32(value&mask);
+      /** @type {uint32} */
+      let masked = OpCodes.And32(value, mask);
 
       while (masked) {
         result = OpCodes.Xor32(result, OpCodes.ToByte(masked));
@@ -360,7 +492,14 @@
     // ===== ERROR CORRECTION =====
     // Apply correction based on error type and location
 
+    /**
+     * @param {uint32} codeword - Packed codeword
+     * @param {int32} qubit - Qubit index
+     * @param {int32} errorType - 1=X, 2=Z, 3=Y
+     * @returns {uint32} Corrected codeword
+     */
     _applyCorrection(codeword, qubit, errorType) {
+      /** @type {uint32} */
       let corrected = codeword;
 
       switch (errorType) {
@@ -384,8 +523,13 @@
     // ===== LOGICAL DECODING =====
     // Decode 5-qubit codeword to 1 logical bit
 
+    /**
+     * @param {uint32} codeword - Packed codeword
+     * @returns {uint8} Majority bit
+     */
     _decodeLogicalBit(codeword) {
       // Count number of 1s in codeword
+      /** @type {int32} */
       const weight = this._hammingWeight(codeword);
 
       // Majority vote: closer to 00000 or 11111?
@@ -394,8 +538,14 @@
     }
 
     // Count number of 1-bits (Hamming weight)
+    /**
+     * @param {uint32} value - Packed codeword
+     * @returns {int32} Number of set bits
+     */
     _hammingWeight(value) {
+      /** @type {int32} */
       let count = 0;
+      /** @type {uint32} */
       let temp = value;
       while (temp) {
         count += OpCodes.ToByte(temp);
@@ -406,13 +556,21 @@
 
     // ===== ERROR DETECTION =====
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (!data || data.length === 0) return false;
+      if (!data || data.length === 0) {
+        return false;
+      }
 
       // Pack first 5 bits into codeword
+      /** @type {uint32} */
       const packed = this._packBits(data.slice(0, 5));
 
       // Measure syndrome on first codeword
+      /** @type {uint32} */
       const syndrome = this._measureSyndrome(packed);
 
       // Non-zero syndrome indicates error
@@ -420,36 +578,54 @@
     }
 
     // Get error correction capability
+    /**
+     * @returns {int32} Correctable errors per block
+     */
     getMaxCorrectableErrors() {
       return 1; // [[5,1,3]] code corrects 1 error per 5-qubit block
     }
 
     // Get code parameters
+    /**
+     * @returns {StabilizerCodeParameters} Code parameters
+     */
     getCodeParameters() {
-      return {
-        n: 5,  // Number of physical qubits
-        k: 1,  // Number of logical qubits
-        d: 3,  // Minimum distance
-        t: 1,  // Error correction capability
-        type: 'Stabilizer',
-        stabilizers: 4  // Number of independent stabilizer generators
-      };
+      return new StabilizerCodeParameters();
     }
 
     // Get stabilizer generators (for educational reference)
+    /**
+     * @returns {StabilizerDescription[]} Stabilizer generators
+     */
     getStabilizers() {
-      return STABILIZERS_5_1_3.map(s => ({
-        name: s.name,
-        x: s.x.toString(2).padStart(5, '0'),
-        z: s.z.toString(2).padStart(5, '0'),
-        description: `X on qubits: ${this._getBitPositions(s.x)}, Z on qubits: ${this._getBitPositions(s.z)}`
-      }));
+      /** @type {StabilizerDescription[]} */
+      const described = [];
+      for (let i = 0; i < STABILIZERS_5_1_3.length; ++i) {
+        /** @type {Stabilizer} */
+        const s = STABILIZERS_5_1_3[i];
+        /** @type {string} */
+        const xBits = s.x.toString(2).padStart(5, '0');
+        /** @type {string} */
+        const zBits = s.z.toString(2).padStart(5, '0');
+        described.push(new StabilizerDescription(
+          s.name,
+          xBits,
+          zBits,
+          "X on qubits: " + (this._getBitPositions(s.x)) + ", Z on qubits: " + (this._getBitPositions(s.z))
+        ));
+      }
+      return described;
     }
 
+    /**
+     * @param {uint32} value - Qubit mask
+     * @returns {string} Comma-separated positions or "none"
+     */
     _getBitPositions(value) {
+      /** @type {int32[]} */
       const positions = [];
       for (let i = 0; i < 5; i++) {
-        if (OpCodes.ToUint32(value&OpCodes.Shl32(1, i))) {
+        if (OpCodes.And32(value, OpCodes.Shl32(1, i))) {
           positions.push(i);
         }
       }
