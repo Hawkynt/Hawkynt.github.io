@@ -147,10 +147,16 @@
       this._evenParity = true; // Even parity by default
     }
 
+    /**
+     * @param {boolean} value - True for even parity
+     */
     set evenParity(value) {
       this._evenParity = !!value;
     }
 
+    /**
+     * @returns {boolean} True for even parity
+     */
     get evenParity() {
       return this._evenParity;
     }
@@ -203,6 +209,7 @@
       }
 
       // Calculate parity bit
+      /** @type {float64} */
       let parityBit;
       if (this._evenParity) {
         // Even parity: parity bit makes total ones even
@@ -213,7 +220,10 @@
       }
 
       // Append parity bit
-      return [...data, parityBit];
+      /** @type {uint8[]} */
+      const codeword = data.slice();
+      codeword.push(parityBit);
+      return codeword;
     }
 
     /**

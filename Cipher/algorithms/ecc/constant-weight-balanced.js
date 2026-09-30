@@ -151,10 +151,15 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._n = 5; // Default length
+      /** @type {int32} */
       this._w = 2; // Default weight
     }
 
+    /**
+     * @param {int32} value - Code length (>= 1)
+     */
     set n(value) {
       if (value < 1) {
         throw new Error('ConstantWeightCodeInstance.n: Must be at least 1');
@@ -162,10 +167,16 @@
       this._n = value;
     }
 
+    /**
+     * @returns {int32} Code length
+     */
     get n() {
       return this._n;
     }
 
+    /**
+     * @param {int32} value - Codeword weight (0..n)
+     */
     set w(value) {
       if (value < 0 || value > this._n) {
         throw new Error("ConstantWeightCodeInstance.w: Must be between 0 and " + this._n);
@@ -173,6 +184,9 @@
       this._w = value;
     }
 
+    /**
+     * @returns {int32} Codeword weight
+     */
     get w() {
       return this._w;
     }
@@ -208,10 +222,17 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Word
+     * @returns {float64} Sum of the symbols
+     */
     calculateWeight(data) {
+      /** @type {float64} */
       let weight = 0;
       for (let i = 0; i < data.length; ++i) {
-        weight += data[i];
+        /** @type {float64} */
+        const symbol = data[i];
+        weight += symbol;
       }
       return weight;
     }
@@ -225,6 +246,7 @@
         throw new Error("Constant Weight encode: Input must be exactly " + this._n + " bits");
       }
 
+      /** @type {float64} */
       const weight = this.calculateWeight(data);
 
       if (weight !== this._w) {
@@ -232,7 +254,9 @@
       }
 
       // Constant weight codes are systematic - codeword equals message
-      return [...data];
+      /** @type {uint8[]} */
+      const codeword = data.slice();
+      return codeword;
     }
 
     /**
@@ -244,6 +268,7 @@
         throw new Error("Constant Weight decode: Input must be exactly " + this._n + " bits");
       }
 
+      /** @type {float64} */
       const weight = this.calculateWeight(data);
 
       if (weight !== this._w) {
@@ -251,7 +276,9 @@
       }
 
       // Return received word (real decoder would correct to nearest valid codeword)
-      return [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      return received;
     }
 
     /**
@@ -259,8 +286,11 @@
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
-      if (data.length !== this._n) return true;
+      if (data.length !== this._n) {
+        return true;
+      }
 
+      /** @type {float64} */
       const weight = this.calculateWeight(data);
       return (weight !== this._w);
     }
