@@ -199,9 +199,13 @@
       this.result = null;
 
       // RS(7,3) parameters for GF(4)
+      /** @type {int32} */
       this.n = 7;        // Total symbols (DNA bases)
+      /** @type {int32} */
       this.k = 3;        // Data symbols
+      /** @type {int32} */
       this.t = 2;        // Error correction capability: (n-k)/2 = 2
+      /** @type {int32} */
       this.field = 4;    // GF(4) = {0,1,2,3} = {A,C,G,T}
 
       // GF(4) primitive polynomial: x^2 + x + 1 (binary: 111, decimal: 7)
@@ -209,7 +213,8 @@
       this.primitive = 0b111; // x^2 + x + 1
 
       // DNA base mapping
-      this.baseToSymbol = {'A': 0, 'C': 1, 'G': 2, 'T': 3};
+      // symbol s is written as base symbolToBase[s]; a base maps back through indexOf
+      /** @type {string[]} */
       this.symbolToBase = ['A', 'C', 'G', 'T'];
 
       // GC bases (for content checking)
@@ -220,6 +225,7 @@
       this.initializeGF4();
 
       // Compute generator polynomial for RS(7,3)
+      /** @type {uint8[]} */
       this.generator = this.computeGenerator();
     }
 
@@ -231,13 +237,16 @@
      *
      * Multiplication table:
      * 0*x = 0, 1*x = x, 2*2 = 3, 2*3 = 1, 3*3 = 2
+     * @returns {void}
      */
     initializeGF4() {
       // Log and antilog tables for GF(4)
       // In GF(4), multiplicative group has order 3: {1, α, α^2}
       // α^0 = 1, α^1 = 2, α^2 = 3, α^3 = 1 (cycle)
 
+      /** @type {int32[]} */
       this.gfLog = new Array(this.field);
+      /** @type {uint8[]} */
       this.gfAntilog = new Array(this.field);
 
       // Antilog table (powers of α, primitive element = 2)
@@ -253,16 +262,23 @@
 
       // Precomputed multiplication table for GF(4)
       // More efficient than log/antilog for small fields
-      this.mulTable = [
-        [0, 0, 0, 0],  // 0 * {0,1,2,3}
-        [0, 1, 2, 3],  // 1 * {0,1,2,3}
-        [0, 2, 3, 1],  // 2 * {0,1,2,3}
-        [0, 3, 1, 2]   // 3 * {0,1,2,3}
-      ];
+      /** @type {uint8[]} */
+      const byZero = [0, 0, 0, 0];  // 0 * {0,1,2,3}
+      /** @type {uint8[]} */
+      const byOne = [0, 1, 2, 3];   // 1 * {0,1,2,3}
+      /** @type {uint8[]} */
+      const byTwo = [0, 2, 3, 1];   // 2 * {0,1,2,3}
+      /** @type {uint8[]} */
+      const byThree = [0, 3, 1, 2]; // 3 * {0,1,2,3}
+      /** @type {uint8[][]} */
+      this.mulTable = [byZero, byOne, byTwo, byThree];
     }
 
     /**
      * GF(4) multiplication using precomputed table
+     * @param {uint8} a - GF(4) element
+     * @param {uint8} b - GF(4) element
+     * @returns {uint8} a * b
      */
     gfMultiply(a, b) {
       if (a < 0 || a >= this.field || b < 0 || b >= this.field) {
@@ -275,6 +291,9 @@
      * GF(4) addition (XOR in GF(2^n))
      * Note: XOR is the fundamental addition operation in Galois Fields GF(2^n)
      * Using OpCodes for consistency with codebase standards
+     * @param {uint8} a - GF(4) element
+     * @param {uint8} b - GF(4) element
+     * @returns {uint8} a + b
      */
     gfAdd(a, b) {
       return OpCodes.Xor32(a, b); // Galois Field addition using OpCodes
@@ -282,10 +301,15 @@
 
     /**
      * GF(4) division
+     * @param {uint8} a - GF(4) element
+     * @param {uint8} b - Non-zero GF(4) element
+     * @returns {uint8} a / b
      */
     gfDivide(a, b) {
       if (b === 0) throw new Error('Division by zero in GF(4)');
-      if (a === 0) return 0;
+      if (a === 0) {
+        return 0;
+      }
 
       // Division: a / b = a * b^(-1)
       // In GF(4), multiplicative inverses: 1^(-1)=1, 2^(-1)=3, 3^(-1)=2
@@ -297,6 +321,7 @@
     /**
      * Compute generator polynomial for RS(7,3) over GF(4)
      * g(x) = (x - α^0)(x - α^1)(x - α^2)(x - α^3)
+     * @returns {uint8[]} Generator polynomial coefficients
      */
     computeGenerator() {
       // Start with g(x) = 1
@@ -305,6 +330,7 @@
 
       // Multiply by (x - α^i) for i = 0 to n-k-1
       for (let i = 0; i < this.n - this.k; ++i) {
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i % 3]; // α^i (cycle every 3)
         /** @type {uint8[]} */
         const newGen = OpCodes.CreateArray(gen.length + 1, 0);
@@ -324,7 +350,7 @@
     /**
      * Feed data for encoding or decoding
      *
-     * @param {Array} data - For encode: k symbols (0-3), for decode: n symbols (0-3)
+     * @param {uint8[]} data - For encode: k symbols (0-3), for decode: n symbols (0-3)
      */
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -348,7 +374,7 @@
     /**
      * Get result after Feed
      *
-     * @returns {Array} Encoded or decoded symbols
+     * @returns {uint8[]} Encoded or decoded symbols
      */
     Result() {
       if (this.result === null) {
@@ -370,7 +396,8 @@
       }
 
       // Allocate output: data symbols + parity symbols
-      const encoded = new Array(this.n);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(this.n, 0);
 
       // Copy data symbols to start
       for (let i = 0; i < this.k; ++i) {
@@ -378,6 +405,7 @@
       }
 
       // Calculate parity symbols using polynomial division
+      /** @type {uint8[]} */
       const parity = this.calculateParity(data);
 
       // Append parity symbols
@@ -396,8 +424,8 @@
      *
      * Parity = data(x) * x^(n-k) mod g(x)
      *
-     * @param {Array} data - k data symbols
-     * @returns {Array} n-k parity symbols
+     * @param {uint8[]} data - k data symbols
+     * @returns {uint8[]} n-k parity symbols
      */
     calculateParity(data) {
       /** @type {uint8[]} */
@@ -405,6 +433,7 @@
 
       // Polynomial division: data(x) * x^(n-k) / g(x)
       for (let i = 0; i < this.k; ++i) {
+        /** @type {uint8} */
         const coeff = this.gfAdd(data[i], parity[0]);
 
         // Shift parity and apply generator polynomial
@@ -436,13 +465,15 @@
         throw new Error("DNAStorage.decode: Input must be " + this.n + " symbols");
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
 
       // Calculate syndromes
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(received);
 
       // Check if any errors exist
-      const hasError = syndromes.some(s => s !== 0);
+      const hasError = !this._allZero(syndromes);
 
       if (!hasError) {
         // No errors detected, extract data symbols
@@ -454,6 +485,7 @@
 
       // Simple error correction for educational purposes
       // Full implementation would use Berlekamp-Massey + Chien search
+      /** @type {uint8[]} */
       const corrected = this.correctErrors(received, syndromes);
 
       return corrected.slice(0, this.k);
@@ -463,15 +495,18 @@
      * Calculate syndrome polynomial S(x)
      * S_i = c(α^i) for i = 0 to n-k-1
      *
-     * @param {Array} data - Received codeword
-     * @returns {Array} Syndrome values
+     * @param {uint8[]} data - Received codeword
+     * @returns {uint8[]} Syndrome values
      */
     calculateSyndromes(data) {
-      const syndromes = new Array(this.n - this.k);
+      /** @type {uint8[]} */
+      const syndromes = OpCodes.CreateArray(this.n - this.k, 0);
 
       for (let i = 0; i < this.n - this.k; ++i) {
         syndromes[i] = 0;
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i % 3];
+        /** @type {uint8} */
         let alpha_power = 1;
 
         // Evaluate polynomial at α^i
@@ -491,26 +526,30 @@
      * Simplified error correction
      * Full implementation requires Berlekamp-Massey algorithm
      *
-     * @param {Array} received - Received codeword
-     * @param {Array} syndromes - Calculated syndromes
-     * @returns {Array} Corrected codeword
+     * @param {uint8[]} received - Received codeword
+     * @param {uint8[]} syndromes - Calculated syndromes
+     * @returns {uint8[]} Corrected codeword
      */
     correctErrors(received, syndromes) {
-      const corrected = [...received];
+      /** @type {uint8[]} */
+      const corrected = received.slice();
 
       // For single error: error location = S1/S0, error value = S0
       if (syndromes[0] !== 0) {
         // Single error case (simplified)
+        /** @type {uint8} */
         const errorValue = syndromes[0];
 
         // Try to find error location
         // In GF(4), brute force is feasible for small n
         for (let pos = 0; pos < this.n; ++pos) {
-          const testCorrected = [...received];
+          /** @type {uint8[]} */
+          const testCorrected = received.slice();
           testCorrected[pos] = this.gfAdd(testCorrected[pos], errorValue);
 
+          /** @type {uint8[]} */
           const testSyndromes = this.calculateSyndromes(testCorrected);
-          if (testSyndromes.every(s => s === 0)) {
+          if (this._allZero(testSyndromes)) {
             console.log("DNAStorage: Corrected error at position " + pos);
             return testCorrected;
           }
@@ -533,8 +572,20 @@
         return true; // Invalid length is an error
       }
 
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(data);
-      return syndromes.some(s => s !== 0);
+      return !this._allZero(syndromes);
+    }
+
+    /**
+     * @param {uint8[]} values - Symbols
+     * @returns {boolean} True when every symbol is zero
+     */
+    _allZero(values) {
+      for (let i = 0; i < values.length; ++i) {
+        if (values[i] !== 0) return false;
+      }
+      return true;
     }
 
     /**
@@ -542,16 +593,24 @@
      * - GC-content: 40-60%
      * - Homopolymer runs: max 3 consecutive
      *
-     * @param {Array} symbols - DNA sequence as symbols
+     * @param {uint8[]} symbols - DNA sequence as symbols
+     * @returns {void}
      */
     checkDNAConstraints(symbols) {
       // Check GC-content
-      const gcCount = symbols.filter(s => this.gcBases.includes(s)).length;
+      /** @type {int32} */
+      let gcCount = 0;
+      for (let i = 0; i < symbols.length; ++i) {
+        if (this.gcBases.indexOf(symbols[i]) >= 0) ++gcCount;
+      }
+      /** @type {float64} */
       const gcPercent = (gcCount / symbols.length) * 100;
 
       if (gcPercent < 40 || gcPercent > 60) {
+        /** @type {string} */
+        const shown = gcPercent.toFixed(1);
         console.warn(
-          "DNAStorage: GC-content " + (gcPercent.toFixed(1)) + "% outside optimal range [40-60%]"
+          "DNAStorage: GC-content " + shown + "% outside optimal range [40-60%]"
         );
       }
 
@@ -569,6 +628,7 @@
       }
 
       if (maxRun > 3) {
+        /** @type {string} */
         const base = this.symbolToBase[symbols[0]];
         console.warn(
           "DNAStorage: Homopolymer run of " + maxRun + " detected (" + (base.repeat(maxRun)) + "). Max recommended: 3"
@@ -579,26 +639,42 @@
     /**
      * Convert symbol array to DNA string
      *
-     * @param {Array} symbols - Array of symbols (0-3)
+     * @param {uint8[]} symbols - Array of symbols (0-3)
      * @returns {string} DNA string (ACGT)
      */
     symbolsToDNA(symbols) {
-      return symbols.map(s => this.symbolToBase[s]).join('');
+      /** @type {string} */
+      let dna = '';
+      for (let i = 0; i < symbols.length; ++i) {
+        /** @type {string} */
+        const base = this.symbolToBase[symbols[i]];
+        dna += (base === undefined ? '' : base);
+      }
+      return dna;
     }
 
     /**
      * Convert DNA string to symbol array
      *
      * @param {string} dna - DNA string (ACGT)
-     * @returns {Array} Array of symbols (0-3)
+     * @returns {uint8[]} Array of symbols (0-3)
      */
     dnaToSymbols(dna) {
-      return dna.toUpperCase().split('').map(base => {
-        if (!this.baseToSymbol.hasOwnProperty(base)) {
+      /** @type {string} */
+      const upper = dna.toUpperCase();
+      /** @type {uint8[]} */
+      const symbols = [];
+      for (let i = 0; i < upper.length; ++i) {
+        /** @type {string} */
+        const base = upper.charAt(i);
+        /** @type {int32} */
+        const symbol = this.symbolToBase.indexOf(base);
+        if (symbol < 0) {
           throw new Error("DNAStorage: Invalid DNA base '" + base + "'");
         }
-        return this.baseToSymbol[base];
-      });
+        symbols.push(symbol);
+      }
+      return symbols;
     }
   }
 

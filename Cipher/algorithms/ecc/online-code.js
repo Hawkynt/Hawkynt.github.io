@@ -58,6 +58,112 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Outer-code statistics as reported by getOuterCodeStats()
+   * @class
+   */
+  class OuterCodeStats {
+    /**
+     * @param {int32} auxiliarySymbols - Auxiliary symbols
+     * @param {int32} messageSymbols - Message symbols
+     * @param {int32} q - Checks per symbol
+     * @param {float64} meanDegree - Mean auxiliary degree
+     * @param {int32[]} distribution - Sorted degrees
+     */
+    constructor(auxiliarySymbols, messageSymbols, q, meanDegree, distribution) {
+      /** @type {int32} */
+      this.auxiliarySymbols = auxiliarySymbols;
+      /** @type {int32} */
+      this.messageSymbols = messageSymbols;
+      /** @type {int32} */
+      this.q = q;
+      /** @type {float64} */
+      this.meanDegree = meanDegree;
+      /** @type {int32[]} */
+      this.distribution = distribution;
+    }
+  }
+
+  /**
+   * Inner-code statistics as reported by getInnerCodeStats()
+   * @class
+   */
+  class InnerCodeStats {
+    /**
+     * @param {int32} compositeBlockSize - Composite symbols
+     * @param {int32} innerSymbols - Inner-code symbols
+     * @param {float64} meanDegree - Mean inner-symbol degree
+     * @param {int32[]} distribution - Sorted degrees
+     */
+    constructor(compositeBlockSize, innerSymbols, meanDegree, distribution) {
+      /** @type {int32} */
+      this.compositeBlockSize = compositeBlockSize;
+      /** @type {int32} */
+      this.innerSymbols = innerSymbols;
+      /** @type {float64} */
+      this.meanDegree = meanDegree;
+      /** @type {int32[]} */
+      this.distribution = distribution;
+    }
+  }
+
+  /**
+   * Overhead figures as reported by getOverheadAnalysis()
+   * @class
+   */
+  class OverheadAnalysis {
+    /**
+     * @param {float64} targetEpsilon - Target overhead
+     * @param {int32} theoreticalSymbolsNeeded - k(1 + epsilon), rounded up
+     * @param {float64} actualOverhead - Received overhead
+     * @param {float64} efficiency - k over symbols received
+     */
+    constructor(targetEpsilon, theoreticalSymbolsNeeded, actualOverhead, efficiency) {
+      /** @type {float64} */
+      this.targetEpsilon = targetEpsilon;
+      /** @type {int32} */
+      this.theoreticalSymbolsNeeded = theoreticalSymbolsNeeded;
+      /** @type {float64} */
+      this.actualOverhead = actualOverhead;
+      /** @type {float64} */
+      this.efficiency = efficiency;
+    }
+  }
+
+  /**
+   * The indices 0 .. count-1
+   * @param {int32} count - Number of indices
+   * @returns {int32[]} Index list
+   */
+  function indexRange(count) {
+    /** @type {int32[]} */
+    const indices = [];
+    for (let i = 0; i < count; ++i) indices.push(i);
+    return indices;
+  }
+
+  /**
+   * Sort ascending and return the sum
+   * @param {int32[]} values - Degrees, sorted in place
+   * @returns {int32} Sum of the values
+   */
+  function sortAndSum(values) {
+    for (let i = 1; i < values.length; ++i) {
+      /** @type {int32} */
+      const value = values[i];
+      let j = i - 1;
+      while (j >= 0 && values[j] > value) {
+        values[j + 1] = values[j];
+        --j;
+      }
+      values[j + 1] = value;
+    }
+    /** @type {int32} */
+    let sum = 0;
+    for (let i = 0; i < values.length; ++i) sum += values[i];
+    return sum;
+  }
+
   class OnlineCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -197,21 +303,29 @@
       this.isInverse = isInverse;
 
       // Input/Output
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
       /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // Parameters
+      /** @type {int32} */
       this.k = 0;                     // Number of source symbols
+      /** @type {float64} */
       this.epsilon = 0.1;             // Overhead parameter
+      /** @type {int32} */
       this.q = 3;                     // Outer code parameter (checks per symbol)
+      /** @type {float64} */
       this.failureProbability = 0.01; // Target failure probability
+      /** @type {int32} */
       this.seed = 42;                 // Random seed
 
       // Internal structures
       this.outerCodeGraph = null;     // Outer code bipartite graph
       this.innerCodeGraph = null;     // Inner code (LT-like) bipartite graph
+      /** @type {uint8[]} */
       this.auxiliarySymbols = null;   // Auxiliary symbols from outer code
       this.profiler = new PerformanceProfiler();
       this.rng = null;
@@ -237,7 +351,11 @@
         // encoding graph are derived from the complete block in Result(), since
         // a partition computed from one call's share of the message describes a
         // different code from the one the whole message asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -273,6 +391,14 @@
     }
 
     // Set parameters
+    /**
+     * @param {int32} k - Source symbols
+     * @param {float64} [epsilon=0.1] - Overhead
+     * @param {int32} [q=3] - Checks per symbol
+     * @param {float64} [failureProbability=0.01] - Target failure probability
+     * @param {int32} [seed=42] - Random seed
+     * @returns {void}
+     */
     setParameters(k, epsilon = 0.1, q = 3, failureProbability = 0.01, seed = 42) {
       this.k = k;
       this.epsilon = epsilon;
@@ -281,13 +407,18 @@
       this.seed = seed;
     }
 
+    /**
+     * @returns {void}
+     */
     _initializeEncoding() {
       this.rng = new SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate number of auxiliary symbols (outer code)
       // According to Online Codes paper: n = k(1 + ε)
+      /** @type {int32} */
       const auxCount = Math.ceil(this.k * this.epsilon);
+      /** @type {int32} */
       this.auxiliaryCount = auxCount;
 
       // Build outer code graph (connects source to auxiliary symbols)
@@ -299,6 +430,9 @@
       this.profiler.endTimer('initialization');
     }
 
+    /**
+     * @returns {void}
+     */
     _buildOuterCode() {
       this.profiler.startTimer('outer_code_construction');
 
@@ -309,17 +443,22 @@
       // For each source symbol, connect to q auxiliary symbols
       for (let msgIdx = 0; msgIdx < this.k; msgIdx++) {
         // Select q distinct auxiliary symbols uniformly at random
-        const availableAux = Array.from({length: this.auxiliaryCount}, (_, i) => i);
+        /** @type {int32[]} */
+        const availableAux = indexRange(this.auxiliaryCount);
+        /** @type {int32[]} */
         const selectedAux = this.rng.sample(availableAux, Math.min(this.q, this.auxiliaryCount));
 
-        for (const auxIdx of selectedAux) {
-          this.outerCodeGraph.addEdge(msgIdx, auxIdx);
+        for (let s = 0; s < selectedAux.length; ++s) {
+          this.outerCodeGraph.addEdge(msgIdx, selectedAux[s]);
         }
       }
 
       this.profiler.endTimer('outer_code_construction');
     }
 
+    /**
+     * @returns {void}
+     */
     _buildInnerCode() {
       this.profiler.startTimer('inner_code_construction');
 
@@ -335,24 +474,31 @@
 
       // Use robust soliton distribution for inner code
       const degreeDistribution = new DegreeDistribution(compositeCount);
+      /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, this.failureProbability);
 
       for (let innerIdx = 0; innerIdx < innerSymbolCount; innerIdx++) {
         // Sample degree from robust soliton distribution
+        /** @type {int32} */
         const degree = degreeDistribution.sampleDegreeFromCDF(cdf, this.rng);
 
         // Sample composite blocks uniformly at random
-        const compositeIndices = Array.from({length: compositeCount}, (_, i) => i);
+        /** @type {int32[]} */
+        const compositeIndices = indexRange(compositeCount);
+        /** @type {int32[]} */
         const neighbors = this.rng.sample(compositeIndices, Math.min(degree, compositeCount));
 
-        for (const compIdx of neighbors) {
-          this.innerCodeGraph.addEdge(compIdx, innerIdx);
+        for (let n = 0; n < neighbors.length; ++n) {
+          this.innerCodeGraph.addEdge(neighbors[n], innerIdx);
         }
       }
 
       this.profiler.endTimer('inner_code_construction');
     }
 
+    /**
+     * @returns {uint8[]} Source symbols followed by repair symbols
+     */
     _encode() {
       if (!this.sourceSymbols || this.k === 0) {
         throw new Error('No source symbols to encode');
@@ -364,34 +510,45 @@
       this.auxiliarySymbols = this._computeAuxiliarySymbols();
 
       // Step 2: Create composite block (message + auxiliary)
-      const compositeBlock = [...this.sourceSymbols, ...this.auxiliarySymbols];
+      /** @type {uint8[]} */
+      const compositeBlock = this.sourceSymbols.concat(this.auxiliarySymbols);
 
       // Step 3: Encode composite block using inner code (LT-like)
+      /** @type {uint8[]} */
       const innerCodeSymbols = this._encodeInnerCode(compositeBlock);
 
       // Step 4: Return systematic encoding (original symbols + encoded symbols)
-      const result = [...this.sourceSymbols, ...innerCodeSymbols];
+      /** @type {uint8[]} */
+      const result = this.sourceSymbols.concat(innerCodeSymbols);
 
       this.profiler.endTimer('encoding');
       return result;
     }
 
+    /**
+     * @returns {uint8[]} Auxiliary symbols
+     */
     _computeAuxiliarySymbols() {
       // Each auxiliary symbol is XOR of all connected message symbols
       /** @type {uint8[]} */
       const auxiliary = OpCodes.CreateArray(this.auxiliaryCount, 0);
 
       for (let auxIdx = 0; auxIdx < this.auxiliaryCount; auxIdx++) {
+        /** @type {int32[]} */
         const connectedMessages = this.outerCodeGraph.getNeighbors(auxIdx);
 
-        for (const msgIdx of connectedMessages) {
-          auxiliary[auxIdx] ^= this.sourceSymbols[msgIdx];
+        for (let c = 0; c < connectedMessages.length; ++c) {
+          auxiliary[auxIdx] = OpCodes.ToInt(OpCodes.Xor32(auxiliary[auxIdx], this.sourceSymbols[connectedMessages[c]]));
         }
       }
 
       return auxiliary;
     }
 
+    /**
+     * @param {uint8[]} compositeBlock - Message and auxiliary symbols
+     * @returns {uint8[]} Repair symbols
+     */
     _encodeInnerCode(compositeBlock) {
       /** @type {uint8[]} */
       const innerSymbols = [];
@@ -400,13 +557,17 @@
       const numSystematic = this.k; // We include source symbols systematically
       const startIdx = 0; // Start from beginning for non-systematic encoding
 
-      for (let innerIdx = startIdx; innerIdx < this.innerCodeGraph.rightNodes; innerIdx++) {
+      /** @type {int32} */
+      const innerCount = this.innerCodeGraph.rightNodes;
+      for (let innerIdx = startIdx; innerIdx < innerCount; innerIdx++) {
+        /** @type {int32[]} */
         const neighbors = this.innerCodeGraph.getNeighbors(innerIdx);
+        /** @type {int32} */
         let innerSymbol = 0;
 
         // XOR all connected composite symbols
-        for (const compIdx of neighbors) {
-          innerSymbol ^= compositeBlock[compIdx];
+        for (let n = 0; n < neighbors.length; ++n) {
+          innerSymbol = OpCodes.ToInt(OpCodes.Xor32(innerSymbol, compositeBlock[neighbors[n]]));
         }
 
         innerSymbols.push(innerSymbol);
@@ -419,6 +580,9 @@
       return innerSymbols.slice(0, repairCount);
     }
 
+    /**
+     * @returns {uint8[]} Decoded source symbols
+     */
     _decode() {
       if (this.encodedSymbols.length < this.k) {
         throw new Error('Insufficient symbols for decoding');
@@ -427,7 +591,9 @@
       this.profiler.startTimer('decoding');
 
       // For systematic reception, extract source symbols directly
+      /** @type {uint8[]} */
       const systematicSymbols = this.encodedSymbols.slice(0, this.k);
+      /** @type {uint8[]} */
       const receivedRepair = this.encodedSymbols.slice(this.k);
 
       // Step 1: Reconstruct auxiliary symbols using belief propagation
@@ -441,59 +607,87 @@
       return this.decodedSymbols;
     }
 
+    /**
+     * @param {uint8[]} sourceSymbols - Source symbols
+     * @param {uint8[]} repairSymbols - Repair symbols
+     * @returns {uint8[]} Auxiliary symbols
+     */
     _reconstructAuxiliarySymbols(sourceSymbols, repairSymbols) {
       // Reconstruct auxiliary symbols from source symbols using outer code
       /** @type {uint8[]} */
       const auxiliary = OpCodes.CreateArray(this.auxiliaryCount, 0);
 
       for (let auxIdx = 0; auxIdx < this.auxiliaryCount; auxIdx++) {
+        /** @type {int32[]} */
         const connectedMessages = this.outerCodeGraph.getNeighbors(auxIdx);
 
-        for (const msgIdx of connectedMessages) {
-          auxiliary[auxIdx] ^= sourceSymbols[msgIdx];
+        for (let c = 0; c < connectedMessages.length; ++c) {
+          auxiliary[auxIdx] = OpCodes.ToInt(OpCodes.Xor32(auxiliary[auxIdx], sourceSymbols[connectedMessages[c]]));
         }
       }
 
       return auxiliary;
     }
 
+    /**
+     * @param {uint8[]} receivedSystematic - Systematic symbols
+     * @returns {uint8[]} Source symbols
+     */
     _recoverSourceSymbols(receivedSystematic) {
       // For systematic codes with no erasures, return directly
       return receivedSystematic;
     }
 
     // Belief propagation decoder for erasure recovery
+    /**
+     * @param {uint8[]} receivedSymbols - Composite symbols
+     * @param {int32[]} erasurePositions - Erased positions
+     * @returns {uint8[]} Recovered symbols, or null
+     */
     _beliefPropagationDecode(receivedSymbols, erasurePositions) {
       const maxIterations = 100;
       let iteration = 0;
 
       /** @type {uint8[]} */
       const decoded = receivedSymbols.slice();
-      const unknownSet = new Set(erasurePositions);
+      // distinct erased positions, in first-seen order
+      /** @type {int32[]} */
+      const unknown = [];
+      for (let e = 0; e < erasurePositions.length; ++e) {
+        if (unknown.indexOf(erasurePositions[e]) < 0) unknown.push(erasurePositions[e]);
+      }
 
-      while (unknownSet.size > 0 && iteration < maxIterations) {
+      while (unknown.length > 0 && iteration < maxIterations) {
         iteration++;
         let progress = false;
 
         // Find inner code symbols with degree 1 to unknown symbols
-        for (let innerIdx = 0; innerIdx < this.innerCodeGraph.rightNodes; innerIdx++) {
+        /** @type {int32} */
+        const innerCount = this.innerCodeGraph.rightNodes;
+        for (let innerIdx = 0; innerIdx < innerCount; innerIdx++) {
+          /** @type {int32[]} */
           const neighbors = this.innerCodeGraph.getNeighbors(innerIdx);
-          const unknownNeighbors = neighbors.filter(idx => unknownSet.has(idx));
+          /** @type {int32[]} */
+          const unknownNeighbors = [];
+          for (let n = 0; n < neighbors.length; ++n) {
+            if (unknown.indexOf(neighbors[n]) >= 0) unknownNeighbors.push(neighbors[n]);
+          }
 
           if (unknownNeighbors.length === 1) {
             // Can solve for this unknown symbol
             const unknownIdx = unknownNeighbors[0];
+            /** @type {int32} */
             let symbolValue = 0; // Would be actual received inner symbol
 
             // XOR with all known neighbors
-            for (const neighIdx of neighbors) {
-              if (neighIdx !== unknownIdx) {
-                symbolValue ^= decoded[neighIdx];
+            for (let n = 0; n < neighbors.length; ++n) {
+              if (neighbors[n] !== unknownIdx) {
+                symbolValue = OpCodes.ToInt(OpCodes.Xor32(symbolValue, decoded[neighbors[n]]));
               }
             }
 
             decoded[unknownIdx] = symbolValue;
-            unknownSet.delete(unknownIdx);
+            unknown.splice(unknown.indexOf(unknownIdx), 1);
             progress = true;
           }
         }
@@ -503,7 +697,7 @@
         }
       }
 
-      return unknownSet.size === 0 ? decoded : null;
+      return unknown.length === 0 ? decoded : null;
     }
 
     // Performance analysis
@@ -520,82 +714,116 @@
       };
     }
 
+    /**
+     * @returns {float64} Edge density
+     */
     _calculateOuterCodeDensity() {
-      if (!this.outerCodeGraph) return 0;
-
-      let totalEdges = 0;
-      for (let i = 0; i < this.outerCodeGraph.rightNodes; i++) {
-        totalEdges += this.outerCodeGraph.getDegree(i);
+      if (!this.outerCodeGraph) {
+        return 0;
       }
 
-      const maxPossibleEdges = this.outerCodeGraph.leftNodes * this.outerCodeGraph.rightNodes;
+      /** @type {int32} */
+      let totalEdges = 0;
+      /** @type {int32} */
+      const rightNodes = this.outerCodeGraph.rightNodes;
+      /** @type {int32} */
+      const leftNodes = this.outerCodeGraph.leftNodes;
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
+        const degree = this.outerCodeGraph.getDegree(i);
+        totalEdges += degree;
+      }
+
+      const maxPossibleEdges = leftNodes * rightNodes;
       return maxPossibleEdges > 0 ? totalEdges / maxPossibleEdges : 0;
     }
 
+    /**
+     * @returns {float64} Edge density
+     */
     _calculateInnerCodeDensity() {
-      if (!this.innerCodeGraph) return 0;
-
-      let totalEdges = 0;
-      for (let i = 0; i < this.innerCodeGraph.rightNodes; i++) {
-        totalEdges += this.innerCodeGraph.getDegree(i);
+      if (!this.innerCodeGraph) {
+        return 0;
       }
 
-      const maxPossibleEdges = this.innerCodeGraph.leftNodes * this.innerCodeGraph.rightNodes;
+      /** @type {int32} */
+      let totalEdges = 0;
+      /** @type {int32} */
+      const rightNodes = this.innerCodeGraph.rightNodes;
+      /** @type {int32} */
+      const leftNodes = this.innerCodeGraph.leftNodes;
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
+        const degree = this.innerCodeGraph.getDegree(i);
+        totalEdges += degree;
+      }
+
+      const maxPossibleEdges = leftNodes * rightNodes;
       return maxPossibleEdges > 0 ? totalEdges / maxPossibleEdges : 0;
     }
 
     // Get degree distribution statistics
+    /**
+     * @returns {OuterCodeStats} Outer-code statistics, or null
+     */
     getOuterCodeStats() {
-      if (!this.outerCodeGraph) return null;
+      if (!this.outerCodeGraph) {
+        return null;
+      }
 
       /** @type {int32[]} */
       const degrees = [];
-      for (let i = 0; i < this.outerCodeGraph.rightNodes; i++) {
-        degrees.push(this.outerCodeGraph.getDegree(i));
+      /** @type {int32} */
+      const rightNodes = this.outerCodeGraph.rightNodes;
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
+        const degree = this.outerCodeGraph.getDegree(i);
+        degrees.push(degree);
       }
 
-      degrees.sort((a, b) => a - b);
+      /** @type {int32} */
+      const sum = sortAndSum(degrees);
 
-      return {
-        auxiliarySymbols: this.auxiliaryCount,
-        messageSymbols: this.k,
-        q: this.q,
-        meanDegree: degrees.reduce((a, b) => a + b, 0) / degrees.length,
-        distribution: degrees
-      };
+      return new OuterCodeStats(this.auxiliaryCount, this.k, this.q, sum / degrees.length, degrees);
     }
 
+    /**
+     * @returns {InnerCodeStats} Inner-code statistics, or null
+     */
     getInnerCodeStats() {
-      if (!this.innerCodeGraph) return null;
+      if (!this.innerCodeGraph) {
+        return null;
+      }
 
       /** @type {int32[]} */
       const degrees = [];
-      for (let i = 0; i < this.innerCodeGraph.rightNodes; i++) {
-        degrees.push(this.innerCodeGraph.getDegree(i));
+      /** @type {int32} */
+      const rightNodes = this.innerCodeGraph.rightNodes;
+      /** @type {int32} */
+      const leftNodes = this.innerCodeGraph.leftNodes;
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
+        const degree = this.innerCodeGraph.getDegree(i);
+        degrees.push(degree);
       }
 
-      degrees.sort((a, b) => a - b);
+      /** @type {int32} */
+      const sum = sortAndSum(degrees);
 
-      return {
-        compositeBlockSize: this.innerCodeGraph.leftNodes,
-        innerSymbols: this.innerCodeGraph.rightNodes,
-        meanDegree: degrees.reduce((a, b) => a + b, 0) / degrees.length,
-        distribution: degrees
-      };
+      return new InnerCodeStats(leftNodes, rightNodes, sum / degrees.length, degrees);
     }
 
     // Get overhead analysis
+    /**
+     * @returns {OverheadAnalysis} Overhead figures
+     */
     getOverheadAnalysis() {
       const totalSymbolsNeeded = Math.ceil(this.k * (1.0 + this.epsilon));
       const actualOverhead = this.encodedSymbols.length > this.k ?
         (this.encodedSymbols.length - this.k) / this.k : 0;
 
-      return {
-        targetEpsilon: this.epsilon,
-        theoreticalSymbolsNeeded: totalSymbolsNeeded,
-        actualOverhead: actualOverhead,
-        efficiency: this.k / Math.max(this.k, this.encodedSymbols.length)
-      };
+      return new OverheadAnalysis(this.epsilon, totalSymbolsNeeded, actualOverhead,
+        this.k / Math.max(this.k, this.encodedSymbols.length));
     }
   }
 

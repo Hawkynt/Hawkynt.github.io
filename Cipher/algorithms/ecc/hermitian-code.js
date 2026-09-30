@@ -325,14 +325,14 @@
       // 4. AG-specific decoding (Guruswami-Sudan, Fundamental Polytope)
 
       let minDistance = Infinity;
-      /** @type {float64[]} */
+      /** @type {uint8[]} */
       let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Exhaustive search over all 4^k possible messages (feasible for small k)
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
-        /** @type {float64[]} */
+        /** @type {uint8[]} */
         const message = [];
         let temp = msgIndex;
 
