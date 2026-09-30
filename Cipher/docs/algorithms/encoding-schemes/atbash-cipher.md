@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Simple substitution cipher vulnerable to frequency analysis - letter frequencies preserved](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Educational use only - easily broken by frequency analysis |
-| [Fixed transformation pattern makes it vulnerable to pattern recognition attacks](https://en.wikipedia.org/wiki/Substitution_cipher) | — | Combine with other techniques or use for educational purposes only |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Simple substitution cipher vulnerable to frequency analysis - letter frequencies preserved | Educational use only - easily broken by frequency analysis |
+| [Pattern Recognition](https://en.wikipedia.org/wiki/Substitution_cipher) | Fixed transformation pattern makes it vulnerable to pattern recognition attacks | Combine with other techniques or use for educational purposes only |
 
 ## Documentation
 
