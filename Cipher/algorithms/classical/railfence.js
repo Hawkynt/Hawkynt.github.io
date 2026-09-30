@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Brute Force Attack",
-          text: "Very limited key space (number of rails), easily brute forced even by hand",
-          uri: "https://en.wikipedia.org/wiki/Rail_fence_cipher",
-          mitigation: "None - cipher is fundamentally insecure"
-        },
-        {
-          type: "Frequency Analysis", 
-          text: "Character frequencies preserved, making statistical analysis possible",
-          uri: "http://practicalcryptography.com/ciphers/classical-era/rail-fence/",
-          mitigation: "Use only for educational demonstrations"
-        }
+        new Vulnerability(
+          "Brute Force Attack",
+          "Very limited key space (number of rails), easily brute forced even by hand",
+          "None - cipher is fundamentally insecure",
+          "https://en.wikipedia.org/wiki/Rail_fence_cipher"
+        ),
+        new Vulnerability(
+          "Frequency Analysis",
+          "Character frequencies preserved, making statistical analysis possible",
+          "Use only for educational demonstrations",
+          "http://practicalcryptography.com/ciphers/classical-era/rail-fence/"
+        )
       ];
 
       // Test vectors using byte arrays (using key field for rails)
@@ -138,7 +138,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RailFenceCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,43 +156,65 @@
   class RailFenceCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RailFenceCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {int32} */
+      this._rails = 3;
       this.rails = 3; // Default number of rails
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-    // Property setter for rails (key)
+    /**
+     * Number of rails, 2..26
+     * @param {int32|uint8[]} railsData - A number, or a byte array whose first byte is the count
+     */
     set rails(railsData) {
       if (typeof railsData === 'number') {
-        this._rails = Math.max(2, Math.min(26, Math.floor(railsData)));
+        /** @type {int32} */
+        const count = railsData;
+        this._rails = Math.max(2, Math.min(26, Math.floor(count)));
       } else if (Array.isArray(railsData) && railsData.length > 0) {
         // If rails provided as byte array, use first byte as rail count
-        const railCount = railsData[0];
+        /** @type {uint8[]} */
+        const bytes = railsData;
+        /** @type {int32} */
+        const railCount = bytes[0];
         this._rails = Math.max(2, Math.min(26, railCount));
       } else {
         this._rails = 3; // Default
       }
     }
 
+    /**
+     * @returns {int32} Number of rails
+     */
     get rails() {
-      return this._rails || 3;
+      return this._rails ? this._rails : 3;
     }
 
-    // Property setter for key (used by test framework)
+    /**
+     * Rail count as decimal ASCII text (used by test framework)
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for 3 rails
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._rails = 3; // Default
       } else {
         // Convert key bytes to integer
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
+        /** @type {int32} */
         const railCount = parseInt(keyStr, 10);
-        if (!isNaN(railCount)) {
+        /** @type {boolean} */
+        const notANumber = isNaN(railCount);
+        if (!notANumber) {
           this._rails = Math.max(2, Math.min(26, railCount));
         } else {
           this._rails = 3; // Default
@@ -201,12 +223,12 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the rail count
+   * @returns {int32} Number of rails
    */
 
     get key() {
-      return this._rails || 3;
+      return this._rails ? this._rails : 3;
     }
 
     // Feed data to the cipher
@@ -219,13 +241,18 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const rails = this.rails;
+      /** @type {int32} */
+      const rails = this._rails ? this._rails : 3;
+      /** @type {string} */
       const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
-      let result;
+      /** @type {string} */
+      let result = '';
 
       if (this.isInverse) {
         result = this.decryptRailFence(inputStr, rails);
@@ -237,7 +264,6 @@
       this.inputBuffer = [];
 
       // Convert result string back to byte array
-      const output = [];
       for (let i = 0; i < result.length; i++) {
         output.push(result.charCodeAt(i));
       }
@@ -245,20 +271,30 @@
       return output;
     }
 
-    // Encrypt using rail fence algorithm
+    /**
+     * Encrypt using rail fence algorithm
+     * @param {string} plaintext - Text
+     * @param {int32} rails - Number of rails
+     * @returns {string} Ciphertext
+     */
     encryptRailFence(plaintext, rails) {
       if (plaintext.length === 0 || rails < 2) {
         return plaintext;
       }
 
       // Create rail arrays
+      /** @type {string[][]} */
       const railArrays = [];
       for (let i = 0; i < rails; i++) {
-        railArrays[i] = [];
+        /** @type {string[]} */
+        const rail = [];
+        railArrays.push(rail);
       }
 
       // Fill rails with zigzag pattern
+      /** @type {int32} */
       let currentRail = 0;
+      /** @type {int32} */
       let direction = 1; // 1 for down, -1 for up
 
       for (let i = 0; i < plaintext.length; i++) {
@@ -274,6 +310,7 @@
       }
 
       // Read off rails horizontally
+      /** @type {string} */
       let result = '';
       for (let i = 0; i < rails; i++) {
         result += railArrays[i].join('');
@@ -282,21 +319,32 @@
       return result;
     }
 
-    // Decrypt using rail fence algorithm
+    /**
+     * Decrypt using rail fence algorithm
+     * @param {string} ciphertext - Text
+     * @param {int32} rails - Number of rails
+     * @returns {string} Plaintext
+     */
     decryptRailFence(ciphertext, rails) {
       if (ciphertext.length === 0 || rails < 2) {
         return ciphertext;
       }
 
       // Create rail arrays
+      /** @type {string[][]} */
       const railArrays = [];
       for (let i = 0; i < rails; i++) {
-        railArrays[i] = [];
+        /** @type {string[]} */
+        const rail = [];
+        railArrays.push(rail);
       }
 
       // Calculate how many characters go on each rail
-      const railLengths = new Array(rails).fill(0);
+      /** @type {int32[]} */
+      const railLengths = OpCodes.CreateArray(rails, 0);
+      /** @type {int32} */
       let currentRail = 0;
+      /** @type {int32} */
       let direction = 1;
 
       for (let i = 0; i < ciphertext.length; i++) {
@@ -309,6 +357,7 @@
       }
 
       // Distribute cipher text to rails
+      /** @type {int32} */
       let pos = 0;
       for (let i = 0; i < rails; i++) {
         for (let j = 0; j < railLengths[i]; j++) {
@@ -317,9 +366,11 @@
       }
 
       // Read back in zigzag pattern
-      const railIndices = new Array(rails).fill(0);
+      /** @type {int32[]} */
+      const railIndices = OpCodes.CreateArray(rails, 0);
       currentRail = 0;
       direction = 1;
+      /** @type {string} */
       let result = '';
 
       for (let i = 0; i < ciphertext.length; i++) {

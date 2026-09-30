@@ -58,6 +58,50 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Per-stage statistics as reported by getStageStats()
+   * @class
+   */
+  class StageStat {
+    /**
+     * @param {int32} stage - Stage index
+     * @param {int32} sourceSymbols - Left nodes
+     * @param {int32} checkSymbols - Right nodes
+     * @param {int32} minDegree - Smallest check degree
+     * @param {int32} maxDegree - Largest check degree
+     * @param {float64} avgDegree - Mean check degree
+     * @param {int32[]} distribution - Sorted check degrees
+     */
+    constructor(stage, sourceSymbols, checkSymbols, minDegree, maxDegree, avgDegree, distribution) {
+      /** @type {int32} */
+      this.stage = stage;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {int32} */
+      this.checkSymbols = checkSymbols;
+      /** @type {int32} */
+      this.minDegree = minDegree;
+      /** @type {int32} */
+      this.maxDegree = maxDegree;
+      /** @type {float64} */
+      this.avgDegree = avgDegree;
+      /** @type {int32[]} */
+      this.distribution = distribution;
+    }
+  }
+
+  /**
+   * The indices 0 .. count-1
+   * @param {int32} count - Number of indices
+   * @returns {int32[]} Index list
+   */
+  function indexRange(count) {
+    /** @type {int32[]} */
+    const indices = [];
+    for (let i = 0; i < count; ++i) indices.push(i);
+    return indices;
+  }
+
   class TornadoCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -175,7 +219,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TornadoCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -192,28 +236,39 @@
   class TornadoCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TornadoCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // Parameters
+      /** @type {int32} */
       this.k = 0;               // Number of source symbols
+      /** @type {int32} */
       this.stages = 3;          // Number of tornado stages
+      /** @type {float64} */
       this.overhead = 0.5;      // Overhead factor
+      /** @type {int32} */
       this.seed = 42;           // Random seed
 
       // Internal state
+      /** @type {BipartiteGraph[]} */
       this.graphs = [];         // Array of graphs for each stage
+      /** @type {uint8[][]} */
       this.stageSymbols = [];   // Intermediate symbols at each stage
       this.rng = null;
       this.profiler = new PerformanceProfiler();
+      /** @type {DegreeDistribution[]} */
       this.degreeDistributions = [];
     }
 
@@ -238,7 +293,11 @@
         // Result(), since a partition computed from one call's share of the
         // message describes a different code from the one the whole message
         // asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -259,6 +318,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // For fountain codes, error detection is based on successful decoding
       try {
@@ -271,6 +334,13 @@
     }
 
     // Set parameters
+    /**
+     * @param {int32} k - Source symbols
+     * @param {int32} [stages=3] - Tornado stages
+     * @param {float64} [overhead=0.5] - Overhead factor
+     * @param {int32} [seed=42] - Random seed
+     * @returns {void}
+     */
     setParameters(k, stages = 3, overhead = 0.5, seed = 42) {
       this.k = k;
       this.stages = stages;
@@ -278,11 +348,20 @@
       this.seed = seed;
     }
 
+    /**
+     * @returns {void}
+     */
     _initializeEncoding() {
       this.rng = new SeededRandom(this.seed);
-      this.graphs = [];
-      this.stageSymbols = [];
-      this.degreeDistributions = [];
+      /** @type {BipartiteGraph[]} */
+      const graphs = [];
+      this.graphs = graphs;
+      /** @type {uint8[][]} */
+      const stageSymbols = [];
+      this.stageSymbols = stageSymbols;
+      /** @type {DegreeDistribution[]} */
+      const distributions = [];
+      this.degreeDistributions = distributions;
 
       this.profiler.startTimer('initialization');
 
@@ -299,9 +378,9 @@
 
         // Initialize stage symbols with source symbols at stage 0
         if (stage === 0) {
-          this.stageSymbols.push([...this.sourceSymbols]);
+          this.stageSymbols.push(this.sourceSymbols.slice());
         } else {
-          this.stageSymbols.push(new Array(stageK).fill(0));
+          this.stageSymbols.push(OpCodes.CreateArray(stageK, 0));
         }
       }
 
@@ -311,6 +390,9 @@
       this.profiler.endTimer('initialization');
     }
 
+    /**
+     * @returns {void}
+     */
     _constructTornadoGraphs() {
       // Tornado uses multi-stage approach with decreasing symbol counts
       for (let stage = 0; stage < this.stages; stage++) {
@@ -319,29 +401,41 @@
 
         // Build irregular degree distribution for this stage
         // Tornado uses non-uniform degrees to ensure linear-time decoding
-        for (let checkIdx = 0; checkIdx < graph.rightNodes; checkIdx++) {
+        /** @type {int32} */
+        const rightNodes = graph.rightNodes;
+        for (let checkIdx = 0; checkIdx < rightNodes; checkIdx++) {
           // Probability of degree d at stage s
+          /** @type {int32} */
           const degree = this._sampleTornadoDegree(stageK, stage, checkIdx);
 
           if (degree > 0) {
             // Select neighbors uniformly at random
-            const sourceIndices = Array.from({length: stageK}, (_, i) => i);
+            /** @type {int32[]} */
+            const sourceIndices = indexRange(stageK);
+            /** @type {int32[]} */
             const neighbors = this.rng.sample(sourceIndices, Math.min(degree, stageK));
 
-            for (const sourceIdx of neighbors) {
-              graph.addEdge(sourceIdx, checkIdx);
+            for (let n = 0; n < neighbors.length; ++n) {
+              graph.addEdge(neighbors[n], checkIdx);
             }
           }
         }
       }
     }
 
+    /**
+     * @param {int32} stageK - Symbols in the stage
+     * @param {int32} stageIdx - Stage index
+     * @param {int32} checkIdx - Check index
+     * @returns {int32} Degree
+     */
     _sampleTornadoDegree(stageK, stageIdx, checkIdx) {
       // Tornado degree distribution: irregular and optimized for each stage
       // Higher stages have exponentially decreasing sizes
       const stageSize = Math.ceil(stageK / Math.pow(2, stageIdx));
 
       // Use seeded random to ensure reproducibility
+      /** @type {float64} */
       const rand = this.rng.next();
 
       // Probability-based degree assignment
@@ -359,6 +453,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} Source symbols followed by check symbols
+     */
     _encode() {
       if (!this.sourceSymbols || this.k === 0) {
         throw new Error('No source symbols to encode');
@@ -367,26 +464,32 @@
       this.profiler.startTimer('encoding');
 
       // Start with systematic symbols
-      const result = [...this.sourceSymbols];
+      /** @type {uint8[]} */
+      const result = this.sourceSymbols.slice();
 
       // Encode each stage and collect check symbols
       for (let stage = 0; stage < this.stages; stage++) {
         const graph = this.graphs[stage];
+        /** @type {uint8[]} */
         const symbols = this.stageSymbols[stage];
 
         // Generate check symbols for this stage
-        for (let checkIdx = 0; checkIdx < graph.rightNodes; checkIdx++) {
+        /** @type {int32} */
+        const rightNodes = graph.rightNodes;
+        for (let checkIdx = 0; checkIdx < rightNodes; checkIdx++) {
           if (checkIdx < symbols.length) {
             // Systematic part for this stage, already included
             continue;
           }
 
+          /** @type {int32[]} */
           const neighbors = graph.getNeighbors(checkIdx);
+          /** @type {int32} */
           let checkSymbol = 0;
 
           // XOR all connected symbols from this stage
-          for (const sourceIdx of neighbors) {
-            checkSymbol ^= symbols[sourceIdx];
+          for (let n = 0; n < neighbors.length; ++n) {
+            checkSymbol = OpCodes.ToInt(OpCodes.Xor32(checkSymbol, symbols[neighbors[n]]));
           }
 
           result.push(checkSymbol);
@@ -398,6 +501,9 @@
       return result;
     }
 
+    /**
+     * @returns {uint8[]} Decoded source symbols
+     */
     _decode() {
       if (this.encodedSymbols.length === 0) {
         throw new Error('No encoded symbols to decode');
@@ -415,6 +521,7 @@
       }
 
       // Extract systematic part (source symbols)
+      /** @type {uint8[]} */
       const decoded = this.encodedSymbols.slice(0, numSourceSymbols);
 
       // Multi-stage belief propagation would be applied here
@@ -426,10 +533,20 @@
     }
 
     // Multi-stage belief propagation decoder
+    /**
+     * @param {uint8[]} receivedSymbols - Check symbols (updated)
+     * @returns {uint8[]} Decoded symbols, or null
+     */
     _multiStageDecode(receivedSymbols) {
       const maxIterations = this.k * 2;
-      const decoded = new Array(this.k).fill(null);
-      const symbolStatus = new Array(this.k).fill(false);
+      /** @type {uint8[]} */
+      const decoded = [];
+      /** @type {boolean[]} */
+      const symbolStatus = [];
+      for (let i = 0; i < this.k; ++i) {
+        decoded.push(null);
+        symbolStatus.push(false);
+      }
 
       let decodedCount = 0;
       let iterationCount = 0;
@@ -441,15 +558,21 @@
         // Process each stage
         for (let stage = 0; stage < this.stages; stage++) {
           const graph = this.graphs[stage];
+          /** @type {uint8[]} */
           const symbols = this.stageSymbols[stage];
 
           // Find degree-1 check symbols
+          /** @type {int32[]} */
           const degreeOneChecks = graph.findDegreeOneNodes();
 
-          for (const checkIdx of degreeOneChecks) {
+          for (let d = 0; d < degreeOneChecks.length; ++d) {
+            /** @type {int32} */
+            const checkIdx = degreeOneChecks[d];
+            /** @type {int32[]} */
             const neighbors = graph.getNeighbors(checkIdx);
 
             if (neighbors.length === 1) {
+              /** @type {int32} */
               const sourceIdx = neighbors[0];
 
               if (!symbolStatus[sourceIdx] && stage === 0) {
@@ -460,11 +583,14 @@
                 progress = true;
 
                 // Update connected check symbols
+                /** @type {int32[]} */
                 const connectedChecks = graph.getReverseNeighbors(sourceIdx);
-                for (const connectedCheckIdx of connectedChecks) {
+                for (let c = 0; c < connectedChecks.length; ++c) {
+                  /** @type {int32} */
+                  const connectedCheckIdx = connectedChecks[c];
                   if (connectedCheckIdx !== checkIdx) {
                     // Update the check symbol value by XORing with decoded value
-                    receivedSymbols[connectedCheckIdx] ^= decoded[sourceIdx];
+                    receivedSymbols[connectedCheckIdx] = OpCodes.ToInt(OpCodes.Xor32(receivedSymbols[connectedCheckIdx], decoded[sourceIdx]));
                   }
                   graph.removeEdge(sourceIdx, connectedCheckIdx);
                 }
@@ -492,50 +618,82 @@
       };
     }
 
+    /**
+     * @returns {float64} Edge density over all stages
+     */
     _calculateOverallGraphDensity() {
-      if (this.graphs.length === 0) return 0;
+      if (this.graphs.length === 0) {
+        return 0;
+      }
 
+      /** @type {int32} */
       let totalEdges = 0;
+      /** @type {int32} */
       let totalPossibleEdges = 0;
 
       for (let stage = 0; stage < this.graphs.length; stage++) {
         const graph = this.graphs[stage];
+        /** @type {int32} */
+        const rightNodes = graph.rightNodes;
+        /** @type {int32} */
+        const leftNodes = graph.leftNodes;
 
-        for (let i = 0; i < graph.rightNodes; i++) {
-          totalEdges += graph.getDegree(i);
+        for (let i = 0; i < rightNodes; i++) {
+          /** @type {int32} */
+          const degree = graph.getDegree(i);
+          totalEdges += degree;
         }
 
-        totalPossibleEdges += graph.leftNodes * graph.rightNodes;
+        totalPossibleEdges += leftNodes * rightNodes;
       }
 
       return totalEdges / totalPossibleEdges;
     }
 
     // Get stage statistics
+    /**
+     * @returns {StageStat[]} Per-stage statistics, or null
+     */
     getStageStats() {
-      if (this.graphs.length === 0) return null;
+      if (this.graphs.length === 0) {
+        return null;
+      }
 
+      /** @type {StageStat[]} */
       const stats = [];
 
       for (let stage = 0; stage < this.graphs.length; stage++) {
         const graph = this.graphs[stage];
+        /** @type {int32[]} */
         const degrees = [];
+        /** @type {int32} */
+        const rightNodes = graph.rightNodes;
+        /** @type {int32} */
+        const leftNodes = graph.leftNodes;
 
-        for (let i = 0; i < graph.rightNodes; i++) {
-          degrees.push(graph.getDegree(i));
+        for (let i = 0; i < rightNodes; i++) {
+          /** @type {int32} */
+          const degree = graph.getDegree(i);
+          degrees.push(degree);
         }
 
-        degrees.sort((a, b) => a - b);
+        // numeric ascending sort
+        for (let i = 1; i < degrees.length; ++i) {
+          /** @type {int32} */
+          const value = degrees[i];
+          let j = i - 1;
+          while (j >= 0 && degrees[j] > value) {
+            degrees[j + 1] = degrees[j];
+            --j;
+          }
+          degrees[j + 1] = value;
+        }
+        /** @type {int32} */
+        let sum = 0;
+        for (let i = 0; i < degrees.length; ++i) sum += degrees[i];
 
-        stats.push({
-          stage: stage,
-          sourceSymbols: graph.leftNodes,
-          checkSymbols: graph.rightNodes,
-          minDegree: degrees[0],
-          maxDegree: degrees[degrees.length - 1],
-          avgDegree: degrees.reduce((a, b) => a + b, 0) / degrees.length,
-          distribution: degrees
-        });
+        stats.push(new StageStat(stage, leftNodes, rightNodes, degrees[0], degrees[degrees.length - 1],
+          sum / degrees.length, degrees));
       }
 
       return stats;

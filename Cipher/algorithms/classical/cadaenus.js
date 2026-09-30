@@ -77,21 +77,22 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Known Plaintext Attack",
-          text: "Position-dependent nature complicates but doesn't prevent key recovery with sufficient known plaintext",
-          uri: "https://en.wikipedia.org/wiki/Known-plaintext_attack",
-          mitigation: "Use longer keys and for educational purposes only"
-        },
-        {
-          type: "Frequency Analysis", 
-          text: "Multi-stage transformation provides better diffusion than simple substitution but still vulnerable to advanced cryptanalysis",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Educational use only - not suitable for actual security"
-        }
+        new Vulnerability(
+          "Known Plaintext Attack",
+          "Position-dependent nature complicates but doesn't prevent key recovery with sufficient known plaintext",
+          "Use longer keys and for educational purposes only",
+          "https://en.wikipedia.org/wiki/Known-plaintext_attack"
+        ),
+        new Vulnerability(
+          "Frequency Analysis",
+          "Multi-stage transformation provides better diffusion than simple substitution but still vulnerable to advanced cryptanalysis",
+          "Educational use only - not suitable for actual security",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        )
       ];
 
       // S-box for non-linear transformation
+      /** @type {int32[]} */
       this.FORWARD_SBOX = [
         0x0D, 0x0E, 0x12, 0x16, 0x05, 0x08, 0x0F, 0x18,
         0x03, 0x17, 0x0C, 0x01, 0x07, 0x00, 0x01, 0x06,
@@ -99,8 +100,9 @@
         0x15, 0x11, 0x19, 0x10, 0x0B, 0x04, 0x1A, 0x1B
       ];
 
+      /** @type {int32[]} */
       this.REVERSE_SBOX = [];
-      // Create reverse S-box
+      // Create reverse S-box (FORWARD_SBOX repeats values, so some entries stay unset)
       for (let i = 0; i < 26; i++) {
         this.REVERSE_SBOX[this.FORWARD_SBOX[i]] = i;
       }
@@ -130,7 +132,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -138,7 +141,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CadaenusCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,22 +159,33 @@
   class CadaenusCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CadaenusCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = "";
+      /** @type {string} */
+      this._key = "SECRET";
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Reference to S-boxes
+      /** @type {int32[]} */
       this.FORWARD_SBOX = algorithm.FORWARD_SBOX;
+      /** @type {int32[]} */
       this.REVERSE_SBOX = algorithm.REVERSE_SBOX;
     }
 
-    // Property setter for key 
+    /**
+     * Keyword; only its capital letters count
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "SECRET"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._key = "SECRET"; // Default key
@@ -179,18 +193,22 @@
       }
 
       // Convert byte array to string and validate (letters only, uppercase)
+      /** @type {string} */
       const keyString = String.fromCharCode(...keyData);
-      const cleanKey = keyString.replace(/[^A-Z]/g, '').toUpperCase();
-      this._key = cleanKey || "SECRET";
+      /** @type {string} */
+      const letters = keyString.replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const cleanKey = letters.toUpperCase();
+      this._key = cleanKey.length > 0 ? cleanKey : "SECRET";
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the keyword
+   * @returns {string} Keyword
    */
 
     get key() {
-      return this._key || "SECRET";
+      return this._key ? this._key : "SECRET";
     }
 
     // Feed data to the cipher
@@ -204,13 +222,17 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
       // Convert input buffer to string
+      /** @type {string} */
       const inputString = String.fromCharCode(...this.inputBuffer);
 
       // Process using CADAENUS algorithm
+      /** @type {string} */
       const resultString = this.isInverse ? 
         this.decrypt(inputString) : 
         this.encrypt(inputString);
@@ -222,15 +244,23 @@
       return OpCodes.AnsiToBytes(resultString);
     }
 
-    // Encrypt using CADAENUS cipher
+    /**
+     * Encrypt using CADAENUS cipher
+     * @param {string} plaintext - Text
+     * @returns {string} Ciphertext
+     */
     encrypt(plaintext) {
+      /** @type {string} */
       let result = '';
+      /** @type {int32} */
       let letterIndex = 0;
 
       for (let i = 0; i < plaintext.length; i++) {
+        /** @type {string} */
         const char = plaintext.charAt(i);
 
         if (this.isLetter(char)) {
+          /** @type {string} */
           const processed = this.transformCharacter(char, letterIndex, true);
           result += processed;
           letterIndex++;
@@ -243,15 +273,23 @@
       return result;
     }
 
-    // Decrypt using CADAENUS cipher
+    /**
+     * Decrypt using CADAENUS cipher
+     * @param {string} ciphertext - Text
+     * @returns {string} Plaintext
+     */
     decrypt(ciphertext) {
+      /** @type {string} */
       let result = '';
+      /** @type {int32} */
       let letterIndex = 0;
 
       for (let i = 0; i < ciphertext.length; i++) {
+        /** @type {string} */
         const char = ciphertext.charAt(i);
 
         if (this.isLetter(char)) {
+          /** @type {string} */
           const processed = this.transformCharacter(char, letterIndex, false);
           result += processed;
           letterIndex++;
@@ -264,21 +302,37 @@
       return result;
     }
 
-    // Transform a single character using CADAENUS algorithm
+    /**
+     * Transform a single character using CADAENUS algorithm
+     * @param {string} char - Character
+     * @param {int32} position - Index of the letter among the letters
+     * @param {boolean} encrypt - True to encrypt
+     * @returns {string} Transformed character in the case of the input
+     */
     transformCharacter(char, position, encrypt) {
       if (!this.isLetter(char)) {
         return char;
       }
 
+      /** @type {boolean} */
       const isUpperCase = char >= 'A' && char <= 'Z';
+      /** @type {string} */
       const upperChar = char.toUpperCase();
-      const keyChar = this.key.charAt(position % this.key.length).toUpperCase();
+      /** @type {string} */
+      const keyText = this._key ? this._key : "SECRET";
+      /** @type {string} */
+      const keyLetter = keyText.charAt(position % keyText.length);
+      /** @type {string} */
+      const keyChar = keyLetter.toUpperCase();
 
       // Get character codes (A=0, B=1, etc.)
+      /** @type {int32} */
       const charCode = upperChar.charCodeAt(0) - 65;
+      /** @type {int32} */
       const keyCode = keyChar.charCodeAt(0) - 65;
 
-      let resultCode;
+      /** @type {int32} */
+      let resultCode = 0;
 
       if (encrypt) {
         // Encryption: multiple transformation stages
@@ -302,13 +356,25 @@
         resultCode = (resultCode - keyCode + 26) % 26;
       }
 
+      /** @type {string} */
       const resultChar = String.fromCharCode(resultCode + 65);
-      return isUpperCase ? resultChar : resultChar.toLowerCase();
+      if (isUpperCase) {
+        return resultChar;
+      }
+      /** @type {string} */
+      const lower = resultChar.toLowerCase();
+      return lower;
     }
 
-    // Check if character is a letter
+    /**
+     * Check if character is a letter
+     * @param {string} char - Text
+     * @returns {boolean} True when it holds a letter A-Z or a-z
+     */
     isLetter(char) {
-      return /[A-Za-z]/.test(char);
+      /** @type {boolean} */
+      const found = /[A-Za-z]/.test(char);
+      return found;
     }
   }
 
@@ -317,11 +383,6 @@
 
   // Register the algorithm immediately
   RegisterAlgorithm(algorithm);
-
-  // Export for Node.js compatibility
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = algorithm;
-  }
 
   // ===== REGISTRATION =====
 

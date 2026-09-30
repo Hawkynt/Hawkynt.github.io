@@ -42,7 +42,8 @@
           Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
   // AES S-box for Simpira permutations
-  const AES_SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const AES_SBOX = [
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
     0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
     0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
@@ -59,10 +60,11 @@
     0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E,
     0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
     0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
-  ]);
+  ];
 
   // AES Inverse S-box for inverse permutations
-  const AES_INV_SBOX = Object.freeze([
+  /** @type {uint8[]} */
+  const AES_INV_SBOX = [
     0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
     0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xCB,
     0x54, 0x7B, 0x94, 0x32, 0xA6, 0xC2, 0x23, 0x3D, 0xEE, 0x4C, 0x95, 0x0B, 0x42, 0xFA, 0xC3, 0x4E,
@@ -79,138 +81,260 @@
     0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D, 0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 0xEF,
     0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0, 0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 0x61,
     0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D
-  ]);
+  ];
 
   // AES operations using OpCodes
-  function aesSubBytes(state) {
+
+  /**
+   * AES SubBytes
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Substituted state
+   */
+  function aesSubBytes(block) {
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      result[i] = AES_SBOX[state[i]];
+      result[i] = AES_SBOX[block[i]];
     }
     return result;
   }
 
-  function aesInvSubBytes(state) {
+  /**
+   * AES InvSubBytes
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Substituted state
+   */
+  function aesInvSubBytes(block) {
+    /** @type {uint8[]} */
     const result = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      result[i] = AES_INV_SBOX[state[i]];
+      result[i] = AES_INV_SBOX[block[i]];
     }
     return result;
   }
 
-  function aesShiftRows(state) {
-    return [
-      state[0], state[5], state[10], state[15],  // Row 0: no shift
-      state[4], state[9], state[14], state[3],   // Row 1: left shift 1
-      state[8], state[13], state[2], state[7],   // Row 2: left shift 2
-      state[12], state[1], state[6], state[11]   // Row 3: left shift 3
+  /**
+   * AES ShiftRows
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Shifted state
+   */
+  function aesShiftRows(block) {
+    /** @type {uint8[]} */
+    const result = [
+      block[0], block[5], block[10], block[15],  // Row 0: no shift
+      block[4], block[9], block[14], block[3],   // Row 1: left shift 1
+      block[8], block[13], block[2], block[7],   // Row 2: left shift 2
+      block[12], block[1], block[6], block[11]   // Row 3: left shift 3
     ];
+    return result;
   }
 
-  function aesInvShiftRows(state) {
-    return [
-      state[0], state[13], state[10], state[7],   // Row 0: no shift
-      state[4], state[1], state[14], state[11],   // Row 1: right shift 1
-      state[8], state[5], state[2], state[15],    // Row 2: right shift 2
-      state[12], state[9], state[6], state[3]     // Row 3: right shift 3
+  /**
+   * AES InvShiftRows
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Shifted state
+   */
+  function aesInvShiftRows(block) {
+    /** @type {uint8[]} */
+    const result = [
+      block[0], block[13], block[10], block[7],   // Row 0: no shift
+      block[4], block[1], block[14], block[11],   // Row 1: right shift 1
+      block[8], block[5], block[2], block[15],    // Row 2: right shift 2
+      block[12], block[9], block[6], block[3]     // Row 3: right shift 3
     ];
+    return result;
   }
 
-  function aesMixColumns(state) {
+  /**
+   * Multiplication by x in GF(2^8) modulo the AES polynomial
+   * @param {uint8} p - Field element
+   * @returns {uint8} p * x
+   */
+  function mulX(p) {
+    return OpCodes.Xor8(OpCodes.Shl8(OpCodes.And8(p, 0x7F), 1), OpCodes.And8(p, 0x80) !== 0 ? 0x1B : 0);
+  }
+
+  // FIPS 197 section 5.3.3 InvMixColumns: the coefficients are {0e},{0b},{0d},{09}.
+  // As polynomials over GF(2): 0e = x^3+x^2+x, 0b = x^3+x+1, 0d = x^3+x^2+1,
+  // 09 = x^3+1, where each application of mulX is one multiplication by x.
+  // mul14 previously repeated mul11's body (x^3+x+1), so InvMixColumns was not
+  // the inverse of MixColumns and Simpira-128 could not undo its own permutation.
+
+  /**
+   * @param {uint8} p - Field element
+   * @returns {uint8} p * {0e}
+   */
+  function mul14(p) { return OpCodes.Xor8(OpCodes.Xor8(mulX(mulX(mulX(p))), mulX(mulX(p))), mulX(p)); }
+
+  /**
+   * @param {uint8} p - Field element
+   * @returns {uint8} p * {0d}
+   */
+  function mul13(p) { return OpCodes.Xor8(OpCodes.Xor8(mulX(mulX(mulX(p))), mulX(mulX(p))), p); }
+
+  /**
+   * @param {uint8} p - Field element
+   * @returns {uint8} p * {0b}
+   */
+  function mul11(p) { return OpCodes.Xor8(OpCodes.Xor8(mulX(mulX(mulX(p))), mulX(p)), p); }
+
+  /**
+   * @param {uint8} p - Field element
+   * @returns {uint8} p * {09}
+   */
+  function mul9(p) { return OpCodes.Xor8(mulX(mulX(mulX(p))), p); }
+
+  /**
+   * AES MixColumns
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Mixed state
+   */
+  function aesMixColumns(block) {
+    /** @type {uint8[]} */
     const result = new Array(16);
+    /** @type {int32} */
     let j = 0;
 
     for (let i = 0; i < 4; ++i) {
-      const c0 = state[4 * i];
-      const c1 = state[4 * i + 1];
-      const c2 = state[4 * i + 2];
-      const c3 = state[4 * i + 3];
+      /** @type {uint8} */
+      const c0 = block[4 * i];
+      /** @type {uint8} */
+      const c1 = block[4 * i + 1];
+      /** @type {uint8} */
+      const c2 = block[4 * i + 2];
+      /** @type {uint8} */
+      const c3 = block[4 * i + 3];
 
-      function mulX(p) {
-        return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B);
-      }
-
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), mulX(c1)), c1), c2), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, mulX(c1)), mulX(c2)), c2), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), mulX(c2)), mulX(c3)), c3);
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), c0), c1), c2), mulX(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mulX(c0), mulX(c1)), c1), c2), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, mulX(c1)), mulX(c2)), c2), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(c0, c1), mulX(c2)), mulX(c3)), c3);
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mulX(c0), c0), c1), c2), mulX(c3));
     }
 
     return result;
   }
 
-  function aesInvMixColumns(state) {
+  /**
+   * AES InvMixColumns
+   * @param {uint8[]} block - 16-byte AES state
+   * @returns {uint8[]} Unmixed state
+   */
+  function aesInvMixColumns(block) {
+    /** @type {uint8[]} */
     const result = new Array(16);
+    /** @type {int32} */
     let j = 0;
 
     for (let i = 0; i < 4; ++i) {
-      const c0 = state[4 * i];
-      const c1 = state[4 * i + 1];
-      const c2 = state[4 * i + 2];
-      const c3 = state[4 * i + 3];
+      /** @type {uint8} */
+      const c0 = block[4 * i];
+      /** @type {uint8} */
+      const c1 = block[4 * i + 1];
+      /** @type {uint8} */
+      const c2 = block[4 * i + 2];
+      /** @type {uint8} */
+      const c3 = block[4 * i + 3];
 
-      // FIPS 197 section 5.3.3 InvMixColumns: the coefficients are {0e},{0b},{0d},{09}.
-      // As polynomials over GF(2): 0e = x^3+x^2+x, 0b = x^3+x+1, 0d = x^3+x^2+1,
-      // 09 = x^3+1, where each application of mulX is one multiplication by x.
-      // mul14 previously repeated mul11's body (x^3+x+1), so InvMixColumns was not
-      // the inverse of MixColumns and Simpira-128 could not undo its own permutation.
-      function mul14(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(mulX(p))), mulX(p)); }
-      function mul13(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(mulX(p))), p); }
-      function mul11(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(p)), p); }
-      function mul9(p) { return OpCodes.XorN(mulX(mulX(mulX(p))), p); }
-      function mulX(p) { return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B); }
-
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul14(c0), mul11(c1)), mul13(c2)), mul9(c3));
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul9(c0), mul14(c1)), mul11(c2)), mul13(c3));
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul13(c0), mul9(c1)), mul14(c2)), mul11(c3));
-      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul11(c0), mul13(c1)), mul9(c2)), mul14(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mul14(c0), mul11(c1)), mul13(c2)), mul9(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mul9(c0), mul14(c1)), mul11(c2)), mul13(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mul13(c0), mul9(c1)), mul14(c2)), mul11(c3));
+      result[j++] = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(mul11(c0), mul13(c1)), mul9(c2)), mul14(c3));
     }
 
     return result;
   }
 
-  function aesRound(state, roundKey) {
-    state = aesSubBytes(state);
-    state = aesShiftRows(state);
-    state = aesMixColumns(state);
-    return OpCodes.XorArrays(state, roundKey);
+  /**
+   * One AES round: SubBytes, ShiftRows, MixColumns, AddRoundKey
+   * @param {uint8[]} block - 16-byte AES state
+   * @param {uint8[]} roundKey - 16-byte round key
+   * @returns {uint8[]} New state
+   */
+  function aesRound(block, roundKey) {
+    /** @type {uint8[]} */
+    let b = aesSubBytes(block);
+    b = aesShiftRows(b);
+    b = aesMixColumns(b);
+    return OpCodes.XorArrays(b, roundKey);
   }
 
-  function aesInvRound(state, roundKey) {
-    state = OpCodes.XorArrays(state, roundKey);
-    state = aesInvMixColumns(state);
-    state = aesInvShiftRows(state);
-    state = aesInvSubBytes(state);
-    return state;
+  /**
+   * Inverse of one AES round
+   * @param {uint8[]} block - 16-byte AES state
+   * @param {uint8[]} roundKey - 16-byte round key
+   * @returns {uint8[]} Previous state
+   */
+  function aesInvRound(block, roundKey) {
+    /** @type {uint8[]} */
+    let b = OpCodes.XorArrays(block, roundKey);
+    b = aesInvMixColumns(b);
+    b = aesInvShiftRows(b);
+    b = aesInvSubBytes(b);
+    return b;
   }
 
-  // Simpira v2 configuration for different variants
-  const SIMPIRA_CONFIGS = {
-    128: { b: 1, rounds: 12, name: "Simpira-128" },
-    256: { b: 2, rounds: 15, name: "Simpira-256" },
-    384: { b: 3, rounds: 21, name: "Simpira-384" },
-    512: { b: 4, rounds: 15, name: "Simpira-512" },
-    768: { b: 6, rounds: 15, name: "Simpira-768" },
-    1024: { b: 8, rounds: 18, name: "Simpira-1024" }
-  };
+  /**
+   * Simpira v2 configuration of one variant
+   * @class
+   */
+  class SimpiraConfig {
+    /**
+     * @param {int32} b - Number of 128-bit blocks
+     * @param {int32} rounds - Number of rounds
+     * @param {string} name - Variant name
+     */
+    constructor(b, rounds, name) {
+      /** @type {int32} */
+      this.b = b;
+      /** @type {int32} */
+      this.rounds = rounds;
+      /** @type {string} */
+      this.name = name;
+    }
+  }
+
+  /**
+   * Simpira v2 configuration for different variants
+   * @param {int32} bitSize - Permutation width in bits
+   * @returns {SimpiraConfig|null} The configuration, or null for an unsupported width
+   */
+  function simpiraConfig(bitSize) {
+    switch (bitSize) {
+      case 128: return new SimpiraConfig(1, 12, "Simpira-128");
+      case 256: return new SimpiraConfig(2, 15, "Simpira-256");
+      case 384: return new SimpiraConfig(3, 21, "Simpira-384");
+      case 512: return new SimpiraConfig(4, 15, "Simpira-512");
+      case 768: return new SimpiraConfig(6, 15, "Simpira-768");
+      case 1024: return new SimpiraConfig(8, 18, "Simpira-1024");
+      default: return null;
+    }
+  }
 
   // Base algorithm class for Simpira v2 permutations
   class SimpliraPermutationAlgorithm extends Algorithm {
+    /**
+     * @param {int32} bitSize - Permutation width in bits
+     */
     constructor(bitSize) {
       super();
 
-      const config = SIMPIRA_CONFIGS[bitSize];
+      /** @type {SimpiraConfig|null} */
+      const config = simpiraConfig(bitSize);
       if (!config) {
-        throw new Error(`Unsupported Simpira variant: ${bitSize} bits`);
+        throw new Error("Unsupported Simpira variant: " + bitSize + " bits");
       }
 
+      /** @type {int32} */
       this.bitSize = bitSize;
-      this.byteSize = bitSize / 8;
+      /** @type {int32} */
+      this.byteSize = Math.floor(bitSize / 8);
+      /** @type {int32} */
       this.b = config.b;
+      /** @type {int32} */
       this.rounds = config.rounds;
 
       this.name = config.name;
-      this.description = `${config.name} permutation using AES round function. Input/output size: ${bitSize} bits (${this.byteSize} bytes). Designed for Intel AES-NI optimization.`;
+      this.description = config.name + " permutation using AES round function. Input/output size: " + bitSize + " bits (" + this.byteSize + " bytes). Designed for Intel AES-NI optimization.";
       this.inventor = "Shay Gueron, Nicky Mouha";
       this.year = 2016;
       this.category = CategoryType.SPECIAL;
@@ -251,17 +375,25 @@
       ];
     }
 
+    /**
+     * Compute the permutation of a vector input
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Permuted bytes
+     */
     _computeTestVector(input) {
       // Create instance and compute expected output
+      /** @type {SimpliraPermutationInstance} */
       const instance = this.CreateInstance(false);
       instance.Feed(input);
-      return instance.Result();
+      /** @type {uint8[]} */
+      const output = instance.Result();
+      return output;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SimpliraPermutationInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -278,14 +410,24 @@
   class SimpliraPermutationInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SimpliraPermutationAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string} */
+      this.variantName = algorithm.name;
+      /** @type {int32} */
+      this.byteSize = algorithm.byteSize;
+      /** @type {int32} */
+      this.b = algorithm.b;
+      /** @type {int32} */
+      this.rounds = algorithm.rounds;
     }
 
     /**
@@ -297,8 +439,8 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      if (this.inputBuffer.length + data.length > this.algorithm.byteSize) {
-        throw new Error(`Input too large: ${this.algorithm.name} accepts exactly ${this.algorithm.byteSize} bytes`);
+      if (this.inputBuffer.length + data.length > this.byteSize) {
+        throw new Error("Input too large: " + this.variantName + " accepts exactly " + this.byteSize + " bytes");
       }
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
@@ -311,8 +453,8 @@
    */
 
     Result() {
-      if (this.inputBuffer.length !== this.algorithm.byteSize) {
-        throw new Error(`Invalid input size: expected ${this.algorithm.byteSize} bytes, got ${this.inputBuffer.length}`);
+      if (this.inputBuffer.length !== this.byteSize) {
+        throw new Error("Invalid input size: expected " + this.byteSize + " bytes, got " + this.inputBuffer.length);
       }
 
       if (this.isInverse) {
@@ -322,10 +464,11 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} Permuted buffer
+     */
     _computePermutation() {
-      const config = SIMPIRA_CONFIGS[this.algorithm.bitSize];
-
-      if (config.b === 1) {
+      if (this.b === 1) {
         // For b=1: 12-round AES with fixed round keys
         return this._simpira128();
       } else {
@@ -334,10 +477,11 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} Inverse-permuted buffer
+     */
     _computeInverse() {
-      const config = SIMPIRA_CONFIGS[this.algorithm.bitSize];
-
-      if (config.b === 1) {
+      if (this.b === 1) {
         // For b=1: Inverse of 12-round AES
         return this._simpira128Inverse();
       } else {
@@ -346,73 +490,121 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} Simpira-128 of the buffer
+     */
     _simpira128() {
       // Simpira-128: 12-round AES with fixed round keys
-      let state = [...this.inputBuffer];
+      /** @type {uint8[]} */
+      let block = this.inputBuffer.slice();
 
       // Initial round key addition
-      const initialKey = this._generateRoundConstant(0, 0);
-      state = OpCodes.XorArrays(state, initialKey);
+      /** @type {uint8[]} */
+      const initialRc = this._generateRoundConstant(0, 0);
+      block = OpCodes.XorArrays(block, initialRc);
 
       // 11 full rounds
       for (let round = 1; round <= 11; ++round) {
-        const roundKey = this._generateRoundConstant(round, 0);
-        state = aesRound(state, roundKey);
+        /** @type {uint8[]} */
+        const roundRc = this._generateRoundConstant(round, 0);
+        block = aesRound(block, roundRc);
       }
 
       // Final round (no MixColumns)
-      const finalKey = this._generateRoundConstant(12, 0);
-      state = aesSubBytes(state);
-      state = aesShiftRows(state);
-      state = OpCodes.XorArrays(state, finalKey);
+      /** @type {uint8[]} */
+      const finalRc = this._generateRoundConstant(12, 0);
+      block = aesSubBytes(block);
+      block = aesShiftRows(block);
+      block = OpCodes.XorArrays(block, finalRc);
 
-      return state;
+      return block;
     }
 
+    /**
+     * @returns {uint8[]} Inverse Simpira-128 of the buffer
+     */
     _simpira128Inverse() {
       // Inverse Simpira-128: 12-round inverse AES
-      let state = [...this.inputBuffer];
+      /** @type {uint8[]} */
+      let block = this.inputBuffer.slice();
 
       // Undo final round
-      const finalKey = this._generateRoundConstant(12, 0);
-      state = OpCodes.XorArrays(state, finalKey);
-      state = aesInvShiftRows(state);
-      state = aesInvSubBytes(state);
+      /** @type {uint8[]} */
+      const finalRc = this._generateRoundConstant(12, 0);
+      block = OpCodes.XorArrays(block, finalRc);
+      block = aesInvShiftRows(block);
+      block = aesInvSubBytes(block);
 
       // Undo 11 full rounds
       for (let round = 11; round >= 1; --round) {
-        const roundKey = this._generateRoundConstant(round, 0);
-        state = aesInvRound(state, roundKey);
+        /** @type {uint8[]} */
+        const roundRc = this._generateRoundConstant(round, 0);
+        block = aesInvRound(block, roundRc);
       }
 
       // Undo initial round key addition
-      const initialKey = this._generateRoundConstant(0, 0);
-      state = OpCodes.XorArrays(state, initialKey);
+      /** @type {uint8[]} */
+      const initialRc = this._generateRoundConstant(0, 0);
+      block = OpCodes.XorArrays(block, initialRc);
 
-      return state;
+      return block;
     }
 
-    _simpiraGFS() {
-      // Generalized Feistel Structure for b≥2
-      const b = this.algorithm.b;
-      const rounds = this.algorithm.rounds;
-
-      // Split input into b blocks of 128 bits each
+    /**
+     * Split the buffer into b blocks of 128 bits each
+     * @returns {uint8[][]} The blocks
+     */
+    _splitBlocks() {
+      /** @type {uint8[][]} */
       const blocks = [];
-      for (let i = 0; i < b; ++i) {
+      for (let i = 0; i < this.b; ++i) {
         blocks.push(this.inputBuffer.slice(i * 16, (i + 1) * 16));
       }
+      return blocks;
+    }
+
+    /**
+     * Concatenate blocks back to output
+     * @param {uint8[][]} blocks - The blocks
+     * @returns {uint8[]} Their concatenation
+     */
+    _joinBlocks(blocks) {
+      /** @type {uint8[]} */
+      const result = [];
+      for (let i = 0; i < this.b; ++i) {
+        /** @type {uint8[]} */
+        const blk = blocks[i];
+        for (let k = 0; k < blk.length; ++k) result.push(blk[k]);
+      }
+      return result;
+    }
+
+    /**
+     * @returns {uint8[]} Generalized Feistel permutation of the buffer
+     */
+    _simpiraGFS() {
+      // Generalized Feistel Structure for b≥2
+      /** @type {int32} */
+      const b = this.b;
+      /** @type {int32} */
+      const rounds = this.rounds;
+
+      /** @type {uint8[][]} */
+      const blocks = this._splitBlocks();
 
       // Apply GFS rounds
       for (let round = 0; round < rounds; ++round) {
         // F-function: two AES rounds with round constants
+        /** @type {uint8[]} */
         const fInput = blocks[0];
+        /** @type {uint8[]} */
         const fOutput = this._fFunction(fInput, round);
 
         // XOR with next block and rotate
         blocks[1] = OpCodes.XorArrays(blocks[1], fOutput);
 
         // Rotate blocks: (X0, X1, ..., Xb-1) -> (X1, X2, ..., Xb-1, X0)
+        /** @type {uint8[]} */
         const temp = blocks[0];
         for (let i = 0; i < b - 1; ++i) {
           blocks[i] = blocks[i + 1];
@@ -420,29 +612,26 @@
         blocks[b - 1] = temp;
       }
 
-      // Concatenate blocks back to output
-      const result = [];
-      for (let i = 0; i < b; ++i) {
-        result.push(...blocks[i]);
-      }
-
-      return result;
+      return this._joinBlocks(blocks);
     }
 
+    /**
+     * @returns {uint8[]} Inverse generalized Feistel permutation of the buffer
+     */
     _simpiraGFSInverse() {
       // Inverse Generalized Feistel Structure
-      const b = this.algorithm.b;
-      const rounds = this.algorithm.rounds;
+      /** @type {int32} */
+      const b = this.b;
+      /** @type {int32} */
+      const rounds = this.rounds;
 
-      // Split input into b blocks of 128 bits each
-      const blocks = [];
-      for (let i = 0; i < b; ++i) {
-        blocks.push(this.inputBuffer.slice(i * 16, (i + 1) * 16));
-      }
+      /** @type {uint8[][]} */
+      const blocks = this._splitBlocks();
 
       // Apply inverse GFS rounds
       for (let round = rounds - 1; round >= 0; --round) {
         // Inverse rotate blocks: (X0, X1, ..., Xb-1) -> (Xb-1, X0, X1, ..., Xb-2)
+        /** @type {uint8[]} */
         const temp = blocks[b - 1];
         for (let i = b - 1; i > 0; --i) {
           blocks[i] = blocks[i - 1];
@@ -450,44 +639,55 @@
         blocks[0] = temp;
 
         // Inverse F-function application
+        /** @type {uint8[]} */
         const fInput = blocks[0];
+        /** @type {uint8[]} */
         const fOutput = this._fFunction(fInput, round);
         blocks[1] = OpCodes.XorArrays(blocks[1], fOutput);
       }
 
-      // Concatenate blocks back to output
-      const result = [];
-      for (let i = 0; i < b; ++i) {
-        result.push(...blocks[i]);
-      }
-
-      return result;
+      return this._joinBlocks(blocks);
     }
 
+    /**
+     * F-function: two AES rounds
+     * @param {uint8[]} input - 16-byte block
+     * @param {int32} round - Round index
+     * @returns {uint8[]} F output
+     */
     _fFunction(input, round) {
-      // F-function: two AES rounds
-      let state = [...input];
+      /** @type {uint8[]} */
+      let block = input.slice();
 
       // First AES round with round constant
+      /** @type {uint8[]} */
       const rc1 = this._generateRoundConstant(round, 0);
-      state = aesRound(state, rc1);
+      block = aesRound(block, rc1);
 
       // Second AES round with different round constant
+      /** @type {uint8[]} */
       const rc2 = this._generateRoundConstant(round, 1);
-      state = aesRound(state, rc2);
+      block = aesRound(block, rc2);
 
-      return state;
+      return block;
     }
 
+    /**
+     * Simpira v2 round constant generation
+     * @param {int32} round - Round index
+     * @param {int32} subRound - 0 or 1
+     * @returns {uint8[]} 16-byte round constant
+     */
     _generateRoundConstant(round, subRound) {
-      // Simpira v2 round constant generation
       // Based on simple counter to avoid backdoors
+      /** @type {uint8[]} */
       const constant = new Array(16);
+      /** @type {int32} */
       const counter = (round * 2 + subRound) + 1; // Start from 1
 
       // Fill with strengthened constants (v2 improvement)
       for (let i = 0; i < 16; ++i) {
-        constant[i] = OpCodes.AndN((counter + i * 17), 0xFF); // Dense constants to prevent invariant subspaces
+        constant[i] = OpCodes.ToByte(counter + i * 17); // Dense constants to prevent invariant subspaces
       }
 
       return constant;

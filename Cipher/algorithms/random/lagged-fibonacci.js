@@ -199,7 +199,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LaggedFibonacciInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -217,12 +217,20 @@
  */
 
   class LaggedFibonacciInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {LaggedFibonacciAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SplitMix64 constants for state initialization
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // Lagged Fibonacci parameters
@@ -232,6 +240,7 @@
       this._operationMode = "additive"; // Default operation: additive, subtractive, multiplicative, xor
 
       // Generator state
+      /** @type {BigInt[]} */
       this._state = null;        // State array (64-bit BigInt values)
       this._index = 0;           // Current position in circular buffer
       this._ready = false;       // Initialization status
@@ -239,6 +248,7 @@
 
     /**
      * Set state size (default 56 for classic 55-lag configuration)
+     * @param {int32} size - Number of state words
      */
     set stateSize(size) {
       if (size <= 0) {
@@ -251,49 +261,65 @@
       }
     }
 
+    /**
+     * @returns {int32} Number of state words
+     */
     get stateSize() {
       return this._stateSize;
     }
 
     /**
      * Set short lag (j in X[n-j])
+     * @param {int32} lag - Short lag
      */
     set shortLag(lag) {
       if (lag < 0 || lag >= this._stateSize) {
-        throw new Error(`Short lag must be between 0 and ${this._stateSize - 1}`);
+        throw new Error("Short lag must be between 0 and " + (this._stateSize - 1));
       }
       this._shortLag = lag;
     }
 
+    /**
+     * @returns {int32} Short lag
+     */
     get shortLag() {
       return this._shortLag;
     }
 
     /**
      * Set long lag (k in X[n-k])
+     * @param {int32} lag - Long lag
      */
     set longLag(lag) {
       if (lag <= this._shortLag || lag >= this._stateSize) {
-        throw new Error(`Long lag must be between ${this._shortLag + 1} and ${this._stateSize - 1}`);
+        throw new Error("Long lag must be between " + (this._shortLag + 1) + " and " + (this._stateSize - 1));
       }
       this._longLag = lag;
     }
 
+    /**
+     * @returns {int32} Long lag
+     */
     get longLag() {
       return this._longLag;
     }
 
     /**
      * Set operation mode: "additive", "subtractive", "multiplicative", "xor"
+     * @param {string} mode - Operation name (any case)
      */
     set operationMode(mode) {
+      /** @type {string[]} */
       const validModes = ["additive", "subtractive", "multiplicative", "xor"];
       if (!validModes.includes(mode.toLowerCase())) {
-        throw new Error(`Invalid operation mode: ${mode}. Must be one of: ${validModes.join(', ')}`);
+        throw new Error("Invalid operation mode: " + mode + ". Must be one of: " + (validModes.join(', ')));
       }
       this._operationMode = mode.toLowerCase();
     }
 
+    /**
+     * @returns {string} Operation name
+     */
     get operationMode() {
       return this._operationMode;
     }
@@ -301,6 +327,7 @@
     /**
      * Initialize generator with seed value (1-8 bytes)
      * State is initialized using SplitMix64 algorithm
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -309,13 +336,14 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
       }
 
       // Initialize state array using SplitMix64
-      this._state = new Array(this._stateSize);
+      this._state = OpCodes.CreateArray(this._stateSize, 0n);
       for (let i = 0; i < this._stateSize; ++i) {
         this._state[i] = this._splitmix64Next(seedValue);
         seedValue = this._state[i]; // Use output as next seed
@@ -325,6 +353,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -332,13 +363,17 @@
     /**
      * SplitMix64 next function for state initialization
      * This matches the C# reference implementation
+     * @param {BigInt} z - State before the step
+     * @returns {BigInt} Mixed output
      */
     _splitmix64Next(z) {
       // Add golden gamma to state
-      z = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const advanced = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
 
       // Mix function (Stafford variant 13)
-      let result = z;
+      /** @type {BigInt} */
+      let result = advanced;
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 30)) * this.MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 27)) * this.MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 31)), 0xFFFFFFFFFFFFFFFFn);
@@ -349,6 +384,7 @@
     /**
      * Generate next 64-bit value using Lagged Fibonacci recurrence
      * X[n] = (X[n-j] ⊙ X[n-k]) mod 2^64
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -370,10 +406,13 @@
       }
 
       // Get lagged values
+      /** @type {BigInt} */
       const a = this._state[shortIndex];
+      /** @type {BigInt} */
       const b = this._state[longIndex];
 
       // Apply operation based on mode
+      /** @type {BigInt} */
       let result;
       switch (this._operationMode) {
         case "additive":
@@ -389,7 +428,7 @@
           result = OpCodes.XorN(a, b);
           break;
         default:
-          throw new Error(`Invalid operation mode: ${this._operationMode}`);
+          throw new Error("Invalid operation mode: " + this._operationMode);
       }
 
       // Store result in state array
@@ -403,8 +442,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -412,19 +451,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
@@ -456,19 +500,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 
