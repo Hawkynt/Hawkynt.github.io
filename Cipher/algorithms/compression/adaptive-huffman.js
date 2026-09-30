@@ -77,11 +77,17 @@
 
   class MsbBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * @param {int32} bit - Bit (only bit 0 is used)
+     */
     writeBit(bit) {
       this.buf = OpCodes.Or32(OpCodes.Shl32(this.buf, 1), OpCodes.And32(bit, 1));
       this.nBits++;
@@ -92,6 +98,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     flush() {
       if (this.nBits > 0) {
         this.buf = OpCodes.Shl32(this.buf, 8 - this.nBits);
@@ -104,16 +113,29 @@
   }
 
   class MsbBitReader {
+    /**
+     * @param {uint8[]} bytes - Source bytes
+     * @param {int32} startByte - Position of the first bit's byte
+     */
     constructor(bytes, startByte) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.bitPos = startByte * 8;
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
+      /** @type {int32} */
       const byteIndex = Math.floor(this.bitPos / 8);
-      if (byteIndex >= this.bytes.length)
+      if (byteIndex >= this.bytes.length) {
         throw new Error('Adaptive Huffman: unexpected end of bitstream');
+      }
+      /** @type {int32} */
       const shift = 7 - (this.bitPos % 8);
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.bytes[byteIndex], shift), 1);
       this.bitPos++;
       return bit;
@@ -123,16 +145,32 @@
   // ===== FGK ADAPTIVE HUFFMAN TREE =====
 
   class FgkNode {
+    /**
+     * @param {int32} weight - Occurrence count
+     * @param {int32} symbol - Symbol of a leaf, -1 otherwise
+     * @param {boolean} isNyt - True for the not-yet-transmitted node
+     * @param {int32} number - 1-based position in the sibling order
+     */
     constructor(weight, symbol, isNyt, number) {
+      /** @type {int32} */
       this.weight = weight;
+      /** @type {int32} */
       this.symbol = symbol;
+      /** @type {boolean} */
       this.isNyt = isNyt === true;
+      /** @type {int32} */
       this.number = number;
+      /** @type {FgkNode} */
       this.parent = null;
+      /** @type {FgkNode} */
       this.left = null;
+      /** @type {FgkNode} */
       this.right = null;
     }
 
+    /**
+     * @returns {boolean} True for a node without children
+     */
     get isLeaf() {
       return this.left === null && this.right === null;
     }
@@ -140,44 +178,85 @@
 
   class FgkTree {
     constructor() {
+      /** @type {FgkNode} */
       this.nyt = new FgkNode(0, -1, true, 1);
+      /** @type {FgkNode} */
       this.root = this.nyt;
-      this.symbolNode = new Array(256).fill(null);
+      /** @type {FgkNode[]} */
+      this.symbolNode = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        this.symbolNode[i] = null;
+      }
+      /** @type {FgkNode[]} */
       this.order = [this.nyt];
     }
 
+    /**
+     * @param {MsbBitWriter} writer - Output bits
+     * @param {uint8} symbol - Symbol to code
+     */
     encodeSymbol(writer, symbol) {
+      /** @type {FgkNode} */
       const leaf = this.symbolNode[symbol];
 
       if (leaf !== null) {
+        /** @type {int32[]} */
         const bits = FgkTree._pathBits(leaf);
-        for (let i = 0; i < bits.length; i++) writer.writeBit(bits[i]);
+        for (let i = 0; i < bits.length; i++) {
+          writer.writeBit(bits[i]);
+        }
         this._updateTree(leaf);
         return;
       }
 
+      /** @type {int32[]} */
       const escapeBits = FgkTree._pathBits(this.nyt);
-      for (let i = 0; i < escapeBits.length; i++) writer.writeBit(escapeBits[i]);
+      for (let i = 0; i < escapeBits.length; i++) {
+        writer.writeBit(escapeBits[i]);
+      }
 
-      for (let i = 7; i >= 0; --i) writer.writeBit(OpCodes.And32(OpCodes.Shr32(symbol, i), 1));
+      for (let i = 7; i >= 0; --i) {
+        writer.writeBit(OpCodes.And32(OpCodes.Shr32(symbol, i), 1));
+      }
 
+      /** @type {FgkNode} */
       const newLeaf = this._splitNyt(symbol);
       this._updateTree(newLeaf);
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @returns {int32} Decoded symbol
+     */
     decodeSymbol(reader) {
+      /** @type {FgkNode} */
       let node = this.root;
-      while (!node.isLeaf) node = reader.readBit() === 0 ? node.left : node.right;
+      while (node.left !== null || node.right !== null) {
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        if (bit === 0) {
+          node = node.left;
+        } else {
+          node = node.right;
+        }
+      }
 
       if (!node.isNyt) {
+        /** @type {int32} */
         const symbol = node.symbol;
         this._updateTree(node);
         return symbol;
       }
 
+      /** @type {uint32} */
       let raw = 0;
-      for (let i = 0; i < 8; ++i) raw = OpCodes.Or32(OpCodes.Shl32(raw, 1), reader.readBit());
+      for (let i = 0; i < 8; ++i) {
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        raw = OpCodes.Or32(OpCodes.Shl32(raw, 1), bit);
+      }
 
+      /** @type {FgkNode} */
       const newLeaf = this._splitNyt(raw);
       this._updateTree(newLeaf);
       return raw;
@@ -186,19 +265,28 @@
     // Replaces the current NYT node with an internal node whose children are
     // the same (reused) NYT node and a new leaf for the symbol, both at weight
     // zero; the caller's subsequent update raises the leaf to weight one.
+    /**
+     * @param {int32} symbol - Symbol seen for the first time
+     * @returns {FgkNode} Its new leaf
+     */
     _splitNyt(symbol) {
+      /** @type {FgkNode} */
       const oldNyt = this.nyt;
+      /** @type {FgkNode} */
       const newLeaf = new FgkNode(0, symbol, false, 0);
+      /** @type {FgkNode} */
       const newInternal = new FgkNode(0, -1, false, 0);
 
+      /** @type {FgkNode} */
       const parent = oldNyt.parent;
       newInternal.parent = parent;
-      if (parent === null)
+      if (parent === null) {
         this.root = newInternal;
-      else if (parent.left === oldNyt)
+      } else if (parent.left === oldNyt) {
         parent.left = newInternal;
-      else
+      } else {
         parent.right = newInternal;
+      }
 
       newInternal.left = oldNyt;
       newInternal.right = newLeaf;
@@ -208,20 +296,37 @@
       // oldNyt keeps its number (the lowest weight-zero slot); newLeaf and
       // newInternal are inserted directly above it and everything above is
       // renumbered.
+      /** @type {int32} */
       const insertAt = oldNyt.number;
-      this.order.splice(insertAt, 0, newLeaf);
-      this.order.splice(insertAt + 1, 0, newInternal);
-      for (let i = insertAt; i < this.order.length; ++i) this.order[i].number = i + 1;
+      this.order.push(null);
+      this.order.push(null);
+      for (let i = this.order.length - 1; i >= insertAt + 2; --i) {
+        this.order[i] = this.order[i - 2];
+      }
+      this.order[insertAt] = newLeaf;
+      this.order[insertAt + 1] = newInternal;
+      for (let i = insertAt; i < this.order.length; ++i) {
+        /** @type {FgkNode} */
+        const entry = this.order[i];
+        entry.number = i + 1;
+      }
 
       this.symbolNode[symbol] = newLeaf;
       return newLeaf;
     }
 
+    /**
+     * @param {FgkNode} start - Leaf whose weight grows
+     */
     _updateTree(start) {
+      /** @type {FgkNode} */
       let node = start;
       while (node !== null) {
+        /** @type {FgkNode} */
         const swapWith = this._findSwapCandidate(node);
-        if (swapWith !== null) this._swap(node, swapWith);
+        if (swapWith !== null) {
+          this._swap(node, swapWith);
+        }
 
         ++node.weight;
         node = node.parent;
@@ -231,50 +336,87 @@
     // The highest-numbered node of the same weight, excluding the node itself
     // and its ancestors. Equal-weight nodes always form a contiguous run in the
     // number ordering, so the run's top end is walked downward.
+    /**
+     * @param {FgkNode} node - Node about to grow
+     * @returns {FgkNode} Node to swap with, or null
+     */
     _findSwapCandidate(node) {
+      /** @type {int32} */
       const weight = node.weight;
+      /** @type {int32} */
       let hi = node.number - 1;
-      while (hi + 1 < this.order.length && this.order[hi + 1].weight === weight) ++hi;
+      while (hi + 1 < this.order.length) {
+        /** @type {FgkNode} */
+        const above = this.order[hi + 1];
+        if (above.weight !== weight) {
+          break;
+        }
+        ++hi;
+      }
 
       for (let i = hi; i > node.number - 1; --i) {
+        /** @type {FgkNode} */
         const candidate = this.order[i];
-        if (!FgkTree._isAncestorOf(candidate, node)) return candidate;
+        /** @type {boolean} */
+        const isAncestor = FgkTree._isAncestorOf(candidate, node);
+        if (!isAncestor) {
+          return candidate;
+        }
       }
 
       return null;
     }
 
+    /**
+     * @param {FgkNode} candidate - Possible ancestor
+     * @param {FgkNode} node - Node
+     * @returns {boolean} True when candidate is above node
+     */
     static _isAncestorOf(candidate, node) {
-      for (let n = node.parent; n !== null; n = n.parent)
-        if (n === candidate) return true;
+      for (let n = node.parent; n !== null; n = n.parent) {
+        if (n === candidate) {
+          return true;
+        }
+      }
 
       return false;
     }
 
     // Exchanges the tree positions and numbers of two nodes, each carrying its
     // own subtree along with it.
+    /**
+     * @param {FgkNode} a - First node
+     * @param {FgkNode} b - Second node
+     */
     _swap(a, b) {
+      /** @type {FgkNode} */
       const pa = a.parent;
+      /** @type {FgkNode} */
       const pb = b.parent;
+      /** @type {boolean} */
       const aWasLeft = pa !== null && pa.left === a;
+      /** @type {boolean} */
       const bWasLeft = pb !== null && pb.left === b;
 
       a.parent = pb;
-      if (pb === null)
+      if (pb === null) {
         this.root = a;
-      else if (bWasLeft)
+      } else if (bWasLeft) {
         pb.left = a;
-      else
+      } else {
         pb.right = a;
+      }
 
       b.parent = pa;
-      if (pa === null)
+      if (pa === null) {
         this.root = b;
-      else if (aWasLeft)
+      } else if (aWasLeft) {
         pa.left = b;
-      else
+      } else {
         pa.right = b;
+      }
 
+      /** @type {int32} */
       const an = a.number;
       a.number = b.number;
       b.number = an;
@@ -283,11 +425,22 @@
     }
 
     // Root-to-target path as bits (0 = left child, 1 = right child), root first.
+    /**
+     * @param {FgkNode} target - Node
+     * @returns {int32[]} Path bits from the root
+     */
     static _pathBits(target) {
-      const bits = [];
-      for (let n = target; n.parent !== null; n = n.parent) bits.push(n.parent.left === n ? 0 : 1);
+      /** @type {int32[]} */
+      const reversed = [];
+      for (let n = target; n.parent !== null; n = n.parent) {
+        reversed.push(n.parent.left === n ? 0 : 1);
+      }
 
-      bits.reverse();
+      /** @type {int32[]} */
+      const bits = [];
+      for (let i = reversed.length - 1; i >= 0; --i) {
+        bits.push(reversed[i]);
+      }
       return bits;
     }
   }
@@ -374,54 +527,105 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {AdaptiveHuffmanInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new AdaptiveHuffmanInstance(this, isInverse);
     }
   }
 
   class AdaptiveHuffmanInstance extends IAlgorithmInstance {
+    /**
+     * @param {AdaptiveHuffmanCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      this.inputBuffer = [];
-      return this.isInverse ? this._decompress(input) : this._compress(input);
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      if (this.isInverse) {
+        return this._decompress(input);
+      }
+      return this._compress(input);
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Size header and code bits
+     */
     _compress(data) {
-      const out = [
-        OpCodes.And32(data.length, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF)
-      ];
+      /** @type {uint8[]} */
+      const out = [];
+      out.push(OpCodes.And32(data.length, 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF));
+      out.push(OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF));
 
-      if (data.length === 0) return out;
+      if (data.length === 0) {
+        return out;
+      }
 
+      /** @type {FgkTree} */
       const tree = new FgkTree();
+      /** @type {MsbBitWriter} */
       const writer = new MsbBitWriter();
-      for (let i = 0; i < data.length; i++) tree.encodeSymbol(writer, OpCodes.And32(data[i], 0xFF));
+      for (let i = 0; i < data.length; i++) {
+        tree.encodeSymbol(writer, OpCodes.And32(data[i], 0xFF));
+      }
+      /** @type {uint8[]} */
       const bits = writer.flush();
-      for (let i = 0; i < bits.length; i++) out.push(bits[i]);
+      for (let i = 0; i < bits.length; i++) {
+        out.push(bits[i]);
+      }
 
       return out;
     }
 
+    /**
+     * @param {uint8[]} data - Size header and code bits
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(data) {
-      if (data.length < 4) return [];
+      if (data.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0) return [];
-
-      const reader = new MsbBitReader(data, 4);
-      const tree = new FgkTree();
+      /** @type {uint8[]} */
       const result = new Array(originalSize);
-      for (let i = 0; i < originalSize; ++i) result[i] = tree.decodeSymbol(reader);
+      if (originalSize === 0) {
+        return result;
+      }
+
+      /** @type {MsbBitReader} */
+      const reader = new MsbBitReader(data, 4);
+      /** @type {FgkTree} */
+      const tree = new FgkTree();
+      for (let i = 0; i < originalSize; ++i) {
+        /** @type {int32} */
+        const symbol = tree.decodeSymbol(reader);
+        result[i] = symbol;
+      }
 
       return result;
     }

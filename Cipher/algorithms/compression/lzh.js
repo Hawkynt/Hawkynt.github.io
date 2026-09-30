@@ -90,34 +90,60 @@
   const HASH_MASK = 32767;
   const MAX_CHAIN_DEPTH = 128;
 
+  /**
+   * @param {int32} size - Number of entries
+   * @returns {int32[]} Plain array of zeros
+   */
+  function zeroArray(size) {
+    /** @type {int32[]} */
+    const arr = new Array(size);
+    for (let i = 0; i < size; ++i) {
+      arr[i] = 0;
+    }
+    return arr;
+  }
+
   // ===== BIT STREAM HELPERS (most-significant-bit first) =====
 
   class MsbBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} bit - Bit to append (low bit used)
+     */
     writeBit(bit) {
       this.buffer = OpCodes.Or32(this.buffer, OpCodes.Shl32(OpCodes.And32(bit, 1), 7 - this.bitsInBuffer));
       ++this.bitsInBuffer;
-      if (this.bitsInBuffer !== 8)
+      if (this.bitsInBuffer !== 8) {
         return;
+      }
 
       this.bytes.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} value - Value whose low count bits are written
+     * @param {int32} count - Bit count, most significant first
+     */
     writeBits(value, count) {
-      for (let i = 0; i < count; ++i)
+      for (let i = 0; i < count; ++i) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, count - 1 - i), 1));
+      }
     }
 
     flush() {
-      if (this.bitsInBuffer <= 0)
+      if (this.bitsInBuffer <= 0) {
         return;
+      }
 
       this.bytes.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
@@ -126,20 +152,39 @@
   }
 
   class MsbBitReader {
+    /**
+     * @param {uint8[]} bytes - Input
+     * @param {int32} start - First byte of the bit stream
+     */
     constructor(bytes, start) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {int32} count - Bit count (zero bits past the end)
+     * @returns {uint32} Bits read, most significant first
+     */
     readBits(count) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < count; ++i) {
         if (this.bitsInBuffer === 0) {
-          this.buffer = this.pos < this.bytes.length ? this.bytes[this.pos++] : 0;
+          /** @type {uint32} */
+          let next = 0;
+          if (this.pos < this.bytes.length) {
+            next = this.bytes[this.pos++];
+          }
+          this.buffer = next;
           this.bitsInBuffer = 8;
         }
+        /** @type {uint32} */
         const bit = OpCodes.And32(OpCodes.Shr32(this.buffer, this.bitsInBuffer - 1), 1);
         --this.bitsInBuffer;
         result = OpCodes.Or32(OpCodes.Shl32(result, 1), bit);
@@ -152,66 +197,134 @@
 
   // Canonical code assignment: shortest lengths first, symbols of equal
   // length in ascending symbol order.
+  /**
+   * @param {int32[]} lengths - Code length per symbol
+   * @returns {int32[]} Code per symbol
+   */
   function buildCanonicalCodes(lengths) {
+    /** @type {int32} */
     let maxLen = 0;
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > maxLen) maxLen = lengths[i];
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > maxLen) {
+        maxLen = lengths[i];
+      }
+    }
 
-    const codes = new Array(lengths.length).fill(0);
-    if (maxLen === 0)
+    /** @type {int32[]} */
+    const codes = zeroArray(lengths.length);
+    if (maxLen === 0) {
       return codes;
+    }
 
-    const blCount = new Array(maxLen + 1).fill(0);
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) ++blCount[lengths[i]];
+    /** @type {int32[]} */
+    const blCount = zeroArray(maxLen + 1);
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        ++blCount[lengths[i]];
+      }
+    }
 
-    const nextCode = new Array(maxLen + 1).fill(0);
+    /** @type {int32[]} */
+    const nextCode = zeroArray(maxLen + 1);
+    /** @type {int32} */
     let code = 0;
     for (let b = 1; b <= maxLen; ++b) {
       code = OpCodes.Shl32(code + blCount[b - 1], 1);
       nextCode[b] = code;
     }
 
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) codes[i] = nextCode[lengths[i]]++;
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        codes[i] = nextCode[lengths[i]]++;
+      }
+    }
 
     return codes;
   }
 
+  /**
+   * Canonical decoder: first code and symbols per code length.
+   */
+  class LzhDecoder {
+    /**
+     * @param {int32[]} firstCode - First code per length
+     * @param {int32[][]} symbolsByLength - Symbols per length in code order
+     * @param {int32} maxBits - Longest code length considered
+     */
+    constructor(firstCode, symbolsByLength, maxBits) {
+      /** @type {int32[]} */
+      this.firstCode = firstCode;
+      /** @type {int32[][]} */
+      this.symbolsByLength = symbolsByLength;
+      /** @type {int32} */
+      this.maxBits = maxBits;
+    }
+  }
+
   // Decode side of the same numbering. Lengths above maxBits are excluded
   // from the canonical numbering, matching the reference decode table.
+  /**
+   * @param {int32[]} lengths - Code length per symbol
+   * @param {int32} maxBits - Longest code length considered
+   * @returns {LzhDecoder} Decoder
+   */
   function buildDecoder(lengths, maxBits) {
-    const blCount = new Array(maxBits + 1).fill(0);
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0 && lengths[i] <= maxBits) ++blCount[lengths[i]];
+    /** @type {int32[]} */
+    const blCount = zeroArray(maxBits + 1);
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0 && lengths[i] <= maxBits) {
+        ++blCount[lengths[i]];
+      }
+    }
 
-    const firstCode = new Array(maxBits + 1).fill(0);
+    /** @type {int32[]} */
+    const firstCode = zeroArray(maxBits + 1);
+    /** @type {int32} */
     let code = 0;
     for (let b = 1; b <= maxBits; ++b) {
       code = OpCodes.Shl32(code + blCount[b - 1], 1);
       firstCode[b] = code;
     }
 
+    /** @type {int32[][]} */
     const symbolsByLength = [];
-    for (let b = 0; b <= maxBits; ++b) symbolsByLength.push([]);
+    for (let b = 0; b <= maxBits; ++b) {
+      /** @type {int32[]} */
+      const bucket = [];
+      symbolsByLength.push(bucket);
+    }
     for (let sym = 0; sym < lengths.length; ++sym) {
+      /** @type {int32} */
       const len = lengths[sym];
-      if (len === 0 || len > maxBits) continue;
+      if (len === 0 || len > maxBits) {
+        continue;
+      }
       symbolsByLength[len].push(sym);
     }
 
-    return { firstCode: firstCode, symbolsByLength: symbolsByLength, maxBits: maxBits };
+    return new LzhDecoder(firstCode, symbolsByLength, maxBits);
   }
 
+  /**
+   * @param {MsbBitReader} reader - Input bits
+   * @param {LzhDecoder} decoder - Canonical decoder
+   * @returns {int32} Decoded symbol
+   */
   function decodeSymbol(reader, decoder) {
+    /** @type {int32} */
     let code = 0;
     for (let len = 1; len <= decoder.maxBits; ++len) {
-      code = OpCodes.Or32(OpCodes.Shl32(code, 1), reader.readBits(1));
+      /** @type {uint32} */
+      const bit = reader.readBits(1);
+      code = OpCodes.Or32(OpCodes.Shl32(code, 1), bit);
+      /** @type {int32[]} */
       const list = decoder.symbolsByLength[len];
       if (list.length > 0) {
+        /** @type {int32} */
         const index = code - decoder.firstCode[len];
-        if (index >= 0 && index < list.length)
+        if (index >= 0 && index < list.length) {
           return list[index];
+        }
       }
     }
     throw new Error('LZH: invalid Huffman code in stream');
@@ -219,66 +332,106 @@
 
   // Huffman length assignment with deterministic tie-breaking (lowest
   // frequency first, then insertion order), depth-clamped to maxBits and
-  // then Kraft-corrected.
+  // then Kraft-corrected. The working list is kept sorted by
+  // (frequency, insertion number) - a total order, since insertion numbers
+  // are unique.
+  /**
+   * @param {int32[]} frequencies - Frequency per symbol
+   * @param {int32} maxBits - Longest allowed code
+   * @returns {int32[]} Code length per symbol
+   */
   function buildCodeLengths(frequencies, maxBits) {
+    /** @type {int32} */
     const n = frequencies.length;
-    const lengths = new Array(n).fill(0);
-    const symbols = [];
-    for (let i = 0; i < n; ++i)
-      if (frequencies[i] > 0) symbols.push({ symbol: i, freq: frequencies[i] });
-
-    if (symbols.length === 0)
-      return lengths;
-    if (symbols.length === 1) {
-      lengths[symbols[0].symbol] = 1;
-      return lengths;
-    }
-
-    const nodeCount = symbols.length * 2 - 1;
-    const leftChild = new Array(nodeCount).fill(-1);
-    const rightChild = new Array(nodeCount).fill(-1);
-    const nodeSym = new Array(nodeCount).fill(-1);
-
-    const sorted = [];
-    let tieBreaker = 0;
-    const insert = (freq, node) => {
-      const entry = { freq: freq, tie: tieBreaker++, node: node };
-      let lo = 0, hi = sorted.length;
-      while (lo < hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        const other = sorted[mid];
-        if (other.freq < entry.freq || (other.freq === entry.freq && other.tie < entry.tie))
-          lo = mid + 1;
-        else
-          hi = mid;
+    /** @type {int32[]} */
+    const lengths = zeroArray(n);
+    /** @type {int32[]} */
+    const symbolIds = [];
+    /** @type {float64[]} */
+    const symbolFreqs = [];
+    for (let i = 0; i < n; ++i) {
+      if (frequencies[i] > 0) {
+        symbolIds.push(i);
+        symbolFreqs.push(frequencies[i]);
       }
-      sorted.splice(lo, 0, entry);
-    };
-
-    for (let i = 0; i < symbols.length; ++i) {
-      nodeSym[i] = symbols[i].symbol;
-      insert(symbols[i].freq, i);
     }
 
-    let nextNode = symbols.length;
-    while (sorted.length > 1) {
-      const first = sorted.shift();
-      const second = sorted.shift();
+    if (symbolIds.length === 0) {
+      return lengths;
+    }
+    if (symbolIds.length === 1) {
+      lengths[symbolIds[0]] = 1;
+      return lengths;
+    }
+
+    /** @type {int32} */
+    const nodeCount = symbolIds.length * 2 - 1;
+    /** @type {int32[]} */
+    const leftChild = new Array(nodeCount);
+    /** @type {int32[]} */
+    const rightChild = new Array(nodeCount);
+    /** @type {int32[]} */
+    const nodeSym = new Array(nodeCount);
+    for (let i = 0; i < nodeCount; ++i) {
+      leftChild[i] = -1;
+      rightChild[i] = -1;
+      nodeSym[i] = -1;
+    }
+
+    /** @type {float64[]} */
+    const sortedFreq = [];
+    /** @type {int32[]} */
+    const sortedTie = [];
+    /** @type {int32[]} */
+    const sortedNode = [];
+    /** @type {int32} */
+    let tieBreaker = 0;
+
+    for (let i = 0; i < symbolIds.length; ++i) {
+      nodeSym[i] = symbolIds[i];
+      tieBreaker = insertSorted(sortedFreq, sortedTie, sortedNode, symbolFreqs[i], tieBreaker, i);
+    }
+
+    /** @type {int32} */
+    let nextNode = symbolIds.length;
+    while (sortedNode.length > 1) {
+      /** @type {float64} */
+      const firstFreq = sortedFreq.shift();
+      sortedTie.shift();
+      /** @type {int32} */
+      const firstNode = sortedNode.shift();
+      /** @type {float64} */
+      const secondFreq = sortedFreq.shift();
+      sortedTie.shift();
+      /** @type {int32} */
+      const secondNode = sortedNode.shift();
+      /** @type {int32} */
       const parent = nextNode++;
-      leftChild[parent] = first.node;
-      rightChild[parent] = second.node;
-      insert(first.freq + second.freq, parent);
+      leftChild[parent] = firstNode;
+      rightChild[parent] = secondNode;
+      tieBreaker = insertSorted(sortedFreq, sortedTie, sortedNode, firstFreq + secondFreq, tieBreaker, parent);
     }
 
-    const stack = [[sorted[0].node, 0]];
-    while (stack.length > 0) {
-      const entry = stack.pop();
-      const node = entry[0], depth = entry[1];
+    /** @type {int32[]} */
+    const stackNode = [sortedNode[0]];
+    /** @type {int32[]} */
+    const stackDepth = [0];
+    while (stackNode.length > 0) {
+      /** @type {int32} */
+      const node = stackNode.pop();
+      /** @type {int32} */
+      const depth = stackDepth.pop();
       if (leftChild[node] === -1) {
         lengths[nodeSym[node]] = Math.min(depth, maxBits);
       } else {
-        if (leftChild[node] >= 0) stack.push([leftChild[node], depth + 1]);
-        if (rightChild[node] >= 0) stack.push([rightChild[node], depth + 1]);
+        if (leftChild[node] >= 0) {
+          stackNode.push(leftChild[node]);
+          stackDepth.push(depth + 1);
+        }
+        if (rightChild[node] >= 0) {
+          stackNode.push(rightChild[node]);
+          stackDepth.push(depth + 1);
+        }
       }
     }
 
@@ -286,47 +439,137 @@
     return lengths;
   }
 
+  /**
+   * Inserts (freq, next insertion number, node) into the sorted working list:
+   * after every entry with a lower frequency, or an equal frequency and a lower
+   * insertion number.
+   * @param {float64[]} sortedFreq - Frequencies, ascending
+   * @param {int32[]} sortedTie - Insertion numbers
+   * @param {int32[]} sortedNode - Nodes
+   * @param {float64} freq - New entry's frequency
+   * @param {int32} tie - New entry's insertion number
+   * @param {int32} node - New entry's node
+   * @returns {int32} Next insertion number
+   */
+  function insertSorted(sortedFreq, sortedTie, sortedNode, freq, tie, node) {
+    /** @type {int32} */
+    let lo = 0;
+    /** @type {int32} */
+    let hi = sortedNode.length;
+    while (lo < hi) {
+      /** @type {int32} */
+      const mid = Math.floor((lo + hi) / 2);
+      if (sortedFreq[mid] < freq || (sortedFreq[mid] === freq && sortedTie[mid] < tie)) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    sortedFreq.push(0);
+    sortedTie.push(0);
+    sortedNode.push(0);
+    for (let k = sortedNode.length - 1; k > lo; --k) {
+      sortedFreq[k] = sortedFreq[k - 1];
+      sortedTie[k] = sortedTie[k - 1];
+      sortedNode[k] = sortedNode[k - 1];
+    }
+    sortedFreq[lo] = freq;
+    sortedTie[lo] = tie;
+    sortedNode[lo] = node;
+    return tie + 1;
+  }
+
   // Lengthens codes until the Kraft sum fits, walking from the last symbol
   // backwards.
+  /**
+   * @param {int32[]} lengths - Code lengths, adjusted in place
+   * @param {int32} maxBits - Longest allowed code
+   */
   function fixCodeLengths(lengths, maxBits) {
+    /** @type {uint32} */
     const kraftMax = OpCodes.Shl32(1, maxBits);
+    /** @type {float64} */
     let kraftSum = 0;
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
+      }
+    }
 
     // Every pass that finds a code below maxBits strictly reduces the Kraft
     // sum; the guard stops a pathological all-maxBits input from spinning.
+    /** @type {int32} */
     let guard = lengths.length * maxBits + 1024;
-    while (kraftSum > kraftMax && guard-- > 0)
+    while (kraftSum > kraftMax && guard-- > 0) {
       for (let i = lengths.length - 1; i >= 0; --i) {
-        if (lengths[i] <= 0 || lengths[i] >= maxBits)
+        if (lengths[i] <= 0 || lengths[i] >= maxBits) {
           continue;
+        }
 
         kraftSum -= OpCodes.Shr32(kraftMax, lengths[i]);
         ++lengths[i];
         kraftSum += OpCodes.Shr32(kraftMax, lengths[i]);
-        if (kraftSum <= kraftMax)
+        if (kraftSum <= kraftMax) {
           break;
+        }
       }
+    }
   }
 
+  /**
+   * @param {int32[]} lengths - Code lengths
+   * @returns {int32} Number of used symbols
+   */
   function countUsedSymbols(lengths) {
+    /** @type {int32} */
     let used = 0;
-    for (let i = 0; i < lengths.length; ++i)
-      if (lengths[i] > 0) ++used;
+    for (let i = 0; i < lengths.length; ++i) {
+      if (lengths[i] > 0) {
+        ++used;
+      }
+    }
     return used;
   }
 
   // ===== MATCH FINDER =====
 
+  /**
+   * Match found by the hash-chain finder; length 0 when none.
+   */
+  class MatchResult {
+    /**
+     * @param {int32} distance - Backward distance
+     * @param {int32} length - Match length
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
   class HashChainMatchFinder {
+    /**
+     * @param {int32} windowSize - Chain window, a power of two
+     * @param {int32} maxChainDepth - Chain walk limit
+     */
     constructor(windowSize, maxChainDepth) {
+      /** @type {int32} */
       this.maxChainDepth = maxChainDepth;
+      /** @type {int32[]} */
       this.head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       this.prev = new Int32Array(windowSize);
+      /** @type {int32} */
       this.prevMask = windowSize - 1;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position of the three hashed bytes
+     * @returns {int32} Hash bucket
+     */
     static computeHash(data, position) {
       return OpCodes.And32(
         OpCodes.Xor32(
@@ -337,16 +580,31 @@
       );
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Current position, inserted into the chains
+     * @param {int32} maxDistance - Farthest allowed distance
+     * @param {int32} maxLength - Longest allowed match
+     * @param {int32} minLength - Shortest usable match
+     * @returns {MatchResult} Longest (nearest on ties) match
+     */
     findMatch(data, position, maxDistance, maxLength, minLength) {
-      if (position + 2 >= data.length)
-        return { distance: 0, length: 0 };
+      if (position + 2 >= data.length) {
+        return new MatchResult(0, 0);
+      }
 
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let bestLength = 0;
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
+      /** @type {int32} */
       let candidate = this.head[hash];
+      /** @type {int32} */
       let chainCount = 0;
+      /** @type {int32} */
       const windowStart = Math.max(0, position - maxDistance);
 
       while (candidate >= windowStart && chainCount < this.maxChainDepth) {
@@ -356,23 +614,28 @@
           continue;
         }
 
+        /** @type {int32} */
         const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
         if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          /** @type {int32} */
           let length = 0;
-          while (length < limit && data[candidate + length] === data[position + length])
+          while (length < limit && data[candidate + length] === data[position + length]) {
             ++length;
+          }
 
           if (length >= minLength && length > bestLength) {
             bestLength = length;
             bestDistance = position - candidate;
-            if (bestLength >= maxLength)
+            if (bestLength >= maxLength) {
               break;
+            }
           }
         }
 
         candidate = this.prev[OpCodes.And32(candidate, this.prevMask)];
-        if (candidate <= windowStart)
+        if (candidate <= windowStart) {
           break;
+        }
 
         ++chainCount;
       }
@@ -380,15 +643,22 @@
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
 
-      return bestLength >= minLength
-        ? { distance: bestDistance, length: bestLength }
-        : { distance: 0, length: 0 };
+      if (bestLength >= minLength) {
+        return new MatchResult(bestDistance, bestLength);
+      }
+      return new MatchResult(0, 0);
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} position - Position to insert into the chains
+     */
     insertPosition(data, position) {
-      if (position + 2 >= data.length)
+      if (position + 2 >= data.length) {
         return;
+      }
 
+      /** @type {int32} */
       const hash = HashChainMatchFinder.computeHash(data, position);
       this.prev[OpCodes.And32(position, this.prevMask)] = this.head[hash];
       this.head[hash] = position;
@@ -528,23 +798,110 @@
     }
   }
 
+  /**
+   * Parsed tokens as parallel rows: a literal byte or a (length, distance - 1) match.
+   */
+  class LzhTokens {
+    constructor() {
+      /** @type {boolean[]} */
+      this.isLiteral = [];
+      /** @type {int32[]} */
+      this.value = [];
+      /** @type {int32[]} */
+      this.matchLength = [];
+      /** @type {int32[]} */
+      this.distance = [];
+    }
+
+    /**
+     * @param {boolean} isLiteral - True for a literal
+     * @param {int32} value - Literal byte
+     * @param {int32} length - Match length
+     * @param {int32} distance - Match distance minus one
+     */
+    add(isLiteral, value, length, distance) {
+      this.isLiteral.push(isLiteral);
+      this.value.push(value);
+      this.matchLength.push(length);
+      this.distance.push(distance);
+    }
+  }
+
+  /**
+   * T-tree symbols of the literal/length code lengths, with their raw extra bits.
+   */
+  class TSymbolList {
+    constructor() {
+      /** @type {int32[]} */
+      this.sym = [];
+      /** @type {int32[]} */
+      this.extraBits = [];
+      /** @type {int32[]} */
+      this.extraValue = [];
+    }
+
+    /**
+     * @param {int32} sym - T-tree symbol
+     * @param {int32} extraBits - Raw bits following it
+     * @param {int32} extraValue - Their value
+     */
+    add(sym, extraBits, extraValue) {
+      this.sym.push(sym);
+      this.extraBits.push(extraBits);
+      this.extraValue.push(extraValue);
+    }
+  }
+
+  /**
+   * Per-block decoding state: remaining token count and the two trees
+   * (a single symbol, or a decoder when more than one symbol is used).
+   */
+  class LzhDecodeState {
+    constructor() {
+      /** @type {int32} */
+      this.blockRemaining = 0;
+      /** @type {int32} */
+      this.singleCodeSymbol = -1;
+      /** @type {LzhDecoder} */
+      this.codeDecoder = null;
+      /** @type {int32} */
+      this.singlePosSymbol = -1;
+      /** @type {LzhDecoder} */
+      this.posDecoder = null;
+    }
+  }
+
   class LZHInstance extends IAlgorithmInstance {
+    /**
+     * @param {LZHCompression} algorithm - Owning algorithm
+     * @param {boolean} isInverse - True for decompression
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * @returns {uint8[]} Compressed or decompressed bytes
+     */
     Result() {
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0)
-          return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        /** @type {uint8[]} */
         const decoded = this._decompress();
         this.inputBuffer = [];
         return decoded;
       }
 
+      /** @type {uint8[]} */
       const encoded = this._compress();
       this.inputBuffer = [];
       return encoded;
@@ -552,33 +909,51 @@
 
     // ===== COMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Size header followed by the block stream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
+      /** @type {uint8[]} */
       const out = OpCodes.Unpack32LE(data.length);
-      if (data.length === 0)
+      if (data.length === 0) {
         return out;
+      }
 
+      /** @type {uint8[]} */
       const payload = this._encode(data);
-      for (let i = 0; i < payload.length; ++i) out.push(payload[i]);
+      for (let i = 0; i < payload.length; ++i) {
+        out.push(payload[i]);
+      }
       return out;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @returns {LzhTokens} Greedy parse
+     */
     _generateTokens(data) {
-      const tokens = [];
+      /** @type {LzhTokens} */
+      const tokens = new LzhTokens();
+      /** @type {HashChainMatchFinder} */
       const finder = new HashChainMatchFinder(WINDOW_SIZE, MAX_CHAIN_DEPTH);
+      /** @type {int32} */
       let pos = 0;
 
       while (pos < data.length) {
+        /** @type {MatchResult} */
         const match = finder.findMatch(data, pos, WINDOW_SIZE, MAX_MATCH, THRESHOLD);
 
         if (match.length >= THRESHOLD) {
-          tokens.push({ isLiteral: false, length: match.length, distance: match.distance - 1 });
-          for (let i = 1; i < match.length && pos + i < data.length; ++i)
+          tokens.add(false, 0, match.length, match.distance - 1);
+          for (let i = 1; i < match.length && pos + i < data.length; ++i) {
             finder.insertPosition(data, pos + i);
+          }
 
           pos += match.length;
         } else {
-          tokens.push({ isLiteral: true, value: data[pos] });
+          tokens.add(true, data[pos], 0, 0);
           ++pos;
         }
       }
@@ -588,78 +963,126 @@
 
     // Slot 0 covers distance 0, slot 1 distance 1, and slot s (s of at
     // least 2) covers [2^(s-1), 2^s - 1] with (s - 1) raw extra bits.
+    /**
+     * @param {int32} distance - Match distance minus one
+     * @returns {int32} Position slot
+     */
     static _positionSlot(distance) {
-      if (distance <= 1)
+      if (distance <= 1) {
         return distance;
+      }
 
+      /** @type {int32} */
       let slot = 1;
+      /** @type {int32} */
       let d = distance;
-      while (d > 1) { d = Math.floor(d / 2); ++slot; }
+      while (d > 1) {
+        d = Math.floor(d / 2);
+        ++slot;
+      }
       return slot;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @returns {uint8[]} Block stream
+     */
     _encode(data) {
+      /** @type {LzhTokens} */
       const tokens = this._generateTokens(data);
+      /** @type {MsbBitWriter} */
       const bits = new MsbBitWriter();
+      /** @type {int32} */
+      const tokenCount = tokens.isLiteral.length;
+      /** @type {int32} */
       let tokenIdx = 0;
 
-      while (tokenIdx < tokens.length) {
-        const blockEnd = Math.min(tokenIdx + BLOCK_SIZE, tokens.length);
+      while (tokenIdx < tokenCount) {
+        /** @type {int32} */
+        const blockEnd = Math.min(tokenIdx + BLOCK_SIZE, tokenCount);
+        /** @type {int32} */
         const blockCount = blockEnd - tokenIdx;
 
-        const codeFreq = new Array(NUM_CODES).fill(0);
+        /** @type {int32[]} */
+        const codeFreq = zeroArray(NUM_CODES);
+        /** @type {int32} */
         let maxPosSlot = -1;
 
         for (let i = tokenIdx; i < blockEnd; ++i) {
-          const token = tokens[i];
-          if (token.isLiteral) {
-            ++codeFreq[token.value];
+          if (tokens.isLiteral[i]) {
+            ++codeFreq[tokens.value[i]];
           } else {
-            ++codeFreq[token.length - THRESHOLD + N_CHAR];
-            const slot = LZHInstance._positionSlot(token.distance);
-            if (slot > maxPosSlot) maxPosSlot = slot;
+            ++codeFreq[tokens.matchLength[i] - THRESHOLD + N_CHAR];
+            /** @type {int32} */
+            const slot = LZHInstance._positionSlot(tokens.distance[i]);
+            if (slot > maxPosSlot) {
+              maxPosSlot = slot;
+            }
           }
         }
 
-        const posFreq = new Array(Math.max(maxPosSlot + 1, 1)).fill(0);
-        for (let i = tokenIdx; i < blockEnd; ++i)
-          if (!tokens[i].isLiteral)
-            ++posFreq[LZHInstance._positionSlot(tokens[i].distance)];
+        /** @type {int32[]} */
+        const posFreq = zeroArray(Math.max(maxPosSlot + 1, 1));
+        for (let i = tokenIdx; i < blockEnd; ++i) {
+          if (!tokens.isLiteral[i]) {
+            /** @type {int32} */
+            const slot = LZHInstance._positionSlot(tokens.distance[i]);
+            ++posFreq[slot];
+          }
+        }
 
+        /** @type {int32[]} */
         const codeLengths = buildCodeLengths(codeFreq, MAX_CODE_BITS);
+        /** @type {int32[]} */
         const posLengths = buildCodeLengths(posFreq, MAX_POSITION_BITS);
 
+        /** @type {boolean} */
         const codeSingle = countUsedSymbols(codeLengths) <= 1;
+        /** @type {boolean} */
         const posSingle = countUsedSymbols(posLengths) <= 1;
 
         bits.writeBits(blockCount, 16);
         LZHInstance._writeCTree(bits, codeLengths);
         LZHInstance._writePtTree(bits, posLengths, P_BIT, P_BIT);
 
+        /** @type {int32[]} */
         const codeCodes = buildCanonicalCodes(codeLengths);
+        /** @type {int32[]} */
         const posCodes = buildCanonicalCodes(posLengths);
 
         for (let i = tokenIdx; i < blockEnd; ++i) {
-          const token = tokens[i];
-          if (token.isLiteral) {
-            if (!codeSingle)
-              bits.writeBits(codeCodes[token.value], codeLengths[token.value]);
+          if (tokens.isLiteral[i]) {
+            if (!codeSingle) {
+              /** @type {int32} */
+              const literal = tokens.value[i];
+              bits.writeBits(codeCodes[literal], codeLengths[literal]);
+            }
             continue;
           }
 
-          const lengthCode = token.length - THRESHOLD + N_CHAR;
-          if (!codeSingle)
+          /** @type {int32} */
+          const lengthCode = tokens.matchLength[i] - THRESHOLD + N_CHAR;
+          if (!codeSingle) {
             bits.writeBits(codeCodes[lengthCode], codeLengths[lengthCode]);
+          }
 
-          const slot = LZHInstance._positionSlot(token.distance);
-          if (!posSingle)
+          /** @type {int32} */
+          const distance = tokens.distance[i];
+          /** @type {int32} */
+          const slot = LZHInstance._positionSlot(distance);
+          if (!posSingle) {
             bits.writeBits(posCodes[slot], posLengths[slot]);
+          }
 
-          if (slot <= 1)
+          if (slot <= 1) {
             continue;
+          }
 
+          /** @type {int32} */
           const extraBits = slot - 1;
-          bits.writeBits(token.distance - OpCodes.Shl32(1, extraBits), extraBits);
+          /** @type {int32} */
+          const base = OpCodes.Shl32(1, extraBits);
+          bits.writeBits(distance - base, extraBits);
         }
 
         tokenIdx = blockEnd;
@@ -672,18 +1095,33 @@
     // Writes the literal/length tree: a T tree describing the code lengths,
     // then the count of transmitted lengths, then the run-length coded
     // lengths themselves.
+    /**
+     * @param {MsbBitWriter} bits - Output bits
+     * @param {int32[]} codeLengths - Literal/length code lengths
+     */
     static _writeCTree(bits, codeLengths) {
+      /** @type {int32} */
       let numC = codeLengths.length;
-      while (numC > 0 && codeLengths[numC - 1] === 0) --numC;
-      if (numC === 0) numC = 1;
+      while (numC > 0 && codeLengths[numC - 1] === 0) {
+        --numC;
+      }
+      if (numC === 0) {
+        numC = 1;
+      }
 
+      /** @type {int32} */
       let singleSym = -1;
+      /** @type {int32} */
       let usedCount = 0;
-      for (let i = 0; i < codeLengths.length; ++i)
-        if (codeLengths[i] > 0) { singleSym = i; ++usedCount; }
+      for (let i = 0; i < codeLengths.length; ++i) {
+        if (codeLengths[i] > 0) {
+          singleSym = i;
+          ++usedCount;
+        }
+      }
 
       if (usedCount <= 1) {
-        LZHInstance._writePtTree(bits, new Array(NUM_CODE_LENGTH_SYMBOLS).fill(0), 5, 3);
+        LZHInstance._writePtTree(bits, zeroArray(NUM_CODE_LENGTH_SYMBOLS), 5, 3);
         bits.writeBits(0, 9);
         bits.writeBits(usedCount > 0 ? singleSym : 0, 9);
         return;
@@ -692,51 +1130,68 @@
       // T alphabet: 0 = a single zero length, 1 = run of (3 plus 4 raw bits)
       // zeros, 2 = run of (20 plus 9 raw bits) zeros, 3..18 = an actual code
       // length of (symbol - 2).
-      const tSymbols = [];
+      /** @type {TSymbolList} */
+      const tSymbols = new TSymbolList();
+      /** @type {int32} */
       let i2 = 0;
       while (i2 < numC) {
         if (codeLengths[i2] === 0) {
+          /** @type {int32} */
           let zeroRun = 0;
-          while (i2 + zeroRun < numC && codeLengths[i2 + zeroRun] === 0) ++zeroRun;
+          while (i2 + zeroRun < numC && codeLengths[i2 + zeroRun] === 0) {
+            ++zeroRun;
+          }
 
+          /** @type {int32} */
           let remaining = zeroRun;
           while (remaining > 0) {
             if (remaining >= 20) {
+              /** @type {int32} */
               const count = Math.min(remaining, 20 + 511);
-              tSymbols.push({ sym: 2, extraBits: 9, extraValue: count - 20 });
+              tSymbols.add(2, 9, count - 20);
               remaining -= count;
             } else if (remaining >= 3) {
+              /** @type {int32} */
               const count = Math.min(remaining, 3 + 15);
-              tSymbols.push({ sym: 1, extraBits: 4, extraValue: count - 3 });
+              tSymbols.add(1, 4, count - 3);
               remaining -= count;
             } else {
-              tSymbols.push({ sym: 0, extraBits: 0, extraValue: 0 });
+              tSymbols.add(0, 0, 0);
               --remaining;
             }
           }
           i2 += zeroRun;
         } else {
-          tSymbols.push({ sym: codeLengths[i2] + 2, extraBits: 0, extraValue: 0 });
+          tSymbols.add(codeLengths[i2] + 2, 0, 0);
           ++i2;
         }
       }
 
-      const tFreq = new Array(NUM_CODE_LENGTH_SYMBOLS).fill(0);
-      for (let i = 0; i < tSymbols.length; ++i) ++tFreq[tSymbols[i].sym];
+      /** @type {int32[]} */
+      const tFreq = zeroArray(NUM_CODE_LENGTH_SYMBOLS);
+      for (let i = 0; i < tSymbols.sym.length; ++i) {
+        ++tFreq[tSymbols.sym[i]];
+      }
 
+      /** @type {int32[]} */
       const tLengths = buildCodeLengths(tFreq, T_TREE_MAX_BITS);
       LZHInstance._writePtTree(bits, tLengths, 5, 3);
       bits.writeBits(numC, 9);
 
+      /** @type {int32[]} */
       const tCodes = buildCanonicalCodes(tLengths);
+      /** @type {boolean} */
       const tIsSingle = countUsedSymbols(tLengths) <= 1;
 
-      for (let i = 0; i < tSymbols.length; ++i) {
-        const entry = tSymbols[i];
-        if (!tIsSingle)
-          bits.writeBits(tCodes[entry.sym], tLengths[entry.sym]);
-        if (entry.extraBits > 0)
-          bits.writeBits(entry.extraValue, entry.extraBits);
+      for (let i = 0; i < tSymbols.sym.length; ++i) {
+        /** @type {int32} */
+        const sym = tSymbols.sym[i];
+        if (!tIsSingle) {
+          bits.writeBits(tCodes[sym], tLengths[sym]);
+        }
+        if (tSymbols.extraBits[i] > 0) {
+          bits.writeBits(tSymbols.extraValue[i], tSymbols.extraBits[i]);
+        }
       }
     }
 
@@ -746,14 +1201,29 @@
     // extension for lengths of 7 or more; when specialBit is 3 a 2-bit skip
     // count follows index 2. A count of zero means a single symbol whose
     // index follows in nBit bits.
+    /**
+     * @param {MsbBitWriter} bits - Output bits
+     * @param {int32[]} lengths - Code lengths
+     * @param {int32} nBit - Width of the symbol count
+     * @param {int32} specialBit - 3 when the skip field follows index 2
+     */
     static _writePtTree(bits, lengths, nBit, specialBit) {
+      /** @type {int32} */
       let numSym = lengths.length;
-      while (numSym > 0 && lengths[numSym - 1] === 0) --numSym;
+      while (numSym > 0 && lengths[numSym - 1] === 0) {
+        --numSym;
+      }
 
+      /** @type {int32} */
       let singleSym = -1;
+      /** @type {int32} */
       let usedCount = 0;
-      for (let i = 0; i < lengths.length; ++i)
-        if (lengths[i] > 0) { singleSym = i; ++usedCount; }
+      for (let i = 0; i < lengths.length; ++i) {
+        if (lengths[i] > 0) {
+          singleSym = i;
+          ++usedCount;
+        }
+      }
 
       if (usedCount <= 1) {
         bits.writeBits(0, nBit);
@@ -764,20 +1234,24 @@
       bits.writeBits(numSym, nBit);
 
       for (let i = 0; i < numSym; ++i) {
+        /** @type {int32} */
         const len = lengths[i];
         if (len < 7) {
           bits.writeBits(len, 3);
         } else {
           bits.writeBits(7, 3);
-          for (let j = 0; j < len - 7; ++j)
+          for (let j = 0; j < len - 7; ++j) {
             bits.writeBits(1, 1);
+          }
           bits.writeBits(0, 1);
         }
 
         if (i === 2 && specialBit === 3) {
+          /** @type {int32} */
           let skipCount = 0;
-          while (i + 1 + skipCount < numSym && skipCount < 3 && lengths[i + 1 + skipCount] === 0)
+          while (i + 1 + skipCount < numSym && skipCount < 3 && lengths[i + 1 + skipCount] === 0) {
             ++skipCount;
+          }
           bits.writeBits(skipCount, 2);
           i += skipCount;
         }
@@ -786,36 +1260,48 @@
 
     // ===== DECOMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Decompressed bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      if (data.length < 4)
+      if (data.length < 4) {
         throw new Error('LZH: input too small for header');
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0)
-        return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {MsbBitReader} */
       const reader = new MsbBitReader(data, 4);
-      const state = {
-        blockRemaining: 0,
-        singleCodeSymbol: -1,
-        codeDecoder: null,
-        singlePosSymbol: -1,
-        posDecoder: null
-      };
+      /** @type {LzhDecodeState} */
+      const state = new LzhDecodeState();
 
+      /** @type {uint8[]} */
       const output = new Array(originalSize);
-      const window = new Array(WINDOW_SIZE).fill(0);
+      /** @type {int32[]} */
+      const window = zeroArray(WINDOW_SIZE);
+      /** @type {int32} */
       let windowPos = 0;
+      /** @type {float64} */
       let outPos = 0;
 
       while (outPos < originalSize) {
-        if (state.blockRemaining === 0)
+        if (state.blockRemaining === 0) {
           LZHInstance._readBlock(reader, state);
+        }
 
-        const code = state.singleCodeSymbol >= 0
-          ? state.singleCodeSymbol
-          : decodeSymbol(reader, state.codeDecoder);
+        /** @type {int32} */
+        let code = state.singleCodeSymbol;
+        if (code < 0) {
+          code = decodeSymbol(reader, state.codeDecoder);
+        }
         --state.blockRemaining;
 
         if (code < N_CHAR) {
@@ -823,10 +1309,14 @@
           window[windowPos] = code;
           windowPos = OpCodes.And32(windowPos + 1, WINDOW_MASK);
         } else {
+          /** @type {int32} */
           const length = code - N_CHAR + THRESHOLD;
+          /** @type {int32} */
           const position = LZHInstance._decodePosition(reader, state);
+          /** @type {int32} */
           let srcPos = OpCodes.And32(windowPos - position - 1 + WINDOW_SIZE, WINDOW_MASK);
           for (let j = 0; j < length && outPos < originalSize; ++j) {
+            /** @type {int32} */
             const b = window[srcPos];
             output[outPos++] = b;
             window[windowPos] = b;
@@ -839,41 +1329,80 @@
       return output;
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @param {LzhDecodeState} state - Current trees
+     * @returns {int32} Match distance minus one
+     */
     static _decodePosition(reader, state) {
-      const slot = state.singlePosSymbol >= 0
-        ? state.singlePosSymbol
-        : decodeSymbol(reader, state.posDecoder);
+      /** @type {int32} */
+      let slot = state.singlePosSymbol;
+      if (slot < 0) {
+        slot = decodeSymbol(reader, state.posDecoder);
+      }
 
-      if (slot <= 1)
+      if (slot <= 1) {
         return slot;
+      }
 
+      /** @type {int32} */
       const extraBits = slot - 1;
-      return OpCodes.Shl32(1, extraBits) + reader.readBits(extraBits);
+      /** @type {int32} */
+      const base = OpCodes.Shl32(1, extraBits);
+      /** @type {int32} */
+      const extra = reader.readBits(extraBits);
+      return base + extra;
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @param {LzhDecodeState} state - Trees, replaced by the new block's
+     */
     static _readBlock(reader, state) {
-      state.blockRemaining = reader.readBits(16);
+      /** @type {int32} */
+      const blockCount = reader.readBits(16);
+      state.blockRemaining = blockCount;
       LZHInstance._readCTree(reader, state);
       LZHInstance._readPTree(reader, state);
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @param {int32} nBit - Width of the symbol count
+     * @param {int32} specialBit - 3 when the skip field follows index 2
+     * @returns {int32[]} Code lengths
+     */
     static _readPtTree(reader, nBit, specialBit) {
+      /** @type {int32} */
       const numSym = reader.readBits(nBit);
       if (numSym === 0) {
+        /** @type {int32} */
         const sym = reader.readBits(nBit);
-        const lengths = new Array(sym + 1).fill(0);
+        /** @type {int32[]} */
+        const lengths = zeroArray(sym + 1);
         lengths[sym] = 1;
         return lengths;
       }
 
-      const codeLengths = new Array(numSym).fill(0);
+      /** @type {int32[]} */
+      const codeLengths = zeroArray(numSym);
       for (let i = 0; i < numSym; ++i) {
+        /** @type {int32} */
         let len = reader.readBits(3);
-        if (len === 7)
-          while (reader.readBits(1) === 1) ++len;
+        if (len === 7) {
+          for (;;) {
+            /** @type {uint32} */
+            const more = reader.readBits(1);
+            if (more !== 1) {
+              break;
+            }
+            ++len;
+          }
+        }
         codeLengths[i] = len;
 
         if (i === 2 && specialBit === 3) {
+          /** @type {int32} */
           const skip = reader.readBits(2);
           for (let j = 0; j < skip && i + 1 < numSym; ++j) {
             ++i;
@@ -885,58 +1414,95 @@
       return codeLengths;
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @param {LzhDecodeState} state - Receives the literal/length tree
+     */
     static _readCTree(reader, state) {
+      /** @type {int32[]} */
       const tLengths = LZHInstance._readPtTree(reader, 5, 3);
 
+      /** @type {int32} */
       let tSingleSym = -1;
+      /** @type {int32} */
       let tUsed = 0;
-      for (let j = 0; j < tLengths.length; ++j)
-        if (tLengths[j] > 0) { tSingleSym = j; ++tUsed; }
+      for (let j = 0; j < tLengths.length; ++j) {
+        if (tLengths[j] > 0) {
+          tSingleSym = j;
+          ++tUsed;
+        }
+      }
 
+      /** @type {LzhDecoder} */
       let tDecoder = null;
       if (tUsed > 1) {
         tSingleSym = -1;
+        /** @type {int32} */
         let maxLen = 0;
-        for (let j = 0; j < tLengths.length; ++j)
-          if (tLengths[j] > maxLen) maxLen = tLengths[j];
+        for (let j = 0; j < tLengths.length; ++j) {
+          if (tLengths[j] > maxLen) {
+            maxLen = tLengths[j];
+          }
+        }
         tDecoder = buildDecoder(tLengths, Math.min(maxLen, 12));
       }
 
+      /** @type {int32} */
       const numC = reader.readBits(9);
       if (numC === 0) {
-        state.singleCodeSymbol = reader.readBits(9);
+        /** @type {int32} */
+        const single = reader.readBits(9);
+        state.singleCodeSymbol = single;
         state.codeDecoder = null;
         return;
       }
 
-      const codeLengths = new Array(Math.max(numC, NUM_CODES)).fill(0);
+      /** @type {int32[]} */
+      const codeLengths = zeroArray(Math.max(numC, NUM_CODES));
+      /** @type {int32} */
       let i = 0;
       while (i < numC) {
-        let tSym;
-        if (tSingleSym >= 0)
+        /** @type {int32} */
+        let tSym = 0;
+        if (tSingleSym >= 0) {
           tSym = tSingleSym;
-        else if (tDecoder !== null)
+        } else if (tDecoder !== null) {
           tSym = decodeSymbol(reader, tDecoder);
-        else
+        } else {
           tSym = 0;
+        }
 
         if (tSym === 0) {
           codeLengths[i++] = 0;
         } else if (tSym === 1) {
-          const run = 3 + reader.readBits(4);
-          for (let j = 0; j < run && i < numC; ++j) codeLengths[i++] = 0;
+          /** @type {int32} */
+          const runField = reader.readBits(4);
+          /** @type {int32} */
+          const run = 3 + runField;
+          for (let j = 0; j < run && i < numC; ++j) {
+            codeLengths[i++] = 0;
+          }
         } else if (tSym === 2) {
-          const run = 20 + reader.readBits(9);
-          for (let j = 0; j < run && i < numC; ++j) codeLengths[i++] = 0;
+          /** @type {int32} */
+          const runField = reader.readBits(9);
+          /** @type {int32} */
+          const run = 20 + runField;
+          for (let j = 0; j < run && i < numC; ++j) {
+            codeLengths[i++] = 0;
+          }
         } else {
           codeLengths[i++] = tSym - 2;
         }
       }
 
       state.singleCodeSymbol = -1;
+      /** @type {int32} */
       let maxCodeLen = 0;
-      for (let j = 0; j < codeLengths.length; ++j)
-        if (codeLengths[j] > maxCodeLen) maxCodeLen = codeLengths[j];
+      for (let j = 0; j < codeLengths.length; ++j) {
+        if (codeLengths[j] > maxCodeLen) {
+          maxCodeLen = codeLengths[j];
+        }
+      }
 
       if (maxCodeLen === 0) {
         state.singleCodeSymbol = 0;
@@ -946,13 +1512,24 @@
       }
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @param {LzhDecodeState} state - Receives the position tree
+     */
     static _readPTree(reader, state) {
+      /** @type {int32[]} */
       const ptLengths = LZHInstance._readPtTree(reader, P_BIT, P_BIT);
 
+      /** @type {int32} */
       let usedCount = 0;
+      /** @type {int32} */
       let singleSym = -1;
-      for (let i = 0; i < ptLengths.length; ++i)
-        if (ptLengths[i] > 0) { singleSym = i; ++usedCount; }
+      for (let i = 0; i < ptLengths.length; ++i) {
+        if (ptLengths[i] > 0) {
+          singleSym = i;
+          ++usedCount;
+        }
+      }
 
       if (usedCount <= 1) {
         state.singlePosSymbol = usedCount > 0 ? singleSym : 0;
@@ -961,9 +1538,13 @@
       }
 
       state.singlePosSymbol = -1;
+      /** @type {int32} */
       let maxLen = 0;
-      for (let i = 0; i < ptLengths.length; ++i)
-        if (ptLengths[i] > maxLen) maxLen = ptLengths[i];
+      for (let i = 0; i < ptLengths.length; ++i) {
+        if (ptLengths[i] > maxLen) {
+          maxLen = ptLengths[i];
+        }
+      }
       state.posDecoder = buildDecoder(ptLengths, Math.min(maxLen, 16));
     }
   }

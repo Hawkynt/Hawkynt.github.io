@@ -118,59 +118,114 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {GolombBitStreamInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new GolombBitStreamInstance(this, isInverse);
       }
     }
 
+    /**
+     * Compression statistics reported by getCompressionStats()
+     */
+    class GolombCompressionStats {
+      /**
+       * @param {int32} originalBytes - Size of the values at 32 bits each
+       * @param {int32} encodedBytes - Size of the encoding
+       * @param {float64} compressionRatio - Encoded bits per original bit
+       * @param {string} spaceSavings - Percentage saved, one decimal, with '%'
+       * @param {float64} bitsPerValue - Encoded bits per value
+       */
+      constructor(originalBytes, encodedBytes, compressionRatio, spaceSavings, bitsPerValue) {
+        /** @type {int32} */
+        this.originalBytes = originalBytes;
+        /** @type {int32} */
+        this.encodedBytes = encodedBytes;
+        /** @type {float64} */
+        this.compressionRatio = compressionRatio;
+        /** @type {string} */
+        this.spaceSavings = spaceSavings;
+        /** @type {float64} */
+        this.bitsPerValue = bitsPerValue;
+      }
+    }
+
     // Enhanced Golomb coding instance using OpCodes.BitStream
     class GolombBitStreamInstance extends IAlgorithmInstance {
+      /**
+       * @param {GolombBitStreamCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
         // Golomb Parameters
+        /** @type {int32} */
         this.parameter = 2;  // Default M parameter
+        /** @type {boolean} */
         this.isRice = false; // Whether to use Rice coding
       }
 
+      /**
+       * Set the Golomb parameter M
+       * @param {int32} m - Parameter (Rice coding when a power of two)
+       */
       SetParameter(m) {
         this.parameter = m;
         this.isRice = this._isPowerOfTwo(m);
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
+        /** @type {uint8[]} */
+        let result = [];
         if (this.inputBuffer.length === 0) {
-          return [];
+          return result;
         }
 
         if (this.isInverse) {
-          const result = this._decode(this.inputBuffer);
-          this.inputBuffer = [];
-          return result;
+          result = this._decode(this.inputBuffer);
         } else {
-          const result = this._encode(this.inputBuffer);
-          this.inputBuffer = [];
-          return result;
+          result = this._encode(this.inputBuffer);
         }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        return result;
       }
 
+      /**
+       * @param {uint8[]} values - Non-negative values
+       * @returns {uint8[]} Parameter byte, value count and Golomb codes
+       */
       _encode(values) {
         if (values.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
-        // Create BitStream for efficient bit operations
+        // Create BitStream for output
         const stream = OpCodes.CreateBitStream();
 
-        // Write header: parameter and value count
+        // Write header: parameter and count
         stream.writeByte(this.parameter);
         stream.writeVarInt(values.length);
 
-        // Encode each value using Golomb coding
-        for (const value of values) {
+        // Encode each value
+        for (let i = 0; i < values.length; i++) {
+          /** @type {int32} */
+          const value = values[i];
           if (value < 0) {
             throw new Error("Golomb coding requires non-negative integers");
           }
@@ -178,31 +233,45 @@
           this._encodeValue(stream, value);
         }
 
-        return stream.toArray();
+        /** @type {uint8[]} */
+        const bytes = stream.toArray();
+        return bytes;
       }
 
+      /**
+       * @param {uint8[]} data - Parameter byte, value count and Golomb codes
+       * @returns {uint8[]} Decoded values
+       */
       _decode(data) {
+        /** @type {uint8[]} */
+        const values = [];
         if (data.length < 2) {
-          return [];
+          return values;
         }
 
-        // Create BitStream from encoded data
+        // Create BitStream from input data
         const stream = OpCodes.CreateBitStream(data);
 
-        // Read header: parameter and value count
+        // Read header
+        /** @type {int32} */
         const parameter = stream.readByte();
         this.SetParameter(parameter);
 
+        /** @type {uint32} */
         const valueCount = stream.readVarInt();
         if (valueCount === 0) {
-          return [];
+          return values;
         }
 
-        const values = [];
-
         // Decode values
-        for (let i = 0; i < valueCount && stream.hasMoreBits(); i++) {
+        for (let i = 0; i < valueCount; i++) {
+          /** @type {boolean} */
+          const more = stream.hasMoreBits();
+          if (!more) {
+            break;
+          }
           try {
+            /** @type {int32} */
             const value = this._decodeValue(stream);
             if (value !== null) {
               values.push(value);
@@ -217,34 +286,55 @@
         return values;
       }
 
+      /**
+       * @param {_BitStream} stream - Output bits
+       * @param {int32} value - Non-negative value
+       */
       _encodeValue(stream, value) {
+        /** @type {int32} */
         const quotient = Math.floor(value / this.parameter);
+        /** @type {int32} */
         const remainder = value % this.parameter;
 
-        // Encode quotient in unary using BitStream
+        // Encode quotient in unary
         stream.writeUnary(quotient);
 
         // Encode remainder using truncated binary
         this._encodeTruncatedBinary(stream, remainder, this.parameter);
       }
 
+      /**
+       * @param {_BitStream} stream - Input bits
+       * @returns {int32|null} Decoded value, or null when the data ran out
+       */
       _decodeValue(stream) {
-        // Read quotient using unary decoding
+        // Decode quotient from unary
+        /** @type {int32} */
         const quotient = stream.readUnary();
 
-        // Read remainder using truncated binary
+        // Decode remainder using truncated binary
+        /** @type {int32|null} */
         const remainder = this._decodeTruncatedBinary(stream, this.parameter);
-        if (remainder === null) return null;
+        if (remainder === null) {
+          return null;
+        }
 
         return quotient * this.parameter + remainder;
       }
 
+      /**
+       * @param {_BitStream} stream - Output bits
+       * @param {int32} value - Remainder 0..m-1
+       * @param {int32} m - Golomb parameter
+       */
       _encodeTruncatedBinary(stream, value, m) {
         if (m === 1) {
           return; // No remainder bits needed
         }
 
+        /** @type {int32} */
         const k = Math.floor(Math.log2(m));
+        /** @type {int32} */
         const u = Math.pow(2, k + 1) - m;
 
         if (value < u) {
@@ -252,44 +342,65 @@
           stream.writeBits(value, k);
         } else {
           // Use k+1 bits
+          /** @type {int32} */
           const adjusted = value + u;
           stream.writeBits(adjusted, k + 1);
         }
       }
 
+      /**
+       * @param {_BitStream} stream - Input bits
+       * @param {int32} m - Golomb parameter
+       * @returns {int32|null} Remainder, or null when the data ran out
+       */
       _decodeTruncatedBinary(stream, m) {
         if (m === 1) {
           return 0; // No remainder bits
         }
 
+        /** @type {int32} */
         const k = Math.floor(Math.log2(m));
+        /** @type {int32} */
         const u = Math.pow(2, k + 1) - m;
 
-        // Read first k bits
-        if (stream.getRemainingBits() < k) return null;
+        // Read k bits first
+        /** @type {int32} */
+        const remaining = stream.getRemainingBits();
+        if (remaining < k) {
+          return null;
+        }
+        /** @type {int32} */
         let value = stream.readBits(k);
 
         if (value < u) {
           return value;
         } else {
-          // Read one more bit
-          if (stream.getRemainingBits() < 1) return null;
-          value = OpCodes.OrN(OpCodes.Shl32(value, 1), stream.readBit());
+          // Need one more bit
+          /** @type {int32} */
+          const left = stream.getRemainingBits();
+          if (left < 1) {
+            return null;
+          }
+          value = OpCodes.ToInt(OpCodes.Or32(OpCodes.Shl32(value, 1), stream.readBit()));
           return value - u;
         }
       }
 
+      /**
+       * @param {int32} n - Value
+       * @returns {boolean} True when n is a positive power of two
+       */
       _isPowerOfTwo(n) {
-        return n > 0 && OpCodes.AndN(n, (n - 1)) === 0;
+        return n > 0 && OpCodes.And32(n, n - 1) === 0;
       }
 
       // Advanced methods using BitStream capabilities
 
       /**
        * Encode with Rice coding (power-of-2 parameter)
-       * @param {Array} values - Values to encode
-       * @param {number} k - Rice parameter (log2 of Golomb parameter)
-       * @returns {Array} Encoded bytes
+       * @param {uint8[]} values - Values to encode
+       * @param {int32} k - Rice parameter (log2 of Golomb parameter)
+       * @returns {uint8[]} Encoded bytes
        */
       encodeRice(values, k) {
         this.SetParameter(OpCodes.Shl32(1, k)); // Set M = 2^k for Rice coding
@@ -298,49 +409,69 @@
 
       /**
        * Get compression statistics
-       * @param {Array} originalValues - Original values
-       * @returns {Object} Compression statistics
+       * @param {uint8[]} originalValues - Original values
+       * @returns {GolombCompressionStats} Compression statistics
        */
       getCompressionStats(originalValues) {
+        /** @type {uint8[]} */
         const encoded = this._encode(originalValues);
+        /** @type {int32} */
         const originalBits = originalValues.length * 32; // Assume 32-bit integers
+        /** @type {int32} */
         const encodedBits = encoded.length * 8;
+        /** @type {string} */
+        const savings = ((originalBits - encodedBits) / originalBits * 100).toFixed(1);
 
-        return {
-          originalBytes: Math.ceil(originalBits / 8),
-          encodedBytes: encoded.length,
-          compressionRatio: encodedBits / originalBits,
-          spaceSavings: ((originalBits - encodedBits) / originalBits * 100).toFixed(1) + '%',
-          bitsPerValue: encodedBits / originalValues.length
-        };
+        return new GolombCompressionStats(
+          Math.ceil(originalBits / 8),
+          encoded.length,
+          encodedBits / originalBits,
+          savings + '%',
+          encodedBits / originalValues.length
+        );
       }
 
       /**
        * Find optimal Golomb parameter for given data
-       * @param {Array} values - Values to analyze
-       * @returns {number} Optimal parameter
+       * @param {uint8[]} values - Values to analyze
+       * @returns {int32} Optimal parameter
        */
       findOptimalParameter(values) {
-        if (values.length === 0) return 2;
+        if (values.length === 0) {
+          return 2;
+        }
 
         // Calculate probability of zero
-        const zeroCount = values.filter(v => v === 0).length;
+        /** @type {int32} */
+        let zeroCount = 0;
+        for (let i = 0; i < values.length; i++) {
+          if (values[i] === 0) {
+            zeroCount++;
+          }
+        }
+        /** @type {float64} */
         const p0 = zeroCount / values.length;
 
         // Optimal M = ceil(-log(2-p0)/log(1-p0))
-        if (p0 === 0) return 2;
-        if (p0 >= 1) return 1;
+        if (p0 === 0) {
+          return 2;
+        }
+        if (p0 >= 1) {
+          return 1;
+        }
 
+        /** @type {int32} */
         const optimal = Math.ceil(-Math.log(2 - p0) / Math.log(1 - p0));
         return Math.max(1, optimal);
       }
 
       /**
        * Adaptive encoding with optimal parameter selection
-       * @param {Array} values - Values to encode
-       * @returns {Array} Encoded bytes with optimal parameter
+       * @param {uint8[]} values - Values to encode
+       * @returns {uint8[]} Encoded bytes with optimal parameter
        */
       adaptiveEncode(values) {
+        /** @type {int32} */
         const optimalParam = this.findOptimalParameter(values);
         this.SetParameter(optimalParam);
         return this._encode(values);

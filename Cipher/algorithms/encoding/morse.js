@@ -119,86 +119,103 @@
         )
       ];
 
-      // International Morse Code alphabet (ITU-R M.1677-1)
-      this.morseTable = {
+      // International Morse Code alphabet (ITU-R M.1677-1): each symbol and
+      // its pattern, at the same index of the two lists
+      /** @type {string[]} */
+      this.morseSymbols = [
         // Letters
-        'A': '.-',    'B': '-...',  'C': '-.-.',  'D': '-..',   'E': '.',
-        'F': '..-.',  'G': '--.',   'H': '....',  'I': '..',    'J': '.---',
-        'K': '-.-',   'L': '.-..',  'M': '--',    'N': '-.',    'O': '---',
-        'P': '.--.',  'Q': '--.-',  'R': '.-.',   'S': '...',   'T': '-',
-        'U': '..-',   'V': '...-',  'W': '.--',   'X': '-..-',  'Y': '-.--',
-        'Z': '--..',
-
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+        'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
         // Numbers
-        '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
-        '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
-
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         // Punctuation
-        '.': '.-.-.-',  ',': '--..--',  '?': '..--..',  '\'': '.----.',
-        '!': '-.-.--',  '/': '-..-.',   '(': '-.--.',   ')': '-.--.-',
-        '&': '.-...',   ':': '---...',  ';': '-.-.-.',  '=': '-...-',
-        '+': '.-.-.',   '-': '-....-',  '_': '..--.-',  '"': '.-..-.',
-        '$': '...-..-', '@': '.--.-.',  ' ': '/',       
-
+        '.', ',', '?', '\'', '!', '/', '(', ')', '&', ':', ';', '=',
+        '+', '-', '_', '"', '$', '@', ' ',
         // Prosigns (procedural signals)
-        '<AR>': '.-.-.',    // End of message
-        '<AS>': '.-...',    // Wait
-        '<BT>': '-...-',    // Break
-        '<CT>': '-.-.-',    // Starting signal
-        '<KA>': '-.-.-',    // Attention
-        '<KN>': '-.--.',    // Go ahead
-        '<SK>': '...-.-',   // End of work
-        '<SN>': '...-.',    // Understood
-        '<SOS>': '...---...' // Distress signal
-      };
+        '<AR>', '<AS>', '<BT>', '<CT>', '<KA>', '<KN>', '<SK>', '<SN>', '<SOS>'
+      ];
+      /** @type {string[]} */
+      this.morseCodes = [
+        // Letters
+        '.-', '-...', '-.-.', '-..', '.', '..-.', '--.', '....', '..', '.---', '-.-', '.-..', '--',
+        '-.', '---', '.--.', '--.-', '.-.', '...', '-', '..-', '...-', '.--', '-..-', '-.--', '--..',
+        // Numbers
+        '-----', '.----', '..---', '...--', '....-', '.....', '-....', '--...', '---..', '----.',
+        // Punctuation
+        '.-.-.-', '--..--', '..--..', '.----.', '-.-.--', '-..-.', '-.--.', '-.--.-', '.-...', '---...', '-.-.-.', '-...-',
+        '.-.-.', '-....-', '..--.-', '.-..-.', '...-..-', '.--.-.', '/',
+        // Prosigns: End of message, Wait, Break, Starting signal, Attention,
+        // Go ahead, End of work, Understood, Distress signal
+        '.-.-.', '.-...', '-...-', '-.-.-', '-.-.-', '-.--.', '...-.-', '...-.', '...---...'
+      ];
 
-      this.reverseTable = null;
+      /** @type {string[]|null} */
+      this.encodeTable = null;
     }
 
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MorseInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
       return new MorseInstance(this, isInverse);
     }
 
+    /**
+     * Build the encode table: the pattern of each character code, or '' when
+     * the character has none. Only single-character symbols participate:
+     * several prosigns share a pattern with an ordinary punctuation character
+     * (e.g. '<AS>' and '&' are both '.-...'), and the coder only ever maps
+     * single characters, so a multi-character prosign must never win that
+     * collision (which made '&', '=' and '(' undecodable once).
+     */
     init() {
-      // Build reverse lookup table. Only single-character entries
-      // participate: several prosigns share a pattern with an ordinary
-      // punctuation character (e.g. '<AS>' and '&' are both '.-...'), and
-      // encode() only ever looks up single characters, so letting a
-      // multi-character prosign key win that collision (as a naive
-      // iterate-and-overwrite build previously did, since the prosigns are
-      // listed last in morseTable) made '&', '=' and '(' undecodable.
-      this.reverseTable = {};
-      for (const [char, morse] of Object.entries(this.morseTable)) {
-        if (char.length === 1) this.reverseTable[morse] = char;
+      /** @type {string[]} */
+      const table = new Array(256);
+      for (let c = 0; c < 256; c++) {
+        table[c] = '';
       }
+      for (let i = 0; i < this.morseSymbols.length; i++) {
+        /** @type {string} */
+        const symbol = this.morseSymbols[i];
+        if (symbol.length === 1) {
+          table[symbol.charCodeAt(0)] = this.morseCodes[i];
+        }
+      }
+      this.encodeTable = table;
     }
   }
 
   /**
  * Morse cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class MorseInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MorseAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
-
-      this.algorithm.init();
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      algorithm.init();
+      /** @type {string[]} */
+      this.encodeTable = algorithm.encodeTable;
+      /** @type {string[]} */
+      this.morseSymbols = algorithm.morseSymbols;
+      /** @type {string[]} */
+      this.morseCodes = algorithm.morseCodes;
     }
 
     /**
@@ -217,8 +234,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -231,18 +254,25 @@
       if (!this._feedBuffer) {
         throw new Error('MorseInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode text bytes as Morse tokens separated by single spaces
+     * @param {uint8[]} data - Text bytes
+     * @returns {uint8[]} ASCII Morse text
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const resultBytes = [];
       if (data.length === 0) {
-        return [];
+        return resultBytes;
       }
-
-      const text = OpCodes.BytesToChars(data);
 
       // One Morse token per input byte (including the '/' token for a
       // literal space), joined by a single space, with no case-folding and
@@ -251,61 +281,84 @@
       // runs of whitespace and any doubled/leading/trailing spaces, and
       // silently replacing an unmappable character with '?' silently
       // corrupted data instead of rejecting it.
+      /** @type {string[]} */
       const tokens = [];
-      for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const morseChar = this.algorithm.morseTable[char];
-
-        if (morseChar === undefined) {
-          throw new Error(`MorseInstance.encode: byte 0x${data[i].toString(16).padStart(2, '0')} ('${char.replace(/[\x00-\x1f]/, '?')}') at position ${i} has no Morse representation`);
+      for (let i = 0; i < data.length; i++) {
+        /** @type {int32} */
+        const ch = data[i];
+        /** @type {string} */
+        const morseChar = ch >= 0 && ch < 256 ? this.encodeTable[ch] : '';
+        if (morseChar.length === 0) {
+          /** @type {string} */
+          let hex = ch.toString(16);
+          while (hex.length < 2) {
+            hex = '0' + hex;
+          }
+          /** @type {string} */
+          const shown = ch < 0x20 ? '?' : String.fromCharCode(ch);
+          throw new Error("MorseInstance.encode: byte 0x" + hex + " ('" + shown + "') at position " + i + " has no Morse representation");
         }
-
         tokens.push(morseChar);
       }
 
+      /** @type {string} */
       const result = tokens.join(' ');
 
       // Convert string to byte array
-      const resultBytes = [];
       for (let i = 0; i < result.length; i++) {
         resultBytes.push(result.charCodeAt(i));
       }
       return resultBytes;
     }
 
+    /**
+     * Character of a Morse pattern (single-character symbols only)
+     * @param {string} token - Morse pattern
+     * @returns {string} The character, or '' for an unknown pattern
+     */
+    symbolOf(token) {
+      for (let i = 0; i < this.morseCodes.length; i++) {
+        if (this.morseSymbols[i].length === 1 && this.morseCodes[i] === token) {
+          return this.morseSymbols[i];
+        }
+      }
+      return '';
+    }
+
+    /**
+     * Decode Morse text (tokens separated by single spaces) to text bytes
+     * @param {uint8[]} data - ASCII Morse text
+     * @returns {uint8[]} Text bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const resultBytes = [];
       if (data.length === 0) {
-        return [];
+        return resultBytes;
       }
 
+      /** @type {string} */
       const morse = OpCodes.BytesToChars(data);
-
-      // Ensure reverse table is built
-      if (!this.algorithm.reverseTable) {
-        this.algorithm.init();
-      }
 
       // Mirror encode(): split on the single-space token separator with no
       // normalization, and reject (rather than substitute '?' for) any
       // token that isn't a known Morse pattern.
+      /** @type {string[]} */
       const tokens = morse.split(' ');
-      const decodedChars = [];
-
+      /** @type {string} */
+      let result = '';
       for (let i = 0; i < tokens.length; i++) {
+        /** @type {string} */
         const token = tokens[i];
-        const decodedChar = this.algorithm.reverseTable[token];
-
-        if (decodedChar === undefined) {
-          throw new Error(`MorseInstance.decode: invalid Morse token '${token}' at position ${i}`);
+        /** @type {string} */
+        const decodedChar = this.symbolOf(token);
+        if (decodedChar.length === 0) {
+          throw new Error("MorseInstance.decode: invalid Morse token '" + token + "' at position " + i);
         }
-
-        decodedChars.push(decodedChar);
+        result += decodedChar;
       }
 
-      const result = decodedChars.join('');
-
       // Convert string to byte array
-      const resultBytes = [];
       for (let i = 0; i < result.length; i++) {
         resultBytes.push(result.charCodeAt(i));
       }

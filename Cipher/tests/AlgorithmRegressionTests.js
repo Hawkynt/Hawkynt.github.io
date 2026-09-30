@@ -180,6 +180,23 @@ test('GMAC: given a page without AES, when a message is authenticated, then the 
   correctOrRefused(attempt(() => gmac(framework, GMAC_KEY, GMAC_NONCE, GMAC_MESSAGE)), GMAC_TAG, 'AES');
 });
 
+// ---------------------------------------------------------------- Brotli
+// The encoder used to answer an empty input with zero bytes, which no other
+// Brotli decoder accepts. The oracle is node's own Brotli decoder, not ours.
+test('Brotli: given an empty input, when compressed, then node\'s zlib decodes the stream to zero bytes', () => {
+  const zlib = require('zlib');
+  if (typeof zlib.brotliDecompressSync !== 'function') return; // no reference decoder in this node build
+  require(path.join(CIPHER_ROOT, 'algorithms', 'compression', 'brotli-dictionary.data.js'));
+  require(path.join(CIPHER_ROOT, 'algorithms', 'compression', 'brotli.js'));
+  const brotli = global.AlgorithmFramework.Algorithms.find(a => a.name === 'Brotli');
+  const encoder = brotli.CreateInstance(false);
+  encoder.Feed([]);
+  const stream = encoder.Result();
+  if (stream.length === 0) throw new Error('an empty input produced zero bytes, which is not a Brotli stream');
+  const decoded = zlib.brotliDecompressSync(Buffer.from(stream));
+  if (decoded.length !== 0) throw new Error(`node decoded ${decoded.length} byte(s), expected none`);
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }

@@ -61,10 +61,15 @@
       this.country = CountryCode.US;
 
       // LZFX Configuration Constants
+      /** @type {int32} */
       this.HLOG = 16;                          // Hash table size: 2^16 entries
+      /** @type {int32} */
       this.HSIZE = OpCodes.Shl32(1, this.HLOG); // 65536 hash table entries
+      /** @type {int32} */
       this.MAX_LIT = 32;                       // Maximum literal run length
+      /** @type {int32} */
       this.MAX_OFF = 8191;                     // Maximum offset (13-bit: 2^13 - 1)
+      /** @type {int32} */
       this.MAX_REF = 264;                      // Maximum reference length (256 + 8)
 
       // Documentation and references
@@ -128,7 +133,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZFXInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,24 +144,31 @@
   /**
  * LZFX cipher instance implementing Feed/Result pattern
  * @class
- * @extends {IBlockCipherInstance}
+ * @extends {IAlgorithmInstance}
  */
 
   class LZFXInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZFXCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.hlog = algorithm.HLOG;
+      /** @type {int32} */
       this.hsize = algorithm.HSIZE;
+      /** @type {int32} */
       this.maxLit = algorithm.MAX_LIT;
+      /** @type {int32} */
       this.maxOff = algorithm.MAX_OFF;
+      /** @type {int32} */
       this.maxRef = algorithm.MAX_REF;
     }
 
@@ -170,7 +182,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._decompress();
       }
@@ -180,48 +194,73 @@
       return this._compress();
     }
 
+    /**
+     * @returns {uint8[]} 4-byte LE length followed by LZFX literal runs and references
+     */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(input.length);
+      /** @type {uint8[]} */
       const output = [];
-      const htab = new Array(this.hsize); // Hash table
+      // Hash table (-1 = empty slot)
+      /** @type {int32[]} */
+      const htab = new Array(this.hsize);
+      for (let i = 0; i < this.hsize; i++) {
+        htab[i] = -1;
+      }
 
+      /** @type {int32} */
       let ip = 0;          // Input position
+      /** @type {int32} */
       let lit = 0;         // Literal run start position
+      /** @type {int32} */
       const iend = input.length;
 
+      /** @type {uint8[]} */
+      const fresh = [];
       if (iend < 3) {
         // Too small to compress - output as literals
         this._flushLiterals(output, input, 0, iend);
-        this.inputBuffer = [];
+        this.inputBuffer = fresh;
         return header.concat(output);
       }
 
       // Initialize hash value with first two bytes
-      let hval = OpCodes.OrN(OpCodes.Shl16(input[0], 8), input[1]);
+      /** @type {uint32} */
+      let hval = OpCodes.Or32(OpCodes.Shl16(input[0], 8), input[1]);
 
       while (ip < iend - 2) {
         // Compute hash from current 3-byte sequence
-        hval = OpCodes.OrN(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
-        const hidx = OpCodes.AndN((OpCodes.XorN(hval, OpCodes.Shr16(hval, 8)) + input[ip + 2]), this.hsize - 1);
+        hval = OpCodes.Or32(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
+        /** @type {uint32} */
+        const hidx = OpCodes.And32(OpCodes.Add32(OpCodes.Xor32(hval, OpCodes.Shr16(hval, 8)), input[ip + 2]), this.hsize - 1);
+        /** @type {int32} */
         const ref = htab[hidx];
 
         // Store current position in hash table
         htab[hidx] = ip;
 
+        /** @type {int32} */
         let off = 0;
 
         // Check for valid match (need at least 3 bytes matching)
-        if (ref !== undefined &&
-            ref >= 0 &&
-            ref < ip &&
-            (off = ip - ref - 1) <= this.maxOff &&
+        /** @type {boolean} */
+        let isMatch = false;
+        if (ref >= 0 && ref < ip) {
+          off = ip - ref - 1;
+          isMatch = off <= this.maxOff &&
             input[ref] === input[ip] &&
             input[ref + 1] === input[ip + 1] &&
-            input[ref + 2] === input[ip + 2]) {
+            input[ref + 2] === input[ip + 2];
+        }
 
+        if (isMatch) {
           // Found a match - determine length
+          /** @type {int32} */
           let len = 3;
+          /** @type {int32} */
           const maxlen = Math.min(this.maxRef, iend - ip);
 
           while (len < maxlen && input[ref + len] === input[ip + len]) {
@@ -234,23 +273,24 @@
           }
 
           // Encode back reference
+          /** @type {int32} */
           const encodedLen = len - 2; // Encode as len - 2 (minimum match is 3, encoded as 1)
 
           if (encodedLen < 7) {
             // Short reference: LLLooooo oooooooo
             // LLL = encoded length (1-6 represents real length 3-8)
             // ooooooooooooo = 13-bit offset
-            output.push(OpCodes.OrN(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8)));
-            output.push(OpCodes.AndN(off, 0xFF));
+            output.push(OpCodes.Or32(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8)));
+            output.push(OpCodes.And32(off, 0xFF));
           } else {
             // Long reference: 111ooooo LLLLLLLL oooooooo
             // 111 = marker for long reference
             // ooooo = high 5 bits of offset
             // LLLLLLLL = len - 9 (extended length: real length >= 9)
             // oooooooo = low 8 bits of offset
-            output.push(OpCodes.OrN(0xE0, OpCodes.Shr16(off, 8)));
-            output.push(OpCodes.AndN(encodedLen - 7, 0xFF));
-            output.push(OpCodes.AndN(off, 0xFF));
+            output.push(OpCodes.Or32(0xE0, OpCodes.Shr16(off, 8)));
+            output.push(OpCodes.And32(encodedLen - 7, 0xFF));
+            output.push(OpCodes.And32(off, 0xFF));
           }
 
           ip += len; // Skip matched bytes
@@ -258,7 +298,7 @@
 
           // Reset hash for next position
           if (ip < iend - 2) {
-            hval = OpCodes.OrN(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
+            hval = OpCodes.Or32(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
           }
         } else {
           ++ip;
@@ -276,14 +316,25 @@
         this._flushLiterals(output, input, lit, iend);
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return header.concat(output);
     }
 
+    /**
+     * Emit input[start..end) as literal runs of at most maxLit bytes
+     * @param {uint8[]} output - Destination
+     * @param {uint8[]} input - Source
+     * @param {int32} start - First literal
+     * @param {int32} end - End of the literals (exclusive)
+     */
     _flushLiterals(output, input, start, end) {
+      /** @type {int32} */
       let len = end - start;
+      /** @type {int32} */
+      let at = start;
 
       while (len > 0) {
+        /** @type {int32} */
         const chunk = Math.min(len, this.maxLit);
 
         // Encode literal: 000LLLLL where LLLLL = chunk - 1
@@ -291,36 +342,48 @@
 
         // Copy literal bytes
         for (let i = 0; i < chunk; ++i) {
-          output.push(input[start + i]);
+          output.push(input[at + i]);
         }
 
-        start += chunk;
+        at += chunk;
         len -= chunk;
       }
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
+      const output = [];
+      /** @type {uint8[]} */
+      const fresh = [];
       if (input.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       if (originalLength === 0) {
-        this.inputBuffer = [];
-        return [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
-      const output = [];
+      /** @type {int32} */
       let ip = 4;
+      /** @type {int32} */
       const iend = input.length;
 
       while (output.length < originalLength) {
+        /** @type {uint8} */
         const ctrl = input[ip++];
 
         if (ctrl < 32) {
           // Literal run: 000LLLLL <L+1 bytes>
+          /** @type {int32} */
           const len = ctrl + 1;
 
           if (ip + len > iend) {
@@ -332,8 +395,10 @@
           }
         } else {
           // Back reference
+          /** @type {int32} */
           let len = OpCodes.Shr8(ctrl, 5);
-          let off;
+          /** @type {int32} */
+          let off = 0;
 
           if (len === 7) {
             // Long reference: 111ooooo LLLLLLLL oooooooo
@@ -342,14 +407,14 @@
             }
 
             len = input[ip++] + 7;
-            off = OpCodes.OrN(OpCodes.Shl16(OpCodes.AndN(ctrl, 0x1F), 8), input[ip++]);
+            off = OpCodes.Or32(OpCodes.Shl16(OpCodes.And32(ctrl, 0x1F), 8), input[ip++]);
           } else {
             // Short reference: LLLooooo oooooooo
             if (ip + 1 > iend) {
               throw new Error("LZFX decompression error: insufficient input data for short reference");
             }
 
-            off = OpCodes.OrN(OpCodes.Shl16(OpCodes.AndN(ctrl, 0x1F), 8), input[ip++]);
+            off = OpCodes.Or32(OpCodes.Shl16(OpCodes.And32(ctrl, 0x1F), 8), input[ip++]);
           }
 
           len += 2; // Decode: add back the 2 we subtracted during encoding
@@ -357,10 +422,11 @@
 
           // Validate reference
           if (off > output.length) {
-            throw new Error(`LZFX decompression error: invalid offset ${off} at output position ${output.length}`);
+            throw new Error("LZFX decompression error: invalid offset " + off + " at output position " + output.length);
           }
 
           // Copy referenced bytes
+          /** @type {int32} */
           const ref = output.length - off;
           for (let i = 0; i < len; ++i) {
             output.push(output[ref + i]);
@@ -368,7 +434,7 @@
         }
       }
 
-      this.inputBuffer = [];
+      this.inputBuffer = fresh;
       return output;
     }
   }

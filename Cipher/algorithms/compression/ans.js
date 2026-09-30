@@ -63,45 +63,90 @@
 
   // ===== uABS CONSTANTS =====
 
+  /** @type {int32} */
   const PROB_ONE = 65536;        // probability scale: p equals p1 / PROB_ONE
+  /** @type {int32} */
   const PROB_HALF = 32768;       // initial probability of every context
+  /** @type {int32} */
   const PROB_MIN = 1;            // p never reaches 0 or 1, so every bit stays codable
+  /** @type {int32} */
   const PROB_MAX = 65535;
+  /** @type {int32} */
   const STATE_LOWER = 65536;     // coding interval is [STATE_LOWER, STATE_UPPER)
+  /** @type {int32} */
   const STATE_UPPER = 16777216;  // 256 * STATE_LOWER: renormalization unit is one byte
+  /** @type {int32} */
   const RENORM_BYTE = 256;
+  /** @type {int32} */
   const ADAPT_RATE = 32;         // a context moves 1/32 of the way per observed bit
+  /** @type {int32} */
   const CONTEXT_COUNT = 256;     // binary context tree over the 8 bits of one byte
 
   // ===== uABS CORE =====
 
-  // Encoding transition. Both branches are monotonically non-decreasing in
-  // state, which is what makes the renormalization loop terminate, and both
-  // land back inside [STATE_LOWER, STATE_UPPER) once the loop stops.
+  // The coder state stays below 2^24, but the transitions multiply it by the
+  // 16-bit probability scale, so the intermediate products need up to 40 bits:
+  // they are computed exactly in float64 (JavaScript numbers) and floored.
+
+  /**
+   * Encoding transition. Both branches are monotonically non-decreasing in
+   * state, which is what makes the renormalization loop terminate, and both
+   * land back inside [STATE_LOWER, STATE_UPPER) once the loop stops.
+   * @param {float64} state - Current state
+   * @param {int32} bit - Bit to encode (0 or 1)
+   * @param {int32} p1 - Probability of a one bit, scaled by PROB_ONE
+   * @returns {float64} Next state (an integer)
+   */
   function uabsEncodeStep(state, bit, p1) {
-    if (bit === 1) return Math.floor(((state + 1) * PROB_ONE + p1 - 1) / p1) - 1;
+    if (bit === 1) {
+      return Math.floor(((state + 1) * PROB_ONE + p1 - 1) / p1) - 1;
+    }
     return Math.floor(state * PROB_ONE / (PROB_ONE - p1));
   }
 
-  // Count of one-bit states strictly below the given state, i.e. floor(state*p).
+  /**
+   * Count of one-bit states strictly below the given state, i.e. floor(state*p).
+   * @param {float64} state - State
+   * @param {int32} p1 - Probability of a one bit, scaled by PROB_ONE
+   * @returns {float64} floor(state * p1 / PROB_ONE) (an integer)
+   */
   function uabsCountBelow(state, p1) {
     return Math.floor(state * p1 / PROB_ONE);
   }
 
-  // Adaptive update of one binary context: an exponential moving average with
-  // rate 1/ADAPT_RATE, clamped away from the degenerate probabilities.
+  /**
+   * Adaptive update of one binary context: an exponential moving average with
+   * rate 1/ADAPT_RATE, clamped away from the degenerate probabilities.
+   * @param {int32} p1 - Probability of a one bit, scaled by PROB_ONE
+   * @param {int32} bit - Observed bit
+   * @returns {int32} Updated probability
+   */
   function adaptProbability(p1, bit) {
-    let updated = bit === 1
-      ? p1 + Math.floor((PROB_ONE - p1) / ADAPT_RATE)
-      : p1 - Math.floor(p1 / ADAPT_RATE);
-    if (updated < PROB_MIN) updated = PROB_MIN;
-    if (updated > PROB_MAX) updated = PROB_MAX;
+    /** @type {int32} */
+    let updated = 0;
+    if (bit === 1) {
+      updated = p1 + Math.floor((PROB_ONE - p1) / ADAPT_RATE);
+    } else {
+      updated = p1 - Math.floor(p1 / ADAPT_RATE);
+    }
+    if (updated < PROB_MIN) {
+      updated = PROB_MIN;
+    }
+    if (updated > PROB_MAX) {
+      updated = PROB_MAX;
+    }
     return updated;
   }
 
+  /**
+   * @returns {uint16[]} A fresh model: every context at probability 1/2
+   */
   function newModel() {
+    /** @type {uint16[]} */
     const model = new Uint16Array(CONTEXT_COUNT);
-    for (let i = 0; i < CONTEXT_COUNT; i++) model[i] = PROB_HALF;
+    for (let i = 0; i < CONTEXT_COUNT; i++) {
+      model[i] = PROB_HALF;
+    }
     return model;
   }
 
@@ -192,48 +237,83 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {UABSInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new UABSInstance(this, isInverse);
     }
   }
 
   class UABSInstance extends IAlgorithmInstance {
+    /**
+     * @param {UABSAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
         // A compressed stream always carries at least the 4-byte length
         // header, so an empty buffer is not a valid compressed message.
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decompress();
       }
       return this._compress();
     }
 
+    /**
+     * @returns {uint8[]} Length header, final state and renormalization bytes
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
-      if (data.length === 0) return output;
+      if (data.length === 0) {
+        return output;
+      }
 
+      /** @type {int32} */
       const totalBits = data.length * 8;
+      /** @type {uint16[]} */
       const model = newModel();
+      /** @type {uint16[]} */
       const recorded = new Uint16Array(totalBits);
 
       // Pass 1 - drive the adaptive model forward, recording the probability
       // that was in force when each bit was observed.
+      /** @type {int32} */
       let cursor = 0;
       for (let i = 0; i < data.length; i++) {
+        /** @type {uint8} */
         const byte = data[i];
+        /** @type {int32} */
         let context = 1;
         for (let b = 7; b >= 0; b--) {
+          /** @type {int32} */
           const bit = OpCodes.GetBit(byte, b) ? 1 : 0;
+          /** @type {int32} */
           const p1 = model[context];
           recorded[cursor++] = p1;
           model[context] = adaptProbability(p1, bit);
@@ -242,56 +322,99 @@
       }
 
       // Pass 2 - code the bits backwards, the direction ANS requires.
+      /** @type {uint8[]} */
       const tail = [];
+      /** @type {float64} */
       let state = STATE_LOWER;
       for (let i = totalBits - 1; i >= 0; i--) {
+        /** @type {uint8} */
         const byte = data[Math.floor(i / 8)];
+        /** @type {int32} */
         const bit = OpCodes.GetBit(byte, 7 - (i % 8)) ? 1 : 0;
+        /** @type {int32} */
         const p1 = recorded[i];
 
+        /** @type {float64} */
         let next = uabsEncodeStep(state, bit, p1);
         while (next >= STATE_UPPER) {
-          tail.push(state % RENORM_BYTE);
+          /** @type {uint8} */
+          const low = state % RENORM_BYTE;
+          tail.push(low);
           state = Math.floor(state / RENORM_BYTE);
           next = uabsEncodeStep(state, bit, p1);
         }
         state = next;
       }
 
+      /** @type {uint8[]} */
       const stateBytes = OpCodes.Unpack32LE(state);
-      for (let i = 0; i < 4; i++) tail.push(stateBytes[i]);
+      for (let i = 0; i < 4; i++) {
+        tail.push(stateBytes[i]);
+      }
 
       tail.reverse();
-      for (let i = 0; i < tail.length; i++) output.push(tail[i]);
+      for (let i = 0; i < tail.length; i++) {
+        output.push(tail[i]);
+      }
 
       return output;
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
-      if (data.length < 4) return [];
+      if (data.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalLength === 0) return [];
-      if (data.length < 8) throw new Error('Truncated uABS stream: final state is missing');
+      if (originalLength === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      if (data.length < 8) {
+        throw new Error('Truncated uABS stream: final state is missing');
+      }
 
+      /** @type {int32} */
       let position = 4;
+      /** @type {float64} */
       let state = OpCodes.Pack32BE(data[position], data[position + 1], data[position + 2], data[position + 3]);
       position += 4;
 
+      /** @type {uint16[]} */
       const model = newModel();
+      /** @type {uint8[]} */
       const output = new Array(originalLength);
 
       for (let i = 0; i < originalLength; i++) {
+        /** @type {int32} */
         let context = 1;
+        /** @type {int32} */
         let byte = 0;
         for (let b = 0; b < 8; b++) {
+          /** @type {int32} */
           const p1 = model[context];
+          /** @type {float64} */
           const below = uabsCountBelow(state, p1);
+          /** @type {int32} */
           const bit = uabsCountBelow(state + 1, p1) - below;
 
-          state = bit === 1 ? below : state - below;
+          if (bit === 1) {
+            state = below;
+          } else {
+            state = state - below;
+          }
           while (state < STATE_LOWER && position < data.length) {
             state = state * RENORM_BYTE + data[position++];
           }

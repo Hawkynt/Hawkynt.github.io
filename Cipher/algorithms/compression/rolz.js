@@ -93,22 +93,34 @@
         //     bit 1, 8-bit table index, 8-bit (length - 3)    -- match
         //   Match candidates are looked up in a per-context (previous byte)
         //   circular table of up to 256 recent positions.
+        /** @type {uint8[]} */
         const testInput1 = OpCodes.AnsiToBytes("A");
+        /** @type {uint8[]} */
         const testExpected1 = [1, 0, 0, 0, 32, 128];
 
+        /** @type {uint8[]} */
         const testInput2 = OpCodes.AnsiToBytes("AB");
+        /** @type {uint8[]} */
         const testExpected2 = [2, 0, 0, 0, 32, 144, 128];
 
+        /** @type {uint8[]} */
         const testInput3 = OpCodes.AnsiToBytes("ABAB");
+        /** @type {uint8[]} */
         const testExpected3 = [4, 0, 0, 0, 32, 144, 136, 36, 32];
 
+        /** @type {uint8[]} */
         const testInput4 = OpCodes.AnsiToBytes("ABCABC");
+        /** @type {uint8[]} */
         const testExpected4 = [6, 0, 0, 0, 32, 144, 136, 100, 18, 17, 12];
 
+        /** @type {uint8[]} */
         const testInput5 = OpCodes.AnsiToBytes("Hello World");
+        /** @type {uint8[]} */
         const testExpected5 = [11, 0, 0, 0, 36, 25, 77, 134, 195, 120, 128, 174, 111, 57, 27, 12, 128];
 
+        /** @type {uint8[]} */
         const testInput6 = OpCodes.AnsiToBytes("aaabbbcccaaa");
+        /** @type {uint8[]} */
         const testExpected6 = [12, 0, 0, 0, 48, 152, 76, 38, 35, 17, 136, 198, 99, 49, 152, 76, 38, 16];
 
         this.tests = [
@@ -160,38 +172,133 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {ROLZInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new ROLZInstance(this, isInverse);
       }
     }
 
+    /**
+     * Per-context circular tables of recent positions
+     */
+    class RolzTables {
+      /**
+       * @param {int32} numContexts - Number of contexts
+       * @param {int32} tableSize - Positions kept per context
+       */
+      constructor(numContexts, tableSize) {
+        /** @type {int32[][]} */
+        this.positions = [];
+        for (let i = 0; i < numContexts; i++) {
+          this.positions.push(new Int32Array(tableSize));
+        }
+        /** @type {int32[]} */
+        this.writePos = new Int32Array(numContexts);
+        /** @type {int32[]} */
+        this.count = new Int32Array(numContexts);
+      }
+    }
+
+    /**
+     * MSB-first bit reader; bits past the end read as 0
+     */
+    class RolzBitReader {
+      /**
+       * @param {uint8[]} data - Source bytes
+       * @param {int32} startOffset - Position of the first bit's byte
+       */
+      constructor(data, startOffset) {
+        /** @type {uint8[]} */
+        this.data = data;
+        /** @type {int32} */
+        this.bytePos = startOffset;
+        /** @type {int32} */
+        this.bitPos = 8;
+      }
+
+      /**
+       * @returns {uint32} Next bit
+       */
+      readBit() {
+        if (this.bitPos >= 8) {
+          this.bitPos = 0;
+          this.bytePos++;
+        }
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(this.data[this.bytePos - 1], 7 - this.bitPos), 1);
+        this.bitPos++;
+        return bit;
+      }
+
+      /**
+       * @param {int32} count - Number of bits, most significant first
+       * @returns {uint32} Value read
+       */
+      readBits(count) {
+        /** @type {uint32} */
+        let value = 0;
+        for (let i = 0; i < count; i++) {
+          value = OpCodes.Or32(OpCodes.Shl32(value, 1), this.readBit());
+        }
+        return value;
+      }
+    }
+
     class ROLZInstance extends IAlgorithmInstance {
+      /**
+       * @param {ROLZAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
         // Matches CompressionWorkbench's BB_ROLZ
+        /** @type {int32} */
         this.WINDOW_SIZE = 32768;
+        /** @type {int32} */
         this.MIN_MATCH = 3;
+        /** @type {int32} */
         this.MAX_MATCH = 255;
+        /** @type {int32} */
         this.NUM_CONTEXTS = 256;
+        /** @type {int32} */
         this.TABLE_SIZE = 256;
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
-          if (this.inputBuffer.length === 0) return [];
-          const result = this.decompress(this.inputBuffer);
-          this.inputBuffer = [];
-          return result;
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            return empty;
+          }
+          /** @type {uint8[]} */
+          const decoded = this.decompress(this.inputBuffer);
+          /** @type {uint8[]} */
+          const freshAfterDecode = [];
+          this.inputBuffer = freshAfterDecode;
+          return decoded;
         }
 
         // Even empty input produces a fixed 4-byte header (matches the
         // C# reference, which always writes the uncompressed size).
+        /** @type {uint8[]} */
         const result = this.compress(this.inputBuffer);
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
@@ -200,36 +307,61 @@
       // to 256 recent positions. Matches are encoded as (table index,
       // length - MIN_MATCH) rather than a raw offset, which is cheaper when
       // the context predicts the match well.
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Size header and token bitstream
+       */
       compress(data) {
+        /** @type {uint8[]} */
         const compressed = OpCodes.Unpack32LE(data.length);
-        if (data.length === 0) return compressed;
+        if (data.length === 0) {
+          return compressed;
+        }
 
+        /** @type {RolzTables} */
         const tables = this._createTables();
+        /** @type {uint8[]} */
         const bits = [];
 
+        /** @type {int32} */
         let pos = 0;
         while (pos < data.length) {
+          /** @type {uint8} */
           const ctx = pos > 0 ? data[pos - 1] : 0;
+          /** @type {int32[]} */
           const table = tables.positions[ctx];
+          /** @type {int32} */
           const count = tables.count[ctx];
 
+          /** @type {int32} */
           let bestLen = 0;
+          /** @type {int32} */
           let bestIdx = 0;
+          /** @type {int32} */
           const maxLen = Math.min(this.MAX_MATCH, data.length - pos);
 
           for (let i = 0; i < count; i++) {
+            /** @type {int32} */
             const candidate = table[i];
-            if (pos - candidate > this.WINDOW_SIZE) continue;
-            if (candidate >= pos) continue;
+            if (pos - candidate > this.WINDOW_SIZE) {
+              continue;
+            }
+            if (candidate >= pos) {
+              continue;
+            }
 
+            /** @type {int32} */
             let len = 0;
-            while (len < maxLen && data[candidate + len] === data[pos + len])
+            while (len < maxLen && data[candidate + len] === data[pos + len]) {
               len++;
+            }
 
             if (len >= this.MIN_MATCH && len > bestLen) {
               bestLen = len;
               bestIdx = i;
-              if (bestLen === maxLen) break;
+              if (bestLen === maxLen) {
+                break;
+              }
             }
           }
 
@@ -247,38 +379,65 @@
           }
         }
 
-        { const _src = this._bitsToBytes(bits); for (let _i = 0; _i < _src.length; _i++) compressed.push(_src[_i]); }
+        /** @type {uint8[]} */
+        const packed = this._bitsToBytes(bits);
+        for (let i = 0; i < packed.length; i++) {
+          compressed.push(packed[i]);
+        }
         return compressed;
       }
 
+      /**
+       * @param {uint8[]} data - Size header and token bitstream
+       * @returns {uint8[]} Decoded bytes
+       */
       decompress(data) {
+        /** @type {uint32} */
         const uncompressedSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-        if (uncompressedSize === 0) return [];
-
-        const reader = this._createBitReader(data, 4);
-        const tables = this._createTables();
+        /** @type {uint8[]} */
         const dst = [];
+        if (uncompressedSize === 0) {
+          return dst;
+        }
+
+        /** @type {RolzBitReader} */
+        const reader = new RolzBitReader(data, 4);
+        /** @type {RolzTables} */
+        const tables = this._createTables();
 
         while (dst.length < uncompressedSize) {
+          /** @type {uint8} */
           const ctx = dst.length > 0 ? dst[dst.length - 1] : 0;
 
-          if (reader.readBit() === 0) {
+          /** @type {uint32} */
+          const flag = reader.readBit();
+          if (flag === 0) {
+            /** @type {uint8} */
             const b = reader.readBits(8);
             this._updateTable(tables, ctx, dst.length);
             dst.push(b);
           } else {
+            /** @type {int32} */
             const idx = reader.readBits(8);
-            const length = reader.readBits(8) + this.MIN_MATCH;
+            /** @type {int32} */
+            const lengthCode = reader.readBits(8);
+            /** @type {int32} */
+            const length = lengthCode + this.MIN_MATCH;
 
-            if (idx >= tables.count[ctx])
+            /** @type {int32} */
+            const filled = tables.count[ctx];
+            if (idx >= filled) {
               throw new Error('ROLZ: invalid table index ' + idx + ' for context ' + ctx);
+            }
 
+            /** @type {int32} */
             const matchPos = tables.positions[ctx][idx];
             this._updateTable(tables, ctx, dst.length);
 
             for (let i = 0; i < length; i++) {
-              if (dst.length >= uncompressedSize)
+              if (dst.length >= uncompressedSize) {
                 throw new Error('ROLZ: decompressed data exceeds expected size.');
+              }
               dst.push(dst[matchPos + i]);
             }
           }
@@ -287,40 +446,58 @@
         return dst;
       }
 
-      /** @private */
+      /**
+       * @private
+       * @returns {RolzTables} Empty context tables
+       */
       _createTables() {
-        const positions = [];
-        for (let i = 0; i < this.NUM_CONTEXTS; i++)
-          positions.push(new Array(this.TABLE_SIZE).fill(0));
-        return {
-          positions,
-          writePos: new Array(this.NUM_CONTEXTS).fill(0),
-          count: new Array(this.NUM_CONTEXTS).fill(0)
-        };
+        return new RolzTables(this.NUM_CONTEXTS, this.TABLE_SIZE);
       }
 
-      /** @private */
+      /**
+       * @private
+       * @param {RolzTables} tables - Context tables
+       * @param {uint8} ctx - Context (previous byte)
+       * @param {int32} position - Position to record
+       */
       _updateTable(tables, ctx, position) {
+        /** @type {int32} */
         const wp = tables.writePos[ctx];
         tables.positions[ctx][wp] = position;
         tables.writePos[ctx] = (wp + 1) % this.TABLE_SIZE;
-        if (tables.count[ctx] < this.TABLE_SIZE)
-          tables.count[ctx]++;
+        /** @type {int32} */
+        const filled = tables.count[ctx];
+        if (filled < this.TABLE_SIZE) {
+          tables.count[ctx] = filled + 1;
+        }
       }
 
-      /** @private */
+      /**
+       * @private
+       * @param {uint8[]} bits - Bit list to extend
+       * @param {uint32} value - Value
+       * @param {int32} count - Number of bits, most significant first
+       */
       _pushBits(bits, value, count) {
-        for (let i = count - 1; i >= 0; i--)
-          bits.push(OpCodes.AndN(OpCodes.Shr32(value, i), 1));
+        for (let i = count - 1; i >= 0; i--) {
+          bits.push(OpCodes.And32(OpCodes.Shr32(value, i), 1));
+        }
       }
 
-      /** @private */
+      /**
+       * @private
+       * @param {uint8[]} bits - Bits, most significant first
+       * @returns {uint8[]} Packed bytes, last one zero-padded
+       */
       _bitsToBytes(bits) {
+        /** @type {uint8[]} */
         const bytes = [];
+        /** @type {uint32} */
         let currentByte = 0;
+        /** @type {int32} */
         let bitsUsed = 0;
-        for (const bit of bits) {
-          currentByte = OpCodes.OrN(OpCodes.Shl32(currentByte, 1), bit);
+        for (let i = 0; i < bits.length; i++) {
+          currentByte = OpCodes.Or32(OpCodes.Shl32(currentByte, 1), bits[i]);
           bitsUsed++;
           if (bitsUsed === 8) {
             bytes.push(currentByte);
@@ -328,32 +505,10 @@
             bitsUsed = 0;
           }
         }
-        if (bitsUsed > 0)
+        if (bitsUsed > 0) {
           bytes.push(OpCodes.Shl32(currentByte, 8 - bitsUsed));
+        }
         return bytes;
-      }
-
-      /** @private */
-      _createBitReader(data, startOffset) {
-        let bytePos = startOffset;
-        let bitPos = 8;
-        return {
-          readBit: () => {
-            if (bitPos >= 8) {
-              bitPos = 0;
-              bytePos++;
-            }
-            const bit = OpCodes.AndN(OpCodes.Shr32(data[bytePos - 1], 7 - bitPos), 1);
-            bitPos++;
-            return bit;
-          },
-          readBits: function(count) {
-            let value = 0;
-            for (let i = 0; i < count; i++)
-              value = OpCodes.OrN(OpCodes.Shl32(value, 1), this.readBit());
-            return value;
-          }
-        };
       }
     }
 
