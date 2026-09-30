@@ -414,18 +414,18 @@
       // Based on Error Correction Zoo and theoretical construction
       // Using classical representation for educational demonstration
       this.tests = [
-        // Encode OpCodes.Or32(logical, 0)⟩ to 9-qubit codeword
+        // Encode OpCodes.OrN(logical, 0)⟩ to 9-qubit codeword
         new TestCase(
           [0], // Logical 0
           [0, 0, 0, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.Or32(as, 000) 000 000⟩
-          "Bacon-Shor [[9,1,3]] encode OpCodes.Or32(logical, 0)⟩",
+          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 0)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
-        // Encode OpCodes.Or32(logical, 1)⟩ to 9-qubit codeword
+        // Encode OpCodes.OrN(logical, 1)⟩ to 9-qubit codeword
         new TestCase(
           [1], // Logical 1
           [1, 1, 1, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.Or32(as, 111) 000 000⟩ (logical X on top row)
-          "Bacon-Shor [[9,1,3]] encode OpCodes.Or32(logical, 1)⟩",
+          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 1)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
         // Encode multiple logical qubits
