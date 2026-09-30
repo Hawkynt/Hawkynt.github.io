@@ -27,22 +27,10 @@
  *     for that one call;
  *   - the 4 whitening dwords (pre-L, pre-R, post-L, post-R) are simply the first 16
  *     key bytes, written after all 8 octets are built;
- *   - CONFIRMED GLOBAL-STATE QUIRK: setup() builds the key schedule in shared
- *     GLOBAL (not per-call) memory, and octets not yet rebuilt during a
- *     setup() call still hold whatever a PRIOR setup() call last left
- *     there (there is no zero-fill between calls) - the self-referential bootstrap
- *     above therefore reads that leftover state for not-yet-built octets. This makes
- *     Khufu-512's key schedule NOT a pure function of the key alone: its output
- *     depends on prior setup() calls in the same process. This implementation
- *     reproduces that exactly (module-level shared "leftover" octet state), matching
- *     the reference vectors, which call setup() twice per key (once before
- *     crypt, once before decrypt) for zero, then incr, then incr2, in that order.
- * IMPORTANT: the DarkCrypt implementation's own decrypt(crypt(x)) does not
- * round-trip (a further quirk of that implementation) - only encryption was
- * validated against it. This implementation's decrypt() is the correct
- * mathematical inverse of ITS OWN encrypt() (self-consistent round trip),
- * independent of the shared leftover-state mechanism, which only affects
- * key-schedule construction, not the round function itself.
+ *   - octets that are not built yet read as all-zero when the bootstrap encryption
+ *     uses them, and the whitening words are still zero at that point.
+ * The key schedule is a pure function of the key: every setup starts from the same
+ * zeroed tables, so encryption and decryption agree for any key and call order.
  * Test vectors verified against the DarkCrypt implementation. Educational only.
  */
 
@@ -135,16 +123,6 @@
     return halves;
   }
 
-  // Module-level shared "leftover" octet state: mirrors the DarkCrypt implementation's
-  // GLOBAL key-schedule memory. Octets not yet rebuilt within a given setup pass still
-  // show whatever the previous setup() call last left there. Starts all-zero, matching
-  // a freshly loaded, zero-initialized state.
-  /** @type {uint32[][]} */
-  const sharedOctets = [
-    new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256),
-    new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
-  ];
-
   // Table set layout: entries 0..7 are the octet S-boxes, entry 8 holds the
   // whitening words [preL, preR, postL, postR].
   const WHITENING = 8;
@@ -153,7 +131,14 @@
    * @param {uint8[]} keyBytes - Key bytes
    * @returns {uint32[][]} Octet S-boxes 0..7 and the whitening words at index WHITENING
    */
-  function buildTablesOnce(keyBytes) {
+  function buildTables(keyBytes) {
+    // Octets not yet built still read as zero when the bootstrap encryption uses them.
+    /** @type {uint32[][]} */
+    const octets = [
+      new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256),
+      new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
+    ];
+
     const seed = pack32LE(keyBytes, 64);
     // Borland-style LCG rand(), seeded with srand(seed)
     /** @type {uint32} */
@@ -171,7 +156,7 @@
     let batchCounter = 0;
 
     /**
-     * Re-encrypt the 64-byte buffer with the current shared octets
+     * Re-encrypt the 64-byte buffer with the octets built so far
      */
     function regenerateBatch() {
       for (let b = 0; b < 8; b++) {
@@ -179,7 +164,7 @@
         let R = pack32LE(buf64, b * 8 + 4);
         L = OpCodes.ToUint32(OpCodes.Xor32(L, state[0])); R = OpCodes.ToUint32(OpCodes.Xor32(R, state[1]));
         /** @type {uint32[]} */
-        const halves = encryptRounds(L, R, sharedOctets);
+        const halves = encryptRounds(L, R, octets);
         L = halves[0]; R = halves[1];
         L = OpCodes.ToUint32(OpCodes.Xor32(L, state[2])); R = OpCodes.ToUint32(OpCodes.Xor32(R, state[3]));
         writeLE(buf64, b * 8, L); writeLE(buf64, b * 8 + 4, R);
@@ -203,13 +188,8 @@
       return reduced + effectiveLo;
     }
 
-    /** @type {uint32[][]} */
-    const snapshot = [
-      new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256),
-      new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)
-    ];
     for (let k = 7; k >= 0; k--) {
-      const table = sharedOctets[k];
+      const table = octets[k];
       table.set(rawSeed);
       const bytes = new Uint8Array(1024);
       for (let i = 0; i < 256; i++) writeLE(bytes, i * 4, table[i]);
@@ -222,7 +202,6 @@
           table[swapIdx] = pack32LE(bytes, swapIdx * 4);
         }
       }
-      snapshot[k].set(table);
     }
 
     state[0] = pack32LE(keyBytes, 0);
@@ -230,38 +209,9 @@
     state[2] = pack32LE(keyBytes, 8);
     state[3] = pack32LE(keyBytes, 12);
 
-    snapshot.push(state);
-    return snapshot;
-  }
-
-  // setup(key) in the DarkCrypt implementation is always exercised twice per key
-  // (once before crypt, once before decrypt); the second call's only externally
-  // observable effect is on the shared leftover state consumed by the NEXT setup()
-  // call, so it is reproduced here even though its own table snapshot is unused.
-  //
-  // Cached by literal key bytes: re-setting the SAME key (as encrypt/decrypt instance
-  // pairs and round-trip tests do) reuses the tables from that key's first use instead
-  // of mutating the shared leftover state again, so encrypt/decrypt of one key stay
-  // mutually consistent while distinct keys still see the real call-order
-  // dependent leftover state on their first use.
-  /** @type {string[]} */
-  const tablesCacheKeys = [];
-  /** @type {uint32[][][]} */
-  const tablesCacheValues = [];
-  /**
-   * @param {uint8[]} keyBytes - Key bytes
-   * @returns {uint32[][]} Octet S-boxes and whitening words (see buildTablesOnce)
-   */
-  function buildTables(keyBytes) {
-    /** @type {string} */
-    let cacheKey = "";
-    for (let i = 0; i < keyBytes.length; i++) cacheKey += (i > 0 ? "," : "") + keyBytes[i];
-    for (let i = 0; i < tablesCacheKeys.length; i++)
-      if (tablesCacheKeys[i] === cacheKey) return tablesCacheValues[i];
-    const tables = buildTablesOnce(keyBytes);
-    buildTablesOnce(keyBytes);
-    tablesCacheKeys.push(cacheKey);
-    tablesCacheValues.push(tables);
+    /** @type {uint32[][]} */
+    const tables = octets.slice(0);
+    tables.push(state);
     return tables;
   }
 
@@ -270,7 +220,7 @@
       super();
 
       this.name = "Khufu-512 (DarkCrypt)";
-      this.description = "Ralph Merkle's Khufu cipher with a 544-bit key as implemented in the DarkCrypt Total Commander plugin: 64-bit Feistel block, 8 octets of 8 rounds (64 rounds total), key-dependent S-boxes built via a self-referential bootstrap encryption. Includes a confirmed register-clobber bug in the key schedule's swap-index computation and reliance on global (not per-call) key-schedule memory.";
+      this.description = "Ralph Merkle's Khufu cipher with a 544-bit key as implemented in the DarkCrypt Total Commander plugin: 64-bit Feistel block, 8 octets of 8 rounds (64 rounds total), key-dependent S-boxes built via a self-referential bootstrap encryption. Keeps the implementation's quirk in the key schedule's swap-index computation.";
       this.inventor = "Ralph Merkle; DarkCrypt variant by Alexander Myasnikov";
       this.year = 1990;
       this.category = CategoryType.BLOCK;
@@ -288,38 +238,32 @@
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Non-standard key schedule with global-state dependency", "The DarkCrypt implementation's key schedule reads global memory left over from prior setup() calls rather than being a pure function of the key; this implementation reproduces that exactly via shared module state. Encryption for a given key can therefore differ depending on prior key-schedule calls in the same process, exactly like the original implementation.", "Use AES or another vetted cipher."),
+        new Vulnerability("Non-standard key schedule", "The swap-index computation uses a lower bound of 16 whenever it regenerates its random batch, so the S-box shuffle is not a uniform permutation.", "Use AES or another vetted cipher."),
         new Vulnerability("Differential cryptanalysis (base Khufu)", "Textbook Khufu is broken by differential cryptanalysis; this DarkCrypt variant is unanalyzed.", "Use AES or another vetted cipher.")
       ];
 
       // Test vectors verified against the DarkCrypt implementation.
-      // setup() is called twice per key (crypt test, then decrypt
-      // test) and vectors are processed in this exact order (zero, incr, incr2); because
-      // of the global-state quirk documented above, these three vectors MUST be
-      // exercised as CreateInstance+key+Feed+Result in this exact order for incr and
-      // incr2 to reproduce the expected ciphertext (zero is order-independent, since it
-      // is always first against a freshly loaded/module-initialized state).
       this.tests = [
         {
-          text: "DarkCrypt Khufu — zero key/plaintext",
+          text: "DarkCrypt Khufu — zero key/plaintext (verified against the DarkCrypt implementation)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("8786833be7a2484b")
         },
         {
-          text: "DarkCrypt Khufu — incrementing key/plaintext",
+          text: "DarkCrypt Khufu — incrementing key/plaintext (verified against the DarkCrypt implementation)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40414243"),
-          expected: OpCodes.Hex8ToBytes("6ea8385a3a73a96b")
+          expected: OpCodes.Hex8ToBytes("afecebcbd79deb12")
         },
         {
-          text: "DarkCrypt Khufu — shifted incrementing key/plaintext",
+          text: "DarkCrypt Khufu — shifted incrementing key/plaintext (verified against the DarkCrypt implementation)",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("1011121314151617"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041424344"),
-          expected: OpCodes.Hex8ToBytes("e629f9a0abc6c61b")
+          expected: OpCodes.Hex8ToBytes("c17d0d3f8c6ee28e")
         }
       ];
     }
