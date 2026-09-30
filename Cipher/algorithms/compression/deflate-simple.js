@@ -58,42 +58,57 @@
 
   // ===== RFC 1951 CONSTANTS =====
 
-  const POW2 = (() => {
+  /**
+   * @returns {int32[]} Powers of two 2^0 .. 2^16
+   */
+  function buildPowersOfTwo() {
+    /** @type {int32[]} */
     const powers = new Array(17);
     powers[0] = 1;
-    for (let i = 1; i < powers.length; i++) powers[i] = powers[i - 1] * 2;
+    for (let i = 1; i < powers.length; i++) {
+      powers[i] = powers[i - 1] * 2;
+    }
     return powers;
-  })();
+  }
+
+  /** @type {int32[]} */
+  const POW2 = buildPowersOfTwo();
 
   // Length codes 257..285: base length and number of extra bits.
-  const LENGTH_CODES = [
-    { base: 3, extra: 0 }, { base: 4, extra: 0 }, { base: 5, extra: 0 }, { base: 6, extra: 0 },
-    { base: 7, extra: 0 }, { base: 8, extra: 0 }, { base: 9, extra: 0 }, { base: 10, extra: 0 },
-    { base: 11, extra: 1 }, { base: 13, extra: 1 }, { base: 15, extra: 1 }, { base: 17, extra: 1 },
-    { base: 19, extra: 2 }, { base: 23, extra: 2 }, { base: 27, extra: 2 }, { base: 31, extra: 2 },
-    { base: 35, extra: 3 }, { base: 43, extra: 3 }, { base: 51, extra: 3 }, { base: 59, extra: 3 },
-    { base: 67, extra: 4 }, { base: 83, extra: 4 }, { base: 99, extra: 4 }, { base: 115, extra: 4 },
-    { base: 131, extra: 5 }, { base: 163, extra: 5 }, { base: 195, extra: 5 }, { base: 227, extra: 5 },
-    { base: 258, extra: 0 }
+  /** @type {int32[]} */
+  const LENGTH_BASE = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258
+  ];
+  /** @type {int32[]} */
+  const LENGTH_EXTRA = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0
   ];
 
   // Distance codes 0..29: base distance and number of extra bits.
-  const DISTANCE_CODES = [
-    { base: 1, extra: 0 }, { base: 2, extra: 0 }, { base: 3, extra: 0 }, { base: 4, extra: 0 },
-    { base: 5, extra: 1 }, { base: 7, extra: 1 }, { base: 9, extra: 2 }, { base: 13, extra: 2 },
-    { base: 17, extra: 3 }, { base: 25, extra: 3 }, { base: 33, extra: 4 }, { base: 49, extra: 4 },
-    { base: 65, extra: 5 }, { base: 97, extra: 5 }, { base: 129, extra: 6 }, { base: 193, extra: 6 },
-    { base: 257, extra: 7 }, { base: 385, extra: 7 }, { base: 513, extra: 8 }, { base: 769, extra: 8 },
-    { base: 1025, extra: 9 }, { base: 1537, extra: 9 }, { base: 2049, extra: 10 }, { base: 3073, extra: 10 },
-    { base: 4097, extra: 11 }, { base: 6145, extra: 11 }, { base: 8193, extra: 12 }, { base: 12289, extra: 12 },
-    { base: 16385, extra: 13 }, { base: 24577, extra: 13 }
+  /** @type {int32[]} */
+  const DISTANCE_BASE = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577
+  ];
+  /** @type {int32[]} */
+  const DISTANCE_EXTRA = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13
   ];
 
+  /** @type {int32} */
   const END_OF_BLOCK = 256;
+  /** @type {int32} */
   const WINDOW_SIZE = 32768;
+  /** @type {int32} */
   const MIN_MATCH = 3;
+  /** @type {int32} */
   const MAX_MATCH = 258;
+  /** @type {int32} */
   const MAX_CHAIN = 32;      // bound on hash-chain probes per position
+  /** @type {int32} */
   const HASH_SIZE = 65536;
 
   // Fixed literal/length alphabet (RFC 1951 section 3.2.6):
@@ -101,29 +116,73 @@
   //   144..255 9 bits, codes 0x190..0x1FF
   //   256..279 7 bits, codes 0x00..0x17
   //   280..287 8 bits, codes 0xC0..0xC7
+  /**
+   * @param {int32} symbol - Literal/length symbol
+   * @returns {int32} Fixed Huffman code
+   */
   function fixedLiteralCode(symbol) {
-    if (symbol <= 143) return { code: 48 + symbol, bits: 8 };
-    if (symbol <= 255) return { code: 400 + symbol - 144, bits: 9 };
-    if (symbol <= 279) return { code: symbol - 256, bits: 7 };
-    return { code: 192 + symbol - 280, bits: 8 };
+    if (symbol <= 143) {
+      return 48 + symbol;
+    }
+    if (symbol <= 255) {
+      return 400 + symbol - 144;
+    }
+    if (symbol <= 279) {
+      return symbol - 256;
+    }
+    return 192 + symbol - 280;
   }
 
-  // Length 3..258 -> index into LENGTH_CODES, precomputed once.
-  const LENGTH_TO_CODE = (() => {
-    const map = new Array(MAX_MATCH + 1).fill(0);
-    for (let code = 0; code < LENGTH_CODES.length; code++) {
-      const next = code + 1 < LENGTH_CODES.length ? LENGTH_CODES[code + 1].base : MAX_MATCH + 1;
-      for (let length = LENGTH_CODES[code].base; length < next && length <= MAX_MATCH; length++) {
+  /**
+   * @param {int32} symbol - Literal/length symbol
+   * @returns {int32} Length of its fixed Huffman code
+   */
+  function fixedLiteralBits(symbol) {
+    if (symbol <= 143) {
+      return 8;
+    }
+    if (symbol <= 255) {
+      return 9;
+    }
+    if (symbol <= 279) {
+      return 7;
+    }
+    return 8;
+  }
+
+  // Length 3..258 -> index into the length tables, precomputed once.
+  /**
+   * @returns {int32[]} Length code per match length
+   */
+  function buildLengthToCode() {
+    /** @type {int32[]} */
+    const map = new Array(MAX_MATCH + 1);
+    for (let i = 0; i <= MAX_MATCH; i++) {
+      map[i] = 0;
+    }
+    for (let code = 0; code < LENGTH_BASE.length; code++) {
+      /** @type {int32} */
+      const next = code + 1 < LENGTH_BASE.length ? LENGTH_BASE[code + 1] : MAX_MATCH + 1;
+      for (let length = LENGTH_BASE[code]; length < next && length <= MAX_MATCH; length++) {
         map[length] = code;
       }
     }
-    map[MAX_MATCH] = LENGTH_CODES.length - 1;
+    map[MAX_MATCH] = LENGTH_BASE.length - 1;
     return map;
-  })();
+  }
 
+  /** @type {int32[]} */
+  const LENGTH_TO_CODE = buildLengthToCode();
+
+  /**
+   * @param {int32} distance - Match distance
+   * @returns {int32} Distance code
+   */
   function distanceToCode(distance) {
-    for (let code = DISTANCE_CODES.length - 1; code >= 0; code--) {
-      if (distance >= DISTANCE_CODES[code].base) return code;
+    for (let code = DISTANCE_BASE.length - 1; code >= 0; code--) {
+      if (distance >= DISTANCE_BASE[code]) {
+        return code;
+      }
     }
     return 0;
   }
@@ -135,13 +194,21 @@
   // with the most significant bit. Bytes fill from the least significant bit.
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.partial = 0;
+      /** @type {int32} */
       this.used = 0;
     }
 
+    /**
+     * @param {int32} bit - Bit (any non-zero value is a 1)
+     */
     writeBit(bit) {
-      if (bit) this.partial = OpCodes.SetBit(this.partial, this.used, true);
+      if (bit !== 0) {
+        this.partial = OpCodes.SetBit(this.partial, this.used, true);
+      }
       this.used++;
       if (this.used === 8) {
         this.bytes.push(this.partial);
@@ -150,14 +217,29 @@
       }
     }
 
+    /**
+     * @param {int32} value - Value
+     * @param {int32} bits - Number of bits, least significant first
+     */
     writeValue(value, bits) {
-      for (let i = 0; i < bits; i++) this.writeBit(Math.floor(value / POW2[i]) % 2);
+      for (let i = 0; i < bits; i++) {
+        this.writeBit(Math.floor(value / POW2[i]) % 2);
+      }
     }
 
+    /**
+     * @param {int32} code - Huffman code
+     * @param {int32} bits - Number of bits, most significant first
+     */
     writeCode(code, bits) {
-      for (let i = bits - 1; i >= 0; i--) this.writeBit(Math.floor(code / POW2[i]) % 2);
+      for (let i = bits - 1; i >= 0; i--) {
+        this.writeBit(Math.floor(code / POW2[i]) % 2);
+      }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     finish() {
       if (this.used > 0) {
         this.bytes.push(this.partial);
@@ -169,14 +251,26 @@
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} data - DEFLATE stream
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.byteIndex = 0;
+      /** @type {int32} */
       this.bitIndex = 0;
     }
 
+    /**
+     * @returns {int32} Next bit
+     */
     readBit() {
-      if (this.byteIndex >= this.data.length) throw new Error('Truncated DEFLATE stream');
+      if (this.byteIndex >= this.data.length) {
+        throw new Error('Truncated DEFLATE stream');
+      }
+      /** @type {int32} */
       const bit = OpCodes.GetBit(this.data[this.byteIndex], this.bitIndex) ? 1 : 0;
       this.bitIndex++;
       if (this.bitIndex === 8) {
@@ -186,18 +280,37 @@
       return bit;
     }
 
+    /**
+     * @param {int32} bits - Number of bits, least significant first
+     * @returns {int32} Value read
+     */
     readValue(bits) {
+      /** @type {int32} */
       let value = 0;
-      for (let i = 0; i < bits; i++) value += this.readBit() * POW2[i];
+      for (let i = 0; i < bits; i++) {
+        /** @type {int32} */
+        const bit = this.readBit();
+        value += bit * POW2[i];
+      }
       return value;
     }
 
+    /**
+     * @param {int32} bits - Number of bits, most significant first
+     * @returns {int32} Code read
+     */
     readCode(bits) {
+      /** @type {int32} */
       let code = 0;
-      for (let i = 0; i < bits; i++) code = code * 2 + this.readBit();
+      for (let i = 0; i < bits; i++) {
+        /** @type {int32} */
+        const bit = this.readBit();
+        code = code * 2 + bit;
+      }
       return code;
     }
 
+    /** Skip to the next byte boundary */
     alignToByte() {
       if (this.bitIndex !== 0) {
         this.bitIndex = 0;
@@ -208,24 +321,68 @@
 
   // Fixed literal/length decoding by code length, exploiting the fact that the
   // fixed alphabet is canonical and its code ranges do not overlap.
+  /**
+   * @param {BitReader} reader - Input bits
+   * @returns {int32} Literal/length symbol
+   */
   function readFixedLiteral(reader) {
+    /** @type {int32} */
     let code = reader.readCode(7);
-    if (code <= 23) return 256 + code;
+    if (code <= 23) {
+      return 256 + code;
+    }
 
-    code = code * 2 + reader.readBit();
-    if (code >= 48 && code <= 191) return code - 48;
-    if (code >= 192 && code <= 199) return 280 + code - 192;
+    /** @type {int32} */
+    const eighth = reader.readBit();
+    code = code * 2 + eighth;
+    if (code >= 48 && code <= 191) {
+      return code - 48;
+    }
+    if (code >= 192 && code <= 199) {
+      return 280 + code - 192;
+    }
 
-    code = code * 2 + reader.readBit();
-    if (code >= 400 && code <= 511) return 144 + code - 400;
+    /** @type {int32} */
+    const ninth = reader.readBit();
+    code = code * 2 + ninth;
+    if (code >= 400 && code <= 511) {
+      return 144 + code - 400;
+    }
 
     throw new Error('Invalid fixed Huffman code in DEFLATE stream');
   }
 
   // ===== LZ77 =====
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} position - Position of the three hashed bytes
+   * @returns {int32} Bucket
+   */
   function hashAt(data, position) {
-    return (data[position] * 4093 + data[position + 1] * 257 + data[position + 2]) % HASH_SIZE;
+    /** @type {int32} */
+    const a = data[position];
+    /** @type {int32} */
+    const b = data[position + 1];
+    /** @type {int32} */
+    const c = data[position + 2];
+    return (a * 4093 + b * 257 + c) % HASH_SIZE;
+  }
+
+  /**
+   * Match found by the hash-chain search
+   */
+  class DeflateSimpleMatch {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} distance - Match distance
+     */
+    constructor(length, distance) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.distance = distance;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -304,131 +461,220 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {DeflateSimpleInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new DeflateSimpleInstance(this, isInverse);
     }
   }
 
   class DeflateSimpleInstance extends IAlgorithmInstance {
+    /**
+     * @param {DeflateSimpleAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
         // An empty buffer is not a valid DEFLATE stream: even an empty message
         // costs the two bytes of a final fixed block.
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decompress();
       }
       return this._compress();
     }
 
-    _compress() {
-      const data = this.inputBuffer;
-      this.inputBuffer = [];
+    /**
+     * @param {BitWriter} writer - Output bits
+     * @param {int32} symbol - Literal/length symbol
+     */
+    _writeFixedSymbol(writer, symbol) {
+      writer.writeCode(fixedLiteralCode(symbol), fixedLiteralBits(symbol));
+    }
 
+    /**
+     * @returns {uint8[]} Raw DEFLATE stream (one final fixed-Huffman block)
+     */
+    _compress() {
+      /** @type {uint8[]} */
+      const data = this.inputBuffer;
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+
+      /** @type {BitWriter} */
       const writer = new BitWriter();
 
       // One final block, fixed Huffman codes.
       writer.writeBit(1);
       writer.writeValue(1, 2);
 
+      /** @type {int32[]} */
       const head = new Int32Array(HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       const prev = new Int32Array(data.length > 0 ? data.length : 1).fill(-1);
 
+      /** @type {int32} */
       let position = 0;
       while (position < data.length) {
+        /** @type {int32} */
         let matchLength = 0;
+        /** @type {int32} */
         let matchDistance = 0;
 
         if (position + MIN_MATCH <= data.length) {
+          /** @type {DeflateSimpleMatch} */
           const found = this._findMatch(data, position, head, prev, hashAt(data, position));
           matchLength = found.length;
           matchDistance = found.distance;
         }
 
         if (matchLength >= MIN_MATCH) {
+          /** @type {int32} */
           const lengthCode = LENGTH_TO_CODE[matchLength];
-          const lengthSymbol = fixedLiteralCode(257 + lengthCode);
-          writer.writeCode(lengthSymbol.code, lengthSymbol.bits);
-          writer.writeValue(matchLength - LENGTH_CODES[lengthCode].base, LENGTH_CODES[lengthCode].extra);
+          this._writeFixedSymbol(writer, 257 + lengthCode);
+          writer.writeValue(matchLength - LENGTH_BASE[lengthCode], LENGTH_EXTRA[lengthCode]);
 
+          /** @type {int32} */
           const distanceCode = distanceToCode(matchDistance);
           writer.writeCode(distanceCode, 5);
-          writer.writeValue(matchDistance - DISTANCE_CODES[distanceCode].base, DISTANCE_CODES[distanceCode].extra);
+          writer.writeValue(matchDistance - DISTANCE_BASE[distanceCode], DISTANCE_EXTRA[distanceCode]);
 
-          for (let i = 0; i < matchLength; i++) this._insert(data, position + i, head, prev);
+          for (let i = 0; i < matchLength; i++) {
+            this._insert(data, position + i, head, prev);
+          }
           position += matchLength;
         } else {
-          const literal = fixedLiteralCode(data[position]);
-          writer.writeCode(literal.code, literal.bits);
+          this._writeFixedSymbol(writer, data[position]);
           this._insert(data, position, head, prev);
           position++;
         }
       }
 
-      const terminator = fixedLiteralCode(END_OF_BLOCK);
-      writer.writeCode(terminator.code, terminator.bits);
+      this._writeFixedSymbol(writer, END_OF_BLOCK);
 
-      return writer.finish();
+      /** @type {uint8[]} */
+      const stream = writer.finish();
+      return stream;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @param {int32} position - Position to insert
+     * @param {int32[]} head - Chain heads
+     * @param {int32[]} prev - Chain links
+     */
     _insert(data, position, head, prev) {
-      if (position + MIN_MATCH > data.length) return;
+      if (position + MIN_MATCH > data.length) {
+        return;
+      }
+      /** @type {int32} */
       const bucket = hashAt(data, position);
       prev[position] = head[bucket];
       head[bucket] = position;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @param {int32} position - Position to match
+     * @param {int32[]} head - Chain heads
+     * @param {int32[]} prev - Chain links
+     * @param {int32} bucket - Hash bucket of the position
+     * @returns {DeflateSimpleMatch} Longest match (length 0 when none)
+     */
     _findMatch(data, position, head, prev, bucket) {
+      /** @type {int32} */
       const maxLength = Math.min(MAX_MATCH, data.length - position);
-      if (maxLength < MIN_MATCH) return { length: 0, distance: 0 };
+      if (maxLength < MIN_MATCH) {
+        return new DeflateSimpleMatch(0, 0);
+      }
 
+      /** @type {int32} */
       const oldest = position - WINDOW_SIZE;
+      /** @type {int32} */
       let best = 0;
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let candidate = head[bucket];
+      /** @type {int32} */
       let probes = MAX_CHAIN;
 
       while (candidate >= 0 && candidate > oldest && probes > 0) {
         probes--;
         if (data[candidate + best] === data[position + best]) {
+          /** @type {int32} */
           let length = 0;
-          while (length < maxLength && data[candidate + length] === data[position + length]) length++;
+          while (length < maxLength && data[candidate + length] === data[position + length]) {
+            length++;
+          }
           if (length > best) {
             best = length;
             bestDistance = position - candidate;
-            if (length === maxLength) break;
+            if (length === maxLength) {
+              break;
+            }
           }
         }
         candidate = prev[candidate];
       }
 
-      if (best < MIN_MATCH) return { length: 0, distance: 0 };
-      return { length: best, distance: bestDistance };
+      if (best < MIN_MATCH) {
+        return new DeflateSimpleMatch(0, 0);
+      }
+      return new DeflateSimpleMatch(best, bestDistance);
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
+      /** @type {BitReader} */
       const reader = new BitReader(data);
+      /** @type {uint8[]} */
       const output = [];
+      /** @type {int32} */
       let last = 0;
 
       do {
         last = reader.readBit();
+        /** @type {int32} */
         const blockType = reader.readValue(2);
 
         if (blockType === 0) {
           reader.alignToByte();
+          /** @type {int32} */
           const storedLength = reader.readValue(16);
           reader.readValue(16); // one's complement of the length
-          for (let i = 0; i < storedLength; i++) output.push(reader.readValue(8));
+          for (let i = 0; i < storedLength; i++) {
+            /** @type {int32} */
+            const value = reader.readValue(8);
+            output.push(value);
+          }
           continue;
         }
 
@@ -437,31 +683,45 @@
         }
 
         for (;;) {
+          /** @type {int32} */
           const symbol = readFixedLiteral(reader);
-          if (symbol === END_OF_BLOCK) break;
+          if (symbol === END_OF_BLOCK) {
+            break;
+          }
 
           if (symbol < END_OF_BLOCK) {
             output.push(symbol);
             continue;
           }
 
+          /** @type {int32} */
           const lengthCode = symbol - 257;
-          if (lengthCode >= LENGTH_CODES.length) {
+          if (lengthCode >= LENGTH_BASE.length) {
             throw new Error('Invalid length code in DEFLATE stream');
           }
-          const length = LENGTH_CODES[lengthCode].base + reader.readValue(LENGTH_CODES[lengthCode].extra);
+          /** @type {int32} */
+          const lengthExtra = reader.readValue(LENGTH_EXTRA[lengthCode]);
+          /** @type {int32} */
+          const length = LENGTH_BASE[lengthCode] + lengthExtra;
 
+          /** @type {int32} */
           const distanceCode = reader.readCode(5);
-          if (distanceCode >= DISTANCE_CODES.length) {
+          if (distanceCode >= DISTANCE_BASE.length) {
             throw new Error('Invalid distance code in DEFLATE stream');
           }
-          const distance = DISTANCE_CODES[distanceCode].base + reader.readValue(DISTANCE_CODES[distanceCode].extra);
+          /** @type {int32} */
+          const distanceExtra = reader.readValue(DISTANCE_EXTRA[distanceCode]);
+          /** @type {int32} */
+          const distance = DISTANCE_BASE[distanceCode] + distanceExtra;
           if (distance > output.length) {
             throw new Error('Distance exceeds available history in DEFLATE stream');
           }
 
+          /** @type {int32} */
           const start = output.length - distance;
-          for (let i = 0; i < length; i++) output.push(output[start + i]);
+          for (let i = 0; i < length; i++) {
+            output.push(output[start + i]);
+          }
         }
       } while (last === 0);
 
