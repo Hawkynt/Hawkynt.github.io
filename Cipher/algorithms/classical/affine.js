@@ -46,12 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
+  /** @type {int32} */
+  const LOWER_A = 97;
+  /** @type {int32} */
+  const LOWER_Z = 122;
 
   /**
    * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
-   * @param {number} byte - Input byte
-   * @returns {number} Character code of the letter's own 'A', or -1
+   * @param {uint8} byte - Input byte
+   * @returns {int32} Character code of the letter's own 'A', or -1
    */
   function LetterCaseBase(byte) {
     if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
@@ -90,18 +97,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Frequency Analysis",
-          text: "Letter frequencies preserved, making frequency analysis effective against longer texts",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Use only for educational purposes, never for actual security"
-        },
-        {
-          type: "Small Key Space",
-          text: "Only 312 possible keys (12 valid 'a' values × 26 'b' values), vulnerable to brute force",
-          uri: "https://en.wikipedia.org/wiki/Brute-force_attack",
-          mitigation: "Consider as demonstration cipher only"
-        }
+        new Vulnerability(
+          "Frequency Analysis",
+          "Letter frequencies preserved, making frequency analysis effective against longer texts",
+          "Use only for educational purposes, never for actual security",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        ),
+        new Vulnerability(
+          "Small Key Space",
+          "Only 312 possible keys (12 valid 'a' values × 26 'b' values), vulnerable to brute force",
+          "Consider as demonstration cipher only",
+          "https://en.wikipedia.org/wiki/Brute-force_attack"
+        )
       ];
 
       // Test vectors using byte arrays - mathematical examples
@@ -137,7 +144,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AffineCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,34 +162,50 @@
   class AffineCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AffineCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keyA = 1;  // Multiplicative coefficient
+      /** @type {int32} */
       this.keyB = 0;  // Additive coefficient
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Valid values for 'a' (must be coprime with 26)
+      /** @type {int32[]} */
       this.VALID_A_VALUES = [1, 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25];
     }
 
-    // Property setter for key
+    /**
+     * Key as the ASCII text "a,b"
+     * @param {uint8[]|null} keyData - Key bytes, or null for a = 1, b = 0
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this.keyA = 1;
         this.keyB = 0;
       } else {
-        // Parse key format: "a,b" 
+        // Parse key format: "a,b"
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
+        /** @type {string[]} */
         const parts = keyStr.split(',');
 
         if (parts.length >= 2) {
-          const a = parseInt(parts[0].trim(), 10);
-          const b = parseInt(parts[1].trim(), 10);
+          /** @type {string} */
+          const aText = parts[0].trim();
+          /** @type {string} */
+          const bText = parts[1].trim();
+          /** @type {int32} */
+          const a = parseInt(aText, 10);
+          /** @type {int32} */
+          const b = parseInt(bText, 10);
 
           // Validate 'a' is coprime with 26
           if (this.VALID_A_VALUES.includes(a)) {
@@ -205,10 +228,17 @@
    */
 
     get key() {
-      return [this.keyA, this.keyB];
+      /** @type {uint8[]} */
+      const pair = [this.keyA, this.keyB];
+      return pair;
     }
 
-    // Find modular multiplicative inverse of a mod 26
+    /**
+     * Find modular multiplicative inverse of a mod m
+     * @param {int32} a - Value
+     * @param {int32} m - Modulus
+     * @returns {int32} a^-1 mod m, or 1 when none exists
+     */
     modInverse(a, m) {
       for (let x = 1; x < m; x++) {
         if ((a * x) % m === 1) {
@@ -229,10 +259,14 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const output = new Array(this.inputBuffer.length);
+      /** @type {int32} */
       const aInverse = this.isInverse ? this.modInverse(this.keyA, 26) : 0;
 
       // Every byte is accounted for. A letter is enciphered in its own case;
@@ -240,7 +274,9 @@
       // strip everything but A-Z" normalisation silently shortened the
       // message - five binary bytes came back as none.
       for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {uint8} */
         const byte = this.inputBuffer[i];
+        /** @type {int32} */
         const caseBase = LetterCaseBase(byte);
 
         if (caseBase < 0) {
@@ -248,7 +284,9 @@
           continue;
         }
 
+        /** @type {int32} */
         const x = byte - caseBase; // Convert the letter to 0-25 within its own case
+        /** @type {int32} */
         const y = this.isInverse
           ? (aInverse * (x - this.keyB + 26)) % 26   // Decryption: x = a^-1 * (y - b) mod 26
           : (this.keyA * x + this.keyB) % 26;        // Encryption: y = (ax + b) mod 26

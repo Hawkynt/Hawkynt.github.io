@@ -38,7 +38,7 @@
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Tc18 — incrementing key, zero plaintext](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -55,6 +55,14 @@
 | `key` | `0001020304050607` |
 | `input` | `000102030405060708090a0b0c0d0e0f` |
 | `expected` | `479e3a9947168262855b5719a8dbc382` |
+
+**Vector 3** — [DarkCrypt Tc18 — random key/plaintext (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `62f42d2febe7e052` |
+| `input` | `9587f7f286be78ec12bdf3a179584cba` |
+| `expected` | `f5422b8a61f8caece1614c13cb133ca2` |
 
 ---
 

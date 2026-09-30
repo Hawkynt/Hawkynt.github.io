@@ -70,11 +70,6 @@
   const YARROW_FAST = 0;                    // Fast pool index
   const YARROW_SLOW = 1;                    // Slow pool index
 
-  // Try to load dependencies
-  const globalScope = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof global !== 'undefined' ? global : {}));
-
   // Load SHA-256 and Rijndael implementations
   if (typeof require !== 'undefined') {
     try {
@@ -88,20 +83,28 @@
   /**
    * SHA-256 hash computation helper
    * Uses the full SHA-256 implementation from algorithms/hash/sha256.js
+   * @param {uint8[]} data - Message
+   * @returns {uint8[]} 32-byte digest
    */
   function sha256Hash(data) {
     const sha256Algo = AlgorithmFramework.Find('SHA-256');
     if (!sha256Algo) {
       throw new Error("SHA-256 implementation not available");
     }
+    /** @type {IHashFunctionInstance} */
     const instance = sha256Algo.CreateInstance();
     instance.Feed(data);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return digest;
   }
 
   /**
    * AES-256 encryption helper
    * Uses Rijndael implementation from algorithms/block/rijndael.js
+   * @param {uint8[]} key - 32-byte key
+   * @param {uint8[]} plaintext - 16-byte block
+   * @returns {uint8[]} 16-byte ciphertext
    */
   function aes256Encrypt(key, plaintext) {
     const aesAlgo = AlgorithmFramework.Find('Rijndael (AES)');
@@ -114,10 +117,13 @@
     if (plaintext.length !== 16) {
       throw new Error("AES requires 16-byte blocks");
     }
+    /** @type {IBlockCipherInstance} */
     const instance = aesAlgo.CreateInstance(false);
     instance.key = key;
     instance.Feed(plaintext);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const ciphertext = instance.Result();
+    return ciphertext;
   }
 
   /**
@@ -125,7 +131,9 @@
    */
   class YarrowSource {
     constructor() {
+      /** @type {int32[]} */
       this.estimate = [0, 0]; // [YARROW_FAST, YARROW_SLOW]
+      /** @type {int32} */
       this.next = YARROW_FAST; // Pool to use next
     }
   }
@@ -189,7 +197,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {YarrowInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -207,26 +215,42 @@
  */
 
   class YarrowInstance extends IAlgorithmInstance {
+    /**
+     * @param {YarrowAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
       // Two entropy pools (SHA-256 contexts stored as accumulated data)
+      /** @type {uint8[][]} */
       this.pools = [[], []]; // [YARROW_FAST, YARROW_SLOW]
 
       // PRNG state
+      /** @type {boolean} */
       this.seeded = false;
+      /** @type {uint8[]} */
       this.key = null;               // AES-256 key (32 bytes)
+      /** @type {uint8[]} */
       this.counter = null;           // AES counter block (16 bytes)
 
       // Entropy sources
+      /** @type {int32} */
       this.nsources = 1;             // Single source for simplified implementation
+      /** @type {YarrowSource[]} */
       this.sources = [new YarrowSource()];
 
       // Output buffer
+      /** @type {uint8[]} */
       this.outputBuffer = [];
+      /** @type {int32} */
       this._outputSize = 32;         // Default: 32 bytes
+      /** @type {uint8[]} */
+      this._pendingEntropy = null;
     }
 
+    /**
+     * @param {uint8[]|null} seedBytes - Seed bytes
+     */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
         return;
@@ -241,6 +265,9 @@
       }
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       if (size < 1 || size > 1048576) {
         throw new Error("Output size must be between 1 and 1048576 bytes");
@@ -248,13 +275,16 @@
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
 
     /**
      * Feed entropy into the PRNG
-     * @param {Array|Uint8Array} data - Entropy data
+     * @param {uint8[]} data - Entropy data
      */
     Feed(data) {
       if (!data || data.length === 0) {
@@ -272,16 +302,19 @@
 
     /**
      * Mix the entropy collected by Feed() into the pools as one contribution
+     * @returns {void}
      */
     _mixPendingEntropy() {
       if (!this._pendingEntropy || this._pendingEntropy.length === 0) {
         return;
       }
 
+      /** @type {uint8[]} */
       const data = this._pendingEntropy;
       this._pendingEntropy = [];
 
       // Estimate entropy as 8 bits per byte (full entropy for seeding)
+      /** @type {int32} */
       const entropy = Math.min(data.length * 8, YARROW_MAX_ENTROPY);
       this.update(0, entropy, data);
 
@@ -293,7 +326,7 @@
 
     /**
      * Generate random output
-     * @returns {Array} Random bytes
+     * @returns {uint8[]} Random bytes
      */
     Result() {
       this._mixPendingEntropy();
@@ -302,10 +335,12 @@
         throw new Error("PRNG not seeded - call Feed() with entropy first");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = this._outputSize;
 
       while (remaining > 0) {
+        /** @type {uint8[]} */
         const block = this._generateBlock();
         const toCopy = Math.min(remaining, block.length);
 
@@ -325,9 +360,9 @@
 
     /**
      * Update entropy pool with new data
-     * @param {number} sourceIndex - Source identifier
-     * @param {number} entropy - Entropy estimate in bits
-     * @param {Array|Uint8Array} data - Entropy data
+     * @param {int32} sourceIndex - Source identifier
+     * @param {int32} entropy - Entropy estimate in bits
+     * @param {uint8[]} data - Entropy data
      * @returns {boolean} True if reseed occurred
      */
     update(sourceIndex, entropy, data) {
@@ -339,7 +374,9 @@
         return false;
       }
 
+      /** @type {YarrowSource} */
       const source = this.sources[sourceIndex];
+      /** @type {int32} */
       let current;
 
       // Determine which pool to use
@@ -400,7 +437,7 @@
 
     /**
      * Generate one block of random data
-     * @returns {Array} 16-byte block
+     * @returns {uint8[]} 16-byte block
      * @private
      */
     _generateBlock() {
@@ -409,6 +446,7 @@
       }
 
       // Encrypt counter with current key
+      /** @type {uint8[]} */
       const block = aes256Encrypt(this.key, this.counter);
 
       // Increment counter (big-endian)
@@ -423,14 +461,16 @@
 
     /**
      * Fast reseed from fast pool
+     * @returns {void}
      * @private
      */
     _fastReseed() {
       // If already seeded, feed current output into pool
       if (this.seeded && this.key && this.counter) {
+        /** @type {uint8[]} */
         const blocks = [];
-        blocks.push(...this._generateBlock());
-        blocks.push(...this._generateBlock());
+        this._appendBlock(blocks);
+        this._appendBlock(blocks);
 
         for (let i = 0; i < blocks.length; ++i) {
           this.pools[YARROW_FAST].push(blocks[i]);
@@ -439,13 +479,17 @@
       }
 
       // Hash the fast pool
+      /** @type {uint8[]} */
       const digest = sha256Hash(this.pools[YARROW_FAST]);
 
       // Clear and reset fast pool
       OpCodes.ClearArray(this.pools[YARROW_FAST]);
-      this.pools[YARROW_FAST] = [];
+      /** @type {uint8[]} */
+      const freshFast = [];
+      this.pools[YARROW_FAST] = freshFast;
 
       // Apply iteration strengthening
+      /** @type {uint8[]} */
       const iteratedDigest = this._iterate(digest);
       OpCodes.ClearArray(digest);
 
@@ -454,10 +498,8 @@
       this.seeded = true;
 
       // Derive new counter by encrypting zero block
-      this.counter = new Array(AES_BLOCK_SIZE);
-      for (let i = 0; i < AES_BLOCK_SIZE; ++i) {
-        this.counter[i] = 0;
-      }
+      this.counter = OpCodes.CreateArray(AES_BLOCK_SIZE, 0);
+      /** @type {uint8[]} */
       const encryptedCounter = aes256Encrypt(this.key, this.counter);
       this.counter = encryptedCounter;
 
@@ -469,15 +511,19 @@
 
     /**
      * Slow reseed from slow pool
+     * @returns {void}
      * @private
      */
     _slowReseed() {
       // Hash the slow pool
+      /** @type {uint8[]} */
       const digest = sha256Hash(this.pools[YARROW_SLOW]);
 
       // Clear and reset slow pool
       OpCodes.ClearArray(this.pools[YARROW_SLOW]);
-      this.pools[YARROW_SLOW] = [];
+      /** @type {uint8[]} */
+      const freshSlow = [];
+      this.pools[YARROW_SLOW] = freshSlow;
 
       // Feed into fast pool
       for (let i = 0; i < digest.length; ++i) {
@@ -496,16 +542,19 @@
 
     /**
      * Iterate hash function to strengthen key derivation
-     * @param {Array} digest - Initial digest
-     * @returns {Array} Strengthened digest
+     * @param {uint8[]} digest - Initial digest
+     * @returns {uint8[]} Strengthened digest
      * @private
      */
     _iterate(digest) {
-      const v0 = [...digest];
-      let current = [...digest];
+      /** @type {uint8[]} */
+      const v0 = digest.slice();
+      /** @type {uint8[]} */
+      let current = digest.slice();
 
       // Iterate: h(current || v0 || i) for i = 1 to YARROW_RESEED_ITERATIONS-1
       for (let i = 1; i < YARROW_RESEED_ITERATIONS; ++i) {
+        /** @type {uint8[]} */
         const toHash = [];
 
         // Concatenate: current || v0 || i (as 4-byte big-endian)
@@ -525,6 +574,7 @@
 
     /**
      * Gate function: re-key with generated output
+     * @returns {void}
      * @private
      */
     _gate() {
@@ -533,9 +583,10 @@
       }
 
       // Generate new key material (32 bytes = 2 blocks)
+      /** @type {uint8[]} */
       const newKey = [];
-      newKey.push(...this._generateBlock());
-      newKey.push(...this._generateBlock());
+      this._appendBlock(newKey);
+      this._appendBlock(newKey);
 
       // Set as new key
       OpCodes.ClearArray(this.key);
@@ -544,7 +595,7 @@
 
     /**
      * Count sources above slow threshold
-     * @returns {number} Number of sources still needed
+     * @returns {int32} Number of sources still needed
      * @private
      */
     _neededSources() {
@@ -555,6 +606,20 @@
         }
       }
       return (k < YARROW_SLOW_K) ? (YARROW_SLOW_K - k) : 0;
+    }
+
+    /**
+     * Append the next generated block to a byte list
+     * @param {uint8[]} target - List to extend
+     * @returns {void}
+     * @private
+     */
+    _appendBlock(target) {
+      /** @type {uint8[]} */
+      const block = this._generateBlock();
+      for (let i = 0; i < block.length; ++i) {
+        target.push(block[i]);
+      }
     }
   }
 

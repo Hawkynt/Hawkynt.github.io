@@ -46,15 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
 
   // The letter the final row of the grid is filled out with, and the letter
   // stripped from the end again on the way back.
+  /** @type {int32} */
   const PAD_LETTER = 88; // 'X'
 
   /**
    * Printable stand-in for a byte, for use in an error message.
-   * @param {number} byte - Offending byte
+   * @param {uint8} byte - Offending byte
    * @returns {string} The character itself when it is printable ASCII, else '?'
    */
   function DescribeByte(byte) {
@@ -68,10 +72,49 @@
    */
   function RequireLetters(message) {
     for (let i = 0; i < message.length; i++) {
+      /** @type {uint8} */
       const byte = message[i];
-      if (byte < UPPER_A || byte > UPPER_Z)
-        throw new Error(`ColumnarInstance.Result: byte 0x${byte.toString(16).padStart(2, '0')}`
-          + ` ('${DescribeByte(byte)}') at position ${i} is outside the A-Z alphabet the grid holds`);
+      if (byte < UPPER_A || byte > UPPER_Z) {
+        /** @type {string} */
+        let hex = byte.toString(16);
+        while (hex.length < 2) hex = '0' + hex;
+        throw new Error("ColumnarInstance.Result: byte 0x" + hex
+          + " ('" + DescribeByte(byte) + "') at position " + i + " is outside the A-Z alphabet the grid holds");
+      }
+    }
+  }
+
+  /**
+   * Keyword length range of the algorithm metadata
+   * @class
+   */
+  class ColumnarKeyRange {
+    /**
+     * @param {int32} min - Shortest keyword
+     * @param {int32} max - Longest keyword
+     * @param {int32} step - Length step
+     */
+    constructor(min, max, step) {
+      /** @type {int32} */
+      this.min = min;
+      /** @type {int32} */
+      this.max = max;
+      /** @type {int32} */
+      this.step = step;
+    }
+  }
+
+  /**
+   * Block size note of the algorithm metadata
+   * @class
+   */
+  class ColumnarBlockInfo {
+    /**
+     * @param {boolean} variable - Whether the block size varies with the input
+     */
+    constructor(variable) {
+      /** @type {boolean} */
+      this.variable = variable;
     }
   }
 
@@ -89,8 +132,10 @@
         this.year = 1500;
         this.country = CountryCode.INTERNATIONAL;
 
-        this.keySize = { min: 1, max: 50, step: 1 };
-        this.blockSize = { variable: true };
+        /** @type {ColumnarKeyRange} */
+        this.keySize = new ColumnarKeyRange(1, 50, 1);
+        /** @type {ColumnarBlockInfo} */
+        this.blockSize = new ColumnarBlockInfo(true);
 
         // The grid is padded out with the letter X, so the message has to be
         // drawn from the alphabet X belongs to. Declared here so the
@@ -139,30 +184,72 @@
         ];
 
         // For the test suite compatibility 
+        /** @type {TestCase[]} */
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create new instance
+       * @param {boolean} isInverse - Decryption mode flag
+       * @returns {ColumnarInstance} New instance
+       */
       CreateInstance(isInverse) {
         return new ColumnarInstance(this, isInverse);
       }
     }
 
+    /**
+     * One keyword column while the column order is worked out
+     * @class
+     */
+    class ColumnEntry {
+      /**
+       * @param {string} letter - Keyword letter heading the column
+       * @param {int32} originalPos - Column index in the grid
+       */
+      constructor(letter, originalPos) {
+        /** @type {string} */
+        this.letter = letter;
+        /** @type {int32} */
+        this.originalPos = originalPos;
+        /** @type {int32} */
+        this.sortedPos = 0;
+      }
+    }
+
     class ColumnarInstance extends IAlgorithmInstance {
+      /**
+       * @param {ColumnarCipher} algorithm - Parent algorithm instance
+       * @param {boolean} isInverse - Decryption mode flag
+       */
       constructor(algorithm, isInverse) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse || false;
+        /** @type {string} */
         this._key = '';
+        /** @type {string} */
         this._cleanKey = '';
+        /** @type {int32[]} */
         this._columnOrder = [];
       }
 
+      /**
+       * Keyword as a string, its ASCII bytes, or an object carrying either as 'key'
+       * @param {string|uint8[]} keyData - Keyword
+       */
       set key(keyData) {
         if (typeof keyData === 'string') {
-          this._key = keyData;
-          this.setupKey(keyData);
+          /** @type {string} */
+          const keyText = keyData;
+          this._key = keyText;
+          this.setupKey(keyText);
         } else if (Array.isArray(keyData)) {
           // Convert byte array to string
-          const keyString = String.fromCharCode(...keyData);
+          /** @type {uint8[]} */
+          const bytes = keyData;
+          /** @type {string} */
+          const keyString = String.fromCharCode(...bytes);
           this._key = keyString;
           this.setupKey(keyString);
         } else if (keyData && keyData.key) {
@@ -170,19 +257,26 @@
         }
       }
 
+      /**
+       * @returns {string} Keyword as given
+       */
       get key() {
         return this._key;
       }
 
+      /**
+       * Clean keyword: remove non-letters, convert to uppercase, remove duplicates
+       * @param {string} keyString - Keyword
+       * @returns {void}
+       */
       setupKey(keyString) {
-        // Clean keyword: remove non-letters, convert to uppercase, remove duplicates
+        /** @type {string} */
         let cleanKeyword = '';
-        const used = {};
         for (let i = 0; i < keyString.length; i++) {
+          /** @type {string} */
           const char = keyString.charAt(i).toUpperCase();
-          if (char >= 'A' && char <= 'Z' && !used[char]) {
+          if (char >= 'A' && char <= 'Z' && cleanKeyword.indexOf(char) < 0) {
             cleanKeyword += char;
-            used[char] = true;
           }
         }
 
@@ -194,25 +288,48 @@
         this._columnOrder = this.generateColumnOrder(cleanKeyword);
       }
 
+      /**
+       * Order a before b: by letter (locale order), then by original position
+       * @param {ColumnEntry} a - Column
+       * @param {ColumnEntry} b - Column
+       * @returns {int32} Negative, zero or positive
+       */
+      _compareColumns(a, b) {
+        if (a.letter === b.letter) {
+          return a.originalPos - b.originalPos;
+        }
+        /** @type {int32} */
+        const order = a.letter.localeCompare(b.letter);
+        return order;
+      }
+
+      /**
+       * Rank of every keyword column in alphabetical order
+       * @param {string} keyword - Keyword
+       * @returns {int32[]} Sorted place of each column
+       */
       generateColumnOrder(keyword) {
+        /** @type {ColumnEntry[]} */
         const columns = [];
 
-        // Create array of {letter, position} objects
+        // One entry per keyword letter
         for (let i = 0; i < keyword.length; i++) {
-          columns.push({
-            letter: keyword.charAt(i),
-            originalPos: i,
-            sortedPos: 0
-          });
+          columns.push(new ColumnEntry(keyword.charAt(i), i));
         }
 
-        // Sort by letter, then by original position for duplicates
-        columns.sort((a, b) => {
-          if (a.letter === b.letter) {
-            return a.originalPos - b.originalPos;
+        // Sort by letter, then by original position for duplicates; the
+        // comparison is a total order, so any sort yields this same order
+        for (let i = 1; i < columns.length; i++) {
+          /** @type {ColumnEntry} */
+          const entry = columns[i];
+          /** @type {int32} */
+          let j = i - 1;
+          while (j >= 0 && this._compareColumns(columns[j], entry) > 0) {
+            columns[j + 1] = columns[j];
+            j--;
           }
-          return a.letter.localeCompare(b.letter);
-        });
+          columns[j + 1] = entry;
+        }
 
         // Assign sorted positions
         for (let i = 0; i < columns.length; i++) {
@@ -220,6 +337,7 @@
         }
 
         // Create ordering array
+        /** @type {int32[]} */
         const order = new Array(keyword.length);
         for (let i = 0; i < columns.length; i++) {
           order[columns[i].originalPos] = columns[i].sortedPos;
@@ -230,8 +348,8 @@
 
       /**
        * Find the grid column whose keyword letter sorts into a given place.
-       * @param {number} sortedPosition - Place in keyword-alphabetical order
-       * @returns {number} Index of that column in the grid
+       * @param {int32} sortedPosition - Place in keyword-alphabetical order
+       * @returns {int32} Index of that column in the grid
        */
       columnAt(sortedPosition) {
         for (let col = 0; col < this._columnOrder.length; col++)
@@ -243,6 +361,7 @@
        * Write the message across the grid and read the columns off in
        * keyword-alphabetical order. The last row is filled out with X first,
        * so the ciphertext is a whole number of rows.
+       * @param {int32} blockIndex - Unused
        * @param {uint8[]} plaintext - Message bytes, all A-Z
        * @returns {uint8[]} Transposed bytes
        */
@@ -250,14 +369,20 @@
         // With no keyword there are no columns to read, so the message stands
         if (!this._cleanKey || this._cleanKey.length === 0) return plaintext;
 
+        /** @type {int32} */
         const columns = this._cleanKey.length;
+        /** @type {int32} */
         const rows = Math.ceil(plaintext.length / columns);
+        /** @type {uint8[]} */
         const result = new Array(rows * columns);
 
+        /** @type {int32} */
         let position = 0;
         for (let sortedPosition = 0; sortedPosition < columns; sortedPosition++) {
+          /** @type {int32} */
           const originalCol = this.columnAt(sortedPosition);
           for (let row = 0; row < rows; row++) {
+            /** @type {int32} */
             const index = row * columns + originalCol;
             result[position++] = index < plaintext.length ? plaintext[index] : PAD_LETTER;
           }
@@ -272,6 +397,7 @@
        * ended in X is indistinguishable from padding and comes back short -
        * the same ambiguity as zero padding, and it is stated in the
        * description rather than hidden.
+       * @param {int32} blockIndex - Unused
        * @param {uint8[]} ciphertext - Transposed bytes, all A-Z
        * @returns {uint8[]} Original bytes, less any trailing X
        */
@@ -279,24 +405,34 @@
         // With no keyword there are no columns to refill, so the message stands
         if (!this._cleanKey || this._cleanKey.length === 0) return ciphertext;
 
+        /** @type {int32} */
         const columns = this._cleanKey.length;
+        /** @type {int32} */
         const rows = Math.ceil(ciphertext.length / columns);
+        /** @type {int32} */
         const baseHeight = Math.floor(ciphertext.length / columns);
+        /** @type {int32} */
         const remainder = ciphertext.length % columns;
 
         // -1 marks a cell of a ragged final row, which only a ciphertext this
         // cipher did not produce can have; those cells are skipped on the way
         // out rather than emitted as a byte.
-        const grid = new Array(rows * columns).fill(-1);
+        /** @type {int32[]} */
+        const grid = new Array(rows * columns);
+        for (let i = 0; i < grid.length; i++) grid[i] = -1;
 
+        /** @type {int32} */
         let position = 0;
         for (let sortedPosition = 0; sortedPosition < columns; sortedPosition++) {
+          /** @type {int32} */
           const originalCol = this.columnAt(sortedPosition);
+          /** @type {int32} */
           const height = baseHeight + (sortedPosition < remainder ? 1 : 0);
           for (let row = 0; row < height && position < ciphertext.length; row++)
             grid[row * columns + originalCol] = ciphertext[position++];
         }
 
+        /** @type {uint8[]} */
         const result = [];
         for (let i = 0; i < grid.length; i++)
           if (grid[i] >= 0) result.push(grid[i]);
@@ -307,6 +443,10 @@
       }
 
       // Modern AlgorithmFramework interface - Feed/Result pattern
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {void}
+       */
       Feed(data) {
         if (!data || data.length === 0) return;
 
@@ -317,11 +457,17 @@
         for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
       }
 
+      /**
+       * @returns {uint8[]} Transposed bytes
+       */
       Result() {
         if (!this.inputBuffer || this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
+        /** @type {uint8[]} */
         const message = this.inputBuffer;
         this.inputBuffer = [];
 
@@ -336,6 +482,7 @@
           : this.EncryptBlock(0, message);
       }
     }
+
 
   // ===== REGISTRATION =====
 

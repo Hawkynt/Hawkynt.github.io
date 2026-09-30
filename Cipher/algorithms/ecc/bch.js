@@ -108,7 +108,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BCHInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -125,18 +125,23 @@
   class BCHInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BCHAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this.m = 4; // Field extension (GF(2^4))
       this.t = 2; // Error correction capability
       this.n = 15; // Code length (2^m - 1)
       this.k = 7;  // Information length
+      /** @type {uint8[]} */
       this.generatorPolynomial = [1, 1, 0, 1, 1, 0, 0, 0, 1]; // Example BCH(15,7) generator
     }
 
@@ -176,6 +181,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Simplified error detection - in real implementation this would use syndrome calculation
       if (!Array.isArray(data)) {
@@ -183,13 +192,19 @@
       }
 
       // For educational purposes, assume no errors if checksum matches
+      /** @type {uint32} */
       const checksum = this.calculateChecksum(data);
       return checksum === 0;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Simplified BCH encoding for educational purposes
       // Real implementation would use systematic encoding with generator polynomial
+      /** @type {uint8[]} */
       const encoded = new Array(data.length);
 
       for (let i = 0; i < data.length; i++) {
@@ -197,12 +212,17 @@
       }
 
       // Add simple parity bits (not real BCH, but demonstrates concept)
+      /** @type {uint32} */
       const parity = this.calculateParity(data);
       encoded.push(parity);
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Simplified BCH decoding for educational purposes
       if (data.length === 0) {
@@ -210,8 +230,11 @@
       }
 
       // Remove parity bit and verify
+      /** @type {uint8[]} */
       const decoded = data.slice(0, -1);
+      /** @type {uint8} */
       const receivedParity = data[data.length - 1];
+      /** @type {uint32} */
       const calculatedParity = this.calculateParity(decoded);
 
       // Simple error detection (not correction)
@@ -222,33 +245,58 @@
       return decoded;
     }
 
+    /**
+     * Simple XOR parity for demonstration
+     * @param {uint8[]} data - Symbols
+     * @returns {uint32} XOR of all symbols
+     */
     calculateParity(data) {
       // Simple XOR parity for demonstration
+      /** @type {uint32} */
       let parity = 0;
       for (let i = 0; i < data.length; i++) {
-        parity = OpCodes.XorN(parity, data[i]);
+        parity = OpCodes.Xor32(parity, data[i]);
       }
       return parity;
     }
 
+    /**
+     * @param {uint8[]} data - Symbols
+     * @returns {uint32} Sum of all symbols mod 256
+     */
     calculateChecksum(data) {
       // Simplified checksum calculation
+      /** @type {uint32} */
       let checksum = 0;
       for (let i = 0; i < data.length; i++) {
-        checksum = OpCodes.AndN((checksum + data[i]), 0xFF);
+        checksum = OpCodes.And32((checksum + data[i]), 0xFF);
       }
       return checksum;
     }
 
     // Galois Field arithmetic helpers (simplified for education)
+    /**
+     * @param {uint32} a - Field element
+     * @param {uint32} b - Field element
+     * @returns {uint32} a + b in GF(2^m)
+     */
     gfAdd(a, b) {
-      return OpCodes.XorN(a, b); // Addition in GF(2) is XOR
+      return OpCodes.Xor32(a, b); // Addition in GF(2) is XOR
     }
 
+    /**
+     * @param {int32} a - Field element
+     * @param {int32} b - Field element
+     * @returns {int32} Placeholder product (a * b) mod 255
+     */
     gfMultiply(a, b) {
       // Simplified GF multiplication (incomplete implementation for education)
-      if (a === 0 || b === 0) return 0;
-      return (a * b) % 255; // Placeholder - real implementation needs irreducible polynomial
+      if (a === 0 || b === 0) {
+        return 0;
+      }
+      /** @type {int32} */
+      const product = a * b;
+      return product % 255; // Placeholder - real implementation needs irreducible polynomial
     }
   }
 

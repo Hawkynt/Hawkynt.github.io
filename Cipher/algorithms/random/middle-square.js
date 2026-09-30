@@ -149,7 +149,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MiddleSquareInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -167,11 +167,18 @@
  */
 
   class MiddleSquareInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MiddleSquareAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Middle Square state (using BigInt for 128-bit arithmetic)
+      /** @type {BigInt} */
       this._state = 0n;
+      /** @type {BigInt} */
       this._modulo = 0n; // Optional modulo parameter (0 means no modulo)
 
       // Internal state
@@ -181,6 +188,7 @@
     /**
      * Set seed value
      * Matches C# implementation: state = ((UInt128)seed left-shift 64) bitwise-OR ~seed
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -189,6 +197,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -196,6 +205,7 @@
 
       // Middle Square initialization: state = (OpCodes.Shl32(seed, 64))|~seed
       // This matches the C# implementation's UInt128 initialization
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       const highPart = OpCodes.ShiftLn(seedValue, 64n);
       // Bitwise NOT for 64-bit: XOR with all 1s
@@ -203,12 +213,16 @@
       this._state = OpCodes.OrN(highPart, lowPart);
 
       // Mask to 128-bit
-      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
+      /** @type {BigInt} */
+      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -216,14 +230,17 @@
     /**
      * Set optional modulo parameter
      * Matches C# implementation's modulo behavior
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
      */
     set modulo(moduloBytes) {
       if (!moduloBytes || moduloBytes.length === 0) {
+        /** @type {BigInt} */
         this._modulo = 0n;
         return;
       }
 
       // Convert modulo bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let moduloValue = 0n;
       for (let i = 0; i < moduloBytes.length; ++i) {
         moduloValue = OpCodes.OrN(OpCodes.ShiftLn(moduloValue, 8), BigInt(moduloBytes[i]));
@@ -232,6 +249,9 @@
       this._modulo = moduloValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get modulo() {
       return null;
     }
@@ -241,6 +261,7 @@
      * Matches C# implementation:
      * - Without modulo: state *= state; return (ulong)(state right-shift 32);
      * - With modulo: state *= state; return (ulong)(state / modulo % modulo);
+     * @returns {BigInt} Next output
      */
     _next() {
       if (!this._ready) {
@@ -251,9 +272,11 @@
       this._state = this._state * this._state;
 
       // Mask to 128-bit (simulate UInt128 overflow)
-      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
+      /** @type {BigInt} */
+      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
+      /** @type {BigInt} */
       let outputValue;
 
       if (this._modulo === 0n) {
@@ -274,8 +297,8 @@
      * Generate random bytes
      * Outputs values packed as 32-bit (matching C# ulong but truncated to 32-bit)
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -283,16 +306,21 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         // Pack as 32-bit value (big-endian) to match test vectors
         // Extract lower 32 bits
+        /** @type {uint32} */
         const value32 = Number(OpCodes.AndN(value, 0xFFFFFFFFn));
         const bytes = OpCodes.Unpack32BE(value32);
 
@@ -324,19 +352,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

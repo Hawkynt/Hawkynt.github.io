@@ -77,7 +77,9 @@
     : (typeof window !== 'undefined' ? window
     : (typeof self !== 'undefined' ? self : {}));
 
-  const shakeAlgorithms = { 128: null, 256: null };
+  // Resolved SHAKE128 and SHAKE256 algorithms, in that order.
+  /** @type {Algorithm[]} */
+  const shakeAlgorithms = [null, null];
 
   /**
    * Resolve a SHAKE algorithm object: the registry first, then the global
@@ -91,12 +93,14 @@
    * index. Resolving on demand leaves shake.js to register itself when the
    * walk reaches it.
    *
-   * @param {number} variant - 128 or 256
-   * @returns {object} An algorithm exposing CreateInstance()
+   * @param {int32} variant - 128 or 256
+   * @returns {Algorithm} An algorithm exposing CreateInstance()
    */
   function shakeAlgorithm(variant) {
-    if (shakeAlgorithms[variant]) return shakeAlgorithms[variant];
+    const slot = variant === 128 ? 0 : 1;
+    if (shakeAlgorithms[slot]) return shakeAlgorithms[slot];
 
+    /** @type {Algorithm} */
     let algo = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHAKE' + variant) : null;
 
     if (!algo) {
@@ -108,12 +112,16 @@
           // Reported as a missing dependency below.
         }
       }
-      if (SHAKEAlgorithmClass) algo = new SHAKEAlgorithmClass(String(variant));
+      if (SHAKEAlgorithmClass) {
+        /** @type {string} */
+        const variantName = String(variant);
+        algo = new SHAKEAlgorithmClass(variantName);
+      }
     }
 
     if (!algo) throw new Error('SHAKE' + variant + ' is required by ML-DSA and was not found');
 
-    shakeAlgorithms[variant] = algo;
+    shakeAlgorithms[slot] = algo;
     return algo;
   }
 
@@ -127,52 +135,165 @@
 
   /**
    * Squeeze a fixed number of bytes out of SHAKE.
-   * @param {number} variant - 128 or 256
-   * @param {number[]} input - message bytes
-   * @param {number} outLen - bytes wanted, at most 1024
-   * @returns {number[]} outLen bytes
+   * @param {int32} variant - 128 or 256
+   * @param {uint8[]} input - message bytes
+   * @param {int32} outLen - bytes wanted, at most 1024
+   * @returns {uint8[]} outLen bytes
    */
   function shakeBytes(variant, input, outLen) {
+    /** @type {IHashFunctionInstance} */
     const instance = shakeAlgorithm(variant).CreateInstance();
     instance.outputSize = outLen;
     instance.Feed(input);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
-  const H = (input, outLen) => shakeBytes(256, input, outLen);
+  /**
+   * SHAKE256 with a fixed output length, the H of FIPS 204.
+   * @param {uint8[]} input - message bytes
+   * @param {int32} outLen - bytes wanted
+   * @returns {uint8[]} outLen bytes
+   */
+  function H(input, outLen) {
+    return shakeBytes(256, input, outLen);
+  }
 
   /**
    * A read-forward view over a SHAKE squeeze, used by the rejection samplers.
    */
   class XofStream {
     /**
-     * @param {number} variant - 128 or 256
-     * @param {number[]} seed - absorbed input
-     * @param {number} initialBytes - first squeeze length
+     * @param {int32} variant - 128 or 256
+     * @param {uint8[]} seed - absorbed input
+     * @param {int32} initialBytes - first squeeze length
      */
     constructor(variant, seed, initialBytes) {
+      /** @type {int32} */
       this._variant = variant;
+      /** @type {uint8[]} */
       this._seed = seed;
+      /** @type {int32} */
       this._position = 0;
+      /** @type {uint8[]} */
       this._buffer = shakeBytes(variant, seed, initialBytes);
     }
+  }
 
+  /**
+   * Read the next count bytes of a squeeze.
+   * @param {XofStream} stream - the squeeze read from
+   * @param {int32} count - bytes wanted
+   * @returns {uint8[]} count bytes
+   */
+  function xofRead(stream, count) {
+    if (stream._position + count > stream._buffer.length) {
+      const wanted = Math.min(XOF_MAX_BYTES, Math.max(stream._buffer.length * 2, stream._position + count));
+      if (wanted < stream._position + count)
+        throw new Error('ML-DSA rejection sampling exceeded ' + XOF_MAX_BYTES + ' bytes of SHAKE output');
+      stream._buffer = shakeBytes(stream._variant, stream._seed, wanted);
+    }
+
+    const out = stream._buffer.slice(stream._position, stream._position + count);
+    stream._position += count;
+    return out;
+  }
+
+  // ===== DECODED VALUES =====
+
+  /**
+   * The two short secret vectors of ExpandS.
+   */
+  class DilithiumSecrets {
     /**
-     * Read the next count bytes of the squeeze.
-     * @param {number} count - bytes wanted
-     * @returns {number[]} count bytes
+     * @param {int32[][]} s1 - l polynomials
+     * @param {int32[][]} s2 - k polynomials
      */
-    Read(count) {
-      if (this._position + count > this._buffer.length) {
-        const wanted = Math.min(XOF_MAX_BYTES, Math.max(this._buffer.length * 2, this._position + count));
-        if (wanted < this._position + count)
-          throw new Error('ML-DSA rejection sampling exceeded ' + XOF_MAX_BYTES + ' bytes of SHAKE output');
-        this._buffer = shakeBytes(this._variant, this._seed, wanted);
-      }
+    constructor(s1, s2) {
+      /** @type {int32[][]} */
+      this.s1 = s1;
+      /** @type {int32[][]} */
+      this.s2 = s2;
+    }
+  }
 
-      const out = this._buffer.slice(this._position, this._position + count);
-      this._position += count;
-      return out;
+  /**
+   * A decoded public key.
+   */
+  class DilithiumPublicParts {
+    /**
+     * @param {uint8[]} rho - matrix seed
+     * @param {int32[][]} t1 - k high-part polynomials
+     */
+    constructor(rho, t1) {
+      /** @type {uint8[]} */
+      this.rho = rho;
+      /** @type {int32[][]} */
+      this.t1 = t1;
+    }
+  }
+
+  /**
+   * A decoded private key.
+   */
+  class DilithiumPrivateParts {
+    /**
+     * @param {uint8[]} rho - matrix seed
+     * @param {uint8[]} K - signing seed
+     * @param {uint8[]} tr - hash of the public key
+     * @param {int32[][]} s1 - l short polynomials
+     * @param {int32[][]} s2 - k short polynomials
+     * @param {int32[][]} t0 - k low-part polynomials
+     */
+    constructor(rho, K, tr, s1, s2, t0) {
+      /** @type {uint8[]} */
+      this.rho = rho;
+      /** @type {uint8[]} */
+      this.K = K;
+      /** @type {uint8[]} */
+      this.tr = tr;
+      /** @type {int32[][]} */
+      this.s1 = s1;
+      /** @type {int32[][]} */
+      this.s2 = s2;
+      /** @type {int32[][]} */
+      this.t0 = t0;
+    }
+  }
+
+  /**
+   * A decoded signature.
+   */
+  class DilithiumSignatureParts {
+    /**
+     * @param {uint8[]} cTilde - commitment hash
+     * @param {int32[][]} z - l response polynomials
+     * @param {int32[][]|null} h - k hint polynomials, null when malformed
+     */
+    constructor(cTilde, z, h) {
+      /** @type {uint8[]} */
+      this.cTilde = cTilde;
+      /** @type {int32[][]} */
+      this.z = z;
+      /** @type {int32[][]|null} */
+      this.h = h;
+    }
+  }
+
+  /**
+   * An encoded key pair.
+   */
+  class DilithiumKeyPair {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} privateKey - encoded private key
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.privateKey = privateKey;
     }
   }
 
@@ -187,17 +308,34 @@
   const SEED_BYTES = 32;
   const TR_BYTES = 64;
 
-  const POW2 = (() => {
+  /**
+   * Powers of two, 2^0 .. 2^31.
+   * @returns {uint32[]} the table
+   */
+  function buildPow2() {
+    /** @type {uint32[]} */
     const table = new Array(32);
     table[0] = 1;
-    for (let i = 1; i < 32; i++) table[i] = table[i - 1] * 2;
+    for (let i = 1; i < 32; i++) {
+      /** @type {uint32} */
+      const doubled = table[i - 1] * 2;
+      table[i] = doubled;
+    }
     return table;
-  })();
+  }
+
+  /** @type {uint32[]} */
+  const POW2 = buildPow2();
 
   // FIPS 204 Appendix B: zeta[k] = ZETA^brv(k) mod Q, brv being the reversal of
   // an eight bit index. Derived here from ZETA rather than pasted in, so the
   // table cannot disagree with the generator it is supposed to come from.
-  const ZETAS = (() => {
+  /**
+   * zeta^brv(k) mod Q for k = 0 .. 255.
+   * @returns {int32[]} the table
+   */
+  function buildZetas() {
+    /** @type {int32[]} */
     const table = new Array(256);
     for (let k = 0; k < 256; k++) {
       let exponent = 0;
@@ -209,66 +347,140 @@
       table[k] = value;
     }
     return table;
-  })();
+  }
+
+  /** @type {int32[]} */
+  const ZETAS = buildZetas();
+
+  /**
+   * One ML-DSA parameter set (FIPS 204 table 1).
+   */
+  class DilithiumParams {
+    /**
+     * @param {string} name - standardised label
+     * @param {string} alias - round-3 label
+     * @param {int32} nistLevel - NIST security category
+     * @param {int32} tau - number of +-1 coefficients of the challenge
+     * @param {int32} lambda - collision strength of the commitment hash
+     * @param {int32} gamma1 - coefficient range of y
+     * @param {int32} gamma2 - low order rounding range
+     * @param {int32} k - rows of A
+     * @param {int32} l - columns of A
+     * @param {int32} eta - private key range
+     * @param {int32} omega - maximum number of ones in the hint
+     * @param {int32} publicKeySize - encoded public key bytes
+     * @param {int32} privateKeySize - encoded private key bytes
+     * @param {int32} signatureSize - encoded signature bytes
+     */
+    constructor(name, alias, nistLevel, tau, lambda, gamma1, gamma2, k, l, eta, omega,
+                publicKeySize, privateKeySize, signatureSize) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {string} */
+      this.alias = alias;
+      /** @type {int32} */
+      this.nistLevel = nistLevel;
+      /** @type {int32} */
+      this.tau = tau;
+      /** @type {int32} */
+      this.lambda = lambda;
+      /** @type {int32} */
+      this.gamma1 = gamma1;
+      /** @type {int32} */
+      this.gamma2 = gamma2;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.l = l;
+      /** @type {int32} */
+      this.eta = eta;
+      /** @type {int32} */
+      this.omega = omega;
+      /** @type {int32} */
+      this.publicKeySize = publicKeySize;
+      /** @type {int32} */
+      this.privateKeySize = privateKeySize;
+      /** @type {int32} */
+      this.signatureSize = signatureSize;
+      /** @type {int32} */
+      this.beta = tau * eta;
+    }
+  }
+
+  /** @type {DilithiumParams} */
+  const ML_DSA_44 = new DilithiumParams('ML-DSA-44', 'Dilithium2', 2,
+    39, 128, 131072, 95232,
+    4, 4, 2, 80,
+    1312, 2560, 2420);
+  /** @type {DilithiumParams} */
+  const ML_DSA_65 = new DilithiumParams('ML-DSA-65', 'Dilithium3', 3,
+    49, 192, 524288, 261888,
+    6, 5, 4, 55,
+    1952, 4032, 3309);
+  /** @type {DilithiumParams} */
+  const ML_DSA_87 = new DilithiumParams('ML-DSA-87', 'Dilithium5', 5,
+    60, 256, 524288, 261888,
+    8, 7, 2, 75,
+    2592, 4896, 4627);
 
   const PARAMETER_SETS = {
-    'ML-DSA-44': {
-      name: 'ML-DSA-44', alias: 'Dilithium2', nistLevel: 2,
-      tau: 39, lambda: 128, gamma1: 131072, gamma2: 95232,
-      k: 4, l: 4, eta: 2, omega: 80,
-      publicKeySize: 1312, privateKeySize: 2560, signatureSize: 2420
-    },
-    'ML-DSA-65': {
-      name: 'ML-DSA-65', alias: 'Dilithium3', nistLevel: 3,
-      tau: 49, lambda: 192, gamma1: 524288, gamma2: 261888,
-      k: 6, l: 5, eta: 4, omega: 55,
-      publicKeySize: 1952, privateKeySize: 4032, signatureSize: 3309
-    },
-    'ML-DSA-87': {
-      name: 'ML-DSA-87', alias: 'Dilithium5', nistLevel: 5,
-      tau: 60, lambda: 256, gamma1: 524288, gamma2: 261888,
-      k: 8, l: 7, eta: 2, omega: 75,
-      publicKeySize: 2592, privateKeySize: 4896, signatureSize: 4627
-    }
+    'ML-DSA-44': ML_DSA_44,
+    'ML-DSA-65': ML_DSA_65,
+    'ML-DSA-87': ML_DSA_87
   };
 
-  for (const set of Object.values(PARAMETER_SETS))
-    set.beta = set.tau * set.eta;
+  /** @type {DilithiumParams[]} */
+  const PARAMETER_SET_LIST = [ML_DSA_44, ML_DSA_65, ML_DSA_87];
 
-  // Every accepted spelling of a parameter set, so a caller can name it by the
-  // standardised label, the round-3 label, or either number.
-  const PARAMETER_SET_ALIASES = (() => {
+  /**
+   * Every accepted spelling of a parameter set, so a caller can name it by the
+   * standardised label, the round-3 label, or either number.
+   * @returns {Object} spelling to parameter set
+   */
+  function buildParameterSetAliases() {
     const map = {};
-    for (const set of Object.values(PARAMETER_SETS)) {
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      const set = PARAMETER_SET_LIST[i];
       map[set.name] = set;
       map[set.alias] = set;
       map[set.name.substring(7)] = set;  // 44, 65, 87
       map[set.alias.substring(9)] = set;  // 2, 3, 5
     }
     return map;
-  })();
+  }
+
+  const PARAMETER_SET_ALIASES = buildParameterSetAliases();
 
   /**
    * Look a parameter set up by any of its accepted names.
-   * @param {string|number} label - 'ML-DSA-44', 'Dilithium2', 44, 2, ...
-   * @returns {object|null} The parameter set, or null when unrecognised
+   * @param {string} label - 'ML-DSA-44', 'Dilithium2', 44, 2, ...
+   * @returns {DilithiumParams|null} The parameter set, or null when unrecognised
    */
   function findParameterSet(label) {
-    if (label === null || label === undefined) return null;
+    if (label === null || label === undefined) {
+      return null;
+    }
+    /** @type {string} */
     const key = String(label).trim();
-    return PARAMETER_SET_ALIASES[key] || PARAMETER_SET_ALIASES[key.toUpperCase()] || null;
+    /** @type {DilithiumParams|null} */
+    const found = PARAMETER_SET_ALIASES[key] || PARAMETER_SET_ALIASES[key.toUpperCase()] || null;
+    return found;
   }
 
   /**
    * Identify a parameter set from the length of one of its encoded values.
    * The nine lengths are pairwise distinct, so this is unambiguous.
-   * @param {number} length - byte length
+   * @param {int32} length - byte length
    * @param {string} field - 'publicKeySize', 'privateKeySize' or 'signatureSize'
-   * @returns {object|null} The parameter set, or null
+   * @returns {DilithiumParams|null} The parameter set, or null
    */
   function parameterSetByLength(length, field) {
-    for (const set of Object.values(PARAMETER_SETS))
-      if (set[field] === length) return set;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      const set = PARAMETER_SET_LIST[i];
+      /** @type {int32} */
+      const size = set[field];
+      if (size === length) return set;
+    }
     return null;
   }
 
@@ -280,9 +492,9 @@
 
   /**
    * Append every element of source to target.
-   * @param {number[]} target - array appended to, modified in place
-   * @param {number[]} source - array read from
-   * @returns {number[]} target
+   * @param {uint8[]} target - array appended to, modified in place
+   * @param {uint8[]} source - array read from
+   * @returns {uint8[]} target
    */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
@@ -291,10 +503,10 @@
 
   /**
    * Copy source into target starting at offset.
-   * @param {number[]} target - array written to, modified in place
-   * @param {number} offset - first index written
-   * @param {number[]} source - array read from
-   * @returns {number} the index one past the last written
+   * @param {uint8[]} target - array written to, modified in place
+   * @param {int32} offset - first index written
+   * @param {uint8[]} source - array read from
+   * @returns {int32} the index one past the last written
    */
   function writeAt(target, offset, source) {
     for (let i = 0; i < source.length; i++) target[offset + i] = source[i];
@@ -305,8 +517,8 @@
 
   /**
    * Least non-negative residue modulo Q.
-   * @param {number} a - any integer
-   * @returns {number} a mod Q, in [0, Q)
+   * @param {int32} a - any integer
+   * @returns {int32} a mod Q, in [0, Q)
    */
   function modQ(a) {
     const r = a % Q;
@@ -315,9 +527,9 @@
 
   /**
    * Centred residue modulo an even alpha, in (-alpha/2, alpha/2].
-   * @param {number} r - any integer
-   * @param {number} alpha - even modulus
-   * @returns {number} the centred representative
+   * @param {int32} r - any integer
+   * @param {int32} alpha - even modulus
+   * @returns {int32} the centred representative
    */
   function modPlusMinus(r, alpha) {
     let m = r % alpha;
@@ -328,8 +540,8 @@
 
   /**
    * Centred residue modulo Q, in [-(Q-1)/2, (Q-1)/2].
-   * @param {number} r - any integer
-   * @returns {number} the centred representative
+   * @param {int32} r - any integer
+   * @returns {int32} the centred representative
    */
   function modPlusMinusQ(r) {
     const m = modQ(r);
@@ -338,8 +550,8 @@
 
   /**
    * Infinity norm of a polynomial, measured on centred representatives.
-   * @param {number[]} poly - 256 coefficients in [0, Q)
-   * @returns {number} max |c mod+- Q|
+   * @param {int32[]} poly - 256 coefficients in [0, Q)
+   * @returns {int32} max |c mod+- Q|
    */
   function polyNormInfinity(poly) {
     let worst = 0;
@@ -352,8 +564,8 @@
 
   /**
    * Infinity norm of a vector of polynomials.
-   * @param {number[][]} vector - polynomials with coefficients in [0, Q)
-   * @returns {number} the largest coefficient magnitude
+   * @param {int32[][]} vector - polynomials with coefficients in [0, Q)
+   * @returns {int32} the largest coefficient magnitude
    */
   function vectorNormInfinity(vector) {
     let worst = 0;
@@ -364,9 +576,12 @@
     return worst;
   }
 
-  /** @returns {number[]} a fresh zero polynomial */
+  /** @returns {int32[]} a fresh zero polynomial */
   function zeroPoly() {
-    return new Array(N).fill(0);
+    /** @type {int32[]} */
+    const poly = new Array(N);
+    poly.fill(0);
+    return poly;
   }
 
   // ===== NUMBER THEORETIC TRANSFORM =====
@@ -377,8 +592,8 @@
 
   /**
    * Forward NTT.
-   * @param {number[]} w - 256 coefficients in [0, Q)
-   * @returns {number[]} the transform, a fresh array
+   * @param {int32[]} w - 256 coefficients in [0, Q)
+   * @returns {int32[]} the transform, a fresh array
    */
   function ntt(w) {
     const a = w.slice();
@@ -401,8 +616,8 @@
 
   /**
    * Inverse NTT, including the 256^-1 scaling.
-   * @param {number[]} w - 256 transform coefficients in [0, Q)
-   * @returns {number[]} the polynomial, a fresh array
+   * @param {int32[]} w - 256 transform coefficients in [0, Q)
+   * @returns {int32[]} the polynomial, a fresh array
    */
   function inverseNtt(w) {
     const a = w.slice();
@@ -426,11 +641,12 @@
 
   /**
    * Coefficientwise product in the NTT domain.
-   * @param {number[]} a - transform coefficients
-   * @param {number[]} b - transform coefficients
-   * @returns {number[]} the product, a fresh array
+   * @param {int32[]} a - transform coefficients
+   * @param {int32[]} b - transform coefficients
+   * @returns {int32[]} the product, a fresh array
    */
   function pointwiseMultiply(a, b) {
+    /** @type {int32[]} */
     const r = new Array(N);
     for (let i = 0; i < N; i++) r[i] = (a[i] * b[i]) % Q;
     return r;
@@ -438,11 +654,12 @@
 
   /**
    * Coefficientwise sum modulo Q.
-   * @param {number[]} a - coefficients
-   * @param {number[]} b - coefficients
-   * @returns {number[]} the sum, a fresh array
+   * @param {int32[]} a - coefficients
+   * @param {int32[]} b - coefficients
+   * @returns {int32[]} the sum, a fresh array
    */
   function polyAdd(a, b) {
+    /** @type {int32[]} */
     const r = new Array(N);
     for (let i = 0; i < N; i++) r[i] = modQ(a[i] + b[i]);
     return r;
@@ -450,11 +667,12 @@
 
   /**
    * Coefficientwise difference modulo Q.
-   * @param {number[]} a - coefficients
-   * @param {number[]} b - coefficients
-   * @returns {number[]} the difference, a fresh array
+   * @param {int32[]} a - coefficients
+   * @param {int32[]} b - coefficients
+   * @returns {int32[]} the difference, a fresh array
    */
   function polySubtract(a, b) {
+    /** @type {int32[]} */
     const r = new Array(N);
     for (let i = 0; i < N; i++) r[i] = modQ(a[i] - b[i]);
     return r;
@@ -462,9 +680,9 @@
 
   /**
    * Schoolbook product in Z_q[X]/(X^256+1), used only to check the NTT.
-   * @param {number[]} a - coefficients
-   * @param {number[]} b - coefficients
-   * @returns {number[]} the product, a fresh array
+   * @param {int32[]} a - coefficients
+   * @param {int32[]} b - coefficients
+   * @returns {int32[]} the product, a fresh array
    */
   function polyMultiplySchoolbook(a, b) {
     const r = zeroPoly();
@@ -483,8 +701,8 @@
 
   /**
    * Number of bits needed to write x.
-   * @param {number} x - non-negative integer
-   * @returns {number} bit length, 0 for x = 0
+   * @param {int32} x - non-negative integer
+   * @returns {int32} bit length, 0 for x = 0
    */
   function bitLength(x) {
     let bits = 0;
@@ -498,17 +716,17 @@
 
   /**
    * Write a value into a byte array as a little-endian bit run.
-   * @param {number[]} out - destination, pre-zeroed
-   * @param {number} bitPosition - first bit index written
-   * @param {number} value - non-negative value to write
-   * @param {number} bits - width in bits
-   * @returns {number} the bit index one past the last written
+   * @param {uint8[]} out - destination, pre-zeroed
+   * @param {int32} bitPosition - first bit index written
+   * @param {int32} value - non-negative value to write
+   * @param {int32} bits - width in bits
+   * @returns {int32} the bit index one past the last written
    */
   function writeBits(out, bitPosition, value, bits) {
     for (let t = 0; t < bits; t++) {
-      if (OpCodes.AndN(OpCodes.Shr32(value, t), 1) === 1) {
+      if (OpCodes.And32(OpCodes.Shr32(value, t), 1) === 1) {
         const index = Math.floor((bitPosition + t) / 8);
-        out[index] = OpCodes.OrN(out[index], POW2[(bitPosition + t) % 8]);
+        out[index] = OpCodes.Or8(out[index], POW2[(bitPosition + t) % 8]);
       }
     }
     return bitPosition + bits;
@@ -516,16 +734,16 @@
 
   /**
    * Read a little-endian bit run out of a byte array.
-   * @param {number[]} source - bytes read from
-   * @param {number} bitPosition - first bit index read
-   * @param {number} bits - width in bits
-   * @returns {number} the value
+   * @param {uint8[]} source - bytes read from
+   * @param {int32} bitPosition - first bit index read
+   * @param {int32} bits - width in bits
+   * @returns {int32} the value
    */
   function readBits(source, bitPosition, bits) {
     let value = 0;
     for (let t = 0; t < bits; t++) {
       const index = Math.floor((bitPosition + t) / 8);
-      if (OpCodes.AndN(OpCodes.Shr32(source[index], (bitPosition + t) % 8), 1) === 1)
+      if (OpCodes.And32(OpCodes.Shr32(source[index], (bitPosition + t) % 8), 1) === 1)
         value += POW2[t];
     }
     return value;
@@ -533,13 +751,15 @@
 
   /**
    * SimpleBitPack: pack unsigned coefficients at bitLength(b) bits each.
-   * @param {number[]} w - 256 coefficients in [0, b]
-   * @param {number} b - upper bound
-   * @returns {number[]} 32*bitLength(b) bytes
+   * @param {int32[]} w - 256 coefficients in [0, b]
+   * @param {int32} b - upper bound
+   * @returns {uint8[]} 32*bitLength(b) bytes
    */
   function simpleBitPack(w, b) {
     const bits = bitLength(b);
-    const out = new Array(32 * bits).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(32 * bits);
+    out.fill(0);
     let bitPosition = 0;
     for (let i = 0; i < N; i++) bitPosition = writeBits(out, bitPosition, w[i], bits);
     return out;
@@ -547,12 +767,13 @@
 
   /**
    * SimpleBitUnpack, the inverse of simpleBitPack.
-   * @param {number[]} v - packed bytes
-   * @param {number} b - upper bound used when packing
-   * @returns {number[]} 256 coefficients
+   * @param {uint8[]} v - packed bytes
+   * @param {int32} b - upper bound used when packing
+   * @returns {int32[]} 256 coefficients
    */
   function simpleBitUnpack(v, b) {
     const bits = bitLength(b);
+    /** @type {int32[]} */
     const w = new Array(N);
     let bitPosition = 0;
     for (let i = 0; i < N; i++) {
@@ -564,14 +785,16 @@
 
   /**
    * BitPack: pack signed coefficients from [-a, b] as b - w[i].
-   * @param {number[]} w - 256 coefficients in [-a, b]
-   * @param {number} a - lower bound magnitude
-   * @param {number} b - upper bound
-   * @returns {number[]} 32*bitLength(a+b) bytes
+   * @param {int32[]} w - 256 coefficients in [-a, b]
+   * @param {int32} a - lower bound magnitude
+   * @param {int32} b - upper bound
+   * @returns {uint8[]} 32*bitLength(a+b) bytes
    */
   function bitPack(w, a, b) {
     const bits = bitLength(a + b);
-    const out = new Array(32 * bits).fill(0);
+    /** @type {uint8[]} */
+    const out = new Array(32 * bits);
+    out.fill(0);
     let bitPosition = 0;
     for (let i = 0; i < N; i++) bitPosition = writeBits(out, bitPosition, b - w[i], bits);
     return out;
@@ -579,10 +802,10 @@
 
   /**
    * BitUnpack, the inverse of bitPack.
-   * @param {number[]} v - packed bytes
-   * @param {number} a - lower bound magnitude used when packing
-   * @param {number} b - upper bound used when packing
-   * @returns {number[]} 256 signed coefficients
+   * @param {uint8[]} v - packed bytes
+   * @param {int32} a - lower bound magnitude used when packing
+   * @param {int32} b - upper bound used when packing
+   * @returns {int32[]} 256 signed coefficients
    */
   function bitUnpack(v, a, b) {
     const w = simpleBitUnpack(v, a + b);
@@ -593,12 +816,14 @@
   /**
    * HintBitPack: the positions of the set hint bits, then one running count per
    * polynomial.
-   * @param {number[][]} h - k hint polynomials of 0/1 coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} omega + k bytes
+   * @param {int32[][]} h - k hint polynomials of 0/1 coefficients
+   * @param {DilithiumParams} P - parameter set
+   * @returns {uint8[]} omega + k bytes
    */
   function hintBitPack(h, P) {
-    const y = new Array(P.omega + P.k).fill(0);
+    /** @type {uint8[]} */
+    const y = new Array(P.omega + P.k);
+    y.fill(0);
     let index = 0;
 
     for (let i = 0; i < P.k; i++) {
@@ -618,11 +843,12 @@
    * HintBitUnpack. Rejects a malformed hint rather than reconstructing
    * something plausible: out of range counts, unsorted positions and non-zero
    * padding all make the signature invalid.
-   * @param {number[]} y - omega + k bytes
-   * @param {object} P - parameter set
-   * @returns {number[][]|null} k hint polynomials, or null when malformed
+   * @param {uint8[]} y - omega + k bytes
+   * @param {DilithiumParams} P - parameter set
+   * @returns {int32[][]|null} k hint polynomials, or null when malformed
    */
   function hintBitUnpack(y, P) {
+    /** @type {int32[][]} */
     const h = [];
     for (let i = 0; i < P.k; i++) h.push(zeroPoly());
 
@@ -648,8 +874,8 @@
 
   /**
    * Power2Round: split r into a high part and a centred low part of D bits.
-   * @param {number} r - coefficient
-   * @returns {number[]} [r1, r0] with r = r1*2^D + r0
+   * @param {int32} r - coefficient
+   * @returns {int32[]} [r1, r0] with r = r1*2^D + r0
    */
   function power2Round(r) {
     const value = modQ(r);
@@ -659,13 +885,14 @@
 
   /**
    * Decompose r into high and low bits about 2*gamma2.
-   * @param {number} r - coefficient
-   * @param {number} gamma2 - low order rounding range
-   * @returns {number[]} [r1, r0]
+   * @param {int32} r - coefficient
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32[]} [r1, r0]
    */
   function decompose(r, gamma2) {
     const value = modQ(r);
     let r0 = modPlusMinus(value, 2 * gamma2);
+    /** @type {int32} */
     let r1;
 
     if (value - r0 === Q - 1) {
@@ -678,15 +905,108 @@
     return [r1, r0];
   }
 
-  const highBits = (r, gamma2) => decompose(r, gamma2)[0];
-  const lowBits = (r, gamma2) => decompose(r, gamma2)[1];
+  /**
+   * HighBits: the r1 half of decompose.
+   * @param {int32} r - coefficient
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32} r1
+   */
+  function highBits(r, gamma2) {
+    return decompose(r, gamma2)[0];
+  }
+
+  /**
+   * LowBits: the r0 half of decompose.
+   * @param {int32} r - coefficient
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32} r0
+   */
+  function lowBits(r, gamma2) {
+    return decompose(r, gamma2)[1];
+  }
+
+  /**
+   * Every coefficient reduced to [0, Q), as poly.map(modQ) computes it.
+   * @param {int32[]} poly - coefficients
+   * @returns {int32[]} a fresh array
+   */
+  function polyModQ(poly) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let i = 0; i < poly.length; i++) out[i] = modQ(poly[i]);
+    return out;
+  }
+
+  /**
+   * Every coefficient centred modulo Q.
+   * @param {int32[]} poly - coefficients
+   * @returns {int32[]} a fresh array
+   */
+  function polyModPlusMinusQ(poly) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let i = 0; i < poly.length; i++) out[i] = modPlusMinusQ(poly[i]);
+    return out;
+  }
+
+  /**
+   * HighBits of every coefficient.
+   * @param {int32[]} poly - coefficients
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32[]} a fresh array
+   */
+  function polyHighBits(poly, gamma2) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let i = 0; i < poly.length; i++) out[i] = highBits(poly[i], gamma2);
+    return out;
+  }
+
+  /**
+   * LowBits of every coefficient.
+   * @param {int32[]} poly - coefficients
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32[]} a fresh array
+   */
+  function polyLowBits(poly, gamma2) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let i = 0; i < poly.length; i++) out[i] = lowBits(poly[i], gamma2);
+    return out;
+  }
+
+  /**
+   * t1 * 2^D reduced modulo Q, coefficient by coefficient.
+   * @param {int32[]} poly - t1 coefficients
+   * @returns {int32[]} a fresh array
+   */
+  function polyShiftD(poly) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let i = 0; i < poly.length; i++) out[i] = modQ(poly[i] * TWO_POW_D);
+    return out;
+  }
+
+  /**
+   * UseHint on every coefficient.
+   * @param {int32[]} hint - hint bits
+   * @param {int32[]} poly - coefficients
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32[]} a fresh array
+   */
+  function polyUseHint(hint, poly, gamma2) {
+    /** @type {int32[]} */
+    const out = new Array(poly.length);
+    for (let j = 0; j < poly.length; j++) out[j] = useHint(hint[j], poly[j], gamma2);
+    return out;
+  }
 
   /**
    * MakeHint: does adding z move r across a high-bits boundary?
-   * @param {number} z - the perturbation
-   * @param {number} r - the coefficient
-   * @param {number} gamma2 - low order rounding range
-   * @returns {number} 1 when the high bits differ, 0 otherwise
+   * @param {int32} z - the perturbation
+   * @param {int32} r - the coefficient
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32} 1 when the high bits differ, 0 otherwise
    */
   function makeHint(z, r, gamma2) {
     return highBits(r, gamma2) !== highBits(modQ(r + z), gamma2) ? 1 : 0;
@@ -694,10 +1014,10 @@
 
   /**
    * UseHint: recover the high bits of r + z from r and the hint bit.
-   * @param {number} h - hint bit
-   * @param {number} r - the coefficient
-   * @param {number} gamma2 - low order rounding range
-   * @returns {number} the corrected high bits
+   * @param {int32} h - hint bit
+   * @param {int32} r - the coefficient
+   * @param {int32} gamma2 - low order rounding range
+   * @returns {int32} the corrected high bits
    */
   function useHint(h, r, gamma2) {
     const m = (Q - 1) / (2 * gamma2);
@@ -712,28 +1032,35 @@
   /**
    * CoeffFromThreeBytes: read a uniform coefficient, rejecting values at or
    * above Q.
-   * @param {number} b0 - low byte
-   * @param {number} b1 - middle byte
-   * @param {number} b2 - high byte, of which seven bits are used
-   * @returns {number|null} the coefficient, or null when rejected
+   * @param {uint8} b0 - low byte
+   * @param {uint8} b1 - middle byte
+   * @param {uint8} b2 - high byte, of which seven bits are used
+   * @returns {int32|null} the coefficient, or null when rejected
    */
   function coeffFromThreeBytes(b0, b1, b2) {
-    const z = (b2 % 128) * 65536 + b1 * 256 + b0;
+    /** @type {int32} */
+    const high = b2 % 128;
+    /** @type {int32} */
+    const middle = b1;
+    /** @type {int32} */
+    const low = b0;
+    const z = high * 65536 + middle * 256 + low;
     return z < Q ? z : null;
   }
 
   /**
    * RejNTTPoly: a uniform polynomial already in the NTT domain.
-   * @param {number[]} seed - 34 bytes, rho followed by two index bytes
-   * @returns {number[]} 256 coefficients in [0, Q)
+   * @param {uint8[]} seed - 34 bytes, rho followed by two index bytes
+   * @returns {int32[]} 256 coefficients in [0, Q)
    */
   function rejNttPoly(seed) {
     const stream = new XofStream(128, seed, 840);
+    /** @type {int32[]} */
     const a = new Array(N);
     let j = 0;
 
     while (j < N) {
-      const chunk = stream.Read(3);
+      const chunk = xofRead(stream, 3);
       const value = coeffFromThreeBytes(chunk[0], chunk[1], chunk[2]);
       if (value !== null) {
         a[j] = value;
@@ -746,9 +1073,9 @@
 
   /**
    * CoeffFromHalfByte: read a coefficient in [-eta, eta] out of a nibble.
-   * @param {number} b - nibble
-   * @param {number} eta - 2 or 4
-   * @returns {number|null} the coefficient, or null when rejected
+   * @param {int32} b - nibble
+   * @param {int32} eta - 2 or 4
+   * @returns {int32|null} the coefficient, or null when rejected
    */
   function coeffFromHalfByte(b, eta) {
     if (eta === 2 && b < 15) return 2 - (b % 5);
@@ -758,17 +1085,18 @@
 
   /**
    * RejBoundedPoly: a polynomial with coefficients in [-eta, eta].
-   * @param {number[]} seed - 66 bytes, rho' followed by a two byte index
-   * @param {number} eta - 2 or 4
-   * @returns {number[]} 256 signed coefficients
+   * @param {uint8[]} seed - 66 bytes, rho' followed by a two byte index
+   * @param {int32} eta - 2 or 4
+   * @returns {int32[]} 256 signed coefficients
    */
   function rejBoundedPoly(seed, eta) {
     const stream = new XofStream(256, seed, eta === 4 ? 544 : 272);
+    /** @type {int32[]} */
     const a = new Array(N);
     let j = 0;
 
     while (j < N) {
-      const z = stream.Read(1)[0];
+      const z = xofRead(stream, 1)[0];
       const low = coeffFromHalfByte(z % 16, eta);
       const high = coeffFromHalfByte(Math.floor(z / 16), eta);
 
@@ -787,13 +1115,15 @@
 
   /**
    * ExpandA: the public k by l matrix, generated directly in the NTT domain.
-   * @param {number[]} rho - 32 byte seed
-   * @param {object} P - parameter set
-   * @returns {number[][][]} A[k][l], each entry a transform
+   * @param {uint8[]} rho - 32 byte seed
+   * @param {DilithiumParams} P - parameter set
+   * @returns {int32[][][]} A[k][l], each entry a transform
    */
   function expandA(rho, P) {
+    /** @type {int32[][][]} */
     const A = [];
     for (let r = 0; r < P.k; r++) {
+      /** @type {int32[][]} */
       const row = [];
       for (let s = 0; s < P.l; s++) {
         const seed = rho.slice();
@@ -808,12 +1138,14 @@
 
   /**
    * ExpandS: the two short secret vectors.
-   * @param {number[]} rhoPrime - 64 byte seed
-   * @param {object} P - parameter set
-   * @returns {object} { s1, s2 } with l and k polynomials respectively
+   * @param {uint8[]} rhoPrime - 64 byte seed
+   * @param {DilithiumParams} P - parameter set
+   * @returns {DilithiumSecrets} { s1, s2 } with l and k polynomials respectively
    */
   function expandS(rhoPrime, P) {
+    /** @type {int32[][]} */
     const s1 = [];
+    /** @type {int32[][]} */
     const s2 = [];
 
     for (let i = 0; i < P.l + P.k; i++) {
@@ -825,18 +1157,19 @@
       else s2.push(poly);
     }
 
-    return { s1: s1, s2: s2 };
+    return new DilithiumSecrets(s1, s2);
   }
 
   /**
    * ExpandMask: the masking vector y for one signing attempt.
-   * @param {number[]} rho - 64 byte seed
-   * @param {number} mu - the attempt counter, kappa
-   * @param {object} P - parameter set
-   * @returns {number[][]} l polynomials with coefficients in (-gamma1, gamma1]
+   * @param {uint8[]} rho - 64 byte seed
+   * @param {int32} mu - the attempt counter, kappa
+   * @param {DilithiumParams} P - parameter set
+   * @returns {int32[][]} l polynomials with coefficients in (-gamma1, gamma1]
    */
   function expandMask(rho, mu, P) {
     const width = 1 + bitLength(P.gamma1 - 1);
+    /** @type {int32[][]} */
     const y = [];
 
     for (let r = 0; r < P.l; r++) {
@@ -853,25 +1186,26 @@
   /**
    * SampleInBall: a polynomial with tau coefficients of plus or minus one and
    * the rest zero.
-   * @param {number[]} seed - the commitment hash
-   * @param {object} P - parameter set
-   * @returns {number[]} 256 coefficients in [0, Q)
+   * @param {uint8[]} seed - the commitment hash
+   * @param {DilithiumParams} P - parameter set
+   * @returns {int32[]} 256 coefficients in [0, Q)
    */
   function sampleInBall(seed, P) {
     const stream = new XofStream(256, seed, 136);
     const c = zeroPoly();
-    const signs = stream.Read(8);
+    const signs = xofRead(stream, 8);
 
     for (let i = N - P.tau; i < N; i++) {
+      /** @type {int32} */
       let j;
       do {
-        j = stream.Read(1)[0];
+        j = xofRead(stream, 1)[0];
       } while (j > i);
 
       c[i] = c[j];
 
       const bitIndex = i + P.tau - N;
-      const bit = OpCodes.AndN(OpCodes.Shr32(signs[Math.floor(bitIndex / 8)], bitIndex % 8), 1);
+      const bit = OpCodes.And32(OpCodes.Shr32(signs[Math.floor(bitIndex / 8)], bitIndex % 8), 1);
       c[j] = bit === 1 ? Q - 1 : 1;
     }
 
@@ -882,12 +1216,13 @@
 
   /**
    * pkEncode.
-   * @param {number[]} rho - 32 byte matrix seed
-   * @param {number[][]} t1 - k high-part polynomials
-   * @param {object} P - parameter set
-   * @returns {number[]} the public key
+   * @param {uint8[]} rho - 32 byte matrix seed
+   * @param {int32[][]} t1 - k high-part polynomials
+   * @param {DilithiumParams} P - parameter set
+   * @returns {uint8[]} the public key
    */
   function pkEncode(rho, t1, P) {
+    /** @type {int32} */
     const bound = POW2[bitLength(Q - 1) - D] - 1;
     const out = rho.slice();
     for (let i = 0; i < P.k; i++) appendAll(out, simpleBitPack(t1[i], bound));
@@ -896,31 +1231,33 @@
 
   /**
    * pkDecode.
-   * @param {number[]} pk - the public key
-   * @param {object} P - parameter set
-   * @returns {object} { rho, t1 }
+   * @param {uint8[]} pk - the public key
+   * @param {DilithiumParams} P - parameter set
+   * @returns {DilithiumPublicParts} { rho, t1 }
    */
   function pkDecode(pk, P) {
+    /** @type {int32} */
     const bound = POW2[bitLength(Q - 1) - D] - 1;
     const stride = 32 * bitLength(bound);
+    /** @type {int32[][]} */
     const t1 = [];
 
     for (let i = 0; i < P.k; i++)
       t1.push(simpleBitUnpack(pk.slice(SEED_BYTES + i * stride, SEED_BYTES + (i + 1) * stride), bound));
 
-    return { rho: pk.slice(0, SEED_BYTES), t1: t1 };
+    return new DilithiumPublicParts(pk.slice(0, SEED_BYTES), t1);
   }
 
   /**
    * skEncode.
-   * @param {number[]} rho - matrix seed
-   * @param {number[]} K - signing seed
-   * @param {number[]} tr - hash of the public key
-   * @param {number[][]} s1 - l short polynomials
-   * @param {number[][]} s2 - k short polynomials
-   * @param {number[][]} t0 - k low-part polynomials
-   * @param {object} P - parameter set
-   * @returns {number[]} the private key
+   * @param {uint8[]} rho - matrix seed
+   * @param {uint8[]} K - signing seed
+   * @param {uint8[]} tr - hash of the public key
+   * @param {int32[][]} s1 - l short polynomials
+   * @param {int32[][]} s2 - k short polynomials
+   * @param {int32[][]} t0 - k low-part polynomials
+   * @param {DilithiumParams} P - parameter set
+   * @returns {uint8[]} the private key
    */
   function skEncode(rho, K, tr, s1, s2, t0, P) {
     const out = rho.slice();
@@ -936,15 +1273,18 @@
 
   /**
    * skDecode.
-   * @param {number[]} sk - the private key
-   * @param {object} P - parameter set
-   * @returns {object} { rho, K, tr, s1, s2, t0 }
+   * @param {uint8[]} sk - the private key
+   * @param {DilithiumParams} P - parameter set
+   * @returns {DilithiumPrivateParts} { rho, K, tr, s1, s2, t0 }
    */
   function skDecode(sk, P) {
     const etaStride = 32 * bitLength(2 * P.eta);
     const t0Stride = 32 * D;
+    /** @type {int32[][]} */
     const s1 = [];
+    /** @type {int32[][]} */
     const s2 = [];
+    /** @type {int32[][]} */
     const t0 = [];
     let offset = SEED_BYTES + SEED_BYTES + TR_BYTES;
 
@@ -961,22 +1301,23 @@
       offset += t0Stride;
     }
 
-    return {
-      rho: sk.slice(0, SEED_BYTES),
-      K: sk.slice(SEED_BYTES, 2 * SEED_BYTES),
-      tr: sk.slice(2 * SEED_BYTES, 2 * SEED_BYTES + TR_BYTES),
-      s1: s1, s2: s2, t0: t0
-    };
+    return new DilithiumPrivateParts(
+      sk.slice(0, SEED_BYTES),
+      sk.slice(SEED_BYTES, 2 * SEED_BYTES),
+      sk.slice(2 * SEED_BYTES, 2 * SEED_BYTES + TR_BYTES),
+      s1, s2, t0
+    );
   }
 
   /**
    * w1Encode: the commitment high bits, as hashed into the challenge.
-   * @param {number[][]} w1 - k polynomials of high bits
-   * @param {object} P - parameter set
-   * @returns {number[]} the encoding
+   * @param {int32[][]} w1 - k polynomials of high bits
+   * @param {DilithiumParams} P - parameter set
+   * @returns {uint8[]} the encoding
    */
   function w1Encode(w1, P) {
     const bound = (Q - 1) / (2 * P.gamma2) - 1;
+    /** @type {uint8[]} */
     const out = [];
     for (let i = 0; i < P.k; i++) appendAll(out, simpleBitPack(w1[i], bound));
     return out;
@@ -984,11 +1325,11 @@
 
   /**
    * sigEncode.
-   * @param {number[]} cTilde - the commitment hash
-   * @param {number[][]} z - l response polynomials, centred
-   * @param {number[][]} h - k hint polynomials
-   * @param {object} P - parameter set
-   * @returns {number[]} the signature
+   * @param {uint8[]} cTilde - the commitment hash
+   * @param {int32[][]} z - l response polynomials, centred
+   * @param {int32[][]} h - k hint polynomials
+   * @param {DilithiumParams} P - parameter set
+   * @returns {uint8[]} the signature
    */
   function sigEncode(cTilde, z, h, P) {
     const out = cTilde.slice();
@@ -999,13 +1340,14 @@
 
   /**
    * sigDecode.
-   * @param {number[]} sig - the signature
-   * @param {object} P - parameter set
-   * @returns {object} { cTilde, z, h } with h null when the hint is malformed
+   * @param {uint8[]} sig - the signature
+   * @param {DilithiumParams} P - parameter set
+   * @returns {DilithiumSignatureParts} { cTilde, z, h } with h null when the hint is malformed
    */
   function sigDecode(sig, P) {
     const cTildeLength = P.lambda / 4;
     const zStride = 32 * (1 + bitLength(P.gamma1 - 1));
+    /** @type {int32[][]} */
     const z = [];
     let offset = cTildeLength;
 
@@ -1014,20 +1356,20 @@
       offset += zStride;
     }
 
-    return {
-      cTilde: sig.slice(0, cTildeLength),
-      z: z,
-      h: hintBitUnpack(sig.slice(offset, offset + P.omega + P.k), P)
-    };
+    return new DilithiumSignatureParts(
+      sig.slice(0, cTildeLength),
+      z,
+      hintBitUnpack(sig.slice(offset, offset + P.omega + P.k), P)
+    );
   }
 
   // ===== THE SCHEME =====
 
   /**
    * ML-DSA.KeyGen_internal: expand a 32 byte seed into a key pair.
-   * @param {number[]} xi - 32 byte seed
-   * @param {object} P - parameter set
-   * @returns {object} { publicKey, privateKey }
+   * @param {uint8[]} xi - 32 byte seed
+   * @param {DilithiumParams} P - parameter set
+   * @returns {DilithiumKeyPair} { publicKey, privateKey }
    */
   function keyGenInternal(xi, P) {
     if (xi.length !== SEED_BYTES)
@@ -1045,18 +1387,23 @@
     const A = expandA(rho, P);
     const secrets = expandS(rhoPrime, P);
 
+    /** @type {int32[][]} */
     const s1Hat = [];
-    for (let i = 0; i < P.l; i++) s1Hat.push(ntt(secrets.s1[i].map(modQ)));
+    for (let i = 0; i < P.l; i++) s1Hat.push(ntt(polyModQ(secrets.s1[i])));
 
+    /** @type {int32[][]} */
     const t1 = [];
+    /** @type {int32[][]} */
     const t0 = [];
     for (let i = 0; i < P.k; i++) {
       let accumulator = zeroPoly();
       for (let j = 0; j < P.l; j++)
         accumulator = polyAdd(accumulator, pointwiseMultiply(A[i][j], s1Hat[j]));
 
-      const t = polyAdd(inverseNtt(accumulator), secrets.s2[i].map(modQ));
+      const t = polyAdd(inverseNtt(accumulator), polyModQ(secrets.s2[i]));
+      /** @type {int32[]} */
       const high = new Array(N);
+      /** @type {int32[]} */
       const low = new Array(N);
       for (let j = 0; j < N; j++) {
         const parts = power2Round(t[j]);
@@ -1070,10 +1417,7 @@
     const publicKey = pkEncode(rho, t1, P);
     const tr = H(publicKey, TR_BYTES);
 
-    return {
-      publicKey: publicKey,
-      privateKey: skEncode(rho, K, tr, secrets.s1, secrets.s2, t0, P)
-    };
+    return new DilithiumKeyPair(publicKey, skEncode(rho, K, tr, secrets.s1, secrets.s2, t0, P));
   }
 
   /**
@@ -1084,10 +1428,10 @@
    * computes mu and passes it in, and the binding to tr has then already
    * happened. Everything after this point is identical either way.
    *
-   * @param {number[]|null|undefined} externalMu - 64 bytes, or nothing
-   * @param {number[]} tr - the 64 byte public key digest held by the key
-   * @param {number[]} messageRepresentative - M'
-   * @returns {number[]} mu
+   * @param {uint8[]|null} externalMu - 64 bytes, or nothing
+   * @param {uint8[]} tr - the 64 byte public key digest held by the key
+   * @param {uint8[]} messageRepresentative - M'
+   * @returns {uint8[]} mu
    */
   function resolveMu(externalMu, tr, messageRepresentative) {
     if (externalMu === null || externalMu === undefined) {
@@ -1111,16 +1455,16 @@
    * than omega hint bits. Dropping any one of them produces signatures that
    * still verify and still leak, which is why all three are checked here.
    *
-   * @param {number[]} sk - the private key
-   * @param {number[]} messageRepresentative - M', already domain separated;
+   * @param {uint8[]} sk - the private key
+   * @param {uint8[]} messageRepresentative - M', already domain separated;
    *   ignored when externalMu is supplied
-   * @param {number[]} rnd - 32 bytes, all zero for deterministic signing
-   * @param {object} P - parameter set
-   * @param {number[]} [externalMu] - a 64 byte mu computed by the caller. This
+   * @param {uint8[]} rnd - 32 bytes, all zero for deterministic signing
+   * @param {DilithiumParams} P - parameter set
+   * @param {uint8[]|null} [externalMu] - a 64 byte mu computed by the caller. This
    *   is the ExternalMu-ML-DSA entry point, where the message representative
    *   was bound to the key outside this function and only the lattice half of
    *   signing is wanted here.
-   * @returns {number[]} the signature
+   * @returns {uint8[]} the signature
    */
   function signInternal(sk, messageRepresentative, rnd, P, externalMu) {
     if (sk.length !== P.privateKeySize)
@@ -1131,13 +1475,16 @@
     const key = skDecode(sk, P);
     const A = expandA(key.rho, P);
 
+    /** @type {int32[][]} */
     const s1Hat = [];
-    for (let i = 0; i < P.l; i++) s1Hat.push(ntt(key.s1[i].map(modQ)));
+    for (let i = 0; i < P.l; i++) s1Hat.push(ntt(polyModQ(key.s1[i])));
+    /** @type {int32[][]} */
     const s2Hat = [];
+    /** @type {int32[][]} */
     const t0Hat = [];
     for (let i = 0; i < P.k; i++) {
-      s2Hat.push(ntt(key.s2[i].map(modQ)));
-      t0Hat.push(ntt(key.t0[i].map(modQ)));
+      s2Hat.push(ntt(polyModQ(key.s2[i])));
+      t0Hat.push(ntt(polyModQ(key.t0[i])));
     }
 
     const mu = resolveMu(externalMu, key.tr, messageRepresentative);
@@ -1150,10 +1497,13 @@
     for (let kappa = 0; ; kappa += P.l) {
       const y = expandMask(rhoDoublePrime, kappa, P);
 
+      /** @type {int32[][]} */
       const yHat = [];
-      for (let i = 0; i < P.l; i++) yHat.push(ntt(y[i].map(modQ)));
+      for (let i = 0; i < P.l; i++) yHat.push(ntt(polyModQ(y[i])));
 
+      /** @type {int32[][]} */
       const w = [];
+      /** @type {int32[][]} */
       const w1 = [];
       for (let i = 0; i < P.k; i++) {
         let accumulator = zeroPoly();
@@ -1162,7 +1512,7 @@
 
         const wi = inverseNtt(accumulator);
         w.push(wi);
-        w1.push(wi.map(coefficient => highBits(coefficient, P.gamma2)));
+        w1.push(polyHighBits(wi, P.gamma2));
       }
 
       const challengeInput = mu.slice();
@@ -1170,18 +1520,21 @@
       const cTilde = H(challengeInput, P.lambda / 4);
       const cHat = ntt(sampleInBall(cTilde, P));
 
+      /** @type {int32[][]} */
       const z = [];
       for (let i = 0; i < P.l; i++)
-        z.push(polyAdd(y[i].map(modQ), inverseNtt(pointwiseMultiply(cHat, s1Hat[i]))));
+        z.push(polyAdd(polyModQ(y[i]), inverseNtt(pointwiseMultiply(cHat, s1Hat[i]))));
 
       if (vectorNormInfinity(z) >= P.gamma1 - P.beta) continue;
 
+      /** @type {int32[][]} */
       const cs2 = [];
+      /** @type {int32[][]} */
       const r0 = [];
       for (let i = 0; i < P.k; i++) {
         const product = inverseNtt(pointwiseMultiply(cHat, s2Hat[i]));
         cs2.push(product);
-        r0.push(polySubtract(w[i], product).map(coefficient => lowBits(coefficient, P.gamma2)));
+        r0.push(polyLowBits(polySubtract(w[i], product), P.gamma2));
       }
 
       let r0Norm = 0;
@@ -1192,13 +1545,16 @@
         }
       if (r0Norm >= P.gamma2 - P.beta) continue;
 
+      /** @type {int32[][]} */
       const ct0 = [];
       for (let i = 0; i < P.k; i++) ct0.push(inverseNtt(pointwiseMultiply(cHat, t0Hat[i])));
       if (vectorNormInfinity(ct0) >= P.gamma2) continue;
 
+      /** @type {int32[][]} */
       const h = [];
       let hintWeight = 0;
       for (let i = 0; i < P.k; i++) {
+        /** @type {int32[]} */
         const hi = new Array(N);
         for (let j = 0; j < N; j++) {
           hi[j] = makeHint(modQ(-ct0[i][j]), modQ(w[i][j] - cs2[i][j] + ct0[i][j]), P.gamma2);
@@ -1208,8 +1564,9 @@
       }
       if (hintWeight > P.omega) continue;
 
+      /** @type {int32[][]} */
       const zCentred = [];
-      for (let i = 0; i < P.l; i++) zCentred.push(z[i].map(modPlusMinusQ));
+      for (let i = 0; i < P.l; i++) zCentred.push(polyModPlusMinusQ(z[i]));
 
       return sigEncode(cTilde, zCentred, h, P);
     }
@@ -1217,12 +1574,12 @@
 
   /**
    * ML-DSA.Verify_internal.
-   * @param {number[]} pk - the public key
-   * @param {number[]} messageRepresentative - M', already domain separated;
+   * @param {uint8[]} pk - the public key
+   * @param {uint8[]} messageRepresentative - M', already domain separated;
    *   ignored when externalMu is supplied
-   * @param {number[]} sig - the signature
-   * @param {object} P - parameter set
-   * @param {number[]} [externalMu] - a 64 byte mu computed by the caller, the
+   * @param {uint8[]} sig - the signature
+   * @param {DilithiumParams} P - parameter set
+   * @param {uint8[]|null} [externalMu] - a 64 byte mu computed by the caller, the
    *   ExternalMu-ML-DSA entry point
    * @returns {boolean} whether the signature is valid
    */
@@ -1247,18 +1604,20 @@
 
     const cHat = ntt(sampleInBall(parsed.cTilde, P));
 
+    /** @type {int32[][]} */
     const zHat = [];
-    for (let i = 0; i < P.l; i++) zHat.push(ntt(parsed.z[i].map(modQ)));
+    for (let i = 0; i < P.l; i++) zHat.push(ntt(polyModQ(parsed.z[i])));
 
+    /** @type {int32[][]} */
     const w1 = [];
     for (let i = 0; i < P.k; i++) {
       let accumulator = zeroPoly();
       for (let j = 0; j < P.l; j++)
         accumulator = polyAdd(accumulator, pointwiseMultiply(A[i][j], zHat[j]));
 
-      const t1Hat = ntt(key.t1[i].map(coefficient => modQ(coefficient * TWO_POW_D)));
+      const t1Hat = ntt(polyShiftD(key.t1[i]));
       const approximation = inverseNtt(polySubtract(accumulator, pointwiseMultiply(cHat, t1Hat)));
-      w1.push(approximation.map((coefficient, j) => useHint(parsed.h[i][j], coefficient, P.gamma2)));
+      w1.push(polyUseHint(parsed.h[i], approximation, P.gamma2));
     }
 
     const challengeInput = mu.slice();
@@ -1271,14 +1630,15 @@
   /**
    * Build M' for the external interface: the domain separator, the context
    * length, the context and then the message. FIPS 204 section 5.2.
-   * @param {number[]} message - the message
-   * @param {number[]} context - the application context, at most 255 bytes
-   * @returns {number[]} M'
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} context - the application context, at most 255 bytes
+   * @returns {uint8[]} M'
    */
   function pureMessageRepresentative(message, context) {
     if (context.length > 255)
       throw new Error('ML-DSA context must be at most 255 bytes, got ' + context.length);
 
+    /** @type {uint8[]} */
     const out = [0, context.length];
     appendAll(out, context);
     appendAll(out, message);
@@ -2273,145 +2633,6 @@
       "568E8D1854CBFF7AD43C0FA3757417880F357F76DCA32B2EFB55C428BEE49D42020C2F48545556858B98BFD5E4EEF0FC04194849617F96BBD0D4E0172530384D" +
       "5A717E8B9092AABACED4E1E7060B212D38737B9CB3CFD7E1F5FC00000000000000000000000000000000000000000000101B2C3A");
 
-  const VECTORS = [
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 1: seed to public key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      keyGeneration: true,
-      parameterSet: 'ML-DSA-44',
-      keyGenerationOutput: 'publicKey',
-      input: KEYGEN_44_SEED,
-      expected: KEYGEN_44_PK
-    },
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 1: seed to private key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      keyGeneration: true,
-      parameterSet: 'ML-DSA-44',
-      keyGenerationOutput: 'privateKey',
-      input: KEYGEN_44_SEED,
-      expected: KEYGEN_44_SK
-    },
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-65 tcId 26: seed to public key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      keyGeneration: true,
-      parameterSet: 'ML-DSA-65',
-      keyGenerationOutput: 'publicKey',
-      input: KEYGEN_65_SEED,
-      expected: KEYGEN_65_PK
-    },
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-87 tcId 51: seed to public key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      keyGeneration: true,
-      parameterSet: 'ML-DSA-87',
-      keyGenerationOutput: 'publicKey',
-      input: KEYGEN_87_SEED,
-      expected: KEYGEN_87_PK
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 110: deterministic signature, internal interface",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      privateKey: SIGGEN_44_SK,
-      input: SIGGEN_44_MSG,
-      expected: SIGGEN_44_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 147: deterministic signature, internal interface",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      privateKey: SIGGEN_65_SK,
-      input: SIGGEN_65_MSG,
-      expected: SIGGEN_65_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-87 tcId 172: deterministic signature, internal interface",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      privateKey: SIGGEN_87_SK,
-      input: SIGGEN_87_MSG,
-      expected: SIGGEN_87_SIG
-    },
-    {
-      // The hedged variant of the same interface: rnd is drawn at random rather
-      // than fixed to zero, and feeds the seed the masking vector comes from.
-      // A signer that ignored it would produce the deterministic signature here.
-      //
-      // This is also the vector that pins s2. s2 reaches the signature only
-      // through the low-bits rejection test and the hint, and c*s2 is bounded
-      // by beta = 78 against a rounding window of 2*gamma2 = 190464, so on most
-      // messages a wrong s2 still yields the right signature: zeroing it leaves
-      // 77 of the 90 published internal sigGen cases matching. This is one of
-      // the 13 it does not.
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 290: hedged signature with published randomness",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      privateKey: SIGGEN_HEDGED_SK,
-      signRandomness: SIGGEN_HEDGED_RND,
-      input: SIGGEN_HEDGED_MSG,
-      expected: SIGGEN_HEDGED_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 11: valid signature over a message and context",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      publicKey: VERIFY_OK_PK,
-      signature: VERIFY_OK_SIG,
-      context: VERIFY_OK_CTX,
-      input: VERIFY_OK_MSG,
-      expected: [1]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 117: modified signature - z, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      publicKey: VERIFY_BADZ_PK,
-      signature: VERIFY_BADZ_SIG,
-      input: VERIFY_BADZ_MSG,
-      expected: [0]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 8: modified signature - commitment, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      publicKey: VERIFY_BADC_PK,
-      signature: VERIFY_BADC_SIG,
-      context: VERIFY_BADC_CTX,
-      input: VERIFY_BADC_MSG,
-      expected: [0]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 9: modified signature - hint, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      publicKey: VERIFY_BADH_PK,
-      signature: VERIFY_BADH_SIG,
-      context: VERIFY_BADH_CTX,
-      input: VERIFY_BADH_MSG,
-      expected: [0]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 120: modified message, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      messageEncoding: 'internal',
-      publicKey: VERIFY_BADM_PK,
-      signature: VERIFY_BADM_SIG,
-      input: VERIFY_BADM_MSG,
-      expected: [0]
-    },
-    {
-      // tcId 11's message, context and signature are valid together and verify
-      // above. Presented against a different published public key they must
-      // not, and the expected value is the rejection rather than anything this
-      // file computed.
-      text: "ACVP ML-DSA-sigVer-FIPS204: tcId 11's valid signature under tcId 120's public key must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      publicKey: VERIFY_BADM_PK,
-      signature: VERIFY_OK_SIG,
-      context: VERIFY_OK_CTX,
-      input: VERIFY_OK_MSG,
-      expected: [0]
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -2452,7 +2673,145 @@
         new LinkItem("Module Learning With Errors", "https://en.wikipedia.org/wiki/Learning_with_errors")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 1: seed to public key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          keyGeneration: true,
+          parameterSet: 'ML-DSA-44',
+          keyGenerationOutput: 'publicKey',
+          input: KEYGEN_44_SEED,
+          expected: KEYGEN_44_PK
+        },
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 1: seed to private key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          keyGeneration: true,
+          parameterSet: 'ML-DSA-44',
+          keyGenerationOutput: 'privateKey',
+          input: KEYGEN_44_SEED,
+          expected: KEYGEN_44_SK
+        },
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-65 tcId 26: seed to public key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          keyGeneration: true,
+          parameterSet: 'ML-DSA-65',
+          keyGenerationOutput: 'publicKey',
+          input: KEYGEN_65_SEED,
+          expected: KEYGEN_65_PK
+        },
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-87 tcId 51: seed to public key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          keyGeneration: true,
+          parameterSet: 'ML-DSA-87',
+          keyGenerationOutput: 'publicKey',
+          input: KEYGEN_87_SEED,
+          expected: KEYGEN_87_PK
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 110: deterministic signature, internal interface",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          privateKey: SIGGEN_44_SK,
+          input: SIGGEN_44_MSG,
+          expected: SIGGEN_44_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 147: deterministic signature, internal interface",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          privateKey: SIGGEN_65_SK,
+          input: SIGGEN_65_MSG,
+          expected: SIGGEN_65_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-87 tcId 172: deterministic signature, internal interface",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          privateKey: SIGGEN_87_SK,
+          input: SIGGEN_87_MSG,
+          expected: SIGGEN_87_SIG
+        },
+        {
+          // The hedged variant of the same interface: rnd is drawn at random rather
+          // than fixed to zero, and feeds the seed the masking vector comes from.
+          // A signer that ignored it would produce the deterministic signature here.
+          //
+          // This is also the vector that pins s2. s2 reaches the signature only
+          // through the low-bits rejection test and the hint, and c*s2 is bounded
+          // by beta = 78 against a rounding window of 2*gamma2 = 190464, so on most
+          // messages a wrong s2 still yields the right signature: zeroing it leaves
+          // 77 of the 90 published internal sigGen cases matching. This is one of
+          // the 13 it does not.
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 290: hedged signature with published randomness",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          privateKey: SIGGEN_HEDGED_SK,
+          signRandomness: SIGGEN_HEDGED_RND,
+          input: SIGGEN_HEDGED_MSG,
+          expected: SIGGEN_HEDGED_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 11: valid signature over a message and context",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          publicKey: VERIFY_OK_PK,
+          signature: VERIFY_OK_SIG,
+          context: VERIFY_OK_CTX,
+          input: VERIFY_OK_MSG,
+          expected: [1]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 117: modified signature - z, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          publicKey: VERIFY_BADZ_PK,
+          signature: VERIFY_BADZ_SIG,
+          input: VERIFY_BADZ_MSG,
+          expected: [0]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 8: modified signature - commitment, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          publicKey: VERIFY_BADC_PK,
+          signature: VERIFY_BADC_SIG,
+          context: VERIFY_BADC_CTX,
+          input: VERIFY_BADC_MSG,
+          expected: [0]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 9: modified signature - hint, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          publicKey: VERIFY_BADH_PK,
+          signature: VERIFY_BADH_SIG,
+          context: VERIFY_BADH_CTX,
+          input: VERIFY_BADH_MSG,
+          expected: [0]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 120: modified message, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          messageEncoding: 'internal',
+          publicKey: VERIFY_BADM_PK,
+          signature: VERIFY_BADM_SIG,
+          input: VERIFY_BADM_MSG,
+          expected: [0]
+        },
+        {
+          // tcId 11's message, context and signature are valid together and verify
+          // above. Presented against a different published public key they must
+          // not, and the expected value is the rejection rather than anything this
+          // file computed.
+          text: "ACVP ML-DSA-sigVer-FIPS204: tcId 11's valid signature under tcId 120's public key must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          publicKey: VERIFY_BADM_PK,
+          signature: VERIFY_OK_SIG,
+          context: VERIFY_OK_CTX,
+          input: VERIFY_OK_MSG,
+          expected: [0]
+        }
+      ];
     }
 
     /**
@@ -2486,36 +2845,54 @@
    */
   class DilithiumInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - Parent algorithm instance
+     * @param {DilithiumCipher} algorithm - Parent algorithm instance
      */
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
+      /** @type {DilithiumParams} */
       this._parameterSet = PARAMETER_SETS['ML-DSA-44'];
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._signature = null;
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._keySeed = null;
+      /** @type {boolean} */
       this.keyGeneration = false;
+      /** @type {string} */
       this.keyGenerationOutput = 'publicKey';
+      /** @type {uint8[]} */
       this.context = [];
+      /** @type {string} */
       this.messageEncoding = 'pure';
-      this.signRandomness = new Array(SEED_BYTES).fill(0);
+      /** @type {uint8[]} */
+      this.signRandomness = new Array(SEED_BYTES);
+      this.signRandomness.fill(0);
     }
 
     // ---- configuration ----
 
+    /**
+     * @param {string} label - parameter set name, or its number
+     */
     set parameterSet(label) {
       const found = findParameterSet(label);
       if (!found) throw new Error('Unknown ML-DSA parameter set: ' + label);
       this._parameterSet = found;
     }
 
+    /**
+     * @returns {string} name of the current parameter set
+     */
     get parameterSet() {
       return this._parameterSet.name;
     }
@@ -2523,6 +2900,7 @@
     /**
      * The private key. Its length selects the parameter set, the nine encoded
      * lengths across the three sets being pairwise distinct.
+     * @param {uint8[]|null} keyBytes - encoded private key
      */
     set privateKey(keyBytes) {
       if (!keyBytes) {
@@ -2538,10 +2916,16 @@
       this._privateKey = keyBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the private key
+     */
     get privateKey() {
       return this._privateKey ? this._privateKey.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - encoded public key
+     */
     set publicKey(keyBytes) {
       if (!keyBytes) {
         this._publicKey = null;
@@ -2556,24 +2940,39 @@
       this._publicKey = keyBytes.slice();
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the public key
+     */
     get publicKey() {
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
-    /** Setting a signature puts the instance into verification mode. */
+    /**
+     * Setting a signature puts the instance into verification mode.
+     * @param {uint8[]|null} signatureBytes - signature to verify
+     */
     set signature(signatureBytes) {
       this._signature = signatureBytes ? signatureBytes.slice() : null;
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the signature
+     */
     get signature() {
       return this._signature ? this._signature.slice() : null;
     }
 
-    /** A 32 byte seed to generate a key pair from. */
+    /**
+     * A 32 byte seed to generate a key pair from.
+     * @param {uint8[]|null} seedBytes - generation seed
+     */
     set keySeed(seedBytes) {
       this._keySeed = seedBytes ? seedBytes.slice() : null;
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the generation seed
+     */
     get keySeed() {
       return this._keySeed ? this._keySeed.slice() : null;
     }
@@ -2599,6 +2998,7 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid ML-DSA key data format');
 
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
 
       if (parameterSetByLength(bytes.length, 'privateKeySize')) {
@@ -2636,8 +3036,10 @@
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; i++)
-          this.inputBuffer.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; i++)
+          this.inputBuffer.push(OpCodes.And32(text.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -2663,14 +3065,18 @@
         return this.keyGenerationOutput === 'privateKey' ? pair.privateKey : pair.publicKey;
       }
 
+      /** @type {uint8[]} */
+      const noContext = [];
       const representative = this.messageEncoding === 'internal'
         ? message
-        : pureMessageRepresentative(message, this.context || []);
+        : pureMessageRepresentative(message, this.context ? this.context : noContext);
 
       if (this._signature) {
         if (!this._publicKey)
           throw new Error('ML-DSA verification needs a public key');
-        return [verifyInternal(this._publicKey, representative, this._signature, this._parameterSet) ? 1 : 0];
+        /** @type {uint8[]} */
+        const verdict = [verifyInternal(this._publicKey, representative, this._signature, this._parameterSet) ? 1 : 0];
+        return verdict;
       }
 
       if (!this._privateKey) {
@@ -2687,13 +3093,13 @@
     /**
      * Generate a key pair from a seed.
      * @param {number[]} seed - 32 bytes
-     * @returns {object} { publicKey, privateKey }
+     * @returns {DilithiumKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(seed) {
       const pair = keyGenInternal(Array.from(seed), this._parameterSet);
       this._publicKey = pair.publicKey;
       this._privateKey = pair.privateKey;
-      return { publicKey: pair.publicKey.slice(), privateKey: pair.privateKey.slice() };
+      return new DilithiumKeyPair(pair.publicKey.slice(), pair.privateKey.slice());
     }
 
     /**
@@ -2747,7 +3153,22 @@
 
   // ===== EXPORTS =====
 
-  const exported = {
+  // ml-dsa.js registers the FIPS 204 interface over this same core rather than
+  // carrying a second copy of the lattice arithmetic. Under CommonJS it reaches
+  // the core through require; in the browser the factory return value is
+  // discarded, so the core is published here for it to find. Nothing else reads
+  // this global.
+  /**
+   * Publish the module exports as the DilithiumCore global and return them.
+   * @param {Object} core - the module exports
+   * @returns {Object} the same object
+   */
+  function publishCore(core) {
+    globalScope.DilithiumCore = core;
+    return core;
+  }
+
+  return publishCore({
     DilithiumCipher, DilithiumInstance,
     PARAMETER_SETS, Q, N, ZETAS,
     ntt, inverseNtt, pointwiseMultiply, polyMultiplySchoolbook,
@@ -2755,14 +3176,5 @@
     simpleBitPack, simpleBitUnpack, bitPack, bitUnpack, hintBitPack, hintBitUnpack,
     findParameterSet, parameterSetByLength,
     keyGenInternal, signInternal, verifyInternal, pureMessageRepresentative
-  };
-
-  // ml-dsa.js registers the FIPS 204 interface over this same core rather than
-  // carrying a second copy of the lattice arithmetic. Under CommonJS it reaches
-  // the core through require; in the browser the factory return value is
-  // discarded, so the core is published here for it to find. Nothing else reads
-  // this global.
-  globalScope.DilithiumCore = exported;
-
-  return exported;
+  });
 }));

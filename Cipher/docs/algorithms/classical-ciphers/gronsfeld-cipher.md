@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Repeated patterns in ciphertext reveal key length, enabling frequency analysis like Vigenère](https://en.wikipedia.org/wiki/Kasiski_examination) | — | None - fundamental weakness of polyalphabetic substitution |
-| [Only 10 possible shifts (0-9) compared to 26 for Vigenère, making brute force easier](http://practicalcryptography.com/ciphers/classical-era/gronsfeld/) | — | Use only for educational demonstrations |
+| [Kasiski Examination](https://en.wikipedia.org/wiki/Kasiski_examination) | Repeated patterns in ciphertext reveal key length, enabling frequency analysis like Vigenère | None - fundamental weakness of polyalphabetic substitution |
+| [Reduced Key Space](http://practicalcryptography.com/ciphers/classical-era/gronsfeld/) | Only 10 possible shifts (0-9) compared to 26 for Vigenère, making brute force easier | Use only for educational demonstrations |
 
 ## Documentation
 

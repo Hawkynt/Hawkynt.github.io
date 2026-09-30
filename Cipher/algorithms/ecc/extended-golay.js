@@ -109,7 +109,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ExtendedGolayInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -126,16 +126,19 @@
   class ExtendedGolayInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ExtendedGolayAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Generator matrix rows (from Wireshark implementation)
+      /** @type {uint32[]} */
       this.generatorMatrix = [
         0xC75, 0x49F, 0xD4B, 0x6E3,
         0x9B3, 0xB66, 0xECC, 0x1ED,
@@ -174,6 +177,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Extended Golay (24,12) encoding
       if (data.length !== 12) {
@@ -181,6 +188,7 @@
       }
 
       // Convert bit array to number
+      /** @type {uint32} */
       let dataWord = 0;
       for (let i = 0; i < 12; ++i) {
         if (data[i]) {
@@ -189,6 +197,7 @@
       }
 
       // Calculate parity bits using generator matrix
+      /** @type {uint32} */
       let parityWord = 0;
       for (let i = 0; i < 12; ++i) {
         if (dataWord&OpCodes.Shl32(1, 11 - i)) {
@@ -197,17 +206,23 @@
       }
 
       // Combine data and parity
-      const codeword = OpCodes.Shl32(dataWord, 12)|parityWord;
+      /** @type {uint32} */
+      const codeword = OpCodes.Or32(OpCodes.Shl32(dataWord, 12), parityWord);
 
       // Convert to bit array
+      /** @type {uint8[]} */
       const result = new Array(24);
       for (let i = 0; i < 24; ++i) {
-        result[i] = OpCodes.Shr32(codeword, 23 - i)&1;
+        result[i] = OpCodes.And32(OpCodes.Shr32(codeword, 23 - i), 1);
       }
 
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Extended Golay (24,12) decoding with 3-error correction
       if (data.length !== 24) {
@@ -215,6 +230,7 @@
       }
 
       // Convert to number
+      /** @type {uint32} */
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
@@ -223,13 +239,16 @@
       }
 
       // Calculate syndrome
+      /** @type {uint32} */
       let syndrome = 0;
-      const receivedParity = received&0xFFF;
+      /** @type {uint32} */
+      const receivedParity = OpCodes.And32(received, 0xFFF);
 
       // Extract data portion
       const receivedData = OpCodes.Shr32(received, 12);
 
       // Calculate expected parity
+      /** @type {uint32} */
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
         if (receivedData&OpCodes.Shl32(1, 11 - i)) {
@@ -240,24 +259,34 @@
       syndrome = OpCodes.Xor32(receivedParity, expectedParity);
 
       if (syndrome !== 0) {
-        console.log(`Extended Golay: Error detected (syndrome: ${syndrome.toString(16)})`);
+        /** @type {string} */
+        const syndromeHex = syndrome.toString(16);
+        console.log("Extended Golay: Error detected (syndrome: " + syndromeHex + ")");
         // Simplified error correction - full implementation would use syndrome lookup table
         // For now, attempt simple correction
       }
 
       // Extract data bits
+      /** @type {uint8[]} */
       const result = new Array(12);
       for (let i = 0; i < 12; ++i) {
-        result[i] = OpCodes.Shr32(receivedData, 11 - i)&1;
+        result[i] = OpCodes.And32(OpCodes.Shr32(receivedData, 11 - i), 1);
       }
 
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 24) return true;
+      if (data.length !== 24) {
+        return true;
+      }
 
       // Convert to number and calculate syndrome
+      /** @type {uint32} */
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
@@ -265,9 +294,11 @@
         }
       }
 
-      const receivedParity = received&0xFFF;
+      /** @type {uint32} */
+      const receivedParity = OpCodes.And32(received, 0xFFF);
       const receivedData = OpCodes.Shr32(received, 12);
 
+      /** @type {uint32} */
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
         if (receivedData&OpCodes.Shl32(1, 11 - i)) {

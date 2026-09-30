@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ProtographLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,13 +156,15 @@
   class ProtographLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ProtographLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Simplified rate 1/2 repetition-based protograph for educational purposes
@@ -178,8 +180,9 @@
 
       // For demonstration, we use an identity-like structure
       // that ensures H = [I|I] form, making parity bits equal to info bits
+      /** @type {uint8[][]} */
       this.protographMatrix = [
-        [1, 1] // Single check: v0 + v1 = 0, gives parity = info
+        OpCodes.CreateArray(2, 1) // Single check [1, 1]: v0 + v1 = 0, gives parity = info
       ];
 
       // Expansion/lifting factor
@@ -205,13 +208,15 @@
     /**
      * Expand protograph to full parity check matrix using circulant permutation matrices
      * Copy-and-permute operation with quasi-cyclic construction
+     * @returns {uint8[][]} Expanded parity-check matrix
      */
     expandProtograph() {
+      /** @type {uint8[][]} */
       const H = [];
 
       // Initialize expanded matrix (m x n)
       for (let i = 0; i < this.m; ++i) {
-        H[i] = new Array(this.n).fill(0);
+        H[i] = OpCodes.CreateArray(this.n, 0);
       }
 
       // For each entry in protograph matrix
@@ -230,7 +235,7 @@
             for (let col = 0; col < this.N; ++col) {
               const expandedRow = i * this.N + row;
               const expandedCol = j * this.N + col;
-              H[expandedRow][expandedCol] = OpCodes.AndN(OpCodes.XorN(H[expandedRow][expandedCol], submatrix[row][col]), 1);
+              H[expandedRow][expandedCol] = OpCodes.And32(OpCodes.Xor32(H[expandedRow][expandedCol], submatrix[row][col]), 1);
             }
           }
         }
@@ -242,13 +247,19 @@
     /**
      * Generate circulant submatrix with specified weight
      * For weight w, creates sum of w circulant permutation matrices
+     * @param {int32} weight - Circulant weight
+     * @param {int32} size - Lifting size
+     * @param {int32} protoRow - Protograph row
+     * @param {int32} protoCol - Protograph column
+     * @returns {uint8[][]} size x size submatrix
      */
     generateCirculantSubmatrix(weight, size, protoRow, protoCol) {
+      /** @type {uint8[][]} */
       const submatrix = [];
 
       // Initialize zero matrix
       for (let i = 0; i < size; ++i) {
-        submatrix[i] = new Array(size).fill(0);
+        submatrix[i] = OpCodes.CreateArray(size, 0);
       }
 
       // Generate w circulant permutation matrices and sum them
@@ -261,7 +272,7 @@
         // Create circulant permutation matrix with this shift
         for (let row = 0; row < size; ++row) {
           const col = (row + shift) % size;
-          submatrix[row][col] = OpCodes.AndN(OpCodes.XorN(submatrix[row][col], 1), 1);
+          submatrix[row][col] = OpCodes.And32(OpCodes.Xor32(submatrix[row][col], 1), 1);
         }
       }
 
@@ -271,8 +282,14 @@
     /**
      * Get deterministic shift values for circulant matrices
      * Based on protograph position to ensure good girth properties
+     * @param {int32} weight - Circulant weight
+     * @param {int32} size - Lifting size
+     * @param {int32} protoRow - Protograph row
+     * @param {int32} protoCol - Protograph column
+     * @returns {int32[]} Cyclic shifts
      */
     getShiftValues(weight, size, protoRow, protoCol) {
+      /** @type {int32[]} */
       const shifts = [];
 
       // Generate shifts using simple deterministic pattern
@@ -289,6 +306,7 @@
     /**
      * Transform H to systematic form [I|P] using Gaussian elimination
      * Then compute encoding matrix P for systematic encoding
+     * @returns {void}
      */
     transformToSystematicForm() {
       // For systematic LDPC codes, we need H in form [I_m|P]
@@ -300,17 +318,20 @@
       // Since direct Gaussian elimination is complex, for educational purposes
       // we precompute encoding by solving H*c^T = 0 for each basis vector
 
+      /** @type {uint8[][]} */
       this.parityMatrix = [];
 
       // For each systematic bit position, find the corresponding parity bits
       for (let sysCol = 0; sysCol < this.k; ++sysCol) {
         // Create unit vector in systematic position
-        const systematic = new Array(this.k).fill(0);
+        /** @type {uint8[]} */
+        const systematic = OpCodes.CreateArray(this.k, 0);
         systematic[sysCol] = 1;
 
         // Solve for parity bits that make this a valid codeword
         // We solve: H_parity * p = H_systematic * s
-        const rhs = new Array(this.m).fill(0);
+        /** @type {uint8[]} */
+        const rhs = OpCodes.CreateArray(this.m, 0);
 
         for (let row = 0; row < this.m; ++row) {
           rhs[row] = this.parityCheckMatrix[row][sysCol];
@@ -326,18 +347,22 @@
     /**
      * Solve H_parity * x = b for x using Gaussian elimination over GF(2)
      * H_parity is the parity part of H (columns k to n-1)
+     * @param {uint8[]} b - Right-hand side
+     * @returns {uint8[]} Parity bits
      */
     solveLinearSystem(b) {
       // Extract parity submatrix
+      /** @type {uint8[][]} */
       const A = [];
       for (let i = 0; i < this.m; ++i) {
-        A[i] = [];
+        A[i] = OpCodes.CreateArray(0, 0);
         for (let j = 0; j < (this.n - this.k); ++j) {
           A[i][j] = this.parityCheckMatrix[i][this.k + j];
         }
       }
 
       // Augment with RHS
+      /** @type {uint8[][]} */
       const augmented = [];
       for (let i = 0; i < this.m; ++i) {
         augmented[i] = [...A[i], b[i]];
@@ -368,14 +393,15 @@
           if (row !== col && augmented[row][col] === 1) {
             // XOR with pivot row
             for (let c = 0; c < augmented[row].length; ++c) {
-              augmented[row][c] = OpCodes.XorN(augmented[row][c], augmented[col][c]);
+              augmented[row][c] = OpCodes.Xor32(augmented[row][c], augmented[col][c]);
             }
           }
         }
       }
 
       // Extract solution
-      const x = new Array(this.n - this.k).fill(0);
+      /** @type {uint8[]} */
+      const x = OpCodes.CreateArray(this.n - this.k, 0);
       for (let i = 0; i < Math.min(this.m, this.n - this.k); ++i) {
         x[i] = augmented[i][augmented[i].length - 1];
       }
@@ -416,6 +442,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
         throw new Error('ProtographLDPCInstance.DetectError: Input must be ' + this.n + '-bit array');
@@ -428,6 +458,8 @@
     /**
      * Encode information bits using protograph LDPC structure
      * Uses precomputed parity matrix for systematic encoding
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
       if (data.length !== this.k) {
@@ -436,26 +468,28 @@
 
       // Systematic encoding: codeword = [systematic_bits|parity_bits]
       // Parity bits computed as: parity = P * systematic (over GF(2))
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Copy systematic bits to first k positions
       for (let i = 0; i < this.k; ++i) {
-        codeword[i] = OpCodes.AndN(data[i], 1);
+        codeword[i] = OpCodes.And32(data[i], 1);
       }
 
       // Compute parity bits using precomputed parity matrix
       // For each parity bit position
       for (let parityIdx = 0; parityIdx < (this.n - this.k); ++parityIdx) {
+        /** @type {uint32} */
         let parityBit = 0;
 
         // XOR contributions from all systematic bits
         for (let sysIdx = 0; sysIdx < this.k; ++sysIdx) {
           if (data[sysIdx] === 1) {
-            parityBit = OpCodes.XorN(parityBit, this.parityMatrix[sysIdx][parityIdx]);
+            parityBit = OpCodes.Xor32(parityBit, this.parityMatrix[sysIdx][parityIdx]);
           }
         }
 
-        codeword[this.k + parityIdx] = OpCodes.AndN(parityBit, 1);
+        codeword[this.k + parityIdx] = OpCodes.And32(parityBit, 1);
       }
 
       return codeword;
@@ -464,6 +498,8 @@
     /**
      * Decode received codeword using simplified belief propagation
      * Production implementation would use full sum-product algorithm
+     * @param {uint8[]} received - n-bit word
+     * @returns {uint8[]} k information bits
      */
     decode(received) {
       if (received.length !== this.n) {
@@ -491,7 +527,8 @@
         }
 
         // Bit-flipping algorithm - flip bits involved in most unsatisfied checks
-        const bitScores = new Array(this.n).fill(0);
+        /** @type {int32[]} */
+        const bitScores = OpCodes.CreateArray(this.n, 0);
 
         for (let i = 0; i < this.m; ++i) {
           if (currentSyndrome[i] === 1) {
@@ -505,6 +542,7 @@
         }
 
         // Find bit with highest score and flip it
+        /** @type {int32} */
         let maxScore = 0;
         let maxBit = -1;
 
@@ -516,7 +554,7 @@
         }
 
         if (maxBit >= 0 && maxScore > 0) {
-          decoded[maxBit] = OpCodes.XorN(decoded[maxBit], 1);
+          decoded[maxBit] = OpCodes.Xor32(decoded[maxBit], 1);
         } else {
           // Cannot improve further
           break;
@@ -530,19 +568,23 @@
     /**
      * Calculate syndrome vector: s = H * c^T
      * Using OpCodes XOR operations for bit calculations
+     * @param {uint8[]} codeword - n-bit word
+     * @returns {uint8[]} Syndrome
      */
     calculateSyndrome(codeword) {
-      const syndrome = new Array(this.m);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.m, 0);
 
       for (let i = 0; i < this.m; ++i) {
+        /** @type {uint32} */
         let sum = 0;
 
         for (let j = 0; j < this.n; ++j) {
           // XOR multiplication for GF(2)
-          sum = OpCodes.XorN(sum, (this.parityCheckMatrix[i][j] * codeword[j]));
+          sum = OpCodes.Xor32(sum, OpCodes.Mul32(this.parityCheckMatrix[i][j], codeword[j]));
         }
 
-        syndrome[i] = OpCodes.AndN(sum, 1);
+        syndrome[i] = OpCodes.And32(sum, 1);
       }
 
       return syndrome;
@@ -550,6 +592,8 @@
 
     /**
      * Check if vector is all zeros
+     * @param {uint8[]} vector - Bits
+     * @returns {boolean} True when all zero
      */
     isZeroVector(vector) {
       for (let i = 0; i < vector.length; ++i) {
@@ -561,15 +605,20 @@
     /**
      * Belief propagation decoder (simplified educational version)
      * Production implementation would use full sum-product algorithm with LLRs
+     * @param {uint8[]} received - n-bit word
+     * @param {int32} maxIterations - Iteration limit
+     * @returns {uint8[]} k information bits
      */
     beliefPropagationDecoder(received, maxIterations) {
       // Initialize variable node messages (LLR from channel)
+      /** @type {float64[][]} */
       const varToCheck = [];
+      /** @type {float64[][]} */
       const checkToVar = [];
 
       // Initialize message arrays
       for (let i = 0; i < this.m; ++i) {
-        checkToVar[i] = [];
+        checkToVar[i] = OpCodes.CreateArray(0, 0);
         for (let j = 0; j < this.n; ++j) {
           if (this.parityCheckMatrix[i][j] === 1) {
             checkToVar[i][j] = 0;
@@ -578,7 +627,7 @@
       }
 
       for (let j = 0; j < this.n; ++j) {
-        varToCheck[j] = [];
+        varToCheck[j] = OpCodes.CreateArray(0, 0);
         for (let i = 0; i < this.m; ++i) {
           if (this.parityCheckMatrix[i][j] === 1) {
             varToCheck[j][i] = received[j] === 0 ? 1 : -1; // Simplified LLR
@@ -597,7 +646,10 @@
               // Multiply messages from other variable nodes
               for (let k = 0; k < this.n; ++k) {
                 if (k !== j && this.parityCheckMatrix[i][k] === 1) {
-                  const msg = varToCheck[k][i] || 0;
+                  /** @type {float64} */
+                  const stored = varToCheck[k][i];
+                  /** @type {float64} */
+                  const msg = (stored ? stored : 0);
                   product *= (msg >= 0 ? 1 : -1);
                 }
               }
@@ -616,7 +668,9 @@
               // Sum messages from other check nodes
               for (let k = 0; k < this.m; ++k) {
                 if (k !== i && this.parityCheckMatrix[k][j] === 1) {
-                  sum += (checkToVar[k][j] || 0);
+                  /** @type {float64} */
+                  const incoming = checkToVar[k][j];
+                  sum += (incoming ? incoming : 0);
                 }
               }
 
@@ -626,13 +680,16 @@
         }
 
         // Make hard decisions
+        /** @type {uint8[]} */
         const decoded = [];
         for (let j = 0; j < this.n; ++j) {
           let totalLLR = received[j] === 0 ? 1 : -1;
 
           for (let i = 0; i < this.m; ++i) {
             if (this.parityCheckMatrix[i][j] === 1) {
-              totalLLR += (checkToVar[i][j] || 0);
+              /** @type {float64} */
+              const incoming = checkToVar[i][j];
+              totalLLR += (incoming ? incoming : 0);
             }
           }
 
@@ -647,13 +704,16 @@
       }
 
       // Return best estimate even if not valid codeword
+      /** @type {uint8[]} */
       const finalDecoded = [];
       for (let j = 0; j < this.n; ++j) {
         let totalLLR = received[j] === 0 ? 1 : -1;
 
         for (let i = 0; i < this.m; ++i) {
           if (this.parityCheckMatrix[i][j] === 1) {
-            totalLLR += (checkToVar[i][j] || 0);
+            /** @type {float64} */
+            const incoming = checkToVar[i][j];
+            totalLLR += (incoming ? incoming : 0);
           }
         }
 

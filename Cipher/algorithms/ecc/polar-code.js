@@ -134,7 +134,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PolarCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -151,31 +151,44 @@
   class PolarCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PolarCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default parameters for (8,4) polar code - educational implementation
+      /** @type {int32} */
       this.N = 8;  // Codeword length (must be power of 2)
+      /** @type {int32} */
       this.K = 4;  // Information bits
+      /** @type {int32} */
       this.n = 3;  // log2(N)
 
       // Frozen bit positions for (8,4) polar code
       // These are determined by channel reliability (Bhattacharyya parameters)
       // For educational purposes, we use a standard frozen set: {0, 1, 2, 4}
       // Information bits go in positions: {3, 5, 6, 7} (most reliable channels)
+      /** @type {int32[]} */
       this.frozenBitPositions = [0, 1, 2, 4];
+      /** @type {int32[]} */
       this.infoBitPositions = [3, 5, 6, 7];
 
       // Generator matrix F = [1 0; 1 1] for polar transform
-      this.F = [[1, 0], [1, 1]];
+      /** @type {uint8[]} */
+      const fRow0 = [1, 0];
+      /** @type {uint8[]} */
+      const fRow1 = [1, 1];
+      /** @type {uint8[][]} */
+      this.F = [fRow0, fRow1];
 
       // Bit-reversal permutation for natural ordering
+      /** @type {int32[]} */
       this.bitReversalPermutation = this._computeBitReversalPermutation(this.N);
     }
 
@@ -210,42 +223,46 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.N) {
-        throw new Error(`PolarCodeInstance.DetectError: Input must be ${this.N}-bit array`);
+        throw new Error("PolarCodeInstance.DetectError: Input must be " + this.N + "-bit array");
       }
 
       // For polar codes, error detection is implicit in the decoding process
       // A more sophisticated implementation would use CRC or parity checks
       // For educational purposes, we perform a basic consistency check
-      try {
-        const decoded = this.decode(data);
-        const reencoded = this.encode(decoded);
+      // (an N-bit word always decodes to K bits, which always re-encode, so nothing here throws)
+      /** @type {uint8[]} */
+      const decoded = this.decode(data);
+      /** @type {uint8[]} */
+      const reencoded = this.encode(decoded);
 
-        // Check if re-encoding matches received codeword
-        for (let i = 0; i < this.N; i++) {
-          if (reencoded[i] !== data[i]) {
-            return true; // Error detected
-          }
+      // Check if re-encoding matches received codeword
+      for (let i = 0; i < this.N; i++) {
+        if (reencoded[i] !== data[i]) {
+          return true; // Error detected
         }
-        return false; // No error detected
-      } catch (e) {
-        return true; // Error in decoding indicates corruption
       }
+      return false; // No error detected
     }
 
     /**
      * Encodes information bits using polar transform
-     * @param {Array} infoBits - K information bits
-     * @returns {Array} - N encoded bits
+     * @param {uint8[]} infoBits - K information bits
+     * @returns {uint8[]} - N encoded bits
      */
     encode(infoBits) {
       if (infoBits.length !== this.K) {
-        throw new Error(`Polar encode: Input must be exactly ${this.K} bits`);
+        throw new Error("Polar encode: Input must be exactly " + this.K + " bits");
       }
 
       // Create input vector u with frozen and information bits
-      const u = new Array(this.N).fill(0);
+      /** @type {uint8[]} */
+      const u = OpCodes.CreateArray(this.N, 0);
 
       // Place information bits in designated positions
       for (let i = 0; i < this.K; i++) {
@@ -258,6 +275,7 @@
       // G_N = B_N * F^(⊗n) where F^(⊗n) is n-th Kronecker power of F
       // B_N is bit-reversal permutation matrix
 
+      /** @type {uint8[]} */
       const codeword = this._polarTransform(u);
 
       return codeword;
@@ -265,12 +283,12 @@
 
     /**
      * Decodes received bits using successive cancellation decoding
-     * @param {Array} receivedBits - N received bits (possibly with errors)
-     * @returns {Array} - K decoded information bits
+     * @param {uint8[]} receivedBits - N received bits (possibly with errors)
+     * @returns {uint8[]} - K decoded information bits
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.N) {
-        throw new Error(`Polar decode: Input must be exactly ${this.N} bits`);
+        throw new Error("Polar decode: Input must be exactly " + this.N + " bits");
       }
 
       // For error-free channels (educational implementation),
@@ -278,15 +296,18 @@
       // This is equivalent to multiplying by the inverse generator matrix
 
       // Reverse bit-reversal permutation first
-      const revPermuted = new Array(this.N);
+      /** @type {uint8[]} */
+      const revPermuted = OpCodes.CreateArray(this.N, 0);
       for (let i = 0; i < this.N; i++) {
         revPermuted[this.bitReversalPermutation[i]] = receivedBits[i];
       }
 
       // Apply inverse polar transform (same as forward for polar codes)
+      /** @type {uint8[]} */
       const u = this._inversePolarTransform(revPermuted);
 
       // Extract information bits from their positions
+      /** @type {uint8[]} */
       const decodedInfo = [];
       for (let i = 0; i < this.K; i++) {
         decodedInfo.push(u[this.infoBitPositions[i]]);
@@ -297,29 +318,34 @@
 
     /**
      * Inverse polar transform (identical to forward transform for polar codes)
-     * @param {Array} x - Input vector
-     * @returns {Array} - Decoded u vector
+     * @param {uint8[]} x - Input vector
+     * @returns {uint8[]} - Decoded u vector
      */
     _inversePolarTransform(x) {
-      let u = [...x];
+      /** @type {uint8[]} */
+      let u = x.slice();
 
       // Apply log2(N) stages in reverse order
-      // Polar transform is self-inverse (OpCodes.XorN(F, 2) = I in GF(2))
+      // Polar transform is self-inverse (OpCodes.Xor32(F, 2) = I in GF(2))
       for (let stage = this.n - 1; stage >= 0; stage--) {
-        const stepSize = OpCodes.Shl32(1, stage);
+        /** @type {int32} */
+        const stepSize = OpCodes.ToInt(OpCodes.Shl32(1, stage));
         const numGroups = OpCodes.Shr32(this.N, (stage + 1));
 
         for (let group = 0; group < numGroups; group++) {
-          const offset = group * (OpCodes.Shl32(stepSize, 1));
+          /** @type {int32} */
+          const offset = group * 2 * stepSize;
 
           for (let i = 0; i < stepSize; i++) {
             const idx1 = offset + i;
             const idx2 = offset + stepSize + i;
 
             // Inverse butterfly: [a, b] -> [a⊕b, b]
+            /** @type {uint8} */
             const a = u[idx1];
+            /** @type {uint8} */
             const b = u[idx2];
-            u[idx1] = OpCodes.XorN(a, b);
+            u[idx1] = OpCodes.Xor32(a, b);
             // u[idx2] remains b
           }
         }
@@ -333,36 +359,42 @@
      * Implements x = u * G_N where G_N = F^(⊗n)
      * Note: Uses bitwise operations for structural calculations (index arithmetic)
      * rather than cryptographic operations. These are acceptable for ECC code.
-     * @param {Array} u - Input vector
-     * @returns {Array} - Transformed output
+     * @param {uint8[]} u - Input vector
+     * @returns {uint8[]} - Transformed output
      */
     _polarTransform(u) {
-      let x = [...u];
+      /** @type {uint8[]} */
+      let x = u.slice();
 
       // Apply log2(N) stages of butterfly operations
       // Bitwise shifts used for efficient index calculations (not cryptographic data)
       for (let stage = 0; stage < this.n; stage++) {
-        const stepSize = OpCodes.Shl32(1, stage); // OpCodes.XorN(2, stage) - structural calculation
+        /** @type {int32} */
+        const stepSize = OpCodes.ToInt(OpCodes.Shl32(1, stage)); // OpCodes.Xor32(2, stage) - structural calculation
         const numGroups = OpCodes.Shr32(this.N, (stage + 1)); // N / 2^(stage+1) - structural calculation
 
         for (let group = 0; group < numGroups; group++) {
-          const offset = group * (OpCodes.Shl32(stepSize, 1)); // Index calculation
+          /** @type {int32} */
+          const offset = group * 2 * stepSize; // Index calculation
 
           for (let i = 0; i < stepSize; i++) {
             const idx1 = offset + i;
             const idx2 = offset + stepSize + i;
 
             // Butterfly operation: [a, b] -> [a+b, b] (in GF(2), + is XOR)
+            /** @type {uint8} */
             const a = x[idx1];
+            /** @type {uint8} */
             const b = x[idx2];
-            x[idx1] = OpCodes.XorN(a, b); // GF(2) addition (XOR is the field operation)
+            x[idx1] = OpCodes.Xor32(a, b); // GF(2) addition (XOR is the field operation)
             // x[idx2] remains b
           }
         }
       }
 
       // Apply bit-reversal permutation
-      const output = new Array(this.N);
+      /** @type {uint8[]} */
+      const output = OpCodes.CreateArray(this.N, 0);
       for (let i = 0; i < this.N; i++) {
         output[this.bitReversalPermutation[i]] = x[i];
       }
@@ -372,10 +404,10 @@
 
     /**
      * Simplified successive cancellation decision for a single bit
-     * @param {Array} y - Channel observations
-     * @param {Array} uHat - Previously decoded bits
-     * @param {number} index - Current bit index
-     * @returns {number} - Decoded bit (0 or 1)
+     * @param {float64[]} y - Channel observations
+     * @param {uint8[]} uHat - Previously decoded bits
+     * @param {int32} index - Current bit index
+     * @returns {uint8} - Decoded bit (0 or 1)
      */
     _scDecisionBit(y, uHat, index) {
       // This is a highly simplified SC decoder for educational purposes
@@ -385,6 +417,7 @@
       // 3. List decoding (SCL) for improved performance
 
       // For hard-decision decoding, we compute partial syndrome
+      /** @type {float64} */
       let metric = 0;
 
       // Accumulate evidence from channel observations
@@ -402,31 +435,34 @@
     /**
      * Determines if two positions are connected in polar graph
      * Note: Bitwise AND for graph connectivity (structural, not cryptographic)
-     * @param {number} i - First position
-     * @param {number} j - Second position
+     * @param {int32} i - First position
+     * @param {int32} j - Second position
      * @returns {boolean} - True if connected
      */
     _isConnected(i, j) {
       // Simplified connectivity check based on polar graph structure
       // In actual polar graph, connectivity is determined by Kronecker structure
-      return OpCodes.AndN(i, j) === i; // Bitwise AND for structural graph connectivity
+      return OpCodes.And32(i, j) === i; // Bitwise AND for structural graph connectivity
     }
 
     /**
      * Computes bit-reversal permutation for given length
      * Note: Bitwise operations for bit reversal (structural permutation)
-     * @param {number} n - Length (must be power of 2)
-     * @returns {Array} - Bit-reversal permutation indices
+     * @param {int32} n - Length (must be power of 2)
+     * @returns {int32[]} - Bit-reversal permutation indices
      */
     _computeBitReversalPermutation(n) {
+      /** @type {float64} */
       const bits = Math.log2(n);
-      const permutation = new Array(n);
+      /** @type {int32[]} */
+      const permutation = OpCodes.CreateArray(n, 0);
 
       for (let i = 0; i < n; i++) {
+        /** @type {uint32} */
         let reversed = 0;
         for (let b = 0; b < bits; b++) {
           // Bit reversal: extract bit b from i, place in position (bits-1-b) in reversed
-          reversed = OpCodes.OrN(OpCodes.Shl32(reversed, 1), OpCodes.AndN(OpCodes.Shr32(i, b), 1)); // Structural bit manipulation
+          reversed = OpCodes.Or32(OpCodes.Shl32(reversed, 1), OpCodes.And32(OpCodes.Shr32(i, b), 1)); // Structural bit manipulation
         }
         permutation[i] = reversed;
       }
@@ -437,13 +473,14 @@
     /**
      * Sets custom polar code parameters
      * Note: Uses bitwise AND for power-of-2 validation (structural check)
-     * @param {number} N - Codeword length (power of 2)
-     * @param {number} K - Information bits
-     * @param {Array} frozenPositions - Frozen bit positions (optional)
+     * @param {int32} N - Codeword length (power of 2)
+     * @param {int32} K - Information bits
+     * @param {int32[]} [frozenPositions=null] - Frozen bit positions (optional)
+     * @returns {void}
      */
     setParameters(N, K, frozenPositions = null) {
       // Validate N is power of 2 using bitwise trick: (N&(N-1)) == 0
-      if (OpCodes.AndN(N, N - 1) !== 0 || N < 2) {
+      if (OpCodes.And32(N, N - 1) !== 0 || N < 2) {
         throw new Error('Polar code length N must be a power of 2');
       }
 
@@ -456,9 +493,22 @@
       this.n = Math.log2(N);
 
       if (frozenPositions && frozenPositions.length === N - K) {
-        this.frozenBitPositions = [...frozenPositions].sort((a, b) => a - b);
+        /** @type {int32[]} */
+        const sorted = frozenPositions.slice();
+        for (let i = 1; i < sorted.length; ++i) {
+          /** @type {int32} */
+          const value = sorted[i];
+          let j = i - 1;
+          while (j >= 0 && sorted[j] > value) {
+            sorted[j + 1] = sorted[j];
+            --j;
+          }
+          sorted[j + 1] = value;
+        }
+        this.frozenBitPositions = sorted;
       } else {
         // Default: freeze least reliable positions (low indices)
+        /** @type {int32[]} */
         this.frozenBitPositions = [];
         for (let i = 0; i < N - K; i++) {
           this.frozenBitPositions.push(i);
@@ -466,9 +516,10 @@
       }
 
       // Compute information bit positions (complement of frozen)
+      /** @type {int32[]} */
       this.infoBitPositions = [];
       for (let i = 0; i < N; i++) {
-        if (!this.frozenBitPositions.includes(i)) {
+        if (this.frozenBitPositions.indexOf(i) < 0) {
           this.infoBitPositions.push(i);
         }
       }

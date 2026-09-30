@@ -68,7 +68,7 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
+          AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // ===== AES-256 =====
   //
@@ -108,6 +108,7 @@
   // The sponge is therefore kept here, and is checked against the registered
   // implementations as well as against the published values.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -115,6 +116,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -124,23 +126,38 @@
 
   // The rho offsets and the pi permutation, derived from their definitions
   // rather than transcribed.
-  const KECCAK_ROTATION = new Uint8Array(25);
-  const KECCAK_PI = new Uint8Array(25);
-
-  (function buildKeccakTables() {
+  /**
+   * The rho offsets, walking (x, y) -> (y, 2x + 3y) from (1, 0).
+   * @returns {Uint8Array} rotation per lane
+   */
+  function BuildKeccakRotation() {
+    const table = new Uint8Array(25);
     let x = 1;
     let y = 0;
     for (let t = 0; t < 24; ++t) {
-      KECCAK_ROTATION[x + 5 * y] = ((t + 1) * (t + 2) / 2) % 64;
+      table[x + 5 * y] = ((t + 1) * (t + 2) / 2) % 64;
       const nextX = y;
       const nextY = (2 * x + 3 * y) % 5;
       x = nextX;
       y = nextY;
     }
+    return table;
+  }
+
+  /**
+   * The pi permutation: the source lane of every destination lane.
+   * @returns {Uint8Array} source index per lane
+   */
+  function BuildKeccakPi() {
+    const table = new Uint8Array(25);
     for (let column = 0; column < 5; ++column)
       for (let row = 0; row < 5; ++row)
-        KECCAK_PI[row + 5 * ((2 * column + 3 * row) % 5)] = column + 5 * row;
-  })();
+        table[row + 5 * ((2 * column + 3 * row) % 5)] = column + 5 * row;
+    return table;
+  }
+
+  const KECCAK_ROTATION = BuildKeccakRotation();
+  const KECCAK_PI = BuildKeccakPi();
 
   /**
    * The Keccak-f[1600] permutation, over a state of 25 lanes each held as a low
@@ -157,7 +174,9 @@
     for (let round = 0; round < 24; ++round) {
       // theta
       for (let column = 0; column < 5; ++column) {
+        /** @type {int32} */
         let accumulatorHigh = high[column];
+        /** @type {int32} */
         let accumulatorLow = low[column];
         for (let row = 1; row < 5; ++row) {
           accumulatorHigh = OpCodes.Xor32(accumulatorHigh, high[column + 5 * row]);
@@ -180,10 +199,15 @@
 
       // rho and pi
       for (let index = 0; index < 25; ++index) {
+        /** @type {int32} */
         const source = KECCAK_PI[index];
         const rotated = OpCodes.RotL64_HL(high[source], low[source], KECCAK_ROTATION[source]);
-        bufferHigh[index] = rotated.h;
-        bufferLow[index] = rotated.l;
+        /** @type {uint32} */
+        const rotatedHigh = rotated.h;
+        /** @type {uint32} */
+        const rotatedLow = rotated.l;
+        bufferHigh[index] = rotatedHigh;
+        bufferLow[index] = rotatedLow;
       }
 
       // chi
@@ -209,34 +233,96 @@
   const SHA3_384_RATE = 104;
 
   /**
+   * A Keccak sponge being squeezed: the state, its rate and how many octets of
+   * the current block have been read.
+   */
+  class BikeKeccakStream {
+    /**
+     * @param {int32} rate - the sponge rate in octets
+     */
+    constructor(rate) {
+      /** @type {Int32Array} */
+      this.high = new Int32Array(25);
+      /** @type {Int32Array} */
+      this.low = new Int32Array(25);
+      /** @type {int32} */
+      this.rate = rate;
+      /** @type {int32} */
+      this.squeezed = 0;
+    }
+  }
+
+  /**
+   * Exclusive-or one octet into the state at a byte offset of the rate.
+   * @param {BikeKeccakStream} stream - the sponge
+   * @param {int32} offset - byte offset in the block
+   * @param {uint32} value - the octet
+   */
+  function StreamXorByte(stream, offset, value) {
+    const lane = Math.floor(offset / 8);
+    const inLane = offset % 8;
+    if (inLane < 4)
+      stream.low[lane] = OpCodes.Xor32(stream.low[lane], OpCodes.Shl32(value, 8 * inLane));
+    else
+      stream.high[lane] = OpCodes.Xor32(stream.high[lane], OpCodes.Shl32(value, 8 * (inLane - 4)));
+  }
+
+  /**
+   * The next squeezed octet, permuting when the block is used up.
+   * @param {BikeKeccakStream} stream - the sponge
+   * @returns {uint32} the octet
+   */
+  function StreamNextByte(stream) {
+    if (stream.squeezed === stream.rate) {
+      KeccakF1600(stream.high, stream.low);
+      stream.squeezed = 0;
+    }
+    const lane = Math.floor(stream.squeezed / 8);
+    const inLane = stream.squeezed % 8;
+    /** @type {int32} */
+    let half = 0;
+    if (inLane < 4) {
+      half = stream.low[lane];
+    } else {
+      half = stream.high[lane];
+    }
+    const byte = OpCodes.And32(OpCodes.Shr32(half, 8 * (inLane % 4)), 0xFF);
+    ++stream.squeezed;
+    return byte;
+  }
+
+  /**
+   * Squeeze count octets; successive reads continue the same stream.
+   * @param {BikeKeccakStream} stream - the sponge
+   * @param {int32} count - octets required
+   * @returns {uint8[]} the octets
+   */
+  function StreamRead(stream, count) {
+    /** @type {uint8[]} */
+    const out = new Array(count);
+    for (let i = 0; i < count; ++i) out[i] = StreamNextByte(stream);
+    return out;
+  }
+
+  /**
    * Absorb the given byte strings and return a reader over the squeezed stream.
    * Successive reads continue the same stream rather than restarting it.
    * @param {uint8[][]} parts - byte strings, absorbed in order
-   * @param {number} rate - the sponge rate in octets
-   * @param {number} pad - the domain separation byte
-   * @returns {object} a reader with read(count)
+   * @param {int32} rate - the sponge rate in octets
+   * @param {int32} pad - the domain separation byte
+   * @returns {BikeKeccakStream} the sponge, ready to squeeze
    */
   function KeccakStream(parts, rate, pad) {
-    const high = new Int32Array(25);
-    const low = new Int32Array(25);
+    const stream = new BikeKeccakStream(rate);
     let position = 0;
-
-    const xorByte = function (offset, value) {
-      const lane = Math.floor(offset / 8);
-      const inLane = offset % 8;
-      if (inLane < 4)
-        low[lane] = OpCodes.Xor32(low[lane], OpCodes.Shl32(value, 8 * inLane));
-      else
-        high[lane] = OpCodes.Xor32(high[lane], OpCodes.Shl32(value, 8 * (inLane - 4)));
-    };
 
     for (let p = 0; p < parts.length; ++p) {
       const part = parts[p];
       for (let i = 0; i < part.length; ++i) {
-        xorByte(position, OpCodes.AndN(part[i], 0xFF));
+        StreamXorByte(stream, position, OpCodes.And32(part[i], 0xFF));
         ++position;
         if (position === rate) {
-          KeccakF1600(high, low);
+          KeccakF1600(stream.high, stream.low);
           position = 0;
         }
       }
@@ -245,34 +331,17 @@
     // The domain separator followed by the pad10*1 terminator. When only one
     // byte of the block is free the two land on the same byte, which
     // exclusive-oring both in handles without a special case.
-    xorByte(position, pad);
-    xorByte(rate - 1, 0x80);
-    KeccakF1600(high, low);
+    StreamXorByte(stream, position, pad);
+    StreamXorByte(stream, rate - 1, 0x80);
+    KeccakF1600(stream.high, stream.low);
 
-    let squeezed = 0;
-
-    const nextByte = function () {
-      if (squeezed === rate) {
-        KeccakF1600(high, low);
-        squeezed = 0;
-      }
-      const lane = Math.floor(squeezed / 8);
-      const inLane = squeezed % 8;
-      const half = inLane < 4 ? low[lane] : high[lane];
-      const byte = OpCodes.AndN(OpCodes.Shr32(half, 8 * (inLane % 4)), 0xFF);
-      ++squeezed;
-      return byte;
-    };
-
-    return {
-      read: function (count) {
-        const out = new Array(count);
-        for (let i = 0; i < count; ++i) out[i] = nextByte();
-        return out;
-      }
-    };
+    return stream;
   }
 
+  /**
+   * @param {uint8[][]} parts - byte strings, absorbed in order
+   * @returns {BikeKeccakStream} a SHAKE-256 reader
+   */
   function Shake256Stream(parts) {
     return KeccakStream(parts, SHAKE256_RATE, 0x1F);
   }
@@ -280,10 +349,10 @@
   /**
    * SHA3-384 over the concatenation of the given byte strings.
    * @param {uint8[][]} parts - byte strings, absorbed in order
-   * @returns {number[]} 48 digest octets
+   * @returns {uint8[]} 48 digest octets
    */
   function Sha3_384(parts) {
-    return KeccakStream(parts, SHA3_384_RATE, 0x06).read(48);
+    return StreamRead(KeccakStream(parts, SHA3_384_RATE, 0x06), 48);
   }
 
   // ===== the NIST Known Answer Test generator =====
@@ -292,13 +361,24 @@
   // record's 48 byte seed into the two 32 byte seeds key generation draws and
   // the message encapsulation draws.
 
+  /**
+   * @param {uint8[]} key - 32 key octets
+   * @param {uint8[]} block - 16 plaintext octets
+   * @returns {uint8[]} 16 ciphertext octets
+   */
   function Aes256Ecb(key, block) {
     const instance = FindAes().CreateInstance(false);
     instance.key = key;
     instance.Feed(block);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
+  /**
+   * Increment a 16 octet big-endian counter in place.
+   * @param {uint8[]} v - the counter
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -306,42 +386,64 @@
     }
   }
 
+  /** The CTR_DRBG state: key and counter. */
+  class BikeDrbg {
+    constructor() {
+      /** @type {uint8[]} */
+      this.key = new Array(32).fill(0);
+      /** @type {uint8[]} */
+      this.v = new Array(16).fill(0);
+    }
+  }
+
+  /**
+   * The CTR_DRBG update function.
+   * @param {BikeDrbg} drbg - the generator
+   * @param {uint8[]|null} providedData - 48 octets to mix in, or null
+   */
+  function DrbgUpdate(drbg, providedData) {
+    /** @type {uint8[]} */
+    const temp = [];
+    for (let i = 0; i < 3; ++i) {
+      IncrementCounter(drbg.v);
+      const block = Aes256Ecb(drbg.key, drbg.v);
+      for (let j = 0; j < 16; ++j) temp.push(block[j]);
+    }
+    // The seed arrives from the caller unmasked, so the exclusive-or stays
+    // the plain one rather than the unsigned 32 bit helper.
+    if (providedData)
+      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
+    for (let i = 0; i < 32; ++i) drbg.key[i] = temp[i];
+    for (let i = 0; i < 16; ++i) drbg.v[i] = temp[32 + i];
+  }
+
+  /**
+   * Draw count octets, then update the state.
+   * @param {BikeDrbg} drbg - the generator
+   * @param {int32} count - octets required
+   * @returns {uint8[]} the octets
+   */
+  function DrbgRead(drbg, count) {
+    /** @type {uint8[]} */
+    const out = [];
+    while (out.length < count) {
+      IncrementCounter(drbg.v);
+      const block = Aes256Ecb(drbg.key, drbg.v);
+      for (let j = 0; j < 16 && out.length < count; ++j) out.push(block[j]);
+    }
+    DrbgUpdate(drbg, null);
+    return out;
+  }
+
   /**
    * The generator, seeded as randombytes_init does with a zero key and counter.
    * @param {uint8[]} entropy - the 48 octet seed
-   * @returns {object} a reader with read(count)
+   * @returns {BikeDrbg} the generator, read with DrbgRead
    */
   function Drbg(entropy) {
-    const key = new Array(32).fill(0);
-    const v = new Array(16).fill(0);
-
-    const update = function (providedData) {
-      const temp = [];
-      for (let i = 0; i < 3; ++i) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
-        for (let j = 0; j < 16; ++j) temp.push(block[j]);
-      }
-      if (providedData)
-        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
-      for (let i = 0; i < 32; ++i) key[i] = temp[i];
-      for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
-    };
-
-    update(entropy.slice(0, 48));
-
-    return {
-      read: function (count) {
-        const out = [];
-        while (out.length < count) {
-          IncrementCounter(v);
-          const block = Aes256Ecb(key, v);
-          for (let j = 0; j < 16 && out.length < count; ++j) out.push(block[j]);
-        }
-        update(null);
-        return out;
-      }
-    };
+    const drbg = new BikeDrbg();
+    DrbgUpdate(drbg, entropy.slice(0, 48));
+    return drbg;
   }
 
   // ===== PARAMETER SETS =====
@@ -350,80 +452,279 @@
   // weight of the error vector. The threshold is the affine function of the
   // syndrome weight that the submission fixes for each set.
 
-  const PARAMETER_SETS = (() => {
-    const build = (name, r, dv, t, thresholdBase, thresholdSlope, thresholdFloor) => {
-      const set = {
-        name: name, r: r, dv: dv, t: t,
-        thresholdBase: thresholdBase, thresholdSlope: thresholdSlope,
-        thresholdFloor: thresholdFloor, tau: 3, iterations: 5
-      };
-      set.n = 2 * r;
-      set.rBytes = Math.ceil(r / 8);
-      set.nBytes = Math.ceil(2 * r / 8);
-      set.rWords = Math.ceil(r / 32);
-      set.topBit = r - (set.rWords - 1) * 32;
-      set.topMask = OpCodes.Shr32(0xFFFFFFFF, 32 - set.topBit);
-      set.publicKeySize = set.rBytes;
-      set.privateKeySize = 2 * set.rBytes + 32;
-      set.ciphertextSize = set.rBytes + 32;
-      set.sharedSecretSize = 32;
-      set.messageSize = 32;
-      return set;
-    };
+  class BikeParams {
+    /**
+     * @param {string} name - 'bike-l1', 'bike-l3' or 'bike-l5'
+     * @param {int32} r - block length
+     * @param {int32} dv - weight of each secret circulant
+     * @param {int32} t - weight of the error vector
+     * @param {float64} thresholdBase - threshold intercept
+     * @param {float64} thresholdSlope - threshold slope in the syndrome weight
+     * @param {int32} thresholdFloor - smallest threshold
+     */
+    constructor(name, r, dv, t, thresholdBase, thresholdSlope, thresholdFloor) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.r = r;
+      /** @type {int32} */
+      this.dv = dv;
+      /** @type {int32} */
+      this.t = t;
+      /** @type {float64} */
+      this.thresholdBase = thresholdBase;
+      /** @type {float64} */
+      this.thresholdSlope = thresholdSlope;
+      /** @type {int32} */
+      this.thresholdFloor = thresholdFloor;
+      /** @type {int32} */
+      this.tau = 3;
+      /** @type {int32} */
+      this.iterations = 5;
+      /** @type {int32} */
+      this.n = 2 * r;
+      /** @type {int32} */
+      this.rBytes = Math.ceil(r / 8);
+      /** @type {int32} */
+      this.nBytes = Math.ceil(2 * r / 8);
+      /** @type {int32} */
+      this.rWords = Math.ceil(r / 32);
+      /** @type {int32} */
+      this.topBit = r - (this.rWords - 1) * 32;
+      /** @type {uint32} */
+      this.topMask = OpCodes.Shr32(0xFFFFFFFF, 32 - this.topBit);
+      /** @type {int32} */
+      this.publicKeySize = this.rBytes;
+      /** @type {int32} */
+      this.privateKeySize = 2 * this.rBytes + 32;
+      /** @type {int32} */
+      this.ciphertextSize = this.rBytes + 32;
+      /** @type {int32} */
+      this.sharedSecretSize = 32;
+      /** @type {int32} */
+      this.messageSize = 32;
+    }
+  }
 
-    const sets = {};
-    for (const set of [
-      build('bike-l1', 12323, 71, 134, 13.530, 0.0069722, 36),
-      build('bike-l3', 24659, 103, 199, 15.2588, 0.005265, 52),
-      build('bike-l5', 40973, 137, 264, 17.8785, 0.00402312, 69)
-    ]) sets[set.name] = set;
-    return sets;
-  })();
+  const BIKE_L1 = new BikeParams('bike-l1', 12323, 71, 134, 13.530, 0.0069722, 36);
+  const BIKE_L3 = new BikeParams('bike-l3', 24659, 103, 199, 15.2588, 0.005265, 52);
+  const BIKE_L5 = new BikeParams('bike-l5', 40973, 137, 264, 17.8785, 0.00402312, 69);
 
+  /** @type {BikeParams[]} */
+  const PARAMETER_SET_LIST = [BIKE_L1, BIKE_L3, BIKE_L5];
+
+  const PARAMETER_SETS = {
+    'bike-l1': BIKE_L1,
+    'bike-l3': BIKE_L3,
+    'bike-l5': BIKE_L5
+  };
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {BikeParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {BikeParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /**
+   * Look a parameter set up by a label that names, contains or is contained in
+   * one of the set names, or by its level or security strength alone.
+   * @param {string|int32} label - 'bike-l1', 'BIKE-L3', '5', '256', ...
+   * @returns {BikeParams|null} the parameter set, or null
+   */
   function FindParameterSet(label) {
-    if (!label) return null;
+    if (!label) {
+      return null;
+    }
+    /** @type {string} */
     const text = String(label).toLowerCase();
-    if (PARAMETER_SETS[text]) return PARAMETER_SETS[text];
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (name.indexOf(text) >= 0 || text.indexOf(name) >= 0) return PARAMETER_SETS[name];
-    if (text === '1' || text === '128') return PARAMETER_SETS['bike-l1'];
-    if (text === '3' || text === '192') return PARAMETER_SETS['bike-l3'];
-    if (text === '5' || text === '256') return PARAMETER_SETS['bike-l5'];
+    const exact = ParameterSetEntry(text);
+    if (exact) return exact;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const name = PARAMETER_SET_LIST[i].name;
+      if (name.indexOf(text) >= 0 || text.indexOf(name) >= 0) return PARAMETER_SET_LIST[i];
+    }
+    if (text === '1' || text === '128') return BIKE_L1;
+    if (text === '3' || text === '192') return BIKE_L3;
+    if (text === '5' || text === '256') return BIKE_L5;
     return null;
   }
 
+  /**
+   * The parameter set whose encoded key has this length.
+   * @param {int32} length - byte length
+   * @param {string} field - 'publicKeySize' or 'privateKeySize'
+   * @returns {BikeParams|null} the parameter set, or null
+   */
   function ParameterSetByLength(length, field) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name][field] === length) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const set = PARAMETER_SET_LIST[i];
+      const size = field === 'privateKeySize' ? set.privateKeySize : set.publicKeySize;
+      if (size === length) return set;
+    }
     return null;
   }
 
   // ===== bit and word helpers =====
 
+  /**
+   * @param {uint8[]} bytes - bit string, least significant bit first
+   * @param {int32} position - bit index
+   * @returns {uint32} the bit
+   */
   function GetBit(bytes, position) {
-    return OpCodes.AndN(OpCodes.Shr32(bytes[OpCodes.Shr32(position, 3)], OpCodes.AndN(position, 7)), 1);
+    return OpCodes.And32(OpCodes.Shr32(bytes[OpCodes.Shr32(position, 3)], OpCodes.And32(position, 7)), 1);
   }
 
+  /**
+   * @param {uint8[]} bytes - bit string, modified in place
+   * @param {int32} position - bit index to set
+   */
   function SetBit(bytes, position) {
     const index = OpCodes.Shr32(position, 3);
-    bytes[index] = OpCodes.OrN(bytes[index], OpCodes.Shl32(1, OpCodes.AndN(position, 7)));
+    bytes[index] = OpCodes.Or32(bytes[index], OpCodes.Shl32(1, OpCodes.And32(position, 7)));
   }
 
+  /**
+   * @param {uint8[]} bytes - octets, least significant first
+   * @param {int32} wordCount - words to fill
+   * @returns {Uint32Array} the words
+   */
   function BytesToWords(bytes, wordCount) {
     const words = new Uint32Array(wordCount);
     const limit = Math.min(bytes.length, wordCount * 4);
     for (let i = 0; i < limit; ++i) {
       const w = OpCodes.Shr32(i, 2);
-      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(OpCodes.AndN(bytes[i], 0xFF), 8 * (i % 4)));
+      words[w] = OpCodes.Or32(words[w], OpCodes.Shl32(OpCodes.And32(bytes[i], 0xFF), 8 * (i % 4)));
     }
     return words;
   }
 
+  /**
+   * @param {Uint32Array} words - the words
+   * @param {int32} byteCount - octets to emit
+   * @returns {uint8[]} the octets, least significant first
+   */
   function WordsToBytes(words, byteCount) {
+    /** @type {uint8[]} */
     const bytes = new Array(byteCount);
     for (let i = 0; i < byteCount; ++i)
-      bytes[i] = OpCodes.AndN(OpCodes.Shr32(words[OpCodes.Shr32(i, 2)], 8 * (i % 4)), 0xFF);
+      bytes[i] = OpCodes.And32(OpCodes.Shr32(words[OpCodes.Shr32(i, 2)], 8 * (i % 4)), 0xFF);
     return bytes;
+  }
+
+  /**
+   * @param {int32} count - length
+   * @returns {uint8[]} a zero-filled array
+   */
+  function ZeroArray(count) {
+    /** @type {uint8[]} */
+    const out = new Array(count).fill(0);
+    return out;
+  }
+
+  /**
+   * Ascending numeric order for Array.prototype.sort.
+   * @param {int32} a - left
+   * @param {int32} b - right
+   * @returns {int32} negative, zero or positive
+   */
+  function CompareNumbers(a, b) {
+    return a - b;
+  }
+
+  // ===== result records =====
+
+  class BikeSparse {
+    /**
+     * @param {uint8[]} bytes - the packed vector
+     * @param {int32[]} positions - its set bits, ascending
+     */
+    constructor(bytes, positions) {
+      /** @type {uint8[]} */
+      this.bytes = bytes;
+      /** @type {int32[]} */
+      this.positions = positions;
+    }
+  }
+
+  class BikeSplit {
+    /**
+     * @param {uint8[]} e0 - the low r bits
+     * @param {uint8[]} e1 - the r bits above them
+     */
+    constructor(e0, e1) {
+      /** @type {uint8[]} */
+      this.e0 = e0;
+      /** @type {uint8[]} */
+      this.e1 = e1;
+    }
+  }
+
+  class BikeDecoded {
+    /**
+     * @param {Uint8Array} error - the recovered error vector, one bit per entry
+     * @param {boolean} success - whether the syndrome cleared
+     */
+    constructor(error, success) {
+      /** @type {Uint8Array} */
+      this.error = error;
+      /** @type {boolean} */
+      this.success = success;
+    }
+  }
+
+  class BikeKeyPair {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} secretKey - encoded secret key
+     */
+    constructor(publicKey, secretKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.secretKey = secretKey;
+    }
+  }
+
+  class BikeEncapsulation {
+    /**
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @param {uint8[]} sharedSecret - the shared secret
+     */
+    constructor(ciphertext, sharedSecret) {
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.sharedSecret = sharedSecret;
+    }
+  }
+
+  class BikeKatRecord {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} secretKey - encoded secret key
+     * @param {uint8[]} message - the encapsulated message
+     * @param {uint8[]} ciphertext - the ciphertext
+     * @param {uint8[]} sharedSecret - the shared secret
+     */
+    constructor(publicKey, secretKey, message, ciphertext, sharedSecret) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.secretKey = secretKey;
+      /** @type {uint8[]} */
+      this.message = message;
+      /** @type {uint8[]} */
+      this.ciphertext = ciphertext;
+      /** @type {uint8[]} */
+      this.sharedSecret = sharedSecret;
+    }
   }
 
   // ===== sampling =====
@@ -432,19 +733,20 @@
    * The submission's sparse sampler. Indices are drawn from the top down, each
    * by a multiply-shift into the range that is left, and a collision is sent to
    * the index of the draw itself so that the weight is always exact.
-   * @param {object} stream - the SHAKE reader to draw from
-   * @param {number} weight - the number of set bits
-   * @param {number} length - the length in bits
-   * @param {number} byteLength - the length in octets
-   * @returns {object} the packed vector and the sorted positions
+   * @param {BikeKeccakStream} stream - the SHAKE reader to draw from
+   * @param {int32} weight - the number of set bits
+   * @param {int32} length - the length in bits
+   * @param {int32} byteLength - the length in octets
+   * @returns {BikeSparse} the packed vector and the sorted positions
    */
   function GenerateSparseRep(stream, weight, length, byteLength) {
-    const bytes = new Array(byteLength).fill(0);
+    const bytes = ZeroArray(byteLength);
+    /** @type {int32[]} */
     const positions = [];
 
     for (let i = weight - 1; i >= 0; --i) {
-      const raw = stream.read(4);
-      const value = raw[0] + raw[1] * 0x100 + raw[2] * 0x10000 + raw[3] * 0x1000000;
+      const raw = StreamRead(stream, 4);
+      const value = OpCodes.Pack32LE(raw[0], raw[1], raw[2], raw[3]);
       let position = Math.floor(value * (length - i) / 4294967296);
       position += i;
       if (GetBit(bytes, position) === 1) position = i;
@@ -452,12 +754,18 @@
       positions.push(position);
     }
 
-    positions.sort((a, b) => a - b);
-    return { bytes: bytes, positions: positions };
+    positions.sort(CompareNumbers);
+    return new BikeSparse(bytes, positions);
   }
 
   // ===== polynomials over GF(2)[x] / (x^r - 1) =====
 
+  /**
+   * Fold every bit at index r or above back down by r.
+   * @param {BikeParams} set - the parameter set
+   * @param {Uint32Array} accumulator - the unreduced product
+   * @returns {Uint32Array} the reduced vector, set.rWords long
+   */
   function ReduceCyclic(set, accumulator) {
     const words = set.rWords;
     const top = words - 1;
@@ -490,8 +798,8 @@
    * Multiply modulo x^r - 1. Every product in this scheme has a sparse operand,
    * given by the positions of its set bits, so the product is the sum of the
    * other operand shifted to each of them.
-   * @param {object} set - the parameter set
-   * @param {number[]} sparsePositions - positions of the set bits
+   * @param {BikeParams} set - the parameter set
+   * @param {int32[]} sparsePositions - positions of the set bits
    * @param {Uint32Array} dense - the other operand
    * @returns {Uint32Array} the product
    */
@@ -501,8 +809,10 @@
 
     for (let s = 0; s < sparsePositions.length; ++s) {
       const position = sparsePositions[s];
+      /** @type {int32} */
       const wordShift = OpCodes.Shr32(position, 5);
-      const bitShift = OpCodes.AndN(position, 31);
+      /** @type {int32} */
+      const bitShift = OpCodes.And32(position, 31);
 
       if (bitShift === 0) {
         for (let i = 0; i < words; ++i)
@@ -510,6 +820,7 @@
       } else {
         const back = 32 - bitShift;
         for (let i = 0; i < words; ++i) {
+          /** @type {uint32} */
           const d = dense[i];
           if (d === 0) continue;
           const lo = wordShift + i;
@@ -522,19 +833,34 @@
     return ReduceCyclic(set, accumulator);
   }
 
+  /**
+   * @param {Uint32Array} words - the polynomial
+   * @param {int32} from - highest word to look at
+   * @returns {int32} its degree, or -1 for zero
+   */
   function DegreeOf(words, from) {
     for (let i = from; i >= 0; --i) {
+      /** @type {uint32} */
       const word = words[i];
       if (word === 0) continue;
       for (let bit = 31; bit >= 0; --bit)
-        if (OpCodes.AndN(OpCodes.Shr32(word, bit), 1) === 1) return i * 32 + bit;
+        if (OpCodes.And32(OpCodes.Shr32(word, bit), 1) === 1) return i * 32 + bit;
     }
     return -1;
   }
 
+  /**
+   * target += source * x^shift, over the given words of source.
+   * @param {Uint32Array} target - modified in place
+   * @param {Uint32Array} source - the addend
+   * @param {int32} shift - power of x
+   * @param {int32} wordCount - words of source to use
+   */
   function XorShifted(target, source, shift, wordCount) {
+    /** @type {int32} */
     const wordShift = OpCodes.Shr32(shift, 5);
-    const bitShift = OpCodes.AndN(shift, 31);
+    /** @type {int32} */
+    const bitShift = OpCodes.And32(shift, 31);
     if (bitShift === 0) {
       for (let i = wordCount - 1; i >= 0; --i)
         target[wordShift + i] = OpCodes.Xor32(target[wordShift + i], source[i]);
@@ -542,6 +868,7 @@
     }
     const back = 32 - bitShift;
     for (let i = wordCount - 1; i >= 0; --i) {
+      /** @type {uint32} */
       const d = source[i];
       if (d === 0) continue;
       const lo = wordShift + i;
@@ -555,7 +882,7 @@
    * GF(2)[x]. The modulus is not irreducible, so not every element is
    * invertible, but a polynomial of odd weight is coprime to x + 1 and the
    * secret circulants have odd weight by construction.
-   * @param {object} set - the parameter set
+   * @param {BikeParams} set - the parameter set
    * @param {Uint32Array} dense - the polynomial to invert
    * @returns {Uint32Array} its inverse
    */
@@ -571,7 +898,7 @@
     // v = x^r + 1, which is x^r - 1 over this field
     v[0] = 1;
     const topWord = OpCodes.Shr32(set.r, 5);
-    v[topWord] = OpCodes.Or32(v[topWord], OpCodes.Shl32(1, OpCodes.AndN(set.r, 31)));
+    v[topWord] = OpCodes.Or32(v[topWord], OpCodes.Shl32(1, OpCodes.And32(set.r, 31)));
     g1[0] = 1;
 
     let degreeU = DegreeOf(u, size - 1);
@@ -602,22 +929,33 @@
     return ReduceCyclic(set, accumulator);
   }
 
-  /** e0 is the low r bits of the error vector, e1 the r bits above them. */
+  /**
+   * e0 is the low r bits of the error vector, e1 the r bits above them.
+   * @param {BikeParams} set - the parameter set
+   * @param {uint8[]} eBytes - the packed error vector
+   * @returns {BikeSplit} the two halves
+   */
   function SplitPolynomial(set, eBytes) {
-    const e0 = new Array(set.rBytes).fill(0);
-    const e1 = new Array(set.rBytes).fill(0);
+    const e0 = ZeroArray(set.rBytes);
+    const e1 = ZeroArray(set.rBytes);
     for (let i = 0; i < set.r; ++i) {
       if (GetBit(eBytes, i) === 1) SetBit(e0, i);
       if (GetBit(eBytes, set.r + i) === 1) SetBit(e1, i);
     }
-    return { e0: e0, e1: e1 };
+    return new BikeSplit(e0, e1);
   }
 
   // ===== the Black-Gray-Flip decoder =====
 
-  /** The first column of a circulant, from the positions of its first row. */
+  /**
+   * The first column of a circulant, from the positions of its first row.
+   * @param {BikeParams} set - the parameter set
+   * @param {int32[]} rowPositions - set bits of the first row, ascending
+   * @returns {int32[]} the offsets of the first column
+   */
   function FirstColumn(set, rowPositions) {
     const dv = set.dv;
+    /** @type {int32[]} */
     const column = new Array(dv).fill(0);
     if (rowPositions[0] === 0) {
       column[0] = 0;
@@ -628,10 +966,18 @@
     return column;
   }
 
-  /** How many of the syndrome bits this position takes part in are set. */
+  /**
+   * How many of the syndrome bits this position takes part in are set.
+   * @param {BikeParams} set - the parameter set
+   * @param {int32[]} column - first column offsets
+   * @param {int32} position - the error position
+   * @param {Uint8Array} syndrome - the transposed syndrome
+   * @returns {int32} the count
+   */
   function CounterAt(set, column, position, syndrome) {
     let count = 0;
     for (let i = 0; i < set.dv; ++i) {
+      /** @type {int32} */
       let index = column[i] + position;
       if (index >= set.r) index -= set.r;
       if (syndrome[index] === 1) ++count;
@@ -639,40 +985,72 @@
     return count;
   }
 
+  /**
+   * Update the syndrome for one flipped error position.
+   * @param {BikeParams} set - the parameter set
+   * @param {Uint8Array} syndrome - modified in place
+   * @param {int32} position - the flipped position
+   * @param {int32[]} h0 - positions of the first secret circulant
+   * @param {int32[]} h1 - positions of the second
+   */
   function RecomputeSyndrome(set, syndrome, position, h0, h1) {
     if (position < set.r) {
       for (let j = 0; j < set.dv; ++j) {
         const index = h0[j] <= position ? position - h0[j] : set.r - h0[j] + position;
-        syndrome[index] = OpCodes.XorN(syndrome[index], 1);
+        syndrome[index] = OpCodes.Xor32(syndrome[index], 1);
       }
     } else {
       const shifted = position - set.r;
       for (let j = 0; j < set.dv; ++j) {
         const index = h1[j] <= shifted ? shifted - h1[j] : set.r - h1[j] + shifted;
-        syndrome[index] = OpCodes.XorN(syndrome[index], 1);
+        syndrome[index] = OpCodes.Xor32(syndrome[index], 1);
       }
     }
   }
 
-  /** The syndrome is held transposed, so the error index has to be mirrored. */
+  /**
+   * The syndrome is held transposed, so the error index has to be mirrored.
+   * @param {BikeParams} set - the parameter set
+   * @param {Uint8Array} e - the error vector, modified in place
+   * @param {int32} position - the position to flip
+   */
   function FlipAdjusted(set, e, position) {
     let adjusted = position;
     if (position !== 0 && position !== set.r)
       adjusted = position > set.r ? (set.n - position) + set.r : set.r - position;
-    e[adjusted] = OpCodes.XorN(e[adjusted], 1);
+    e[adjusted] = OpCodes.Xor32(e[adjusted], 1);
   }
 
+  /**
+   * @param {Uint8Array} bits - one bit per entry
+   * @returns {int32} how many are set
+   */
   function HammingWeight(bits) {
     let count = 0;
-    for (let i = 0; i < bits.length; ++i) count += bits[i];
+    for (let i = 0; i < bits.length; ++i) {
+      /** @type {int32} */
+      const bit = bits[i];
+      count += bit;
+    }
     return count;
   }
 
   /**
    * One bit flipping pass. Positions at or above the threshold are flipped and
    * marked black; those within tau of it are marked grey for the masked passes.
+   * @param {BikeParams} set - the parameter set
+   * @param {Uint8Array} e - the error vector, modified in place
+   * @param {Uint8Array} black - positions flipped, marked here
+   * @param {Uint8Array} gray - positions nearly flipped, marked here
+   * @param {Uint8Array} syndrome - the transposed syndrome, updated
+   * @param {int32} threshold - the flipping threshold
+   * @param {int32[]} h0 - positions of the first secret circulant
+   * @param {int32[]} h1 - positions of the second
+   * @param {int32[]} h0col - first column of the first
+   * @param {int32[]} h1col - first column of the second
    */
   function BitFlipIteration(set, e, black, gray, syndrome, threshold, h0, h1, h0col, h1col) {
+    /** @type {int32[]} */
     const flipped = [];
 
     for (let j = 0; j < set.r; ++j) {
@@ -698,7 +1076,20 @@
     for (let i = 0; i < flipped.length; ++i) RecomputeSyndrome(set, syndrome, flipped[i], h0, h1);
   }
 
+  /**
+   * A bit flipping pass over the masked positions only.
+   * @param {BikeParams} set - the parameter set
+   * @param {Uint8Array} e - the error vector, modified in place
+   * @param {Uint8Array} syndrome - the transposed syndrome, updated
+   * @param {Uint8Array} mask - positions to consider
+   * @param {int32} threshold - the flipping threshold
+   * @param {int32[]} h0 - positions of the first secret circulant
+   * @param {int32[]} h1 - positions of the second
+   * @param {int32[]} h0col - first column of the first
+   * @param {int32[]} h1col - first column of the second
+   */
   function MaskedBitFlipIteration(set, e, syndrome, mask, threshold, h0, h1, h0col, h1col) {
+    /** @type {int32[]} */
     const flipped = [];
 
     for (let j = 0; j < set.r; ++j) {
@@ -724,11 +1115,11 @@
    * The Black-Gray-Flip decoder: five bit flipping passes, the first of which
    * is followed by two masked passes over the positions it flipped and the
    * positions it nearly flipped.
-   * @param {object} set - the parameter set
+   * @param {BikeParams} set - the parameter set
    * @param {Uint8Array} syndrome - the transposed syndrome, consumed in place
-   * @param {number[]} h0 - positions of the first secret circulant
-   * @param {number[]} h1 - positions of the second
-   * @returns {object} the recovered error vector and whether the syndrome cleared
+   * @param {int32[]} h0 - positions of the first secret circulant
+   * @param {int32[]} h1 - positions of the second
+   * @returns {BikeDecoded} the recovered error vector and whether the syndrome cleared
    */
   function BgfDecoder(set, syndrome, h0, h1) {
     const e = new Uint8Array(set.n);
@@ -752,23 +1143,40 @@
       }
     }
 
-    return { error: e, success: HammingWeight(syndrome) === 0 };
+    return new BikeDecoded(e, HammingWeight(syndrome) === 0);
   }
 
   // ===== the key encapsulation mechanism =====
 
-  /** H maps the message to an error vector of weight t. */
+  /**
+   * H maps the message to an error vector of weight t.
+   * @param {BikeParams} set - the parameter set
+   * @param {uint8[]} m - the message
+   * @returns {BikeSparse} the error vector
+   */
   function FunctionH(set, m) {
     return GenerateSparseRep(Shake256Stream([m]), set.t, set.n, set.nBytes);
   }
 
-  /** L hashes the two halves of the error vector. */
+  /**
+   * L hashes the two halves of the error vector.
+   * @param {BikeParams} set - the parameter set
+   * @param {uint8[]} eBytes - the packed error vector
+   * @returns {uint8[]} 32 octets
+   */
   function FunctionL(set, eBytes) {
     const split = SplitPolynomial(set, eBytes);
     return Sha3_384([split.e0, split.e1]).slice(0, 32);
   }
 
-  /** K derives the shared secret from the message and the ciphertext. */
+  /**
+   * K derives the shared secret from the message and the ciphertext.
+   * @param {BikeParams} set - the parameter set
+   * @param {uint8[]} m - the message, or the rejection seed
+   * @param {uint8[]} c0 - first ciphertext part
+   * @param {uint8[]} c1 - second ciphertext part
+   * @returns {uint8[]} the 32 octet shared secret
+   */
   function FunctionK(set, m, c0, c1) {
     return Sha3_384([m, c0, c1]).slice(0, 32);
   }
@@ -776,12 +1184,12 @@
   /**
    * The key pair. The secret is two sparse circulants and a rejection seed; the
    * public key is their quotient.
-   * @param {object} set - the parameter set
-   * @param {object} drbg - the generator to draw the two seeds from
-   * @returns {object} the public and secret keys as octet strings
+   * @param {BikeParams} set - the parameter set
+   * @param {BikeDrbg} drbg - the generator to draw the two seeds from
+   * @returns {BikeKeyPair} the public and secret keys as octet strings
    */
   function Keypair(set, drbg) {
-    const seeds = drbg.read(64);
+    const seeds = DrbgRead(drbg, 64);
     const first = seeds.slice(0, 32);
     const second = seeds.slice(32, 64);
 
@@ -792,39 +1200,37 @@
     const inverse = VectInverse(set, BytesToWords(h0.bytes, set.rWords));
     const publicKey = WordsToBytes(VectMul(set, h1.positions, inverse), set.rBytes);
 
-    return {
-      publicKey: publicKey,
-      secretKey: h0.bytes.concat(h1.bytes).concat(second)
-    };
+    return new BikeKeyPair(publicKey, h0.bytes.concat(h1.bytes).concat(second));
   }
 
   /**
    * Encapsulate. The error vector is derived from the message, so the receiver
    * can check the ciphertext by recomputing it.
-   * @param {object} set - the parameter set
-   * @param {number[]} pk - the public key
-   * @param {number[]} m - the 32 octet message
-   * @returns {object} the ciphertext and the shared secret
+   * @param {BikeParams} set - the parameter set
+   * @param {int32[]} pk - the public key
+   * @param {int32[]} m - the 32 octet message
+   * @returns {BikeEncapsulation} the ciphertext and the shared secret
    */
   function Encapsulate(set, pk, m) {
     const e = FunctionH(set, m);
     const split = SplitPolynomial(set, e.bytes);
 
+    /** @type {int32[]} */
     const upperPositions = [];
     for (let i = 0; i < e.positions.length; ++i)
       if (e.positions[i] >= set.r) upperPositions.push(e.positions[i] - set.r);
 
     const c0 = WordsToBytes(VectMul(set, upperPositions, BytesToWords(pk, set.rWords)), set.rBytes);
-    for (let i = 0; i < set.rBytes; ++i) c0[i] = OpCodes.XorN(c0[i], split.e0[i]);
+    for (let i = 0; i < set.rBytes; ++i) c0[i] = OpCodes.Xor32(c0[i], split.e0[i]);
 
     const masked = FunctionL(set, e.bytes);
+    /** @type {uint8[]} */
     const c1 = new Array(32);
+    // The message arrives from the caller unmasked, so this exclusive-or stays
+    // the plain one rather than the unsigned 32 bit helper.
     for (let i = 0; i < 32; ++i) c1[i] = OpCodes.XorN(masked[i], m[i]);
 
-    return {
-      ciphertext: c0.concat(c1),
-      sharedSecret: FunctionK(set, m, c0, c1)
-    };
+    return new BikeEncapsulation(c0.concat(c1), FunctionK(set, m, c0, c1));
   }
 
   /**
@@ -832,10 +1238,10 @@
    * message follows from it, and the error vector is then rederived from that
    * message: a ciphertext whose two do not agree gets the rejection secret
    * derived from the secret key's own seed rather than an error.
-   * @param {object} set - the parameter set
-   * @param {number[]} ciphertext - the ciphertext
-   * @param {number[]} sk - the secret key
-   * @returns {number[]} the shared secret
+   * @param {BikeParams} set - the parameter set
+   * @param {int32[]} ciphertext - the ciphertext
+   * @param {int32[]} sk - the secret key
+   * @returns {int32[]} the shared secret
    */
   function Decapsulate(set, ciphertext, sk) {
     const c0 = ciphertext.slice(0, set.rBytes);
@@ -845,7 +1251,9 @@
     const h1Bytes = sk.slice(set.rBytes, 2 * set.rBytes);
     const sigma = sk.slice(2 * set.rBytes, 2 * set.rBytes + 32);
 
+    /** @type {int32[]} */
     const h0 = [];
+    /** @type {int32[]} */
     const h1 = [];
     for (let i = 0; i < set.r; ++i) {
       if (GetBit(h0Bytes, i) === 1) h0.push(i);
@@ -862,11 +1270,14 @@
 
     const decoded = BgfDecoder(set, syndrome, h0, h1);
 
-    const recoveredError = new Array(set.nBytes).fill(0);
+    const recoveredError = ZeroArray(set.nBytes);
     for (let i = 0; i < set.n; ++i) if (decoded.error[i]) SetBit(recoveredError, i);
 
     const masked = FunctionL(set, recoveredError);
+    /** @type {uint8[]} */
     const message = new Array(32);
+    // The ciphertext arrives from the caller unmasked, so this exclusive-or
+    // stays the plain one rather than the unsigned 32 bit helper.
     for (let i = 0; i < 32; ++i) message[i] = OpCodes.XorN(c1[i], masked[i]);
 
     const recomputed = FunctionH(set, message);
@@ -881,25 +1292,20 @@
    * One Known Answer Test record, end to end from its 48 octet seed: the key
    * pair and then the encapsulation, drawn from one generator in that order,
    * which is what the NIST harness does.
-   * @param {object} set - the parameter set
+   * @param {BikeParams} set - the parameter set
    * @param {uint8[]} seed - the 48 octet seed
-   * @returns {object} the public key, secret key, ciphertext and shared secret
+   * @returns {BikeKatRecord} the public key, secret key, ciphertext and shared secret
    */
   function KatRecord(set, seed) {
     const drbg = Drbg(seed);
     const pair = Keypair(set, drbg);
 
     // Encapsulation draws a seed pair as well and uses the first half of it.
-    const message = drbg.read(64).slice(0, 32);
+    const message = DrbgRead(drbg, 64).slice(0, 32);
     const encapsulated = Encapsulate(set, pair.publicKey, message);
 
-    return {
-      publicKey: pair.publicKey,
-      secretKey: pair.secretKey,
-      message: message,
-      ciphertext: encapsulated.ciphertext,
-      sharedSecret: encapsulated.sharedSecret
-    };
+    return new BikeKatRecord(pair.publicKey, pair.secretKey, message,
+      encapsulated.ciphertext, encapsulated.sharedSecret);
   }
 
   // ===== TEST VECTORS =====
@@ -1230,152 +1636,6 @@
       "271B");
   const KATL5_SS = OpCodes.Hex8ToBytes("E1E29C8D115DCBE54EB4416E012F74AB61D9C7D63E8C3188CC97C27E39518E0B");
 
-  const VECTORS = [
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l1',
-      keyGenerationOutput: 'publicKey',
-      input: KATL1_SEED,
-      expected: KATL1_PK
-    },
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to secret key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l1',
-      keyGenerationOutput: 'privateKey',
-      input: KATL1_SEED,
-      expected: KATL1_SK
-    },
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to ciphertext",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l1',
-      keyGenerationOutput: 'ciphertext',
-      input: KATL1_SEED,
-      expected: KATL1_CT
-    },
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l1',
-      keyGenerationOutput: 'sharedSecret',
-      input: KATL1_SEED,
-      expected: KATL1_SS
-    },
-    {
-      // Drives the Black-Gray-Flip decoder, which no other direction reaches.
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l1',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KATL1_SEED,
-      expected: KATL1_SS
-    },
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: decapsulation of the published ciphertext under the published secret key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      inverse: true,
-      privateKey: KATL1_SK,
-      input: KATL1_CT,
-      expected: KATL1_SS
-    },
-    {
-      // Setting sharedSecret turns the result into a verdict, so that the
-      // rejection cases below can assert a mismatch without naming the value
-      // the rejection branch produces.
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: the recovered secret is the published one",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      inverse: true,
-      privateKey: KATL1_SK,
-      sharedSecret: KATL1_SS,
-      input: KATL1_CT,
-      expected: [1]
-    },
-    {
-      // One bit of the ciphertext flipped. BIKE answers a ciphertext it did not
-      // produce with a secret derived from the secret key's own rejection seed
-      // rather than an error, so the property to assert is that the published
-      // secret does not come back.
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      inverse: true,
-      privateKey: KATL1_SK,
-      sharedSecret: KATL1_SS,
-      input: KATL1_CT_CORRUPTED,
-      expected: [0]
-    },
-    {
-      text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      inverse: true,
-      privateKey: KATL1_SK_OTHER,
-      sharedSecret: KATL1_SS,
-      input: KATL1_CT,
-      expected: [0]
-    },
-    {
-      text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l3',
-      keyGenerationOutput: 'publicKey',
-      input: KATL3_SEED,
-      expected: KATL3_PK
-    },
-    {
-      // The shared secret is a hash of the message and the whole ciphertext, so
-      // agreeing on it pins the ciphertext as well.
-      text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l3',
-      keyGenerationOutput: 'sharedSecret',
-      input: KATL3_SEED,
-      expected: KATL3_SS
-    },
-    {
-      text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l3',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KATL3_SEED,
-      expected: KATL3_SS
-    },
-    {
-      text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: seed to public key",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l5',
-      keyGenerationOutput: 'publicKey',
-      input: KATL5_SEED,
-      expected: KATL5_PK
-    },
-    {
-      text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: seed to encapsulated shared secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l5',
-      keyGenerationOutput: 'sharedSecret',
-      input: KATL5_SEED,
-      expected: KATL5_SS
-    },
-    {
-      text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: decapsulating its own ciphertext returns the published secret",
-      uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
-      keyGeneration: true,
-      parameterSet: 'bike-l5',
-      keyGenerationOutput: 'decapsulatedSecret',
-      input: KATL5_SEED,
-      expected: KATL5_SS
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -1416,17 +1676,162 @@
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability(
+        new Vulnerability(
           "Decoding failure attacks",
           "The decoder can fail, and which ciphertexts it fails on leaks information about the secret circulants, which recovers the key over many queries (Guo, Johansson and Stankovski, GJS).",
           "Use the parameter sets as published, whose decoding failure rate is below 2^-128, and never reuse a key pair across a ciphertext that failed to decode."),
-        new AlgorithmFramework.Vulnerability(
+        new Vulnerability(
           "Timing side channels",
           "This implementation is written for clarity: the decoder branches on syndrome bits and the sampler on collisions, so its running time depends on secret data.",
           "Not for use where an attacker can measure execution time.")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l1',
+          keyGenerationOutput: 'publicKey',
+          input: KATL1_SEED,
+          expected: KATL1_PK
+        },
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to secret key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l1',
+          keyGenerationOutput: 'privateKey',
+          input: KATL1_SEED,
+          expected: KATL1_SK
+        },
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to ciphertext",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l1',
+          keyGenerationOutput: 'ciphertext',
+          input: KATL1_SEED,
+          expected: KATL1_CT
+        },
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l1',
+          keyGenerationOutput: 'sharedSecret',
+          input: KATL1_SEED,
+          expected: KATL1_SS
+        },
+        {
+          // Drives the Black-Gray-Flip decoder, which no other direction reaches.
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l1',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KATL1_SEED,
+          expected: KATL1_SS
+        },
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: decapsulation of the published ciphertext under the published secret key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          inverse: true,
+          privateKey: KATL1_SK,
+          input: KATL1_CT,
+          expected: KATL1_SS
+        },
+        {
+          // Setting sharedSecret turns the result into a verdict, so that the
+          // rejection cases below can assert a mismatch without naming the value
+          // the rejection branch produces.
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: the recovered secret is the published one",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          inverse: true,
+          privateKey: KATL1_SK,
+          sharedSecret: KATL1_SS,
+          input: KATL1_CT,
+          expected: [1]
+        },
+        {
+          // One bit of the ciphertext flipped. BIKE answers a ciphertext it did not
+          // produce with a secret derived from the secret key's own rejection seed
+          // rather than an error, so the property to assert is that the published
+          // secret does not come back.
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          inverse: true,
+          privateKey: KATL1_SK,
+          sharedSecret: KATL1_SS,
+          input: KATL1_CT_CORRUPTED,
+          expected: [0]
+        },
+        {
+          text: "BIKE-L1 PQCkemKAT_BIKE_3114.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          inverse: true,
+          privateKey: KATL1_SK_OTHER,
+          sharedSecret: KATL1_SS,
+          input: KATL1_CT,
+          expected: [0]
+        },
+        {
+          text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l3',
+          keyGenerationOutput: 'publicKey',
+          input: KATL3_SEED,
+          expected: KATL3_PK
+        },
+        {
+          // The shared secret is a hash of the message and the whole ciphertext, so
+          // agreeing on it pins the ciphertext as well.
+          text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l3',
+          keyGenerationOutput: 'sharedSecret',
+          input: KATL3_SEED,
+          expected: KATL3_SS
+        },
+        {
+          text: "BIKE-L3 PQCkemKAT_BIKE_6198.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l3',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KATL3_SEED,
+          expected: KATL3_SS
+        },
+        {
+          text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: seed to public key",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l5',
+          keyGenerationOutput: 'publicKey',
+          input: KATL5_SEED,
+          expected: KATL5_PK
+        },
+        {
+          text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: seed to encapsulated shared secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l5',
+          keyGenerationOutput: 'sharedSecret',
+          input: KATL5_SEED,
+          expected: KATL5_SS
+        },
+        {
+          text: "BIKE-L5 PQCkemKAT_BIKE_10276.rsp record 0: decapsulating its own ciphertext returns the published secret",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-4/submissions/BIKE-Round4.zip",
+          keyGeneration: true,
+          parameterSet: 'bike-l5',
+          keyGenerationOutput: 'decapsulatedSecret',
+          input: KATL5_SEED,
+          expected: KATL5_SS
+        }
+      ];
     }
 
     /**
@@ -1459,7 +1864,7 @@
    */
   class BIKEInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - Parent algorithm instance
+     * @param {BIKECipher} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - decapsulation mode
      */
     constructor(algorithm, isInverse = false) {
@@ -1470,7 +1875,7 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['bike-l1'];
+      this._parameterSet = BIKE_L1;
       this._publicKey = null;
       this._privateKey = null;
       this._sharedSecret = null;
@@ -1495,6 +1900,7 @@
     /**
      * The public key. Its length selects the parameter set, the encoded lengths
      * across the three sets being pairwise distinct.
+     * @param {uint8[]} keyBytes - the encoded public key; falsy clears it
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -1514,6 +1920,10 @@
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
+    /**
+     * The secret key. Its length selects the parameter set.
+     * @param {uint8[]} keyBytes - the encoded secret key; falsy clears it
+     */
     set privateKey(keyBytes) {
       if (!keyBytes) {
         this._privateKey = null;
@@ -1537,6 +1947,7 @@
      * Result report agreement as [1] or [0] rather than returning the secret,
      * so that a vector can assert a rejection without naming the value the
      * rejection produces.
+     * @param {uint8[]} secretBytes - the expected secret; falsy clears it
      */
     set sharedSecret(secretBytes) {
       this._sharedSecret = secretBytes ? Array.from(secretBytes) : null;
@@ -1567,6 +1978,7 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid BIKE key data format');
 
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
 
       if (ParameterSetByLength(bytes.length, 'privateKeySize')) {
@@ -1594,14 +2006,14 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding the whole.
-     * @param {number[]} data - input bytes
+     * @param {int32[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
         for (let i = 0; i < data.length; ++i)
-          this.inputBuffer.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+          this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -1615,7 +2027,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {number[]} the result bytes
+     * @returns {int32[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;

@@ -183,7 +183,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MixmaxInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -201,21 +201,26 @@
  */
 
   class MixmaxInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MixmaxAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // MIXMAX configuration (simplified N=256 version)
       this.MATRIX_SIZE = 256;
       this.MAGIC_NUMBER = -3n; // Special parameter for optimal spectral properties
 
       // Generator state (256 x 64-bit words)
-      this._state = new Array(this.MATRIX_SIZE);
-      for (let i = 0; i < this.MATRIX_SIZE; ++i) {
-        this._state[i] = 0n;
-      }
+      /** @type {BigInt[]} */
+      this._state = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
 
       // Transformation matrix (256x256)
+      /** @type {BigInt[][]} */
       this._matrix = this._initializeMatrix();
+      /** @type {boolean} */
       this._ready = false;
     }
 
@@ -228,22 +233,26 @@
      * - For column > row: 1
      * - For column <= row: (row - column + 2)
      * - Special adjustment: matrix[2,1] += MAGIC_NUMBER
+     * @returns {BigInt[][]} The transformation matrix
      */
     _initializeMatrix() {
-      const matrix = new Array(this.MATRIX_SIZE);
+      /** @type {BigInt[][]} */
+      const matrix = [];
 
       for (let row = 0; row < this.MATRIX_SIZE; ++row) {
-        matrix[row] = new Array(this.MATRIX_SIZE);
+        /** @type {BigInt[]} */
+        const cells = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
+        matrix.push(cells);
 
         // First column: all 1s
-        matrix[row][0] = 1n;
+        cells[0] = 1n;
 
         // Remaining columns
         for (let col = 1; col < this.MATRIX_SIZE; ++col) {
           if (col > row) {
-            matrix[row][col] = 1n;
+            cells[col] = 1n;
           } else {
-            matrix[row][col] = BigInt(row - col + 2);
+            cells[col] = BigInt(row - col + 2);
           }
         }
       }
@@ -257,6 +266,7 @@
     /**
      * Seed using SplitMix64 for state initialization
      * This matches the C# implementation's seeding strategy
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -265,6 +275,7 @@
       }
 
       // Convert seed bytes to initial 64-bit value (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -272,14 +283,18 @@
 
       // Initialize state using SplitMix64
       // SplitMix64 constants
+      /** @type {BigInt} */
       const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       const MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // Generate 256 state values using SplitMix64
       for (let i = 0; i < this.MATRIX_SIZE; ++i) {
         // SplitMix64 next() function
         seedValue = OpCodes.AndN(seedValue + GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+        /** @type {BigInt} */
         let z = seedValue;
         z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30)) * MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
         z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27)) * MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
@@ -291,6 +306,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -303,6 +321,7 @@
      * 2. Compute newState[i] = sum(matrix[i][j] * state[j]) for all j
      * 3. Update state to newState
      * 4. Return output
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -310,21 +329,28 @@
       }
 
       // Step 1: Compute output as sum of all state values (implicit mod 2^64)
+      /** @type {BigInt} */
       let result = 0n;
       for (let i = 0; i < this.MATRIX_SIZE; ++i) {
         result = OpCodes.AndN(result + this._state[i], 0xFFFFFFFFFFFFFFFFn);
       }
 
       // Step 2: Matrix-vector multiplication to compute new state
-      const newState = new Array(this.MATRIX_SIZE);
+      /** @type {BigInt[]} */
+      const newState = OpCodes.CreateArray(this.MATRIX_SIZE, 0n);
       for (let i = 0; i < this.MATRIX_SIZE; ++i) {
-        newState[i] = 0n;
+        /** @type {BigInt[]} */
+        const matrixRow = this._matrix[i];
+        /** @type {BigInt} */
+        let acc = 0n;
 
         for (let j = 0; j < this.MATRIX_SIZE; ++j) {
           // newState[i] += matrix[i][j] * state[j] (mod 2^64)
-          const product = OpCodes.AndN(this._matrix[i][j] * this._state[j], 0xFFFFFFFFFFFFFFFFn);
-          newState[i] = OpCodes.AndN(newState[i] + product, 0xFFFFFFFFFFFFFFFFn);
+          /** @type {BigInt} */
+          const product = OpCodes.AndN(matrixRow[j] * this._state[j], 0xFFFFFFFFFFFFFFFFn);
+          acc = OpCodes.AndN(acc + product, 0xFFFFFFFFFFFFFFFFn);
         }
+        newState[i] = acc;
       }
 
       // Step 3: Update state
@@ -336,8 +362,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -345,19 +371,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
@@ -388,19 +419,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 
