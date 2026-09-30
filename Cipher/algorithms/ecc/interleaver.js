@@ -143,11 +143,17 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._rows = 4; // Default 4x4 interleaving
+      /** @type {int32} */
       this._cols = 4;
+      /** @type {string} */
       this._interleaveType = 'block'; // 'block' or 'convolutional' (future)
     }
 
+    /**
+     * @param {int32} r - Matrix rows (1..256)
+     */
     set rows(r) {
       if (r < 1 || r > 256) {
         throw new Error('InterleaverInstance.rows: Must be between 1 and 256');
@@ -155,10 +161,16 @@
       this._rows = r;
     }
 
+    /**
+     * @returns {int32} Matrix rows
+     */
     get rows() {
       return this._rows;
     }
 
+    /**
+     * @param {int32} c - Matrix columns (1..256)
+     */
     set cols(c) {
       if (c < 1 || c > 256) {
         throw new Error('InterleaverInstance.cols: Must be between 1 and 256');
@@ -166,6 +178,9 @@
       this._cols = c;
     }
 
+    /**
+     * @returns {int32} Matrix columns
+     */
     get cols() {
       return this._cols;
     }
@@ -206,6 +221,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Symbols, a whole number of blocks
+     * @returns {uint8[]} Column-major symbols
+     */
     interleave(data) {
       // Block interleaving: write row-major, read column-major
       const blockSize = this._rows * this._cols;
@@ -214,6 +233,7 @@
         throw new Error("Interleaver: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       const numBlocks = data.length / blockSize;
 
@@ -233,6 +253,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Column-major symbols
+     * @returns {uint8[]} Row-major symbols
+     */
     deinterleave(data) {
       // Reverse of interleaving: write column-major, read row-major
       const blockSize = this._rows * this._cols;
@@ -241,6 +265,7 @@
         throw new Error("Deinterleaver: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       const numBlocks = data.length / blockSize;
 

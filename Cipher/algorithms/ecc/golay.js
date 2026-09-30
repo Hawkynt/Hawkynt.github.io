@@ -52,6 +52,23 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * [n, k, d] and correction capability of the binary Golay code
+   * @class
+   */
+  class GolayCodeParameters {
+    constructor() {
+      /** @type {int32} */
+      this.n = 23; // Codeword length
+      /** @type {int32} */
+      this.k = 12; // Data length
+      /** @type {int32} */
+      this.d = 7;  // Minimum distance
+      /** @type {int32} */
+      this.t = 3;  // Error correction capability
+    }
+  }
+
   class GolayCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -181,6 +198,10 @@
     }
 
     // Convert byte array to 23-bit integer (big-endian: MSB first)
+    /**
+     * @param {uint8[]} bytes - Up to three bytes, MSB first
+     * @returns {uint32} 23-bit value
+     */
     _bytesToInt23(bytes) {
       /** @type {uint32} */
       let value = 0;
@@ -191,15 +212,25 @@
     }
 
     // Convert 23-bit integer to byte array (big-endian: MSB first)
+    /**
+     * @param {uint32} value - 23-bit value
+     * @returns {uint8[]} Three bytes, MSB first
+     */
     _int23ToBytes(value) {
-      return [
+      /** @type {uint8[]} */
+      const bytes = [
         OpCodes.And32(OpCodes.Shr32(value, 16), 0x7F),
         OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF),
         OpCodes.And32(value, 0xFF)
       ];
+      return bytes;
     }
 
     // Convert byte array to 12-bit integer (big-endian: MSB first)
+    /**
+     * @param {uint8[]} bytes - Up to two bytes, MSB first
+     * @returns {uint32} 12-bit value
+     */
     _bytesToInt12(bytes) {
       /** @type {uint32} */
       let value = 0;
@@ -210,15 +241,26 @@
     }
 
     // Convert 12-bit integer to byte array (big-endian: MSB first)
+    /**
+     * @param {uint32} value - 12-bit value
+     * @returns {uint8[]} Two bytes, MSB first
+     */
     _int12ToBytes(value) {
-      return [
+      /** @type {uint8[]} */
+      const bytes = [
         OpCodes.And32(OpCodes.Shr32(value, 8), 0x0F),
         OpCodes.And32(value, 0xFF)
       ];
+      return bytes;
     }
 
     // Calculate syndrome (remainder after division by generator polynomial)
+    /**
+     * @param {uint32} codeword - 23-bit word
+     * @returns {uint32} 11-bit syndrome
+     */
     _getSyndrome(codeword) {
+      /** @type {uint32} */
       let syndrome = codeword;
 
       // Perform modulo-2 division (XOR-based)
@@ -232,7 +274,12 @@
     }
 
     // Count number of 1-bits (Hamming weight)
+    /**
+     * @param {uint32} value - Word
+     * @returns {int32} Number of set bits
+     */
     _hammingWeight(value) {
+      /** @type {int32} */
       let count = 0;
       while (value) {
         count += OpCodes.And32(value, 1);
@@ -242,6 +289,10 @@
     }
 
     // Find error pattern from syndrome
+    /**
+     * @param {uint32} syndrome - 11-bit syndrome
+     * @returns {uint32} Error pattern of weight <= 3, or null when none matches
+     */
     _getErrorPattern(syndrome) {
       if (syndrome === 0) return 0; // No error
 
@@ -279,6 +330,9 @@
       return null;
     }
 
+    /**
+     * @returns {uint8[]} Three-byte codeword
+     */
     _encode() {
       if (this.inputBuffer.length < 2) {
         throw new Error('Golay code requires at least 12 bits (2 bytes) of data');
@@ -300,6 +354,9 @@
       return this._int23ToBytes(codeword);
     }
 
+    /**
+     * @returns {uint8[]} Two-byte data word
+     */
     _decode() {
       if (this.inputBuffer.length < 3) {
         throw new Error('Golay code requires 23 bits (3 bytes) of encoded data');
@@ -349,18 +406,19 @@
     }
 
     // Get error correction capability
+    /**
+     * @returns {int32} Correctable errors per codeword
+     */
     getMaxCorrectableErrors() {
       return 3;
     }
 
     // Get code parameters
+    /**
+     * @returns {GolayCodeParameters} Code parameters
+     */
     getCodeParameters() {
-      return {
-        n: 23, // Codeword length
-        k: 12, // Data length
-        d: 7,  // Minimum distance
-        t: 3   // Error correction capability
-      };
+      return new GolayCodeParameters();
     }
   }
 

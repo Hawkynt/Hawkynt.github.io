@@ -178,7 +178,15 @@
         throw new Error('Hsiao encode: Input must be exactly 4 bits');
       }
 
-      const [d1, d2, d3, d4] = data;
+      /** @type {uint8} */
+      const d1 = data[0];
+      /** @type {uint8} */
+      const d2 = data[1];
+      /** @type {uint8} */
+      const d3 = data[2];
+      /** @type {uint8} */
+      const d4 = data[3];
+      /** @type {uint8[]} */
       const encoded = new Array(8);
 
       // Data bits at positions 3, 5, 6, 7 (1-indexed)
@@ -209,13 +217,18 @@
         throw new Error('Hsiao decode: Input must be exactly 8 bits');
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
 
       // Calculate syndrome (positions 1-7)
+      /** @type {uint32} */
       const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[1], received[3]), received[5]), received[7]);
+      /** @type {uint32} */
       const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[2], received[3]), received[6]), received[7]);
+      /** @type {uint32} */
       const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(received[4], received[5]), received[6]), received[7]);
-      const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
+      /** @type {uint32} */
+      const syndrome = OpCodes.Add32(OpCodes.Add32(s1, OpCodes.Shl32(s2, 1)), OpCodes.Shl32(s4, 2));
 
       // Calculate overall parity
       /** @type {uint32} */
@@ -231,7 +244,8 @@
         received[0] = OpCodes.Xor32(received[0], 1);
       } else {
         // Count 1s in syndrome (Hsiao's odd-weight column property)
-        const syndromeWeight = (syndrome.toString(2).match(/1/g) || []).length;
+        /** @type {int32} */
+        const syndromeWeight = OpCodes.PopCount(syndrome);
 
         if (overallParity !== 0 && syndromeWeight % 2 === 1) {
           // Single bit error (correctable) - odd syndrome weight + odd parity
@@ -246,7 +260,9 @@
       }
 
       // Extract data bits
-      return [received[3], received[5], received[6], received[7]];
+      /** @type {uint8[]} */
+      const decoded = [received[3], received[5], received[6], received[7]];
+      return decoded;
     }
 
     /**
@@ -256,10 +272,14 @@
     DetectError(data) {
       if (data.length !== 8) return true;
 
+      /** @type {uint32} */
       const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[1], data[3]), data[5]), data[7]);
+      /** @type {uint32} */
       const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[2], data[3]), data[6]), data[7]);
+      /** @type {uint32} */
       const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[4], data[5]), data[6]), data[7]);
-      const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
+      /** @type {uint32} */
+      const syndrome = OpCodes.Add32(OpCodes.Add32(s1, OpCodes.Shl32(s2, 1)), OpCodes.Shl32(s4, 2));
 
       /** @type {uint32} */
       let overallParity = 0;
