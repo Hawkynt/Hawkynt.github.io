@@ -39,7 +39,7 @@
 
 ## Test vectors
 
-1 vector ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Leviathan — zero block, incrementing key](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -48,6 +48,22 @@
 | `key` | `000102030405060708090a0b0c0d0e0f` |
 | `input` | `00000000000000000000000000000000` |
 | `expected` | `3d2a20bbae89b73ffc9e78598186ef31` |
+
+**Vector 2** — [DarkCrypt Leviathan — mixed key, non-zero block (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0f1e2d3c4b5a69788796a5b4c3d2e1f0` |
+| `input` | `00112233445566778899aabbccddeeff` |
+| `expected` | `fd76bbdecbf577ca8cc541067323f9e7` |
+
+**Vector 3** — [DarkCrypt Leviathan — all-0xFF key, two incrementing blocks continue the keystream (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `ffffffffffffffffffffffffffffffff` |
+| `input` | `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f` |
+| `expected` | `b4a2c6b7ffce411e2e2aa6b5015d2ac03cb79098609bda1896aaf3a20cdb7151` |
 
 ---
 
