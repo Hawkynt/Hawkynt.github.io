@@ -163,10 +163,15 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._rows = 4; // Default 4x4 matrix
+      /** @type {int32} */
       this._cols = 4;
     }
 
+    /**
+     * @param {int32} r - Data rows (2..256)
+     */
     set rows(r) {
       if (r < 2 || r > 256) {
         throw new Error('ProductCodeInstance.rows: Must be between 2 and 256');
@@ -174,10 +179,16 @@
       this._rows = r;
     }
 
+    /**
+     * @returns {int32} Data rows
+     */
     get rows() {
       return this._rows;
     }
 
+    /**
+     * @param {int32} c - Data columns (2..256)
+     */
     set cols(c) {
       if (c < 2 || c > 256) {
         throw new Error('ProductCodeInstance.cols: Must be between 2 and 256');
@@ -185,6 +196,9 @@
       this._cols = c;
     }
 
+    /**
+     * @returns {int32} Data columns
+     */
     get cols() {
       return this._cols;
     }
@@ -375,6 +389,7 @@
       }
 
       // Extract original data (excluding parity bits)
+      /** @type {uint8[]} */
       const decoded = new Array(dataRows * dataCols);
       for (let r = 0; r < dataRows; ++r) {
         for (let c = 0; c < dataCols; ++c) {

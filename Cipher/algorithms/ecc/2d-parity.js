@@ -150,10 +150,15 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._rows = 3; // Default 3x3 grid
+      /** @type {int32} */
       this._cols = 3;
     }
 
+    /**
+     * @param {int32} value - Data rows (1..16)
+     */
     set rows(value) {
       if (value < 1 || value > 16) {
         throw new Error('TwoDParityInstance.rows: Must be between 1 and 16');
@@ -161,10 +166,16 @@
       this._rows = value;
     }
 
+    /**
+     * @returns {int32} Data rows
+     */
     get rows() {
       return this._rows;
     }
 
+    /**
+     * @param {int32} value - Data columns (1..16)
+     */
     set cols(value) {
       if (value < 1 || value > 16) {
         throw new Error('TwoDParityInstance.cols: Must be between 1 and 16');
@@ -172,6 +183,9 @@
       this._cols = value;
     }
 
+    /**
+     * @returns {int32} Data columns
+     */
     get cols() {
       return this._cols;
     }

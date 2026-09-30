@@ -142,9 +142,13 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._m = 3; // Default: Simplex (7,3)
     }
 
+    /**
+     * @param {int32} value - Dimension m (2..5)
+     */
     set m(value) {
       if (value < 2 || value > 5) {
         throw new Error('SimplexCodeInstance.m: Must be between 2 and 5');
@@ -152,6 +156,9 @@
       this._m = value;
     }
 
+    /**
+     * @returns {int32} Dimension m
+     */
     get m() {
       return this._m;
     }
@@ -193,7 +200,8 @@
      */
     encode(data) {
       const m = this._m;
-      const n = (OpCodes.Shl32(1, m)) - 1; // 2^m - 1
+      /** @type {int32} */
+      const n = OpCodes.ToInt(OpCodes.Shl32(1, m)) - 1; // 2^m - 1
 
       if (data.length !== m) {
         throw new Error("Simplex encode: Input must be exactly " + m + " bits for Simplex(" + n + "," + m + ")");
@@ -227,7 +235,8 @@
      */
     decode(data) {
       const m = this._m;
-      const n = (OpCodes.Shl32(1, m)) - 1;
+      /** @type {int32} */
+      const n = OpCodes.ToInt(OpCodes.Shl32(1, m)) - 1;
 
       if (data.length !== n) {
         throw new Error("Simplex decode: Input must be exactly " + n + " bits for Simplex(" + n + "," + m + ")");
@@ -280,14 +289,18 @@
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
-      const n = (OpCodes.Shl32(1, this._m)) - 1;
+      /** @type {int32} */
+      const n = OpCodes.ToInt(OpCodes.Shl32(1, this._m)) - 1;
       if (data.length !== n) return true;
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(data);
+        /** @type {SimplexCodeInstance} */
         const tempInstance = new SimplexCodeInstance(this.algorithm, false);
         tempInstance.m = this._m;
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         for (let i = 0; i < n; ++i) {
