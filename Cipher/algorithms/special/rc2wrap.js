@@ -63,7 +63,6 @@
      */
     static cmsKeyChecksum(data) {
       // Use the registered SHA-1 algorithm
-      /** @type {Algorithm} */
       const sha1Algo = AlgorithmFramework.Find('SHA-1');
       if (!sha1Algo) {
         throw new Error('SHA-1 algorithm not found - ensure sha1.js is loaded');
@@ -99,7 +98,6 @@
       }
     }
 
-    /** @type {Algorithm} */
     const rc2Algo = AlgorithmFramework.Find('RC2');
     if (!rc2Algo) {
       throw new Error('RC2 algorithm not found - ensure rc2.js is loaded');
