@@ -182,7 +182,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MWC256Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -200,41 +200,68 @@
  */
 
   class MWC256Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {MWC256Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // MWC256 constants (from Marsaglia's May 13, 2003 implementation)
       this.ARRAY_SIZE = 256;                    // Q array size
+      /** @type {BigInt} */
       this.MULTIPLIER = 809430660n;             // Multiplier constant
+      /** @type {BigInt} */
       this.MAX_CARRY = 809430660n;              // Maximum carry value
 
       // Generator state
-      this._Q = new Array(this.ARRAY_SIZE);     // State array Q[0..255]
+      /** @type {BigInt[]} */
+      this._Q = OpCodes.CreateArray(this.ARRAY_SIZE, 0n);     // State array Q[0..255]
+      /** @type {BigInt} */
       this._carry = 0n;                         // Carry value (must be < MAX_CARRY)
+      /** @type {int32} */
       this._index = 255;                        // Current index (starts at 255, wraps to 0)
+      /** @type {boolean} */
       this._ready = false;
 
       // SplitMix64 constants for seeding
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
     }
 
     /**
-     * SplitMix64 function for high-quality array initialization
-     * Modifies state in place and returns next value
+     * SplitMix64 state advance for array initialization
+     * @param {BigInt} current - State before the step
+     * @returns {BigInt} Advanced state
      */
-    _splitmix64(state) {
-      const z1 = OpCodes.AndN(state + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+    _splitmixAdvance(current) {
+      return OpCodes.AndN(current + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+    }
+
+    /**
+     * SplitMix64 output function for high-quality array initialization
+     * @param {BigInt} z1 - Advanced state (see _splitmixAdvance)
+     * @returns {BigInt} Mixed output
+     */
+    _splitmixMix(z1) {
+      /** @type {BigInt} */
       const z2 = OpCodes.AndN(OpCodes.XorN(z1, OpCodes.ShiftRn(z1, 30)) * this.MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
       const z3 = OpCodes.AndN(OpCodes.XorN(z2, OpCodes.ShiftRn(z2, 27)) * this.MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
       const result = OpCodes.AndN(OpCodes.XorN(z3, OpCodes.ShiftRn(z3, 31)), 0xFFFFFFFFFFFFFFFFn);
-      return { state: z1, value: result };
+      return result;
     }
 
     /**
      * Seed using SplitMix64 to initialize Q array and carry
      * Matches the approach used in test vector generation
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -243,29 +270,32 @@
       }
 
       // Convert seed bytes to 64-bit value for SplitMix64
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
       }
 
       // Initialize Q array using SplitMix64
+      /** @type {BigInt} */
       let currentState = seedValue;
       for (let i = 0; i < this.ARRAY_SIZE; ++i) {
-        const result = this._splitmix64(currentState);
-        currentState = result.state;
+        currentState = this._splitmixAdvance(currentState);
         // Use lower 32 bits of SplitMix64 output
-        this._Q[i] = OpCodes.AndN(result.value, 0xFFFFFFFFn);
+        this._Q[i] = OpCodes.AndN(this._splitmixMix(currentState), 0xFFFFFFFFn);
       }
 
       // Initialize carry using SplitMix64 (must be < MAX_CARRY)
-      const carryResult = this._splitmix64(currentState);
-      this._carry = carryResult.value % this.MAX_CARRY;
+      this._carry = this._splitmixMix(this._splitmixAdvance(currentState)) % this.MAX_CARRY;
 
       // Reset index to 255 (will wrap to 0 on first call)
       this._index = 255;
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -279,6 +309,7 @@
      * 3. c = t right-shift 32 (carry = upper 32 bits)
      * 4. Q[i] = t AND 0xFFFFFFFF (state = lower 32 bits)
      * 5. return Q[i]
+     * @returns {BigInt} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {
@@ -286,10 +317,13 @@
       }
 
       // Step 1: Increment index with wraparound (0-255)
-      this._index = Number(OpCodes.AndN(BigInt(this._index + 1), 0xFFn)); // Fast modulo 256 using bitmask
+      this._index = OpCodes.And32(this._index + 1, 0xFF); // Fast modulo 256 using bitmask
 
       // Step 2: t = a * Q[i] + c (64-bit arithmetic)
-      const t = this.MULTIPLIER * this._Q[this._index] + this._carry;
+      /** @type {BigInt} */
+      const product = this.MULTIPLIER * this._Q[this._index];
+      /** @type {BigInt} */
+      const t = product + this._carry;
 
       // Step 3: Extract carry (upper 32 bits)
       this._carry = OpCodes.ShiftRn(t, 32);
@@ -303,8 +337,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -312,20 +346,25 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 32-bit value
+        /** @type {BigInt} */
         const value = this._next32();
 
         // Extract bytes (little-endian order to match test vectors)
         const bytesToExtract = Math.min(bytesRemaining, 4);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i * 8)), 0xFFn));
+          /** @type {uint8} */
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
           output.push(byte);
         }
 
@@ -355,19 +394,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

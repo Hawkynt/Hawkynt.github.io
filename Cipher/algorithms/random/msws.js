@@ -157,7 +157,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MiddleSquareWeylSequenceInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -175,13 +175,23 @@
  */
 
   class MiddleSquareWeylSequenceInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MiddleSquareWeylSequenceAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // MSWS uses 128-bit state (x) and 64-bit Weyl counter (w)
       // Using BigInt for accurate 128-bit arithmetic
+      /** @type {BigInt} */
       this._state = 0n;  // 128-bit state
+      /** @type {BigInt} */
       this._weyl = 0n;   // 64-bit Weyl counter
+      /** @type {BigInt} */
       this._weylConstant = 0xB5AD4ECEDA1CE2A9n; // Golden ratio derived constant
       this._ready = false;
     }
@@ -190,6 +200,7 @@
      * Set seed value (1-8 bytes)
      * Seed initialization: state = (seed left-shift 64) bitwise-OR ~seed, weyl = 0
      * This ensures the initial state is 128 bits with good mixing
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -198,6 +209,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seed64 = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seed64 = OpCodes.OrN(OpCodes.ShiftLn(seed64, 8n), BigInt(OpCodes.And32(seedBytes[i], 0xFF)));
@@ -205,17 +217,24 @@
 
       // Initialize state as per MSWS specification: state = (seed left-shift 64) bitwise-OR ~seed
       // This creates a 128-bit state where upper 64 bits = seed, lower 64 bits = bitwise NOT of seed
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       const upperBits = OpCodes.ShiftLn(seed64, 64n);
-      const lowerBits = OpCodes.AndN(~seed64, mask64);
+      // the bitwise NOT of a 64-bit value, within 64 bits
+      /** @type {BigInt} */
+      const lowerBits = OpCodes.XorN(seed64, mask64);
       this._state = OpCodes.OrN(upperBits, lowerBits);
 
       // Initialize Weyl counter to 0
+      /** @type {BigInt} */
       this._weyl = 0n;
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -230,6 +249,7 @@
      * 4. return x right-shift 32      (extract middle 64 bits)
      *
      * Note: All state is maintained at full 128-bit precision
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -241,6 +261,7 @@
       this._state = OpCodes.AndN(this._state * this._state, mask128);
 
       // Step 2: Increment Weyl counter (mod 2^64)
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._weyl = OpCodes.AndN(this._weyl + this._weylConstant, mask64);
 
@@ -256,8 +277,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -265,14 +286,18 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order)
@@ -281,6 +306,7 @@
         for (let i = 0; i < bytesToExtract; ++i) {
           // Extract from most significant byte first (big-endian)
           const shift = BigInt((7 - i) * 8);
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, shift), 0xFFn));
           output.push(byte);
         }
@@ -310,7 +336,8 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -326,24 +353,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

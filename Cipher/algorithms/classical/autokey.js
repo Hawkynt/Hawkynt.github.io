@@ -46,12 +46,19 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const UPPER_A = 65, UPPER_Z = 90, LOWER_A = 97, LOWER_Z = 122;
+  /** @type {int32} */
+  const UPPER_A = 65;
+  /** @type {int32} */
+  const UPPER_Z = 90;
+  /** @type {int32} */
+  const LOWER_A = 97;
+  /** @type {int32} */
+  const LOWER_Z = 122;
 
   /**
    * Alphabet origin of a byte: 65 for A-Z, 97 for a-z, -1 for anything else.
-   * @param {number} byte - Input byte
-   * @returns {number} Character code of the letter's own 'A', or -1
+   * @param {uint8} byte - Input byte
+   * @returns {int32} Character code of the letter's own 'A', or -1
    */
   function LetterCaseBase(byte) {
     if (byte >= UPPER_A && byte <= UPPER_Z) return UPPER_A;
@@ -90,18 +97,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Probable Plaintext Attack",
-          text: "If portion of plaintext is known, can recover key and decrypt remainder of message",
-          uri: "https://en.wikipedia.org/wiki/Known-plaintext_attack",
-          mitigation: "Avoid predictable beginnings or known phrases"
-        },
-        {
-          type: "Statistical Analysis",
-          text: "While more secure than Vigenère, still vulnerable to advanced statistical attacks",
-          uri: "https://en.wikipedia.org/wiki/Autokey_cipher#Cryptanalysis",
-          mitigation: "Educational use only"
-        }
+        new Vulnerability(
+          "Probable Plaintext Attack",
+          "If portion of plaintext is known, can recover key and decrypt remainder of message",
+          "Avoid predictable beginnings or known phrases",
+          "https://en.wikipedia.org/wiki/Known-plaintext_attack"
+        ),
+        new Vulnerability(
+          "Statistical Analysis",
+          "While more secure than Vigenère, still vulnerable to advanced statistical attacks",
+          "Educational use only",
+          "https://en.wikipedia.org/wiki/Autokey_cipher#Cryptanalysis"
+        )
       ];
 
       // Test vectors using byte arrays - bit-perfect results from implementation
@@ -137,7 +144,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AutokeyCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,28 +162,41 @@
   class AutokeyCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AutokeyCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = [];
+      /** @type {string} */
+      this._initialKey = "A";
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Character sets
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     }
 
-    // Property setter for key
+    /**
+     * Keyword; only its letters count, upper-cased
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "A"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._initialKey = "A"; // Default key
       } else {
         // Convert key bytes to uppercase letters only
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
-        this._initialKey = keyStr.toUpperCase().replace(/[^A-Z]/g, '');
+        /** @type {string} */
+        const upper = keyStr.toUpperCase();
+        this._initialKey = upper.replace(/[^A-Z]/g, '');
         if (this._initialKey.length === 0) {
           this._initialKey = "A"; // Fallback
         }
@@ -184,12 +204,12 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the keyword
+   * @returns {string} Upper-case keyword letters
    */
 
     get key() {
-      return this._initialKey || "A";
+      return this._initialKey ? this._initialKey : "A";
     }
 
     // Feed data to the cipher
@@ -203,11 +223,15 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
       }
 
+      /** @type {uint8[]} */
       const output = new Array(this.inputBuffer.length);
-      const initialKey = this.key;
+      /** @type {string} */
+      const initialKey = this._initialKey ? this._initialKey : "A";
 
       // Every byte is accounted for. A letter is enciphered in its own case
       // and both consumes and extends the running key; anything else is copied
@@ -224,14 +248,18 @@
       // Positions rather than a string, because appending to a string and then
       // indexing it forces V8 to flatten the rope on every letter, which is
       // quadratic: a megabyte of text took two and a half minutes that way.
+      /** @type {int32[]} */
       const runningKey = new Array(initialKey.length);
       for (let k = 0; k < initialKey.length; k++)
-        runningKey[k] = this.ALPHABET.indexOf(initialKey[k]);
+        runningKey[k] = this.ALPHABET.indexOf(initialKey.charAt(k));
 
+      /** @type {int32} */
       let letterIndex = 0;
 
       for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {uint8} */
         const byte = this.inputBuffer[i];
+        /** @type {int32} */
         const caseBase = LetterCaseBase(byte);
 
         if (caseBase < 0) {
@@ -239,11 +267,14 @@
           continue;
         }
 
+        /** @type {int32} */
         const textIndex = byte - caseBase;
+        /** @type {int32} */
         const keyIndex = runningKey[letterIndex];
         ++letterIndex;
 
         // Encrypt: (text + key) mod 26; decrypt: (cipher - key + 26) mod 26
+        /** @type {int32} */
         const resultIndex = this.isInverse
           ? (textIndex - keyIndex + 26) % 26
           : (textIndex + keyIndex) % 26;

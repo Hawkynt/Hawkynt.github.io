@@ -109,7 +109,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ReedMullerInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -126,17 +126,23 @@
   class ReedMullerInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ReedMullerAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._m = 3; // Default RM(1,3) - [8,4,4] code
     }
 
+    /**
+     * @param {int32} value - Order parameter m (2..5)
+     */
     set m(value) {
       if (value < 2 || value > 5) {
         throw new Error('ReedMullerInstance.m: Must be between 2 and 5');
@@ -144,6 +150,9 @@
       this._m = value;
     }
 
+    /**
+     * @returns {int32} Order parameter m
+     */
     get m() {
       return this._m;
     }
@@ -179,25 +188,30 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m); // 2^m
       const k = 1 + m; // First-order RM has k = 1 + m data bits
 
       if (data.length !== k) {
-        throw new Error(`Reed-Muller encode: Input must be exactly ${k} bits for RM(1,${m})`);
+        throw new Error("Reed-Muller encode: Input must be exactly " + k + " bits for RM(1," + m + ")");
       }
 
       // RM(1,m) generator matrix construction
       // First row is all ones (constant term)
       // Remaining rows are indicator functions for each variable
 
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term (data[0])
       if (data[0] === 1) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] = OpCodes.XorN(codeword[i], 1);
+          codeword[i] = OpCodes.Xor32(codeword[i], 1);
         }
       }
 
@@ -206,8 +220,8 @@
         if (data[1 + var_idx] === 1) {
           // For variable var_idx, set bits where that variable is 1
           for (let i = 0; i < n; ++i) {
-            if (OpCodes.AndN(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
-              codeword[i] = OpCodes.XorN(codeword[i], 1);
+            if (OpCodes.And32(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
+              codeword[i] = OpCodes.Xor32(codeword[i], 1);
             }
           }
         }
@@ -216,16 +230,21 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m);
       const k = 1 + m;
 
       if (data.length !== n) {
-        throw new Error(`Reed-Muller decode: Input must be exactly ${n} bits for RM(1,${m})`);
+        throw new Error("Reed-Muller decode: Input must be exactly " + n + " bits for RM(1," + m + ")");
       }
 
-      const decoded = new Array(k).fill(0);
+      /** @type {uint8[]} */
+      const decoded = OpCodes.CreateArray(k, 0);
 
       // Maximum-likelihood decoding via the Fast Hadamard Transform ("Green machine").
       //
@@ -238,16 +257,21 @@
       // codeword. Per-coordinate majority voting is NOT a valid decoder here: the
       // constant term biases every coordinate vote, which makes the votes tie on
       // perfectly clean codewords.
+      /** @type {float64[]} */
       const transform = new Array(n);
       for (let i = 0; i < n; ++i) {
-        transform[i] = 1 - 2 * data[i];
+        /** @type {float64} */
+        const bit = data[i];
+        transform[i] = 1 - 2 * bit;
       }
 
       // In-place Walsh-Hadamard butterfly (natural / Hadamard ordering)
       for (let span = 1; span < n; span = span * 2) {
         for (let base = 0; base < n; base += span * 2) {
           for (let i = base; i < base + span; ++i) {
+            /** @type {float64} */
             const lo = transform[i];
+            /** @type {float64} */
             const hi = transform[i + span];
             transform[i] = lo + hi;
             transform[i + span] = lo - hi;
@@ -256,9 +280,12 @@
       }
 
       // Locate the coefficient of maximum magnitude: the most likely mask
+      /** @type {int32} */
       let bestIndex = 0;
+      /** @type {float64} */
       let bestMagnitude = -1;
       for (let i = 0; i < n; ++i) {
+        /** @type {float64} */
         const magnitude = transform[i] < 0 ? -transform[i] : transform[i];
         if (magnitude > bestMagnitude) {
           bestMagnitude = magnitude;
@@ -272,21 +299,28 @@
       // The mask bits are the linear coefficients, in the same bit order the
       // encoder used when it built the indicator rows
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        decoded[1 + var_idx] = OpCodes.AndN(OpCodes.Shr32(bestIndex, m - 1 - var_idx), 1);
+        decoded[1 + var_idx] = OpCodes.And32(OpCodes.Shr32(bestIndex, m - 1 - var_idx), 1);
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(data);
+        /** @type {ReedMullerInstance} */
         const tempInstance = new ReedMullerInstance(this.algorithm, false);
         tempInstance.m = this._m;
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         for (let i = 0; i < n; ++i) {

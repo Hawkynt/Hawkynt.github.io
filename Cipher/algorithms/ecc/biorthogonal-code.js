@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BiorthogonalCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,17 +132,22 @@
   class BiorthogonalCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BiorthogonalCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._m = 3; // Default: (8,4) code
     }
 
+    /**
+     * @param {int32} value - Parameter m, 2..5
+     */
     set m(value) {
       if (value < 2 || value > 5) {
         throw new Error('BiorthogonalCodeInstance.m: Must be between 2 and 5');
@@ -150,6 +155,9 @@
       this._m = value;
     }
 
+    /**
+     * @returns {int32} Parameter m
+     */
     get m() {
       return this._m;
     }
@@ -185,13 +193,17 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m); // 2^m
       const k = m + 1; // m bits for RM(1,m), 1 bit for complement
 
       if (data.length !== k) {
-        throw new Error(`Biorthogonal encode: Input must be exactly ${k} bits for (${n},${k}) code`);
+        throw new Error("Biorthogonal encode: Input must be exactly " + k + " bits for (" + n + "," + k + ") code");
       }
 
       // First bit determines if we use complement
@@ -201,14 +213,15 @@
       const rmData = data.slice(1);
 
       // Generate RM(1,m) codeword
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // RM encoding: linear combination of basis vectors
       for (let i = 0; i < m; ++i) {
         if (rmData[i] === 1) {
           for (let j = 0; j < n; ++j) {
             const position = j + 1;
-            if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
+            if (OpCodes.And32(OpCodes.Shr32(position, i), 1)) {
               codeword[j] ^= 1;
             }
           }
@@ -225,31 +238,43 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m);
       const k = m + 1;
 
       if (data.length !== n) {
-        throw new Error(`Biorthogonal decode: Input must be exactly ${n} bits for (${n},${k}) code`);
+        throw new Error("Biorthogonal decode: Input must be exactly " + n + " bits for (" + n + "," + k + ") code");
       }
 
       // Count ones to determine if complement was used
-      const onesCount = data.reduce((sum, bit) => sum + bit, 0);
+      /** @type {int32} */
+      let onesCount = 0;
+      for (let i = 0; i < data.length; i++) onesCount = onesCount + data[i];
+      /** @type {int32} */
       const complement = (onesCount > n / 2) ? 1 : 0;
 
       // Undo complement if needed
-      const received = complement ? data.map(bit => OpCodes.XorN(bit, 1)) : [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      if (complement) {
+        for (let i = 0; i < received.length; i++) received[i] = OpCodes.Xor32(received[i], 1);
+      }
 
       // Decode using RM correlation
-      const rmData = new Array(m).fill(0);
+      /** @type {uint8[]} */
+      const rmData = OpCodes.CreateArray(m, 0);
 
       for (let i = 0; i < m; ++i) {
         let count0 = 0, count1 = 0;
 
         for (let j = 0; j < n; ++j) {
           const position = j + 1;
-          if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
+          if (OpCodes.And32(OpCodes.Shr32(position, i), 1)) {
             count1 += received[j];
           } else {
             count0 += received[j];
@@ -263,6 +288,10 @@
       return [complement, ...rmData];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;
@@ -272,6 +301,7 @@
         const tempInstance = new BiorthogonalCodeInstance(this.algorithm, false);
         tempInstance.m = this._m;
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         for (let i = 0; i < n; ++i) {
