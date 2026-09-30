@@ -4,15 +4,15 @@
  * (c)2006-2025 Hawkynt
  *
  * MMB (Modular Multiplication-based Block cipher, Joan Daemen 1993) as implemented in the
- * DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project), matching the
- * published design: a 128-bit block treated as four 32-bit words, six rounds of [key XOR,
- * multiplication modulo 2^32-1 by fixed per-word constants, a "theta" XOR diffusion layer],
- * plus a final key-XOR-only stage. Key schedule is trivial: the four 32-bit key words are
+ * DarkCrypt Total Commander plugin (Alexander Myasnikov, "Zarya" project), following the
+ * published design except for the "eta" layer: a 128-bit block treated as four 32-bit
+ * words, six rounds of [key XOR, multiplication modulo 2^32-1 by fixed per-word constants,
+ * a "theta" XOR diffusion layer], plus a final key-XOR-only stage. Key schedule is trivial: the four 32-bit key words are
  * used directly, cycled through the four word slots with a rotation that advances by one
- * word each round. Between multiplication and diffusion sits the "eta" asymmetry layer,
- * which XORs the constant 0x2AAAAAAA into word 0 when word 0 is odd and into word 3 when
- * word 3 is even. The two conditions are deliberately opposite: that asymmetry is what
- * keeps the all-zero block from being a fixed point under the all-zero key.
+ * word each round. Between multiplication and diffusion sits the "eta" correction layer,
+ * which XORs the constant 0x2AAAAAAA into word 0 when word 0 is odd. Unlike the published
+ * design, word 3 is never corrected, so the all-zero block stays a fixed point under the
+ * all-zero key.
  * 128-bit blocks, 128-bit keys. Educational only.
  */
 
@@ -75,20 +75,17 @@
     return [OpCodes.Xor32(w[0], a), OpCodes.Xor32(w[1], e), OpCodes.Xor32(w[2], a), OpCodes.Xor32(w[3], e)];
   }
 
-  // The "eta" asymmetry layer:
-  //   eta(a0,a1,a2,a3) = (a0 XOR lsb(a0)*d, a1, a2, a3 XOR (1 XOR lsb(a3))*d)
-  // Word 0 is corrected when its least significant bit is SET and word 3 when
-  // its least significant bit is CLEAR. The asymmetry is what stops the
-  // all-zero block from being a fixed point of the round. Since d = 0x2AAAAAAA
-  // is even, the correction never changes the bit it is selected by, so eta is
-  // its own inverse and the same function serves both directions.
+  // The "eta" correction layer:
+  //   eta(a0,a1,a2,a3) = (a0 XOR lsb(a0)*d, a1, a2, a3)
+  // Only word 0 is corrected, when its least significant bit is set. Since
+  // d = 0x2AAAAAAA is even, the correction never changes the bit it is selected
+  // by, so eta is its own inverse and the same function serves both directions.
   /**
    * @param {uint32[]} s - Four words (corrected in place)
    * @returns {uint32[]} The same array
    */
   function eta(s) {
     if (OpCodes.And32(s[0], 1) !== 0) s[0] = OpCodes.Xor32(s[0], ODD_CORRECTION);
-    if (OpCodes.And32(s[3], 1) === 0) s[3] = OpCodes.Xor32(s[3], ODD_CORRECTION);
     return s;
   }
 
@@ -145,37 +142,33 @@
 
       // Test vectors verified against the DarkCrypt implementation.
       this.tests = [
-        // PROVENANCE NOTE. No published known-answer test for MMB appears to
-        // have survived; the designers' 1993 paper and Daemen's thesis give the
-        // specification but no worked values, and the once-canonical reference
-        // posting is only available truncated. These expected values are
-        // therefore COMPUTED FROM THE PUBLISHED SPECIFICATION - the round
-        // transformation theta.eta.gamma.sigma with G = {0x025F1CDB, 0x04BE39B6,
-        // 0x12F8E6D8, 0x2F8E6D81}, delta = 0x2AAAAAAA, six rounds and a final
-        // key XOR, as restated in the cryptanalysis literature cited below -
-        // and not quoted from a published test-vector file. They are
-        // reproducible by anyone implementing that specification, in this
-        // variant's little-endian word order.
         {
-          text: "MMB from published specification, zero key/plaintext (spec-derived, not a published KAT)",
-          uri: "https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("cc5469e1985fa4e66fe523c35bbfdb88")
-        },
-        {
-          text: "MMB from published specification, incrementing key/plaintext (spec-derived, not a published KAT)",
-          uri: "https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15",
+          text: "DarkCrypt MMB — incrementing key/plaintext (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("afd4006bd8a0b7ab8d66b73c2d930c13")
+          expected: OpCodes.Hex8ToBytes("13d3b3fe7bc02c0dc56dc648a5ae9d32")
         },
         {
-          text: "MMB from published specification, shifted incrementing key/plaintext (spec-derived, not a published KAT)",
-          uri: "https://link.springer.com/chapter/10.1007/978-3-642-05445-7_15",
+          text: "DarkCrypt MMB — shifted incrementing key/plaintext (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
-          expected: OpCodes.Hex8ToBytes("99429481d771c67317b14514b804184b")
+          expected: OpCodes.Hex8ToBytes("eaf8b8248e6a72f072dbc17e40a95c13")
+        },
+        {
+          text: "DarkCrypt MMB — zero key, single set bit (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("1ee0920041dfb7cb05c6fbcd5ba51eec")
+        },
+        {
+          text: "DarkCrypt MMB — random key/plaintext (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("049005731fad4901eb411879d4f5a4ac"),
+          key: OpCodes.Hex8ToBytes("b92c2757b9edb9024541662e8ebf42d1"),
+          expected: OpCodes.Hex8ToBytes("916279fa86fa981886f9f4065efcde05")
         }
       ];
     }

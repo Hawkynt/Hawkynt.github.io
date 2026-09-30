@@ -39,7 +39,7 @@
 
 ## Test vectors
 
-3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+4 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Mars-512 — zero key/plaintext](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -64,6 +64,14 @@
 | `key` | `0102030405060708090a0b0c0d0e0f10 1112131415161718191a1b1c1d1e1f20 2122232425262728292a2b2c2d2e2f30 3132333435363738393a3b3c3d3e3f40` |
 | `input` | `101112131415161718191a1b1c1d1e1f` |
 | `expected` | `9a1d3b13f9027ee033cb11ed176fb7e2` |
+
+**Vector 4** — [DarkCrypt Mars-512 — key word with a long top bit run (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `5d9cebee6e1463b6751ff5c878dcb89c 4ecb59c89be600b164927e782e96ead2 6e531237dcea7abd5071a9da47589ee4 39dbe6db5b269a0f30c6028159e5028c` |
+| `input` | `b2eed2e17c4fcdada8cf1d6e6b825050` |
+| `expected` | `ae7eff91b80ed63e6e278d6825116396` |
 
 ---
 
