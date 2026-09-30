@@ -49,25 +49,34 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   /**
+   * SplitMix64 state advance: add the golden gamma
+   * @param {BigInt} current - State before the step
+   * @returns {BigInt} Advanced state
+   */
+  function SplitMix64Advance(current) {
+    /** @type {BigInt} */
+    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+    return OpCodes.ToQWord(current + GOLDEN_GAMMA);
+  }
+
+  /**
    * SplitMix64 seeding function
    * Used to initialize xorshift1024* state from a single 64-bit seed
    * Based on https://prng.di.unimi.it/splitmix64.c
    *
-   * @param {BigInt} state - Current state value
-   * @returns {Object} - { value: output, nextState: new state }
+   * @param {BigInt} advanced - Advanced state (see SplitMix64Advance)
+   * @returns {BigInt} Mixed output
    */
-  function SplitMix64(state) {
-    const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
-
-    let z = state;
+  function SplitMix64Mix(advanced) {
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
     z = OpCodes.ToQWord(z * 0x94D049BB133111EBn);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: state };
+    return z;
   }
 
   class Xorshift1024StarAlgorithm extends RandomGenerationAlgorithm {
@@ -185,7 +194,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Xorshift1024StarInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -203,21 +212,29 @@
  */
 
   class Xorshift1024StarInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {Xorshift1024StarAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Xorshift1024* state: 16 × 64-bit values + position index
-      this._state = new Array(16).fill(0n);
+      /** @type {BigInt[]} */
+      this._state = OpCodes.CreateArray(16, 0n);
       this._p = 0; // Position index
       this._ready = false;
 
       // Multiplier constant: 0x9e3779b97f4a7c13 (golden ratio)
+      /** @type {BigInt} */
       this._MULTIPLIER = 0x9e3779b97f4a7c13n;
     }
 
     /**
      * Set seed value (64-bit)
      * Uses SplitMix64 to initialize the 16 state values
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -226,6 +243,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (little-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
@@ -233,17 +251,20 @@
 
       // Initialize state using SplitMix64
       // Each of 16 state values is generated using successive SplitMix64 calls
+      /** @type {BigInt} */
       let splitmixState = seedValue;
       for (let i = 0; i < 16; ++i) {
-        const result = SplitMix64(splitmixState);
-        this._state[i] = result.value;
-        splitmixState = result.nextState;
+        splitmixState = SplitMix64Advance(splitmixState);
+        this._state[i] = SplitMix64Mix(splitmixState);
       }
 
       this._p = 0;
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -279,8 +300,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -288,19 +309,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, i * 8);
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -329,19 +355,23 @@
 
     Result() {
       // Use specified output size or default to 64 bytes (8 × 64-bit values)
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
 
     /**
@@ -362,7 +392,8 @@
         0x0b5fc64563b3e2a8n, 0x047f7684e9fc949dn, 0xb99181f2d8f685can, 0x284600e3f30e38c3n
       ];
 
-      const t = new Array(16).fill(0n);
+      /** @type {BigInt[]} */
+      const t = OpCodes.CreateArray(16, 0n);
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {

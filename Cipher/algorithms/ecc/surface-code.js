@@ -42,6 +42,62 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * [[n, k, d]] parameters as reported by GetCodeParameters()
+   * @class
+   */
+  class SurfaceCodeParameters {
+    /**
+     * @param {int32} n - Physical qubits
+     * @param {int32} k - Logical qubits
+     * @param {int32} d - Distance
+     */
+    constructor(n, k, d) {
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.d = d;
+      /** @type {string} */
+      this.description = "[[" + n + "," + k + "," + d + "]]";
+    }
+  }
+
+  /**
+   * The four qubits of a stabilizer
+   * @param {int32} a - First qubit
+   * @param {int32} b - Second qubit
+   * @param {int32} c - Third qubit
+   * @param {int32} d - Fourth qubit
+   * @returns {int32[]} Qubit indices
+   */
+  function quad(a, b, c, d) {
+    /** @type {int32[]} */
+    const qubits = [a, b, c, d];
+    return qubits;
+  }
+
+  /**
+   * The qubits of a stabilizer that lie below a limit, in order
+   * @param {int32} a - First qubit
+   * @param {int32} b - Second qubit
+   * @param {int32} c - Third qubit
+   * @param {int32} d - Fourth qubit
+   * @param {int32} limit - Exclusive upper bound
+   * @returns {int32[]} Qubit indices below the limit
+   */
+  function quadBelow(a, b, c, d, limit) {
+    /** @type {int32[]} */
+    const all = [a, b, c, d];
+    /** @type {int32[]} */
+    const kept = [];
+    for (let i = 0; i < all.length; ++i) {
+      if (all[i] < limit) kept.push(all[i]);
+    }
+    return kept;
+  }
+
   class TopologicalSurfaceCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -164,7 +220,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TopologicalSurfaceCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -181,26 +237,47 @@
   class TopologicalSurfaceCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TopologicalSurfaceCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default configuration: Distance-3 planar surface code [[17,1,3]]
+      /** @type {int32} */
       this._distance = 3;
+      /** @type {string} */
       this._errorType = 'X'; // X (bit flip) or Z (phase flip) errors
+      /** @type {int32} */
       this._logicalState = null;
+      /** @type {boolean} */
       this._syndromeExtraction = false;
+      /** @type {int32} */
+      this._numQubits = 0;
+      /** @type {int32} */
+      this._latticeRows = 0;
+      /** @type {int32} */
+      this._latticeCols = 0;
+      /** @type {int32[][]} */
+      this._xStabilizers = null;
+      /** @type {int32[][]} */
+      this._zStabilizers = null;
 
       // Initialize lattice structures
       this._initializeLattice();
     }
 
     // Configuration properties
+    /**
+     * @param {int32} d - Code distance (3, 5 or 7)
+     */
     set distance(d) {
       if (d !== 3 && d !== 5 && d !== 7) {
         throw new Error('TopologicalSurfaceCodeInstance.distance: Only distances 3, 5, 7 supported (17, 49, 97 qubits)');
@@ -209,10 +286,16 @@
       this._initializeLattice();
     }
 
+    /**
+     * @returns {int32} Code distance
+     */
     get distance() {
       return this._distance;
     }
 
+    /**
+     * @param {string} type - "X" or "Z"
+     */
     set errorType(type) {
       if (type !== 'X' && type !== 'Z') {
         throw new Error('TopologicalSurfaceCodeInstance.errorType: Must be "X" or "Z"');
@@ -220,10 +303,16 @@
       this._errorType = type;
     }
 
+    /**
+     * @returns {string} "X" or "Z"
+     */
     get errorType() {
       return this._errorType;
     }
 
+    /**
+     * @param {int32} state - 0, 1 or null
+     */
     set logicalState(state) {
       if (state !== null && state !== 0 && state !== 1) {
         throw new Error('TopologicalSurfaceCodeInstance.logicalState: Must be 0, 1, or null');
@@ -231,29 +320,36 @@
       this._logicalState = state;
     }
 
+    /**
+     * @returns {int32} 0, 1 or null
+     */
     get logicalState() {
       return this._logicalState;
     }
 
+    /**
+     * @param {boolean} value - Return the syndrome instead of decoding
+     */
     set syndromeExtraction(value) {
       this._syndromeExtraction = !!value;
     }
 
+    /**
+     * @returns {boolean} Syndrome extraction mode
+     */
     get syndromeExtraction() {
       return this._syndromeExtraction;
     }
 
+    /**
+     * @returns {void}
+     */
     _initializeLattice() {
       // Initialize surface code lattice based on distance
       // Qubit counts for rotated planar surface code [[n,1,d]]
-      const qubitCounts = {
-        3: 17,  // [[17,1,3]]
-        5: 49,  // [[49,1,5]]
-        7: 97   // [[97,1,7]]
-      };
-
+      // [[17,1,3]], [[49,1,5]], [[97,1,7]]
       const d = this._distance;
-      this._numQubits = qubitCounts[d];
+      this._numQubits = d === 3 ? 17 : (d === 5 ? 49 : 97);
 
       // Lattice dimensions for rotated surface code
       this._latticeRows = 2 * d - 1;
@@ -265,9 +361,13 @@
       this._zStabilizers = this._generateZStabilizers();
     }
 
+    /**
+     * @returns {int32[][]} X stabilizers
+     */
     _generateXStabilizers() {
       // Generate X-type stabilizers (star operators)
       // Each X stabilizer acts on 4 adjacent qubits in star pattern
+      /** @type {int32[][]} */
       const stabilizers = [];
       const d = this._distance;
 
@@ -275,59 +375,63 @@
       // Simplified stabilizer layout for 17 qubits
       if (d === 3) {
         // 8 X-stabilizers for distance-3
-        stabilizers.push([0, 1, 5, 6]);     // Top-left
-        stabilizers.push([1, 2, 6, 7]);     // Top-center
-        stabilizers.push([2, 3, 7, 8]);     // Top-right
-        stabilizers.push([5, 6, 9, 10]);    // Middle-left
-        stabilizers.push([6, 7, 10, 11]);   // Middle-center
-        stabilizers.push([7, 8, 11, 12]);   // Middle-right
-        stabilizers.push([9, 10, 13, 14]);  // Bottom-left
-        stabilizers.push([10, 11, 14, 15]); // Bottom-center
+        stabilizers.push(quad(0, 1, 5, 6));     // Top-left
+        stabilizers.push(quad(1, 2, 6, 7));     // Top-center
+        stabilizers.push(quad(2, 3, 7, 8));     // Top-right
+        stabilizers.push(quad(5, 6, 9, 10));    // Middle-left
+        stabilizers.push(quad(6, 7, 10, 11));   // Middle-center
+        stabilizers.push(quad(7, 8, 11, 12));   // Middle-right
+        stabilizers.push(quad(9, 10, 13, 14));  // Bottom-left
+        stabilizers.push(quad(10, 11, 14, 15)); // Bottom-center
       } else if (d === 5) {
         // Approximate for distance-5 (49 qubits)
         for (let i = 0; i < 24; ++i) {
           const base = i * 2;
-          stabilizers.push([base, base + 1, base + 7, base + 8].filter(q => q < 49));
+          stabilizers.push(quadBelow(base, base + 1, base + 7, base + 8, 49));
         }
       } else if (d === 7) {
         // Approximate for distance-7 (97 qubits)
         for (let i = 0; i < 48; ++i) {
           const base = i * 2;
-          stabilizers.push([base, base + 1, base + 14, base + 15].filter(q => q < 97));
+          stabilizers.push(quadBelow(base, base + 1, base + 14, base + 15, 97));
         }
       }
 
       return stabilizers;
     }
 
+    /**
+     * @returns {int32[][]} Z stabilizers
+     */
     _generateZStabilizers() {
       // Generate Z-type stabilizers (plaquette operators)
       // Each Z stabilizer acts on 4 qubits around a plaquette
+      /** @type {int32[][]} */
       const stabilizers = [];
       const d = this._distance;
 
       // For distance-3 rotated surface code [[17,1,3]]
       if (d === 3) {
         // 8 Z-stabilizers for distance-3 (dual to X-stabilizers)
-        stabilizers.push([0, 1, 4, 5]);      // Plaquette 1
-        stabilizers.push([1, 2, 5, 6]);      // Plaquette 2
-        stabilizers.push([2, 3, 6, 7]);      // Plaquette 3
-        stabilizers.push([4, 5, 8, 9]);      // Plaquette 4
-        stabilizers.push([5, 6, 9, 10]);     // Plaquette 5
-        stabilizers.push([6, 7, 10, 11]);    // Plaquette 6
-        stabilizers.push([8, 9, 12, 13]);    // Plaquette 7
-        stabilizers.push([9, 10, 13, 14]);   // Plaquette 8
+        stabilizers.push(quad(0, 1, 4, 5));      // Plaquette 1
+        stabilizers.push(quad(1, 2, 5, 6));      // Plaquette 2
+        stabilizers.push(quad(2, 3, 6, 7));      // Plaquette 3
+        stabilizers.push(quad(4, 5, 8, 9));      // Plaquette 4
+        stabilizers.push(quad(5, 6, 9, 10));     // Plaquette 5
+        stabilizers.push(quad(6, 7, 10, 11));    // Plaquette 6
+        stabilizers.push(quad(8, 9, 12, 13));    // Plaquette 7
+        stabilizers.push(quad(9, 10, 13, 14));   // Plaquette 8
       } else if (d === 5) {
         // Approximate for distance-5
         for (let i = 0; i < 24; ++i) {
           const base = i * 2;
-          stabilizers.push([base, base + 1, base + 6, base + 7].filter(q => q < 49));
+          stabilizers.push(quadBelow(base, base + 1, base + 6, base + 7, 49));
         }
       } else if (d === 7) {
         // Approximate for distance-7
         for (let i = 0; i < 48; ++i) {
           const base = i * 2;
-          stabilizers.push([base, base + 1, base + 13, base + 14].filter(q => q < 97));
+          stabilizers.push(quadBelow(base, base + 1, base + 13, base + 14, 97));
         }
       }
 
@@ -370,6 +474,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode logical qubit(s) into surface code
       const numPhysicalQubits = this._numQubits;
@@ -382,7 +490,8 @@
       // Check if encoding logical state from property
       if (this._logicalState !== null) {
         // Encode single logical qubit
-        const encoded = new Array(numPhysicalQubits).fill(0);
+        /** @type {uint8[]} */
+        const encoded = OpCodes.CreateArray(numPhysicalQubits, 0);
 
         if (this._logicalState === 1) {
           // Apply logical X operator (flips all qubits along a logical operator path)
@@ -397,7 +506,8 @@
 
       // Single logical qubit encoding from data
       if (data.length === 1) {
-        const encoded = new Array(numPhysicalQubits).fill(0);
+        /** @type {uint8[]} */
+        const encoded = OpCodes.CreateArray(numPhysicalQubits, 0);
         if (data[0] === 1) {
           // Apply logical X
           for (let i = 0; i < numPhysicalQubits; ++i) {
@@ -408,20 +518,26 @@
       }
 
       // If data doesn't match expected size, throw error
-      throw new Error(`encode: Invalid input size ${data.length}, expected 1 or ${numPhysicalQubits} (currently ${numPhysicalQubits})`);
+      throw new Error("encode: Invalid input size " + data.length + ", expected 1 or " + numPhysicalQubits + " (currently " + numPhysicalQubits + ")");
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const numPhysicalQubits = this._numQubits;
 
       if (data.length !== numPhysicalQubits) {
-        throw new Error(`decode: Input must be ${numPhysicalQubits} bits for distance-${this._distance} code`);
+        throw new Error("decode: Input must be " + numPhysicalQubits + " bits for distance-" + this._distance + " code");
       }
 
       // Create working copy
-      const state = [...data];
+      /** @type {uint8[]} */
+      const state = data.slice();
 
       // Extract syndrome from stabilizer measurements
+      /** @type {uint8[]} */
       const syndrome = this._measureSyndrome(state);
 
       // If syndrome extraction mode, return syndrome
@@ -430,29 +546,43 @@
       }
 
       // Decode syndrome to find all error locations (minimum weight perfect matching)
+      /** @type {int32[]} */
       const errorLocations = this._decodeSyndrome(syndrome);
 
       // Apply corrections for all detected errors
-      for (const errorLocation of errorLocations) {
+      for (let e = 0; e < errorLocations.length; ++e) {
+        /** @type {int32} */
+        const errorLocation = errorLocations[e];
         if (errorLocation >= 0 && errorLocation < state.length) {
-          state[errorLocation] = OpCodes.XorN(state[errorLocation], 1); // Flip bit
+          state[errorLocation] = OpCodes.Xor32(state[errorLocation], 1); // Flip bit
         }
       }
 
       return state;
     }
 
+    /**
+     * @param {uint8[]} state - Physical qubits
+     * @returns {uint8[]} Stabilizer outcomes
+     */
     _measureSyndrome(state) {
       // Measure all stabilizers and return syndrome
+      /** @type {uint8[]} */
       const syndrome = [];
+      /** @type {int32[][]} */
       const stabilizers = this._errorType === 'X' ? this._xStabilizers : this._zStabilizers;
 
-      for (let s of stabilizers) {
+      for (let si = 0; si < stabilizers.length; ++si) {
+        /** @type {int32[]} */
+        const s = stabilizers[si];
         // Measure stabilizer (parity of qubits)
+        /** @type {uint32} */
         let measurement = 0;
-        for (let qubit of s) {
+        for (let qi = 0; qi < s.length; ++qi) {
+          /** @type {int32} */
+          const qubit = s[qi];
           if (qubit < state.length) {
-            measurement = OpCodes.XorN(measurement, state[qubit]); // XOR parity
+            measurement = OpCodes.Xor32(measurement, state[qubit]); // XOR parity
           }
         }
         syndrome.push(measurement);
@@ -461,11 +591,16 @@
       return syndrome;
     }
 
+    /**
+     * @param {uint8[]} syndrome - Stabilizer outcomes
+     * @returns {int32[]} Qubits to flip
+     */
     _decodeSyndrome(syndrome) {
       // Simplified minimum-weight perfect matching decoder
       // For production, use Blossom V or PyMatching algorithms
 
       // Find all non-zero syndrome indices
+      /** @type {int32[]} */
       const triggeredStabilizers = [];
       for (let i = 0; i < syndrome.length; ++i) {
         if (syndrome[i] !== 0) {
@@ -474,29 +609,47 @@
       }
 
       // If no errors detected, return empty array
+      /** @type {int32[]} */
+      const none = [];
       if (triggeredStabilizers.length === 0) {
-        return [];
+        return none;
       }
 
       // Get stabilizers
+      /** @type {int32[][]} */
       const stabilizers = this._errorType === 'X' ? this._xStabilizers : this._zStabilizers;
 
       // For single triggered stabilizer, pick one of its qubits
       if (triggeredStabilizers.length === 1) {
         const stabIdx = triggeredStabilizers[0];
         if (stabIdx < stabilizers.length && stabilizers[stabIdx].length > 0) {
-          return [stabilizers[stabIdx][0]];
+          /** @type {int32[]} */
+          const single = [stabilizers[stabIdx][0]];
+          return single;
         }
-        return [];
+        return none;
       }
 
       // For multiple triggered stabilizers, find qubits that appear in multiple stabilizers
       // These are more likely to be the error location
-      const qubitCounts = new Map();
-      for (const stabIdx of triggeredStabilizers) {
+      // (qubits in first-seen order with their counts)
+      /** @type {int32[]} */
+      const seenQubits = [];
+      /** @type {int32[]} */
+      const qubitCounts = [];
+      for (let t = 0; t < triggeredStabilizers.length; ++t) {
+        const stabIdx = triggeredStabilizers[t];
         if (stabIdx < stabilizers.length) {
-          for (const qubit of stabilizers[stabIdx]) {
-            qubitCounts.set(qubit, (qubitCounts.get(qubit) || 0) + 1);
+          /** @type {int32[]} */
+          const qubits = stabilizers[stabIdx];
+          for (let q = 0; q < qubits.length; ++q) {
+            const at = seenQubits.indexOf(qubits[q]);
+            if (at < 0) {
+              seenQubits.push(qubits[q]);
+              qubitCounts.push(1);
+            } else {
+              qubitCounts[at] = qubitCounts[at] + 1;
+            }
           }
         }
       }
@@ -504,22 +657,33 @@
       // Find qubit that appears in most stabilizers
       let maxCount = 0;
       let errorQubit = -1;
-      for (const [qubit, count] of qubitCounts.entries()) {
-        if (count > maxCount) {
-          maxCount = count;
-          errorQubit = qubit;
+      for (let q = 0; q < seenQubits.length; ++q) {
+        if (qubitCounts[q] > maxCount) {
+          maxCount = qubitCounts[q];
+          errorQubit = seenQubits[q];
         }
       }
 
-      return errorQubit >= 0 ? [errorQubit] : [];
+      if (errorQubit >= 0) {
+        /** @type {int32[]} */
+        const found = [errorQubit];
+        return found;
+      }
+      return none;
     }
 
+    /**
+     * @param {int32} syndromeIndex - Stabilizer index
+     * @returns {int32} Likely error qubit
+     */
     _syndromeToErrorLocation(syndromeIndex) {
       // Map syndrome measurement to most likely error location
       // This is a simplified heuristic; real decoders use MWPM
+      /** @type {int32[][]} */
       const stabilizers = this._errorType === 'X' ? this._xStabilizers : this._zStabilizers;
 
       if (syndromeIndex < stabilizers.length) {
+        /** @type {int32[]} */
         const stabilizer = stabilizers[syndromeIndex];
         // Return first qubit in stabilizer as likely error location
         if (stabilizer.length > 0) {
@@ -530,16 +694,21 @@
       return 0;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this._numQubits) {
         return true; // Invalid size indicates error
       }
 
+      /** @type {uint8[]} */
       const syndrome = this._measureSyndrome(data);
 
       // Check if any stabilizer is violated
-      for (let measurement of syndrome) {
-        if (measurement !== 0) {
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) {
           return true;
         }
       }
@@ -547,13 +716,16 @@
       return false;
     }
 
+    /**
+     * @returns {SurfaceCodeParameters} [[n, k, d]] parameters
+     */
     GetCodeParameters() {
       // Return [[n, k, d]] parameters
       const n = this._numQubits;
       const k = 1; // Single logical qubit
       const d = this._distance;
 
-      return { n, k, d, description: `[[${n},${k},${d}]]` };
+      return new SurfaceCodeParameters(n, k, d);
     }
   }
 

@@ -59,9 +59,13 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ChaCha constants: "expand 32-byte k" in ASCII as little-endian 32-bit words
+  /** @type {uint32} */
   const CHACHA_CONST_0 = 0x61707865; // "expa"
+  /** @type {uint32} */
   const CHACHA_CONST_1 = 0x3320646e; // "nd 3"
+  /** @type {uint32} */
   const CHACHA_CONST_2 = 0x79622d32; // "2-by"
+  /** @type {uint32} */
   const CHACHA_CONST_3 = 0x6b206574; // "te k"
 
   /**
@@ -70,59 +74,75 @@
    *           c += d; b = OpCodes.Xor32(b, c); b = ROL(b, 12);
    *           a += b; d = OpCodes.Xor32(d, a); d = ROL(d, 8);
    *           c += d; b = OpCodes.Xor32(b, c); b = ROL(b, 7);
+   * @param {uint32[]} words - Working state, updated in place
+   * @param {int32} a - Index of word a
+   * @param {int32} b - Index of word b
+   * @param {int32} c - Index of word c
+   * @param {int32} d - Index of word d
+   * @returns {void}
    */
-  function quarterRound(state, a, b, c, d) {
-    state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 16);
+  function quarterRound(words, a, b, c, d) {
+    words[a] = OpCodes.Add32(words[a], words[b]);
+    words[d] = OpCodes.RotL32(OpCodes.Xor32(words[d], words[a]), 16);
 
-    state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 12);
+    words[c] = OpCodes.Add32(words[c], words[d]);
+    words[b] = OpCodes.RotL32(OpCodes.Xor32(words[b], words[c]), 12);
 
-    state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 8);
+    words[a] = OpCodes.Add32(words[a], words[b]);
+    words[d] = OpCodes.RotL32(OpCodes.Xor32(words[d], words[a]), 8);
 
-    state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 7);
+    words[c] = OpCodes.Add32(words[c], words[d]);
+    words[b] = OpCodes.RotL32(OpCodes.Xor32(words[b], words[c]), 7);
   }
 
   /**
    * ChaCha block function - performs specified number of rounds
+   * @param {uint32[]} input - Initial 16-word state
+   * @param {int32} numRounds - Number of rounds
+   * @returns {uint32[]} Output block words
    */
   function chachaBlock(input, numRounds) {
-    const state = input.slice(); // Copy initial state
+    /** @type {uint32[]} */
+    const x = input.slice(); // Copy initial state
 
     // Perform double-rounds (2 rounds per iteration)
     for (let i = 0; i < numRounds; i += 2) {
       // Odd round - column rounds
-      quarterRound(state, 0, 4, 8, 12);
-      quarterRound(state, 1, 5, 9, 13);
-      quarterRound(state, 2, 6, 10, 14);
-      quarterRound(state, 3, 7, 11, 15);
+      quarterRound(x, 0, 4, 8, 12);
+      quarterRound(x, 1, 5, 9, 13);
+      quarterRound(x, 2, 6, 10, 14);
+      quarterRound(x, 3, 7, 11, 15);
 
       // Even round - diagonal rounds
-      quarterRound(state, 0, 5, 10, 15);
-      quarterRound(state, 1, 6, 11, 12);
-      quarterRound(state, 2, 7, 8, 13);
-      quarterRound(state, 3, 4, 9, 14);
+      quarterRound(x, 0, 5, 10, 15);
+      quarterRound(x, 1, 6, 11, 12);
+      quarterRound(x, 2, 7, 8, 13);
+      quarterRound(x, 3, 4, 9, 14);
     }
 
     // Add initial state (feedforward)
     for (let i = 0; i < 16; i++) {
-      state[i] = OpCodes.Add32(state[i], input[i]);
+      x[i] = OpCodes.Add32(x[i], input[i]);
     }
 
-    return state;
+    return x;
   }
 
   /**
    * ChaCha Algorithm - Parametrized by round count
    */
   class ChaChaAlgorithm extends RandomGenerationAlgorithm {
+    /**
+     * @param {int32} rounds - Number of rounds
+     * @param {string} variant - Variant name
+     */
     constructor(rounds, variant) {
       super();
 
+      /** @type {int32} */
       this.rounds = rounds;
-      this.variant = variant || `ChaCha${rounds}`;
+      /** @type {string} */
+      this.variant = (variant ? variant : ("ChaCha" + rounds));
 
       // Metadata varies by variant
       if (variant === 'Tyche') {
@@ -135,8 +155,8 @@
         // Suffix distinguishes these counter-based PRNGs from the ChaCha stream
         // cipher of the same round count (algorithms/stream/chacha20.js) — the
         // framework requires globally unique algorithm names.
-        this.name = `${this.variant} (PRNG)`;
-        this.description = `ChaCha stream cipher variant with ${rounds} rounds designed by Daniel J. Bernstein. Counter-based PRNG providing excellent statistical properties and high performance. ${rounds === 8 ? 'Used as default PRNG in Go programming language runtime.' : rounds === 20 ? 'Original specification with maximum security margin.' : 'Balanced variant offering good performance and quality.'}`;
+        this.name = "" + this.variant + " (PRNG)";
+        this.description = "ChaCha stream cipher variant with " + rounds + " rounds designed by Daniel J. Bernstein. Counter-based PRNG providing excellent statistical properties and high performance. " + (rounds === 8 ? 'Used as default PRNG in Go programming language runtime.' : rounds === 20 ? 'Original specification with maximum security margin.' : 'Balanced variant offering good performance and quality.');
         this.inventor = 'Daniel J. Bernstein';
         this.year = 2008;
         this.securityStatus = rounds >= 20 ? SecurityStatus.EXPERIMENTAL : SecurityStatus.EDUCATIONAL;
@@ -197,14 +217,20 @@
       ];
 
       // Test vectors - vary by variant
-      this.tests = this._getTestVectors(variant, rounds);
+      this._setTestVectors(variant, rounds);
     }
 
-    _getTestVectors(variant, rounds) {
+    /**
+     * Assign the test vectors for a variant
+     * @param {string} variant - Variant name
+     * @param {int32} rounds - Number of rounds
+     * @returns {void}
+     */
+    _setTestVectors(variant, rounds) {
       if (variant === 'Tyche') {
         // Test vectors generated from Shiroechi/Litdex.Security.RNG implementation
         // https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs
-        return [
+        this.tests = [
           {
             text: 'Tyche with seed 0, stream 0: First 16 bytes',
             uri: 'https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
@@ -244,7 +270,7 @@
         ];
       } else if (rounds === 8) {
         // ChaCha8 test vectors from cryptopp reference implementation
-        return [
+        this.tests = [
           {
             text: 'ChaCha8 zero key and nonce (32-byte key): First 16 bytes',
             uri: 'https://github.com/weidai11/cryptopp/blob/master/TestVectors/chacha.txt',
@@ -268,7 +294,7 @@
         ];
       } else if (rounds === 12) {
         // ChaCha12 test vectors from cryptopp reference
-        return [
+        this.tests = [
           {
             text: 'ChaCha12 zero key and nonce (32-byte key): First 16 bytes',
             uri: 'https://github.com/weidai11/cryptopp/blob/master/TestVectors/chacha.txt',
@@ -282,7 +308,7 @@
         ];
       } else {
         // ChaCha20 test vectors from RFC 8439
-        return [
+        this.tests = [
           {
             text: 'ChaCha20 zero key and nonce (32-byte key): First 16 bytes',
             uri: 'https://www.rfc-editor.org/rfc/rfc8439.html',
@@ -300,7 +326,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ChaChaInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -313,19 +339,38 @@
    * ChaCha Instance - Implements Feed/Result pattern
    */
   class ChaChaInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ChaChaAlgorithm} algorithm - Owning algorithm
+     * @param {int32} rounds - Number of rounds
+     * @param {string} variant - Variant name
+     */
     constructor(algorithm, rounds, variant) {
       super(algorithm);
+      /** @type {int32} */
       this.rounds = rounds;
+      /** @type {string} */
       this.variant = variant;
+      /** @type {uint8[]} */
       this._key = null;
+      /** @type {BigInt} */
       this._nonce = 0n;
+      /** @type {BigInt} */
       this._counter = 0n;
+      /** @type {uint32} */
       this._streamIndex = 0;
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._bufferPosition = 0;
+      /** @type {uint32[]} */
+      this._tycheState = null;
+      /** @type {int32} */
       this.outputSize = 64; // Default output size in bytes
     }
 
+    /**
+     * @param {uint8[]|null} seedBytes - Seed bytes
+     */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
         this._key = null;
@@ -335,34 +380,42 @@
       // Accept 8-byte or 32-byte seeds
       if (seedBytes.length === 8) {
         // Expand 8-byte seed to 32-byte key using simple repetition
-        this._key = new Array(32);
+        this._key = OpCodes.CreateArray(32, 0);
         for (let i = 0; i < 32; i++) {
           this._key[i] = seedBytes[i % 8];
         }
       } else if (seedBytes.length === 32) {
         this._key = seedBytes.slice();
       } else {
-        throw new Error(`Invalid seed size: ${seedBytes.length} bytes (expected 8 or 32)`);
+        throw new Error("Invalid seed size: " + seedBytes.length + " bytes (expected 8 or 32)");
       }
 
       this._resetState();
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return this._key ? this._key.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} nonceBytes - 8-byte nonce
+     */
     set nonce(nonceBytes) {
       if (!nonceBytes || nonceBytes.length === 0) {
+        /** @type {BigInt} */
         this._nonce = 0n;
         return;
       }
 
       if (nonceBytes.length !== 8) {
-        throw new Error(`Invalid nonce size: ${nonceBytes.length} bytes (expected 8)`);
+        throw new Error("Invalid nonce size: " + nonceBytes.length + " bytes (expected 8)");
       }
 
       // Parse as little-endian 64-bit
+      /** @type {BigInt} */
       this._nonce = 0n;
       for (let i = 0; i < 8; i++) {
         this._nonce = OpCodes.OrN(this._nonce, OpCodes.ShiftLn(BigInt(nonceBytes[i]), i * 8));
@@ -371,27 +424,39 @@
       this._resetState();
     }
 
+    /**
+     * @returns {uint8[]} Nonce bytes, little-endian
+     */
     get nonce() {
-      const result = new Array(8);
+      /** @type {uint8[]} */
+      const result = OpCodes.CreateArray(8, 0);
+      /** @type {BigInt} */
       let n = this._nonce;
       for (let i = 0; i < 8; i++) {
-        result[i] = Number(OpCodes.AndN(n, 0xFFn));
+        /** @type {uint8} */
+        const nb = Number(OpCodes.AndN(n, 0xFFn));
+        result[i] = nb;
         n = OpCodes.ShiftRn(n, 8);
       }
       return result;
     }
 
+    /**
+     * @param {uint8[]|null} counterBytes - 8-byte block counter
+     */
     set counter(counterBytes) {
       if (!counterBytes || counterBytes.length === 0) {
+        /** @type {BigInt} */
         this._counter = 0n;
         return;
       }
 
       if (counterBytes.length !== 8) {
-        throw new Error(`Invalid counter size: ${counterBytes.length} bytes (expected 8)`);
+        throw new Error("Invalid counter size: " + counterBytes.length + " bytes (expected 8)");
       }
 
       // Parse as little-endian 64-bit
+      /** @type {BigInt} */
       this._counter = 0n;
       for (let i = 0; i < 8; i++) {
         this._counter = OpCodes.OrN(this._counter, OpCodes.ShiftLn(BigInt(counterBytes[i]), i * 8));
@@ -400,16 +465,26 @@
       this._resetState();
     }
 
+    /**
+     * @returns {uint8[]} Counter bytes, little-endian
+     */
     get counter() {
-      const result = new Array(8);
+      /** @type {uint8[]} */
+      const result = OpCodes.CreateArray(8, 0);
+      /** @type {BigInt} */
       let c = this._counter;
       for (let i = 0; i < 8; i++) {
-        result[i] = Number(OpCodes.AndN(c, 0xFFn));
+        /** @type {uint8} */
+        const cb = Number(OpCodes.AndN(c, 0xFFn));
+        result[i] = cb;
         c = OpCodes.ShiftRn(c, 8);
       }
       return result;
     }
 
+    /**
+     * @param {uint8[]|null} indexBytes - 4-byte stream index
+     */
     set streamIndex(indexBytes) {
       if (!indexBytes || indexBytes.length === 0) {
         this._streamIndex = 0;
@@ -417,7 +492,7 @@
       }
 
       if (indexBytes.length !== 4) {
-        throw new Error(`Invalid stream index size: ${indexBytes.length} bytes (expected 4)`);
+        throw new Error("Invalid stream index size: " + indexBytes.length + " bytes (expected 4)");
       }
 
       // Parse as little-endian 32-bit
@@ -425,18 +500,30 @@
       this._resetState();
     }
 
+    /**
+     * @returns {uint8[]} Stream index bytes, little-endian
+     */
     get streamIndex() {
       return OpCodes.Unpack32LE(this._streamIndex);
     }
 
+    /**
+     * Drop buffered output so the next request starts afresh
+     * @returns {void}
+     */
     _resetState() {
       this._buffer = [];
       this._bufferPosition = 0;
       this._tycheState = null; // Reset Tyche state for re-initialization
     }
 
+    /**
+     * Build the initial block state
+     * @returns {uint32[]} Initial state words
+     */
     _initializeState() {
-      const state = new Array(16);
+      /** @type {uint32[]} */
+      const words = OpCodes.CreateArray(16, 0);
 
       if (this.variant === 'Tyche') {
         // Tyche initialization: 4-word state (not full ChaCha 16-word state)
@@ -444,32 +531,32 @@
         const seedHigh = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const seedLow = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
 
-        state[0] = seedHigh;
-        state[1] = seedLow;
-        state[2] = 0x9E3779B9; // Golden ratio constant (PHI)
-        state[3] = OpCodes.Xor32(this._streamIndex, 0x51866487); // Stream index XOR constant
+        words[0] = seedHigh;
+        words[1] = seedLow;
+        words[2] = 0x9E3779B9; // Golden ratio constant (PHI)
+        words[3] = OpCodes.Xor32(this._streamIndex, 0x51866487); // Stream index XOR constant
 
         // Tyche warm-up: 20 quarter-round iterations on the 4-word state
         for (let i = 0; i < 20; ++i) {
-          state[0] = OpCodes.Add32(state[0], state[1]);
-          state[3] = OpCodes.RotL32(OpCodes.Xor32(state[3], state[0]), 16);
-          state[2] = OpCodes.Add32(state[2], state[3]);
-          state[1] = OpCodes.RotL32(OpCodes.Xor32(state[1], state[2]), 12);
-          state[0] = OpCodes.Add32(state[0], state[1]);
-          state[3] = OpCodes.RotL32(OpCodes.Xor32(state[3], state[0]), 8);
-          state[2] = OpCodes.Add32(state[2], state[3]);
-          state[1] = OpCodes.RotL32(OpCodes.Xor32(state[1], state[2]), 7);
+          words[0] = OpCodes.Add32(words[0], words[1]);
+          words[3] = OpCodes.RotL32(OpCodes.Xor32(words[3], words[0]), 16);
+          words[2] = OpCodes.Add32(words[2], words[3]);
+          words[1] = OpCodes.RotL32(OpCodes.Xor32(words[1], words[2]), 12);
+          words[0] = OpCodes.Add32(words[0], words[1]);
+          words[3] = OpCodes.RotL32(OpCodes.Xor32(words[3], words[0]), 8);
+          words[2] = OpCodes.Add32(words[2], words[3]);
+          words[1] = OpCodes.RotL32(OpCodes.Xor32(words[1], words[2]), 7);
         }
       } else {
         // Standard ChaCha initialization
-        state[0] = CHACHA_CONST_0;
-        state[1] = CHACHA_CONST_1;
-        state[2] = CHACHA_CONST_2;
-        state[3] = CHACHA_CONST_3;
+        words[0] = CHACHA_CONST_0;
+        words[1] = CHACHA_CONST_1;
+        words[2] = CHACHA_CONST_2;
+        words[3] = CHACHA_CONST_3;
 
         // Key (8 words = 256 bits)
         for (let i = 0; i < 8; i++) {
-          state[4 + i] = OpCodes.Pack32LE(
+          words[4 + i] = OpCodes.Pack32LE(
             this._key[i * 4],
             this._key[i * 4 + 1],
             this._key[i * 4 + 2],
@@ -478,17 +565,29 @@
         }
 
         // Counter (2 words = 64 bits)
-        state[12] = Number(OpCodes.AndN(this._counter, 0xFFFFFFFFn));
-        state[13] = Number(OpCodes.ShiftRn(this._counter, 32));
+        /** @type {uint32} */
+        const counterLo = Number(OpCodes.AndN(this._counter, 0xFFFFFFFFn));
+        /** @type {uint32} */
+        const counterHi = Number(OpCodes.ShiftRn(this._counter, 32));
+        words[12] = counterLo;
+        words[13] = counterHi;
 
         // Nonce (2 words = 64 bits)
-        state[14] = Number(OpCodes.AndN(this._nonce, 0xFFFFFFFFn));
-        state[15] = Number(OpCodes.ShiftRn(this._nonce, 32));
+        /** @type {uint32} */
+        const nonceLo = Number(OpCodes.AndN(this._nonce, 0xFFFFFFFFn));
+        /** @type {uint32} */
+        const nonceHi = Number(OpCodes.ShiftRn(this._nonce, 32));
+        words[14] = nonceLo;
+        words[15] = nonceHi;
       }
 
-      return state;
+      return words;
     }
 
+    /**
+     * Produce the next block of output bytes
+     * @returns {uint8[]} Output bytes
+     */
     _generateBlock() {
       if (!this._key) {
         throw new Error('Seed not set');
@@ -497,8 +596,9 @@
       if (this.variant === 'Tyche') {
         // Tyche: Initialize state lazily and keep advancing it
         if (!this._tycheState) {
-          const state = this._initializeState();
-          this._tycheState = [state[0], state[1], state[2], state[3]];
+          /** @type {uint32[]} */
+          const init = this._initializeState();
+          this._tycheState = [init[0], init[1], init[2], init[3]];
         }
 
         // Perform one Tyche quarter-round to advance the state
@@ -513,6 +613,7 @@
 
         // Return 4 bytes from b (state[1]) in little-endian
         // Litdex Next() returns only _State[1] after Mix()
+        /** @type {uint32} */
         const b = this._tycheState[1];
         return [
           OpCodes.And32(b, 0xFF),
@@ -523,12 +624,16 @@
       }
 
       // Standard ChaCha block generation
+      /** @type {uint32[]} */
       const input = this._initializeState();
+      /** @type {uint32[]} */
       const output = chachaBlock(input, this.rounds);
 
       // Convert to bytes (little-endian)
+      /** @type {uint8[]} */
       const bytes = [];
       for (let i = 0; i < 16; i++) {
+        /** @type {uint32} */
         const word = output[i];
         bytes.push(OpCodes.And32(word, 0xFF));
         bytes.push(OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF));
@@ -566,7 +671,8 @@
         throw new Error('Seed not set');
       }
 
-      const requestedSize = this.outputSize || 64;
+      const requestedSize = (this.outputSize ? this.outputSize : 64);
+      /** @type {uint8[]} */
       const output = [];
 
       while (output.length < requestedSize) {

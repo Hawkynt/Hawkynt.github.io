@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Frequency Analysis",
-          text: "As transposition cipher, preserves letter frequencies making frequency analysis effective",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Historical significance only - not suitable for modern security applications"
-        },
-        {
-          type: "Known Plaintext Attack",
-          text: "Knowledge of plaintext portion reveals transposition pattern and allows key recovery",
-          uri: "https://en.wikipedia.org/wiki/Known-plaintext_attack",
-          mitigation: "Avoid predictable message formats and standard headers"
-        }
+        new Vulnerability(
+          "Frequency Analysis",
+          "As transposition cipher, preserves letter frequencies making frequency analysis effective",
+          "Historical significance only - not suitable for modern security applications",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        ),
+        new Vulnerability(
+          "Known Plaintext Attack",
+          "Knowledge of plaintext portion reveals transposition pattern and allows key recovery",
+          "Avoid predictable message formats and standard headers",
+          "https://en.wikipedia.org/wiki/Known-plaintext_attack"
+        )
       ];
 
       // Test vectors using byte arrays (corrected with actual Bazeries outputs)
@@ -117,6 +117,7 @@
       ];
 
       // For the test suite compatibility 
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -124,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BazeriesCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -142,23 +143,33 @@
   class BazeriesCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BazeriesCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = [];
+      /** @type {string} */
+      this._processedKey = "CIPHER";
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-    // Property setter for key
+    /**
+     * Keyword; only its letters count
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "CIPHER"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._processedKey = "CIPHER"; // Default key
       } else {
         // Convert key bytes to string, keep only letters
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
         this._processedKey = keyStr.replace(/[^A-Za-z]/g, '');
         if (this._processedKey.length === 0) {
@@ -168,15 +179,13 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the keyword
+   * @returns {string} Keyword letters
    */
 
     get key() {
-      return this._processedKey || "CIPHER";
+      return this._processedKey ? this._processedKey : "CIPHER";
     }
-
-    // Feed data to the cipher
 
     // Get the result of the transformation
     /**
@@ -186,20 +195,25 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
+      /** @type {string} */
       const inputStr = String.fromCharCode.apply(null, this.inputBuffer);
-      const result = this.isInverse ? 
-        this.decryptBazeries(inputStr, this.key) : 
-        this.encryptBazeries(inputStr, this.key);
+      /** @type {string} */
+      const keyword = this._processedKey ? this._processedKey : "CIPHER";
+      /** @type {string} */
+      const result = this.isInverse ?
+        this.decryptBazeries(inputStr, keyword) :
+        this.encryptBazeries(inputStr, keyword);
 
       // Clear input buffer for next operation
       this.inputBuffer = [];
 
       // Convert result string back to byte array
-      const output = [];
       for (let i = 0; i < result.length; i++) {
         output.push(result.charCodeAt(i));
       }
@@ -207,74 +221,107 @@
       return output;
     }
 
-    // Encrypt using Bazeries algorithm
-    encryptBazeries(plaintext, key) {
-      if (plaintext.length === 0 || key.length === 0) {
+    /**
+     * Encrypt using Bazeries algorithm
+     * @param {string} plaintext - Text
+     * @param {string} keyword - Keyword
+     * @returns {string} Ciphertext; non-letters stay in place
+     */
+    encryptBazeries(plaintext, keyword) {
+      if (plaintext.length === 0 || keyword.length === 0) {
         return plaintext;
       }
 
       // Extract only letters and preserve non-letter positions
+      /** @type {string} */
       const letters = this.extractLetters(plaintext);
       if (letters.length === 0) {
         return plaintext;
       }
 
       // Apply Bazeries transposition to letters only
-      const encryptedLetters = this.bazeriesTransposition(letters, key, true);
+      /** @type {string} */
+      const encryptedLetters = this.bazeriesTransposition(letters, keyword, true);
 
       // Reinsert non-letters in original positions
       return this.reinsertNonLetters(plaintext, encryptedLetters);
     }
 
-    // Decrypt using Bazeries algorithm
-    decryptBazeries(ciphertext, key) {
-      if (ciphertext.length === 0 || key.length === 0) {
+    /**
+     * Decrypt using Bazeries algorithm
+     * @param {string} ciphertext - Text
+     * @param {string} keyword - Keyword
+     * @returns {string} Plaintext; non-letters stay in place
+     */
+    decryptBazeries(ciphertext, keyword) {
+      if (ciphertext.length === 0 || keyword.length === 0) {
         return ciphertext;
       }
 
       // Extract only letters and preserve non-letter positions
+      /** @type {string} */
       const letters = this.extractLetters(ciphertext);
       if (letters.length === 0) {
         return ciphertext;
       }
 
       // Apply Bazeries transposition to letters only
-      const decryptedLetters = this.bazeriesTransposition(letters, key, false);
+      /** @type {string} */
+      const decryptedLetters = this.bazeriesTransposition(letters, keyword, false);
 
       // Reinsert non-letters in original positions
       return this.reinsertNonLetters(ciphertext, decryptedLetters);
     }
 
-    // Core Bazeries transposition algorithm
-    bazeriesTransposition(text, key, encrypt) {
-      const keyLength = key.length;
+    /**
+     * Core Bazeries transposition algorithm
+     * @param {string} text - Letters
+     * @param {string} keyword - Keyword
+     * @param {boolean} encrypt - True to encrypt
+     * @returns {string} Transposed letters
+     */
+    bazeriesTransposition(text, keyword, encrypt) {
+      /** @type {int32} */
+      const width = keyword.length;
+      /** @type {int32} */
       const textLength = text.length;
 
       // Calculate number of complete rows
-      const fullRows = Math.floor(textLength / keyLength);
-      const remainder = textLength % keyLength;
+      /** @type {int32} */
+      const fullRows = Math.floor(textLength / width);
+      /** @type {int32} */
+      const remainder = textLength % width;
+      /** @type {int32} */
       const totalRows = remainder > 0 ? fullRows + 1 : fullRows;
 
-      // Create grid
+      // Create grid (cells never written stay undefined and are skipped)
+      /** @type {string[][]} */
       const grid = [];
       for (let i = 0; i < totalRows; i++) {
-        grid[i] = [];
+        /** @type {string[]} */
+        const cells = [];
+        grid.push(cells);
       }
 
       if (encrypt) {
         // Fill grid row by row
+        /** @type {int32} */
         let pos = 0;
         for (let row = 0; row < totalRows; row++) {
-          for (let col = 0; col < keyLength && pos < textLength; col++) {
+          for (let col = 0; col < width && pos < textLength; col++) {
             grid[row][col] = text.charAt(pos++);
           }
         }
 
         // Read grid column by column in key order
-        const columnOrder = this.getColumnOrder(key, true);
+        /** @type {int32[]} */
+        const columnOrder = this.getColumnOrder(keyword, true);
+        /** @type {string} */
         let result = '';
 
-        for (const colIndex of columnOrder) {
+        for (let c = 0; c < columnOrder.length; c++) {
+          /** @type {int32} */
+          const colIndex = columnOrder[c];
           for (let row = 0; row < totalRows; row++) {
             if (grid[row][colIndex]) {
               result += grid[row][colIndex];
@@ -285,31 +332,35 @@
         return result;
       } else {
         // For decryption: reverse the process
-        const columnOrder = this.getColumnOrder(key, true);
-        const decryptOrder = this.getColumnOrder(key, false);
+        /** @type {int32[]} */
+        const columnOrder = this.getColumnOrder(keyword, true);
 
         // Calculate column heights
-        const columnHeights = new Array(keyLength);
-        for (let i = 0; i < keyLength; i++) {
+        /** @type {int32[]} */
+        const columnHeights = new Array(width);
+        for (let i = 0; i < width; i++) {
           columnHeights[i] = fullRows + (i < remainder ? 1 : 0);
         }
 
         // Fill columns in key order
+        /** @type {int32} */
         let pos = 0;
-        for (let i = 0; i < keyLength; i++) {
+        for (let i = 0; i < width; i++) {
+          /** @type {int32} */
           const colIndex = columnOrder[i];
+          /** @type {int32} */
           const height = columnHeights[colIndex];
 
           for (let row = 0; row < height; row++) {
-            if (!grid[row]) grid[row] = [];
             grid[row][colIndex] = text.charAt(pos++);
           }
         }
 
         // Read grid row by row
+        /** @type {string} */
         let result = '';
         for (let row = 0; row < totalRows; row++) {
-          for (let col = 0; col < keyLength; col++) {
+          for (let col = 0; col < width; col++) {
             if (grid[row][col]) {
               result += grid[row][col];
             }
@@ -320,10 +371,16 @@
       }
     }
 
-    // Extract only letters from text
+    /**
+     * Extract only letters from text
+     * @param {string} text - Text
+     * @returns {string} Its letters
+     */
     extractLetters(text) {
+      /** @type {string} */
       let letters = '';
       for (let i = 0; i < text.length; i++) {
+        /** @type {string} */
         const char = text.charAt(i);
         if (this.isLetter(char)) {
           letters += char;
@@ -332,12 +389,20 @@
       return letters;
     }
 
-    // Reinsert non-letter characters in their original positions
+    /**
+     * Reinsert non-letter characters in their original positions
+     * @param {string} originalText - Text the letters came from
+     * @param {string} processedLetters - Transformed letters
+     * @returns {string} Text with its letters replaced in order
+     */
     reinsertNonLetters(originalText, processedLetters) {
+      /** @type {string} */
       let result = '';
+      /** @type {int32} */
       let letterIndex = 0;
 
       for (let i = 0; i < originalText.length; i++) {
+        /** @type {string} */
         const char = originalText.charAt(i);
         if (this.isLetter(char)) {
           if (letterIndex < processedLetters.length) {
@@ -353,37 +418,64 @@
       return result;
     }
 
-    // Get column order from key
-    getColumnOrder(key, encrypt) {
-      // Create array of indices with their corresponding key characters
-      const keyArray = [];
-      for (let i = 0; i < key.length; i++) {
-        keyArray.push({ char: key.charAt(i).toLowerCase(), index: i });
+    /**
+     * Get column order from key
+     * @param {string} keyword - Keyword
+     * @param {boolean} encrypt - True for the reading order, false for its inverse
+     * @returns {int32[]} Column permutation
+     */
+    getColumnOrder(keyword, encrypt) {
+      // Characters of the keyword (lower-cased) with their positions
+      /** @type {string[]} */
+      const chars = [];
+      /** @type {int32[]} */
+      const indices = [];
+      for (let i = 0; i < keyword.length; i++) {
+        chars.push(keyword.charAt(i).toLowerCase());
+        indices.push(i);
       }
 
-      // Sort by character to get alphabetic order
-      keyArray.sort((a, b) => {
-        if (a.char < b.char) return -1;
-        if (a.char > b.char) return 1;
-        return a.index - b.index; // Stable sort for duplicate characters
-      });
+      // Sort by character to get alphabetic order; ties by position, so the
+      // order is total and any sort yields the same permutation
+      for (let i = 1; i < indices.length; i++) {
+        /** @type {string} */
+        const c = chars[i];
+        /** @type {int32} */
+        const idx = indices[i];
+        /** @type {int32} */
+        let j = i - 1;
+        while (j >= 0 && (chars[j] > c || (chars[j] === c && indices[j] > idx))) {
+          chars[j + 1] = chars[j];
+          indices[j + 1] = indices[j];
+          j--;
+        }
+        chars[j + 1] = c;
+        indices[j + 1] = idx;
+      }
 
       if (encrypt) {
         // For encryption, use the sorted order
-        return keyArray.map(item => item.index);
+        return indices;
       } else {
         // For decryption, reverse the permutation
-        const decryptOrder = new Array(key.length);
-        for (let i = 0; i < keyArray.length; i++) {
-          decryptOrder[keyArray[i].index] = i;
+        /** @type {int32[]} */
+        const decryptOrder = new Array(keyword.length);
+        for (let i = 0; i < indices.length; i++) {
+          decryptOrder[indices[i]] = i;
         }
         return decryptOrder;
       }
     }
 
-    // Check if character is a letter
+    /**
+     * Check if character is a letter
+     * @param {string} char - Text
+     * @returns {boolean} True when it holds a letter A-Z or a-z
+     */
     isLetter(char) {
-      return /[A-Za-z]/.test(char);
+      /** @type {boolean} */
+      const found = /[A-Za-z]/.test(char);
+      return found;
     }
   }
 

@@ -126,7 +126,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GimliAlgorithmInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -143,17 +143,21 @@
   class GimliAlgorithmInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GimliAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Gimli constants
+      /** @type {int32} */
       this.ROUNDS = 24;
+      /** @type {int32} */
       this.STATE_SIZE = 48; // 384 bits = 48 bytes
     }
 
@@ -169,14 +173,15 @@
 
       // Validate input length for Gimli permutation
       if (this.inputBuffer.length !== this.STATE_SIZE) {
-        throw new Error(`Gimli requires exactly ${this.STATE_SIZE} bytes (384 bits) input`);
+        throw new Error("Gimli requires exactly " + this.STATE_SIZE + " bytes (384 bits) input");
       }
 
       // Gimli is a permutation, so the inverse direction is the inverse permutation
       // rather than a second application of the forward one.
+      /** @type {uint8[]} */
       const output = this.isInverse
-        ? this._gimliInversePermutation([...this.inputBuffer])
-        : this._gimliPermutation([...this.inputBuffer]);
+        ? this._gimliInversePermutation(this.inputBuffer.slice())
+        : this._gimliPermutation(this.inputBuffer.slice());
 
       // Clear input buffer for next operation
       this.inputBuffer = [];
@@ -184,83 +189,120 @@
       return output;
     }
 
-    _gimliPermutation(state) {
-      // Convert bytes to 32-bit words (little-endian)
-      // State is organized as flat array: s0, s1, s2, s3 (column 0), s4, s5, s6, s7 (column 1), s8, s9, s10, s11 (column 2)
-      const s = new Array(12);
+    /**
+     * Convert bytes to 32-bit words (little-endian)
+     * @param {uint8[]} bytes - 48 bytes
+     * @returns {uint32[]} 12 words
+     */
+    _toWords(bytes) {
+      /** @type {uint32[]} */
+      const w = new Array(12);
       for (let i = 0; i < 12; i++) {
-        s[i] = OpCodes.Pack32LE(
-          state[i * 4],
-          state[i * 4 + 1],
-          state[i * 4 + 2],
-          state[i * 4 + 3]
+        w[i] = OpCodes.Pack32LE(
+          bytes[i * 4],
+          bytes[i * 4 + 1],
+          bytes[i * 4 + 2],
+          bytes[i * 4 + 3]
         );
       }
+      return w;
+    }
+
+    /**
+     * Convert 32-bit words back to bytes (little-endian)
+     * @param {uint32[]} w - 12 words
+     * @returns {uint8[]} 48 bytes
+     */
+    _toBytes(w) {
+      /** @type {uint8[]} */
+      const result = [];
+      for (let i = 0; i < 12; i++) {
+        /** @type {uint8[]} */
+        const bytes = OpCodes.Unpack32LE(w[i]);
+        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
+      }
+      return result;
+    }
+
+    /**
+     * Apply the SP-box to all four columns
+     * @param {uint32[]} w - State words
+     * @returns {void}
+     */
+    _spColumns(w) {
+      this._gimliSPBox(w, 0, 4, 8);
+      this._gimliSPBox(w, 1, 5, 9);
+      this._gimliSPBox(w, 2, 6, 10);
+      this._gimliSPBox(w, 3, 7, 11);
+    }
+
+    /**
+     * Apply the inverse SP-box to all four columns
+     * @param {uint32[]} w - State words
+     * @returns {void}
+     */
+    _inverseSpColumns(w) {
+      this._gimliInverseSPBox(w, 0, 4, 8);
+      this._gimliInverseSPBox(w, 1, 5, 9);
+      this._gimliInverseSPBox(w, 2, 6, 10);
+      this._gimliInverseSPBox(w, 3, 7, 11);
+    }
+
+    /**
+     * Forward Gimli permutation
+     * @param {uint8[]} bytes - 48-byte state
+     * @returns {uint8[]} Permuted state
+     */
+    _gimliPermutation(bytes) {
+      // State is organized as flat array: s0, s1, s2, s3 (column 0), s4, s5, s6, s7 (column 1), s8, s9, s10, s11 (column 2)
+      /** @type {uint32[]} */
+      const w = this._toWords(bytes);
 
       // Apply 24 rounds in groups of 4
       for (let round = 24; round > 0; round -= 4) {
         // Round 0: SP-box, small swap, add round constant
-        this._gimliSPBox(s, 0, 4, 8);
-        this._gimliSPBox(s, 1, 5, 9);
-        this._gimliSPBox(s, 2, 6, 10);
-        this._gimliSPBox(s, 3, 7, 11);
+        this._spColumns(w);
 
         // Small swap - exactly as in C reference
-        let x = s[0];
-        let y = s[2];
-        s[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[1], 0x9e377900), round));
-        s[1] = x;
-        s[2] = s[3];
-        s[3] = y;
+        /** @type {uint32} */
+        let x = w[0];
+        /** @type {uint32} */
+        let y = w[2];
+        w[0] = OpCodes.Xor32(OpCodes.Xor32(w[1], 0x9e377900), round);
+        w[1] = x;
+        w[2] = w[3];
+        w[3] = y;
 
         // Round 1: SP-box only
-        this._gimliSPBox(s, 0, 4, 8);
-        this._gimliSPBox(s, 1, 5, 9);
-        this._gimliSPBox(s, 2, 6, 10);
-        this._gimliSPBox(s, 3, 7, 11);
+        this._spColumns(w);
 
         // Round 2: SP-box, big swap
-        this._gimliSPBox(s, 0, 4, 8);
-        this._gimliSPBox(s, 1, 5, 9);
-        this._gimliSPBox(s, 2, 6, 10);
-        this._gimliSPBox(s, 3, 7, 11);
+        this._spColumns(w);
 
         // Big swap - exactly as in C reference
-        x = s[0];
-        y = s[1];
-        s[0] = s[2];
-        s[1] = s[3];
-        s[2] = x;
-        s[3] = y;
+        x = w[0];
+        y = w[1];
+        w[0] = w[2];
+        w[1] = w[3];
+        w[2] = x;
+        w[3] = y;
 
         // Round 3: SP-box only
-        this._gimliSPBox(s, 0, 4, 8);
-        this._gimliSPBox(s, 1, 5, 9);
-        this._gimliSPBox(s, 2, 6, 10);
-        this._gimliSPBox(s, 3, 7, 11);
+        this._spColumns(w);
       }
 
-      // Convert back to bytes (little-endian)
-      const result = [];
-      for (let i = 0; i < 12; i++) {
-        const bytes = OpCodes.Unpack32LE(s[i]);
-        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      }
-
-      return result;
+      return this._toBytes(w);
     }
 
-    _gimliInversePermutation(state) {
+    /**
+     * Inverse Gimli permutation
+     * @param {uint8[]} bytes - 48-byte state
+     * @returns {uint8[]} Unpermuted state
+     */
+    _gimliInversePermutation(bytes) {
       // Same word layout as the forward direction.
-      const s = new Array(12);
-      for (let i = 0; i < 12; i++) {
-        s[i] = OpCodes.Pack32LE(
-          state[i * 4],
-          state[i * 4 + 1],
-          state[i * 4 + 2],
-          state[i * 4 + 3]
-        );
-      }
+      /** @type {uint32[]} */
+      const w = this._toWords(bytes);
 
       // The forward loop runs round = 24, 20, ..., 4 and each iteration performs
       //   SP, small-swap(round), SP, SP, big-swap, SP
@@ -268,69 +310,95 @@
       //   SP^-1, big-swap, SP^-1, SP^-1, small-swap^-1(round), SP^-1
       for (let round = 4; round <= 24; round += 4) {
         // Undo round 3 (SP-box only)
-        this._gimliInverseSPBox(s, 0, 4, 8);
-        this._gimliInverseSPBox(s, 1, 5, 9);
-        this._gimliInverseSPBox(s, 2, 6, 10);
-        this._gimliInverseSPBox(s, 3, 7, 11);
+        this._inverseSpColumns(w);
 
         // Undo the big swap. It exchanges (s0,s1) with (s2,s3), so it is its own
         // inverse.
-        let x = s[0];
-        let y = s[1];
-        s[0] = s[2];
-        s[1] = s[3];
-        s[2] = x;
-        s[3] = y;
+        /** @type {uint32} */
+        let x = w[0];
+        /** @type {uint32} */
+        let y = w[1];
+        w[0] = w[2];
+        w[1] = w[3];
+        w[2] = x;
+        w[3] = y;
 
         // Undo round 2 (SP-box only)
-        this._gimliInverseSPBox(s, 0, 4, 8);
-        this._gimliInverseSPBox(s, 1, 5, 9);
-        this._gimliInverseSPBox(s, 2, 6, 10);
-        this._gimliInverseSPBox(s, 3, 7, 11);
+        this._inverseSpColumns(w);
 
         // Undo round 1 (SP-box only)
-        this._gimliInverseSPBox(s, 0, 4, 8);
-        this._gimliInverseSPBox(s, 1, 5, 9);
-        this._gimliInverseSPBox(s, 2, 6, 10);
-        this._gimliInverseSPBox(s, 3, 7, 11);
+        this._inverseSpColumns(w);
 
         // Undo the small swap. Forward it computes
         //   s0' = s1 ^ 0x9e377900 ^ round, s1' = s0, s2' = s3, s3' = s2
         // so the pre-swap words are recovered as below.
-        x = s[0];
-        y = s[2];
-        s[0] = s[1];
-        s[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, 0x9e377900), round));
-        s[2] = s[3];
-        s[3] = y;
+        x = w[0];
+        y = w[2];
+        w[0] = w[1];
+        w[1] = OpCodes.Xor32(OpCodes.Xor32(x, 0x9e377900), round);
+        w[2] = w[3];
+        w[3] = y;
 
         // Undo round 0 (SP-box)
-        this._gimliInverseSPBox(s, 0, 4, 8);
-        this._gimliInverseSPBox(s, 1, 5, 9);
-        this._gimliInverseSPBox(s, 2, 6, 10);
-        this._gimliInverseSPBox(s, 3, 7, 11);
+        this._inverseSpColumns(w);
       }
 
-      const result = [];
-      for (let i = 0; i < 12; i++) {
-        const bytes = OpCodes.Unpack32LE(s[i]);
-        for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);
-      }
-
-      return result;
+      return this._toBytes(w);
     }
 
-    // Gimli SP-box for a column
-    // Reference: https://gimli.cr.yp.to/ Section 2.2
-    _gimliSPBox(s, i0, i1, i2) {
-      const x = OpCodes.RotL32(s[i0], 24);
-      const y = OpCodes.RotL32(s[i1], 9);
-      const z = s[i2];
+    /**
+     * Gimli SP-box for a column
+     * Reference: https://gimli.cr.yp.to/ Section 2.2
+     * @param {uint32[]} w - State words
+     * @param {int32} i0 - Index of the first word of the column
+     * @param {int32} i1 - Index of the second word
+     * @param {int32} i2 - Index of the third word
+     * @returns {void}
+     */
+    _gimliSPBox(w, i0, i1, i2) {
+      /** @type {uint32} */
+      const x = OpCodes.RotL32(w[i0], 24);
+      /** @type {uint32} */
+      const y = OpCodes.RotL32(w[i1], 9);
+      /** @type {uint32} */
+      const z = w[i2];
 
       // Apply SP-box transformations with proper 32-bit masking
-      s[i1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, x), OpCodes.Shl32(OpCodes.OrN(x, z), 1)));
-      s[i0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(z, y), OpCodes.Shl32(OpCodes.AndN(x, y), 3)));
-      s[i2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, OpCodes.Shl32(z, 1)), OpCodes.Shl32(OpCodes.AndN(y, z), 2)));
+      w[i1] = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32(OpCodes.Or32(x, z), 1));
+      w[i0] = OpCodes.Xor32(OpCodes.Xor32(z, y), OpCodes.Shl32(OpCodes.And32(x, y), 3));
+      w[i2] = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(z, 1)), OpCodes.Shl32(OpCodes.And32(y, z), 2));
+    }
+
+    /**
+     * Bit of a word
+     * @param {uint32} value - Word
+     * @param {int32} index - Bit index
+     * @returns {uint32} 0 or 1
+     */
+    _bitOf(value, index) {
+      return OpCodes.And32(OpCodes.Shr32(value, index), 1);
+    }
+
+    /**
+     * A lower-indexed bit, reading out-of-range indices as zero
+     * @param {uint32[]} bits - Bits recovered so far
+     * @param {int32} index - Bit index, possibly negative
+     * @returns {uint32} 0 or 1
+     */
+    _lower(bits, index) {
+      return index < 0 ? 0 : bits[index];
+    }
+
+    /**
+     * Assemble 32 bits into a word
+     * @param {uint32[]} bits - Bits, least significant first
+     * @returns {uint32} Word
+     */
+    _assemble(bits) {
+      /** @type {uint32} */
+      let value = 0;
+      for (let i = 0; i < 32; i++) value = OpCodes.Or32(value, OpCodes.Shl32(bits[i], i));
+      return value;
     }
 
     // Inverse of the Gimli SP-box.
@@ -348,39 +416,43 @@
     //   y_i = s1'_i ^ x_i ^ (x_(i-1) | z_(i-1))
     //   z_i = s0'_i ^ y_i ^ (x_(i-3) & y_(i-3))
     // Recovering x, y, z then undoes the two input rotations.
-    _gimliInverseSPBox(s, i0, i1, i2) {
-      const a = s[i0];
-      const b = s[i1];
-      const c = s[i2];
+    /**
+     * @param {uint32[]} w - State words
+     * @param {int32} i0 - Index of the first word of the column
+     * @param {int32} i1 - Index of the second word
+     * @param {int32} i2 - Index of the third word
+     * @returns {void}
+     */
+    _gimliInverseSPBox(w, i0, i1, i2) {
+      /** @type {uint32} */
+      const a = w[i0];
+      /** @type {uint32} */
+      const b = w[i1];
+      /** @type {uint32} */
+      const c = w[i2];
 
+      /** @type {uint32[]} */
       const xBits = new Array(32);
+      /** @type {uint32[]} */
       const yBits = new Array(32);
+      /** @type {uint32[]} */
       const zBits = new Array(32);
 
-      const bitOf = (value, index) => OpCodes.AndN(OpCodes.Shr32(value, index), 1);
-      const lower = (bits, index) => (index < 0 ? 0 : bits[index]);
-
       for (let i = 0; i < 32; i++) {
-        xBits[i] = OpCodes.XorN(
-          OpCodes.XorN(bitOf(c, i), lower(zBits, i - 1)),
-          OpCodes.AndN(lower(yBits, i - 2), lower(zBits, i - 2)));
-        yBits[i] = OpCodes.XorN(
-          OpCodes.XorN(bitOf(b, i), xBits[i]),
-          OpCodes.OrN(lower(xBits, i - 1), lower(zBits, i - 1)));
-        zBits[i] = OpCodes.XorN(
-          OpCodes.XorN(bitOf(a, i), yBits[i]),
-          OpCodes.AndN(lower(xBits, i - 3), lower(yBits, i - 3)));
+        xBits[i] = OpCodes.Xor32(
+          OpCodes.Xor32(this._bitOf(c, i), this._lower(zBits, i - 1)),
+          OpCodes.And32(this._lower(yBits, i - 2), this._lower(zBits, i - 2)));
+        yBits[i] = OpCodes.Xor32(
+          OpCodes.Xor32(this._bitOf(b, i), xBits[i]),
+          OpCodes.Or32(this._lower(xBits, i - 1), this._lower(zBits, i - 1)));
+        zBits[i] = OpCodes.Xor32(
+          OpCodes.Xor32(this._bitOf(a, i), yBits[i]),
+          OpCodes.And32(this._lower(xBits, i - 3), this._lower(yBits, i - 3)));
       }
 
-      const assemble = bits => {
-        let value = 0;
-        for (let i = 0; i < 32; i++) value = OpCodes.OrN(value, OpCodes.Shl32(bits[i], i));
-        return OpCodes.ToUint32(value);
-      };
-
-      s[i0] = OpCodes.RotR32(assemble(xBits), 24);
-      s[i1] = OpCodes.RotR32(assemble(yBits), 9);
-      s[i2] = assemble(zBits);
+      w[i0] = OpCodes.RotR32(this._assemble(xBits), 24);
+      w[i1] = OpCodes.RotR32(this._assemble(yBits), 9);
+      w[i2] = this._assemble(zBits);
     }
   }
 

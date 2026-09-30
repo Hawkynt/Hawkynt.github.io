@@ -212,7 +212,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LFSR88Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -230,8 +230,15 @@
  */
 
   class LFSR88Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {LFSR88Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // LFSR88 uses 3x 32-bit state variables (z1, z2, z3)
       this._z1 = 0;
@@ -248,6 +255,7 @@
      * - z1 >= 2 (must be > 1)
      * - z2 >= 8 (must be > 7)
      * - z3 >= 16 (must be > 15)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -264,14 +272,15 @@
       let offset = 0;
       if (seedBytes.length >= 4) {
         this._z1 = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into z1
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -281,20 +290,20 @@
 
       if (seedBytes.length >= 8) {
         this._z2 = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
 
       if (seedBytes.length >= 12) {
         this._z3 = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
       }
 
@@ -306,6 +315,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -336,33 +348,33 @@
 
       // Component z1: period 2^31-1
       let b1 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z1, 13), this._z1),
+        OpCodes.Xor32(OpCodes.Shl32(this._z1, 13), this._z1),
         19
       );
-      this._z1 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z1, 0xFFFFFFFE), 12), b1);
+      this._z1 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z1, 0xFFFFFFFE), 12), b1);
 
       // Component z2: period 2^29-1
       let b2 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z2, 2), this._z2),
+        OpCodes.Xor32(OpCodes.Shl32(this._z2, 2), this._z2),
         25
       );
-      this._z2 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z2, 0xFFFFFFF8), 4), b2);
+      this._z2 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z2, 0xFFFFFFF8), 4), b2);
 
       // Component z3: period 2^28-1
       let b3 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z3, 3), this._z3),
+        OpCodes.Xor32(OpCodes.Shl32(this._z3, 3), this._z3),
         11
       );
-      this._z3 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z3, 0xFFFFFFF0), 17), b3);
+      this._z3 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z3, 0xFFFFFFF0), 17), b3);
 
       // Combine all components with XOR
-      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this._z1, this._z2), this._z3));
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this._z1, this._z2), this._z3));
     }
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -370,9 +382,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -414,7 +429,8 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
 
       // Handle skip parameter for test vectors
       if (this._skip && this._skip > 0) {
@@ -430,24 +446,32 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
      * Set skip count (number of outputs to skip before generating result)
+     * @param {int32} count - Outputs to discard before the next Result()
      */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

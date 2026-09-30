@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Letter frequencies preserved, making frequency analysis effective against longer texts](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Use only for educational purposes, never for actual security |
-| [Only 312 possible keys (12 valid 'a' values × 26 'b' values), vulnerable to brute force](https://en.wikipedia.org/wiki/Brute-force_attack) | — | Consider as demonstration cipher only |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Letter frequencies preserved, making frequency analysis effective against longer texts | Use only for educational purposes, never for actual security |
+| [Small Key Space](https://en.wikipedia.org/wiki/Brute-force_attack) | Only 312 possible keys (12 valid 'a' values × 26 'b' values), vulnerable to brute force | Consider as demonstration cipher only |
 
 ## Documentation
 

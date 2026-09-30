@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Repeated patterns in ciphertext reveal keyword length, enabling frequency analysis](https://en.wikipedia.org/wiki/Kasiski_examination) | — | None - fundamental weakness of polyalphabetic substitution |
-| [Statistical analysis can determine keyword length and enable cryptanalysis](https://en.wikipedia.org/wiki/Index_of_coincidence) | — | Use only for educational demonstrations |
+| [Kasiski Examination](https://en.wikipedia.org/wiki/Kasiski_examination) | Repeated patterns in ciphertext reveal keyword length, enabling frequency analysis | None - fundamental weakness of polyalphabetic substitution |
+| [Index of Coincidence](https://en.wikipedia.org/wiki/Index_of_coincidence) | Statistical analysis can determine keyword length and enable cryptanalysis | Use only for educational demonstrations |
 
 ## Documentation
 

@@ -44,6 +44,36 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * A local group: consecutive data blocks protected by one XOR parity block
+   * @class
+   */
+  class LocalGroup {
+    /**
+     * @param {int32} start - Index of the first data block
+     * @param {int32} size - Number of data blocks
+     * @param {int32} parityIndex - Index of the local parity block
+     */
+    constructor(start, size, parityIndex) {
+      /** @type {int32[]} */
+      this.dataIndices = [];
+      for (let i = 0; i < size; ++i) this.dataIndices.push(start + i);
+      /** @type {int32} */
+      this.parityIndex = parityIndex;
+    }
+
+    /**
+     * Data block indices followed by the parity index
+     * @returns {int32[]} Group members
+     */
+    members() {
+      /** @type {int32[]} */
+      const indices = this.dataIndices.slice();
+      indices.push(this.parityIndex);
+      return indices;
+    }
+  }
+
   class LRCPyramidCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -135,7 +165,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LRCPyramidCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -152,13 +182,15 @@
   class LRCPyramidCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LRCPyramidCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // LRC (12,2,2) configuration from Azure Storage
@@ -177,15 +209,17 @@
 
       // Local group structure: 6 data blocks per group + 1 local parity
       this.localGroupSize = 6;
+      /** @type {LocalGroup[]} */
       this.localGroups = [
-        { dataIndices: [0, 1, 2, 3, 4, 5], parityIndex: 12 },
-        { dataIndices: [6, 7, 8, 9, 10, 11], parityIndex: 13 }
+        new LocalGroup(0, 6, 12),
+        new LocalGroup(6, 6, 13)
       ];
 
       // For global parities, use Vandermonde matrix coefficients
       // This ensures maximum distance separation property
       // g0 = d0^1 XOR d1^1 XOR ... XOR d11^1 (simple XOR)
       // g1 = d0*a0 XOR d1*a1 XOR ... XOR d11*a11 (weighted XOR in GF(2^8))
+      /** @type {uint8[][]} */
       this.globalCoefficients = [
         [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], // g0 coefficients (all 1s)
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] // g1 coefficients (sequential)
@@ -223,28 +257,36 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode 12 data blocks to 16 total blocks (12+2+2)
       if (data.length !== this.dataBlocks) {
-        throw new Error(`LRC Pyramid encode: Input must be exactly ${this.dataBlocks} blocks, got ${data.length}`);
+        throw new Error("LRC Pyramid encode: Input must be exactly " + this.dataBlocks + " blocks, got " + data.length);
       }
 
       // Create output array with all blocks
+      /** @type {uint8[]} */
       const encoded = new Array(this.totalBlocks);
 
       // Copy data blocks (systematic encoding)
       for (let i = 0; i < this.dataBlocks; ++i) {
-        encoded[i] = OpCodes.AndN(data[i], 0xFF); // Ensure byte values
+        encoded[i] = OpCodes.And32(data[i], 0xFF); // Ensure byte values
       }
 
       // Compute local parities using XOR
       for (let g = 0; g < this.localGroups.length; ++g) {
+        /** @type {LocalGroup} */
         const group = this.localGroups[g];
+        /** @type {uint32} */
         let localParity = 0;
 
         for (let i = 0; i < group.dataIndices.length; ++i) {
+          /** @type {int32} */
           const dataIdx = group.dataIndices[i];
-          localParity = OpCodes.XorN(localParity, encoded[dataIdx]);
+          localParity = OpCodes.Xor32(localParity, encoded[dataIdx]);
         }
 
         encoded[group.parityIndex] = localParity;
@@ -252,30 +294,37 @@
 
       // Compute global parities using Galois Field arithmetic
       // g0 = simple XOR of all data blocks
+      /** @type {uint32} */
       let g0 = 0;
       for (let i = 0; i < this.dataBlocks; ++i) {
-        g0 = OpCodes.XorN(g0, encoded[i]);
+        g0 = OpCodes.Xor32(g0, encoded[i]);
       }
       encoded[14] = g0;
 
       // g1 = weighted sum in GF(2^8) using multiplication
+      /** @type {uint32} */
       let g1 = 0;
       for (let i = 0; i < this.dataBlocks; ++i) {
         const coeff = this.globalCoefficients[1][i];
         const term = OpCodes.GF256Mul(encoded[i], coeff);
-        g1 = OpCodes.XorN(g1, term);
+        g1 = OpCodes.Xor32(g1, term);
       }
       encoded[15] = g1;
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== this.totalBlocks) {
-        throw new Error(`LRC Pyramid decode: Input must be exactly ${this.totalBlocks} blocks, got ${data.length}`);
+        throw new Error("LRC Pyramid decode: Input must be exactly " + this.totalBlocks + " blocks, got " + data.length);
       }
 
       // Check for erasures (represented as -1 or null)
+      /** @type {int32[]} */
       const erasures = [];
       for (let i = 0; i < data.length; ++i) {
         if (data[i] === null || data[i] === undefined || data[i] < 0) {
@@ -284,7 +333,8 @@
       }
 
       // Create working copy
-      const recovered = [...data];
+      /** @type {uint8[]} */
+      const recovered = data.slice();
 
       // No erasures - simple extraction
       if (erasures.length === 0) {
@@ -293,20 +343,24 @@
 
       // Attempt local recovery first (fast path)
       if (erasures.length === 1) {
+        /** @type {int32} */
         const erasedIdx = erasures[0];
 
         // Check if erasure is in a local group
         for (let g = 0; g < this.localGroups.length; ++g) {
+          /** @type {LocalGroup} */
           const group = this.localGroups[g];
-          const groupIndices = [...group.dataIndices, group.parityIndex];
+          /** @type {int32[]} */
+          const groupIndices = group.members();
 
           if (groupIndices.includes(erasedIdx)) {
             // Can recover using local parity
+            /** @type {uint32} */
             let reconstructed = 0;
             for (let i = 0; i < groupIndices.length; ++i) {
               const idx = groupIndices[i];
               if (idx !== erasedIdx) {
-                reconstructed = OpCodes.XorN(reconstructed, recovered[idx]);
+                reconstructed = OpCodes.Xor32(reconstructed, recovered[idx]);
               }
             }
             recovered[erasedIdx] = reconstructed;
@@ -329,25 +383,32 @@
         // For data block erasures, would need full RS decoding
         console.warn('LRC Pyramid: Global recovery required, returning best effort');
       } else {
-        throw new Error(`LRC Pyramid: Cannot recover ${erasures.length} erasures with only ${this.globalParities} global parities`);
+        throw new Error("LRC Pyramid: Cannot recover " + erasures.length + " erasures with only " + this.globalParities + " global parities");
       }
 
       // Extract data blocks (even if not fully recovered)
       return recovered.slice(0, this.dataBlocks);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this.totalBlocks) return true;
 
       try {
         // Check local parities
         for (let g = 0; g < this.localGroups.length; ++g) {
+          /** @type {LocalGroup} */
           const group = this.localGroups[g];
+          /** @type {uint32} */
           let computed = 0;
 
           for (let i = 0; i < group.dataIndices.length; ++i) {
+            /** @type {int32} */
             const dataIdx = group.dataIndices[i];
-            computed = OpCodes.XorN(computed, data[dataIdx]);
+            computed = OpCodes.Xor32(computed, data[dataIdx]);
           }
 
           if (computed !== data[group.parityIndex]) {
@@ -356,20 +417,22 @@
         }
 
         // Check global parity g0
+        /** @type {uint32} */
         let computedG0 = 0;
         for (let i = 0; i < this.dataBlocks; ++i) {
-          computedG0 = OpCodes.XorN(computedG0, data[i]);
+          computedG0 = OpCodes.Xor32(computedG0, data[i]);
         }
         if (computedG0 !== data[14]) {
           return true; // Error detected in global parity
         }
 
         // Check global parity g1
+        /** @type {uint32} */
         let computedG1 = 0;
         for (let i = 0; i < this.dataBlocks; ++i) {
           const coeff = this.globalCoefficients[1][i];
           const term = OpCodes.GF256Mul(data[i], coeff);
-          computedG1 = OpCodes.XorN(computedG1, term);
+          computedG1 = OpCodes.Xor32(computedG1, term);
         }
         if (computedG1 !== data[15]) {
           return true; // Error detected in global parity
@@ -382,6 +445,11 @@
     }
 
     // Demonstrate local recovery capability
+    /**
+     * @param {uint8[]} data - Codeword blocks
+     * @param {int32} erasedIndex - Erased block
+     * @returns {uint32} Reconstructed block
+     */
     recoverLocalErasure(data, erasedIndex) {
       // Recover a single erased block using local parity
       if (data.length !== this.totalBlocks) {
@@ -389,21 +457,24 @@
       }
 
       if (erasedIndex < 0 || erasedIndex >= this.totalBlocks) {
-        throw new Error(`LRC Pyramid recoverLocalErasure: Invalid erasure index ${erasedIndex}`);
+        throw new Error("LRC Pyramid recoverLocalErasure: Invalid erasure index " + erasedIndex);
       }
 
       // Find which local group contains the erased block
       for (let g = 0; g < this.localGroups.length; ++g) {
+        /** @type {LocalGroup} */
         const group = this.localGroups[g];
-        const groupIndices = [...group.dataIndices, group.parityIndex];
+        /** @type {int32[]} */
+        const groupIndices = group.members();
 
         if (groupIndices.includes(erasedIndex)) {
           // Recover using XOR of all other blocks in group
+          /** @type {uint32} */
           let reconstructed = 0;
           for (let i = 0; i < groupIndices.length; ++i) {
             const idx = groupIndices[i];
             if (idx !== erasedIndex) {
-              reconstructed = OpCodes.XorN(reconstructed, data[idx]);
+              reconstructed = OpCodes.Xor32(reconstructed, data[idx]);
             }
           }
           return reconstructed;
@@ -415,6 +486,10 @@
     }
 
     // Calculate repair bandwidth (number of blocks to read for recovery)
+    /**
+     * @param {int32[]} erasedIndices - Erased blocks
+     * @returns {int32} Blocks to read for the repair
+     */
     getRepairBandwidth(erasedIndices) {
       if (erasedIndices.length === 0) return 0;
       if (erasedIndices.length > this.globalParities) {
@@ -423,11 +498,14 @@
 
       // Single erasure in local group = 6 blocks (local group members)
       if (erasedIndices.length === 1) {
+        /** @type {int32} */
         const erasedIdx = erasedIndices[0];
 
         for (let g = 0; g < this.localGroups.length; ++g) {
+          /** @type {LocalGroup} */
           const group = this.localGroups[g];
-          const groupIndices = [...group.dataIndices, group.parityIndex];
+          /** @type {int32[]} */
+          const groupIndices = group.members();
 
           if (groupIndices.includes(erasedIdx)) {
             return this.localGroupSize; // Only need to read local group

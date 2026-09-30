@@ -57,7 +57,8 @@
   // ===== CONSTANTS =====
 
   // RFC 3217 - Fixed IV for second encryption pass
-  const IV2 = Object.freeze([0x4a, 0xdd, 0xa2, 0x2c, 0x79, 0xe8, 0x21, 0x05]);
+  /** @type {uint8[]} */
+  const IV2 = [0x4a, 0xdd, 0xa2, 0x2c, 0x79, 0xe8, 0x21, 0x05];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -124,7 +125,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DESedeWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -143,15 +144,19 @@
   class DESedeWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DESedeWrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
 
       // Cache for 3DES and SHA-1 algorithms
@@ -174,7 +179,7 @@
 
       // Validate key size (must be 24 bytes for 3DES EDE3)
       if (keyBytes.length !== 24) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. Triple-DES Key Wrap requires 24-byte (192-bit) keys`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. Triple-DES Key Wrap requires 24-byte (192-bit) keys");
       }
 
       this._key = [...keyBytes];
@@ -204,7 +209,7 @@
 
       // Validate IV size (must be 8 bytes for DES block size)
       if (ivBytes.length !== 8) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. IV must be 8 bytes`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. IV must be 8 bytes");
       }
 
       this._iv = [...ivBytes];
@@ -231,6 +236,7 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = this.isInverse
         ? this._unwrap(this.inputBuffer)
         : this._wrap(this.inputBuffer);
@@ -241,33 +247,45 @@
 
     // ===== WRAPPING ALGORITHM =====
 
+    /**
+     * RFC 3217 wrap
+     * @param {uint8[]} keyToWrap - Key to wrap
+     * @returns {uint8[]} Wrapped key
+     */
     _wrap(keyToWrap) {
       if (!this._iv) {
         throw new Error("IV not set. Wrapping requires an 8-byte IV");
       }
 
       // Step 1: Compute CMS Key Checksum (first 8 bytes of SHA-1)
+      /** @type {uint8[]} */
       const checksum = this._calculateCMSKeyChecksum(keyToWrap);
 
       // Step 2: Concatenate key and checksum: WKCKS = WK || CKS
+      /** @type {uint8[]} */
       const wkcks = [...keyToWrap, ...checksum];
 
       // Step 3: Pad to multiple of 8 bytes if needed
+      /** @type {int32} */
       const blockSize = 8;
       if (wkcks.length % blockSize !== 0) {
         throw new Error("WKCKS length must be multiple of 8 bytes");
       }
 
       // Step 4: Encrypt WKCKS in CBC mode using KEK and IV -> TEMP1
+      /** @type {uint8[]} */
       const temp1 = this._cbcEncrypt(wkcks, this._key, this._iv);
 
       // Step 5: Concatenate IV and TEMP1: TEMP2 = IV || TEMP1
+      /** @type {uint8[]} */
       const temp2 = [...this._iv, ...temp1];
 
       // Step 6: Reverse the order of octets in TEMP2
-      const temp3 = [...temp2].reverse();
+      /** @type {uint8[]} */
+      const temp3 = temp2.slice().reverse();
 
       // Step 7: Encrypt TEMP3 in CBC mode using KEK and IV2 -> result
+      /** @type {uint8[]} */
       const result = this._cbcEncrypt(temp3, this._key, IV2);
 
       return result;
@@ -275,25 +293,36 @@
 
     // ===== UNWRAPPING ALGORITHM =====
 
+    /**
+     * RFC 3217 unwrap
+     * @param {uint8[]} wrappedKey - Wrapped key
+     * @returns {uint8[]} Unwrapped key
+     */
     _unwrap(wrappedKey) {
+      /** @type {int32} */
       const blockSize = 8;
 
       // Validate wrapped key length
       if (wrappedKey.length % blockSize !== 0) {
-        throw new Error(`Wrapped key length must be multiple of ${blockSize} bytes`);
+        throw new Error("Wrapped key length must be multiple of " + blockSize + " bytes");
       }
 
       // Step 1: Decrypt with KEK and IV2 -> TEMP3
+      /** @type {uint8[]} */
       const temp3 = this._cbcDecrypt(wrappedKey, this._key, IV2);
 
       // Step 2: Reverse the order of octets in TEMP3 -> TEMP2
-      const temp2 = [...temp3].reverse();
+      /** @type {uint8[]} */
+      const temp2 = temp3.slice().reverse();
 
       // Step 3: Decompose TEMP2 into IV (first 8 bytes) and TEMP1 (remaining)
+      /** @type {uint8[]} */
       const extractedIV = temp2.slice(0, 8);
+      /** @type {uint8[]} */
       const temp1 = temp2.slice(8);
 
       // Step 4: Decrypt TEMP1 using KEK and extracted IV -> WKCKS
+      /** @type {uint8[]} */
       const wkcks = this._cbcDecrypt(temp1, this._key, extractedIV);
 
       // Step 5: Decompose WKCKS: key is all but last 8 bytes, checksum is last 8 bytes
@@ -301,10 +330,13 @@
         throw new Error("Invalid wrapped key: too short");
       }
 
+      /** @type {uint8[]} */
       const unwrappedKey = wkcks.slice(0, wkcks.length - 8);
+      /** @type {uint8[]} */
       const receivedChecksum = wkcks.slice(wkcks.length - 8);
 
       // Step 6: Verify CMS Key Checksum
+      /** @type {uint8[]} */
       const computedChecksum = this._calculateCMSKeyChecksum(unwrappedKey);
 
       if (!OpCodes.ArraysEqual(computedChecksum, receivedChecksum)) {
@@ -320,12 +352,16 @@
      * Calculate CMS Key Checksum as specified in RFC 3217:
      * 1. Compute SHA-1 hash of the key
      * 2. Use first 8 octets as checksum
+     * @param {uint8[]} key - Key material
+     * @returns {uint8[]} 8-byte checksum
      */
     _calculateCMSKeyChecksum(key) {
       const sha1 = this._getSHA1Algorithm();
-      const sha1Instance = sha1.CreateInstance();
+      /** @type {IHashFunctionInstance} */
+      const sha1Instance = sha1.CreateInstance(false);
 
       sha1Instance.Feed(key);
+      /** @type {uint8[]} */
       const hash = sha1Instance.Result();
 
       // Return first 8 bytes of SHA-1 hash
@@ -336,23 +372,34 @@
 
     /**
      * Encrypt data using 3DES in CBC mode
+     * @param {uint8[]} plaintext - Data, a multiple of 8 bytes
+     * @param {uint8[]} key - 24-byte 3DES key
+     * @param {uint8[]} iv - 8-byte IV
+     * @returns {uint8[]} Ciphertext
      */
     _cbcEncrypt(plaintext, key, iv) {
+      /** @type {int32} */
       const blockSize = 8;
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {uint8[]} */
       let previousBlock = [...iv];
 
+      /** @type {IBlockCipherInstance} */
       const tripleDesInstance = this._getTripleDESAlgorithm().CreateInstance(false);
       tripleDesInstance.key = key;
 
       for (let i = 0; i < plaintext.length; i += blockSize) {
+        /** @type {uint8[]} */
         const block = plaintext.slice(i, i + blockSize);
 
         // XOR with previous ciphertext block (CBC mode)
+        /** @type {uint8[]} */
         const xored = OpCodes.XorArrays(block, previousBlock);
 
         // Encrypt the XORed block
         tripleDesInstance.Feed(xored);
+        /** @type {uint8[]} */
         const encrypted = tripleDesInstance.Result();
 
         for (let _i = 0; _i < encrypted.length; _i++) result.push(encrypted[_i]);
@@ -364,23 +411,34 @@
 
     /**
      * Decrypt data using 3DES in CBC mode
+     * @param {uint8[]} ciphertext - Data, a multiple of 8 bytes
+     * @param {uint8[]} key - 24-byte 3DES key
+     * @param {uint8[]} iv - 8-byte IV
+     * @returns {uint8[]} Plaintext
      */
     _cbcDecrypt(ciphertext, key, iv) {
+      /** @type {int32} */
       const blockSize = 8;
+      /** @type {uint8[]} */
       const result = [];
+      /** @type {uint8[]} */
       let previousBlock = [...iv];
 
+      /** @type {IBlockCipherInstance} */
       const tripleDesInstance = this._getTripleDESAlgorithm().CreateInstance(true);
       tripleDesInstance.key = key;
 
       for (let i = 0; i < ciphertext.length; i += blockSize) {
+        /** @type {uint8[]} */
         const block = ciphertext.slice(i, i + blockSize);
 
         // Decrypt the block
         tripleDesInstance.Feed(block);
+        /** @type {uint8[]} */
         const decrypted = tripleDesInstance.Result();
 
         // XOR with previous ciphertext block (CBC mode)
+        /** @type {uint8[]} */
         const xored = OpCodes.XorArrays(decrypted, previousBlock);
 
         for (let _i = 0; _i < xored.length; _i++) result.push(xored[_i]);
@@ -409,17 +467,12 @@
         }
       }
 
-      // Strategy 2: Look up in AlgorithmFramework registry
-      const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
-                       (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
-                       (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
-
-      if (framework) {
-        const algorithms = framework.Algorithms || [];
-        const tripleDesAlgorithm = algorithms.find(alg =>
-          alg.name === '3DES (Triple DES)' || alg.name === '3DES' || alg.name === 'Triple DES'
-        );
-
+      // Strategy 2: Look up in AlgorithmFramework registry (only one of the
+      // accepted names is registered by this collection)
+      /** @type {string[]} */
+      const names = ['3DES (Triple DES)', '3DES', 'Triple DES'];
+      for (let k = 0; k < names.length; ++k) {
+        const tripleDesAlgorithm = AlgorithmFramework.Find(names[k]);
         if (tripleDesAlgorithm) {
           this._tripleDesAlgorithm = tripleDesAlgorithm;
           return tripleDesAlgorithm;
@@ -450,14 +503,10 @@
       }
 
       // Strategy 2: Look up in AlgorithmFramework registry
-      const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
-                       (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
-                       (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
-
-      if (framework) {
-        const algorithms = framework.Algorithms || [];
-        const sha1Algorithm = algorithms.find(alg => alg.name === 'SHA-1' || alg.name === 'SHA1');
-
+      /** @type {string[]} */
+      const names = ['SHA-1', 'SHA1'];
+      for (let k = 0; k < names.length; ++k) {
+        const sha1Algorithm = AlgorithmFramework.Find(names[k]);
         if (sha1Algorithm) {
           this._sha1Algorithm = sha1Algorithm;
           return sha1Algorithm;
