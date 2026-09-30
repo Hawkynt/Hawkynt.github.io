@@ -24,6 +24,7 @@
     lava:     { sky: ['#2a0a0a', '#8a2a0a'], far: 'peaks', farCol: '#3a1410', mid: 'rocks', midCol: '#2a1410', ground: ['#3a2420', '#241410'], detail: 'cracks', ambient: 'embers', glow: '#ff6a1a' },
     dungeon:  { sky: ['#140e18', '#2a2030'], far: 'wall', farCol: '#3a3440', mid: 'pillars', midCol: '#4a4450', ground: ['#5a3a34', '#3e2824'], detail: 'flagstones', ambient: 'dust', torches: true },
     cave:     { sky: ['#0e0c12', '#221c24'], far: 'cavewall', farCol: '#2a2428', mid: 'stalactites', midCol: '#3a3236', ground: ['#4a3a34', '#322622'], detail: 'pebbles', ambient: 'drips', torches: true },
+    town:     { sky: ['#6fb3e8', '#d8ecf6'], far: 'hills', farCol: '#8ab098', mid: 'houses', midCol: '#e8d8b8', ground: ['#b8a88a', '#8a7a64'], detail: 'cobbles', ambient: 'pollen' },
     ruins:    { sky: ['#4a5a7a', '#a8a0a0'], far: 'hills', farCol: '#6a7068', mid: 'ruins', midCol: '#8a8478', ground: ['#7a6a58', '#5a4c3e'], detail: 'flagstones', ambient: 'dust' },
   });
 
@@ -263,6 +264,49 @@
           }
         }
         break;
+      case 'houses': {
+        const roofs = ['#b84a32', '#8a4a2a', '#3a5a8a', '#6a3a3a', '#4a6a3a'];
+        let x = -10;
+        while (x < LOW_W) {
+          const w = 34 + Math.floor(r() * 22), h = 30 + Math.floor(r() * 26);
+          const base = HORIZON + 6;
+          const wall = shade(c, 0.85 + r() * 0.25);
+          const roof = roofs[Math.floor(r() * roofs.length)];
+          // timber-framed wall
+          ctx.fillStyle = wall;
+          ctx.fillRect(x, base - h, w, h);
+          ctx.fillStyle = '#5a3a24';
+          ctx.fillRect(x, base - h, w, 2);
+          ctx.fillRect(x, base - h, 2, h);
+          ctx.fillRect(x + w - 2, base - h, 2, h);
+          ctx.fillRect(x, base - Math.floor(h / 2), w, 2);
+          // gabled roof
+          const rh = 12 + Math.floor(r() * 10);
+          ctx.fillStyle = roof;
+          for (let y = 0; y < rh; ++y) {
+            const ww = w + 6 - (y / rh) * (w + 6);
+            ctx.fillRect(Math.floor(x + (w - ww) / 2), base - h - y, Math.ceil(ww), 1);
+          }
+          ctx.fillStyle = shade(roof, 1.25);
+          ctx.fillRect(x - 3, base - h, w + 6, 2);
+          // chimney
+          if (r() > 0.5) {
+            ctx.fillStyle = '#6a5a52';
+            ctx.fillRect(x + Math.floor(w * 0.7), base - h - rh + 2, 4, 8);
+          }
+          // windows and door
+          ctx.fillStyle = '#ffd87a';
+          for (let wx = x + 5; wx < x + w - 8; wx += 11) {
+            ctx.fillRect(wx, base - h + 6, 5, 6);
+            if (r() > 0.4)
+              ctx.fillRect(wx, base - Math.floor(h / 2) + 5, 5, 6);
+          }
+          ctx.fillStyle = '#4a2c18';
+          ctx.fillRect(x + Math.floor(w / 2) - 3, base - 11, 7, 11);
+          x += w + 6 + Math.floor(r() * 10);
+        }
+        break;
+      }
       case 'ruins':
         for (let i = 0; i < 6; ++i) {
           const x = Math.floor(r() * LOW_W), h = 16 + r() * 40;
@@ -327,6 +371,10 @@
             ctx.fillStyle = 'rgba(120,150,140,0.5)';
             ctx.fillRect(x, y, 6 + near * 18, 1 + near * 2);
           }
+          break;
+        case 'cobbles':
+          ctx.fillStyle = shade(r() > 0.5 ? a : b, 0.8 + r() * 0.3);
+          ctx.fillRect(x, y, 2 + near * 6, 1 + near * 2);
           break;
         case 'ripples':
           ctx.fillStyle = shade(a, 1.08);

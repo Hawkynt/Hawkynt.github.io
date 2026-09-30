@@ -65,6 +65,7 @@ load('battle-sprites.js');
 load('battle-backdrop.js');
 load('battle-fx.js');
 load('battle-scene.js');
+load('screen-art.js');
 
 // Shared enums (load before all data files)
 load('data/enums.js');
@@ -207,6 +208,7 @@ loadTest('test-input-handler.js');
 loadTest('test-renderer.js');
 loadTest('test-combat-fx.js');
 loadTest('test-battle-scene.js');
+loadTest('test-screen-art.js');
 loadTest('test-character.js');
 loadTest('test-roster.js');
 loadTest('test-terrain.js');
