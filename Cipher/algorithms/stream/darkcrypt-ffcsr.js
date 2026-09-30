@@ -107,6 +107,14 @@
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
           expected: OpCodes.Hex8ToBytes("76cb61bc012b9c920f5c6b384055bb47e7ec25e0c604aaabc6e00d81c69f39c4b8646f70a1b2bb2b0059f0932a2391f4d1b747bbcbf9ff2706a78043d8df606b")
+        },
+        {
+          text: "DarkCrypt Ffcsr — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("4751e5ea956a10aa6dcb1f90d60c84029a3103debe8b8f4ccb86bbe367609d466aa42ad8ca2d59f89d8215a8a680b3d6")
         }
       ];
     }

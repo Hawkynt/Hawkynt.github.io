@@ -197,6 +197,14 @@
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("93fd393e45deb95dcefa9153e9c04bf1ae65957489d07f660c64c75161845bf23a58f14ea080a36c03736b629735831e5054526bd27dfce2bae028172861ddc7")
+        },
+        {
+          text: "DarkCrypt Dicing — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22578cc1f62b6095caff34699ed3083d72"),
+          expected: OpCodes.Hex8ToBytes("b672c7c05852b2667d4028514829167908f5950111dacdb21ac7ca0fdb7635fa3b69bfb8acd9c875cbfea08e1c1a71e3")
         }
       ];
     }
