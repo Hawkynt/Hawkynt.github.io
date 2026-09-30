@@ -257,14 +257,15 @@
       // Read 'a' (first 4 bytes)
       if (seedBytes.length >= 4) {
         this._a = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into a
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -277,10 +278,10 @@
       // Read 'b' (next 4 bytes)
       if (seedBytes.length >= 8) {
         this._b = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
@@ -288,10 +289,10 @@
       // Read 'c' (next 4 bytes)
       if (seedBytes.length >= 12) {
         this._c = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
         offset = 12;
       }
@@ -299,10 +300,10 @@
       // Read 'counter' (last 4 bytes)
       if (seedBytes.length >= 16) {
         this._counter = OpCodes.Pack32BE(
-          seedBytes[12] || 0,
-          seedBytes[13] || 0,
-          seedBytes[14] || 0,
-          seedBytes[15] || 0
+          (seedBytes[12] ? seedBytes[12] : 0),
+          (seedBytes[13] ? seedBytes[13] : 0),
+          (seedBytes[14] ? seedBytes[14] : 0),
+          (seedBytes[15] ? seedBytes[15] : 0)
         );
       }
 
@@ -338,7 +339,8 @@
       }
 
       // Step 1: tmp = a + b + counter
-      let tmp = OpCodes.ToUint32(this._a + this._b + this._counter);
+      /** @type {uint32} */
+      let tmp = OpCodes.Add32(OpCodes.Add32(this._a, this._b), this._counter);
 
       // Step 2: Increment counter
       this._counter = OpCodes.ToUint32(this._counter + 1);

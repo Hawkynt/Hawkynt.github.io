@@ -184,7 +184,8 @@
       // State variables
       this._idum = 0;                     // Current LCG state
       this._iy = 0;                       // Last output from shuffle table
-      this._iv = new Array(this.NTAB).fill(0); // Shuffle table
+      /** @type {int32[]} */
+      this._iv = OpCodes.CreateArray(this.NTAB, 0); // Shuffle table
 
       this._initialized = false;
       this._ready = false;
@@ -205,7 +206,7 @@
       // Convert seed bytes to integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length; ++i) {
-        seedValue = OpCodes.OrN(seedValue * 256, seedBytes[i]);
+        seedValue = OpCodes.ToInt(OpCodes.Or32(seedValue * 256, seedBytes[i]));
       }
 
       // Ensure seed is valid (Ran1 expects negative for init, but we store positive)
@@ -229,6 +230,7 @@
     /**
      * Initialize the Ran1 generator
      * Based on the reference implementation from Numerical Recipes
+     * @returns {void}
      */
     _initialize() {
       // Negate seed for initialization (Numerical Recipes convention)
@@ -265,6 +267,7 @@
     /**
      * Generate next random value (single precision float)
      * Returns value in range [0.0, 1.0) with RNMX clipping
+     * @returns {float64} Uniform deviate in (0, 1)
      */
     _next() {
       if (!this._ready) {

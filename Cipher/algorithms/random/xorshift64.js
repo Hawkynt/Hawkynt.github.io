@@ -205,6 +205,7 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Xorshift64 uses a single 64-bit state variable (BigInt)
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
@@ -222,6 +223,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian - most significant byte first)
+      /** @type {BigInt} */
       this._state = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         this._state = OpCodes.OrN(OpCodes.ShiftLn(this._state, 8), BigInt(seedBytes[i]));
@@ -230,6 +232,7 @@
       // Ensure state is not zero (would cause all zeros output)
       // Marsaglia's xorshift requires non-zero initial state
       if (this._state === 0n) {
+        /** @type {BigInt} */
         this._state = 1n;
       }
 
@@ -253,12 +256,14 @@
      * return x
      *
      * Uses shift parameters (13, 7, 17) recommended by Marsaglia
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
         throw new Error('Xorshift64 not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Step 1: x = XOR(x, left_shift(x, 13))
@@ -298,11 +303,13 @@
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }

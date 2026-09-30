@@ -244,14 +244,15 @@
       let offset = 0;
       if (seedBytes.length >= 4) {
         this._z = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into z
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -263,30 +264,30 @@
 
       if (seedBytes.length >= 8) {
         this._w = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
 
       if (seedBytes.length >= 12) {
         this._jsr = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
         offset = 12;
       }
 
       if (seedBytes.length >= 16) {
         this._jcong = OpCodes.Pack32BE(
-          seedBytes[12] || 0,
-          seedBytes[13] || 0,
-          seedBytes[14] || 0,
-          seedBytes[15] || 0
+          (seedBytes[12] ? seedBytes[12] : 0),
+          (seedBytes[13] ? seedBytes[13] : 0),
+          (seedBytes[14] ? seedBytes[14] : 0),
+          (seedBytes[15] ? seedBytes[15] : 0)
         );
       }
 
@@ -313,13 +314,14 @@
      *   znew = 36969 * (z AND 65535) + (z shr 16)
      *   wnew = 18000 * (w AND 65535) + (w shr 16)
      *   MWC = (znew shl 16) + wnew
+     * @returns {uint32} MWC output
      */
     _mwc() {
       // Update z: z = 36969 * (z AND 0xFFFF) + (z shr 16)
-      this._z = OpCodes.ToUint32((36969 * OpCodes.AndN(this._z, 0xFFFF)) + OpCodes.Shr32(this._z, 16));
+      this._z = OpCodes.Add32(OpCodes.Mul32(36969, OpCodes.And32(this._z, 0xFFFF)), OpCodes.Shr32(this._z, 16));
 
       // Update w: w = 18000 * (w AND 0xFFFF) + (w shr 16)
-      this._w = OpCodes.ToUint32((18000 * OpCodes.AndN(this._w, 0xFFFF)) + OpCodes.Shr32(this._w, 16));
+      this._w = OpCodes.Add32(OpCodes.Mul32(18000, OpCodes.And32(this._w, 0xFFFF)), OpCodes.Shr32(this._w, 16));
 
       // Combine: (z shl 16) + w
       return OpCodes.ToUint32(OpCodes.Shl32(this._z, 16) + this._w);
@@ -333,11 +335,12 @@
      *   jsr XOR= (jsr shl 17)
      *   jsr XOR= (jsr shr 13)
      *   jsr XOR= (jsr shl 5)
+     * @returns {uint32} SHR3 output
      */
     _shr3() {
-      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shl32(this._jsr, 17)));
-      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shr32(this._jsr, 13)));
-      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shl32(this._jsr, 5)));
+      this._jsr = OpCodes.ToUint32(OpCodes.Xor32(this._jsr, OpCodes.Shl32(this._jsr, 17)));
+      this._jsr = OpCodes.ToUint32(OpCodes.Xor32(this._jsr, OpCodes.Shr32(this._jsr, 13)));
+      this._jsr = OpCodes.ToUint32(OpCodes.Xor32(this._jsr, OpCodes.Shl32(this._jsr, 5)));
       return this._jsr;
     }
 
@@ -347,9 +350,10 @@
      *
      * Formula:
      *   jcong = 69069 * jcong + 1234567
+     * @returns {uint32} CONG output
      */
     _cong() {
-      this._jcong = OpCodes.ToUint32((69069 * this._jcong) + 1234567);
+      this._jcong = OpCodes.Add32(OpCodes.Mul32(69069, this._jcong), 1234567);
       return this._jcong;
     }
 
@@ -369,7 +373,7 @@
       const shr3 = this._shr3();
 
       // KISS = ((MWC XOR CONG) + SHR3)
-      return OpCodes.ToUint32(OpCodes.XorN(mwc, cong) + shr3);
+      return OpCodes.ToUint32(OpCodes.Xor32(mwc, cong) + shr3);
     }
 
     /**

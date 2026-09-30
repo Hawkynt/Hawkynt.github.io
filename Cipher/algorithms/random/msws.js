@@ -187,8 +187,11 @@
 
       // MSWS uses 128-bit state (x) and 64-bit Weyl counter (w)
       // Using BigInt for accurate 128-bit arithmetic
+      /** @type {BigInt} */
       this._state = 0n;  // 128-bit state
+      /** @type {BigInt} */
       this._weyl = 0n;   // 64-bit Weyl counter
+      /** @type {BigInt} */
       this._weylConstant = 0xB5AD4ECEDA1CE2A9n; // Golden ratio derived constant
       this._ready = false;
     }
@@ -206,6 +209,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seed64 = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seed64 = OpCodes.OrN(OpCodes.ShiftLn(seed64, 8n), BigInt(OpCodes.And32(seedBytes[i], 0xFF)));
@@ -213,12 +217,16 @@
 
       // Initialize state as per MSWS specification: state = (seed left-shift 64) bitwise-OR ~seed
       // This creates a 128-bit state where upper 64 bits = seed, lower 64 bits = bitwise NOT of seed
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       const upperBits = OpCodes.ShiftLn(seed64, 64n);
-      const lowerBits = OpCodes.AndN(~seed64, mask64);
+      // the bitwise NOT of a 64-bit value, within 64 bits
+      /** @type {BigInt} */
+      const lowerBits = OpCodes.XorN(seed64, mask64);
       this._state = OpCodes.OrN(upperBits, lowerBits);
 
       // Initialize Weyl counter to 0
+      /** @type {BigInt} */
       this._weyl = 0n;
 
       this._ready = true;
@@ -241,6 +249,7 @@
      * 4. return x right-shift 32      (extract middle 64 bits)
      *
      * Note: All state is maintained at full 128-bit precision
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -252,6 +261,7 @@
       this._state = OpCodes.AndN(this._state * this._state, mask128);
 
       // Step 2: Increment Weyl counter (mod 2^64)
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._weyl = OpCodes.AndN(this._weyl + this._weylConstant, mask64);
 
@@ -287,6 +297,7 @@
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order)
@@ -295,6 +306,7 @@
         for (let i = 0; i < bytesToExtract; ++i) {
           // Extract from most significant byte first (big-endian)
           const shift = BigInt((7 - i) * 8);
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, shift), 0xFFn));
           output.push(byte);
         }

@@ -134,16 +134,21 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // PCG state (128-bit)
+      /** @type {BigInt} */
       this._state = 0n; // UInt128 state
+      /** @type {BigInt} */
       this._sequence = null; // Increment (will be set to default on first seed)
 
       // PCG constants (from Abseil pcg64_2018_engine)
       // Multiplier: 0x2360ed051fc65da4 4385df649fccf645 (128-bit)
+      /** @type {BigInt} */
       this.MULTIPLIER = OpCodes.OrN(OpCodes.ShiftLn(0x2360ed051fc65da4n, 64n), 0x4385df649fccf645n);
 
       // Default increment: 0x5851f42d4c957f2d 14057b7ef767814f (128-bit, must be odd)
+      /** @type {BigInt} */
       this.DEFAULT_INCREMENT = OpCodes.OrN(OpCodes.ShiftLn(0x5851f42d4c957f2dn, 64n), 0x14057b7ef767814fn);
 
+      /** @type {boolean} */
       this._ready = false;
     }
 
@@ -160,6 +165,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -173,12 +179,19 @@
       // Initialize state using LCG: state = lcg(seed + increment)
       // lcg(s) = s * MULTIPLIER + INCREMENT
       // This matches Abseil: state_ = lcg(tmp + Params::increment())
+      /** @type {BigInt} */
       const increment = this._sequence;
+      /** @type {BigInt} */
       const tmp = seedValue;
-      this._state = (tmp + increment) * this.MULTIPLIER + increment;
+      /** @type {BigInt} */
+      const sum = tmp + increment;
+      /** @type {BigInt} */
+      const product = sum * this.MULTIPLIER;
+      this._state = product + increment;
 
       // Mask to 128 bits
-      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
+      /** @type {BigInt} */
+      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
       this._ready = true;
@@ -193,14 +206,17 @@
 
     /**
      * Set sequence/increment value (must be odd)
+     * @param {uint8[]} seqBytes - Increment, big-endian
      */
     set sequence(seqBytes) {
       if (!seqBytes || seqBytes.length === 0) {
+        /** @type {BigInt} */
         this._sequence = 1n;
         return;
       }
 
       // Convert sequence bytes to BigInt
+      /** @type {BigInt} */
       let seqValue = 0n;
       for (let i = 0; i < seqBytes.length; ++i) {
         seqValue = OpCodes.OrN(OpCodes.ShiftLn(seqValue, 8), BigInt(seqBytes[i]));
@@ -210,6 +226,9 @@
       this._sequence = OpCodes.OrN(seqValue, 1n);
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get sequence() {
       return null;
     }
@@ -217,6 +236,7 @@
     /**
      * Generate a single 64-bit value
      * Based on C# implementation with RXS-M-XS permutation
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -224,44 +244,58 @@
       }
 
       // Advance state: state = state * MULTIPLIER + INCREMENT
-      let state = this._state;
+      /** @type {BigInt} */
       const increment = this._sequence;
 
       // Perform 128-bit multiplication and addition
-      state = state * this.MULTIPLIER + increment;
+      /** @type {BigInt} */
+      const product = this._state * this.MULTIPLIER;
+      /** @type {BigInt} */
+      const advanced = product + increment;
 
       // Mask to 128 bits
-      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
-      state = OpCodes.AndN(state, mask128);
+      /** @type {BigInt} */
+      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
+      /** @type {BigInt} */
+      const s = OpCodes.AndN(advanced, mask128);
 
-      this._state = state;
+      this._state = s;
 
       // Apply RXS-M-XS permutation (from C# Permute function)
-      return this._permute(state);
+      return this._permute(s);
     }
 
     /**
      * XSL-RR-128-64 permutation function
      * Matches Abseil pcg_xsl_rr_128_64 mixer
      * This is the standard PCG64 output permutation
+     * @param {BigInt} s - 128-bit state
+     * @returns {BigInt} 64-bit output
      */
-    _permute(state) {
+    _permute(s) {
       // Extract rotation count from top 6 bits: rotate = state >> 122
-      const rotate = Number(OpCodes.ShiftRn(state, 122n));
+      /** @type {int32} */
+      const rotate = Number(OpCodes.ShiftRn(s, 122));
 
       // XOR with right-shifted state: state ^= state >> 64
-      state = OpCodes.XorN(state, OpCodes.ShiftRn(state, 64n));
+      /** @type {BigInt} */
+      const folded = OpCodes.XorN(s, OpCodes.ShiftRn(s, 64));
 
       // Extract lower 64 bits
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      let result = OpCodes.AndN(state, mask64);
+      /** @type {BigInt} */
+      let result = OpCodes.AndN(folded, mask64);
 
       // Rotate right by 'rotate' bits (using 64-bit rotation)
       // rotr(s, rotate) = (s >> rotate)|(s << (64 - rotate))
+      /** @type {int32} */
       const rotateAmount = OpCodes.And32(rotate, 63); // Ensure rotate is 0-63
       if (rotateAmount !== 0) {
-        const shifted = OpCodes.ShiftRn(result, BigInt(rotateAmount));
-        const wrapped = OpCodes.AndN(OpCodes.ShiftLn(result, BigInt(64 - rotateAmount)), mask64);
+        /** @type {BigInt} */
+        const shifted = OpCodes.ShiftRn(result, rotateAmount);
+        /** @type {BigInt} */
+        const wrapped = OpCodes.AndN(OpCodes.ShiftLn(result, 64 - rotateAmount), mask64);
         result = OpCodes.OrN(shifted, wrapped);
       }
 
@@ -270,12 +304,15 @@
 
     /**
      * Generate a single 32-bit value (for PCG32 compatibility)
+     * @returns {uint32} Upper 32 bits of the next output
      */
     _next32() {
+      /** @type {BigInt} */
       const value64 = this._next64();
 
       // Extract upper 32 bits for better distribution
-      const value32 = Number(OpCodes.ShiftRn(value64, 32n));
+      /** @type {uint32} */
+      const value32 = Number(OpCodes.ShiftRn(value64, 32));
       return OpCodes.ToUint32(value32); // Ensure unsigned 32-bit
     }
 
@@ -301,12 +338,15 @@
       const output = [];
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Pack 64-bit value as 8 bytes (big-endian)
         for (let i = 56; i >= 0; i -= 8) {
           if (output.length < length) {
-            output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value64, BigInt(i)), 0xFFn)));
+            /** @type {uint8} */
+            const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value64, i), 0xFFn));
+            output.push(b);
           }
         }
       }

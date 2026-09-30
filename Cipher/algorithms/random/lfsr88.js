@@ -272,14 +272,15 @@
       let offset = 0;
       if (seedBytes.length >= 4) {
         this._z1 = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into z1
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -289,20 +290,20 @@
 
       if (seedBytes.length >= 8) {
         this._z2 = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
 
       if (seedBytes.length >= 12) {
         this._z3 = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
       }
 
@@ -347,27 +348,27 @@
 
       // Component z1: period 2^31-1
       let b1 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z1, 13), this._z1),
+        OpCodes.Xor32(OpCodes.Shl32(this._z1, 13), this._z1),
         19
       );
-      this._z1 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z1, 0xFFFFFFFE), 12), b1);
+      this._z1 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z1, 0xFFFFFFFE), 12), b1);
 
       // Component z2: period 2^29-1
       let b2 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z2, 2), this._z2),
+        OpCodes.Xor32(OpCodes.Shl32(this._z2, 2), this._z2),
         25
       );
-      this._z2 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z2, 0xFFFFFFF8), 4), b2);
+      this._z2 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z2, 0xFFFFFFF8), 4), b2);
 
       // Component z3: period 2^28-1
       let b3 = OpCodes.Shr32(
-        OpCodes.XorN(OpCodes.Shl32(this._z3, 3), this._z3),
+        OpCodes.Xor32(OpCodes.Shl32(this._z3, 3), this._z3),
         11
       );
-      this._z3 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z3, 0xFFFFFFF0), 17), b3);
+      this._z3 = OpCodes.Xor32(OpCodes.Shl32(OpCodes.And32(this._z3, 0xFFFFFFF0), 17), b3);
 
       // Combine all components with XOR
-      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this._z1, this._z2), this._z3));
+      return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(this._z1, this._z2), this._z3));
     }
 
     /**

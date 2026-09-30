@@ -245,17 +245,18 @@
       if (seedBytes.length <= 4) {
         // Seed is 4 bytes or less - pack into low word
         const padding = 4 - seedBytes.length;
-        const bytes = Array(padding).fill(0).concat(seedBytes);
+        /** @type {uint8[]} */
+        const bytes = OpCodes.CreateArray(padding, 0).concat(seedBytes);
         this._stateLow = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
       } else {
         // Seed is more than 4 bytes - pack into high and low words
         // High word: first 4 bytes (or padded if less than 8 bytes total)
         const highBytes = seedBytes.slice(0, 4);
-        this._stateHigh = OpCodes.Pack32BE(highBytes[0] || 0, highBytes[1] || 0, highBytes[2] || 0, highBytes[3] || 0);
+        this._stateHigh = OpCodes.Pack32BE((highBytes[0] ? highBytes[0] : 0), (highBytes[1] ? highBytes[1] : 0), (highBytes[2] ? highBytes[2] : 0), (highBytes[3] ? highBytes[3] : 0));
 
         // Low word: next 4 bytes
         const lowBytes = seedBytes.slice(4, 8);
-        this._stateLow = OpCodes.Pack32BE(lowBytes[0] || 0, lowBytes[1] || 0, lowBytes[2] || 0, lowBytes[3] || 0);
+        this._stateLow = OpCodes.Pack32BE((lowBytes[0] ? lowBytes[0] : 0), (lowBytes[1] ? lowBytes[1] : 0), (lowBytes[2] ? lowBytes[2] : 0), (lowBytes[3] ? lowBytes[3] : 0));
       }
 
       // Ensure state is not all zeros (would produce all zeros output)
@@ -276,6 +277,7 @@
     /**
      * Set custom polynomial (optional)
      * The polynomial determines feedback taps for the LFSR
+     * @param {uint32} poly - Tap mask
      */
     set polynomial(poly) {
       if (typeof poly === 'number') {
@@ -283,6 +285,9 @@
       }
     }
 
+    /**
+     * @returns {uint32} Tap mask
+     */
     get polynomial() {
       return this._polynomial;
     }
@@ -295,40 +300,43 @@
      * - XOR-reduce all bits to get single feedback bit
      *
      * Uses parallel XOR reduction (matching C# implementation)
+     * @returns {uint32} Feedback bit
      */
     _calculateFeedback() {
       // Apply polynomial mask to the 64-bit state
       // Polynomial is up to 32-bit, so it only affects the low word
       // The C# code does: masked = this._state AND polynom
       // where _state is ulong (64-bit) and polynom is up to 32-bit
-      let masked = OpCodes.AndN(OpCodes.ToUint32(this._stateLow), OpCodes.ToUint32(this._polynomial));
+      let masked = OpCodes.And32(OpCodes.ToUint32(this._stateLow), OpCodes.ToUint32(this._polynomial));
 
       // XOR reduction: collapse all bits down to single bit
       // This is the parallel XOR reduction from the C# code
-      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 16));
-      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 8));
-      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 4));
-      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 2));
-      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 1));
+      masked = OpCodes.Xor32(masked, OpCodes.Shr32(masked, 16));
+      masked = OpCodes.Xor32(masked, OpCodes.Shr32(masked, 8));
+      masked = OpCodes.Xor32(masked, OpCodes.Shr32(masked, 4));
+      masked = OpCodes.Xor32(masked, OpCodes.Shr32(masked, 2));
+      masked = OpCodes.Xor32(masked, OpCodes.Shr32(masked, 1));
 
-      return OpCodes.AndN(masked, 1);
+      return OpCodes.And32(masked, 1);
     }
 
     /**
      * Single LFSR step: shift right and insert feedback bit
      * Returns the output bit (LSB AFTER shift, matching C# line 19)
+     * @returns {uint32} Output bit
      */
     _stepLFSR() {
       // Calculate feedback bit BEFORE shift (using current state)
+      /** @type {uint32} */
       const feedback = this._calculateFeedback();
 
       // Shift right: move LSB of high into MSB of low, insert feedback at bit 63
-      const carryBit = OpCodes.AndN(this._stateHigh, 1);
+      const carryBit = OpCodes.And32(this._stateHigh, 1);
       this._stateLow = OpCodes.ToUint32(OpCodes.Shr32(this._stateLow, 1)|OpCodes.Shl32(carryBit, 31));
       this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1)|OpCodes.Shl32((feedback !== 0 ? 1 : 0), 31));
 
       // Output bit is LSB AFTER shift (C# code line 19: return (byte)(this._state AND 1))
-      const outputBit = OpCodes.AndN(this._stateLow, 1);
+      const outputBit = OpCodes.And32(this._stateLow, 1);
 
       return outputBit;
     }
@@ -336,6 +344,7 @@
     /**
      * Generate next 64-bit value (8 bytes)
      * Accumulates 64 LFSR steps into a single output value
+     * @returns {uint8[]} Next 8 output bytes
      */
     _next64() {
       if (!this._ready) {
@@ -343,6 +352,7 @@
       }
 
       // Accumulate 64 bits (8 bytes)
+      /** @type {uint8[]} */
       const result = [0, 0, 0, 0, 0, 0, 0, 0];
 
       // Generate 8 bytes (64 bits total)
@@ -380,6 +390,7 @@
 
       // Generate in 8-byte (64-bit) chunks
       while (output.length < length) {
+        /** @type {uint8[]} */
         const chunk = this._next64();
         const bytesNeeded = Math.min(8, length - output.length);
         for (let i = 0; i < bytesNeeded; ++i) {

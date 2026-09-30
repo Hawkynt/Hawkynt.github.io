@@ -210,15 +210,21 @@
       super(algorithm);
 
       // Base engine state (subtract_with_carry_engine)
-      this._state = new Array(LONG_LAG);  // 24 state values (24-bit integers)
+      /** @type {int32[]} */
+      this._state = OpCodes.CreateArray(LONG_LAG, 0);  // 24 state values (24-bit integers)
+      /** @type {int32} */
       this._carry = 0;                    // Carry bit
+      /** @type {int32} */
       this._index = 0;                    // Current index in state array
 
       // Discard block state
+      /** @type {int32} */
       this._blockIndex = 0;               // Position within current block (0-222)
 
       // Initialization status
+      /** @type {boolean} */
       this._initialized = false;
+      /** @type {int32} */
       this._outputSize = 32;              // Default output size in bytes
     }
 
@@ -240,6 +246,7 @@
       }
 
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
         seedValue = OpCodes.ToUint32(OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8)));
@@ -256,9 +263,13 @@
 
       // Initialize state array using LCG
       // LCG: e(i+1) = (40014 * e(i)) mod 2147483563
+      // (the products stay below 2^47, exact as doubles)
+      /** @type {float64} */
       const LCG_A = 40014;
+      /** @type {float64} */
       const LCG_M = 2147483563;
 
+      /** @type {float64} */
       let lcgState = seedValue;
 
       // For w=24, n=1, so we call LCG once per state position
@@ -296,7 +307,7 @@
      * Note: x[i-r] is the current position (24 positions back from future)
      *       x[i-s] is 10 positions back from current
      *
-     * @returns {number} 24-bit unsigned random value
+     * @returns {uint32} 24-bit unsigned random value
      */
     _nextBase() {
       if (!this._initialized) {
@@ -339,7 +350,7 @@
      * Returns value only for first USED_BLOCK (23) numbers per cycle
      * Discards remaining DISCARD_COUNT (200) numbers
      *
-     * @returns {number} 24-bit unsigned random value
+     * @returns {uint32} 24-bit unsigned random value
      */
     _next24() {
       // Generate base engine value
@@ -360,7 +371,7 @@
      * Generate next output value (skips discarded values)
      * Only returns values from the used block (first 23 of every 223)
      *
-     * @returns {number} 24-bit unsigned random value
+     * @returns {uint32} 24-bit unsigned random value
      */
     _nextOutput() {
       // If we're past the used block, advance to next block

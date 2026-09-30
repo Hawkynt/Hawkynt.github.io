@@ -209,10 +209,15 @@
       super(algorithm);
 
       // Default seed from SSJ library: 123456789123456789 for all components
+      /** @type {BigInt} */
       this._z0 = 123456789123456789n;
+      /** @type {BigInt} */
       this._z1 = 123456789123456789n;
+      /** @type {BigInt} */
       this._z2 = 123456789123456789n;
+      /** @type {BigInt} */
       this._z3 = 123456789123456789n;
+      /** @type {BigInt} */
       this._z4 = 123456789123456789n;
 
       this._ready = false;
@@ -278,8 +283,11 @@
 
     /**
      * Convert 8 bytes to unsigned 64-bit BigInt (big-endian)
+     * @param {uint8[]} bytes - 8 bytes, most significant first
+     * @returns {BigInt} 64-bit value
      */
     _bytesToBigInt64(bytes) {
+      /** @type {BigInt} */
       let result = 0n;
       for (let i = 0; i < 8; ++i) {
         result = OpCodes.OrN(OpCodes.ShiftLn(result, 8), BigInt(OpCodes.ToByte(bytes[i])));
@@ -289,12 +297,18 @@
 
     /**
      * Convert 64-bit BigInt to 8 bytes (big-endian)
+     * @param {BigInt} value - 64-bit value
+     * @returns {uint8[]} 8 bytes, most significant first
      */
     _bigInt64ToBytes(value) {
-      const bytes = [];
+      /** @type {uint8[]} */
+      const bytes = OpCodes.CreateArray(8, 0);
+      /** @type {BigInt} */
       let val = OpCodes.AndN(value, 0xFFFFFFFFFFFFFFFFn);
       for (let i = 7; i >= 0; --i) {
-        bytes[i] = Number(OpCodes.AndN(val, 0xFFn));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(val, 0xFFn));
+        bytes[i] = b;
         val = OpCodes.ShiftRn(val, 8);
       }
       return bytes;
@@ -303,6 +317,7 @@
     /**
      * Generate next 64-bit pseudo-random value
      * Implements the exact algorithm from L'Ecuyer's LFSR258 specification
+     * @returns {BigInt} Next 64-bit output
      */
     _nextNumber() {
       if (!this._ready) {
@@ -337,10 +352,14 @@
     /**
      * Generate 32-bit pseudo-random value
      * Takes upper 32 bits of 64-bit result (matching Java implementation)
+     * @returns {uint32} Upper half of the next output
      */
     _next32() {
+      /** @type {BigInt} */
       const value64 = this._nextNumber();
-      return Number(OpCodes.AndN(OpCodes.ShiftRn(value64, 32), 0xFFFFFFFFn));
+      /** @type {uint32} */
+      const high = Number(OpCodes.AndN(OpCodes.ShiftRn(value64, 32), 0xFFFFFFFFn));
+      return high;
     }
 
     /**

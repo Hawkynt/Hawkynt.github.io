@@ -42,9 +42,11 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // MINSTD constants (Park-Miller minimal standard)
+  /** @type {int32} */
   const MULTIPLIER = 16807;      // a = 7^5
   const MODULUS = 2147483647;    // m = 2^31 - 1 (Mersenne prime M31)
   const QUOTIENT = 127773;       // q = m div a
+  /** @type {int32} */
   const REMAINDER = 2836;        // r = m mod a
 
   class LehmerAlgorithm extends RandomGenerationAlgorithm {
@@ -203,6 +205,7 @@
       }
 
       // Convert seed bytes to 32-bit integer (big-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length && i < 4; ++i) {
         seedValue = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
@@ -227,12 +230,15 @@
     /**
      * Set count parameter (for skipping ahead to nth value)
      */
+    /**
+     * @param {int32} skipCount - Values to skip
+     */
     set count(skipCount) {
       this._skipCount = skipCount;
     }
 
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
@@ -244,7 +250,7 @@
      *
      * For MINSTD: a=16807, m=2147483647, q=127773, r=2836
      *
-     * @returns {number} Next random value in range [1, 2147483646]
+     * @returns {int32} Next random value in range [1, 2147483646]
      */
     _next() {
       if (!this._ready) {
@@ -252,9 +258,12 @@
       }
 
       // Schrage's method to compute (16807 × state) mod 2147483647
+      /** @type {int32} */
       const hi = Math.floor(this._state / QUOTIENT); // ⌊state/q⌋ using integer truncation
+      /** @type {int32} */
       const lo = this._state % QUOTIENT;       // state mod q
 
+      /** @type {int32} */
       let test = MULTIPLIER * lo - REMAINDER * hi; // a×lo - r×hi
 
       if (test > 0) {

@@ -243,14 +243,15 @@
       let offset = 0;
       if (seedBytes.length >= 4) {
         this._x = OpCodes.Pack32BE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
         offset = 4;
       } else if (seedBytes.length > 0) {
         // For seeds < 4 bytes, pack what we have into x
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -262,30 +263,30 @@
 
       if (seedBytes.length >= 8) {
         this._y = OpCodes.Pack32BE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
         offset = 8;
       }
 
       if (seedBytes.length >= 12) {
         this._z = OpCodes.Pack32BE(
-          seedBytes[8] || 0,
-          seedBytes[9] || 0,
-          seedBytes[10] || 0,
-          seedBytes[11] || 0
+          (seedBytes[8] ? seedBytes[8] : 0),
+          (seedBytes[9] ? seedBytes[9] : 0),
+          (seedBytes[10] ? seedBytes[10] : 0),
+          (seedBytes[11] ? seedBytes[11] : 0)
         );
         offset = 12;
       }
 
       if (seedBytes.length >= 16) {
         this._w = OpCodes.Pack32BE(
-          seedBytes[12] || 0,
-          seedBytes[13] || 0,
-          seedBytes[14] || 0,
-          seedBytes[15] || 0
+          (seedBytes[12] ? seedBytes[12] : 0),
+          (seedBytes[13] ? seedBytes[13] : 0),
+          (seedBytes[14] ? seedBytes[14] : 0),
+          (seedBytes[15] ? seedBytes[15] : 0)
         );
       }
 
@@ -321,7 +322,7 @@
       // Step 1: t = x^(OpCodes.Shl32(x, 11))
       let t = this._x;
       const xShifted = OpCodes.Shl32(this._x, 11);
-      t = OpCodes.XorN(t, xShifted);
+      t = OpCodes.Xor32(t, xShifted);
       t = OpCodes.ToUint32(t); // Ensure unsigned 32-bit
 
       // Step 2: Rotate state (x=y, y=z, z=w)
@@ -332,9 +333,9 @@
       // Step 3: w = w^(w >> 19)^(t^(t >> 8))
       const wShr19 = OpCodes.Shr32(this._w, 19);
       const tShr8 = OpCodes.Shr32(t, 8);
-      const wXorShr = OpCodes.XorN(this._w, wShr19);
-      const tXorShr = OpCodes.XorN(t, tShr8);
-      this._w = OpCodes.ToUint32(OpCodes.XorN(wXorShr, tXorShr));
+      const wXorShr = OpCodes.Xor32(this._w, wShr19);
+      const tXorShr = OpCodes.Xor32(t, tShr8);
+      this._w = OpCodes.ToUint32(OpCodes.Xor32(wXorShr, tXorShr));
 
       return this._w;
     }

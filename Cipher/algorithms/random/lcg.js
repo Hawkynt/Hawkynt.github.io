@@ -174,16 +174,24 @@
       this._skip = 0;
 
       // LCG state
+      /** @type {BigInt} */
       this._state = 0n;
 
       // LCG parameters (default values match C# default: PCG constants)
+      /** @type {BigInt} */
       this._multiplier = 6364136223846793005n;
+      /** @type {BigInt} */
       this._increment = 1442695040888963407n;
+      /** @type {BigInt} */
       this._modulo = 0n; // 0 means implicit modulo (2^64 for JavaScript BigInt)
 
       // Internal state
+      /** @type {boolean} */
       this._ready = false;
+      /** @type {boolean} */
       this._useImplicitModulo = true;
+      /** @type {int32} */
+      this._skipCount = 0;
     }
 
     /**
@@ -197,6 +205,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -221,14 +230,17 @@
 
     /**
      * Set multiplier parameter (a)
+     * @param {uint8[]} multiplierBytes - Multiplier, big-endian
      */
     set multiplier(multiplierBytes) {
       if (!multiplierBytes || multiplierBytes.length === 0) {
+        /** @type {BigInt} */
         this._multiplier = 6364136223846793005n; // Default
         return;
       }
 
       // Convert multiplier bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let multiplierValue = 0n;
       for (let i = 0; i < multiplierBytes.length; ++i) {
         multiplierValue = OpCodes.OrN(OpCodes.ShiftLn(multiplierValue, 8n), BigInt(multiplierBytes[i]));
@@ -237,20 +249,26 @@
       this._multiplier = multiplierValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get multiplier() {
       return null;
     }
 
     /**
      * Set increment parameter (c)
+     * @param {uint8[]} incrementBytes - Increment, big-endian
      */
     set increment(incrementBytes) {
       if (!incrementBytes || incrementBytes.length === 0) {
+        /** @type {BigInt} */
         this._increment = 1442695040888963407n; // Default
         return;
       }
 
       // Convert increment bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let incrementValue = 0n;
       for (let i = 0; i < incrementBytes.length; ++i) {
         incrementValue = OpCodes.OrN(OpCodes.ShiftLn(incrementValue, 8n), BigInt(incrementBytes[i]));
@@ -259,6 +277,9 @@
       this._increment = incrementValue;
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get increment() {
       return null;
     }
@@ -266,21 +287,25 @@
     /**
      * Set modulo parameter (m)
      * If modulo is 0 or empty, use implicit modulo (overflow behavior)
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
      */
     set modulo(moduloBytes) {
       if (!moduloBytes || moduloBytes.length === 0) {
+        /** @type {BigInt} */
         this._modulo = 0n;
         this._useImplicitModulo = true;
         return;
       }
 
       // Convert modulo bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let moduloValue = 0n;
       for (let i = 0; i < moduloBytes.length; ++i) {
         moduloValue = OpCodes.OrN(OpCodes.ShiftLn(moduloValue, 8n), BigInt(moduloBytes[i]));
       }
 
       if (moduloValue === 0n) {
+        /** @type {BigInt} */
         this._modulo = 0n;
         this._useImplicitModulo = true;
       } else {
@@ -289,41 +314,52 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} The parameter cannot be read back: null
+     */
     get modulo() {
       return null;
     }
 
     /**
      * Set count parameter (for skipping ahead to nth value)
+     * @param {int32} skipCount - Output index to start at
      */
     set count(skipCount) {
       this._skipCount = skipCount;
     }
 
+    /**
+     * @returns {int32} Output index to start at
+     */
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
      * Generate next value using LCG formula: X(n+1) = (a * X(n) + c) mod m
      * Matches C# implementation logic
+     * @returns {BigInt} Next state
      */
     _next() {
       if (!this._ready) {
         throw new Error('LCG not initialized: set seed first');
       }
 
+      /** @type {BigInt} */
       let nextState;
 
       if (this._useImplicitModulo) {
         // Implicit modulo - use natural BigInt overflow (mask to 64-bit)
         nextState = this._state * this._multiplier + this._increment;
         // Mask to 64-bit to simulate overflow
+        /** @type {BigInt} */
         const mask64 = 0xFFFFFFFFFFFFFFFFn;
         this._state = OpCodes.AndN(nextState, mask64);
       } else {
         // Explicit modulo - use UInt128 arithmetic like C#
         // state = (state * multiplier + increment) % modulo
+        /** @type {BigInt} */
         const state128 = this._state * this._multiplier + this._increment;
         this._state = state128 % this._modulo;
       }
@@ -354,7 +390,7 @@
         for (let i = 1; i < this._skipCount; ++i) {
           this._next();
         }
-        this._skipCount = null; // Clear after use
+        this._skipCount = 0; // Clear after use
       }
 
       /** @type {uint8[]} */
@@ -366,10 +402,12 @@
       const bytesPerValue = use32Bit ? 4 : 8;
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         if (use32Bit) {
           // Pack as 32-bit value (big-endian) using OpCodes
+          /** @type {uint32} */
           const value32 = Number(OpCodes.AndN(value, 0xFFFFFFFFn));
           const bytes = OpCodes.Unpack32BE(value32);
           for (let i = 0; i < 4 && output.length < length; ++i) {
@@ -379,7 +417,9 @@
           // Pack as 64-bit value (big-endian)
           for (let i = 56; i >= 0; i -= 8) {
             if (output.length < length) {
-              output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i)), 0xFFn)));
+              /** @type {uint8} */
+              const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i), 0xFFn));
+              output.push(b);
             }
           }
         }
