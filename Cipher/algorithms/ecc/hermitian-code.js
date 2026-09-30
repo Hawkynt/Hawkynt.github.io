@@ -184,6 +184,7 @@
       // Each row corresponds to evaluation of basis function at rational points
       // Basis functions: {1, x, y} (space L(G) where G is divisor)
       // Rows are evaluations at 8 rational points
+      /** @type {uint8[][]} */
       this.generatorMatrix = [
         [1, 1, 1, 1, 1, 1, 1, 1], // f = 1 (constant function)
         [0, 1, 2, 3, 2, 3, 0, 1], // f = x (coordinate function)
@@ -192,6 +193,7 @@
 
       // Parity check matrix H (dual code)
       // Generated from orthogonal complement
+      /** @type {uint8[][]} */
       this.parityCheckMatrix = [
         [1, 1, 1, 1, 1, 1, 1, 1],
         [0, 1, 2, 3, 2, 3, 0, 1],
@@ -235,16 +237,29 @@
     // GF(4) arithmetic operations
     // GF(4) = {0, 1, α, α+1} represented as {0, 1, 2, 3}
     // Primitive polynomial: x^2 + x + 1
+    /**
+     * @param {uint32} a - GF(4) element
+     * @param {uint32} b - GF(4) element
+     * @returns {uint32} a + b
+     */
     gf4Add(a, b) {
       // Addition in GF(2^m) is XOR using OpCodes
       return OpCodes.Xor32(a, b);
     }
 
+    /**
+     * @param {uint32} a - GF(4) element
+     * @param {uint32} b - GF(4) element
+     * @returns {uint32} a * b
+     */
     gf4Multiply(a, b) {
-      if (a === 0 || b === 0) return 0;
+      if (a === 0 || b === 0) {
+        return 0;
+      }
 
       // Multiplication table for GF(4) with primitive polynomial x^2 + x + 1
       // α = 2, α+1 = 3, α^2 = α+1 = 3
+      /** @type {uint8[][]} */
       const mulTable = [
         [0, 0, 0, 0], // 0 * {0,1,α,α+1}
         [0, 1, 2, 3], // 1 * {0,1,α,α+1}
@@ -255,6 +270,10 @@
       return mulTable[a][b];
     }
 
+    /**
+     * @param {uint32} a - Non-zero GF(4) element
+     * @returns {uint32} a^-1
+     */
     gf4Inverse(a) {
       if (a === 0) {
         throw new Error('Cannot compute inverse of zero in GF(4)');
@@ -269,8 +288,8 @@
 
     /**
      * Encodes message symbols using Hermitian code generator matrix
-     * @param {Array} message - k message symbols from GF(4)
-     * @returns {Array} - n codeword symbols
+     * @param {uint8[]} message - k message symbols from GF(4)
+     * @returns {uint8[]} - n codeword symbols
      */
     encode(message) {
       if (message.length !== this.k) {
@@ -289,8 +308,10 @@
 
       // Matrix-vector multiplication over GF(4): c = m * G
       for (let j = 0; j < this.n; ++j) {
+        /** @type {uint32} */
         let sum = 0;
         for (let i = 0; i < this.k; ++i) {
+          /** @type {uint32} */
           const product = this.gf4Multiply(message[i], this.generatorMatrix[i][j]);
           sum = this.gf4Add(sum, product);
         }
@@ -302,8 +323,8 @@
 
     /**
      * Decodes received codeword using syndrome decoding
-     * @param {Array} received - n received symbols (possibly with errors)
-     * @returns {Array} - k decoded message symbols
+     * @param {uint8[]} received - n received symbols (possibly with errors)
+     * @returns {uint8[]} - k decoded message symbols
      */
     decode(received) {
       if (received.length !== this.n) {
@@ -324,16 +345,19 @@
       // 3. Forney algorithm for error values
       // 4. AG-specific decoding (Guruswami-Sudan, Fundamental Polytope)
 
+      /** @type {float64} */
       let minDistance = Infinity;
       /** @type {uint8[]} */
       let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Exhaustive search over all 4^k possible messages (feasible for small k)
+      /** @type {int32} */
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
         /** @type {uint8[]} */
         const message = [];
+        /** @type {int32} */
         let temp = msgIndex;
 
         for (let i = 0; i < this.k; ++i) {
@@ -341,9 +365,11 @@
           temp = Math.floor(temp / 4);
         }
 
+        /** @type {uint8[]} */
         const testCodeword = this.encode(message);
 
         // Calculate Hamming distance
+        /** @type {int32} */
         const distance = this.calculateHammingDistance(received, testCodeword);
 
         if (distance < minDistance) {
@@ -357,11 +383,12 @@
 
     /**
      * Calculates Hamming distance between two codewords
-     * @param {Array} codeword1 - First codeword
-     * @param {Array} codeword2 - Second codeword
-     * @returns {number} - Hamming distance
+     * @param {uint8[]} codeword1 - First codeword
+     * @param {uint8[]} codeword2 - Second codeword
+     * @returns {int32} - Hamming distance
      */
     calculateHammingDistance(codeword1, codeword2) {
+      /** @type {int32} */
       let distance = 0;
 
       for (let i = 0; i < this.n; ++i) {
@@ -375,16 +402,18 @@
 
     /**
      * Computes syndrome for error detection
-     * @param {Array} received - Received codeword
-     * @returns {Array} - Syndrome vector
+     * @param {uint8[]} received - Received codeword
+     * @returns {uint8[]} - Syndrome vector
      */
     computeSyndrome(received) {
       /** @type {uint8[]} */
       const syndrome = OpCodes.CreateArray(this.parityCheckMatrix.length, 0);
 
       for (let i = 0; i < this.parityCheckMatrix.length; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.n; ++j) {
+          /** @type {uint32} */
           const product = this.gf4Multiply(received[j], this.parityCheckMatrix[i][j]);
           sum = this.gf4Add(sum, product);
         }
@@ -411,10 +440,15 @@
 
       try {
         // Compute syndrome - non-zero syndrome indicates errors
+        /** @type {uint8[]} */
         const syndrome = this.computeSyndrome(data);
 
         // Check if syndrome is all zeros
-        const hasError = syndrome.some(s => s !== 0);
+        /** @type {boolean} */
+        let hasError = false;
+        for (let i = 0; i < syndrome.length; ++i) {
+          if (syndrome[i] !== 0) hasError = true;
+        }
 
         return hasError;
       } catch (e) {
