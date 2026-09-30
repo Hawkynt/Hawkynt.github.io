@@ -58,6 +58,38 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Overhead figures as reported by getOverheadAnalysis()
+   * @class
+   */
+  class RaptorOverhead {
+    /**
+     * @param {float64} targetOverhead - Target overhead
+     * @param {float64} actualOverhead - Achieved overhead
+     * @param {float64} efficiency - k over symbols sent
+     */
+    constructor(targetOverhead, actualOverhead, efficiency) {
+      /** @type {float64} */
+      this.targetOverhead = targetOverhead;
+      /** @type {float64} */
+      this.actualOverhead = actualOverhead;
+      /** @type {float64} */
+      this.efficiency = efficiency;
+    }
+  }
+
+  /**
+   * The indices 0 .. count-1
+   * @param {int32} count - Number of indices
+   * @returns {int32[]} Index list
+   */
+  function indexRange(count) {
+    /** @type {int32[]} */
+    const indices = [];
+    for (let i = 0; i < count; ++i) indices.push(i);
+    return indices;
+  }
+
   class RaptorCodesAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -154,20 +186,27 @@
       this.isInverse = isInverse;
 
       // Input/Output
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
       /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // Parameters
+      /** @type {int32} */
       this.k = 0;                     // Number of source symbols
+      /** @type {float64} */
       this.preCodeRate = 0.95;        // Pre-code rate
+      /** @type {float64} */
       this.targetOverhead = 0.05;     // Target overhead
+      /** @type {int32} */
       this.seed = 42;                 // Random seed
 
       // Internal structures
       this.preCodeMatrix = null;      // LDPC pre-code matrix
       this.ltGraph = null;            // LT code graph
+      /** @type {uint8[]} */
       this.intermediateSymbols = null; // Symbols after pre-coding
       this.profiler = new PerformanceProfiler();
       this.rng = null;
@@ -194,7 +233,11 @@
         // Result(), since a partition computed from one call's share of the
         // message describes a different code from the one the whole message
         // asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -230,6 +273,13 @@
     }
 
     // Set parameters
+    /**
+     * @param {int32} k - Source symbols
+     * @param {float64} [preCodeRate=0.95] - Pre-code rate
+     * @param {float64} [targetOverhead=0.05] - Target overhead
+     * @param {int32} [seed=42] - Random seed
+     * @returns {void}
+     */
     setParameters(k, preCodeRate = 0.95, targetOverhead = 0.05, seed = 42) {
       this.k = k;
       this.preCodeRate = preCodeRate;
@@ -237,12 +287,17 @@
       this.seed = seed;
     }
 
+    /**
+     * @returns {void}
+     */
     _initializeEncoding() {
       this.rng = new SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate intermediate symbols count
+      /** @type {int32} */
       const n = Math.ceil(this.k / this.preCodeRate);
+      /** @type {int32} */
       this.intermediateSymbolsCount = n;
 
       // Build LDPC pre-code matrix
@@ -254,6 +309,9 @@
       this.profiler.endTimer('initialization');
     }
 
+    /**
+     * @returns {void}
+     */
     _buildPreCodeMatrix() {
       this.profiler.startTimer('precode_construction');
 
@@ -270,37 +328,50 @@
       // Systematic part: identity matrix for first k positions
       for (let i = 0; i < this.k; i++) {
         // Find appropriate parity check equations for this variable
+        /** @type {int32[]} */
         const checkIndices = this._selectParityChecks(i, checksPerVariable, numParityChecks);
-        for (const checkIdx of checkIndices) {
-          this.preCodeMatrix.set(checkIdx, i, 1);
+        for (let c = 0; c < checkIndices.length; ++c) {
+          this.preCodeMatrix.set(checkIndices[c], i, 1);
         }
       }
 
       // Parity part: create connections for intermediate symbols k to n-1
       for (let i = this.k; i < n; i++) {
+        /** @type {int32[]} */
         const checkIndices = this._selectParityChecks(i, checksPerVariable, numParityChecks);
-        for (const checkIdx of checkIndices) {
-          this.preCodeMatrix.set(checkIdx, i, 1);
+        for (let c = 0; c < checkIndices.length; ++c) {
+          this.preCodeMatrix.set(checkIndices[c], i, 1);
         }
       }
 
       this.profiler.endTimer('precode_construction');
     }
 
+    /**
+     * @param {int32} variableIndex - Variable node
+     * @param {int32} degree - Checks wanted
+     * @param {int32} numChecks - Check count
+     * @returns {int32[]} Distinct check indices, in draw order
+     */
     _selectParityChecks(variableIndex, degree, numChecks) {
-      const checks = new Set();
+      /** @type {int32[]} */
+      const checks = [];
       const maxAttempts = degree * 3;
       let attempts = 0;
 
-      while (checks.size < degree && attempts < maxAttempts) {
+      while (checks.length < degree && attempts < maxAttempts) {
+        /** @type {int32} */
         const checkIdx = this.rng.nextInt(numChecks);
-        checks.add(checkIdx);
+        if (checks.indexOf(checkIdx) < 0) checks.push(checkIdx);
         attempts++;
       }
 
-      return Array.from(checks);
+      return checks;
     }
 
+    /**
+     * @returns {void}
+     */
     _buildLTGraph() {
       this.profiler.startTimer('lt_graph_construction');
 
@@ -309,22 +380,29 @@
 
       this.ltGraph = new BipartiteGraph(n, numLTSymbols);
       const degreeDistribution = new DegreeDistribution(n);
+      /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, 0.5);
 
       // Build LT graph connections
       for (let ltIdx = 0; ltIdx < numLTSymbols; ltIdx++) {
+        /** @type {int32} */
         const degree = degreeDistribution.sampleDegreeFromCDF(cdf, this.rng);
-        const intermediateIndices = Array.from({length: n}, (_, i) => i);
+        /** @type {int32[]} */
+        const intermediateIndices = indexRange(n);
+        /** @type {int32[]} */
         const neighbors = this.rng.sample(intermediateIndices, Math.min(degree, n));
 
-        for (const intIdx of neighbors) {
-          this.ltGraph.addEdge(intIdx, ltIdx);
+        for (let q = 0; q < neighbors.length; ++q) {
+          this.ltGraph.addEdge(neighbors[q], ltIdx);
         }
       }
 
       this.profiler.endTimer('lt_graph_construction');
     }
 
+    /**
+     * @returns {uint8[]} Source symbols followed by LT symbols
+     */
     _encode() {
       if (!this.sourceSymbols || this.k === 0) {
         throw new Error('No source symbols to encode');
@@ -336,18 +414,24 @@
       this.intermediateSymbols = this._preCodeEncode();
 
       // Step 2: LT encode the intermediate symbols
+      /** @type {uint8[]} */
       const ltSymbols = this._ltEncode();
 
       // Step 3: Combine systematic symbols with LT symbols
-      const result = [...this.sourceSymbols, ...ltSymbols];
+      /** @type {uint8[]} */
+      const result = this.sourceSymbols.concat(ltSymbols);
 
       this.profiler.endTimer('encoding');
       return result;
     }
 
+    /**
+     * @returns {uint8[]} Intermediate symbols
+     */
     _preCodeEncode() {
       const n = this.intermediateSymbolsCount;
-      const intermediate = new Array(n);
+      /** @type {uint8[]} */
+      const intermediate = OpCodes.CreateArray(n, 0);
 
       // Systematic part: copy source symbols
       for (let i = 0; i < this.k; i++) {
@@ -360,14 +444,21 @@
         let paritySymbol = 0;
 
         // For each row in the pre-code matrix that affects this parity symbol
-        for (let row = 0; row < this.preCodeMatrix.rows; row++) {
-          if (this.preCodeMatrix.get(row, parityIdx) === 1) {
+        /** @type {int32} */
+        const rows = this.preCodeMatrix.rows;
+        for (let row = 0; row < rows; row++) {
+          /** @type {uint8} */
+          const cell = this.preCodeMatrix.get(row, parityIdx);
+          if (cell === 1) {
             // Calculate this parity check equation
             /** @type {uint32} */
             let checkValue = 0;
+            /** @type {int32[]} */
             const rowNonZeros = this.preCodeMatrix.getRowNonZeros(row);
 
-            for (const col of rowNonZeros) {
+            for (let q = 0; q < rowNonZeros.length; ++q) {
+              /** @type {int32} */
+              const col = rowNonZeros[q];
               if (col < parityIdx) { // Only include already calculated symbols
                 checkValue = OpCodes.Xor32(checkValue, intermediate[col]);
               }
@@ -383,19 +474,25 @@
       return intermediate;
     }
 
+    /**
+     * @returns {uint8[]} LT symbols
+     */
     _ltEncode() {
       /** @type {uint8[]} */
       const ltSymbols = [];
-      const numLTSymbols = this.ltGraph.rightNodes - this.intermediateSymbolsCount; // Exclude systematic part
+      /** @type {int32} */
+      const rightNodes = this.ltGraph.rightNodes;
+      const numLTSymbols = rightNodes - this.intermediateSymbolsCount; // Exclude systematic part
 
-      for (let ltIdx = this.intermediateSymbolsCount; ltIdx < this.ltGraph.rightNodes; ltIdx++) {
+      for (let ltIdx = this.intermediateSymbolsCount; ltIdx < rightNodes; ltIdx++) {
+        /** @type {int32[]} */
         const neighbors = this.ltGraph.getNeighbors(ltIdx);
         /** @type {uint32} */
         let ltSymbol = 0;
 
         // XOR all connected intermediate symbols
-        for (const intIdx of neighbors) {
-          ltSymbol = OpCodes.Xor32(ltSymbol, this.intermediateSymbols[intIdx]);
+        for (let q = 0; q < neighbors.length; ++q) {
+          ltSymbol = OpCodes.Xor32(ltSymbol, this.intermediateSymbols[neighbors[q]]);
         }
 
         ltSymbols.push(ltSymbol);
@@ -404,6 +501,9 @@
       return ltSymbols;
     }
 
+    /**
+     * @returns {uint8[]} Decoded source symbols
+     */
     _decode() {
       if (this.encodedSymbols.length < this.k) {
         throw new Error('Insufficient symbols for decoding');
@@ -412,10 +512,13 @@
       this.profiler.startTimer('decoding');
 
       // Step 1: Extract systematic part (if available)
+      /** @type {uint8[]} */
       const systematicSymbols = this.encodedSymbols.slice(0, this.k);
+      /** @type {uint8[]} */
       const repairSymbols = this.encodedSymbols.slice(this.k);
 
       // Step 2: LT decode to recover intermediate symbols
+      /** @type {uint8[]} */
       const recoveredIntermediate = this._ltDecode(systematicSymbols, repairSymbols);
 
       if (!recoveredIntermediate) {
@@ -429,13 +532,19 @@
       return this.decodedSymbols;
     }
 
+    /**
+     * @param {uint8[]} systematicSymbols - Systematic symbols
+     * @param {uint8[]} repairSymbols - Repair symbols
+     * @returns {uint8[]} Intermediate symbols
+     */
     _ltDecode(systematicSymbols, repairSymbols) {
       // For systematic Raptor codes, the systematic part gives us the source symbols directly
       // The repair symbols help recover any lost systematic symbols
 
       // In this simplified implementation, assume systematic reception
       const n = this.intermediateSymbolsCount;
-      const intermediate = new Array(n);
+      /** @type {uint8[]} */
+      const intermediate = OpCodes.CreateArray(n, 0);
 
       // Use systematic symbols for first k positions
       for (let i = 0; i < this.k; i++) {
@@ -450,14 +559,24 @@
       return intermediate;
     }
 
+    /**
+     * @param {uint8[]} intermediateSymbols - Intermediate symbols
+     * @returns {uint8[]} Source symbols
+     */
     _preCodeDecode(intermediateSymbols) {
       // For systematic codes, the source symbols are directly available
       return intermediateSymbols.slice(0, this.k);
     }
 
     // Belief propagation decoder for non-systematic reception
+    /**
+     * @param {uint8[]} receivedSymbols - Received symbols
+     * @returns {float64[]} Beliefs, or null
+     */
     _beliefPropagationDecode(receivedSymbols) {
-      const maxIterations = (this.algorithm.maxDecodingIterations ? this.algorithm.maxDecodingIterations : 100);
+      /** @type {int32} */
+      const configured = this.algorithm.maxDecodingIterations;
+      const maxIterations = (configured ? configured : 100);
       let iteration = 0;
       let converged = false;
 
@@ -493,46 +612,77 @@
       };
     }
 
+    /**
+     * @returns {float64} Pre-code matrix density
+     */
     _calculateMatrixDensity() {
-      if (!this.preCodeMatrix) return 0;
-
-      let nonZeros = 0;
-      for (let row = 0; row < this.preCodeMatrix.rows; row++) {
-        nonZeros += this.preCodeMatrix.getRowDegree(row);
+      if (!this.preCodeMatrix) {
+        return 0;
       }
 
-      const totalElements = this.preCodeMatrix.rows * this.preCodeMatrix.cols;
+      /** @type {int32} */
+      let nonZeros = 0;
+      /** @type {int32} */
+      const rows = this.preCodeMatrix.rows;
+      /** @type {int32} */
+      const cols = this.preCodeMatrix.cols;
+      for (let row = 0; row < rows; row++) {
+        /** @type {int32} */
+        const degree = this.preCodeMatrix.getRowDegree(row);
+        nonZeros += degree;
+      }
+
+      const totalElements = rows * cols;
       return nonZeros / totalElements;
     }
 
+    /**
+     * @returns {float64} LT graph density
+     */
     _calculateGraphDensity() {
-      if (!this.ltGraph) return 0;
-
-      let totalEdges = 0;
-      for (let i = 0; i < this.ltGraph.rightNodes; i++) {
-        totalEdges += this.ltGraph.getDegree(i);
+      if (!this.ltGraph) {
+        return 0;
       }
 
-      const maxPossibleEdges = this.ltGraph.leftNodes * this.ltGraph.rightNodes;
+      /** @type {int32} */
+      let totalEdges = 0;
+      /** @type {int32} */
+      const rightNodes = this.ltGraph.rightNodes;
+      /** @type {int32} */
+      const leftNodes = this.ltGraph.leftNodes;
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
+        const degree = this.ltGraph.getDegree(i);
+        totalEdges += degree;
+      }
+
+      const maxPossibleEdges = leftNodes * rightNodes;
       return totalEdges / maxPossibleEdges;
     }
 
     // Get code rate information
+    /**
+     * @returns {float64} Pre-code rate
+     */
     getCodeRate() {
       if (!this.k || !this.intermediateSymbolsCount) return 0;
       return this.k / this.intermediateSymbolsCount;
     }
 
     // Get overhead analysis
+    /**
+     * @returns {RaptorOverhead} Overhead figures
+     */
     getOverheadAnalysis() {
-      const actualOverhead = this.ltGraph ?
-        (this.ltGraph.rightNodes - this.k) / this.k : 0;
+      /** @type {float64} */
+      let actualOverhead = 0;
+      if (this.ltGraph) {
+        /** @type {int32} */
+        const rightNodes = this.ltGraph.rightNodes;
+        actualOverhead = (rightNodes - this.k) / this.k;
+      }
 
-      return {
-        targetOverhead: this.targetOverhead,
-        actualOverhead: actualOverhead,
-        efficiency: this.k / (this.k + this.k * actualOverhead)
-      };
+      return new RaptorOverhead(this.targetOverhead, actualOverhead, this.k / (this.k + this.k * actualOverhead));
     }
   }
 

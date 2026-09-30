@@ -58,12 +58,19 @@
   /**
    * Compute factorial (cached for performance)
    */
-  /** @type {uint8[]} */
+  /** @type {float64[]} */
   const factorialCache = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880];
+  /**
+   * @param {int32} n - Argument
+   * @returns {float64} n!
+   */
   function factorial(n) {
     if (n < 0) return 0;
-    if (n < factorialCache.length) return factorialCache[n];
+    if (n < factorialCache.length) {
+      return factorialCache[n];
+    }
 
+    /** @type {float64} */
     let result = factorialCache[factorialCache.length - 1];
     for (let i = factorialCache.length; i <= n; ++i) {
       result *= i;
@@ -75,6 +82,9 @@
   /**
    * Compute Poisson distribution for coherent state photon number
    * P(n) = |α|^(2n) * e^(-|α|²) / n!
+   * @param {int32} n - Photon number
+   * @param {float64} alphaSq - Mean photon number
+   * @returns {float64} P(n)
    */
   function poissonProbability(n, alphaSq) {
     return Math.pow(alphaSq, n) * Math.exp(-alphaSq) / factorial(n);
@@ -84,6 +94,9 @@
    * Classical representation of coherent state |α⟩ in Fock basis
    * |α⟩ = e^(-|α|²/2) * Σ(α^n / √n!) |n⟩
    * Returns array of amplitudes for Fock states |0⟩ to |truncation⟩
+   * @param {float64} alpha - Coherent amplitude
+   * @param {int32} truncation - Largest Fock index
+   * @returns {float64[]} Amplitudes of |0> .. |truncation>
    */
   function coherentStateAmplitudes(alpha, truncation) {
     const alphaSq = alpha * alpha;
@@ -102,13 +115,19 @@
   /**
    * Create two-component cat state: (|α⟩ ± |-α⟩) / √(2(1 ± e^(-2|α|²)))
    * sign: +1 for even cat (logical |0⟩), -1 for odd cat (logical |1⟩)
+   * @param {float64} alpha - Coherent amplitude
+   * @param {int32} sign - +1 even cat, -1 odd cat
+   * @param {int32} truncation - Largest Fock index
+   * @returns {float64[]} Amplitudes
    */
   function catStateAmplitudes(alpha, sign, truncation) {
     const alphaSq = alpha * alpha;
     const expTerm = Math.exp(-2 * alphaSq);
     const norm = Math.sqrt(2 * (1 + sign * expTerm));
 
+    /** @type {float64[]} */
     const amplitudesPlus = coherentStateAmplitudes(alpha, truncation);
+    /** @type {float64[]} */
     const amplitudesMinus = coherentStateAmplitudes(-alpha, truncation);
 
     /** @type {float64[]} */
@@ -125,6 +144,8 @@
    * Measure photon number parity for error detection
    * Returns 0 for even parity (even cat), 1 for odd parity (odd cat)
    * For cat codes: even cat has support on |0⟩,|2⟩,|4⟩..., odd cat on |1⟩,|3⟩,|5⟩...
+   * @param {float64[]} fockState - Amplitudes
+   * @returns {uint8} Parity bit
    */
   function measurePhotonParity(fockState) {
     let evenProb = 0;
@@ -147,10 +168,13 @@
    * Apply photon loss error (single photon loss)
    * Loss operator: â (annihilation operator)
    * â |n⟩ = √n |n-1⟩
+   * @param {float64[]} fockState - Amplitudes
+   * @returns {float64[]} Normalised state after one photon loss
    */
   function applyPhotonLoss(fockState) {
-    /** @type {int32[]} */
-    const lostState = OpCodes.CreateArray(fockState.length, 0);
+    /** @type {float64[]} */
+    const lostState = [];
+    for (let n = 0; n < fockState.length; ++n) lostState.push(0);
 
     for (let n = 1; n < fockState.length; ++n) {
       // Loss from |n⟩ → |n-1⟩
@@ -176,6 +200,9 @@
   /**
    * Compute fidelity between two quantum states
    * F = |⟨ψ|φ⟩|² = |Σ ψ*ᵢ φᵢ|²
+   * @param {float64[]} state1 - Amplitudes
+   * @param {float64[]} state2 - Amplitudes
+   * @returns {float64} Squared overlap
    */
   function fidelity(state1, state2) {
     let overlap = 0;
@@ -189,6 +216,36 @@
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * Code parameters as reported by GetCodeParameters()
+   * @class
+   */
+  class CatCodeParameters {
+    /**
+     * @param {float64} alpha - Coherent amplitude
+     * @param {int32} fockTruncation - Fock-basis truncation
+     * @param {string} description - Summary
+     */
+    constructor(alpha, fockTruncation, description) {
+      /** @type {string} */
+      this.type = 'Bosonic Cat Code';
+      /** @type {int32} */
+      this.components = 2; // Two-component cat
+      /** @type {float64} */
+      this.alpha = alpha;
+      /** @type {float64} */
+      this.alphaSq = alpha * alpha;
+      /** @type {float64} */
+      this.bitFlipSuppression = Math.exp(-2 * alpha * alpha);
+      /** @type {float64} */
+      this.avgPhotonNumber = alpha * alpha;
+      /** @type {int32} */
+      this.fockTruncation = fockTruncation;
+      /** @type {string} */
+      this.description = description;
+    }
+  }
 
   class CatCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
@@ -366,19 +423,28 @@
       this.result = null;
 
       // Cat code parameters
+      /** @type {float64} */
       this._alpha = DEFAULT_ALPHA; // Coherent state amplitude
+      /** @type {int32} */
       this._truncation = FOCK_TRUNCATION; // Fock basis truncation
+      /** @type {boolean} */
       this._parityMeasurement = false; // Return parity instead of decoded state
+      /** @type {boolean} */
       this._simulatePhotonLoss = false; // Simulate single photon loss
+      /** @type {boolean} */
       this._checkFidelity = false; // Compute state fidelity
+      /** @type {float64} */
       this._minFidelity = 0.99; // Minimum expected fidelity
 
       // State storage
-      /** @type {int32[]} */
+      /** @type {float64[][]} */
       this._encodedStates = []; // Fock basis representations
     }
 
     // Configuration properties
+    /**
+     * @param {float64} value - Coherent amplitude in (0, 5]
+     */
     set alpha(value) {
       if (typeof value !== 'number' || value <= 0 || value > 5) {
         throw new Error('CatCodeInstance.alpha: Must be positive number ≤ 5 (typical range: 1-3)');
@@ -386,10 +452,16 @@
       this._alpha = value;
     }
 
+    /**
+     * @returns {float64} Coherent amplitude
+     */
     get alpha() {
       return this._alpha;
     }
 
+    /**
+     * @param {int32} value - Fock truncation 10..50
+     */
     set truncation(value) {
       if (typeof value !== 'number' || value < 10 || value > 50) {
         throw new Error('CatCodeInstance.truncation: Must be between 10 and 50');
@@ -397,34 +469,58 @@
       this._truncation = Math.floor(value);
     }
 
+    /**
+     * @returns {int32} Fock truncation
+     */
     get truncation() {
       return this._truncation;
     }
 
+    /**
+     * @param {boolean} value - Return parities instead of bits
+     */
     set parityMeasurement(value) {
       this._parityMeasurement = !!value;
     }
 
+    /**
+     * @returns {boolean} Parity mode
+     */
     get parityMeasurement() {
       return this._parityMeasurement;
     }
 
+    /**
+     * @param {boolean} value - Apply one photon loss
+     */
     set simulatePhotonLoss(value) {
       this._simulatePhotonLoss = !!value;
     }
 
+    /**
+     * @returns {boolean} Photon-loss simulation
+     */
     get simulatePhotonLoss() {
       return this._simulatePhotonLoss;
     }
 
+    /**
+     * @param {boolean} value - Check state fidelity
+     */
     set checkFidelity(value) {
       this._checkFidelity = !!value;
     }
 
+    /**
+     * @returns {boolean} Fidelity check
+     */
     get checkFidelity() {
       return this._checkFidelity;
     }
 
+    /**
+     * @param {float64} value - Threshold in [0, 1]
+     */
     set minFidelity(value) {
       if (typeof value !== 'number' || value < 0 || value > 1) {
         throw new Error('CatCodeInstance.minFidelity: Must be between 0 and 1');
@@ -432,6 +528,9 @@
       this._minFidelity = value;
     }
 
+    /**
+     * @returns {float64} Fidelity threshold
+     */
     get minFidelity() {
       return this._minFidelity;
     }
@@ -476,14 +575,18 @@
      * Encode logical qubit(s) into cat state(s)
      * Logical |0⟩ → even cat: (|α⟩ + |-α⟩) / N
      * Logical |1⟩ → odd cat:  (|α⟩ - |-α⟩) / N
+     * @param {uint8[]} logicalBits - Logical bits
+     * @returns {uint8[]} Output bits
      */
     encode(logicalBits) {
       /** @type {uint8[]} */
       const encodedBits = [];
-      /** @type {int32[]} */
-      this._encodedStates = [];
+      /** @type {float64[][]} */
+      const states = [];
+      this._encodedStates = states;
 
       for (let i = 0; i < logicalBits.length; ++i) {
+        /** @type {uint8} */
         const bit = logicalBits[i];
         if (bit !== 0 && bit !== 1) {
           throw new Error("encode: Invalid logical bit " + bit + " at position " + i);
@@ -491,10 +594,12 @@
 
         // Create cat state: +1 for even (|0⟩), -1 for odd (|1⟩)
         const sign = bit === 0 ? 1 : -1;
+        /** @type {float64[]} */
         const catState = catStateAmplitudes(this._alpha, sign, this._truncation);
         this._encodedStates.push(catState);
 
         // Apply photon loss if requested
+        /** @type {float64[]} */
         let finalState = catState;
         if (this._simulatePhotonLoss) {
           finalState = applyPhotonLoss(catState);
@@ -502,13 +607,17 @@
 
         // Return parity measurement if requested
         if (this._parityMeasurement) {
+          /** @type {uint8} */
           const parity = measurePhotonParity(finalState);
           encodedBits.push(parity);
         } else if (this._checkFidelity) {
           // Compute fidelity with ideal state
+          /** @type {float64} */
           const fid = fidelity(finalState, catState);
           if (fid < this._minFidelity) {
-            throw new Error("Fidelity " + (fid.toFixed(4)) + " below threshold " + this._minFidelity);
+            /** @type {string} */
+            const shown = fid.toFixed(4);
+            throw new Error("Fidelity " + shown + " below threshold " + this._minFidelity);
           }
           encodedBits.push(bit); // Pass through on success
         } else {
@@ -523,6 +632,8 @@
     /**
      * Decode cat state(s) back to logical qubit(s)
      * Measure photon number parity: even → |0⟩, odd → |1⟩
+     * @param {uint8[]} catStates - Received bits
+     * @returns {uint8[]} Logical bits
      */
     decode(catStates) {
       if (this._encodedStates.length === 0) {
@@ -534,9 +645,11 @@
       const logicalBits = [];
 
       for (let i = 0; i < this._encodedStates.length; ++i) {
+        /** @type {float64[]} */
         const catState = this._encodedStates[i];
 
         // Measure photon number parity
+        /** @type {uint8} */
         const parity = measurePhotonParity(catState);
         logicalBits.push(parity);
       }
@@ -564,6 +677,7 @@
       // Check each encoded state
       for (let i = 0; i < Math.min(data.length, this._encodedStates.length); ++i) {
         const expectedParity = data[i];
+        /** @type {uint8} */
         const measuredParity = measurePhotonParity(this._encodedStates[i]);
 
         if (expectedParity !== measuredParity) {
@@ -576,22 +690,17 @@
 
     /**
      * Get code parameters for this cat code configuration
+     * @returns {CatCodeParameters} Code parameters
      */
     GetCodeParameters() {
-      return {
-        type: 'Bosonic Cat Code',
-        components: 2, // Two-component cat
-        alpha: this._alpha,
-        alphaSq: this._alpha * this._alpha,
-        bitFlipSuppression: Math.exp(-2 * this._alpha * this._alpha),
-        avgPhotonNumber: this._alpha * this._alpha,
-        fockTruncation: this._truncation,
-        description: "Two-component cat code with α=" + (this._alpha.toFixed(2))
-      };
+      /** @type {string} */
+      const shown = this._alpha.toFixed(2);
+      return new CatCodeParameters(this._alpha, this._truncation, "Two-component cat code with α=" + shown);
     }
 
     /**
      * Compute expected photon number for current cat state
+     * @returns {float64} Mean photon number
      */
     GetAveragePhotonNumber() {
       return this._alpha * this._alpha;
@@ -600,6 +709,7 @@
     /**
      * Compute bit-flip error suppression factor
      * Scales as e^(-2|α|²)
+     * @returns {float64} Bit-flip suppression factor
      */
     GetBitFlipSuppression() {
       return Math.exp(-2 * this._alpha * this._alpha);

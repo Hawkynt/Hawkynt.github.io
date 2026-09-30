@@ -143,9 +143,13 @@
       this.result = null;
 
       // Reed-Solomon (7,3) parameters for GF(2^8)
+      /** @type {int32} */
       this.n = 7;        // Total symbols
+      /** @type {int32} */
       this.k = 3;        // Data symbols
+      /** @type {int32} */
       this.t = 2;        // Error correction capability (n-k)/2
+      /** @type {int32} */
       this.field = 256;  // GF(2^8)
       this.primitive = 285; // Primitive polynomial for GF(2^8): x^8 + x^4 + x^3 + x^2 + 1
 
@@ -153,6 +157,7 @@
       this.initializeGaloisField();
 
       // Generator polynomial for Reed-Solomon (7,3)
+      /** @type {uint8[]} */
       this.generator = this.computeGenerator();
     }
 
@@ -196,8 +201,9 @@
         throw new Error("ReedSolomonInstance.DetectError: Input must be " + this.n + "-symbol array");
       }
 
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(data);
-      return syndromes.some(s => s !== 0);
+      return !this._allZero(syndromes);
     }
 
     /**
@@ -211,13 +217,16 @@
       }
 
       // Validate symbols are in field range
-      for (let symbol of data) {
+      for (let s = 0; s < data.length; ++s) {
+        /** @type {uint8} */
+        const symbol = data[s];
         if (symbol < 0 || symbol >= this.field) {
           throw new Error("Reed-Solomon: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
-      const encoded = new Array(this.n);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(this.n, 0);
 
       // Copy data symbols
       for (let i = 0; i < this.k; i++) {
@@ -225,6 +234,7 @@
       }
 
       // Calculate parity symbols using polynomial division
+      /** @type {uint8[]} */
       const parity = this.calculateParity(data);
       for (let i = 0; i < this.n - this.k; i++) {
         encoded[this.k + i] = parity[i];
@@ -243,11 +253,13 @@
         throw new Error("Reed-Solomon decode: Input must be exactly " + this.n + " symbols");
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      /** @type {uint8[]} */
       const syndromes = this.calculateSyndromes(received);
 
       // Check if any errors exist
-      if (syndromes.every(s => s === 0)) {
+      if (this._allZero(syndromes)) {
         return received.slice(0, this.k); // No errors, extract data
       }
 
@@ -255,11 +267,14 @@
 
       // Simplified error correction (real implementation would use Berlekamp-Massey)
       // For educational purposes, we'll attempt simple error location
+      /** @type {int32[]} */
       const errorLocations = this.findErrorLocations(syndromes);
 
       if (errorLocations.length <= this.t) {
         // Correct errors (simplified)
-        for (let loc of errorLocations) {
+        for (let e = 0; e < errorLocations.length; ++e) {
+          /** @type {int32} */
+          const loc = errorLocations[e];
           if (loc < this.n) {
             received[loc] = OpCodes.Xor32(received[loc], syndromes[0]); // Simplified correction
           }
@@ -271,9 +286,25 @@
       return received.slice(0, this.k);
     }
 
+    /**
+     * @param {uint8[]} values - Symbols
+     * @returns {boolean} True when every symbol is zero
+     */
+    _allZero(values) {
+      for (let i = 0; i < values.length; ++i) {
+        if (values[i] !== 0) return false;
+      }
+      return true;
+    }
+
+    /**
+     * @returns {void}
+     */
     initializeGaloisField() {
       // Initialize log and antilog tables for GF(2^8)
+      /** @type {int32[]} */
       this.gfLog = new Array(this.field);
+      /** @type {uint8[]} */
       this.gfAntilog = new Array(this.field);
 
       /** @type {uint32} */
@@ -289,12 +320,22 @@
       this.gfLog[0] = this.field - 1; // Special case for zero
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Field element
+     * @returns {uint8} a * b
+     */
     gfMultiply(a, b) {
       // Galois Field multiplication using log tables
       if (a === 0 || b === 0) return 0;
       return this.gfAntilog[(this.gfLog[a] + this.gfLog[b]) % (this.field - 1)];
     }
 
+    /**
+     * @param {uint8} a - Field element
+     * @param {uint8} b - Non-zero field element
+     * @returns {uint8} a / b
+     */
     gfDivide(a, b) {
       // Galois Field division
       if (a === 0) return 0;
@@ -302,12 +343,16 @@
       return this.gfAntilog[(this.gfLog[a] - this.gfLog[b] + this.field - 1) % (this.field - 1)];
     }
 
+    /**
+     * @returns {uint8[]} Generator polynomial coefficients
+     */
     computeGenerator() {
       // Compute generator polynomial (x-α^0)(x-α^1)...(x-α^(n-k-1))
       /** @type {uint8[]} */
       let gen = [1]; // Start with polynomial "1"
 
       for (let i = 0; i < this.n - this.k; i++) {
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i];
         /** @type {uint8[]} */
         const newGen = OpCodes.CreateArray(gen.length + 1, 0);
@@ -323,12 +368,17 @@
       return gen;
     }
 
+    /**
+     * @param {uint8[]} data - k data symbols
+     * @returns {uint8[]} n-k parity symbols
+     */
     calculateParity(data) {
       // Calculate parity symbols using polynomial division
       /** @type {uint8[]} */
       const parity = OpCodes.CreateArray(this.n - this.k, 0);
 
       for (let i = 0; i < this.k; i++) {
+        /** @type {uint8} */
         const coeff = OpCodes.Xor32(data[i], parity[0]);
 
         // Shift parity symbols
@@ -341,13 +391,20 @@
       return parity;
     }
 
+    /**
+     * @param {uint8[]} data - Received word
+     * @returns {uint8[]} Syndromes
+     */
     calculateSyndromes(data) {
       // Calculate syndrome polynomial S(x)
-      const syndromes = new Array(this.n - this.k);
+      /** @type {uint8[]} */
+      const syndromes = OpCodes.CreateArray(this.n - this.k, 0);
 
       for (let i = 0; i < this.n - this.k; i++) {
         syndromes[i] = 0;
+        /** @type {uint8} */
         const alpha_i = this.gfAntilog[i];
+        /** @type {uint8} */
         let alpha_power = 1;
 
         for (let j = 0; j < this.n; j++) {
@@ -359,6 +416,10 @@
       return syndromes;
     }
 
+    /**
+     * @param {uint8[]} syndromes - Syndromes
+     * @returns {int32[]} Error positions
+     */
     findErrorLocations(syndromes) {
       // Simplified error location (real implementation uses Berlekamp-Massey + Chien search)
       /** @type {int32[]} */
@@ -366,7 +427,9 @@
 
       // For educational purposes, assume single error at position indicated by syndrome ratio
       if (syndromes[0] !== 0 && syndromes[1] !== 0) {
+        /** @type {uint8} */
         const ratio = this.gfDivide(syndromes[1], syndromes[0]);
+        /** @type {int32} */
         const location = this.gfLog[ratio];
         if (location < this.n) {
           locations.push(location);
